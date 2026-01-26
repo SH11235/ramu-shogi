@@ -1,4 +1,3 @@
-import type { GameResult, NnueSelection, Player } from "../game";
 import type {
     EngineClient,
     EngineErrorCode,
@@ -8,6 +7,8 @@ import type {
     SkillLevelSettings,
 } from "@shogi/engine-client";
 import { getEngineErrorInfo, normalizeSkillLevelSettings } from "@shogi/engine-client";
+import type { GameResult, Player } from "../game";
+import type { NnueSelection } from "../nnue";
 
 export type EngineStatus = "idle" | "thinking" | "error";
 

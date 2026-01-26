@@ -275,18 +275,21 @@ describe("createEngineController", () => {
             callbacks: { onMoveFromEngine, onMatchEnd },
         });
 
-        controller.command.setSides({
-            sente: { role: "engine", engineId: "engine1" },
-            gote: { role: "human" },
+        controller.command.syncContext({
+            sides: {
+                sente: { role: "engine", engineId: "engine1" },
+                gote: { role: "human" },
+            },
+            position: {
+                startSfen: "startpos",
+                moves: [],
+                turn: "sente",
+                ready: true,
+            },
+            matchRunning: true,
         });
-        controller.command.setPosition({
-            startSfen: "startpos",
-            moves: [],
-            turn: "sente",
-            ready: true,
-        });
-        controller.command.setMatchRunning(true);
 
+        await controller.command.startTurn("sente");
         await flushPromises();
 
         expect(mockClient.init).toHaveBeenCalledTimes(1);
@@ -308,18 +311,21 @@ describe("createEngineController", () => {
             callbacks: { onMoveFromEngine, onMatchEnd },
         });
 
-        controller.command.setSides({
-            sente: { role: "engine", engineId: "engine1" },
-            gote: { role: "human" },
+        controller.command.syncContext({
+            sides: {
+                sente: { role: "engine", engineId: "engine1" },
+                gote: { role: "human" },
+            },
+            position: {
+                startSfen: "startpos",
+                moves: [],
+                turn: "sente",
+                ready: true,
+            },
+            matchRunning: true,
         });
-        controller.command.setPosition({
-            startSfen: "startpos",
-            moves: [],
-            turn: "sente",
-            ready: true,
-        });
-        controller.command.setMatchRunning(true);
 
+        await controller.command.startTurn("sente");
         await flushPromises();
 
         mockClient.emit({ type: "bestmove", move: "7g7f" });
@@ -338,18 +344,21 @@ describe("createEngineController", () => {
             callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
         });
 
-        controller.command.setSides({
-            sente: { role: "engine", engineId: "engine1" },
-            gote: { role: "human" },
+        controller.command.syncContext({
+            sides: {
+                sente: { role: "engine", engineId: "engine1" },
+                gote: { role: "human" },
+            },
+            position: {
+                startSfen: "startpos",
+                moves: [],
+                turn: "sente",
+                ready: true,
+            },
+            matchRunning: true,
         });
-        controller.command.setPosition({
-            startSfen: "startpos",
-            moves: [],
-            turn: "sente",
-            ready: true,
-        });
-        controller.command.setMatchRunning(true);
 
+        await controller.command.startTurn("sente");
         await flushPromises();
 
         expect(controller.getState().engineStatus.sente).toBe("error");
@@ -394,18 +403,21 @@ describe("createEngineController", () => {
             callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
         });
 
-        controller.command.setSides({
-            sente: { role: "engine", engineId: "engine1" },
-            gote: { role: "human" },
+        controller.command.syncContext({
+            sides: {
+                sente: { role: "engine", engineId: "engine1" },
+                gote: { role: "human" },
+            },
+            position: {
+                startSfen: "startpos",
+                moves: [],
+                turn: "sente",
+                ready: true,
+            },
+            matchRunning: true,
         });
-        controller.command.setPosition({
-            startSfen: "startpos",
-            moves: [],
-            turn: "sente",
-            ready: true,
-        });
-        controller.command.setMatchRunning(true);
 
+        await controller.command.startTurn("sente");
         await flushPromises();
 
         await controller.command.dispose("sente");
@@ -425,18 +437,21 @@ describe("createEngineController", () => {
             callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
         });
 
-        controller.command.setSides({
-            sente: { role: "engine", engineId: "engine1" },
-            gote: { role: "human" },
+        controller.command.syncContext({
+            sides: {
+                sente: { role: "engine", engineId: "engine1" },
+                gote: { role: "human" },
+            },
+            position: {
+                startSfen: "startpos",
+                moves: [],
+                turn: "sente",
+                ready: true,
+            },
+            matchRunning: true,
         });
-        controller.command.setPosition({
-            startSfen: "startpos",
-            moves: [],
-            turn: "sente",
-            ready: true,
-        });
-        controller.command.setMatchRunning(true);
 
+        await controller.command.startTurn("sente");
         await flushPromises();
 
         const initCallCount = mockClient.init.mock.calls.length;

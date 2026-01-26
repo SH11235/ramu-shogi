@@ -617,6 +617,7 @@ export function ShogiMatch({
         setSenteNnueSelection,
         setGoteNnueSelection,
         setAnalysisNnueSelection,
+        defaultNnueSelection,
     ]);
 
     // manifestUrl 未指定でプリセット選択中の場合のフォールバック

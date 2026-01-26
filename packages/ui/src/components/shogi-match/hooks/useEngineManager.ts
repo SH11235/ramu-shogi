@@ -14,8 +14,8 @@ import type {
     SideSetting,
 } from "@shogi/app-core";
 import { createEngineController } from "@shogi/app-core";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EngineInfoEvent } from "@shogi/engine-client";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClockSettings, TickState } from "./useClockManager";
 
 interface UseEngineManagerProps {
@@ -58,7 +58,7 @@ interface UseEngineManagerProps {
 }
 
 /** 解析リクエストパラメータ */
-export type AnalysisRequest = Omit<ControllerAnalysisRequest, "engineId">;
+type AnalysisRequest = Omit<ControllerAnalysisRequest, "engineId">;
 
 interface UseEngineManagerReturn {
     /** エンジンの準備状態 */
@@ -97,7 +97,7 @@ interface UseEngineManagerReturn {
     restartEngineForNnue: (side: Player, selection?: NnueSelection) => Promise<void>;
 }
 
-export type EngineManagerAdapterState = EngineControllerState;
+type EngineManagerAdapterState = EngineControllerState;
 
 export function useEngineManager({
     sides,
@@ -189,6 +189,8 @@ export function useEngineManager({
     // NOTE: movesRef is mutable; length is used as a stable change signal.
     // It assumes moves content does not change without length changes.
     const movesKey = movesRef.current.length;
+    // biome-ignore lint/correctness/useExhaustiveDependencies: movesRef is mutable; length change is the intended signal.
+    const movesSnapshot = useMemo(() => movesRef.current, [movesKey]);
 
     useEffect(() => {
         controller.command.syncContext({
@@ -200,7 +202,7 @@ export function useEngineManager({
             },
             position: {
                 startSfen,
-                moves: movesRef.current,
+                moves: movesSnapshot,
                 turn: positionTurn,
                 ready: positionReady,
                 passRightsSettings,
@@ -212,7 +214,7 @@ export function useEngineManager({
         controller,
         goteNnueSelection,
         isMatchRunning,
-        movesKey,
+        movesSnapshot,
         passRightsSettings,
         positionReady,
         positionTurn,
