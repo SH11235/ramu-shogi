@@ -31,6 +31,11 @@ interface UseEngineManagerProps {
     startSfen: string;
     /** 棋譜の ref */
     movesRef: { current: string[] };
+    /**
+     * 棋譜変更の検知キー（ref.current を依存配列に入れないための外部シグナル）
+     * - 変更時に値が変わる必要がある
+     */
+    movesKey?: string | number;
     /** 現在の手番（エンジンターン開始のトリガー用） */
     positionTurn: Player;
     /** 対局実行中かどうか */
@@ -106,6 +111,7 @@ export function useEngineManager({
     clocksRef,
     startSfen,
     movesRef,
+    movesKey,
     positionTurn,
     isMatchRunning,
     positionReady,
@@ -186,11 +192,10 @@ export function useEngineManager({
         [defaultEngineId, sides],
     );
 
-    // NOTE: movesRef is mutable; length is used as a stable change signal.
-    // It assumes moves content does not change without length changes.
-    const movesKey = movesRef.current.length;
-    // biome-ignore lint/correctness/useExhaustiveDependencies: movesRef is mutable; length change is the intended signal.
-    const movesSnapshot = useMemo(() => movesRef.current, [movesKey]);
+    // NOTE: movesRef is mutable; use an external key to detect content changes without ref.current deps.
+    const movesKeySignal = movesKey ?? movesRef.current.length;
+    // biome-ignore lint/correctness/useExhaustiveDependencies: movesKeySignal is the explicit change signal.
+    const movesSnapshot = useMemo(() => movesRef.current, [movesKeySignal]);
 
     useEffect(() => {
         controller.command.syncContext({
