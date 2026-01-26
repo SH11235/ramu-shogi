@@ -26,10 +26,16 @@
         "rules": {
             "recommended": true,
             "style": {
-                "useImportType": "error"
+                "useImportType": {
+                    "level": "error",
+                    "fix": "unsafe"
+                }
             },
             "correctness": {
-                "noUnusedImports": "error",
+                "noUnusedImports": {
+                    "level": "error",
+                    "fix": "unsafe"
+                },
                 "noUnusedVariables": "warn"
             },
             "suspicious": {
