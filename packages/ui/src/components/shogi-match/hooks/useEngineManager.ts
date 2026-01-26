@@ -102,8 +102,6 @@ interface UseEngineManagerReturn {
     restartEngineForNnue: (side: Player, selection?: NnueSelection) => Promise<void>;
 }
 
-type EngineManagerAdapterState = EngineControllerState;
-
 export function useEngineManager({
     sides,
     engineOptions,
