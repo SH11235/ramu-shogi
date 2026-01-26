@@ -1,8 +1,9 @@
-import type { GameResult, NnueSelection, Player } from "@shogi/app-core";
+import type { EngineControllerEvent, GameResult, NnueSelection, Player } from "@shogi/app-core";
 import type { EngineEvent } from "@shogi/engine-client";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { determineBestmoveAction, formatEvent, useEngineManager } from "./useEngineManager";
+import { formatEngineEventLog } from "./formatEngineEvent";
+import { useEngineManager } from "./useEngineManager";
 
 // テスト用のNnueSelection作成ヘルパー
 const createNnueSelection = (nnueId: string | null): NnueSelection => ({
@@ -13,13 +14,20 @@ const createNnueSelection = (nnueId: string | null): NnueSelection => ({
 // テスト用のresolveNnueモック
 const createMockResolveNnue = () => vi.fn(async (selection: NnueSelection) => selection.nnueId);
 
-describe("formatEvent", () => {
+describe("formatEngineEventLog", () => {
     it("bestmove イベントを正しくフォーマットする", () => {
         const event: EngineEvent = {
             type: "bestmove",
             move: "7g7f",
         };
-        const result = formatEvent(event, "S:engine1");
+        const log: EngineControllerEvent = {
+            id: 1,
+            atMs: 0,
+            side: "sente",
+            engineId: "engine1",
+            event,
+        };
+        const result = formatEngineEventLog(log);
         expect(result).toBe("[S:engine1] bestmove 7g7f");
     });
 
@@ -33,7 +41,14 @@ describe("formatEvent", () => {
             nps: 50000,
             pv: ["7g7f", "3c3d", "2g2f"],
         };
-        const result = formatEvent(event, "G:engine2");
+        const log: EngineControllerEvent = {
+            id: 2,
+            atMs: 0,
+            side: "gote",
+            engineId: "engine2",
+            event,
+        };
+        const result = formatEngineEventLog(log);
         expect(result).toBe(
             "[G:engine2] info depth 10 seldepth 15 score cp 150 nodes 100000 nps 50000 pv 7g7f 3c3d 2g2f",
         );
@@ -45,7 +60,14 @@ describe("formatEvent", () => {
             depth: 5,
             scoreCp: -200,
         };
-        const result = formatEvent(event, "S:test");
+        const log: EngineControllerEvent = {
+            id: 3,
+            atMs: 0,
+            side: "sente",
+            engineId: "test",
+            event,
+        };
+        const result = formatEngineEventLog(log);
         expect(result).toBe("[S:test] info depth 5 score cp -200");
     });
 
@@ -55,7 +77,14 @@ describe("formatEvent", () => {
             depth: 3,
             pv: [],
         };
-        const result = formatEvent(event, "G:test");
+        const log: EngineControllerEvent = {
+            id: 4,
+            atMs: 0,
+            side: "gote",
+            engineId: "test",
+            event,
+        };
+        const result = formatEngineEventLog(log);
         expect(result).toBe("[G:test] info depth 3");
     });
 
@@ -63,7 +92,14 @@ describe("formatEvent", () => {
         const event: EngineEvent = {
             type: "info",
         };
-        const result = formatEvent(event, "S:engine");
+        const log: EngineControllerEvent = {
+            id: 5,
+            atMs: 0,
+            side: "sente",
+            engineId: "engine",
+            event,
+        };
+        const result = formatEngineEventLog(log);
         expect(result).toBe("[S:engine] info");
     });
 
@@ -72,17 +108,29 @@ describe("formatEvent", () => {
             type: "error",
             message: "Engine initialization failed",
         };
-        const result = formatEvent(event, "G:engine3");
+        const log: EngineControllerEvent = {
+            id: 6,
+            atMs: 0,
+            side: "gote",
+            engineId: "engine3",
+            event,
+        };
+        const result = formatEngineEventLog(log);
         expect(result).toBe("[G:engine3] error: Engine initialization failed");
     });
 
-    it("ラベルが異なっても正しく動作する", () => {
+    it("サイド無しのイベントは Analysis ラベルになる", () => {
         const event: EngineEvent = {
             type: "bestmove",
             move: "2g2f",
         };
-        expect(formatEvent(event, "先手:内蔵エンジン")).toBe("[先手:内蔵エンジン] bestmove 2g2f");
-        expect(formatEvent(event, "後手:外部エンジン")).toBe("[後手:外部エンジン] bestmove 2g2f");
+        const log: EngineControllerEvent = {
+            id: 7,
+            atMs: 0,
+            engineId: "analysis-engine",
+            event,
+        };
+        expect(formatEngineEventLog(log)).toBe("[Analysis:analysis-engine] bestmove 2g2f");
     });
 });
 
@@ -683,142 +731,5 @@ describe("useEngineManager - 明示API", () => {
 
         // 対局中なのでresetは呼ばれない
         expect(mockClient.reset.mock.calls.length).toBe(resetCallCount);
-    });
-});
-
-describe("determineBestmoveAction", () => {
-    it("通常の手の場合、apply_moveアクションを返す", () => {
-        const result = determineBestmoveAction({
-            move: "7g7f",
-            side: "sente",
-            engineId: "engine1",
-            activeSearch: { side: "sente", engineId: "engine1" },
-            movesCount: 5,
-        });
-
-        expect(result.action).toBe("apply_move");
-        expect(result.move).toBe("7g7f");
-        expect(result.shouldClearActive).toBe(true);
-        expect(result.shouldUpdateRequestPly).toBe(true);
-    });
-
-    it("win トークンの場合、end_matchアクションを返す", () => {
-        const result = determineBestmoveAction({
-            move: "win",
-            side: "sente",
-            engineId: "engine1",
-            activeSearch: { side: "sente", engineId: "engine1" },
-            movesCount: 5,
-        });
-
-        expect(result.action).toBe("end_match");
-        expect(result.gameResult?.reason.kind).toBe("win_declaration");
-        expect(result.shouldClearActive).toBe(true);
-        expect(result.shouldUpdateRequestPly).toBe(true);
-    });
-
-    it("resign トークンの場合、end_matchアクションを返す", () => {
-        const result = determineBestmoveAction({
-            move: "resign",
-            side: "sente",
-            engineId: "engine1",
-            activeSearch: { side: "sente", engineId: "engine1" },
-            movesCount: 5,
-        });
-
-        expect(result.action).toBe("end_match");
-        expect(result.gameResult?.reason.kind).toBe("resignation");
-        expect(result.shouldClearActive).toBe(true);
-    });
-
-    it("none トークンの場合、end_matchアクションを返す", () => {
-        const result = determineBestmoveAction({
-            move: "none",
-            side: "gote",
-            engineId: "engine1",
-            activeSearch: { side: "gote", engineId: "engine1" },
-            movesCount: 5,
-        });
-
-        expect(result.action).toBe("end_match");
-        expect(result.gameResult?.reason.kind).toBe("checkmate");
-        expect(result.shouldClearActive).toBe(true);
-    });
-
-    it("activeSearchが一致しない場合、skipアクションを返す", () => {
-        const result = determineBestmoveAction({
-            move: "7g7f",
-            side: "sente",
-            engineId: "engine1",
-            activeSearch: { side: "gote", engineId: "engine1" },
-            movesCount: 5,
-        });
-
-        expect(result.action).toBe("skip");
-        expect(result.shouldClearActive).toBe(false);
-        expect(result.shouldUpdateRequestPly).toBe(false);
-    });
-
-    it("activeSearchがnullの場合、skipアクションを返す", () => {
-        const result = determineBestmoveAction({
-            move: "7g7f",
-            side: "sente",
-            engineId: "engine1",
-            activeSearch: null,
-            movesCount: 5,
-        });
-
-        expect(result.action).toBe("skip");
-        expect(result.shouldClearActive).toBe(false);
-    });
-
-    it("engineIdが一致しない場合、skipアクションを返す", () => {
-        const result = determineBestmoveAction({
-            move: "7g7f",
-            side: "sente",
-            engineId: "engine1",
-            activeSearch: { side: "sente", engineId: "engine2" },
-            movesCount: 5,
-        });
-
-        expect(result.action).toBe("skip");
-        expect(result.shouldClearActive).toBe(false);
-    });
-
-    it("大文字小文字を区別せずにトークンを判定する", () => {
-        const resultWin = determineBestmoveAction({
-            move: "WIN",
-            side: "sente",
-            engineId: "engine1",
-            activeSearch: { side: "sente", engineId: "engine1" },
-            movesCount: 5,
-        });
-
-        expect(resultWin.action).toBe("end_match");
-        expect(resultWin.gameResult?.reason.kind).toBe("win_declaration");
-
-        const resultResign = determineBestmoveAction({
-            move: "RESIGN",
-            side: "gote",
-            engineId: "engine1",
-            activeSearch: { side: "gote", engineId: "engine1" },
-            movesCount: 5,
-        });
-
-        expect(resultResign.action).toBe("end_match");
-        expect(resultResign.gameResult?.reason.kind).toBe("resignation");
-    });
-
-    it("空白を含む手をトリムする", () => {
-        const result = determineBestmoveAction({
-            move: "  7g7f  ",
-            side: "sente",
-            engineId: "engine1",
-            activeSearch: { side: "sente", engineId: "engine1" },
-            movesCount: 5,
-        });
-
-        expect(result.action).toBe("apply_move");
-        expect(result.move).toBe("7g7f");
     });
 });
