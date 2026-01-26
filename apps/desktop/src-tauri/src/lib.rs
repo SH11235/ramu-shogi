@@ -3,14 +3,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use engine_core::movegen::{generate_legal_all_with_pass, generate_legal_with_pass, MoveList};
-use engine_core::position::{Position, SFEN_HIRATE};
-use engine_core::search::{
+use rshogi_core::movegen::{generate_legal_all_with_pass, generate_legal_with_pass, MoveList};
+use rshogi_core::position::{Position, SFEN_HIRATE};
+use rshogi_core::search::{
     LimitsType, Search, SearchInfo, SearchResult, SkillOptions, TimeOptions,
     DEFAULT_MAX_MOVES_TO_DRAW,
 };
-use engine_core::types::json::{BoardStateJson, ReplayResultJson};
-use engine_core::types::{Color, Move, Value};
+use rshogi_core::types::json::{BoardStateJson, ReplayResultJson};
+use rshogi_core::types::{Color, Move, Value};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager, State, Window};
@@ -1273,7 +1273,7 @@ struct EngineLoadNnueArgs {
 /// 変更するにはアプリの再起動が必要
 #[tauri::command]
 fn engine_load_nnue(app: AppHandle, args: EngineLoadNnueArgs) -> Result<(), String> {
-    use engine_core::nnue::{init_nnue, is_nnue_initialized};
+    use rshogi_core::nnue::{init_nnue, is_nnue_initialized};
 
     // 既に NNUE が初期化済みの場合はエラー
     if is_nnue_initialized() {
