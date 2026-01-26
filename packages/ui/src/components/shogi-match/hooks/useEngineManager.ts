@@ -16,15 +16,13 @@ import type {
 import { createEngineController } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ClockSettings, TickState } from "./useClockManager";
+import type { TickState } from "./useClockManager";
 
 interface UseEngineManagerProps {
     /** 先手/後手の設定 */
     sides: { sente: SideSetting; gote: SideSetting };
     /** エンジンオプション */
     engineOptions: EngineOption[];
-    /** 時間設定 */
-    timeSettings: ClockSettings;
     /** 現在の時計状態への参照（リアルタイムの残り時間計算用） */
     clocksRef: { readonly current: TickState };
     /** 開始局面のSFEN */
@@ -105,7 +103,6 @@ interface UseEngineManagerReturn {
 export function useEngineManager({
     sides,
     engineOptions,
-    timeSettings: _timeSettings,
     clocksRef,
     startSfen,
     movesRef,

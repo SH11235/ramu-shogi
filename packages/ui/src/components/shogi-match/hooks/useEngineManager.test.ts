@@ -135,10 +135,6 @@ describe("formatEngineEventLog", () => {
 });
 
 describe("useEngineManager", () => {
-    const timeSettings = {
-        sente: { mainMs: 1000, byoyomiMs: 500 },
-        gote: { mainMs: 1000, byoyomiMs: 500 },
-    };
     const createMockClocksRef = () => ({
         current: {
             sente: { mainMs: 1000, byoyomiMs: 500 },
@@ -212,7 +208,6 @@ describe("useEngineManager", () => {
                         createClient: () => mockClient.client,
                     },
                 ],
-                timeSettings,
                 clocksRef,
                 startSfen: "startpos",
                 movesRef,
@@ -317,10 +312,6 @@ describe("useEngineManager", () => {
 });
 
 describe("useEngineManager - NNUE restart", () => {
-    const timeSettings = {
-        sente: { mainMs: 1000, byoyomiMs: 500 },
-        gote: { mainMs: 1000, byoyomiMs: 500 },
-    };
     const createMockClocksRef = () => ({
         current: {
             sente: { mainMs: 1000, byoyomiMs: 500 },
@@ -395,7 +386,6 @@ describe("useEngineManager - NNUE restart", () => {
                 useEngineManager({
                     sides,
                     engineOptions,
-                    timeSettings,
                     clocksRef,
                     startSfen: "startpos",
                     movesRef,
@@ -464,7 +454,6 @@ describe("useEngineManager - NNUE restart", () => {
                 useEngineManager({
                     sides,
                     engineOptions,
-                    timeSettings,
                     clocksRef,
                     startSfen: "startpos",
                     movesRef,
@@ -504,10 +493,6 @@ describe("useEngineManager - NNUE restart", () => {
 });
 
 describe("useEngineManager - 明示API", () => {
-    const timeSettings = {
-        sente: { mainMs: 1000, byoyomiMs: 500 },
-        gote: { mainMs: 1000, byoyomiMs: 500 },
-    };
     const createMockClocksRef = () => ({
         current: {
             sente: { mainMs: 1000, byoyomiMs: 500 },
@@ -581,7 +566,6 @@ describe("useEngineManager - 明示API", () => {
             useEngineManager({
                 sides,
                 engineOptions,
-                timeSettings,
                 clocksRef,
                 startSfen: "startpos",
                 movesRef,
@@ -635,7 +619,6 @@ describe("useEngineManager - 明示API", () => {
                 useEngineManager({
                     sides,
                     engineOptions,
-                    timeSettings,
                     clocksRef,
                     startSfen: "startpos",
                     movesRef,
@@ -700,7 +683,6 @@ describe("useEngineManager - 明示API", () => {
             useEngineManager({
                 sides,
                 engineOptions,
-                timeSettings,
                 clocksRef,
                 startSfen: "startpos",
                 movesRef,

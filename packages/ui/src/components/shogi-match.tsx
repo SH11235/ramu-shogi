@@ -1125,7 +1125,6 @@ export function ShogiMatch({
     } = useEngineManager({
         sides,
         engineOptions,
-        timeSettings,
         clocksRef,
         startSfen,
         movesRef,
