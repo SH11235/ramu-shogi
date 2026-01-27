@@ -55,6 +55,7 @@ import { useKifuNavigation } from "./shogi-match/hooks/useKifuNavigation";
 import { useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import { MobileLayout } from "./shogi-match/layouts/MobileLayout";
+import { ShogiMatchProvider } from "./shogi-match/ShogiMatchContext";
 import {
     ANALYZING_STATE_NONE,
     type AnalysisSettings,
@@ -109,6 +110,8 @@ interface ShogiMatchProps {
     onRequestNnueFilePath?: () => Promise<string | null>;
     /** デフォルトの NNUE プリセットキー（未指定時は DEFAULT_PRESET_KEY） */
     defaultNnuePresetKey?: string;
+    /** AIアイコンのURL（GitHub Pages等でbase pathが必要な場合に指定） */
+    aiIconUrl?: string;
 }
 
 // デフォルト値の定数
@@ -336,6 +339,7 @@ export function ShogiMatch({
     manifestUrl,
     onRequestNnueFilePath,
     defaultNnuePresetKey,
+    aiIconUrl,
 }: ShogiMatchProps): ReactElement {
     // デフォルトの NNUE 選択（props のプリセットキーを使用、未指定時は DEFAULT_PRESET_KEY）
     const defaultNnueSelection = useMemo(
@@ -2728,814 +2732,848 @@ export function ShogiMatch({
     const internalEngineId = engineOptions[0]?.id ?? "wasm";
 
     return (
-        <TooltipProvider delayDuration={TOOLTIP_DELAY_DURATION_MS}>
-            {/* DnD ゴースト */}
-            <DragGhost
-                ref={dndController.ghostRef as React.RefObject<HTMLDivElement>}
-                dndState={dndController.state}
-                ownerOrientation={flipBoard ? "gote" : "sente"}
-            />
-
-            <EngineRestartingOverlay visible={isEngineRestarting} />
-
-            {/* NNUE ダウンロード中オーバーレイ */}
-            <NnueDownloadOverlay
-                visible={isNnueDownloading}
-                progress={nnueDownloadProgress}
-                presetName={downloadingPresetName}
-            />
-
-            {/* 勝敗表示ダイアログ */}
-            <GameResultDialog
-                result={gameResult}
-                open={showResultDialog}
-                onClose={() => setShowResultDialog(false)}
-            />
-
-            {/* PVプレビューダイアログ */}
-            {pvPreview && (
-                <PvPreviewDialog
-                    open={pvPreview.open}
-                    onClose={() => setPvPreview(null)}
-                    pv={pvPreview.pv}
-                    startPosition={pvPreview.startPosition}
-                    ply={pvPreview.ply}
-                    evalCp={pvPreview.evalCp}
-                    evalMate={pvPreview.evalMate}
-                    squareNotation={displaySettings.squareNotation}
-                    showBoardLabels={displaySettings.showBoardLabels}
+        <ShogiMatchProvider config={{ aiIconUrl }}>
+            <TooltipProvider delayDuration={TOOLTIP_DELAY_DURATION_MS}>
+                {/* DnD ゴースト */}
+                <DragGhost
+                    ref={dndController.ghostRef as React.RefObject<HTMLDivElement>}
+                    dndState={dndController.state}
+                    ownerOrientation={flipBoard ? "gote" : "sente"}
                 />
-            )}
 
-            {/* NNUE ファイル管理ダイアログ */}
-            <NnueManagerDialog
-                open={isNnueManagerOpen}
-                onOpenChange={setIsNnueManagerOpen}
-                manifestUrl={manifestUrl}
-                onRequestFilePath={onRequestNnueFilePath}
-            />
+                <EngineRestartingOverlay visible={isEngineRestarting} />
 
-            {/* 手の詳細ウィンドウ（ドラッグ移動可能） */}
-            {selectedMoveDetail && (
-                <MoveDetailWindow
-                    move={selectedMoveDetail.move}
-                    position={selectedMoveDetail.position}
-                    onAddBranch={handleAddPvAsBranch}
-                    onPreview={handlePreviewPv}
-                    onAnalyze={handleAnalyzePly}
-                    isAnalyzing={isAnalyzing}
-                    analyzingPly={analyzingState.type !== "none" ? analyzingState.ply : undefined}
-                    analysisNnueSelection={analysisNnueSelection}
-                    onAnalysisNnueSelectionChange={setAnalysisNnueSelection}
-                    nnueList={nnueList}
-                    isNnueListLoading={isNnueListLoading}
-                    presets={presetConfigs}
-                    kifuTree={navigation.tree}
-                    onClose={() => setSelectedMoveDetailPly(null)}
-                    isOnMainLine={navigation.state.isOnMainLine}
+                {/* NNUE ダウンロード中オーバーレイ */}
+                <NnueDownloadOverlay
+                    visible={isNnueDownloading}
+                    progress={nnueDownloadProgress}
+                    presetName={downloadingPresetName}
                 />
-            )}
 
-            {/* モバイル時はMobileLayout、PC時は3列レイアウト */}
-            {isMobile ? (
-                <MobileLayout
-                    grid={grid}
-                    position={position}
-                    flipBoard={flipBoard}
-                    lastMove={lastMove}
-                    selection={selection}
-                    promotionSelection={promotionSelection}
-                    isEditMode={isEditMode}
-                    isMatchRunning={isMatchRunning}
-                    gameMode={gameMode}
-                    editFromSquare={editFromSquare}
-                    moves={moves}
-                    candidateNote={candidateNote}
-                    displaySettings={displaySettings}
-                    onSquareSelect={handleSquareSelect}
-                    onPromotionChoice={handlePromotionChoice}
-                    onFlipBoard={handleFlipBoard}
-                    onHandSelect={handleHandSelect}
-                    onPiecePointerDown={isEditMode ? handlePiecePointerDown : undefined}
-                    onPieceTogglePromote={isEditMode ? handlePieceTogglePromote : undefined}
-                    onHandPiecePointerDown={isEditMode ? handleHandPiecePointerDown : undefined}
-                    onIncrementHand={handleIncrementHand}
-                    onDecrementHand={handleDecrementHand}
-                    isReviewMode={isReviewMode}
-                    getHandInfo={getHandInfo}
-                    boardSectionRef={boardSectionRef}
-                    isDraggingPiece={isDraggingPiece}
-                    // 棋譜関連
-                    kifMoves={kifMoves}
-                    currentPly={navigation.state.currentPly}
-                    totalPly={navigation.state.totalPly}
-                    onPlySelect={handlePlySelect}
-                    // ナビゲーション
-                    onBack={navigation.goBack}
-                    onForward={handleKeyboardForward}
-                    onToStart={navigation.goToStart}
-                    onToEnd={navigation.goToEnd}
-                    // 評価値
-                    evalHistory={displayEvalHistory}
-                    evalCp={evalHistory[navigation.state.currentPly]?.evalCp ?? undefined}
-                    evalMate={evalHistory[navigation.state.currentPly]?.evalMate ?? undefined}
-                    // 対局コントロール
-                    onStop={pauseAutoPlay}
-                    onStart={resumeAutoPlay}
-                    onResetToStartpos={handleResetToStartpos}
-                    onResign={handleResign}
-                    onUndo={handleUndo}
-                    canUndo={
-                        moves.length > 0 &&
-                        !(sides.sente.role === "engine" && sides.gote.role === "engine")
-                    }
-                    onEnterEditMode={isPaused ? enterEditModeFromPaused : undefined}
-                    // 対局設定
-                    sides={sides}
-                    onSidesChange={handleSidesChange}
-                    timeSettings={timeSettings}
-                    onTimeSettingsChange={setTimeSettings}
-                    internalEngineId={internalEngineId}
-                    nnueList={nnueList}
-                    presets={presets}
-                    senteNnueSelection={senteNnueSelection}
-                    onSenteNnueSelectionChange={handleSenteNnueSelectionChange}
-                    goteNnueSelection={goteNnueSelection}
-                    onGoteNnueSelectionChange={handleGoteNnueSelectionChange}
-                    settingsLocked={settingsLocked}
-                    onOpenNnueManager={() => setIsNnueManagerOpen(true)}
-                    // パス権設定
-                    passRightsSettings={passRightsSettings}
-                    onPassRightsSettingsChange={handlePassRightsSettingsChange}
-                    onPassMove={handlePassMove}
-                    canPassMove={canMakePassMove}
-                    passMoveDisabledReason={passButtonDisabledReason}
-                    passMoveConfirmDialog={shouldShowPassConfirm}
-                    // クロック表示
-                    clocks={clocks}
-                    // 表示設定
-                    displaySettingsFull={displaySettings}
-                    onDisplaySettingsChange={setDisplaySettings}
-                    // メッセージ
-                    message={message}
+                {/* 勝敗表示ダイアログ */}
+                <GameResultDialog
+                    result={gameResult}
+                    open={showResultDialog}
+                    onClose={() => setShowResultDialog(false)}
                 />
-            ) : (
-                <section className={matchLayoutClasses} style={matchLayoutCssVars}>
-                    <div className="flex min-h-[calc(100dvh-1rem)]">
-                        {/* 左サイドバー */}
-                        <LeftSidebar
-                            sides={sides}
-                            onSidesChange={handleSidesChange}
-                            timeSettings={timeSettings}
-                            onTimeSettingsChange={setTimeSettings}
-                            passRightsSettings={passRightsSettings}
-                            onPassRightsSettingsChange={handlePassRightsSettingsChange}
-                            settingsLocked={settingsLocked}
-                            internalEngineId={internalEngineId}
-                            nnueList={nnueList}
-                            presets={presets}
-                            senteNnueSelection={senteNnueSelection}
-                            onSenteNnueSelectionChange={handleSenteNnueSelectionChange}
-                            goteNnueSelection={goteNnueSelection}
-                            onGoteNnueSelectionChange={handleGoteNnueSelectionChange}
-                            analysisSettings={analysisSettings}
-                            onAnalysisSettingsChange={setAnalysisSettings}
-                            analysisNnueSelection={analysisNnueSelection}
-                            onAnalysisNnueSelectionChange={setAnalysisNnueSelection}
-                            onOpenNnueManager={() => setIsNnueManagerOpen(true)}
-                            onOpenDisplaySettings={() => setIsDisplaySettingsOpen(true)}
-                            onOpenPassRightsSettings={() => setIsPassRightsSettingsOpen(true)}
-                        />
 
-                        {/* メインコンテンツ */}
-                        <div className="flex-1 flex gap-4 items-start p-4">
-                            {/* 将棋盤エリア */}
-                            <div className="flex flex-col gap-2 items-center shrink-0 self-center">
-                                <div
-                                    ref={boardSectionRef}
-                                    className="w-fit relative flex flex-col gap-2"
-                                >
+                {/* PVプレビューダイアログ */}
+                {pvPreview && (
+                    <PvPreviewDialog
+                        open={pvPreview.open}
+                        onClose={() => setPvPreview(null)}
+                        pv={pvPreview.pv}
+                        startPosition={pvPreview.startPosition}
+                        ply={pvPreview.ply}
+                        evalCp={pvPreview.evalCp}
+                        evalMate={pvPreview.evalMate}
+                        squareNotation={displaySettings.squareNotation}
+                        showBoardLabels={displaySettings.showBoardLabels}
+                    />
+                )}
+
+                {/* NNUE ファイル管理ダイアログ */}
+                <NnueManagerDialog
+                    open={isNnueManagerOpen}
+                    onOpenChange={setIsNnueManagerOpen}
+                    manifestUrl={manifestUrl}
+                    onRequestFilePath={onRequestNnueFilePath}
+                />
+
+                {/* 手の詳細ウィンドウ（ドラッグ移動可能） */}
+                {selectedMoveDetail && (
+                    <MoveDetailWindow
+                        move={selectedMoveDetail.move}
+                        position={selectedMoveDetail.position}
+                        onAddBranch={handleAddPvAsBranch}
+                        onPreview={handlePreviewPv}
+                        onAnalyze={handleAnalyzePly}
+                        isAnalyzing={isAnalyzing}
+                        analyzingPly={
+                            analyzingState.type !== "none" ? analyzingState.ply : undefined
+                        }
+                        analysisNnueSelection={analysisNnueSelection}
+                        onAnalysisNnueSelectionChange={setAnalysisNnueSelection}
+                        nnueList={nnueList}
+                        isNnueListLoading={isNnueListLoading}
+                        presets={presetConfigs}
+                        kifuTree={navigation.tree}
+                        onClose={() => setSelectedMoveDetailPly(null)}
+                        isOnMainLine={navigation.state.isOnMainLine}
+                    />
+                )}
+
+                {/* モバイル時はMobileLayout、PC時は3列レイアウト */}
+                {isMobile ? (
+                    <MobileLayout
+                        grid={grid}
+                        position={position}
+                        flipBoard={flipBoard}
+                        lastMove={lastMove}
+                        selection={selection}
+                        promotionSelection={promotionSelection}
+                        isEditMode={isEditMode}
+                        isMatchRunning={isMatchRunning}
+                        gameMode={gameMode}
+                        editFromSquare={editFromSquare}
+                        moves={moves}
+                        candidateNote={candidateNote}
+                        displaySettings={displaySettings}
+                        onSquareSelect={handleSquareSelect}
+                        onPromotionChoice={handlePromotionChoice}
+                        onFlipBoard={handleFlipBoard}
+                        onHandSelect={handleHandSelect}
+                        onPiecePointerDown={isEditMode ? handlePiecePointerDown : undefined}
+                        onPieceTogglePromote={isEditMode ? handlePieceTogglePromote : undefined}
+                        onHandPiecePointerDown={isEditMode ? handleHandPiecePointerDown : undefined}
+                        onIncrementHand={handleIncrementHand}
+                        onDecrementHand={handleDecrementHand}
+                        isReviewMode={isReviewMode}
+                        getHandInfo={getHandInfo}
+                        boardSectionRef={boardSectionRef}
+                        isDraggingPiece={isDraggingPiece}
+                        // 棋譜関連
+                        kifMoves={kifMoves}
+                        currentPly={navigation.state.currentPly}
+                        totalPly={navigation.state.totalPly}
+                        onPlySelect={handlePlySelect}
+                        // ナビゲーション
+                        onBack={navigation.goBack}
+                        onForward={handleKeyboardForward}
+                        onToStart={navigation.goToStart}
+                        onToEnd={navigation.goToEnd}
+                        // 評価値
+                        evalHistory={displayEvalHistory}
+                        evalCp={evalHistory[navigation.state.currentPly]?.evalCp ?? undefined}
+                        evalMate={evalHistory[navigation.state.currentPly]?.evalMate ?? undefined}
+                        // 対局コントロール
+                        onStop={pauseAutoPlay}
+                        onStart={resumeAutoPlay}
+                        onResetToStartpos={handleResetToStartpos}
+                        onResign={handleResign}
+                        onUndo={handleUndo}
+                        canUndo={
+                            moves.length > 0 &&
+                            !(sides.sente.role === "engine" && sides.gote.role === "engine")
+                        }
+                        onEnterEditMode={isPaused ? enterEditModeFromPaused : undefined}
+                        // 対局設定
+                        sides={sides}
+                        onSidesChange={handleSidesChange}
+                        timeSettings={timeSettings}
+                        onTimeSettingsChange={setTimeSettings}
+                        internalEngineId={internalEngineId}
+                        nnueList={nnueList}
+                        presets={presets}
+                        senteNnueSelection={senteNnueSelection}
+                        onSenteNnueSelectionChange={handleSenteNnueSelectionChange}
+                        goteNnueSelection={goteNnueSelection}
+                        onGoteNnueSelectionChange={handleGoteNnueSelectionChange}
+                        settingsLocked={settingsLocked}
+                        onOpenNnueManager={() => setIsNnueManagerOpen(true)}
+                        // パス権設定
+                        passRightsSettings={passRightsSettings}
+                        onPassRightsSettingsChange={handlePassRightsSettingsChange}
+                        onPassMove={handlePassMove}
+                        canPassMove={canMakePassMove}
+                        passMoveDisabledReason={passButtonDisabledReason}
+                        passMoveConfirmDialog={shouldShowPassConfirm}
+                        // クロック表示
+                        clocks={clocks}
+                        // 表示設定
+                        displaySettingsFull={displaySettings}
+                        onDisplaySettingsChange={setDisplaySettings}
+                        // メッセージ
+                        message={message}
+                    />
+                ) : (
+                    <section className={matchLayoutClasses} style={matchLayoutCssVars}>
+                        <div className="flex min-h-[calc(100dvh-1rem)]">
+                            {/* 左サイドバー */}
+                            <LeftSidebar
+                                sides={sides}
+                                onSidesChange={handleSidesChange}
+                                timeSettings={timeSettings}
+                                onTimeSettingsChange={setTimeSettings}
+                                passRightsSettings={passRightsSettings}
+                                onPassRightsSettingsChange={handlePassRightsSettingsChange}
+                                settingsLocked={settingsLocked}
+                                internalEngineId={internalEngineId}
+                                nnueList={nnueList}
+                                presets={presets}
+                                senteNnueSelection={senteNnueSelection}
+                                onSenteNnueSelectionChange={handleSenteNnueSelectionChange}
+                                goteNnueSelection={goteNnueSelection}
+                                onGoteNnueSelectionChange={handleGoteNnueSelectionChange}
+                                analysisSettings={analysisSettings}
+                                onAnalysisSettingsChange={setAnalysisSettings}
+                                analysisNnueSelection={analysisNnueSelection}
+                                onAnalysisNnueSelectionChange={setAnalysisNnueSelection}
+                                onOpenNnueManager={() => setIsNnueManagerOpen(true)}
+                                onOpenDisplaySettings={() => setIsDisplaySettingsOpen(true)}
+                                onOpenPassRightsSettings={() => setIsPassRightsSettingsOpen(true)}
+                            />
+
+                            {/* メインコンテンツ */}
+                            <div className="flex-1 flex gap-4 items-start p-4">
+                                {/* 将棋盤エリア */}
+                                <div className="flex flex-col gap-2 items-center shrink-0 self-center">
                                     <div
-                                        className={`flex flex-col gap-2 items-center ${isDraggingPiece ? "touch-none" : ""}`}
+                                        ref={boardSectionRef}
+                                        className="w-fit relative flex flex-col gap-2"
                                     >
-                                        {/* 時間管理（将棋盤の上） */}
-                                        <ClockDisplay clocks={clocks} isRunning={isMatchRunning} />
+                                        <div
+                                            className={`flex flex-col gap-2 items-center ${isDraggingPiece ? "touch-none" : ""}`}
+                                        >
+                                            {/* 時間管理（将棋盤の上） */}
+                                            <ClockDisplay
+                                                clocks={clocks}
+                                                isRunning={isMatchRunning}
+                                            />
 
-                                        {/* 盤の上側の持ち駒（通常:後手、反転時:先手） */}
-                                        {(() => {
-                                            const info = getHandInfo("top");
-                                            return (
-                                                <div
-                                                    data-zone={`hand-${info.owner}`}
-                                                    className="w-full"
-                                                >
-                                                    {/* ステータス行: [手数] [手番] [反転ボタン] */}
-                                                    <div className="flex items-center justify-end mb-1 gap-4">
-                                                        {/* 手数表示 */}
-                                                        <output
-                                                            className={`${TEXT_CLASSES.moveCount} !m-0 whitespace-nowrap`}
-                                                        >
-                                                            {moves.length === 0
-                                                                ? "開始局面"
-                                                                : `${moves.length}手目`}
-                                                        </output>
-
-                                                        {/* 手番表示 */}
-                                                        <output
-                                                            className={`${TEXT_CLASSES.mutedSecondary} whitespace-nowrap flex items-center gap-1`}
-                                                        >
-                                                            手番:{" "}
-                                                            <PlayerIcon
-                                                                side={position.turn}
-                                                                isAI={
-                                                                    sides[position.turn].role ===
-                                                                    "engine"
-                                                                }
-                                                                size="lg"
-                                                            />
-                                                        </output>
-
-                                                        {/* 反転ボタン */}
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setFlipBoard(!flipBoard)}
-                                                            className={`flex items-center gap-1 px-2 py-1 rounded-md border border-[hsl(var(--wafuu-border))] cursor-pointer text-[13px] whitespace-nowrap ${
-                                                                flipBoard
-                                                                    ? "bg-[hsl(var(--wafuu-kin)/0.2)]"
-                                                                    : "bg-card"
-                                                            }`}
-                                                            title="盤面を反転"
-                                                        >
-                                                            <span>🔄</span>
-                                                            <span>反転</span>
-                                                        </button>
-                                                    </div>
-
-                                                    {/* 持ち駒表示 */}
-                                                    <HandPiecesDisplay
-                                                        owner={info.owner}
-                                                        hand={info.hand}
-                                                        selectedPiece={
-                                                            selection?.kind === "hand"
-                                                                ? selection.piece
-                                                                : null
-                                                        }
-                                                        isActive={info.isActive}
-                                                        onHandSelect={handleHandSelect}
-                                                        onPiecePointerDown={
-                                                            isEditMode
-                                                                ? handleHandPiecePointerDown
-                                                                : undefined
-                                                        }
-                                                        isEditMode={isEditMode && !isMatchRunning}
-                                                        isMatchRunning={isMatchRunning}
-                                                        hideEmptyPieces={hideEmptyHandPieces}
-                                                        onIncrement={(piece) =>
-                                                            handleIncrementHand(info.owner, piece)
-                                                        }
-                                                        onDecrement={(piece) =>
-                                                            handleDecrementHand(info.owner, piece)
-                                                        }
-                                                        flipBoard={flipBoard}
-                                                        isAI={info.isAI}
-                                                    />
-                                                    {/* パス権表示（上側プレイヤー） */}
-                                                    {passRightsSettings && (
-                                                        <div className="flex justify-end mt-1">
-                                                            <PassRightsDisplay
-                                                                remaining={
-                                                                    position.passRights?.[
-                                                                        info.owner
-                                                                    ] ?? 0
-                                                                }
-                                                                max={
-                                                                    passRightsSettings.enabled
-                                                                        ? passRightsSettings.initialCount
-                                                                        : 0
-                                                                }
-                                                                isActive={
-                                                                    position.turn === info.owner
-                                                                }
-                                                                compact
-                                                            />
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            );
-                                        })()}
-
-                                        {/* 盤面 */}
-                                        <ShogiBoard
-                                            grid={grid}
-                                            selectedSquare={
-                                                isEditMode && editFromSquare
-                                                    ? editFromSquare
-                                                    : selection?.kind === "square"
-                                                      ? selection.square
-                                                      : null
-                                            }
-                                            lastMove={
-                                                displaySettings.highlightLastMove && lastMove
-                                                    ? {
-                                                          from: lastMove.from ?? undefined,
-                                                          to: lastMove.to,
-                                                      }
-                                                    : undefined
-                                            }
-                                            promotionSquare={promotionSelection?.to ?? null}
-                                            onSelect={(sq, shiftKey) => {
-                                                void handleSquareSelect(sq, shiftKey);
-                                            }}
-                                            onPromotionChoice={handlePromotionChoice}
-                                            flipBoard={flipBoard}
-                                            onPiecePointerDown={
-                                                isEditMode ? handlePiecePointerDown : undefined
-                                            }
-                                            onPieceTogglePromote={
-                                                isEditMode ? handlePieceTogglePromote : undefined
-                                            }
-                                            isDraggable={isEditMode}
-                                            squareNotation={displaySettings.squareNotation}
-                                            showBoardLabels={displaySettings.showBoardLabels}
-                                        />
-                                        {candidateNote ? (
-                                            <div className={TEXT_CLASSES.mutedSecondary}>
-                                                {candidateNote}
-                                            </div>
-                                        ) : null}
-
-                                        {/* 盤の下側の持ち駒（通常:先手、反転時:後手） */}
-                                        {(() => {
-                                            const info = getHandInfo("bottom");
-                                            return (
-                                                <>
-                                                    <PlayerHandSection
-                                                        owner={info.owner}
-                                                        hand={info.hand}
-                                                        selectedPiece={
-                                                            selection?.kind === "hand"
-                                                                ? selection.piece
-                                                                : null
-                                                        }
-                                                        isActive={info.isActive}
-                                                        onHandSelect={handleHandSelect}
-                                                        onPiecePointerDown={
-                                                            isEditMode
-                                                                ? handleHandPiecePointerDown
-                                                                : undefined
-                                                        }
-                                                        isEditMode={isEditMode && !isMatchRunning}
-                                                        isMatchRunning={isMatchRunning}
-                                                        hideEmptyPieces={hideEmptyHandPieces}
-                                                        onIncrement={(piece) =>
-                                                            handleIncrementHand(info.owner, piece)
-                                                        }
-                                                        onDecrement={(piece) =>
-                                                            handleDecrementHand(info.owner, piece)
-                                                        }
-                                                        flipBoard={flipBoard}
-                                                        isAI={info.isAI}
-                                                    />
-                                                    {/* パス権表示（下側プレイヤー） */}
-                                                    {passRightsSettings && (
-                                                        <div className="flex justify-start mt-1 w-full">
-                                                            <PassRightsDisplay
-                                                                remaining={
-                                                                    position.passRights?.[
-                                                                        info.owner
-                                                                    ] ?? 0
-                                                                }
-                                                                max={
-                                                                    passRightsSettings.enabled
-                                                                        ? passRightsSettings.initialCount
-                                                                        : 0
-                                                                }
-                                                                isActive={
-                                                                    position.turn === info.owner
-                                                                }
-                                                                compact
-                                                            />
-                                                        </div>
-                                                    )}
-                                                </>
-                                            );
-                                        })()}
-
-                                        {/* 対局コントロール（盤面の下） */}
-                                        <MatchControls
-                                            onResetToStartpos={handleResetToStartpos}
-                                            onStop={pauseAutoPlay}
-                                            onStart={resumeAutoPlay}
-                                            onStartReview={handleStartReview}
-                                            onEnterEditMode={
-                                                isPaused
-                                                    ? enterEditModeFromPaused
-                                                    : handleEnterEditMode
-                                            }
-                                            onResign={handleResign}
-                                            onUndo={handleUndo}
-                                            canUndo={
-                                                moves.length > 0 &&
-                                                !(
-                                                    sides.sente.role === "engine" &&
-                                                    sides.gote.role === "engine"
-                                                )
-                                            }
-                                            isMatchRunning={isMatchRunning}
-                                            gameMode={gameMode}
-                                            message={message}
-                                            onOpenSettings={() => setIsSettingsModalOpen(true)}
-                                            passProps={
-                                                shouldRenderPassButton
-                                                    ? {
-                                                          canPass: canMakePassMove,
-                                                          disabledReason: passButtonDisabledReason,
-                                                          onPass: handlePassMove,
-                                                          remainingPassRights:
-                                                              position.passRights?.[
-                                                                  position.turn
-                                                              ] ?? 0,
-                                                          showConfirmDialog: shouldShowPassConfirm,
-                                                      }
-                                                    : undefined
-                                            }
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* 棋譜列 + 詳細ドロワー */}
-                            <div className="flex flex-col gap-2 shrink-0 pt-16">
-                                {/* 評価値グラフパネル（折りたたみ） */}
-                                <EvalPanel
-                                    evalHistory={displayEvalHistory}
-                                    currentPly={navigation.state.currentPly}
-                                    onPlySelect={handlePlySelect}
-                                    defaultOpen={false}
-                                />
-
-                                {/* 棋譜パネル + ドロワー（横並び） */}
-                                <div className="relative flex items-start">
-                                    {/* 棋譜パネル（常時表示） */}
-                                    <KifuPanel
-                                        kifMoves={kifMoves}
-                                        currentPly={navigation.state.currentPly}
-                                        showEval={displaySettings.showKifuEval}
-                                        onShowEvalChange={(show) =>
-                                            setDisplaySettings((prev) => ({
-                                                ...prev,
-                                                showKifuEval: show,
-                                            }))
-                                        }
-                                        onPlySelect={handlePlySelect}
-                                        onCopyKif={handleCopyKif}
-                                        navigation={{
-                                            currentPly: navigation.state.currentPly,
-                                            totalPly: navigation.state.totalPly,
-                                            onBack: navigation.goBack,
-                                            onForward: () =>
-                                                navigation.goForward(
-                                                    selectedBranchNodeId ?? undefined,
-                                                ),
-                                            onToStart: navigation.goToStart,
-                                            onToEnd: navigation.goToEnd,
-                                            isRewound: navigation.state.isRewound,
-                                            canGoForward: navigation.state.canGoForward,
-                                            branchInfo: navigation.state.hasBranches
-                                                ? {
-                                                      hasBranches: true,
-                                                      currentIndex:
-                                                          navigation.state.currentBranchIndex,
-                                                      count: navigation.state.branchCount,
-                                                      onSwitch: navigation.switchBranch,
-                                                      onPromoteToMain:
-                                                          navigation.promoteCurrentLine,
-                                                  }
-                                                : undefined,
-                                        }}
-                                        navigationDisabled={isMatchRunning}
-                                        branchMarkers={branchMarkers}
-                                        positionHistory={positionHistory}
-                                        onAddPvAsBranch={handleAddPvAsBranch}
-                                        onPreviewPv={handlePreviewPv}
-                                        lastAddedBranchInfo={lastAddedBranchInfo}
-                                        onLastAddedBranchHandled={() =>
-                                            setLastAddedBranchInfo(null)
-                                        }
-                                        onSelectedBranchChange={setSelectedBranchNodeId}
-                                        onViewModeChange={setKifuViewMode}
-                                        onAnalyzePly={handleAnalyzePly}
-                                        isAnalyzing={isAnalyzing}
-                                        analyzingPly={
-                                            analyzingState.type !== "none"
-                                                ? analyzingState.ply
-                                                : undefined
-                                        }
-                                        batchAnalysis={
-                                            batchAnalysis
-                                                ? {
-                                                      isRunning: batchAnalysis.isRunning,
-                                                      currentIndex: batchAnalysis.currentIndex,
-                                                      totalCount: batchAnalysis.totalCount,
-                                                      inProgress: batchAnalysis.inProgress,
-                                                  }
-                                                : undefined
-                                        }
-                                        onStartBatchAnalysis={handleStartBatchAnalysis}
-                                        onCancelBatchAnalysis={handleCancelBatchAnalysis}
-                                        analysisSettings={analysisSettings}
-                                        onAnalysisSettingsChange={setAnalysisSettings}
-                                        analysisNnueSelection={analysisNnueSelection}
-                                        onAnalysisNnueSelectionChange={setAnalysisNnueSelection}
-                                        nnueList={nnueList}
-                                        isNnueListLoading={isNnueListLoading}
-                                        presets={presetConfigs}
-                                        kifuTree={navigation.tree}
-                                        onNodeClick={navigation.goToNodeById}
-                                        onBranchSwitch={navigation.switchBranchAtNode}
-                                        onAnalyzeNode={handleAnalyzeNode}
-                                        onAnalyzeBranch={handleAnalyzeBranch}
-                                        onStartTreeBatchAnalysis={handleStartTreeBatchAnalysis}
-                                        isOnMainLine={navigation.state.isOnMainLine}
-                                        onMoveDetailSelect={handleMoveDetailSelect}
-                                    />
-                                </div>
-                            </div>
-
-                            {/* 設定モーダル（棋譜インポート等） */}
-                            <SettingsModal
-                                open={isSettingsModalOpen}
-                                onOpenChange={setIsSettingsModalOpen}
-                            >
-                                <div className="flex flex-col gap-6 min-w-[400px]">
-                                    {/* インポート */}
-                                    <KifuImportPanel
-                                        onImportSfen={importSfen}
-                                        onImportKif={importKif}
-                                        positionReady={positionReady}
-                                    />
-
-                                    {/* エンジンログ（開発モード） */}
-                                    {isDevMode && (
-                                        <EngineLogsPanel
-                                            eventLogs={eventLogs}
-                                            errorLogs={errorLogs}
-                                            engineErrorDetails={engineErrorDetails}
-                                            onRetry={retryEngine}
-                                            isRetrying={isRetrying}
-                                        />
-                                    )}
-                                </div>
-                            </SettingsModal>
-
-                            {/* 表示設定ダイアログ */}
-                            <Dialog
-                                open={isDisplaySettingsOpen}
-                                onOpenChange={setIsDisplaySettingsOpen}
-                            >
-                                <DialogContent style={{ width: "min(450px, calc(100% - 24px))" }}>
-                                    <DialogHeader>
-                                        <DialogTitle>表示設定</DialogTitle>
-                                    </DialogHeader>
-                                    <div className="flex flex-col gap-4 pt-2">
-                                        {/* マス内座標表示 */}
-                                        <div className="flex flex-col gap-2">
-                                            <span className="text-sm font-medium">
-                                                マス内座標表示
-                                            </span>
-                                            <div className="flex gap-2">
-                                                {(
-                                                    [
-                                                        { value: "none", label: "なし" },
-                                                        { value: "sfen", label: "SFEN (5e)" },
-                                                        {
-                                                            value: "japanese",
-                                                            label: "日本式 (５五)",
-                                                        },
-                                                    ] as const
-                                                ).map((opt) => (
-                                                    <button
-                                                        key={opt.value}
-                                                        type="button"
-                                                        onClick={() =>
-                                                            setDisplaySettings({
-                                                                ...displaySettings,
-                                                                squareNotation: opt.value,
-                                                            })
-                                                        }
-                                                        className={`px-3 py-1.5 rounded text-sm transition-colors ${
-                                                            displaySettings.squareNotation ===
-                                                            opt.value
-                                                                ? "bg-wafuu-kincha text-white"
-                                                                : "bg-wafuu-washi text-wafuu-sumi hover:bg-wafuu-border border border-wafuu-border"
-                                                        }`}
+                                            {/* 盤の上側の持ち駒（通常:後手、反転時:先手） */}
+                                            {(() => {
+                                                const info = getHandInfo("top");
+                                                return (
+                                                    <div
+                                                        data-zone={`hand-${info.owner}`}
+                                                        className="w-full"
                                                     >
-                                                        {opt.label}
-                                                    </button>
-                                                ))}
-                                            </div>
+                                                        {/* ステータス行: [手数] [手番] [反転ボタン] */}
+                                                        <div className="flex items-center justify-end mb-1 gap-4">
+                                                            {/* 手数表示 */}
+                                                            <output
+                                                                className={`${TEXT_CLASSES.moveCount} !m-0 whitespace-nowrap`}
+                                                            >
+                                                                {moves.length === 0
+                                                                    ? "開始局面"
+                                                                    : `${moves.length}手目`}
+                                                            </output>
+
+                                                            {/* 手番表示 */}
+                                                            <output
+                                                                className={`${TEXT_CLASSES.mutedSecondary} whitespace-nowrap flex items-center gap-1`}
+                                                            >
+                                                                手番:{" "}
+                                                                <PlayerIcon
+                                                                    side={position.turn}
+                                                                    isAI={
+                                                                        sides[position.turn]
+                                                                            .role === "engine"
+                                                                    }
+                                                                    size="lg"
+                                                                />
+                                                            </output>
+
+                                                            {/* 反転ボタン */}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    setFlipBoard(!flipBoard)
+                                                                }
+                                                                className={`flex items-center gap-1 px-2 py-1 rounded-md border border-[hsl(var(--wafuu-border))] cursor-pointer text-[13px] whitespace-nowrap ${
+                                                                    flipBoard
+                                                                        ? "bg-[hsl(var(--wafuu-kin)/0.2)]"
+                                                                        : "bg-card"
+                                                                }`}
+                                                                title="盤面を反転"
+                                                            >
+                                                                <span>🔄</span>
+                                                                <span>反転</span>
+                                                            </button>
+                                                        </div>
+
+                                                        {/* 持ち駒表示 */}
+                                                        <HandPiecesDisplay
+                                                            owner={info.owner}
+                                                            hand={info.hand}
+                                                            selectedPiece={
+                                                                selection?.kind === "hand"
+                                                                    ? selection.piece
+                                                                    : null
+                                                            }
+                                                            isActive={info.isActive}
+                                                            onHandSelect={handleHandSelect}
+                                                            onPiecePointerDown={
+                                                                isEditMode
+                                                                    ? handleHandPiecePointerDown
+                                                                    : undefined
+                                                            }
+                                                            isEditMode={
+                                                                isEditMode && !isMatchRunning
+                                                            }
+                                                            isMatchRunning={isMatchRunning}
+                                                            hideEmptyPieces={hideEmptyHandPieces}
+                                                            onIncrement={(piece) =>
+                                                                handleIncrementHand(
+                                                                    info.owner,
+                                                                    piece,
+                                                                )
+                                                            }
+                                                            onDecrement={(piece) =>
+                                                                handleDecrementHand(
+                                                                    info.owner,
+                                                                    piece,
+                                                                )
+                                                            }
+                                                            flipBoard={flipBoard}
+                                                            isAI={info.isAI}
+                                                        />
+                                                        {/* パス権表示（上側プレイヤー） */}
+                                                        {passRightsSettings && (
+                                                            <div className="flex justify-end mt-1">
+                                                                <PassRightsDisplay
+                                                                    remaining={
+                                                                        position.passRights?.[
+                                                                            info.owner
+                                                                        ] ?? 0
+                                                                    }
+                                                                    max={
+                                                                        passRightsSettings.enabled
+                                                                            ? passRightsSettings.initialCount
+                                                                            : 0
+                                                                    }
+                                                                    isActive={
+                                                                        position.turn === info.owner
+                                                                    }
+                                                                    compact
+                                                                />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
+
+                                            {/* 盤面 */}
+                                            <ShogiBoard
+                                                grid={grid}
+                                                selectedSquare={
+                                                    isEditMode && editFromSquare
+                                                        ? editFromSquare
+                                                        : selection?.kind === "square"
+                                                          ? selection.square
+                                                          : null
+                                                }
+                                                lastMove={
+                                                    displaySettings.highlightLastMove && lastMove
+                                                        ? {
+                                                              from: lastMove.from ?? undefined,
+                                                              to: lastMove.to,
+                                                          }
+                                                        : undefined
+                                                }
+                                                promotionSquare={promotionSelection?.to ?? null}
+                                                onSelect={(sq, shiftKey) => {
+                                                    void handleSquareSelect(sq, shiftKey);
+                                                }}
+                                                onPromotionChoice={handlePromotionChoice}
+                                                flipBoard={flipBoard}
+                                                onPiecePointerDown={
+                                                    isEditMode ? handlePiecePointerDown : undefined
+                                                }
+                                                onPieceTogglePromote={
+                                                    isEditMode
+                                                        ? handlePieceTogglePromote
+                                                        : undefined
+                                                }
+                                                isDraggable={isEditMode}
+                                                squareNotation={displaySettings.squareNotation}
+                                                showBoardLabels={displaySettings.showBoardLabels}
+                                            />
+                                            {candidateNote ? (
+                                                <div className={TEXT_CLASSES.mutedSecondary}>
+                                                    {candidateNote}
+                                                </div>
+                                            ) : null}
+
+                                            {/* 盤の下側の持ち駒（通常:先手、反転時:後手） */}
+                                            {(() => {
+                                                const info = getHandInfo("bottom");
+                                                return (
+                                                    <>
+                                                        <PlayerHandSection
+                                                            owner={info.owner}
+                                                            hand={info.hand}
+                                                            selectedPiece={
+                                                                selection?.kind === "hand"
+                                                                    ? selection.piece
+                                                                    : null
+                                                            }
+                                                            isActive={info.isActive}
+                                                            onHandSelect={handleHandSelect}
+                                                            onPiecePointerDown={
+                                                                isEditMode
+                                                                    ? handleHandPiecePointerDown
+                                                                    : undefined
+                                                            }
+                                                            isEditMode={
+                                                                isEditMode && !isMatchRunning
+                                                            }
+                                                            isMatchRunning={isMatchRunning}
+                                                            hideEmptyPieces={hideEmptyHandPieces}
+                                                            onIncrement={(piece) =>
+                                                                handleIncrementHand(
+                                                                    info.owner,
+                                                                    piece,
+                                                                )
+                                                            }
+                                                            onDecrement={(piece) =>
+                                                                handleDecrementHand(
+                                                                    info.owner,
+                                                                    piece,
+                                                                )
+                                                            }
+                                                            flipBoard={flipBoard}
+                                                            isAI={info.isAI}
+                                                        />
+                                                        {/* パス権表示（下側プレイヤー） */}
+                                                        {passRightsSettings && (
+                                                            <div className="flex justify-start mt-1 w-full">
+                                                                <PassRightsDisplay
+                                                                    remaining={
+                                                                        position.passRights?.[
+                                                                            info.owner
+                                                                        ] ?? 0
+                                                                    }
+                                                                    max={
+                                                                        passRightsSettings.enabled
+                                                                            ? passRightsSettings.initialCount
+                                                                            : 0
+                                                                    }
+                                                                    isActive={
+                                                                        position.turn === info.owner
+                                                                    }
+                                                                    compact
+                                                                />
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
+
+                                            {/* 対局コントロール（盤面の下） */}
+                                            <MatchControls
+                                                onResetToStartpos={handleResetToStartpos}
+                                                onStop={pauseAutoPlay}
+                                                onStart={resumeAutoPlay}
+                                                onStartReview={handleStartReview}
+                                                onEnterEditMode={
+                                                    isPaused
+                                                        ? enterEditModeFromPaused
+                                                        : handleEnterEditMode
+                                                }
+                                                onResign={handleResign}
+                                                onUndo={handleUndo}
+                                                canUndo={
+                                                    moves.length > 0 &&
+                                                    !(
+                                                        sides.sente.role === "engine" &&
+                                                        sides.gote.role === "engine"
+                                                    )
+                                                }
+                                                isMatchRunning={isMatchRunning}
+                                                gameMode={gameMode}
+                                                message={message}
+                                                onOpenSettings={() => setIsSettingsModalOpen(true)}
+                                                passProps={
+                                                    shouldRenderPassButton
+                                                        ? {
+                                                              canPass: canMakePassMove,
+                                                              disabledReason:
+                                                                  passButtonDisabledReason,
+                                                              onPass: handlePassMove,
+                                                              remainingPassRights:
+                                                                  position.passRights?.[
+                                                                      position.turn
+                                                                  ] ?? 0,
+                                                              showConfirmDialog:
+                                                                  shouldShowPassConfirm,
+                                                          }
+                                                        : undefined
+                                                }
+                                            />
                                         </div>
-
-                                        <div className="h-px bg-wafuu-border" />
-
-                                        {/* チェックボックス項目 */}
-                                        <label className="flex items-center gap-3 text-sm cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={displaySettings.showBoardLabels}
-                                                onChange={(e) =>
-                                                    setDisplaySettings({
-                                                        ...displaySettings,
-                                                        showBoardLabels: e.target.checked,
-                                                    })
-                                                }
-                                                className="w-4 h-4"
-                                            />
-                                            <span>盤外ラベル表示（筋・段）</span>
-                                        </label>
-                                        <label className="flex items-center gap-3 text-sm cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={displaySettings.highlightLastMove}
-                                                onChange={(e) =>
-                                                    setDisplaySettings({
-                                                        ...displaySettings,
-                                                        highlightLastMove: e.target.checked,
-                                                    })
-                                                }
-                                                className="w-4 h-4"
-                                            />
-                                            <span>最終手を強調</span>
-                                        </label>
-                                        <label className="flex items-center gap-3 text-sm cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={displaySettings.showKifuEval}
-                                                onChange={(e) =>
-                                                    setDisplaySettings({
-                                                        ...displaySettings,
-                                                        showKifuEval: e.target.checked,
-                                                    })
-                                                }
-                                                className="w-4 h-4"
-                                            />
-                                            <span>棋譜パネルに評価値を表示</span>
-                                        </label>
-                                        <label className="flex items-center gap-3 text-sm cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={displaySettings.enableWheelNavigation}
-                                                onChange={(e) =>
-                                                    setDisplaySettings({
-                                                        ...displaySettings,
-                                                        enableWheelNavigation: e.target.checked,
-                                                    })
-                                                }
-                                                className="w-4 h-4"
-                                            />
-                                            <span>ホイールナビゲーション</span>
-                                        </label>
                                     </div>
-                                </DialogContent>
-                            </Dialog>
+                                </div>
 
-                            {/* 変則ルールダイアログ */}
-                            {passRightsSettings && (
+                                {/* 棋譜列 + 詳細ドロワー */}
+                                <div className="flex flex-col gap-2 shrink-0 pt-16">
+                                    {/* 評価値グラフパネル（折りたたみ） */}
+                                    <EvalPanel
+                                        evalHistory={displayEvalHistory}
+                                        currentPly={navigation.state.currentPly}
+                                        onPlySelect={handlePlySelect}
+                                        defaultOpen={false}
+                                    />
+
+                                    {/* 棋譜パネル + ドロワー（横並び） */}
+                                    <div className="relative flex items-start">
+                                        {/* 棋譜パネル（常時表示） */}
+                                        <KifuPanel
+                                            kifMoves={kifMoves}
+                                            currentPly={navigation.state.currentPly}
+                                            showEval={displaySettings.showKifuEval}
+                                            onShowEvalChange={(show) =>
+                                                setDisplaySettings((prev) => ({
+                                                    ...prev,
+                                                    showKifuEval: show,
+                                                }))
+                                            }
+                                            onPlySelect={handlePlySelect}
+                                            onCopyKif={handleCopyKif}
+                                            navigation={{
+                                                currentPly: navigation.state.currentPly,
+                                                totalPly: navigation.state.totalPly,
+                                                onBack: navigation.goBack,
+                                                onForward: () =>
+                                                    navigation.goForward(
+                                                        selectedBranchNodeId ?? undefined,
+                                                    ),
+                                                onToStart: navigation.goToStart,
+                                                onToEnd: navigation.goToEnd,
+                                                isRewound: navigation.state.isRewound,
+                                                canGoForward: navigation.state.canGoForward,
+                                                branchInfo: navigation.state.hasBranches
+                                                    ? {
+                                                          hasBranches: true,
+                                                          currentIndex:
+                                                              navigation.state.currentBranchIndex,
+                                                          count: navigation.state.branchCount,
+                                                          onSwitch: navigation.switchBranch,
+                                                          onPromoteToMain:
+                                                              navigation.promoteCurrentLine,
+                                                      }
+                                                    : undefined,
+                                            }}
+                                            navigationDisabled={isMatchRunning}
+                                            branchMarkers={branchMarkers}
+                                            positionHistory={positionHistory}
+                                            onAddPvAsBranch={handleAddPvAsBranch}
+                                            onPreviewPv={handlePreviewPv}
+                                            lastAddedBranchInfo={lastAddedBranchInfo}
+                                            onLastAddedBranchHandled={() =>
+                                                setLastAddedBranchInfo(null)
+                                            }
+                                            onSelectedBranchChange={setSelectedBranchNodeId}
+                                            onViewModeChange={setKifuViewMode}
+                                            onAnalyzePly={handleAnalyzePly}
+                                            isAnalyzing={isAnalyzing}
+                                            analyzingPly={
+                                                analyzingState.type !== "none"
+                                                    ? analyzingState.ply
+                                                    : undefined
+                                            }
+                                            batchAnalysis={
+                                                batchAnalysis
+                                                    ? {
+                                                          isRunning: batchAnalysis.isRunning,
+                                                          currentIndex: batchAnalysis.currentIndex,
+                                                          totalCount: batchAnalysis.totalCount,
+                                                          inProgress: batchAnalysis.inProgress,
+                                                      }
+                                                    : undefined
+                                            }
+                                            onStartBatchAnalysis={handleStartBatchAnalysis}
+                                            onCancelBatchAnalysis={handleCancelBatchAnalysis}
+                                            analysisSettings={analysisSettings}
+                                            onAnalysisSettingsChange={setAnalysisSettings}
+                                            analysisNnueSelection={analysisNnueSelection}
+                                            onAnalysisNnueSelectionChange={setAnalysisNnueSelection}
+                                            nnueList={nnueList}
+                                            isNnueListLoading={isNnueListLoading}
+                                            presets={presetConfigs}
+                                            kifuTree={navigation.tree}
+                                            onNodeClick={navigation.goToNodeById}
+                                            onBranchSwitch={navigation.switchBranchAtNode}
+                                            onAnalyzeNode={handleAnalyzeNode}
+                                            onAnalyzeBranch={handleAnalyzeBranch}
+                                            onStartTreeBatchAnalysis={handleStartTreeBatchAnalysis}
+                                            isOnMainLine={navigation.state.isOnMainLine}
+                                            onMoveDetailSelect={handleMoveDetailSelect}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* 設定モーダル（棋譜インポート等） */}
+                                <SettingsModal
+                                    open={isSettingsModalOpen}
+                                    onOpenChange={setIsSettingsModalOpen}
+                                >
+                                    <div className="flex flex-col gap-6 min-w-[400px]">
+                                        {/* インポート */}
+                                        <KifuImportPanel
+                                            onImportSfen={importSfen}
+                                            onImportKif={importKif}
+                                            positionReady={positionReady}
+                                        />
+
+                                        {/* エンジンログ（開発モード） */}
+                                        {isDevMode && (
+                                            <EngineLogsPanel
+                                                eventLogs={eventLogs}
+                                                errorLogs={errorLogs}
+                                                engineErrorDetails={engineErrorDetails}
+                                                onRetry={retryEngine}
+                                                isRetrying={isRetrying}
+                                            />
+                                        )}
+                                    </div>
+                                </SettingsModal>
+
+                                {/* 表示設定ダイアログ */}
                                 <Dialog
-                                    open={isPassRightsSettingsOpen}
-                                    onOpenChange={setIsPassRightsSettingsOpen}
+                                    open={isDisplaySettingsOpen}
+                                    onOpenChange={setIsDisplaySettingsOpen}
                                 >
                                     <DialogContent
-                                        style={{ width: "min(400px, calc(100% - 24px))" }}
+                                        style={{ width: "min(450px, calc(100% - 24px))" }}
                                     >
                                         <DialogHeader>
-                                            <DialogTitle>変則ルール</DialogTitle>
+                                            <DialogTitle>表示設定</DialogTitle>
                                         </DialogHeader>
                                         <div className="flex flex-col gap-4 pt-2">
-                                            {/* パス権セクション */}
-                                            <div className="flex flex-col gap-3 p-3 rounded-lg border border-wafuu-border bg-wafuu-washi/50">
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-sm font-medium">
-                                                        パス権
-                                                    </span>
-                                                    <Switch
-                                                        id="pass-rights-toggle"
-                                                        checked={passRightsSettings.enabled}
-                                                        onCheckedChange={(checked) =>
-                                                            handlePassRightsSettingsChange({
-                                                                ...passRightsSettings,
-                                                                enabled: checked,
-                                                            })
-                                                        }
-                                                        disabled={settingsLocked}
-                                                    />
-                                                </div>
-                                                <p className="text-xs text-muted-foreground">
-                                                    王手されていない時に手番をパスできます
-                                                </p>
-
-                                                {/* 初期パス権数 */}
-                                                <div
-                                                    className={`flex flex-col gap-2 ${!passRightsSettings.enabled ? "opacity-50" : ""}`}
-                                                >
-                                                    <span className="text-sm">初期パス権数</span>
-                                                    <div className="flex items-center gap-2">
+                                            {/* マス内座標表示 */}
+                                            <div className="flex flex-col gap-2">
+                                                <span className="text-sm font-medium">
+                                                    マス内座標表示
+                                                </span>
+                                                <div className="flex gap-2">
+                                                    {(
+                                                        [
+                                                            { value: "none", label: "なし" },
+                                                            { value: "sfen", label: "SFEN (5e)" },
+                                                            {
+                                                                value: "japanese",
+                                                                label: "日本式 (５五)",
+                                                            },
+                                                        ] as const
+                                                    ).map((opt) => (
                                                         <button
+                                                            key={opt.value}
                                                             type="button"
                                                             onClick={() =>
-                                                                handlePassRightsSettingsChange({
-                                                                    ...passRightsSettings,
-                                                                    initialCount: Math.max(
-                                                                        0,
-                                                                        passRightsSettings.initialCount -
-                                                                            1,
-                                                                    ),
+                                                                setDisplaySettings({
+                                                                    ...displaySettings,
+                                                                    squareNotation: opt.value,
                                                                 })
                                                             }
-                                                            disabled={
-                                                                settingsLocked ||
-                                                                !passRightsSettings.enabled ||
-                                                                passRightsSettings.initialCount <= 0
-                                                            }
-                                                            className="flex h-8 w-8 items-center justify-center rounded border border-[hsl(var(--border,0_0%_86%))] bg-[hsl(var(--card,0_0%_100%))] text-sm disabled:opacity-50"
+                                                            className={`px-3 py-1.5 rounded text-sm transition-colors ${
+                                                                displaySettings.squareNotation ===
+                                                                opt.value
+                                                                    ? "bg-wafuu-kincha text-white"
+                                                                    : "bg-wafuu-washi text-wafuu-sumi hover:bg-wafuu-border border border-wafuu-border"
+                                                            }`}
                                                         >
-                                                            -
+                                                            {opt.label}
                                                         </button>
-                                                        <span className="w-8 text-center text-sm font-semibold">
-                                                            {passRightsSettings.initialCount}
-                                                        </span>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                handlePassRightsSettingsChange({
-                                                                    ...passRightsSettings,
-                                                                    initialCount: Math.min(
-                                                                        10,
-                                                                        passRightsSettings.initialCount +
-                                                                            1,
-                                                                    ),
-                                                                })
-                                                            }
-                                                            disabled={
-                                                                settingsLocked ||
-                                                                !passRightsSettings.enabled ||
-                                                                passRightsSettings.initialCount >=
-                                                                    10
-                                                            }
-                                                            className="flex h-8 w-8 items-center justify-center rounded border border-[hsl(var(--border,0_0%_86%))] bg-[hsl(var(--card,0_0%_100%))] text-sm disabled:opacity-50"
-                                                        >
-                                                            +
-                                                        </button>
-                                                    </div>
-                                                </div>
-
-                                                {/* パス確認ダイアログしきい値 */}
-                                                <div
-                                                    className={`flex flex-col gap-2 ${!passRightsSettings.enabled ? "opacity-50" : ""}`}
-                                                >
-                                                    <span className="text-sm">
-                                                        パス確認ダイアログしきい値（ms）
-                                                    </span>
-                                                    <div className="flex items-center gap-2">
-                                                        <input
-                                                            type="number"
-                                                            min={0}
-                                                            step={500}
-                                                            value={
-                                                                passRightsSettings.confirmDialogThresholdMs
-                                                            }
-                                                            onChange={(e) =>
-                                                                handlePassRightsSettingsChange({
-                                                                    ...passRightsSettings,
-                                                                    confirmDialogThresholdMs:
-                                                                        Math.max(
-                                                                            0,
-                                                                            Number(
-                                                                                e.target.value,
-                                                                            ) || 0,
-                                                                        ),
-                                                                })
-                                                            }
-                                                            disabled={
-                                                                settingsLocked ||
-                                                                !passRightsSettings.enabled
-                                                            }
-                                                            className="w-28 rounded border border-[hsl(var(--border,0_0%_86%))] bg-[hsl(var(--card,0_0%_100%))] px-2 py-1 text-sm disabled:opacity-50"
-                                                        />
-                                                        <span className="text-xs text-muted-foreground">
-                                                            0で即時、時間が多ければ確認
-                                                        </span>
-                                                    </div>
+                                                    ))}
                                                 </div>
                                             </div>
+
+                                            <div className="h-px bg-wafuu-border" />
+
+                                            {/* チェックボックス項目 */}
+                                            <label className="flex items-center gap-3 text-sm cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={displaySettings.showBoardLabels}
+                                                    onChange={(e) =>
+                                                        setDisplaySettings({
+                                                            ...displaySettings,
+                                                            showBoardLabels: e.target.checked,
+                                                        })
+                                                    }
+                                                    className="w-4 h-4"
+                                                />
+                                                <span>盤外ラベル表示（筋・段）</span>
+                                            </label>
+                                            <label className="flex items-center gap-3 text-sm cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={displaySettings.highlightLastMove}
+                                                    onChange={(e) =>
+                                                        setDisplaySettings({
+                                                            ...displaySettings,
+                                                            highlightLastMove: e.target.checked,
+                                                        })
+                                                    }
+                                                    className="w-4 h-4"
+                                                />
+                                                <span>最終手を強調</span>
+                                            </label>
+                                            <label className="flex items-center gap-3 text-sm cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={displaySettings.showKifuEval}
+                                                    onChange={(e) =>
+                                                        setDisplaySettings({
+                                                            ...displaySettings,
+                                                            showKifuEval: e.target.checked,
+                                                        })
+                                                    }
+                                                    className="w-4 h-4"
+                                                />
+                                                <span>棋譜パネルに評価値を表示</span>
+                                            </label>
+                                            <label className="flex items-center gap-3 text-sm cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={displaySettings.enableWheelNavigation}
+                                                    onChange={(e) =>
+                                                        setDisplaySettings({
+                                                            ...displaySettings,
+                                                            enableWheelNavigation: e.target.checked,
+                                                        })
+                                                    }
+                                                    className="w-4 h-4"
+                                                />
+                                                <span>ホイールナビゲーション</span>
+                                            </label>
                                         </div>
                                     </DialogContent>
                                 </Dialog>
-                            )}
+
+                                {/* 変則ルールダイアログ */}
+                                {passRightsSettings && (
+                                    <Dialog
+                                        open={isPassRightsSettingsOpen}
+                                        onOpenChange={setIsPassRightsSettingsOpen}
+                                    >
+                                        <DialogContent
+                                            style={{ width: "min(400px, calc(100% - 24px))" }}
+                                        >
+                                            <DialogHeader>
+                                                <DialogTitle>変則ルール</DialogTitle>
+                                            </DialogHeader>
+                                            <div className="flex flex-col gap-4 pt-2">
+                                                {/* パス権セクション */}
+                                                <div className="flex flex-col gap-3 p-3 rounded-lg border border-wafuu-border bg-wafuu-washi/50">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-sm font-medium">
+                                                            パス権
+                                                        </span>
+                                                        <Switch
+                                                            id="pass-rights-toggle"
+                                                            checked={passRightsSettings.enabled}
+                                                            onCheckedChange={(checked) =>
+                                                                handlePassRightsSettingsChange({
+                                                                    ...passRightsSettings,
+                                                                    enabled: checked,
+                                                                })
+                                                            }
+                                                            disabled={settingsLocked}
+                                                        />
+                                                    </div>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        王手されていない時に手番をパスできます
+                                                    </p>
+
+                                                    {/* 初期パス権数 */}
+                                                    <div
+                                                        className={`flex flex-col gap-2 ${!passRightsSettings.enabled ? "opacity-50" : ""}`}
+                                                    >
+                                                        <span className="text-sm">
+                                                            初期パス権数
+                                                        </span>
+                                                        <div className="flex items-center gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    handlePassRightsSettingsChange({
+                                                                        ...passRightsSettings,
+                                                                        initialCount: Math.max(
+                                                                            0,
+                                                                            passRightsSettings.initialCount -
+                                                                                1,
+                                                                        ),
+                                                                    })
+                                                                }
+                                                                disabled={
+                                                                    settingsLocked ||
+                                                                    !passRightsSettings.enabled ||
+                                                                    passRightsSettings.initialCount <=
+                                                                        0
+                                                                }
+                                                                className="flex h-8 w-8 items-center justify-center rounded border border-[hsl(var(--border,0_0%_86%))] bg-[hsl(var(--card,0_0%_100%))] text-sm disabled:opacity-50"
+                                                            >
+                                                                -
+                                                            </button>
+                                                            <span className="w-8 text-center text-sm font-semibold">
+                                                                {passRightsSettings.initialCount}
+                                                            </span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    handlePassRightsSettingsChange({
+                                                                        ...passRightsSettings,
+                                                                        initialCount: Math.min(
+                                                                            10,
+                                                                            passRightsSettings.initialCount +
+                                                                                1,
+                                                                        ),
+                                                                    })
+                                                                }
+                                                                disabled={
+                                                                    settingsLocked ||
+                                                                    !passRightsSettings.enabled ||
+                                                                    passRightsSettings.initialCount >=
+                                                                        10
+                                                                }
+                                                                className="flex h-8 w-8 items-center justify-center rounded border border-[hsl(var(--border,0_0%_86%))] bg-[hsl(var(--card,0_0%_100%))] text-sm disabled:opacity-50"
+                                                            >
+                                                                +
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* パス確認ダイアログしきい値 */}
+                                                    <div
+                                                        className={`flex flex-col gap-2 ${!passRightsSettings.enabled ? "opacity-50" : ""}`}
+                                                    >
+                                                        <span className="text-sm">
+                                                            パス確認ダイアログしきい値（ms）
+                                                        </span>
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="number"
+                                                                min={0}
+                                                                step={500}
+                                                                value={
+                                                                    passRightsSettings.confirmDialogThresholdMs
+                                                                }
+                                                                onChange={(e) =>
+                                                                    handlePassRightsSettingsChange({
+                                                                        ...passRightsSettings,
+                                                                        confirmDialogThresholdMs:
+                                                                            Math.max(
+                                                                                0,
+                                                                                Number(
+                                                                                    e.target.value,
+                                                                                ) || 0,
+                                                                            ),
+                                                                    })
+                                                                }
+                                                                disabled={
+                                                                    settingsLocked ||
+                                                                    !passRightsSettings.enabled
+                                                                }
+                                                                className="w-28 rounded border border-[hsl(var(--border,0_0%_86%))] bg-[hsl(var(--card,0_0%_100%))] px-2 py-1 text-sm disabled:opacity-50"
+                                                            />
+                                                            <span className="text-xs text-muted-foreground">
+                                                                0で即時、時間が多ければ確認
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </DialogContent>
+                                    </Dialog>
+                                )}
+                            </div>
                         </div>
-                    </div>
-                </section>
-            )}
-        </TooltipProvider>
+                    </section>
+                )}
+            </TooltipProvider>
+        </ShogiMatchProvider>
     );
 }

@@ -2,6 +2,7 @@ import type { Player } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import { type ReactElement, useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "../../dialog";
+import { useShogiMatchConfig } from "../ShogiMatchContext";
 
 type IconSize = "xs" | "sm" | "md" | "lg" | "xl";
 
@@ -26,6 +27,8 @@ interface PlayerIconProps {
     showBorder?: boolean;
     /** クリックで拡大表示を有効にするか（AI時のみ有効） */
     enableZoom?: boolean;
+    /** AIアイコンのURL（デフォルト: "/ramu.jpeg"） */
+    aiIconUrl?: string;
 }
 
 /**
@@ -41,7 +44,9 @@ export function PlayerIcon({
     className,
     showBorder = true,
     enableZoom = false,
+    aiIconUrl,
 }: PlayerIconProps): ReactElement {
+    const matchConfig = useShogiMatchConfig();
     const [isZoomOpen, setIsZoomOpen] = useState(false);
     const config = SIZE_CONFIG[size];
     const colorClass = side === "sente" ? "text-wafuu-shu" : "text-wafuu-ai";
@@ -49,7 +54,7 @@ export function PlayerIcon({
     const marker = side === "sente" ? "☗" : "☖";
     const aiAlt = side === "sente" ? "先手AI" : "後手AI";
     const aiTitle = side === "sente" ? "先手" : "後手";
-    const aiIconSrc = "/ramu.jpeg";
+    const aiIconSrc = aiIconUrl ?? matchConfig.aiIconUrl;
 
     if (isAI) {
         const canZoom = enableZoom;

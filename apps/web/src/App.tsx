@@ -53,6 +53,7 @@ function App() {
                     isDevMode={isDevMode}
                     manifestUrl={nnueManifestUrl}
                     defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
+                    aiIconUrl={`${import.meta.env.BASE_URL}ramu.jpeg`}
                 />
                 {isDevMode && <EngineControlPanel engine={panelEngine} />}
             </main>
