@@ -7,6 +7,7 @@ import { NnueErrorAlert } from "./NnueErrorAlert";
 import { NnueImportArea } from "./NnueImportArea";
 import { NnueListItem } from "./NnueListItem";
 import { NnueProgressOverlay } from "./NnueProgressOverlay";
+import { NnueSupportInfo } from "./NnueSupportInfo";
 import { PresetListItem } from "./PresetListItem";
 
 interface NnueManagerDialogProps {
@@ -318,6 +319,9 @@ export function NnueManagerDialog({
 
                     {/* NNUE 使用量 */}
                     <NnueStorageInfo totalSize={totalNnueSize} />
+
+                    {/* サポート・問い合わせ先 */}
+                    <NnueSupportInfo />
 
                     {/* 進捗オーバーレイ */}
                     <NnueProgressOverlay
