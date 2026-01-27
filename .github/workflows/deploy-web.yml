@@ -14,7 +14,6 @@ on:
       - 'packages/engine-wasm/**'
       - 'packages/rust-core/Cargo.toml'
       - 'packages/rust-core/Cargo.lock'
-      - 'packages/rust-core/crates/engine-core/**'
       - 'packages/rust-core/crates/engine-wasm/**'
       - '.github/workflows/deploy-web.yml'
 

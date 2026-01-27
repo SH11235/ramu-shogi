@@ -13,11 +13,6 @@ on:
         required: false
         default: true
         type: boolean
-      skip_pgo:
-        description: 'Skip PGO optimization (faster build)'
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: write
@@ -46,8 +41,7 @@ jobs:
             cpu_target: apple-m1
 
     runs-on: ${{ matrix.platform }}
-    # PGOビルドは2回ビルドするため90分、skip_pgo時は45分
-    timeout-minutes: ${{ inputs.skip_pgo == true && 45 || 90 }}
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -91,7 +85,6 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: llvm-tools-preview
           targets: ${{ matrix.target }}
 
       - name: Setup sccache
@@ -114,150 +107,33 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # =======================================================================
-      # PGO (Profile-Guided Optimization) ビルド
+      # TODO: PGO (Profile-Guided Optimization) ビルドの再有効化
       # =======================================================================
       #
-      # PGOとは:
-      #   コンパイラが「実際の実行パターン」を元に最適化を行う手法。
-      #   通常のビルドでは静的な解析のみだが、PGOでは実行時の情報を活用する。
+      # 現在、rshogi-core を crates.io から取得する構成に移行したため、
+      # PGO ビルドに必要な benchmark バイナリが利用できません。
       #
-      # 処理フロー:
-      #   Step 1: profile-generate
-      #     - 計装（instrumentation）コードを埋め込んだバイナリをビルド
-      #     - このバイナリは実行時に「どの分岐を通ったか」等を記録する
+      # 将来的に PGO を再有効化する際の選択肢:
+      #   1. rshogi リポジトリに benchmark を移動し、別途ビルド
+      #   2. ramu-shogi に簡易ベンチマーク用クレートを追加
+      #   3. rshogi-core に benchmark feature を追加
       #
-      #   Step 2: プロファイル収集
-      #     - 計装バイナリでベンチマークを実行
-      #     - 探索・NNUE評価など本番相当の処理を実行し、実行パターンを収集
-      #     - 結果は .profraw ファイルに保存される
-      #
-      #   Step 3: プロファイルマージ
-      #     - 複数の .profraw を統合して .profdata を生成
-      #
-      #   Step 4: profile-use
-      #     - プロファイル情報を使って最適化ビルド
-      #     - ホットパス（頻繁に実行されるコード）を連続メモリに配置
-      #     - 分岐予測ヒントを挿入
-      #     - 頻繁に呼ばれる関数を積極的にインライン化
-      #
-      # 効果:
+      # PGO の効果（以前の計測結果）:
       #   - NNUE評価: +6〜7% NPS向上
       #   - Material評価: +14% NPS向上
       #
       # =======================================================================
 
-      # Set up PGO directory (cross-platform)
-      - name: Setup PGO directory
-        shell: bash
-        run: |
-          PGO_DIR="${RUNNER_TEMP}/pgo-data"
-          mkdir -p "$PGO_DIR"
-          echo "PGO_DIR=$PGO_DIR" >> $GITHUB_ENV
-
-      # PGO Step 1: Build with profile generation
-      - name: PGO - Build for profiling
-        if: inputs.skip_pgo != true
-        shell: bash
-        working-directory: packages/rust-core
-        run: |
-          echo "=== PGO Step 1: Profile Generation Build ==="
-
-          # Disable sccache for PGO (incompatible with profile instrumentation)
-          unset RUSTC_WRAPPER
-
-          RUSTFLAGS="-C target-cpu=${{ matrix.cpu_target }} -C profile-generate=${{ env.PGO_DIR }}" \
-            cargo build --profile production
-
-      # PGO Step 2: Run benchmark to collect profile
-      - name: PGO - Collect profile data
-        if: inputs.skip_pgo != true
-        shell: bash
-        working-directory: packages/rust-core
-        run: |
-          echo "=== PGO Step 2: Collecting Profile Data ==="
-
-          # ベンチマーク実行（ログを保存しつつ出力）
-          if ! ./target/production/benchmark 2>&1 | tee "${{ env.PGO_DIR }}/benchmark.log" | head -30; then
-            echo "::warning::Benchmark execution failed, checking for partial profile data"
-          fi
-
-          PROFRAW_COUNT=$(find "${{ env.PGO_DIR }}" -name "*.profraw" 2>/dev/null | wc -l)
-          echo "Collected $PROFRAW_COUNT profile files"
-
-          if [ "$PROFRAW_COUNT" -eq 0 ]; then
-            echo "::warning::No profile data collected, continuing without PGO"
-            echo "PGO_AVAILABLE=false" >> $GITHUB_ENV
-          else
-            echo "PGO_AVAILABLE=true" >> $GITHUB_ENV
-          fi
-
-      # PGO Step 3: Merge profiles
-      - name: PGO - Merge profiles
-        if: inputs.skip_pgo != true && env.PGO_AVAILABLE == 'true'
-        shell: bash
-        run: |
-          echo "=== PGO Step 3: Merging Profiles ==="
-
-          # Find llvm-profdata in Rust toolchain
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            LLVM_PROFDATA=$(find "$USERPROFILE/.rustup" -name "llvm-profdata.exe" -type f 2>/dev/null | head -1)
-          else
-            LLVM_PROFDATA=$(find ~/.rustup -name "llvm-profdata" -type f -executable 2>/dev/null | head -1)
-          fi
-
-          if [ -z "$LLVM_PROFDATA" ]; then
-            echo "llvm-profdata not found, trying system version..."
-            LLVM_PROFDATA=$(which llvm-profdata 2>/dev/null || echo "")
-          fi
-
-          if [ -z "$LLVM_PROFDATA" ]; then
-            echo "Warning: llvm-profdata not found, continuing without PGO"
-            echo "PGO_AVAILABLE=false" >> $GITHUB_ENV
-            exit 0
-          fi
-
-          echo "Using: $LLVM_PROFDATA"
-          "$LLVM_PROFDATA" merge -o "${{ env.PGO_DIR }}/merged.profdata" "${{ env.PGO_DIR }}"/*.profraw
-
-          ls -lh "${{ env.PGO_DIR }}/merged.profdata"
-          echo "PGO_PROFILE=${{ env.PGO_DIR }}/merged.profdata" >> $GITHUB_ENV
-
-      # Clean for final build
-      - name: Clean for production build
-        if: inputs.skip_pgo != true
-        shell: bash
-        working-directory: packages/rust-core
-        run: cargo clean
-
-      # Build Tauri app with PGO
-      - name: Build Tauri App (with PGO)
-        if: inputs.skip_pgo != true && env.PGO_AVAILABLE == 'true'
+      # Build Tauri app
+      - name: Build Tauri App
         shell: bash
         working-directory: apps/desktop
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          echo "=== Building Tauri with PGO ==="
+          echo "=== Building Tauri ==="
           echo "CPU target: ${{ matrix.cpu_target }}"
-          echo "PGO profile: ${{ env.PGO_PROFILE }}"
-
-          # Set RUSTFLAGS for profile-use (sccache disabled for PGO)
-          unset RUSTC_WRAPPER
-          export RUSTFLAGS="-C target-cpu=${{ matrix.cpu_target }} -C profile-use=${{ env.PGO_PROFILE }}"
-
-          pnpm tauri build --target ${{ matrix.target }}
-
-      # Build Tauri app without PGO (fallback or skip_pgo)
-      - name: Build Tauri App (without PGO)
-        if: inputs.skip_pgo == true || env.PGO_AVAILABLE != 'true'
-        shell: bash
-        working-directory: apps/desktop
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          echo "=== Building Tauri without PGO ==="
           export RUSTFLAGS="-C target-cpu=${{ matrix.cpu_target }}"
           pnpm tauri build --target ${{ matrix.target }}
 
