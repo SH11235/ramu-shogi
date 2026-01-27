@@ -1,6 +1,12 @@
-# 将棋ゲームエンジン（Shogi Game Engine）
+# ramu-shogi
 
-Rust実装の将棋エンジンプロジェクトです。NNUE（Efficiently Updatable Neural Network）評価関数を搭載し、USIプロトコルに対応しています。
+Web・デスクトップ対応の将棋アプリです。[rshogi](https://github.com/SH11235/rshogi) エンジン（NNUE評価関数搭載）を使用しています。
+
+🌐 **Web版**: https://ramu-shogi.sh11235.com/
+
+<p align="center">
+  <img src=".github/assets/ramu-shogi-app.png" alt="ramu-shogi アプリ画面" width="800">
+</p>
 
 ## 🚀 セットアップ
 
