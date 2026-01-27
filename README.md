@@ -11,7 +11,7 @@ Rust実装の将棋エンジンプロジェクトです。NNUE（Efficiently Upd
     $ rustup -V
     rustup 1.28.2 (e4f3ad6f8 2025-04-28)
     info: This is the version for the rustup toolchain manager, not the rustc compiler.
-    info: The currently active `rustc` version is `rustc 1.91.1 (ed61e7d7e 2025-11-07)`
+    info: The currently active `rustc` version is `rustc 1.93.0 (254b59607 2026-01-19)`
     ```
 - **Node.js**: v24
 - **pnpm**: パッケージマネージャー
@@ -51,17 +51,25 @@ cargo install wasm-bindgen-cli
 
 ```
 packages/
-└── rust-core/              # 将棋AIエンジン（Rustワークスペース）
-    ├── crates/
-    │   ├── engine-core/    # コアエンジン実装（152ファイル）
-    │   ├── engine-usi/     # USIプロトコルCLIインターフェース
-    │   └── tools/          # NNUE訓練・解析ツール（60以上のバイナリ）
-    ├── docs/               # 包括的なドキュメント（50以上のマークダウンファイル）
-    └── Cargo.toml          # ワークスペース定義
+├── rust-core/              # Rust ワークスペース
+│   └── crates/
+│       └── engine-wasm/    # WASM バインディング（rshogi-core を使用）
+├── app-core/               # ドメインロジック（局面/棋譜処理）
+├── design-system/          # テーマ/トークン/Provider
+├── ui/                     # 共通 UI コンポーネント
+├── engine-client/          # EngineClient 型・インターフェース
+├── engine-wasm/            # Web/Wasm 実装（Worker 経由）
+└── engine-tauri/           # Tauri IPC クライアント実装
 
-apps/                       # 今後追加予定：GUIアプリケーション等
+apps/
+├── web/                    # Web アプリケーション
+└── desktop/                # Tauri デスクトップアプリ
 ```
+
+エンジンコア実装は [rshogi](https://github.com/SH11235/rshogi) リポジトリで管理されています。
 
 ## 📄 ライセンス
 
-MIT License
+GPL-3.0 License
+
+エンジンコア ([rshogi](https://github.com/SH11235/rshogi)) も GPL-3.0 でライセンスされています。
