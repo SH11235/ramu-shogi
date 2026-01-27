@@ -12,11 +12,11 @@ const isAnalyze = process.env.ANALYZE === "true";
 
 // https://vite.dev/config/
 export default defineConfig(({ command }) => ({
-    // GitHub Pages (https://sh11235.github.io/shogi/) 向けの base パス設定
+    // GitHub Pages (https://sh11235.github.io/ramu-shogi/) 向けの base パス設定
     // - 開発時 (pnpm dev): "/" でローカルホストで動作
-    // - ビルド時 (pnpm build): "/shogi/" で GitHub Pages のリポジトリページに対応
+    // - ビルド時 (pnpm build): "/ramu-shogi/" で GitHub Pages のリポジトリページに対応
     // command === "build" による判定は Vite 公式の推奨方法で、環境変数の追加設定は不要
-    base: process.env.VITE_BASE_PATH ?? (command === "build" ? "/shogi/" : "/"),
+    base: process.env.VITE_BASE_PATH ?? (command === "build" ? "/ramu-shogi/" : "/"),
     server: {
         headers: {
             "Cross-Origin-Opener-Policy": "same-origin",
