@@ -52,3 +52,6 @@ runs_local/
 
 packages/engine-wasm/pkg/
 packages/engine-wasm/pkg-threaded/
+
+# Local cargo config (use .cargo/config.toml.example as template)
+.cargo/config.toml

@@ -1,0 +1,8 @@
+# 開発時は rshogi のローカルパスを使用
+# CI/本番では crates.io から取得される
+#
+# 使用方法:
+#   cp .cargo/config.toml.example .cargo/config.toml
+#   必要に応じてパスを調整
+[patch.crates-io]
+rshogi-core = { path = "../rshogi-oss/crates/rshogi-core" }
