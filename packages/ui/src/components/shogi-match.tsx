@@ -617,6 +617,7 @@ export function ShogiMatch({
         setSenteNnueSelection,
         setGoteNnueSelection,
         setAnalysisNnueSelection,
+        defaultNnueSelection,
     ]);
 
     // manifestUrl 未指定でプリセット選択中の場合のフォールバック
@@ -791,6 +792,7 @@ export function ShogiMatch({
 
     // 互換性用のmoves配列
     const moves = navigation.getMovesArray();
+    const movesKey = navigation.state.currentNodeId;
 
     // 棋譜＋評価値データ
     const {
@@ -1123,10 +1125,10 @@ export function ShogiMatch({
     } = useEngineManager({
         sides,
         engineOptions,
-        timeSettings,
         clocksRef,
         startSfen,
         movesRef,
+        movesKey,
         positionTurn: position.turn,
         isMatchRunning,
         positionReady,

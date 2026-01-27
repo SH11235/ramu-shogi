@@ -344,7 +344,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                 }
             })();
         },
-        [initializeWorkers, processNextJob, updateProgress],
+        [initializeWorkers, processNextJob, updateProgress, nnueId],
     );
 
     // 一括解析をキャンセルする

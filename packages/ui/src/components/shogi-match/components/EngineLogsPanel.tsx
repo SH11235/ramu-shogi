@@ -1,6 +1,7 @@
-import type { Player } from "@shogi/app-core";
+import type { EngineControllerErrorLog, EngineControllerEvent, Player } from "@shogi/app-core";
 import { type EngineErrorCode, getEngineErrorInfo } from "@shogi/engine-client";
 import { type ReactElement, useState } from "react";
+import { formatEngineEventLog } from "../hooks/formatEngineEvent";
 
 const baseCard = {
     background: "hsl(var(--card, 0 0% 100%))",
@@ -20,9 +21,9 @@ interface EngineErrorDetails {
 
 interface EngineLogsPanelProps {
     /** イベントログのリスト */
-    eventLogs: string[];
+    eventLogs: EngineControllerEvent[];
     /** エラーログのリスト */
-    errorLogs: string[];
+    errorLogs: EngineControllerErrorLog[];
     /** エンジンエラーの詳細情報 */
     engineErrorDetails?: Record<Player, EngineErrorDetails | null>;
     /** リトライコールバック */
@@ -66,8 +67,14 @@ function ErrorDetailSection({
             >
                 <span
                     style={{
-                        background: side === "sente" ? "#1a1a1a" : "#e0e0e0",
-                        color: side === "sente" ? "#fff" : "#1a1a1a",
+                        background:
+                            side === "sente"
+                                ? "hsl(var(--foreground, 0 0% 12%))"
+                                : "hsl(var(--muted, 0 0% 90%))",
+                        color:
+                            side === "sente"
+                                ? "hsl(var(--background, 0 0% 100%))"
+                                : "hsl(var(--foreground, 0 0% 12%))",
                         padding: "2px 8px",
                         borderRadius: "4px",
                         fontSize: "11px",
@@ -254,15 +261,15 @@ export function EngineLogsPanel({
                     overflow: "auto",
                 }}
             >
-                {eventLogs.map((log, idx) => (
+                {eventLogs.map((log) => (
                     <li
-                        key={`${idx}-${log}`}
+                        key={log.id}
                         style={{
                             fontFamily: "ui-monospace, monospace",
                             fontSize: "12px",
                         }}
                     >
-                        {log}
+                        {formatEngineEventLog(log)}
                     </li>
                 ))}
             </ul>
@@ -274,7 +281,7 @@ export function EngineLogsPanel({
                         fontSize: "12px",
                     }}
                 >
-                    {errorLogs[0]}
+                    {errorLogs[0].message}
                 </div>
             ) : null}
         </div>

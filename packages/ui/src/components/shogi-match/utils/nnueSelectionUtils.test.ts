@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { NnueMeta, PresetConfig } from "@shogi/app-core";
+import { describe, expect, it } from "vitest";
 import {
     buildNnueOptions,
     NNUE_VALUE_PREFIX,

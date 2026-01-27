@@ -24,7 +24,9 @@
         "typecheck": "tsc -p tsconfig.json",
         "test": "vitest"
     },
-    "dependencies": {},
+    "dependencies": {
+        "@shogi/engine-client": "workspace:*"
+    },
     "devDependencies": {
         "typescript": "~5.9.3",
         "vitest": "^4.0.15"
