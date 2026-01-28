@@ -171,19 +171,19 @@ function normalizePassRightsSettings(
     if (!settings || typeof settings !== "object") {
         return defaults;
     }
-    const merged = { ...defaults, ...settings } as PassRightsSettings;
+
     return {
-        enabled: typeof merged.enabled === "boolean" ? merged.enabled : defaults.enabled,
+        enabled: typeof settings.enabled === "boolean" ? settings.enabled : defaults.enabled,
         senteInitialCount: normalizePassRightsCount(
-            merged.senteInitialCount,
+            settings.senteInitialCount,
             defaults.senteInitialCount,
         ),
         goteInitialCount: normalizePassRightsCount(
-            merged.goteInitialCount,
+            settings.goteInitialCount,
             defaults.goteInitialCount,
         ),
         confirmDialogThresholdMs: normalizePassRightsThreshold(
-            merged.confirmDialogThresholdMs,
+            settings.confirmDialogThresholdMs,
             defaults.confirmDialogThresholdMs,
         ),
     };

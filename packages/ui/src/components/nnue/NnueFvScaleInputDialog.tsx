@@ -18,7 +18,7 @@ interface NnueFvScaleInputDialogProps {
     /** インポート対象のファイル名 */
     fileName: string;
     /** 確定時のコールバック */
-    onConfirm: (fvScale: number, displayName: string) => void;
+    onConfirm: (fvScale: number, displayName: string) => void | Promise<void>;
     /** キャンセル時のコールバック */
     onCancel: () => void;
 }
@@ -77,7 +77,7 @@ export function NnueFvScaleInputDialog({
             return;
         }
 
-        onConfirm(num, trimmedName);
+        void onConfirm(num, trimmedName);
         setValue("");
         setDisplayName("");
         setError(null);

@@ -217,8 +217,14 @@ export interface PresetConfig {
     releasedAt: string;
     /** フォーマット情報 */
     format?: Partial<NnueFormat>;
-    /** 推奨 FV_SCALE 値 */
-    recommendedFvScale?: number;
+    /**
+     * 推奨 FV_SCALE 値（必須）
+     *
+     * エンジン起動時に FV_SCALE として設定される。
+     * NNUE ファイルの開発者が公開している値を使用すること。
+     * 一般的な値: 16（YaneuraOu デフォルト）, 24（水匠5等）
+     */
+    recommendedFvScale: number;
 }
 
 /**

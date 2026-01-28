@@ -80,7 +80,7 @@ async function computeSha256(data: ArrayBuffer): Promise<string> {
  * プリセットをダウンロード
  *
  * ダウンロード時の動作:
- * - recommendedFvScale が設定されている場合、自動的に FV_SCALE として設定される
+ * - recommendedFvScale が自動的に FV_SCALE として設定される
  * - 同じ presetKey で異なるバージョンが存在する場合、古いバージョンは削除されず共存する
  * - ユーザーが使用する際は、最新のハッシュと一致するものが自動的に選択される
  */
@@ -89,6 +89,14 @@ export async function downloadPreset(
     storage: NnueStorage,
     onProgress?: PresetProgressHandler,
 ): Promise<NnueMeta> {
+    // FV_SCALE チェック（型安全性のため）
+    if (preset.recommendedFvScale === undefined) {
+        throw new NnueError(
+            "NNUE_DOWNLOAD_FAILED",
+            `プリセット「${preset.displayName}」の FV_SCALE が manifest に設定されていません`,
+        );
+    }
+
     // サイズチェック（ダウンロード前）
     if (preset.size > NNUE_MAX_SIZE_BYTES) {
         throw new NnueError(

@@ -4,7 +4,6 @@ import { usePresetManager } from "../../hooks/usePresetManager";
 import { Button } from "../button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../dialog";
 import { NnueErrorAlert } from "./NnueErrorAlert";
-import { NnueFreeResourcesInfo } from "./NnueFreeResourcesInfo";
 import { NnueFvScaleInputDialog } from "./NnueFvScaleInputDialog";
 import { NnueImportArea } from "./NnueImportArea";
 import { NnueListItem } from "./NnueListItem";
