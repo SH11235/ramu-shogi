@@ -161,12 +161,17 @@ export const MobileBoardSection = memo(function MobileBoardSection({
                 />
                 {/* パス権表示（上側プレイヤー） */}
                 {passRightsSettings?.enabled &&
-                    passRightsSettings.initialCount > 0 &&
+                    (passRightsSettings.senteInitialCount > 0 ||
+                        passRightsSettings.goteInitialCount > 0) &&
                     passRights && (
                         <div className="flex justify-end mt-0.5">
                             <PassRightsDisplay
                                 remaining={passRights[topHand.owner]}
-                                max={passRightsSettings.initialCount}
+                                max={
+                                    topHand.owner === "sente"
+                                        ? passRightsSettings.senteInitialCount
+                                        : passRightsSettings.goteInitialCount
+                                }
                                 isActive={turn === topHand.owner}
                                 compact
                             />
@@ -235,12 +240,17 @@ export const MobileBoardSection = memo(function MobileBoardSection({
                 />
                 {/* パス権表示（下側プレイヤー） */}
                 {passRightsSettings?.enabled &&
-                    passRightsSettings.initialCount > 0 &&
+                    (passRightsSettings.senteInitialCount > 0 ||
+                        passRightsSettings.goteInitialCount > 0) &&
                     passRights && (
                         <div className="flex justify-start mt-0.5">
                             <PassRightsDisplay
                                 remaining={passRights[bottomHand.owner]}
-                                max={passRightsSettings.initialCount}
+                                max={
+                                    bottomHand.owner === "sente"
+                                        ? passRightsSettings.senteInitialCount
+                                        : passRightsSettings.goteInitialCount
+                                }
                                 isActive={turn === bottomHand.owner}
                                 compact
                             />

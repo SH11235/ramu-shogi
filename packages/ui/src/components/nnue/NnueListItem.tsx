@@ -150,14 +150,20 @@ export function NnueListItem({
     const saveFvScale = useCallback(async () => {
         if (!onFvScaleChange) return;
         const trimmed = fvScaleValue.trim();
-        const newValue = trimmed === "" ? undefined : Number.parseInt(trimmed, 10);
+        const newValue = trimmed === "" ? undefined : Number(trimmed);
         // 値が変わっていない場合はキャンセル
         if (newValue === meta.fvScale) {
             cancelEditingFvScale();
             return;
         }
-        // 無効な値の場合はキャンセル
-        if (newValue !== undefined && (Number.isNaN(newValue) || newValue < 0 || newValue > 100)) {
+        // 無効な値の場合はキャンセル（Number.isInteger で小数点や不正入力を検出）
+        if (
+            newValue !== undefined &&
+            (Number.isNaN(newValue) ||
+                !Number.isInteger(newValue) ||
+                newValue < 1 ||
+                newValue > 100)
+        ) {
             cancelEditingFvScale();
             return;
         }
@@ -377,7 +383,7 @@ export function NnueListItem({
                                         <Input
                                             ref={fvScaleInputRef}
                                             type="number"
-                                            min={0}
+                                            min={1}
                                             max={100}
                                             value={fvScaleValue}
                                             onChange={(e) => setFvScaleValue(e.target.value)}
@@ -539,7 +545,7 @@ export function NnueListItem({
                                 <Input
                                     ref={fvScaleInputRef}
                                     type="number"
-                                    min={0}
+                                    min={1}
                                     max={100}
                                     value={fvScaleValue}
                                     onChange={(e) => setFvScaleValue(e.target.value)}

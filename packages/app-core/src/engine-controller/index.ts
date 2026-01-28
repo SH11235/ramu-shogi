@@ -48,7 +48,8 @@ export type EngineClockState = {
 
 export interface PassRightsSettings {
     enabled: boolean;
-    initialCount: number;
+    senteInitialCount: number;
+    goteInitialCount: number;
 }
 
 export type EngineControllerPosition = {
@@ -238,8 +239,8 @@ function buildPassRightsOption(
     if (passRightsSettings?.enabled) {
         return {
             passRights: {
-                sente: passRightsSettings.initialCount,
-                gote: passRightsSettings.initialCount,
+                sente: passRightsSettings.senteInitialCount,
+                gote: passRightsSettings.goteInitialCount,
             },
         };
     }
@@ -258,11 +259,12 @@ function buildPassRightsOption(
             }
             isSenteTurn = !isSenteTurn;
         }
-        const minRights = Math.max(sentePassCount, gotePassCount) + 1;
+        const minSenteRights = sentePassCount + 1;
+        const minGoteRights = gotePassCount + 1;
         return {
             passRights: {
-                sente: minRights,
-                gote: minRights,
+                sente: minSenteRights,
+                gote: minGoteRights,
             },
         };
     }

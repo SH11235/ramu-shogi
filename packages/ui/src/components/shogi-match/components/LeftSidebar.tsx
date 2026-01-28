@@ -337,7 +337,8 @@ export function LeftSidebar({
                             変則ルール...
                             {passRightsSettings.enabled && (
                                 <span className="ml-2 text-xs text-muted-foreground">
-                                    (パス権: {passRightsSettings.initialCount}回)
+                                    (パス権: ☗{passRightsSettings.senteInitialCount}/☖
+                                    {passRightsSettings.goteInitialCount})
                                 </span>
                             )}
                         </span>

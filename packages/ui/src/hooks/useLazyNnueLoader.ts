@@ -36,16 +36,16 @@ export function useLazyNnueLoader(): UseLazyNnueLoaderReturn {
     const createResolvedNnue = useCallback(
         async (nnueId: string): Promise<ResolvedNnue> => {
             if (!storage) {
-                throw new NnueError(
-                    "NNUE_RESOLVE_FAILED",
-                    "FV_SCALE が設定されていません。評価関数ファイル管理で FV_SCALE を指定してください。",
-                );
+                throw new NnueError("NNUE_RESOLVE_FAILED", "評価関数ストレージが利用できません。");
             }
             const meta = await storage.getMeta(nnueId);
-            if (meta?.fvScale === undefined) {
+            if (!meta) {
+                throw new NnueError("NNUE_RESOLVE_FAILED", "評価関数ファイルが見つかりません。");
+            }
+            if (meta.fvScale === undefined) {
                 throw new NnueError(
                     "NNUE_RESOLVE_FAILED",
-                    "FV_SCALE が設定されていません。評価関数ファイル管理で FV_SCALE を指定してください。",
+                    `評価関数「${meta.displayName}」の FV_SCALE が未設定です。評価関数ファイル管理を開いて FV_SCALE を設定してください。`,
                 );
             }
             return {
@@ -82,7 +82,7 @@ export function useLazyNnueLoader(): UseLazyNnueLoaderReturn {
                 if (!storage) {
                     throw new NnueError(
                         "NNUE_RESOLVE_FAILED",
-                        "FV_SCALE が設定されていません。評価関数ファイル管理で FV_SCALE を指定してください。",
+                        "評価関数ストレージが利用できません。",
                     );
                 }
 
@@ -97,7 +97,7 @@ export function useLazyNnueLoader(): UseLazyNnueLoaderReturn {
                     if (meta.fvScale === undefined) {
                         throw new NnueError(
                             "NNUE_RESOLVE_FAILED",
-                            "FV_SCALE が設定されていません。評価関数ファイル管理で FV_SCALE を指定してください。",
+                            `評価関数「${meta.displayName}」の FV_SCALE が未設定です。評価関数ファイル管理を開いて FV_SCALE を設定してください。`,
                         );
                     }
                     return {

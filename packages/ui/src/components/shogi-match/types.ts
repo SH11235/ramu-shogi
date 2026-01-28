@@ -106,8 +106,10 @@ export const DEFAULT_ANALYSIS_SETTINGS: AnalysisSettings = {
 export interface PassRightsSettings {
     /** パス権ルールが有効かどうか */
     enabled: boolean;
-    /** 初期パス権数（先手・後手共通） */
-    initialCount: number;
+    /** 先手の初期パス権数 */
+    senteInitialCount: number;
+    /** 後手の初期パス権数 */
+    goteInitialCount: number;
     /** パス確認ダイアログを表示する残り時間しきい値（ms）。0で常に即時、Infinity相当で常に確認。 */
     confirmDialogThresholdMs: number;
 }
@@ -115,7 +117,8 @@ export interface PassRightsSettings {
 /** デフォルトパス権設定 */
 export const DEFAULT_PASS_RIGHTS_SETTINGS: PassRightsSettings = {
     enabled: false,
-    initialCount: 2,
+    senteInitialCount: 2,
+    goteInitialCount: 2,
     confirmDialogThresholdMs: 10_000,
 };
 

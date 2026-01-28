@@ -133,6 +133,7 @@ export function NnueManagerDialog({
 
     // ファイル選択時: FV_SCALE 入力ダイアログを表示
     const handleFileSelect = useCallback((file: File) => {
+        setPendingPath(null); // 排他的に管理
         setPendingFile(file);
     }, []);
 
@@ -142,6 +143,7 @@ export function NnueManagerDialog({
         try {
             const filePath = await onRequestFilePath();
             if (filePath) {
+                setPendingFile(null); // 排他的に管理
                 setPendingPath(filePath);
             }
         } catch {
@@ -152,14 +154,18 @@ export function NnueManagerDialog({
     // FV_SCALE 確定時: 実際にインポート
     const handleFvScaleConfirm = useCallback(
         async (fvScale: number) => {
+            // 先に pending をクリアしてダイアログを閉じる（二重実行を防止）
+            const fileToImport = pendingFile;
+            const pathToImport = pendingPath;
+            setPendingFile(null);
+            setPendingPath(null);
+
             setIsImporting(true);
             try {
-                if (pendingFile) {
-                    await importFromFile(pendingFile, fvScale);
-                    setPendingFile(null);
-                } else if (pendingPath) {
-                    await importFromPath(pendingPath, fvScale);
-                    setPendingPath(null);
+                if (fileToImport) {
+                    await importFromFile(fileToImport, fvScale);
+                } else if (pathToImport) {
+                    await importFromPath(pathToImport, fvScale);
                 }
             } catch {
                 // エラーは useNnueStorage で管理される
