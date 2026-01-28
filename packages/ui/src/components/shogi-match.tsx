@@ -17,6 +17,7 @@ import {
     type Player,
     type PositionState,
     parseMove,
+    type ResolvedNnue,
     resolveWorkerCount,
     type Square,
 } from "@shogi/app-core";
@@ -2496,9 +2497,16 @@ export function ShogiMatch({
             return; // 解析対象がない
         }
 
-        // 未DLプリセットの場合はダウンロード
-        // resolveNnue内でダウンロード完了時にrefreshNnueListが呼ばれ、nnueListが更新される
-        const resolved = await resolveNnue(analysisNnueSelection);
+        // NNUE の存在確認（未ダウンロードの場合はエラー）
+        let resolved: ResolvedNnue | null;
+        try {
+            resolved = await resolveNnue(analysisNnueSelection);
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : "評価関数の準備に失敗しました";
+            setNnueManagerOpenReason(`解析を開始できません: ${errorMessage}`);
+            setIsNnueManagerOpen(true);
+            return;
+        }
 
         // ジョブを生成
         const jobs: AnalysisJob[] = targetPlies.map((ply) => ({
@@ -2531,8 +2539,17 @@ export function ShogiMatch({
                 return;
             }
 
-            // 未DLプリセットの場合はダウンロード
-            const resolved = await resolveNnue(analysisNnueSelection);
+            // NNUE の存在確認（未ダウンロードの場合はエラー）
+            let resolved: ResolvedNnue | null;
+            try {
+                resolved = await resolveNnue(analysisNnueSelection);
+            } catch (e) {
+                const errorMessage =
+                    e instanceof Error ? e.message : "評価関数の準備に失敗しました";
+                setNnueManagerOpenReason(`解析を開始できません: ${errorMessage}`);
+                setIsNnueManagerOpen(true);
+                return;
+            }
 
             // AnalysisJob形式に変換
             const jobs: AnalysisJob[] = treeJobs.map((job) => ({
@@ -2575,8 +2592,17 @@ export function ShogiMatch({
                 return;
             }
 
-            // 未DLプリセットの場合はダウンロード
-            const resolved = await resolveNnue(analysisNnueSelection);
+            // NNUE の存在確認（未ダウンロードの場合はエラー）
+            let resolved: ResolvedNnue | null;
+            try {
+                resolved = await resolveNnue(analysisNnueSelection);
+            } catch (e) {
+                const errorMessage =
+                    e instanceof Error ? e.message : "評価関数の準備に失敗しました";
+                setNnueManagerOpenReason(`解析を開始できません: ${errorMessage}`);
+                setIsNnueManagerOpen(true);
+                return;
+            }
 
             // AnalysisJob形式に変換
             const jobs: AnalysisJob[] = branchJobs.map((job) => ({
