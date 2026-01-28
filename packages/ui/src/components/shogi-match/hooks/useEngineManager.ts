@@ -11,6 +11,7 @@ import type {
     NnueSelection,
     PassRightsSettings,
     Player,
+    ResolvedNnue,
     SideSetting,
 } from "@shogi/app-core";
 import { createEngineController } from "@shogi/app-core";
@@ -57,7 +58,7 @@ interface UseEngineManagerProps {
     /** 分析用 NNUE 選択 */
     analysisNnueSelection?: NnueSelection;
     /** NNUE を解決する関数（必要ならダウンロード） */
-    resolveNnue: (selection: NnueSelection) => Promise<string | null>;
+    resolveNnue: (selection: NnueSelection) => Promise<ResolvedNnue | null>;
 }
 
 /** 解析リクエストパラメータ */

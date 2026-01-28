@@ -25,6 +25,8 @@ interface UseNnueStorageReturn {
     deleteNnue: (id: string) => Promise<void>;
     /** NNUE の表示名を更新 */
     updateDisplayName: (id: string, displayName: string) => Promise<void>;
+    /** NNUE の FV_SCALE を更新 */
+    updateFvScale: (id: string, fvScale: number | undefined) => Promise<void>;
     /** エラーをクリア */
     clearError: () => void;
     /** ストレージ使用量 */
@@ -269,6 +271,31 @@ export function useNnueStorage(): UseNnueStorageReturn {
         [storage, refreshList],
     );
 
+    const updateFvScale = useCallback(
+        async (id: string, fvScale: number | undefined) => {
+            if (!storage) {
+                throw new NnueError(
+                    "NNUE_STORAGE_FAILED",
+                    "NnueProvider が設定されていません",
+                    null,
+                );
+            }
+            setLocalError(null);
+            try {
+                await storage.updateMeta(id, { fvScale });
+                await refreshList();
+            } catch (e) {
+                const err =
+                    e instanceof NnueError
+                        ? e
+                        : new NnueError("NNUE_STORAGE_FAILED", "FV_SCALE の更新に失敗しました", e);
+                setLocalError(err);
+                throw err;
+            }
+        },
+        [storage, refreshList],
+    );
+
     const clearError = useCallback(() => {
         setLocalError(null);
         contextClearError?.();
@@ -283,6 +310,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
         importFromPath,
         deleteNnue,
         updateDisplayName,
+        updateFvScale,
         clearError,
         storageUsage,
         capabilities,

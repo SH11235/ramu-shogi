@@ -91,6 +91,7 @@ export function NnueManagerDialog({
         importFromPath,
         deleteNnue,
         updateDisplayName,
+        updateFvScale,
         clearError: clearStorageError,
         refreshList,
         capabilities,
@@ -168,6 +169,13 @@ export function NnueManagerDialog({
         [updateDisplayName],
     );
 
+    const handleFvScaleChange = useCallback(
+        async (id: string, fvScale: number | undefined) => {
+            await updateFvScale(id, fvScale);
+        },
+        [updateFvScale],
+    );
+
     const handleClose = useCallback(() => {
         onOpenChange(false);
     }, [onOpenChange]);
@@ -237,6 +245,9 @@ export function NnueManagerDialog({
                                     disabled={isOperationInProgress}
                                     onDisplayNameChange={(newName) =>
                                         handleDisplayNameChange(meta.id, newName)
+                                    }
+                                    onFvScaleChange={(fvScale) =>
+                                        handleFvScaleChange(meta.id, fvScale)
                                     }
                                 />
                             ))}

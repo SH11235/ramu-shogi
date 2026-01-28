@@ -2485,7 +2485,7 @@ export function ShogiMatch({
 
         // 未DLプリセットの場合はダウンロード
         // resolveNnue内でダウンロード完了時にrefreshNnueListが呼ばれ、nnueListが更新される
-        const resolvedNnueId = await resolveNnue(analysisNnueSelection);
+        const resolved = await resolveNnue(analysisNnueSelection);
 
         // ジョブを生成
         const jobs: AnalysisJob[] = targetPlies.map((ply) => ({
@@ -2496,8 +2496,8 @@ export function ShogiMatch({
             depth: analysisSettings.batchAnalysisDepth,
         }));
 
-        // 並列一括解析を開始（resolvedNnueIdを直接渡す）
-        enginePool.start(jobs, { nnueId: resolvedNnueId });
+        // 並列一括解析を開始（resolvedを直接渡す）
+        enginePool.start(jobs, { nnueId: resolved?.nnueId ?? null, fvScale: resolved?.fvScale });
     }, [kifMoves, startSfen, analysisSettings, enginePool, resolveNnue, analysisNnueSelection]);
 
     // ツリー全体（分岐含む）の一括解析を開始
@@ -2519,7 +2519,7 @@ export function ShogiMatch({
             }
 
             // 未DLプリセットの場合はダウンロード
-            const resolvedNnueId = await resolveNnue(analysisNnueSelection);
+            const resolved = await resolveNnue(analysisNnueSelection);
 
             // AnalysisJob形式に変換
             const jobs: AnalysisJob[] = treeJobs.map((job) => ({
@@ -2531,8 +2531,11 @@ export function ShogiMatch({
                 nodeId: job.nodeId, // 分岐解析用にnodeIdを保持
             }));
 
-            // 並列一括解析を開始（resolvedNnueIdを直接渡す）
-            enginePool.start(jobs, { nnueId: resolvedNnueId });
+            // 並列一括解析を開始（resolvedを直接渡す）
+            enginePool.start(jobs, {
+                nnueId: resolved?.nnueId ?? null,
+                fvScale: resolved?.fvScale,
+            });
         },
         [
             navigation.tree,
@@ -2560,7 +2563,7 @@ export function ShogiMatch({
             }
 
             // 未DLプリセットの場合はダウンロード
-            const resolvedNnueId = await resolveNnue(analysisNnueSelection);
+            const resolved = await resolveNnue(analysisNnueSelection);
 
             // AnalysisJob形式に変換
             const jobs: AnalysisJob[] = branchJobs.map((job) => ({
@@ -2572,8 +2575,11 @@ export function ShogiMatch({
                 nodeId: job.nodeId,
             }));
 
-            // 並列一括解析を開始（resolvedNnueIdを直接渡す）
-            enginePool.start(jobs, { nnueId: resolvedNnueId });
+            // 並列一括解析を開始（resolvedを直接渡す）
+            enginePool.start(jobs, {
+                nnueId: resolved?.nnueId ?? null,
+                fvScale: resolved?.fvScale,
+            });
         },
         [
             navigation.tree,

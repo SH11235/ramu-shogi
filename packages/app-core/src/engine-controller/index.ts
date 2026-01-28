@@ -8,7 +8,7 @@ import type {
 } from "@shogi/engine-client";
 import { getEngineErrorInfo, normalizeSkillLevelSettings } from "@shogi/engine-client";
 import type { GameResult, Player } from "../game";
-import type { NnueSelection } from "../nnue";
+import type { NnueSelection, ResolvedNnue } from "../nnue";
 
 export type EngineStatus = "idle" | "thinking" | "error";
 
@@ -143,7 +143,7 @@ export interface EngineControllerDependencies {
     createClient: (engineId: string) => EngineClient;
     getClockState: () => EngineClockState;
     now: () => number;
-    resolveNnue: (selection: NnueSelection) => Promise<string | null>;
+    resolveNnue: (selection: NnueSelection) => Promise<ResolvedNnue | null>;
     maxLogs?: number;
     callbacks?: EngineControllerCallbacks;
 }
@@ -673,9 +673,12 @@ export function createEngineController(
                 options.nnueSelection ??
                 (side === "sente" ? context.nnueSelections.sente : context.nnueSelections.gote);
             if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
-                const resolvedNnueId = await dependencies.resolveNnue(selection);
-                if (resolvedNnueId) {
-                    await client.loadNnue(resolvedNnueId);
+                const resolved = await dependencies.resolveNnue(selection);
+                if (resolved) {
+                    await client.loadNnue(resolved.nnueId);
+                    if (resolved.fvScale !== undefined) {
+                        await client.setOption("FV_SCALE", resolved.fvScale);
+                    }
                 }
             }
 
@@ -746,9 +749,12 @@ export function createEngineController(
                 const selection =
                     side === "sente" ? context.nnueSelections.sente : context.nnueSelections.gote;
                 if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
-                    const resolvedNnueId = await dependencies.resolveNnue(selection);
-                    if (resolvedNnueId) {
-                        await client.loadNnue(resolvedNnueId);
+                    const resolved = await dependencies.resolveNnue(selection);
+                    if (resolved) {
+                        await client.loadNnue(resolved.nnueId);
+                        if (resolved.fvScale !== undefined) {
+                            await client.setOption("FV_SCALE", resolved.fvScale);
+                        }
                     }
                 }
 
@@ -942,9 +948,12 @@ export function createEngineController(
 
                 const selection = context.nnueSelections.analysis;
                 if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
-                    const resolvedNnueId = await dependencies.resolveNnue(selection);
-                    if (resolvedNnueId) {
-                        await client.loadNnue(resolvedNnueId);
+                    const resolved = await dependencies.resolveNnue(selection);
+                    if (resolved) {
+                        await client.loadNnue(resolved.nnueId);
+                        if (resolved.fvScale !== undefined) {
+                            await client.setOption("FV_SCALE", resolved.fvScale);
+                        }
                     }
                 }
             } catch (error) {

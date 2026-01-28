@@ -98,6 +98,14 @@ export interface NnueMeta {
 
     /** リリース日（プリセットの場合） */
     releasedAt?: string;
+
+    /**
+     * FV_SCALE 値（NNUE 評価値のスケーリング係数）
+     * - undefined: エンジンのデフォルト値を使用（0 = 自動判定）
+     * - 1-100: 指定値でオーバーライド
+     * - 一般的な値: 16（YaneuraOuデフォルト）, 24（水匠5等）
+     */
+    fvScale?: number;
 }
 
 /**
@@ -208,6 +216,8 @@ export interface PresetConfig {
     releasedAt: string;
     /** フォーマット情報 */
     format?: Partial<NnueFormat>;
+    /** 推奨 FV_SCALE 値 */
+    recommendedFvScale?: number;
 }
 
 /**
@@ -269,3 +279,16 @@ export const NONE_NNUE_SELECTION: NnueSelection = {
     presetKey: null,
     nnueId: null,
 };
+
+/**
+ * 解決済み NNUE 情報
+ *
+ * resolveNnue の戻り値として使用。
+ * NnueSelection を解決し、実際に使用する nnueId と設定値を含む。
+ */
+export interface ResolvedNnue {
+    /** NNUE の ID（IndexedDB キーまたはファイルシステム ID） */
+    nnueId: string;
+    /** FV_SCALE 値（undefined の場合はエンジンのデフォルトを使用） */
+    fvScale?: number;
+}

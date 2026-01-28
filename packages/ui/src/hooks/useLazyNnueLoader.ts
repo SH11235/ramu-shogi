@@ -5,17 +5,18 @@ import {
     NnueError,
     type NnueSelection,
     type PresetManager,
+    type ResolvedNnue,
 } from "@shogi/app-core";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useNnueContextOptional } from "../providers/NnueContext";
 
 interface UseLazyNnueLoaderReturn {
     /**
      * NNUE を解決する（必要ならダウンロード）
      * @param selection NNUE 選択状態
-     * @returns 解決済みの nnueId、または null（駒得評価）
+     * @returns 解決済みの ResolvedNnue（nnueId と fvScale）、または null（駒得評価）
      */
-    resolveNnue: (selection: NnueSelection) => Promise<string | null>;
+    resolveNnue: (selection: NnueSelection) => Promise<ResolvedNnue | null>;
     /** ダウンロード中かどうか */
     isDownloading: boolean;
     /** ダウンロード進捗 */
@@ -52,6 +53,9 @@ export function useLazyNnueLoader(options: UseLazyNnueLoaderOptions = {}): UseLa
     const [downloadingPresetName, setDownloadingPresetName] = useState<string | null>(null);
     const [error, setError] = useState<NnueError | null>(null);
 
+    // 進行中のダウンロード Promise をトラッキング（同時呼び出しの排他制御用）
+    const pendingDownloadsRef = useRef<Map<string, Promise<string | null>>>(new Map());
+
     // PresetManager インスタンスを作成
     const manager = useMemo<PresetManager | null>(() => {
         if (!manifestUrl || !storage) return null;
@@ -63,45 +67,15 @@ export function useLazyNnueLoader(options: UseLazyNnueLoaderOptions = {}): UseLa
     }, [manifestUrl, storage]);
 
     /**
-     * NNUE を解決する
-     *
-     * 1. presetKey が null → nnueId をそのまま返す
-     * 2. presetKey が設定されている:
-     *    a. IndexedDB に該当 presetKey の NNUE があるか確認
-     *    b. あれば → その id を返す
-     *    c. なければ → ダウンロード → 保存された id を返す
+     * ダウンロードを実行する内部関数（排他制御の対象）
      */
-    const resolveNnue = useCallback(
-        async (selection: NnueSelection): Promise<string | null> => {
-            // プリセット指定でない場合は nnueId をそのまま返す
-            if (!selection.presetKey) {
-                return selection.nnueId;
+    const executeDownload = useCallback(
+        async (presetKey: string, nnueIdFallback: string | null): Promise<string | null> => {
+            if (!storage || !manager) {
+                return nnueIdFallback;
             }
-
-            // storage がない場合は nnueId にフォールバック
-            if (!storage) {
-                console.warn("NNUE storage is not available, falling back to nnueId");
-                return selection.nnueId;
-            }
-
-            const presetKey = selection.presetKey;
 
             try {
-                // IndexedDB に該当 presetKey の NNUE があるか確認
-                const existing = await storage.listByPresetKey(presetKey);
-                if (existing.length > 0) {
-                    // 最新の作成日時のものを返す
-                    const sorted = [...existing].sort((a, b) => b.createdAt - a.createdAt);
-                    return sorted[0].id;
-                }
-
-                // manifest がない場合は nnueId にフォールバック
-                if (!manager) {
-                    console.warn("Preset manager is not available, falling back to nnueId");
-                    return selection.nnueId;
-                }
-
-                // ダウンロードが必要
                 setIsDownloading(true);
                 setDownloadProgress(null);
                 setError(null);
@@ -168,10 +142,107 @@ export function useLazyNnueLoader(options: UseLazyNnueLoaderOptions = {}): UseLa
 
                 // ダウンロード失敗時は nnueId にフォールバック（あれば使用、なければ駒得評価）
                 console.error("Failed to download preset NNUE:", err);
-                return selection.nnueId;
+                return nnueIdFallback;
             }
         },
         [manager, storage, validateNnueHeader, onDownloadComplete],
+    );
+
+    /**
+     * nnueId から ResolvedNnue を作成するヘルパー
+     */
+    const createResolvedNnue = useCallback(
+        async (nnueId: string): Promise<ResolvedNnue> => {
+            if (!storage) {
+                return { nnueId };
+            }
+            const meta = await storage.getMeta(nnueId);
+            return {
+                nnueId,
+                fvScale: meta?.fvScale,
+            };
+        },
+        [storage],
+    );
+
+    /**
+     * NNUE を解決する
+     *
+     * 1. presetKey が null → nnueId をそのまま返す（fvScale も取得）
+     * 2. presetKey が設定されている:
+     *    a. IndexedDB に該当 presetKey の NNUE があるか確認
+     *    b. あれば → その id と fvScale を返す
+     *    c. なければ → ダウンロード → 保存された id と fvScale を返す
+     *
+     * 同じ presetKey への同時リクエストは、最初のダウンロード完了を待って同じ結果を返す
+     */
+    const resolveNnue = useCallback(
+        async (selection: NnueSelection): Promise<ResolvedNnue | null> => {
+            // プリセット指定でない場合は nnueId をそのまま返す（fvScale も取得）
+            if (!selection.presetKey) {
+                if (!selection.nnueId) {
+                    return null;
+                }
+                return createResolvedNnue(selection.nnueId);
+            }
+
+            // storage がない場合は nnueId にフォールバック
+            if (!storage) {
+                console.warn("NNUE storage is not available, falling back to nnueId");
+                if (!selection.nnueId) {
+                    return null;
+                }
+                return { nnueId: selection.nnueId };
+            }
+
+            const presetKey = selection.presetKey;
+
+            // IndexedDB に該当 presetKey の NNUE があるか確認
+            const existing = await storage.listByPresetKey(presetKey);
+            if (existing.length > 0) {
+                // 最新の作成日時のものを返す
+                const sorted = [...existing].sort((a, b) => b.createdAt - a.createdAt);
+                const meta = sorted[0];
+                return {
+                    nnueId: meta.id,
+                    fvScale: meta.fvScale,
+                };
+            }
+
+            // manifest がない場合は nnueId にフォールバック
+            if (!manager) {
+                console.warn("Preset manager is not available, falling back to nnueId");
+                if (!selection.nnueId) {
+                    return null;
+                }
+                return { nnueId: selection.nnueId };
+            }
+
+            // 既に同じ presetKey のダウンロードが進行中なら、その Promise を待つ
+            const pendingDownloads = pendingDownloadsRef.current;
+            const existingPromise = pendingDownloads.get(presetKey);
+            if (existingPromise) {
+                const nnueId = await existingPromise;
+                if (!nnueId) {
+                    return null;
+                }
+                return createResolvedNnue(nnueId);
+            }
+
+            // 新しいダウンロードを開始
+            const downloadPromise = executeDownload(presetKey, selection.nnueId).finally(() => {
+                // ダウンロード完了後に Map から削除
+                pendingDownloads.delete(presetKey);
+            });
+            pendingDownloads.set(presetKey, downloadPromise);
+
+            const nnueId = await downloadPromise;
+            if (!nnueId) {
+                return null;
+            }
+            return createResolvedNnue(nnueId);
+        },
+        [manager, storage, executeDownload, createResolvedNnue],
     );
 
     const clearError = useCallback(() => {

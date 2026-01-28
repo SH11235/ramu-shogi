@@ -25,6 +25,8 @@ interface NnueListItemProps {
     selectable?: boolean;
     /** 表示名変更時のコールバック（指定時、インライン編集が有効になる） */
     onDisplayNameChange?: (newName: string) => Promise<void>;
+    /** FV_SCALE変更時のコールバック（指定時、インライン編集が有効になる） */
+    onFvScaleChange?: (fvScale: number | undefined) => Promise<void>;
 }
 
 function formatSize(bytes: number): string {
@@ -64,19 +66,27 @@ export function NnueListItem({
     name,
     selectable = true,
     onDisplayNameChange,
+    onFvScaleChange,
 }: NnueListItemProps): ReactElement {
     const isPreset = meta.source === "preset";
     const canDelete = showDelete && onDelete;
     const canEdit = !isPreset && onDisplayNameChange;
+    const canEditFvScale = onFvScaleChange;
     const inputId = useId();
     const editInputRef = useRef<HTMLInputElement>(null);
+    const fvScaleInputRef = useRef<HTMLInputElement>(null);
     const validationStatus = getValidationStatus(meta);
     const architectureLabel = getArchitectureLabel(meta);
 
-    // 編集状態
+    // 表示名編集状態
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(meta.displayName);
     const [isSaving, setIsSaving] = useState(false);
+
+    // FV_SCALE編集状態
+    const [isEditingFvScale, setIsEditingFvScale] = useState(false);
+    const [fvScaleValue, setFvScaleValue] = useState(meta.fvScale?.toString() ?? "");
+    const [isSavingFvScale, setIsSavingFvScale] = useState(false);
 
     const startEditing = useCallback(() => {
         if (!canEdit || disabled) return;
@@ -119,6 +129,56 @@ export function NnueListItem({
             }
         },
         [saveDisplayName, cancelEditing],
+    );
+
+    // FV_SCALE編集関連
+    const startEditingFvScale = useCallback(() => {
+        if (!canEditFvScale || disabled) return;
+        setFvScaleValue(meta.fvScale?.toString() ?? "");
+        setIsEditingFvScale(true);
+        setTimeout(() => fvScaleInputRef.current?.select(), 0);
+    }, [canEditFvScale, disabled, meta.fvScale]);
+
+    const cancelEditingFvScale = useCallback(() => {
+        setIsEditingFvScale(false);
+        setFvScaleValue(meta.fvScale?.toString() ?? "");
+    }, [meta.fvScale]);
+
+    const saveFvScale = useCallback(async () => {
+        if (!onFvScaleChange) return;
+        const trimmed = fvScaleValue.trim();
+        const newValue = trimmed === "" ? undefined : Number.parseInt(trimmed, 10);
+        // 値が変わっていない場合はキャンセル
+        if (newValue === meta.fvScale) {
+            cancelEditingFvScale();
+            return;
+        }
+        // 無効な値の場合はキャンセル
+        if (trimmed !== "" && (Number.isNaN(newValue) || newValue! < 0 || newValue! > 100)) {
+            cancelEditingFvScale();
+            return;
+        }
+        setIsSavingFvScale(true);
+        try {
+            await onFvScaleChange(newValue);
+            setIsEditingFvScale(false);
+        } catch {
+            // エラーは親コンポーネントで処理される
+        } finally {
+            setIsSavingFvScale(false);
+        }
+    }, [onFvScaleChange, fvScaleValue, meta.fvScale, cancelEditingFvScale]);
+
+    const handleFvScaleKeyDown = useCallback(
+        (e: React.KeyboardEvent) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                void saveFvScale();
+            } else if (e.key === "Escape") {
+                cancelEditingFvScale();
+            }
+        },
+        [saveFvScale, cancelEditingFvScale],
     );
 
     // 選択機能が無効な場合のスタイル
@@ -297,6 +357,62 @@ export function NnueListItem({
                                     アーキテクチャ: {architectureLabel}
                                 </div>
                             )}
+                            {/* FV_SCALE 表示・編集 */}
+                            {canEditFvScale && (
+                                <div
+                                    style={{
+                                        marginTop: "4px",
+                                        fontSize: "12px",
+                                        color: "hsl(var(--muted-foreground, 0 0% 45%))",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "4px",
+                                    }}
+                                >
+                                    <span>FV_SCALE:</span>
+                                    {isEditingFvScale ? (
+                                        <Input
+                                            ref={fvScaleInputRef}
+                                            type="number"
+                                            min={0}
+                                            max={100}
+                                            value={fvScaleValue}
+                                            onChange={(e) => setFvScaleValue(e.target.value)}
+                                            onBlur={() => void saveFvScale()}
+                                            onKeyDown={handleFvScaleKeyDown}
+                                            disabled={isSavingFvScale}
+                                            className="h-6 w-16 text-xs"
+                                            onClick={(e) => e.stopPropagation()}
+                                        />
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                startEditingFvScale();
+                                            }}
+                                            disabled={disabled}
+                                            style={{
+                                                background: "none",
+                                                border: "none",
+                                                padding: "2px 4px",
+                                                cursor: disabled ? "not-allowed" : "pointer",
+                                                borderRadius: "4px",
+                                                fontSize: "12px",
+                                                color:
+                                                    meta.fvScale !== undefined
+                                                        ? "hsl(var(--foreground))"
+                                                        : "hsl(var(--muted-foreground, 0 0% 45%))",
+                                            }}
+                                            className="hover:bg-muted/50"
+                                            title="クリックして編集"
+                                        >
+                                            {meta.fvScale !== undefined ? meta.fvScale : "自動"}
+                                        </button>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </label>
                 </>
@@ -399,6 +515,60 @@ export function NnueListItem({
                             }}
                         >
                             アーキテクチャ: {architectureLabel}
+                        </div>
+                    )}
+                    {/* FV_SCALE 表示・編集 */}
+                    {canEditFvScale && (
+                        <div
+                            style={{
+                                marginTop: "4px",
+                                fontSize: "12px",
+                                color: "hsl(var(--muted-foreground, 0 0% 45%))",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "4px",
+                            }}
+                        >
+                            <span>FV_SCALE:</span>
+                            {isEditingFvScale ? (
+                                <Input
+                                    ref={fvScaleInputRef}
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    value={fvScaleValue}
+                                    onChange={(e) => setFvScaleValue(e.target.value)}
+                                    onBlur={() => void saveFvScale()}
+                                    onKeyDown={handleFvScaleKeyDown}
+                                    disabled={isSavingFvScale}
+                                    className="h-6 w-16 text-xs"
+                                />
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        startEditingFvScale();
+                                    }}
+                                    disabled={disabled}
+                                    style={{
+                                        background: "none",
+                                        border: "none",
+                                        padding: "2px 4px",
+                                        cursor: disabled ? "not-allowed" : "pointer",
+                                        borderRadius: "4px",
+                                        fontSize: "12px",
+                                        color:
+                                            meta.fvScale !== undefined
+                                                ? "hsl(var(--foreground))"
+                                                : "hsl(var(--muted-foreground, 0 0% 45%))",
+                                    }}
+                                    className="hover:bg-muted/50"
+                                    title="クリックして編集"
+                                >
+                                    {meta.fvScale !== undefined ? meta.fvScale : "自動"}
+                                </button>
+                            )}
                         </div>
                     )}
                 </div>

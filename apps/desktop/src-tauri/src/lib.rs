@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use rshogi_core::movegen::{generate_legal_all_with_pass, generate_legal_with_pass, MoveList};
+use rshogi_core::nnue::set_fv_scale_override;
 use rshogi_core::position::{Position, SFEN_HIRATE};
 use rshogi_core::search::{
     LimitsType, Search, SearchInfo, SearchResult, SkillOptions, TimeOptions,
@@ -533,6 +534,11 @@ fn apply_engine_option(
         "Threads" => {
             if let Some(v) = value_as_usize(value) {
                 inner.options.num_threads = v.max(1);
+            }
+        }
+        "FV_SCALE" => {
+            if let Some(v) = value_as_i32(value) {
+                set_fv_scale_override(v);
             }
         }
         _ => {

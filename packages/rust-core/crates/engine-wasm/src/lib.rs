@@ -8,7 +8,7 @@ use std::io::ErrorKind;
 
 use rshogi_core::eval::set_eval_hash_enabled;
 use rshogi_core::movegen::{generate_legal_all_with_pass, MoveList};
-use rshogi_core::nnue::{detect_format, init_nnue_from_bytes};
+use rshogi_core::nnue::{detect_format, init_nnue_from_bytes, set_fv_scale_override};
 use rshogi_core::position::{Position, SFEN_HIRATE};
 use rshogi_core::search::{LimitsType, Search, SearchInfo, SearchResult, SkillOptions};
 use rshogi_core::types::json::BoardStateJson;
@@ -877,6 +877,11 @@ pub fn set_option(name: &str, value: Option<JsValue>) -> Result<(), JsValue> {
             "MaxMovesToDraw" => {
                 if let Some(v) = as_i64(&value) {
                     engine.search.set_max_moves_to_draw(v as i32);
+                }
+            }
+            "FV_SCALE" => {
+                if let Some(v) = as_i64(&value) {
+                    set_fv_scale_override(v as i32);
                 }
             }
             other => {
