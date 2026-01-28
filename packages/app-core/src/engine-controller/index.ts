@@ -675,10 +675,13 @@ export function createEngineController(
             if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
                 const resolved = await dependencies.resolveNnue(selection);
                 if (resolved) {
-                    await client.loadNnue(resolved.nnueId);
-                    if (resolved.fvScale !== undefined) {
-                        await client.setOption("FV_SCALE", resolved.fvScale);
+                    if (resolved.fvScale === undefined) {
+                        throw new Error(
+                            `FV_SCALE が設定されていません。NNUE ファイルの設定で FV_SCALE を指定してください。`,
+                        );
                     }
+                    await client.loadNnue(resolved.nnueId);
+                    await client.setOption("FV_SCALE", resolved.fvScale);
                 }
             }
 
@@ -751,10 +754,13 @@ export function createEngineController(
                 if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
                     const resolved = await dependencies.resolveNnue(selection);
                     if (resolved) {
-                        await client.loadNnue(resolved.nnueId);
-                        if (resolved.fvScale !== undefined) {
-                            await client.setOption("FV_SCALE", resolved.fvScale);
+                        if (resolved.fvScale === undefined) {
+                            throw new Error(
+                                `FV_SCALE が設定されていません。NNUE ファイルの設定で FV_SCALE を指定してください。`,
+                            );
                         }
+                        await client.loadNnue(resolved.nnueId);
+                        await client.setOption("FV_SCALE", resolved.fvScale);
                     }
                 }
 
@@ -950,10 +956,13 @@ export function createEngineController(
                 if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
                     const resolved = await dependencies.resolveNnue(selection);
                     if (resolved) {
-                        await client.loadNnue(resolved.nnueId);
-                        if (resolved.fvScale !== undefined) {
-                            await client.setOption("FV_SCALE", resolved.fvScale);
+                        if (resolved.fvScale === undefined) {
+                            throw new Error(
+                                `FV_SCALE が設定されていません。NNUE ファイルの設定で FV_SCALE を指定してください。`,
+                            );
                         }
+                        await client.loadNnue(resolved.nnueId);
+                        await client.setOption("FV_SCALE", resolved.fvScale);
                     }
                 }
             } catch (error) {
@@ -1096,10 +1105,15 @@ export function createEngineController(
             }
         },
         setNnueSelection: (side, selection) => {
+            const prev = context.nnueSelections[side];
             context = {
                 ...context,
                 nnueSelections: { ...context.nnueSelections, [side]: selection },
             };
+            // NNUE選択が変更された場合、エンジンを破棄して次回の対局開始時に再初期化させる
+            if (prev?.presetKey !== selection?.presetKey || prev?.nnueId !== selection?.nnueId) {
+                void disposeEngineForSide(side);
+            }
         },
         setAnalysisNnueSelection: (selection) => {
             const prev = context.nnueSelections.analysis;

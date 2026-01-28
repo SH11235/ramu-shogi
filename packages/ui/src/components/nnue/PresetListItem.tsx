@@ -204,21 +204,43 @@ export function PresetListItem({
         </div>
     );
 
-    // ダウンロードボタン
-    const downloadButton = (status === "not-downloaded" || status === "update-available") && (
-        <Button
-            variant={status === "update-available" ? "outline" : "default"}
-            size="sm"
-            onClick={handleDownload}
-            disabled={isDownloading || disabled}
-            style={{ flexShrink: 0 }}
+    // ファイルサイズが大きい場合（50MB以上）は警告を表示
+    const isLargeFile = config.size >= 50 * 1024 * 1024;
+
+    // ダウンロードボタンと警告
+    const downloadSection = (status === "not-downloaded" || status === "update-available") && (
+        <div
+            style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}
         >
-            {isDownloading
-                ? "ダウンロード中..."
-                : status === "update-available"
-                  ? "更新"
-                  : "ダウンロード"}
-        </Button>
+            {isLargeFile && !isDownloading && (
+                <span
+                    style={{
+                        fontSize: "11px",
+                        fontWeight: 500,
+                        color: "hsl(25, 95%, 45%)",
+                        backgroundColor: "hsl(25, 95%, 45%, 0.1)",
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                        whiteSpace: "nowrap",
+                    }}
+                >
+                    ⚠ Wi-Fi推奨
+                </span>
+            )}
+            <Button
+                variant={status === "update-available" ? "outline" : "default"}
+                size="sm"
+                onClick={handleDownload}
+                disabled={isDownloading || disabled}
+                style={{ flexShrink: 0 }}
+            >
+                {isDownloading
+                    ? "ダウンロード中..."
+                    : status === "update-available"
+                      ? "更新"
+                      : "ダウンロード"}
+            </Button>
+        </div>
     );
 
     // ダウンロード進捗
@@ -248,7 +270,7 @@ export function PresetListItem({
             <div style={baseStyle}>
                 <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                     {contentSection}
-                    {downloadButton}
+                    {downloadSection}
                 </div>
                 {progressSection}
             </div>
@@ -276,7 +298,7 @@ export function PresetListItem({
                     }}
                 />
                 {contentSection}
-                {downloadButton}
+                {downloadSection}
             </label>
             {progressSection}
         </div>

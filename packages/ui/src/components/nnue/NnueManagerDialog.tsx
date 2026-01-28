@@ -4,6 +4,7 @@ import { usePresetManager } from "../../hooks/usePresetManager";
 import { Button } from "../button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../dialog";
 import { NnueErrorAlert } from "./NnueErrorAlert";
+import { NnueFvScaleInputDialog } from "./NnueFvScaleInputDialog";
 import { NnueImportArea } from "./NnueImportArea";
 import { NnueListItem } from "./NnueListItem";
 import { NnueProgressOverlay } from "./NnueProgressOverlay";
@@ -19,6 +20,12 @@ interface NnueManagerDialogProps {
     manifestUrl?: string;
     /** Desktop 用: ファイル選択ダイアログを開いてパスを取得するコールバック */
     onRequestFilePath?: () => Promise<string | null>;
+    /** ダイアログを開いた理由（表示用メッセージ） */
+    openReason?: string;
+    /** 理由メッセージをクリアするコールバック */
+    onClearOpenReason?: () => void;
+    /** 対局中かどうか（対局中は削除禁止） */
+    isMatchActive?: boolean;
 }
 
 /**
@@ -82,6 +89,9 @@ export function NnueManagerDialog({
     onOpenChange,
     manifestUrl,
     onRequestFilePath,
+    openReason,
+    onClearOpenReason,
+    isMatchActive = false,
 }: NnueManagerDialogProps): ReactElement {
     const {
         nnueList,
@@ -117,36 +127,54 @@ export function NnueManagerDialog({
 
     const [isImporting, setIsImporting] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    // FV_SCALE 入力待ちのファイル/パス
+    const [pendingFile, setPendingFile] = useState<File | null>(null);
+    const [pendingPath, setPendingPath] = useState<string | null>(null);
 
-    const handleFileSelect = useCallback(
-        async (file: File) => {
+    // ファイル選択時: FV_SCALE 入力ダイアログを表示
+    const handleFileSelect = useCallback((file: File) => {
+        setPendingFile(file);
+    }, []);
+
+    // Desktop 用: ファイルダイアログでパスを取得して FV_SCALE 入力ダイアログを表示
+    const handleRequestFilePath = useCallback(async () => {
+        if (!onRequestFilePath) return;
+        try {
+            const filePath = await onRequestFilePath();
+            if (filePath) {
+                setPendingPath(filePath);
+            }
+        } catch {
+            // エラーは useNnueStorage で管理される
+        }
+    }, [onRequestFilePath]);
+
+    // FV_SCALE 確定時: 実際にインポート
+    const handleFvScaleConfirm = useCallback(
+        async (fvScale: number) => {
             setIsImporting(true);
             try {
-                await importFromFile(file);
+                if (pendingFile) {
+                    await importFromFile(pendingFile, fvScale);
+                    setPendingFile(null);
+                } else if (pendingPath) {
+                    await importFromPath(pendingPath, fvScale);
+                    setPendingPath(null);
+                }
             } catch {
                 // エラーは useNnueStorage で管理される
             } finally {
                 setIsImporting(false);
             }
         },
-        [importFromFile],
+        [pendingFile, pendingPath, importFromFile, importFromPath],
     );
 
-    // Desktop 用: ファイルダイアログでパスを取得してインポート
-    const handleRequestFilePath = useCallback(async () => {
-        if (!onRequestFilePath) return;
-        setIsImporting(true);
-        try {
-            const filePath = await onRequestFilePath();
-            if (filePath) {
-                await importFromPath(filePath);
-            }
-        } catch {
-            // エラーは useNnueStorage で管理される
-        } finally {
-            setIsImporting(false);
-        }
-    }, [onRequestFilePath, importFromPath]);
+    // FV_SCALE 入力キャンセル
+    const handleFvScaleCancel = useCallback(() => {
+        setPendingFile(null);
+        setPendingPath(null);
+    }, []);
 
     const handleDelete = useCallback(
         async (id: string) => {
@@ -187,6 +215,8 @@ export function NnueManagerDialog({
 
     const error = storageError ?? presetError;
     const isOperationInProgress = isImporting || deletingId !== null || downloadingKey !== null;
+    const hasPendingImport = pendingFile !== null || pendingPath !== null;
+    const pendingFileName = pendingFile?.name ?? pendingPath?.split(/[/\\]/).pop() ?? "";
 
     // NNUE ファイルの合計サイズを計算
     const totalNnueSize = useMemo(
@@ -219,6 +249,52 @@ export function NnueManagerDialog({
                         minHeight: "200px",
                     }}
                 >
+                    {/* 開いた理由（対局開始時にNNUE未ダウンロードだった場合など） */}
+                    {openReason && (
+                        <div
+                            style={{
+                                padding: "12px",
+                                borderRadius: "6px",
+                                backgroundColor: "hsl(var(--warning, 38 92% 50%) / 0.1)",
+                                border: "1px solid hsl(var(--warning, 38 92% 50%) / 0.3)",
+                                display: "flex",
+                                alignItems: "flex-start",
+                                gap: "8px",
+                            }}
+                        >
+                            <span style={{ fontSize: "16px", lineHeight: 1 }}>⚠️</span>
+                            <div style={{ flex: 1 }}>
+                                <p
+                                    style={{
+                                        margin: 0,
+                                        fontSize: "13px",
+                                        color: "hsl(var(--foreground))",
+                                    }}
+                                >
+                                    {openReason}
+                                </p>
+                            </div>
+                            {onClearOpenReason && (
+                                <button
+                                    type="button"
+                                    onClick={onClearOpenReason}
+                                    style={{
+                                        background: "none",
+                                        border: "none",
+                                        cursor: "pointer",
+                                        padding: "2px",
+                                        color: "hsl(var(--muted-foreground))",
+                                        fontSize: "14px",
+                                        lineHeight: 1,
+                                    }}
+                                    aria-label="メッセージを閉じる"
+                                >
+                                    ✕
+                                </button>
+                            )}
+                        </div>
+                    )}
+
                     {/* エラー表示 */}
                     <NnueErrorAlert error={error} onClose={handleClearError} />
 
@@ -243,6 +319,9 @@ export function NnueManagerDialog({
                                     onDelete={() => handleDelete(meta.id)}
                                     isDeleting={deletingId === meta.id}
                                     disabled={isOperationInProgress}
+                                    deleteDisabledReason={
+                                        isMatchActive ? "対局中は削除できません" : undefined
+                                    }
                                     onDisplayNameChange={(newName) =>
                                         handleDisplayNameChange(meta.id, newName)
                                     }
@@ -347,6 +426,14 @@ export function NnueManagerDialog({
                     </Button>
                 </DialogFooter>
             </DialogContent>
+
+            {/* FV_SCALE 入力ダイアログ */}
+            <NnueFvScaleInputDialog
+                open={hasPendingImport}
+                fileName={pendingFileName}
+                onConfirm={handleFvScaleConfirm}
+                onCancel={handleFvScaleCancel}
+            />
         </Dialog>
     );
 }

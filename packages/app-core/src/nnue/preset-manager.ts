@@ -230,6 +230,7 @@ export async function downloadPreset(
                   versionHeader: preset.format.versionHeader ?? "",
               }
             : undefined,
+        fvScale: preset.recommendedFvScale,
     };
 
     // 保存

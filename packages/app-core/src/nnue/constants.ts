@@ -7,12 +7,11 @@
  * 悪意のあるファイルや誤アップロード対策
  *
  * 現在の一般的な NNUE サイズ:
- * - HalfKA 1024: ~72MB
- * - LayerStacks: ~100MB
- *
- * 150MB は将来の大型モデルに余裕を持たせた値
+ * - HalfKA_hm 512: ~72MB
+ * - HalfKA-1024-8-96: 270.5 MB
+ * - HalfKA_hm-1024-8-96: 143.2 MB
  */
-export const NNUE_MAX_SIZE_BYTES = 150 * 1024 * 1024; // 150MB
+export const NNUE_MAX_SIZE_BYTES = 300 * 1024 * 1024; // 300MB
 
 /**
  * 進捗通知のスロットリング間隔（ミリ秒）

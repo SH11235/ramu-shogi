@@ -19,6 +19,8 @@ interface NnueListItemProps {
     isDeleting?: boolean;
     /** 無効化 */
     disabled?: boolean;
+    /** 削除が無効な理由（対局中など） */
+    deleteDisabledReason?: string;
     /** ラジオグループ名（選択機能使用時に必要） */
     name?: string;
     /** 選択機能を有効にするか（デフォルト: true） */
@@ -63,6 +65,7 @@ export function NnueListItem({
     showDelete = true,
     isDeleting = false,
     disabled = false,
+    deleteDisabledReason,
     name,
     selectable = true,
     onDisplayNameChange,
@@ -154,7 +157,7 @@ export function NnueListItem({
             return;
         }
         // 無効な値の場合はキャンセル
-        if (trimmed !== "" && (Number.isNaN(newValue) || newValue! < 0 || newValue! > 100)) {
+        if (newValue !== undefined && (Number.isNaN(newValue) || newValue < 0 || newValue > 100)) {
             cancelEditingFvScale();
             return;
         }
@@ -403,12 +406,14 @@ export function NnueListItem({
                                                 color:
                                                     meta.fvScale !== undefined
                                                         ? "hsl(var(--foreground))"
-                                                        : "hsl(var(--muted-foreground, 0 0% 45%))",
+                                                        : "hsl(var(--destructive, 0 84% 60%))",
                                             }}
                                             className="hover:bg-muted/50"
                                             title="クリックして編集"
                                         >
-                                            {meta.fvScale !== undefined ? meta.fvScale : "自動"}
+                                            {meta.fvScale !== undefined
+                                                ? meta.fvScale
+                                                : "未設定（要設定）"}
                                         </button>
                                     )}
                                 </div>
@@ -561,12 +566,12 @@ export function NnueListItem({
                                         color:
                                             meta.fvScale !== undefined
                                                 ? "hsl(var(--foreground))"
-                                                : "hsl(var(--muted-foreground, 0 0% 45%))",
+                                                : "hsl(var(--destructive, 0 84% 60%))",
                                     }}
                                     className="hover:bg-muted/50"
                                     title="クリックして編集"
                                 >
-                                    {meta.fvScale !== undefined ? meta.fvScale : "自動"}
+                                    {meta.fvScale !== undefined ? meta.fvScale : "未設定（要設定）"}
                                 </button>
                             )}
                         </div>
@@ -583,9 +588,10 @@ export function NnueListItem({
                         e.stopPropagation();
                         onDelete();
                     }}
-                    disabled={isDeleting || disabled}
+                    disabled={isDeleting || disabled || !!deleteDisabledReason}
                     style={{ flexShrink: 0 }}
                     aria-label={`${meta.displayName} を削除`}
+                    title={deleteDisabledReason}
                 >
                     {isDeleting ? "..." : "削除"}
                 </Button>

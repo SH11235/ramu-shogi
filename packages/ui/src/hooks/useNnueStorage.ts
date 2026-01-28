@@ -18,9 +18,9 @@ interface UseNnueStorageReturn {
     /** 一覧を再取得 */
     refreshList: () => Promise<void>;
     /** ファイルから NNUE をインポート（capabilities.supportsFileImport === true の場合） */
-    importFromFile: (file: File) => Promise<NnueMeta>;
+    importFromFile: (file: File, fvScale: number) => Promise<NnueMeta>;
     /** パスから NNUE をインポート（capabilities.supportsPathImport === true の場合） */
-    importFromPath: (srcPath: string, displayName?: string) => Promise<NnueMeta>;
+    importFromPath: (srcPath: string, fvScale: number, displayName?: string) => Promise<NnueMeta>;
     /** NNUE を削除 */
     deleteNnue: (id: string) => Promise<void>;
     /** NNUE の表示名を更新 */
@@ -73,7 +73,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
     }, [contextRefreshList]);
 
     const importFromFile = useCallback(
-        async (file: File): Promise<NnueMeta> => {
+        async (file: File, fvScale: number): Promise<NnueMeta> => {
             if (!storage) {
                 throw new NnueError(
                     "NNUE_STORAGE_FAILED",
@@ -131,10 +131,18 @@ export function useNnueStorage(): UseNnueStorageReturn {
                 const existing = await storage.listByContentHash(hash);
                 if (existing.length > 0) {
                     const existingMeta = existing[0];
+                    // format や fvScale が更新される場合は更新
+                    const updates: Partial<NnueMeta> = {};
                     if (format && !existingMeta.format) {
-                        await storage.updateMeta(existingMeta.id, { format });
+                        updates.format = format;
+                    }
+                    if (existingMeta.fvScale !== fvScale) {
+                        updates.fvScale = fvScale;
+                    }
+                    if (Object.keys(updates).length > 0) {
+                        await storage.updateMeta(existingMeta.id, updates);
                         await refreshList();
-                        return { ...existingMeta, format };
+                        return { ...existingMeta, ...updates };
                     }
                     // 既存のものを返す（重複保存しない）
                     return existingMeta;
@@ -154,6 +162,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
                     createdAt: Date.now(),
                     verified: false,
                     format,
+                    fvScale,
                 };
 
                 // 保存
@@ -179,7 +188,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
     );
 
     const importFromPath = useCallback(
-        async (srcPath: string, displayName?: string): Promise<NnueMeta> => {
+        async (srcPath: string, fvScale: number, displayName?: string): Promise<NnueMeta> => {
             if (!storage) {
                 throw new NnueError(
                     "NNUE_STORAGE_FAILED",
@@ -198,8 +207,10 @@ export function useNnueStorage(): UseNnueStorageReturn {
             setLocalError(null);
             try {
                 const meta = await storage.importFromPath(srcPath, displayName);
+                // fvScale を設定
+                await storage.updateMeta(meta.id, { fvScale });
                 await refreshList();
-                return meta;
+                return { ...meta, fvScale };
             } catch (e) {
                 const err =
                     e instanceof NnueError

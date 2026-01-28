@@ -27,7 +27,6 @@ import { useNnueStorage } from "../hooks/useNnueStorage";
 import { usePresetManager } from "../hooks/usePresetManager";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./dialog";
 import { EngineRestartingOverlay } from "./nnue/EngineRestartingOverlay";
-import { NnueDownloadOverlay } from "./nnue/NnueDownloadOverlay";
 import { NnueManagerDialog } from "./nnue/NnueManagerDialog";
 import type { ShogiBoardCell } from "./shogi-board";
 import { ShogiBoard } from "./shogi-board";
@@ -458,6 +457,8 @@ export function ShogiMatch({
 
     // NNUE 管理ダイアログの状態
     const [isNnueManagerOpen, setIsNnueManagerOpen] = useState(false);
+    // NNUE 管理ダイアログを開いた理由（未ダウンロードエラー時など）
+    const [nnueManagerOpenReason, setNnueManagerOpenReason] = useState<string | null>(null);
 
     // 表示設定ダイアログの状態
     const [isDisplaySettingsOpen, setIsDisplaySettingsOpen] = useState(false);
@@ -561,16 +562,8 @@ export function ShogiMatch({
         refreshList: refreshNnueList,
     } = useNnueStorage();
 
-    // NNUE 遅延ローダー
-    const {
-        resolveNnue,
-        isDownloading: isNnueDownloading,
-        downloadProgress: nnueDownloadProgress,
-        downloadingPresetName,
-    } = useLazyNnueLoader({
-        manifestUrl,
-        onDownloadComplete: refreshNnueList,
-    });
+    // NNUE 解決フック（未ダウンロードのプリセットはエラーをスロー）
+    const { resolveNnue } = useLazyNnueLoader();
 
     // プリセット一覧を取得
     const { presets, isLoading: isPresetsLoading } = usePresetManager({
@@ -1478,6 +1471,26 @@ export function ShogiMatch({
             // （待った時にパス権が復元されるようにするため）
             navigation.reset(updatedPosition, startSfen);
             movesRef.current = [];
+        }
+
+        // 対局開始前に NNUE の存在確認を行う（未ダウンロードの場合はエラー）
+        try {
+            const nnuePreparations: Promise<unknown>[] = [];
+            if (sides.sente.role === "engine" && senteNnueSelection) {
+                nnuePreparations.push(resolveNnue(senteNnueSelection));
+            }
+            if (sides.gote.role === "engine" && goteNnueSelection) {
+                nnuePreparations.push(resolveNnue(goteNnueSelection));
+            }
+            if (nnuePreparations.length > 0) {
+                await Promise.all(nnuePreparations);
+            }
+        } catch (e) {
+            // NNUE未ダウンロードエラー → 評価関数ファイル管理を開いて理由を表示
+            const errorMessage = e instanceof Error ? e.message : "評価関数の準備に失敗しました";
+            setNnueManagerOpenReason(`対局を開始できません: ${errorMessage}`);
+            setIsNnueManagerOpen(true);
+            return;
         }
 
         // エンジン管理は useEngineManager フックが自動的に処理する
@@ -2749,13 +2762,6 @@ export function ShogiMatch({
 
                 <EngineRestartingOverlay visible={isEngineRestarting} />
 
-                {/* NNUE ダウンロード中オーバーレイ */}
-                <NnueDownloadOverlay
-                    visible={isNnueDownloading}
-                    progress={nnueDownloadProgress}
-                    presetName={downloadingPresetName}
-                />
-
                 {/* 勝敗表示ダイアログ */}
                 <GameResultDialog
                     result={gameResult}
@@ -2781,9 +2787,18 @@ export function ShogiMatch({
                 {/* NNUE ファイル管理ダイアログ */}
                 <NnueManagerDialog
                     open={isNnueManagerOpen}
-                    onOpenChange={setIsNnueManagerOpen}
+                    onOpenChange={(open) => {
+                        setIsNnueManagerOpen(open);
+                        // ダイアログを閉じたら理由もクリア
+                        if (!open) {
+                            setNnueManagerOpenReason(null);
+                        }
+                    }}
                     manifestUrl={manifestUrl}
                     onRequestFilePath={onRequestNnueFilePath}
+                    openReason={nnueManagerOpenReason ?? undefined}
+                    onClearOpenReason={() => setNnueManagerOpenReason(null)}
+                    isMatchActive={isMatchRunning || isPaused}
                 />
 
                 {/* 手の詳細ウィンドウ（ドラッグ移動可能） */}
