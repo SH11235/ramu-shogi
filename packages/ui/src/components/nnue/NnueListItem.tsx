@@ -397,6 +397,7 @@ export function NnueListItem({
                                         <>
                                             {meta.fvScale === undefined && (
                                                 <span
+                                                    role="img"
                                                     style={{
                                                         fontSize: "14px",
                                                         lineHeight: 1,
@@ -577,6 +578,7 @@ export function NnueListItem({
                                 <>
                                     {meta.fvScale === undefined && (
                                         <span
+                                            role="img"
                                             style={{
                                                 fontSize: "14px",
                                                 lineHeight: 1,
