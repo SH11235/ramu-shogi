@@ -152,6 +152,56 @@ function isSameTimeSettings(a: ClockSettings, b: ClockSettings): boolean {
     );
 }
 
+function normalizePassRightsCount(value: unknown, fallback: number): number {
+    if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+    if (value < 0) return fallback;
+    return Math.trunc(value);
+}
+
+function normalizePassRightsThreshold(value: unknown, fallback: number): number {
+    if (typeof value !== "number" || Number.isNaN(value)) return fallback;
+    if (value < 0) return fallback;
+    return value;
+}
+
+function normalizePassRightsSettings(
+    settings: PassRightsSettings | null | undefined,
+    defaults: PassRightsSettings,
+): PassRightsSettings {
+    if (!settings || typeof settings !== "object") {
+        return defaults;
+    }
+    const merged = { ...defaults, ...settings } as PassRightsSettings;
+    return {
+        enabled: typeof merged.enabled === "boolean" ? merged.enabled : defaults.enabled,
+        senteInitialCount: normalizePassRightsCount(
+            merged.senteInitialCount,
+            defaults.senteInitialCount,
+        ),
+        goteInitialCount: normalizePassRightsCount(
+            merged.goteInitialCount,
+            defaults.goteInitialCount,
+        ),
+        confirmDialogThresholdMs: normalizePassRightsThreshold(
+            merged.confirmDialogThresholdMs,
+            defaults.confirmDialogThresholdMs,
+        ),
+    };
+}
+
+function isSamePassRightsSettings(
+    a: PassRightsSettings,
+    b: PassRightsSettings | null | undefined,
+): boolean {
+    if (!b) return false;
+    return (
+        a.enabled === b.enabled &&
+        a.senteInitialCount === b.senteInitialCount &&
+        a.goteInitialCount === b.goteInitialCount &&
+        a.confirmDialogThresholdMs === b.confirmDialogThresholdMs
+    );
+}
+
 /**
  * パス権設定と棋譜からgetLegalMovesのオプションを生成するヘルパー関数
  *
@@ -416,10 +466,19 @@ export function ShogiMatch({
         return { ...DEFAULT_ANALYSIS_SETTINGS, ...storedAnalysisSettings };
     }, [storedAnalysisSettings]);
     // パス権設定
-    const [passRightsSettings, setPassRightsSettings] = useLocalStorage<PassRightsSettings>(
+    const [storedPassRightsSettings, setPassRightsSettings] = useLocalStorage<PassRightsSettings>(
         "shogi-pass-rights-settings",
         DEFAULT_PASS_RIGHTS_SETTINGS,
     );
+    const passRightsSettings = useMemo(
+        () => normalizePassRightsSettings(storedPassRightsSettings, DEFAULT_PASS_RIGHTS_SETTINGS),
+        [storedPassRightsSettings],
+    );
+    useEffect(() => {
+        if (!isSamePassRightsSettings(passRightsSettings, storedPassRightsSettings)) {
+            setPassRightsSettings(passRightsSettings);
+        }
+    }, [passRightsSettings, setPassRightsSettings, storedPassRightsSettings]);
     // PVプレビュー用のstate
     const [pvPreview, setPvPreview] = useState<{
         open: boolean;

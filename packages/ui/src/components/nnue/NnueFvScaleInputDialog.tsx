@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -18,15 +18,15 @@ interface NnueFvScaleInputDialogProps {
     /** インポート対象のファイル名 */
     fileName: string;
     /** 確定時のコールバック */
-    onConfirm: (fvScale: number) => void;
+    onConfirm: (fvScale: number, displayName: string) => void;
     /** キャンセル時のコールバック */
     onCancel: () => void;
 }
 
 /**
- * FV_SCALE 入力ダイアログ
+ * FV_SCALE と表示名の入力ダイアログ
  *
- * NNUE ファイルインポート時に FV_SCALE の入力を求める。
+ * NNUE ファイルインポート時に FV_SCALE と表示名の入力を求める。
  */
 export function NnueFvScaleInputDialog({
     open,
@@ -34,8 +34,20 @@ export function NnueFvScaleInputDialog({
     onConfirm,
     onCancel,
 }: NnueFvScaleInputDialogProps): ReactElement {
+    // FV_SCALE 入力
     const [value, setValue] = useState("");
     const [error, setError] = useState<string | null>(null);
+
+    // 表示名入力（デフォルト値: 拡張子を除去したファイル名）
+    const [displayName, setDisplayName] = useState("");
+
+    // ダイアログが開かれたときにデフォルト値を設定
+    useEffect(() => {
+        if (open) {
+            const defaultName = fileName.replace(/\.(nnue|bin)$/i, "");
+            setDisplayName(defaultName);
+        }
+    }, [open, fileName]);
 
     const handleValueChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const inputValue = e.target.value;
@@ -47,23 +59,34 @@ export function NnueFvScaleInputDialog({
     }, []);
 
     const handleConfirm = useCallback(() => {
+        // 表示名のバリデーション
+        const trimmedName = displayName.trim();
+        if (trimmedName === "") {
+            setError("表示名を入力してください");
+            return;
+        }
+
+        // FV_SCALE のバリデーション
         const num = Number(value);
         if (value === "" || Number.isNaN(num)) {
-            setError("数値を入力してください");
+            setError("FV_SCALE を入力してください");
             return;
         }
         if (!Number.isInteger(num) || num < 1 || num > 100) {
-            setError("1〜100 の整数を入力してください");
+            setError("FV_SCALE は 1〜100 の整数を入力してください");
             return;
         }
-        onConfirm(num);
+
+        onConfirm(num, trimmedName);
         setValue("");
+        setDisplayName("");
         setError(null);
-    }, [value, onConfirm]);
+    }, [value, displayName, onConfirm]);
 
     const handleCancel = useCallback(() => {
         onCancel();
         setValue("");
+        setDisplayName("");
         setError(null);
     }, [onCancel]);
 
@@ -81,43 +104,84 @@ export function NnueFvScaleInputDialog({
         <AlertDialog open={open} onOpenChange={(isOpen) => !isOpen && handleCancel()}>
             <AlertDialogContent>
                 <AlertDialogHeader>
-                    <AlertDialogTitle>FV_SCALE の設定</AlertDialogTitle>
+                    <AlertDialogTitle>評価関数のインポート</AlertDialogTitle>
                     <AlertDialogDescription>
-                        「{fileName}」をインポートするには FV_SCALE の設定が必要です。
-                        <br />
-                        FV_SCALE は NNUE ファイルの開発者が公開している値を入力してください。
-                        正しい値が不明な場合はインポートできません。
+                        「{fileName}」をインポートします。表示名と FV_SCALE を設定してください。
                     </AlertDialogDescription>
                 </AlertDialogHeader>
-                <div style={{ padding: "8px 0" }}>
-                    <label
-                        htmlFor="fv-scale-input"
-                        style={{
-                            display: "block",
-                            fontSize: "14px",
-                            fontWeight: 500,
-                            marginBottom: "4px",
-                        }}
-                    >
-                        FV_SCALE (1〜100)
-                    </label>
-                    <Input
-                        id="fv-scale-input"
-                        type="number"
-                        min={1}
-                        max={100}
-                        step={1}
-                        value={value}
-                        onChange={handleValueChange}
-                        onKeyDown={handleKeyDown}
-                        placeholder="例: 16, 24"
-                    />
+                <div
+                    style={{
+                        padding: "8px 0",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "16px",
+                    }}
+                >
+                    {/* 表示名入力 */}
+                    <div>
+                        <label
+                            htmlFor="display-name-input"
+                            style={{
+                                display: "block",
+                                fontSize: "14px",
+                                fontWeight: 500,
+                                marginBottom: "4px",
+                            }}
+                        >
+                            表示名
+                        </label>
+                        <Input
+                            id="display-name-input"
+                            type="text"
+                            value={displayName}
+                            onChange={(e) => {
+                                setDisplayName(e.target.value);
+                                setError(null);
+                            }}
+                            placeholder="例: 水匠5"
+                        />
+                    </div>
+
+                    {/* FV_SCALE入力 */}
+                    <div>
+                        <label
+                            htmlFor="fv-scale-input"
+                            style={{
+                                display: "block",
+                                fontSize: "14px",
+                                fontWeight: 500,
+                                marginBottom: "4px",
+                            }}
+                        >
+                            FV_SCALE (1〜100)
+                        </label>
+                        <Input
+                            id="fv-scale-input"
+                            type="number"
+                            min={1}
+                            max={100}
+                            step={1}
+                            value={value}
+                            onChange={handleValueChange}
+                            onKeyDown={handleKeyDown}
+                            placeholder="例: 16, 24"
+                        />
+                        <p
+                            style={{
+                                fontSize: "12px",
+                                color: "hsl(var(--muted-foreground))",
+                                marginTop: "4px",
+                            }}
+                        >
+                            FV_SCALE は NNUE ファイルの開発者が公開している値を入力してください
+                        </p>
+                    </div>
+
                     {error && (
                         <p
                             style={{
                                 color: "hsl(var(--destructive))",
                                 fontSize: "12px",
-                                marginTop: "4px",
                             }}
                         >
                             {error}

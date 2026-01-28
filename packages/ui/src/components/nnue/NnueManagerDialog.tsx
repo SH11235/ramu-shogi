@@ -4,6 +4,7 @@ import { usePresetManager } from "../../hooks/usePresetManager";
 import { Button } from "../button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../dialog";
 import { NnueErrorAlert } from "./NnueErrorAlert";
+import { NnueFreeResourcesInfo } from "./NnueFreeResourcesInfo";
 import { NnueFvScaleInputDialog } from "./NnueFvScaleInputDialog";
 import { NnueImportArea } from "./NnueImportArea";
 import { NnueListItem } from "./NnueListItem";
@@ -151,9 +152,9 @@ export function NnueManagerDialog({
         }
     }, [onRequestFilePath]);
 
-    // FV_SCALE 確定時: 実際にインポート
+    // FV_SCALE と表示名確定時: 実際にインポート
     const handleFvScaleConfirm = useCallback(
-        async (fvScale: number) => {
+        async (fvScale: number, displayName: string) => {
             // 先に pending をクリアしてダイアログを閉じる（二重実行を防止）
             const fileToImport = pendingFile;
             const pathToImport = pendingPath;
@@ -163,9 +164,9 @@ export function NnueManagerDialog({
             setIsImporting(true);
             try {
                 if (fileToImport) {
-                    await importFromFile(fileToImport, fvScale);
+                    await importFromFile(fileToImport, fvScale, displayName);
                 } else if (pathToImport) {
-                    await importFromPath(pathToImport, fvScale);
+                    await importFromPath(pathToImport, fvScale, displayName);
                 }
             } catch {
                 // エラーは useNnueStorage で管理される

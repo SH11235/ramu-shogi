@@ -18,7 +18,7 @@ interface UseNnueStorageReturn {
     /** 一覧を再取得 */
     refreshList: () => Promise<void>;
     /** ファイルから NNUE をインポート（capabilities.supportsFileImport === true の場合） */
-    importFromFile: (file: File, fvScale: number) => Promise<NnueMeta>;
+    importFromFile: (file: File, fvScale: number, displayName?: string) => Promise<NnueMeta>;
     /** パスから NNUE をインポート（capabilities.supportsPathImport === true の場合） */
     importFromPath: (srcPath: string, fvScale: number, displayName?: string) => Promise<NnueMeta>;
     /** NNUE を削除 */
@@ -73,7 +73,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
     }, [contextRefreshList]);
 
     const importFromFile = useCallback(
-        async (file: File, fvScale: number): Promise<NnueMeta> => {
+        async (file: File, fvScale: number, displayName?: string): Promise<NnueMeta> => {
             if (!storage) {
                 throw new NnueError(
                     "NNUE_STORAGE_FAILED",
@@ -161,7 +161,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
                 // メタデータを作成
                 const meta: NnueMeta = {
                     id,
-                    displayName: file.name.replace(/\.(nnue|bin)$/i, ""),
+                    displayName: displayName ?? file.name.replace(/\.(nnue|bin)$/i, ""),
                     originalFileName: file.name,
                     size: data.byteLength,
                     contentHashSha256: hash,
