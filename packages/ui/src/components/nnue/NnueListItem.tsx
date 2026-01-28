@@ -394,33 +394,52 @@ export function NnueListItem({
                                             onClick={(e) => e.stopPropagation()}
                                         />
                                     ) : (
-                                        <button
-                                            type="button"
-                                            onClick={(e) => {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                startEditingFvScale();
-                                            }}
-                                            disabled={disabled}
-                                            style={{
-                                                background: "none",
-                                                border: "none",
-                                                padding: "2px 4px",
-                                                cursor: disabled ? "not-allowed" : "pointer",
-                                                borderRadius: "4px",
-                                                fontSize: "12px",
-                                                color:
+                                        <>
+                                            {meta.fvScale === undefined && (
+                                                <span
+                                                    style={{
+                                                        fontSize: "14px",
+                                                        lineHeight: 1,
+                                                        color: "hsl(var(--destructive, 0 84% 60%))",
+                                                    }}
+                                                    title="FV_SCALE が未設定です。この評価関数はエンジン起動時にエラーになります。"
+                                                    aria-label="警告"
+                                                >
+                                                    ⚠️
+                                                </span>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    startEditingFvScale();
+                                                }}
+                                                disabled={disabled}
+                                                style={{
+                                                    background: "none",
+                                                    border: "none",
+                                                    padding: "2px 4px",
+                                                    cursor: disabled ? "not-allowed" : "pointer",
+                                                    borderRadius: "4px",
+                                                    fontSize: "12px",
+                                                    color:
+                                                        meta.fvScale !== undefined
+                                                            ? "hsl(var(--foreground))"
+                                                            : "hsl(var(--destructive, 0 84% 60%))",
+                                                }}
+                                                className="hover:bg-muted/50"
+                                                title={
                                                     meta.fvScale !== undefined
-                                                        ? "hsl(var(--foreground))"
-                                                        : "hsl(var(--destructive, 0 84% 60%))",
-                                            }}
-                                            className="hover:bg-muted/50"
-                                            title="クリックして編集"
-                                        >
-                                            {meta.fvScale !== undefined
-                                                ? meta.fvScale
-                                                : "未設定（要設定）"}
-                                        </button>
+                                                        ? "クリックして編集"
+                                                        : "未設定です。クリックして FV_SCALE を設定してください。"
+                                                }
+                                            >
+                                                {meta.fvScale !== undefined
+                                                    ? meta.fvScale
+                                                    : "未設定（要設定）"}
+                                            </button>
+                                        </>
                                     )}
                                 </div>
                             )}
@@ -555,30 +574,51 @@ export function NnueListItem({
                                     className="h-6 w-16 text-xs"
                                 />
                             ) : (
-                                <button
-                                    type="button"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        startEditingFvScale();
-                                    }}
-                                    disabled={disabled}
-                                    style={{
-                                        background: "none",
-                                        border: "none",
-                                        padding: "2px 4px",
-                                        cursor: disabled ? "not-allowed" : "pointer",
-                                        borderRadius: "4px",
-                                        fontSize: "12px",
-                                        color:
+                                <>
+                                    {meta.fvScale === undefined && (
+                                        <span
+                                            style={{
+                                                fontSize: "14px",
+                                                lineHeight: 1,
+                                                color: "hsl(var(--destructive, 0 84% 60%))",
+                                            }}
+                                            title="FV_SCALE が未設定です。この評価関数はエンジン起動時にエラーになります。"
+                                            aria-label="警告"
+                                        >
+                                            ⚠️
+                                        </span>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            startEditingFvScale();
+                                        }}
+                                        disabled={disabled}
+                                        style={{
+                                            background: "none",
+                                            border: "none",
+                                            padding: "2px 4px",
+                                            cursor: disabled ? "not-allowed" : "pointer",
+                                            borderRadius: "4px",
+                                            fontSize: "12px",
+                                            color:
+                                                meta.fvScale !== undefined
+                                                    ? "hsl(var(--foreground))"
+                                                    : "hsl(var(--destructive, 0 84% 60%))",
+                                        }}
+                                        className="hover:bg-muted/50"
+                                        title={
                                             meta.fvScale !== undefined
-                                                ? "hsl(var(--foreground))"
-                                                : "hsl(var(--destructive, 0 84% 60%))",
-                                    }}
-                                    className="hover:bg-muted/50"
-                                    title="クリックして編集"
-                                >
-                                    {meta.fvScale !== undefined ? meta.fvScale : "未設定（要設定）"}
-                                </button>
+                                                ? "クリックして編集"
+                                                : "未設定です。クリックして FV_SCALE を設定してください。"
+                                        }
+                                    >
+                                        {meta.fvScale !== undefined
+                                            ? meta.fvScale
+                                            : "未設定（要設定）"}
+                                    </button>
+                                </>
                             )}
                         </div>
                     )}

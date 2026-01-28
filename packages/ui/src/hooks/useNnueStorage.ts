@@ -140,11 +140,18 @@ export function useNnueStorage(): UseNnueStorageReturn {
                         updates.fvScale = fvScale;
                     }
                     if (Object.keys(updates).length > 0) {
+                        console.info(
+                            `既存の評価関数「${existingMeta.displayName}」の情報を更新しました`,
+                            updates,
+                        );
                         await storage.updateMeta(existingMeta.id, updates);
                         await refreshList();
                         return { ...existingMeta, ...updates };
                     }
                     // 既存のものを返す（重複保存しない）
+                    console.info(
+                        `この評価関数は既にインポート済みです:「${existingMeta.displayName}」`,
+                    );
                     return existingMeta;
                 }
 

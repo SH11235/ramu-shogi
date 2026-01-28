@@ -38,8 +38,12 @@ export function NnueFvScaleInputDialog({
     const [error, setError] = useState<string | null>(null);
 
     const handleValueChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        setValue(e.target.value);
-        setError(null);
+        const inputValue = e.target.value;
+        // 空文字または整数のみ許可（小数点やアルファベットを除外）
+        if (inputValue === "" || /^\d+$/.test(inputValue)) {
+            setValue(inputValue);
+            setError(null);
+        }
     }, []);
 
     const handleConfirm = useCallback(() => {
