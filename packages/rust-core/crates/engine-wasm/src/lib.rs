@@ -882,12 +882,9 @@ pub fn set_option(name: &str, value: Option<JsValue>) -> Result<(), JsValue> {
             "FV_SCALE" => {
                 if let Some(v) = as_i64(&value) {
                     let fv_scale = v as i32;
-                    if fv_scale < 1 || fv_scale > 100 {
+                    if !(1..=100).contains(&fv_scale) {
                         emit_event(EventPayload::Error {
-                            message: format!(
-                                "FV_SCALE must be between 1 and 100, got {}",
-                                fv_scale
-                            ),
+                            message: format!("FV_SCALE must be between 1 and 100, got {fv_scale}"),
                         });
                     } else {
                         set_fv_scale_override(fv_scale);

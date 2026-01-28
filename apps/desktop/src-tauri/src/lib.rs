@@ -538,8 +538,8 @@ fn apply_engine_option(
         }
         "FV_SCALE" => {
             if let Some(v) = value_as_i32(value) {
-                if v < 1 || v > 100 {
-                    return Err(format!("FV_SCALE must be between 1 and 100, got {}", v));
+                if !(1..=100).contains(&v) {
+                    return Err(format!("FV_SCALE must be between 1 and 100, got {v}"));
                 }
                 set_fv_scale_override(v);
             }
