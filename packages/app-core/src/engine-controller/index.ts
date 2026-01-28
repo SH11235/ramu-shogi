@@ -675,11 +675,6 @@ export function createEngineController(
             if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
                 const resolved = await dependencies.resolveNnue(selection);
                 if (resolved) {
-                    if (resolved.fvScale === undefined) {
-                        throw new Error(
-                            `FV_SCALE が設定されていません。NNUE ファイルの設定で FV_SCALE を指定してください。`,
-                        );
-                    }
                     await client.loadNnue(resolved.nnueId);
                     await client.setOption("FV_SCALE", resolved.fvScale);
                 }
@@ -754,11 +749,6 @@ export function createEngineController(
                 if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
                     const resolved = await dependencies.resolveNnue(selection);
                     if (resolved) {
-                        if (resolved.fvScale === undefined) {
-                            throw new Error(
-                                `FV_SCALE が設定されていません。NNUE ファイルの設定で FV_SCALE を指定してください。`,
-                            );
-                        }
                         await client.loadNnue(resolved.nnueId);
                         await client.setOption("FV_SCALE", resolved.fvScale);
                     }
@@ -956,11 +946,6 @@ export function createEngineController(
                 if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
                     const resolved = await dependencies.resolveNnue(selection);
                     if (resolved) {
-                        if (resolved.fvScale === undefined) {
-                            throw new Error(
-                                `FV_SCALE が設定されていません。NNUE ファイルの設定で FV_SCALE を指定してください。`,
-                            );
-                        }
                         await client.loadNnue(resolved.nnueId);
                         await client.setOption("FV_SCALE", resolved.fvScale);
                     }

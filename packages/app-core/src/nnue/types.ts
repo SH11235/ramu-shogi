@@ -289,6 +289,6 @@ export const NONE_NNUE_SELECTION: NnueSelection = {
 export interface ResolvedNnue {
     /** NNUE の ID（IndexedDB キーまたはファイルシステム ID） */
     nnueId: string;
-    /** FV_SCALE 値（undefined の場合はエンジンのデフォルトを使用） */
-    fvScale?: number;
+    /** FV_SCALE 値（必須: エンジンの自動判定に頼らず明示的に指定） */
+    fvScale: number;
 }

@@ -31,16 +31,26 @@ export function useLazyNnueLoader(): UseLazyNnueLoaderReturn {
 
     /**
      * nnueId から ResolvedNnue を作成するヘルパー
+     * @throws NnueError fvScale が設定されていない場合
      */
     const createResolvedNnue = useCallback(
         async (nnueId: string): Promise<ResolvedNnue> => {
             if (!storage) {
-                return { nnueId };
+                throw new NnueError(
+                    "NNUE_RESOLVE_FAILED",
+                    "FV_SCALE が設定されていません。評価関数ファイル管理で FV_SCALE を指定してください。",
+                );
             }
             const meta = await storage.getMeta(nnueId);
+            if (meta?.fvScale === undefined) {
+                throw new NnueError(
+                    "NNUE_RESOLVE_FAILED",
+                    "FV_SCALE が設定されていません。評価関数ファイル管理で FV_SCALE を指定してください。",
+                );
+            }
             return {
                 nnueId,
-                fvScale: meta?.fvScale,
+                fvScale: meta.fvScale,
             };
         },
         [storage],
@@ -68,13 +78,12 @@ export function useLazyNnueLoader(): UseLazyNnueLoaderReturn {
                     return createResolvedNnue(selection.nnueId);
                 }
 
-                // storage がない場合は nnueId にフォールバック
+                // storage がない場合はエラー（fvScale を解決できない）
                 if (!storage) {
-                    console.warn("NNUE storage is not available, falling back to nnueId");
-                    if (!selection.nnueId) {
-                        return null;
-                    }
-                    return { nnueId: selection.nnueId };
+                    throw new NnueError(
+                        "NNUE_RESOLVE_FAILED",
+                        "FV_SCALE が設定されていません。評価関数ファイル管理で FV_SCALE を指定してください。",
+                    );
                 }
 
                 const presetKey = selection.presetKey;
@@ -85,6 +94,12 @@ export function useLazyNnueLoader(): UseLazyNnueLoaderReturn {
                     // 最新の作成日時のものを返す
                     const sorted = [...existing].sort((a, b) => b.createdAt - a.createdAt);
                     const meta = sorted[0];
+                    if (meta.fvScale === undefined) {
+                        throw new NnueError(
+                            "NNUE_RESOLVE_FAILED",
+                            "FV_SCALE が設定されていません。評価関数ファイル管理で FV_SCALE を指定してください。",
+                        );
+                    }
                     return {
                         nnueId: meta.id,
                         fvScale: meta.fvScale,
