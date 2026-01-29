@@ -4,6 +4,7 @@ import { usePresetManager } from "../../hooks/usePresetManager";
 import { Button } from "../button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../dialog";
 import { NnueErrorAlert } from "./NnueErrorAlert";
+import { NnueFreeResourcesInfo } from "./NnueFreeResourcesInfo";
 import { NnueFvScaleInputDialog } from "./NnueFvScaleInputDialog";
 import { NnueImportArea } from "./NnueImportArea";
 import { NnueListItem } from "./NnueListItem";
@@ -33,43 +34,17 @@ interface NnueManagerDialogProps {
  */
 function NnueStorageInfo({ totalSize }: { totalSize: number }): ReactElement {
     return (
-        <div
-            style={{
-                fontSize: "12px",
-                color: "hsl(var(--muted-foreground, 0 0% 45%))",
-            }}
-        >
-            <div
-                style={{
-                    padding: "12px",
-                    borderRadius: "6px",
-                    backgroundColor: "hsl(var(--muted, 0 0% 96%))",
-                    fontSize: "13px",
-                }}
-            >
-                <div
-                    style={{
-                        fontWeight: 600,
-                        marginBottom: "8px",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                    }}
-                >
+        <div className="text-xs text-muted-foreground">
+            <div className="rounded-md bg-muted p-3 text-[13px]">
+                <div className="mb-2 flex items-center justify-between font-semibold">
                     <span>ストレージについて</span>
-                    <span style={{ fontWeight: 400 }}>
+                    <span className="font-normal">
                         使用量: {(totalSize / (1024 * 1024)).toFixed(1)} MB
                     </span>
                 </div>
-                <div
-                    style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "6px",
-                    }}
-                >
-                    <p style={{ margin: 0 }}>NNUE ファイルはブラウザのストレージに保存されます。</p>
-                    <p style={{ margin: 0 }}>
+                <div className="flex flex-col gap-1.5">
+                    <p className="m-0">NNUE ファイルはブラウザのストレージに保存されます。</p>
+                    <p className="m-0">
                         ブラウザの設定やストレージ不足により、自動削除される可能性があります。
                     </p>
                 </div>
@@ -232,67 +207,24 @@ export function NnueManagerDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent
-                style={{
-                    width: "min(520px, calc(100% - 24px))",
-                    maxHeight: "80vh",
-                    display: "flex",
-                    flexDirection: "column",
-                }}
-            >
+            <DialogContent className="flex max-h-[80vh] w-[min(520px,calc(100%-24px))] flex-col">
                 <DialogHeader>
                     <DialogTitle>評価関数（NNUE) ファイル管理</DialogTitle>
                 </DialogHeader>
 
-                <div
-                    style={{
-                        flex: 1,
-                        overflow: "auto",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "16px",
-                        position: "relative",
-                        minHeight: "200px",
-                    }}
-                >
+                <div className="relative flex min-h-[200px] flex-1 flex-col gap-4 overflow-auto">
                     {/* 開いた理由（対局開始時にNNUE未ダウンロードだった場合など） */}
                     {openReason && (
-                        <div
-                            style={{
-                                padding: "12px",
-                                borderRadius: "6px",
-                                backgroundColor: "hsl(var(--warning, 38 92% 50%) / 0.1)",
-                                border: "1px solid hsl(var(--warning, 38 92% 50%) / 0.3)",
-                                display: "flex",
-                                alignItems: "flex-start",
-                                gap: "8px",
-                            }}
-                        >
-                            <span style={{ fontSize: "16px", lineHeight: 1 }}>⚠️</span>
-                            <div style={{ flex: 1 }}>
-                                <p
-                                    style={{
-                                        margin: 0,
-                                        fontSize: "13px",
-                                        color: "hsl(var(--foreground))",
-                                    }}
-                                >
-                                    {openReason}
-                                </p>
+                        <div className="flex items-start gap-2 rounded-md border border-[hsl(var(--warning,38_92%_50%)/0.3)] bg-[hsl(var(--warning,38_92%_50%)/0.1)] p-3">
+                            <span className="text-base leading-none">⚠️</span>
+                            <div className="flex-1">
+                                <p className="m-0 text-[13px] text-foreground">{openReason}</p>
                             </div>
                             {onClearOpenReason && (
                                 <button
                                     type="button"
                                     onClick={onClearOpenReason}
-                                    style={{
-                                        background: "none",
-                                        border: "none",
-                                        cursor: "pointer",
-                                        padding: "2px",
-                                        color: "hsl(var(--muted-foreground))",
-                                        fontSize: "14px",
-                                        lineHeight: 1,
-                                    }}
+                                    className="cursor-pointer rounded p-0.5 text-sm leading-none text-muted-foreground hover:text-foreground"
                                     aria-label="メッセージを閉じる"
                                 >
                                     ✕
@@ -306,15 +238,8 @@ export function NnueManagerDialog({
 
                     {/* NNUE 一覧（選択なし、削除のみ） */}
                     {nnueList.length > 0 ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                            <div
-                                style={{
-                                    fontSize: "12px",
-                                    fontWeight: 500,
-                                    color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                                    marginBottom: "4px",
-                                }}
-                            >
+                        <div className="flex flex-col gap-2">
+                            <div className="mb-1 text-xs font-medium text-muted-foreground">
                                 インポート済み ({nnueList.length})
                             </div>
                             {nnueList.map((meta) => (
@@ -338,14 +263,7 @@ export function NnueManagerDialog({
                             ))}
                         </div>
                     ) : (
-                        <div
-                            style={{
-                                fontSize: "13px",
-                                color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                                textAlign: "center",
-                                padding: "16px",
-                            }}
-                        >
+                        <div className="p-4 text-center text-[13px] text-muted-foreground">
                             インポートされた NNUE ファイルはありません
                         </div>
                     )}
@@ -354,16 +272,8 @@ export function NnueManagerDialog({
                     {/* 最新版ダウンロード済みのものは除外（インポート済みに表示されるため） */}
                     {isPresetConfigured &&
                         presets.filter((p) => p.status !== "latest").length > 0 && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                                <div
-                                    style={{
-                                        fontSize: "12px",
-                                        fontWeight: 500,
-                                        color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                                        marginTop: "8px",
-                                        marginBottom: "4px",
-                                    }}
-                                >
+                            <div className="flex flex-col gap-2">
+                                <div className="mb-1 mt-2 text-xs font-medium text-muted-foreground">
                                     ダウンロード可能なプリセット
                                 </div>
                                 {presets
@@ -390,14 +300,7 @@ export function NnueManagerDialog({
 
                     {/* プリセット読み込み中 */}
                     {isPresetConfigured && isPresetsLoading && (
-                        <div
-                            style={{
-                                fontSize: "13px",
-                                color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                                textAlign: "center",
-                                padding: "16px",
-                            }}
-                        >
+                        <div className="p-4 text-center text-[13px] text-muted-foreground">
                             プリセット一覧を読み込み中...
                         </div>
                     )}
@@ -413,6 +316,9 @@ export function NnueManagerDialog({
                         />
                     )}
 
+                    {/* 無料で手に入る将棋AI */}
+                    <NnueFreeResourcesInfo />
+
                     {/* NNUE 使用量 */}
                     <NnueStorageInfo totalSize={totalNnueSize} />
 
@@ -426,7 +332,7 @@ export function NnueManagerDialog({
                     />
                 </div>
 
-                <DialogFooter style={{ justifyContent: "center" }}>
+                <DialogFooter className="justify-center">
                     <Button variant="secondary" onClick={handleClose}>
                         閉じる
                     </Button>
