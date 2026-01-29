@@ -257,15 +257,9 @@ function buildPassRightsOptionForLegalMoves(
     return {};
 }
 
-// レイアウト用Tailwindクラス
-const matchLayoutClasses = "flex flex-col gap-2 items-center py-2";
-
-// CSS変数は style 属性で設定（Tailwindでは表現できない）
-const matchLayoutCssVars = {
-    "--kifu-panel-max-h": "min(60vh, calc(100dvh - 320px))",
-    "--kifu-panel-branch-max-h": "calc(var(--kifu-panel-max-h) - 40px)",
-    "--shogi-cell-size": "44px",
-} as React.CSSProperties;
+// レイアウト用Tailwindクラス（CSS変数はクラスで設定）
+const matchLayoutClasses =
+    "flex flex-col gap-2 items-center py-2 [--kifu-panel-max-h:min(60vh,calc(100dvh-320px))] [--kifu-panel-branch-max-h:calc(var(--kifu-panel-max-h)-40px)] [--shogi-cell-size:44px]";
 
 // テキストスタイル用Tailwindクラス定数
 const TEXT_CLASSES = {
@@ -2994,7 +2988,7 @@ export function ShogiMatch({
                         message={message}
                     />
                 ) : (
-                    <section className={matchLayoutClasses} style={matchLayoutCssVars}>
+                    <section className={matchLayoutClasses}>
                         <div className="flex min-h-[calc(100dvh-1rem)]">
                             {/* 左サイドバー */}
                             <LeftSidebar
@@ -3436,9 +3430,7 @@ export function ShogiMatch({
                                     open={isDisplaySettingsOpen}
                                     onOpenChange={setIsDisplaySettingsOpen}
                                 >
-                                    <DialogContent
-                                        style={{ width: "min(450px, calc(100% - 24px))" }}
-                                    >
+                                    <DialogContent className="w-[min(450px,calc(100%-24px))]">
                                         <DialogHeader>
                                             <DialogTitle>表示設定</DialogTitle>
                                         </DialogHeader>
@@ -3550,9 +3542,7 @@ export function ShogiMatch({
                                         open={isPassRightsSettingsOpen}
                                         onOpenChange={setIsPassRightsSettingsOpen}
                                     >
-                                        <DialogContent
-                                            style={{ width: "min(400px, calc(100% - 24px))" }}
-                                        >
+                                        <DialogContent className="w-[min(400px,calc(100%-24px))]">
                                             <DialogHeader>
                                                 <DialogTitle>変則ルール</DialogTitle>
                                             </DialogHeader>

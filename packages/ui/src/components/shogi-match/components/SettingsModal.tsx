@@ -24,29 +24,9 @@ interface SettingsModalProps {
 export function SettingsModal({ open, onOpenChange, children }: SettingsModalProps): ReactElement {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent
-                style={{
-                    width: "min(520px, calc(100% - 24px))",
-                    maxHeight: "85vh",
-                    display: "flex",
-                    flexDirection: "column",
-                    padding: 0,
-                }}
-            >
+            <DialogContent className="flex max-h-[85vh] w-[min(520px,calc(100%-24px))] flex-col p-0">
                 {/* ヘッダー */}
-                <DialogHeader
-                    style={{
-                        position: "sticky",
-                        top: 0,
-                        backgroundColor: "hsl(var(--background, 0 0% 100%))",
-                        borderBottom: "1px solid hsl(var(--border, 0 0% 86%))",
-                        padding: "16px 24px",
-                        display: "flex",
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                    }}
-                >
+                <DialogHeader className="sticky top-0 flex flex-row items-center justify-between border-b border-border bg-background px-6 py-4">
                     <DialogTitle>設定</DialogTitle>
                     <DialogClose asChild>
                         <button
@@ -75,9 +55,7 @@ export function SettingsModal({ open, onOpenChange, children }: SettingsModalPro
 
                 {/* コンテンツ */}
                 {/* minHeight: 0 は flexbox 内でスクロールを機能させるために必要 */}
-                <div style={{ padding: "24px", overflow: "auto", flex: 1, minHeight: 0 }}>
-                    {children}
-                </div>
+                <div className="flex-1 min-h-0 overflow-auto p-6">{children}</div>
             </DialogContent>
         </Dialog>
     );

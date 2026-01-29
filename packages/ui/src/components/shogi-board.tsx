@@ -81,15 +81,10 @@ export function ShogiBoard({
             <div className="pointer-events-none absolute inset-0 rounded-lg border border-white/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]" />
             {/* 盤外ラベル: 筋（上） */}
             <div
-                className="py-0.5 grid grid-cols-9 text-center text-[11px] font-semibold"
-                style={{
-                    visibility: showBoardLabels ? "visible" : "hidden",
-                    color: "hsl(var(--wafuu-sumi) / 0.7)",
-                    textShadow: "0 1px 0 rgba(255,255,255,0.5)",
-                    // 左側: 段ラベル分の余白、右側: 段ラベル幅分
-                    marginLeft: "1.25em",
-                    marginRight: "1.25em",
-                }}
+                className={cn(
+                    "grid grid-cols-9 py-0.5 text-center text-[11px] font-semibold text-[hsl(var(--wafuu-sumi)/0.7)] [text-shadow:0_1px_0_rgba(255,255,255,0.5)] ml-[1.25em] mr-[1.25em]",
+                    showBoardLabels ? "visible" : "invisible",
+                )}
             >
                 {files.map((label) => (
                     <span key={label}>{label}</span>
@@ -99,7 +94,7 @@ export function ShogiBoard({
                 {/* 左パディング - 右ラベルと対称のスペース確保 */}
                 <div className="px-0.5 flex flex-col justify-around text-[11px]" aria-hidden="true">
                     {ranks.map((label) => (
-                        <span key={`left-${label}`} style={{ visibility: "hidden" }}>
+                        <span key={`left-${label}`} className="invisible">
                             {label}
                         </span>
                     ))}
@@ -281,12 +276,10 @@ export function ShogiBoard({
                 </div>
                 {/* 盤外ラベル: 段（右） */}
                 <div
-                    className="px-0.5 flex flex-col justify-around text-[11px] font-semibold"
-                    style={{
-                        visibility: showBoardLabels ? "visible" : "hidden",
-                        color: "hsl(var(--wafuu-sumi) / 0.7)",
-                        textShadow: "0 1px 0 rgba(255,255,255,0.5)",
-                    }}
+                    className={cn(
+                        "flex flex-col justify-around px-0.5 text-[11px] font-semibold text-[hsl(var(--wafuu-sumi)/0.7)] [text-shadow:0_1px_0_rgba(255,255,255,0.5)]",
+                        showBoardLabels ? "visible" : "invisible",
+                    )}
                 >
                     {ranks.map((label) => (
                         <span key={label}>{label}</span>
@@ -295,15 +288,11 @@ export function ShogiBoard({
             </div>
             {/* 下パディング - 上ラベルと対称のスペース確保 */}
             <div
-                className="py-0.5 grid grid-cols-9 text-center text-[11px]"
+                className="grid grid-cols-9 py-0.5 text-center text-[11px] ml-[1.25em] mr-[1.25em]"
                 aria-hidden="true"
-                style={{
-                    marginLeft: "1.25em",
-                    marginRight: "1.25em",
-                }}
             >
                 {files.map((label) => (
-                    <span key={`bottom-${label}`} style={{ visibility: "hidden" }}>
+                    <span key={`bottom-${label}`} className="invisible">
                         {label}
                     </span>
                 ))}

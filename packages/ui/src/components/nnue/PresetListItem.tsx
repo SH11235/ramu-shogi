@@ -82,71 +82,36 @@ export function PresetListItem({
             ? Math.round((downloadProgress.loaded / downloadProgress.total) * 100)
             : 0;
 
-    const baseStyle: React.CSSProperties = {
-        display: "flex",
-        flexDirection: "column",
-        gap: "8px",
-        padding: "12px",
-        borderRadius: "8px",
-        backgroundColor: isSelected ? "hsl(var(--accent, 210 40% 96%))" : "transparent",
-        border: isSelected
-            ? "1px solid hsl(var(--primary, 220 90% 56%))"
-            : "1px solid hsl(var(--border, 0 0% 86%))",
-        opacity: disabled ? 0.5 : 1,
-        transition: "background-color 150ms, border-color 150ms",
-    };
+    const baseClassName = cn(
+        "flex flex-col gap-2 rounded-md border p-3 transition-colors",
+        isSelected ? "border-primary bg-accent" : "border-border",
+        disabled ? "opacity-50" : "",
+    );
 
-    // 選択可能（ダウンロード済み）の場合のラベルスタイル
-    const labelStyle: React.CSSProperties = {
-        display: "flex",
-        alignItems: "center",
-        gap: "12px",
-        cursor: !disabled ? "pointer" : "default",
-    };
+    const labelClassName = cn(
+        "flex items-center gap-3",
+        disabled ? "cursor-default" : "cursor-pointer",
+    );
 
     // ステータスバッジを描画
     const renderStatusBadge = () => {
         if (status === "latest") {
             return (
-                <span
-                    style={{
-                        fontSize: "11px",
-                        padding: "2px 6px",
-                        borderRadius: "4px",
-                        backgroundColor: "hsl(var(--success, 142 76% 36%) / 0.1)",
-                        color: "hsl(var(--success, 142 76% 36%))",
-                    }}
-                >
+                <span className="rounded bg-[hsl(var(--success,142_76%_36%)/0.1)] px-1.5 py-0.5 text-[11px] text-[hsl(var(--success,142_76%_36%))]">
                     最新
                 </span>
             );
         }
         if (status === "update-available") {
             return (
-                <span
-                    style={{
-                        fontSize: "11px",
-                        padding: "2px 6px",
-                        borderRadius: "4px",
-                        backgroundColor: "hsl(var(--warning, 38 92% 50%) / 0.1)",
-                        color: "hsl(var(--warning, 38 92% 50%))",
-                    }}
-                >
+                <span className="rounded bg-[hsl(var(--warning,38_92%_50%)/0.1)] px-1.5 py-0.5 text-[11px] text-[hsl(var(--warning,38_92%_50%))]">
                     更新あり
                 </span>
             );
         }
         if (status === "not-downloaded") {
             return (
-                <span
-                    style={{
-                        fontSize: "11px",
-                        padding: "2px 6px",
-                        borderRadius: "4px",
-                        backgroundColor: "hsl(var(--muted, 0 0% 90%))",
-                        color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                    }}
-                >
+                <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
                     未ダウンロード
                 </span>
             );
@@ -156,48 +121,17 @@ export function PresetListItem({
 
     // コンテンツ部分（名前、バッジ、説明）
     const contentSection = (
-        <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-                style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    marginBottom: "4px",
-                }}
-            >
-                <span
-                    style={{
-                        fontWeight: 500,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                    }}
-                >
-                    {config.displayName}
-                </span>
+        <div className="min-w-0 flex-1">
+            <div className="mb-1 flex items-center gap-2">
+                <span className="truncate font-medium">{config.displayName}</span>
                 {renderStatusBadge()}
             </div>
-            <div
-                style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "12px",
-                    fontSize: "13px",
-                    color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                }}
-            >
+            <div className="flex items-center gap-3 text-[13px] text-muted-foreground">
                 <span>{formatSize(config.size)}</span>
                 {config.license && <span>{config.license}</span>}
             </div>
             {config.description && (
-                <div
-                    style={{
-                        marginTop: "4px",
-                        fontSize: "12px",
-                        color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                        lineHeight: 1.4,
-                    }}
-                >
+                <div className="mt-1 text-xs leading-snug text-muted-foreground">
                     {config.description}
                 </div>
             )}
@@ -209,21 +143,9 @@ export function PresetListItem({
 
     // ダウンロードボタンと警告
     const downloadSection = (status === "not-downloaded" || status === "update-available") && (
-        <div
-            style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}
-        >
+        <div className="flex flex-col items-end gap-1">
             {isLargeFile && !isDownloading && (
-                <span
-                    style={{
-                        fontSize: "11px",
-                        fontWeight: 500,
-                        color: "hsl(25, 95%, 45%)",
-                        backgroundColor: "hsl(25, 95%, 45%, 0.1)",
-                        padding: "2px 6px",
-                        borderRadius: "4px",
-                        whiteSpace: "nowrap",
-                    }}
-                >
+                <span className="whitespace-nowrap rounded bg-[hsl(var(--warning,38_92%_50%)/0.1)] px-1.5 py-0.5 text-[11px] font-medium text-[hsl(var(--warning,38_92%_50%))]">
                     ⚠ Wi-Fi推奨
                 </span>
             )}
@@ -232,7 +154,7 @@ export function PresetListItem({
                 size="sm"
                 onClick={handleDownload}
                 disabled={isDownloading || disabled}
-                style={{ flexShrink: 0 }}
+                className="shrink-0"
             >
                 {isDownloading
                     ? "ダウンロード中..."
@@ -245,16 +167,9 @@ export function PresetListItem({
 
     // ダウンロード進捗
     const progressSection = isDownloading && downloadProgress && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            <Progress value={progressPercent} style={{ height: "6px" }} />
-            <div
-                style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontSize: "11px",
-                    color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                }}
-            >
+        <div className="flex flex-col gap-1">
+            <Progress value={progressPercent} className="h-1.5" />
+            <div className="flex justify-between text-[11px] text-muted-foreground">
                 <span>{getPhaseLabel(downloadProgress.phase)}</span>
                 <span>
                     {formatSize(downloadProgress.loaded)} / {formatSize(downloadProgress.total)} (
@@ -267,8 +182,8 @@ export function PresetListItem({
     // 選択不可の場合は静的な div
     if (!canSelect) {
         return (
-            <div style={baseStyle}>
-                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div className={baseClassName}>
+                <div className="flex items-center gap-3">
                     {contentSection}
                     {downloadSection}
                 </div>
@@ -279,23 +194,14 @@ export function PresetListItem({
 
     // 選択可能な場合は input type="radio" を使用
     return (
-        <div
-            style={baseStyle}
-            className={cn(!disabled && "hover:bg-muted/50", isSelected && "bg-accent")}
-        >
-            <label style={labelStyle}>
+        <div className={cn(baseClassName, !disabled && "hover:bg-muted/50")}>
+            <label className={labelClassName}>
                 <input
                     type="radio"
                     checked={isSelected}
                     onChange={handleChange}
                     disabled={disabled || isDownloading}
-                    style={{
-                        width: "20px",
-                        height: "20px",
-                        margin: 0,
-                        flexShrink: 0,
-                        accentColor: "hsl(var(--primary, 220 90% 56%))",
-                    }}
+                    className="m-0 h-5 w-5 shrink-0 accent-[hsl(var(--primary,220_90%_56%))]"
                 />
                 {contentSection}
                 {downloadSection}

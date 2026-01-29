@@ -109,24 +109,12 @@ export function NnueFvScaleInputDialog({
                         「{fileName}」をインポートします。表示名と FV_SCALE を設定してください。
                     </AlertDialogDescription>
                 </AlertDialogHeader>
-                <div
-                    style={{
-                        padding: "8px 0",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "16px",
-                    }}
-                >
+                <div className="flex flex-col gap-4 py-2">
                     {/* 表示名入力 */}
                     <div>
                         <label
                             htmlFor="display-name-input"
-                            style={{
-                                display: "block",
-                                fontSize: "14px",
-                                fontWeight: 500,
-                                marginBottom: "4px",
-                            }}
+                            className="mb-1 block text-sm font-medium"
                         >
                             表示名
                         </label>
@@ -144,15 +132,7 @@ export function NnueFvScaleInputDialog({
 
                     {/* FV_SCALE入力 */}
                     <div>
-                        <label
-                            htmlFor="fv-scale-input"
-                            style={{
-                                display: "block",
-                                fontSize: "14px",
-                                fontWeight: 500,
-                                marginBottom: "4px",
-                            }}
-                        >
+                        <label htmlFor="fv-scale-input" className="mb-1 block text-sm font-medium">
                             FV_SCALE (1〜100)
                         </label>
                         <Input
@@ -166,27 +146,12 @@ export function NnueFvScaleInputDialog({
                             onKeyDown={handleKeyDown}
                             placeholder="例: 16, 24"
                         />
-                        <p
-                            style={{
-                                fontSize: "12px",
-                                color: "hsl(var(--muted-foreground))",
-                                marginTop: "4px",
-                            }}
-                        >
+                        <p className="mt-1 text-xs text-muted-foreground">
                             FV_SCALE は NNUE ファイルの開発者が公開している値を入力してください
                         </p>
                     </div>
 
-                    {error && (
-                        <p
-                            style={{
-                                color: "hsl(var(--destructive))",
-                                fontSize: "12px",
-                            }}
-                        >
-                            {error}
-                        </p>
-                    )}
+                    {error && <p className="text-xs text-destructive">{error}</p>}
                 </div>
                 <AlertDialogFooter>
                     <AlertDialogCancel onClick={handleCancel}>キャンセル</AlertDialogCancel>

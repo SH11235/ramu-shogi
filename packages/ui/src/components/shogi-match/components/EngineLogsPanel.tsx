@@ -1,16 +1,11 @@
 import type { EngineControllerErrorLog, EngineControllerEvent, Player } from "@shogi/app-core";
 import { type EngineErrorCode, getEngineErrorInfo } from "@shogi/engine-client";
 import { type ReactElement, useState } from "react";
+import { cn } from "@shogi/design-system";
 import { formatEngineEventLog } from "../hooks/formatEngineEvent";
 
-const baseCard = {
-    background: "hsl(var(--card, 0 0% 100%))",
-    border: "1px solid hsl(var(--border, 0 0% 86%))",
-    borderRadius: "12px",
-    padding: "12px",
-    boxShadow: "0 14px 28px rgba(0,0,0,0.12)",
-    width: "var(--panel-width)",
-};
+const baseCardClassName =
+    "w-[var(--panel-width)] rounded-xl border border-border bg-card p-3 shadow-[0_14px_28px_rgba(0,0,0,0.12)]";
 
 interface EngineErrorDetails {
     hasError: boolean;
@@ -48,58 +43,28 @@ function ErrorDetailSection({
     const errorInfo = getEngineErrorInfo(error.errorCode);
 
     return (
-        <div
-            style={{
-                background: "hsl(var(--background, 0 0% 100%))",
-                borderRadius: "6px",
-                padding: "12px",
-                marginBottom: "8px",
-            }}
-        >
+        <div className="mb-2 rounded-md bg-background p-3">
             {/* ヘッダー: 側面とメインメッセージ */}
-            <div
-                style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    marginBottom: "8px",
-                }}
-            >
+            <div className="mb-2 flex items-center gap-2">
                 <span
-                    style={{
-                        background:
-                            side === "sente"
-                                ? "hsl(var(--foreground, 0 0% 12%))"
-                                : "hsl(var(--muted, 0 0% 90%))",
-                        color:
-                            side === "sente"
-                                ? "hsl(var(--background, 0 0% 100%))"
-                                : "hsl(var(--foreground, 0 0% 12%))",
-                        padding: "2px 8px",
-                        borderRadius: "4px",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                    }}
+                    className={cn(
+                        "rounded px-2 py-0.5 text-[11px] font-semibold",
+                        side === "sente"
+                            ? "bg-foreground text-background"
+                            : "bg-muted text-foreground",
+                    )}
                 >
                     {side === "sente" ? "先手" : "後手"}
                 </span>
-                <span style={{ fontWeight: 600, fontSize: "14px" }}>{errorInfo.userMessage}</span>
+                <span className="text-sm font-semibold">{errorInfo.userMessage}</span>
             </div>
 
             {/* 考えられる原因 */}
-            <div style={{ marginBottom: "8px" }}>
-                <div
-                    style={{
-                        fontSize: "12px",
-                        color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                        marginBottom: "4px",
-                    }}
-                >
-                    考えられる原因:
-                </div>
-                <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px" }}>
+            <div className="mb-2">
+                <div className="mb-1 text-xs text-muted-foreground">考えられる原因:</div>
+                <ul className="list-disc pl-4 text-xs">
                     {errorInfo.possibleCauses.map((cause) => (
-                        <li key={cause} style={{ marginBottom: "2px" }}>
+                        <li key={cause} className="mb-0.5">
                             {cause}
                         </li>
                     ))}
@@ -107,19 +72,11 @@ function ErrorDetailSection({
             </div>
 
             {/* 対処法 */}
-            <div style={{ marginBottom: "12px" }}>
-                <div
-                    style={{
-                        fontSize: "12px",
-                        color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                        marginBottom: "4px",
-                    }}
-                >
-                    対処法:
-                </div>
-                <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px" }}>
+            <div className="mb-3">
+                <div className="mb-1 text-xs text-muted-foreground">対処法:</div>
+                <ul className="list-disc pl-4 text-xs">
                     {errorInfo.solutions.map((solution) => (
-                        <li key={solution} style={{ marginBottom: "2px" }}>
+                        <li key={solution} className="mb-0.5">
                             {solution}
                         </li>
                     ))}
@@ -127,25 +84,18 @@ function ErrorDetailSection({
             </div>
 
             {/* アクションボタン */}
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <div className="flex items-center gap-2">
                 {errorInfo.canRetry && onRetry && (
                     <button
                         type="button"
                         onClick={() => onRetry(side)}
                         disabled={isRetrying}
-                        style={{
-                            padding: "8px 16px",
-                            borderRadius: "6px",
-                            background: isRetrying
-                                ? "hsl(var(--muted, 0 0% 80%))"
-                                : "hsl(var(--primary, 15 86% 55%))",
-                            color: "white",
-                            border: "none",
-                            cursor: isRetrying ? "not-allowed" : "pointer",
-                            fontSize: "13px",
-                            fontWeight: 500,
-                            opacity: isRetrying ? 0.6 : 1,
-                        }}
+                        className={cn(
+                            "rounded-md px-4 py-2 text-[13px] font-medium text-white",
+                            isRetrying
+                                ? "cursor-not-allowed bg-muted opacity-60"
+                                : "cursor-pointer bg-primary",
+                        )}
                     >
                         {isRetrying ? "リトライ中..." : "再試行"}
                     </button>
@@ -153,15 +103,7 @@ function ErrorDetailSection({
                 <button
                     type="button"
                     onClick={() => setShowDetails(!showDetails)}
-                    style={{
-                        padding: "8px 12px",
-                        borderRadius: "6px",
-                        background: "transparent",
-                        color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                        border: "1px solid hsl(var(--border, 0 0% 86%))",
-                        cursor: "pointer",
-                        fontSize: "12px",
-                    }}
+                    className="rounded-md border border-border bg-transparent px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
                 >
                     {showDetails ? "詳細を隠す" : "詳細を表示"}
                 </button>
@@ -169,16 +111,7 @@ function ErrorDetailSection({
 
             {/* 技術的な詳細（折りたたみ） */}
             {showDetails && (
-                <div
-                    style={{
-                        marginTop: "12px",
-                        padding: "8px",
-                        background: "hsl(var(--muted, 0 0% 96%))",
-                        borderRadius: "4px",
-                        fontSize: "11px",
-                        fontFamily: "ui-monospace, monospace",
-                    }}
-                >
+                <div className="mt-3 rounded bg-muted p-2 text-[11px] font-mono">
                     <div>エラーコード: {error.errorCode ?? "UNKNOWN"}</div>
                     {error.errorMessage && <div>メッセージ: {error.errorMessage}</div>}
                 </div>
@@ -199,37 +132,17 @@ export function EngineLogsPanel({
 
     return (
         <div
-            style={{
-                ...baseCard,
-                border: hasActiveError
-                    ? "2px solid hsl(var(--destructive, 0 72% 51%))"
-                    : "1px solid hsl(var(--border, 0 0% 86%))",
-            }}
+            className={cn(
+                baseCardClassName,
+                hasActiveError ? "border-2 border-destructive" : "border-border",
+            )}
         >
-            <div style={{ fontWeight: 700, marginBottom: "6px" }}>エンジンログ</div>
+            <div className="mb-1.5 font-bold">エンジンログ</div>
 
             {hasActiveError && (
-                <div
-                    style={{
-                        background: "hsl(var(--destructive, 0 72% 51%) / 0.1)",
-                        border: "1px solid hsl(var(--destructive, 0 72% 51%))",
-                        borderRadius: "8px",
-                        padding: "12px",
-                        marginBottom: "8px",
-                    }}
-                >
-                    <div
-                        style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            fontWeight: 600,
-                            color: "hsl(var(--destructive, 0 72% 51%))",
-                            marginBottom: "12px",
-                            fontSize: "15px",
-                        }}
-                    >
-                        <span style={{ fontSize: "18px" }}>⚠️</span>
+                <div className="mb-2 rounded-md border border-destructive bg-destructive/10 p-3">
+                    <div className="mb-3 flex items-center gap-2 text-[15px] font-semibold text-destructive">
+                        <span className="text-lg">⚠️</span>
                         エンジンエラー
                     </div>
 
@@ -249,40 +162,15 @@ export function EngineLogsPanel({
                 </div>
             )}
 
-            <ul
-                style={{
-                    listStyle: "none",
-                    padding: 0,
-                    margin: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "4px",
-                    maxHeight: "160px",
-                    overflow: "auto",
-                }}
-            >
+            <ul className="flex max-h-[160px] flex-col gap-1 overflow-auto">
                 {eventLogs.map((log) => (
-                    <li
-                        key={log.id}
-                        style={{
-                            fontFamily: "ui-monospace, monospace",
-                            fontSize: "12px",
-                        }}
-                    >
+                    <li key={log.id} className="font-mono text-xs">
                         {formatEngineEventLog(log)}
                     </li>
                 ))}
             </ul>
             {errorLogs.length ? (
-                <div
-                    style={{
-                        marginTop: "8px",
-                        color: "hsl(var(--destructive, 0 72% 51%))",
-                        fontSize: "12px",
-                    }}
-                >
-                    {errorLogs[0].message}
-                </div>
+                <div className="mt-2 text-xs text-destructive">{errorLogs[0].message}</div>
             ) : null}
         </div>
     );

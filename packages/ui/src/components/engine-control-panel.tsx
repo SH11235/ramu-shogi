@@ -5,8 +5,9 @@ import type {
     SearchLimits,
     ThreadInfo,
 } from "@shogi/engine-client";
-import type { CSSProperties, ReactElement } from "react";
+import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { cn } from "@shogi/design-system";
 import { Button } from "./button";
 import {
     Dialog,
@@ -100,26 +101,11 @@ const USI_OPTIONS: UsiOptionDefinition[] = [
     { name: "UCI_Elo", type: "spin", defaultValue: 0, min: 0, max: 4000 },
 ];
 
-const surfaceStyle: CSSProperties = {
-    background: "hsl(var(--card, 0 0% 100%))",
-    color: "hsl(var(--foreground, 222 47% 11%))",
-    border: "1px solid hsl(var(--border, 0 0% 86%))",
-    borderRadius: "12px",
-    padding: "16px",
-    boxShadow: "0 18px 38px rgba(0, 0, 0, 0.18)",
-};
-
-const gridStyle: CSSProperties = {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-    gap: "12px",
-};
-
-const labelStyle: CSSProperties = {
-    fontSize: "12px",
-    color: "hsl(var(--muted-foreground, 0 0% 45%))",
-};
-const inputStyle: CSSProperties = { background: "hsl(var(--background, 0 0% 100%))" };
+const surfaceClassName =
+    "rounded-xl border border-border bg-card p-4 text-foreground shadow-[0_18px_38px_rgba(0,0,0,0.18)]";
+const gridClassName = "grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]";
+const labelClassName = "text-xs text-muted-foreground";
+const inputClassName = "bg-background";
 
 function formatEvent(event: EngineEvent): string {
     if (event.type === "bestmove") {
@@ -384,24 +370,11 @@ export function EngineControlPanel({
                     : "エラー";
 
     return (
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <div
-                style={{
-                    ...surfaceStyle,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "12px",
-                }}
-            >
+        <div className="flex flex-col gap-2">
+            <div className={cn(surfaceClassName, "flex items-center justify-between gap-3")}>
                 <div>
-                    <div style={{ fontWeight: 600, marginBottom: 4 }}>エンジン操作</div>
-                    <div
-                        style={{
-                            fontSize: "13px",
-                            color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                        }}
-                    >
+                    <div className="mb-1 font-semibold">エンジン操作</div>
+                    <div className="text-[13px] text-muted-foreground">
                         状態: {statusLabel} {bestmove ? `| 最終 bestmove: ${bestmove}` : ""}
                     </div>
                 </div>
@@ -409,23 +382,14 @@ export function EngineControlPanel({
                     <DialogTrigger asChild>
                         <Button
                             type="button"
-                            style={{
-                                paddingInline: "14px",
-                                height: "40px",
-                                borderRadius: "8px",
-                                background:
-                                    "linear-gradient(120deg, hsl(var(--primary, 15 86% 55%)), hsl(var(--accent, 37 94% 50%)))",
-                                color: "hsl(var(--primary-foreground, 0 0% 100%))",
-                                border: "none",
-                                cursor: "pointer",
-                            }}
+                            className="h-10 rounded-md bg-gradient-to-r from-primary to-accent px-3.5 text-primary-foreground"
                         >
                             {triggerLabel}
                         </Button>
                     </DialogTrigger>
                     <DialogContent
-                        overlayStyle={{ backgroundColor: "rgba(8, 10, 20, 0.58)" }}
-                        style={{ width: "min(1040px, calc(100% - 24px))" }}
+                        overlayClassName="bg-[rgba(8,10,20,0.58)]"
+                        className="w-[min(1040px,calc(100%-24px))]"
                     >
                         <DialogHeader>
                             <DialogTitle>エンジン操作パネル</DialogTitle>
@@ -435,36 +399,24 @@ export function EngineControlPanel({
                             </DialogDescription>
                         </DialogHeader>
 
-                        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                            <section style={{ ...surfaceStyle, padding: "12px" }}>
-                                <div
-                                    style={{
-                                        display: "flex",
-                                        justifyContent: "space-between",
-                                        gap: "12px",
-                                    }}
-                                >
+                        <div className="flex flex-col gap-4">
+                            <section className={cn(surfaceClassName, "p-3")}>
+                                <div className="flex justify-between gap-3">
                                     <div>
-                                        <div style={{ fontWeight: 600 }}>接続・初期化</div>
-                                        <div style={{ fontSize: "13px", color: labelStyle.color }}>
+                                        <div className="font-semibold">接続・初期化</div>
+                                        <div className="text-[13px] text-muted-foreground">
                                             状態: {statusLabel}
                                         </div>
-                                        <div style={{ fontSize: "12px", color: labelStyle.color }}>
+                                        <div className="text-xs text-muted-foreground">
                                             局面: {position.label ?? position.sfen}
                                         </div>
                                     </div>
-                                    <div
-                                        style={{
-                                            display: "flex",
-                                            gap: "8px",
-                                            alignItems: "center",
-                                        }}
-                                    >
+                                    <div className="flex items-center gap-2">
                                         <Button
                                             type="button"
                                             onClick={handleInitClick}
                                             disabled={busy || status === "init"}
-                                            style={{ paddingInline: "12px" }}
+                                            className="px-3"
                                         >
                                             init
                                         </Button>
@@ -473,7 +425,7 @@ export function EngineControlPanel({
                                             onClick={resetLogs}
                                             disabled={logs.length === 0}
                                             variant="secondary"
-                                            style={{ paddingInline: "12px" }}
+                                            className="px-3"
                                         >
                                             ログクリア
                                         </Button>
@@ -482,133 +434,67 @@ export function EngineControlPanel({
                             </section>
 
                             <section
-                                style={{
-                                    ...surfaceStyle,
-                                    padding: "12px",
-                                    background:
-                                        "linear-gradient(135deg, hsl(var(--card, 0 0% 100%)), hsl(210 40% 98%))",
-                                }}
+                                className={cn(
+                                    surfaceClassName,
+                                    "p-3 bg-[linear-gradient(135deg,hsl(var(--card,0_0%_100%)),hsl(210_40%_98%))]",
+                                )}
                             >
-                                <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                                    デバッグ情報 (開発者向け)
-                                </div>
-                                <div
-                                    style={{
-                                        display: "grid",
-                                        gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-                                        gap: "8px",
-                                        fontSize: "12px",
-                                    }}
-                                >
-                                    <div
-                                        style={{
-                                            padding: "8px",
-                                            background: "hsl(var(--background, 0 0% 100%))",
-                                            borderRadius: "6px",
-                                            border: "1px solid hsl(var(--border, 0 0% 86%))",
-                                        }}
-                                    >
-                                        <div style={{ color: labelStyle.color }}>
-                                            アクティブスレッド
-                                        </div>
+                                <div className="mb-2 font-semibold">デバッグ情報 (開発者向け)</div>
+                                <div className="grid gap-2 text-xs [grid-template-columns:repeat(auto-fit,minmax(140px,1fr))]">
+                                    <div className="rounded-md border border-border bg-background p-2">
+                                        <div className={labelClassName}>アクティブスレッド</div>
                                         <div
-                                            style={{
-                                                fontWeight: 600,
-                                                fontSize: "16px",
-                                                color:
-                                                    threadInfo && threadInfo.activeThreads > 1
-                                                        ? "hsl(142 76% 36%)"
-                                                        : "inherit",
-                                            }}
+                                            className={cn(
+                                                "text-base font-semibold",
+                                                threadInfo && threadInfo.activeThreads > 1
+                                                    ? "text-[hsl(var(--success,142_76%_36%))]"
+                                                    : "text-foreground",
+                                            )}
                                         >
                                             {threadInfo?.activeThreads ?? "-"}
                                         </div>
                                     </div>
-                                    <div
-                                        style={{
-                                            padding: "8px",
-                                            background: "hsl(var(--background, 0 0% 100%))",
-                                            borderRadius: "6px",
-                                            border: "1px solid hsl(var(--border, 0 0% 86%))",
-                                        }}
-                                    >
-                                        <div style={{ color: labelStyle.color }}>最大スレッド</div>
-                                        <div style={{ fontWeight: 600, fontSize: "16px" }}>
+                                    <div className="rounded-md border border-border bg-background p-2">
+                                        <div className={labelClassName}>最大スレッド</div>
+                                        <div className="text-base font-semibold">
                                             {threadInfo?.maxThreads ?? "-"}
                                         </div>
                                     </div>
-                                    <div
-                                        style={{
-                                            padding: "8px",
-                                            background: "hsl(var(--background, 0 0% 100%))",
-                                            borderRadius: "6px",
-                                            border: "1px solid hsl(var(--border, 0 0% 86%))",
-                                        }}
-                                    >
-                                        <div style={{ color: labelStyle.color }}>
-                                            ハードウェア並列数
-                                        </div>
-                                        <div style={{ fontWeight: 600, fontSize: "16px" }}>
+                                    <div className="rounded-md border border-border bg-background p-2">
+                                        <div className={labelClassName}>ハードウェア並列数</div>
+                                        <div className="text-base font-semibold">
                                             {threadInfo?.hardwareConcurrency ?? "-"}
                                         </div>
                                     </div>
-                                    <div
-                                        style={{
-                                            padding: "8px",
-                                            background: "hsl(var(--background, 0 0% 100%))",
-                                            borderRadius: "6px",
-                                            border: "1px solid hsl(var(--border, 0 0% 86%))",
-                                        }}
-                                    >
-                                        <div style={{ color: labelStyle.color }}>
-                                            スレッド利用可能
-                                        </div>
+                                    <div className="rounded-md border border-border bg-background p-2">
+                                        <div className={labelClassName}>スレッド利用可能</div>
                                         <div
-                                            style={{
-                                                fontWeight: 600,
-                                                fontSize: "14px",
-                                                color: threadInfo?.threadedAvailable
-                                                    ? "hsl(142 76% 36%)"
-                                                    : "hsl(0 72% 51%)",
-                                            }}
+                                            className={cn(
+                                                "text-sm font-semibold",
+                                                threadInfo?.threadedAvailable
+                                                    ? "text-[hsl(var(--success,142_76%_36%))]"
+                                                    : "text-[hsl(0_72%_51%)]",
+                                            )}
                                         >
                                             {threadInfo?.threadedAvailable ? "Yes" : "No"}
                                         </div>
                                     </div>
-                                    <div
-                                        style={{
-                                            padding: "8px",
-                                            background: "hsl(var(--background, 0 0% 100%))",
-                                            borderRadius: "6px",
-                                            border: "1px solid hsl(var(--border, 0 0% 86%))",
-                                        }}
-                                    >
-                                        <div style={{ color: labelStyle.color }}>最新 NPS</div>
-                                        <div style={{ fontWeight: 600, fontSize: "16px" }}>
+                                    <div className="rounded-md border border-border bg-background p-2">
+                                        <div className={labelClassName}>最新 NPS</div>
+                                        <div className="text-base font-semibold">
                                             {latestNps !== null ? latestNps.toLocaleString() : "-"}
                                         </div>
                                     </div>
-                                    <div
-                                        style={{
-                                            padding: "8px",
-                                            background: "hsl(var(--background, 0 0% 100%))",
-                                            borderRadius: "6px",
-                                            border: "1px solid hsl(var(--border, 0 0% 86%))",
-                                        }}
-                                    >
-                                        <div style={{ color: labelStyle.color }}>
-                                            crossOriginIsolated
-                                        </div>
+                                    <div className="rounded-md border border-border bg-background p-2">
+                                        <div className={labelClassName}>crossOriginIsolated</div>
                                         <div
-                                            style={{
-                                                fontWeight: 600,
-                                                fontSize: "14px",
-                                                color:
-                                                    typeof crossOriginIsolated !== "undefined" &&
+                                            className={cn(
+                                                "text-sm font-semibold",
+                                                typeof crossOriginIsolated !== "undefined" &&
                                                     crossOriginIsolated
-                                                        ? "hsl(142 76% 36%)"
-                                                        : "hsl(0 72% 51%)",
-                                            }}
+                                                    ? "text-[hsl(var(--success,142_76%_36%))]"
+                                                    : "text-[hsl(0_72%_51%)]",
+                                            )}
                                         >
                                             {typeof crossOriginIsolated !== "undefined"
                                                 ? crossOriginIsolated
@@ -618,32 +504,20 @@ export function EngineControlPanel({
                                         </div>
                                     </div>
                                 </div>
-                                <div
-                                    style={{
-                                        marginTop: "8px",
-                                        fontSize: "11px",
-                                        color: labelStyle.color,
-                                    }}
-                                >
+                                <div className="mt-2 text-[11px] text-muted-foreground">
                                     スレッド利用には crossOriginIsolated=true と SharedArrayBuffer
                                     が必要です
                                 </div>
                             </section>
 
-                            <section style={surfaceStyle}>
-                                <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                                    探索パラメータ
-                                </div>
-                                <div style={gridStyle}>
+                            <section className={surfaceClassName}>
+                                <div className="mb-2 font-semibold">探索パラメータ</div>
+                                <div className={gridClassName}>
                                     <label
                                         htmlFor={LIMIT_INPUT_IDS.depth}
-                                        style={{
-                                            display: "flex",
-                                            flexDirection: "column",
-                                            gap: "4px",
-                                        }}
+                                        className="flex flex-col gap-1"
                                     >
-                                        <span style={labelStyle}>depth</span>
+                                        <span className={labelClassName}>depth</span>
                                         <Input
                                             id={LIMIT_INPUT_IDS.depth}
                                             type="number"
@@ -653,18 +527,14 @@ export function EngineControlPanel({
                                                 setLimits({ ...limits, depth: e.target.value })
                                             }
                                             placeholder="例: 12"
-                                            style={inputStyle}
+                                            className={inputClassName}
                                         />
                                     </label>
                                     <label
                                         htmlFor={LIMIT_INPUT_IDS.byoyomi}
-                                        style={{
-                                            display: "flex",
-                                            flexDirection: "column",
-                                            gap: "4px",
-                                        }}
+                                        className="flex flex-col gap-1"
                                     >
-                                        <span style={labelStyle}>byoyomi (ms)</span>
+                                        <span className={labelClassName}>byoyomi (ms)</span>
                                         <Input
                                             id={LIMIT_INPUT_IDS.byoyomi}
                                             type="number"
@@ -674,18 +544,14 @@ export function EngineControlPanel({
                                                 setLimits({ ...limits, byoyomi: e.target.value })
                                             }
                                             placeholder="例: 5000"
-                                            style={inputStyle}
+                                            className={inputClassName}
                                         />
                                     </label>
                                     <label
                                         htmlFor={LIMIT_INPUT_IDS.nodes}
-                                        style={{
-                                            display: "flex",
-                                            flexDirection: "column",
-                                            gap: "4px",
-                                        }}
+                                        className="flex flex-col gap-1"
                                     >
-                                        <span style={labelStyle}>nodes</span>
+                                        <span className={labelClassName}>nodes</span>
                                         <Input
                                             id={LIMIT_INPUT_IDS.nodes}
                                             type="number"
@@ -695,18 +561,14 @@ export function EngineControlPanel({
                                                 setLimits({ ...limits, nodes: e.target.value })
                                             }
                                             placeholder="例: 100000"
-                                            style={inputStyle}
+                                            className={inputClassName}
                                         />
                                     </label>
                                     <label
                                         htmlFor={LIMIT_INPUT_IDS.movetime}
-                                        style={{
-                                            display: "flex",
-                                            flexDirection: "column",
-                                            gap: "4px",
-                                        }}
+                                        className="flex flex-col gap-1"
                                     >
-                                        <span style={labelStyle}>movetime (ms)</span>
+                                        <span className={labelClassName}>movetime (ms)</span>
                                         <Input
                                             id={LIMIT_INPUT_IDS.movetime}
                                             type="number"
@@ -716,18 +578,13 @@ export function EngineControlPanel({
                                                 setLimits({ ...limits, movetime: e.target.value })
                                             }
                                             placeholder="例: 1000"
-                                            style={inputStyle}
+                                            className={inputClassName}
                                         />
                                     </label>
                                 </div>
                                 <label
                                     htmlFor={LIMIT_INPUT_IDS.ponder}
-                                    style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: "8px",
-                                        marginTop: "10px",
-                                    }}
+                                    className="mt-2 flex items-center gap-2"
                                 >
                                     <input
                                         id={LIMIT_INPUT_IDS.ponder}
@@ -737,43 +594,28 @@ export function EngineControlPanel({
                                             setLimits({ ...limits, ponder: e.target.checked })
                                         }
                                     />
-                                    <span style={{ fontSize: "13px" }}>ponder を有効化</span>
+                                    <span className="text-[13px]">ponder を有効化</span>
                                 </label>
                             </section>
 
-                            <section style={surfaceStyle}>
-                                <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                                    USI オプション
-                                </div>
-                                <div style={gridStyle}>
+                            <section className={surfaceClassName}>
+                                <div className="mb-2 font-semibold">USI オプション</div>
+                                <div className={gridClassName}>
                                     {USI_OPTIONS.map((opt) => (
-                                        <div
-                                            key={opt.name}
-                                            style={{
-                                                display: "flex",
-                                                flexDirection: "column",
-                                                gap: "4px",
-                                            }}
-                                        >
+                                        <div key={opt.name} className="flex flex-col gap-1">
                                             <label
                                                 htmlFor={normalizeOptionId(opt.name)}
-                                                style={{ fontSize: "13px", fontWeight: 600 }}
+                                                className="text-[13px] font-semibold"
                                             >
                                                 {opt.name}
                                             </label>
-                                            <span style={labelStyle}>
+                                            <span className={labelClassName}>
                                                 default {String(opt.defaultValue)}
                                                 {opt.min !== undefined ? ` | min ${opt.min}` : ""}{" "}
                                                 {opt.max !== undefined ? `| max ${opt.max}` : ""}
                                             </span>
                                             {opt.type === "check" ? (
-                                                <div
-                                                    style={{
-                                                        display: "flex",
-                                                        alignItems: "center",
-                                                        gap: "8px",
-                                                    }}
-                                                >
+                                                <div className="flex items-center gap-2">
                                                     <input
                                                         id={normalizeOptionId(opt.name)}
                                                         type="checkbox"
@@ -787,9 +629,7 @@ export function EngineControlPanel({
                                                             })
                                                         }
                                                     />
-                                                    <span style={{ fontSize: "13px" }}>
-                                                        ON / OFF
-                                                    </span>
+                                                    <span className="text-[13px]">ON / OFF</span>
                                                 </div>
                                             ) : (
                                                 <Input
@@ -804,26 +644,17 @@ export function EngineControlPanel({
                                                             [opt.name]: e.target.value,
                                                         })
                                                     }
-                                                    style={inputStyle}
+                                                    className={inputClassName}
                                                 />
                                             )}
                                             {opt.note ? (
-                                                <span style={labelStyle}>{opt.note}</span>
+                                                <span className={labelClassName}>{opt.note}</span>
                                             ) : null}
                                         </div>
                                     ))}
                                 </div>
-                                <div style={{ marginTop: "12px", fontWeight: 600 }}>
-                                    カスタム setoption
-                                </div>
-                                <div
-                                    style={{
-                                        display: "grid",
-                                        gridTemplateColumns: "1.2fr 1fr",
-                                        gap: "10px",
-                                        marginTop: "6px",
-                                    }}
-                                >
+                                <div className="mt-3 font-semibold">カスタム setoption</div>
+                                <div className="mt-1.5 grid gap-2 [grid-template-columns:1.2fr_1fr]">
                                     <Input
                                         placeholder="name"
                                         value={customOption.name}
@@ -833,7 +664,7 @@ export function EngineControlPanel({
                                                 name: e.target.value,
                                             })
                                         }
-                                        style={inputStyle}
+                                        className={inputClassName}
                                     />
                                     <Input
                                         placeholder="value"
@@ -844,33 +675,20 @@ export function EngineControlPanel({
                                                 value: e.target.value,
                                             })
                                         }
-                                        style={inputStyle}
+                                        className={inputClassName}
                                     />
                                 </div>
-                                <div
-                                    style={{
-                                        fontSize: "12px",
-                                        color: labelStyle.color,
-                                        marginTop: "4px",
-                                    }}
-                                >
+                                <div className="mt-1 text-xs text-muted-foreground">
                                     追加の USI オプションを送る場合に使用します（型は自動推定）。
                                 </div>
                             </section>
 
-                            <section
-                                style={{
-                                    ...surfaceStyle,
-                                    display: "flex",
-                                    gap: "10px",
-                                    justifyContent: "flex-end",
-                                }}
-                            >
+                            <section className={cn(surfaceClassName, "flex justify-end gap-2")}>
                                 <Button
                                     type="button"
                                     onClick={handleStart}
                                     disabled={status === "searching" || busy}
-                                    style={{ minWidth: "140px", paddingInline: "14px" }}
+                                    className="min-w-[140px] px-3.5"
                                 >
                                     {status === "searching" ? "探索中…" : "search / start"}
                                 </Button>
@@ -879,65 +697,31 @@ export function EngineControlPanel({
                                     onClick={handleStop}
                                     disabled={busy || status === "idle"}
                                     variant="secondary"
-                                    style={{ minWidth: "120px", paddingInline: "12px" }}
+                                    className="min-w-[120px] px-3"
                                 >
                                     stop
                                 </Button>
                             </section>
 
                             <section
-                                style={{ ...surfaceStyle, maxHeight: "280px", overflow: "auto" }}
+                                className={cn(surfaceClassName, "max-h-[280px] overflow-auto")}
                             >
-                                <div
-                                    style={{
-                                        display: "flex",
-                                        justifyContent: "space-between",
-                                        alignItems: "center",
-                                    }}
-                                >
-                                    <div style={{ fontWeight: 600 }}>ログ (最新が上)</div>
-                                    <span style={{ fontSize: "12px", color: labelStyle.color }}>
+                                <div className="flex items-center justify-between">
+                                    <div className="font-semibold">ログ (最新が上)</div>
+                                    <span className="text-xs text-muted-foreground">
                                         最大 {maxLogs} 件を保持
                                     </span>
                                 </div>
-                                <ul
-                                    style={{
-                                        listStyle: "none",
-                                        padding: 0,
-                                        marginTop: "10px",
-                                        display: "flex",
-                                        flexDirection: "column",
-                                        gap: "6px",
-                                    }}
-                                >
+                                <ul className="mt-2.5 flex flex-col gap-1.5">
                                     {logs.map((log) => (
                                         <li
                                             key={log.id}
-                                            style={{
-                                                padding: "8px 10px",
-                                                background: "hsl(var(--muted, 210 40% 96.1%))",
-                                                borderRadius: "8px",
-                                                border: "1px solid hsl(var(--border, 0 0% 86%))",
-                                            }}
+                                            className="rounded-md border border-border bg-muted px-2.5 py-2"
                                         >
-                                            <div
-                                                style={{
-                                                    fontSize: "11px",
-                                                    color: "hsl(var(--muted-foreground, 0 0% 48%))",
-                                                    marginBottom: "2px",
-                                                }}
-                                            >
+                                            <div className="mb-0.5 text-[11px] text-muted-foreground">
                                                 {log.timestamp.toLocaleTimeString()}
                                             </div>
-                                            <div
-                                                style={{
-                                                    fontFamily:
-                                                        'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                                                    fontSize: "13px",
-                                                }}
-                                            >
-                                                {log.text}
-                                            </div>
+                                            <div className="font-mono text-[13px]">{log.text}</div>
                                         </li>
                                     ))}
                                 </ul>

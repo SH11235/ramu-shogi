@@ -10,41 +10,15 @@ const SUPPORT_LINKS = {
  */
 export function NnueSupportInfo(): ReactElement {
     return (
-        <div
-            style={{
-                fontSize: "12px",
-                color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                padding: "12px",
-                borderRadius: "6px",
-                backgroundColor: "hsl(var(--muted, 0 0% 96%))",
-            }}
-        >
-            <div
-                style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "6px",
-                }}
-            >
-                <p style={{ margin: 0 }}>未対応のフォーマットや不具合があれば、ご連絡ください。</p>
-                <div
-                    style={{
-                        display: "flex",
-                        gap: "16px",
-                        marginTop: "4px",
-                    }}
-                >
+        <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
+            <div className="flex flex-col gap-1.5">
+                <p className="m-0">未対応のフォーマットや不具合があれば、ご連絡ください。</p>
+                <div className="mt-1 flex gap-4">
                     <a
                         href={`${SUPPORT_LINKS.github}/issues`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        style={{
-                            color: "hsl(var(--primary, 220 90% 56%))",
-                            textDecoration: "none",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "4px",
-                        }}
+                        className="inline-flex items-center gap-1 text-primary no-underline hover:underline"
                     >
                         <GitHubIcon />
                         GitHub Issues
@@ -53,13 +27,7 @@ export function NnueSupportInfo(): ReactElement {
                         href={SUPPORT_LINKS.x}
                         target="_blank"
                         rel="noopener noreferrer"
-                        style={{
-                            color: "hsl(var(--primary, 220 90% 56%))",
-                            textDecoration: "none",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "4px",
-                        }}
+                        className="inline-flex items-center gap-1 text-primary no-underline hover:underline"
                     >
                         <XIcon />X (Twitter)
                     </a>

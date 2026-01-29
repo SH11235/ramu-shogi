@@ -22,40 +22,13 @@ export function NnueProgressOverlay({
     if (!visible) return null;
 
     return (
-        <div
-            style={{
-                position: "absolute",
-                inset: 0,
-                backgroundColor: "rgba(255, 255, 255, 0.9)",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "16px",
-                borderRadius: "8px",
-                zIndex: 10,
-            }}
-        >
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 rounded-md bg-background/90">
             <Spinner size="lg" label={message} />
-            <div
-                style={{
-                    color: "hsl(var(--foreground, 0 0% 10%))",
-                    fontWeight: 500,
-                }}
-            >
-                {message}
-            </div>
+            <div className="font-medium text-foreground">{message}</div>
             {progress !== undefined && (
-                <div style={{ width: "200px" }}>
+                <div className="w-[200px]">
                     <Progress value={progress} />
-                    <div
-                        style={{
-                            textAlign: "center",
-                            marginTop: "8px",
-                            fontSize: "13px",
-                            color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                        }}
-                    >
+                    <div className="mt-2 text-center text-[13px] text-muted-foreground">
                         {Math.round(progress)}%
                     </div>
                 </div>

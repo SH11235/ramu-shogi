@@ -55,14 +55,9 @@ export const DragGhost = forwardRef<HTMLDivElement, DragGhostProps>(function Dra
             ref={ref}
             className={cn(
                 "pointer-events-none fixed left-0 top-0 z-[9999]",
-                "flex h-12 w-12 items-center justify-center",
-                "transition-opacity duration-75",
-                isDragging ? "opacity-100" : "opacity-0",
+                "h-12 w-12 items-center justify-center transition-opacity duration-75 will-change-transform",
+                isDragging ? "flex opacity-100" : "hidden opacity-0",
             )}
-            style={{
-                display: isDragging ? "flex" : "none",
-                willChange: "transform",
-            }}
             aria-hidden="true"
         >
             {/* 駒本体 */}
@@ -122,14 +117,10 @@ export const DragGhost = forwardRef<HTMLDivElement, DragGhostProps>(function Dra
             <div
                 className={cn(
                     "absolute inset-0 rounded-lg",
-                    "animate-ping",
+                    "animate-[ping_1.5s_infinite]",
                     mode === "delete" ? "bg-red-400/20" : "bg-amber-400/20",
                     "pointer-events-none",
                 )}
-                style={{
-                    animationDuration: "1.5s",
-                    animationIterationCount: "infinite",
-                }}
             />
         </div>,
         document.body,

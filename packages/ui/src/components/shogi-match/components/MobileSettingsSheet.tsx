@@ -227,6 +227,15 @@ export function MobileSettingsSheet({
                             sente: timeSettings.gote,
                             gote: timeSettings.sente,
                         });
+                        onSenteNnueSelectionChange(goteNnueSelection);
+                        onGoteNnueSelectionChange(senteNnueSelection);
+                        if (passRightsSettings && onPassRightsSettingsChange) {
+                            onPassRightsSettingsChange({
+                                ...passRightsSettings,
+                                senteInitialCount: passRightsSettings.goteInitialCount,
+                                goteInitialCount: passRightsSettings.senteInitialCount,
+                            });
+                        }
                     }}
                     disabled={settingsLocked}
                     title="先手と後手の設定を入れ替える"

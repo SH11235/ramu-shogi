@@ -188,10 +188,8 @@ function EvalHintBanner({
                 border border-[hsl(var(--wafuu-kin)/0.4)]
                 rounded-lg px-3 py-2 mb-2
                 animate-[slideDown_0.3s_ease-out,fadeIn_0.3s_ease-out]
+            shadow-[0_2px_8px_hsl(var(--wafuu-kin)/0.15)]
             "
-            style={{
-                boxShadow: "0 2px 8px hsl(var(--wafuu-kin) / 0.15)",
-            }}
         >
             {/* 金色のアクセントライン */}
             <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-[hsl(var(--wafuu-kin))] to-transparent opacity-60" />
