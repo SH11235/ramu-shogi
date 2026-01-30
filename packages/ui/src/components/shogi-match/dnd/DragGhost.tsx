@@ -5,22 +5,11 @@
  * pointer-events: none でクリックを透過
  */
 
-import type { PieceType } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import { forwardRef } from "react";
 import { createPortal } from "react-dom";
+import { PIECE_LABELS, getPieceImagePath } from "../utils/constants";
 import type { DndState } from "./types";
-
-const PIECE_LABELS: Record<PieceType, string> = {
-    K: "玉",
-    R: "飛",
-    B: "角",
-    G: "金",
-    S: "銀",
-    N: "桂",
-    L: "香",
-    P: "歩",
-};
 
 interface DragGhostProps {
     /** DnD 状態 */
@@ -64,8 +53,6 @@ export const DragGhost = forwardRef<HTMLDivElement, DragGhostProps>(function Dra
             <div
                 className={cn(
                     "relative flex h-11 w-11 items-center justify-center",
-                    "rounded-lg border border-shogi-outer-border",
-                    "bg-[radial-gradient(circle_at_30%_20%,hsl(var(--shogi-piece-bg)),hsl(var(--shogi-piece-bg-dark)))]",
                     "shadow-[0_8px_24px_rgba(0,0,0,0.35),0_4px_8px_rgba(0,0,0,0.2)]",
                     "transform-gpu",
                     shouldFlip && "-rotate-180",
@@ -76,41 +63,19 @@ export const DragGhost = forwardRef<HTMLDivElement, DragGhostProps>(function Dra
                     ],
                 )}
             >
-                {/* 駒文字 */}
+                {/* 駒画像 */}
                 {payload && (
-                    <span
-                        className={cn(
-                            "text-lg font-bold leading-none tracking-tight",
-                            "text-shogi-piece-text",
-                            "drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)]",
+                    <img
+                        src={getPieceImagePath(
+                            payload.owner,
+                            payload.pieceType,
+                            payload.isPromoted,
                         )}
-                    >
-                        {PIECE_LABELS[payload.pieceType]}
-                    </span>
+                        alt={`${payload.owner === "sente" ? "先手" : "後手"}の${PIECE_LABELS[payload.pieceType]}${payload.isPromoted ? "成" : ""}`}
+                        className="h-full w-full object-contain"
+                        draggable={false}
+                    />
                 )}
-
-                {/* 成りマーク */}
-                {payload?.isPromoted && (
-                    <span
-                        className={cn(
-                            "absolute -right-0.5 -top-0.5",
-                            "rounded-full bg-wafuu-shu px-1",
-                            "text-[8px] font-bold text-white",
-                            "shadow-sm",
-                        )}
-                    >
-                        成
-                    </span>
-                )}
-
-                {/* 木目テクスチャオーバーレイ */}
-                <div
-                    className={cn(
-                        "pointer-events-none absolute inset-0 rounded-lg",
-                        "bg-[repeating-linear-gradient(90deg,transparent,transparent_2px,rgba(139,90,43,0.03)_2px,rgba(139,90,43,0.03)_4px)]",
-                        "opacity-50",
-                    )}
-                />
             </div>
 
             {/* ドラッグ中のパルスエフェクト */}

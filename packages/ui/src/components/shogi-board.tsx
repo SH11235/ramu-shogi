@@ -56,6 +56,50 @@ const PIECE_LABELS: Record<string, string> = {
     P: "歩",
 };
 
+/** 駒の種類から画像ファイル名のベース部分を取得 */
+const PIECE_IMAGE_NAMES: Record<string, { normal: string; promoted?: string }> = {
+    K: { normal: "king" },
+    R: { normal: "rook", promoted: "dragon" },
+    B: { normal: "bishop", promoted: "horse" },
+    G: { normal: "gold" },
+    S: { normal: "silver", promoted: "prom_silver" },
+    N: { normal: "knight", promoted: "prom_knight" },
+    L: { normal: "lance", promoted: "prom_lance" },
+    P: { normal: "pawn", promoted: "prom_pawn" },
+};
+
+/**
+ * 駒の画像パスを取得
+ *
+ * 注意: 先手・後手とも同じ画像（black_*）を使用し、後手の駒はCSSで180度回転させる。
+ * 理由: sunfish-shogiの画像セットでは white_* 画像が既に180度回転済みのため、
+ *       CSS回転と組み合わせると後手の駒が正しく表示されない。
+ *
+ * 王将の区別: 先手は「玉」(black_king.png)、後手は「王」(black_king2.png) を使用。
+ *
+ * @param owner 駒の所有者 ("sente" | "gote")
+ * @param type 駒の種類 ("K" | "R" | "B" | ...)
+ * @param promoted 成り駒かどうか
+ * @returns 画像パス（例: "/pieces/black_pawn.png"）
+ */
+function getPieceImagePath(
+    owner: ShogiBoardOwner,
+    type: string,
+    promoted?: boolean,
+): string | null {
+    const imageInfo = PIECE_IMAGE_NAMES[type];
+    if (!imageInfo) return null;
+
+    // 王将の場合: 先手は玉(king)、後手は王(king2)
+    if (type === "K") {
+        const kingImage = owner === "sente" ? "king" : "king2";
+        return `/pieces/black_${kingImage}.png`;
+    }
+    // その他の駒: 先手・後手とも黒画像を使用（回転はCSSで制御）
+    const pieceName = promoted && imageInfo.promoted ? imageInfo.promoted : imageInfo.normal;
+    return `/pieces/black_${pieceName}.png`;
+}
+
 /**
  * 将棋盤コンポーネント
  */
@@ -191,7 +235,7 @@ export function ShogiBoard({
                                         {cell.piece ? (
                                             <span
                                                 className={cn(
-                                                    "relative flex h-full w-full items-center justify-center text-[18px] leading-none tracking-tight text-shogi-piece-text",
+                                                    "relative flex h-full w-full items-center justify-center",
                                                     flipBoard
                                                         ? cell.piece.owner === "sente" &&
                                                               "-rotate-180"
@@ -199,15 +243,18 @@ export function ShogiBoard({
                                                               "-rotate-180",
                                                 )}
                                             >
-                                                <span className="rounded-[10px] bg-shogi-piece-bg/90 px-2 py-[6px] shadow-[0_4px_8px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.9)]">
-                                                    {PIECE_LABELS[cell.piece.type] ??
-                                                        cell.piece.type}
-                                                </span>
-                                                {cell.piece.promoted && (
-                                                    <span className="absolute right-1 top-1 rounded-full bg-[hsl(var(--wafuu-shu))] px-1 text-[10px] font-bold text-white shadow-sm">
-                                                        成
-                                                    </span>
-                                                )}
+                                                <img
+                                                    src={
+                                                        getPieceImagePath(
+                                                            cell.piece.owner,
+                                                            cell.piece.type,
+                                                            cell.piece.promoted,
+                                                        ) ?? ""
+                                                    }
+                                                    alt={`${cell.piece.owner === "sente" ? "先手" : "後手"}の${PIECE_LABELS[cell.piece.type] ?? cell.piece.type}${cell.piece.promoted ? "成" : ""}`}
+                                                    className="h-[90%] w-[90%] object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.15)]"
+                                                    draggable={false}
+                                                />
                                             </span>
                                         ) : null}
                                         {squareNotation !== "none" && (

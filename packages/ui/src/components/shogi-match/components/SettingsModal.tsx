@@ -27,7 +27,7 @@ export function SettingsModal({ open, onOpenChange, children }: SettingsModalPro
             <DialogContent className="flex max-h-[85vh] w-[min(520px,calc(100%-24px))] flex-col p-0">
                 {/* ヘッダー */}
                 <DialogHeader className="sticky top-0 flex flex-row items-center justify-between border-b border-border bg-background px-6 py-4">
-                    <DialogTitle>設定</DialogTitle>
+                    <DialogTitle>棋譜/局面インポート</DialogTitle>
                     <DialogClose asChild>
                         <button
                             type="button"
