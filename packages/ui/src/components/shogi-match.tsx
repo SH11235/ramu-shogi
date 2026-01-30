@@ -29,8 +29,13 @@ import type { ShogiBoardCell } from "./shogi-board";
 import { GameResultDialog } from "./shogi-match/components/GameResultDialog";
 import type { KifuViewMode } from "./shogi-match/components/KifuPanel";
 import { MoveDetailWindow } from "./shogi-match/components/MoveDetailWindow";
-import type { PassDisabledReason } from "./shogi-match/components/PassButton";
 import { PvPreviewDialog } from "./shogi-match/components/PvPreviewDialog";
+import {
+    DEFAULT_BYOYOMI_MS,
+    DEFAULT_MAX_LOGS,
+    MATCH_LAYOUT_CLASSES,
+    TOOLTIP_DELAY_DURATION_MS,
+} from "./shogi-match/constants";
 import {
     AnalysisProvider,
     MatchSettingsProvider,
@@ -40,6 +45,7 @@ import {
 import { applyDropResult, DragGhost, type DropResult, usePieceDnd } from "./shogi-match/dnd";
 import { useBatchAnalysis } from "./shogi-match/hooks/useBatchAnalysis";
 import { type ClockSettings, useClockManager } from "./shogi-match/hooks/useClockManager";
+import { useDialogs } from "./shogi-match/hooks/useDialogs";
 import { useEditModeActions } from "./shogi-match/hooks/useEditModeActions";
 import { useEngineManager } from "./shogi-match/hooks/useEngineManager";
 import { useEnginePool } from "./shogi-match/hooks/useEnginePool";
@@ -50,6 +56,9 @@ import { useKifuNavigation } from "./shogi-match/hooks/useKifuNavigation";
 import { useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import { useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
+import { useNnueMigration } from "./shogi-match/hooks/useNnueMigration";
+import { useNnueValidation } from "./shogi-match/hooks/useNnueValidation";
+import { usePassRights } from "./shogi-match/hooks/usePassRights";
 import { MobileLayout } from "./shogi-match/layouts/MobileLayout";
 import { PCLayout } from "./shogi-match/layouts/PCLayout";
 import { ShogiMatchProvider } from "./shogi-match/ShogiMatchContext";
@@ -64,20 +73,18 @@ import {
     type Message,
     type PassRightsSettings,
     type PromotionSelection,
+    type Selection,
     type SideSetting,
 } from "./shogi-match/types";
 import { cloneHandsState } from "./shogi-match/utils/boardUtils";
 import type { KifMove } from "./shogi-match/utils/kifFormat";
 import { LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
 import {
-    buildPassRightsOptionForLegalMoves,
     isSamePassRightsSettings,
     normalizePassRightsSettings,
 } from "./shogi-match/utils/passRightsSettings";
 import { isSameTimeSettings, normalizeTimeSettings } from "./shogi-match/utils/timeSettings";
 import { TooltipProvider } from "./tooltip";
-
-type Selection = { kind: "square"; square: string } | { kind: "hand"; piece: PieceType };
 
 interface ShogiMatchProps {
     engineOptions: EngineOption[];
@@ -101,15 +108,6 @@ interface ShogiMatchProps {
     /** AIアイコンのURL（GitHub Pages等でbase pathが必要な場合に指定） */
     aiIconUrl?: string;
 }
-
-// デフォルト値の定数
-const DEFAULT_BYOYOMI_MS = 5_000; // デフォルト秒読み時間（5秒）
-const DEFAULT_MAX_LOGS = 80; // ログ履歴の最大保持件数
-const TOOLTIP_DELAY_DURATION_MS = 120; // ツールチップ表示遅延
-
-// レイアウト用Tailwindクラス（CSS変数はクラスで設定）
-const matchLayoutClasses =
-    "flex flex-col gap-2 items-center py-2 [--kifu-panel-max-h:min(60vh,calc(100dvh-320px))] [--kifu-panel-branch-max-h:calc(var(--kifu-panel-max-h)-40px)] [--shogi-cell-size:44px]";
 
 const clonePositionState = (pos: PositionState): PositionState => ({
     board: cloneBoard(pos.board),
@@ -272,22 +270,23 @@ export function ShogiMatch({
         ply: number;
         position: PositionState;
     } | null>(null);
-    // 設定モーダルの表示状態
-    const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
-    // NNUE 管理ダイアログの状態
-    const [isNnueManagerOpen, setIsNnueManagerOpen] = useState(false);
-    // NNUE 管理ダイアログを開いた理由（未ダウンロードエラー時など）
-    const [nnueManagerOpenReason, setNnueManagerOpenReason] = useState<string | null>(null);
-
-    // 表示設定ダイアログの状態
-    const [isDisplaySettingsOpen, setIsDisplaySettingsOpen] = useState(false);
-
-    // About（ライセンス）ダイアログの状態
-    const [isAboutOpen, setIsAboutOpen] = useState(false);
-
-    // パス権設定ダイアログの状態
-    const [isPassRightsSettingsOpen, setIsPassRightsSettingsOpen] = useState(false);
+    // ダイアログ状態管理
+    const {
+        isSettingsModalOpen,
+        setIsSettingsModalOpen,
+        isNnueManagerOpen,
+        nnueManagerOpenReason,
+        openNnueManager,
+        closeNnueManager,
+        clearNnueManagerOpenReason,
+        isDisplaySettingsOpen,
+        setIsDisplaySettingsOpen,
+        isAboutOpen,
+        setIsAboutOpen,
+        isPassRightsSettingsOpen,
+        setIsPassRightsSettingsOpen,
+    } = useDialogs();
 
     // 対局用 NNUE 選択
     const [senteNnueSelection, setSenteNnueSelection] = useLocalStorage<NnueSelection>(
@@ -304,79 +303,19 @@ export function ShogiMatch({
         defaultNnueSelection,
     );
 
-    // 旧キーからのマイグレーション
-    useEffect(() => {
-        if (typeof window === "undefined") return;
+    // NNUE再起動用のref（useNnueMigrationとuseNnueValidationで使用）
+    const restartEngineForNnueRef = useRef<
+        ((side: Player, selection?: NnueSelection) => Promise<void>) | null
+    >(null);
 
-        // 旧 senteNnueId からの移行
-        const oldSenteKey = "shogi:senteNnueId";
-        const oldSenteStored = localStorage.getItem(oldSenteKey);
-        if (oldSenteStored !== null) {
-            try {
-                const parsed = JSON.parse(oldSenteStored) as string | null;
-                if (parsed) {
-                    const newSelection = { presetKey: null, nnueId: parsed };
-                    setSenteNnueSelection(newSelection);
-                    void restartEngineForNnueRef.current?.("sente", newSelection);
-                }
-            } catch (error) {
-                console.warn(`Failed to parse localStorage key "${oldSenteKey}":`, error);
-            } finally {
-                localStorage.removeItem(oldSenteKey);
-            }
-        }
-
-        // 旧 goteNnueId からの移行
-        const oldGoteKey = "shogi:goteNnueId";
-        const oldGoteStored = localStorage.getItem(oldGoteKey);
-        if (oldGoteStored !== null) {
-            try {
-                const parsed = JSON.parse(oldGoteStored) as string | null;
-                if (parsed) {
-                    const newSelection = { presetKey: null, nnueId: parsed };
-                    setGoteNnueSelection(newSelection);
-                    void restartEngineForNnueRef.current?.("gote", newSelection);
-                }
-            } catch (error) {
-                console.warn(`Failed to parse localStorage key "${oldGoteKey}":`, error);
-            } finally {
-                localStorage.removeItem(oldGoteKey);
-            }
-        }
-
-        // 旧 analysisNnueId からの移行
-        const oldAnalysisKey = "shogi:analysisNnueId";
-        const oldAnalysisStored = localStorage.getItem(oldAnalysisKey);
-        if (oldAnalysisStored !== null) {
-            try {
-                const parsed = JSON.parse(oldAnalysisStored) as string | null;
-                if (parsed) {
-                    setAnalysisNnueSelection({ presetKey: null, nnueId: parsed });
-                }
-            } catch (error) {
-                console.warn(`Failed to parse localStorage key "${oldAnalysisKey}":`, error);
-            } finally {
-                localStorage.removeItem(oldAnalysisKey);
-            }
-        }
-
-        // さらに古い matchNnueId からの移行
-        const legacyKey = "shogi:matchNnueId";
-        const legacyStored = localStorage.getItem(legacyKey);
-        if (legacyStored !== null) {
-            try {
-                const parsed = JSON.parse(legacyStored) as string | null;
-                if (parsed) {
-                    setSenteNnueSelection({ presetKey: null, nnueId: parsed });
-                    setGoteNnueSelection({ presetKey: null, nnueId: parsed });
-                }
-            } catch (error) {
-                console.warn(`Failed to parse localStorage key "${legacyKey}":`, error);
-            } finally {
-                localStorage.removeItem(legacyKey);
-            }
-        }
-    }, [setSenteNnueSelection, setGoteNnueSelection, setAnalysisNnueSelection]);
+    // 旧キーからのNNUE選択マイグレーション
+    useNnueMigration({
+        setSenteNnueSelection,
+        setGoteNnueSelection,
+        setAnalysisNnueSelection,
+        restartEngineForNnue: (side, selection) =>
+            void restartEngineForNnueRef.current?.(side, selection),
+    });
 
     // NNUE ストレージから一覧を取得
     const {
@@ -407,148 +346,23 @@ export function ShogiMatch({
     // NNUE 解決フック（未ダウンロードのプリセットはエラーをスロー）
     const { resolveNnue } = useLazyNnueLoader({ getPresetDisplayName });
 
-    // 選択された NNUE（カスタムの場合）が削除された場合はデフォルトにリセット
-    // プリセット選択の場合は削除チェック不要（未ダウンロードでも選択可能）
-    // isLoading 中はリストが空でも待機（初期ロード完了後に判定）
-    useEffect(() => {
-        if (!isNnueListLoading) {
-            // カスタム NNUE（presetKey が null）で nnueId が設定されている場合のみチェック
-            if (
-                senteNnueSelection.presetKey === null &&
-                senteNnueSelection.nnueId &&
-                !nnueList.some((n) => n.id === senteNnueSelection.nnueId)
-            ) {
-                setSenteNnueSelection(defaultNnueSelection);
-                void restartEngineForNnueRef.current?.("sente", defaultNnueSelection);
-            }
-            if (
-                goteNnueSelection.presetKey === null &&
-                goteNnueSelection.nnueId &&
-                !nnueList.some((n) => n.id === goteNnueSelection.nnueId)
-            ) {
-                setGoteNnueSelection(defaultNnueSelection);
-                void restartEngineForNnueRef.current?.("gote", defaultNnueSelection);
-            }
-            if (
-                analysisNnueSelection.presetKey === null &&
-                analysisNnueSelection.nnueId &&
-                !nnueList.some((n) => n.id === analysisNnueSelection.nnueId)
-            ) {
-                setAnalysisNnueSelection(defaultNnueSelection);
-            }
-        }
-    }, [
+    // NNUE 選択のバリデーションと自動修正
+    useNnueValidation({
         senteNnueSelection,
+        setSenteNnueSelection,
         goteNnueSelection,
+        setGoteNnueSelection,
         analysisNnueSelection,
+        setAnalysisNnueSelection,
         nnueList,
         isNnueListLoading,
-        setSenteNnueSelection,
-        setGoteNnueSelection,
-        setAnalysisNnueSelection,
-        defaultNnueSelection,
-    ]);
-
-    // manifestUrl 未指定でプリセット選択中の場合のフォールバック
-    // ただし、nnueList に該当プリセットがダウンロード済みで存在する場合はリセットしない
-    useEffect(() => {
-        // manifestUrl が指定されている場合は処理不要
-        if (manifestUrl) return;
-        // nnueList 読み込み中は待機
-        if (isNnueListLoading) return;
-
-        const shouldReset = (presetKey: string | null): boolean => {
-            if (!presetKey) return false;
-            // nnueList に該当プリセットがダウンロード済みで存在するかチェック
-            const existsInList = nnueList.some(
-                (n) => n.source === "preset" && n.presetKey === presetKey,
-            );
-            // 存在しない場合のみリセット対象
-            return !existsInList;
-        };
-
-        if (shouldReset(analysisNnueSelection.presetKey)) {
-            setAnalysisNnueSelection({ presetKey: null, nnueId: null });
-        }
-        if (shouldReset(senteNnueSelection.presetKey)) {
-            const newSelection = { presetKey: null, nnueId: null };
-            setSenteNnueSelection(newSelection);
-            void restartEngineForNnueRef.current?.("sente", newSelection);
-        }
-        if (shouldReset(goteNnueSelection.presetKey)) {
-            const newSelection = { presetKey: null, nnueId: null };
-            setGoteNnueSelection(newSelection);
-            void restartEngineForNnueRef.current?.("gote", newSelection);
-        }
-    }, [
-        manifestUrl,
-        isNnueListLoading,
-        nnueList,
-        analysisNnueSelection.presetKey,
-        senteNnueSelection.presetKey,
-        goteNnueSelection.presetKey,
-        setAnalysisNnueSelection,
-        setSenteNnueSelection,
-        setGoteNnueSelection,
-    ]);
-
-    // 選択中の presetKey がマニフェストに存在しない場合のバリデーション
-    // - presets が存在すれば先頭のプリセットにフォールバック
-    // - presets が空なら駒得にフォールバック
-    // ※ manifestUrl 未指定時は別の useEffect で nnueList ベースの処理を行うためスキップ
-    useEffect(() => {
-        // manifestUrl 未指定の場合は別の useEffect で処理するためスキップ
-        if (!manifestUrl) return;
-        // プリセット読み込み中は待機
-        if (isPresetsLoading) return;
-
-        const validateAndFix = (
-            selection: NnueSelection,
-            setSelection: (s: NnueSelection) => void,
-        ): NnueSelection | null => {
-            // presetKey が設定されていない場合はバリデーション不要
-            if (!selection.presetKey) return null;
-
-            // presets が空の場合は駒得にフォールバック
-            if (presets.length === 0) {
-                const newSelection = { presetKey: null, nnueId: null };
-                setSelection(newSelection);
-                return newSelection;
-            }
-
-            // presetKey が presets に存在するかチェック
-            const exists = presets.some((p) => p.config.presetKey === selection.presetKey);
-            if (!exists) {
-                // 先頭のプリセットにフォールバック
-                const newSelection = { presetKey: presets[0].config.presetKey, nnueId: null };
-                setSelection(newSelection);
-                return newSelection;
-            }
-            return null;
-        };
-
-        const newSenteSelection = validateAndFix(senteNnueSelection, setSenteNnueSelection);
-        const newGoteSelection = validateAndFix(goteNnueSelection, setGoteNnueSelection);
-        validateAndFix(analysisNnueSelection, setAnalysisNnueSelection);
-
-        // 選択が変更された場合、対局用エンジンを再起動
-        if (newSenteSelection) {
-            restartEngineForNnueRef.current?.("sente", newSenteSelection);
-        }
-        if (newGoteSelection) {
-            restartEngineForNnueRef.current?.("gote", newGoteSelection);
-        }
-    }, [
-        manifestUrl,
-        isPresetsLoading,
         presets,
-        senteNnueSelection,
-        goteNnueSelection,
-        analysisNnueSelection,
-        setSenteNnueSelection,
-        setGoteNnueSelection,
-        setAnalysisNnueSelection,
-    ]);
+        isPresetsLoading,
+        defaultNnueSelection,
+        manifestUrl,
+        restartEngineForNnue: (side, selection) =>
+            void restartEngineForNnueRef.current?.(side, selection),
+    });
 
     // 分析用 NNUE 変更時に一括解析をリセット（プール破棄に伴う UI 同期）
     const prevAnalysisNnueSelectionRef = useRef(analysisNnueSelection);
@@ -684,73 +498,6 @@ export function ShogiMatch({
     );
 
     const legalCache = useMemo(() => new LegalMoveCache(), []);
-    const [canPassLegal, setCanPassLegal] = useState(false);
-    const clearLegalCache = useCallback(() => {
-        legalCache.clear();
-        setCanPassLegal(false);
-    }, [legalCache]);
-    const ensurePassRightsInitialized = useCallback(() => {
-        if (!passRightsSettings?.enabled) return null;
-        if (positionRef.current.passRights) return positionRef.current.passRights;
-        const rights = {
-            sente: passRightsSettings.senteInitialCount,
-            gote: passRightsSettings.goteInitialCount,
-        };
-        const updated = { ...positionRef.current, passRights: rights };
-        setPosition(updated);
-        positionRef.current = updated;
-        return rights;
-    }, [passRightsSettings]);
-    // 合法手取得用のパス権オプションを返す
-    // build_position（Rust側）はパス権を設定してからmovesを適用するため、
-    // 現在のパス権ではなく初期パス権を渡す必要がある（二重消費を防ぐため）
-    const getPassRightsOption = useCallback(() => {
-        return buildPassRightsOptionForLegalMoves(passRightsSettings, moves);
-    }, [passRightsSettings, moves]);
-    // ナビゲーションで局面が変わったらキャッシュをクリア
-    useEffect(() => {
-        clearLegalCache();
-    }, [clearLegalCache]);
-    // パス権設定変更時にキャッシュもクリアするラッパー
-    // （合法手にpassが含まれるかどうかが変わるため）
-    const handlePassRightsSettingsChange = useCallback(
-        (newSettings: PassRightsSettings) => {
-            setPassRightsSettings(newSettings);
-            clearLegalCache();
-        },
-        [setPassRightsSettings, clearLegalCache],
-    );
-
-    const hasPassRights = position.passRights && position.passRights[position.turn] > 0;
-    // パス合法可否が計算済みか
-    const passLegalKnown = legalCache.isCached(moves.length);
-    // パス可能かどうかの判定（合法手キャッシュに"pass"が含まれるかでのみ判定）
-    // 判定前は楽観的に true とし、実際の適用時に再チェックする
-    const canMakePassMove =
-        isMatchRunning &&
-        sides[position.turn].role === "human" &&
-        !!hasPassRights &&
-        (passLegalKnown ? canPassLegal : true);
-    // ボタン表示可否（対局中でパス機能が有効な場合に表示）
-    // パス権が0でも表示（レイアウトシフト防止）。非活性理由はdisabledReasonで管理。
-    const shouldRenderPassButton =
-        isMatchRunning &&
-        passRightsSettings?.enabled &&
-        (passRightsSettings.senteInitialCount > 0 || passRightsSettings.goteInitialCount > 0) &&
-        !!position.passRights;
-
-    // パス権が有効なら不足時に初期化しておく（編集開始局面などでpassRightsが未設定な場合に備える）
-    useEffect(() => {
-        if (!passRightsSettings?.enabled) return;
-        ensurePassRightsInitialized();
-    }, [ensurePassRightsInitialized, passRightsSettings?.enabled]);
-    const passButtonDisabledReason: PassDisabledReason | undefined = (() => {
-        if (!isMatchRunning) return "match-not-running";
-        if (sides[position.turn].role !== "human") return "not-your-turn";
-        if (!hasPassRights) return "no-rights";
-        if (passLegalKnown && !canPassLegal) return "in-check";
-        return undefined;
-    })();
 
     const matchEndedRef = useRef(false);
     const boardSectionRef = useRef<HTMLDivElement>(null);
@@ -766,10 +513,6 @@ export function ShogiMatch({
     }, []);
 
     const stopAllEnginesRef = useRef<() => Promise<void>>(async () => {});
-    // NNUE再起動用のref（useEffectからアクセスするため）
-    const restartEngineForNnueRef = useRef<
-        ((side: Player, selection?: NnueSelection) => Promise<void>) | null
-    >(null);
 
     // 時計管理フックを使用
     const { clocks, clocksRef, resetClocks, updateClocksForNextTurn, stopTicking, startTicking } =
@@ -806,10 +549,36 @@ export function ShogiMatch({
         },
         [clocksRef],
     );
-    const shouldShowPassConfirm =
-        passButtonDisabledReason === undefined &&
-        getRemainingTimeMs(position.turn) <
-            (passRightsSettings?.confirmDialogThresholdMs ?? Infinity);
+
+    // パス権管理フック
+    const passRights = usePassRights({
+        passRightsSettings,
+        positionRef,
+        setPosition,
+        isMatchRunning,
+        moves,
+        legalCache,
+        currentTurnRole: sides[position.turn]?.role ?? "human",
+        getRemainingTimeMs,
+    });
+
+    const clearLegalCache = useCallback(() => {
+        legalCache.clear();
+        passRights.setCanPassLegal(false);
+    }, [legalCache, passRights]);
+    // ナビゲーションで局面が変わったらキャッシュをクリア
+    useEffect(() => {
+        clearLegalCache();
+    }, [clearLegalCache]);
+    // パス権設定変更時にキャッシュもクリアするラッパー
+    // （合法手にpassが含まれるかどうかが変わるため）
+    const handlePassRightsSettingsChange = useCallback(
+        (newSettings: PassRightsSettings) => {
+            setPassRightsSettings(newSettings);
+            clearLegalCache();
+        },
+        [setPassRightsSettings, clearLegalCache],
+    );
 
     // 対局前に timeSettings が変更されたら clocks を同期
     // （resetClocks は timeSettings に依存しているため、resetClocks の変更で検知可能）
@@ -1039,10 +808,7 @@ export function ShogiMatch({
         analyzePosition,
         isAnalyzing,
         kifuTree: navigation.tree,
-        openNnueManager: (reason) => {
-            setNnueManagerOpenReason(reason);
-            setIsNnueManagerOpen(true);
-        },
+        openNnueManager,
         setMessage,
         batchAnalysis,
         setBatchAnalysis,
@@ -1114,7 +880,7 @@ export function ShogiMatch({
         if (moveProcessingRef.current) return;
         if (matchEndedRef.current) return;
         if (!passRightsSettings?.enabled) return;
-        const rights = positionRef.current.passRights ?? ensurePassRightsInitialized();
+        const rights = positionRef.current.passRights ?? passRights.ensurePassRightsInitialized();
         const hasRightsNow = rights ? rights[positionRef.current.turn] > 0 : false;
         if (!hasRightsNow) {
             setMessage({ text: "パス権がありません", type: "error" });
@@ -1128,7 +894,7 @@ export function ShogiMatch({
             // エンジン側の can_pass() は王手中のパスを禁止しており、
             // パスが合法でない場合にloadPositionするとパニックするため、事前にチェック
             try {
-                const passRightsOption = getPassRightsOption();
+                const passRightsOption = passRights.getPassRightsOption();
                 const resolver = fetchLegalMoves
                     ? () => fetchLegalMoves(startSfen, moves, passRightsOption)
                     : () => getPositionService().getLegalMoves(startSfen, moves, passRightsOption);
@@ -1179,9 +945,8 @@ export function ShogiMatch({
     }, [
         fetchLegalMoves,
         clearLegalCache,
-        getPassRightsOption,
+        passRights,
         legalCache,
-        ensurePassRightsInitialized,
         navigation,
         passRightsSettings,
         startSfen,
@@ -1296,8 +1061,7 @@ export function ShogiMatch({
         setLastAddedBranchInfo,
         setGameResult,
         setShowResultDialog,
-        setNnueManagerOpenReason,
-        setIsNnueManagerOpen,
+        openNnueManager,
         setEditFromSquare,
         setEditTool,
         setEditPromoted,
@@ -1322,7 +1086,7 @@ export function ShogiMatch({
         const ply = moves.length;
         if (legalCache.isCached(ply)) return;
 
-        const passRightsOption = getPassRightsOption();
+        const passRightsOption = passRights.getPassRightsOption();
         const resolver = async () => {
             if (fetchLegalMoves) {
                 return fetchLegalMoves(startSfen, moves, passRightsOption);
@@ -1335,7 +1099,7 @@ export function ShogiMatch({
             .getOrResolve(ply, resolver)
             .then((result) => {
                 if (moves.length === ply) {
-                    setCanPassLegal(result.has("pass"));
+                    passRights.setCanPassLegal(result.has("pass"));
                 }
             })
             .catch(() => undefined);
@@ -1343,7 +1107,7 @@ export function ShogiMatch({
         fetchLegalMoves,
         isMatchRunning,
         legalCache,
-        getPassRightsOption,
+        passRights,
         position.turn,
         positionReady,
         sides,
@@ -1468,8 +1232,8 @@ export function ShogiMatch({
         moves,
         legalCache,
         clearLegalCache,
-        setCanPassLegal,
-        getPassRightsOption,
+        setCanPassLegal: passRights.setCanPassLegal,
+        getPassRightsOption: passRights.getPassRightsOption,
         updateClocksForNextTurn,
         turnStartTimeRef,
         isEngineTurn,
@@ -1614,16 +1378,16 @@ export function ShogiMatch({
                 <NnueManagerDialog
                     open={isNnueManagerOpen}
                     onOpenChange={(open) => {
-                        setIsNnueManagerOpen(open);
-                        // ダイアログを閉じたら理由もクリア
-                        if (!open) {
-                            setNnueManagerOpenReason(null);
+                        if (open) {
+                            openNnueManager();
+                        } else {
+                            closeNnueManager();
                         }
                     }}
                     manifestUrl={manifestUrl}
                     onRequestFilePath={onRequestNnueFilePath}
                     openReason={nnueManagerOpenReason ?? undefined}
-                    onClearOpenReason={() => setNnueManagerOpenReason(null)}
+                    onClearOpenReason={clearNnueManagerOpenReason}
                     isMatchActive={isMatchRunning || isPaused}
                 />
 
@@ -1677,7 +1441,7 @@ export function ShogiMatch({
                         nnueList={nnueList}
                         presets={presets}
                         internalEngineId={internalEngineId}
-                        onOpenNnueManager={() => setIsNnueManagerOpen(true)}
+                        onOpenNnueManager={openNnueManager}
                         onOpenDisplaySettings={() => setIsDisplaySettingsOpen(true)}
                         onOpenPassRightsSettings={() => setIsPassRightsSettingsOpen(true)}
                     >
@@ -1719,11 +1483,11 @@ export function ShogiMatch({
                             handleResign={handleResign}
                             handleUndo={handleUndo}
                             onOpenSettings={() => setIsSettingsModalOpen(true)}
-                            shouldRenderPassButton={shouldRenderPassButton}
-                            canMakePassMove={canMakePassMove}
-                            passButtonDisabledReason={passButtonDisabledReason}
+                            shouldRenderPassButton={passRights.shouldRenderPassButton}
+                            canMakePassMove={passRights.canMakePassMove}
+                            passButtonDisabledReason={passRights.passButtonDisabledReason}
                             handlePassMove={handlePassMove}
-                            shouldShowPassConfirm={shouldShowPassConfirm}
+                            shouldShowPassConfirm={passRights.shouldShowPassConfirm}
                             isDraggingPiece={isDraggingPiece}
                             boardSectionRef={boardSectionRef}
                         >
@@ -1797,7 +1561,7 @@ export function ShogiMatch({
                         nnueList={nnueList}
                         presets={presets}
                         internalEngineId={internalEngineId}
-                        onOpenNnueManager={() => setIsNnueManagerOpen(true)}
+                        onOpenNnueManager={openNnueManager}
                         onOpenDisplaySettings={() => setIsDisplaySettingsOpen(true)}
                         onOpenPassRightsSettings={() => setIsPassRightsSettingsOpen(true)}
                     >
@@ -1820,7 +1584,7 @@ export function ShogiMatch({
                             handleStartTreeBatchAnalysis={handleStartTreeBatchAnalysis}
                         >
                             <PCLayout
-                                matchLayoutClasses={matchLayoutClasses}
+                                matchLayoutClasses={MATCH_LAYOUT_CLASSES}
                                 // MatchStateProvider 用
                                 position={position}
                                 clocks={clocks}
@@ -1859,11 +1623,11 @@ export function ShogiMatch({
                                 handleResign={handleResign}
                                 handleUndo={handleUndo}
                                 onOpenSettings={() => setIsSettingsModalOpen(true)}
-                                shouldRenderPassButton={shouldRenderPassButton}
-                                canMakePassMove={canMakePassMove}
-                                passButtonDisabledReason={passButtonDisabledReason}
+                                shouldRenderPassButton={passRights.shouldRenderPassButton}
+                                canMakePassMove={passRights.canMakePassMove}
+                                passButtonDisabledReason={passRights.passButtonDisabledReason}
                                 handlePassMove={handlePassMove}
-                                shouldShowPassConfirm={shouldShowPassConfirm}
+                                shouldShowPassConfirm={passRights.shouldShowPassConfirm}
                                 isDraggingPiece={isDraggingPiece}
                                 boardSectionRef={boardSectionRef}
                                 // PCBoardSection 用

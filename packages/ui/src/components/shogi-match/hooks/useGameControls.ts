@@ -100,10 +100,8 @@ export interface UseGameControlsProps {
     setGameResult: (result: GameResult | null) => void;
     /** 勝敗ダイアログ表示を設定する */
     setShowResultDialog: (show: boolean) => void;
-    /** NNUE管理ダイアログを開く理由を設定する */
-    setNnueManagerOpenReason: (reason: string | null) => void;
-    /** NNUE管理ダイアログ表示を設定する */
-    setIsNnueManagerOpen: (open: boolean) => void;
+    /** NNUE管理ダイアログを開く */
+    openNnueManager: (reason?: string) => void;
     /** 編集モードの移動元マスを設定する */
     setEditFromSquare: (square: Square | null) => void;
     /** 編集ツールを設定する */
@@ -177,8 +175,7 @@ export function useGameControls({
     setLastAddedBranchInfo,
     setGameResult,
     setShowResultDialog,
-    setNnueManagerOpenReason,
-    setIsNnueManagerOpen,
+    openNnueManager,
     setEditFromSquare,
     setEditTool,
     setEditPromoted,
@@ -285,8 +282,7 @@ export function useGameControls({
         } catch (e) {
             // NNUE未ダウンロードエラー → 評価関数ファイル管理を開いて理由を表示
             const errorMessage = e instanceof Error ? e.message : "評価関数の準備に失敗しました";
-            setNnueManagerOpenReason(`対局を開始できません: ${errorMessage}`);
-            setIsNnueManagerOpen(true);
+            openNnueManager(`対局を開始できません: ${errorMessage}`);
             return;
         }
 
@@ -315,8 +311,7 @@ export function useGameControls({
         setIsMatchRunning,
         setIsEditMode,
         setPosition,
-        setNnueManagerOpenReason,
-        setIsNnueManagerOpen,
+        openNnueManager,
     ]);
 
     /**

@@ -1,4 +1,4 @@
-import type { Piece, Square } from "@shogi/app-core";
+import type { Piece, PieceType, Square } from "@shogi/app-core";
 import type { EngineClient, SkillLevelSettings } from "@shogi/engine-client";
 
 /**
@@ -162,3 +162,10 @@ export interface Message {
     text: string;
     type: MessageType;
 }
+
+/**
+ * 選択中の駒・マス（対局中や検討モード用）
+ * - 'square': 盤上のマスを選択
+ * - 'hand': 持ち駒を選択
+ */
+export type Selection = { kind: "square"; square: string } | { kind: "hand"; piece: PieceType };
