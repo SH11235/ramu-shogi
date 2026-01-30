@@ -104,9 +104,12 @@ export function useLazyNnueLoader(options?: UseLazyNnueLoaderOptions): UseLazyNn
                     const sorted = [...existing].sort((a, b) => b.createdAt - a.createdAt);
                     const meta = sorted[0];
                     if (meta.fvScale === undefined) {
+                        const displayName =
+                            (meta.presetKey && getPresetDisplayName?.(meta.presetKey)) ||
+                            meta.displayName;
                         throw new NnueError(
                             "NNUE_RESOLVE_FAILED",
-                            `評価関数「${meta.displayName}」の FV_SCALE が未設定です。評価関数ファイル管理を開いて FV_SCALE を設定してください。`,
+                            `評価関数「${displayName}」の FV_SCALE が未設定です。評価関数ファイル管理を開いて FV_SCALE を設定してください。`,
                         );
                     }
                     return {

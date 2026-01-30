@@ -2503,11 +2503,8 @@ export function ShogiMatch({
                     depth: 20, // 最大深さ20
                 });
             } catch (error) {
-                setMessage({
-                    text: `解析エラー: ${error instanceof Error ? error.message : String(error)}`,
-                    type: "error",
-                });
-                setAnalyzingState(ANALYZING_STATE_NONE);
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                setAnalyzingState({ type: "error", ply, message: errorMessage });
             }
         },
         [kifMoves, analyzePosition, startSfen, clearEvalByPly, resolveNnue, analysisNnueSelection],
@@ -2553,19 +2550,16 @@ export function ShogiMatch({
                     depth: 20,
                 });
             } catch (error) {
-                setMessage({
-                    text: `解析エラー: ${error instanceof Error ? error.message : String(error)}`,
-                    type: "error",
-                });
-                setAnalyzingState(ANALYZING_STATE_NONE);
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                setAnalyzingState({ type: "error", ply: node.ply, message: errorMessage });
             }
         },
         [navigation.tree, analyzePosition, startSfen, clearEvalByNodeId],
     );
 
-    // 単発解析完了時の処理
+    // 単発解析完了時の処理（エラー状態は自動クリアしない）
     useEffect(() => {
-        if (!isAnalyzing && analyzingState.type !== "none") {
+        if (!isAnalyzing && analyzingState.type !== "none" && analyzingState.type !== "error") {
             setAnalyzingState(ANALYZING_STATE_NONE);
         }
     }, [isAnalyzing, analyzingState.type]);
@@ -2919,7 +2913,17 @@ export function ShogiMatch({
                         onAnalyze={handleAnalyzePly}
                         isAnalyzing={isAnalyzing}
                         analyzingPly={
-                            analyzingState.type !== "none" ? analyzingState.ply : undefined
+                            analyzingState.type !== "none" && analyzingState.type !== "error"
+                                ? analyzingState.ply
+                                : undefined
+                        }
+                        analysisError={
+                            analyzingState.type === "error"
+                                ? {
+                                      ply: analyzingState.ply,
+                                      message: analyzingState.message,
+                                  }
+                                : undefined
                         }
                         analysisNnueSelection={analysisNnueSelection}
                         onAnalysisNnueSelectionChange={setAnalysisNnueSelection}
@@ -3392,8 +3396,17 @@ export function ShogiMatch({
                                             onAnalyzePly={handleAnalyzePly}
                                             isAnalyzing={isAnalyzing}
                                             analyzingPly={
-                                                analyzingState.type !== "none"
+                                                analyzingState.type !== "none" &&
+                                                analyzingState.type !== "error"
                                                     ? analyzingState.ply
+                                                    : undefined
+                                            }
+                                            analysisError={
+                                                analyzingState.type === "error"
+                                                    ? {
+                                                          ply: analyzingState.ply,
+                                                          message: analyzingState.message,
+                                                      }
                                                     : undefined
                                             }
                                             batchAnalysis={

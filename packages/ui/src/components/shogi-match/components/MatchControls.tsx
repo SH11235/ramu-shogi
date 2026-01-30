@@ -26,12 +26,12 @@ function SettingsIcon(): ReactElement {
     );
 }
 
-/** 対局設定ボタン */
+/** 棋譜読込ボタン */
 function SettingsButton({ onClick }: { onClick: () => void }): ReactElement {
     return (
         <Button type="button" onClick={onClick} variant="outline">
             <SettingsIcon />
-            対局設定
+            棋譜読込
         </Button>
     );
 }
@@ -127,7 +127,7 @@ export function MatchControls({
                     </>
                 ) : (
                     <>
-                        {/* 編集モード時: [対局開始] [設定] [平手に戻す] [検討開始] */}
+                        {/* 編集モード時: [対局開始] [棋譜読込] [平手に戻す] [検討開始] */}
                         {isEditMode && (
                             <>
                                 <Button type="button" onClick={onStart}>
@@ -149,7 +149,7 @@ export function MatchControls({
                             </>
                         )}
 
-                        {/* 検討モード時: [対局開始] [対局設定] [平手に戻す] [局面編集] */}
+                        {/* 検討モード時: [対局開始] [棋譜読込] [平手に戻す] [局面編集] */}
                         {isReviewMode && (
                             <>
                                 <Button type="button" onClick={onStart}>
@@ -171,7 +171,7 @@ export function MatchControls({
                             </>
                         )}
 
-                        {/* 一時停止モード時: [対局再開] [対局設定] [局面編集] [投了] */}
+                        {/* 一時停止モード時: [対局再開] [棋譜読込] [局面編集] [投了] */}
                         {isPausedMode && (
                             <PausedModeControls
                                 onResume={onStart}
