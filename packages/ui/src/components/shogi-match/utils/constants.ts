@@ -31,7 +31,7 @@ export const PIECE_LABELS: Record<PieceType, string> = {
 /**
  * 駒の種類から画像ファイル名のベース部分を取得
  */
-export const PIECE_IMAGE_NAMES: Record<PieceType, { normal: string; promoted?: string }> = {
+const PIECE_IMAGE_NAMES: Record<PieceType, { normal: string; promoted?: string }> = {
     K: { normal: "king" },
     R: { normal: "rook", promoted: "dragon" },
     B: { normal: "bishop", promoted: "horse" },
