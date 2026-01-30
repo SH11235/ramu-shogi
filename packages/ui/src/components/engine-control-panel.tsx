@@ -1,3 +1,4 @@
+import { cn } from "@shogi/design-system";
 import type {
     EngineClient,
     EngineEvent,
@@ -7,7 +8,6 @@ import type {
 } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { cn } from "@shogi/design-system";
 import { Button } from "./button";
 import {
     Dialog,

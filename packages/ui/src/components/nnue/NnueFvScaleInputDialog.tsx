@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -41,6 +41,9 @@ export function NnueFvScaleInputDialog({
     // 表示名入力（デフォルト値: 拡張子を除去したファイル名）
     const [displayName, setDisplayName] = useState("");
 
+    // Confirm で閉じたかどうかを追跡（onOpenChange で Cancel を誤発火させないため）
+    const confirmedRef = useRef(false);
+
     // ダイアログが開かれたときにデフォルト値を設定
     useEffect(() => {
         if (open) {
@@ -77,6 +80,7 @@ export function NnueFvScaleInputDialog({
             return;
         }
 
+        confirmedRef.current = true;
         void onConfirm(num, trimmedName);
         setValue("");
         setDisplayName("");
@@ -101,7 +105,19 @@ export function NnueFvScaleInputDialog({
     );
 
     return (
-        <AlertDialog open={open} onOpenChange={(isOpen) => !isOpen && handleCancel()}>
+        <AlertDialog
+            open={open}
+            onOpenChange={(isOpen) => {
+                if (!isOpen) {
+                    if (confirmedRef.current) {
+                        // Confirm で閉じた場合は Cancel を呼ばない
+                        confirmedRef.current = false;
+                    } else {
+                        handleCancel();
+                    }
+                }
+            }}
+        >
             <AlertDialogContent>
                 <AlertDialogHeader>
                     <AlertDialogTitle>評価関数のインポート</AlertDialogTitle>

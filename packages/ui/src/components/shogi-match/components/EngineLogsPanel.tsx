@@ -1,7 +1,7 @@
 import type { EngineControllerErrorLog, EngineControllerEvent, Player } from "@shogi/app-core";
+import { cn } from "@shogi/design-system";
 import { type EngineErrorCode, getEngineErrorInfo } from "@shogi/engine-client";
 import { type ReactElement, useState } from "react";
-import { cn } from "@shogi/design-system";
 import { formatEngineEventLog } from "../hooks/formatEngineEvent";
 
 const baseCardClassName =
