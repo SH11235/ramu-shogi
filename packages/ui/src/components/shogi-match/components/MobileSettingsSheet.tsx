@@ -723,6 +723,15 @@ export function MobileSettingsSheet({
                 )}
             </div>
 
+            {/* 棋譜/局面インポート */}
+            {onImportSfen && onImportKif && (
+                <KifuImportSection
+                    onImportSfen={onImportSfen}
+                    onImportKif={onImportKif}
+                    positionReady={positionReady}
+                />
+            )}
+
             {/* 表示設定 */}
             <div className="space-y-3 pt-3 border-t border-border">
                 <div className="font-medium text-sm">表示設定</div>
@@ -781,15 +790,6 @@ export function MobileSettingsSheet({
                     </label>
                 </div>
             </div>
-
-            {/* 棋譜/局面インポート */}
-            {onImportSfen && onImportKif && (
-                <KifuImportSection
-                    onImportSfen={onImportSfen}
-                    onImportKif={onImportKif}
-                    positionReady={positionReady}
-                />
-            )}
 
             {/* このアプリについて / ライセンス */}
             {onOpenAbout && (
