@@ -8,7 +8,6 @@ import type {
     PresetWithStatus,
     Square,
 } from "@shogi/app-core";
-import type { KifMoveData } from "../utils/kifParser";
 import type { ReactElement, RefObject } from "react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { ShogiBoardCell } from "../../shogi-board";
@@ -37,6 +36,7 @@ import type {
     SideSetting,
 } from "../types";
 import type { EvalHistory, KifMove as FullKifMove } from "../utils/kifFormat";
+import type { KifMoveData } from "../utils/kifParser";
 
 type Selection = { kind: "square"; square: string } | { kind: "hand"; piece: PieceType };
 
