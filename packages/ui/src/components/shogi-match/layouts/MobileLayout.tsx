@@ -36,6 +36,7 @@ import type {
     SideSetting,
 } from "../types";
 import type { EvalHistory, KifMove as FullKifMove } from "../utils/kifFormat";
+import type { KifMoveData } from "../utils/kifParser";
 
 type Selection = { kind: "square"; square: string } | { kind: "hand"; piece: PieceType };
 
@@ -176,6 +177,14 @@ interface MobileLayoutProps {
 
     /** Aboutダイアログを開く */
     onOpenAbout?: () => void;
+
+    // 棋譜インポート
+    /** SFENインポート時のコールバック */
+    onImportSfen?: (sfen: string, moves: string[]) => Promise<void>;
+    /** KIFインポート時のコールバック */
+    onImportKif?: (moves: string[], moveData: KifMoveData[], startSfen?: string) => Promise<void>;
+    /** 局面が準備完了しているか */
+    positionReady?: boolean;
 }
 
 /**
@@ -259,6 +268,9 @@ export function MobileLayout({
     onPreviewPv,
     isOnMainLine = true,
     onOpenAbout,
+    onImportSfen,
+    onImportKif,
+    positionReady = true,
 }: MobileLayoutProps): ReactElement {
     // 設定BottomSheetの状態
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -358,7 +370,8 @@ export function MobileLayout({
     // 編集モード判定を事前計算（MobileBoardSectionに渡す）
     const isEditModeActive = isEditMode && !isMatchRunning;
     const hideEmptyHandPieces = gameMode === "playing" || gameMode === "paused";
-    const shouldShowFloatingSettings = !(isReviewMode && totalPly > 0);
+    // FAB表示条件: 検討モードで棋譜がある場合と編集モードではインライン表示するため非表示
+    const shouldShowFloatingSettings = !(isReviewMode && totalPly > 0) && !isEditModeActive;
 
     return (
         <div className="fixed inset-0 flex flex-col gap-1 w-full h-dvh overflow-hidden px-2 bg-background">
@@ -596,7 +609,7 @@ export function MobileLayout({
                         )}
                     </div>
                 ) : (
-                    /* 編集モード: 対局開始 + 平手に戻すボタン */
+                    /* 編集モード: 対局開始 + 平手に戻す + 設定ボタン */
                     <div className="flex flex-col gap-1.5 flex-shrink-0">
                         <div className="flex flex-col gap-0.5 text-center text-muted-foreground">
                             <div className="text-sm">盤面をタップ / 長押し・ドラッグで編集</div>
@@ -605,7 +618,7 @@ export function MobileLayout({
                                 手駒を長押し・ドラッグで盤に追加
                             </div>
                         </div>
-                        <div className="flex justify-center gap-3 py-2">
+                        <div className="flex items-center justify-center gap-2 py-2">
                             {onStart && (
                                 <button
                                     type="button"
@@ -624,13 +637,19 @@ export function MobileLayout({
                                     平手に戻す
                                 </button>
                             )}
+                            {/* 設定・NNUE管理ボタン */}
+                            <MobileSettingsActions
+                                variant="navigation"
+                                onSettingsClick={() => setIsSettingsOpen(true)}
+                                onNnueManagerClick={onOpenNnueManager}
+                            />
                         </div>
                     </div>
                 )}
             </footer>
 
             {/* FAB: 設定ボタン（右下固定）
-                検討モードで棋譜がある場合は、ナビゲーションバーに設定ボタンがあるので非表示 */}
+                検討モードで棋譜がある場合と編集モードでは、インラインで表示するため非表示 */}
             {shouldShowFloatingSettings && (
                 <div className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-4 flex items-center gap-2 z-40">
                     <MobileSettingsActions
@@ -684,6 +703,9 @@ export function MobileLayout({
                     displaySettings={displaySettingsFull}
                     onDisplaySettingsChange={onDisplaySettingsChange}
                     onOpenAbout={onOpenAbout}
+                    onImportSfen={onImportSfen}
+                    onImportKif={onImportKif}
+                    positionReady={positionReady}
                 />
             </BottomSheet>
 

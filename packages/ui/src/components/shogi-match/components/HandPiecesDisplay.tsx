@@ -1,7 +1,7 @@
 import type { PieceType, Player, PositionState } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
-import { PIECE_CAP, PIECE_LABELS } from "../utils/constants";
+import { getPieceImagePath, PIECE_CAP, PIECE_LABELS } from "../utils/constants";
 import { PlayerIcon } from "./PlayerIcon";
 
 const HAND_ORDER: PieceType[] = ["R", "B", "G", "S", "N", "L", "P"];
@@ -11,29 +11,25 @@ type HandPieceSize = "compact" | "edit" | "medium" | "normal";
 
 const SIZE_CONFIG = {
     compact: {
-        text: "text-[11px]",
-        padding: "px-1 py-0.5",
+        imageSize: "h-6 w-6",
         badgeSize: "min-w-[10px] text-[8px]",
         badgePos: "-bottom-0.5 -right-0.5",
         badgePosRotated: "-left-0.5 -top-0.5 rotate-180",
     },
     edit: {
-        text: "text-[16px]",
-        padding: "px-1 py-1",
+        imageSize: "h-8 w-8",
         badgeSize: "min-w-[11px] text-[9px]",
         badgePos: "-bottom-0.5 -right-0.5",
         badgePosRotated: "-left-0.5 -top-0.5 rotate-180",
     },
     medium: {
-        text: "text-[16px]",
-        padding: "px-1.5 py-1",
+        imageSize: "h-8 w-8",
         badgeSize: "min-w-[12px] text-[9px]",
         badgePos: "-bottom-0.5 -right-0.5",
         badgePosRotated: "-left-0.5 -top-0.5 rotate-180",
     },
     normal: {
-        text: "text-[16px]",
-        padding: "px-2 py-[5px]",
+        imageSize: "h-10 w-10",
         badgeSize: "min-w-[14px] text-[11px]",
         badgePos: "-bottom-1 -right-1",
         badgePosRotated: "-left-1 -top-1 rotate-180",
@@ -57,23 +53,24 @@ function PieceToken({
     // 盤面と同じ回転ロジック: 反転時は先手が逆さ、通常時は後手が逆さ
     const shouldRotate = flipBoard ? owner === "sente" : owner === "gote";
     const config = SIZE_CONFIG[size];
+    const imagePath = getPieceImagePath(owner, pieceType);
 
     return (
         <span
             className={cn(
-                "relative inline-flex items-center justify-center leading-none tracking-tight text-shogi-piece-text",
-                config.text,
+                "relative inline-flex items-center justify-center",
                 shouldRotate && "-rotate-180",
             )}
         >
-            <span
+            <img
+                src={imagePath}
+                alt={`${owner === "sente" ? "先手" : "後手"}の${PIECE_LABELS[pieceType]}`}
                 className={cn(
-                    "rounded-[8px] bg-shogi-piece-bg/90 shadow-[0_3px_6px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.9)]",
-                    config.padding,
+                    config.imageSize,
+                    "object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.15)]",
                 )}
-            >
-                {PIECE_LABELS[pieceType]}
-            </span>
+                draggable={false}
+            />
             {/* 個数を添え字として表示（親が回転しても常に右下に表示） */}
             <span
                 className={cn(

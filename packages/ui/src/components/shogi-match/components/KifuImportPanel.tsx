@@ -95,7 +95,7 @@ export function KifuImportPanel({
     }, []);
 
     return (
-        <div className="bg-card border border-border rounded-xl p-3 shadow-lg w-[var(--panel-width)]">
+        <div className="bg-card border border-border rounded-xl p-3 shadow-lg w-full">
             <div className="font-bold mb-2">インポート（SFEN / KIF）</div>
 
             {/* 説明文 */}

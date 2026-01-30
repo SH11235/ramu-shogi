@@ -1,13 +1,15 @@
+import type { PieceType } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import { type ReactElement, useRef } from "react";
 import type { SquareNotation } from "./shogi-match/types";
+import { getPieceImagePath, PIECE_LABELS } from "./shogi-match/utils/constants";
 import { formatSquare, getBoardLabels } from "./shogi-match/utils/coordinateFormat";
 
 type ShogiBoardOwner = "sente" | "gote";
 
 interface ShogiBoardPiece {
     owner: ShogiBoardOwner;
-    type: string;
+    type: PieceType;
     promoted?: boolean;
 }
 
@@ -44,17 +46,6 @@ interface ShogiBoardProps {
     /** 盤外ラベル（筋・段）を表示するか */
     showBoardLabels?: boolean;
 }
-
-const PIECE_LABELS: Record<string, string> = {
-    K: "玉",
-    R: "飛",
-    B: "角",
-    G: "金",
-    S: "銀",
-    N: "桂",
-    L: "香",
-    P: "歩",
-};
 
 /**
  * 将棋盤コンポーネント
@@ -191,7 +182,7 @@ export function ShogiBoard({
                                         {cell.piece ? (
                                             <span
                                                 className={cn(
-                                                    "relative flex h-full w-full items-center justify-center text-[18px] leading-none tracking-tight text-shogi-piece-text",
+                                                    "relative flex h-full w-full items-center justify-center",
                                                     flipBoard
                                                         ? cell.piece.owner === "sente" &&
                                                               "-rotate-180"
@@ -199,15 +190,18 @@ export function ShogiBoard({
                                                               "-rotate-180",
                                                 )}
                                             >
-                                                <span className="rounded-[10px] bg-shogi-piece-bg/90 px-2 py-[6px] shadow-[0_4px_8px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.9)]">
-                                                    {PIECE_LABELS[cell.piece.type] ??
-                                                        cell.piece.type}
-                                                </span>
-                                                {cell.piece.promoted && (
-                                                    <span className="absolute right-1 top-1 rounded-full bg-[hsl(var(--wafuu-shu))] px-1 text-[10px] font-bold text-white shadow-sm">
-                                                        成
-                                                    </span>
-                                                )}
+                                                <img
+                                                    src={
+                                                        getPieceImagePath(
+                                                            cell.piece.owner,
+                                                            cell.piece.type,
+                                                            cell.piece.promoted,
+                                                        ) ?? ""
+                                                    }
+                                                    alt={`${cell.piece.owner === "sente" ? "先手" : "後手"}の${PIECE_LABELS[cell.piece.type] ?? cell.piece.type}${cell.piece.promoted ? "成" : ""}`}
+                                                    className="h-[90%] w-[90%] object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.15)]"
+                                                    draggable={false}
+                                                />
                                             </span>
                                         ) : null}
                                         {squareNotation !== "none" && (

@@ -5,7 +5,7 @@ import { type ReactElement, useState } from "react";
 import { formatEngineEventLog } from "../hooks/formatEngineEvent";
 
 const baseCardClassName =
-    "w-[var(--panel-width)] rounded-xl border border-border bg-card p-3 shadow-[0_14px_28px_rgba(0,0,0,0.12)]";
+    "w-full rounded-xl border border-border bg-card p-3 shadow-[0_14px_28px_rgba(0,0,0,0.12)]";
 
 interface EngineErrorDetails {
     hasError: boolean;

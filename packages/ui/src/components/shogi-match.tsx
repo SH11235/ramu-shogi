@@ -3024,6 +3024,10 @@ export function ShogiMatch({
                         message={message}
                         // About
                         onOpenAbout={() => setIsAboutOpen(true)}
+                        // 棋譜インポート
+                        onImportSfen={importSfen}
+                        onImportKif={importKif}
+                        positionReady={positionReady}
                     />
                 ) : (
                     <section className={matchLayoutClasses}>
@@ -3451,7 +3455,7 @@ export function ShogiMatch({
                                     open={isSettingsModalOpen}
                                     onOpenChange={setIsSettingsModalOpen}
                                 >
-                                    <div className="flex flex-col gap-6 min-w-[400px]">
+                                    <div className="flex flex-col gap-6">
                                         {/* インポート */}
                                         <KifuImportPanel
                                             onImportSfen={importSfen}

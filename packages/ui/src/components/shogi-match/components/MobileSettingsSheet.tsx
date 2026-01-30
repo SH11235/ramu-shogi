@@ -1,10 +1,11 @@
 import type { NnueMeta, NnueSelection, PresetWithStatus } from "@shogi/app-core";
 import { NONE_NNUE_SELECTION } from "@shogi/app-core";
 import type { SkillLevelSettings } from "@shogi/engine-client";
-import { type ReactElement, useEffect, useState } from "react";
+import { type ReactElement, useCallback, useEffect, useRef, useState } from "react";
 import { Switch } from "../../switch";
 import type { ClockSettings } from "../hooks/useClockManager";
 import type { DisplaySettings, PassRightsSettings, SideSetting, SquareNotation } from "../types";
+import { type KifMoveData, parseKif, parseSfen } from "../utils/kifParser";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 
 type SideKey = "sente" | "gote";
@@ -100,6 +101,14 @@ interface MobileSettingsSheetProps {
 
     // Aboutダイアログを開く
     onOpenAbout?: () => void;
+
+    // 棋譜インポート
+    /** SFENインポート時のコールバック */
+    onImportSfen?: (sfen: string, moves: string[]) => Promise<void>;
+    /** KIFインポート時のコールバック */
+    onImportKif?: (moves: string[], moveData: KifMoveData[], startSfen?: string) => Promise<void>;
+    /** 局面が準備完了しているか */
+    positionReady?: boolean;
 }
 
 // iOS Safari は16px未満のinput/selectにフォーカスすると自動ズームするため、text-base(16px)を使用
@@ -109,6 +118,133 @@ const labelClassName = "flex flex-col gap-1 text-sm";
 
 // SkillLevelSelectorの高さを確保してレイアウトシフトを防止
 const SKILL_LEVEL_SELECTOR_MIN_HEIGHT = "min-h-[4rem]";
+
+// =============================================================================
+// KifuImportSection: 棋譜/局面インポートセクション
+// =============================================================================
+
+interface KifuImportSectionProps {
+    onImportSfen: (sfen: string, moves: string[]) => Promise<void>;
+    onImportKif: (moves: string[], moveData: KifMoveData[], startSfen?: string) => Promise<void>;
+    positionReady: boolean;
+}
+
+function KifuImportSection({
+    onImportSfen,
+    onImportKif,
+    positionReady,
+}: KifuImportSectionProps): ReactElement {
+    const [isExpanded, setIsExpanded] = useState(false);
+    const [inputValue, setInputValue] = useState("");
+    const [error, setError] = useState<string | null>(null);
+    const [success, setSuccess] = useState(false);
+    const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // コンポーネントアンマウント時にタイマーをクリーンアップ
+    useEffect(() => {
+        return () => {
+            if (successTimerRef.current) {
+                clearTimeout(successTimerRef.current);
+            }
+        };
+    }, []);
+
+    const handleImport = useCallback(async () => {
+        if (!inputValue.trim()) {
+            setError("入力が空です");
+            return;
+        }
+
+        setError(null);
+        setSuccess(false);
+        if (successTimerRef.current) {
+            clearTimeout(successTimerRef.current);
+            successTimerRef.current = null;
+        }
+
+        try {
+            const looksLikeKif =
+                /#KIF|手数----|開始日時|終了日時|手合割|開始局面|先手：|後手：|持ち時間|表題|棋戦/.test(
+                    inputValue,
+                ) ||
+                /[▲△☗☖]/.test(inputValue) ||
+                /[１２３４５６７８９1-9][一二三四五六七八九].*(歩|香|桂|銀|金|角|飛|玉|王|と|馬|龍|竜)/.test(
+                    inputValue,
+                );
+
+            if (looksLikeKif) {
+                const result = parseKif(inputValue);
+                if (!result.success) {
+                    setError(result.error ?? "KIFのパースに失敗しました");
+                    return;
+                }
+                await onImportKif(result.moves, result.moveData, result.startSfen);
+                setSuccess(true);
+                setInputValue("");
+                successTimerRef.current = setTimeout(() => setSuccess(false), 2000);
+                return;
+            }
+
+            const { sfen, moves } = parseSfen(inputValue);
+            if (!sfen) {
+                setError("SFENの形式が正しくありません");
+                return;
+            }
+            await onImportSfen(sfen, moves);
+            setSuccess(true);
+            setInputValue("");
+            successTimerRef.current = setTimeout(() => setSuccess(false), 2000);
+        } catch (e) {
+            setError(e instanceof Error ? e.message : "インポートに失敗しました");
+        }
+    }, [inputValue, onImportSfen, onImportKif]);
+
+    return (
+        <div className="space-y-2 pt-3 border-t border-border">
+            <button
+                type="button"
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="flex items-center justify-between w-full text-left"
+            >
+                <span className="font-medium text-sm">棋譜/局面インポート</span>
+                <span className="text-muted-foreground text-sm">{isExpanded ? "▲" : "▼"}</span>
+            </button>
+
+            {isExpanded && (
+                <div className="space-y-2 pt-2">
+                    <p className="text-xs text-muted-foreground">
+                        SFEN形式の局面、またはKIF形式の棋譜を貼り付けてください
+                    </p>
+                    <textarea
+                        value={inputValue}
+                        onChange={(e) => {
+                            setInputValue(e.target.value);
+                            setError(null);
+                            setSuccess(false);
+                        }}
+                        placeholder="startpos moves 7g7f 3c3d&#10;または&#10;1 ７六歩(77)"
+                        rows={4}
+                        className="w-full p-2 text-base font-mono rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                        disabled={!positionReady}
+                    />
+                    {error && <div className="text-xs text-destructive">{error}</div>}
+                    <button
+                        type="button"
+                        onClick={handleImport}
+                        disabled={!positionReady || !inputValue.trim()}
+                        className={`w-full py-2 text-sm rounded-md border transition-colors ${
+                            success
+                                ? "bg-green-600 text-white border-green-600"
+                                : "bg-primary text-primary-foreground border-primary hover:bg-primary/90"
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                        {success ? "読み込み完了" : "読み込み"}
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
 
 /**
  * モバイル用設定シート（BottomSheet内のコンテンツ）
@@ -141,6 +277,9 @@ export function MobileSettingsSheet({
     displaySettings,
     onDisplaySettingsChange,
     onOpenAbout,
+    onImportSfen,
+    onImportKif,
+    positionReady = true,
 }: MobileSettingsSheetProps): ReactElement {
     // カスタム NNUE（プリセット以外）のフィルタリング
     const customNnueList = nnueList.filter((n) => n.source !== "preset");
@@ -583,6 +722,15 @@ export function MobileSettingsSheet({
                     </>
                 )}
             </div>
+
+            {/* 棋譜/局面インポート */}
+            {onImportSfen && onImportKif && (
+                <KifuImportSection
+                    onImportSfen={onImportSfen}
+                    onImportKif={onImportKif}
+                    positionReady={positionReady}
+                />
+            )}
 
             {/* 表示設定 */}
             <div className="space-y-3 pt-3 border-t border-border">

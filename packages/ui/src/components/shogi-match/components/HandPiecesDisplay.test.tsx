@@ -36,14 +36,14 @@ describe("HandPiecesDisplay", () => {
             );
 
             const container = getActualPiecesContainer();
-            // 対局前は全7種類の駒が表示される（飛、角、金、銀、桂、香、歩）
-            expect(within(container).getByText("飛")).toBeDefined();
-            expect(within(container).getByText("角")).toBeDefined();
-            expect(within(container).getByText("金")).toBeDefined();
-            expect(within(container).getByText("銀")).toBeDefined();
-            expect(within(container).getByText("桂")).toBeDefined();
-            expect(within(container).getByText("香")).toBeDefined();
-            expect(within(container).getByText("歩")).toBeDefined();
+            // 対局前は全7種類の駒が表示される（画像のalt属性で確認）
+            expect(within(container).getByAltText("先手の飛")).toBeDefined();
+            expect(within(container).getByAltText("先手の角")).toBeDefined();
+            expect(within(container).getByAltText("先手の金")).toBeDefined();
+            expect(within(container).getByAltText("先手の銀")).toBeDefined();
+            expect(within(container).getByAltText("先手の桂")).toBeDefined();
+            expect(within(container).getByAltText("先手の香")).toBeDefined();
+            expect(within(container).getByAltText("先手の歩")).toBeDefined();
         });
 
         it("対局中は count=0 の駒は表示しない（normal サイズ）", () => {
@@ -61,15 +61,15 @@ describe("HandPiecesDisplay", () => {
 
             const container = getActualPiecesContainer();
             // 持っている駒のみ表示
-            expect(within(container).getByText("金")).toBeDefined();
-            expect(within(container).getByText("歩")).toBeDefined();
+            expect(within(container).getByAltText("先手の金")).toBeDefined();
+            expect(within(container).getByAltText("先手の歩")).toBeDefined();
 
             // 持っていない駒は表示されない
-            expect(within(container).queryByText("飛")).toBeNull();
-            expect(within(container).queryByText("角")).toBeNull();
-            expect(within(container).queryByText("銀")).toBeNull();
-            expect(within(container).queryByText("桂")).toBeNull();
-            expect(within(container).queryByText("香")).toBeNull();
+            expect(within(container).queryByAltText("先手の飛")).toBeNull();
+            expect(within(container).queryByAltText("先手の角")).toBeNull();
+            expect(within(container).queryByAltText("先手の銀")).toBeNull();
+            expect(within(container).queryByAltText("先手の桂")).toBeNull();
+            expect(within(container).queryByAltText("先手の香")).toBeNull();
         });
 
         it("対局中は count=0 の駒は表示しない（compact サイズ）", () => {
@@ -87,15 +87,15 @@ describe("HandPiecesDisplay", () => {
 
             const container = getActualPiecesContainer();
             // 持っている駒のみ表示
-            expect(within(container).getByText("金")).toBeDefined();
-            expect(within(container).getByText("歩")).toBeDefined();
+            expect(within(container).getByAltText("先手の金")).toBeDefined();
+            expect(within(container).getByAltText("先手の歩")).toBeDefined();
 
             // 持っていない駒は表示されない
-            expect(within(container).queryByText("飛")).toBeNull();
-            expect(within(container).queryByText("角")).toBeNull();
-            expect(within(container).queryByText("銀")).toBeNull();
-            expect(within(container).queryByText("桂")).toBeNull();
-            expect(within(container).queryByText("香")).toBeNull();
+            expect(within(container).queryByAltText("先手の飛")).toBeNull();
+            expect(within(container).queryByAltText("先手の角")).toBeNull();
+            expect(within(container).queryByAltText("先手の銀")).toBeNull();
+            expect(within(container).queryByAltText("先手の桂")).toBeNull();
+            expect(within(container).queryByAltText("先手の香")).toBeNull();
         });
 
         it("medium サイズでも count=0 の駒は表示しない（対局中）", () => {
@@ -113,11 +113,11 @@ describe("HandPiecesDisplay", () => {
 
             const container = getActualPiecesContainer();
             // 持っている飛車のみ表示
-            expect(within(container).getByText("飛")).toBeDefined();
+            expect(within(container).getByAltText("後手の飛")).toBeDefined();
 
             // 他は表示されない
-            expect(within(container).queryByText("角")).toBeNull();
-            expect(within(container).queryByText("金")).toBeNull();
+            expect(within(container).queryByAltText("後手の角")).toBeNull();
+            expect(within(container).queryByAltText("後手の金")).toBeNull();
         });
 
         it("compact サイズでも編集モードでは全駒種を表示する", () => {
@@ -135,13 +135,13 @@ describe("HandPiecesDisplay", () => {
 
             const container = getActualPiecesContainer();
             // 編集モードでは全7種類の駒が表示される
-            expect(within(container).getByText("飛")).toBeDefined();
-            expect(within(container).getByText("角")).toBeDefined();
-            expect(within(container).getByText("金")).toBeDefined();
-            expect(within(container).getByText("銀")).toBeDefined();
-            expect(within(container).getByText("桂")).toBeDefined();
-            expect(within(container).getByText("香")).toBeDefined();
-            expect(within(container).getByText("歩")).toBeDefined();
+            expect(within(container).getByAltText("先手の飛")).toBeDefined();
+            expect(within(container).getByAltText("先手の角")).toBeDefined();
+            expect(within(container).getByAltText("先手の金")).toBeDefined();
+            expect(within(container).getByAltText("先手の銀")).toBeDefined();
+            expect(within(container).getByAltText("先手の桂")).toBeDefined();
+            expect(within(container).getByAltText("先手の香")).toBeDefined();
+            expect(within(container).getByAltText("先手の歩")).toBeDefined();
         });
     });
 
