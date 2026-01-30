@@ -1,27 +1,13 @@
-import type { NnueSelection } from "@shogi/app-core";
-import { detectParallelism, NONE_NNUE_SELECTION } from "@shogi/app-core";
+import { detectParallelism, type NnueSelection, NONE_NNUE_SELECTION } from "@shogi/app-core";
 import type { SkillLevelSettings } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 import { Input } from "../../input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../select";
-import { useMatchSettings } from "../contexts";
-import type { AnalysisSettings } from "../types";
+import { useAnalysis, useMatchSettings } from "../contexts";
 import { PlayerIcon } from "./PlayerIcon";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 
 type SideKey = "sente" | "gote";
-
-/**
- * 分析設定のみを Props として受け取る（対局設定は Context から取得）
- * Phase 3 で AnalysisContext に移行予定
- */
-interface LeftSidebarProps {
-    // 分析設定（Phase 3 で AnalysisContext に移行予定）
-    analysisSettings: AnalysisSettings;
-    onAnalysisSettingsChange: (settings: AnalysisSettings) => void;
-    analysisNnueSelection: NnueSelection;
-    onAnalysisNnueSelectionChange: (selection: NnueSelection) => void;
-}
 
 const PARALLEL_WORKER_OPTIONS = [
     { value: 0, label: "自動" },
@@ -49,14 +35,16 @@ const inputClassName = "border border-wafuu-border bg-wafuu-washi text-sm text-x
  * 対局設定、分析設定、NNUE管理、表示設定を含む
  *
  * 対局設定は MatchSettingsContext から取得
- * 分析設定は Props から取得（Phase 3 で AnalysisContext に移行予定）
+ * 分析設定は AnalysisContext から取得
  */
-export function LeftSidebar({
-    analysisSettings,
-    onAnalysisSettingsChange,
-    analysisNnueSelection,
-    onAnalysisNnueSelectionChange,
-}: LeftSidebarProps): ReactElement {
+export function LeftSidebar(): ReactElement {
+    // 分析設定は Context から取得
+    const {
+        analysisSettings,
+        onAnalysisSettingsChange,
+        analysisNnueSelection,
+        onAnalysisNnueSelectionChange,
+    } = useAnalysis();
     // 対局設定は Context から取得
     const {
         sides,

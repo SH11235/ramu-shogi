@@ -3,71 +3,34 @@
  *
  * 評価値グラフパネルと棋譜パネルを含む右側のセクション
  * ナビゲーション関連は NavigationContext から取得
- * 分析関連は Props から取得（Phase 4 で AnalysisContext に移行予定）
+ * 分析関連は AnalysisContext から取得
  */
 
-import type { NnueMeta, NnueSelection, PresetConfig } from "@shogi/app-core";
 import type { ReactElement } from "react";
-import { useNavigation } from "../contexts";
-import type { AnalysisSettings, AnalyzingState } from "../types";
+import { useAnalysis, useNavigation } from "../contexts";
 import { EvalPanel } from "./EvalPanel";
 import { KifuPanel } from "./KifuPanel";
 
-/** バッチ解析状態 */
-export interface BatchAnalysisState {
-    isRunning: boolean;
-    currentIndex: number;
-    totalCount: number;
-    inProgress?: number[];
-}
-
-/**
- * 分析関連の Props のみを受け取る（ナビゲーション関連は Context から取得）
- * Phase 4 で AnalysisContext に移行予定
- */
-export interface PCKifuSectionProps {
-    // 解析関連
-    handleAnalyzePly: (ply: number) => void;
-    isAnalyzing: boolean;
-    analyzingState: AnalyzingState;
-    batchAnalysis: BatchAnalysisState | null;
-    handleStartBatchAnalysis: () => void;
-    handleCancelBatchAnalysis: () => void;
-    analysisSettings: AnalysisSettings;
-    onAnalysisSettingsChange: (settings: AnalysisSettings) => void;
-    handleAnalyzeNode: (nodeId: string) => void;
-    handleAnalyzeBranch: (branchNodeId: string) => void;
-    handleStartTreeBatchAnalysis: (options?: { mainLineOnly?: boolean }) => void;
-
-    // NNUE関連
-    analysisNnueSelection: NnueSelection;
-    onAnalysisNnueSelectionChange: (selection: NnueSelection) => void;
-    nnueList: NnueMeta[];
-    isNnueListLoading: boolean;
-    presetConfigs: PresetConfig[];
-}
-
-export function PCKifuSection({
-    // 解析関連
-    handleAnalyzePly,
-    isAnalyzing,
-    analyzingState,
-    batchAnalysis,
-    handleStartBatchAnalysis,
-    handleCancelBatchAnalysis,
-    analysisSettings,
-    onAnalysisSettingsChange,
-    handleAnalyzeNode,
-    handleAnalyzeBranch,
-    handleStartTreeBatchAnalysis,
-
-    // NNUE関連
-    analysisNnueSelection,
-    onAnalysisNnueSelectionChange,
-    nnueList,
-    isNnueListLoading,
-    presetConfigs,
-}: PCKifuSectionProps): ReactElement {
+export function PCKifuSection(): ReactElement {
+    // 分析関連は Context から取得
+    const {
+        analysisSettings,
+        onAnalysisSettingsChange,
+        analysisNnueSelection,
+        onAnalysisNnueSelectionChange,
+        nnueList,
+        isNnueListLoading,
+        presetConfigs,
+        isAnalyzing,
+        analyzingState,
+        batchAnalysis,
+        handleAnalyzePly,
+        handleStartBatchAnalysis,
+        handleCancelBatchAnalysis,
+        handleAnalyzeNode,
+        handleAnalyzeBranch,
+        handleStartTreeBatchAnalysis,
+    } = useAnalysis();
     // ナビゲーション関連は Context から取得
     const {
         navigationState,

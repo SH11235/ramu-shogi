@@ -13,6 +13,7 @@
 import type { LastMove, PieceType, Player, PositionState, Square } from "@shogi/app-core";
 import { createContext, type ReactNode, useContext } from "react";
 import type { ShogiBoardCell, ShogiBoardPiece } from "../../shogi-board";
+import type { PassDisabledReason } from "../components/PassButton";
 import type { TickState } from "../hooks/useClockManager";
 import type {
     DisplaySettings,
@@ -22,7 +23,6 @@ import type {
     PromotionSelection,
     SideSetting,
 } from "../types";
-import type { PassDisabledReason } from "../components/PassButton";
 import type { HandInfo, MatchStateContextValue, SelectionState } from "./types";
 
 const MatchStateContext = createContext<MatchStateContextValue | null>(null);

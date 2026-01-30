@@ -7,7 +7,7 @@ import { formatEngineEventLog } from "../hooks/formatEngineEvent";
 const baseCardClassName =
     "w-full rounded-xl border border-border bg-card p-3 shadow-[0_14px_28px_rgba(0,0,0,0.12)]";
 
-interface EngineErrorDetails {
+export interface EngineErrorDetails {
     hasError: boolean;
     errorCode?: EngineErrorCode;
     errorMessage?: string;
