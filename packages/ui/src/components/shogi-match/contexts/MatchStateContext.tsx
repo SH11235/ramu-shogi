@@ -206,15 +206,6 @@ export function MatchStateProvider({
 }
 
 /**
- * 対局進行状態コンテキストを取得するフック（Optional版）
- *
- * Provider の外で使用した場合は null を返す。
- */
-function useMatchStateOptional(): MatchStateContextValue | null {
-    return useContext(MatchStateContext);
-}
-
-/**
  * 対局進行状態コンテキストを取得するフック
  *
  * Provider の外で使用した場合はエラーをスロー。

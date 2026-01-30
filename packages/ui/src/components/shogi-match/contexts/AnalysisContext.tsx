@@ -90,16 +90,6 @@ export function AnalysisProvider({
 }
 
 /**
- * 分析コンテキストを取得するフック（Optional版）
- *
- * Provider の外で使用した場合は null を返す。
- * 既存コードとの共存期間に使用。
- */
-function useAnalysisOptional(): AnalysisContextValue | null {
-    return useContext(AnalysisContext);
-}
-
-/**
  * 分析コンテキストを取得するフック
  *
  * Provider の外で使用した場合はエラーをスロー。

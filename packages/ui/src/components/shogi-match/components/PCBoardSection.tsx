@@ -21,14 +21,6 @@ const TEXT_CLASSES = {
     moveCount: "text-center text-sm font-semibold text-foreground my-2",
 } as const;
 
-// 持ち駒情報の型
-interface HandInfo {
-    owner: Player;
-    hand: PositionState["hands"]["sente"] | PositionState["hands"]["gote"];
-    isActive: boolean;
-    isAI: boolean;
-}
-
 // 持ち駒表示セクションコンポーネント
 interface PlayerHandSectionProps {
     owner: Player;

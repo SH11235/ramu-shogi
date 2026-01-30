@@ -94,16 +94,6 @@ export function MatchSettingsProvider({
 }
 
 /**
- * 対局設定コンテキストを取得するフック（Optional版）
- *
- * Provider の外で使用した場合は null を返す。
- * 既存コードとの共存期間に使用。
- */
-function useMatchSettingsOptional(): MatchSettingsContextValue | null {
-    return useContext(MatchSettingsContext);
-}
-
-/**
  * 対局設定コンテキストを取得するフック
  *
  * Provider の外で使用した場合はエラーをスロー。

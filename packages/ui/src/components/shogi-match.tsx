@@ -11,7 +11,6 @@ import {
     getPositionService,
     type LastMove,
     type NnueSelection,
-    type Piece,
     type PieceType,
     type Player,
     type PositionState,
@@ -41,6 +40,7 @@ import {
 import { applyDropResult, DragGhost, type DropResult, usePieceDnd } from "./shogi-match/dnd";
 import { useBatchAnalysis } from "./shogi-match/hooks/useBatchAnalysis";
 import { type ClockSettings, useClockManager } from "./shogi-match/hooks/useClockManager";
+import { useEditModeActions } from "./shogi-match/hooks/useEditModeActions";
 import { useEngineManager } from "./shogi-match/hooks/useEngineManager";
 import { useEnginePool } from "./shogi-match/hooks/useEnginePool";
 import { useKifuImportExport } from "./shogi-match/hooks/useKifuImportExport";
@@ -65,13 +65,7 @@ import {
     type PromotionSelection,
     type SideSetting,
 } from "./shogi-match/types";
-import {
-    addToHand,
-    cloneHandsState,
-    consumeFromHand,
-    countPieces,
-} from "./shogi-match/utils/boardUtils";
-import { isPromotable, PIECE_CAP, PIECE_LABELS } from "./shogi-match/utils/constants";
+import { cloneHandsState } from "./shogi-match/utils/boardUtils";
 import type { KifMove } from "./shogi-match/utils/kifFormat";
 import { LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
 import {
@@ -1468,67 +1462,33 @@ export function ShogiMatch({
         moves,
     ]);
 
-    const applyEditedPosition = useCallback(
-        async (nextPosition: PositionState) => {
-            // バージョンをインクリメントして現在の操作IDを取得
-            editVersionRef.current += 1;
-            const currentVersion = editVersionRef.current;
-
-            setPosition(nextPosition);
-            positionRef.current = nextPosition;
-            setInitialBoard(cloneBoard(nextPosition.board));
-
-            // 先にSFENを取得してから棋譜ナビゲーションをリセット
-            try {
-                const newSfen = await refreshStartSfen(nextPosition);
-
-                // 古い操作の結果は無視（より新しい編集が既に開始されている場合）
-                if (editVersionRef.current !== currentVersion) {
-                    return;
-                }
-
-                navigation.reset(nextPosition, newSfen);
-
-                setLastMove(undefined);
-                setSelection(null);
-                setMessage(null);
-                setLastAddedBranchInfo(null); // 分岐状態をクリア
-                setEditFromSquare(null);
-
-                clearLegalCache();
-                stopTicking();
-                matchEndedRef.current = false;
-                setIsMatchRunning(false);
-            } catch {
-                // 古い操作のエラーは無視
-                if (editVersionRef.current !== currentVersion) {
-                    return;
-                }
-                setMessage({ text: "局面の適用に失敗しました。", type: "error" });
-            }
-        },
-        [clearLegalCache, navigation, stopTicking, refreshStartSfen],
-    );
-
-    const setPiecePromotion = useCallback(
-        (square: Square, promote: boolean) => {
-            if (!isEditMode) return;
-            const current = positionRef.current;
-            const piece = current.board[square];
-            if (!piece) return;
-            if (!isPromotable(piece.type)) {
-                setMessage({ text: `${PIECE_LABELS[piece.type]}は成れません。`, type: "error" });
-                return;
-            }
-
-            const nextBoard = cloneBoard(current.board);
-            nextBoard[square] = promote
-                ? { ...piece, promoted: true }
-                : { ...piece, promoted: undefined };
-            applyEditedPosition({ ...current, board: nextBoard });
-        },
-        [applyEditedPosition, isEditMode],
-    );
+    // 編集モードアクション管理フック
+    const {
+        applyEditedPosition,
+        setPiecePromotion,
+        placePieceAt,
+        handleIncrementHand,
+        handleDecrementHand,
+    } = useEditModeActions({
+        position,
+        positionRef,
+        editVersionRef,
+        navigation,
+        isEditMode,
+        isMatchRunning,
+        matchEndedRef,
+        clearLegalCache,
+        stopTicking,
+        refreshStartSfen,
+        setPosition,
+        setInitialBoard,
+        setLastMove,
+        setSelection,
+        setMessage,
+        setLastAddedBranchInfo,
+        setEditFromSquare,
+        setIsMatchRunning,
+    });
 
     // DnD ドロップハンドラ
     const handleDndDrop = useCallback(
@@ -1604,106 +1564,6 @@ export function ShogiMatch({
             setPiecePromotion(sq, !piece.promoted);
         },
         [isEditMode, setPiecePromotion],
-    );
-
-    // 持ち駒増加ハンドラ（編集モード用）
-    const handleIncrementHand = useCallback(
-        (owner: Player, pieceType: PieceType) => {
-            if (isMatchRunning || !position) return;
-            const counts = countPieces(position);
-            const currentCount = counts[owner][pieceType];
-            if (currentCount >= PIECE_CAP[pieceType]) return;
-
-            const nextHands = addToHand(cloneHandsState(position.hands), owner, pieceType);
-            const nextPosition = {
-                ...position,
-                hands: nextHands,
-            };
-            setPosition(nextPosition);
-            positionRef.current = nextPosition;
-        },
-        [isMatchRunning, position],
-    );
-
-    // 持ち駒減少ハンドラ（編集モード用）
-    const handleDecrementHand = useCallback(
-        (owner: Player, pieceType: PieceType) => {
-            if (isMatchRunning || !position) return;
-            const count = position.hands[owner][pieceType] ?? 0;
-            if (count <= 0) return;
-
-            const nextHands = consumeFromHand(cloneHandsState(position.hands), owner, pieceType);
-            if (nextHands) {
-                const nextPosition = {
-                    ...position,
-                    hands: nextHands,
-                };
-                setPosition(nextPosition);
-                positionRef.current = nextPosition;
-            }
-        },
-        [isMatchRunning, position],
-    );
-
-    const placePieceAt = useCallback(
-        (square: Square, piece: Piece | null, options?: { fromSquare?: Square }): boolean => {
-            const current = positionRef.current;
-            const nextBoard = cloneBoard(current.board);
-            let workingHands = cloneHandsState(current.hands);
-
-            if (options?.fromSquare) {
-                nextBoard[options.fromSquare] = null;
-            }
-
-            const existing = nextBoard[square];
-            if (existing) {
-                const base = existing.type;
-                workingHands = addToHand(workingHands, existing.owner, base);
-            }
-
-            if (!piece) {
-                nextBoard[square] = null;
-                const nextPosition: PositionState = {
-                    ...current,
-                    board: nextBoard,
-                    hands: workingHands,
-                };
-                applyEditedPosition(nextPosition);
-                return true;
-            }
-
-            const baseType = piece.type;
-            const consumedHands = consumeFromHand(workingHands, piece.owner, baseType);
-            const handsForPlacement = consumedHands ?? workingHands;
-            const countsBefore = countPieces({
-                ...current,
-                board: nextBoard,
-                hands: handsForPlacement,
-            });
-            const nextCount = countsBefore[piece.owner][baseType] + 1;
-            if (nextCount > PIECE_CAP[baseType]) {
-                setMessage({
-                    text: `${piece.owner === "sente" ? "先手" : "後手"}の${PIECE_LABELS[baseType]}は最大${PIECE_CAP[baseType]}枚までです`,
-                    type: "warning",
-                });
-                return false;
-            }
-            if (piece.type === "K" && countsBefore[piece.owner][baseType] >= PIECE_CAP.K) {
-                setMessage({ text: "玉はそれぞれ1枚まで配置できます。", type: "warning" });
-                return false;
-            }
-
-            nextBoard[square] = piece.promoted ? { ...piece, promoted: true } : { ...piece };
-            const finalHands = consumedHands ?? workingHands;
-            const nextPosition: PositionState = {
-                ...current,
-                board: nextBoard,
-                hands: finalHands,
-            };
-            applyEditedPosition(nextPosition);
-            return true;
-        },
-        [applyEditedPosition],
     );
 
     // 指し手実行管理フック

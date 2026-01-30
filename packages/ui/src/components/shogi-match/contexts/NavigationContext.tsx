@@ -120,15 +120,6 @@ export function NavigationProvider({
 }
 
 /**
- * 棋譜ナビゲーションコンテキストを取得するフック（Optional版）
- *
- * Provider の外で使用した場合は null を返す。
- */
-function useNavigationOptional(): NavigationContextValue | null {
-    return useContext(NavigationContext);
-}
-
-/**
  * 棋譜ナビゲーションコンテキストを取得するフック
  *
  * Provider の外で使用した場合はエラーをスロー。
