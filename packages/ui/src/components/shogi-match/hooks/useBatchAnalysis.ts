@@ -14,7 +14,7 @@ import type { AnalysisJob, EnginePoolHandle } from "./useEnginePool";
 /**
  * 一括解析の状態
  */
-export interface BatchAnalysisState {
+interface BatchAnalysisState {
     isRunning: boolean;
     currentIndex: number;
     totalCount: number;
@@ -25,7 +25,7 @@ export interface BatchAnalysisState {
 /**
  * useBatchAnalysis の props
  */
-export interface UseBatchAnalysisProps {
+interface UseBatchAnalysisProps {
     /** 棋譜データ */
     kifMoves: KifMove[];
     /** 開始局面のSFEN */
@@ -71,7 +71,7 @@ export interface UseBatchAnalysisProps {
 /**
  * useBatchAnalysis の返り値
  */
-export interface UseBatchAnalysisReturn {
+interface UseBatchAnalysisReturn {
     /** 解析状態 */
     analyzingState: AnalyzingState;
     /** 評価値更新コールバック（エンジンマネージャー用） */

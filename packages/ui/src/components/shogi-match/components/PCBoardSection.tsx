@@ -22,7 +22,7 @@ const TEXT_CLASSES = {
 } as const;
 
 // 持ち駒情報の型
-export interface HandInfo {
+interface HandInfo {
     owner: Player;
     hand: PositionState["hands"]["sente"] | PositionState["hands"]["gote"];
     isActive: boolean;
@@ -85,7 +85,7 @@ function PlayerHandSection({
 /**
  * candidateNote のみ Props として受け取る（その他は Context から取得）
  */
-export interface PCBoardSectionProps {
+interface PCBoardSectionProps {
     candidateNote: string | null;
 }
 

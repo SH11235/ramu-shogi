@@ -18,7 +18,7 @@ import type { MatchSettingsContextValue } from "./types";
 
 const MatchSettingsContext = createContext<MatchSettingsContextValue | null>(null);
 
-export interface MatchSettingsProviderProps {
+interface MatchSettingsProviderProps {
     // 対局設定
     sides: { sente: SideSetting; gote: SideSetting };
     onSidesChange: (sides: { sente: SideSetting; gote: SideSetting }) => void;
@@ -99,7 +99,7 @@ export function MatchSettingsProvider({
  * Provider の外で使用した場合は null を返す。
  * 既存コードとの共存期間に使用。
  */
-export function useMatchSettingsOptional(): MatchSettingsContextValue | null {
+function useMatchSettingsOptional(): MatchSettingsContextValue | null {
     return useContext(MatchSettingsContext);
 }
 

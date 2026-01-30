@@ -17,7 +17,7 @@ import type { AnalysisContextValue, BatchAnalysisState } from "./types";
 
 const AnalysisContext = createContext<AnalysisContextValue | null>(null);
 
-export interface AnalysisProviderProps {
+interface AnalysisProviderProps {
     // 分析設定
     analysisSettings: AnalysisSettings;
     onAnalysisSettingsChange: (settings: AnalysisSettings) => void;
@@ -95,7 +95,7 @@ export function AnalysisProvider({
  * Provider の外で使用した場合は null を返す。
  * 既存コードとの共存期間に使用。
  */
-export function useAnalysisOptional(): AnalysisContextValue | null {
+function useAnalysisOptional(): AnalysisContextValue | null {
     return useContext(AnalysisContext);
 }
 

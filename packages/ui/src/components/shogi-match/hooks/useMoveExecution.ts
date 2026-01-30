@@ -19,7 +19,7 @@ type Selection = { kind: "square"; square: string } | { kind: "hand"; piece: Pie
 /**
  * useMoveExecution の props
  */
-export interface UseMoveExecutionProps {
+interface UseMoveExecutionProps {
     /** 局面状態 */
     position: PositionState;
     /** 棋譜ナビゲーション */
@@ -95,7 +95,7 @@ export interface UseMoveExecutionProps {
 /**
  * useMoveExecution の返り値
  */
-export interface UseMoveExecutionReturn {
+interface UseMoveExecutionReturn {
     /** マス選択のメインハンドラ */
     handleSquareSelect: (square: string, shiftKey?: boolean) => Promise<void>;
     /** 成り選択ハンドラ */

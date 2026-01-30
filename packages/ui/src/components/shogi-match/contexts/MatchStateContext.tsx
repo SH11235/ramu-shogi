@@ -27,7 +27,7 @@ import type { HandInfo, MatchStateContextValue, SelectionState } from "./types";
 
 const MatchStateContext = createContext<MatchStateContextValue | null>(null);
 
-export interface MatchStateProviderProps {
+interface MatchStateProviderProps {
     // 局面状態
     position: PositionState;
     clocks: TickState;
@@ -210,7 +210,7 @@ export function MatchStateProvider({
  *
  * Provider の外で使用した場合は null を返す。
  */
-export function useMatchStateOptional(): MatchStateContextValue | null {
+function useMatchStateOptional(): MatchStateContextValue | null {
     return useContext(MatchStateContext);
 }
 

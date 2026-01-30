@@ -23,7 +23,7 @@ import type {
 
 const NavigationContext = createContext<NavigationContextValue | null>(null);
 
-export interface NavigationProviderProps {
+interface NavigationProviderProps {
     // ナビゲーション状態
     navigationState: NavigationState;
     navigationHandlers: NavigationHandlers;
@@ -124,7 +124,7 @@ export function NavigationProvider({
  *
  * Provider の外で使用した場合は null を返す。
  */
-export function useNavigationOptional(): NavigationContextValue | null {
+function useNavigationOptional(): NavigationContextValue | null {
     return useContext(NavigationContext);
 }
 

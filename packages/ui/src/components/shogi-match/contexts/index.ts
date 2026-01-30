@@ -14,38 +14,21 @@
 export {
     AnalysisProvider,
     useAnalysis,
-    useAnalysisOptional,
 } from "./AnalysisContext";
 // MatchSettingsContext
 export {
     MatchSettingsProvider,
     useMatchSettings,
-    useMatchSettingsOptional,
 } from "./MatchSettingsContext";
 
 // MatchStateContext
 export {
     MatchStateProvider,
     useMatchState,
-    useMatchStateOptional,
 } from "./MatchStateContext";
 // NavigationContext
 export {
     NavigationProvider,
     useNavigation,
-    useNavigationOptional,
 } from "./NavigationContext";
-
 // Types
-export type {
-    AnalysisContextValue,
-    BatchAnalysisState,
-    HandInfo,
-    KifuViewMode,
-    MatchSettingsContextValue,
-    MatchStateContextValue,
-    NavigationContextValue,
-    NavigationHandlers,
-    NavigationState,
-    SelectionState,
-} from "./types";

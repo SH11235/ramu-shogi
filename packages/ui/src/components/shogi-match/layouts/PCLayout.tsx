@@ -54,7 +54,7 @@ import type { KifMoveData } from "../utils/kifParser";
 
 type Selection = { kind: "square"; square: string } | { kind: "hand"; piece: PieceType };
 
-export interface PCLayoutProps {
+interface PCLayoutProps {
     // レイアウト
     matchLayoutClasses: string;
 
