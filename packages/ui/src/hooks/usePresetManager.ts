@@ -173,7 +173,11 @@ export function usePresetManager(options: UsePresetManagerOptions = {}): UsePres
                 if (preset && storage) {
                     const oldVersions = await storage.listByPresetKey(presetKey);
                     if (oldVersions.length > 0 && preset.recommendedFvScale !== undefined) {
-                        const oldFvScale = oldVersions[0].fvScale;
+                        // createdAt で降順ソートして最新のメタを取得
+                        const sortedOldVersions = [...oldVersions].sort(
+                            (a, b) => b.createdAt - a.createdAt,
+                        );
+                        const oldFvScale = sortedOldVersions[0].fvScale;
                         if (oldFvScale !== undefined && oldFvScale !== preset.recommendedFvScale) {
                             console.info(
                                 `プリセット「${preset.displayName}」の推奨 FV_SCALE が更新されました: ${oldFvScale} → ${preset.recommendedFvScale}`,
