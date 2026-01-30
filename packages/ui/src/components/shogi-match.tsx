@@ -19,9 +19,6 @@ import {
 } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLazyNnueLoader } from "../hooks/useLazyNnueLoader";
-import { useNnueStorage } from "../hooks/useNnueStorage";
-import { usePresetManager } from "../hooks/usePresetManager";
 import { AboutDialog } from "./AboutDialog";
 import { EngineRestartingOverlay } from "./nnue/EngineRestartingOverlay";
 import { NnueManagerDialog } from "./nnue/NnueManagerDialog";
@@ -56,9 +53,9 @@ import { useKifuNavigation } from "./shogi-match/hooks/useKifuNavigation";
 import { useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import { useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
-import { useNnueMigration } from "./shogi-match/hooks/useNnueMigration";
-import { useNnueValidation } from "./shogi-match/hooks/useNnueValidation";
+import { useNnueManager } from "./shogi-match/hooks/useNnueManager";
 import { usePassRights } from "./shogi-match/hooks/usePassRights";
+import { useUIState } from "./shogi-match/hooks/useUIState";
 import { MobileLayout } from "./shogi-match/layouts/MobileLayout";
 import { PCLayout } from "./shogi-match/layouts/PCLayout";
 import { ShogiMatchProvider } from "./shogi-match/ShogiMatchContext";
@@ -178,7 +175,6 @@ export function ShogiMatch({
     const [message, setMessage] = useState<Message | null>(null);
     const [gameResult, setGameResult] = useState<GameResult | null>(null);
     const [showResultDialog, setShowResultDialog] = useState(false);
-    const [flipBoard, setFlipBoard] = useState(false);
     const defaultTimeSettings = useMemo(
         () => ({
             sente: { mainMs: initialMainTimeMs, byoyomiMs: initialByoyomiMs },
@@ -238,38 +234,24 @@ export function ShogiMatch({
             setPassRightsSettings(passRightsSettings);
         }
     }, [passRightsSettings, setPassRightsSettings, storedPassRightsSettings]);
-    // PVプレビュー用のstate
-    const [pvPreview, setPvPreview] = useState<{
-        open: boolean;
-        ply: number;
-        pv: string[];
-        startPosition: PositionState;
-        evalCp?: number;
-        evalMate?: number;
-    } | null>(null);
-    // 一括解析の状態（useEnginePoolとuseBatchAnalysisで共有）
-    const [batchAnalysis, setBatchAnalysis] = useState<{
-        isRunning: boolean;
-        currentIndex: number;
-        totalCount: number;
-        targetPlies: number[];
-        inProgress?: number[]; // 並列解析中の手番号
-    } | null>(null);
-    // 最後に追加された分岐の情報（KifuPanelが直接その分岐ビューに遷移するため）
-    // nodeIdではなくply+firstMoveを使用（StrictModeでnodeIdが不整合になる問題を回避）
-    const [lastAddedBranchInfo, setLastAddedBranchInfo] = useState<{
-        ply: number;
-        firstMove: string;
-    } | null>(null);
-    // 選択中の分岐ノードID（キーボードナビゲーション用）
-    const [selectedBranchNodeId, setSelectedBranchNodeId] = useState<string | null>(null);
-    // 棋譜パネルの表示モード（評価値グラフ切り替え用）
-    const [kifuViewMode, setKifuViewMode] = useState<KifuViewMode>("main");
-    // 選択中の手の詳細（右パネル表示用）- plyで管理し、最新のmoveは都度取得
-    const [selectedMoveDetailPly, setSelectedMoveDetailPly] = useState<{
-        ply: number;
-        position: PositionState;
-    } | null>(null);
+
+    // UI状態管理（統合フック）
+    const {
+        flipBoard,
+        setFlipBoard,
+        kifuViewMode,
+        setKifuViewMode,
+        pvPreview,
+        setPvPreview,
+        selectedMoveDetailPly,
+        setSelectedMoveDetailPly,
+        selectedBranchNodeId,
+        setSelectedBranchNodeId,
+        lastAddedBranchInfo,
+        setLastAddedBranchInfo,
+        batchAnalysis,
+        setBatchAnalysis,
+    } = useUIState();
 
     // ダイアログ状態管理
     const {
@@ -288,80 +270,34 @@ export function ShogiMatch({
         setIsPassRightsSettingsOpen,
     } = useDialogs();
 
-    // 対局用 NNUE 選択
-    const [senteNnueSelection, setSenteNnueSelection] = useLocalStorage<NnueSelection>(
-        "shogi:senteNnueSelection",
-        defaultNnueSelection,
-    );
-    const [goteNnueSelection, setGoteNnueSelection] = useLocalStorage<NnueSelection>(
-        "shogi:goteNnueSelection",
-        defaultNnueSelection,
-    );
-    // 分析用 NNUE 選択
-    const [analysisNnueSelection, setAnalysisNnueSelection] = useLocalStorage<NnueSelection>(
-        "shogi:analysisNnueSelection",
-        defaultNnueSelection,
-    );
-
-    // NNUE再起動用のref（useNnueMigrationとuseNnueValidationで使用）
+    // エンジン再起動用のref（useNnueManagerで使用）
     const restartEngineForNnueRef = useRef<
         ((side: Player, selection?: NnueSelection) => Promise<void>) | null
     >(null);
 
-    // 旧キーからのNNUE選択マイグレーション
-    useNnueMigration({
-        setSenteNnueSelection,
-        setGoteNnueSelection,
-        setAnalysisNnueSelection,
-        restartEngineForNnue: (side, selection) =>
-            void restartEngineForNnueRef.current?.(side, selection),
-    });
-
-    // NNUE ストレージから一覧を取得
+    // NNUE管理（統合フック）
     const {
-        nnueList,
-        isLoading: isNnueListLoading,
-        refreshList: refreshNnueList,
-    } = useNnueStorage();
-
-    // プリセット一覧を取得
-    const { presets, isLoading: isPresetsLoading } = usePresetManager({
-        manifestUrl,
-        autoFetch: true,
-        onDownloadComplete: () => {
-            // ダウンロード完了時にストレージを更新
-            void refreshNnueList();
-        },
-    });
-
-    // presetKey から displayName を取得する関数
-    const getPresetDisplayName = useCallback(
-        (presetKey: string): string | undefined => {
-            const preset = presets.find((p) => p.config.presetKey === presetKey);
-            return preset?.config.displayName;
-        },
-        [presets],
-    );
-
-    // NNUE 解決フック（未ダウンロードのプリセットはエラーをスロー）
-    const { resolveNnue } = useLazyNnueLoader({ getPresetDisplayName });
-
-    // NNUE 選択のバリデーションと自動修正
-    useNnueValidation({
         senteNnueSelection,
         setSenteNnueSelection,
+        handleSenteNnueSelectionChange,
         goteNnueSelection,
         setGoteNnueSelection,
+        handleGoteNnueSelectionChange,
         analysisNnueSelection,
         setAnalysisNnueSelection,
+        analysisNnueId,
         nnueList,
         isNnueListLoading,
+        refreshNnueList,
         presets,
         isPresetsLoading,
+        presetConfigs,
+        resolveNnue,
+    } = useNnueManager({
         defaultNnueSelection,
         manifestUrl,
         restartEngineForNnue: (side, selection) =>
-            void restartEngineForNnueRef.current?.(side, selection),
+            restartEngineForNnueRef.current?.(side, selection) ?? Promise.resolve(),
     });
 
     // 分析用 NNUE 変更時に一括解析をリセット（プール破棄に伴う UI 同期）
@@ -377,24 +313,6 @@ export function ShogiMatch({
             setBatchAnalysis(null);
         }
     }, [analysisNnueSelection]);
-
-    // 分析用 NNUE ID の導出（子コンポーネント用）
-    // preset 選択時は nnueList からダウンロード済みの NNUE を探す
-    const analysisNnueId = useMemo(() => {
-        if (analysisNnueSelection.nnueId) {
-            return analysisNnueSelection.nnueId;
-        }
-        if (analysisNnueSelection.presetKey) {
-            const presetNnue = nnueList.find(
-                (n) => n.source === "preset" && n.presetKey === analysisNnueSelection.presetKey,
-            );
-            return presetNnue?.id ?? null;
-        }
-        return null;
-    }, [analysisNnueSelection, nnueList]);
-
-    // プリセット設定のみを抽出（UIコンポーネント用）
-    const presetConfigs = useMemo(() => presets.map((p) => p.config), [presets]);
 
     // positionRef を先に定義（コールバックで使用するため）
     const positionRef = useRef<PositionState>(position);
@@ -728,25 +646,6 @@ export function ShogiMatch({
             setSides(newSides);
         },
         [disposeEngine, setSides, sides],
-    );
-
-    // NNUE選択変更時にエンジンを再起動するラッパー
-    const handleSenteNnueSelectionChange = useCallback(
-        (newSelection: NnueSelection) => {
-            setSenteNnueSelection(newSelection);
-            // 新しいselectionを明示的に渡す（state更新前に参照されるのを防ぐ）
-            void restartEngineForNnue("sente", newSelection);
-        },
-        [restartEngineForNnue, setSenteNnueSelection],
-    );
-
-    const handleGoteNnueSelectionChange = useCallback(
-        (newSelection: NnueSelection) => {
-            setGoteNnueSelection(newSelection);
-            // 新しいselectionを明示的に渡す（state更新前に参照されるのを防ぐ）
-            void restartEngineForNnue("gote", newSelection);
-        },
-        [restartEngineForNnue, setGoteNnueSelection],
     );
 
     // 並列一括解析用のエンジンプール
