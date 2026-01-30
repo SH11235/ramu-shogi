@@ -1,20 +1,17 @@
-import type { LastMove, PieceType, Player, PositionState, Square } from "@shogi/app-core";
-import type { ReactElement, RefObject } from "react";
-import type { ShogiBoardCell, ShogiBoardPiece } from "../../shogi-board";
+/**
+ * PC版盤面セクション
+ *
+ * 将棋盤と持ち駒、対局コントロールを含む中央のセクション
+ * 対局進行状態は MatchStateContext から取得
+ */
+
+import type { PieceType, Player, PositionState } from "@shogi/app-core";
+import type { ReactElement } from "react";
 import { ShogiBoard } from "../../shogi-board";
-import type { TickState } from "../hooks/useClockManager";
-import type {
-    DisplaySettings,
-    GameMode,
-    Message,
-    PassRightsSettings,
-    PromotionSelection,
-    SideSetting,
-} from "../types";
+import { useMatchState } from "../contexts";
 import { ClockDisplay } from "./ClockDisplay";
 import { HandPiecesDisplay } from "./HandPiecesDisplay";
 import { MatchControls } from "./MatchControls";
-import type { PassDisabledReason } from "./PassButton";
 import { PassRightsDisplay } from "./PassRightsDisplay";
 import { PlayerIcon } from "./PlayerIcon";
 
@@ -85,118 +82,62 @@ function PlayerHandSection({
     );
 }
 
-type Selection = { kind: "square"; square: string } | { kind: "hand"; piece: PieceType };
-
+/**
+ * candidateNote のみ Props として受け取る（その他は Context から取得）
+ */
 export interface PCBoardSectionProps {
-    // refs
-    boardSectionRef: RefObject<HTMLDivElement | null>;
-
-    // 状態
-    isDraggingPiece: boolean;
-    clocks: TickState;
-    isMatchRunning: boolean;
-    moves: string[];
-    position: PositionState;
-    sides: { sente: SideSetting; gote: SideSetting };
-    flipBoard: boolean;
-    onFlipBoardChange: (flip: boolean) => void;
-    selection: Selection | null;
-    displaySettings: DisplaySettings;
-    passRightsSettings?: PassRightsSettings;
-    grid: ShogiBoardCell[][];
-    editFromSquare: Square | null;
-    lastMove?: LastMove;
-    promotionSelection: PromotionSelection | null;
-    isEditMode: boolean;
     candidateNote: string | null;
-    gameMode: GameMode;
-    message: Message | null;
-    isPaused: boolean;
-    hideEmptyHandPieces: boolean;
-
-    // ハンドラ
-    getHandInfo: (pos: "top" | "bottom") => HandInfo;
-    handleSquareSelect: (sq: string, shiftKey?: boolean) => Promise<void>;
-    handlePromotionChoice: (promote: boolean) => void;
-    handleHandSelect: (piece: PieceType) => void;
-    handleHandPiecePointerDown: (
-        owner: Player,
-        pieceType: PieceType,
-        e: React.PointerEvent,
-    ) => void;
-    handlePiecePointerDown: (square: string, piece: ShogiBoardPiece, e: React.PointerEvent) => void;
-    handlePieceTogglePromote: (
-        square: string,
-        piece: ShogiBoardPiece,
-        event: React.MouseEvent<HTMLButtonElement>,
-    ) => void;
-    handleIncrementHand: (owner: Player, piece: PieceType) => void;
-    handleDecrementHand: (owner: Player, piece: PieceType) => void;
-    handleResetToStartpos: () => void;
-    pauseAutoPlay: () => void;
-    resumeAutoPlay: () => void;
-    handleStartReview: () => void;
-    handleEnterEditMode: () => void;
-    enterEditModeFromPaused: () => void;
-    handleResign: () => void;
-    handleUndo: () => void;
-    onOpenSettings: () => void;
-
-    // パス関連
-    shouldRenderPassButton: boolean;
-    canMakePassMove: boolean;
-    passButtonDisabledReason?: PassDisabledReason;
-    handlePassMove: () => void;
-    shouldShowPassConfirm: boolean;
 }
 
-export function PCBoardSection({
-    boardSectionRef,
-    isDraggingPiece,
-    clocks,
-    isMatchRunning,
-    moves,
-    position,
-    sides,
-    flipBoard,
-    onFlipBoardChange,
-    selection,
-    displaySettings,
-    passRightsSettings,
-    grid,
-    editFromSquare,
-    lastMove,
-    promotionSelection,
-    isEditMode,
-    candidateNote,
-    gameMode,
-    message,
-    isPaused,
-    hideEmptyHandPieces,
-    getHandInfo,
-    handleSquareSelect,
-    handlePromotionChoice,
-    handleHandSelect,
-    handleHandPiecePointerDown,
-    handlePiecePointerDown,
-    handlePieceTogglePromote,
-    handleIncrementHand,
-    handleDecrementHand,
-    handleResetToStartpos,
-    pauseAutoPlay,
-    resumeAutoPlay,
-    handleStartReview,
-    handleEnterEditMode,
-    enterEditModeFromPaused,
-    handleResign,
-    handleUndo,
-    onOpenSettings,
-    shouldRenderPassButton,
-    canMakePassMove,
-    passButtonDisabledReason,
-    handlePassMove,
-    shouldShowPassConfirm,
-}: PCBoardSectionProps): ReactElement {
+export function PCBoardSection({ candidateNote }: PCBoardSectionProps): ReactElement {
+    // 対局進行状態は Context から取得
+    const {
+        boardSectionRef,
+        isDraggingPiece,
+        clocks,
+        isMatchRunning,
+        moves,
+        position,
+        sides,
+        flipBoard,
+        onFlipBoardChange,
+        selection,
+        displaySettings,
+        passRightsSettings,
+        grid,
+        editFromSquare,
+        lastMove,
+        promotionSelection,
+        isEditMode,
+        gameMode,
+        message,
+        isPaused,
+        hideEmptyHandPieces,
+        getHandInfo,
+        handleSquareSelect,
+        handlePromotionChoice,
+        handleHandSelect,
+        handleHandPiecePointerDown,
+        handlePiecePointerDown,
+        handlePieceTogglePromote,
+        handleIncrementHand,
+        handleDecrementHand,
+        handleResetToStartpos,
+        pauseAutoPlay,
+        resumeAutoPlay,
+        handleStartReview,
+        handleEnterEditMode,
+        enterEditModeFromPaused,
+        handleResign,
+        handleUndo,
+        onOpenSettings,
+        shouldRenderPassButton,
+        canMakePassMove,
+        passButtonDisabledReason,
+        handlePassMove,
+        shouldShowPassConfirm,
+    } = useMatchState();
+
     const topHandInfo = getHandInfo("top");
     const bottomHandInfo = getHandInfo("bottom");
 

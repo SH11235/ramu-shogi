@@ -2,44 +2,16 @@
  * PC版棋譜セクション
  *
  * 評価値グラフパネルと棋譜パネルを含む右側のセクション
+ * ナビゲーション関連は NavigationContext から取得
+ * 分析関連は Props から取得（Phase 4 で AnalysisContext に移行予定）
  */
 
-import type {
-    KifuTree,
-    NnueMeta,
-    NnueSelection,
-    PositionState,
-    PresetConfig,
-} from "@shogi/app-core";
+import type { NnueMeta, NnueSelection, PresetConfig } from "@shogi/app-core";
 import type { ReactElement } from "react";
-import type { AnalysisSettings, AnalyzingState, DisplaySettings } from "../types";
-import type { EvalHistory, KifMove } from "../utils/kifFormat";
+import { useNavigation } from "../contexts";
+import type { AnalysisSettings, AnalyzingState } from "../types";
 import { EvalPanel } from "./EvalPanel";
-import { KifuPanel, type KifuViewMode } from "./KifuPanel";
-
-/** ナビゲーション状態 */
-interface NavigationState {
-    currentPly: number;
-    totalPly: number;
-    isRewound: boolean;
-    canGoForward: boolean;
-    hasBranches: boolean;
-    currentBranchIndex: number;
-    branchCount: number;
-    isOnMainLine: boolean;
-}
-
-/** ナビゲーションハンドラ */
-interface NavigationHandlers {
-    goBack: () => void;
-    goForward: (branchNodeId?: string) => void;
-    goToStart: () => void;
-    goToEnd: () => void;
-    switchBranch: (index: number) => void;
-    promoteCurrentLine: () => void;
-    goToNodeById: (nodeId: string) => void;
-    switchBranchAtNode: (parentNodeId: string, branchIndex: number) => void;
-}
+import { KifuPanel } from "./KifuPanel";
 
 /** バッチ解析状態 */
 export interface BatchAnalysisState {
@@ -49,34 +21,11 @@ export interface BatchAnalysisState {
     inProgress?: number[];
 }
 
+/**
+ * 分析関連の Props のみを受け取る（ナビゲーション関連は Context から取得）
+ * Phase 4 で AnalysisContext に移行予定
+ */
 export interface PCKifuSectionProps {
-    // 評価値グラフ
-    displayEvalHistory: EvalHistory[];
-
-    // ナビゲーション状態とハンドラ
-    navigationState: NavigationState;
-    navigationHandlers: NavigationHandlers;
-    selectedBranchNodeId: string | null;
-    onSelectedBranchChange: (branchNodeId: string | null) => void;
-
-    // 棋譜パネル基本
-    kifMoves: KifMove[];
-    displaySettings: DisplaySettings;
-    onDisplaySettingsChange: (updater: (prev: DisplaySettings) => DisplaySettings) => void;
-    handlePlySelect: (ply: number) => void;
-    handleCopyKif: () => string;
-    isMatchRunning: boolean;
-
-    // 分岐関連
-    branchMarkers: Map<number, number>;
-    positionHistory: PositionState[];
-    handleAddPvAsBranch: (ply: number, pv: string[]) => void;
-    handlePreviewPv: (ply: number, pv: string[], evalCp?: number, evalMate?: number) => void;
-    lastAddedBranchInfo: { ply: number; firstMove: string } | null;
-    onLastAddedBranchHandled: () => void;
-    onViewModeChange: (mode: KifuViewMode) => void;
-    kifuTree?: KifuTree;
-
     // 解析関連
     handleAnalyzePly: (ply: number) => void;
     isAnalyzing: boolean;
@@ -96,39 +45,9 @@ export interface PCKifuSectionProps {
     nnueList: NnueMeta[];
     isNnueListLoading: boolean;
     presetConfigs: PresetConfig[];
-
-    // 手の詳細
-    handleMoveDetailSelect: (move: KifMove | null, position: PositionState | null) => void;
 }
 
 export function PCKifuSection({
-    // 評価値グラフ
-    displayEvalHistory,
-
-    // ナビゲーション
-    navigationState,
-    navigationHandlers,
-    selectedBranchNodeId,
-    onSelectedBranchChange,
-
-    // 棋譜パネル基本
-    kifMoves,
-    displaySettings,
-    onDisplaySettingsChange,
-    handlePlySelect,
-    handleCopyKif,
-    isMatchRunning,
-
-    // 分岐関連
-    branchMarkers,
-    positionHistory,
-    handleAddPvAsBranch,
-    handlePreviewPv,
-    lastAddedBranchInfo,
-    onLastAddedBranchHandled,
-    onViewModeChange,
-    kifuTree,
-
     // 解析関連
     handleAnalyzePly,
     isAnalyzing,
@@ -148,10 +67,31 @@ export function PCKifuSection({
     nnueList,
     isNnueListLoading,
     presetConfigs,
-
-    // 手の詳細
-    handleMoveDetailSelect,
 }: PCKifuSectionProps): ReactElement {
+    // ナビゲーション関連は Context から取得
+    const {
+        navigationState,
+        navigationHandlers,
+        kifMoves,
+        displayEvalHistory,
+        positionHistory,
+        kifuTree,
+        selectedBranchNodeId,
+        onSelectedBranchChange,
+        branchMarkers,
+        lastAddedBranchInfo,
+        onLastAddedBranchHandled,
+        handleAddPvAsBranch,
+        handlePreviewPv,
+        onViewModeChange,
+        displaySettings,
+        onDisplaySettingsChange,
+        handlePlySelect,
+        handleCopyKif,
+        handleMoveDetailSelect,
+        isMatchRunning,
+    } = useNavigation();
+
     return (
         <div className="flex flex-col gap-2 shrink-0 pt-16">
             {/* 評価値グラフパネル（折りたたみ） */}
