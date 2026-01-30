@@ -6,6 +6,7 @@ import {
     createDefaultNnueSelection,
     createEmptyHands,
     DEFAULT_PRESET_KEY,
+    deriveLastMove,
     type GameResult,
     getAllSquares,
     getPathToNode,
@@ -16,7 +17,6 @@ import {
     type PieceType,
     type Player,
     type PositionState,
-    parseMove,
     type ResolvedNnue,
     resolveWorkerCount,
     type Square,
@@ -81,7 +81,13 @@ import { isPromotable, PIECE_CAP, PIECE_LABELS } from "./shogi-match/utils/const
 import { exportToKifString, type KifMove } from "./shogi-match/utils/kifFormat";
 import { type KifMoveData, parseSfen } from "./shogi-match/utils/kifParser";
 import { LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
+import {
+    buildPassRightsOptionForLegalMoves,
+    isSamePassRightsSettings,
+    normalizePassRightsSettings,
+} from "./shogi-match/utils/passRightsSettings";
 import { determinePromotion } from "./shogi-match/utils/promotionLogic";
+import { isSameTimeSettings, normalizeTimeSettings } from "./shogi-match/utils/timeSettings";
 import { TooltipProvider } from "./tooltip";
 
 type Selection = { kind: "square"; square: string } | { kind: "hand"; piece: PieceType };
@@ -113,144 +119,6 @@ interface ShogiMatchProps {
 const DEFAULT_BYOYOMI_MS = 5_000; // デフォルト秒読み時間（5秒）
 const DEFAULT_MAX_LOGS = 80; // ログ履歴の最大保持件数
 const TOOLTIP_DELAY_DURATION_MS = 120; // ツールチップ表示遅延
-// 旧バージョンの「秒」保存値をmsに復元するためのしきい値
-const LEGACY_TIME_THRESHOLD_MS = 1000;
-
-function normalizeTimeValueMs(value: number, fallback: number): number {
-    if (!Number.isFinite(value)) return fallback;
-    if (value < 0) return fallback;
-    if (value > 0 && value < LEGACY_TIME_THRESHOLD_MS) {
-        return value * 1000;
-    }
-    return Math.trunc(value);
-}
-
-function normalizeTimeSettings(settings: ClockSettings, defaults: ClockSettings): ClockSettings {
-    return {
-        sente: {
-            mainMs: normalizeTimeValueMs(settings.sente.mainMs, defaults.sente.mainMs),
-            byoyomiMs: normalizeTimeValueMs(settings.sente.byoyomiMs, defaults.sente.byoyomiMs),
-        },
-        gote: {
-            mainMs: normalizeTimeValueMs(settings.gote.mainMs, defaults.gote.mainMs),
-            byoyomiMs: normalizeTimeValueMs(settings.gote.byoyomiMs, defaults.gote.byoyomiMs),
-        },
-    };
-}
-
-function isSameTimeSettings(a: ClockSettings, b: ClockSettings): boolean {
-    return (
-        a.sente.mainMs === b.sente.mainMs &&
-        a.sente.byoyomiMs === b.sente.byoyomiMs &&
-        a.gote.mainMs === b.gote.mainMs &&
-        a.gote.byoyomiMs === b.gote.byoyomiMs
-    );
-}
-
-function normalizePassRightsCount(value: unknown, fallback: number): number {
-    if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-    if (value < 0) return fallback;
-    return Math.trunc(value);
-}
-
-function normalizePassRightsThreshold(value: unknown, fallback: number): number {
-    if (typeof value !== "number" || Number.isNaN(value)) return fallback;
-    if (value < 0) return fallback;
-    return value;
-}
-
-function normalizePassRightsSettings(
-    settings: PassRightsSettings | null | undefined,
-    defaults: PassRightsSettings,
-): PassRightsSettings {
-    if (!settings || typeof settings !== "object") {
-        return defaults;
-    }
-
-    return {
-        enabled: typeof settings.enabled === "boolean" ? settings.enabled : defaults.enabled,
-        senteInitialCount: normalizePassRightsCount(
-            settings.senteInitialCount,
-            defaults.senteInitialCount,
-        ),
-        goteInitialCount: normalizePassRightsCount(
-            settings.goteInitialCount,
-            defaults.goteInitialCount,
-        ),
-        confirmDialogThresholdMs: normalizePassRightsThreshold(
-            settings.confirmDialogThresholdMs,
-            defaults.confirmDialogThresholdMs,
-        ),
-    };
-}
-
-function isSamePassRightsSettings(
-    a: PassRightsSettings,
-    b: PassRightsSettings | null | undefined,
-): boolean {
-    if (!b) return false;
-    return (
-        a.enabled === b.enabled &&
-        a.senteInitialCount === b.senteInitialCount &&
-        a.goteInitialCount === b.goteInitialCount &&
-        a.confirmDialogThresholdMs === b.confirmDialogThresholdMs
-    );
-}
-
-/**
- * パス権設定と棋譜からgetLegalMovesのオプションを生成するヘルパー関数
- *
- * 注意: 棋譜に"pass"が含まれる場合は、設定が無効でもpassRightsを送る必要がある。
- * これは、Rust側でパス手を適用する際にパス権が必須なため。
- * （パス権有効で対局後に設定をOFFにした場合や、パス入り棋譜を読み込んだ場合など）
- */
-function buildPassRightsOptionForLegalMoves(
-    passRightsSettings:
-        | { enabled: boolean; senteInitialCount: number; goteInitialCount: number }
-        | undefined,
-    moves: string[],
-): { passRights?: { sente: number; gote: number } } {
-    // 大文字小文字を区別せずにパス手を検出（parseMoveと同様）
-    const hasPassInMoves = moves.some((m) => m.toLowerCase() === "pass");
-
-    if (passRightsSettings?.enabled) {
-        // 設定が有効: 初期値を使用
-        return {
-            passRights: {
-                sente: passRightsSettings.senteInitialCount,
-                gote: passRightsSettings.goteInitialCount,
-            },
-        };
-    }
-
-    if (hasPassInMoves) {
-        // 設定は無効だが棋譜にpassが含まれる: 十分な数のパス権を設定
-        // （各プレイヤーのパス回数を使用）
-        let sentePassCount = 0;
-        let gotePassCount = 0;
-        let isSenteTurn = true; // 平手初期局面は先手番
-        for (const move of moves) {
-            if (move.toLowerCase() === "pass") {
-                if (isSenteTurn) {
-                    sentePassCount++;
-                } else {
-                    gotePassCount++;
-                }
-            }
-            isSenteTurn = !isSenteTurn;
-        }
-        // 最低でも現在のパス数 + 1 を確保（追加パスの余地を残す）
-        return {
-            passRights: {
-                sente: sentePassCount + 1,
-                gote: gotePassCount + 1,
-            },
-        };
-    }
-
-    // 設定無効かつパスなし: passRights不要
-    return {};
-}
 
 // レイアウト用Tailwindクラス（CSS変数はクラスで設定）
 const matchLayoutClasses =
@@ -280,22 +148,6 @@ function boardToGrid(board: BoardState): ShogiBoardCell[][] {
                 : null,
         })),
     );
-}
-
-/**
- * USI形式の指し手文字列から最終手情報を導出
- */
-function deriveLastMove(move: string | undefined): LastMove | undefined {
-    const parsed = move ? parseMove(move) : null;
-    if (!parsed) return undefined;
-    if (parsed.kind === "drop") {
-        return { from: null, to: parsed.to, dropPiece: parsed.piece, promotes: false };
-    }
-    if (parsed.kind === "pass") {
-        // パス手の場合は移動先なし
-        return { isPass: true };
-    }
-    return { from: parsed.from, to: parsed.to, promotes: parsed.promote };
 }
 
 export function ShogiMatch({
@@ -1912,202 +1764,234 @@ export function ShogiMatch({
         [applyEditedPosition],
     );
 
-    const handleSquareSelect = useCallback(
-        async (square: string, shiftKey?: boolean) => {
-            setMessage(null);
-            if (isEditMode) {
-                if (!positionReady) {
-                    return;
-                }
-                const sq = square as Square;
+    /**
+     * 編集モードでのマス選択処理
+     * @returns 処理を行った場合は true
+     */
+    const handleSquareSelectEditMode = useCallback(
+        (square: string): boolean => {
+            if (!isEditMode || !positionReady) {
+                return false;
+            }
+            const sq = square as Square;
 
-                // 移動元が選択されている場合：移動先として処理
-                if (editFromSquare) {
-                    const from = editFromSquare;
-                    if (from === sq) {
-                        // 同じマスをクリック：選択解除
-                        setEditFromSquare(null);
-                        return;
-                    }
-                    const moving = position.board[from];
-                    if (!moving) {
-                        setEditFromSquare(null);
-                        return;
-                    }
-                    const ok = placePieceAt(sq, moving, { fromSquare: from });
-                    if (ok) {
-                        setEditFromSquare(null);
-                    }
-                    return;
+            // 移動元が選択されている場合：移動先として処理
+            if (editFromSquare) {
+                const from = editFromSquare;
+                if (from === sq) {
+                    // 同じマスをクリック：選択解除
+                    setEditFromSquare(null);
+                    return true;
                 }
-
-                // 削除モード：駒を削除
-                if (editTool === "erase") {
-                    placePieceAt(sq, null);
-                    return;
+                const moving = position.board[from];
+                if (!moving) {
+                    setEditFromSquare(null);
+                    return true;
                 }
-
-                // 駒ボタンが選択されている場合：配置
-                if (editPieceType) {
-                    const pieceToPlace: Piece = {
-                        owner: editOwner,
-                        type: editPieceType,
-                        promoted: editPromoted || undefined,
-                    };
-                    placePieceAt(sq, pieceToPlace);
-                    return;
+                const ok = placePieceAt(sq, moving, { fromSquare: from });
+                if (ok) {
+                    setEditFromSquare(null);
                 }
-
-                // 駒ボタン未選択：盤上の駒をクリックで移動元として選択
-                const current = position.board[sq];
-                if (current) {
-                    setEditFromSquare(sq);
-                    return;
-                }
-
-                // 空マスをクリックした場合は何もしない
-                return;
+                return true;
             }
 
-            // ========== 検討モード ==========
-            // 自由に棋譜を閲覧し、任意の局面から分岐を作成できる
-            if (isReviewMode) {
-                if (!positionReady) {
-                    return;
-                }
+            // 削除モード：駒を削除
+            if (editTool === "erase") {
+                placePieceAt(sq, null);
+                return true;
+            }
 
-                // 成り選択中の場合：キャンセル
-                if (promotionSelection) {
-                    setPromotionSelection(null);
+            // 駒ボタンが選択されている場合：配置
+            if (editPieceType) {
+                const pieceToPlace: Piece = {
+                    owner: editOwner,
+                    type: editPieceType,
+                    promoted: editPromoted || undefined,
+                };
+                placePieceAt(sq, pieceToPlace);
+                return true;
+            }
+
+            // 駒ボタン未選択：盤上の駒をクリックで移動元として選択
+            const current = position.board[sq];
+            if (current) {
+                setEditFromSquare(sq);
+                return true;
+            }
+
+            // 空マスをクリックした場合は何もしない
+            return true;
+        },
+        [
+            isEditMode,
+            positionReady,
+            editFromSquare,
+            position.board,
+            editTool,
+            editPieceType,
+            editOwner,
+            editPromoted,
+            placePieceAt,
+        ],
+    );
+
+    /**
+     * 検討モードでのマス選択処理
+     * @returns 処理を行った場合は true
+     */
+    const handleSquareSelectReviewMode = useCallback(
+        async (square: string, shiftKey?: boolean): Promise<boolean> => {
+            if (!isReviewMode || !positionReady) {
+                return false;
+            }
+
+            // 成り選択中の場合：キャンセル
+            if (promotionSelection) {
+                setPromotionSelection(null);
+                setSelection(null);
+                return true;
+            }
+
+            const sq = square as Square;
+
+            // 駒を選択
+            if (!selection) {
+                const piece = position.board[sq];
+                // 検討モードでは現在の手番の駒のみ動かせる
+                if (piece && piece.owner === position.turn) {
+                    setSelection({ kind: "square", square: sq });
+                }
+                return true;
+            }
+
+            // 持ち駒を打つ
+            if (selection.kind === "hand") {
+                const moveStr = `${selection.piece}*${square}`;
+                const legal = await getLegalSet();
+                if (legal && !legal.has(moveStr)) {
+                    setMessage({ text: "合法手ではありません", type: "error" });
+                    return true;
+                }
+                const result = applyMoveWithState(position, moveStr, { validateTurn: false });
+                if (!result.ok) {
+                    setMessage({
+                        text: result.error ?? "持ち駒を打てませんでした",
+                        type: "error",
+                    });
+                    return true;
+                }
+                applyMoveForReview(result.next, moveStr, result.lastMove);
+                return true;
+            }
+
+            // 盤上の駒を移動
+            if (selection.kind === "square") {
+                if (selection.square === square) {
                     setSelection(null);
-                    return;
+                    return true;
                 }
 
-                const sq = square as Square;
+                const legal = await getLegalSet();
+                if (!legal) return true;
 
-                // 駒を選択
-                if (!selection) {
-                    const piece = position.board[sq];
-                    // 検討モードでは現在の手番の駒のみ動かせる
-                    if (piece && piece.owner === position.turn) {
-                        setSelection({ kind: "square", square: sq });
-                    }
-                    return;
-                }
+                const from = selection.square;
+                const to = square;
+                const piece = position.board[from as Square];
 
-                // 持ち駒を打つ
-                if (selection.kind === "hand") {
-                    const moveStr = `${selection.piece}*${square}`;
-                    const legal = await getLegalSet();
-                    if (legal && !legal.has(moveStr)) {
+                const promotion = determinePromotion(legal, from, to);
+
+                if (promotion === "none") {
+                    const moveStr = `${from}${to}`;
+                    if (!legal.has(moveStr)) {
                         setMessage({ text: "合法手ではありません", type: "error" });
-                        return;
+                        return true;
                     }
-                    const result = applyMoveWithState(position, moveStr, { validateTurn: false });
+                    const result = applyMoveWithState(position, moveStr, {
+                        validateTurn: false,
+                    });
                     if (!result.ok) {
                         setMessage({
-                            text: result.error ?? "持ち駒を打てませんでした",
+                            text: result.error ?? "指し手を適用できませんでした",
                             type: "error",
                         });
-                        return;
+                        return true;
                     }
                     applyMoveForReview(result.next, moveStr, result.lastMove);
-                    return;
+                    return true;
                 }
 
-                // 盤上の駒を移動
-                if (selection.kind === "square") {
-                    if (selection.square === square) {
-                        setSelection(null);
-                        return;
-                    }
-
-                    const legal = await getLegalSet();
-                    if (!legal) return;
-
-                    const from = selection.square;
-                    const to = square;
-                    const piece = position.board[from as Square];
-
-                    const promotion = determinePromotion(legal, from, to);
-
-                    if (promotion === "none") {
-                        const moveStr = `${from}${to}`;
-                        if (!legal.has(moveStr)) {
-                            setMessage({ text: "合法手ではありません", type: "error" });
-                            return;
-                        }
-                        const result = applyMoveWithState(position, moveStr, {
-                            validateTurn: false,
+                if (promotion === "forced") {
+                    const moveStr = `${from}${to}+`;
+                    const result = applyMoveWithState(position, moveStr, {
+                        validateTurn: false,
+                    });
+                    if (!result.ok) {
+                        setMessage({
+                            text: result.error ?? "指し手を適用できませんでした",
+                            type: "error",
                         });
-                        if (!result.ok) {
-                            setMessage({
-                                text: result.error ?? "指し手を適用できませんでした",
-                                type: "error",
-                            });
-                            return;
-                        }
-                        applyMoveForReview(result.next, moveStr, result.lastMove);
-                        return;
+                        return true;
                     }
-
-                    if (promotion === "forced") {
-                        const moveStr = `${from}${to}+`;
-                        const result = applyMoveWithState(position, moveStr, {
-                            validateTurn: false,
-                        });
-                        if (!result.ok) {
-                            setMessage({
-                                text: result.error ?? "指し手を適用できませんでした",
-                                type: "error",
-                            });
-                            return;
-                        }
-                        applyMoveForReview(result.next, moveStr, result.lastMove);
-                        return;
-                    }
-
-                    // 任意成り
-                    if (shiftKey) {
-                        const moveStr = `${from}${to}+`;
-                        const result = applyMoveWithState(position, moveStr, {
-                            validateTurn: false,
-                        });
-                        if (!result.ok) {
-                            setMessage({
-                                text: result.error ?? "指し手を適用できませんでした",
-                                type: "error",
-                            });
-                            return;
-                        }
-                        applyMoveForReview(result.next, moveStr, result.lastMove);
-                        return;
-                    }
-
-                    if (!piece) {
-                        setMessage({ text: "駒が見つかりません", type: "error" });
-                        return;
-                    }
-                    setPromotionSelection({ from: from as Square, to: to as Square, piece });
-                    return;
+                    applyMoveForReview(result.next, moveStr, result.lastMove);
+                    return true;
                 }
-                return;
+
+                // 任意成り: Shift+クリック
+                if (shiftKey) {
+                    const moveStr = `${from}${to}+`;
+                    const result = applyMoveWithState(position, moveStr, {
+                        validateTurn: false,
+                    });
+                    if (!result.ok) {
+                        setMessage({
+                            text: result.error ?? "指し手を適用できませんでした",
+                            type: "error",
+                        });
+                        return true;
+                    }
+                    applyMoveForReview(result.next, moveStr, result.lastMove);
+                    return true;
+                }
+
+                if (!piece) {
+                    setMessage({ text: "駒が見つかりません", type: "error" });
+                    return true;
+                }
+                setPromotionSelection({ from: from as Square, to: to as Square, piece });
+                return true;
             }
+            return true;
+        },
+        [
+            isReviewMode,
+            positionReady,
+            promotionSelection,
+            selection,
+            position,
+            getLegalSet,
+            applyMoveForReview,
+        ],
+    );
 
-            // ========== 対局モード ==========
+    /**
+     * 対局モードでのマス選択処理
+     * @returns 処理を行った場合は true
+     */
+    const handleSquareSelectGameMode = useCallback(
+        async (square: string, shiftKey?: boolean): Promise<boolean> => {
             // 待った・パス処理中は入力をブロック
             if (moveProcessingRef.current) {
-                return;
+                return true;
             }
             // 一時停止中は入力をブロック
             if (isPaused) {
-                return;
+                return true;
             }
             if (!positionReady) {
-                return;
+                return true;
             }
             if (isEngineTurn(position.turn)) {
-                return;
+                return true;
             }
 
             // 成り選択中の場合：成り/不成を選択
@@ -2115,7 +1999,7 @@ export function ShogiMatch({
                 // 成り選択UIの外をクリック → キャンセル
                 setPromotionSelection(null);
                 setSelection(null);
-                return;
+                return true;
             }
 
             if (!selection) {
@@ -2124,17 +2008,17 @@ export function ShogiMatch({
                 if (piece && piece.owner === position.turn) {
                     setSelection({ kind: "square", square: sq });
                 }
-                return;
+                return true;
             }
 
             if (selection.kind === "square") {
                 if (selection.square === square) {
                     setSelection(null);
-                    return;
+                    return true;
                 }
 
                 const legal = await getLegalSet();
-                if (!legal) return;
+                if (!legal) return true;
 
                 const from = selection.square;
                 const to = square;
@@ -2148,7 +2032,7 @@ export function ShogiMatch({
                     const moveStr = `${from}${to}`;
                     if (!legal.has(moveStr)) {
                         setMessage({ text: "合法手ではありません", type: "error" });
-                        return;
+                        return true;
                     }
                     const result = applyMoveWithState(position, moveStr, { validateTurn: true });
                     if (!result.ok) {
@@ -2156,10 +2040,10 @@ export function ShogiMatch({
                             text: result.error ?? "指し手を適用できませんでした",
                             type: "error",
                         });
-                        return;
+                        return true;
                     }
                     applyMoveCommon(result.next, moveStr, result.lastMove);
-                    return;
+                    return true;
                 }
 
                 // 【ケース2】強制成り → 自動的に成って移動（ダイアログなし）
@@ -2171,10 +2055,10 @@ export function ShogiMatch({
                             text: result.error ?? "指し手を適用できませんでした",
                             type: "error",
                         });
-                        return;
+                        return true;
                     }
                     applyMoveCommon(result.next, moveStr, result.lastMove);
-                    return;
+                    return true;
                 }
 
                 // 【ケース3】任意成り（promotion === 'optional'）
@@ -2187,19 +2071,19 @@ export function ShogiMatch({
                             text: result.error ?? "指し手を適用できませんでした",
                             type: "error",
                         });
-                        return;
+                        return true;
                     }
                     applyMoveCommon(result.next, moveStr, result.lastMove);
-                    return;
+                    return true;
                 }
 
                 // 通常クリック：成り選択ダイアログを表示
                 if (!piece) {
                     setMessage({ text: "駒が見つかりません", type: "error" });
-                    return;
+                    return true;
                 }
                 setPromotionSelection({ from: from as Square, to: to as Square, piece });
-                return;
+                return true;
             }
 
             // 持ち駒を打つ
@@ -2207,33 +2091,57 @@ export function ShogiMatch({
             const legal = await getLegalSet();
             if (legal && !legal.has(moveStr)) {
                 setMessage({ text: "合法手ではありません", type: "error" });
-                return;
+                return true;
             }
             const result = applyMoveWithState(position, moveStr, { validateTurn: true });
             if (!result.ok) {
                 setMessage({ text: result.error ?? "持ち駒を打てませんでした", type: "error" });
-                return;
+                return true;
             }
             applyMoveCommon(result.next, moveStr, result.lastMove);
+            return true;
+        },
+        [
+            isPaused,
+            positionReady,
+            isEngineTurn,
+            promotionSelection,
+            selection,
+            position,
+            getLegalSet,
+            applyMoveCommon,
+        ],
+    );
+
+    /**
+     * マス選択のメインハンドラ
+     * モードに応じて適切なハンドラに振り分ける
+     */
+    const handleSquareSelect = useCallback(
+        async (square: string, shiftKey?: boolean) => {
+            setMessage(null);
+
+            // 編集モード
+            if (isEditMode) {
+                handleSquareSelectEditMode(square);
+                return;
+            }
+
+            // 検討モード
+            if (isReviewMode) {
+                await handleSquareSelectReviewMode(square, shiftKey);
+                return;
+            }
+
+            // 対局モード
+            await handleSquareSelectGameMode(square, shiftKey);
         },
         [
             isEditMode,
-            positionReady,
-            editFromSquare,
-            position,
-            editTool,
-            editPieceType,
-            editOwner,
-            editPromoted,
             isReviewMode,
-            isPaused,
-            promotionSelection,
-            selection,
-            isEngineTurn,
-            applyMoveCommon,
-            applyMoveForReview,
-            getLegalSet,
-            placePieceAt,
+            handleSquareSelectEditMode,
+            handleSquareSelectReviewMode,
+            handleSquareSelectGameMode,
         ],
     );
 
