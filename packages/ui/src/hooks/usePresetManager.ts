@@ -108,7 +108,7 @@ export function usePresetManager(options: UsePresetManagerOptions = {}): UsePres
             try {
                 const data = await storage.load(meta.id);
                 const header = data.subarray(0, Math.min(NNUE_HEADER_SIZE, data.byteLength));
-                const result = await validateNnueHeader(header);
+                const result = await validateNnueHeader(header, data.byteLength);
                 if (result.isCompatible && result.format) {
                     await storage.updateMeta(meta.id, { format: result.format });
                 }

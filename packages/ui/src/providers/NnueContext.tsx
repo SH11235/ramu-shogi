@@ -23,7 +23,10 @@ interface NnueContextValue {
     /** エラーをクリア */
     clearError: () => void;
     /** NNUE ヘッダ検証（任意） */
-    validateNnueHeader?: (header: Uint8Array) => Promise<NnueHeaderValidationResult>;
+    validateNnueHeader?: (
+        header: Uint8Array,
+        fileSize: number,
+    ) => Promise<NnueHeaderValidationResult>;
 }
 
 const NnueContext = createContext<NnueContextValue | null>(null);
@@ -32,7 +35,10 @@ interface NnueProviderProps {
     /** NNUE ストレージ実装 */
     storage: NnueStorage;
     /** NNUE ヘッダ検証（任意） */
-    validateNnueHeader?: (header: Uint8Array) => Promise<NnueHeaderValidationResult>;
+    validateNnueHeader?: (
+        header: Uint8Array,
+        fileSize: number,
+    ) => Promise<NnueHeaderValidationResult>;
     children: ReactNode;
 }
 

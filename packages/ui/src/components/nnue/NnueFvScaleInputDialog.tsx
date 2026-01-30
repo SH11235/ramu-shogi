@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -104,6 +104,16 @@ export function NnueFvScaleInputDialog({
         [handleConfirm],
     );
 
+    // インポートボタンの有効/無効判定
+    const canConfirm = useMemo(() => {
+        const trimmedName = displayName.trim();
+        if (trimmedName === "") return false;
+        const num = Number(value);
+        if (value === "" || Number.isNaN(num)) return false;
+        if (!Number.isInteger(num) || num < 1 || num > 100) return false;
+        return true;
+    }, [displayName, value]);
+
     return (
         <AlertDialog
             open={open}
@@ -171,7 +181,9 @@ export function NnueFvScaleInputDialog({
                 </div>
                 <AlertDialogFooter>
                     <AlertDialogCancel onClick={handleCancel}>キャンセル</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleConfirm}>インポート</AlertDialogAction>
+                    <AlertDialogAction onClick={handleConfirm} disabled={!canConfirm}>
+                        インポート
+                    </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>

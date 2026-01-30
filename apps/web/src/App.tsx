@@ -37,9 +37,9 @@ const nnueStorage = createIndexedDBNnueStorage();
 // NNUE プリセット manifest.json の URL（環境変数で設定）
 const nnueManifestUrl = import.meta.env.VITE_NNUE_MANIFEST_URL as string | undefined;
 
-const validateNnueHeader = async (header: Uint8Array) => ({
-    format: detect_nnue_format(header) as NnueFormat,
-    isCompatible: is_nnue_compatible(header),
+const validateNnueHeader = async (header: Uint8Array, fileSize: number) => ({
+    format: detect_nnue_format(header, BigInt(fileSize)) as NnueFormat,
+    isCompatible: is_nnue_compatible(header, BigInt(fileSize)),
 });
 
 function App() {

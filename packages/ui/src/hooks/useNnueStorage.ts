@@ -101,7 +101,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
                             0,
                             Math.min(NNUE_HEADER_SIZE, data.byteLength),
                         );
-                        const result = await validateNnueHeader(header);
+                        const result = await validateNnueHeader(header, data.byteLength);
                         if (!result.isCompatible) {
                             throw new NnueError(
                                 "NNUE_INCOMPATIBLE",
