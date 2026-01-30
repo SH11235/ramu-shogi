@@ -36,10 +36,10 @@ import { GameResultDialog } from "./shogi-match/components/GameResultDialog";
 import { KifuImportPanel } from "./shogi-match/components/KifuImportPanel";
 import type { KifuViewMode } from "./shogi-match/components/KifuPanel";
 import { LeftSidebar } from "./shogi-match/components/LeftSidebar";
-import { PCBoardSection } from "./shogi-match/components/PCBoardSection";
-import { PCKifuSection } from "./shogi-match/components/PCKifuSection";
 import { MoveDetailWindow } from "./shogi-match/components/MoveDetailWindow";
 import type { PassDisabledReason } from "./shogi-match/components/PassButton";
+import { PCBoardSection } from "./shogi-match/components/PCBoardSection";
+import { PCKifuSection } from "./shogi-match/components/PCKifuSection";
 import { PvPreviewDialog } from "./shogi-match/components/PvPreviewDialog";
 import { SettingsModal } from "./shogi-match/components/SettingsModal";
 import { applyDropResult, DragGhost, type DropResult, usePieceDnd } from "./shogi-match/dnd";
@@ -2959,9 +2959,9 @@ export function ShogiMatch({
                     />
                 ) : (
                     <section className={matchLayoutClasses}>
-                        <div className="relative min-h-[calc(100dvh-1rem)] w-full">
-                            {/* 左サイドバー（絶対配置） */}
-                            <div className="absolute left-4 top-4 z-10">
+                        <div className="flex min-h-[calc(100dvh-1rem)] w-full gap-4 p-4">
+                            {/* 左サイドバー（固定幅） */}
+                            <div className="shrink-0">
                                 <LeftSidebar
                                     sides={sides}
                                     onSidesChange={handleSidesChange}
@@ -2989,8 +2989,8 @@ export function ShogiMatch({
                                 />
                             </div>
 
-                            {/* 将棋盤エリア（中央配置） */}
-                            <div className="flex min-h-[calc(100dvh-1rem)] items-start justify-center py-4">
+                            {/* 将棋盤エリア（中央配置、残りスペースを使用） */}
+                            <div className="flex-1 flex items-start justify-center">
                                 <PCBoardSection
                                     boardSectionRef={boardSectionRef}
                                     isDraggingPiece={isDraggingPiece}
@@ -3040,8 +3040,8 @@ export function ShogiMatch({
                                 />
                             </div>
 
-                            {/* 棋譜セクション（絶対配置） */}
-                            <div className="absolute right-4 top-4 z-10">
+                            {/* 棋譜セクション（固定幅） */}
+                            <div className="shrink-0">
                                 <PCKifuSection
                                     displayEvalHistory={displayEvalHistory}
                                     navigationState={{
