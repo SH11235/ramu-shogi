@@ -7,7 +7,7 @@ import { formatSquare, getBoardLabels } from "./shogi-match/utils/coordinateForm
 
 type ShogiBoardOwner = "sente" | "gote";
 
-interface ShogiBoardPiece {
+export interface ShogiBoardPiece {
     owner: ShogiBoardOwner;
     type: PieceType;
     promoted?: boolean;
