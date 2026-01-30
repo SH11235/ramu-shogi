@@ -784,7 +784,6 @@ export function ShogiMatch({
 
     // 互換性用のmoves配列
     const moves = navigation.getMovesArray();
-    const movesKey = navigation.state.currentNodeId;
 
     // 棋譜＋評価値データ
     const {
@@ -847,7 +846,6 @@ export function ShogiMatch({
         [flipBoard, isReviewMode, isEditMode, position.turn, position.hands, sides],
     );
 
-    const movesRef = useRef<string[]>(moves);
     const legalCache = useMemo(() => new LegalMoveCache(), []);
     const [canPassLegal, setCanPassLegal] = useState(false);
     const clearLegalCache = useCallback(() => {
@@ -870,14 +868,12 @@ export function ShogiMatch({
     // build_position（Rust側）はパス権を設定してからmovesを適用するため、
     // 現在のパス権ではなく初期パス権を渡す必要がある（二重消費を防ぐため）
     const getPassRightsOption = useCallback(() => {
-        return buildPassRightsOptionForLegalMoves(passRightsSettings, movesRef.current);
-    }, [passRightsSettings]);
-    // movesRefをnavigationの変更に同期し、legalCacheをクリア
+        return buildPassRightsOptionForLegalMoves(passRightsSettings, moves);
+    }, [passRightsSettings, moves]);
+    // ナビゲーションで局面が変わったらキャッシュをクリア
     useEffect(() => {
-        movesRef.current = moves;
-        // ナビゲーションで局面が変わったらキャッシュをクリア
         clearLegalCache();
-    }, [moves, clearLegalCache]);
+    }, [clearLegalCache]);
     // パス権設定変更時にキャッシュもクリアするラッパー
     // （合法手にpassが含まれるかどうかが変わるため）
     const handlePassRightsSettingsChange = useCallback(
@@ -948,7 +944,7 @@ export function ShogiMatch({
                 const result: GameResult = {
                     winner,
                     reason: { kind: "time_expired", loser: side },
-                    totalMoves: movesRef.current.length,
+                    totalMoves: moves.length,
                 };
                 await endMatchRef.current?.(result);
             },
@@ -1017,10 +1013,10 @@ export function ShogiMatch({
         const result: GameResult = {
             winner: currentTurn === "sente" ? "gote" : "sente",
             reason: { kind: "resignation", loser: currentTurn },
-            totalMoves: movesRef.current.length,
+            totalMoves: moves.length,
         };
         await endMatch(result);
-    }, [endMatch]);
+    }, [endMatch, moves.length]);
 
     // 手の処理中フラグ（待った・パス等の連打・競合防止用）
     const moveProcessingRef = useRef(false);
@@ -1030,7 +1026,7 @@ export function ShogiMatch({
         // 処理中なら無視（連打・競合防止）
         if (moveProcessingRef.current) return;
 
-        const moveCount = movesRef.current.length;
+        const moveCount = moves.length;
         if (moveCount === 0) return;
 
         moveProcessingRef.current = true;
@@ -1060,7 +1056,6 @@ export function ShogiMatch({
             for (let i = 0; i < undoCount; i++) {
                 navigation.goBack();
             }
-            movesRef.current = movesRef.current.slice(0, -undoCount);
 
             // 待った後の思考時間計測を新しく開始
             turnStartTimeRef.current = Date.now();
@@ -1069,7 +1064,7 @@ export function ShogiMatch({
         } finally {
             moveProcessingRef.current = false;
         }
-    }, [navigation, stopTicking, updateClocksForNextTurn]);
+    }, [navigation, stopTicking, updateClocksForNextTurn, moves.length]);
 
     const handleMoveFromEngineRef = useRef<(move: string) => void>(() => {});
 
@@ -1119,8 +1114,7 @@ export function ShogiMatch({
         engineOptions,
         clocksRef,
         startSfen,
-        movesRef,
-        movesKey,
+        moves,
         positionTurn: position.turn,
         isMatchRunning,
         positionReady,
@@ -1249,7 +1243,6 @@ export function ShogiMatch({
             const elapsedMs = Date.now() - turnStartTimeRef.current;
             // 棋譜ナビゲーションに手を追加（局面更新はonPositionChangeで自動実行）
             navigation.addMove(move, result.next, { elapsedMs });
-            movesRef.current = [...movesRef.current, move];
             setLastMove(result.lastMove);
             setSelection(null);
             setMessage(null);
@@ -1285,14 +1278,9 @@ export function ShogiMatch({
             try {
                 const passRightsOption = getPassRightsOption();
                 const resolver = fetchLegalMoves
-                    ? () => fetchLegalMoves(startSfen, movesRef.current, passRightsOption)
-                    : () =>
-                          getPositionService().getLegalMoves(
-                              startSfen,
-                              movesRef.current,
-                              passRightsOption,
-                          );
-                const ply = movesRef.current.length;
+                    ? () => fetchLegalMoves(startSfen, moves, passRightsOption)
+                    : () => getPositionService().getLegalMoves(startSfen, moves, passRightsOption);
+                const ply = moves.length;
                 let legal = await legalCache.getOrResolve(ply, resolver);
                 if (!legal || !legal.has("pass")) {
                     // パス権ありでも合法手に含まれない場合はキャッシュをクリアして再取得（パス権オプション漏れ対策）
@@ -1325,7 +1313,6 @@ export function ShogiMatch({
             const elapsedMs = Date.now() - turnStartTimeRef.current;
             // 棋譜ナビゲーションに手を追加（局面更新はonPositionChangeで自動実行）
             navigation.addMove("pass", result.next, { elapsedMs });
-            movesRef.current = [...movesRef.current, "pass"];
             setLastMove(result.lastMove);
             setSelection(null);
             setMessage(null);
@@ -1347,6 +1334,7 @@ export function ShogiMatch({
         passRightsSettings,
         startSfen,
         updateClocksForNextTurn,
+        moves,
     ]);
 
     useEffect(() => {
@@ -1460,7 +1448,6 @@ export function ShogiMatch({
             // ナビゲーションのルートノードをパス権付きの局面で更新
             // （待った時にパス権が復元されるようにするため）
             navigation.reset(updatedPosition, startSfen);
-            movesRef.current = [];
         }
 
         // 対局開始前に NNUE の存在確認を行う（未ダウンロードの場合はエラー）
@@ -1519,7 +1506,6 @@ export function ShogiMatch({
         try {
             const newSfen = await refreshStartSfen(current);
             navigation.reset(current, newSfen);
-            movesRef.current = [];
             clearLegalCache();
             setIsEditMode(false);
         } catch {
@@ -1538,7 +1524,6 @@ export function ShogiMatch({
         try {
             const newSfen = await refreshStartSfen(current);
             navigation.reset(current, newSfen);
-            movesRef.current = [];
             setLastMove(undefined);
             setSelection(null);
             setMessage(null);
@@ -1557,7 +1542,6 @@ export function ShogiMatch({
             const elapsedMs = Date.now() - turnStartTimeRef.current;
             // 棋譜ナビゲーションに手を追加（局面更新はonPositionChangeで自動実行）
             navigation.addMove(mv, nextPosition, { elapsedMs });
-            movesRef.current = [...movesRef.current, mv];
             setLastMove(last);
             setSelection(null);
             setMessage(null);
@@ -1584,7 +1568,6 @@ export function ShogiMatch({
 
             // 棋譜ナビゲーションに手を追加
             navigation.addMove(mv, nextPosition);
-            movesRef.current = [...movesRef.current, mv];
             setLastMove(last);
             setSelection(null);
             setMessage(null);
@@ -1618,7 +1601,6 @@ export function ShogiMatch({
             setPositionReady(true);
 
             navigation.reset(next, "startpos");
-            movesRef.current = [];
             setLastMove(undefined);
             setSelection(null);
             setMessage(null);
@@ -1641,49 +1623,41 @@ export function ShogiMatch({
 
     const getLegalSet = useCallback(async (): Promise<Set<string> | null> => {
         if (!positionReady) return null;
-        const ply = movesRef.current.length;
+        const ply = moves.length;
         const passRightsOption = getPassRightsOption();
         const resolver = async () => {
             if (fetchLegalMoves) {
-                return fetchLegalMoves(startSfen, movesRef.current, passRightsOption);
+                return fetchLegalMoves(startSfen, moves, passRightsOption);
             }
-            return getPositionService().getLegalMoves(
-                startSfen,
-                movesRef.current,
-                passRightsOption,
-            );
+            return getPositionService().getLegalMoves(startSfen, moves, passRightsOption);
         };
         const result = await legalCache.getOrResolve(ply, resolver);
-        if (movesRef.current.length === ply) {
+        if (moves.length === ply) {
             setCanPassLegal(result.has("pass"));
         }
         return result;
-    }, [positionReady, fetchLegalMoves, startSfen, legalCache, getPassRightsOption]);
+    }, [positionReady, fetchLegalMoves, startSfen, legalCache, getPassRightsOption, moves]);
 
     // パス可否判定のため、キャッシュ未作成時は合法手をプリフェッチ
     useEffect(() => {
         if (!isMatchRunning || !positionReady) return;
         if (sides[position.turn].role !== "human") return;
-        const ply = movesRef.current.length;
+        const ply = moves.length;
         if (legalCache.isCached(ply)) return;
 
         const passRightsOption = getPassRightsOption();
         const resolver = async () => {
             if (fetchLegalMoves) {
-                return fetchLegalMoves(startSfen, movesRef.current, passRightsOption);
+                return fetchLegalMoves(startSfen, moves, passRightsOption);
             }
-            return getPositionService().getLegalMoves(
-                startSfen,
-                movesRef.current,
-                passRightsOption,
-            );
+            return getPositionService().getLegalMoves(startSfen, moves, passRightsOption);
         };
 
         // エラーはパスボタンクリック時の再解決に委ねる
         void legalCache
             .getOrResolve(ply, resolver)
             .then((result) => {
-                if (movesRef.current.length === ply) {
+                if (moves.length === ply) {
                     setCanPassLegal(result.has("pass"));
                 }
             })
@@ -1697,6 +1671,7 @@ export function ShogiMatch({
         positionReady,
         sides,
         startSfen,
+        moves,
     ]);
 
     const applyEditedPosition = useCallback(
@@ -1720,7 +1695,6 @@ export function ShogiMatch({
 
                 navigation.reset(nextPosition, newSfen);
 
-                movesRef.current = [];
                 setLastMove(undefined);
                 setSelection(null);
                 setMessage(null);
@@ -2355,7 +2329,6 @@ export function ShogiMatch({
                 }
             }
 
-            movesRef.current = result.applied;
             setLastMove(deriveLastMove(result.applied.at(-1)));
             setSelection(null);
             setMessage(null);
@@ -2713,10 +2686,8 @@ export function ShogiMatch({
                             break;
                         }
                     }
-                    movesRef.current = appliedMoves;
                     setLastMove(deriveLastMove(appliedMoves.at(-1)));
                 } else {
-                    movesRef.current = [];
                     setLastMove(undefined);
                 }
 
