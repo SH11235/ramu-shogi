@@ -617,9 +617,6 @@ export function ShogiMatch({
         refreshList: refreshNnueList,
     } = useNnueStorage();
 
-    // NNUE 解決フック（未ダウンロードのプリセットはエラーをスロー）
-    const { resolveNnue } = useLazyNnueLoader();
-
     // プリセット一覧を取得
     const { presets, isLoading: isPresetsLoading } = usePresetManager({
         manifestUrl,
@@ -629,6 +626,18 @@ export function ShogiMatch({
             void refreshNnueList();
         },
     });
+
+    // presetKey から displayName を取得する関数
+    const getPresetDisplayName = useCallback(
+        (presetKey: string): string | undefined => {
+            const preset = presets.find((p) => p.config.presetKey === presetKey);
+            return preset?.config.displayName;
+        },
+        [presets],
+    );
+
+    // NNUE 解決フック（未ダウンロードのプリセットはエラーをスロー）
+    const { resolveNnue } = useLazyNnueLoader({ getPresetDisplayName });
 
     // 選択された NNUE（カスタムの場合）が削除された場合はデフォルトにリセット
     // プリセット選択の場合は削除チェック不要（未ダウンロードでも選択可能）
@@ -2465,7 +2474,18 @@ export function ShogiMatch({
 
     // 特定の手数の局面を解析するコールバック（オンデマンド解析用）
     const handleAnalyzePly = useCallback(
-        (ply: number) => {
+        async (ply: number) => {
+            // NNUE の存在確認（未ダウンロードの場合はエラー）
+            try {
+                await resolveNnue(analysisNnueSelection);
+            } catch (e) {
+                const errorMessage =
+                    e instanceof Error ? e.message : "評価関数の準備に失敗しました";
+                setNnueManagerOpenReason(`解析を開始できません: ${errorMessage}`);
+                setIsNnueManagerOpen(true);
+                return;
+            }
+
             // ply手目の局面を解析するには、ply-1手までの指し手が必要
             // （ply 1 = 1手目を指した後の局面 = moves[0]まで適用した局面）
             const movesForPly = kifMoves.slice(0, ply).map((m) => m.usiMove);
@@ -2474,15 +2494,23 @@ export function ShogiMatch({
             clearEvalByPly(ply);
 
             setAnalyzingState({ type: "by-ply", ply });
-            void analyzePosition({
-                sfen: startSfen,
-                moves: movesForPly,
-                ply,
-                timeMs: 3000, // 3秒間解析
-                depth: 20, // 最大深さ20
-            });
+            try {
+                await analyzePosition({
+                    sfen: startSfen,
+                    moves: movesForPly,
+                    ply,
+                    timeMs: 3000, // 3秒間解析
+                    depth: 20, // 最大深さ20
+                });
+            } catch (error) {
+                setMessage({
+                    text: `解析エラー: ${error instanceof Error ? error.message : String(error)}`,
+                    type: "error",
+                });
+                setAnalyzingState(ANALYZING_STATE_NONE);
+            }
         },
-        [kifMoves, analyzePosition, startSfen, clearEvalByPly],
+        [kifMoves, analyzePosition, startSfen, clearEvalByPly, resolveNnue, analysisNnueSelection],
     );
 
     // 分岐内のノードを解析するコールバック

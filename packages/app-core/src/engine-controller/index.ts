@@ -992,6 +992,24 @@ export function createEngineController(
             }
 
             if (event.type === "bestmove") {
+                // bestmoveイベントにPVと評価値が含まれている場合、最終評価値として記録
+                if (
+                    callbacks.onEvalUpdate &&
+                    (event.scoreCp !== undefined || event.scoreMate !== undefined) &&
+                    event.pv
+                ) {
+                    const ply = analysisState.ply;
+                    if (ply !== null) {
+                        // EngineInfoEvent互換の形式で評価値を渡す
+                        callbacks.onEvalUpdate(ply, {
+                            type: "info",
+                            depth: event.depth,
+                            scoreCp: event.scoreCp,
+                            scoreMate: event.scoreMate,
+                            pv: event.pv,
+                        });
+                    }
+                }
                 analysisState.handle = null;
                 analysisState.ply = null;
                 updateState((prev) => ({ ...prev, isAnalyzing: false }));

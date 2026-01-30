@@ -129,6 +129,12 @@ interface EngineBestMoveEvent {
     type: "bestmove";
     move: string;
     ponder?: string;
+    pv?: string[];
+    /** 評価値 (センチポーン) */
+    scoreCp?: number;
+    /** メイトスコア (手数) */
+    scoreMate?: number;
+    depth?: number;
 }
 
 type EngineErrorSeverity = "warning" | "error" | "fatal";
