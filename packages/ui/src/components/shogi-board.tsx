@@ -2,7 +2,7 @@ import type { PieceType } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import { type ReactElement, useRef } from "react";
 import type { SquareNotation } from "./shogi-match/types";
-import { PIECE_LABELS, getPieceImagePath } from "./shogi-match/utils/constants";
+import { getPieceImagePath, PIECE_LABELS } from "./shogi-match/utils/constants";
 import { formatSquare, getBoardLabels } from "./shogi-match/utils/coordinateFormat";
 
 type ShogiBoardOwner = "sente" | "gote";
