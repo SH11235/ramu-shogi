@@ -3024,6 +3024,10 @@ export function ShogiMatch({
                         message={message}
                         // About
                         onOpenAbout={() => setIsAboutOpen(true)}
+                        // 棋譜インポート
+                        onImportSfen={importSfen}
+                        onImportKif={importKif}
+                        positionReady={positionReady}
                     />
                 ) : (
                     <section className={matchLayoutClasses}>
