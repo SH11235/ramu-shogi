@@ -16,6 +16,8 @@ interface AboutDialogProps {
 
 const GITHUB_URL = "https://github.com/SH11235/ramu-shogi";
 const GPL_URL = "https://www.gnu.org/licenses/gpl-3.0.html";
+const SHOGI_IMAGES_URL = "https://sunfish-shogi.github.io/shogi-images";
+const SHOGI_IMAGES_AUTHOR_URL = "https://github.com/sunfish-shogi";
 
 /**
  * このアプリについて / ライセンス情報ダイアログ
@@ -96,6 +98,33 @@ export function AboutDialog({ open, onOpenChange }: AboutDialogProps): ReactElem
                         </p>
                     </section>
 
+                    {/* 駒画像のクレジット */}
+                    <section className="space-y-2">
+                        <h3 className="font-semibold text-foreground">駒画像</h3>
+                        <p className="text-sm text-muted-foreground">
+                            駒画像は sunfish-shogi 氏が CC0 1.0
+                            Universal（パブリックドメイン）で公開している素材を使用しています。
+                        </p>
+                        <div className="flex flex-col gap-1 text-sm">
+                            <a
+                                href={SHOGI_IMAGES_URL}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline"
+                            >
+                                Shogi Images
+                            </a>
+                            <a
+                                href={SHOGI_IMAGES_AUTHOR_URL}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline"
+                            >
+                                sunfish-shogi (GitHub)
+                            </a>
+                        </div>
+                    </section>
+
                     {/* 英語版 */}
                     <section className="space-y-2 pt-4 border-t border-border">
                         <h3 className="font-semibold text-foreground">License</h3>
@@ -106,6 +135,10 @@ export function AboutDialog({ open, onOpenChange }: AboutDialogProps): ReactElem
                             Uploaded NNUE files are user-provided content. Their licenses are not
                             managed or verified by this application. Please ensure you have the
                             right to use the NNUE file.
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                            Piece images are provided by sunfish-shogi under CC0 1.0 Universal
+                            (Public Domain).
                         </p>
                     </section>
                 </div>

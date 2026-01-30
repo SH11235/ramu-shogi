@@ -3808,6 +3808,7 @@ export function ShogiMatch({
                         onClick={() => setIsAboutOpen(true)}
                         className="fixed bottom-2 right-2 z-40 px-2 py-1 text-xs text-muted-foreground/60 hover:text-muted-foreground hover:underline transition-colors"
                         aria-label="このアプリについて"
+                        title="このアプリについて"
                     >
                         About
                     </button>
