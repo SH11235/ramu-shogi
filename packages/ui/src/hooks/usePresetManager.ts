@@ -108,7 +108,7 @@ export function usePresetManager(options: UsePresetManagerOptions = {}): UsePres
             try {
                 const data = await storage.load(meta.id);
                 const header = data.subarray(0, Math.min(NNUE_HEADER_SIZE, data.byteLength));
-                const result = await validateNnueHeader(header);
+                const result = await validateNnueHeader(header, data.byteLength);
                 if (result.isCompatible && result.format) {
                     await storage.updateMeta(meta.id, { format: result.format });
                 }
@@ -154,6 +154,9 @@ export function usePresetManager(options: UsePresetManagerOptions = {}): UsePres
                     if (preset && storage) {
                         const existing = await storage.listByContentHash(preset.sha256);
                         if (existing.length > 0) {
+                            console.info(
+                                `プリセット「${preset.displayName}」は既にダウンロード済みです`,
+                            );
                             await validatePresetMeta(existing[0]);
                             await refresh();
                             onDownloadComplete?.(existing[0]);
@@ -162,6 +165,25 @@ export function usePresetManager(options: UsePresetManagerOptions = {}): UsePres
                     }
                     await refresh();
                     return undefined;
+                }
+
+                // プリセット更新時のFV_SCALE変更を通知
+                const manifest = await manager.getManifest();
+                const preset = manifest.presets.find((p) => p.presetKey === presetKey);
+                if (preset && storage) {
+                    const oldVersions = await storage.listByPresetKey(presetKey);
+                    if (oldVersions.length > 0 && preset.recommendedFvScale !== undefined) {
+                        // createdAt で降順ソートして最新のメタを取得
+                        const sortedOldVersions = [...oldVersions].sort(
+                            (a, b) => b.createdAt - a.createdAt,
+                        );
+                        const oldFvScale = sortedOldVersions[0].fvScale;
+                        if (oldFvScale !== undefined && oldFvScale !== preset.recommendedFvScale) {
+                            console.info(
+                                `プリセット「${preset.displayName}」の推奨 FV_SCALE が更新されました: ${oldFvScale} → ${preset.recommendedFvScale}`,
+                            );
+                        }
+                    }
                 }
 
                 const meta = await manager.download(presetKey);

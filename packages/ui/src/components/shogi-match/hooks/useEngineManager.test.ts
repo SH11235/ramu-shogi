@@ -12,7 +12,10 @@ const createNnueSelection = (nnueId: string | null): NnueSelection => ({
 });
 
 // テスト用のresolveNnueモック
-const createMockResolveNnue = () => vi.fn(async (selection: NnueSelection) => selection.nnueId);
+const createMockResolveNnue = () =>
+    vi.fn(async (selection: NnueSelection) =>
+        selection.nnueId ? { nnueId: selection.nnueId, fvScale: 16 } : null,
+    );
 
 describe("formatEngineEventLog", () => {
     it("bestmove イベントを正しくフォーマットする", () => {

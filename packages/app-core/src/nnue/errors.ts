@@ -8,6 +8,8 @@ type NnueErrorCode =
     | "NNUE_ALREADY_LOADED"
     | "NNUE_DOWNLOAD_FAILED"
     | "NNUE_DOWNLOAD_IN_PROGRESS"
+    | "NNUE_NOT_DOWNLOADED"
+    | "NNUE_RESOLVE_FAILED"
     | "NNUE_STORAGE_FULL"
     | "NNUE_SIZE_MISMATCH"
     | "NNUE_HASH_MISMATCH"
@@ -40,6 +42,9 @@ const NNUE_ERROR_MESSAGES: Record<NnueErrorCode, string> = {
     NNUE_ALREADY_LOADED: "NNUE を変更するにはエンジンを再起動してください",
     NNUE_DOWNLOAD_FAILED: "ダウンロードに失敗しました。ネットワークを確認してください",
     NNUE_DOWNLOAD_IN_PROGRESS: "このファイルは既にダウンロード中です",
+    NNUE_NOT_DOWNLOADED:
+        "評価関数がダウンロードされていません。評価関数ファイル管理からダウンロードしてください",
+    NNUE_RESOLVE_FAILED: "評価関数の解決に失敗しました",
     NNUE_STORAGE_FULL: "ストレージ容量が不足しています。不要な NNUE を削除してください",
     NNUE_SIZE_MISMATCH: "ダウンロードしたファイルサイズが一致しません",
     NNUE_HASH_MISMATCH: "ファイル検証に失敗しました（破損の可能性）",

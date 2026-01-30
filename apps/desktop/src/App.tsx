@@ -1,7 +1,10 @@
+import type { NnueFormat } from "@shogi/app-core";
 import {
     createTauriEngineClient,
     createTauriNnueStorage,
+    detect_nnue_format,
     getLegalMoves,
+    is_nnue_compatible,
 } from "@shogi/engine-tauri";
 import type { EngineOption } from "@shogi/ui";
 import { EngineControlPanel, NnueProvider, ShogiMatch } from "@shogi/ui";
@@ -26,6 +29,11 @@ const nnueStorage = createTauriNnueStorage();
 // NNUE プリセット manifest.json の URL（環境変数で設定）
 const nnueManifestUrl = import.meta.env.VITE_NNUE_MANIFEST_URL as string | undefined;
 
+const validateNnueHeader = async (header: Uint8Array, fileSize: number) => ({
+    format: (await detect_nnue_format(header, fileSize)) as NnueFormat,
+    isCompatible: await is_nnue_compatible(header, fileSize),
+});
+
 // NNUE ファイル選択ダイアログを開く
 async function requestNnueFilePath(): Promise<string | null> {
     const result = await open({
@@ -43,7 +51,7 @@ async function requestNnueFilePath(): Promise<string | null> {
 function App() {
     // デスクトップ版は常に開発者モードを有効化
     return (
-        <NnueProvider storage={nnueStorage}>
+        <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
             <main className="mx-auto flex max-w-[1100px] flex-col gap-3 md:px-5">
                 <ShogiMatch
                     engineOptions={engineOptions}

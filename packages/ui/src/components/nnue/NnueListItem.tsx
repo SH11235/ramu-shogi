@@ -19,12 +19,16 @@ interface NnueListItemProps {
     isDeleting?: boolean;
     /** 無効化 */
     disabled?: boolean;
+    /** 削除が無効な理由（対局中など） */
+    deleteDisabledReason?: string;
     /** ラジオグループ名（選択機能使用時に必要） */
     name?: string;
     /** 選択機能を有効にするか（デフォルト: true） */
     selectable?: boolean;
     /** 表示名変更時のコールバック（指定時、インライン編集が有効になる） */
     onDisplayNameChange?: (newName: string) => Promise<void>;
+    /** FV_SCALE変更時のコールバック（指定時、インライン編集が有効になる） */
+    onFvScaleChange?: (fvScale: number | undefined) => Promise<void>;
 }
 
 function formatSize(bytes: number): string {
@@ -40,13 +44,16 @@ function getArchitectureLabel(meta: NnueMeta): string | null {
     return raw;
 }
 
-function getValidationStatus(meta: NnueMeta): { label: string; color: string } {
+function getValidationStatus(meta: NnueMeta): { label: string; className: string } {
     if (meta.format) {
-        return { label: "形式確認済み", color: "hsl(var(--success, 142 76% 36%))" };
+        return {
+            label: "形式確認済み",
+            className: "text-[hsl(var(--success,142_76%_36%))]",
+        };
     }
     return {
         label: "未確認（動作保証なし）",
-        color: "hsl(var(--warning, 38 92% 50%))",
+        className: "text-[hsl(var(--warning,38_92%_50%))]",
     };
 }
 
@@ -61,22 +68,31 @@ export function NnueListItem({
     showDelete = true,
     isDeleting = false,
     disabled = false,
+    deleteDisabledReason,
     name,
     selectable = true,
     onDisplayNameChange,
+    onFvScaleChange,
 }: NnueListItemProps): ReactElement {
     const isPreset = meta.source === "preset";
     const canDelete = showDelete && onDelete;
     const canEdit = !isPreset && onDisplayNameChange;
+    const canEditFvScale = onFvScaleChange;
     const inputId = useId();
     const editInputRef = useRef<HTMLInputElement>(null);
+    const fvScaleInputRef = useRef<HTMLInputElement>(null);
     const validationStatus = getValidationStatus(meta);
     const architectureLabel = getArchitectureLabel(meta);
 
-    // 編集状態
+    // 表示名編集状態
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(meta.displayName);
     const [isSaving, setIsSaving] = useState(false);
+
+    // FV_SCALE編集状態
+    const [isEditingFvScale, setIsEditingFvScale] = useState(false);
+    const [fvScaleValue, setFvScaleValue] = useState(meta.fvScale?.toString() ?? "");
+    const [isSavingFvScale, setIsSavingFvScale] = useState(false);
 
     const startEditing = useCallback(() => {
         if (!canEdit || disabled) return;
@@ -121,42 +137,79 @@ export function NnueListItem({
         [saveDisplayName, cancelEditing],
     );
 
-    // 選択機能が無効な場合のスタイル
-    const containerStyle = selectable
-        ? {
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              padding: "12px",
-              borderRadius: "8px",
-              backgroundColor: isSelected ? "hsl(var(--accent, 210 40% 96%))" : "transparent",
-              border: isSelected
-                  ? "1px solid hsl(var(--primary, 220 90% 56%))"
-                  : "1px solid hsl(var(--border, 0 0% 86%))",
-              cursor: disabled ? "not-allowed" : "pointer",
-              opacity: disabled ? 0.5 : 1,
-              transition: "background-color 150ms, border-color 150ms",
-          }
-        : {
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              padding: "12px",
-              borderRadius: "8px",
-              backgroundColor: "transparent",
-              border: "1px solid hsl(var(--border, 0 0% 86%))",
-              opacity: disabled ? 0.5 : 1,
-          };
+    // FV_SCALE編集関連
+    const startEditingFvScale = useCallback(() => {
+        if (!canEditFvScale || disabled) return;
+        setFvScaleValue(meta.fvScale?.toString() ?? "");
+        setIsEditingFvScale(true);
+        setTimeout(() => fvScaleInputRef.current?.select(), 0);
+    }, [canEditFvScale, disabled, meta.fvScale]);
 
-    const containerClassName = selectable
-        ? cn(
-              "hover:bg-muted/50 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background",
-              isSelected && "bg-accent",
-          )
-        : "";
+    const cancelEditingFvScale = useCallback(() => {
+        setIsEditingFvScale(false);
+        setFvScaleValue(meta.fvScale?.toString() ?? "");
+    }, [meta.fvScale]);
+
+    const saveFvScale = useCallback(async () => {
+        if (!onFvScaleChange) return;
+        const trimmed = fvScaleValue.trim();
+        const newValue = trimmed === "" ? undefined : Number(trimmed);
+        // 値が変わっていない場合はキャンセル
+        if (newValue === meta.fvScale) {
+            cancelEditingFvScale();
+            return;
+        }
+        // 無効な値の場合はキャンセル（Number.isInteger で小数点や不正入力を検出）
+        if (
+            newValue !== undefined &&
+            (Number.isNaN(newValue) ||
+                !Number.isInteger(newValue) ||
+                newValue < 1 ||
+                newValue > 100)
+        ) {
+            cancelEditingFvScale();
+            return;
+        }
+        setIsSavingFvScale(true);
+        try {
+            await onFvScaleChange(newValue);
+            setIsEditingFvScale(false);
+        } catch {
+            // エラーは親コンポーネントで処理される
+        } finally {
+            setIsSavingFvScale(false);
+        }
+    }, [onFvScaleChange, fvScaleValue, meta.fvScale, cancelEditingFvScale]);
+
+    const handleFvScaleKeyDown = useCallback(
+        (e: React.KeyboardEvent) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                void saveFvScale();
+            } else if (e.key === "Escape") {
+                cancelEditingFvScale();
+            }
+        },
+        [saveFvScale, cancelEditingFvScale],
+    );
+
+    const containerClassName = cn(
+        "flex items-center gap-3 rounded-md border p-3",
+        selectable && "transition-colors",
+        isSelected ? "bg-accent border-primary" : "border-border",
+        selectable
+            ? disabled
+                ? "cursor-not-allowed opacity-50"
+                : "cursor-pointer"
+            : disabled
+              ? "cursor-default opacity-50"
+              : "cursor-default",
+        selectable &&
+            "hover:bg-muted/50 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background",
+    );
 
     return (
-        <div style={containerStyle} className={containerClassName}>
+        <div className={containerClassName}>
             {/* ラジオボタン（選択機能有効時のみ） */}
             {selectable && (
                 <>
@@ -173,27 +226,17 @@ export function NnueListItem({
                     <label htmlFor={inputId} className="flex flex-1 min-w-0 items-center gap-3">
                         {/* Radio indicator */}
                         <div
-                            style={{
-                                width: "20px",
-                                height: "20px",
-                                borderRadius: "50%",
-                                border: isSelected
-                                    ? "6px solid hsl(var(--primary, 220 90% 56%))"
-                                    : "2px solid hsl(var(--muted-foreground, 0 0% 45%))",
-                                flexShrink: 0,
-                            }}
+                            className={cn(
+                                "h-5 w-5 shrink-0 rounded-full",
+                                isSelected
+                                    ? "border-[6px] border-[hsl(var(--primary,220_90%_56%))]"
+                                    : "border-2 border-muted-foreground",
+                            )}
                         />
 
                         {/* Content */}
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                            <div
-                                style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "8px",
-                                    marginBottom: "4px",
-                                }}
-                            >
+                        <div className="min-w-0 flex-1">
+                            <div className="mb-1 flex items-center gap-2">
                                 {isEditing ? (
                                     <Input
                                         ref={editInputRef}
@@ -202,21 +245,11 @@ export function NnueListItem({
                                         onBlur={() => void saveDisplayName()}
                                         onKeyDown={handleKeyDown}
                                         disabled={isSaving}
-                                        className="h-7 text-sm font-medium"
-                                        style={{ maxWidth: "200px" }}
+                                        className="h-7 max-w-[200px] text-sm font-medium"
                                         onClick={(e) => e.stopPropagation()}
                                     />
                                 ) : (
-                                    <span
-                                        style={{
-                                            fontWeight: 500,
-                                            overflow: "hidden",
-                                            textOverflow: "ellipsis",
-                                            whiteSpace: "nowrap",
-                                        }}
-                                    >
-                                        {meta.displayName}
-                                    </span>
+                                    <span className="truncate font-medium">{meta.displayName}</span>
                                 )}
                                 {canEdit && !isEditing && (
                                     <button
@@ -227,18 +260,12 @@ export function NnueListItem({
                                             startEditing();
                                         }}
                                         disabled={disabled}
-                                        style={{
-                                            background: "none",
-                                            border: "none",
-                                            padding: "4px",
-                                            cursor: disabled ? "not-allowed" : "pointer",
-                                            color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            borderRadius: "4px",
-                                            flexShrink: 0,
-                                        }}
-                                        className="hover:bg-muted/50 hover:text-foreground"
+                                        className={cn(
+                                            "inline-flex shrink-0 items-center rounded p-1 text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                                            disabled
+                                                ? "cursor-not-allowed opacity-50"
+                                                : "cursor-pointer",
+                                        )}
                                         title="表示名を編集"
                                         aria-label="表示名を編集"
                                     >
@@ -259,42 +286,81 @@ export function NnueListItem({
                                     </button>
                                 )}
                                 {isPreset && (
-                                    <span
-                                        style={{
-                                            fontSize: "11px",
-                                            padding: "2px 6px",
-                                            borderRadius: "4px",
-                                            backgroundColor: "hsl(var(--muted, 0 0% 90%))",
-                                            color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                                        }}
-                                    >
+                                    <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
                                         プリセット
                                     </span>
                                 )}
                             </div>
-                            <div
-                                style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "12px",
-                                    fontSize: "13px",
-                                    color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                                }}
-                            >
+                            <div className="flex items-center gap-3 text-[13px] text-muted-foreground">
                                 <span>{formatSize(meta.size)}</span>
-                                <span style={{ color: validationStatus.color }}>
+                                <span className={validationStatus.className}>
                                     {validationStatus.label}
                                 </span>
                             </div>
                             {architectureLabel && (
-                                <div
-                                    style={{
-                                        marginTop: "4px",
-                                        fontSize: "12px",
-                                        color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                                    }}
-                                >
+                                <div className="mt-1 text-xs text-muted-foreground">
                                     アーキテクチャ: {architectureLabel}
+                                </div>
+                            )}
+                            {/* FV_SCALE 表示・編集 */}
+                            {canEditFvScale && (
+                                <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                                    <span>FV_SCALE:</span>
+                                    {isEditingFvScale ? (
+                                        <Input
+                                            ref={fvScaleInputRef}
+                                            type="number"
+                                            min={1}
+                                            max={100}
+                                            value={fvScaleValue}
+                                            onChange={(e) => setFvScaleValue(e.target.value)}
+                                            onBlur={() => void saveFvScale()}
+                                            onKeyDown={handleFvScaleKeyDown}
+                                            disabled={isSavingFvScale}
+                                            className="h-6 w-16 text-xs"
+                                            onClick={(e) => e.stopPropagation()}
+                                        />
+                                    ) : (
+                                        <>
+                                            {meta.fvScale === undefined && (
+                                                <span
+                                                    role="img"
+                                                    className="text-sm leading-none text-destructive"
+                                                    title="FV_SCALE が未設定です。この評価関数はエンジン起動時にエラーになります。"
+                                                    aria-label="警告"
+                                                >
+                                                    ⚠️
+                                                </span>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    startEditingFvScale();
+                                                }}
+                                                disabled={disabled}
+                                                className={cn(
+                                                    "rounded border-0 bg-transparent px-1 py-0.5 text-xs hover:bg-muted/50",
+                                                    disabled
+                                                        ? "cursor-not-allowed opacity-50"
+                                                        : "cursor-pointer",
+                                                    meta.fvScale !== undefined
+                                                        ? "text-foreground"
+                                                        : "text-destructive",
+                                                )}
+                                                title={
+                                                    meta.fvScale !== undefined
+                                                        ? "クリックして編集"
+                                                        : "未設定です。クリックして FV_SCALE を設定してください。"
+                                                }
+                                            >
+                                                {meta.fvScale !== undefined
+                                                    ? meta.fvScale
+                                                    : "未設定（要設定）"}
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -304,15 +370,8 @@ export function NnueListItem({
 
             {/* コンテンツ（選択機能無効時） */}
             {!selectable && (
-                <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                        style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            marginBottom: "4px",
-                        }}
-                    >
+                <div className="min-w-0 flex-1">
+                    <div className="mb-1 flex items-center gap-2">
                         {isEditing ? (
                             <Input
                                 ref={editInputRef}
@@ -321,8 +380,7 @@ export function NnueListItem({
                                 onBlur={() => void saveDisplayName()}
                                 onKeyDown={handleKeyDown}
                                 disabled={isSaving}
-                                className="h-7 text-sm font-medium"
-                                style={{ maxWidth: "200px" }}
+                                className="h-7 max-w-[200px] text-sm font-medium"
                             />
                         ) : canEdit ? (
                             <button
@@ -332,73 +390,89 @@ export function NnueListItem({
                                     startEditing();
                                 }}
                                 disabled={disabled}
-                                style={{
-                                    fontWeight: 500,
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
-                                    background: "none",
-                                    border: "none",
-                                    padding: "2px 4px",
-                                    margin: "-2px -4px",
-                                    borderRadius: "4px",
-                                    cursor: disabled ? "not-allowed" : "pointer",
-                                    textAlign: "left",
-                                }}
-                                className="hover:bg-muted/50"
+                                className={cn(
+                                    "truncate rounded border-0 bg-transparent px-1 py-0.5 text-left font-medium hover:bg-muted/50",
+                                    disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+                                )}
                                 title="クリックして編集"
                             >
                                 {meta.displayName}
                             </button>
                         ) : (
-                            <span
-                                style={{
-                                    fontWeight: 500,
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
-                                }}
-                            >
-                                {meta.displayName}
-                            </span>
+                            <span className="truncate font-medium">{meta.displayName}</span>
                         )}
                         {isPreset && (
-                            <span
-                                style={{
-                                    fontSize: "11px",
-                                    padding: "2px 6px",
-                                    borderRadius: "4px",
-                                    backgroundColor: "hsl(var(--muted, 0 0% 90%))",
-                                    color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                                }}
-                            >
+                            <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
                                 プリセット
                             </span>
                         )}
                     </div>
-                    <div
-                        style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "12px",
-                            fontSize: "13px",
-                            color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                        }}
-                    >
+                    <div className="flex items-center gap-3 text-[13px] text-muted-foreground">
                         <span>{formatSize(meta.size)}</span>
-                        <span style={{ color: validationStatus.color }}>
-                            {validationStatus.label}
-                        </span>
+                        <span className={validationStatus.className}>{validationStatus.label}</span>
                     </div>
                     {architectureLabel && (
-                        <div
-                            style={{
-                                marginTop: "4px",
-                                fontSize: "12px",
-                                color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                            }}
-                        >
+                        <div className="mt-1 text-xs text-muted-foreground">
                             アーキテクチャ: {architectureLabel}
+                        </div>
+                    )}
+                    {/* FV_SCALE 表示・編集 */}
+                    {canEditFvScale && (
+                        <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                            <span>FV_SCALE:</span>
+                            {isEditingFvScale ? (
+                                <Input
+                                    ref={fvScaleInputRef}
+                                    type="number"
+                                    min={1}
+                                    max={100}
+                                    value={fvScaleValue}
+                                    onChange={(e) => setFvScaleValue(e.target.value)}
+                                    onBlur={() => void saveFvScale()}
+                                    onKeyDown={handleFvScaleKeyDown}
+                                    disabled={isSavingFvScale}
+                                    className="h-6 w-16 text-xs"
+                                />
+                            ) : (
+                                <>
+                                    {meta.fvScale === undefined && (
+                                        <span
+                                            role="img"
+                                            className="text-sm leading-none text-destructive"
+                                            title="FV_SCALE が未設定です。この評価関数はエンジン起動時にエラーになります。"
+                                            aria-label="警告"
+                                        >
+                                            ⚠️
+                                        </span>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            startEditingFvScale();
+                                        }}
+                                        disabled={disabled}
+                                        className={cn(
+                                            "rounded border-0 bg-transparent px-1 py-0.5 text-xs hover:bg-muted/50",
+                                            disabled
+                                                ? "cursor-not-allowed opacity-50"
+                                                : "cursor-pointer",
+                                            meta.fvScale !== undefined
+                                                ? "text-foreground"
+                                                : "text-destructive",
+                                        )}
+                                        title={
+                                            meta.fvScale !== undefined
+                                                ? "クリックして編集"
+                                                : "未設定です。クリックして FV_SCALE を設定してください。"
+                                        }
+                                    >
+                                        {meta.fvScale !== undefined
+                                            ? meta.fvScale
+                                            : "未設定（要設定）"}
+                                    </button>
+                                </>
+                            )}
                         </div>
                     )}
                 </div>
@@ -413,9 +487,10 @@ export function NnueListItem({
                         e.stopPropagation();
                         onDelete();
                     }}
-                    disabled={isDeleting || disabled}
-                    style={{ flexShrink: 0 }}
+                    disabled={isDeleting || disabled || !!deleteDisabledReason}
+                    className="shrink-0"
                     aria-label={`${meta.displayName} を削除`}
+                    title={deleteDisabledReason}
                 >
                     {isDeleting ? "..." : "削除"}
                 </Button>

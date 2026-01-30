@@ -225,10 +225,7 @@ export function PvPreviewDialog({
 
                 <div className="flex flex-col gap-1.5">
                     {/* 将棋盤と持ち駒（コンパクト表示） */}
-                    <div
-                        className="flex flex-col items-center origin-top"
-                        style={{ transform: "scale(0.85)", marginBottom: "-80px" }}
-                    >
+                    <div className="flex flex-col items-center origin-top scale-[0.85] -mb-20">
                         {/* 後手の持ち駒 */}
                         <div className="w-full flex justify-center">
                             <div className="text-base text-muted-foreground mr-2 self-center">

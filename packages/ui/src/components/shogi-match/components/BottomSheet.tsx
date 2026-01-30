@@ -27,13 +27,13 @@ interface BottomSheetProps {
     surface?: "solid" | "glass";
 }
 
-const heightStyles = {
-    half: { height: "50vh" },
-    full: { height: "85vh" },
+const heightClassName: Record<NonNullable<BottomSheetProps["height"]>, string> = {
+    half: "h-[50vh]",
+    full: "h-[85vh]",
     // auto の場合も height を設定し、内部の flex レイアウトを機能させる
     // コンテンツが少ない場合は min-content で縮み、多い場合は 85vh でスクロール
-    auto: { height: "auto", maxHeight: "85vh" },
-} as const;
+    auto: "h-auto max-h-[85vh]",
+};
 // Glass surface tuning for mobile overlays/sheets.
 // Lower opacity + lower blur makes the board more visible behind the surface.
 export const GLASS_SURFACE_OPACITY = 0.05;
@@ -52,50 +52,30 @@ export function BottomSheet({
     overlay = "dim",
     surface = "solid",
 }: BottomSheetProps): ReactElement {
-    const overlayStyle =
-        overlay === "transparent"
-            ? { backgroundColor: "transparent", backdropFilter: "none" }
-            : undefined;
-    const surfaceStyle =
-        surface === "glass"
-            ? {
-                  backgroundColor: `hsl(var(--background, 0 0% 100%) / ${GLASS_SURFACE_OPACITY})`,
-                  backdropFilter: `blur(${GLASS_SURFACE_BLUR_PX}px)`,
-              }
-            : undefined;
-    const surfaceClassName = surface === "glass" ? "" : "bg-background";
+    const overlayClassName =
+        overlay === "transparent" ? "bg-transparent backdrop-blur-0" : undefined;
+    const surfaceClassName =
+        surface === "glass" ? "bg-background/[0.05] backdrop-blur-[1px]" : "bg-background";
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent
-                overlayStyle={overlayStyle}
+                overlayClassName={overlayClassName}
                 onOpenAutoFocus={(event) => event.preventDefault()}
                 data-state={open ? "open" : "closed"}
                 className={cn(
-                    "fixed bottom-0 left-0 right-0 z-50",
-                    "w-screen",
+                    "fixed bottom-0 left-0 right-0 top-auto z-50",
+                    "w-full max-w-full",
                     "rounded-t-2xl",
                     "overflow-hidden",
+                    "border-0 p-0",
+                    "flex flex-col",
+                    "translate-x-0 translate-y-0",
+                    heightClassName[height],
+                    surfaceClassName,
                     "duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out",
                     "data-[state=closed]:fade-out data-[state=open]:fade-in",
                     "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
                 )}
-                style={{
-                    ...heightStyles[height],
-                    top: "auto",
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    transform: "none",
-                    width: "100%",
-                    maxWidth: "100%",
-                    padding: 0,
-                    border: "none",
-                    borderRadius: "16px 16px 0 0",
-                    overflow: "hidden",
-                    display: "flex",
-                    flexDirection: "column",
-                    ...surfaceStyle,
-                }}
             >
                 {/* ドラッグハンドル（装飾） */}
                 <div className={cn("flex justify-center py-2", surfaceClassName)}>
@@ -112,8 +92,8 @@ export function BottomSheet({
                     className={cn(
                         "px-4 pt-4 max-w-full flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y",
                         surfaceClassName,
+                        "[webkit-overflow-scrolling:touch]",
                     )}
-                    style={{ WebkitOverflowScrolling: "touch" }}
                 >
                     {children}
                 </div>

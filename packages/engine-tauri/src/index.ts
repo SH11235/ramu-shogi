@@ -332,3 +332,42 @@ export async function getLegalMoves(params: LegalMovesParams): Promise<string[]>
         return [];
     }
 }
+
+/** NNUE フォーマット情報 */
+export interface NnueFormatInfo {
+    architecture: string;
+    l1Dimension: number;
+    l2Dimension: number;
+    l3Dimension: number;
+    activation: string;
+    versionHeader: string;
+}
+
+/**
+ * NNUE ファイルのフォーマット情報を検出
+ * @param header NNUE ファイルのヘッダー（Uint8Array）
+ * @param fileSize ファイル全体のサイズ
+ */
+export async function detect_nnue_format(
+    header: Uint8Array,
+    fileSize: number,
+): Promise<NnueFormatInfo> {
+    // Uint8Array を Base64 に変換
+    const headerBase64 = btoa(String.fromCharCode(...header));
+    return tauriInvoke<NnueFormatInfo>("detect_nnue_format_cmd", {
+        args: { header: headerBase64, fileSize },
+    });
+}
+
+/**
+ * NNUE ファイルが互換性があるか確認
+ * @param header NNUE ファイルのヘッダー（Uint8Array）
+ * @param fileSize ファイル全体のサイズ
+ */
+export async function is_nnue_compatible(header: Uint8Array, fileSize: number): Promise<boolean> {
+    // Uint8Array を Base64 に変換
+    const headerBase64 = btoa(String.fromCharCode(...header));
+    return tauriInvoke<boolean>("is_nnue_compatible_cmd", {
+        args: { header: headerBase64, fileSize },
+    });
+}

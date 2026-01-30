@@ -44,6 +44,7 @@ const createTestManifest = (): PresetManifest => ({
             sha256: "abc123def456abc123def456abc123def456abc123def456abc123def456abc1",
             license: "MIT",
             releasedAt: "2024-01-01",
+            recommendedFvScale: 16,
         },
     ],
 });
@@ -357,6 +358,7 @@ describe("getDownloadedMeta", () => {
                 sha256: "hash123",
                 license: "MIT",
                 releasedAt: "2024-01-01",
+                recommendedFvScale: 16,
             },
             status: "not-downloaded",
             localMetas: [],
@@ -384,6 +386,7 @@ describe("getDownloadedMeta", () => {
                 sha256: "hash123",
                 license: "MIT",
                 releasedAt: "2024-01-01",
+                recommendedFvScale: 16,
             },
             status: "latest",
             localMetas: [oldMeta, latestMeta],
@@ -415,6 +418,7 @@ describe("getDownloadedMeta", () => {
                 sha256: "different-hash", // どちらとも一致しない
                 license: "MIT",
                 releasedAt: "2024-01-01",
+                recommendedFvScale: 16,
             },
             status: "update-available",
             localMetas: [oldMeta, newerMeta],

@@ -483,7 +483,8 @@ export function MobileLayout({
                                 />
                                 {/* パスボタン（パス機能有効時のみ） */}
                                 {passRightsSettings?.enabled &&
-                                    passRightsSettings.initialCount > 0 &&
+                                    (passRightsSettings.senteInitialCount > 0 ||
+                                        passRightsSettings.goteInitialCount > 0) &&
                                     position.passRights &&
                                     onPassMove && (
                                         <PassButton

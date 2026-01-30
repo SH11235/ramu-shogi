@@ -32,22 +32,8 @@ export const AlertDialogContent = forwardRef<
         <AlertDialogPortal>
             <AlertDialogOverlay />
             <AlertDialogPrimitive.Content
-                style={{
-                    position: "fixed",
-                    top: "50%",
-                    left: "50%",
-                    transform: "translate(-50%, -50%)",
-                    width: "min(420px, calc(100% - 32px))",
-                    backgroundColor: "hsl(var(--card, 0 0% 100%))",
-                    color: "hsl(var(--foreground, 0 0% 10%))",
-                    border: "1px solid hsl(var(--border, 0 0% 86%))",
-                    borderRadius: "12px",
-                    boxShadow: "0 24px 70px rgba(0, 0, 0, 0.35)",
-                    padding: "24px",
-                    zIndex: 51,
-                }}
                 className={cn(
-                    "grid gap-4 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+                    "fixed left-1/2 top-1/2 z-[51] grid w-[min(420px,calc(100%-32px))] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-border bg-card p-6 text-foreground shadow-[0_24px_70px_rgba(0,0,0,0.35)] duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
                     className,
                 )}
                 ref={ref}

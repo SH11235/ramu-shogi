@@ -59,8 +59,7 @@ export function MobileKifuBar({
     return (
         <div
             ref={containerRef}
-            className="h-9 flex items-center gap-1 overflow-x-auto scrollbar-hide bg-muted/30 rounded px-2"
-            style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+            className="h-9 flex items-center gap-1 overflow-x-auto scrollbar-hide bg-muted/30 rounded px-2 [scrollbar-width:none] [-ms-overflow-style:none]"
         >
             {moves.map((move) => {
                 const isCurrent = currentPly > 0 && move.ply === currentPly;

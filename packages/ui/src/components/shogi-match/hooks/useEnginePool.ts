@@ -49,6 +49,8 @@ interface UseEnginePoolOptions {
 interface StartOptions {
     /** 使用するNNUE ID（指定するとoptions.nnueIdを上書き） */
     nnueId?: string | null;
+    /** FV_SCALE 値 */
+    fvScale?: number;
 }
 
 /**
@@ -101,6 +103,10 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         overrideNnueId: string | null | undefined;
         /** 初期化済みワーカーが使用しているNNUE ID（null=Material） */
         currentNnueId: string | null | undefined;
+        /** start()で渡されたfvScale */
+        overrideFvScale: number | undefined;
+        /** 初期化済みワーカーが使用しているFV_SCALE */
+        currentFvScale: number | undefined;
     }>({
         workers: [],
         jobQueue: [],
@@ -111,6 +117,8 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         initialized: false,
         overrideNnueId: undefined,
         currentNnueId: undefined,
+        overrideFvScale: undefined,
+        currentFvScale: undefined,
     });
 
     // コールバックをrefで保持（依存配列の問題を回避）
@@ -237,6 +245,8 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         // start()で渡されたnnueIdを優先、なければoptions.nnueIdを使用
         const effectiveNnueId =
             (state.overrideNnueId !== undefined ? state.overrideNnueId : nnueId) ?? null;
+        // start()で渡されたfvScaleを使用
+        const effectiveFvScale = state.overrideFvScale;
 
         const workers: EngineWorker[] = [];
         for (let i = 0; i < workerCount; i++) {
@@ -248,6 +258,10 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                 if (effectiveNnueId && client.loadNnue) {
                     try {
                         await client.loadNnue(effectiveNnueId);
+                        // FV_SCALE を設定（指定されている場合）
+                        if (effectiveFvScale !== undefined) {
+                            await client.setOption("FV_SCALE", effectiveFvScale);
+                        }
                     } catch (error) {
                         console.warn(
                             `Failed to load NNUE for pool worker ${i} (${effectiveNnueId}):`,
@@ -289,6 +303,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         state.workers = workers;
         state.initialized = true;
         state.currentNnueId = effectiveNnueId;
+        state.currentFvScale = effectiveFvScale;
     }, [createClient, nnueId, workerCount]);
 
     // 一括解析を開始する
@@ -303,15 +318,20 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             state.inProgress.clear();
             state.cancelled = false;
 
-            // start()で渡されたnnueIdを記録
+            // start()で渡されたnnueIdとfvScaleを記録
             state.overrideNnueId = startOptions?.nnueId;
+            state.overrideFvScale = startOptions?.fvScale;
 
             const nextNnueId =
                 (state.overrideNnueId !== undefined ? state.overrideNnueId : nnueId) ?? null;
+            const nextFvScale = state.overrideFvScale;
             const currentNnueId = state.currentNnueId ?? null;
+            const currentFvScale = state.currentFvScale;
 
-            // NNUEが変わった場合のみ再初期化
-            const shouldReinitialize = state.initialized && nextNnueId !== currentNnueId;
+            // NNUEまたはFV_SCALEが変わった場合は再初期化
+            const shouldReinitialize =
+                state.initialized &&
+                (nextNnueId !== currentNnueId || nextFvScale !== currentFvScale);
             if (shouldReinitialize) {
                 state.initialized = false;
             }

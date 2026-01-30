@@ -17,6 +17,7 @@ import {
     type Player,
     type PositionState,
     parseMove,
+    type ResolvedNnue,
     resolveWorkerCount,
     type Square,
 } from "@shogi/app-core";
@@ -27,7 +28,6 @@ import { useNnueStorage } from "../hooks/useNnueStorage";
 import { usePresetManager } from "../hooks/usePresetManager";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./dialog";
 import { EngineRestartingOverlay } from "./nnue/EngineRestartingOverlay";
-import { NnueDownloadOverlay } from "./nnue/NnueDownloadOverlay";
 import { NnueManagerDialog } from "./nnue/NnueManagerDialog";
 import type { ShogiBoardCell } from "./shogi-board";
 import { ShogiBoard } from "./shogi-board";
@@ -152,6 +152,56 @@ function isSameTimeSettings(a: ClockSettings, b: ClockSettings): boolean {
     );
 }
 
+function normalizePassRightsCount(value: unknown, fallback: number): number {
+    if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+    if (value < 0) return fallback;
+    return Math.trunc(value);
+}
+
+function normalizePassRightsThreshold(value: unknown, fallback: number): number {
+    if (typeof value !== "number" || Number.isNaN(value)) return fallback;
+    if (value < 0) return fallback;
+    return value;
+}
+
+function normalizePassRightsSettings(
+    settings: PassRightsSettings | null | undefined,
+    defaults: PassRightsSettings,
+): PassRightsSettings {
+    if (!settings || typeof settings !== "object") {
+        return defaults;
+    }
+
+    return {
+        enabled: typeof settings.enabled === "boolean" ? settings.enabled : defaults.enabled,
+        senteInitialCount: normalizePassRightsCount(
+            settings.senteInitialCount,
+            defaults.senteInitialCount,
+        ),
+        goteInitialCount: normalizePassRightsCount(
+            settings.goteInitialCount,
+            defaults.goteInitialCount,
+        ),
+        confirmDialogThresholdMs: normalizePassRightsThreshold(
+            settings.confirmDialogThresholdMs,
+            defaults.confirmDialogThresholdMs,
+        ),
+    };
+}
+
+function isSamePassRightsSettings(
+    a: PassRightsSettings,
+    b: PassRightsSettings | null | undefined,
+): boolean {
+    if (!b) return false;
+    return (
+        a.enabled === b.enabled &&
+        a.senteInitialCount === b.senteInitialCount &&
+        a.goteInitialCount === b.goteInitialCount &&
+        a.confirmDialogThresholdMs === b.confirmDialogThresholdMs
+    );
+}
+
 /**
  * パス権設定と棋譜からgetLegalMovesのオプションを生成するヘルパー関数
  *
@@ -160,7 +210,9 @@ function isSameTimeSettings(a: ClockSettings, b: ClockSettings): boolean {
  * （パス権有効で対局後に設定をOFFにした場合や、パス入り棋譜を読み込んだ場合など）
  */
 function buildPassRightsOptionForLegalMoves(
-    passRightsSettings: { enabled: boolean; initialCount: number } | undefined,
+    passRightsSettings:
+        | { enabled: boolean; senteInitialCount: number; goteInitialCount: number }
+        | undefined,
     moves: string[],
 ): { passRights?: { sente: number; gote: number } } {
     // 大文字小文字を区別せずにパス手を検出（parseMoveと同様）
@@ -170,15 +222,15 @@ function buildPassRightsOptionForLegalMoves(
         // 設定が有効: 初期値を使用
         return {
             passRights: {
-                sente: passRightsSettings.initialCount,
-                gote: passRightsSettings.initialCount,
+                sente: passRightsSettings.senteInitialCount,
+                gote: passRightsSettings.goteInitialCount,
             },
         };
     }
 
     if (hasPassInMoves) {
         // 設定は無効だが棋譜にpassが含まれる: 十分な数のパス権を設定
-        // （各プレイヤーのパス回数の最大値を使用）
+        // （各プレイヤーのパス回数を使用）
         let sentePassCount = 0;
         let gotePassCount = 0;
         let isSenteTurn = true; // 平手初期局面は先手番
@@ -193,11 +245,10 @@ function buildPassRightsOptionForLegalMoves(
             isSenteTurn = !isSenteTurn;
         }
         // 最低でも現在のパス数 + 1 を確保（追加パスの余地を残す）
-        const minRights = Math.max(sentePassCount, gotePassCount) + 1;
         return {
             passRights: {
-                sente: minRights,
-                gote: minRights,
+                sente: sentePassCount + 1,
+                gote: gotePassCount + 1,
             },
         };
     }
@@ -206,15 +257,9 @@ function buildPassRightsOptionForLegalMoves(
     return {};
 }
 
-// レイアウト用Tailwindクラス
-const matchLayoutClasses = "flex flex-col gap-2 items-center py-2";
-
-// CSS変数は style 属性で設定（Tailwindでは表現できない）
-const matchLayoutCssVars = {
-    "--kifu-panel-max-h": "min(60vh, calc(100dvh - 320px))",
-    "--kifu-panel-branch-max-h": "calc(var(--kifu-panel-max-h) - 40px)",
-    "--shogi-cell-size": "44px",
-} as React.CSSProperties;
+// レイアウト用Tailwindクラス（CSS変数はクラスで設定）
+const matchLayoutClasses =
+    "flex flex-col gap-2 items-center py-2 [--kifu-panel-max-h:min(60vh,calc(100dvh-320px))] [--kifu-panel-branch-max-h:calc(var(--kifu-panel-max-h)-40px)] [--shogi-cell-size:44px]";
 
 // テキストスタイル用Tailwindクラス定数
 const TEXT_CLASSES = {
@@ -415,10 +460,19 @@ export function ShogiMatch({
         return { ...DEFAULT_ANALYSIS_SETTINGS, ...storedAnalysisSettings };
     }, [storedAnalysisSettings]);
     // パス権設定
-    const [passRightsSettings, setPassRightsSettings] = useLocalStorage<PassRightsSettings>(
+    const [storedPassRightsSettings, setPassRightsSettings] = useLocalStorage<PassRightsSettings>(
         "shogi-pass-rights-settings",
         DEFAULT_PASS_RIGHTS_SETTINGS,
     );
+    const passRightsSettings = useMemo(
+        () => normalizePassRightsSettings(storedPassRightsSettings, DEFAULT_PASS_RIGHTS_SETTINGS),
+        [storedPassRightsSettings],
+    );
+    useEffect(() => {
+        if (!isSamePassRightsSettings(passRightsSettings, storedPassRightsSettings)) {
+            setPassRightsSettings(passRightsSettings);
+        }
+    }, [passRightsSettings, setPassRightsSettings, storedPassRightsSettings]);
     // PVプレビュー用のstate
     const [pvPreview, setPvPreview] = useState<{
         open: boolean;
@@ -458,6 +512,8 @@ export function ShogiMatch({
 
     // NNUE 管理ダイアログの状態
     const [isNnueManagerOpen, setIsNnueManagerOpen] = useState(false);
+    // NNUE 管理ダイアログを開いた理由（未ダウンロードエラー時など）
+    const [nnueManagerOpenReason, setNnueManagerOpenReason] = useState<string | null>(null);
 
     // 表示設定ダイアログの状態
     const [isDisplaySettingsOpen, setIsDisplaySettingsOpen] = useState(false);
@@ -561,16 +617,8 @@ export function ShogiMatch({
         refreshList: refreshNnueList,
     } = useNnueStorage();
 
-    // NNUE 遅延ローダー
-    const {
-        resolveNnue,
-        isDownloading: isNnueDownloading,
-        downloadProgress: nnueDownloadProgress,
-        downloadingPresetName,
-    } = useLazyNnueLoader({
-        manifestUrl,
-        onDownloadComplete: refreshNnueList,
-    });
+    // NNUE 解決フック（未ダウンロードのプリセットはエラーをスロー）
+    const { resolveNnue } = useLazyNnueLoader();
 
     // プリセット一覧を取得
     const { presets, isLoading: isPresetsLoading } = usePresetManager({
@@ -870,8 +918,8 @@ export function ShogiMatch({
         if (!passRightsSettings?.enabled) return null;
         if (positionRef.current.passRights) return positionRef.current.passRights;
         const rights = {
-            sente: passRightsSettings.initialCount,
-            gote: passRightsSettings.initialCount,
+            sente: passRightsSettings.senteInitialCount,
+            gote: passRightsSettings.goteInitialCount,
         };
         const updated = { ...positionRef.current, passRights: rights };
         setPosition(updated);
@@ -915,7 +963,7 @@ export function ShogiMatch({
     const shouldRenderPassButton =
         isMatchRunning &&
         passRightsSettings?.enabled &&
-        passRightsSettings.initialCount > 0 &&
+        (passRightsSettings.senteInitialCount > 0 || passRightsSettings.goteInitialCount > 0) &&
         !!position.passRights;
 
     // パス権が有効なら不足時に初期化しておく（編集開始局面などでpassRightsが未設定な場合に備える）
@@ -1468,8 +1516,8 @@ export function ShogiMatch({
             const updatedPosition = {
                 ...positionRef.current,
                 passRights: {
-                    sente: passRightsSettings.initialCount,
-                    gote: passRightsSettings.initialCount,
+                    sente: passRightsSettings.senteInitialCount,
+                    gote: passRightsSettings.goteInitialCount,
                 },
             };
             setPosition(updatedPosition);
@@ -1478,6 +1526,26 @@ export function ShogiMatch({
             // （待った時にパス権が復元されるようにするため）
             navigation.reset(updatedPosition, startSfen);
             movesRef.current = [];
+        }
+
+        // 対局開始前に NNUE の存在確認を行う（未ダウンロードの場合はエラー）
+        try {
+            const nnuePreparations: Promise<unknown>[] = [];
+            if (sides.sente.role === "engine" && senteNnueSelection) {
+                nnuePreparations.push(resolveNnue(senteNnueSelection));
+            }
+            if (sides.gote.role === "engine" && goteNnueSelection) {
+                nnuePreparations.push(resolveNnue(goteNnueSelection));
+            }
+            if (nnuePreparations.length > 0) {
+                await Promise.all(nnuePreparations);
+            }
+        } catch (e) {
+            // NNUE未ダウンロードエラー → 評価関数ファイル管理を開いて理由を表示
+            const errorMessage = e instanceof Error ? e.message : "評価関数の準備に失敗しました";
+            setNnueManagerOpenReason(`対局を開始できません: ${errorMessage}`);
+            setIsNnueManagerOpen(true);
+            return;
         }
 
         // エンジン管理は useEngineManager フックが自動的に処理する
@@ -2483,9 +2551,16 @@ export function ShogiMatch({
             return; // 解析対象がない
         }
 
-        // 未DLプリセットの場合はダウンロード
-        // resolveNnue内でダウンロード完了時にrefreshNnueListが呼ばれ、nnueListが更新される
-        const resolvedNnueId = await resolveNnue(analysisNnueSelection);
+        // NNUE の存在確認（未ダウンロードの場合はエラー）
+        let resolved: ResolvedNnue | null;
+        try {
+            resolved = await resolveNnue(analysisNnueSelection);
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : "評価関数の準備に失敗しました";
+            setNnueManagerOpenReason(`解析を開始できません: ${errorMessage}`);
+            setIsNnueManagerOpen(true);
+            return;
+        }
 
         // ジョブを生成
         const jobs: AnalysisJob[] = targetPlies.map((ply) => ({
@@ -2496,8 +2571,8 @@ export function ShogiMatch({
             depth: analysisSettings.batchAnalysisDepth,
         }));
 
-        // 並列一括解析を開始（resolvedNnueIdを直接渡す）
-        enginePool.start(jobs, { nnueId: resolvedNnueId });
+        // 並列一括解析を開始（resolvedを直接渡す）
+        enginePool.start(jobs, { nnueId: resolved?.nnueId ?? null, fvScale: resolved?.fvScale });
     }, [kifMoves, startSfen, analysisSettings, enginePool, resolveNnue, analysisNnueSelection]);
 
     // ツリー全体（分岐含む）の一括解析を開始
@@ -2518,8 +2593,17 @@ export function ShogiMatch({
                 return;
             }
 
-            // 未DLプリセットの場合はダウンロード
-            const resolvedNnueId = await resolveNnue(analysisNnueSelection);
+            // NNUE の存在確認（未ダウンロードの場合はエラー）
+            let resolved: ResolvedNnue | null;
+            try {
+                resolved = await resolveNnue(analysisNnueSelection);
+            } catch (e) {
+                const errorMessage =
+                    e instanceof Error ? e.message : "評価関数の準備に失敗しました";
+                setNnueManagerOpenReason(`解析を開始できません: ${errorMessage}`);
+                setIsNnueManagerOpen(true);
+                return;
+            }
 
             // AnalysisJob形式に変換
             const jobs: AnalysisJob[] = treeJobs.map((job) => ({
@@ -2531,8 +2615,11 @@ export function ShogiMatch({
                 nodeId: job.nodeId, // 分岐解析用にnodeIdを保持
             }));
 
-            // 並列一括解析を開始（resolvedNnueIdを直接渡す）
-            enginePool.start(jobs, { nnueId: resolvedNnueId });
+            // 並列一括解析を開始（resolvedを直接渡す）
+            enginePool.start(jobs, {
+                nnueId: resolved?.nnueId ?? null,
+                fvScale: resolved?.fvScale,
+            });
         },
         [
             navigation.tree,
@@ -2559,8 +2646,17 @@ export function ShogiMatch({
                 return;
             }
 
-            // 未DLプリセットの場合はダウンロード
-            const resolvedNnueId = await resolveNnue(analysisNnueSelection);
+            // NNUE の存在確認（未ダウンロードの場合はエラー）
+            let resolved: ResolvedNnue | null;
+            try {
+                resolved = await resolveNnue(analysisNnueSelection);
+            } catch (e) {
+                const errorMessage =
+                    e instanceof Error ? e.message : "評価関数の準備に失敗しました";
+                setNnueManagerOpenReason(`解析を開始できません: ${errorMessage}`);
+                setIsNnueManagerOpen(true);
+                return;
+            }
 
             // AnalysisJob形式に変換
             const jobs: AnalysisJob[] = branchJobs.map((job) => ({
@@ -2572,8 +2668,11 @@ export function ShogiMatch({
                 nodeId: job.nodeId,
             }));
 
-            // 並列一括解析を開始（resolvedNnueIdを直接渡す）
-            enginePool.start(jobs, { nnueId: resolvedNnueId });
+            // 並列一括解析を開始（resolvedを直接渡す）
+            enginePool.start(jobs, {
+                nnueId: resolved?.nnueId ?? null,
+                fvScale: resolved?.fvScale,
+            });
         },
         [
             navigation.tree,
@@ -2743,13 +2842,6 @@ export function ShogiMatch({
 
                 <EngineRestartingOverlay visible={isEngineRestarting} />
 
-                {/* NNUE ダウンロード中オーバーレイ */}
-                <NnueDownloadOverlay
-                    visible={isNnueDownloading}
-                    progress={nnueDownloadProgress}
-                    presetName={downloadingPresetName}
-                />
-
                 {/* 勝敗表示ダイアログ */}
                 <GameResultDialog
                     result={gameResult}
@@ -2775,9 +2867,18 @@ export function ShogiMatch({
                 {/* NNUE ファイル管理ダイアログ */}
                 <NnueManagerDialog
                     open={isNnueManagerOpen}
-                    onOpenChange={setIsNnueManagerOpen}
+                    onOpenChange={(open) => {
+                        setIsNnueManagerOpen(open);
+                        // ダイアログを閉じたら理由もクリア
+                        if (!open) {
+                            setNnueManagerOpenReason(null);
+                        }
+                    }}
                     manifestUrl={manifestUrl}
                     onRequestFilePath={onRequestNnueFilePath}
+                    openReason={nnueManagerOpenReason ?? undefined}
+                    onClearOpenReason={() => setNnueManagerOpenReason(null)}
+                    isMatchActive={isMatchRunning || isPaused}
                 />
 
                 {/* 手の詳細ウィンドウ（ドラッグ移動可能） */}
@@ -2887,7 +2988,7 @@ export function ShogiMatch({
                         message={message}
                     />
                 ) : (
-                    <section className={matchLayoutClasses} style={matchLayoutCssVars}>
+                    <section className={matchLayoutClasses}>
                         <div className="flex min-h-[calc(100dvh-1rem)]">
                             {/* 左サイドバー */}
                             <LeftSidebar
@@ -3030,7 +3131,9 @@ export function ShogiMatch({
                                                                     }
                                                                     max={
                                                                         passRightsSettings.enabled
-                                                                            ? passRightsSettings.initialCount
+                                                                            ? info.owner === "sente"
+                                                                                ? passRightsSettings.senteInitialCount
+                                                                                : passRightsSettings.goteInitialCount
                                                                             : 0
                                                                     }
                                                                     isActive={
@@ -3137,7 +3240,9 @@ export function ShogiMatch({
                                                                     }
                                                                     max={
                                                                         passRightsSettings.enabled
-                                                                            ? passRightsSettings.initialCount
+                                                                            ? info.owner === "sente"
+                                                                                ? passRightsSettings.senteInitialCount
+                                                                                : passRightsSettings.goteInitialCount
                                                                             : 0
                                                                     }
                                                                     isActive={
@@ -3325,9 +3430,7 @@ export function ShogiMatch({
                                     open={isDisplaySettingsOpen}
                                     onOpenChange={setIsDisplaySettingsOpen}
                                 >
-                                    <DialogContent
-                                        style={{ width: "min(450px, calc(100% - 24px))" }}
-                                    >
+                                    <DialogContent className="w-[min(450px,calc(100%-24px))]">
                                         <DialogHeader>
                                             <DialogTitle>表示設定</DialogTitle>
                                         </DialogHeader>
@@ -3439,9 +3542,7 @@ export function ShogiMatch({
                                         open={isPassRightsSettingsOpen}
                                         onOpenChange={setIsPassRightsSettingsOpen}
                                     >
-                                        <DialogContent
-                                            style={{ width: "min(400px, calc(100% - 24px))" }}
-                                        >
+                                        <DialogContent className="w-[min(400px,calc(100%-24px))]">
                                             <DialogHeader>
                                                 <DialogTitle>変則ルール</DialogTitle>
                                             </DialogHeader>
@@ -3468,61 +3569,140 @@ export function ShogiMatch({
                                                         王手されていない時に手番をパスできます
                                                     </p>
 
-                                                    {/* 初期パス権数 */}
+                                                    {/* 初期パス権数（先手・後手別） */}
                                                     <div
                                                         className={`flex flex-col gap-2 ${!passRightsSettings.enabled ? "opacity-50" : ""}`}
                                                     >
                                                         <span className="text-sm">
                                                             初期パス権数
                                                         </span>
-                                                        <div className="flex items-center gap-2">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() =>
-                                                                    handlePassRightsSettingsChange({
-                                                                        ...passRightsSettings,
-                                                                        initialCount: Math.max(
-                                                                            0,
-                                                                            passRightsSettings.initialCount -
-                                                                                1,
-                                                                        ),
-                                                                    })
-                                                                }
-                                                                disabled={
-                                                                    settingsLocked ||
-                                                                    !passRightsSettings.enabled ||
-                                                                    passRightsSettings.initialCount <=
-                                                                        0
-                                                                }
-                                                                className="flex h-8 w-8 items-center justify-center rounded border border-[hsl(var(--border,0_0%_86%))] bg-[hsl(var(--card,0_0%_100%))] text-sm disabled:opacity-50"
-                                                            >
-                                                                -
-                                                            </button>
-                                                            <span className="w-8 text-center text-sm font-semibold">
-                                                                {passRightsSettings.initialCount}
-                                                            </span>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() =>
-                                                                    handlePassRightsSettingsChange({
-                                                                        ...passRightsSettings,
-                                                                        initialCount: Math.min(
-                                                                            10,
-                                                                            passRightsSettings.initialCount +
-                                                                                1,
-                                                                        ),
-                                                                    })
-                                                                }
-                                                                disabled={
-                                                                    settingsLocked ||
-                                                                    !passRightsSettings.enabled ||
-                                                                    passRightsSettings.initialCount >=
-                                                                        10
-                                                                }
-                                                                className="flex h-8 w-8 items-center justify-center rounded border border-[hsl(var(--border,0_0%_86%))] bg-[hsl(var(--card,0_0%_100%))] text-sm disabled:opacity-50"
-                                                            >
-                                                                +
-                                                            </button>
+                                                        {/* 先手/後手ラベル */}
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            <div className="text-xs font-semibold text-wafuu-shu text-center">
+                                                                ☗先手
+                                                            </div>
+                                                            <div className="text-xs font-semibold text-wafuu-ai text-center">
+                                                                ☖後手
+                                                            </div>
+                                                        </div>
+                                                        {/* 先手/後手パス権数設定 */}
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            {/* 先手 */}
+                                                            <div className="flex items-center justify-center gap-1">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        handlePassRightsSettingsChange(
+                                                                            {
+                                                                                ...passRightsSettings,
+                                                                                senteInitialCount:
+                                                                                    Math.max(
+                                                                                        0,
+                                                                                        passRightsSettings.senteInitialCount -
+                                                                                            1,
+                                                                                    ),
+                                                                            },
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        settingsLocked ||
+                                                                        !passRightsSettings.enabled ||
+                                                                        passRightsSettings.senteInitialCount <=
+                                                                            0
+                                                                    }
+                                                                    className="flex h-8 w-8 items-center justify-center rounded border border-border bg-card text-sm disabled:opacity-50"
+                                                                >
+                                                                    -
+                                                                </button>
+                                                                <span className="w-8 text-center text-sm font-semibold">
+                                                                    {
+                                                                        passRightsSettings.senteInitialCount
+                                                                    }
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        handlePassRightsSettingsChange(
+                                                                            {
+                                                                                ...passRightsSettings,
+                                                                                senteInitialCount:
+                                                                                    Math.min(
+                                                                                        10,
+                                                                                        passRightsSettings.senteInitialCount +
+                                                                                            1,
+                                                                                    ),
+                                                                            },
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        settingsLocked ||
+                                                                        !passRightsSettings.enabled ||
+                                                                        passRightsSettings.senteInitialCount >=
+                                                                            10
+                                                                    }
+                                                                    className="flex h-8 w-8 items-center justify-center rounded border border-border bg-card text-sm disabled:opacity-50"
+                                                                >
+                                                                    +
+                                                                </button>
+                                                            </div>
+                                                            {/* 後手 */}
+                                                            <div className="flex items-center justify-center gap-1">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        handlePassRightsSettingsChange(
+                                                                            {
+                                                                                ...passRightsSettings,
+                                                                                goteInitialCount:
+                                                                                    Math.max(
+                                                                                        0,
+                                                                                        passRightsSettings.goteInitialCount -
+                                                                                            1,
+                                                                                    ),
+                                                                            },
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        settingsLocked ||
+                                                                        !passRightsSettings.enabled ||
+                                                                        passRightsSettings.goteInitialCount <=
+                                                                            0
+                                                                    }
+                                                                    className="flex h-8 w-8 items-center justify-center rounded border border-border bg-card text-sm disabled:opacity-50"
+                                                                >
+                                                                    -
+                                                                </button>
+                                                                <span className="w-8 text-center text-sm font-semibold">
+                                                                    {
+                                                                        passRightsSettings.goteInitialCount
+                                                                    }
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        handlePassRightsSettingsChange(
+                                                                            {
+                                                                                ...passRightsSettings,
+                                                                                goteInitialCount:
+                                                                                    Math.min(
+                                                                                        10,
+                                                                                        passRightsSettings.goteInitialCount +
+                                                                                            1,
+                                                                                    ),
+                                                                            },
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        settingsLocked ||
+                                                                        !passRightsSettings.enabled ||
+                                                                        passRightsSettings.goteInitialCount >=
+                                                                            10
+                                                                    }
+                                                                    className="flex h-8 w-8 items-center justify-center rounded border border-border bg-card text-sm disabled:opacity-50"
+                                                                >
+                                                                    +
+                                                                </button>
+                                                            </div>
                                                         </div>
                                                     </div>
 
@@ -3557,7 +3737,7 @@ export function ShogiMatch({
                                                                     settingsLocked ||
                                                                     !passRightsSettings.enabled
                                                                 }
-                                                                className="w-28 rounded border border-[hsl(var(--border,0_0%_86%))] bg-[hsl(var(--card,0_0%_100%))] px-2 py-1 text-sm disabled:opacity-50"
+                                                                className="w-28 rounded border border-border bg-card px-2 py-1 text-sm disabled:opacity-50"
                                                             />
                                                             <span className="text-xs text-muted-foreground">
                                                                 0で即時、時間が多ければ確認

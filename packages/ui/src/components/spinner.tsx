@@ -27,7 +27,6 @@ export function Spinner({
     className,
     size,
     label = "読み込み中...",
-    style,
     ...props
 }: SpinnerProps): ReactElement {
     return (
@@ -35,12 +34,11 @@ export function Spinner({
             aria-live="polite"
             aria-atomic="true"
             aria-busy="true"
-            style={{
-                borderTopColor: "transparent",
-                borderRightColor: "transparent",
-                ...style,
-            }}
-            className={cn(spinnerVariants({ size }), "text-primary", className)}
+            className={cn(
+                spinnerVariants({ size }),
+                "border-r-transparent border-t-transparent text-primary",
+                className,
+            )}
             {...props}
         >
             <span className="sr-only">{label}</span>

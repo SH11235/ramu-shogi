@@ -12,41 +12,29 @@ interface ProgressProps
 }
 
 export const Progress = forwardRef<ComponentRef<typeof ProgressPrimitive.Root>, ProgressProps>(
-    function Progress(
-        { className, value, indicatorClassName, style, ...props },
-        ref,
-    ): ReactElement {
+    function Progress({ className, value, indicatorClassName, ...props }, ref): ReactElement {
         const isIndeterminate = value === undefined;
+        const indicatorStyle = isIndeterminate ? undefined : { width: `${value ?? 0}%` };
 
         return (
             <ProgressPrimitive.Root
                 ref={ref}
-                style={{
-                    position: "relative",
-                    height: "8px",
-                    overflow: "hidden",
-                    borderRadius: "9999px",
-                    backgroundColor: "hsl(var(--muted, 0 0% 90%))",
-                    ...style,
-                }}
-                className={cn("w-full", className)}
+                className={cn(
+                    "relative h-2 w-full overflow-hidden rounded-full bg-muted",
+                    className,
+                )}
                 value={isIndeterminate ? undefined : value}
                 {...props}
             >
                 <ProgressPrimitive.Indicator
-                    style={{
-                        height: "100%",
-                        width: isIndeterminate ? "40%" : `${value ?? 0}%`,
-                        backgroundColor: "hsl(var(--primary, 220 90% 56%))",
-                        borderRadius: "9999px",
-                        transition: isIndeterminate ? "none" : "width 150ms ease-out",
-                        ...(isIndeterminate
-                            ? {
-                                  animation: "progress-indeterminate 1.5s ease-in-out infinite",
-                              }
-                            : {}),
-                    }}
-                    className={indicatorClassName}
+                    style={indicatorStyle}
+                    className={cn(
+                        "h-full rounded-full bg-primary",
+                        isIndeterminate
+                            ? "w-[40%] animate-[progress-indeterminate_1.5s_ease-in-out_infinite]"
+                            : "transition-[width] duration-150 ease-out",
+                        indicatorClassName,
+                    )}
                 />
             </ProgressPrimitive.Root>
         );

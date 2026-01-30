@@ -8,7 +8,7 @@ import type {
 } from "@shogi/engine-client";
 import { getEngineErrorInfo, normalizeSkillLevelSettings } from "@shogi/engine-client";
 import type { GameResult, Player } from "../game";
-import type { NnueSelection } from "../nnue";
+import type { NnueSelection, ResolvedNnue } from "../nnue";
 
 export type EngineStatus = "idle" | "thinking" | "error";
 
@@ -48,7 +48,8 @@ export type EngineClockState = {
 
 export interface PassRightsSettings {
     enabled: boolean;
-    initialCount: number;
+    senteInitialCount: number;
+    goteInitialCount: number;
 }
 
 export type EngineControllerPosition = {
@@ -143,7 +144,7 @@ export interface EngineControllerDependencies {
     createClient: (engineId: string) => EngineClient;
     getClockState: () => EngineClockState;
     now: () => number;
-    resolveNnue: (selection: NnueSelection) => Promise<string | null>;
+    resolveNnue: (selection: NnueSelection) => Promise<ResolvedNnue | null>;
     maxLogs?: number;
     callbacks?: EngineControllerCallbacks;
 }
@@ -238,8 +239,8 @@ function buildPassRightsOption(
     if (passRightsSettings?.enabled) {
         return {
             passRights: {
-                sente: passRightsSettings.initialCount,
-                gote: passRightsSettings.initialCount,
+                sente: passRightsSettings.senteInitialCount,
+                gote: passRightsSettings.goteInitialCount,
             },
         };
     }
@@ -258,11 +259,12 @@ function buildPassRightsOption(
             }
             isSenteTurn = !isSenteTurn;
         }
-        const minRights = Math.max(sentePassCount, gotePassCount) + 1;
+        const minSenteRights = sentePassCount + 1;
+        const minGoteRights = gotePassCount + 1;
         return {
             passRights: {
-                sente: minRights,
-                gote: minRights,
+                sente: minSenteRights,
+                gote: minGoteRights,
             },
         };
     }
@@ -673,9 +675,10 @@ export function createEngineController(
                 options.nnueSelection ??
                 (side === "sente" ? context.nnueSelections.sente : context.nnueSelections.gote);
             if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
-                const resolvedNnueId = await dependencies.resolveNnue(selection);
-                if (resolvedNnueId) {
-                    await client.loadNnue(resolvedNnueId);
+                const resolved = await dependencies.resolveNnue(selection);
+                if (resolved) {
+                    await client.loadNnue(resolved.nnueId);
+                    await client.setOption("FV_SCALE", resolved.fvScale);
                 }
             }
 
@@ -746,9 +749,10 @@ export function createEngineController(
                 const selection =
                     side === "sente" ? context.nnueSelections.sente : context.nnueSelections.gote;
                 if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
-                    const resolvedNnueId = await dependencies.resolveNnue(selection);
-                    if (resolvedNnueId) {
-                        await client.loadNnue(resolvedNnueId);
+                    const resolved = await dependencies.resolveNnue(selection);
+                    if (resolved) {
+                        await client.loadNnue(resolved.nnueId);
+                        await client.setOption("FV_SCALE", resolved.fvScale);
                     }
                 }
 
@@ -942,9 +946,10 @@ export function createEngineController(
 
                 const selection = context.nnueSelections.analysis;
                 if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
-                    const resolvedNnueId = await dependencies.resolveNnue(selection);
-                    if (resolvedNnueId) {
-                        await client.loadNnue(resolvedNnueId);
+                    const resolved = await dependencies.resolveNnue(selection);
+                    if (resolved) {
+                        await client.loadNnue(resolved.nnueId);
+                        await client.setOption("FV_SCALE", resolved.fvScale);
                     }
                 }
             } catch (error) {
@@ -1087,10 +1092,15 @@ export function createEngineController(
             }
         },
         setNnueSelection: (side, selection) => {
+            const prev = context.nnueSelections[side];
             context = {
                 ...context,
                 nnueSelections: { ...context.nnueSelections, [side]: selection },
             };
+            // NNUE選択が変更された場合、エンジンを破棄して次回の対局開始時に再初期化させる
+            if (prev?.presetKey !== selection?.presetKey || prev?.nnueId !== selection?.nnueId) {
+                void disposeEngineForSide(side);
+            }
         },
         setAnalysisNnueSelection: (selection) => {
             const prev = context.nnueSelections.analysis;

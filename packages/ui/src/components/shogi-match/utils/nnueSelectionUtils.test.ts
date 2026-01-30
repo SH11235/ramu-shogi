@@ -20,6 +20,7 @@ describe("nnueSelectionUtils", () => {
                 size: 1000000,
                 license: "MIT",
                 releasedAt: "2024-01-01",
+                recommendedFvScale: 16,
             },
             {
                 presetKey: "tanuki",
@@ -30,6 +31,7 @@ describe("nnueSelectionUtils", () => {
                 size: 2000000,
                 license: "MIT",
                 releasedAt: "2024-01-01",
+                recommendedFvScale: 24,
             },
         ];
 

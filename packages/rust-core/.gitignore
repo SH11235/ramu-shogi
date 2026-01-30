@@ -5,6 +5,9 @@
 target/
 target_before
 
+# wasm-bindgen output
+pkg/
+
 # Coverage reports
 tarpaulin-report.html
 cobertura.xml

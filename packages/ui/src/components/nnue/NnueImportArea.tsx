@@ -152,18 +152,9 @@ export function NnueImportArea({
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
-                style={{
-                    border: isDragOver
-                        ? "2px dashed hsl(var(--primary, 220 90% 56%))"
-                        : "2px dashed hsl(var(--border, 0 0% 86%))",
-                    borderRadius: "8px",
-                    padding: "24px",
-                    textAlign: "center",
-                    backgroundColor: isDragOver ? "hsl(var(--accent, 210 40% 96%))" : "transparent",
-                    transition: "border-color 150ms, background-color 150ms",
-                    opacity: disabled || isImporting ? 0.5 : 1,
-                    cursor: disabled || isImporting ? "not-allowed" : "default",
-                }}
+                className={`rounded-md border-2 border-dashed p-6 text-center transition-colors ${
+                    isDragOver ? "border-primary bg-accent" : "border-border bg-transparent"
+                } ${disabled || isImporting ? "cursor-not-allowed opacity-50" : "cursor-default"}`}
             >
                 <input
                     ref={inputRef}
@@ -171,14 +162,9 @@ export function NnueImportArea({
                     accept=".nnue,.bin"
                     onChange={handleFileChange}
                     disabled={disabled || isImporting}
-                    style={{ display: "none" }}
+                    className="hidden"
                 />
-                <div
-                    style={{
-                        marginBottom: "12px",
-                        color: "hsl(var(--muted-foreground, 0 0% 45%))",
-                    }}
-                >
+                <div className="mb-3 text-muted-foreground">
                     {isImporting ? "インポート中..." : isDragOver ? "ここにドロップ" : dropMessage}
                 </div>
                 <Button

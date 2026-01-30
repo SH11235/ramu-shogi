@@ -8,7 +8,7 @@ use std::io::ErrorKind;
 
 use rshogi_core::eval::set_eval_hash_enabled;
 use rshogi_core::movegen::{generate_legal_all_with_pass, MoveList};
-use rshogi_core::nnue::{detect_format, init_nnue_from_bytes};
+use rshogi_core::nnue::{detect_format, init_nnue_from_bytes, set_fv_scale_override};
 use rshogi_core::position::{Position, SFEN_HIRATE};
 use rshogi_core::search::{LimitsType, Search, SearchInfo, SearchResult, SkillOptions};
 use rshogi_core::types::json::BoardStateJson;
@@ -692,16 +692,20 @@ struct NnueFormatInfoJs {
     version_header: String,
 }
 
-/// NNUE ファイルのフォーマット情報を検出（ロードせずにヘッダのみ解析）
+/// NNUE ファイルのフォーマット情報を検出（ファイルサイズベースの自動判定）
+///
+/// nnue-pytorch が生成するファイルはヘッダーに不正確なアーキテクチャ情報を
+/// 含むことがあるため、ファイルサイズから正確なアーキテクチャを検出する。
 ///
 /// # Arguments
-/// * `bytes` - NNUE ファイルの先頭 1KB 以上のバイト列
+/// * `header` - NNUE ファイルのヘッダー（先頭1KB程度）
+/// * `file_size` - ファイル全体のサイズ（ファイルサイズベースの検出に必要）
 ///
 /// # Returns
 /// * フォーマット情報を含む JS オブジェクト
 #[wasm_bindgen]
-pub fn detect_nnue_format(bytes: &[u8]) -> Result<JsValue, JsValue> {
-    let info = detect_format(bytes).map_err(|e| JsValue::from_str(&e.to_string()))?;
+pub fn detect_nnue_format(header: &[u8], file_size: u64) -> Result<JsValue, JsValue> {
+    let info = detect_format(header, file_size).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     let result = NnueFormatInfoJs {
         architecture: info.architecture,
@@ -717,8 +721,8 @@ pub fn detect_nnue_format(bytes: &[u8]) -> Result<JsValue, JsValue> {
 
 /// NNUE ファイルが現在のエンジンと互換性があるか確認
 #[wasm_bindgen]
-pub fn is_nnue_compatible(bytes: &[u8]) -> bool {
-    detect_format(bytes).is_ok()
+pub fn is_nnue_compatible(header: &[u8], file_size: u64) -> bool {
+    detect_format(header, file_size).is_ok()
 }
 
 #[wasm_bindgen]
@@ -877,6 +881,18 @@ pub fn set_option(name: &str, value: Option<JsValue>) -> Result<(), JsValue> {
             "MaxMovesToDraw" => {
                 if let Some(v) = as_i64(&value) {
                     engine.search.set_max_moves_to_draw(v as i32);
+                }
+            }
+            "FV_SCALE" => {
+                if let Some(v) = as_i64(&value) {
+                    let fv_scale = v as i32;
+                    if !(1..=100).contains(&fv_scale) {
+                        emit_event(EventPayload::Error {
+                            message: format!("FV_SCALE must be between 1 and 100, got {fv_scale}"),
+                        });
+                    } else {
+                        set_fv_scale_override(fv_scale);
+                    }
                 }
             }
             other => {

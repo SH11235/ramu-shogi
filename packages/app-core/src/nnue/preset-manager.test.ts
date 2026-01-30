@@ -25,6 +25,7 @@ const createTestPreset = (overrides: Partial<PresetConfig> = {}): PresetConfig =
     sha256: "abc123def456abc123def456abc123def456abc123def456abc123def456abc1",
     license: "MIT",
     releasedAt: "2024-01-01",
+    recommendedFvScale: 16,
     ...overrides,
 });
 

@@ -18,13 +18,15 @@ interface UseNnueStorageReturn {
     /** 一覧を再取得 */
     refreshList: () => Promise<void>;
     /** ファイルから NNUE をインポート（capabilities.supportsFileImport === true の場合） */
-    importFromFile: (file: File) => Promise<NnueMeta>;
+    importFromFile: (file: File, fvScale: number, displayName?: string) => Promise<NnueMeta>;
     /** パスから NNUE をインポート（capabilities.supportsPathImport === true の場合） */
-    importFromPath: (srcPath: string, displayName?: string) => Promise<NnueMeta>;
+    importFromPath: (srcPath: string, fvScale: number, displayName?: string) => Promise<NnueMeta>;
     /** NNUE を削除 */
     deleteNnue: (id: string) => Promise<void>;
     /** NNUE の表示名を更新 */
     updateDisplayName: (id: string, displayName: string) => Promise<void>;
+    /** NNUE の FV_SCALE を更新 */
+    updateFvScale: (id: string, fvScale: number | undefined) => Promise<void>;
     /** エラーをクリア */
     clearError: () => void;
     /** ストレージ使用量 */
@@ -71,7 +73,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
     }, [contextRefreshList]);
 
     const importFromFile = useCallback(
-        async (file: File): Promise<NnueMeta> => {
+        async (file: File, fvScale: number, displayName?: string): Promise<NnueMeta> => {
             if (!storage) {
                 throw new NnueError(
                     "NNUE_STORAGE_FAILED",
@@ -99,7 +101,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
                             0,
                             Math.min(NNUE_HEADER_SIZE, data.byteLength),
                         );
-                        const result = await validateNnueHeader(header);
+                        const result = await validateNnueHeader(header, data.byteLength);
                         if (!result.isCompatible) {
                             throw new NnueError(
                                 "NNUE_INCOMPATIBLE",
@@ -129,12 +131,27 @@ export function useNnueStorage(): UseNnueStorageReturn {
                 const existing = await storage.listByContentHash(hash);
                 if (existing.length > 0) {
                     const existingMeta = existing[0];
+                    // format や fvScale が更新される場合は更新
+                    const updates: Partial<NnueMeta> = {};
                     if (format && !existingMeta.format) {
-                        await storage.updateMeta(existingMeta.id, { format });
+                        updates.format = format;
+                    }
+                    if (existingMeta.fvScale !== fvScale) {
+                        updates.fvScale = fvScale;
+                    }
+                    if (Object.keys(updates).length > 0) {
+                        console.info(
+                            `既存の評価関数「${existingMeta.displayName}」の情報を更新しました`,
+                            updates,
+                        );
+                        await storage.updateMeta(existingMeta.id, updates);
                         await refreshList();
-                        return { ...existingMeta, format };
+                        return { ...existingMeta, ...updates };
                     }
                     // 既存のものを返す（重複保存しない）
+                    console.info(
+                        `この評価関数は既にインポート済みです:「${existingMeta.displayName}」`,
+                    );
                     return existingMeta;
                 }
 
@@ -144,7 +161,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
                 // メタデータを作成
                 const meta: NnueMeta = {
                     id,
-                    displayName: file.name.replace(/\.(nnue|bin)$/i, ""),
+                    displayName: displayName ?? file.name.replace(/\.(nnue|bin)$/i, ""),
                     originalFileName: file.name,
                     size: data.byteLength,
                     contentHashSha256: hash,
@@ -152,6 +169,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
                     createdAt: Date.now(),
                     verified: false,
                     format,
+                    fvScale,
                 };
 
                 // 保存
@@ -177,7 +195,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
     );
 
     const importFromPath = useCallback(
-        async (srcPath: string, displayName?: string): Promise<NnueMeta> => {
+        async (srcPath: string, fvScale: number, displayName?: string): Promise<NnueMeta> => {
             if (!storage) {
                 throw new NnueError(
                     "NNUE_STORAGE_FAILED",
@@ -196,8 +214,10 @@ export function useNnueStorage(): UseNnueStorageReturn {
             setLocalError(null);
             try {
                 const meta = await storage.importFromPath(srcPath, displayName);
+                // fvScale を設定
+                await storage.updateMeta(meta.id, { fvScale });
                 await refreshList();
-                return meta;
+                return { ...meta, fvScale };
             } catch (e) {
                 const err =
                     e instanceof NnueError
@@ -269,6 +289,31 @@ export function useNnueStorage(): UseNnueStorageReturn {
         [storage, refreshList],
     );
 
+    const updateFvScale = useCallback(
+        async (id: string, fvScale: number | undefined) => {
+            if (!storage) {
+                throw new NnueError(
+                    "NNUE_STORAGE_FAILED",
+                    "NnueProvider が設定されていません",
+                    null,
+                );
+            }
+            setLocalError(null);
+            try {
+                await storage.updateMeta(id, { fvScale });
+                await refreshList();
+            } catch (e) {
+                const err =
+                    e instanceof NnueError
+                        ? e
+                        : new NnueError("NNUE_STORAGE_FAILED", "FV_SCALE の更新に失敗しました", e);
+                setLocalError(err);
+                throw err;
+            }
+        },
+        [storage, refreshList],
+    );
+
     const clearError = useCallback(() => {
         setLocalError(null);
         contextClearError?.();
@@ -283,6 +328,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
         importFromPath,
         deleteNnue,
         updateDisplayName,
+        updateFvScale,
         clearError,
         storageUsage,
         capabilities,

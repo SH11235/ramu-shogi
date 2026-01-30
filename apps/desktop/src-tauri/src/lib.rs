@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use rshogi_core::movegen::{generate_legal_all_with_pass, generate_legal_with_pass, MoveList};
+use rshogi_core::nnue::{detect_format, set_fv_scale_override};
 use rshogi_core::position::{Position, SFEN_HIRATE};
 use rshogi_core::search::{
     LimitsType, Search, SearchInfo, SearchResult, SkillOptions, TimeOptions,
@@ -533,6 +534,14 @@ fn apply_engine_option(
         "Threads" => {
             if let Some(v) = value_as_usize(value) {
                 inner.options.num_threads = v.max(1);
+            }
+        }
+        "FV_SCALE" => {
+            if let Some(v) = value_as_i32(value) {
+                if !(1..=100).contains(&v) {
+                    return Err(format!("FV_SCALE must be between 1 and 100, got {v}"));
+                }
+                set_fv_scale_override(v);
             }
         }
         _ => {
@@ -1261,6 +1270,60 @@ async fn abort_nnue_save(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// NNUE フォーマット検出結果
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NnueFormatInfo {
+    architecture: String,
+    l1_dimension: u32,
+    l2_dimension: u32,
+    l3_dimension: u32,
+    activation: String,
+    version_header: String,
+}
+
+/// NNUE フォーマット検出コマンドの引数
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DetectNnueFormatArgs {
+    /// NNUE ファイルのヘッダー（Base64 エンコード）
+    header: String,
+    /// ファイル全体のサイズ
+    file_size: u64,
+}
+
+/// NNUE ファイルのフォーマット情報を検出
+#[tauri::command]
+fn detect_nnue_format_cmd(args: DetectNnueFormatArgs) -> Result<NnueFormatInfo, String> {
+    use base64::Engine;
+    let header = base64::engine::general_purpose::STANDARD
+        .decode(&args.header)
+        .map_err(|e| format!("Invalid base64: {e}"))?;
+
+    let info = detect_format(&header, args.file_size)
+        .map_err(|e| format!("Failed to detect NNUE format: {e}"))?;
+
+    Ok(NnueFormatInfo {
+        architecture: info.architecture,
+        l1_dimension: info.l1_dimension,
+        l2_dimension: info.l2_dimension,
+        l3_dimension: info.l3_dimension,
+        activation: info.activation,
+        version_header: format!("0x{:08X}", info.version),
+    })
+}
+
+/// NNUE ファイルが互換性があるか確認
+#[tauri::command]
+fn is_nnue_compatible_cmd(args: DetectNnueFormatArgs) -> Result<bool, String> {
+    use base64::Engine;
+    let header = base64::engine::general_purpose::STANDARD
+        .decode(&args.header)
+        .map_err(|e| format!("Invalid base64: {e}"))?;
+
+    Ok(detect_format(&header, args.file_size).is_ok())
+}
+
 /// NNUE ロードコマンドの引数
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1321,7 +1384,9 @@ pub fn run() {
             list_nnue_files,
             save_nnue_chunk,
             finalize_nnue_save,
-            abort_nnue_save
+            abort_nnue_save,
+            detect_nnue_format_cmd,
+            is_nnue_compatible_cmd
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

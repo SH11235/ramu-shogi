@@ -93,13 +93,7 @@ export function PlayerIcon({
                 )}
                 {canZoom && (
                     <Dialog open={isZoomOpen} onOpenChange={setIsZoomOpen}>
-                        <DialogContent
-                            style={{
-                                width: "auto",
-                                maxWidth: "min(90vw, 400px)",
-                                padding: "16px",
-                            }}
-                        >
+                        <DialogContent className="w-auto max-w-[min(90vw,400px)] p-4">
                             <DialogTitle className="sr-only">{aiAlt}を拡大表示</DialogTitle>
                             <div className="flex flex-col items-center gap-3">
                                 <img

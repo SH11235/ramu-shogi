@@ -227,6 +227,15 @@ export function MobileSettingsSheet({
                             sente: timeSettings.gote,
                             gote: timeSettings.sente,
                         });
+                        onSenteNnueSelectionChange(goteNnueSelection);
+                        onGoteNnueSelectionChange(senteNnueSelection);
+                        if (passRightsSettings && onPassRightsSettingsChange) {
+                            onPassRightsSettingsChange({
+                                ...passRightsSettings,
+                                senteInitialCount: passRightsSettings.goteInitialCount,
+                                goteInitialCount: passRightsSettings.senteInitialCount,
+                            });
+                        }
                     }}
                     disabled={settingsLocked}
                     title="先手と後手の設定を入れ替える"
@@ -401,48 +410,107 @@ export function MobileSettingsSheet({
                         />
                     </div>
                     {passRightsSettings.enabled && (
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col gap-2">
                             <span className="text-sm text-muted-foreground">初期パス権数</span>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() =>
-                                        onPassRightsSettingsChange({
-                                            ...passRightsSettings,
-                                            initialCount: Math.max(
-                                                0,
-                                                passRightsSettings.initialCount - 1,
-                                            ),
-                                        })
-                                    }
-                                    disabled={
-                                        settingsLocked || passRightsSettings.initialCount <= 0
-                                    }
-                                    className="flex h-8 w-8 items-center justify-center rounded border border-border bg-background text-base disabled:opacity-50"
-                                >
-                                    -
-                                </button>
-                                <span className="w-8 text-center text-base font-semibold">
-                                    {passRightsSettings.initialCount}
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={() =>
-                                        onPassRightsSettingsChange({
-                                            ...passRightsSettings,
-                                            initialCount: Math.min(
-                                                10,
-                                                passRightsSettings.initialCount + 1,
-                                            ),
-                                        })
-                                    }
-                                    disabled={
-                                        settingsLocked || passRightsSettings.initialCount >= 10
-                                    }
-                                    className="flex h-8 w-8 items-center justify-center rounded border border-border bg-background text-base disabled:opacity-50"
-                                >
-                                    +
-                                </button>
+                            {/* 先手/後手ラベル */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="text-xs font-semibold text-wafuu-shu text-center">
+                                    ☗先手
+                                </div>
+                                <div className="text-xs font-semibold text-wafuu-ai text-center">
+                                    ☖後手
+                                </div>
+                            </div>
+                            {/* 先手/後手パス権数設定 */}
+                            <div className="grid grid-cols-2 gap-3">
+                                {/* 先手 */}
+                                <div className="flex items-center justify-center gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            onPassRightsSettingsChange({
+                                                ...passRightsSettings,
+                                                senteInitialCount: Math.max(
+                                                    0,
+                                                    passRightsSettings.senteInitialCount - 1,
+                                                ),
+                                            })
+                                        }
+                                        disabled={
+                                            settingsLocked ||
+                                            passRightsSettings.senteInitialCount <= 0
+                                        }
+                                        className="flex h-8 w-8 items-center justify-center rounded border border-border bg-background text-base disabled:opacity-50"
+                                    >
+                                        -
+                                    </button>
+                                    <span className="w-8 text-center text-base font-semibold">
+                                        {passRightsSettings.senteInitialCount}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            onPassRightsSettingsChange({
+                                                ...passRightsSettings,
+                                                senteInitialCount: Math.min(
+                                                    10,
+                                                    passRightsSettings.senteInitialCount + 1,
+                                                ),
+                                            })
+                                        }
+                                        disabled={
+                                            settingsLocked ||
+                                            passRightsSettings.senteInitialCount >= 10
+                                        }
+                                        className="flex h-8 w-8 items-center justify-center rounded border border-border bg-background text-base disabled:opacity-50"
+                                    >
+                                        +
+                                    </button>
+                                </div>
+                                {/* 後手 */}
+                                <div className="flex items-center justify-center gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            onPassRightsSettingsChange({
+                                                ...passRightsSettings,
+                                                goteInitialCount: Math.max(
+                                                    0,
+                                                    passRightsSettings.goteInitialCount - 1,
+                                                ),
+                                            })
+                                        }
+                                        disabled={
+                                            settingsLocked ||
+                                            passRightsSettings.goteInitialCount <= 0
+                                        }
+                                        className="flex h-8 w-8 items-center justify-center rounded border border-border bg-background text-base disabled:opacity-50"
+                                    >
+                                        -
+                                    </button>
+                                    <span className="w-8 text-center text-base font-semibold">
+                                        {passRightsSettings.goteInitialCount}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            onPassRightsSettingsChange({
+                                                ...passRightsSettings,
+                                                goteInitialCount: Math.min(
+                                                    10,
+                                                    passRightsSettings.goteInitialCount + 1,
+                                                ),
+                                            })
+                                        }
+                                        disabled={
+                                            settingsLocked ||
+                                            passRightsSettings.goteInitialCount >= 10
+                                        }
+                                        className="flex h-8 w-8 items-center justify-center rounded border border-border bg-background text-base disabled:opacity-50"
+                                    >
+                                        +
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}
