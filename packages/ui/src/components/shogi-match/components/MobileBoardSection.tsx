@@ -1,7 +1,7 @@
 import type { LastMove, PieceType, Player, PositionState, Square } from "@shogi/app-core";
 import type { ReactElement, RefObject } from "react";
 import { memo } from "react";
-import type { ShogiBoardCell } from "../../shogi-board";
+import type { ShogiBoardCell, ShogiBoardPiece } from "../../shogi-board";
 import { ShogiBoard } from "../../shogi-board";
 import { useMobileCellSize } from "../hooks/useMobileCellSize";
 import type { DisplaySettings, PassRightsSettings, PromotionSelection } from "../types";
@@ -50,14 +50,10 @@ interface MobileBoardSectionProps {
     onHandSelect: (piece: PieceType) => void;
 
     // === 編集モード用ハンドラ ===
-    onPiecePointerDown?: (
-        square: string,
-        piece: { owner: "sente" | "gote"; type: string; promoted?: boolean },
-        e: React.PointerEvent,
-    ) => void;
+    onPiecePointerDown?: (square: string, piece: ShogiBoardPiece, e: React.PointerEvent) => void;
     onPieceTogglePromote?: (
         square: string,
-        piece: { owner: "sente" | "gote"; type: string; promoted?: boolean },
+        piece: ShogiBoardPiece,
         event: React.MouseEvent<HTMLButtonElement>,
     ) => void;
     onHandPiecePointerDown?: (owner: Player, pieceType: PieceType, e: React.PointerEvent) => void;

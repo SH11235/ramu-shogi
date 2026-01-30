@@ -35,7 +35,12 @@ import type { KifuViewMode } from "./shogi-match/components/KifuPanel";
 import { MoveDetailWindow } from "./shogi-match/components/MoveDetailWindow";
 import type { PassDisabledReason } from "./shogi-match/components/PassButton";
 import { PvPreviewDialog } from "./shogi-match/components/PvPreviewDialog";
-import { AnalysisProvider, MatchSettingsProvider } from "./shogi-match/contexts";
+import {
+    AnalysisProvider,
+    MatchSettingsProvider,
+    MatchStateProvider,
+    NavigationProvider,
+} from "./shogi-match/contexts";
 import { applyDropResult, DragGhost, type DropResult, usePieceDnd } from "./shogi-match/dnd";
 import { type ClockSettings, useClockManager } from "./shogi-match/hooks/useClockManager";
 import { useEngineManager } from "./shogi-match/hooks/useEngineManager";
@@ -1204,11 +1209,6 @@ export function ShogiMatch({
     const handleKeyboardForward = useCallback(() => {
         navigation.goForward(selectedBranchNodeId ?? undefined);
     }, [navigation, selectedBranchNodeId]);
-
-    // 盤面反転のハンドラ（メモ化）
-    const handleFlipBoard = useCallback(() => {
-        setFlipBoard((prev) => !prev);
-    }, []);
 
     // キーボード・ホイールナビゲーション（対局中は無効）
     // selectedBranchNodeIdがある場合は、分岐に沿って進む
@@ -2864,93 +2864,125 @@ export function ShogiMatch({
 
                 {/* モバイル時はMobileLayout、PC時は3列レイアウト */}
                 {isMobile ? (
-                    <MobileLayout
-                        grid={grid}
-                        position={position}
-                        flipBoard={flipBoard}
-                        lastMove={lastMove}
-                        selection={selection}
-                        promotionSelection={promotionSelection}
-                        isEditMode={isEditMode}
-                        isMatchRunning={isMatchRunning}
-                        gameMode={gameMode}
-                        editFromSquare={editFromSquare}
-                        moves={moves}
-                        candidateNote={candidateNote}
-                        displaySettings={displaySettings}
-                        onSquareSelect={handleSquareSelect}
-                        onPromotionChoice={handlePromotionChoice}
-                        onFlipBoard={handleFlipBoard}
-                        onHandSelect={handleHandSelect}
-                        onPiecePointerDown={isEditMode ? handlePiecePointerDown : undefined}
-                        onPieceTogglePromote={isEditMode ? handlePieceTogglePromote : undefined}
-                        onHandPiecePointerDown={isEditMode ? handleHandPiecePointerDown : undefined}
-                        onIncrementHand={handleIncrementHand}
-                        onDecrementHand={handleDecrementHand}
-                        isReviewMode={isReviewMode}
-                        getHandInfo={getHandInfo}
-                        boardSectionRef={boardSectionRef}
-                        isDraggingPiece={isDraggingPiece}
-                        // 棋譜関連
-                        kifMoves={kifMoves}
-                        currentPly={navigation.state.currentPly}
-                        totalPly={navigation.state.totalPly}
-                        onPlySelect={handlePlySelect}
-                        // ナビゲーション
-                        onBack={navigation.goBack}
-                        onForward={handleKeyboardForward}
-                        onToStart={navigation.goToStart}
-                        onToEnd={navigation.goToEnd}
-                        // 評価値
-                        evalHistory={displayEvalHistory}
-                        evalCp={evalHistory[navigation.state.currentPly]?.evalCp ?? undefined}
-                        evalMate={evalHistory[navigation.state.currentPly]?.evalMate ?? undefined}
-                        // 対局コントロール
-                        onStop={pauseAutoPlay}
-                        onStart={resumeAutoPlay}
-                        onResetToStartpos={handleResetToStartpos}
-                        onResign={handleResign}
-                        onUndo={handleUndo}
-                        canUndo={
-                            moves.length > 0 &&
-                            !(sides.sente.role === "engine" && sides.gote.role === "engine")
-                        }
-                        onEnterEditMode={isPaused ? enterEditModeFromPaused : undefined}
-                        // 対局設定
+                    <MatchSettingsProvider
                         sides={sides}
                         onSidesChange={handleSidesChange}
                         timeSettings={timeSettings}
                         onTimeSettingsChange={setTimeSettings}
-                        internalEngineId={internalEngineId}
-                        nnueList={nnueList}
-                        presets={presets}
+                        passRightsSettings={passRightsSettings}
+                        onPassRightsSettingsChange={handlePassRightsSettingsChange}
+                        settingsLocked={settingsLocked}
                         senteNnueSelection={senteNnueSelection}
                         onSenteNnueSelectionChange={handleSenteNnueSelectionChange}
                         goteNnueSelection={goteNnueSelection}
                         onGoteNnueSelectionChange={handleGoteNnueSelectionChange}
-                        settingsLocked={settingsLocked}
+                        nnueList={nnueList}
+                        presets={presets}
+                        internalEngineId={internalEngineId}
                         onOpenNnueManager={() => setIsNnueManagerOpen(true)}
-                        // パス権設定
-                        passRightsSettings={passRightsSettings}
-                        onPassRightsSettingsChange={handlePassRightsSettingsChange}
-                        onPassMove={handlePassMove}
-                        canPassMove={canMakePassMove}
-                        passMoveDisabledReason={passButtonDisabledReason}
-                        passMoveConfirmDialog={shouldShowPassConfirm}
-                        // クロック表示
-                        clocks={clocks}
-                        // 表示設定
-                        displaySettingsFull={displaySettings}
-                        onDisplaySettingsChange={setDisplaySettings}
-                        // メッセージ
-                        message={message}
-                        // About
-                        onOpenAbout={() => setIsAboutOpen(true)}
-                        // 棋譜インポート
-                        onImportSfen={importSfen}
-                        onImportKif={importKif}
-                        positionReady={positionReady}
-                    />
+                        onOpenDisplaySettings={() => setIsDisplaySettingsOpen(true)}
+                        onOpenPassRightsSettings={() => setIsPassRightsSettingsOpen(true)}
+                    >
+                        <MatchStateProvider
+                            position={position}
+                            clocks={clocks}
+                            grid={grid}
+                            isMatchRunning={isMatchRunning}
+                            isPaused={isPaused}
+                            isEditMode={isEditMode}
+                            gameMode={gameMode}
+                            message={message}
+                            selection={selection}
+                            promotionSelection={promotionSelection}
+                            lastMove={lastMove}
+                            flipBoard={flipBoard}
+                            onFlipBoardChange={setFlipBoard}
+                            displaySettings={displaySettings}
+                            passRightsSettings={passRightsSettings}
+                            sides={sides}
+                            moves={moves}
+                            editFromSquare={editFromSquare}
+                            hideEmptyHandPieces={gameMode === "playing" || gameMode === "paused"}
+                            getHandInfo={getHandInfo}
+                            handleSquareSelect={handleSquareSelect}
+                            handlePromotionChoice={handlePromotionChoice}
+                            handleHandSelect={handleHandSelect}
+                            handleHandPiecePointerDown={handleHandPiecePointerDown}
+                            handlePiecePointerDown={handlePiecePointerDown}
+                            handlePieceTogglePromote={handlePieceTogglePromote}
+                            handleIncrementHand={handleIncrementHand}
+                            handleDecrementHand={handleDecrementHand}
+                            handleResetToStartpos={handleResetToStartpos}
+                            pauseAutoPlay={pauseAutoPlay}
+                            resumeAutoPlay={resumeAutoPlay}
+                            handleStartReview={handleStartReview}
+                            handleEnterEditMode={handleEnterEditMode}
+                            enterEditModeFromPaused={enterEditModeFromPaused}
+                            handleResign={handleResign}
+                            handleUndo={handleUndo}
+                            onOpenSettings={() => setIsSettingsModalOpen(true)}
+                            shouldRenderPassButton={shouldRenderPassButton}
+                            canMakePassMove={canMakePassMove}
+                            passButtonDisabledReason={passButtonDisabledReason}
+                            handlePassMove={handlePassMove}
+                            shouldShowPassConfirm={shouldShowPassConfirm}
+                            isDraggingPiece={isDraggingPiece}
+                            boardSectionRef={boardSectionRef}
+                        >
+                            <NavigationProvider
+                                navigationState={{
+                                    currentPly: navigation.state.currentPly,
+                                    totalPly: navigation.state.totalPly,
+                                    isRewound: navigation.state.isRewound,
+                                    canGoForward: navigation.state.canGoForward,
+                                    hasBranches: navigation.state.hasBranches,
+                                    currentBranchIndex: navigation.state.currentBranchIndex,
+                                    branchCount: navigation.state.branchCount,
+                                    isOnMainLine: navigation.state.isOnMainLine,
+                                }}
+                                navigationHandlers={{
+                                    goBack: navigation.goBack,
+                                    goForward: handleKeyboardForward,
+                                    goToStart: navigation.goToStart,
+                                    goToEnd: navigation.goToEnd,
+                                    switchBranch: navigation.switchBranch,
+                                    promoteCurrentLine: navigation.promoteCurrentLine,
+                                    goToNodeById: navigation.goToNodeById,
+                                    switchBranchAtNode: navigation.switchBranchAtNode,
+                                }}
+                                kifMoves={kifMoves}
+                                evalHistory={evalHistory}
+                                displayEvalHistory={displayEvalHistory}
+                                positionHistory={positionHistory}
+                                kifuTree={navigation.tree}
+                                selectedBranchNodeId={selectedBranchNodeId}
+                                onSelectedBranchChange={setSelectedBranchNodeId}
+                                branchMarkers={branchMarkers}
+                                lastAddedBranchInfo={lastAddedBranchInfo}
+                                onLastAddedBranchHandled={() => setLastAddedBranchInfo(null)}
+                                handleAddPvAsBranch={handleAddPvAsBranch}
+                                handlePreviewPv={handlePreviewPv}
+                                kifuViewMode={kifuViewMode}
+                                onViewModeChange={setKifuViewMode}
+                                displaySettings={displaySettings}
+                                onDisplaySettingsChange={setDisplaySettings}
+                                handlePlySelect={handlePlySelect}
+                                handleCopyKif={handleCopyKif}
+                                handleMoveDetailSelect={handleMoveDetailSelect}
+                                isMatchRunning={isMatchRunning}
+                            >
+                                <MobileLayout
+                                    candidateNote={candidateNote}
+                                    isReviewMode={isReviewMode}
+                                    onOpenAbout={() => setIsAboutOpen(true)}
+                                    onImportSfen={importSfen}
+                                    onImportKif={importKif}
+                                    positionReady={positionReady}
+                                    onDisplaySettingsChange={setDisplaySettings}
+                                />
+                            </NavigationProvider>
+                        </MatchStateProvider>
+                    </MatchSettingsProvider>
                 ) : (
                     <MatchSettingsProvider
                         sides={sides}

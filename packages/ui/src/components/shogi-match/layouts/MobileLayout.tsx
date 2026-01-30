@@ -1,16 +1,17 @@
-import type {
-    LastMove,
-    NnueMeta,
-    NnueSelection,
-    PieceType,
-    Player,
-    PositionState,
-    PresetWithStatus,
-    Square,
-} from "@shogi/app-core";
-import type { ReactElement, RefObject } from "react";
+/**
+ * MobileLayout
+ *
+ * スマホ用レイアウト - Context から状態を取得
+ *
+ * Context の前提:
+ * - MatchSettingsContext: 親で Provider 済み
+ * - MatchStateContext: 親で Provider 済み
+ * - NavigationContext: 親で Provider 済み
+ */
+
+import type { PositionState } from "@shogi/app-core";
+import type { ReactElement } from "react";
 import { useCallback, useMemo, useRef, useState } from "react";
-import type { ShogiBoardCell } from "../../shogi-board";
 import {
     BottomSheet,
     GLASS_SURFACE_BLUR_PX,
@@ -25,166 +26,38 @@ import { MobileNavigation } from "../components/MobileNavigation";
 import { MobileSettingsActions } from "../components/MobileSettingsActions";
 import { MobileSettingsSheet } from "../components/MobileSettingsSheet";
 import { MoveDetailBottomSheet } from "../components/MoveDetailBottomSheet";
-import { PassButton, type PassDisabledReason } from "../components/PassButton";
-import type { ClockSettings, TickState } from "../hooks/useClockManager";
-import type {
-    DisplaySettings,
-    GameMode,
-    Message,
-    PassRightsSettings,
-    PromotionSelection,
-    SideSetting,
-} from "../types";
-import type { EvalHistory, KifMove as FullKifMove } from "../utils/kifFormat";
+import { PassButton } from "../components/PassButton";
+import { useMatchSettings, useMatchState, useNavigation } from "../contexts";
+import type { DisplaySettings } from "../types";
+import type { KifMove as FullKifMove } from "../utils/kifFormat";
 import type { KifMoveData } from "../utils/kifParser";
 
-type Selection = { kind: "square"; square: string } | { kind: "hand"; piece: PieceType };
-
+/**
+ * MobileLayout 固有の Props
+ *
+ * Context では取得できない、MobileLayout 特有の機能用の Props
+ */
 interface MobileLayoutProps {
-    // 盤面関連
-    grid: ShogiBoardCell[][];
-    position: PositionState;
-    flipBoard: boolean;
-    lastMove?: LastMove;
-    selection: Selection | null;
-    promotionSelection: PromotionSelection | null;
-    isEditMode: boolean;
-    isMatchRunning: boolean;
-    gameMode: GameMode;
-    editFromSquare: Square | null;
-    moves: string[];
+    /** 候補手の注釈（盤面表示用） */
     candidateNote: string | null;
 
-    // 表示設定
-    displaySettings: Pick<
-        DisplaySettings,
-        "highlightLastMove" | "squareNotation" | "showBoardLabels"
-    >;
-
-    // イベントハンドラ
-    onSquareSelect: (square: string, shiftKey?: boolean) => void;
-    onPromotionChoice: (promote: boolean) => void;
-    onFlipBoard: () => void;
-    onHandSelect: (piece: PieceType) => void;
-
-    // 編集モード用
-    onPiecePointerDown?: (
-        square: string,
-        piece: { owner: "sente" | "gote"; type: string; promoted?: boolean },
-        e: React.PointerEvent,
-    ) => void;
-    onPieceTogglePromote?: (
-        square: string,
-        piece: { owner: "sente" | "gote"; type: string; promoted?: boolean },
-        event: React.MouseEvent<HTMLButtonElement>,
-    ) => void;
-    onHandPiecePointerDown?: (owner: Player, pieceType: PieceType, e: React.PointerEvent) => void;
-    onIncrementHand?: (owner: Player, piece: PieceType) => void;
-    onDecrementHand?: (owner: Player, piece: PieceType) => void;
-
-    // 検討モード関連
+    /** 検討モードか（対局中でも棋譜がある状態でもない） */
     isReviewMode: boolean;
-
-    // 棋譜関連
-    kifMoves?: KifuMove[];
-    currentPly?: number;
-    totalPly?: number;
-    onPlySelect?: (ply: number) => void;
-
-    // ナビゲーション
-    onBack?: () => void;
-    onForward?: () => void;
-    onToStart?: () => void;
-    onToEnd?: () => void;
-
-    // 評価値
-    evalHistory: EvalHistory[];
-    evalCp?: number;
-    evalMate?: number;
-
-    // 対局コントロール
-    onStop?: () => void;
-    onStart?: () => void;
-    onResetToStartpos?: () => void;
-    onResign?: () => void;
-    onUndo?: () => void;
-    canUndo?: boolean;
-    onEnterEditMode?: () => void;
-
-    // 対局設定（モバイル用BottomSheet）
-    sides: { sente: SideSetting; gote: SideSetting };
-    onSidesChange: (sides: { sente: SideSetting; gote: SideSetting }) => void;
-    timeSettings: ClockSettings;
-    onTimeSettingsChange: (settings: ClockSettings) => void;
-    internalEngineId: string;
-    nnueList: NnueMeta[];
-    presets: PresetWithStatus[];
-    senteNnueSelection: NnueSelection;
-    onSenteNnueSelectionChange: (selection: NnueSelection) => void;
-    goteNnueSelection: NnueSelection;
-    onGoteNnueSelectionChange: (selection: NnueSelection) => void;
-    settingsLocked: boolean;
-    /** 評価関数ファイル管理を開く */
-    onOpenNnueManager?: () => void;
-
-    // パス権設定（オプション）
-    passRightsSettings?: PassRightsSettings;
-    onPassRightsSettingsChange?: (settings: PassRightsSettings) => void;
-    /** パス手を指すハンドラ */
-    onPassMove?: () => void;
-    /** パスが可能かどうか */
-    canPassMove?: boolean;
-    /** パス不可理由（ツールチップ用） */
-    passMoveDisabledReason?: PassDisabledReason;
-    /** パス時に確認ダイアログを出すか */
-    passMoveConfirmDialog?: boolean;
-
-    // クロック表示
-    clocks: TickState;
-
-    // 表示設定（フル版、BottomSheet用）
-    displaySettingsFull: DisplaySettings;
-    onDisplaySettingsChange: (settings: DisplaySettings) => void;
-
-    // メッセージ
-    message?: Message | null;
-
-    // 持ち駒情報取得
-    getHandInfo: (pos: "top" | "bottom") => {
-        owner: Player;
-        hand: PositionState["hands"]["sente"] | PositionState["hands"]["gote"];
-        isActive: boolean;
-        isAI: boolean;
-    };
-
-    // Ref
-    boardSectionRef: RefObject<HTMLDivElement | null>;
-
-    // DnD関連
-    isDraggingPiece: boolean;
-
-    // MultiPV詳細表示用（検討モード）
-    /** 完全なKifMove配列（multiPvEvalsを含む） */
-    fullKifMoves?: FullKifMove[];
-    /** 局面履歴（各手が指された後の局面） */
-    positionHistory?: PositionState[];
-    /** PVを分岐として追加するコールバック */
-    onAddPvAsBranch?: (ply: number, pv: string[]) => void;
-    /** PVを盤面で確認するコールバック */
-    onPreviewPv?: (ply: number, pv: string[], evalCp?: number, evalMate?: number) => void;
-    /** 現在位置がメインライン上にあるか */
-    isOnMainLine?: boolean;
 
     /** Aboutダイアログを開く */
     onOpenAbout?: () => void;
 
-    // 棋譜インポート
     /** SFENインポート時のコールバック */
     onImportSfen?: (sfen: string, moves: string[]) => Promise<void>;
+
     /** KIFインポート時のコールバック */
     onImportKif?: (moves: string[], moveData: KifMoveData[], startSfen?: string) => Promise<void>;
+
     /** 局面が準備完了しているか */
     positionReady?: boolean;
+
+    /** 表示設定変更コールバック（BottomSheet用） */
+    onDisplaySettingsChange: (settings: DisplaySettings) => void;
 }
 
 /**
@@ -194,84 +67,115 @@ interface MobileLayoutProps {
  * - コントロール部分は残りの高さを使い、必要に応じて縮小
  */
 export function MobileLayout({
-    grid,
-    position,
-    flipBoard,
-    lastMove,
-    selection,
-    promotionSelection,
-    isEditMode,
-    isMatchRunning,
-    gameMode,
-    editFromSquare,
-    moves,
     candidateNote,
-    displaySettings,
-    onSquareSelect,
-    onPromotionChoice,
-    onFlipBoard,
-    onHandSelect,
-    onPiecePointerDown,
-    onPieceTogglePromote,
-    onHandPiecePointerDown,
-    onIncrementHand,
-    onDecrementHand,
     isReviewMode,
-    kifMoves,
-    currentPly = 0,
-    totalPly = 0,
-    onPlySelect,
-    onBack,
-    onForward,
-    onToStart,
-    onToEnd,
-    evalHistory,
-    evalCp,
-    evalMate,
-    onStop,
-    onStart,
-    onResetToStartpos,
-    onResign,
-    onUndo,
-    canUndo,
-    onEnterEditMode,
-    sides,
-    onSidesChange,
-    timeSettings,
-    onTimeSettingsChange,
-    internalEngineId,
-    nnueList,
-    presets,
-    senteNnueSelection,
-    onSenteNnueSelectionChange,
-    goteNnueSelection,
-    onGoteNnueSelectionChange,
-    settingsLocked,
-    onOpenNnueManager,
-    passRightsSettings,
-    onPassRightsSettingsChange,
-    onPassMove,
-    canPassMove,
-    passMoveDisabledReason,
-    passMoveConfirmDialog,
-    clocks,
-    displaySettingsFull,
-    onDisplaySettingsChange,
-    message,
-    getHandInfo,
-    boardSectionRef,
-    isDraggingPiece,
-    // MultiPV詳細表示用
-    fullKifMoves,
-    positionHistory,
-    onAddPvAsBranch,
-    onPreviewPv,
-    isOnMainLine = true,
     onOpenAbout,
     onImportSfen,
     onImportKif,
     positionReady = true,
+    onDisplaySettingsChange,
 }: MobileLayoutProps): ReactElement {
+    // Context から状態を取得
+    const matchState = useMatchState();
+    const matchSettings = useMatchSettings();
+    const navigation = useNavigation();
+
+    // MatchStateContext から取得
+    const {
+        grid,
+        position,
+        flipBoard,
+        onFlipBoardChange,
+        lastMove,
+        selection,
+        promotionSelection,
+        isEditMode,
+        isMatchRunning,
+        gameMode,
+        editFromSquare,
+        moves,
+        displaySettings,
+        passRightsSettings,
+        clocks,
+        message,
+        getHandInfo,
+        boardSectionRef,
+        isDraggingPiece,
+        handleSquareSelect,
+        handlePromotionChoice,
+        handleHandSelect,
+        handlePiecePointerDown,
+        handlePieceTogglePromote,
+        handleHandPiecePointerDown,
+        handleIncrementHand,
+        handleDecrementHand,
+        handleResetToStartpos,
+        pauseAutoPlay,
+        resumeAutoPlay,
+        enterEditModeFromPaused,
+        handleResign,
+        handleUndo,
+        shouldRenderPassButton,
+        canMakePassMove,
+        passButtonDisabledReason,
+        handlePassMove,
+        shouldShowPassConfirm,
+        sides,
+    } = matchState;
+
+    // MatchSettingsContext から取得
+    const {
+        onSidesChange,
+        timeSettings,
+        onTimeSettingsChange,
+        senteNnueSelection,
+        onSenteNnueSelectionChange,
+        goteNnueSelection,
+        onGoteNnueSelectionChange,
+        nnueList,
+        presets,
+        internalEngineId,
+        settingsLocked,
+        onOpenNnueManager,
+        onPassRightsSettingsChange,
+    } = matchSettings;
+
+    // NavigationContext から取得
+    const {
+        navigationState,
+        navigationHandlers,
+        kifMoves: fullKifMoves,
+        displayEvalHistory,
+        positionHistory,
+        handleAddPvAsBranch,
+        handlePreviewPv,
+        handlePlySelect,
+    } = navigation;
+
+    const { currentPly, totalPly, isOnMainLine } = navigationState;
+    const { goBack, goForward, goToStart, goToEnd } = navigationHandlers;
+
+    // 待った可否の計算
+    const canUndo =
+        moves.length > 0 && !(sides.sente.role === "engine" && sides.gote.role === "engine");
+
+    // 評価値の取得
+    const evalCp = displayEvalHistory[currentPly]?.evalCp ?? undefined;
+    const evalMate = displayEvalHistory[currentPly]?.evalMate ?? undefined;
+
+    // KifuMove 形式に変換（MobileKifuBar 用）
+    const kifMoves: KifuMove[] | undefined = useMemo(() => {
+        if (!fullKifMoves || fullKifMoves.length === 0) return undefined;
+        return fullKifMoves.map((m) => ({
+            ply: m.ply,
+            displayText: m.displayText,
+        }));
+    }, [fullKifMoves]);
+
+    // 盤面反転のハンドラ
+    const handleFlipBoard = useCallback(() => {
+        onFlipBoardChange(!flipBoard);
+    }, [onFlipBoardChange, flipBoard]);
     // 設定BottomSheetの状態
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
@@ -286,7 +190,7 @@ export function MobileLayout({
     const handlePlySelectWithDetail = useCallback(
         (ply: number) => {
             // まず局面を選択
-            onPlySelect?.(ply);
+            handlePlySelect(ply);
 
             // 検討モードで fullKifMoves がある場合は詳細を表示
             if (isReviewMode && fullKifMoves && positionHistory) {
@@ -301,7 +205,7 @@ export function MobileLayout({
                 }
             }
         },
-        [onPlySelect, isReviewMode, fullKifMoves, positionHistory],
+        [handlePlySelect, isReviewMode, fullKifMoves, positionHistory],
     );
 
     // 詳細シートを閉じる
@@ -387,7 +291,7 @@ export function MobileLayout({
                             </span>
                             <button
                                 type="button"
-                                onClick={onFlipBoard}
+                                onClick={handleFlipBoard}
                                 className="flex items-center justify-center w-6 h-6 rounded hover:bg-muted text-sm"
                                 title="盤面を反転"
                             >
@@ -413,14 +317,14 @@ export function MobileLayout({
                     hideEmptyHandPieces={hideEmptyHandPieces}
                     editFromSquare={editFromSquare}
                     candidateNote={candidateNote}
-                    onSquareSelect={onSquareSelect}
-                    onPromotionChoice={onPromotionChoice}
-                    onHandSelect={onHandSelect}
-                    onPiecePointerDown={onPiecePointerDown}
-                    onPieceTogglePromote={onPieceTogglePromote}
-                    onHandPiecePointerDown={onHandPiecePointerDown}
-                    onIncrementHand={onIncrementHand}
-                    onDecrementHand={onDecrementHand}
+                    onSquareSelect={handleSquareSelect}
+                    onPromotionChoice={handlePromotionChoice}
+                    onHandSelect={handleHandSelect}
+                    onPiecePointerDown={isEditMode ? handlePiecePointerDown : undefined}
+                    onPieceTogglePromote={isEditMode ? handlePieceTogglePromote : undefined}
+                    onHandPiecePointerDown={isEditMode ? handleHandPiecePointerDown : undefined}
+                    onIncrementHand={handleIncrementHand}
+                    onDecrementHand={handleDecrementHand}
                     topHand={topHand}
                     bottomHand={bottomHand}
                     boardSectionRef={boardSectionRef}
@@ -458,7 +362,7 @@ export function MobileLayout({
                                 </button>
                             </div>
                             <EvalGraph
-                                evalHistory={evalHistory}
+                                evalHistory={displayEvalHistory}
                                 currentPly={currentPly}
                                 compact
                                 height={80}
@@ -490,31 +394,25 @@ export function MobileLayout({
                         >
                             {message?.text}
                         </div>
-                        {onStop && (
-                            <div className="flex justify-center gap-2 py-1">
-                                <PlayingModeControls
-                                    onStop={onStop}
-                                    onResign={onResign}
-                                    onUndo={onUndo}
-                                    canUndo={canUndo}
+                        <div className="flex justify-center gap-2 py-1">
+                            <PlayingModeControls
+                                onStop={pauseAutoPlay}
+                                onResign={handleResign}
+                                onUndo={handleUndo}
+                                canUndo={canUndo}
+                            />
+                            {/* パスボタン（パス機能有効時のみ） */}
+                            {shouldRenderPassButton && position.passRights && (
+                                <PassButton
+                                    canPass={canMakePassMove}
+                                    disabledReason={passButtonDisabledReason}
+                                    onPass={handlePassMove}
+                                    remainingPassRights={position.passRights[position.turn]}
+                                    showConfirmDialog={shouldShowPassConfirm}
+                                    compact
                                 />
-                                {/* パスボタン（パス機能有効時のみ） */}
-                                {passRightsSettings?.enabled &&
-                                    (passRightsSettings.senteInitialCount > 0 ||
-                                        passRightsSettings.goteInitialCount > 0) &&
-                                    position.passRights &&
-                                    onPassMove && (
-                                        <PassButton
-                                            canPass={canPassMove ?? false}
-                                            disabledReason={passMoveDisabledReason}
-                                            onPass={onPassMove}
-                                            remainingPassRights={position.passRights[position.turn]}
-                                            showConfirmDialog={passMoveConfirmDialog}
-                                            compact
-                                        />
-                                    )}
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </div>
                 ) : gameMode === "paused" ? (
                     /* 一時停止モード: 1行棋譜 + 対局再開・局面編集・投了ボタン */
@@ -526,32 +424,28 @@ export function MobileLayout({
                                 onPlySelect={
                                     fullKifMoves && positionHistory
                                         ? handlePlySelectWithDetail
-                                        : onPlySelect
+                                        : handlePlySelect
                                 }
                             />
                         )}
-                        {onStart && (
-                            <div className="flex justify-center gap-2 py-1">
-                                <PausedModeControls
-                                    onResume={onStart}
-                                    onEnterEditMode={onEnterEditMode}
-                                    onResign={onResign}
-                                />
-                            </div>
-                        )}
+                        <div className="flex justify-center gap-2 py-1">
+                            <PausedModeControls
+                                onResume={resumeAutoPlay}
+                                onEnterEditMode={enterEditModeFromPaused}
+                                onResign={handleResign}
+                            />
+                        </div>
                     </div>
                 ) : isReviewMode && totalPly === 0 ? (
                     /* 対局準備モード: 開始ボタンのみ（棋譜がまだない状態） */
                     <div className="flex justify-center gap-2 py-2 flex-shrink-0">
-                        {onStart && (
-                            <button
-                                type="button"
-                                onClick={onStart}
-                                className="px-8 py-3 bg-primary text-primary-foreground rounded-lg font-medium shadow-md active:scale-95 transition-transform"
-                            >
-                                対局を開始
-                            </button>
-                        )}
+                        <button
+                            type="button"
+                            onClick={resumeAutoPlay}
+                            className="px-8 py-3 bg-primary text-primary-foreground rounded-lg font-medium shadow-md active:scale-95 transition-transform"
+                        >
+                            対局を開始
+                        </button>
                     </div>
                 ) : isReviewMode ? (
                     /* 検討モード: 評価値 + ナビゲーション + 詳細ボタン（コンパクト） */
@@ -563,7 +457,7 @@ export function MobileLayout({
                                 onPlySelect={
                                     fullKifMoves && positionHistory
                                         ? handlePlySelectWithDetail
-                                        : onPlySelect
+                                        : handlePlySelect
                                 }
                             />
                         )}
@@ -595,18 +489,16 @@ export function MobileLayout({
                         </div>
 
                         {/* ナビゲーションボタン */}
-                        {onBack && onForward && onToStart && onToEnd && (
-                            <MobileNavigation
-                                currentPly={currentPly}
-                                totalPly={totalPly}
-                                onBack={onBack}
-                                onForward={onForward}
-                                onToStart={onToStart}
-                                onToEnd={onToEnd}
-                                onSettingsClick={() => setIsSettingsOpen(true)}
-                                onNnueManagerClick={onOpenNnueManager}
-                            />
-                        )}
+                        <MobileNavigation
+                            currentPly={currentPly}
+                            totalPly={totalPly}
+                            onBack={goBack}
+                            onForward={goForward}
+                            onToStart={goToStart}
+                            onToEnd={goToEnd}
+                            onSettingsClick={() => setIsSettingsOpen(true)}
+                            onNnueManagerClick={onOpenNnueManager}
+                        />
                     </div>
                 ) : (
                     /* 編集モード: 対局開始 + 平手に戻す + 設定ボタン */
@@ -619,24 +511,20 @@ export function MobileLayout({
                             </div>
                         </div>
                         <div className="flex items-center justify-center gap-2 py-2">
-                            {onStart && (
-                                <button
-                                    type="button"
-                                    onClick={onStart}
-                                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium shadow-md active:scale-95 transition-all"
-                                >
-                                    対局を開始
-                                </button>
-                            )}
-                            {onResetToStartpos && (
-                                <button
-                                    type="button"
-                                    onClick={onResetToStartpos}
-                                    className="px-4 py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted active:scale-95 transition-all"
-                                >
-                                    平手に戻す
-                                </button>
-                            )}
+                            <button
+                                type="button"
+                                onClick={resumeAutoPlay}
+                                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium shadow-md active:scale-95 transition-all"
+                            >
+                                対局を開始
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleResetToStartpos}
+                                className="px-4 py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted active:scale-95 transition-all"
+                            >
+                                平手に戻す
+                            </button>
                             {/* 設定・NNUE管理ボタン */}
                             <MobileSettingsActions
                                 variant="navigation"
@@ -683,24 +571,16 @@ export function MobileLayout({
                     passRightsSettings={passRightsSettings}
                     onPassRightsSettingsChange={onPassRightsSettingsChange}
                     isMatchRunning={isMatchRunning}
-                    onStartMatch={
-                        onStart
-                            ? () => {
-                                  onStart();
-                                  setIsSettingsOpen(false);
-                              }
-                            : undefined
-                    }
-                    onStopMatch={onStop}
-                    onResetToStartpos={
-                        onResetToStartpos
-                            ? () => {
-                                  onResetToStartpos();
-                                  setIsSettingsOpen(false);
-                              }
-                            : undefined
-                    }
-                    displaySettings={displaySettingsFull}
+                    onStartMatch={() => {
+                        resumeAutoPlay();
+                        setIsSettingsOpen(false);
+                    }}
+                    onStopMatch={pauseAutoPlay}
+                    onResetToStartpos={() => {
+                        handleResetToStartpos();
+                        setIsSettingsOpen(false);
+                    }}
+                    displaySettings={displaySettings}
                     onDisplaySettingsChange={onDisplaySettingsChange}
                     onOpenAbout={onOpenAbout}
                     onImportSfen={onImportSfen}
@@ -717,8 +597,8 @@ export function MobileLayout({
                 }}
                 move={selectedMoveForDetail}
                 position={selectedMovePosition}
-                onAddBranch={onAddPvAsBranch}
-                onPreview={onPreviewPv}
+                onAddBranch={handleAddPvAsBranch}
+                onPreview={handlePreviewPv}
                 isOnMainLine={isOnMainLine}
             />
         </div>
