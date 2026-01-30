@@ -1,7 +1,7 @@
 import type { PieceType, Player, PositionState } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
-import { PIECE_CAP, PIECE_LABELS, getPieceImagePath } from "../utils/constants";
+import { getPieceImagePath, PIECE_CAP, PIECE_LABELS } from "../utils/constants";
 import { PlayerIcon } from "./PlayerIcon";
 
 const HAND_ORDER: PieceType[] = ["R", "B", "G", "S", "N", "L", "P"];

@@ -8,7 +8,7 @@
 import { cn } from "@shogi/design-system";
 import { forwardRef } from "react";
 import { createPortal } from "react-dom";
-import { PIECE_LABELS, getPieceImagePath } from "../utils/constants";
+import { getPieceImagePath, PIECE_LABELS } from "../utils/constants";
 import type { DndState } from "./types";
 
 interface DragGhostProps {

@@ -3451,7 +3451,7 @@ export function ShogiMatch({
                                     open={isSettingsModalOpen}
                                     onOpenChange={setIsSettingsModalOpen}
                                 >
-                                    <div className="flex flex-col gap-6 min-w-[400px]">
+                                    <div className="flex flex-col gap-6">
                                         {/* インポート */}
                                         <KifuImportPanel
                                             onImportSfen={importSfen}
