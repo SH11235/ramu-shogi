@@ -526,7 +526,7 @@ function ExpandedMoveDetails({
                     )}
                     {showNnueSelector && (
                         <label className="flex flex-col gap-1 text-[10px] text-muted-foreground">
-                            <span>分析NNUE</span>
+                            <span>分析に使うAI</span>
                             <select
                                 value={selectedValue}
                                 onChange={(e) =>

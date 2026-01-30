@@ -2,6 +2,14 @@ import { NnueError, type NnueSelection, type ResolvedNnue } from "@shogi/app-cor
 import { useCallback, useState } from "react";
 import { useNnueContextOptional } from "../providers/NnueContext";
 
+interface UseLazyNnueLoaderOptions {
+    /**
+     * presetKey から表示名を取得する関数
+     * 指定しない場合は presetKey がそのまま表示される
+     */
+    getPresetDisplayName?: (presetKey: string) => string | undefined;
+}
+
 interface UseLazyNnueLoaderReturn {
     /**
      * NNUE を解決する
@@ -23,7 +31,8 @@ interface UseLazyNnueLoaderReturn {
  * プリセット指定の場合、IndexedDB にあればその id を返し、
  * なければエラーをスロー（自動ダウンロードはしない）。
  */
-export function useLazyNnueLoader(): UseLazyNnueLoaderReturn {
+export function useLazyNnueLoader(options?: UseLazyNnueLoaderOptions): UseLazyNnueLoaderReturn {
+    const { getPresetDisplayName } = options ?? {};
     const context = useNnueContextOptional();
     const storage = context?.storage ?? null;
 
@@ -107,9 +116,10 @@ export function useLazyNnueLoader(): UseLazyNnueLoaderReturn {
                 }
 
                 // 未ダウンロードのプリセット → エラーをスロー
+                const displayName = getPresetDisplayName?.(presetKey) ?? presetKey;
                 throw new NnueError(
                     "NNUE_NOT_DOWNLOADED",
-                    `評価関数「${presetKey}」がダウンロードされていません。評価関数ファイル管理からダウンロードしてください。`,
+                    `評価関数「${displayName}」がダウンロードされていません。評価関数ファイル管理からダウンロードしてください。`,
                 );
             } catch (e) {
                 if (e instanceof NnueError) {
@@ -121,7 +131,7 @@ export function useLazyNnueLoader(): UseLazyNnueLoaderReturn {
                 throw err;
             }
         },
-        [storage, createResolvedNnue],
+        [storage, createResolvedNnue, getPresetDisplayName],
     );
 
     const clearError = useCallback(() => {
