@@ -1583,9 +1583,7 @@ export function ShogiMatch({
                             handleAnalyzeBranch={handleAnalyzeBranch}
                             handleStartTreeBatchAnalysis={handleStartTreeBatchAnalysis}
                         >
-                            <PCLayout
-                                matchLayoutClasses={MATCH_LAYOUT_CLASSES}
-                                // MatchStateProvider 用
+                            <MatchStateProvider
                                 position={position}
                                 clocks={clocks}
                                 grid={grid}
@@ -1630,69 +1628,74 @@ export function ShogiMatch({
                                 shouldShowPassConfirm={passRights.shouldShowPassConfirm}
                                 isDraggingPiece={isDraggingPiece}
                                 boardSectionRef={boardSectionRef}
-                                // PCBoardSection 用
-                                candidateNote={candidateNote}
-                                // NavigationProvider 用
-                                navigationState={{
-                                    currentPly: navigation.state.currentPly,
-                                    totalPly: navigation.state.totalPly,
-                                    isRewound: navigation.state.isRewound,
-                                    canGoForward: navigation.state.canGoForward,
-                                    hasBranches: navigation.state.hasBranches,
-                                    currentBranchIndex: navigation.state.currentBranchIndex,
-                                    branchCount: navigation.state.branchCount,
-                                    isOnMainLine: navigation.state.isOnMainLine,
-                                }}
-                                navigationHandlers={{
-                                    goBack: navigation.goBack,
-                                    goForward: navigation.goForward,
-                                    goToStart: navigation.goToStart,
-                                    goToEnd: navigation.goToEnd,
-                                    switchBranch: navigation.switchBranch,
-                                    promoteCurrentLine: navigation.promoteCurrentLine,
-                                    goToNodeById: navigation.goToNodeById,
-                                    switchBranchAtNode: navigation.switchBranchAtNode,
-                                }}
-                                kifMoves={kifMoves}
-                                evalHistory={evalHistory}
-                                displayEvalHistory={displayEvalHistory}
-                                positionHistory={positionHistory}
-                                kifuTree={navigation.tree}
-                                selectedBranchNodeId={selectedBranchNodeId}
-                                onSelectedBranchChange={setSelectedBranchNodeId}
-                                branchMarkers={branchMarkers}
-                                lastAddedBranchInfo={lastAddedBranchInfo}
-                                onLastAddedBranchHandled={() => setLastAddedBranchInfo(null)}
-                                handleAddPvAsBranch={handleAddPvAsBranch}
-                                handlePreviewPv={handlePreviewPv}
-                                kifuViewMode={kifuViewMode}
-                                onViewModeChange={setKifuViewMode}
-                                onDisplaySettingsChange={setDisplaySettings}
-                                handlePlySelect={handlePlySelect}
-                                handleCopyKif={handleCopyKif}
-                                handleMoveDetailSelect={handleMoveDetailSelect}
-                                // SettingsModal 用
-                                isSettingsModalOpen={isSettingsModalOpen}
-                                onSettingsModalOpenChange={setIsSettingsModalOpen}
-                                importSfen={importSfen}
-                                importKif={importKif}
-                                positionReady={positionReady}
-                                isDevMode={isDevMode}
-                                eventLogs={eventLogs}
-                                errorLogs={errorLogs}
-                                engineErrorDetails={engineErrorDetails}
-                                retryEngine={retryEngine}
-                                isRetrying={isRetrying}
-                                // 表示設定ダイアログ
-                                isDisplaySettingsOpen={isDisplaySettingsOpen}
-                                onDisplaySettingsOpenChange={setIsDisplaySettingsOpen}
-                                setDisplaySettings={setDisplaySettings}
-                                // パス権設定ダイアログ
-                                isPassRightsSettingsOpen={isPassRightsSettingsOpen}
-                                onPassRightsSettingsOpenChange={setIsPassRightsSettingsOpen}
-                                handlePassRightsSettingsChange={handlePassRightsSettingsChange}
-                                settingsLocked={settingsLocked}
-                            />
+                            >
+                                <NavigationProvider
+                                    navigationState={{
+                                        currentPly: navigation.state.currentPly,
+                                        totalPly: navigation.state.totalPly,
+                                        isRewound: navigation.state.isRewound,
+                                        canGoForward: navigation.state.canGoForward,
+                                        hasBranches: navigation.state.hasBranches,
+                                        currentBranchIndex: navigation.state.currentBranchIndex,
+                                        branchCount: navigation.state.branchCount,
+                                        isOnMainLine: navigation.state.isOnMainLine,
+                                    }}
+                                    navigationHandlers={{
+                                        goBack: navigation.goBack,
+                                        goForward: navigation.goForward,
+                                        goToStart: navigation.goToStart,
+                                        goToEnd: navigation.goToEnd,
+                                        switchBranch: navigation.switchBranch,
+                                        promoteCurrentLine: navigation.promoteCurrentLine,
+                                        goToNodeById: navigation.goToNodeById,
+                                        switchBranchAtNode: navigation.switchBranchAtNode,
+                                    }}
+                                    kifMoves={kifMoves}
+                                    evalHistory={evalHistory}
+                                    displayEvalHistory={displayEvalHistory}
+                                    positionHistory={positionHistory}
+                                    kifuTree={navigation.tree}
+                                    selectedBranchNodeId={selectedBranchNodeId}
+                                    onSelectedBranchChange={setSelectedBranchNodeId}
+                                    branchMarkers={branchMarkers}
+                                    lastAddedBranchInfo={lastAddedBranchInfo}
+                                    onLastAddedBranchHandled={() => setLastAddedBranchInfo(null)}
+                                    handleAddPvAsBranch={handleAddPvAsBranch}
+                                    handlePreviewPv={handlePreviewPv}
+                                    kifuViewMode={kifuViewMode}
+                                    onViewModeChange={setKifuViewMode}
+                                    displaySettings={displaySettings}
+                                    onDisplaySettingsChange={setDisplaySettings}
+                                    handlePlySelect={handlePlySelect}
+                                    handleCopyKif={handleCopyKif}
+                                    handleMoveDetailSelect={handleMoveDetailSelect}
+                                    isMatchRunning={isMatchRunning}
+                                >
+                                    <PCLayout
+                                        matchLayoutClasses={MATCH_LAYOUT_CLASSES}
+                                        candidateNote={candidateNote}
+                                        isSettingsModalOpen={isSettingsModalOpen}
+                                        onSettingsModalOpenChange={setIsSettingsModalOpen}
+                                        importSfen={importSfen}
+                                        importKif={importKif}
+                                        positionReady={positionReady}
+                                        isDevMode={isDevMode}
+                                        eventLogs={eventLogs}
+                                        errorLogs={errorLogs}
+                                        engineErrorDetails={engineErrorDetails}
+                                        retryEngine={retryEngine}
+                                        isRetrying={isRetrying}
+                                        isDisplaySettingsOpen={isDisplaySettingsOpen}
+                                        onDisplaySettingsOpenChange={setIsDisplaySettingsOpen}
+                                        setDisplaySettings={setDisplaySettings}
+                                        isPassRightsSettingsOpen={isPassRightsSettingsOpen}
+                                        onPassRightsSettingsOpenChange={setIsPassRightsSettingsOpen}
+                                        handlePassRightsSettingsChange={
+                                            handlePassRightsSettingsChange
+                                        }
+                                    />
+                                </NavigationProvider>
+                            </MatchStateProvider>
                         </AnalysisProvider>
                     </MatchSettingsProvider>
                 )}

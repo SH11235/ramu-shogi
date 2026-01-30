@@ -7,240 +7,77 @@
  * Context の前提:
  * - MatchSettingsContext: 親で Provider 済み
  * - AnalysisContext: 親で Provider 済み
- * - MatchStateContext: このコンポーネント内で Provider
- * - NavigationContext: このコンポーネント内で Provider
+ * - MatchStateContext: 親で Provider 済み
+ * - NavigationContext: 親で Provider 済み
  */
 
-import type {
-    EngineControllerErrorLog,
-    EngineControllerEvent,
-    KifuTree,
-    LastMove,
-    PieceType,
-    Player,
-    PositionState,
-    Square,
-} from "@shogi/app-core";
-import type { ReactElement, RefObject } from "react";
+import type { EngineControllerErrorLog, EngineControllerEvent, Player } from "@shogi/app-core";
+import type { ReactElement } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../dialog";
-import type { ShogiBoardCell, ShogiBoardPiece } from "../../shogi-board";
 import { Switch } from "../../switch";
 import type { EngineErrorDetails } from "../components/EngineLogsPanel";
 import { EngineLogsPanel } from "../components/EngineLogsPanel";
 import { KifuImportPanel } from "../components/KifuImportPanel";
 import { LeftSidebar } from "../components/LeftSidebar";
-import type { PassDisabledReason } from "../components/PassButton";
 import { PCBoardSection } from "../components/PCBoardSection";
 import { PCKifuSection } from "../components/PCKifuSection";
 import { SettingsModal } from "../components/SettingsModal";
-import { MatchStateProvider, NavigationProvider } from "../contexts";
-import type {
-    HandInfo,
-    KifuViewMode,
-    NavigationHandlers,
-    NavigationState,
-} from "../contexts/types";
-import type { TickState } from "../hooks/useClockManager";
-import type {
-    DisplaySettings,
-    GameMode,
-    Message,
-    PassRightsSettings,
-    PromotionSelection,
-    SideSetting,
-} from "../types";
-import type { EvalHistory, KifMove } from "../utils/kifFormat";
+import { useMatchSettings, useMatchState, useNavigation } from "../contexts";
+import type { DisplaySettings, PassRightsSettings } from "../types";
 import type { KifMoveData } from "../utils/kifParser";
 
-type Selection = { kind: "square"; square: string } | { kind: "hand"; piece: PieceType };
-
+/**
+ * PCLayout 固有の Props
+ *
+ * Context では取得できない、PCLayout 特有の機能用の Props
+ */
 interface PCLayoutProps {
-    // レイアウト
+    /** レイアウトクラス */
     matchLayoutClasses: string;
 
-    // MatchStateProvider 用
-    position: PositionState;
-    clocks: TickState;
-    grid: ShogiBoardCell[][];
-    isMatchRunning: boolean;
-    isPaused: boolean;
-    isEditMode: boolean;
-    gameMode: GameMode;
-    message: Message | null;
-    selection: Selection | null;
-    promotionSelection: PromotionSelection | null;
-    lastMove?: LastMove;
-    flipBoard: boolean;
-    onFlipBoardChange: (flip: boolean) => void;
-    displaySettings: DisplaySettings;
-    passRightsSettings: PassRightsSettings;
-    sides: { sente: SideSetting; gote: SideSetting };
-    moves: string[];
-    editFromSquare: Square | null;
-    hideEmptyHandPieces: boolean;
-    getHandInfo: (pos: "top" | "bottom") => HandInfo;
-    handleSquareSelect: (sq: string, shiftKey?: boolean) => Promise<void>;
-    handlePromotionChoice: (promote: boolean) => void;
-    handleHandSelect: (piece: PieceType) => void;
-    handleHandPiecePointerDown: (
-        owner: Player,
-        pieceType: PieceType,
-        e: React.PointerEvent,
-    ) => void;
-    handlePiecePointerDown: (square: string, piece: ShogiBoardPiece, e: React.PointerEvent) => void;
-    handlePieceTogglePromote: (
-        square: string,
-        piece: ShogiBoardPiece,
-        event: React.MouseEvent<HTMLButtonElement>,
-    ) => void;
-    handleIncrementHand: (owner: Player, piece: PieceType) => void;
-    handleDecrementHand: (owner: Player, piece: PieceType) => void;
-    handleResetToStartpos: () => void;
-    pauseAutoPlay: () => void;
-    resumeAutoPlay: () => void;
-    handleStartReview: () => void;
-    handleEnterEditMode: () => void;
-    enterEditModeFromPaused: () => void;
-    handleResign: () => void;
-    handleUndo: () => void;
-    onOpenSettings: () => void;
-    shouldRenderPassButton: boolean;
-    canMakePassMove: boolean;
-    passButtonDisabledReason?: PassDisabledReason;
-    handlePassMove: () => void;
-    shouldShowPassConfirm: boolean;
-    isDraggingPiece: boolean;
-    boardSectionRef: RefObject<HTMLDivElement | null>;
-
-    // PCBoardSection 用
+    /** 候補手の注釈（盤面表示用） */
     candidateNote: string | null;
 
-    // NavigationProvider 用
-    navigationState: NavigationState;
-    navigationHandlers: NavigationHandlers;
-    kifMoves: KifMove[];
-    evalHistory: EvalHistory[];
-    displayEvalHistory: EvalHistory[];
-    positionHistory: PositionState[];
-    kifuTree?: KifuTree;
-    selectedBranchNodeId: string | null;
-    onSelectedBranchChange: (branchNodeId: string | null) => void;
-    branchMarkers: Map<number, number>;
-    lastAddedBranchInfo: { ply: number; firstMove: string } | null;
-    onLastAddedBranchHandled: () => void;
-    handleAddPvAsBranch: (ply: number, pv: string[]) => void;
-    handlePreviewPv: (ply: number, pv: string[], evalCp?: number, evalMate?: number) => void;
-    kifuViewMode: KifuViewMode;
-    onViewModeChange: (mode: KifuViewMode) => void;
-    onDisplaySettingsChange: (updater: (prev: DisplaySettings) => DisplaySettings) => void;
-    handlePlySelect: (ply: number) => void;
-    handleCopyKif: () => string;
-    handleMoveDetailSelect: (move: KifMove | null, position: PositionState | null) => void;
-
-    // SettingsModal 用
+    /** 設定モーダルの開閉状態 */
     isSettingsModalOpen: boolean;
     onSettingsModalOpenChange: (open: boolean) => void;
+
+    /** SFENインポート時のコールバック */
     importSfen: (sfen: string, moves: string[]) => Promise<void>;
+
+    /** KIFインポート時のコールバック */
     importKif: (moves: string[], moveData: KifMoveData[], startSfen?: string) => Promise<void>;
+
+    /** 局面が準備完了しているか */
     positionReady: boolean;
+
+    /** 開発者モード */
     isDevMode: boolean;
+
+    /** エンジンログ */
     eventLogs: EngineControllerEvent[];
     errorLogs: EngineControllerErrorLog[];
     engineErrorDetails?: Record<Player, EngineErrorDetails | null>;
     retryEngine: (side: Player) => Promise<void>;
     isRetrying?: Record<Player, boolean>;
 
-    // 表示設定ダイアログ
+    /** 表示設定ダイアログ */
     isDisplaySettingsOpen: boolean;
     onDisplaySettingsOpenChange: (open: boolean) => void;
     setDisplaySettings: (settings: DisplaySettings) => void;
 
-    // パス権設定ダイアログ
+    /** パス権設定ダイアログ */
     isPassRightsSettingsOpen: boolean;
     onPassRightsSettingsOpenChange: (open: boolean) => void;
     handlePassRightsSettingsChange: (settings: PassRightsSettings) => void;
-    settingsLocked: boolean;
 }
 
 /**
  * PC版3カラムレイアウト
  */
 export function PCLayout({
-    // レイアウト
     matchLayoutClasses,
-
-    // MatchStateProvider 用
-    position,
-    clocks,
-    grid,
-    isMatchRunning,
-    isPaused,
-    isEditMode,
-    gameMode,
-    message,
-    selection,
-    promotionSelection,
-    lastMove,
-    flipBoard,
-    onFlipBoardChange,
-    displaySettings,
-    passRightsSettings,
-    sides,
-    moves,
-    editFromSquare,
-    hideEmptyHandPieces,
-    getHandInfo,
-    handleSquareSelect,
-    handlePromotionChoice,
-    handleHandSelect,
-    handleHandPiecePointerDown,
-    handlePiecePointerDown,
-    handlePieceTogglePromote,
-    handleIncrementHand,
-    handleDecrementHand,
-    handleResetToStartpos,
-    pauseAutoPlay,
-    resumeAutoPlay,
-    handleStartReview,
-    handleEnterEditMode,
-    enterEditModeFromPaused,
-    handleResign,
-    handleUndo,
-    onOpenSettings,
-    shouldRenderPassButton,
-    canMakePassMove,
-    passButtonDisabledReason,
-    handlePassMove,
-    shouldShowPassConfirm,
-    isDraggingPiece,
-    boardSectionRef,
-
-    // PCBoardSection 用
     candidateNote,
-
-    // NavigationProvider 用
-    navigationState,
-    navigationHandlers,
-    kifMoves,
-    evalHistory,
-    displayEvalHistory,
-    positionHistory,
-    kifuTree,
-    selectedBranchNodeId,
-    onSelectedBranchChange,
-    branchMarkers,
-    lastAddedBranchInfo,
-    onLastAddedBranchHandled,
-    handleAddPvAsBranch,
-    handlePreviewPv,
-    kifuViewMode,
-    onViewModeChange,
-    onDisplaySettingsChange,
-    handlePlySelect,
-    handleCopyKif,
-    handleMoveDetailSelect,
-
-    // SettingsModal 用
     isSettingsModalOpen,
     onSettingsModalOpenChange,
     importSfen,
@@ -252,18 +89,26 @@ export function PCLayout({
     engineErrorDetails,
     retryEngine,
     isRetrying,
-
-    // 表示設定ダイアログ
     isDisplaySettingsOpen,
     onDisplaySettingsOpenChange,
     setDisplaySettings,
-
-    // パス権設定ダイアログ
     isPassRightsSettingsOpen,
     onPassRightsSettingsOpenChange,
     handlePassRightsSettingsChange,
-    settingsLocked,
 }: PCLayoutProps): ReactElement {
+    // Context から状態を取得
+    const matchSettings = useMatchSettings();
+    const matchState = useMatchState();
+    const navigation = useNavigation();
+
+    // MatchSettingsContext から取得
+    const { passRightsSettings, settingsLocked } = matchSettings;
+
+    // MatchStateContext から取得
+    const { displaySettings } = matchState;
+
+    // NavigationContext から取得（ダイアログで使用）
+    const { displaySettings: navDisplaySettings } = navigation;
     return (
         <section className={matchLayoutClasses}>
             <div className="flex min-h-[calc(100dvh-1rem)] w-full gap-4 p-4">
@@ -273,86 +118,14 @@ export function PCLayout({
                 </div>
 
                 {/* 将棋盤エリア（中央配置、残りスペースを使用） */}
-                <MatchStateProvider
-                    position={position}
-                    clocks={clocks}
-                    grid={grid}
-                    isMatchRunning={isMatchRunning}
-                    isPaused={isPaused}
-                    isEditMode={isEditMode}
-                    gameMode={gameMode}
-                    message={message}
-                    selection={selection}
-                    promotionSelection={promotionSelection}
-                    lastMove={lastMove}
-                    flipBoard={flipBoard}
-                    onFlipBoardChange={onFlipBoardChange}
-                    displaySettings={displaySettings}
-                    passRightsSettings={passRightsSettings}
-                    sides={sides}
-                    moves={moves}
-                    editFromSquare={editFromSquare}
-                    hideEmptyHandPieces={hideEmptyHandPieces}
-                    getHandInfo={getHandInfo}
-                    handleSquareSelect={handleSquareSelect}
-                    handlePromotionChoice={handlePromotionChoice}
-                    handleHandSelect={handleHandSelect}
-                    handleHandPiecePointerDown={handleHandPiecePointerDown}
-                    handlePiecePointerDown={handlePiecePointerDown}
-                    handlePieceTogglePromote={handlePieceTogglePromote}
-                    handleIncrementHand={handleIncrementHand}
-                    handleDecrementHand={handleDecrementHand}
-                    handleResetToStartpos={handleResetToStartpos}
-                    pauseAutoPlay={pauseAutoPlay}
-                    resumeAutoPlay={resumeAutoPlay}
-                    handleStartReview={handleStartReview}
-                    handleEnterEditMode={handleEnterEditMode}
-                    enterEditModeFromPaused={enterEditModeFromPaused}
-                    handleResign={handleResign}
-                    handleUndo={handleUndo}
-                    onOpenSettings={onOpenSettings}
-                    shouldRenderPassButton={shouldRenderPassButton}
-                    canMakePassMove={canMakePassMove}
-                    passButtonDisabledReason={passButtonDisabledReason}
-                    handlePassMove={handlePassMove}
-                    shouldShowPassConfirm={shouldShowPassConfirm}
-                    isDraggingPiece={isDraggingPiece}
-                    boardSectionRef={boardSectionRef}
-                >
-                    <div className="flex-1 flex items-start justify-center">
-                        <PCBoardSection candidateNote={candidateNote} />
-                    </div>
-                </MatchStateProvider>
+                <div className="flex-1 flex items-start justify-center">
+                    <PCBoardSection candidateNote={candidateNote} />
+                </div>
 
                 {/* 棋譜セクション（固定幅） */}
-                <NavigationProvider
-                    navigationState={navigationState}
-                    navigationHandlers={navigationHandlers}
-                    kifMoves={kifMoves}
-                    evalHistory={evalHistory}
-                    displayEvalHistory={displayEvalHistory}
-                    positionHistory={positionHistory}
-                    kifuTree={kifuTree}
-                    selectedBranchNodeId={selectedBranchNodeId}
-                    onSelectedBranchChange={onSelectedBranchChange}
-                    branchMarkers={branchMarkers}
-                    lastAddedBranchInfo={lastAddedBranchInfo}
-                    onLastAddedBranchHandled={onLastAddedBranchHandled}
-                    handleAddPvAsBranch={handleAddPvAsBranch}
-                    handlePreviewPv={handlePreviewPv}
-                    kifuViewMode={kifuViewMode}
-                    onViewModeChange={onViewModeChange}
-                    displaySettings={displaySettings}
-                    onDisplaySettingsChange={onDisplaySettingsChange}
-                    handlePlySelect={handlePlySelect}
-                    handleCopyKif={handleCopyKif}
-                    handleMoveDetailSelect={handleMoveDetailSelect}
-                    isMatchRunning={isMatchRunning}
-                >
-                    <div className="shrink-0">
-                        <PCKifuSection />
-                    </div>
-                </NavigationProvider>
+                <div className="shrink-0">
+                    <PCKifuSection />
+                </div>
 
                 {/* 設定モーダル（棋譜インポート等） */}
                 <SettingsModal open={isSettingsModalOpen} onOpenChange={onSettingsModalOpenChange}>
@@ -400,12 +173,12 @@ export function PCLayout({
                                             type="button"
                                             onClick={() =>
                                                 setDisplaySettings({
-                                                    ...displaySettings,
+                                                    ...navDisplaySettings,
                                                     squareNotation: opt.value,
                                                 })
                                             }
                                             className={`px-3 py-1.5 rounded text-sm transition-colors ${
-                                                displaySettings.squareNotation === opt.value
+                                                navDisplaySettings.squareNotation === opt.value
                                                     ? "bg-wafuu-kincha text-white"
                                                     : "bg-wafuu-washi text-wafuu-sumi hover:bg-wafuu-border border border-wafuu-border"
                                             }`}
@@ -422,10 +195,10 @@ export function PCLayout({
                             <label className="flex items-center gap-3 text-sm cursor-pointer">
                                 <input
                                     type="checkbox"
-                                    checked={displaySettings.showBoardLabels}
+                                    checked={navDisplaySettings.showBoardLabels}
                                     onChange={(e) =>
                                         setDisplaySettings({
-                                            ...displaySettings,
+                                            ...navDisplaySettings,
                                             showBoardLabels: e.target.checked,
                                         })
                                     }
@@ -436,10 +209,10 @@ export function PCLayout({
                             <label className="flex items-center gap-3 text-sm cursor-pointer">
                                 <input
                                     type="checkbox"
-                                    checked={displaySettings.highlightLastMove}
+                                    checked={navDisplaySettings.highlightLastMove}
                                     onChange={(e) =>
                                         setDisplaySettings({
-                                            ...displaySettings,
+                                            ...navDisplaySettings,
                                             highlightLastMove: e.target.checked,
                                         })
                                     }
@@ -450,10 +223,10 @@ export function PCLayout({
                             <label className="flex items-center gap-3 text-sm cursor-pointer">
                                 <input
                                     type="checkbox"
-                                    checked={displaySettings.showKifuEval}
+                                    checked={navDisplaySettings.showKifuEval}
                                     onChange={(e) =>
                                         setDisplaySettings({
-                                            ...displaySettings,
+                                            ...navDisplaySettings,
                                             showKifuEval: e.target.checked,
                                         })
                                     }
@@ -464,10 +237,10 @@ export function PCLayout({
                             <label className="flex items-center gap-3 text-sm cursor-pointer">
                                 <input
                                     type="checkbox"
-                                    checked={displaySettings.enableWheelNavigation}
+                                    checked={navDisplaySettings.enableWheelNavigation}
                                     onChange={(e) =>
                                         setDisplaySettings({
-                                            ...displaySettings,
+                                            ...navDisplaySettings,
                                             enableWheelNavigation: e.target.checked,
                                         })
                                     }
