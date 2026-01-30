@@ -26,6 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLazyNnueLoader } from "../hooks/useLazyNnueLoader";
 import { useNnueStorage } from "../hooks/useNnueStorage";
 import { usePresetManager } from "../hooks/usePresetManager";
+import { AboutDialog } from "./AboutDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./dialog";
 import { EngineRestartingOverlay } from "./nnue/EngineRestartingOverlay";
 import { NnueManagerDialog } from "./nnue/NnueManagerDialog";
@@ -517,6 +518,9 @@ export function ShogiMatch({
 
     // 表示設定ダイアログの状態
     const [isDisplaySettingsOpen, setIsDisplaySettingsOpen] = useState(false);
+
+    // About（ライセンス）ダイアログの状態
+    const [isAboutOpen, setIsAboutOpen] = useState(false);
 
     // パス権設定ダイアログの状態
     const [isPassRightsSettingsOpen, setIsPassRightsSettingsOpen] = useState(false);
@@ -3018,6 +3022,8 @@ export function ShogiMatch({
                         onDisplaySettingsChange={setDisplaySettings}
                         // メッセージ
                         message={message}
+                        // About
+                        onOpenAbout={() => setIsAboutOpen(true)}
                     />
                 ) : (
                     <section className={matchLayoutClasses}>
@@ -3794,6 +3800,20 @@ export function ShogiMatch({
                         </div>
                     </section>
                 )}
+
+                {/* 画面右下固定のAboutリンク（PC版のみ） */}
+                {!isMobile && (
+                    <button
+                        type="button"
+                        onClick={() => setIsAboutOpen(true)}
+                        className="fixed bottom-2 right-2 z-40 px-2 py-1 text-xs text-muted-foreground/60 hover:text-muted-foreground hover:underline transition-colors"
+                        aria-label="このアプリについて"
+                    >
+                        About
+                    </button>
+                )}
+
+                <AboutDialog open={isAboutOpen} onOpenChange={setIsAboutOpen} />
             </TooltipProvider>
         </ShogiMatchProvider>
     );

@@ -173,6 +173,9 @@ interface MobileLayoutProps {
     onPreviewPv?: (ply: number, pv: string[], evalCp?: number, evalMate?: number) => void;
     /** 現在位置がメインライン上にあるか */
     isOnMainLine?: boolean;
+
+    /** Aboutダイアログを開く */
+    onOpenAbout?: () => void;
 }
 
 /**
@@ -255,6 +258,7 @@ export function MobileLayout({
     onAddPvAsBranch,
     onPreviewPv,
     isOnMainLine = true,
+    onOpenAbout,
 }: MobileLayoutProps): ReactElement {
     // 設定BottomSheetの状態
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -679,6 +683,7 @@ export function MobileLayout({
                     }
                     displaySettings={displaySettingsFull}
                     onDisplaySettingsChange={onDisplaySettingsChange}
+                    onOpenAbout={onOpenAbout}
                 />
             </BottomSheet>
 
