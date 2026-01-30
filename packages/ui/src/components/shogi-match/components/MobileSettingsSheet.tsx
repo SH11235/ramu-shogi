@@ -97,6 +97,9 @@ interface MobileSettingsSheetProps {
     // 表示設定
     displaySettings: DisplaySettings;
     onDisplaySettingsChange: (settings: DisplaySettings) => void;
+
+    // Aboutダイアログを開く
+    onOpenAbout?: () => void;
 }
 
 // iOS Safari は16px未満のinput/selectにフォーカスすると自動ズームするため、text-base(16px)を使用
@@ -137,6 +140,7 @@ export function MobileSettingsSheet({
     onResetToStartpos,
     displaySettings,
     onDisplaySettingsChange,
+    onOpenAbout,
 }: MobileSettingsSheetProps): ReactElement {
     // カスタム NNUE（プリセット以外）のフィルタリング
     const customNnueList = nnueList.filter((n) => n.source !== "preset");
@@ -638,6 +642,19 @@ export function MobileSettingsSheet({
                     </label>
                 </div>
             </div>
+
+            {/* このアプリについて / ライセンス */}
+            {onOpenAbout && (
+                <div className="pt-3 border-t border-border">
+                    <button
+                        type="button"
+                        onClick={onOpenAbout}
+                        className="text-sm text-muted-foreground hover:text-foreground hover:underline transition-colors"
+                    >
+                        このアプリについて / ライセンス
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

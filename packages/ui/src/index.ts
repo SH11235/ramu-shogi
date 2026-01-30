@@ -1,3 +1,4 @@
+export * from "./components/AboutDialog";
 export * from "./components/alert-dialog";
 export * from "./components/button";
 export * from "./components/dialog";
