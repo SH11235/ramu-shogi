@@ -136,11 +136,13 @@ export type GameMode = "editing" | "playing" | "paused" | "reviewing";
  * - 'none': 解析していない
  * - 'by-ply': 通常解析（plyで評価値を保存）
  * - 'by-node-id': 分岐解析（ノードIDで評価値を保存）
+ * - 'error': 解析エラー
  */
 export type AnalyzingState =
     | { type: "none" }
     | { type: "by-ply"; ply: number }
-    | { type: "by-node-id"; nodeId: string; ply: number };
+    | { type: "by-node-id"; nodeId: string; ply: number }
+    | { type: "error"; ply: number; message: string };
 
 /** 解析していない状態の定数 */
 export const ANALYZING_STATE_NONE: AnalyzingState = { type: "none" };

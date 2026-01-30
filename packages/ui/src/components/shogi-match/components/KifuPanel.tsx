@@ -117,6 +117,8 @@ interface KifuPanelProps {
     isAnalyzing?: boolean;
     /** 現在解析中の手数 */
     analyzingPly?: number;
+    /** 解析エラー（発生した手数とメッセージ） */
+    analysisError?: { ply: number; message: string };
     /** 一括解析の状態 */
     batchAnalysis?: {
         isRunning: boolean;
@@ -526,7 +528,7 @@ function ExpandedMoveDetails({
                     )}
                     {showNnueSelector && (
                         <label className="flex flex-col gap-1 text-[10px] text-muted-foreground">
-                            <span>分析NNUE</span>
+                            <span>分析に使うAI</span>
                             <select
                                 value={selectedValue}
                                 onChange={(e) =>
@@ -1113,6 +1115,7 @@ export function KifuPanel({
     onAnalyzePly,
     isAnalyzing,
     analyzingPly,
+    analysisError,
     batchAnalysis,
     onStartBatchAnalysis,
     onStartTreeBatchAnalysis,
@@ -1654,6 +1657,14 @@ export function KifuPanel({
                         onEnable={() => onShowEvalChange(true)}
                         onDismiss={() => setHintDismissed(true)}
                     />
+                )}
+
+                {/* 解析エラー表示 */}
+                {analysisError && (
+                    <div className="mx-1 my-2 px-3 py-2 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-sm">
+                        <span className="font-medium">{analysisError.ply}手目の解析エラー:</span>{" "}
+                        {analysisError.message}
+                    </div>
                 )}
 
                 {/* 分岐一覧ビュー */}

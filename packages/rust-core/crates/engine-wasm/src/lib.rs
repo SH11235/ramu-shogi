@@ -82,6 +82,12 @@ enum EventPayload {
         #[serde(rename = "move")]
         mv: String,
         ponder: Option<String>,
+        pv: Option<Vec<String>>,
+        #[serde(rename = "scoreCp")]
+        score_cp: Option<i32>,
+        #[serde(rename = "scoreMate")]
+        score_mate: Option<i32>,
+        depth: Option<u32>,
     },
     #[serde(rename = "error")]
     Error { message: String },
@@ -355,6 +361,12 @@ fn emit_info(info: &SearchInfo) {
 }
 
 fn emit_bestmove(result: SearchResult) {
+    let pv = if result.pv.is_empty() {
+        None
+    } else {
+        Some(result.pv.iter().map(|m| m.to_usi()).collect())
+    };
+    let (score_cp, score_mate) = score_fields(result.score);
     emit_event(EventPayload::BestMove {
         mv: result.best_move.to_usi(),
         ponder: if result.ponder_move == Move::NONE {
@@ -362,6 +374,10 @@ fn emit_bestmove(result: SearchResult) {
         } else {
             Some(result.ponder_move.to_usi())
         },
+        pv,
+        score_cp,
+        score_mate,
+        depth: Some(result.depth.max(0) as u32),
     });
 }
 

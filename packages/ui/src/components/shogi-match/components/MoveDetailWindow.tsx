@@ -44,6 +44,8 @@ interface MoveDetailWindowProps {
     isAnalyzing?: boolean;
     /** 現在解析中の手数 */
     analyzingPly?: number;
+    /** 解析エラー（発生した手数とメッセージ） */
+    analysisError?: { ply: number; message: string };
     /** 分析用 NNUE 選択 */
     analysisNnueSelection?: NnueSelection;
     onAnalysisNnueSelectionChange?: (selection: NnueSelection) => void;
@@ -336,6 +338,7 @@ export function MoveDetailWindow({
     onAnalyze,
     isAnalyzing,
     analyzingPly,
+    analysisError,
     analysisNnueSelection,
     onAnalysisNnueSelectionChange,
     nnueList,
@@ -649,7 +652,7 @@ export function MoveDetailWindow({
                         )}
                         {showNnueSelector && (
                             <label className="flex flex-col gap-1 text-[10px] text-muted-foreground">
-                                <span>分析NNUE</span>
+                                <span>分析に使うAI</span>
                                 <select
                                     value={selectedValue}
                                     onChange={(e) =>
@@ -693,6 +696,12 @@ export function MoveDetailWindow({
                                 </>
                             )}
                         </button>
+                        {/* 解析エラー表示 */}
+                        {analysisError && analysisError.ply === move.ply && (
+                            <div className="mt-2 px-2 py-1.5 rounded bg-destructive/10 border border-destructive/30 text-destructive text-[11px]">
+                                {analysisError.message}
+                            </div>
+                        )}
                     </div>
                 )}
 
