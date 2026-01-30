@@ -56,7 +56,7 @@ interface StartOptions {
 /**
  * エンジンプールのハンドル
  */
-interface EnginePoolHandle {
+export interface EnginePoolHandle {
     /** 実行中かどうか */
     isRunning: boolean;
     /** 現在の進捗 */

@@ -9,7 +9,6 @@ import {
     deriveLastMove,
     type GameResult,
     getAllSquares,
-    getPathToNode,
     getPositionService,
     type LastMove,
     type NnueSelection,
@@ -17,7 +16,6 @@ import {
     type PieceType,
     type Player,
     type PositionState,
-    type ResolvedNnue,
     resolveWorkerCount,
     type Square,
 } from "@shogi/app-core";
@@ -42,20 +40,20 @@ import {
     NavigationProvider,
 } from "./shogi-match/contexts";
 import { applyDropResult, DragGhost, type DropResult, usePieceDnd } from "./shogi-match/dnd";
+import { useBatchAnalysis } from "./shogi-match/hooks/useBatchAnalysis";
 import { type ClockSettings, useClockManager } from "./shogi-match/hooks/useClockManager";
 import { useEngineManager } from "./shogi-match/hooks/useEngineManager";
-import { type AnalysisJob, useEnginePool } from "./shogi-match/hooks/useEnginePool";
+import { useEnginePool } from "./shogi-match/hooks/useEnginePool";
 import { useKifuKeyboardNavigation } from "./shogi-match/hooks/useKifuKeyboardNavigation";
 import { useKifuNavigation } from "./shogi-match/hooks/useKifuNavigation";
 import { useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
+import { useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
 import { MobileLayout } from "./shogi-match/layouts/MobileLayout";
 import { PCLayout } from "./shogi-match/layouts/PCLayout";
 import { ShogiMatchProvider } from "./shogi-match/ShogiMatchContext";
 import {
-    ANALYZING_STATE_NONE,
     type AnalysisSettings,
-    type AnalyzingState,
     DEFAULT_ANALYSIS_SETTINGS,
     DEFAULT_DISPLAY_SETTINGS,
     DEFAULT_PASS_RIGHTS_SETTINGS,
@@ -73,10 +71,6 @@ import {
     consumeFromHand,
     countPieces,
 } from "./shogi-match/utils/boardUtils";
-import {
-    collectBranchAnalysisJobs,
-    collectTreeAnalysisJobs,
-} from "./shogi-match/utils/branchTreeUtils";
 import { isPromotable, PIECE_CAP, PIECE_LABELS } from "./shogi-match/utils/constants";
 import { exportToKifString, type KifMove } from "./shogi-match/utils/kifFormat";
 import { type KifMoveData, parseSfen } from "./shogi-match/utils/kifParser";
@@ -86,7 +80,6 @@ import {
     isSamePassRightsSettings,
     normalizePassRightsSettings,
 } from "./shogi-match/utils/passRightsSettings";
-import { determinePromotion } from "./shogi-match/utils/promotionLogic";
 import { isSameTimeSettings, normalizeTimeSettings } from "./shogi-match/utils/timeSettings";
 import { TooltipProvider } from "./tooltip";
 
@@ -262,9 +255,7 @@ export function ShogiMatch({
         evalCp?: number;
         evalMate?: number;
     } | null>(null);
-    // 解析状態（union型で相互排他的な状態を型レベルで保証）
-    const [analyzingState, setAnalyzingState] = useState<AnalyzingState>(ANALYZING_STATE_NONE);
-    // 一括解析の状態
+    // 一括解析の状態（useEnginePoolとuseBatchAnalysisで共有）
     const [batchAnalysis, setBatchAnalysis] = useState<{
         isRunning: boolean;
         currentIndex: number;
@@ -920,31 +911,10 @@ export function ShogiMatch({
 
     const handleMoveFromEngineRef = useRef<(move: string) => void>(() => {});
 
-    // 分岐解析用の状態をrefで追跡（コールバック内で最新値を参照するため）
-    const analyzingStateRef = useRef<AnalyzingState>(ANALYZING_STATE_NONE);
-    useEffect(() => {
-        analyzingStateRef.current = analyzingState;
-
-        return () => {
-            // クリーンアップ時にrefをリセット
-            analyzingStateRef.current = ANALYZING_STATE_NONE;
-        };
-    }, [analyzingState]);
-
-    // 評価値更新コールバック（分岐解析にも対応）
-    const handleEvalUpdate = useCallback(
-        (ply: number, event: import("@shogi/engine-client").EngineInfoEvent) => {
-            const state = analyzingStateRef.current;
-            // 分岐解析中の場合はノードIDで保存
-            if (state.type === "by-node-id") {
-                recordEvalByNodeId(state.nodeId, event);
-            } else {
-                // 通常解析の場合はplyで保存
-                recordEvalByPly(ply, event);
-            }
-        },
-        [recordEvalByPly, recordEvalByNodeId],
-    );
+    // 評価値更新コールバックのref（useBatchAnalysisで設定）
+    const handleEvalUpdateRef = useRef<
+        (ply: number, event: import("@shogi/engine-client").EngineInfoEvent) => void
+    >(() => {});
 
     // エンジン管理フックを使用（明示API経由で制御）
     const {
@@ -973,7 +943,7 @@ export function ShogiMatch({
         passRightsSettings,
         onMoveFromEngine: (move) => handleMoveFromEngineRef.current(move),
         onMatchEnd: endMatch,
-        onEvalUpdate: handleEvalUpdate,
+        onEvalUpdate: (ply, event) => handleEvalUpdateRef.current(ply, event),
         maxLogs,
         senteNnueSelection,
         goteNnueSelection,
@@ -1050,6 +1020,42 @@ export function ShogiMatch({
         },
         nnueId: analysisNnueId,
     });
+
+    // 一括解析管理フック
+    const {
+        analyzingState,
+        handleEvalUpdate,
+        handleAnalyzePly,
+        handleAnalyzeNode,
+        handleStartBatchAnalysis,
+        handleStartTreeBatchAnalysis,
+        handleAnalyzeBranch,
+        handleCancelBatchAnalysis,
+    } = useBatchAnalysis({
+        kifMoves,
+        startSfen,
+        analysisSettings,
+        enginePool,
+        resolveNnue,
+        analysisNnueSelection,
+        recordEvalByPly,
+        recordEvalByNodeId,
+        clearEvalByPly,
+        clearEvalByNodeId,
+        analyzePosition,
+        isAnalyzing,
+        kifuTree: navigation.tree,
+        openNnueManager: (reason) => {
+            setNnueManagerOpenReason(reason);
+            setIsNnueManagerOpen(true);
+        },
+        setMessage,
+        batchAnalysis,
+        setBatchAnalysis,
+    });
+
+    // handleEvalUpdate を ref に設定（useEngineManager で使用）
+    handleEvalUpdateRef.current = handleEvalUpdate;
 
     // キーボード・ホイールナビゲーション用のgoForward（分岐対応）
     const handleKeyboardForward = useCallback(() => {
@@ -1388,52 +1394,6 @@ export function ShogiMatch({
         }
     }, [clearLegalCache, isMatchRunning, navigation, refreshStartSfen]);
 
-    const applyMoveCommon = useCallback(
-        (nextPosition: PositionState, mv: string, last?: LastMove) => {
-            // 消費時間を計算
-            const elapsedMs = Date.now() - turnStartTimeRef.current;
-            // 棋譜ナビゲーションに手を追加（局面更新はonPositionChangeで自動実行）
-            navigation.addMove(mv, nextPosition, { elapsedMs });
-            setLastMove(last);
-            setSelection(null);
-            setMessage(null);
-            clearLegalCache();
-            // ターン開始時刻をリセット
-            turnStartTimeRef.current = Date.now();
-            updateClocksForNextTurn(nextPosition.turn);
-        },
-        [clearLegalCache, navigation, updateClocksForNextTurn],
-    );
-
-    /** 検討モードで手を適用（分岐作成、時計更新なし） */
-    const applyMoveForReview = useCallback(
-        (nextPosition: PositionState, mv: string, last?: LastMove) => {
-            // 現在のノードの子を確認して、分岐が作成されるか判定
-            const tree = navigation.tree;
-            const currentNode = tree ? tree.nodes.get(tree.currentNodeId) : null;
-
-            const existingChild = currentNode?.children.find((childId: string) => {
-                const child = tree?.nodes.get(childId);
-                return child?.usiMove === mv;
-            });
-            const willCreateBranch = !existingChild && (currentNode?.children.length ?? 0) > 0;
-
-            // 棋譜ナビゲーションに手を追加
-            navigation.addMove(mv, nextPosition);
-            setLastMove(last);
-            setSelection(null);
-            setMessage(null);
-            clearLegalCache();
-
-            // 分岐が作成された場合は記録（ネスト分岐も含む）
-            if (willCreateBranch && currentNode) {
-                // 分岐点のply（currentNode）と最初の手（mv）を記録
-                setLastAddedBranchInfo({ ply: currentNode.ply, firstMove: mv });
-            }
-        },
-        [clearLegalCache, navigation],
-    );
-
     /** 平手初期局面にリセット */
     const handleResetToStartpos = useCallback(async () => {
         matchEndedRef.current = false;
@@ -1472,23 +1432,6 @@ export function ShogiMatch({
             setMessage({ text: `平手初期化に失敗しました: ${String(error)}`, type: "error" });
         }
     }, [clearLegalCache, navigation, resetClocks, stopAllEngines]);
-
-    const getLegalSet = useCallback(async (): Promise<Set<string> | null> => {
-        if (!positionReady) return null;
-        const ply = moves.length;
-        const passRightsOption = getPassRightsOption();
-        const resolver = async () => {
-            if (fetchLegalMoves) {
-                return fetchLegalMoves(startSfen, moves, passRightsOption);
-            }
-            return getPositionService().getLegalMoves(startSfen, moves, passRightsOption);
-        };
-        const result = await legalCache.getOrResolve(ply, resolver);
-        if (moves.length === ply) {
-            setCanPassLegal(result.has("pass"));
-        }
-        return result;
-    }, [positionReady, fetchLegalMoves, startSfen, legalCache, getPassRightsOption, moves]);
 
     // パス可否判定のため、キャッシュ未作成時は合法手をプリフェッチ
     useEffect(() => {
@@ -1764,427 +1707,40 @@ export function ShogiMatch({
         [applyEditedPosition],
     );
 
-    /**
-     * 編集モードでのマス選択処理
-     * @returns 処理を行った場合は true
-     */
-    const handleSquareSelectEditMode = useCallback(
-        (square: string): boolean => {
-            if (!isEditMode || !positionReady) {
-                return false;
-            }
-            const sq = square as Square;
-
-            // 移動元が選択されている場合：移動先として処理
-            if (editFromSquare) {
-                const from = editFromSquare;
-                if (from === sq) {
-                    // 同じマスをクリック：選択解除
-                    setEditFromSquare(null);
-                    return true;
-                }
-                const moving = position.board[from];
-                if (!moving) {
-                    setEditFromSquare(null);
-                    return true;
-                }
-                const ok = placePieceAt(sq, moving, { fromSquare: from });
-                if (ok) {
-                    setEditFromSquare(null);
-                }
-                return true;
-            }
-
-            // 削除モード：駒を削除
-            if (editTool === "erase") {
-                placePieceAt(sq, null);
-                return true;
-            }
-
-            // 駒ボタンが選択されている場合：配置
-            if (editPieceType) {
-                const pieceToPlace: Piece = {
-                    owner: editOwner,
-                    type: editPieceType,
-                    promoted: editPromoted || undefined,
-                };
-                placePieceAt(sq, pieceToPlace);
-                return true;
-            }
-
-            // 駒ボタン未選択：盤上の駒をクリックで移動元として選択
-            const current = position.board[sq];
-            if (current) {
-                setEditFromSquare(sq);
-                return true;
-            }
-
-            // 空マスをクリックした場合は何もしない
-            return true;
-        },
-        [
-            isEditMode,
-            positionReady,
-            editFromSquare,
-            position.board,
-            editTool,
-            editPieceType,
-            editOwner,
-            editPromoted,
-            placePieceAt,
-        ],
-    );
-
-    /**
-     * 検討モードでのマス選択処理
-     * @returns 処理を行った場合は true
-     */
-    const handleSquareSelectReviewMode = useCallback(
-        async (square: string, shiftKey?: boolean): Promise<boolean> => {
-            if (!isReviewMode || !positionReady) {
-                return false;
-            }
-
-            // 成り選択中の場合：キャンセル
-            if (promotionSelection) {
-                setPromotionSelection(null);
-                setSelection(null);
-                return true;
-            }
-
-            const sq = square as Square;
-
-            // 駒を選択
-            if (!selection) {
-                const piece = position.board[sq];
-                // 検討モードでは現在の手番の駒のみ動かせる
-                if (piece && piece.owner === position.turn) {
-                    setSelection({ kind: "square", square: sq });
-                }
-                return true;
-            }
-
-            // 持ち駒を打つ
-            if (selection.kind === "hand") {
-                const moveStr = `${selection.piece}*${square}`;
-                const legal = await getLegalSet();
-                if (legal && !legal.has(moveStr)) {
-                    setMessage({ text: "合法手ではありません", type: "error" });
-                    return true;
-                }
-                const result = applyMoveWithState(position, moveStr, { validateTurn: false });
-                if (!result.ok) {
-                    setMessage({
-                        text: result.error ?? "持ち駒を打てませんでした",
-                        type: "error",
-                    });
-                    return true;
-                }
-                applyMoveForReview(result.next, moveStr, result.lastMove);
-                return true;
-            }
-
-            // 盤上の駒を移動
-            if (selection.kind === "square") {
-                if (selection.square === square) {
-                    setSelection(null);
-                    return true;
-                }
-
-                const legal = await getLegalSet();
-                if (!legal) return true;
-
-                const from = selection.square;
-                const to = square;
-                const piece = position.board[from as Square];
-
-                const promotion = determinePromotion(legal, from, to);
-
-                if (promotion === "none") {
-                    const moveStr = `${from}${to}`;
-                    if (!legal.has(moveStr)) {
-                        setMessage({ text: "合法手ではありません", type: "error" });
-                        return true;
-                    }
-                    const result = applyMoveWithState(position, moveStr, {
-                        validateTurn: false,
-                    });
-                    if (!result.ok) {
-                        setMessage({
-                            text: result.error ?? "指し手を適用できませんでした",
-                            type: "error",
-                        });
-                        return true;
-                    }
-                    applyMoveForReview(result.next, moveStr, result.lastMove);
-                    return true;
-                }
-
-                if (promotion === "forced") {
-                    const moveStr = `${from}${to}+`;
-                    const result = applyMoveWithState(position, moveStr, {
-                        validateTurn: false,
-                    });
-                    if (!result.ok) {
-                        setMessage({
-                            text: result.error ?? "指し手を適用できませんでした",
-                            type: "error",
-                        });
-                        return true;
-                    }
-                    applyMoveForReview(result.next, moveStr, result.lastMove);
-                    return true;
-                }
-
-                // 任意成り: Shift+クリック
-                if (shiftKey) {
-                    const moveStr = `${from}${to}+`;
-                    const result = applyMoveWithState(position, moveStr, {
-                        validateTurn: false,
-                    });
-                    if (!result.ok) {
-                        setMessage({
-                            text: result.error ?? "指し手を適用できませんでした",
-                            type: "error",
-                        });
-                        return true;
-                    }
-                    applyMoveForReview(result.next, moveStr, result.lastMove);
-                    return true;
-                }
-
-                if (!piece) {
-                    setMessage({ text: "駒が見つかりません", type: "error" });
-                    return true;
-                }
-                setPromotionSelection({ from: from as Square, to: to as Square, piece });
-                return true;
-            }
-            return true;
-        },
-        [
-            isReviewMode,
-            positionReady,
-            promotionSelection,
-            selection,
-            position,
-            getLegalSet,
-            applyMoveForReview,
-        ],
-    );
-
-    /**
-     * 対局モードでのマス選択処理
-     * @returns 処理を行った場合は true
-     */
-    const handleSquareSelectGameMode = useCallback(
-        async (square: string, shiftKey?: boolean): Promise<boolean> => {
-            // 待った・パス処理中は入力をブロック
-            if (moveProcessingRef.current) {
-                return true;
-            }
-            // 一時停止中は入力をブロック
-            if (isPaused) {
-                return true;
-            }
-            if (!positionReady) {
-                return true;
-            }
-            if (isEngineTurn(position.turn)) {
-                return true;
-            }
-
-            // 成り選択中の場合：成り/不成を選択
-            if (promotionSelection) {
-                // 成り選択UIの外をクリック → キャンセル
-                setPromotionSelection(null);
-                setSelection(null);
-                return true;
-            }
-
-            if (!selection) {
-                const sq = square as Square;
-                const piece = position.board[sq];
-                if (piece && piece.owner === position.turn) {
-                    setSelection({ kind: "square", square: sq });
-                }
-                return true;
-            }
-
-            if (selection.kind === "square") {
-                if (selection.square === square) {
-                    setSelection(null);
-                    return true;
-                }
-
-                const legal = await getLegalSet();
-                if (!legal) return true;
-
-                const from = selection.square;
-                const to = square;
-                const piece = position.board[from as Square];
-
-                // 成り判定を実行
-                const promotion = determinePromotion(legal, from, to);
-
-                // 【ケース1】成れない場合 → 基本移動を試行
-                if (promotion === "none") {
-                    const moveStr = `${from}${to}`;
-                    if (!legal.has(moveStr)) {
-                        setMessage({ text: "合法手ではありません", type: "error" });
-                        return true;
-                    }
-                    const result = applyMoveWithState(position, moveStr, { validateTurn: true });
-                    if (!result.ok) {
-                        setMessage({
-                            text: result.error ?? "指し手を適用できませんでした",
-                            type: "error",
-                        });
-                        return true;
-                    }
-                    applyMoveCommon(result.next, moveStr, result.lastMove);
-                    return true;
-                }
-
-                // 【ケース2】強制成り → 自動的に成って移動（ダイアログなし）
-                if (promotion === "forced") {
-                    const moveStr = `${from}${to}+`;
-                    const result = applyMoveWithState(position, moveStr, { validateTurn: true });
-                    if (!result.ok) {
-                        setMessage({
-                            text: result.error ?? "指し手を適用できませんでした",
-                            type: "error",
-                        });
-                        return true;
-                    }
-                    applyMoveCommon(result.next, moveStr, result.lastMove);
-                    return true;
-                }
-
-                // 【ケース3】任意成り（promotion === 'optional'）
-                // Shift+クリック：即座に成って移動
-                if (shiftKey) {
-                    const moveStr = `${from}${to}+`;
-                    const result = applyMoveWithState(position, moveStr, { validateTurn: true });
-                    if (!result.ok) {
-                        setMessage({
-                            text: result.error ?? "指し手を適用できませんでした",
-                            type: "error",
-                        });
-                        return true;
-                    }
-                    applyMoveCommon(result.next, moveStr, result.lastMove);
-                    return true;
-                }
-
-                // 通常クリック：成り選択ダイアログを表示
-                if (!piece) {
-                    setMessage({ text: "駒が見つかりません", type: "error" });
-                    return true;
-                }
-                setPromotionSelection({ from: from as Square, to: to as Square, piece });
-                return true;
-            }
-
-            // 持ち駒を打つ
-            const moveStr = `${selection.piece}*${square}`;
-            const legal = await getLegalSet();
-            if (legal && !legal.has(moveStr)) {
-                setMessage({ text: "合法手ではありません", type: "error" });
-                return true;
-            }
-            const result = applyMoveWithState(position, moveStr, { validateTurn: true });
-            if (!result.ok) {
-                setMessage({ text: result.error ?? "持ち駒を打てませんでした", type: "error" });
-                return true;
-            }
-            applyMoveCommon(result.next, moveStr, result.lastMove);
-            return true;
-        },
-        [
-            isPaused,
-            positionReady,
-            isEngineTurn,
-            promotionSelection,
-            selection,
-            position,
-            getLegalSet,
-            applyMoveCommon,
-        ],
-    );
-
-    /**
-     * マス選択のメインハンドラ
-     * モードに応じて適切なハンドラに振り分ける
-     */
-    const handleSquareSelect = useCallback(
-        async (square: string, shiftKey?: boolean) => {
-            setMessage(null);
-
-            // 編集モード
-            if (isEditMode) {
-                handleSquareSelectEditMode(square);
-                return;
-            }
-
-            // 検討モード
-            if (isReviewMode) {
-                await handleSquareSelectReviewMode(square, shiftKey);
-                return;
-            }
-
-            // 対局モード
-            await handleSquareSelectGameMode(square, shiftKey);
-        },
-        [
-            isEditMode,
-            isReviewMode,
-            handleSquareSelectEditMode,
-            handleSquareSelectReviewMode,
-            handleSquareSelectGameMode,
-        ],
-    );
-
-    const handlePromotionChoice = useCallback(
-        (promote: boolean) => {
-            if (!promotionSelection) return;
-            const { from, to } = promotionSelection;
-            const moveStr = `${from}${to}${promote ? "+" : ""}`;
-            // 検討モードでは手番チェックをスキップ
-            const result = applyMoveWithState(position, moveStr, { validateTurn: !isReviewMode });
-            if (!result.ok) {
-                setMessage({ text: result.error ?? "指し手を適用できませんでした", type: "error" });
-                setPromotionSelection(null);
-                setSelection(null);
-                return;
-            }
-            if (isReviewMode) {
-                applyMoveForReview(result.next, moveStr, result.lastMove);
-            } else {
-                applyMoveCommon(result.next, moveStr, result.lastMove);
-            }
-            setPromotionSelection(null);
-        },
-        [promotionSelection, position, isReviewMode, applyMoveForReview, applyMoveCommon],
-    );
-
-    const handleHandSelect = useCallback(
-        (piece: PieceType) => {
-            if (!positionReady) {
-                return;
-            }
-            if (isEditMode) {
-                return;
-            }
-            // 検討モードでは手番の持ち駒を選択可能
-            if (!isReviewMode && isEngineTurn(position.turn)) {
-                return;
-            }
-            setSelection({ kind: "hand", piece });
-            setMessage(null);
-        },
-        [positionReady, isEditMode, isReviewMode, isEngineTurn, position.turn],
-    );
+    // 指し手実行管理フック
+    const { handleSquareSelect, handlePromotionChoice, handleHandSelect } = useMoveExecution({
+        position,
+        navigation,
+        isEditMode,
+        isReviewMode,
+        isPaused,
+        positionReady,
+        fetchLegalMoves,
+        startSfen,
+        moves,
+        legalCache,
+        clearLegalCache,
+        setCanPassLegal,
+        getPassRightsOption,
+        updateClocksForNextTurn,
+        turnStartTimeRef,
+        isEngineTurn,
+        selection,
+        setSelection,
+        promotionSelection,
+        setPromotionSelection,
+        setLastMove,
+        setMessage,
+        setLastAddedBranchInfo,
+        editFromSquare,
+        setEditFromSquare,
+        editTool,
+        editPieceType,
+        editOwner,
+        editPromoted,
+        placePieceAt,
+        moveProcessingRef,
+    });
 
     const loadMoves = useCallback(
         async (
@@ -2278,246 +1834,6 @@ export function ShogiMatch({
         },
         [isMatchRunning, navigation, stopTicking, stopAllEngines],
     );
-
-    // 特定の手数の局面を解析するコールバック（オンデマンド解析用）
-    const handleAnalyzePly = useCallback(
-        async (ply: number) => {
-            // NNUE の存在確認（未ダウンロードの場合はエラー）
-            try {
-                await resolveNnue(analysisNnueSelection);
-            } catch (e) {
-                const errorMessage =
-                    e instanceof Error ? e.message : "評価関数の準備に失敗しました";
-                setNnueManagerOpenReason(`解析を開始できません: ${errorMessage}`);
-                setIsNnueManagerOpen(true);
-                return;
-            }
-
-            // ply手目の局面を解析するには、ply-1手までの指し手が必要
-            // （ply 1 = 1手目を指した後の局面 = moves[0]まで適用した局面）
-            const movesForPly = kifMoves.slice(0, ply).map((m) => m.usiMove);
-
-            // 再解析のために既存の評価値をクリア
-            clearEvalByPly(ply);
-
-            setAnalyzingState({ type: "by-ply", ply });
-            try {
-                await analyzePosition({
-                    sfen: startSfen,
-                    moves: movesForPly,
-                    ply,
-                    timeMs: 3000, // 3秒間解析
-                    depth: 20, // 最大深さ20
-                });
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                setAnalyzingState({ type: "error", ply, message: errorMessage });
-            }
-        },
-        [kifMoves, analyzePosition, startSfen, clearEvalByPly, resolveNnue, analysisNnueSelection],
-    );
-
-    // 分岐内のノードを解析するコールバック
-    const handleAnalyzeNode = useCallback(
-        async (nodeId: string) => {
-            const tree = navigation.tree;
-            if (!tree) {
-                setMessage({ text: "棋譜ツリーが初期化されていません", type: "error" });
-                return;
-            }
-
-            const node = tree.nodes.get(nodeId);
-            if (!node) {
-                setMessage({ text: "指定されたノードが見つかりません", type: "error" });
-                return;
-            }
-
-            // 再解析のために既存の評価値をクリア
-            clearEvalByNodeId(nodeId);
-
-            try {
-                // ルートからこのノードまでのパスを取得
-                const path = getPathToNode(tree, nodeId);
-                // 各ノードのusiMoveを収集（ルートは除く）
-                const movesForNode: string[] = [];
-                for (const id of path) {
-                    const n = tree.nodes.get(id);
-                    if (n?.usiMove) {
-                        movesForNode.push(n.usiMove);
-                    }
-                }
-
-                // 分岐解析用に状態を設定
-                setAnalyzingState({ type: "by-node-id", nodeId, ply: node.ply });
-                await analyzePosition({
-                    sfen: startSfen,
-                    moves: movesForNode,
-                    ply: node.ply,
-                    timeMs: 3000,
-                    depth: 20,
-                });
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                setAnalyzingState({ type: "error", ply: node.ply, message: errorMessage });
-            }
-        },
-        [navigation.tree, analyzePosition, startSfen, clearEvalByNodeId],
-    );
-
-    // 単発解析完了時の処理（エラー状態は自動クリアしない）
-    useEffect(() => {
-        if (!isAnalyzing && analyzingState.type !== "none" && analyzingState.type !== "error") {
-            setAnalyzingState(ANALYZING_STATE_NONE);
-        }
-    }, [isAnalyzing, analyzingState.type]);
-
-    // 一括解析を開始（並列処理）- 本譜のみ
-    const handleStartBatchAnalysis = useCallback(async () => {
-        // PVがない手を抽出
-        const targetPlies = kifMoves.filter((m) => !m.pv || m.pv.length === 0).map((m) => m.ply);
-
-        if (targetPlies.length === 0) {
-            return; // 解析対象がない
-        }
-
-        // NNUE の存在確認（未ダウンロードの場合はエラー）
-        let resolved: ResolvedNnue | null;
-        try {
-            resolved = await resolveNnue(analysisNnueSelection);
-        } catch (e) {
-            const errorMessage = e instanceof Error ? e.message : "評価関数の準備に失敗しました";
-            setNnueManagerOpenReason(`解析を開始できません: ${errorMessage}`);
-            setIsNnueManagerOpen(true);
-            return;
-        }
-
-        // ジョブを生成
-        const jobs: AnalysisJob[] = targetPlies.map((ply) => ({
-            ply,
-            sfen: startSfen,
-            moves: kifMoves.slice(0, ply).map((m) => m.usiMove),
-            timeMs: analysisSettings.batchAnalysisTimeMs,
-            depth: analysisSettings.batchAnalysisDepth,
-        }));
-
-        // 並列一括解析を開始（resolvedを直接渡す）
-        enginePool.start(jobs, { nnueId: resolved?.nnueId ?? null, fvScale: resolved?.fvScale });
-    }, [kifMoves, startSfen, analysisSettings, enginePool, resolveNnue, analysisNnueSelection]);
-
-    // ツリー全体（分岐含む）の一括解析を開始
-    const handleStartTreeBatchAnalysis = useCallback(
-        async (options?: { mainLineOnly?: boolean }) => {
-            const tree = navigation.tree;
-            if (!tree) return;
-
-            // ツリーから解析ジョブを収集
-            const treeJobs = collectTreeAnalysisJobs(tree, {
-                onlyWithoutEval: true,
-                mainLineOnly: options?.mainLineOnly ?? false,
-            });
-
-            if (treeJobs.length === 0) {
-                setMessage({ text: "解析対象の手がありません", type: "warning" });
-                setTimeout(() => setMessage(null), 3000);
-                return;
-            }
-
-            // NNUE の存在確認（未ダウンロードの場合はエラー）
-            let resolved: ResolvedNnue | null;
-            try {
-                resolved = await resolveNnue(analysisNnueSelection);
-            } catch (e) {
-                const errorMessage =
-                    e instanceof Error ? e.message : "評価関数の準備に失敗しました";
-                setNnueManagerOpenReason(`解析を開始できません: ${errorMessage}`);
-                setIsNnueManagerOpen(true);
-                return;
-            }
-
-            // AnalysisJob形式に変換
-            const jobs: AnalysisJob[] = treeJobs.map((job) => ({
-                ply: job.ply,
-                sfen: startSfen,
-                moves: job.moves,
-                timeMs: analysisSettings.batchAnalysisTimeMs,
-                depth: analysisSettings.batchAnalysisDepth,
-                nodeId: job.nodeId, // 分岐解析用にnodeIdを保持
-            }));
-
-            // 並列一括解析を開始（resolvedを直接渡す）
-            enginePool.start(jobs, {
-                nnueId: resolved?.nnueId ?? null,
-                fvScale: resolved?.fvScale,
-            });
-        },
-        [
-            navigation.tree,
-            startSfen,
-            analysisSettings,
-            enginePool,
-            resolveNnue,
-            analysisNnueSelection,
-        ],
-    );
-
-    // 特定の分岐を一括解析
-    const handleAnalyzeBranch = useCallback(
-        async (branchNodeId: string) => {
-            const tree = navigation.tree;
-            if (!tree) return;
-
-            // 分岐から解析ジョブを収集
-            const branchJobs = collectBranchAnalysisJobs(tree, branchNodeId, {
-                onlyWithoutEval: true,
-            });
-
-            if (branchJobs.length === 0) {
-                return;
-            }
-
-            // NNUE の存在確認（未ダウンロードの場合はエラー）
-            let resolved: ResolvedNnue | null;
-            try {
-                resolved = await resolveNnue(analysisNnueSelection);
-            } catch (e) {
-                const errorMessage =
-                    e instanceof Error ? e.message : "評価関数の準備に失敗しました";
-                setNnueManagerOpenReason(`解析を開始できません: ${errorMessage}`);
-                setIsNnueManagerOpen(true);
-                return;
-            }
-
-            // AnalysisJob形式に変換
-            const jobs: AnalysisJob[] = branchJobs.map((job) => ({
-                ply: job.ply,
-                sfen: startSfen,
-                moves: job.moves,
-                timeMs: analysisSettings.batchAnalysisTimeMs,
-                depth: analysisSettings.batchAnalysisDepth,
-                nodeId: job.nodeId,
-            }));
-
-            // 並列一括解析を開始（resolvedを直接渡す）
-            enginePool.start(jobs, {
-                nnueId: resolved?.nnueId ?? null,
-                fvScale: resolved?.fvScale,
-            });
-        },
-        [
-            navigation.tree,
-            startSfen,
-            analysisSettings,
-            enginePool,
-            resolveNnue,
-            analysisNnueSelection,
-        ],
-    );
-
-    // 一括解析をキャンセル
-    const handleCancelBatchAnalysis = useCallback(() => {
-        void enginePool.cancel();
-        setBatchAnalysis(null);
-    }, [enginePool]);
 
     // PVを分岐として追加するコールバック（シグナル付き）
     const handleAddPvAsBranch = useCallback(

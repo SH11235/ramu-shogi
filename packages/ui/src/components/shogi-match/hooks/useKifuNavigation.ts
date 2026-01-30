@@ -94,7 +94,7 @@ interface UseKifuNavigationOptions {
 }
 
 /** フックの戻り値 */
-interface UseKifuNavigationResult {
+export interface UseKifuNavigationResult {
     /** ナビゲーション状態 */
     state: KifuNavigationState;
     /** 1手進む（優先分岐を指定可能） */
