@@ -12,7 +12,7 @@
  */
 
 import type { EngineControllerErrorLog, EngineControllerEvent, Player } from "@shogi/app-core";
-import type { ReactElement } from "react";
+import type { Dispatch, ReactElement, SetStateAction } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../dialog";
 import { Switch } from "../../switch";
 import type { EngineErrorDetails } from "../components/EngineLogsPanel";
@@ -64,7 +64,7 @@ interface PCLayoutProps {
     /** 表示設定ダイアログ */
     isDisplaySettingsOpen: boolean;
     onDisplaySettingsOpenChange: (open: boolean) => void;
-    setDisplaySettings: (settings: DisplaySettings) => void;
+    setDisplaySettings: Dispatch<SetStateAction<DisplaySettings>>;
 
     /** パス権設定ダイアログ */
     isPassRightsSettingsOpen: boolean;

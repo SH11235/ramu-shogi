@@ -8,11 +8,11 @@
  * - マイグレーション・バリデーション
  */
 
-import type { NnueMeta, NnueSelection, Player, PresetConfig } from "@shogi/app-core";
+import type { NnueMeta, NnueSelection, Player, PresetConfig, ResolvedNnue } from "@shogi/app-core";
 import { useCallback, useMemo, useRef } from "react";
-import { useLazyNnueLoader } from "../../hooks/useLazyNnueLoader";
-import { useNnueStorage } from "../../hooks/useNnueStorage";
-import { usePresetManager } from "../../hooks/usePresetManager";
+import { useLazyNnueLoader } from "../../../hooks/useLazyNnueLoader";
+import { useNnueStorage } from "../../../hooks/useNnueStorage";
+import { usePresetManager } from "../../../hooks/usePresetManager";
 import { useLocalStorage } from "./useLocalStorage";
 import { useNnueMigration } from "./useNnueMigration";
 import { useNnueValidation } from "./useNnueValidation";
@@ -51,7 +51,7 @@ interface UseNnueManagerResult {
     presetConfigs: PresetConfig[];
 
     // ユーティリティ
-    resolveNnue: (selection: NnueSelection) => Promise<string>;
+    resolveNnue: (selection: NnueSelection) => Promise<ResolvedNnue | null>;
     getPresetDisplayName: (presetKey: string) => string | undefined;
 }
 
@@ -105,7 +105,9 @@ export function useNnueManager({
     // presetKey から displayName を取得する関数
     const getPresetDisplayName = useCallback(
         (presetKey: string): string | undefined => {
-            const preset = presets.find((p) => p.config.presetKey === presetKey);
+            const preset = presets.find(
+                (p: { config: PresetConfig }) => p.config.presetKey === presetKey,
+            );
             return preset?.config.displayName;
         },
         [presets],
@@ -149,7 +151,8 @@ export function useNnueManager({
         }
         if (analysisNnueSelection.presetKey) {
             const presetNnue = nnueList.find(
-                (n) => n.source === "preset" && n.presetKey === analysisNnueSelection.presetKey,
+                (n: NnueMeta) =>
+                    n.source === "preset" && n.presetKey === analysisNnueSelection.presetKey,
             );
             return presetNnue?.id ?? null;
         }
@@ -157,7 +160,10 @@ export function useNnueManager({
     }, [analysisNnueSelection, nnueList]);
 
     // プリセット設定のみを抽出（UIコンポーネント用）
-    const presetConfigs = useMemo(() => presets.map((p) => p.config), [presets]);
+    const presetConfigs = useMemo(
+        () => presets.map((p: { config: PresetConfig }) => p.config),
+        [presets],
+    );
 
     // NNUE選択変更時にエンジンを再起動するラッパー（先手）
     const handleSenteNnueSelectionChange = useCallback(

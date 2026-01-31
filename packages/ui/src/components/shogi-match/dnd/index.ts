@@ -12,5 +12,6 @@ export { applyDropResult } from "./dropLogic";
 // ヒットテスト
 // 型定義
 export type { DropResult } from "./types";
+export type { PieceDndController as DndController } from "./usePieceDnd";
 // Hooks
 export { usePieceDnd } from "./usePieceDnd";

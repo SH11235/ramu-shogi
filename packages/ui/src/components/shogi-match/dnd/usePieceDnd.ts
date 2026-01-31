@@ -35,7 +35,7 @@ interface UsePieceDndOptions {
     disabled?: boolean;
 }
 
-interface PieceDndController {
+export interface PieceDndController {
     /** React state（低頻度更新） */
     state: DndState;
     /** ゴースト要素の ref */

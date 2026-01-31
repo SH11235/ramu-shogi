@@ -9,6 +9,7 @@
  */
 
 import type { PositionState } from "@shogi/app-core";
+import type { Dispatch, SetStateAction } from "react";
 import { useState } from "react";
 import type { KifuViewMode } from "../components/KifuPanel";
 
@@ -62,7 +63,7 @@ interface UseUIStateResult {
 
     // 一括解析
     batchAnalysis: BatchAnalysisState | null;
-    setBatchAnalysis: (state: BatchAnalysisState | null) => void;
+    setBatchAnalysis: Dispatch<SetStateAction<BatchAnalysisState | null>>;
 }
 
 /**

@@ -7,10 +7,21 @@
  * - Aboutボタン
  */
 
-import type { KifuTree, NnueMeta, NnueSelection, Player, PositionState } from "@shogi/app-core";
-import type { ReactElement, RefObject } from "react";
+import type {
+    EngineControllerErrorLog,
+    EngineControllerEvent,
+    KifuTree,
+    NnueMeta,
+    NnueSelection,
+    Player,
+    PositionState,
+} from "@shogi/app-core";
+import type { Dispatch, ReactElement, RefObject, SetStateAction } from "react";
+import { AboutDialog } from "../../AboutDialog";
+import { EngineRestartingOverlay } from "../../nnue/EngineRestartingOverlay";
+import { NnueManagerDialog } from "../../nnue/NnueManagerDialog";
 import type { ShogiBoardCell } from "../../shogi-board";
-import { AboutDialog } from "../AboutDialog";
+import type { EngineErrorDetails } from "../components/EngineLogsPanel";
 import { GameResultDialog } from "../components/GameResultDialog";
 import type { KifuViewMode } from "../components/KifuPanel";
 import { MoveDetailWindow } from "../components/MoveDetailWindow";
@@ -23,18 +34,17 @@ import {
     NavigationProvider,
 } from "../contexts";
 import type {
-    AnalyzingState,
     BatchAnalysisState,
     HandInfo,
     NavigationHandlers,
     NavigationState,
+    SelectionState,
 } from "../contexts/types";
 import { type DndController, DragGhost } from "../dnd";
 import type { ClockSettings, TickState } from "../hooks/useClockManager";
-import { EngineRestartingOverlay } from "../nnue/EngineRestartingOverlay";
-import { NnueManagerDialog } from "../nnue/NnueManagerDialog";
 import type {
     AnalysisSettings,
+    AnalyzingState,
     DisplaySettings,
     GameMode,
     Message,
@@ -46,8 +56,6 @@ import type { EvalHistory, KifMove } from "../utils/kifFormat";
 import type { KifMoveData } from "../utils/kifParser";
 import { MobileLayout } from "./MobileLayout";
 import { PCLayout } from "./PCLayout";
-
-type Selection = { kind: "square"; square: string } | { kind: "hand"; piece: string };
 
 interface ShogiMatchLayoutProps {
     // デバイス
@@ -138,7 +146,7 @@ interface ShogiMatchLayoutProps {
     grid: ShogiBoardCell[][];
     gameMode: GameMode;
     message: Message | null;
-    selection: Selection | null;
+    selection: SelectionState | null;
     promotionSelection: PromotionSelection | null;
     lastMove?: import("@shogi/app-core").LastMove;
     onFlipBoardChange: (flip: boolean) => void;
@@ -201,7 +209,7 @@ interface ShogiMatchLayoutProps {
     handlePreviewPv: (ply: number, pv: string[], evalCp?: number, evalMate?: number) => void;
     kifuViewMode: KifuViewMode;
     setKifuViewMode: (mode: KifuViewMode) => void;
-    setDisplaySettings: (updater: (prev: DisplaySettings) => DisplaySettings) => void;
+    setDisplaySettings: Dispatch<SetStateAction<DisplaySettings>>;
     handlePlySelect: (ply: number) => void;
     handleCopyKif: () => string;
     handleMoveDetailSelect: (move: KifMove | null, position: PositionState | null) => void;
@@ -214,12 +222,9 @@ interface ShogiMatchLayoutProps {
     importKif: (moves: string[], moveData: KifMoveData[], startSfen?: string) => Promise<void>;
     positionReady: boolean;
     isDevMode: boolean;
-    eventLogs: import("@shogi/engine-client").EngineControllerEvent[];
-    errorLogs: import("@shogi/engine-client").EngineControllerErrorLog[];
-    engineErrorDetails?: Record<
-        Player,
-        import("../components/EngineLogsPanel").EngineErrorDetails | null
-    >;
+    eventLogs: EngineControllerEvent[];
+    errorLogs: EngineControllerErrorLog[];
+    engineErrorDetails?: Record<Player, EngineErrorDetails | null>;
     retryEngine: (side: Player) => Promise<void>;
     isRetrying?: Record<Player, boolean>;
     isDisplaySettingsOpen: boolean;

@@ -1,6 +1,11 @@
 import { useCallback, useState } from "react";
 
 /**
+ * NNUE管理ダイアログを開いた理由
+ */
+export type NnueManagerOpenReason = "missing-sente" | "missing-gote" | "missing-analysis";
+
+/**
  * ダイアログの状態を管理する型
  */
 export interface DialogStates {
@@ -9,7 +14,7 @@ export interface DialogStates {
     /** NNUE 管理ダイアログ */
     isNnueManagerOpen: boolean;
     /** NNUE 管理ダイアログを開いた理由 */
-    nnueManagerOpenReason: string | null;
+    nnueManagerOpenReason: NnueManagerOpenReason | null;
     /** 表示設定ダイアログ */
     isDisplaySettingsOpen: boolean;
     /** About（ライセンス）ダイアログ */
@@ -30,7 +35,7 @@ export interface DialogActions {
     setIsSettingsModalOpen: (open: boolean) => void;
 
     /** NNUE 管理ダイアログを開く */
-    openNnueManager: (reason?: string) => void;
+    openNnueManager: (reason?: NnueManagerOpenReason | string) => void;
     /** NNUE 管理ダイアログを閉じる */
     closeNnueManager: () => void;
     /** NNUE 管理ダイアログの開閉状態を変更 */
@@ -68,7 +73,8 @@ export interface DialogActions {
 export function useDialogs(): DialogStates & DialogActions {
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
     const [isNnueManagerOpen, setIsNnueManagerOpen] = useState(false);
-    const [nnueManagerOpenReason, setNnueManagerOpenReason] = useState<string | null>(null);
+    const [nnueManagerOpenReason, setNnueManagerOpenReason] =
+        useState<NnueManagerOpenReason | null>(null);
     const [isDisplaySettingsOpen, setIsDisplaySettingsOpen] = useState(false);
     const [isAboutOpen, setIsAboutOpen] = useState(false);
     const [isPassRightsSettingsOpen, setIsPassRightsSettingsOpen] = useState(false);
@@ -76,10 +82,17 @@ export function useDialogs(): DialogStates & DialogActions {
     const openSettings = useCallback(() => setIsSettingsModalOpen(true), []);
     const closeSettings = useCallback(() => setIsSettingsModalOpen(false), []);
 
-    const openNnueManager = useCallback((reason?: string) => {
+    const openNnueManager = useCallback((reason?: NnueManagerOpenReason | string) => {
         setIsNnueManagerOpen(true);
         if (reason) {
-            setNnueManagerOpenReason(reason);
+            // 文字列の場合は"missing-analysis"として扱う
+            const normalizedReason: NnueManagerOpenReason | null =
+                reason === "missing-sente" ||
+                reason === "missing-gote" ||
+                reason === "missing-analysis"
+                    ? reason
+                    : null;
+            setNnueManagerOpenReason(normalizedReason);
         }
     }, []);
     const closeNnueManager = useCallback(() => {
