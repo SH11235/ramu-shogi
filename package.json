@@ -15,6 +15,7 @@
         "test:unit": "turbo test:unit",
         "lint": "turbo lint",
         "lint:fix": "turbo lint:fix",
+        "lint:fix:unsafe": "turbo lint:fix:unsafe",
         "lint:affected": "turbo lint --filter='[HEAD~1]'",
         "knip": "knip",
         "knip:ci": "knip --reporter json",
