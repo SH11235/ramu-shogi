@@ -124,11 +124,6 @@ export function useBatchAnalysis({
     const analyzingStateRef = useRef<AnalyzingState>(ANALYZING_STATE_NONE);
     useEffect(() => {
         analyzingStateRef.current = analyzingState;
-
-        return () => {
-            // クリーンアップ時にrefをリセット
-            analyzingStateRef.current = ANALYZING_STATE_NONE;
-        };
     }, [analyzingState]);
 
     // 評価値更新コールバック（分岐解析にも対応）

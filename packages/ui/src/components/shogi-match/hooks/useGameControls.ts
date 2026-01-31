@@ -10,7 +10,7 @@ import {
     type Square,
 } from "@shogi/app-core";
 import type { MutableRefObject } from "react";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import type { Message, PassRightsSettings } from "../types";
 import { cloneHandsState } from "../utils/boardUtils";
 import type { UseKifuNavigationResult } from "./useKifuNavigation";
@@ -182,6 +182,9 @@ export function useGameControls({
     setEditOwner,
     setEditPieceType,
 }: UseGameControlsProps): UseGameControlsReturn {
+    // 非同期処理の二重実行防止用フラグ
+    const isTransitioningRef = useRef(false);
+
     /**
      * 編集済み局面を確定する
      */
@@ -233,63 +236,74 @@ export function useGameControls({
      * 対局を開始/再開する
      */
     const resumeAutoPlay = useCallback(async () => {
-        matchEndedRef.current = false;
-        if (!positionReady) return;
+        if (isTransitioningRef.current) {
+            console.warn("Already transitioning, ignoring duplicate resumeAutoPlay call");
+            return;
+        }
 
-        // 一時停止からの再開：棋譜を保持したまま再開
-        if (isPaused) {
-            setIsPaused(false);
+        isTransitioningRef.current = true;
+        try {
+            matchEndedRef.current = false;
+            if (!positionReady) return;
+
+            // 一時停止からの再開：棋譜を保持したまま再開
+            if (isPaused) {
+                setIsPaused(false);
+                setIsMatchRunning(true);
+                turnStartTimeRef.current = Date.now();
+                startTicking(position.turn);
+                return;
+            }
+
+            // 編集モードからの再開：棋譜をリセットして新しい対局を開始
+            if (isEditMode) {
+                await finalizeEditedPosition();
+                setIsEditMode(false);
+            }
+
+            // パス権が有効な場合、対局開始時に初期化
+            // ナビゲーションのルートノードにもパス権を反映するため、navigation.resetを呼び直す
+            if (passRightsSettings?.enabled && !positionRef.current.passRights) {
+                const updatedPosition = {
+                    ...positionRef.current,
+                    passRights: {
+                        sente: passRightsSettings.senteInitialCount,
+                        gote: passRightsSettings.goteInitialCount,
+                    },
+                };
+                setPosition(updatedPosition);
+                positionRef.current = updatedPosition;
+                // ナビゲーションのルートノードをパス権付きの局面で更新
+                navigation.reset(updatedPosition, startSfen);
+            }
+
+            // 対局開始前に NNUE の存在確認を行う（未ダウンロードの場合はエラー）
+            try {
+                const nnuePreparations: Promise<unknown>[] = [];
+                if (sides.sente.role === "engine" && senteNnueSelection) {
+                    nnuePreparations.push(resolveNnue(senteNnueSelection));
+                }
+                if (sides.gote.role === "engine" && goteNnueSelection) {
+                    nnuePreparations.push(resolveNnue(goteNnueSelection));
+                }
+                if (nnuePreparations.length > 0) {
+                    await Promise.all(nnuePreparations);
+                }
+            } catch (e) {
+                // NNUE未ダウンロードエラー → 評価関数ファイル管理を開いて理由を表示
+                const errorMessage =
+                    e instanceof Error ? e.message : "評価関数の準備に失敗しました";
+                openNnueManager(`対局を開始できません: ${errorMessage}`);
+                return;
+            }
+
+            // エンジン管理は useEngineManager フックが自動的に処理する
             setIsMatchRunning(true);
             turnStartTimeRef.current = Date.now();
             startTicking(position.turn);
-            return;
+        } finally {
+            isTransitioningRef.current = false;
         }
-
-        // 編集モードからの再開：棋譜をリセットして新しい対局を開始
-        if (isEditMode) {
-            await finalizeEditedPosition();
-            setIsEditMode(false);
-        }
-
-        // パス権が有効な場合、対局開始時に初期化
-        // ナビゲーションのルートノードにもパス権を反映するため、navigation.resetを呼び直す
-        if (passRightsSettings?.enabled && !positionRef.current.passRights) {
-            const updatedPosition = {
-                ...positionRef.current,
-                passRights: {
-                    sente: passRightsSettings.senteInitialCount,
-                    gote: passRightsSettings.goteInitialCount,
-                },
-            };
-            setPosition(updatedPosition);
-            positionRef.current = updatedPosition;
-            // ナビゲーションのルートノードをパス権付きの局面で更新
-            navigation.reset(updatedPosition, startSfen);
-        }
-
-        // 対局開始前に NNUE の存在確認を行う（未ダウンロードの場合はエラー）
-        try {
-            const nnuePreparations: Promise<unknown>[] = [];
-            if (sides.sente.role === "engine" && senteNnueSelection) {
-                nnuePreparations.push(resolveNnue(senteNnueSelection));
-            }
-            if (sides.gote.role === "engine" && goteNnueSelection) {
-                nnuePreparations.push(resolveNnue(goteNnueSelection));
-            }
-            if (nnuePreparations.length > 0) {
-                await Promise.all(nnuePreparations);
-            }
-        } catch (e) {
-            // NNUE未ダウンロードエラー → 評価関数ファイル管理を開いて理由を表示
-            const errorMessage = e instanceof Error ? e.message : "評価関数の準備に失敗しました";
-            openNnueManager(`対局を開始できません: ${errorMessage}`);
-            return;
-        }
-
-        // エンジン管理は useEngineManager フックが自動的に処理する
-        setIsMatchRunning(true);
-        turnStartTimeRef.current = Date.now();
-        startTicking(position.turn);
     }, [
         matchEndedRef,
         positionReady,
@@ -331,23 +345,33 @@ export function useGameControls({
      */
     const handleEnterEditMode = useCallback(async () => {
         if (isMatchRunning) return;
-        const current = positionRef.current;
-        // 現在局面を編集開始局面として設定
-        setBasePosition(clonePositionState(current));
-        setInitialBoard(cloneBoard(current.board));
-        // 先にSFENを取得してから棋譜ナビゲーションをリセット
+        if (isTransitioningRef.current) {
+            console.warn("Already transitioning, ignoring duplicate handleEnterEditMode call");
+            return;
+        }
+
+        isTransitioningRef.current = true;
         try {
-            const newSfen = await refreshStartSfen(current);
-            navigation.reset(current, newSfen);
-            setLastMove(undefined);
-            setSelection(null);
-            setMessage(null);
-            setLastAddedBranchInfo(null);
-            clearLegalCache();
-            // 編集モードに移行
-            setIsEditMode(true);
-        } catch {
-            setMessage({ text: "編集モードへの移行に失敗しました。", type: "error" });
+            const current = positionRef.current;
+            // 現在局面を編集開始局面として設定
+            setBasePosition(clonePositionState(current));
+            setInitialBoard(cloneBoard(current.board));
+            // 先にSFENを取得してから棋譜ナビゲーションをリセット
+            try {
+                const newSfen = await refreshStartSfen(current);
+                navigation.reset(current, newSfen);
+                setLastMove(undefined);
+                setSelection(null);
+                setMessage(null);
+                setLastAddedBranchInfo(null);
+                clearLegalCache();
+                // 編集モードに移行
+                setIsEditMode(true);
+            } catch {
+                setMessage({ text: "編集モードへの移行に失敗しました。", type: "error" });
+            }
+        } finally {
+            isTransitioningRef.current = false;
         }
     }, [
         isMatchRunning,
@@ -368,40 +392,50 @@ export function useGameControls({
      * 平手初期局面にリセットする
      */
     const handleResetToStartpos = useCallback(async () => {
-        matchEndedRef.current = false;
-        setGameResult(null);
-        setShowResultDialog(false);
-        await stopAllEngines();
+        if (isTransitioningRef.current) {
+            console.warn("Already transitioning, ignoring duplicate handleResetToStartpos call");
+            return;
+        }
 
-        const service = getPositionService();
+        isTransitioningRef.current = true;
         try {
-            const pos = await service.getInitialBoard();
-            const next = clonePositionState(pos);
-            setPosition(next);
-            positionRef.current = next;
-            setInitialBoard(cloneBoard(next.board));
-            setBasePosition(clonePositionState(next));
-            setStartSfen("startpos");
-            setPositionReady(true);
+            matchEndedRef.current = false;
+            setGameResult(null);
+            setShowResultDialog(false);
+            await stopAllEngines();
 
-            navigation.reset(next, "startpos");
-            setLastMove(undefined);
-            setSelection(null);
-            setMessage(null);
-            setLastAddedBranchInfo(null);
-            resetClocks(false);
+            const service = getPositionService();
+            try {
+                const pos = await service.getInitialBoard();
+                const next = clonePositionState(pos);
+                setPosition(next);
+                positionRef.current = next;
+                setInitialBoard(cloneBoard(next.board));
+                setBasePosition(clonePositionState(next));
+                setStartSfen("startpos");
+                setPositionReady(true);
 
-            setIsMatchRunning(false);
-            setIsEditMode(true);
-            setEditFromSquare(null);
-            setEditTool("place");
-            setEditPromoted(false);
-            setEditOwner("sente");
-            setEditPieceType(null);
-            clearLegalCache();
-            turnStartTimeRef.current = Date.now();
-        } catch (error) {
-            setMessage({ text: `平手初期化に失敗しました: ${String(error)}`, type: "error" });
+                navigation.reset(next, "startpos");
+                setLastMove(undefined);
+                setSelection(null);
+                setMessage(null);
+                setLastAddedBranchInfo(null);
+                resetClocks(false);
+
+                setIsMatchRunning(false);
+                setIsEditMode(true);
+                setEditFromSquare(null);
+                setEditTool("place");
+                setEditPromoted(false);
+                setEditOwner("sente");
+                setEditPieceType(null);
+                clearLegalCache();
+                turnStartTimeRef.current = Date.now();
+            } catch (error) {
+                setMessage({ text: `平手初期化に失敗しました: ${String(error)}`, type: "error" });
+            }
+        } finally {
+            isTransitioningRef.current = false;
         }
     }, [
         matchEndedRef,
