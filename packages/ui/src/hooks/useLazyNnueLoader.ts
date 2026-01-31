@@ -1,4 +1,5 @@
-import { NnueError, type NnueSelection, type ResolvedNnue } from "@shogi/app-core";
+import type { NnueSelection, ResolvedNnue } from "@shogi/app-core";
+import { NnueError } from "@shogi/app-core";
 import { useCallback, useState } from "react";
 import { useNnueContextOptional } from "../providers/NnueContext";
 

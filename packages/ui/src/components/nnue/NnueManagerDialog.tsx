@@ -1,4 +1,5 @@
-import { type ReactElement, useCallback, useMemo, useState } from "react";
+import type { ReactElement } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNnueStorage } from "../../hooks/useNnueStorage";
 import { usePresetManager } from "../../hooks/usePresetManager";
 import { Button } from "../button";

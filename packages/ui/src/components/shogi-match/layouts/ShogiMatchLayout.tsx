@@ -20,7 +20,8 @@ import {
     MatchStateProvider,
     NavigationProvider,
 } from "../contexts";
-import { type DndController, DragGhost } from "../dnd";
+import type { DndController } from "../dnd";
+import { DragGhost } from "../dnd";
 import type {
     AnalysisProps,
     BoardHandlersProps,

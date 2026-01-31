@@ -1,16 +1,16 @@
+import type { BoardState, LastMove, PositionState } from "@shogi/app-core";
 import {
     applyMoveWithState,
-    type BoardState,
     cloneBoard,
     deriveLastMove,
     getPositionService,
-    type LastMove,
-    type PositionState,
 } from "@shogi/app-core";
 import { useCallback } from "react";
 import type { Message, PassRightsSettings, SideSetting } from "../types";
-import { exportToKifString, type KifMove } from "../utils/kifFormat";
-import { type KifMoveData, parseSfen } from "../utils/kifParser";
+import type { KifMove } from "../utils/kifFormat";
+import { exportToKifString } from "../utils/kifFormat";
+import type { KifMoveData } from "../utils/kifParser";
+import { parseSfen } from "../utils/kifParser";
 import { buildPassRightsOptionForLegalMoves } from "../utils/passRightsSettings";
 import type { UseKifuNavigationResult } from "./useKifuNavigation";
 

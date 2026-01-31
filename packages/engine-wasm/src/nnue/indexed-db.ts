@@ -2,15 +2,10 @@
  * IndexedDB を使った NNUE ストレージ実装
  */
 
-import {
-    NNUE_DB_NAME,
-    NNUE_DB_VERSION,
-    NNUE_MAX_SIZE_BYTES,
-    NnueError,
-    type NnueMeta,
-    type NnueStorage,
-} from "@shogi/app-core";
-import { type DBSchema, type IDBPDatabase, openDB } from "idb";
+import type { NnueMeta, NnueStorage } from "@shogi/app-core";
+import { NNUE_DB_NAME, NNUE_DB_VERSION, NNUE_MAX_SIZE_BYTES, NnueError } from "@shogi/app-core";
+import type { DBSchema, IDBPDatabase } from "idb";
+import { openDB } from "idb";
 
 /**
  * IndexedDB スキーマ定義

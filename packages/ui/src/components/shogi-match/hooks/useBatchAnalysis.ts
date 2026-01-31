@@ -1,12 +1,9 @@
-import {
-    getPathToNode,
-    type KifuTree,
-    type NnueSelection,
-    type ResolvedNnue,
-} from "@shogi/app-core";
+import type { KifuTree, NnueSelection, ResolvedNnue } from "@shogi/app-core";
+import { getPathToNode } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ANALYZING_STATE_NONE, type AnalysisSettings, type AnalyzingState } from "../types";
+import type { AnalysisSettings, AnalyzingState } from "../types";
+import { ANALYZING_STATE_NONE } from "../types";
 import { collectBranchAnalysisJobs, collectTreeAnalysisJobs } from "../utils/branchTreeUtils";
 import type { KifMove } from "../utils/kifFormat";
 import type { AnalysisJob, EnginePoolHandle } from "./useEnginePool";

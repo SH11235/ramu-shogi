@@ -1,4 +1,5 @@
-import { detectParallelism, type NnueSelection, NONE_NNUE_SELECTION } from "@shogi/app-core";
+import type { NnueSelection } from "@shogi/app-core";
+import { detectParallelism, NONE_NNUE_SELECTION } from "@shogi/app-core";
 import type { SkillLevelSettings } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 import { Input } from "../../input";

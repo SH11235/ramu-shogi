@@ -1,11 +1,13 @@
 import type { NnueMeta, NnueSelection, PresetWithStatus } from "@shogi/app-core";
 import { NONE_NNUE_SELECTION } from "@shogi/app-core";
 import type { SkillLevelSettings } from "@shogi/engine-client";
-import { type ReactElement, useCallback, useEffect, useRef, useState } from "react";
+import type { ReactElement } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Switch } from "../../switch";
 import type { ClockSettings } from "../hooks/useClockManager";
 import type { DisplaySettings, PassRightsSettings, SideSetting, SquareNotation } from "../types";
-import { type KifMoveData, parseKif, parseSfen } from "../utils/kifParser";
+import type { KifMoveData } from "../utils/kifParser";
+import { parseKif, parseSfen } from "../utils/kifParser";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 
 type SideKey = "sente" | "gote";

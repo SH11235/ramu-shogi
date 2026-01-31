@@ -6,7 +6,8 @@
  * - メタデータは localStorage に保存（軽量なため）
  */
 
-import { generateNnueId, type NnueMeta, type NnueStorage } from "@shogi/app-core";
+import type { NnueMeta, NnueStorage } from "@shogi/app-core";
+import { generateNnueId } from "@shogi/app-core";
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 
 /**

@@ -1,6 +1,7 @@
 import type { PieceType } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
-import { type ReactElement, useRef } from "react";
+import type { ReactElement } from "react";
+import { useRef } from "react";
 import type { SquareNotation } from "./shogi-match/types";
 import { getPieceImagePath, PIECE_LABELS } from "./shogi-match/utils/constants";
 import { formatSquare, getBoardLabels } from "./shogi-match/utils/coordinateFormat";

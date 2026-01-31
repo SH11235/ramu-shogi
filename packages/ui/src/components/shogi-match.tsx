@@ -1,20 +1,22 @@
+import type {
+    BoardState,
+    GameResult,
+    LastMove,
+    NnueSelection,
+    PieceType,
+    Player,
+    PositionState,
+    Square,
+} from "@shogi/app-core";
 import {
     applyMoveWithState,
-    type BoardState,
     cloneBoard,
     createDefaultNnueSelection,
     createEmptyHands,
     DEFAULT_PRESET_KEY,
-    type GameResult,
     getAllSquares,
     getPositionService,
-    type LastMove,
-    type NnueSelection,
-    type PieceType,
-    type Player,
-    type PositionState,
     resolveWorkerCount,
-    type Square,
 } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -24,7 +26,8 @@ import {
     MATCH_LAYOUT_CLASSES,
     TOOLTIP_DELAY_DURATION_MS,
 } from "./shogi-match/constants";
-import { applyDropResult, type DropResult, usePieceDnd } from "./shogi-match/dnd";
+import type { DropResult } from "./shogi-match/dnd";
+import { applyDropResult, usePieceDnd } from "./shogi-match/dnd";
 import { useBatchAnalysis } from "./shogi-match/hooks/useBatchAnalysis";
 import { useBoardState } from "./shogi-match/hooks/useBoardState";
 import { useClockManager } from "./shogi-match/hooks/useClockManager";
@@ -46,16 +49,18 @@ import { usePassRights } from "./shogi-match/hooks/usePassRights";
 import { useUIState } from "./shogi-match/hooks/useUIState";
 import { ShogiMatchLayout } from "./shogi-match/layouts/ShogiMatchLayout";
 import { ShogiMatchProvider } from "./shogi-match/ShogiMatchContext";
+import type {
+    AnalysisSettings,
+    DisplaySettings,
+    EngineOption,
+    GameMode,
+    PassRightsSettings,
+    SideSetting,
+} from "./shogi-match/types";
 import {
-    type AnalysisSettings,
     DEFAULT_ANALYSIS_SETTINGS,
     DEFAULT_DISPLAY_SETTINGS,
     DEFAULT_PASS_RIGHTS_SETTINGS,
-    type DisplaySettings,
-    type EngineOption,
-    type GameMode,
-    type PassRightsSettings,
-    type SideSetting,
 } from "./shogi-match/types";
 import type {
     AnalysisProps,

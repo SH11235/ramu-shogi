@@ -11,7 +11,8 @@
  */
 
 import type { NnueMeta, NnueSelection, PresetConfig } from "@shogi/app-core";
-import { createContext, type ReactNode, useContext } from "react";
+import type { ReactNode } from "react";
+import { createContext, useContext } from "react";
 import type { AnalysisSettings, AnalyzingState } from "../types";
 import type { AnalysisContextValue, BatchAnalysisState } from "./types";
 

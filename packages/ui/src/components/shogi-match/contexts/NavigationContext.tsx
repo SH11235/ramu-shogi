@@ -11,7 +11,8 @@
  */
 
 import type { KifuTree, PositionState } from "@shogi/app-core";
-import { createContext, type ReactNode, useContext } from "react";
+import type { ReactNode } from "react";
+import { createContext, useContext } from "react";
 import type { DisplaySettings } from "../types";
 import type { EvalHistory, KifMove } from "../utils/kifFormat";
 import type {

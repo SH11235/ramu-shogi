@@ -8,7 +8,8 @@
  */
 
 import { cn } from "@shogi/design-system";
-import { type ReactElement, useState } from "react";
+import type { ReactElement } from "react";
+import { useState } from "react";
 import {
     AlertDialog,
     AlertDialogAction,

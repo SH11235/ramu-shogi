@@ -1,6 +1,7 @@
 import type { NnueFormat, NnueMeta, NnueStorage } from "@shogi/app-core";
 import { NnueError } from "@shogi/app-core";
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
 interface NnueHeaderValidationResult {
     format?: NnueFormat;

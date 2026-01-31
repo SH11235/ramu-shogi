@@ -11,7 +11,8 @@
  */
 
 import type { LastMove, PieceType, Player, PositionState, Square } from "@shogi/app-core";
-import { createContext, type ReactNode, useContext } from "react";
+import type { ReactNode } from "react";
+import { createContext, useContext } from "react";
 import type { ShogiBoardCell, ShogiBoardPiece } from "../../shogi-board";
 import type { PassDisabledReason } from "../components/PassButton";
 import type { TickState } from "../hooks/useClockManager";

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createEmptyHands, createInitialBoard, type PositionState } from "./board";
+import type { PositionState } from "./board";
+import { createEmptyHands, createInitialBoard } from "./board";
 import {
     addMove,
     createKifuTree,

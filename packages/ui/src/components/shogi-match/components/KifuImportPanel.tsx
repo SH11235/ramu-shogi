@@ -6,7 +6,8 @@
 
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type KifMoveData, parseKif, parseSfen } from "../utils/kifParser";
+import type { KifMoveData } from "../utils/kifParser";
+import { parseKif, parseSfen } from "../utils/kifParser";
 
 interface KifuImportPanelProps {
     /** SFENインポート時のコールバック（sfen: 開始局面, moves: 指し手配列） */

@@ -1,4 +1,5 @@
-import { getPositionService, type Player } from "@shogi/app-core";
+import type { Player } from "@shogi/app-core";
+import { getPositionService } from "@shogi/app-core";
 import { useEffect } from "react";
 import type { SideSetting } from "../types";
 import type { LegalMoveCache } from "../utils/legalMoveCache";

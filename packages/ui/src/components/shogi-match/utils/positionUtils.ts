@@ -1,4 +1,5 @@
-import { type BoardState, boardToMatrix, cloneBoard, type PositionState } from "@shogi/app-core";
+import type { BoardState, PositionState } from "@shogi/app-core";
+import { boardToMatrix, cloneBoard } from "@shogi/app-core";
 import type { ShogiBoardCell } from "../../shogi-board";
 import { cloneHandsState } from "./boardUtils";
 

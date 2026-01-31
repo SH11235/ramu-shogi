@@ -1,6 +1,7 @@
 import type { Player } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
-import { type ReactElement, useState } from "react";
+import type { ReactElement } from "react";
+import { useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "../../dialog";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 
