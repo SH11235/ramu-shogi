@@ -7,23 +7,12 @@
  * - Aboutボタン
  */
 
-import type {
-    EngineControllerErrorLog,
-    EngineControllerEvent,
-    KifuTree,
-    NnueSelection,
-    Player,
-    PositionState,
-} from "@shogi/app-core";
-import type { Dispatch, ReactElement, RefObject, SetStateAction } from "react";
+import type { ReactElement } from "react";
 import { AboutDialog } from "../../AboutDialog";
 import { EngineRestartingOverlay } from "../../nnue/EngineRestartingOverlay";
 import { NnueManagerDialog } from "../../nnue/NnueManagerDialog";
-import type { EngineErrorDetails } from "../components/EngineLogsPanel";
 import { GameResultDialog } from "../components/GameResultDialog";
-import type { KifuViewMode } from "../components/KifuPanel";
 import { MoveDetailWindow } from "../components/MoveDetailWindow";
-import type { PassDisabledReason } from "../components/PassButton";
 import { PvPreviewDialog } from "../components/PvPreviewDialog";
 import {
     AnalysisProvider,
@@ -31,17 +20,17 @@ import {
     MatchStateProvider,
     NavigationProvider,
 } from "../contexts";
-import type {
-    BatchAnalysisState,
-    HandInfo,
-    NavigationHandlers,
-    NavigationState,
-} from "../contexts/types";
 import { type DndController, DragGhost } from "../dnd";
-import type { AnalysisSettings, AnalyzingState, DisplaySettings } from "../types";
-import type { BoardStateProps, MatchSettingsProps } from "../types/layoutProps";
-import type { EvalHistory, KifMove } from "../utils/kifFormat";
-import type { KifMoveData } from "../utils/kifParser";
+import type {
+    AnalysisProps,
+    BoardHandlersProps,
+    BoardStateProps,
+    DialogStateProps,
+    MatchSettingsProps,
+    MobileSpecificProps,
+    NavigationProps,
+    PCSpecificProps,
+} from "../types/layoutProps";
 import { MobileLayout } from "./MobileLayout";
 import { PCLayout } from "./PCLayout";
 
@@ -49,6 +38,13 @@ interface ShogiMatchLayoutProps {
     // Props グループ
     matchSettings: MatchSettingsProps;
     boardState: BoardStateProps;
+    dialogState: DialogStateProps;
+    analysisProps: AnalysisProps;
+    navigationProps: NavigationProps;
+    boardHandlers: BoardHandlersProps;
+    pcSpecificProps: PCSpecificProps;
+    mobileSpecificProps: MobileSpecificProps;
+
     // デバイス
     isMobile: boolean;
 
@@ -59,145 +55,9 @@ interface ShogiMatchLayoutProps {
     // エンジン再起動
     isEngineRestarting: boolean;
 
-    // ダイアログ状態
-    gameResult: import("@shogi/app-core").GameResult | null;
-    showResultDialog: boolean;
-    setShowResultDialog: (show: boolean) => void;
-    pvPreview: {
-        open: boolean;
-        ply: number;
-        pv: string[];
-        startPosition: PositionState;
-        evalCp?: number;
-        evalMate?: number;
-    } | null;
-    setPvPreview: (
-        state: {
-            open: boolean;
-            ply: number;
-            pv: string[];
-            startPosition: PositionState;
-            evalCp?: number;
-            evalMate?: number;
-        } | null,
-    ) => void;
-    isNnueManagerOpen: boolean;
-    openNnueManager: () => void;
-    closeNnueManager: () => void;
-    nnueManagerOpenReason: "missing-sente" | "missing-gote" | "missing-analysis" | null;
-    clearNnueManagerOpenReason: () => void;
-    manifestUrl?: string;
-    onRequestNnueFilePath?: () => Promise<string | null>;
+    // 対局状態
     isMatchRunning: boolean;
     isPaused: boolean;
-    selectedMoveDetail: { move: KifMove; position: PositionState } | null;
-    setSelectedMoveDetailPly: (state: { ply: number; position: PositionState } | null) => void;
-    isAboutOpen: boolean;
-    setIsAboutOpen: (open: boolean) => void;
-
-    // 分析
-    analysisSettings: AnalysisSettings;
-    setAnalysisSettings: (settings: AnalysisSettings) => void;
-    analysisNnueSelection: NnueSelection;
-    setAnalysisNnueSelection: (selection: NnueSelection) => void;
-    isNnueListLoading: boolean;
-    presetConfigs: import("@shogi/app-core").PresetConfig[];
-    isAnalyzing: boolean;
-    analyzingState: AnalyzingState;
-    batchAnalysis: BatchAnalysisState | null;
-    handleAnalyzePly: (ply: number) => void;
-    handleStartBatchAnalysis: () => void;
-    handleCancelBatchAnalysis: () => void;
-    handleAnalyzeNode: (nodeId: string) => void;
-    handleAnalyzeBranch: (branchNodeId: string) => void;
-    handleStartTreeBatchAnalysis: (options?: { mainLineOnly?: boolean }) => void;
-
-    // 局面状態（一部）
-    hideEmptyHandPieces: boolean;
-    getHandInfo: (pos: "top" | "bottom") => HandInfo;
-    handleSquareSelect: (sq: string, shiftKey?: boolean) => Promise<void>;
-    handlePromotionChoice: (promote: boolean) => void;
-    handleHandSelect: (piece: import("@shogi/app-core").PieceType) => void;
-    handleHandPiecePointerDown: (
-        owner: Player,
-        pieceType: import("@shogi/app-core").PieceType,
-        e: React.PointerEvent,
-    ) => void;
-    handlePiecePointerDown: (
-        square: string,
-        piece: import("../../shogi-board").ShogiBoardPiece,
-        e: React.PointerEvent,
-    ) => void;
-    handlePieceTogglePromote: (
-        square: string,
-        piece: import("../../shogi-board").ShogiBoardPiece,
-        event: React.MouseEvent<HTMLButtonElement>,
-    ) => void;
-    handleIncrementHand: (owner: Player, piece: import("@shogi/app-core").PieceType) => void;
-    handleDecrementHand: (owner: Player, piece: import("@shogi/app-core").PieceType) => void;
-    handleResetToStartpos: () => void;
-    pauseAutoPlay: () => void;
-    resumeAutoPlay: () => void;
-    handleStartReview: () => void;
-    handleEnterEditMode: () => void;
-    enterEditModeFromPaused: () => void;
-    handleResign: () => void;
-    handleUndo: () => void;
-    setIsSettingsModalOpen: (open: boolean) => void;
-    shouldRenderPassButton: boolean;
-    canMakePassMove: boolean;
-    passButtonDisabledReason?: PassDisabledReason;
-    handlePassMove: () => void;
-    shouldShowPassConfirm: boolean;
-    isDraggingPiece: boolean;
-    boardSectionRef: RefObject<HTMLDivElement | null>;
-
-    // ナビゲーション
-    navigationState: NavigationState;
-    navigationHandlers: NavigationHandlers;
-    kifMoves: KifMove[];
-    evalHistory: EvalHistory[];
-    displayEvalHistory: EvalHistory[];
-    positionHistory: PositionState[];
-    kifuTree?: KifuTree;
-    selectedBranchNodeId: string | null;
-    setSelectedBranchNodeId: (id: string | null) => void;
-    branchMarkers: Map<number, number>;
-    lastAddedBranchInfo: { ply: number; firstMove: string } | null;
-    setLastAddedBranchInfo: (info: { ply: number; firstMove: string } | null) => void;
-    handleAddPvAsBranch: (ply: number, pv: string[]) => void;
-    handlePreviewPv: (ply: number, pv: string[], evalCp?: number, evalMate?: number) => void;
-    kifuViewMode: KifuViewMode;
-    setKifuViewMode: (mode: KifuViewMode) => void;
-    setDisplaySettings: Dispatch<SetStateAction<DisplaySettings>>;
-    handlePlySelect: (ply: number) => void;
-    handleCopyKif: () => string;
-    handleMoveDetailSelect: (move: KifMove | null, position: PositionState | null) => void;
-
-    // PC専用
-    matchLayoutClasses: string;
-    candidateNote: string | null;
-    isSettingsModalOpen: boolean;
-    importSfen: (sfen: string, moves: string[]) => Promise<void>;
-    importKif: (moves: string[], moveData: KifMoveData[], startSfen?: string) => Promise<void>;
-    positionReady: boolean;
-    isDevMode: boolean;
-    eventLogs: EngineControllerEvent[];
-    errorLogs: EngineControllerErrorLog[];
-    engineErrorDetails?: Record<Player, EngineErrorDetails | null>;
-    retryEngine: (side: Player) => Promise<void>;
-    isRetrying?: Record<Player, boolean>;
-    isDisplaySettingsOpen: boolean;
-    onDisplaySettingsOpenChange: (open: boolean) => void;
-    isPassRightsSettingsOpen: boolean;
-    onPassRightsSettingsOpenChange: (open: boolean) => void;
-
-    // Mobile専用
-    isReviewMode: boolean;
-    onOpenAbout: () => void;
-    onImportSfen: (sfen: string, moves: string[]) => Promise<void>;
-    onImportKif: (moves: string[], moveData: KifMoveData[], startSfen?: string) => Promise<void>;
-    onDisplaySettingsChange: (settings: DisplaySettings) => void;
 }
 
 /**
@@ -207,113 +67,21 @@ export function ShogiMatchLayout({
     // グループ化されたprops
     matchSettings,
     boardState,
+    dialogState,
+    analysisProps,
+    navigationProps,
+    boardHandlers,
+    pcSpecificProps,
+    mobileSpecificProps,
     // 個別props
     isMobile,
     dndController,
     isEditMode,
     isEngineRestarting,
-    gameResult,
-    showResultDialog,
-    setShowResultDialog,
-    pvPreview,
-    setPvPreview,
-    isNnueManagerOpen,
-    openNnueManager,
-    closeNnueManager,
-    nnueManagerOpenReason,
-    clearNnueManagerOpenReason,
-    manifestUrl,
-    onRequestNnueFilePath,
     isMatchRunning,
     isPaused,
-    selectedMoveDetail,
-    setSelectedMoveDetailPly,
-    isAboutOpen,
-    setIsAboutOpen,
-    analysisSettings,
-    setAnalysisSettings,
-    analysisNnueSelection,
-    setAnalysisNnueSelection,
-    isNnueListLoading,
-    presetConfigs,
-    isAnalyzing,
-    analyzingState,
-    batchAnalysis,
-    handleAnalyzePly,
-    handleStartBatchAnalysis,
-    handleCancelBatchAnalysis,
-    handleAnalyzeNode,
-    handleAnalyzeBranch,
-    handleStartTreeBatchAnalysis,
-    hideEmptyHandPieces,
-    getHandInfo,
-    handleSquareSelect,
-    handlePromotionChoice,
-    handleHandSelect,
-    handleHandPiecePointerDown,
-    handlePiecePointerDown,
-    handlePieceTogglePromote,
-    handleIncrementHand,
-    handleDecrementHand,
-    handleResetToStartpos,
-    pauseAutoPlay,
-    resumeAutoPlay,
-    handleStartReview,
-    handleEnterEditMode,
-    enterEditModeFromPaused,
-    handleResign,
-    handleUndo,
-    setIsSettingsModalOpen,
-    shouldRenderPassButton,
-    canMakePassMove,
-    passButtonDisabledReason,
-    handlePassMove,
-    shouldShowPassConfirm,
-    isDraggingPiece,
-    boardSectionRef,
-    navigationState,
-    navigationHandlers,
-    kifMoves,
-    evalHistory,
-    displayEvalHistory,
-    positionHistory,
-    kifuTree,
-    selectedBranchNodeId,
-    setSelectedBranchNodeId,
-    branchMarkers,
-    lastAddedBranchInfo,
-    setLastAddedBranchInfo,
-    handleAddPvAsBranch,
-    handlePreviewPv,
-    kifuViewMode,
-    setKifuViewMode,
-    setDisplaySettings,
-    handlePlySelect,
-    handleCopyKif,
-    handleMoveDetailSelect,
-    matchLayoutClasses,
-    candidateNote,
-    isSettingsModalOpen,
-    importSfen,
-    importKif,
-    positionReady,
-    isDevMode,
-    eventLogs,
-    errorLogs,
-    engineErrorDetails,
-    retryEngine,
-    isRetrying,
-    isDisplaySettingsOpen,
-    onDisplaySettingsOpenChange,
-    isPassRightsSettingsOpen,
-    onPassRightsSettingsOpenChange,
-    isReviewMode,
-    onOpenAbout,
-    onImportSfen,
-    onImportKif,
-    onDisplaySettingsChange,
 }: ShogiMatchLayoutProps): ReactElement {
-    // グループ化されたpropsを展開
+    // グループ化されたpropsを展開: 対局設定
     const {
         sides,
         handleSidesChange,
@@ -333,6 +101,7 @@ export function ShogiMatchLayout({
         setIsPassRightsSettingsOpen,
     } = matchSettings;
 
+    // グループ化されたpropsを展開: 盤面状態
     const {
         position,
         clocks,
@@ -348,6 +117,123 @@ export function ShogiMatchLayout({
         displaySettings,
         onFlipBoardChange,
     } = boardState;
+
+    // グループ化されたpropsを展開: ダイアログ状態
+    const {
+        gameResult,
+        showResultDialog,
+        setShowResultDialog,
+        pvPreview,
+        setPvPreview,
+        isNnueManagerOpen,
+        openNnueManager,
+        closeNnueManager,
+        nnueManagerOpenReason,
+        clearNnueManagerOpenReason,
+        manifestUrl,
+        onRequestNnueFilePath,
+        selectedMoveDetail,
+        setSelectedMoveDetailPly,
+        isAboutOpen,
+        setIsAboutOpen,
+    } = dialogState;
+
+    // グループ化されたpropsを展開: 解析機能
+    const {
+        analysisSettings,
+        setAnalysisSettings,
+        analysisNnueSelection,
+        setAnalysisNnueSelection,
+        isNnueListLoading,
+        presetConfigs,
+        isAnalyzing,
+        analyzingState,
+        batchAnalysis,
+        handleAnalyzePly,
+        handleStartBatchAnalysis,
+        handleCancelBatchAnalysis,
+        handleAnalyzeNode,
+        handleAnalyzeBranch,
+        handleStartTreeBatchAnalysis,
+    } = analysisProps;
+
+    // グループ化されたpropsを展開: ナビゲーション・棋譜
+    const {
+        navigationState,
+        navigationHandlers,
+        kifMoves,
+        evalHistory,
+        displayEvalHistory,
+        positionHistory,
+        kifuTree,
+        selectedBranchNodeId,
+        setSelectedBranchNodeId,
+        branchMarkers,
+        lastAddedBranchInfo,
+        setLastAddedBranchInfo,
+        handleAddPvAsBranch,
+        handlePreviewPv,
+        kifuViewMode,
+        setKifuViewMode,
+        setDisplaySettings,
+        handlePlySelect,
+        handleCopyKif,
+        handleMoveDetailSelect,
+    } = navigationProps;
+
+    // グループ化されたpropsを展開: 盤面操作ハンドラー
+    const {
+        hideEmptyHandPieces,
+        getHandInfo,
+        handleSquareSelect,
+        handlePromotionChoice,
+        handleHandSelect,
+        handleHandPiecePointerDown,
+        handlePiecePointerDown,
+        handlePieceTogglePromote,
+        handleIncrementHand,
+        handleDecrementHand,
+        handleResetToStartpos,
+        pauseAutoPlay,
+        resumeAutoPlay,
+        handleStartReview,
+        handleEnterEditMode,
+        enterEditModeFromPaused,
+        handleResign,
+        handleUndo,
+        setIsSettingsModalOpen,
+        shouldRenderPassButton,
+        canMakePassMove,
+        passButtonDisabledReason,
+        handlePassMove,
+        shouldShowPassConfirm,
+        isDraggingPiece,
+        boardSectionRef,
+    } = boardHandlers;
+
+    // グループ化されたpropsを展開: PC専用
+    const {
+        matchLayoutClasses,
+        candidateNote,
+        isSettingsModalOpen,
+        importSfen,
+        importKif,
+        positionReady,
+        isDevMode,
+        eventLogs,
+        errorLogs,
+        engineErrorDetails,
+        retryEngine,
+        isRetrying,
+        isDisplaySettingsOpen,
+        onDisplaySettingsOpenChange,
+        isPassRightsSettingsOpen,
+        onPassRightsSettingsOpenChange,
+    } = pcSpecificProps;
+
+    // グループ化されたpropsを展開: Mobile専用
+    const { isReviewMode, onOpenAbout, onImportSfen, onImportKif, onDisplaySettingsChange } =
+        mobileSpecificProps;
 
     return (
         <>
