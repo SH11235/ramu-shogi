@@ -6,6 +6,25 @@ import type { LegalMoveCache } from "../utils/legalMoveCache";
 import { buildPassRightsOptionForLegalMoves } from "../utils/passRightsSettings";
 
 /**
+ * usePassRights の戻り値の型
+ */
+export interface UsePassRightsResult {
+    // 状態
+    canPassLegal: boolean;
+    hasPassRights: boolean;
+    passLegalKnown: boolean;
+    canMakePassMove: boolean;
+    shouldRenderPassButton: boolean;
+    passButtonDisabledReason: PassDisabledReason | undefined;
+    shouldShowPassConfirm: boolean;
+
+    // アクション
+    setCanPassLegal: (canPass: boolean) => void;
+    ensurePassRightsInitialized: () => { sente: number; gote: number } | null;
+    getPassRightsOption: () => { passRights?: { sente: number; gote: number } };
+}
+
+/**
  * パス権関連の状態管理と初期化を行うフック
  *
  * @param deps - 依存するプロパティとコールバック
@@ -28,7 +47,7 @@ export function usePassRights(deps: {
     currentTurnRole: "human" | "engine";
     /** 残り時間を取得する関数 */
     getRemainingTimeMs: (player: "sente" | "gote") => number;
-}) {
+}): UsePassRightsResult {
     const {
         passRightsSettings,
         positionRef,
@@ -81,7 +100,7 @@ export function usePassRights(deps: {
 
     // パス権の有無
     const position = positionRef.current;
-    const hasPassRights = position?.passRights && position.passRights[position.turn] > 0;
+    const hasPassRights = !!(position?.passRights && position.passRights[position.turn] > 0);
 
     // パス合法可否が計算済みか
     const passLegalKnown = legalCache.isCached(moves.length);

@@ -1,7 +1,6 @@
 import {
     applyMoveWithState,
     type BoardState,
-    boardToMatrix,
     cloneBoard,
     createDefaultNnueSelection,
     createEmptyHands,
@@ -9,6 +8,7 @@ import {
     type GameResult,
     getAllSquares,
     getPositionService,
+    type LastMove,
     type NnueSelection,
     type PieceType,
     type Player,
@@ -18,7 +18,6 @@ import {
 } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ShogiBoardCell } from "./shogi-board";
 import {
     DEFAULT_BYOYOMI_MS,
     DEFAULT_MAX_LOGS,
@@ -28,7 +27,7 @@ import {
 import { applyDropResult, type DropResult, usePieceDnd } from "./shogi-match/dnd";
 import { useBatchAnalysis } from "./shogi-match/hooks/useBatchAnalysis";
 import { useBoardState } from "./shogi-match/hooks/useBoardState";
-import { type ClockSettings, useClockManager } from "./shogi-match/hooks/useClockManager";
+import { useClockManager } from "./shogi-match/hooks/useClockManager";
 import { useDialogs } from "./shogi-match/hooks/useDialogs";
 import { useEditModeActions } from "./shogi-match/hooks/useEditModeActions";
 import { useEngineManager } from "./shogi-match/hooks/useEngineManager";
@@ -37,10 +36,12 @@ import { useGameControls } from "./shogi-match/hooks/useGameControls";
 import { useKifuImportExport } from "./shogi-match/hooks/useKifuImportExport";
 import { useKifuKeyboardNavigation } from "./shogi-match/hooks/useKifuKeyboardNavigation";
 import { useKifuNavigation } from "./shogi-match/hooks/useKifuNavigation";
+import { useLegalMovePrefetch } from "./shogi-match/hooks/useLegalMovePrefetch";
 import { useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import { useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
 import { useNnueManager } from "./shogi-match/hooks/useNnueManager";
+import { useNormalizedSettings } from "./shogi-match/hooks/useNormalizedSettings";
 import { usePassRights } from "./shogi-match/hooks/usePassRights";
 import { useUIState } from "./shogi-match/hooks/useUIState";
 import { ShogiMatchLayout } from "./shogi-match/layouts/ShogiMatchLayout";
@@ -56,9 +57,9 @@ import {
     type PassRightsSettings,
     type SideSetting,
 } from "./shogi-match/types";
-import { cloneHandsState } from "./shogi-match/utils/boardUtils";
 import type { KifMove } from "./shogi-match/utils/kifFormat";
 import { LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
+import { boardToGrid, clonePositionState } from "./shogi-match/utils/positionUtils";
 import {
     isSamePassRightsSettings,
     normalizePassRightsSettings,
@@ -87,32 +88,6 @@ interface ShogiMatchProps {
     defaultNnuePresetKey?: string;
     /** AIアイコンのURL（GitHub Pages等でbase pathが必要な場合に指定） */
     aiIconUrl?: string;
-}
-
-const clonePositionState = (pos: PositionState): PositionState => ({
-    board: cloneBoard(pos.board),
-    hands: cloneHandsState(pos.hands),
-    turn: pos.turn,
-    ply: pos.ply,
-    passRights: pos.passRights
-        ? { sente: pos.passRights.sente, gote: pos.passRights.gote }
-        : undefined,
-});
-
-function boardToGrid(board: BoardState): ShogiBoardCell[][] {
-    const matrix = boardToMatrix(board);
-    return matrix.map((row) =>
-        row.map((cell) => ({
-            id: cell.square,
-            piece: cell.piece
-                ? {
-                      owner: cell.piece.owner,
-                      type: cell.piece.type,
-                      promoted: cell.piece.promoted,
-                  }
-                : null,
-        })),
-    );
 }
 
 export function ShogiMatch({
@@ -192,16 +167,12 @@ export function ShogiMatch({
         }),
         [initialMainTimeMs, initialByoyomiMs],
     );
-    const [timeSettings, setTimeSettings] = useLocalStorage<ClockSettings>(
+    const [timeSettings, setTimeSettings] = useNormalizedSettings(
         "shogi-match-time-settings",
         defaultTimeSettings,
+        normalizeTimeSettings,
+        isSameTimeSettings,
     );
-    useEffect(() => {
-        const normalized = normalizeTimeSettings(timeSettings, defaultTimeSettings);
-        if (!isSameTimeSettings(normalized, timeSettings)) {
-            setTimeSettings(normalized);
-        }
-    }, [defaultTimeSettings, setTimeSettings, timeSettings]);
     const [isMatchRunning, setIsMatchRunning] = useState(false);
     const [isEditMode, setIsEditMode] = useState(true);
     const [isPaused, setIsPaused] = useState(false);
@@ -223,19 +194,12 @@ export function ShogiMatch({
         return { ...DEFAULT_ANALYSIS_SETTINGS, ...storedAnalysisSettings };
     }, [storedAnalysisSettings]);
     // パス権設定
-    const [storedPassRightsSettings, setPassRightsSettings] = useLocalStorage<PassRightsSettings>(
+    const [passRightsSettings, setPassRightsSettings] = useNormalizedSettings(
         "shogi-pass-rights-settings",
         DEFAULT_PASS_RIGHTS_SETTINGS,
+        normalizePassRightsSettings,
+        isSamePassRightsSettings,
     );
-    const passRightsSettings = useMemo(
-        () => normalizePassRightsSettings(storedPassRightsSettings, DEFAULT_PASS_RIGHTS_SETTINGS),
-        [storedPassRightsSettings],
-    );
-    useEffect(() => {
-        if (!isSamePassRightsSettings(passRightsSettings, storedPassRightsSettings)) {
-            setPassRightsSettings(passRightsSettings);
-        }
-    }, [passRightsSettings, setPassRightsSettings, storedPassRightsSettings]);
 
     // UI状態管理（統合フック）
     const {
@@ -717,6 +681,31 @@ export function ShogiMatch({
     // handleEvalUpdate を ref に設定（useEngineManager で使用）
     handleEvalUpdateRef.current = handleEvalUpdate;
 
+    // 手の適用後の共通処理（エンジンの手・パス手・人間の手で共通）
+    const applyMoveAndUpdateState = useCallback(
+        (move: string, nextPosition: PositionState, lastMoveInfo: LastMove | undefined) => {
+            // 消費時間を計算
+            const elapsedMs = Date.now() - turnStartTimeRef.current;
+            // 棋譜ナビゲーションに手を追加（局面更新はonPositionChangeで自動実行）
+            navigation.addMove(move, nextPosition, { elapsedMs });
+            setLastMove(lastMoveInfo);
+            setSelection(null);
+            setMessage(null);
+            clearLegalCache();
+            // ターン開始時刻をリセット
+            turnStartTimeRef.current = Date.now();
+            updateClocksForNextTurn(nextPosition.turn);
+        },
+        [
+            clearLegalCache,
+            navigation,
+            setLastMove,
+            setMessage,
+            setSelection,
+            updateClocksForNextTurn,
+        ],
+    );
+
     // キーボード・ホイールナビゲーション用のgoForward（分岐対応）
     const handleKeyboardForward = useCallback(() => {
         navigation.goForward(selectedBranchNodeId ?? undefined);
@@ -757,28 +746,9 @@ export function ShogiMatch({
                 );
                 return;
             }
-            // 消費時間を計算
-            const elapsedMs = Date.now() - turnStartTimeRef.current;
-            // 棋譜ナビゲーションに手を追加（局面更新はonPositionChangeで自動実行）
-            navigation.addMove(move, result.next, { elapsedMs });
-            setLastMove(result.lastMove);
-            setSelection(null);
-            setMessage(null);
-            clearLegalCache();
-            // ターン開始時刻をリセット
-            turnStartTimeRef.current = Date.now();
-            updateClocksForNextTurn(result.next.turn);
+            applyMoveAndUpdateState(move, result.next, result.lastMove);
         },
-        [
-            clearLegalCache,
-            logEngineError,
-            navigation,
-            setLastMove,
-            setMessage,
-            setSelection,
-            sides,
-            updateClocksForNextTurn,
-        ],
+        [applyMoveAndUpdateState, logEngineError, sides],
     );
     handleMoveFromEngineRef.current = handleMoveFromEngine;
 
@@ -836,34 +806,20 @@ export function ShogiMatch({
                 return;
             }
 
-            // 消費時間を計算
-            const elapsedMs = Date.now() - turnStartTimeRef.current;
-            // 棋譜ナビゲーションに手を追加（局面更新はonPositionChangeで自動実行）
-            navigation.addMove("pass", result.next, { elapsedMs });
-            setLastMove(result.lastMove);
-            setSelection(null);
-            setMessage(null);
-            clearLegalCache();
-
-            // ターン開始時刻をリセット
-            turnStartTimeRef.current = Date.now();
-            updateClocksForNextTurn(result.next.turn);
+            applyMoveAndUpdateState("pass", result.next, result.lastMove);
         } finally {
             moveProcessingRef.current = false;
         }
     }, [
+        applyMoveAndUpdateState,
         clearLegalCache,
         fetchLegalMoves,
         legalCache,
         moves,
-        navigation,
         passRights,
         passRightsSettings,
-        setLastMove,
         setMessage,
-        setSelection,
         startSfen,
-        updateClocksForNextTurn,
     ]);
 
     useEffect(() => {
@@ -998,40 +954,17 @@ export function ShogiMatch({
     const hideEmptyHandPieces = gameMode === "playing" || gameMode === "paused";
 
     // パス可否判定のため、キャッシュ未作成時は合法手をプリフェッチ
-    useEffect(() => {
-        if (!isMatchRunning || !positionReady) return;
-        if (sides[position.turn].role !== "human") return;
-        const ply = moves.length;
-        if (legalCache.isCached(ply)) return;
-
-        const passRightsOption = passRights.getPassRightsOption();
-        const resolver = async () => {
-            if (fetchLegalMoves) {
-                return fetchLegalMoves(startSfen, moves, passRightsOption);
-            }
-            return getPositionService().getLegalMoves(startSfen, moves, passRightsOption);
-        };
-
-        // エラーはパスボタンクリック時の再解決に委ねる
-        void legalCache
-            .getOrResolve(ply, resolver)
-            .then((result) => {
-                if (moves.length === ply) {
-                    passRights.setCanPassLegal(result.has("pass"));
-                }
-            })
-            .catch(() => undefined);
-    }, [
-        fetchLegalMoves,
+    useLegalMovePrefetch({
         isMatchRunning,
+        positionReady,
+        positionTurn: position.turn,
+        sides,
+        moves,
         legalCache,
         passRights,
-        position.turn,
-        positionReady,
-        sides,
         startSfen,
-        moves,
-    ]);
+        fetchLegalMoves,
+    });
 
     // 編集モードアクション管理フック
     const {
