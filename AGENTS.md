@@ -55,6 +55,12 @@
 - `__tests__/` ディレクトリは使用しない
 - 例: `hooks/useEngineManager.ts` → `hooks/useEngineManager.test.ts`
 
+## モジュールエクスポートルール
+
+- サブディレクトリに `index.ts` を作成してはいけない
+- パッケージルート `index.ts` では `export *` を使わず、明示的な export のみ使用
+- 型は `export type { ... }` で明示
+
 ## Git操作に関する注意
 
 **重要**: ユーザーの明示的な指示なしに、以下の操作を行ってはいけない:
