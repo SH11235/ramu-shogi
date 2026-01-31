@@ -11,7 +11,8 @@
     "scripts": {
         "build": "turbo build",
         "dev": "turbo dev",
-        "test": "turbo test",
+        "test": "turbo test -- --run",
+        "test:watch": "turbo test",
         "test:unit": "turbo test:unit",
         "lint": "turbo lint",
         "lint:fix": "turbo lint:fix",
