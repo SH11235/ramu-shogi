@@ -25,7 +25,7 @@ export type EngineOption = {
     kind?: "internal" | "external";
 };
 
-export type SideRole = "human" | "engine";
+type SideRole = "human" | "engine";
 
 export type SideSetting = {
     role: SideRole;
@@ -33,12 +33,12 @@ export type SideSetting = {
     skillLevel?: SkillLevelSettings;
 };
 
-export type EngineControllerSides = {
+type EngineControllerSides = {
     sente: SideSetting;
     gote: SideSetting;
 };
 
-export type EngineClockState = {
+type EngineClockState = {
     sente: { mainMs: number; byoyomiMs: number };
     gote: { mainMs: number; byoyomiMs: number };
     lastUpdatedAt: number;
@@ -51,7 +51,7 @@ export interface PassRightsSettings {
     goteInitialCount: number;
 }
 
-export type EngineControllerPosition = {
+type EngineControllerPosition = {
     startSfen: string;
     moves: string[];
     turn: Player;
@@ -97,7 +97,7 @@ export interface EngineControllerState {
     isEngineRestarting: boolean;
 }
 
-export interface EngineControllerSyncContext {
+interface EngineControllerSyncContext {
     sides?: EngineControllerSides;
     nnueSelections?: {
         sente?: NnueSelection;
@@ -108,7 +108,7 @@ export interface EngineControllerSyncContext {
     matchRunning?: boolean;
 }
 
-export interface EngineControllerCommand {
+interface EngineControllerCommand {
     syncContext: (context: EngineControllerSyncContext) => void;
     setSides: (sides: EngineControllerSides) => void;
     setNnueSelection: (side: Player, selection: NnueSelection | undefined) => void;
@@ -133,13 +133,13 @@ export interface EngineController {
     command: EngineControllerCommand;
 }
 
-export interface EngineControllerCallbacks {
+interface EngineControllerCallbacks {
     onMoveFromEngine: (move: string) => void;
     onMatchEnd: (result: GameResult) => Promise<void>;
     onEvalUpdate?: (ply: number, event: EngineInfoEvent) => void;
 }
 
-export interface EngineControllerDependencies {
+interface EngineControllerDependencies {
     createClient: (engineId: string) => EngineClient;
     getClockState: () => EngineClockState;
     now: () => number;
@@ -164,13 +164,13 @@ interface EngineInternalState {
     ready: boolean;
 }
 
-export type EngineControllerSearchState = {
+type EngineControllerSearchState = {
     handle: SearchHandle | null;
     pending: boolean;
     requestPly: number | null;
 };
 
-export type EngineControllerActiveSearch = {
+type EngineControllerActiveSearch = {
     side: Player;
     engineId: string;
 };
@@ -279,7 +279,7 @@ async function applySkillLevelSettings(
     await client.setOption("Skill Level", normalized.skillLevel);
 }
 
-export interface EngineControllerBestmoveResult {
+interface EngineControllerBestmoveResult {
     action: "apply_move" | "end_match" | "skip";
     move?: string;
     gameResult?: GameResult;
@@ -287,7 +287,7 @@ export interface EngineControllerBestmoveResult {
     shouldUpdateRequestPly: boolean;
 }
 
-export interface EngineControllerBestmoveParams {
+interface EngineControllerBestmoveParams {
     move: string;
     side: Player;
     engineId: string;
@@ -356,7 +356,7 @@ export function determineBestmoveAction(
     }
 }
 
-export interface EngineControllerBestmoveHandlerParams {
+interface EngineControllerBestmoveHandlerParams {
     side: Player;
     engineId: string;
     activeSearch: EngineControllerActiveSearch | null;
@@ -393,7 +393,7 @@ export function handleBestmove(
     return result;
 }
 
-export interface EngineControllerInfoHandlerParams {
+interface EngineControllerInfoHandlerParams {
     onEvalUpdate?: (ply: number, event: EngineInfoEvent) => void;
     ply: number;
 }

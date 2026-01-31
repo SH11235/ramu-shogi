@@ -110,62 +110,6 @@ export interface NnueMeta {
 }
 
 /**
- * エンジン設定プロファイル
- */
-interface EngineProfile {
-    /** 一意識別子（UUID v4） */
-    id: string;
-
-    /** プロファイル名 */
-    name: string;
-
-    /** エンジン種別 */
-    type: "builtin" | "external-usi";
-
-    /** 内蔵エンジン設定 */
-    builtin?: {
-        /** 使用する NNUE の ID（NnueMeta.id） */
-        nnueId?: string;
-
-        /** スレッド数 */
-        threads: number;
-
-        /** 置換表サイズ (MB) */
-        hashMb: number;
-
-        /** MultiPV */
-        multiPv: number;
-
-        /** スキルレベル（0-20, undefined = 最強） */
-        skillLevel?: number;
-    };
-
-    /** 外部 USI エンジン設定（Desktop 限定） */
-    externalUsi?: {
-        /** 実行ファイルパス */
-        executablePath: string;
-
-        /** 作業ディレクトリ */
-        workingDirectory?: string;
-
-        /** USI オプション */
-        options: Record<string, string | number | boolean>;
-
-        /** NNUE ファイルパス（EvalFile オプション用） */
-        nnuePath?: string;
-    };
-
-    /** 作成日時（Unix timestamp） */
-    createdAt: number;
-
-    /** 最終使用日時（Unix timestamp） */
-    lastUsedAt?: number;
-
-    /** デフォルトフラグ */
-    isDefault: boolean;
-}
-
-/**
  * NNUE ダウンロード進捗
  */
 export interface NnueDownloadProgress {
@@ -182,7 +126,7 @@ export interface NnueDownloadProgress {
 /**
  * プリセット更新情報
  */
-export interface PresetUpdate {
+interface PresetUpdate {
     /** プリセットキー */
     presetKey: string;
     /** ローカルに存在するバージョン一覧（複数バージョンがあり得る） */

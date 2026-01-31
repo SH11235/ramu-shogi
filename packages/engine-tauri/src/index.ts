@@ -335,7 +335,7 @@ export async function getLegalMoves(params: LegalMovesParams): Promise<string[]>
 }
 
 /** NNUE フォーマット情報 */
-export interface NnueFormatInfo {
+interface NnueFormatInfo {
     architecture: string;
     l1Dimension: number;
     l2Dimension: number;
