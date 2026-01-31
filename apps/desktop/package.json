@@ -10,7 +10,7 @@
         "format": "pnpm --workspace-root exec biome format --write .",
         "format:check": "pnpm --workspace-root exec biome format .",
         "lint": "pnpm --workspace-root exec biome check .",
-        "lint:fix": "pnpm --workspace-root exec biome check --write --files-ignore-unknown=true",
+        "lint:fix": "pnpm --workspace-root exec biome check --write --unsafe --files-ignore-unknown=true",
         "tauri": "tauri"
     },
     "dependencies": {
