@@ -3,12 +3,12 @@ import { useCallback, useState } from "react";
 /**
  * NNUE管理ダイアログを開いた理由
  */
-export type NnueManagerOpenReason = "missing-sente" | "missing-gote" | "missing-analysis";
+type NnueManagerOpenReason = "missing-sente" | "missing-gote" | "missing-analysis";
 
 /**
  * ダイアログの状態を管理する型
  */
-export interface DialogStates {
+interface DialogStates {
     /** 設定モーダル */
     isSettingsModalOpen: boolean;
     /** NNUE 管理ダイアログ */
@@ -26,7 +26,7 @@ export interface DialogStates {
 /**
  * ダイアログの状態を操作するアクション
  */
-export interface DialogActions {
+interface DialogActions {
     /** 設定モーダルを開く */
     openSettings: () => void;
     /** 設定モーダルを閉じる */

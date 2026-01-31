@@ -16,7 +16,7 @@ import type { UseKifuNavigationResult } from "./useKifuNavigation";
 /**
  * useEditModeActions の props
  */
-export interface UseEditModeActionsProps {
+interface UseEditModeActionsProps {
     /** 局面状態 */
     position: PositionState;
     /** 局面状態の ref */
@@ -58,7 +58,7 @@ export interface UseEditModeActionsProps {
 /**
  * useEditModeActions の返り値
  */
-export interface UseEditModeActionsReturn {
+interface UseEditModeActionsReturn {
     /** 編集後の局面を適用する */
     applyEditedPosition: (nextPosition: PositionState) => Promise<void>;
     /** 駒の成りを設定する */

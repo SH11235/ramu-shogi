@@ -29,7 +29,7 @@ const clonePositionState = (pos: PositionState): PositionState => ({
 /**
  * useGameControls の props
  */
-export interface UseGameControlsProps {
+interface UseGameControlsProps {
     /** 局面状態 */
     position: PositionState;
     /** 局面状態の ref */
@@ -117,7 +117,7 @@ export interface UseGameControlsProps {
 /**
  * useGameControls の返り値
  */
-export interface UseGameControlsReturn {
+interface UseGameControlsReturn {
     /** 対局を一時停止する */
     pauseAutoPlay: () => Promise<void>;
     /** 一時停止中から編集モードに移行する */
