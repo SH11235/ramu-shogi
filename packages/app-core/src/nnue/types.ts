@@ -126,7 +126,7 @@ export interface NnueDownloadProgress {
 /**
  * プリセット更新情報
  */
-interface PresetUpdate {
+export interface PresetUpdate {
     /** プリセットキー */
     presetKey: string;
     /** ローカルに存在するバージョン一覧（複数バージョンがあり得る） */
