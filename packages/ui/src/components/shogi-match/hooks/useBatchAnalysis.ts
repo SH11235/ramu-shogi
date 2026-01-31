@@ -1,7 +1,7 @@
 import type { KifuTree, NnueSelection, ResolvedNnue } from "@shogi/app-core";
 import { getPathToNode } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { AnalysisSettings, AnalyzingState } from "../types";
 import { ANALYZING_STATE_NONE } from "../types";
 import { collectBranchAnalysisJobs, collectTreeAnalysisJobs } from "../utils/branchTreeUtils";
@@ -120,25 +120,18 @@ export function useBatchAnalysis({
     // 解析状態（union型で相互排他的な状態を型レベルで保証）
     const [analyzingState, setAnalyzingState] = useState<AnalyzingState>(ANALYZING_STATE_NONE);
 
-    // 分岐解析用の状態をrefで追跡（コールバック内で最新値を参照するため）
-    const analyzingStateRef = useRef<AnalyzingState>(ANALYZING_STATE_NONE);
-    useEffect(() => {
-        analyzingStateRef.current = analyzingState;
-    }, [analyzingState]);
-
     // 評価値更新コールバック（分岐解析にも対応）
     const handleEvalUpdate = useCallback(
         (ply: number, event: EngineInfoEvent) => {
-            const state = analyzingStateRef.current;
             // 分岐解析中の場合はノードIDで保存
-            if (state.type === "by-node-id") {
-                recordEvalByNodeId(state.nodeId, event);
+            if (analyzingState.type === "by-node-id") {
+                recordEvalByNodeId(analyzingState.nodeId, event);
             } else {
                 // 通常解析の場合はplyで保存
                 recordEvalByPly(ply, event);
             }
         },
-        [recordEvalByPly, recordEvalByNodeId],
+        [analyzingState, recordEvalByPly, recordEvalByNodeId],
     );
 
     // 特定の手数の局面を解析するコールバック（オンデマンド解析用）
