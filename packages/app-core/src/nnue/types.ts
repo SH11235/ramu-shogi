@@ -278,9 +278,6 @@ export function createDefaultNnueSelection(presetKey: string = DEFAULT_PRESET_KE
     };
 }
 
-/** デフォルトのNNUE選択（最初のプリセット） */
-export const DEFAULT_NNUE_SELECTION: NnueSelection = createDefaultNnueSelection();
-
 /** NNUEなし（駒得評価）の選択 */
 export const NONE_NNUE_SELECTION: NnueSelection = {
     presetKey: null,
