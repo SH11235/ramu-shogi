@@ -150,7 +150,10 @@ export function useBatchAnalysis({
             } catch (e) {
                 const errorMessage =
                     e instanceof Error ? e.message : "評価関数の準備に失敗しました";
-                openNnueManager(`解析を開始できません: ${errorMessage}`);
+                const detailedMessage = `解析を開始できません: ${errorMessage}\n\n対処方法:\n1. NNUE管理画面が開きます\n2. 必要なファイルをダウンロードしてください\n3. 再度解析を実行してください`;
+                setMessage({ text: detailedMessage, type: "error" });
+                // NNUE管理ダイアログを開く
+                openNnueManager("missing-analysis");
                 return;
             }
 
@@ -183,6 +186,7 @@ export function useBatchAnalysis({
             resolveNnue,
             analysisNnueSelection,
             openNnueManager,
+            setMessage,
         ],
     );
 
@@ -255,7 +259,10 @@ export function useBatchAnalysis({
             resolved = await resolveNnue(analysisNnueSelection);
         } catch (e) {
             const errorMessage = e instanceof Error ? e.message : "評価関数の準備に失敗しました";
-            openNnueManager(`解析を開始できません: ${errorMessage}`);
+            const detailedMessage = `一括解析を開始できません: ${errorMessage}\n\n対処方法:\n1. NNUE管理画面が開きます\n2. 必要なファイルをダウンロードしてください\n3. 再度一括解析を実行してください`;
+            setMessage({ text: detailedMessage, type: "error" });
+            // NNUE管理ダイアログを開く
+            openNnueManager("missing-analysis");
             return;
         }
 
@@ -278,6 +285,7 @@ export function useBatchAnalysis({
         resolveNnue,
         analysisNnueSelection,
         openNnueManager,
+        setMessage,
     ]);
 
     // ツリー全体（分岐含む）の一括解析を開始
@@ -305,7 +313,10 @@ export function useBatchAnalysis({
             } catch (e) {
                 const errorMessage =
                     e instanceof Error ? e.message : "評価関数の準備に失敗しました";
-                openNnueManager(`解析を開始できません: ${errorMessage}`);
+                const detailedMessage = `ツリー解析を開始できません: ${errorMessage}\n\n対処方法:\n1. NNUE管理画面が開きます\n2. 必要なファイルをダウンロードしてください\n3. 再度ツリー解析を実行してください`;
+                setMessage({ text: detailedMessage, type: "error" });
+                // NNUE管理ダイアログを開く
+                openNnueManager("missing-analysis");
                 return;
             }
 
@@ -359,7 +370,10 @@ export function useBatchAnalysis({
             } catch (e) {
                 const errorMessage =
                     e instanceof Error ? e.message : "評価関数の準備に失敗しました";
-                openNnueManager(`解析を開始できません: ${errorMessage}`);
+                const detailedMessage = `分岐解析を開始できません: ${errorMessage}\n\n対処方法:\n1. NNUE管理画面が開きます\n2. 必要なファイルをダウンロードしてください\n3. 再度分岐解析を実行してください`;
+                setMessage({ text: detailedMessage, type: "error" });
+                // NNUE管理ダイアログを開く
+                openNnueManager("missing-analysis");
                 return;
             }
 
@@ -387,6 +401,7 @@ export function useBatchAnalysis({
             resolveNnue,
             analysisNnueSelection,
             openNnueManager,
+            setMessage,
         ],
     );
 
