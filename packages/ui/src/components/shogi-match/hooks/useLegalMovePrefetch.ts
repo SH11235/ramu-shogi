@@ -1,7 +1,7 @@
 import { getPositionService, type Player } from "@shogi/app-core";
 import { useEffect } from "react";
-import type { LegalMoveCache } from "../utils/legalMoveCache";
 import type { SideSetting } from "../types";
+import type { LegalMoveCache } from "../utils/legalMoveCache";
 import type { UsePassRightsResult } from "./usePassRights";
 
 interface UseLegalMovePrefetchParams {

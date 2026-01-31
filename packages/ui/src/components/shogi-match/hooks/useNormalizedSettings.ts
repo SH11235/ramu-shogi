@@ -30,7 +30,10 @@ export function useNormalizedSettings<T>(
 ): UseLocalStorageReturn<T> {
     const [stored, setStored] = useLocalStorage(key, defaultValue);
 
-    const normalized = useMemo(() => normalize(stored, defaultValue), [stored, defaultValue]);
+    const normalized = useMemo(
+        () => normalize(stored, defaultValue),
+        [stored, defaultValue, normalize],
+    );
 
     useEffect(() => {
         if (!isSame(normalized, stored)) {

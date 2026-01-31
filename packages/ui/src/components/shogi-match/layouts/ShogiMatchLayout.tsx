@@ -11,7 +11,6 @@ import type {
     EngineControllerErrorLog,
     EngineControllerEvent,
     KifuTree,
-    NnueMeta,
     NnueSelection,
     Player,
     PositionState,
@@ -20,7 +19,6 @@ import type { Dispatch, ReactElement, RefObject, SetStateAction } from "react";
 import { AboutDialog } from "../../AboutDialog";
 import { EngineRestartingOverlay } from "../../nnue/EngineRestartingOverlay";
 import { NnueManagerDialog } from "../../nnue/NnueManagerDialog";
-import type { ShogiBoardCell } from "../../shogi-board";
 import type { EngineErrorDetails } from "../components/EngineLogsPanel";
 import { GameResultDialog } from "../components/GameResultDialog";
 import type { KifuViewMode } from "../components/KifuPanel";
@@ -38,32 +36,24 @@ import type {
     HandInfo,
     NavigationHandlers,
     NavigationState,
-    SelectionState,
 } from "../contexts/types";
 import { type DndController, DragGhost } from "../dnd";
-import type { ClockSettings, TickState } from "../hooks/useClockManager";
-import type {
-    AnalysisSettings,
-    AnalyzingState,
-    DisplaySettings,
-    GameMode,
-    Message,
-    PassRightsSettings,
-    PromotionSelection,
-    SideSetting,
-} from "../types";
+import type { AnalysisSettings, AnalyzingState, DisplaySettings } from "../types";
+import type { BoardStateProps, MatchSettingsProps } from "../types/layoutProps";
 import type { EvalHistory, KifMove } from "../utils/kifFormat";
 import type { KifMoveData } from "../utils/kifParser";
 import { MobileLayout } from "./MobileLayout";
 import { PCLayout } from "./PCLayout";
 
 interface ShogiMatchLayoutProps {
+    // Props グループ
+    matchSettings: MatchSettingsProps;
+    boardState: BoardStateProps;
     // デバイス
     isMobile: boolean;
 
     // DnD
     dndController: DndController;
-    flipBoard: boolean;
     isEditMode: boolean;
 
     // エンジン再起動
@@ -105,24 +95,6 @@ interface ShogiMatchLayoutProps {
     isAboutOpen: boolean;
     setIsAboutOpen: (open: boolean) => void;
 
-    // 対局設定
-    sides: { sente: SideSetting; gote: SideSetting };
-    handleSidesChange: (sides: { sente: SideSetting; gote: SideSetting }) => void;
-    timeSettings: ClockSettings;
-    setTimeSettings: (settings: ClockSettings) => void;
-    passRightsSettings: PassRightsSettings;
-    handlePassRightsSettingsChange: (settings: PassRightsSettings) => void;
-    settingsLocked: boolean;
-    senteNnueSelection: NnueSelection;
-    handleSenteNnueSelectionChange: (selection: NnueSelection) => void;
-    goteNnueSelection: NnueSelection;
-    handleGoteNnueSelectionChange: (selection: NnueSelection) => void;
-    nnueList: NnueMeta[];
-    presets: import("@shogi/app-core").PresetWithStatus[];
-    internalEngineId: string;
-    setIsDisplaySettingsOpen: (open: boolean) => void;
-    setIsPassRightsSettingsOpen: (open: boolean) => void;
-
     // 分析
     analysisSettings: AnalysisSettings;
     setAnalysisSettings: (settings: AnalysisSettings) => void;
@@ -140,19 +112,7 @@ interface ShogiMatchLayoutProps {
     handleAnalyzeBranch: (branchNodeId: string) => void;
     handleStartTreeBatchAnalysis: (options?: { mainLineOnly?: boolean }) => void;
 
-    // 局面状態
-    position: PositionState;
-    clocks: TickState;
-    grid: ShogiBoardCell[][];
-    gameMode: GameMode;
-    message: Message | null;
-    selection: SelectionState | null;
-    promotionSelection: PromotionSelection | null;
-    lastMove?: import("@shogi/app-core").LastMove;
-    onFlipBoardChange: (flip: boolean) => void;
-    displaySettings: DisplaySettings;
-    moves: string[];
-    editFromSquare: import("@shogi/app-core").Square | null;
+    // 局面状態（一部）
     hideEmptyHandPieces: boolean;
     getHandInfo: (pos: "top" | "bottom") => HandInfo;
     handleSquareSelect: (sq: string, shiftKey?: boolean) => Promise<void>;
@@ -244,9 +204,12 @@ interface ShogiMatchLayoutProps {
  * レイアウト・ダイアログの統括コンポーネント
  */
 export function ShogiMatchLayout({
+    // グループ化されたprops
+    matchSettings,
+    boardState,
+    // 個別props
     isMobile,
     dndController,
-    flipBoard,
     isEditMode,
     isEngineRestarting,
     gameResult,
@@ -267,22 +230,6 @@ export function ShogiMatchLayout({
     setSelectedMoveDetailPly,
     isAboutOpen,
     setIsAboutOpen,
-    sides,
-    handleSidesChange,
-    timeSettings,
-    setTimeSettings,
-    passRightsSettings,
-    handlePassRightsSettingsChange,
-    settingsLocked,
-    senteNnueSelection,
-    handleSenteNnueSelectionChange,
-    goteNnueSelection,
-    handleGoteNnueSelectionChange,
-    nnueList,
-    presets,
-    internalEngineId,
-    setIsDisplaySettingsOpen,
-    setIsPassRightsSettingsOpen,
     analysisSettings,
     setAnalysisSettings,
     analysisNnueSelection,
@@ -298,18 +245,6 @@ export function ShogiMatchLayout({
     handleAnalyzeNode,
     handleAnalyzeBranch,
     handleStartTreeBatchAnalysis,
-    position,
-    clocks,
-    grid,
-    gameMode,
-    message,
-    selection,
-    promotionSelection,
-    lastMove,
-    onFlipBoardChange,
-    displaySettings,
-    moves,
-    editFromSquare,
     hideEmptyHandPieces,
     getHandInfo,
     handleSquareSelect,
@@ -378,6 +313,42 @@ export function ShogiMatchLayout({
     onImportKif,
     onDisplaySettingsChange,
 }: ShogiMatchLayoutProps): ReactElement {
+    // グループ化されたpropsを展開
+    const {
+        sides,
+        handleSidesChange,
+        timeSettings,
+        setTimeSettings,
+        passRightsSettings,
+        handlePassRightsSettingsChange,
+        settingsLocked,
+        senteNnueSelection,
+        handleSenteNnueSelectionChange,
+        goteNnueSelection,
+        handleGoteNnueSelectionChange,
+        nnueList,
+        presets,
+        internalEngineId,
+        setIsDisplaySettingsOpen,
+        setIsPassRightsSettingsOpen,
+    } = matchSettings;
+
+    const {
+        position,
+        clocks,
+        grid,
+        gameMode,
+        message,
+        selection,
+        promotionSelection,
+        lastMove,
+        moves,
+        editFromSquare,
+        flipBoard,
+        displaySettings,
+        onFlipBoardChange,
+    } = boardState;
+
     return (
         <>
             {/* DnD ゴースト */}

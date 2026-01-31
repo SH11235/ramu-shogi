@@ -57,13 +57,14 @@ import {
     type PassRightsSettings,
     type SideSetting,
 } from "./shogi-match/types";
+import type { BoardStateProps, MatchSettingsProps } from "./shogi-match/types/layoutProps";
 import type { KifMove } from "./shogi-match/utils/kifFormat";
 import { LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
-import { boardToGrid, clonePositionState } from "./shogi-match/utils/positionUtils";
 import {
     isSamePassRightsSettings,
     normalizePassRightsSettings,
 } from "./shogi-match/utils/passRightsSettings";
+import { boardToGrid, clonePositionState } from "./shogi-match/utils/positionUtils";
 import { isSameTimeSettings, normalizeTimeSettings } from "./shogi-match/utils/timeSettings";
 import { TooltipProvider } from "./tooltip";
 
@@ -1190,15 +1191,91 @@ export function ShogiMatch({
     const isDraggingPiece = isEditMode && dndController.state.isDragging;
     const internalEngineId = engineOptions[0]?.id ?? "wasm";
 
+    // Props グループ化: 対局設定
+    const matchSettings = useMemo<MatchSettingsProps>(
+        () => ({
+            sides,
+            handleSidesChange,
+            timeSettings,
+            setTimeSettings,
+            passRightsSettings,
+            handlePassRightsSettingsChange,
+            settingsLocked,
+            senteNnueSelection,
+            handleSenteNnueSelectionChange,
+            goteNnueSelection,
+            handleGoteNnueSelectionChange,
+            nnueList,
+            presets,
+            internalEngineId,
+            setIsDisplaySettingsOpen,
+            setIsPassRightsSettingsOpen,
+        }),
+        [
+            sides,
+            handleSidesChange,
+            timeSettings,
+            setTimeSettings,
+            passRightsSettings,
+            handlePassRightsSettingsChange,
+            settingsLocked,
+            senteNnueSelection,
+            handleSenteNnueSelectionChange,
+            goteNnueSelection,
+            handleGoteNnueSelectionChange,
+            nnueList,
+            presets,
+            internalEngineId,
+            setIsDisplaySettingsOpen,
+            setIsPassRightsSettingsOpen,
+        ],
+    );
+
+    // Props グループ化: 盤面状態
+    const boardState = useMemo<BoardStateProps>(
+        () => ({
+            position,
+            clocks,
+            grid,
+            gameMode,
+            message,
+            selection,
+            promotionSelection,
+            lastMove,
+            moves,
+            editFromSquare,
+            flipBoard,
+            displaySettings,
+            onFlipBoardChange: setFlipBoard,
+        }),
+        [
+            position,
+            clocks,
+            grid,
+            gameMode,
+            message,
+            selection,
+            promotionSelection,
+            lastMove,
+            moves,
+            editFromSquare,
+            flipBoard,
+            displaySettings,
+            setFlipBoard,
+        ],
+    );
+
     return (
         <ShogiMatchProvider config={{ aiIconUrl }}>
             <TooltipProvider delayDuration={TOOLTIP_DELAY_DURATION_MS}>
                 <ShogiMatchLayout
+                    // グループ化されたprops
+                    matchSettings={matchSettings}
+                    boardState={boardState}
                     // デバイス
                     isMobile={isMobile}
                     // DnD
                     dndController={dndController}
-                    flipBoard={flipBoard}
                     isEditMode={isEditMode}
                     // エンジン再起動
                     isEngineRestarting={isEngineRestarting}
@@ -1221,23 +1298,6 @@ export function ShogiMatch({
                     setSelectedMoveDetailPly={setSelectedMoveDetailPly}
                     isAboutOpen={isAboutOpen}
                     setIsAboutOpen={setIsAboutOpen}
-                    // 対局設定
-                    sides={sides}
-                    handleSidesChange={handleSidesChange}
-                    timeSettings={timeSettings}
-                    setTimeSettings={setTimeSettings}
-                    passRightsSettings={passRightsSettings}
-                    handlePassRightsSettingsChange={handlePassRightsSettingsChange}
-                    settingsLocked={settingsLocked}
-                    senteNnueSelection={senteNnueSelection}
-                    handleSenteNnueSelectionChange={handleSenteNnueSelectionChange}
-                    goteNnueSelection={goteNnueSelection}
-                    handleGoteNnueSelectionChange={handleGoteNnueSelectionChange}
-                    nnueList={nnueList}
-                    presets={presets}
-                    internalEngineId={internalEngineId}
-                    setIsDisplaySettingsOpen={setIsDisplaySettingsOpen}
-                    setIsPassRightsSettingsOpen={setIsPassRightsSettingsOpen}
                     // 分析
                     analysisSettings={analysisSettings}
                     setAnalysisSettings={setAnalysisSettings}
@@ -1254,19 +1314,7 @@ export function ShogiMatch({
                     handleAnalyzeNode={handleAnalyzeNode}
                     handleAnalyzeBranch={handleAnalyzeBranch}
                     handleStartTreeBatchAnalysis={handleStartTreeBatchAnalysis}
-                    // 局面状態
-                    position={position}
-                    clocks={clocks}
-                    grid={grid}
-                    gameMode={gameMode}
-                    message={message}
-                    selection={selection}
-                    promotionSelection={promotionSelection}
-                    lastMove={lastMove}
-                    onFlipBoardChange={setFlipBoard}
-                    displaySettings={displaySettings}
-                    moves={moves}
-                    editFromSquare={editFromSquare}
+                    // 局面状態（一部）
                     hideEmptyHandPieces={hideEmptyHandPieces}
                     getHandInfo={getHandInfo}
                     handleSquareSelect={handleSquareSelect}
