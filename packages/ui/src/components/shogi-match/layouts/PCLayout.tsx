@@ -22,7 +22,7 @@ import { LeftSidebar } from "../components/LeftSidebar";
 import { PCBoardSection } from "../components/PCBoardSection";
 import { PCKifuSection } from "../components/PCKifuSection";
 import { SettingsModal } from "../components/SettingsModal";
-import { useMatchSettings, useMatchState, useNavigation } from "../contexts";
+import { useMatchSettings, useNavigation } from "../contexts";
 import type { DisplaySettings, PassRightsSettings } from "../types";
 import type { KifMoveData } from "../utils/kifParser";
 
@@ -98,14 +98,10 @@ export function PCLayout({
 }: PCLayoutProps): ReactElement {
     // Context から状態を取得
     const matchSettings = useMatchSettings();
-    const matchState = useMatchState();
     const navigation = useNavigation();
 
     // MatchSettingsContext から取得
     const { passRightsSettings, settingsLocked } = matchSettings;
-
-    // MatchStateContext から取得
-    const { displaySettings } = matchState;
 
     // NavigationContext から取得（ダイアログで使用）
     const { displaySettings: navDisplaySettings } = navigation;

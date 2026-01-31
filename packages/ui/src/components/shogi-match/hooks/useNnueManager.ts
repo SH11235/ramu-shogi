@@ -9,7 +9,7 @@
  */
 
 import type { NnueMeta, NnueSelection, Player, PresetConfig } from "@shogi/app-core";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useLazyNnueLoader } from "../../hooks/useLazyNnueLoader";
 import { useNnueStorage } from "../../hooks/useNnueStorage";
 import { usePresetManager } from "../../hooks/usePresetManager";
