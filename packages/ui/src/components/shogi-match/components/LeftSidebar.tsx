@@ -27,6 +27,7 @@ const ANALYSIS_TIME_OPTIONS = [
 ];
 
 const EVAL_FILE_MANAGER_LABEL = "評価関数ファイル管理";
+const SETTINGS_LOCKED_MESSAGE = "対局中は変更不可";
 const sectionClassName = "flex flex-col gap-3";
 const sectionTitleClassName = "text-sm font-semibold text-wafuu-sumi";
 const labelClassName = "flex flex-col gap-1 text-xs text-muted-foreground";
@@ -171,7 +172,7 @@ export function LeftSidebar(): ReactElement {
                         onValueChange={(value) => handlePlayerChange(side, value)}
                         disabled={settingsLocked}
                     >
-                        <SelectTrigger>
+                        <SelectTrigger title={settingsLocked ? SETTINGS_LOCKED_MESSAGE : undefined}>
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -234,6 +235,7 @@ export function LeftSidebar(): ReactElement {
                         max={86400}
                         value={Math.floor(timeSettings[side].mainMs / 1000)}
                         disabled={settingsLocked}
+                        title={settingsLocked ? SETTINGS_LOCKED_MESSAGE : undefined}
                         className={inputClassName}
                         onChange={(e) => handleTimeChange(side, "mainMs", e.target.value)}
                     />
@@ -246,6 +248,7 @@ export function LeftSidebar(): ReactElement {
                         max={86400}
                         value={Math.floor(timeSettings[side].byoyomiMs / 1000)}
                         disabled={settingsLocked}
+                        title={settingsLocked ? SETTINGS_LOCKED_MESSAGE : undefined}
                         className={inputClassName}
                         onChange={(e) => handleTimeChange(side, "byoyomiMs", e.target.value)}
                     />
@@ -259,11 +262,6 @@ export function LeftSidebar(): ReactElement {
             {/* 対局設定 */}
             <div className={sectionClassName}>
                 <div className={sectionTitleClassName}>対局設定</div>
-                {settingsLocked && (
-                    <div className="flex items-center gap-2 rounded-lg bg-wafuu-sumi/10 px-3 py-1.5 text-xs text-muted-foreground">
-                        <span>対局中は変更不可</span>
-                    </div>
-                )}
                 {/* 先手/後手ラベル + 入替ボタン */}
                 <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1 mb-1">
                     <div className="text-xs font-semibold text-wafuu-shu text-center">☗先手</div>
@@ -284,7 +282,11 @@ export function LeftSidebar(): ReactElement {
                             });
                         }}
                         disabled={settingsLocked}
-                        title="先手と後手の設定を入れ替える"
+                        title={
+                            settingsLocked
+                                ? SETTINGS_LOCKED_MESSAGE
+                                : "先手と後手の設定を入れ替える"
+                        }
                         className="px-1.5 py-0.5 text-sm text-muted-foreground hover:text-wafuu-kincha hover:bg-wafuu-kincha/10 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         ⇄
@@ -302,6 +304,7 @@ export function LeftSidebar(): ReactElement {
                     type="button"
                     onClick={onOpenPassRightsSettings}
                     disabled={settingsLocked}
+                    title={settingsLocked ? SETTINGS_LOCKED_MESSAGE : "変則ルール設定を開く"}
                     className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm disabled:hover:translate-y-0 disabled:hover:border-wafuu-border flex items-center gap-2"
                 >
                     <span>🎲</span>
