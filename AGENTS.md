@@ -5,70 +5,34 @@
 
 ## Architecture
 
-本プロジェクトは、明確なレイヤー分離に基づいたアーキテクチャを採用しています：
+レイヤー構成: UI層 → アプリケーション層 → ドメイン層 / インフラ層
 
-```
-┌─────────────────────────────────────┐
-│  UI層 (apps/*, packages/ui)         │
-├─────────────────────────────────────┤
-│  アプリケーション層                    │
-│  (packages/app-controller)          │
-├─────────────────────────────────────┤
-│  ドメイン層 (packages/app-core)      │
-├─────────────────────────────────────┤
-│  インフラ層                           │
-│  (packages/engine-client,           │
-│   packages/engine-wasm,             │
-│   packages/engine-tauri)            │
-└─────────────────────────────────────┘
-```
+パッケージ依存関係（`→` は依存方向）:
+- apps/web → ui, design-system, app-controller, engine-wasm
+- apps/desktop → ui, design-system, app-controller, engine-tauri
+- ui → app-core, app-controller, design-system, engine-client
+- app-controller → app-core, engine-client
+- app-core → (依存なし)
+- engine-wasm → engine-client, rust-core
+- engine-tauri → engine-client
+- engine-client → (依存なし、インターフェース定義のみ)
+- design-system → (依存なし)
 
-### Package Dependency Graph
+設計制約:
+- app-core: 完全に依存なし（純粋なドメインロジック）
+- app-controller: app-coreとengine-clientのみに依存、エンジン制御の状態管理とライフサイクル管理を担当
+- engine-wasm/engine-tauri: engine-clientインターフェースの具体的な実装
+- 循環依存禁止、単方向の依存フロー必須
 
-具体的なパッケージ間の依存関係（`→` は依存の方向）：
-
-```
-【アプリケーション層】
-apps/web ──┬──→ ui ──────────┬──→ app-controller ──┬──→ app-core (依存なし)
-           │                 │                      └──→ engine-client
-           ├──→ design-system│
-           ├──→ app-controller
-           └──→ engine-wasm ──→ engine-client
-                             └──→ rust-core
-
-apps/desktop ┬──→ ui
-             ├──→ design-system
-             ├──→ app-controller
-             └──→ engine-tauri ──→ engine-client
-
-【重要な設計原則】
-✓ app-core: 完全に依存なし（純粋なドメインロジック）
-✓ app-controller: app-core と engine-client のみに依存
-  - エンジン制御の状態管理とライフサイクル管理を担当
-  - ドメインロジックとインフラ層を橋渡し
-✓ engine-client: インターフェース定義のみ（依存なし）
-✓ engine-wasm/engine-tauri: engine-client の具体的な実装
-✓ ui: app-controller を使用してエンジン機能を利用
-✓ 循環依存なし、単方向の依存フロー
-```
-
-## Package roles (packages/*)
-
-### ドメイン層
-- `app-core`: ドメインロジック（局面/棋譜処理、NNUEなど）。**依存なし**。UI・エンジン実装から独立。
-
-### アプリケーション層
-- `app-controller`: エンジン制御、状態管理。`app-core`と`engine-client`に依存。
-
-### インフラ層
-- `engine-client`: EngineClient インターフェース定義とユーティリティ。
-- `engine-wasm`: Web/Wasm エンジン実装（Worker 経由、wasm-bindgen 出力を隠蔽）。
-- `engine-tauri`: Tauri IPC エンジン実装（invoke/listen）。実エンジン接続はここ経由。
-- `rust-core`: Rust エンジン本体（engine-core/engine-usi 等）。
-
-### UI層
-- `design-system`: テーマ/トークン/Provider。shadcn/ui に依存する下地。
-- `ui`: 共通 UI コンポーネント（デザインシステム前提）。必要になったものだけ昇格する。
+## Package roles
+- app-core: 局面/棋譜処理、NNUE管理。UI・エンジン実装から完全独立、依存なし
+- app-controller: エンジン制御、状態管理、ライフサイクル管理。app-coreとengine-clientを橋渡し
+- engine-client: EngineClientインターフェース定義、エラー処理、設定正規化
+- engine-wasm: WASMエンジン実装（Worker経由、wasm-bindgen出力を隠蔽）
+- engine-tauri: Tauri IPCエンジン実装（invoke/listen）
+- rust-core: Rustエンジン本体（探索、評価関数、USIプロトコル）
+- ui: 共通UIコンポーネント、design-system前提、必要なものだけ昇格
+- design-system: テーマ/トークン/Provider、shadcn/ui基盤
 
 ## 実装方針メモ
 - Web と Desktop は極力足並みを揃え、同じ UI/ロジックを共有する。独自実装の分岐は最小限にする。
