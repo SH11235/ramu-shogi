@@ -1,4 +1,5 @@
-import type { EngineControllerEvent, GameResult, NnueSelection, Player } from "@shogi/app-core";
+import type { EngineControllerEvent } from "@shogi/app-controller";
+import type { GameResult, NnueSelection, Player } from "@shogi/app-core";
 import type { EngineEvent } from "@shogi/engine-client";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

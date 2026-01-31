@@ -7,14 +7,11 @@ import type {
     EngineErrorDetails,
     EngineOption,
     EngineStatus,
-    GameResult,
-    NnueSelection,
     PassRightsSettings,
-    Player,
-    ResolvedNnue,
     SideSetting,
-} from "@shogi/app-core";
-import { createEngineController } from "@shogi/app-core";
+} from "@shogi/app-controller";
+import { createEngineController } from "@shogi/app-controller";
+import type { GameResult, NnueSelection, Player, ResolvedNnue } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TickState } from "./useClockManager";

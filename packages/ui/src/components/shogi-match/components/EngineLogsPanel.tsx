@@ -1,6 +1,10 @@
-import type { EngineControllerErrorLog, EngineControllerEvent, Player } from "@shogi/app-core";
+import type {
+    EngineControllerErrorLog,
+    EngineControllerEvent,
+    EngineErrorDetails,
+} from "@shogi/app-controller";
+import type { Player } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
-import type { EngineErrorCode } from "@shogi/engine-client";
 import { getEngineErrorInfo } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 import { useState } from "react";
@@ -8,13 +12,6 @@ import { formatEngineEventLog } from "../hooks/formatEngineEvent";
 
 const baseCardClassName =
     "w-full rounded-xl border border-border bg-card p-3 shadow-[0_14px_28px_rgba(0,0,0,0.12)]";
-
-export interface EngineErrorDetails {
-    hasError: boolean;
-    errorCode?: EngineErrorCode;
-    errorMessage?: string;
-    canRetry: boolean;
-}
 
 interface EngineLogsPanelProps {
     /** イベントログのリスト */

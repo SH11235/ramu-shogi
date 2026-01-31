@@ -11,11 +11,15 @@
  * - NavigationContext: 親で Provider 済み
  */
 
-import type { EngineControllerErrorLog, EngineControllerEvent, Player } from "@shogi/app-core";
+import type {
+    EngineControllerErrorLog,
+    EngineControllerEvent,
+    EngineErrorDetails,
+} from "@shogi/app-controller";
+import type { Player } from "@shogi/app-core";
 import type { Dispatch, ReactElement, SetStateAction } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../dialog";
 import { Switch } from "../../switch";
-import type { EngineErrorDetails } from "../components/EngineLogsPanel";
 import { EngineLogsPanel } from "../components/EngineLogsPanel";
 import { KifuImportPanel } from "../components/KifuImportPanel";
 import { LeftSidebar } from "../components/LeftSidebar";

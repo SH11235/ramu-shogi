@@ -252,11 +252,11 @@ export interface PCSpecificProps {
     ) => Promise<void>;
     positionReady: boolean;
     isDevMode: boolean;
-    eventLogs: import("@shogi/app-core").EngineControllerEvent[];
-    errorLogs: import("@shogi/app-core").EngineControllerErrorLog[];
+    eventLogs: import("@shogi/app-controller").EngineControllerEvent[];
+    errorLogs: import("@shogi/app-controller").EngineControllerErrorLog[];
     engineErrorDetails?: Record<
         import("@shogi/app-core").Player,
-        import("../components/EngineLogsPanel").EngineErrorDetails | null
+        import("@shogi/app-controller").EngineErrorDetails | null
     >;
     retryEngine: (side: import("@shogi/app-core").Player) => Promise<void>;
     isRetrying?: Record<import("@shogi/app-core").Player, boolean>;

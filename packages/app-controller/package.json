@@ -1,5 +1,5 @@
 {
-    "name": "@shogi/app-core",
+    "name": "@shogi/app-controller",
     "version": "0.1.0",
     "private": true,
     "type": "module",
@@ -24,7 +24,10 @@
         "typecheck": "tsc -p tsconfig.json",
         "test": "vitest"
     },
-    "dependencies": {},
+    "dependencies": {
+        "@shogi/app-core": "workspace:*",
+        "@shogi/engine-client": "workspace:*"
+    },
     "devDependencies": {
         "typescript": "~5.9.3",
         "vitest": "^4.0.15"

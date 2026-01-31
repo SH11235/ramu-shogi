@@ -1,4 +1,4 @@
-import type { EngineControllerEvent } from "@shogi/app-core";
+import type { EngineControllerEvent } from "@shogi/app-controller";
 
 export function formatEngineEventLog(log: EngineControllerEvent): string {
     const labelBase = log.side ? (log.side === "sente" ? "S" : "G") : "Analysis";
