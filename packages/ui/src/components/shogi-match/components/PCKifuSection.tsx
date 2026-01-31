@@ -7,7 +7,8 @@
  */
 
 import type { ReactElement } from "react";
-import { useAnalysis, useNavigation } from "../contexts";
+import { useAnalysis } from "../contexts/AnalysisContext";
+import { useNavigation } from "../contexts/NavigationContext";
 import { EvalPanel } from "./EvalPanel";
 import { KifuPanel } from "./KifuPanel";
 

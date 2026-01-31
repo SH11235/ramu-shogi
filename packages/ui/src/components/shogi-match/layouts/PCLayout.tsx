@@ -26,7 +26,8 @@ import { LeftSidebar } from "../components/LeftSidebar";
 import { PCBoardSection } from "../components/PCBoardSection";
 import { PCKifuSection } from "../components/PCKifuSection";
 import { SettingsModal } from "../components/SettingsModal";
-import { useMatchSettings, useNavigation } from "../contexts";
+import { useMatchSettings } from "../contexts/MatchSettingsContext";
+import { useNavigation } from "../contexts/NavigationContext";
 import type { DisplaySettings, PassRightsSettings } from "../types";
 import type { KifMoveData } from "../utils/kifParser";
 

@@ -11,7 +11,7 @@ import type {
     PresetWithStatus,
 } from "@shogi/app-core";
 import type { ShogiBoardCell } from "../../shogi-board";
-import type { SelectionState } from "../contexts/types";
+import type { SelectionState } from "../contexts/MatchStateContext.types";
 import type { ClockSettings, TickState } from "../hooks/useClockManager";
 import type {
     DisplaySettings,

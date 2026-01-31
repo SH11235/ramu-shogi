@@ -26,8 +26,9 @@ import {
     MATCH_LAYOUT_CLASSES,
     TOOLTIP_DELAY_DURATION_MS,
 } from "./shogi-match/constants";
-import type { DropResult } from "./shogi-match/dnd";
-import { applyDropResult, usePieceDnd } from "./shogi-match/dnd";
+import { applyDropResult } from "./shogi-match/dnd/dropLogic";
+import type { DropResult } from "./shogi-match/dnd/types";
+import { usePieceDnd } from "./shogi-match/dnd/usePieceDnd";
 import { useBatchAnalysis } from "./shogi-match/hooks/useBatchAnalysis";
 import { useBoardState } from "./shogi-match/hooks/useBoardState";
 import { useClockManager } from "./shogi-match/hooks/useClockManager";

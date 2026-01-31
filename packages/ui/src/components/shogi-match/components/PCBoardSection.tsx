@@ -8,7 +8,7 @@
 import type { PieceType, Player, PositionState } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { ShogiBoard } from "../../shogi-board";
-import { useMatchState } from "../contexts";
+import { useMatchState } from "../contexts/MatchStateContext";
 import { ClockDisplay } from "./ClockDisplay";
 import { HandPiecesDisplay } from "./HandPiecesDisplay";
 import { MatchControls } from "./MatchControls";

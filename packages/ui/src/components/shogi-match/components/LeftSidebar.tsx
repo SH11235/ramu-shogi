@@ -4,7 +4,8 @@ import type { SkillLevelSettings } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 import { Input } from "../../input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../select";
-import { useAnalysis, useMatchSettings } from "../contexts";
+import { useAnalysis } from "../contexts/AnalysisContext";
+import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { PlayerIcon } from "./PlayerIcon";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 

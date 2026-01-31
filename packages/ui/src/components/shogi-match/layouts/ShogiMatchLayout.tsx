@@ -14,14 +14,12 @@ import { NnueManagerDialog } from "../../nnue/NnueManagerDialog";
 import { GameResultDialog } from "../components/GameResultDialog";
 import { MoveDetailWindow } from "../components/MoveDetailWindow";
 import { PvPreviewDialog } from "../components/PvPreviewDialog";
-import {
-    AnalysisProvider,
-    MatchSettingsProvider,
-    MatchStateProvider,
-    NavigationProvider,
-} from "../contexts";
-import type { DndController } from "../dnd";
-import { DragGhost } from "../dnd";
+import { AnalysisProvider } from "../contexts/AnalysisContext";
+import { MatchSettingsProvider } from "../contexts/MatchSettingsContext";
+import { MatchStateProvider } from "../contexts/MatchStateContext";
+import { NavigationProvider } from "../contexts/NavigationContext";
+import { DragGhost } from "../dnd/DragGhost";
+import type { PieceDndController as DndController } from "../dnd/usePieceDnd";
 import type {
     AnalysisProps,
     BoardHandlersProps,
