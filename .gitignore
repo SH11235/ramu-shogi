@@ -44,6 +44,7 @@ packages/web/coverage/
 # private memo
 memo/
 docs/archive/
+docs/task-archive/
 
 _shared/*
 
