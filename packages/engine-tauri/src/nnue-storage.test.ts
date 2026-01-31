@@ -1,6 +1,7 @@
 import type { NnueMeta } from "@shogi/app-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTauriNnueStorage, type TauriNnueStorageOptions } from "./nnue-storage";
+import type { TauriNnueStorageOptions } from "./nnue-storage";
+import { createTauriNnueStorage } from "./nnue-storage";
 
 type BufferLike = {
     from: (data: string, encoding?: "binary") => { toString: (encoding: "base64") => string };

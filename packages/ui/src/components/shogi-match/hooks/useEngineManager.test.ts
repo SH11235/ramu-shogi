@@ -1,4 +1,5 @@
-import type { EngineControllerEvent, GameResult, NnueSelection, Player } from "@shogi/app-core";
+import type { EngineControllerEvent } from "@shogi/app-controller";
+import type { GameResult, NnueSelection, Player } from "@shogi/app-core";
 import type { EngineEvent } from "@shogi/engine-client";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -183,7 +184,7 @@ describe("useEngineManager", () => {
 
     const renderEngineHook = ({
         positionTurn,
-        movesRef,
+        moves,
         onMoveFromEngine,
         onMatchEnd,
         sides,
@@ -191,7 +192,7 @@ describe("useEngineManager", () => {
         clocksRef = createMockClocksRef(),
     }: {
         positionTurn: Player;
-        movesRef: { current: string[] };
+        moves: string[];
         onMoveFromEngine: (move: string) => void;
         onMatchEnd: (result: GameResult) => Promise<void>;
         sides: {
@@ -213,7 +214,7 @@ describe("useEngineManager", () => {
                 ],
                 clocksRef,
                 startSfen: "startpos",
-                movesRef,
+                moves,
                 positionTurn,
                 isMatchRunning: true,
                 positionReady: true,
@@ -233,13 +234,13 @@ describe("useEngineManager", () => {
 
     it("エンジンを初期化し探索を開始する", async () => {
         const mockClient = createMockEngineClient();
-        const movesRef = { current: [] as string[] };
+        const moves: string[] = [];
         const onMoveFromEngine = vi.fn();
         const onMatchEnd = vi.fn().mockResolvedValue(undefined);
 
         const { result } = renderEngineHook({
             positionTurn: "sente",
-            movesRef,
+            moves,
             onMoveFromEngine,
             onMatchEnd,
             sides: { sente: { role: "engine", engineId: "engine1" }, gote: { role: "human" } },
@@ -260,13 +261,13 @@ describe("useEngineManager", () => {
 
     it("bestmove の通常手を適用してコールバックを呼び出す", async () => {
         const mockClient = createMockEngineClient();
-        const movesRef = { current: [] as string[] };
+        const moves: string[] = [];
         const onMoveFromEngine = vi.fn();
         const onMatchEnd = vi.fn().mockResolvedValue(undefined);
 
         const { result } = renderEngineHook({
             positionTurn: "sente",
-            movesRef,
+            moves,
             onMoveFromEngine,
             onMatchEnd,
             sides: { sente: { role: "engine", engineId: "engine1" }, gote: { role: "human" } },
@@ -287,13 +288,13 @@ describe("useEngineManager", () => {
 
     it("bestmove の resign で対局終了コールバックを呼ぶ", async () => {
         const mockClient = createMockEngineClient();
-        const movesRef = { current: [] as string[] };
+        const moves: string[] = [];
         const onMoveFromEngine = vi.fn();
         const onMatchEnd = vi.fn().mockResolvedValue(undefined);
 
         renderEngineHook({
             positionTurn: "sente",
-            movesRef,
+            moves,
             onMoveFromEngine,
             onMatchEnd,
             sides: { sente: { role: "engine", engineId: "engine1" }, gote: { role: "human" } },
@@ -364,7 +365,7 @@ describe("useEngineManager - NNUE restart", () => {
 
     it("NNUE ID変更時、明示APIでエンジンを再起動する", async () => {
         const mockClient = createMockEngineClient();
-        const movesRef = { current: [] as string[] };
+        const moves: string[] = [];
         const onMoveFromEngine = vi.fn();
         const onMatchEnd = vi.fn().mockResolvedValue(undefined);
         const resolveNnue = createMockResolveNnue();
@@ -391,7 +392,7 @@ describe("useEngineManager - NNUE restart", () => {
                     engineOptions,
                     clocksRef,
                     startSfen: "startpos",
-                    movesRef,
+                    moves,
                     positionTurn: "sente",
                     isMatchRunning,
                     positionReady: true,
@@ -432,7 +433,7 @@ describe("useEngineManager - NNUE restart", () => {
 
     it("props変更だけでは自動再起動しない（明示API呼び出しが必要）", async () => {
         const mockClient = createMockEngineClient();
-        const movesRef = { current: [] as string[] };
+        const moves: string[] = [];
         const onMoveFromEngine = vi.fn();
         const onMatchEnd = vi.fn().mockResolvedValue(undefined);
         const resolveNnue = createMockResolveNnue();
@@ -459,7 +460,7 @@ describe("useEngineManager - NNUE restart", () => {
                     engineOptions,
                     clocksRef,
                     startSfen: "startpos",
-                    movesRef,
+                    moves,
                     positionTurn: "sente",
                     isMatchRunning: false,
                     positionReady: true,
@@ -547,7 +548,7 @@ describe("useEngineManager - 明示API", () => {
 
     it("disposeEngine を明示的に呼び出すとエンジンが破棄される", async () => {
         const mockClient = createMockEngineClient();
-        const movesRef = { current: [] as string[] };
+        const moves: string[] = [];
         const onMoveFromEngine = vi.fn();
         const onMatchEnd = vi.fn().mockResolvedValue(undefined);
         const resolveNnue = createMockResolveNnue();
@@ -571,7 +572,7 @@ describe("useEngineManager - 明示API", () => {
                 engineOptions,
                 clocksRef,
                 startSfen: "startpos",
-                movesRef,
+                moves,
                 positionTurn: "sente",
                 isMatchRunning: true,
                 positionReady: true,
@@ -599,7 +600,7 @@ describe("useEngineManager - 明示API", () => {
 
     it("restartEngineForNnue を明示的に呼び出すとエンジンが再起動される", async () => {
         const mockClient = createMockEngineClient();
-        const movesRef = { current: [] as string[] };
+        const moves: string[] = [];
         const onMoveFromEngine = vi.fn();
         const onMatchEnd = vi.fn().mockResolvedValue(undefined);
         const resolveNnue = createMockResolveNnue();
@@ -624,7 +625,7 @@ describe("useEngineManager - 明示API", () => {
                     engineOptions,
                     clocksRef,
                     startSfen: "startpos",
-                    movesRef,
+                    moves,
                     positionTurn: "sente",
                     isMatchRunning,
                     positionReady: true,
@@ -664,7 +665,7 @@ describe("useEngineManager - 明示API", () => {
 
     it("restartEngineForNnue は対局中は無視される", async () => {
         const mockClient = createMockEngineClient();
-        const movesRef = { current: [] as string[] };
+        const moves: string[] = [];
         const onMoveFromEngine = vi.fn();
         const onMatchEnd = vi.fn().mockResolvedValue(undefined);
         const resolveNnue = createMockResolveNnue();
@@ -688,7 +689,7 @@ describe("useEngineManager - 明示API", () => {
                 engineOptions,
                 clocksRef,
                 startSfen: "startpos",
-                movesRef,
+                moves,
                 positionTurn: "sente",
                 isMatchRunning: true, // 対局中
                 positionReady: true,

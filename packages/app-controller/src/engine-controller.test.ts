@@ -5,7 +5,7 @@ import {
     determineBestmoveAction,
     handleBestmove,
     handleInfoEvent,
-} from "./index";
+} from "./engine-controller";
 
 describe("determineBestmoveAction", () => {
     it("通常の手の場合、apply_moveアクションを返す", () => {

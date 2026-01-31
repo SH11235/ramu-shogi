@@ -1,4 +1,5 @@
-import { SKILL_LEVEL_MAX, type SkillLevelSettings } from "@shogi/engine-client";
+import type { SkillLevelSettings } from "@shogi/engine-client";
+import { SKILL_LEVEL_MAX } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 
 interface SkillLevelSelectorProps {

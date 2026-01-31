@@ -22,11 +22,10 @@
         "lint": "pnpm --workspace-root exec biome check .",
         "lint:fix": "pnpm --workspace-root exec biome check --write --files-ignore-unknown=true",
         "typecheck": "tsc -p tsconfig.json",
-        "test": "vitest"
+        "test": "vitest",
+        "lint:fix:unsafe": "pnpm --workspace-root exec biome check --write --unsafe --files-ignore-unknown=true"
     },
-    "dependencies": {
-        "@shogi/engine-client": "workspace:*"
-    },
+    "dependencies": {},
     "devDependencies": {
         "typescript": "~5.9.3",
         "vitest": "^4.0.15"

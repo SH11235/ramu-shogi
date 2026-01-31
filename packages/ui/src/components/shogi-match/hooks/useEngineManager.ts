@@ -7,14 +7,11 @@ import type {
     EngineErrorDetails,
     EngineOption,
     EngineStatus,
-    GameResult,
-    NnueSelection,
     PassRightsSettings,
-    Player,
-    ResolvedNnue,
     SideSetting,
-} from "@shogi/app-core";
-import { createEngineController } from "@shogi/app-core";
+} from "@shogi/app-controller";
+import { createEngineController } from "@shogi/app-controller";
+import type { GameResult, NnueSelection, Player, ResolvedNnue } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TickState } from "./useClockManager";
@@ -28,13 +25,8 @@ interface UseEngineManagerProps {
     clocksRef: { readonly current: TickState };
     /** 開始局面のSFEN */
     startSfen: string;
-    /** 棋譜の ref */
-    movesRef: { current: string[] };
-    /**
-     * 棋譜変更の検知キー（ref.current を依存配列に入れないための外部シグナル）
-     * - 変更時に値が変わる必要がある
-     */
-    movesKey?: string | number;
+    /** 棋譜配列 */
+    moves: string[];
     /** 現在の手番（エンジンターン開始のトリガー用） */
     positionTurn: Player;
     /** 対局実行中かどうか */
@@ -106,8 +98,7 @@ export function useEngineManager({
     engineOptions,
     clocksRef,
     startSfen,
-    movesRef,
-    movesKey,
+    moves,
     positionTurn,
     isMatchRunning,
     positionReady,
@@ -188,10 +179,8 @@ export function useEngineManager({
         [defaultEngineId, sides],
     );
 
-    // NOTE: movesRef is mutable; use an external key to detect content changes without ref.current deps.
-    const movesKeySignal = movesKey ?? movesRef.current.length;
-    // biome-ignore lint/correctness/useExhaustiveDependencies: movesKeySignal is the explicit change signal.
-    const movesSnapshot = useMemo(() => movesRef.current, [movesKeySignal]);
+    // NOTE: create a snapshot for syncContext
+    const movesSnapshot = useMemo(() => moves, [moves]);
 
     useEffect(() => {
         controller.command.syncContext({

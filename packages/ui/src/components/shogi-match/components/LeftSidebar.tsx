@@ -1,56 +1,15 @@
-import type { NnueMeta, NnueSelection, PresetWithStatus } from "@shogi/app-core";
+import type { NnueSelection } from "@shogi/app-core";
 import { detectParallelism, NONE_NNUE_SELECTION } from "@shogi/app-core";
 import type { SkillLevelSettings } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 import { Input } from "../../input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../select";
-import type { ClockSettings } from "../hooks/useClockManager";
-import type { AnalysisSettings, PassRightsSettings, SideSetting } from "../types";
+import { useAnalysis } from "../contexts/AnalysisContext";
+import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { PlayerIcon } from "./PlayerIcon";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 
 type SideKey = "sente" | "gote";
-
-interface LeftSidebarProps {
-    // 対局設定
-    sides: { sente: SideSetting; gote: SideSetting };
-    onSidesChange: (sides: { sente: SideSetting; gote: SideSetting }) => void;
-    timeSettings: ClockSettings;
-    onTimeSettingsChange: (settings: ClockSettings) => void;
-    passRightsSettings?: PassRightsSettings;
-    onPassRightsSettingsChange?: (settings: PassRightsSettings) => void;
-    settingsLocked: boolean;
-
-    // 内蔵エンジンのID（engineOptionsの最初のIDを渡す）
-    internalEngineId: string;
-
-    // NNUE 一覧（ダウンロード済みカスタム NNUE）
-    nnueList: NnueMeta[];
-
-    // プリセット一覧
-    presets: PresetWithStatus[];
-
-    // 対局用 NNUE 選択（先手・後手）
-    senteNnueSelection: NnueSelection;
-    onSenteNnueSelectionChange: (selection: NnueSelection) => void;
-    goteNnueSelection: NnueSelection;
-    onGoteNnueSelectionChange: (selection: NnueSelection) => void;
-
-    // 分析設定
-    analysisSettings: AnalysisSettings;
-    onAnalysisSettingsChange: (settings: AnalysisSettings) => void;
-    analysisNnueSelection: NnueSelection;
-    onAnalysisNnueSelectionChange: (selection: NnueSelection) => void;
-
-    // NNUE 管理
-    onOpenNnueManager: () => void;
-
-    // 表示設定
-    onOpenDisplaySettings: () => void;
-
-    // パス権設定
-    onOpenPassRightsSettings: () => void;
-}
 
 const PARALLEL_WORKER_OPTIONS = [
     { value: 0, label: "自動" },
@@ -68,6 +27,7 @@ const ANALYSIS_TIME_OPTIONS = [
 ];
 
 const EVAL_FILE_MANAGER_LABEL = "評価関数ファイル管理";
+const SETTINGS_LOCKED_MESSAGE = "対局中は変更不可";
 const sectionClassName = "flex flex-col gap-3";
 const sectionTitleClassName = "text-sm font-semibold text-wafuu-sumi";
 const labelClassName = "flex flex-col gap-1 text-xs text-muted-foreground";
@@ -76,37 +36,46 @@ const inputClassName = "border border-wafuu-border bg-wafuu-washi text-sm text-x
 /**
  * 左サイドバーコンポーネント
  * 対局設定、分析設定、NNUE管理、表示設定を含む
+ *
+ * 対局設定は MatchSettingsContext から取得
+ * 分析設定は AnalysisContext から取得
  */
-export function LeftSidebar({
-    sides,
-    onSidesChange,
-    timeSettings,
-    onTimeSettingsChange,
-    passRightsSettings,
-    onPassRightsSettingsChange,
-    settingsLocked,
-    internalEngineId,
-    nnueList,
-    presets,
-    senteNnueSelection,
-    onSenteNnueSelectionChange,
-    goteNnueSelection,
-    onGoteNnueSelectionChange,
-    analysisSettings,
-    onAnalysisSettingsChange,
-    analysisNnueSelection,
-    onAnalysisNnueSelectionChange,
-    onOpenNnueManager,
-    onOpenDisplaySettings,
-    onOpenPassRightsSettings,
-}: LeftSidebarProps): ReactElement {
+export function LeftSidebar(): ReactElement {
+    // 分析設定は Context から取得
+    const {
+        analysisSettings,
+        onAnalysisSettingsChange,
+        analysisNnueSelection,
+        onAnalysisNnueSelectionChange,
+    } = useAnalysis();
+    // 対局設定は Context から取得
+    const {
+        sides,
+        onSidesChange,
+        timeSettings,
+        onTimeSettingsChange,
+        passRightsSettings,
+        onPassRightsSettingsChange,
+        settingsLocked,
+        internalEngineId,
+        nnueList,
+        presets,
+        senteNnueSelection,
+        onSenteNnueSelectionChange,
+        goteNnueSelection,
+        onGoteNnueSelectionChange,
+        onOpenNnueManager,
+        onOpenDisplaySettings,
+        onOpenPassRightsSettings,
+    } = useMatchSettings();
+
     const parallelismConfig = detectParallelism();
 
     // カスタム NNUE（プリセット以外）のフィルタリング
     const customNnueList = nnueList.filter((n) => n.source !== "preset");
 
     // プレイヤー選択の値を生成: "human", "material", "preset:{presetKey}", "nnue:{nnueId}"
-    const getSelectorValue = (side: SideKey, setting: SideSetting): string => {
+    const getSelectorValue = (side: SideKey, setting: { role: string }): string => {
         if (setting.role === "human") return "human";
         const selection = side === "sente" ? senteNnueSelection : goteNnueSelection;
         if (selection.presetKey) return `preset:${selection.presetKey}`;
@@ -203,7 +172,7 @@ export function LeftSidebar({
                         onValueChange={(value) => handlePlayerChange(side, value)}
                         disabled={settingsLocked}
                     >
-                        <SelectTrigger>
+                        <SelectTrigger title={settingsLocked ? SETTINGS_LOCKED_MESSAGE : undefined}>
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -266,6 +235,7 @@ export function LeftSidebar({
                         max={86400}
                         value={Math.floor(timeSettings[side].mainMs / 1000)}
                         disabled={settingsLocked}
+                        title={settingsLocked ? SETTINGS_LOCKED_MESSAGE : undefined}
                         className={inputClassName}
                         onChange={(e) => handleTimeChange(side, "mainMs", e.target.value)}
                     />
@@ -278,6 +248,7 @@ export function LeftSidebar({
                         max={86400}
                         value={Math.floor(timeSettings[side].byoyomiMs / 1000)}
                         disabled={settingsLocked}
+                        title={settingsLocked ? SETTINGS_LOCKED_MESSAGE : undefined}
                         className={inputClassName}
                         onChange={(e) => handleTimeChange(side, "byoyomiMs", e.target.value)}
                     />
@@ -291,11 +262,6 @@ export function LeftSidebar({
             {/* 対局設定 */}
             <div className={sectionClassName}>
                 <div className={sectionTitleClassName}>対局設定</div>
-                {settingsLocked && (
-                    <div className="flex items-center gap-2 rounded-lg bg-wafuu-sumi/10 px-3 py-1.5 text-xs text-muted-foreground">
-                        <span>対局中は変更不可</span>
-                    </div>
-                )}
                 {/* 先手/後手ラベル + 入替ボタン */}
                 <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1 mb-1">
                     <div className="text-xs font-semibold text-wafuu-shu text-center">☗先手</div>
@@ -309,16 +275,18 @@ export function LeftSidebar({
                             });
                             onSenteNnueSelectionChange(goteNnueSelection);
                             onGoteNnueSelectionChange(senteNnueSelection);
-                            if (passRightsSettings && onPassRightsSettingsChange) {
-                                onPassRightsSettingsChange({
-                                    ...passRightsSettings,
-                                    senteInitialCount: passRightsSettings.goteInitialCount,
-                                    goteInitialCount: passRightsSettings.senteInitialCount,
-                                });
-                            }
+                            onPassRightsSettingsChange({
+                                ...passRightsSettings,
+                                senteInitialCount: passRightsSettings.goteInitialCount,
+                                goteInitialCount: passRightsSettings.senteInitialCount,
+                            });
                         }}
                         disabled={settingsLocked}
-                        title="先手と後手の設定を入れ替える"
+                        title={
+                            settingsLocked
+                                ? SETTINGS_LOCKED_MESSAGE
+                                : "先手と後手の設定を入れ替える"
+                        }
                         className="px-1.5 py-0.5 text-sm text-muted-foreground hover:text-wafuu-kincha hover:bg-wafuu-kincha/10 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         ⇄
@@ -332,25 +300,24 @@ export function LeftSidebar({
                 </div>
 
                 {/* 変則ルール */}
-                {passRightsSettings && onPassRightsSettingsChange && (
-                    <button
-                        type="button"
-                        onClick={onOpenPassRightsSettings}
-                        disabled={settingsLocked}
-                        className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm disabled:hover:translate-y-0 disabled:hover:border-wafuu-border flex items-center gap-2"
-                    >
-                        <span>🎲</span>
-                        <span>
-                            変則ルール...
-                            {passRightsSettings.enabled && (
-                                <span className="ml-2 text-xs text-muted-foreground">
-                                    (パス権: ☗{passRightsSettings.senteInitialCount}/☖
-                                    {passRightsSettings.goteInitialCount})
-                                </span>
-                            )}
-                        </span>
-                    </button>
-                )}
+                <button
+                    type="button"
+                    onClick={onOpenPassRightsSettings}
+                    disabled={settingsLocked}
+                    title={settingsLocked ? SETTINGS_LOCKED_MESSAGE : "変則ルール設定を開く"}
+                    className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm disabled:hover:translate-y-0 disabled:hover:border-wafuu-border flex items-center gap-2"
+                >
+                    <span>🎲</span>
+                    <span>
+                        変則ルール...
+                        {passRightsSettings.enabled && (
+                            <span className="ml-2 text-xs text-muted-foreground">
+                                (パス権: ☗{passRightsSettings.senteInitialCount}/☖
+                                {passRightsSettings.goteInitialCount})
+                            </span>
+                        )}
+                    </span>
+                </button>
             </div>
 
             {/* NNUE 管理 */}

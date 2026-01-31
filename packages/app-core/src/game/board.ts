@@ -440,3 +440,21 @@ export function canPass(state: PositionState): boolean {
 export function getAllSquares(): Square[] {
     return [...ALL_SQUARES];
 }
+
+/**
+ * USI形式の指し手文字列から最終手情報を導出
+ *
+ * @param move - USI形式の指し手（例: "7g7f", "P*5e", "pass"）
+ * @returns 最終手情報。無効な指し手の場合は undefined
+ */
+export function deriveLastMove(move: string | undefined): LastMove | undefined {
+    const parsed = move ? parseMove(move) : null;
+    if (!parsed) return undefined;
+    if (parsed.kind === "drop") {
+        return { from: null, to: parsed.to, dropPiece: parsed.piece, promotes: false };
+    }
+    if (parsed.kind === "pass") {
+        return { isPass: true };
+    }
+    return { from: parsed.from, to: parsed.to, promotes: parsed.promote };
+}

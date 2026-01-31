@@ -1,9 +1,11 @@
 import type { BoardState, Piece, PositionState, Square } from "@shogi/app-core";
 import { cloneBoard, createEmptyHands, getAllSquares } from "@shogi/app-core";
 import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
+import type { Mock } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LegalMoveCache } from "../utils/legalMoveCache";
-import { type UsePositionEditorProps, usePositionEditor } from "./usePositionEditor";
+import type { UsePositionEditorProps } from "./usePositionEditor";
+import { usePositionEditor } from "./usePositionEditor";
 
 describe("usePositionEditor", () => {
     let mockProps: UsePositionEditorProps;

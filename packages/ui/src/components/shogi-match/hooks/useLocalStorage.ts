@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
 
 /**
+ * useLocalStorage の戻り値の型
+ */
+export type UseLocalStorageReturn<T> = readonly [T, (value: T | ((prev: T) => T)) => void];
+
+/**
  * localStorage と同期する useState フック
  *
  * @param key - localStorage のキー
  * @param defaultValue - デフォルト値（localStorage に値がない場合に使用）
  * @returns [value, setValue] - useState と同じインターフェース
  */
-export function useLocalStorage<T>(
-    key: string,
-    defaultValue: T,
-): [T, (value: T | ((prev: T) => T)) => void] {
+export function useLocalStorage<T>(key: string, defaultValue: T): UseLocalStorageReturn<T> {
     // 初期値を localStorage から読み込む
     const [value, setValue] = useState<T>(() => {
         if (typeof window === "undefined") {

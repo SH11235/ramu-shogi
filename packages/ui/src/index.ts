@@ -1,15 +1,41 @@
-export * from "./components/AboutDialog";
-export * from "./components/alert-dialog";
-export * from "./components/button";
-export * from "./components/dialog";
-export * from "./components/engine-control-panel";
-export * from "./components/input";
-export * from "./components/popover";
-export * from "./components/progress";
-export * from "./components/shogi-board";
-export * from "./components/shogi-match";
-export * from "./components/shogi-match/types";
-export * from "./components/spinner";
-export * from "./components/tooltip";
-export * from "./hooks";
-export * from "./providers/NnueContext";
+/**
+ * @shogi/ui パッケージ公開 API
+ *
+ * 共通UIコンポーネント
+ */
+
+// ============================================================
+// Hooks
+// ============================================================
+
+export { useDevMode } from "./hooks/useDevMode";
+// ============================================================
+// Components
+// ============================================================
+
+// AboutDialog
+// alert-dialog
+// button
+// dialog
+
+// engine-control-panel
+export { EngineControlPanel } from "./components/engine-control-panel";
+// input
+// popover
+// progress
+// shogi-board
+
+// shogi-match
+export { ShogiMatch } from "./components/shogi-match";
+
+// shogi-match/types
+export type { EngineOption } from "./components/shogi-match/types";
+// spinner
+// tooltip
+
+// ============================================================
+// Providers
+// ============================================================
+
+// NnueContext
+export { NnueProvider } from "./providers/NnueContext";

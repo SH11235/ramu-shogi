@@ -3,14 +3,36 @@
 - Keep API signatures aligned with backend implementations; do not invoke non-existent IPC/commands.
 - Use structured JSON for engine events (`info`/`bestmove`/`error`) instead of raw strings.
 
-## Package roles (packages/*)
-- `app-core`: ドメインロジック（局面/棋譜処理、エンジンポートなど）。UI依存なし。
-- `design-system`: テーマ/トークン/Provider。shadcn/ui に依存する下地。
-- `ui`: 共通 UI コンポーネント（デザインシステム前提）。必要になったものだけ昇格する。
-- `engine-client`: EngineClient 型・インターフェースとモック。
-- `engine-wasm`: Web/Wasm 実装（Worker 経由、wasm-bindgen 出力を隠蔽）。
-- `engine-tauri`: Tauri IPC クライアント実装（invoke/listen）。実エンジン接続はここ経由。
-- `rust-core`: Rust エンジン本体（engine-core/engine-usi 等）。
+## Architecture
+
+レイヤー構成: UI層 → アプリケーション層 → ドメイン層 / インフラ層
+
+パッケージ依存関係（`→` は依存方向）:
+- apps/web → ui, design-system, app-controller, engine-wasm
+- apps/desktop → ui, design-system, app-controller, engine-tauri
+- ui → app-core, app-controller, design-system, engine-client
+- app-controller → app-core, engine-client
+- app-core → (依存なし)
+- engine-wasm → engine-client, rust-core
+- engine-tauri → engine-client
+- engine-client → (依存なし、インターフェース定義のみ)
+- design-system → (依存なし)
+
+設計制約:
+- app-core: 完全に依存なし（純粋なドメインロジック）
+- app-controller: app-coreとengine-clientのみに依存、エンジン制御の状態管理とライフサイクル管理を担当
+- engine-wasm/engine-tauri: engine-clientインターフェースの具体的な実装
+- 循環依存禁止、単方向の依存フロー必須
+
+## Package roles
+- app-core: 局面/棋譜処理、NNUE管理。UI・エンジン実装から完全独立、依存なし
+- app-controller: エンジン制御、状態管理、ライフサイクル管理。app-coreとengine-clientを橋渡し
+- engine-client: EngineClientインターフェース定義、エラー処理、設定正規化
+- engine-wasm: WASMエンジン実装（Worker経由、wasm-bindgen出力を隠蔽）
+- engine-tauri: Tauri IPCエンジン実装（invoke/listen）
+- rust-core: Rustエンジン本体（探索、評価関数、USIプロトコル）
+- ui: 共通UIコンポーネント、design-system前提、必要なものだけ昇格
+- design-system: テーマ/トークン/Provider、shadcn/ui基盤
 
 ## 実装方針メモ
 - Web と Desktop は極力足並みを揃え、同じ UI/ロジックを共有する。独自実装の分岐は最小限にする。
@@ -32,6 +54,12 @@
 - テストファイルはソースファイルと同じディレクトリに `*.test.ts` または `*.test.tsx` として配置する
 - `__tests__/` ディレクトリは使用しない
 - 例: `hooks/useEngineManager.ts` → `hooks/useEngineManager.test.ts`
+
+## モジュールエクスポートルール
+
+- サブディレクトリに `index.ts` を作成してはいけない
+- パッケージルート `index.ts` では `export *` を使わず、明示的な export のみ使用
+- 型は `export type { ... }` で明示
 
 ## Git操作に関する注意
 

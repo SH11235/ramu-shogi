@@ -1,7 +1,8 @@
 import type { Player } from "@shogi/app-core";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { type ClockSettings, initialTick, useClockManager } from "./useClockManager";
+import type { ClockSettings } from "./useClockManager";
+import { initialTick, useClockManager } from "./useClockManager";
 
 describe("initialTick", () => {
     it("ClockSettings から TickState を初期化する", () => {

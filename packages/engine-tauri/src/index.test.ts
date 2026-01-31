@@ -1,6 +1,7 @@
 import type { EngineEvent } from "@shogi/engine-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTauriEngineClient, getLegalMoves, type TauriIpc } from "./index";
+import type { TauriIpc } from "./index";
+import { createTauriEngineClient, getLegalMoves } from "./index";
 
 describe("createTauriEngineClient", () => {
     let mockInvoke: ReturnType<typeof vi.fn>;

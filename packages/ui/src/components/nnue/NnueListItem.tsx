@@ -1,6 +1,7 @@
 import type { NnueMeta } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
-import { type ReactElement, useCallback, useId, useRef, useState } from "react";
+import type { ReactElement } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 import { Button } from "../button";
 import { Input } from "../input";
 

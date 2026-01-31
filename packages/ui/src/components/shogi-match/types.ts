@@ -1,32 +1,7 @@
-import type { Piece, Square } from "@shogi/app-core";
-import type { EngineClient, SkillLevelSettings } from "@shogi/engine-client";
+import type { Piece, PieceType, Square } from "@shogi/app-core";
 
-/**
- * プレイヤーの役割
- */
-type SideRole = "human" | "engine";
-
-/**
- * 先手/後手の設定
- */
-export type SideSetting = {
-    role: SideRole;
-    engineId?: string;
-    /** 使用する NNUE ID（null = Material評価、undefined = 未設定） */
-    nnueId?: string | null;
-    /** エンジンの強さ設定（role="engine"時のみ有効） */
-    skillLevel?: SkillLevelSettings;
-};
-
-/**
- * エンジン選択肢
- */
-export type EngineOption = {
-    id: string;
-    label: string;
-    createClient: () => EngineClient;
-    kind?: "internal" | "external";
-};
+// Re-export types from app-controller for convenience
+export type { EngineOption, SideSetting } from "@shogi/app-controller";
 
 /**
  * 成り判定の結果を表す型
@@ -162,3 +137,10 @@ export interface Message {
     text: string;
     type: MessageType;
 }
+
+/**
+ * 選択中の駒・マス（対局中や検討モード用）
+ * - 'square': 盤上のマスを選択
+ * - 'hand': 持ち駒を選択
+ */
+export type Selection = { kind: "square"; square: string } | { kind: "hand"; piece: PieceType };

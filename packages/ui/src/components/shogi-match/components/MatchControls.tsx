@@ -2,7 +2,8 @@ import type { ReactElement } from "react";
 import { Button } from "../../button";
 import type { GameMode, Message } from "../types";
 import { PausedModeControls, PlayingModeControls } from "./GameModeControls";
-import { PassButton, type PassDisabledReason } from "./PassButton";
+import type { PassDisabledReason } from "./PassButton";
+import { PassButton } from "./PassButton";
 
 /** 設定アイコン（歯車） */
 function SettingsIcon(): ReactElement {

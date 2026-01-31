@@ -55,22 +55,84 @@ cargo install wasm-bindgen-cli
 
 ## 📦 パッケージ構成
 
+### パッケージ一覧
+
 ```
 packages/
 ├── rust-core/              # Rust ワークスペース
 │   └── crates/
 │       └── engine-wasm/    # WASM バインディング（rshogi-core を使用）
-├── app-core/               # ドメインロジック（局面/棋譜処理）
+├── app-core/               # ドメイン層：局面/棋譜処理、NNUEなど（依存なし）
+├── app-controller/         # アプリケーション層：エンジン制御、状態管理
 ├── design-system/          # テーマ/トークン/Provider
 ├── ui/                     # 共通 UI コンポーネント
-├── engine-client/          # EngineClient 型・インターフェース
-├── engine-wasm/            # Web/Wasm 実装（Worker 経由）
-└── engine-tauri/           # Tauri IPC クライアント実装
+├── engine-client/          # EngineClient インターフェース定義
+├── engine-wasm/            # Web/Wasm エンジン実装（Worker 経由）
+└── engine-tauri/           # Tauri IPC エンジン実装
 
 apps/
 ├── web/                    # Web アプリケーション
 └── desktop/                # Tauri デスクトップアプリ
 ```
+
+### パッケージ依存グラフ
+
+```mermaid
+graph LR
+    subgraph Apps["🎯 アプリケーション"]
+        web[apps/web]
+        desktop[apps/desktop]
+    end
+    
+    subgraph UI["🎨 UI層"]
+        ui[packages/ui]
+        design[packages/design-system]
+    end
+    
+    subgraph Application["⚙️ アプリケーション層"]
+        controller[packages/app-controller]
+    end
+    
+    subgraph Domain["📐 ドメイン層"]
+        core[packages/app-core<br/>依存なし]
+    end
+    
+    subgraph Infrastructure["🔧 インフラ層"]
+        client[packages/engine-client<br/>インターフェース]
+        wasm[packages/engine-wasm]
+        tauri[packages/engine-tauri]
+        rust[packages/rust-core]
+    end
+    
+    web --> ui
+    web --> design
+    web --> controller
+    web --> wasm
+    
+    desktop --> ui
+    desktop --> design
+    desktop --> controller
+    desktop --> tauri
+    
+    ui --> controller
+    
+    controller --> core
+    controller --> client
+    
+    wasm --> client
+    wasm --> rust
+    tauri --> client
+    
+    style core fill:#90EE90
+    style client fill:#87CEEB
+```
+
+
+【依存関係のポイント】
+✓ app-core: 依存なし（純粋なドメインロジック）
+✓ app-controller: app-core と engine-client のみに依存
+✓ engine-*: engine-client インターフェースを実装
+✓ 循環依存なし、単方向の依存フロー
 
 エンジンコア実装は [rshogi](https://github.com/SH11235/rshogi) リポジトリで管理されています。
 

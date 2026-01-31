@@ -1,5 +1,6 @@
 import { cn } from "@shogi/design-system";
-import { cva, type VariantProps } from "class-variance-authority";
+import type { VariantProps } from "class-variance-authority";
+import { cva } from "class-variance-authority";
 import type { HTMLAttributes, ReactElement } from "react";
 
 const spinnerVariants = cva("inline-block animate-spin rounded-full border-solid border-current", {
