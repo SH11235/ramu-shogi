@@ -112,19 +112,19 @@ export function PCLayout({
     const { displaySettings: navDisplaySettings } = navigation;
     return (
         <section className={matchLayoutClasses}>
-            <div className="flex min-h-[calc(100dvh-1rem)] w-full gap-4 p-4">
-                {/* 左サイドバー（固定幅） */}
-                <div className="shrink-0">
+            <div className="relative min-h-[calc(100dvh-1rem)] min-w-[1400px] w-full overflow-x-auto">
+                {/* 左サイドバー（絶対配置） */}
+                <div className="absolute left-4 top-4">
                     <LeftSidebar />
                 </div>
 
-                {/* 将棋盤エリア（中央配置、残りスペースを使用） */}
-                <div className="flex-1 flex items-start justify-center">
+                {/* 将棋盤エリア（画面中央に固定） */}
+                <div className="flex min-h-[calc(100dvh-1rem)] items-start justify-center p-4">
                     <PCBoardSection candidateNote={candidateNote} />
                 </div>
 
-                {/* 棋譜セクション（固定幅） */}
-                <div className="shrink-0">
+                {/* 棋譜セクション（絶対配置） */}
+                <div className="absolute right-4 top-4">
                     <PCKifuSection />
                 </div>
 
