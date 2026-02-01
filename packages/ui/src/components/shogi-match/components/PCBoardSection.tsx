@@ -291,7 +291,8 @@ export function PCBoardSection({ candidateNote }: PCBoardSectionProps): ReactEle
                         onUndo={handleUndo}
                         canUndo={
                             moves.length > 0 &&
-                            !(sides.sente.role === "engine" && sides.gote.role === "engine")
+                            !(sides.sente.role === "engine" && sides.gote.role === "engine") &&
+                            sides[position.turn].role === "human"
                         }
                         isMatchRunning={isMatchRunning}
                         gameMode={gameMode}
