@@ -95,13 +95,7 @@ export function LeftSidebar(): ReactElement {
         };
         if (value === "human") {
             // 人間プレイヤーに変更したときは時間無制限にする
-            onTimeSettingsChange({
-                ...timeSettings,
-                [side]: {
-                    ...timeSettings[side],
-                    enabled: false,
-                },
-            });
+            handleTimeEnabledChange(side, false);
             onSidesChange({
                 ...sides,
                 [side]: {
@@ -112,13 +106,7 @@ export function LeftSidebar(): ReactElement {
             });
         } else if (value === "material") {
             // AIプレイヤーに変更したときは時間制限を有効にする
-            onTimeSettingsChange({
-                ...timeSettings,
-                [side]: {
-                    ...timeSettings[side],
-                    enabled: true,
-                },
-            });
+            handleTimeEnabledChange(side, true);
             updateNnueSelection(NONE_NNUE_SELECTION);
             onSidesChange({
                 ...sides,
@@ -130,13 +118,7 @@ export function LeftSidebar(): ReactElement {
             });
         } else if (value.startsWith("preset:")) {
             // AIプレイヤーに変更したときは時間制限を有効にする
-            onTimeSettingsChange({
-                ...timeSettings,
-                [side]: {
-                    ...timeSettings[side],
-                    enabled: true,
-                },
-            });
+            handleTimeEnabledChange(side, true);
             const presetKey = value.slice("preset:".length);
             updateNnueSelection({ presetKey, nnueId: null });
             onSidesChange({
@@ -149,13 +131,7 @@ export function LeftSidebar(): ReactElement {
             });
         } else if (value.startsWith("nnue:")) {
             // AIプレイヤーに変更したときは時間制限を有効にする
-            onTimeSettingsChange({
-                ...timeSettings,
-                [side]: {
-                    ...timeSettings[side],
-                    enabled: true,
-                },
-            });
+            handleTimeEnabledChange(side, true);
             const nnueId = value.slice("nnue:".length);
             updateNnueSelection({ presetKey: null, nnueId });
             onSidesChange({

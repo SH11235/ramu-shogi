@@ -295,6 +295,16 @@ export function MobileSettingsSheet({
         return "material";
     };
 
+    const handleTimeEnabledChange = (side: SideKey, enabled: boolean) => {
+        onTimeSettingsChange({
+            ...timeSettings,
+            [side]: {
+                ...timeSettings[side],
+                enabled,
+            },
+        });
+    };
+
     const handleSelectorChange = (side: SideKey, value: string) => {
         const currentSetting = sides[side];
         const updateNnueSelection = (nextSelection: NnueSelection) => {
@@ -307,26 +317,14 @@ export function MobileSettingsSheet({
 
         if (value === "human") {
             // 人間プレイヤーに変更したときは時間無制限にする
-            onTimeSettingsChange({
-                ...timeSettings,
-                [side]: {
-                    ...timeSettings[side],
-                    enabled: false,
-                },
-            });
+            handleTimeEnabledChange(side, false);
             onSidesChange({
                 ...sides,
                 [side]: { role: "human", engineId: undefined, skillLevel: undefined },
             });
         } else if (value === "material") {
             // AIプレイヤーに変更したときは時間制限を有効にする
-            onTimeSettingsChange({
-                ...timeSettings,
-                [side]: {
-                    ...timeSettings[side],
-                    enabled: true,
-                },
-            });
+            handleTimeEnabledChange(side, true);
             updateNnueSelection(NONE_NNUE_SELECTION);
             onSidesChange({
                 ...sides,
@@ -338,13 +336,7 @@ export function MobileSettingsSheet({
             });
         } else if (value.startsWith("preset:")) {
             // AIプレイヤーに変更したときは時間制限を有効にする
-            onTimeSettingsChange({
-                ...timeSettings,
-                [side]: {
-                    ...timeSettings[side],
-                    enabled: true,
-                },
-            });
+            handleTimeEnabledChange(side, true);
             const presetKey = value.slice("preset:".length);
             updateNnueSelection({ presetKey, nnueId: null });
             onSidesChange({
@@ -357,13 +349,7 @@ export function MobileSettingsSheet({
             });
         } else if (value.startsWith("nnue:")) {
             // AIプレイヤーに変更したときは時間制限を有効にする
-            onTimeSettingsChange({
-                ...timeSettings,
-                [side]: {
-                    ...timeSettings[side],
-                    enabled: true,
-                },
-            });
+            handleTimeEnabledChange(side, true);
             const nnueId = value.slice("nnue:".length);
             updateNnueSelection({ presetKey: null, nnueId });
             onSidesChange({
@@ -468,13 +454,7 @@ export function MobileSettingsSheet({
                                     id="sente-time-enabled"
                                     checked={timeSettings.sente.enabled}
                                     onCheckedChange={(enabled) =>
-                                        onTimeSettingsChange({
-                                            ...timeSettings,
-                                            sente: {
-                                                ...timeSettings.sente,
-                                                enabled,
-                                            },
-                                        })
+                                        handleTimeEnabledChange("sente", enabled)
                                     }
                                     disabled={settingsLocked}
                                 />
@@ -556,13 +536,7 @@ export function MobileSettingsSheet({
                                     id="gote-time-enabled"
                                     checked={timeSettings.gote.enabled}
                                     onCheckedChange={(enabled) =>
-                                        onTimeSettingsChange({
-                                            ...timeSettings,
-                                            gote: {
-                                                ...timeSettings.gote,
-                                                enabled,
-                                            },
-                                        })
+                                        handleTimeEnabledChange("gote", enabled)
                                     }
                                     disabled={settingsLocked}
                                 />
