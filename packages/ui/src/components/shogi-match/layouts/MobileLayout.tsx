@@ -288,6 +288,7 @@ export function MobileLayout({
             <header className="flex-shrink-0 pt-1">
                 <ClockDisplay
                     clocks={clocks}
+                    timeSettings={timeSettings}
                     isRunning={isMatchRunning}
                     centerContent={
                         <>

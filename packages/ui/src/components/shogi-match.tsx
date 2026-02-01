@@ -178,10 +178,18 @@ export function ShogiMatch({
     });
     const defaultTimeSettings = useMemo(
         () => ({
-            sente: { mainMs: initialMainTimeMs, byoyomiMs: initialByoyomiMs },
-            gote: { mainMs: initialMainTimeMs, byoyomiMs: initialByoyomiMs },
+            sente: {
+                mainMs: initialMainTimeMs,
+                byoyomiMs: initialByoyomiMs,
+                enabled: defaultSides.sente.role !== "human",
+            },
+            gote: {
+                mainMs: initialMainTimeMs,
+                byoyomiMs: initialByoyomiMs,
+                enabled: defaultSides.gote.role !== "human",
+            },
         }),
-        [initialMainTimeMs, initialByoyomiMs],
+        [initialMainTimeMs, initialByoyomiMs, defaultSides.sente.role, defaultSides.gote.role],
     );
     const [timeSettings, setTimeSettings] = useNormalizedSettings(
         "shogi-match-time-settings",

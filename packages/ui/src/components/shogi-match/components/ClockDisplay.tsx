@@ -1,13 +1,15 @@
 import type { Player } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement, ReactNode } from "react";
-import type { TickState } from "../hooks/useClockManager";
+import type { ClockSettings, TickState } from "../hooks/useClockManager";
 import { formatTime } from "../utils/timeFormat";
 import { PlayerIcon } from "./PlayerIcon";
 
 interface ClockDisplayProps {
     /** 時計の状態 */
     clocks: TickState;
+    /** 時間設定（時間制限のオンオフ判定用） */
+    timeSettings: ClockSettings;
     /** 対局が進行中かどうか */
     isRunning?: boolean;
     /** 追加のクラス名（スペーシング等は親から指定） */
@@ -23,6 +25,7 @@ interface ClockDisplayProps {
  */
 export function ClockDisplay({
     clocks,
+    timeSettings,
     isRunning = true,
     className,
     centerContent,
@@ -30,6 +33,7 @@ export function ClockDisplay({
     const renderClock = (side: Player) => {
         const clock = clocks[side];
         const ticking = isRunning && clocks.ticking === side;
+        const timeEnabled = timeSettings[side].enabled;
 
         return (
             <div
@@ -41,9 +45,15 @@ export function ClockDisplay({
             >
                 <PlayerIcon side={side} size="sm" />
                 <span className="font-mono text-sm tabular-nums">
-                    {formatTime(clock.mainMs)}
-                    <span className="text-muted-foreground">+</span>
-                    {formatTime(clock.byoyomiMs)}
+                    {timeEnabled ? (
+                        <>
+                            {formatTime(clock.mainMs)}
+                            <span className="text-muted-foreground">+</span>
+                            {formatTime(clock.byoyomiMs)}
+                        </>
+                    ) : (
+                        <span className="text-lg">∞</span>
+                    )}
                 </span>
                 <span
                     className={cn(
