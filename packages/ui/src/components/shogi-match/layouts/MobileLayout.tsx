@@ -160,7 +160,9 @@ export function MobileLayout({
 
     // 待った可否の計算
     const canUndo =
-        moves.length > 0 && !(sides.sente.role === "engine" && sides.gote.role === "engine");
+        moves.length > 0 &&
+        !(sides.sente.role === "engine" && sides.gote.role === "engine") &&
+        sides[position.turn].role === "human";
 
     // 評価値の取得
     const evalCp = displayEvalHistory[currentPly]?.evalCp ?? undefined;
