@@ -8,6 +8,7 @@
 import type { PieceType, Player, PositionState } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { ShogiBoard } from "../../shogi-board";
+import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { ClockDisplay } from "./ClockDisplay";
 import { HandPiecesDisplay } from "./HandPiecesDisplay";
@@ -82,6 +83,9 @@ interface PCBoardSectionProps {
 }
 
 export function PCBoardSection({ candidateNote }: PCBoardSectionProps): ReactElement {
+    // 対局設定を取得
+    const { timeSettings } = useMatchSettings();
+
     // 対局進行状態は Context から取得
     const {
         boardSectionRef,
@@ -140,7 +144,11 @@ export function PCBoardSection({ candidateNote }: PCBoardSectionProps): ReactEle
                     className={`flex flex-col gap-2 items-center ${isDraggingPiece ? "touch-none" : ""}`}
                 >
                     {/* 時間管理（将棋盤の上） */}
-                    <ClockDisplay clocks={clocks} isRunning={isMatchRunning} />
+                    <ClockDisplay
+                        clocks={clocks}
+                        timeSettings={timeSettings}
+                        isRunning={isMatchRunning}
+                    />
 
                     {/* 盤の上側の持ち駒（通常:後手、反転時:先手） */}
                     <div data-zone={`hand-${topHandInfo.owner}`} className="w-full">

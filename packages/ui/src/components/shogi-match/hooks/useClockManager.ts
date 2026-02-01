@@ -7,7 +7,7 @@ const CLOCK_UPDATE_INTERVAL_MS = 200;
 /**
  * 各プレイヤーの時間設定
  */
-export type ClockSettings = Record<Player, { mainMs: number; byoyomiMs: number }>;
+export type ClockSettings = Record<Player, { mainMs: number; byoyomiMs: number; enabled: boolean }>;
 
 /**
  * 時計の状態
@@ -183,6 +183,17 @@ export function useClockManager({
             const side = prev.ticking;
             const current = prev[side];
 
+            // 時間制限が無効な場合は時計を進めない
+            if (!timeSettings[side].enabled) {
+                const nextState: TickState = {
+                    ...prev,
+                    lastUpdatedAt: now,
+                };
+                clocksRef.current = nextState;
+                setClocks(nextState);
+                return;
+            }
+
             let mainMs = current.mainMs - delta;
             let byoyomiMs = current.byoyomiMs;
 
@@ -219,7 +230,7 @@ export function useClockManager({
         }, CLOCK_UPDATE_INTERVAL_MS);
 
         return () => clearInterval(timer);
-    }, [clocks.ticking, isMatchRunning, matchEndedRef, onClockError]);
+    }, [clocks.ticking, isMatchRunning, matchEndedRef, onClockError, timeSettings]);
 
     return {
         clocks,

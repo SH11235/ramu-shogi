@@ -119,7 +119,7 @@ const inputClassName = "w-full border border-border bg-background text-base";
 const labelClassName = "flex flex-col gap-1 text-sm";
 
 // SkillLevelSelectorの高さを確保してレイアウトシフトを防止
-const SKILL_LEVEL_SELECTOR_MIN_HEIGHT = "min-h-[4rem]";
+const SKILL_LEVEL_SELECTOR_MIN_HEIGHT = "min-h-[4rem] flex items-center";
 
 // =============================================================================
 // KifuImportSection: 棋譜/局面インポートセクション
@@ -306,11 +306,27 @@ export function MobileSettingsSheet({
         };
 
         if (value === "human") {
+            // 人間プレイヤーに変更したときは時間無制限にする
+            onTimeSettingsChange({
+                ...timeSettings,
+                [side]: {
+                    ...timeSettings[side],
+                    enabled: false,
+                },
+            });
             onSidesChange({
                 ...sides,
                 [side]: { role: "human", engineId: undefined, skillLevel: undefined },
             });
         } else if (value === "material") {
+            // AIプレイヤーに変更したときは時間制限を有効にする
+            onTimeSettingsChange({
+                ...timeSettings,
+                [side]: {
+                    ...timeSettings[side],
+                    enabled: true,
+                },
+            });
             updateNnueSelection(NONE_NNUE_SELECTION);
             onSidesChange({
                 ...sides,
@@ -321,6 +337,14 @@ export function MobileSettingsSheet({
                 },
             });
         } else if (value.startsWith("preset:")) {
+            // AIプレイヤーに変更したときは時間制限を有効にする
+            onTimeSettingsChange({
+                ...timeSettings,
+                [side]: {
+                    ...timeSettings[side],
+                    enabled: true,
+                },
+            });
             const presetKey = value.slice("preset:".length);
             updateNnueSelection({ presetKey, nnueId: null });
             onSidesChange({
@@ -332,6 +356,14 @@ export function MobileSettingsSheet({
                 },
             });
         } else if (value.startsWith("nnue:")) {
+            // AIプレイヤーに変更したときは時間制限を有効にする
+            onTimeSettingsChange({
+                ...timeSettings,
+                [side]: {
+                    ...timeSettings[side],
+                    enabled: true,
+                },
+            });
             const nnueId = value.slice("nnue:".length);
             updateNnueSelection({ presetKey: null, nnueId });
             onSidesChange({
@@ -423,12 +455,30 @@ export function MobileSettingsSheet({
                     </label>
                     {/* レイアウトシフト防止のため固定高さを確保 */}
                     <div className={SKILL_LEVEL_SELECTOR_MIN_HEIGHT}>
-                        {sides.sente.role === "engine" && (
+                        {sides.sente.role === "engine" ? (
                             <SkillLevelSelector
                                 value={sides.sente.skillLevel}
                                 onChange={(sl) => handleSkillLevelChange("sente", sl)}
                                 disabled={settingsLocked}
                             />
+                        ) : (
+                            <div className="flex items-center justify-between gap-2 w-full">
+                                <span className="text-sm text-muted-foreground">時間制限</span>
+                                <Switch
+                                    id="sente-time-enabled"
+                                    checked={timeSettings.sente.enabled}
+                                    onCheckedChange={(enabled) =>
+                                        onTimeSettingsChange({
+                                            ...timeSettings,
+                                            sente: {
+                                                ...timeSettings.sente,
+                                                enabled,
+                                            },
+                                        })
+                                    }
+                                    disabled={settingsLocked}
+                                />
+                            </div>
                         )}
                     </div>
                     <label htmlFor="mobile-sente-main" className={labelClassName}>
@@ -436,7 +486,7 @@ export function MobileSettingsSheet({
                         <NumericInput
                             id="mobile-sente-main"
                             value={Math.floor(timeSettings.sente.mainMs / 1000)}
-                            disabled={settingsLocked}
+                            disabled={settingsLocked || !timeSettings.sente.enabled}
                             className={inputClassName}
                             onChange={(v) =>
                                 onTimeSettingsChange({
@@ -451,7 +501,7 @@ export function MobileSettingsSheet({
                         <NumericInput
                             id="mobile-sente-byoyomi"
                             value={Math.floor(timeSettings.sente.byoyomiMs / 1000)}
-                            disabled={settingsLocked}
+                            disabled={settingsLocked || !timeSettings.sente.enabled}
                             className={inputClassName}
                             onChange={(v) =>
                                 onTimeSettingsChange({
@@ -493,12 +543,30 @@ export function MobileSettingsSheet({
                     </label>
                     {/* レイアウトシフト防止のため固定高さを確保 */}
                     <div className={SKILL_LEVEL_SELECTOR_MIN_HEIGHT}>
-                        {sides.gote.role === "engine" && (
+                        {sides.gote.role === "engine" ? (
                             <SkillLevelSelector
                                 value={sides.gote.skillLevel}
                                 onChange={(sl) => handleSkillLevelChange("gote", sl)}
                                 disabled={settingsLocked}
                             />
+                        ) : (
+                            <div className="flex items-center justify-between gap-2 w-full">
+                                <span className="text-sm text-muted-foreground">時間制限</span>
+                                <Switch
+                                    id="gote-time-enabled"
+                                    checked={timeSettings.gote.enabled}
+                                    onCheckedChange={(enabled) =>
+                                        onTimeSettingsChange({
+                                            ...timeSettings,
+                                            gote: {
+                                                ...timeSettings.gote,
+                                                enabled,
+                                            },
+                                        })
+                                    }
+                                    disabled={settingsLocked}
+                                />
+                            </div>
                         )}
                     </div>
                     <label htmlFor="mobile-gote-main" className={labelClassName}>
@@ -506,7 +574,7 @@ export function MobileSettingsSheet({
                         <NumericInput
                             id="mobile-gote-main"
                             value={Math.floor(timeSettings.gote.mainMs / 1000)}
-                            disabled={settingsLocked}
+                            disabled={settingsLocked || !timeSettings.gote.enabled}
                             className={inputClassName}
                             onChange={(v) =>
                                 onTimeSettingsChange({
@@ -521,7 +589,7 @@ export function MobileSettingsSheet({
                         <NumericInput
                             id="mobile-gote-byoyomi"
                             value={Math.floor(timeSettings.gote.byoyomiMs / 1000)}
-                            disabled={settingsLocked}
+                            disabled={settingsLocked || !timeSettings.gote.enabled}
                             className={inputClassName}
                             onChange={(v) =>
                                 onTimeSettingsChange({

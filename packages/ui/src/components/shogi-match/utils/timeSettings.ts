@@ -45,10 +45,12 @@ export function normalizeTimeSettings(
         sente: {
             mainMs: normalizeTimeValueMs(settings.sente.mainMs, defaults.sente.mainMs),
             byoyomiMs: normalizeTimeValueMs(settings.sente.byoyomiMs, defaults.sente.byoyomiMs),
+            enabled: settings.sente.enabled ?? defaults.sente.enabled,
         },
         gote: {
             mainMs: normalizeTimeValueMs(settings.gote.mainMs, defaults.gote.mainMs),
             byoyomiMs: normalizeTimeValueMs(settings.gote.byoyomiMs, defaults.gote.byoyomiMs),
+            enabled: settings.gote.enabled ?? defaults.gote.enabled,
         },
     };
 }
@@ -64,7 +66,9 @@ export function isSameTimeSettings(a: ClockSettings, b: ClockSettings): boolean 
     return (
         a.sente.mainMs === b.sente.mainMs &&
         a.sente.byoyomiMs === b.sente.byoyomiMs &&
+        a.sente.enabled === b.sente.enabled &&
         a.gote.mainMs === b.gote.mainMs &&
-        a.gote.byoyomiMs === b.gote.byoyomiMs
+        a.gote.byoyomiMs === b.gote.byoyomiMs &&
+        a.gote.enabled === b.gote.enabled
     );
 }

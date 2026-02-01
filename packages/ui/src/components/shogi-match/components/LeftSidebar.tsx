@@ -4,6 +4,7 @@ import type { SkillLevelSettings } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 import { Input } from "../../input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../select";
+import { Switch } from "../../switch";
 import { useAnalysis } from "../contexts/AnalysisContext";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { PlayerIcon } from "./PlayerIcon";
@@ -93,6 +94,14 @@ export function LeftSidebar(): ReactElement {
             }
         };
         if (value === "human") {
+            // 人間プレイヤーに変更したときは時間無制限にする
+            onTimeSettingsChange({
+                ...timeSettings,
+                [side]: {
+                    ...timeSettings[side],
+                    enabled: false,
+                },
+            });
             onSidesChange({
                 ...sides,
                 [side]: {
@@ -102,6 +111,14 @@ export function LeftSidebar(): ReactElement {
                 },
             });
         } else if (value === "material") {
+            // AIプレイヤーに変更したときは時間制限を有効にする
+            onTimeSettingsChange({
+                ...timeSettings,
+                [side]: {
+                    ...timeSettings[side],
+                    enabled: true,
+                },
+            });
             updateNnueSelection(NONE_NNUE_SELECTION);
             onSidesChange({
                 ...sides,
@@ -112,6 +129,14 @@ export function LeftSidebar(): ReactElement {
                 },
             });
         } else if (value.startsWith("preset:")) {
+            // AIプレイヤーに変更したときは時間制限を有効にする
+            onTimeSettingsChange({
+                ...timeSettings,
+                [side]: {
+                    ...timeSettings[side],
+                    enabled: true,
+                },
+            });
             const presetKey = value.slice("preset:".length);
             updateNnueSelection({ presetKey, nnueId: null });
             onSidesChange({
@@ -123,6 +148,14 @@ export function LeftSidebar(): ReactElement {
                 },
             });
         } else if (value.startsWith("nnue:")) {
+            // AIプレイヤーに変更したときは時間制限を有効にする
+            onTimeSettingsChange({
+                ...timeSettings,
+                [side]: {
+                    ...timeSettings[side],
+                    enabled: true,
+                },
+            });
             const nnueId = value.slice("nnue:".length);
             updateNnueSelection({ presetKey: null, nnueId });
             onSidesChange({
@@ -153,6 +186,16 @@ export function LeftSidebar(): ReactElement {
             [side]: {
                 ...timeSettings[side],
                 [field]: clampedSeconds * 1000,
+            },
+        });
+    };
+
+    const handleTimeEnabledChange = (side: SideKey, enabled: boolean) => {
+        onTimeSettingsChange({
+            ...timeSettings,
+            [side]: {
+                ...timeSettings[side],
+                enabled,
             },
         });
     };
@@ -218,13 +261,24 @@ export function LeftSidebar(): ReactElement {
                     </Select>
                 </div>
                 {/* レイアウトシフト防止のため固定高さを確保 */}
-                <div className="min-h-[4rem]">
-                    {setting.role === "engine" && (
+                <div className="min-h-[4rem] flex items-center">
+                    {setting.role === "engine" ? (
                         <SkillLevelSelector
                             value={setting.skillLevel}
                             onChange={(skillLevel) => handleSkillLevelChange(side, skillLevel)}
                             disabled={settingsLocked}
                         />
+                    ) : (
+                        <div className="flex items-center justify-between gap-2 w-full">
+                            <span className="text-xs text-muted-foreground">時間制限</span>
+                            <Switch
+                                checked={timeSettings[side].enabled}
+                                onCheckedChange={(enabled) =>
+                                    handleTimeEnabledChange(side, enabled)
+                                }
+                                disabled={settingsLocked}
+                            />
+                        </div>
                     )}
                 </div>
                 <div className={labelClassName}>
@@ -234,8 +288,14 @@ export function LeftSidebar(): ReactElement {
                         min={0}
                         max={86400}
                         value={Math.floor(timeSettings[side].mainMs / 1000)}
-                        disabled={settingsLocked}
-                        title={settingsLocked ? SETTINGS_LOCKED_MESSAGE : undefined}
+                        disabled={settingsLocked || !timeSettings[side].enabled}
+                        title={
+                            settingsLocked
+                                ? SETTINGS_LOCKED_MESSAGE
+                                : !timeSettings[side].enabled
+                                  ? "時間制限を有効にしてください"
+                                  : undefined
+                        }
                         className={inputClassName}
                         onChange={(e) => handleTimeChange(side, "mainMs", e.target.value)}
                     />
@@ -247,8 +307,14 @@ export function LeftSidebar(): ReactElement {
                         min={0}
                         max={86400}
                         value={Math.floor(timeSettings[side].byoyomiMs / 1000)}
-                        disabled={settingsLocked}
-                        title={settingsLocked ? SETTINGS_LOCKED_MESSAGE : undefined}
+                        disabled={settingsLocked || !timeSettings[side].enabled}
+                        title={
+                            settingsLocked
+                                ? SETTINGS_LOCKED_MESSAGE
+                                : !timeSettings[side].enabled
+                                  ? "時間制限を有効にしてください"
+                                  : undefined
+                        }
                         className={inputClassName}
                         onChange={(e) => handleTimeChange(side, "byoyomiMs", e.target.value)}
                     />
