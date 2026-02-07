@@ -225,14 +225,19 @@ function verifyThreadedOutput(outputDir) {
 try {
     ensureWasmBindgen();
 
-    buildWasm({ label: "single", cargoArgs: [], outDir });
+    buildWasm({
+        label: "single",
+        cargoArgs: [],
+        outDir,
+        rustflags: "-C target-feature=+simd128",
+    });
 
     buildWasm({
         label: "threaded",
         cargoArgs: ["--features", "wasm-threads"],
         outDir: threadedOutDir,
         rustflags:
-            "-Z unstable-options -C panic=immediate-abort -C link-arg=--shared-memory -C link-arg=--import-memory -C link-arg=--max-memory=2147483648 -C link-arg=--export=__wasm_init_tls -C link-arg=--export=__tls_base -C link-arg=--export=__tls_size -C link-arg=--export=__tls_align",
+            "-C target-feature=+simd128 -Z unstable-options -C panic=immediate-abort -C link-arg=--shared-memory -C link-arg=--import-memory -C link-arg=--max-memory=2147483648 -C link-arg=--export=__wasm_init_tls -C link-arg=--export=__tls_base -C link-arg=--export=__tls_size -C link-arg=--export=__tls_align",
         toolchain: nightlyToolchain,
         cargoZArgs: ["-Z", "build-std=core,alloc,std"],
         emitThreadWorker: true,
