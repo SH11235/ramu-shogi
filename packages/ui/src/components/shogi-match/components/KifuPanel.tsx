@@ -169,6 +169,14 @@ interface KifuPanelProps {
     isOnMainLine?: boolean;
     /** 手の詳細を選択したときのコールバック（右パネル表示用） */
     onMoveDetailSelect?: (move: KifMove | null, position: PositionState | null) => void;
+    /** AI解説を生成するコールバック */
+    onGenerateCommentary?: () => void;
+    /** AI解説生成中かどうか */
+    isGeneratingCommentary?: boolean;
+    /** AI解説生成の進捗 */
+    commentaryProgress?: { current: number; total: number } | null;
+    /** AI解説生成をキャンセルするコールバック */
+    onCancelCommentaryGeneration?: () => void;
 }
 
 /**
@@ -1138,6 +1146,10 @@ export function KifuPanel({
     onViewModeChange,
     isOnMainLine = true,
     onMoveDetailSelect,
+    onGenerateCommentary,
+    isGeneratingCommentary,
+    commentaryProgress,
+    onCancelCommentaryGeneration,
 }: KifuPanelProps): ReactElement {
     // _onBranchSwitch: 将来的に分岐切り替え機能で使用予定
     const listRef = useRef<HTMLDivElement>(null);
@@ -1493,6 +1505,50 @@ export function KifuPanel({
                                 isNnueListLoading={isNnueListLoading}
                                 presets={presets}
                             />
+                        )}
+                        {/* AI解説生成ボタン */}
+                        {onGenerateCommentary && hasEvalData(kifMoves) && (
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <button
+                                        type="button"
+                                        className={`h-7 px-2 flex items-center gap-1 text-[11px] rounded border cursor-pointer transition-colors duration-150 ${
+                                            isGeneratingCommentary
+                                                ? "bg-[hsl(var(--wafuu-kin)/0.15)] text-[hsl(var(--wafuu-kin))] border-[hsl(var(--wafuu-kin)/0.4)]"
+                                                : "bg-background text-foreground border-border hover:bg-muted"
+                                        }`}
+                                        onClick={
+                                            isGeneratingCommentary
+                                                ? onCancelCommentaryGeneration
+                                                : onGenerateCommentary
+                                        }
+                                        aria-label={
+                                            isGeneratingCommentary
+                                                ? "AI解説生成をキャンセル"
+                                                : "AI解説を生成"
+                                        }
+                                    >
+                                        {isGeneratingCommentary ? (
+                                            <>
+                                                <span className="animate-pulse">
+                                                    {commentaryProgress
+                                                        ? `${commentaryProgress.current}/${commentaryProgress.total}`
+                                                        : "..."}
+                                                </span>
+                                            </>
+                                        ) : (
+                                            "AI解説"
+                                        )}
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom">
+                                    <div className="text-[11px]">
+                                        {isGeneratingCommentary
+                                            ? "クリックでキャンセル"
+                                            : "評価急落手のAI解説を生成"}
+                                    </div>
+                                </TooltipContent>
+                            </Tooltip>
                         )}
                         {/* KIFコピーボタン（アイコン） */}
                         {onCopyKif && kifMoves.length > 0 && (
@@ -1963,6 +2019,14 @@ export function KifuPanel({
                                         >
                                             {move.displayText}
                                         </span>
+                                        {move.comment && (
+                                            <span
+                                                className="text-[10px] text-[hsl(var(--wafuu-kin))]"
+                                                title="AI解説あり"
+                                            >
+                                                💬
+                                            </span>
+                                        )}
                                         {showEval && evalText && evalSpan}
                                         {/* 展開可能インジケータ */}
                                         {canExpand && (

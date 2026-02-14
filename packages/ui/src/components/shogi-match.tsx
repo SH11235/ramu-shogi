@@ -30,6 +30,7 @@ import { applyDropResult } from "./shogi-match/dnd/dropLogic";
 import type { DropResult } from "./shogi-match/dnd/types";
 import { usePieceDnd } from "./shogi-match/dnd/usePieceDnd";
 import { useBatchAnalysis } from "./shogi-match/hooks/useBatchAnalysis";
+import { useCommentaryGeneration } from "./shogi-match/hooks/useCommentaryGeneration";
 import { useBoardState } from "./shogi-match/hooks/useBoardState";
 import { useClockManager } from "./shogi-match/hooks/useClockManager";
 import { useDialogs } from "./shogi-match/hooks/useDialogs";
@@ -104,6 +105,13 @@ interface ShogiMatchProps {
     defaultNnuePresetKey?: string;
     /** AIアイコンのURL（GitHub Pages等でbase pathが必要な場合に指定） */
     aiIconUrl?: string;
+    /** WASM版 MoveFeatures 取得コールバック（isCheck付き特徴量の取得） */
+    getWasmMoveFeatures?: (
+        sfen: string,
+        moves: string[],
+        targetMove: string,
+        passRights?: { sente: number; gote: number },
+    ) => import("@shogi/app-core").MoveFeatures | null;
 }
 
 export function ShogiMatch({
@@ -121,6 +129,7 @@ export function ShogiMatch({
     onRequestNnueFilePath,
     defaultNnuePresetKey,
     aiIconUrl,
+    getWasmMoveFeatures,
 }: ShogiMatchProps): ReactElement {
     // デフォルトの NNUE 選択（props のプリセットキーを使用、未指定時は DEFAULT_PRESET_KEY）
     const defaultNnueSelection = useMemo(
@@ -354,6 +363,19 @@ export function ShogiMatch({
         clearEvalByNodeId,
         addPvAsBranch,
     } = navigation;
+
+    // AI解説生成フック
+    const {
+        generateCommentary,
+        isGenerating: isGeneratingCommentary,
+        progress: commentaryProgress,
+        cancelGeneration: cancelCommentaryGeneration,
+    } = useCommentaryGeneration({
+        kifMoves,
+        tree: navigation.tree,
+        setCommentByPly: navigation.setCommentByPly,
+        getWasmMoveFeatures,
+    });
 
     // 評価値グラフ用: ビューモードに応じて本譜 or 分岐の評価履歴を選択
     const displayEvalHistory = useMemo(() => {
@@ -1346,6 +1368,10 @@ export function ShogiMatch({
             handleAnalyzeNode,
             handleAnalyzeBranch,
             handleStartTreeBatchAnalysis,
+            handleGenerateCommentary: generateCommentary,
+            isGeneratingCommentary,
+            commentaryProgress,
+            handleCancelCommentaryGeneration: cancelCommentaryGeneration,
         }),
         [
             analysisSettings,
@@ -1363,6 +1389,10 @@ export function ShogiMatch({
             handleAnalyzeNode,
             handleAnalyzeBranch,
             handleStartTreeBatchAnalysis,
+            generateCommentary,
+            isGeneratingCommentary,
+            commentaryProgress,
+            cancelCommentaryGeneration,
         ],
     );
 

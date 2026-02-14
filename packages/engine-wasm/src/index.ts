@@ -989,6 +989,14 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
                 type: "loadNnue",
                 source: { type: "idb", id: nnueId },
             });
+            // 評価関数変更後はエンジンを再初期化（TT・履歴クリア）。
+            // NNUE モデルはグローバルなので init() 後も維持される。
+            initInFlight = startInit();
+            try {
+                await initInFlight;
+            } finally {
+                initInFlight = null;
+            }
         },
     };
 }
@@ -1000,6 +1008,7 @@ export {
     wasm_board_to_sfen,
     wasm_get_initial_board,
     wasm_get_legal_moves,
+    wasm_get_move_features,
     wasm_parse_sfen_to_board,
     wasm_replay_moves_strict,
 } from "../pkg/engine_wasm.js";

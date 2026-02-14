@@ -21,6 +21,7 @@ serde_json.workspace = true
 [features]
 default = []
 wasm-threads = ["rshogi-core/wasm-threads", "wasm-bindgen-rayon"]
+move-features = ["rshogi-core/move-features"]
 
 [target.wasm32-unknown-unknown.dependencies]
 getrandom = { workspace = true }

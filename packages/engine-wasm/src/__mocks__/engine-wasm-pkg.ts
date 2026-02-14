@@ -17,3 +17,11 @@ export const wasm_replay_moves_strict = vi.fn().mockReturnValue({
     last_ply: 0,
     board: {},
 });
+export const wasm_get_move_features = vi.fn().mockReturnValue({
+    movedPiece: "P",
+    movedPiecePromoted: false,
+    isCapture: false,
+    isPromote: false,
+    isDrop: false,
+    isCheck: false,
+});

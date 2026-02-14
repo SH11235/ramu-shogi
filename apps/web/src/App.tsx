@@ -1,9 +1,10 @@
-import type { NnueFormat } from "@shogi/app-core";
+import type { MoveFeatures, NnueFormat } from "@shogi/app-core";
 import {
     createIndexedDBNnueStorage,
     createWasmEngineClient,
     detect_nnue_format,
     is_nnue_compatible,
+    wasm_get_move_features,
 } from "@shogi/engine-wasm";
 import type { EngineOption } from "@shogi/ui";
 import { EngineControlPanel, NnueProvider, ShogiMatch, useDevMode } from "@shogi/ui";
@@ -42,6 +43,22 @@ const validateNnueHeader = async (header: Uint8Array, fileSize: number) => ({
     isCompatible: is_nnue_compatible(header, BigInt(fileSize)),
 });
 
+/** WASM版 MoveFeatures 取得（isCheck付き） */
+const getWasmMoveFeatures = (
+    sfen: string,
+    moves: string[],
+    targetMove: string,
+    passRights?: { sente: number; gote: number },
+): MoveFeatures | null => {
+    try {
+        // WASMモジュールが初期化済みであることを前提とする
+        // （エンジン init 時に ensureWasmModule が呼ばれている）
+        return wasm_get_move_features(sfen, moves, targetMove, passRights) as MoveFeatures;
+    } catch {
+        return null;
+    }
+};
+
 function App() {
     const isDevMode = useDevMode();
 
@@ -54,6 +71,7 @@ function App() {
                     manifestUrl={nnueManifestUrl}
                     defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
                     aiIconUrl={`${import.meta.env.BASE_URL}ramu.jpeg`}
+                    getWasmMoveFeatures={getWasmMoveFeatures}
                 />
                 {isDevMode && <EngineControlPanel engine={panelEngine} />}
             </main>

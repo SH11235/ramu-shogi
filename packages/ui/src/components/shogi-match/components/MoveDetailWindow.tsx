@@ -638,6 +638,18 @@ export function MoveDetailWindow({
                     </div>
                 )}
 
+                {/* AI解説 */}
+                {move.comment && (
+                    <div className="mt-2 p-2.5 bg-[hsl(var(--wafuu-washi))] dark:bg-[hsl(var(--muted)/0.3)] rounded-lg border border-[hsl(var(--wafuu-kin)/0.3)]">
+                        <div className="text-[10px] font-medium text-[hsl(var(--wafuu-kin))] mb-1">
+                            AI解説
+                        </div>
+                        <div className="text-[12px] text-foreground leading-relaxed whitespace-pre-wrap">
+                            {move.comment}
+                        </div>
+                    </div>
+                )}
+
                 {/* 解析ボタン */}
                 {onAnalyze && (
                     <div
