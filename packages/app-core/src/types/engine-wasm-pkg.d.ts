@@ -12,4 +12,10 @@ declare module "@shogi/engine-wasm/pkg/engine_wasm.js" {
         moves: unknown,
         pass_rights?: { sente: number; gote: number },
     ): unknown;
+    export function wasm_get_move_features(
+        sfen: string,
+        moves: unknown,
+        target_move: string,
+        pass_rights?: { sente: number; gote: number },
+    ): unknown;
 }

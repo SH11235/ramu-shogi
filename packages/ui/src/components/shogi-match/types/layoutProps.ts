@@ -154,6 +154,12 @@ export interface AnalysisProps {
     handleAnalyzeNode: (nodeId: string) => void;
     handleAnalyzeBranch: (branchNodeId: string) => void;
     handleStartTreeBatchAnalysis: (options?: { mainLineOnly?: boolean }) => void;
+
+    // AI解説生成
+    handleGenerateCommentary: () => void;
+    isGeneratingCommentary: boolean;
+    commentaryProgress: import("../hooks/useCommentaryGeneration").CommentaryProgress | null;
+    handleCancelCommentaryGeneration: () => void;
 }
 
 /**

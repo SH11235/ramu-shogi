@@ -5,6 +5,7 @@
  */
 
 import type { NnueMeta, NnueSelection, PresetConfig } from "@shogi/app-core";
+import type { CommentaryProgress } from "../hooks/useCommentaryGeneration";
 import type { AnalysisSettings, AnalyzingState } from "../types";
 
 /**
@@ -53,4 +54,10 @@ export interface AnalysisContextValue {
     handleAnalyzeNode: (nodeId: string) => void;
     handleAnalyzeBranch: (branchNodeId: string) => void;
     handleStartTreeBatchAnalysis: (options?: { mainLineOnly?: boolean }) => void;
+
+    // AI解説生成
+    handleGenerateCommentary: () => void;
+    isGeneratingCommentary: boolean;
+    commentaryProgress: CommentaryProgress | null;
+    handleCancelCommentaryGeneration: () => void;
 }

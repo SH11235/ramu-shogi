@@ -528,6 +528,9 @@ pub fn init(opts: Option<JsValue>) -> Result<(), JsValue> {
             engine.search.resize_eval_hash(DEFAULT_EVAL_HASH_SIZE_MB);
         }
         set_eval_hash_enabled(opts.use_eval_hash.unwrap_or(DEFAULT_USE_EVAL_HASH));
+        // Rayon thread_local! に残った helper worker の履歴テーブルをクリア。
+        // 評価関数切替後に古い履歴で探索しないようにする。
+        engine.search.clear_histories();
         *state.borrow_mut() = Some(engine);
     });
 
@@ -959,4 +962,33 @@ pub fn dispose() {
     ENGINE.with(|state| {
         state.borrow_mut().take();
     });
+}
+
+/// 指し手の特徴量を抽出する（解説生成用）
+///
+/// 指定した局面で指し手を適用する前の状態から、駒種・駒取り・成り・王手等の情報を返す。
+#[cfg(feature = "move-features")]
+#[wasm_bindgen]
+pub fn wasm_get_move_features(
+    sfen: String,
+    moves: Option<JsValue>,
+    target_move: String,
+    pass_rights: Option<JsValue>,
+) -> Result<JsValue, JsValue> {
+    let parsed_moves = parse_moves(moves)?;
+    let pass_rights: Option<PassRightsInput> = pass_rights
+        .map(swb::from_value)
+        .transpose()
+        .map_err(|e| JsValue::from_str(&format!("invalid passRights: {e}")))?;
+
+    let position = build_position(&sfen, &parsed_moves, pass_rights)?;
+
+    let m = Move::from_usi(&target_move)
+        .ok_or_else(|| JsValue::from_str(&format!("invalid move: {target_move}")))?;
+
+    let features = position
+        .extract_move_features(m)
+        .ok_or_else(|| JsValue::from_str("failed to extract move features"))?;
+
+    swb::to_value(&features).map_err(|e| JsValue::from_str(&format!("Serialization error: {e}")))
 }

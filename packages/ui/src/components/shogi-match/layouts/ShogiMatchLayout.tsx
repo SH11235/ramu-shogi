@@ -162,6 +162,10 @@ export function ShogiMatchLayout({
         handleAnalyzeNode,
         handleAnalyzeBranch,
         handleStartTreeBatchAnalysis,
+        handleGenerateCommentary,
+        isGeneratingCommentary,
+        commentaryProgress,
+        handleCancelCommentaryGeneration,
     } = analysisProps;
 
     // グループ化されたpropsを展開: ナビゲーション・棋譜
@@ -390,6 +394,10 @@ export function ShogiMatchLayout({
                         handleAnalyzeNode={handleAnalyzeNode}
                         handleAnalyzeBranch={handleAnalyzeBranch}
                         handleStartTreeBatchAnalysis={handleStartTreeBatchAnalysis}
+                        handleGenerateCommentary={handleGenerateCommentary}
+                        isGeneratingCommentary={isGeneratingCommentary}
+                        commentaryProgress={commentaryProgress}
+                        handleCancelCommentaryGeneration={handleCancelCommentaryGeneration}
                     >
                         <MatchStateProvider
                             position={position}
@@ -523,6 +531,10 @@ export function ShogiMatchLayout({
                         handleAnalyzeNode={handleAnalyzeNode}
                         handleAnalyzeBranch={handleAnalyzeBranch}
                         handleStartTreeBatchAnalysis={handleStartTreeBatchAnalysis}
+                        handleGenerateCommentary={handleGenerateCommentary}
+                        isGeneratingCommentary={isGeneratingCommentary}
+                        commentaryProgress={commentaryProgress}
+                        handleCancelCommentaryGeneration={handleCancelCommentaryGeneration}
                     >
                         <MatchStateProvider
                             position={position}

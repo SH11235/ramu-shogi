@@ -7,3 +7,11 @@ export const wasm_apply_move = () => ({});
 export const wasm_board_to_sfen = () => "startpos";
 export const wasm_parse_sfen_to_board = () => ({});
 export const wasm_replay_moves_strict = () => ({});
+export const wasm_get_move_features = () => ({
+    movedPiece: "P",
+    movedPiecePromoted: false,
+    isCapture: false,
+    isPromote: false,
+    isDrop: false,
+    isCheck: false,
+});

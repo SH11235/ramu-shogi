@@ -27,3 +27,11 @@ export const search = vi.fn();
 export const stop = vi.fn();
 export const set_event_handler = vi.fn();
 export const set_option = vi.fn();
+export const wasm_get_move_features = vi.fn().mockReturnValue({
+    movedPiece: "P",
+    movedPiecePromoted: false,
+    isCapture: false,
+    isPromote: false,
+    isDrop: false,
+    isCheck: false,
+});

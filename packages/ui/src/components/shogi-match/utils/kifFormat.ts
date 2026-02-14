@@ -88,6 +88,8 @@ export interface KifMove {
     pv?: string[];
     /** 複数PV用の評価値配列 */
     multiPvEvals?: PvEvalInfo[];
+    /** AI解説コメント */
+    comment?: string;
 }
 
 /** 評価値の履歴（グラフ用） */
@@ -538,6 +540,8 @@ export interface NodeData {
     pv?: string[];
     /** 複数PV用の評価値配列（インデックス=multipv-1） */
     multiPvEvals?: (MultiPvNodeData | undefined)[];
+    /** AI解説コメント */
+    comment?: string;
 }
 
 /**
@@ -609,6 +613,7 @@ export function convertMovesToKif(
             elapsedMs: nodeData?.elapsedMs,
             pv: nodeData?.pv,
             multiPvEvals,
+            comment: nodeData?.comment,
         });
 
         // 次の「同」判定用に移動先を記録

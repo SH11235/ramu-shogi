@@ -1,3 +1,5 @@
+import type { MoveFeatures } from "@shogi/app-core";
+import { wasm_get_move_features } from "@shogi/engine-wasm";
 import type { EngineOption } from "@shogi/ui";
 import { EngineControlPanel, ShogiMatch, useDevMode } from "@shogi/ui";
 import { useState } from "react";
@@ -30,6 +32,20 @@ function readReviewKifuFromSessionStorage(): { sfen: string; moves: string[] } |
         return undefined;
     }
 }
+
+/** WASM版 MoveFeatures 取得（isCheck付き） */
+const getWasmMoveFeatures = (
+    sfen: string,
+    moves: string[],
+    targetMove: string,
+    passRights?: { sente: number; gote: number },
+): MoveFeatures | null => {
+    try {
+        return wasm_get_move_features(sfen, moves, targetMove, passRights) as MoveFeatures;
+    } catch {
+        return null;
+    }
+};
 
 function App() {
     const isDevMode = useDevMode();
@@ -65,6 +81,7 @@ function App() {
                     {...(initialReview
                         ? { defaultSides: { sente: { role: "human" }, gote: { role: "human" } } }
                         : {})}
+                    getWasmMoveFeatures={getWasmMoveFeatures}
                 />
                 {isDevMode && <EngineControlPanel engine={panelEngine} position={panelPosition} />}
             </main>

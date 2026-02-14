@@ -42,6 +42,9 @@ export {
     parseMove,
     replayMoves,
 } from "./game/board";
+// game/move-features
+export type { MoveFeatures } from "./game/move-features";
+export { extractMoveFeatures } from "./game/move-features";
 // game/csa
 export {
     buildBoardFromCsa,

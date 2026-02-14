@@ -55,6 +55,10 @@ export function PCKifuSection({
         handleAnalyzeNode,
         handleAnalyzeBranch,
         handleStartTreeBatchAnalysis,
+        handleGenerateCommentary,
+        isGeneratingCommentary,
+        commentaryProgress,
+        handleCancelCommentaryGeneration,
     } = useAnalysis();
     // ナビゲーション関連は Context から取得
     const {
@@ -195,6 +199,10 @@ export function PCKifuSection({
                         onStartTreeBatchAnalysis={handleStartTreeBatchAnalysis}
                         isOnMainLine={navigationState.isOnMainLine}
                         onMoveDetailSelect={handleMoveDetailSelect}
+                        onGenerateCommentary={handleGenerateCommentary}
+                        isGeneratingCommentary={isGeneratingCommentary}
+                        commentaryProgress={commentaryProgress}
+                        onCancelCommentaryGeneration={handleCancelCommentaryGeneration}
                     />
                 </div>
             </div>

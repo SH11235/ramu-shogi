@@ -36,6 +36,7 @@ import { usePieceDnd } from "./shogi-match/dnd/usePieceDnd";
 import { useBatchAnalysis } from "./shogi-match/hooks/useBatchAnalysis";
 import { useBoardState } from "./shogi-match/hooks/useBoardState";
 import { useClockManager } from "./shogi-match/hooks/useClockManager";
+import { useCommentaryGeneration } from "./shogi-match/hooks/useCommentaryGeneration";
 import { useDialogs } from "./shogi-match/hooks/useDialogs";
 import { useEditModeActions } from "./shogi-match/hooks/useEditModeActions";
 import { useEngineManager } from "./shogi-match/hooks/useEngineManager";
@@ -468,6 +469,13 @@ interface ShogiMatchProps {
         engineId: string;
         sessionId: string | null;
     }) => void;
+    /** WASM版 MoveFeatures 取得コールバック（isCheck付き特徴量の取得） */
+    getWasmMoveFeatures?: (
+        sfen: string,
+        moves: string[],
+        targetMove: string,
+        passRights?: { sente: number; gote: number },
+    ) => import("@shogi/app-core").MoveFeatures | null;
 }
 
 export function ShogiMatch({
@@ -498,6 +506,7 @@ export function ShogiMatch({
     reviewTopContent,
     onOpenEngineManager,
     onOpenEngineSettings,
+    getWasmMoveFeatures,
 }: ShogiMatchProps): ReactElement {
     // デフォルトの NNUE 選択（props のプリセットキーを使用、未指定時は DEFAULT_PRESET_KEY）
     const defaultNnueSelection = createDefaultNnueSelection(
@@ -802,6 +811,19 @@ export function ShogiMatch({
         clearEvalByNodeId,
         addPvAsBranch,
     } = navigation;
+
+    // AI解説生成フック
+    const {
+        generateCommentary,
+        isGenerating: isGeneratingCommentary,
+        progress: commentaryProgress,
+        cancelGeneration: cancelCommentaryGeneration,
+    } = useCommentaryGeneration({
+        kifMoves,
+        tree: navigation.tree,
+        setCommentByPly: navigation.setCommentByPly,
+        getWasmMoveFeatures,
+    });
 
     // 評価値グラフ用: ビューモードに応じて本譜 or 分岐の評価履歴を選択
     // "main" モード時は本譜の評価値を表示
@@ -1880,6 +1902,10 @@ export function ShogiMatch({
         handleAnalyzeNode,
         handleAnalyzeBranch,
         handleStartTreeBatchAnalysis,
+        handleGenerateCommentary: generateCommentary,
+        isGeneratingCommentary,
+        commentaryProgress,
+        handleCancelCommentaryGeneration: cancelCommentaryGeneration,
     };
 
     // Props グループ化: ナビゲーション・棋譜

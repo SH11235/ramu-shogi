@@ -29,6 +29,7 @@ import {
     type KifuTree,
     type PreferredPathCache,
     promoteToMainLine as promoteToMainLineTree,
+    setNodeComment,
     setNodeEval,
     setNodeMultiPvEval,
     switchBranch as switchBranchTree,
@@ -174,6 +175,8 @@ export interface UseKifuNavigationResult {
     goToNodeById: (nodeId: string) => void;
     /** 指定親ノードで分岐を切り替え */
     switchBranchAtNode: (parentNodeId: string, branchIndex: number) => void;
+    /** 手数を指定してコメントを設定（メインライン用） */
+    setCommentByPly: (ply: number, comment: string) => void;
 }
 
 /**
@@ -852,8 +855,9 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
             const hasEval = node.eval != null;
             const hasElapsed = node.elapsedMs != null;
             const hasMultiPv = node.multiPvEvals != null && node.multiPvEvals.length > 0;
+            const hasComment = node.comment != null && node.comment !== "";
 
-            if (hasEval || hasElapsed || hasMultiPv) {
+            if (hasEval || hasElapsed || hasMultiPv || hasComment) {
                 const normalizedEval = normalizeEvalToSentePerspective(node.eval, node.ply);
 
                 // multiPvEvalsを正規化
@@ -878,6 +882,7 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
                     elapsedMs: node.elapsedMs,
                     pv: node.eval?.pv,
                     multiPvEvals: normalizedMultiPvEvals,
+                    comment: node.comment,
                 });
             }
         }
@@ -944,6 +949,14 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
         return markers;
     })();
 
+    const setCommentByPly = (ply: number, comment: string) => {
+        setTree((prev) => {
+            const nodeId = findNodeByPlyInMainLine(prev, ply);
+            if (!nodeId) return prev;
+            return setNodeComment(prev, nodeId, comment);
+        });
+    };
+
     return {
         state,
         goForward,
@@ -973,5 +986,6 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
         tree,
         goToNodeById,
         switchBranchAtNode,
+        setCommentByPly,
     };
 }

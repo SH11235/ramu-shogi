@@ -13,6 +13,7 @@
 import type { NnueMeta, NnueSelection, PresetConfig } from "@shogi/app-core";
 import type { ReactNode } from "react";
 import { createContext, useContext } from "react";
+import type { CommentaryProgress } from "../hooks/useCommentaryGeneration";
 import type { AnalysisSettings, AnalyzingState } from "../types";
 import type { AnalysisContextValue, BatchAnalysisState } from "./types";
 
@@ -44,6 +45,12 @@ interface AnalysisProviderProps {
     handleAnalyzeBranch: (branchNodeId: string) => void;
     handleStartTreeBatchAnalysis: (options?: { mainLineOnly?: boolean }) => void;
 
+    // AI解説生成
+    handleGenerateCommentary: () => void;
+    isGeneratingCommentary: boolean;
+    commentaryProgress: CommentaryProgress | null;
+    handleCancelCommentaryGeneration: () => void;
+
     children: ReactNode;
 }
 
@@ -68,6 +75,10 @@ export function AnalysisProvider({
     handleAnalyzeNode,
     handleAnalyzeBranch,
     handleStartTreeBatchAnalysis,
+    handleGenerateCommentary,
+    isGeneratingCommentary,
+    commentaryProgress,
+    handleCancelCommentaryGeneration,
     children,
 }: AnalysisProviderProps): ReactNode {
     const value: AnalysisContextValue = {
@@ -88,6 +99,10 @@ export function AnalysisProvider({
         handleAnalyzeNode,
         handleAnalyzeBranch,
         handleStartTreeBatchAnalysis,
+        handleGenerateCommentary,
+        isGeneratingCommentary,
+        commentaryProgress,
+        handleCancelCommentaryGeneration,
     };
 
     return <AnalysisContext.Provider value={value}>{children}</AnalysisContext.Provider>;
