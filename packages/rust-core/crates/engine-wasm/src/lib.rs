@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::io::ErrorKind;
 
 use rshogi_core::eval::set_eval_hash_enabled;
-use rshogi_core::movegen::{generate_legal_all_with_pass, MoveList};
+use rshogi_core::movegen::{MoveList, generate_legal_all_with_pass};
 use rshogi_core::nnue::{detect_format, init_nnue_from_bytes, set_fv_scale_override};
 use rshogi_core::position::{Position, SFEN_HIRATE};
 use rshogi_core::search::{LimitsType, Search, SearchInfo, SearchResult, SkillOptions};
@@ -15,8 +15,8 @@ use rshogi_core::types::json::BoardStateJson;
 use rshogi_core::types::{Move, Value};
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen as swb;
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 
 const DEFAULT_TT_SIZE_MB: usize = 64;
 const DEFAULT_EVAL_HASH_SIZE_MB: usize = 16;
@@ -336,10 +336,10 @@ fn apply_move_to_position(position: &mut Position, mv: &str) -> Result<(), JsVal
 
 fn emit_event(event: EventPayload) {
     EVENT_CALLBACK.with(|callback| {
-        if let Some(cb) = callback.borrow().as_ref() {
-            if let Ok(value) = swb::to_value(&event) {
-                let _ = cb.call1(&JsValue::NULL, &value);
-            }
+        if let Some(cb) = callback.borrow().as_ref()
+            && let Ok(value) = swb::to_value(&event)
+        {
+            let _ = cb.call1(&JsValue::NULL, &value);
         }
     });
 }
