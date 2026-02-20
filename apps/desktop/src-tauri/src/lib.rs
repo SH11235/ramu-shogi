@@ -3,12 +3,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use rshogi_core::movegen::{generate_legal_all_with_pass, generate_legal_with_pass, MoveList};
+use rshogi_core::movegen::{MoveList, generate_legal_all_with_pass, generate_legal_with_pass};
 use rshogi_core::nnue::{detect_format, set_fv_scale_override};
 use rshogi_core::position::{Position, SFEN_HIRATE};
 use rshogi_core::search::{
-    LimitsType, Search, SearchInfo, SearchResult, SkillOptions, TimeOptions,
-    DEFAULT_MAX_MOVES_TO_DRAW,
+    DEFAULT_MAX_MOVES_TO_DRAW, LimitsType, Search, SearchInfo, SearchResult, SkillOptions,
+    TimeOptions,
 };
 use rshogi_core::types::json::{BoardStateJson, ReplayResultJson};
 use rshogi_core::types::{Color, Move, Value};
@@ -172,12 +172,12 @@ impl EngineStateInner {
     }
 
     fn reclaim_finished(&mut self) {
-        if let Some(active) = self.active_search.as_ref() {
-            if active.handle.is_finished() {
-                let active = self.active_search.take().unwrap();
-                let result = active.handle.join();
-                self.restore_search(result);
-            }
+        if let Some(active) = self.active_search.as_ref()
+            && active.handle.is_finished()
+        {
+            let active = self.active_search.take().unwrap();
+            let result = active.handle.join();
+            self.restore_search(result);
         }
     }
 
@@ -1113,12 +1113,11 @@ async fn list_nnue_files(app: AppHandle) -> Result<Vec<String>, String> {
         .map_err(|e| format!("Failed to read directory entry: {e}"))?
     {
         let path = entry.path();
-        if let Some(ext) = path.extension() {
-            if ext == "nnue" {
-                if let Some(stem) = path.file_stem() {
-                    ids.push(stem.to_string_lossy().into_owned());
-                }
-            }
+        if let Some(ext) = path.extension()
+            && ext == "nnue"
+            && let Some(stem) = path.file_stem()
+        {
+            ids.push(stem.to_string_lossy().into_owned());
         }
     }
 
@@ -1144,7 +1143,7 @@ async fn save_nnue_chunk(app: AppHandle, args: SaveNnueChunkArgs) -> Result<(), 
         data_base64,
     } = args;
     let normalized_id = validate_nnue_id(&id)?;
-    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
     use tokio::io::AsyncWriteExt;
 
     let dir = get_nnue_dir(&app);
