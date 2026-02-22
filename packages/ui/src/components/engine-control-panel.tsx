@@ -490,14 +490,14 @@ export function EngineControlPanel({
                                         <div
                                             className={cn(
                                                 "text-sm font-semibold",
-                                                typeof crossOriginIsolated !== "undefined" &&
-                                                    crossOriginIsolated
+                                                typeof self.crossOriginIsolated !== "undefined" &&
+                                                    self.crossOriginIsolated
                                                     ? "text-[hsl(var(--success,142_76%_36%))]"
                                                     : "text-[hsl(0_72%_51%)]",
                                             )}
                                         >
-                                            {typeof crossOriginIsolated !== "undefined"
-                                                ? crossOriginIsolated
+                                            {typeof self.crossOriginIsolated !== "undefined"
+                                                ? self.crossOriginIsolated
                                                     ? "true"
                                                     : "false"
                                                 : "N/A"}
