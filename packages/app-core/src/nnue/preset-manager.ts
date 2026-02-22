@@ -81,8 +81,7 @@ async function computeSha256(data: ArrayBuffer): Promise<string> {
  *
  * ダウンロード時の動作:
  * - recommendedFvScale が自動的に FV_SCALE として設定される
- * - 同じ presetKey で異なるバージョンが存在する場合、古いバージョンは削除されず共存する
- * - ユーザーが使用する際は、最新のハッシュと一致するものが自動的に選択される
+ * - 同じ presetKey で異なるバージョンが存在する場合、古いバージョンは自動的に削除される
  */
 export async function downloadPreset(
     preset: PresetConfig,
@@ -245,6 +244,14 @@ export async function downloadPreset(
             : undefined,
         fvScale: preset.recommendedFvScale,
     };
+
+    // 同じ presetKey の旧バージョンを削除（新版保存前に実施）
+    const oldMetas = await storage.listByPresetKey(preset.presetKey);
+    for (const old of oldMetas) {
+        if (old.contentHashSha256 !== hash) {
+            await storage.delete(old.id);
+        }
+    }
 
     // 保存
     await storage.save(id, data, meta);
