@@ -245,16 +245,16 @@ export async function downloadPreset(
         fvScale: preset.recommendedFvScale,
     };
 
-    // 同じ presetKey の旧バージョンを削除（新版保存前に実施）
+    // 先に新バージョンを保存する
+    await storage.save(id, data, meta);
+
+    // 保存成功後に同じ presetKey の旧バージョンを削除
     const oldMetas = await storage.listByPresetKey(preset.presetKey);
     for (const old of oldMetas) {
         if (old.contentHashSha256 !== hash) {
             await storage.delete(old.id);
         }
     }
-
-    // 保存
-    await storage.save(id, data, meta);
 
     return meta;
 }
