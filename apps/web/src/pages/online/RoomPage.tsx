@@ -343,7 +343,7 @@ export default function RoomPage(): ReactElement {
                                 handleJoin();
                             }}
                             disabled={isJoining || !joinName.trim()}
-                            className="w-full rounded-lg bg-wafuu-ai py-2.5 text-sm font-semibold text-white shadow hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            className="w-full rounded-lg bg-wafuu-ai py-2.5 text-sm font-semibold text-wafuu-ai-fg shadow hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         >
                             {isJoining && joinSeat === "w" ? "接続中..." : "後手として参加する"}
                         </button>
