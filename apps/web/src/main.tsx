@@ -1,8 +1,9 @@
+import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
-import App from "./App";
 import { initializePositionService } from "./platform/position-service-bootstrap";
+import { router } from "./router";
 
 // PositionService を初期化（React レンダリング前に実行）
 initializePositionService();
@@ -15,6 +16,6 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
     <StrictMode>
-        <App />
+        <RouterProvider router={router} />
     </StrictMode>,
 );

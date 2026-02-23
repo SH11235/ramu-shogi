@@ -29,7 +29,8 @@
             "@shogi/engine-wasm": ["packages/engine-wasm/src"],
             "@shogi/engine-wasm/*": ["packages/engine-wasm/src/*"],
             "@shogi/engine-tauri": ["packages/engine-tauri/src"],
-            "@shogi/engine-tauri/*": ["packages/engine-tauri/src/*"]
+            "@shogi/engine-tauri/*": ["packages/engine-tauri/src/*"],
+            "@shogi/match-client": ["packages/match-client/src/index.ts"]
         }
     }
 }

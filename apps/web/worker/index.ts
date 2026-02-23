@@ -1,6 +1,12 @@
+import { handleApiRequest } from "./api";
+
+// RoomDO は T-102 で実装予定（export が必要なため仮定義）
+export { RoomDO } from "./room-do";
+
 interface Env {
     ASSETS: Fetcher;
     NNUE_BUCKET: R2Bucket;
+    ROOM: DurableObjectNamespace;
 }
 
 const NNUE_MANIFEST_PATH = "/nnue/manifest.json";
@@ -131,7 +137,11 @@ async function handleNnueRequest(request: Request, env: Env): Promise<Response |
 }
 
 export default {
-    async fetch(request: Request, env: Env): Promise<Response> {
+    async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+        // /api/* リクエストを API ハンドラにルーティング
+        const apiResponse = await handleApiRequest(request, env, ctx);
+        if (apiResponse) return apiResponse;
+
         const nnueResponse = await handleNnueRequest(request, env);
         if (nnueResponse) return nnueResponse;
 

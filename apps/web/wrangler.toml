@@ -1,8 +1,10 @@
 name = "ramu-shogi"
+account_id = "d5d9818649d8722f73cd798c3b1ffb70"
 compatibility_date = "2026-01-20"
 
 # Workerエントリーポイント（COOPヘッダー追加用）
 main = "./worker/index.ts"
+# custom_domains = ["ramu-shogi.sh11235.com"]
 
 [assets]
 directory = "./dist"
@@ -10,8 +12,33 @@ binding = "ASSETS"
 # SPA用設定: 404時にindex.htmlを返す
 not_found_handling = "single-page-application"
 
+[[r2_buckets]]
+binding = "NNUE_BUCKET"
+bucket_name = "shogi-nnue"
+
+# Durable Objects バインディング
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "RoomDO"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["RoomDO"]
 
 [env.stg]
 name = "ramu-shogi-stg"
+# custom_domains = ["ramu-shogi-stg.sh11235.workers.dev"]
 # staging用の環境変数/Binding/DB等を分ける
 # vars = { ... }
+
+[[env.stg.r2_buckets]]
+binding = "NNUE_BUCKET"
+bucket_name = "shogi-nnue"
+
+[[env.stg.durable_objects.bindings]]
+name = "ROOM"
+class_name = "RoomDO"
+
+[[env.stg.migrations]]
+tag = "v1"
+new_classes = ["RoomDO"]

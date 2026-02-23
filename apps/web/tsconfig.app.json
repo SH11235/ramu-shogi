@@ -14,7 +14,8 @@
             "@shogi/ui": ["packages/ui/src"],
             "@shogi/ui/*": ["packages/ui/src/*"],
             "@shogi/engine-wasm": ["packages/engine-wasm/src"],
-            "@shogi/engine-wasm/*": ["packages/engine-wasm/src/*"]
+            "@shogi/engine-wasm/*": ["packages/engine-wasm/src/*"],
+            "@shogi/match-client": ["packages/match-client/src/index.ts"]
         }
     },
     "include": ["src"]

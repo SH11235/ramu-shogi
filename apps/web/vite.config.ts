@@ -22,6 +22,7 @@ export default defineConfig(({ command }) => ({
             "Cross-Origin-Opener-Policy": "same-origin",
             "Cross-Origin-Embedder-Policy": "require-corp",
         },
+        allowedHosts: ["desktop-p3io5k1-1.tail0ae59.ts.net"],
     },
     worker: {
         // ES モジュール形式の Worker を使用する。
@@ -74,6 +75,10 @@ export default defineConfig(({ command }) => ({
             {
                 find: /^@shogi\/engine-wasm$/,
                 replacement: path.resolve(rootDir, "../../packages/engine-wasm/src"),
+            },
+            {
+                find: /^@shogi\/match-client$/,
+                replacement: path.resolve(rootDir, "../../packages/match-client/src"),
             },
         ],
         // React の重複インスタンスを防ぐ保険として dedupe を設定
