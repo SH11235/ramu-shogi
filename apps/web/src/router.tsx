@@ -23,6 +23,11 @@ const roomRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/online/$roomId",
     component: RoomPage,
+    validateSearch: (search: Record<string, unknown>) => ({
+        name: typeof search.name === "string" ? search.name : undefined,
+        seat: typeof search.seat === "string" ? search.seat : undefined,
+        mode: typeof search.mode === "string" ? search.mode : undefined,
+    }),
 });
 
 const routeTree = rootRoute.addChildren([indexRoute, onlineRoute, roomRoute]);

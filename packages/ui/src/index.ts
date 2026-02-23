@@ -22,6 +22,12 @@ export { useDevMode } from "./hooks/useDevMode";
 export { EngineControlPanel } from "./components/engine-control-panel";
 // input
 // popover
+// position-preset-selector
+export { PositionPresetSelector, POSITION_PRESETS } from "./components/PositionPresetSelector";
+export type {
+    PositionPreset,
+    PositionPresetSelectorProps,
+} from "./components/PositionPresetSelector";
 // progress
 // shogi-board
 
