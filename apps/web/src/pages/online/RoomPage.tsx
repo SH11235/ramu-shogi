@@ -2,10 +2,11 @@
 // 待機画面・対局ルームページ（/online/:roomId）T-303
 
 import { createRoomClient } from "@shogi/match-client";
-import type { RoomClient, ServerMessage, SnapshotPayload } from "@shogi/match-client";
+import type { RoomClient, Seat, ServerMessage, SnapshotPayload } from "@shogi/match-client";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
+import { OnlineGameView } from "./OnlineGameView";
 
 // ─── ルーム情報の型（GET /api/rooms/:roomId のレスポンス） ────────────────────
 
@@ -52,6 +53,7 @@ export default function RoomPage(): ReactElement {
     const [joinError, setJoinError] = useState<string | null>(null);
     const [snapshot, setSnapshot] = useState<SnapshotPayload | null>(null);
     const [joined, setJoined] = useState(false);
+    const [gamePhase, setGamePhase] = useState<"waiting" | "playing">("waiting");
 
     const clientRef = useRef<RoomClient | null>(null);
     const inviteUrl =
@@ -113,13 +115,10 @@ export default function RoomPage(): ReactElement {
                 }
                 case "event": {
                     if (msg.payload.kind === "game_start") {
-                        // game_start → 対局画面へ遷移（T-304 で実装するため仮遷移）
+                        // game_start → 待機画面からインプレースで対局画面へ切り替え
+                        // WebSocket 接続を維持したまま OnlineGameView を表示する
                         unsub();
-                        void navigate({
-                            to: "/online/$roomId",
-                            params: { roomId },
-                            search: { name: undefined, seat: undefined, mode: "game" },
-                        });
+                        setGamePhase("playing");
                     }
                     break;
                 }
@@ -146,7 +145,7 @@ export default function RoomPage(): ReactElement {
             }
         };
         setTimeout(sendJoin, 50);
-    }, [joinName, joinSeat, isJoining, roomId, navigate]);
+    }, [joinName, joinSeat, isJoining, roomId]);
 
     // ルーム作成者（search.seat === "b"）は自動接続
     const autoJoinAttempted = useRef(false);
@@ -175,6 +174,18 @@ export default function RoomPage(): ReactElement {
     }
 
     // ─── レンダリング ──────────────────────────────────────────────────────────
+
+    // 対局フェーズ: OnlineGameView にインプレース切り替え（WebSocket 維持）
+    if (gamePhase === "playing" && snapshot && clientRef.current) {
+        return (
+            <OnlineGameView
+                client={clientRef.current}
+                snapshot={snapshot}
+                seat={joinSeat as Seat}
+                roomId={roomId}
+            />
+        );
+    }
 
     if (loadError) {
         return (
