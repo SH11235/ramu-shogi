@@ -51,6 +51,12 @@
         --shogi-piece-bg-dark: 33 36% 81%; /* 駒背景（暗） #e8d4b8 */
         --shogi-coord-text: 37 33% 45%; /* 座標文字 #9a7b4a */
 
+        /* 接続状態・成功状態 */
+        --status-online: 140 50% 38%; /* オンライン - 落ち着いた緑 */
+        --status-online-fg: 140 40% 95%; /* オンライン前景 */
+        --status-online-bg: 140 45% 93%; /* オンライン背景 */
+        --status-online-border: 140 35% 78%; /* オンラインボーダー */
+
         /* レイアウト */
         --panel-width: 400px; /* 右サイドパネルの幅 */
     }
@@ -89,6 +95,12 @@
         --wafuu-washi: 220 15% 12%; /* 和紙 - 暗い背景 */
         --wafuu-washi-warm: 220 12% 16%; /* 温かい和紙 */
         --wafuu-border: 220 10% 25%; /* 和風ボーダー */
+
+        /* 接続状態・成功状態（ダークモード） */
+        --status-online: 140 45% 45%; /* オンライン */
+        --status-online-fg: 140 40% 98%; /* オンライン前景 */
+        --status-online-bg: 140 30% 12%; /* オンライン背景 */
+        --status-online-border: 140 25% 22%; /* オンラインボーダー */
     }
 
     *,

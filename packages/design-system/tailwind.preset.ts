@@ -61,6 +61,13 @@ const preset: Omit<Config, "content"> = {
                     "washi-warm": "hsl(var(--wafuu-washi-warm))",
                     border: "hsl(var(--wafuu-border))",
                 },
+                // 接続状態・成功状態
+                status: {
+                    online: "hsl(var(--status-online))",
+                    "online-fg": "hsl(var(--status-online-fg))",
+                    "online-bg": "hsl(var(--status-online-bg))",
+                    "online-border": "hsl(var(--status-online-border))",
+                },
                 // 将棋盤配色
                 shogi: {
                     border: "hsl(var(--shogi-border))",

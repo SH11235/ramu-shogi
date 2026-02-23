@@ -283,7 +283,7 @@ export default function RoomPage(): ReactElement {
                                 )}
                             </span>
                             {snapshot.players.b?.online && (
-                                <span className="text-xs text-green-600">● オンライン</span>
+                                <span className="text-xs text-status-online">● オンライン</span>
                             )}
                         </div>
                         <div className="flex items-center justify-between">
@@ -294,7 +294,7 @@ export default function RoomPage(): ReactElement {
                                 )}
                             </span>
                             {snapshot.players.w?.online && (
-                                <span className="text-xs text-green-600">● オンライン</span>
+                                <span className="text-xs text-status-online">● オンライン</span>
                             )}
                         </div>
                     </div>
@@ -353,7 +353,7 @@ export default function RoomPage(): ReactElement {
 
             {/* 接続済みメッセージ */}
             {joined && (
-                <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+                <div className="rounded-lg border border-status-online-border bg-status-online-bg p-4 text-sm text-status-online">
                     接続しました。対局開始を待っています...
                 </div>
             )}
