@@ -1,4 +1,6 @@
 // packages/match-client/src/index.ts
+export { createRoomClient } from "./client";
+export { getStoredResumeToken, storeResumeToken, removeStoredResumeToken } from "./reconnect";
 export type {
     AiSupportPlayerSettings,
     AiSupportSettings,

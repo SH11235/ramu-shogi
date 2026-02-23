@@ -276,7 +276,7 @@ export interface ClientMessage<T = unknown> {
 export interface RoomClient {
     join(params: { seat: Seat; name: string }): void;
     resume(params: { resumeToken: string; lastEventId: number }): void;
-    move(params: { eventId: number; usi: string }): void;
+    move(params: { eventId: number; usi: string; sfen: string }): void;
     resign(params: { eventId: number }): void;
     chat(params: { text: string }): void;
     useAnalysis(params: { eventId: number; ply: number }): void;
