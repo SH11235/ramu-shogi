@@ -1,10 +1,7 @@
-// apps/web/src/pages/online/OnlinePage.tsx
-// オンライン対局エントリページ（/online）T-302
-
 import { PositionPresetSelector } from "@shogi/ui";
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
 import type { ReactElement } from "react";
+import { useState } from "react";
 
 // ─── ルーム作成ダイアログの内部状態 ──────────────────────────────────────────
 

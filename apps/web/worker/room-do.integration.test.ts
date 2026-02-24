@@ -1,12 +1,11 @@
-// apps/web/worker/room-do.integration.test.ts
-// RoomDO の統合テスト（T-402）
+// RoomDO の統合テスト
 //
 // 実行方法: 別ターミナルで `wrangler dev` を起動してから実行
 //   INTEGRATION=true pnpm --filter web test:integration
 //
 // テストしていないとき（INTEGRATION=true でない）はスキップされる
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 const BASE_URL = process.env.INTEGRATION_BASE_URL ?? "http://localhost:8787";
 const IS_INTEGRATION = process.env.INTEGRATION === "true";
@@ -117,7 +116,7 @@ describe("RoomDO 統合テスト（wrangler dev が必要）", () => {
         }
     });
 
-    // ── T-402: 正常対局フロー ─────────────────────────────────────────────────
+    // ── 正常対局フロー ─────────────────────────────────────────────────────────
     describe("正常対局フロー", () => {
         itIntegration("ルームを作成できる", async () => {
             const res = await fetch(`${BASE_URL}/api/rooms`, {
@@ -189,7 +188,7 @@ describe("RoomDO 統合テスト（wrangler dev が必要）", () => {
         });
     });
 
-    // ── T-402: 異常系（セキュリティ） ────────────────────────────────────────
+    // ── 異常系（セキュリティ） ────────────────────────────────────────────────
     describe("異常系", () => {
         itIntegration("満席のルームに参加しようとすると ROOM_FULL エラーになる", async () => {
             const roomId = await createRoom();
@@ -280,7 +279,7 @@ describe("RoomDO 統合テスト（wrangler dev が必要）", () => {
         });
     });
 
-    // ── T-402: AI サポート ────────────────────────────────────────────────────
+    // ── AI サポート ────────────────────────────────────────────────────────────
     describe("AI サポート", () => {
         itIntegration(
             "AI サポート設定付きのルームが作成でき、use_analysis が正しく処理される",

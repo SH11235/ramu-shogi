@@ -1,6 +1,3 @@
-// apps/web/src/pages/online/OnlineGameView.tsx
-// オンライン対局ビュー T-304, T-306, T-307, T-A007, T-A008
-
 import {
     applyMoveWithState,
     getPositionService,
@@ -8,19 +5,18 @@ import {
     type Player,
     type PositionState,
 } from "@shogi/app-core";
+import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type {
     AiSupportSettings,
-    ChatEvent,
     ClockState,
     GameResult,
     RoomClient,
     Seat,
     SnapshotPayload,
 } from "@shogi/match-client";
-import { ShogiBoard, HandPiecesDisplay, boardToGrid } from "@shogi/ui";
-import { createWasmEngineClient } from "@shogi/engine-wasm";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { boardToGrid, HandPiecesDisplay, ShogiBoard } from "@shogi/ui";
 import type { ReactElement } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "./ChatPanel";
 import { ChatPanel } from "./ChatPanel";
 
@@ -57,7 +53,7 @@ function formatMs(ms: number): string {
     return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
-// ─── AI 解析フック（T-A007） ───────────────────────────────────────────────────
+// ─── AI 解析フック ────────────────────────────────────────────────────────────
 
 interface AnalysisMoveResult {
     usi: string;
@@ -226,14 +222,14 @@ export function OnlineGameView({
     ]);
     const chatIdRef = useRef(snapshot.recentChat.length);
 
-    // ─── AI サポート状態（T-A007, T-A008） ─────────────────────────────────────
+    // ─── AI サポート状態 ───────────────────────────────────────────────────────
     const aiSupport = snapshot.settings.aiSupport as AiSupportSettings | null;
     const myAiSettings = seat !== "s" && aiSupport ? aiSupport[seat === "b" ? "b" : "w"] : null;
     // 残り解析回数（null = 無制限、数値 = 残り回数）
     const [myAnalysisRemaining, setMyAnalysisRemaining] = useState<number | null>(
         myAiSettings?.mode === "limited" ? (myAiSettings.limitCount ?? 0) : null,
     );
-    // 解析使用ログ（T-A008）
+    // 解析使用ログ
     const [analysisLog, setAnalysisLog] = useState<Array<{ seat: "b" | "w"; ply: number }>>([]);
     const { isAnalyzing, topMoves, startAnalysis, cancelAnalysis } = useOnlineAnalysis(
         aiSupport?.searchDepth ?? null,
@@ -312,14 +308,13 @@ export function OnlineGameView({
                         return next;
                     });
                 } else if (e.kind === "chat") {
-                    const chatEv = e as ChatEvent;
                     setChatMessages((prev) => [
                         ...prev,
                         {
                             id: chatIdRef.current++,
-                            seat: chatEv.seat,
-                            name: chatEv.name,
-                            text: chatEv.text,
+                            seat: e.seat,
+                            name: e.name,
+                            text: e.text,
                         },
                     ]);
                 } else if (e.kind === "analysis_used") {
@@ -329,7 +324,7 @@ export function OnlineGameView({
                             typeof e.analysisRemaining === "number" ? e.analysisRemaining : null,
                         );
                     }
-                    // 解析ログに追記（T-A008）
+                    // 解析ログに追記
                     if (e.seat === "b" || e.seat === "w") {
                         const ply = movesRef.current.length;
                         setAnalysisLog((prev) => [...prev, { seat: e.seat as "b" | "w", ply }]);
@@ -345,11 +340,15 @@ export function OnlineGameView({
                 getPositionService()
                     .parseSfen(msg.payload.sfen)
                     .then(setPosition)
-                    .catch(console.error);
+                    .catch((err) => {
+                        console.error("[OnlineGameView] Failed to parse SFEN from snapshot:", err);
+                        // サーバーに再同期リクエストを送信して最新状態を取得する
+                        client.sync({ sinceEventId: latestEventIdRef.current });
+                    });
             }
         });
         return unsub;
-    }, [client]);
+    }, [client, seat]);
 
     // ─── 合法手の取得 ────────────────────────────────────────────────────────
 
@@ -383,7 +382,7 @@ export function OnlineGameView({
         if (selectedHand !== null) {
             const usi = `${selectedHand}*${squareId.toUpperCase()}`;
             // 合法手チェック
-            if (legalMoves.includes(usi) || legalMoves.some((m) => m === usi)) {
+            if (legalMoves.includes(usi)) {
                 void sendMove(usi, squareId);
                 setSelectedHand(null);
             } else {
@@ -471,17 +470,18 @@ export function OnlineGameView({
     // ─── 投了 ────────────────────────────────────────────────────────────────
 
     function handleResign(): void {
-        if (!isMyTurn && !position) return;
+        if (!isMyTurn || !position) return;
         client.resign({ eventId: latestEventIdRef.current });
     }
 
-    // ─── AI 解析トリガー（T-A007） ────────────────────────────────────────────
+    // ─── AI 解析トリガー ─────────────────────────────────────────────────────
 
     const handleAnalyze = useCallback(async () => {
         if (!position || !aiSupport || seat === "s") return;
         // 制限モードは use_analysis を先送信してからエンジン解析
         if (myAiSettings?.mode === "limited") {
             const ply = movesRef.current.length;
+            // biome-ignore lint/correctness/useHookAtTopLevel: client.useAnalysis は React Hook ではなく WebSocket 送信メソッド
             client.useAnalysis({ eventId: latestEventIdRef.current, ply });
             // analysis_used 受信後に自動で残り回数が更新される
         }
@@ -490,7 +490,7 @@ export function OnlineGameView({
             .boardToSfen(position)
             .then((sfen) => startAnalysis(sfen, movesRef.current))
             .catch(console.error);
-    }, [position, aiSupport, myAiSettings, seat, snapshot.eventId, client, startAnalysis]);
+    }, [position, aiSupport, myAiSettings, seat, client, startAnalysis]);
 
     // 無制限モード: 自分の手番になったら自動解析
     const positionSfenRef = useRef<string>("");
@@ -656,7 +656,7 @@ export function OnlineGameView({
 
             {/* サイドバー: AI 解析 + チャット */}
             <div className="w-full md:w-64 flex flex-col gap-3">
-                {/* AI 解析パネル（T-A007） */}
+                {/* AI 解析パネル */}
                 {aiSupport && (
                     <OnlineAiPanel
                         aiSupport={aiSupport}
@@ -677,7 +677,7 @@ export function OnlineGameView({
             {promoteDialog && (
                 <PromoteDialog
                     onPromote={() => {
-                        void sendMove(promoteDialog.usi + "+", promoteDialog.to);
+                        void sendMove(`${promoteDialog.usi}+`, promoteDialog.to);
                         setPromoteDialog(null);
                     }}
                     onNoPromote={() => {
@@ -811,7 +811,7 @@ function GameEndDialog({
                     {GAME_END_REASONS[result.reason] ?? result.reason}
                 </p>
 
-                {/* T-A008: 解析ログ開示 */}
+                {/* 解析ログ開示 */}
                 {analysisLog.length > 0 && (
                     <div className="mb-4 rounded-md border border-border bg-muted/30 p-3">
                         <p className="mb-2 text-xs font-semibold text-foreground">
@@ -866,7 +866,7 @@ function GameEndDialog({
     );
 }
 
-// ─── OnlineAiPanel（T-A007） ──────────────────────────────────────────────────
+// ─── OnlineAiPanel ───────────────────────────────────────────────────────────
 
 interface OnlineAiPanelProps {
     aiSupport: AiSupportSettings;

@@ -1,6 +1,5 @@
 import { handleApiRequest } from "./api";
 
-// RoomDO は T-102 で実装予定（export が必要なため仮定義）
 export { RoomDO } from "./room-do";
 
 interface Env {

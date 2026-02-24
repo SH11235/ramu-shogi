@@ -1,11 +1,10 @@
-// apps/web/src/pages/online/RoomPage.tsx
-// 待機画面・対局ルームページ（/online/:roomId）T-303
+// 待機画面・対局ルームページ（/online/:roomId）
 
-import { createRoomClient } from "@shogi/match-client";
 import type { RoomClient, Seat, ServerMessage, SnapshotPayload } from "@shogi/match-client";
+import { createRoomClient } from "@shogi/match-client";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { OnlineGameView } from "./OnlineGameView";
 
 // ─── ルーム情報の型（GET /api/rooms/:roomId のレスポンス） ────────────────────

@@ -1,4 +1,3 @@
-// apps/web/worker/room-do.ts
 // Durable Object: ルーム状態管理、WebSocket 接続管理
 
 // ─── 型定義 ──────────────────────────────────────────────────────────────
@@ -225,11 +224,16 @@ function getConnectedMetas(doState: DurableObjectState): Map<WebSocket, WsConnec
 /**
  * RoomDO: 1 部屋 = 1 Durable Object インスタンス
  *
- * DurableObject はクラス必須のため class を使用（CLAUDE.md の例外）。
+ * DurableObject はクラス必須のため class を使用。
  * 内部ロジックは関数型で実装する。
  */
+const CHAT_RATE_LIMIT_WINDOW_MS = 10_000;
+const CHAT_RATE_LIMIT_MAX = 5;
+
 export class RoomDO implements DurableObject {
     private readonly doState: DurableObjectState;
+    // チャットレート制限用: シート → 送信タイムスタンプ一覧（メモリ上で管理）
+    private readonly chatTimestamps = new Map<Seat, number[]>();
 
     constructor(state: DurableObjectState, _env: unknown) {
         this.doState = state;
@@ -268,7 +272,14 @@ export class RoomDO implements DurableObject {
         }
 
         if (typeof parsed !== "object" || parsed === null || !("t" in parsed)) return;
-        const msg = parsed as { v: number; t: string; clientMsgId: number; payload: unknown };
+        const raw = parsed as Record<string, unknown>;
+        // プロトコルバージョンが指定されている場合は 1 のみ許容（将来の互換性）
+        if ("v" in raw && raw.v !== 1) return;
+        const msg = {
+            t: typeof raw.t === "string" ? raw.t : "",
+            clientMsgId: typeof raw.clientMsgId === "number" ? raw.clientMsgId : 0,
+            payload: raw.payload as unknown,
+        };
 
         switch (msg.t) {
             case "join":
@@ -474,7 +485,7 @@ export class RoomDO implements DurableObject {
         }
     }
 
-    /** T-105: resume メッセージ処理 */
+    /** resume メッセージ処理 */
     private async handleResume(
         ws: WebSocket,
         clientMsgId: number,
@@ -571,7 +582,7 @@ export class RoomDO implements DurableObject {
             },
         });
 
-        // lastSeenTs を更新（T-105 切断検知に使用）
+        // lastSeenTs を更新（切断検知に使用）
         const meta = ws.deserializeAttachment() as WsConnectionMeta | null;
         if (meta && (meta.seat === "b" || meta.seat === "w")) {
             const room = await this.doState.storage.get<RoomStorageState>("room");
@@ -584,7 +595,7 @@ export class RoomDO implements DurableObject {
         }
     }
 
-    /** T-103: move メッセージ処理（T-104 時計管理・T-106 千日手を含む） */
+    /** move メッセージ処理（時計管理・千日手を含む） */
     private async handleMove(
         ws: WebSocket,
         clientMsgId: number,
@@ -631,13 +642,13 @@ export class RoomDO implements DurableObject {
         const { clock } = game;
         const nextTurn: "b" | "w" = seat === "b" ? "w" : "b";
 
-        // T-104: 経過時間を計算して現在のプレイヤーの残り時間を更新
+        // 経過時間を計算して現在のプレイヤーの残り時間を更新
         if (clock.running !== null) {
             const elapsed = now - clock.lastTickTs;
             clock[clock.running].remainMs -= elapsed;
         }
 
-        // T-104: Fischer 加算（指した後に加算）
+        // Fischer 加算（指した後に加算）
         if (room.settings.timeControl.type === "fischer") {
             const increment = room.settings.timeControl.fischerIncrementMs ?? 0;
             clock[seat].remainMs += increment;
@@ -659,7 +670,7 @@ export class RoomDO implements DurableObject {
             movingPlayer.lastSeenTs = now;
         }
 
-        // T-106: 千日手チェック（SFEN のカウントを更新）
+        // 千日手チェック（SFEN のカウントを更新）
         const sfenKey = normalizeSfen(payload.sfen);
         game.sfenCounts[sfenKey] = (game.sfenCounts[sfenKey] ?? 0) + 1;
 
@@ -681,7 +692,7 @@ export class RoomDO implements DurableObject {
         };
         room.events.push(moveEvent);
 
-        // T-106: 同一局面 4 回出現で千日手
+        // 同一局面 4 回出現で千日手
         if (game.sfenCounts[sfenKey] >= 4) {
             const result: GameResult = { winner: null, reason: "sennichite" };
 
@@ -721,11 +732,11 @@ export class RoomDO implements DurableObject {
         await this.doState.storage.put("room", room);
         this.broadcastToAll({ v: 1, t: "event", payload: moveEvent });
 
-        // T-104: 次のタイムアウトアラームを設定
+        // 次のタイムアウトアラームを設定
         await this.setNextAlarm(room);
     }
 
-    /** T-103: resign メッセージ処理 */
+    /** resign メッセージ処理 */
     private async handleResign(
         ws: WebSocket,
         clientMsgId: number,
@@ -786,7 +797,7 @@ export class RoomDO implements DurableObject {
         await this.doState.storage.setAlarm(now + 24 * 60 * 60 * 1000);
     }
 
-    /** T-A002: use_analysis メッセージ処理 */
+    /** use_analysis メッセージ処理 */
     private async handleUseAnalysis(
         ws: WebSocket,
         clientMsgId: number,
@@ -885,6 +896,22 @@ export class RoomDO implements DurableObject {
         }
 
         const now = Date.now();
+
+        // チャットレート制限チェック（10秒間に5通まで）
+        const seat = meta.seat;
+        const prevTimestamps = this.chatTimestamps.get(seat) ?? [];
+        const recentTimestamps = prevTimestamps.filter((t) => now - t < CHAT_RATE_LIMIT_WINDOW_MS);
+        if (recentTimestamps.length >= CHAT_RATE_LIMIT_MAX) {
+            sendWsError(
+                ws,
+                "RATE_LIMITED",
+                "Chat rate limit exceeded (5 messages per 10 seconds)",
+                clientMsgId,
+            );
+            return;
+        }
+        recentTimestamps.push(now);
+        this.chatTimestamps.set(seat, recentTimestamps);
         const eventId = ++room.latestEventId;
         const chatEvent: RoomEvent = {
             eventId,
@@ -962,7 +989,7 @@ export class RoomDO implements DurableObject {
         // 全クライアントにブロードキャスト
         this.broadcastToAll({ v: 1, t: "event", payload: gameStartEvent });
 
-        // T-104: タイムアウトアラームを設定
+        // タイムアウトアラームを設定
         await this.setNextAlarm(room);
     }
 
@@ -1012,7 +1039,7 @@ export class RoomDO implements DurableObject {
         }
     }
 
-    // ─── T-104: アラーム設定 ─────────────────────────────────────────────
+    // ─── アラーム設定 ────────────────────────────────────────────────────
 
     /**
      * 次に発火すべきアラーム時刻を計算して設定する。
@@ -1041,7 +1068,7 @@ export class RoomDO implements DurableObject {
             }
         }
 
-        // T-105: オフライン検知アラーム（対局中のプレイヤーのみ）
+        // オフライン検知アラーム（対局中のプレイヤーのみ）
         if (room.status === "playing") {
             for (const seat of ["b", "w"] as const) {
                 const player = room.players[seat];
@@ -1066,7 +1093,7 @@ export class RoomDO implements DurableObject {
         }
     }
 
-    // ─── T-104/T-105: Alarm ─────────────────────────────────────────────
+    // ─── Alarm ──────────────────────────────────────────────────────────
 
     async alarm(): Promise<void> {
         const room = await this.doState.storage.get<RoomStorageState>("room");
@@ -1085,7 +1112,7 @@ export class RoomDO implements DurableObject {
         const game = room.game;
         let modified = false;
 
-        // T-105: オフライン検知・切断不戦敗
+        // オフライン検知・切断不戦敗
         for (const seat of ["b", "w"] as const) {
             const player = room.players[seat];
             if (!player) continue;
@@ -1145,7 +1172,7 @@ export class RoomDO implements DurableObject {
             }
         }
 
-        // T-104: タイムアウトチェック
+        // タイムアウトチェック
         if (game.status === "playing" && game.clock.running !== null) {
             const { running, lastTickTs } = game.clock;
             const elapsed = now - lastTickTs;

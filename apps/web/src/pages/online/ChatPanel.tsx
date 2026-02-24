@@ -1,8 +1,5 @@
-// apps/web/src/pages/online/ChatPanel.tsx
-// チャットパネル T-305
-
 import type { RoomClient } from "@shogi/match-client";
-import type { ReactElement, KeyboardEvent } from "react";
+import type { KeyboardEvent, ReactElement } from "react";
 import { useEffect, useRef, useState } from "react";
 
 const CHAT_MAX_LENGTH = 200;
@@ -31,7 +28,7 @@ export function ChatPanel({ messages, client, canSend }: ChatPanelProps): ReactE
         if (listRef.current) {
             listRef.current.scrollTop = listRef.current.scrollHeight;
         }
-    }, [messages]);
+    }, []);
 
     function handleSend(): void {
         const text = inputText.trim();

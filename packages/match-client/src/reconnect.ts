@@ -1,4 +1,3 @@
-// packages/match-client/src/reconnect.ts
 // 自動再接続ロジック（指数バックオフ）と resumeToken の sessionStorage 管理
 
 /** バックオフ時間（ms）: 1s → 2s → 4s → 8s → 16s */
@@ -58,7 +57,7 @@ export function createReconnectManager(options: {
     };
 }
 
-/** sessionStorage のキー名（仕様書 § T-202 準拠） */
+/** sessionStorage のキー名 */
 function resumeTokenKey(roomId: string): string {
     return `ramu_resume_token_${roomId}`;
 }

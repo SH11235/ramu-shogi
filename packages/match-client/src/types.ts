@@ -1,5 +1,3 @@
-// packages/match-client/src/types.ts
-
 // ─── 基本型 ──────────────────────────────────────────────────────────────
 export type Seat = "b" | "w" | "s";
 export type RoomStatus = "waiting" | "playing" | "finished";

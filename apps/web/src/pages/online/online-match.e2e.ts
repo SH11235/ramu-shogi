@@ -1,10 +1,9 @@
-// apps/web/src/pages/online/online-match.e2e.ts
-// オンライン対局の E2E テスト（T-404）
+// オンライン対局の E2E テスト
 //
 // 実行には wrangler dev が起動中である必要があります。
 // pnpm dlx playwright install chromium を先に実行してください。
 
-import { test, expect, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 // ─── ヘルパー ──────────────────────────────────────────────────────────────────
 
@@ -35,7 +34,7 @@ async function joinAsPlayer(page: Page, roomId: string, name: string): Promise<v
 test.describe("オンライン対局 E2E テスト（wrangler dev が必要）", () => {
     test.skip(!process.env.E2E, "E2E テストをスキップ: E2E=true を設定して実行してください");
 
-    // ── T-404: 2 ブラウザタブで対局が成立するシナリオ ──────────────────────
+    // ── 2 ブラウザタブで対局が成立するシナリオ ─────────────────────────────
     test("2 タブで参加して対局が開始する", async ({ browser }) => {
         const baseUrl = process.env.E2E_BASE_URL ?? "http://localhost:8787";
         const roomId = await createRoom(baseUrl);
@@ -64,7 +63,7 @@ test.describe("オンライン対局 E2E テスト（wrangler dev が必要）",
         await contextW.close();
     });
 
-    // ── T-404: 切断・再接続シナリオ ──────────────────────────────────────────
+    // ── 切断・再接続シナリオ ──────────────────────────────────────────────────
     test("切断後に再接続すると対局画面が復元される", async ({ browser }) => {
         const baseUrl = process.env.E2E_BASE_URL ?? "http://localhost:8787";
         const roomId = await createRoom(baseUrl);
@@ -88,7 +87,7 @@ test.describe("オンライン対局 E2E テスト（wrangler dev が必要）",
         await contextB.close();
     });
 
-    // ── T-404: 観戦シナリオ ────────────────────────────────────────────────
+    // ── 観戦シナリオ ──────────────────────────────────────────────────────
     test("観戦者として参加できる", async ({ browser }) => {
         const baseUrl = process.env.E2E_BASE_URL ?? "http://localhost:8787";
         const roomId = await createRoom(baseUrl);

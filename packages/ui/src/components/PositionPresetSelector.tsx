@@ -1,5 +1,4 @@
-// packages/ui/src/components/PositionPresetSelector.tsx
-// 開始局面セレクター（T-300）
+// 開始局面セレクター
 // ローカル対局・オンライン対局で共通使用
 
 import type { ReactElement } from "react";

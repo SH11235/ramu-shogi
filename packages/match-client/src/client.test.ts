@@ -1,5 +1,4 @@
-// packages/match-client/src/client.test.ts
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRoomClient } from "./client";
 import type { ServerMessage } from "./types";
 

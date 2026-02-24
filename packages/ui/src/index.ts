@@ -20,19 +20,19 @@ export { useDevMode } from "./hooks/useDevMode";
 
 // engine-control-panel
 export { EngineControlPanel } from "./components/engine-control-panel";
-// shogi-board (online game 用)
-export { ShogiBoard } from "./components/shogi-board";
-export type { ShogiBoardCell, ShogiBoardPiece } from "./components/shogi-board";
-export { HandPiecesDisplay } from "./components/shogi-match/components/HandPiecesDisplay";
-export { boardToGrid } from "./components/shogi-match/utils/positionUtils";
-// input
-// popover
-// position-preset-selector
-export { PositionPresetSelector, POSITION_PRESETS } from "./components/PositionPresetSelector";
 export type {
     PositionPreset,
     PositionPresetSelectorProps,
 } from "./components/PositionPresetSelector";
+// input
+// popover
+// position-preset-selector
+export { POSITION_PRESETS, PositionPresetSelector } from "./components/PositionPresetSelector";
+export type { ShogiBoardCell, ShogiBoardPiece } from "./components/shogi-board";
+// shogi-board (online game 用)
+export { ShogiBoard } from "./components/shogi-board";
+export { HandPiecesDisplay } from "./components/shogi-match/components/HandPiecesDisplay";
+export { boardToGrid } from "./components/shogi-match/utils/positionUtils";
 // progress
 // shogi-board
 

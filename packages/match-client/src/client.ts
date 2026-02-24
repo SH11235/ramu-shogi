@@ -1,8 +1,5 @@
-// packages/match-client/src/client.ts
-// RoomClient ファクトリ関数の実装
-
-import type { ClientMessageType, RoomClient, RoomClientOptions, ServerMessage } from "./types";
 import { createReconnectManager, getStoredResumeToken, storeResumeToken } from "./reconnect";
+import type { ClientMessageType, RoomClient, RoomClientOptions, ServerMessage } from "./types";
 
 type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "disconnected";
 
@@ -46,9 +43,18 @@ export function createRoomClient(
     });
 
     function send<T>(t: ClientMessageType, payload: T): void {
-        if (ws?.readyState !== WebSocket.OPEN) return;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            console.warn(
+                `[RoomClient] Cannot send "${t}": WebSocket not open (state=${ws?.readyState})`,
+            );
+            return;
+        }
         const currentMsgId = ++msgId;
-        ws.send(JSON.stringify({ v: 1, t, clientMsgId: currentMsgId, payload }));
+        try {
+            ws.send(JSON.stringify({ v: 1, t, clientMsgId: currentMsgId, payload }));
+        } catch (err) {
+            console.error(`[RoomClient] Failed to send "${t}":`, err);
+        }
     }
 
     function notifyHandlers(msg: ServerMessage): void {
@@ -162,6 +168,7 @@ export function createRoomClient(
             status = "disconnected";
             ws?.close();
             ws = null;
+            handlers.clear();
         },
 
         getStatus() {

@@ -1,5 +1,4 @@
-// apps/web/playwright.config.ts
-// Playwright E2E テスト設定（T-404）
+// Playwright E2E テスト設定
 //
 // 実行方法:
 //   1. ブラウザのインストール: pnpm dlx playwright install chromium
