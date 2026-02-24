@@ -1,5 +1,5 @@
 // apps/web/src/pages/online/OnlineGameView.tsx
-// オンライン対局ビュー T-304, T-306, T-307
+// オンライン対局ビュー T-304, T-306, T-307, T-A007, T-A008
 
 import {
     applyMoveWithState,
@@ -9,6 +9,7 @@ import {
     type PositionState,
 } from "@shogi/app-core";
 import type {
+    AiSupportSettings,
     ChatEvent,
     ClockState,
     GameResult,
@@ -17,6 +18,7 @@ import type {
     SnapshotPayload,
 } from "@shogi/match-client";
 import { ShogiBoard, HandPiecesDisplay, boardToGrid } from "@shogi/ui";
+import { createWasmEngineClient } from "@shogi/engine-wasm";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import type { ChatMessage } from "./ChatPanel";
@@ -53,6 +55,108 @@ function formatMs(ms: number): string {
     const min = Math.floor(totalSec / 60);
     const sec = totalSec % 60;
     return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
+// ─── AI 解析フック（T-A007） ───────────────────────────────────────────────────
+
+interface AnalysisMoveResult {
+    usi: string;
+    cp: number;
+    pv: string[];
+}
+
+function useOnlineAnalysis(searchDepth: number | null, searchTimeMs: number | null) {
+    const engineRef = useRef<ReturnType<typeof createWasmEngineClient> | null>(null);
+    const searchHandleRef = useRef<{ cancel(): Promise<void> } | null>(null);
+    const unsubscribeRef = useRef<(() => void) | null>(null);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [topMoves, setTopMoves] = useState<AnalysisMoveResult[]>([]);
+    const topMovesMapRef = useRef<Map<number, AnalysisMoveResult>>(new Map());
+
+    useEffect(() => {
+        const engine = createWasmEngineClient({ stopMode: "terminate" });
+        engineRef.current = engine;
+        engine
+            .init({ threads: 1 })
+            .then(() => engine.setOption("MultiPV", 3))
+            .catch(console.error);
+        return () => {
+            engine.dispose().catch(console.error);
+        };
+    }, []);
+
+    const startAnalysis = useCallback(
+        async (sfen: string, moves: string[]) => {
+            const engine = engineRef.current;
+            if (!engine) return;
+
+            // 前回の解析をキャンセル
+            if (searchHandleRef.current) {
+                await searchHandleRef.current.cancel().catch(() => undefined);
+                searchHandleRef.current = null;
+            }
+            if (unsubscribeRef.current) {
+                unsubscribeRef.current();
+                unsubscribeRef.current = null;
+            }
+
+            topMovesMapRef.current.clear();
+            setTopMoves([]);
+            setIsAnalyzing(true);
+
+            const unsub = engine.subscribe((event) => {
+                if (event.type === "info") {
+                    const ev = event as typeof event & {
+                        multipv?: number;
+                        pv?: string[];
+                        scoreCp?: number;
+                    };
+                    const lineIdx = ev.multipv ?? 1;
+                    const pv = ev.pv;
+                    if (!pv || pv.length === 0) return;
+                    const cp = ev.scoreCp ?? 0;
+                    topMovesMapRef.current.set(lineIdx, { usi: pv[0], cp, pv });
+                    const sorted = Array.from(topMovesMapRef.current.entries())
+                        .sort(([a], [b]) => a - b)
+                        .map(([, v]) => v);
+                    setTopMoves(sorted);
+                } else if (event.type === "bestmove") {
+                    setIsAnalyzing(false);
+                    unsub();
+                    unsubscribeRef.current = null;
+                }
+            });
+            unsubscribeRef.current = unsub;
+
+            try {
+                await engine.loadPosition(sfen, moves);
+                const limits: { maxDepth?: number; movetimeMs?: number } = {};
+                if (searchDepth !== null) limits.maxDepth = searchDepth;
+                if (searchTimeMs !== null) limits.movetimeMs = searchTimeMs;
+                const handle = await engine.search({ limits });
+                searchHandleRef.current = handle;
+            } catch {
+                setIsAnalyzing(false);
+                unsub();
+                unsubscribeRef.current = null;
+            }
+        },
+        [searchDepth, searchTimeMs],
+    );
+
+    const cancelAnalysis = useCallback(async () => {
+        if (searchHandleRef.current) {
+            await searchHandleRef.current.cancel().catch(() => undefined);
+            searchHandleRef.current = null;
+        }
+        if (unsubscribeRef.current) {
+            unsubscribeRef.current();
+            unsubscribeRef.current = null;
+        }
+        setIsAnalyzing(false);
+    }, []);
+
+    return { isAnalyzing, topMoves, startAnalysis, cancelAnalysis };
 }
 
 // ─── クロックフック ────────────────────────────────────────────────────────────
@@ -121,6 +225,20 @@ export function OnlineGameView({
         })),
     ]);
     const chatIdRef = useRef(snapshot.recentChat.length);
+
+    // ─── AI サポート状態（T-A007, T-A008） ─────────────────────────────────────
+    const aiSupport = snapshot.settings.aiSupport as AiSupportSettings | null;
+    const myAiSettings = seat !== "s" && aiSupport ? aiSupport[seat === "b" ? "b" : "w"] : null;
+    // 残り解析回数（null = 無制限、数値 = 残り回数）
+    const [myAnalysisRemaining, setMyAnalysisRemaining] = useState<number | null>(
+        myAiSettings?.mode === "limited" ? (myAiSettings.limitCount ?? 0) : null,
+    );
+    // 解析使用ログ（T-A008）
+    const [analysisLog, setAnalysisLog] = useState<Array<{ seat: "b" | "w"; ply: number }>>([]);
+    const { isAnalyzing, topMoves, startAnalysis, cancelAnalysis } = useOnlineAnalysis(
+        aiSupport?.searchDepth ?? null,
+        aiSupport?.searchTimeMs ?? null,
+    );
 
     // 現在の start SFEN と moves
     const startSfenRef = useRef(snapshot.settings.startSfen);
@@ -197,6 +315,18 @@ export function OnlineGameView({
                             text: chatEv.text,
                         },
                     ]);
+                } else if (e.kind === "analysis_used") {
+                    // 自分の残り回数を更新
+                    if (e.seat === seat && e.seat !== "s") {
+                        setMyAnalysisRemaining(
+                            typeof e.analysisRemaining === "number" ? e.analysisRemaining : null,
+                        );
+                    }
+                    // 解析ログに追記（T-A008）
+                    if (e.seat === "b" || e.seat === "w") {
+                        const ply = movesRef.current.length;
+                        setAnalysisLog((prev) => [...prev, { seat: e.seat as "b" | "w", ply }]);
+                    }
                 }
             } else if (msg.t === "snapshot") {
                 // 再接続後のスナップショット更新
@@ -336,6 +466,46 @@ export function OnlineGameView({
         const eventId = snapshot.eventId + movesRef.current.length;
         client.resign({ eventId });
     }
+
+    // ─── AI 解析トリガー（T-A007） ────────────────────────────────────────────
+
+    const handleAnalyze = useCallback(async () => {
+        if (!position || !aiSupport || seat === "s") return;
+        // 制限モードは use_analysis を先送信してからエンジン解析
+        if (myAiSettings?.mode === "limited") {
+            const eventId = snapshot.eventId + movesRef.current.length;
+            const ply = movesRef.current.length;
+            client.useAnalysis({ eventId, ply });
+            // analysis_used 受信後に自動で残り回数が更新される
+        }
+        // WASM 解析開始
+        await getPositionService()
+            .boardToSfen(position)
+            .then((sfen) => startAnalysis(sfen, movesRef.current))
+            .catch(console.error);
+    }, [position, aiSupport, myAiSettings, seat, snapshot.eventId, client, startAnalysis]);
+
+    // 無制限モード: 自分の手番になったら自動解析
+    const positionSfenRef = useRef<string>("");
+    useEffect(() => {
+        if (!aiSupport || !position || gameResult) return;
+        if (myAiSettings?.mode !== "unlimited") return;
+        // 自分の手番（または観戦者）のとき自動解析
+        const isMyAnalysisTurn =
+            seat === "s" || (seat === "b" && turn === "b") || (seat === "w" && turn === "w");
+        if (!isMyAnalysisTurn) {
+            void cancelAnalysis();
+            return;
+        }
+        getPositionService()
+            .boardToSfen(position)
+            .then((sfen) => {
+                if (sfen === positionSfenRef.current) return;
+                positionSfenRef.current = sfen;
+                return startAnalysis(sfen, movesRef.current);
+            })
+            .catch(console.error);
+    }, [aiSupport, myAiSettings, position, turn, seat, gameResult, startAnalysis, cancelAnalysis]);
 
     // ─── KIF ダウンロード ─────────────────────────────────────────────────────
 
@@ -477,9 +647,23 @@ export function OnlineGameView({
                 )}
             </div>
 
-            {/* サイドバー: チャット */}
-            <div className="w-full md:w-64 h-64 md:h-auto">
-                <ChatPanel messages={chatMessages} client={client} canSend={!gameResult} />
+            {/* サイドバー: AI 解析 + チャット */}
+            <div className="w-full md:w-64 flex flex-col gap-3">
+                {/* AI 解析パネル（T-A007） */}
+                {aiSupport && (
+                    <OnlineAiPanel
+                        aiSupport={aiSupport}
+                        seat={seat}
+                        myAnalysisRemaining={myAnalysisRemaining}
+                        isAnalyzing={isAnalyzing}
+                        topMoves={topMoves}
+                        canAnalyze={!gameResult && !isSpectator}
+                        onAnalyze={() => void handleAnalyze()}
+                    />
+                )}
+                <div className="flex-1 h-64 md:h-auto min-h-[160px]">
+                    <ChatPanel messages={chatMessages} client={client} canSend={!gameResult} />
+                </div>
             </div>
 
             {/* 成り判定ダイアログ */}
@@ -503,6 +687,7 @@ export function OnlineGameView({
                     kifu={kifu}
                     playerNames={playerNames}
                     onDownloadKifu={handleDownloadKifu}
+                    analysisLog={analysisLog}
                 />
             )}
         </div>
@@ -593,6 +778,7 @@ interface GameEndDialogProps {
     kifu: string;
     playerNames: { b: string; w: string };
     onDownloadKifu: () => void;
+    analysisLog: Array<{ seat: "b" | "w"; ply: number }>;
 }
 
 function GameEndDialog({
@@ -600,19 +786,43 @@ function GameEndDialog({
     kifu,
     playerNames,
     onDownloadKifu,
+    analysisLog,
 }: GameEndDialogProps): ReactElement {
     const winnerName =
         result.winner === "b" ? playerNames.b : result.winner === "w" ? playerNames.w : null;
 
+    const bAnalysisCount = analysisLog.filter((e) => e.seat === "b").length;
+    const wAnalysisCount = analysisLog.filter((e) => e.seat === "w").length;
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-            <div className="rounded-xl border border-border bg-card p-6 shadow-xl min-w-[280px]">
+            <div className="rounded-xl border border-border bg-card p-6 shadow-xl min-w-[280px] max-w-sm">
                 <h2 className="mb-3 text-center text-xl font-bold text-foreground">
                     {winnerName ? `${winnerName} の勝ち` : "引き分け"}
                 </h2>
                 <p className="mb-5 text-center text-sm text-muted-foreground">
                     {GAME_END_REASONS[result.reason] ?? result.reason}
                 </p>
+
+                {/* T-A008: 解析ログ開示 */}
+                {analysisLog.length > 0 && (
+                    <div className="mb-4 rounded-md border border-border bg-muted/30 p-3">
+                        <p className="mb-2 text-xs font-semibold text-foreground">
+                            AI 解析使用回数
+                        </p>
+                        <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+                            <div className="flex justify-between">
+                                <span className="text-wafuu-shu">▲ {playerNames.b}</span>
+                                <span>{bAnalysisCount} 回</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-wafuu-ai">△ {playerNames.w}</span>
+                                <span>{wAnalysisCount} 回</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <div className="flex flex-col gap-2">
                     {kifu && (
                         <>
@@ -644,6 +854,106 @@ function GameEndDialog({
                         トップへ戻る
                     </button>
                 </div>
+            </div>
+        </div>
+    );
+}
+
+// ─── OnlineAiPanel（T-A007） ──────────────────────────────────────────────────
+
+interface OnlineAiPanelProps {
+    aiSupport: AiSupportSettings;
+    seat: Seat;
+    myAnalysisRemaining: number | null;
+    isAnalyzing: boolean;
+    topMoves: AnalysisMoveResult[];
+    canAnalyze: boolean;
+    onAnalyze: () => void;
+}
+
+function OnlineAiPanel({
+    aiSupport,
+    seat,
+    myAnalysisRemaining,
+    isAnalyzing,
+    topMoves,
+    canAnalyze,
+    onAnalyze,
+}: OnlineAiPanelProps): ReactElement {
+    const mySeatKey = seat === "b" ? "b" : seat === "w" ? "w" : null;
+    const myMode = mySeatKey ? aiSupport[mySeatKey].mode : null;
+    const isLimited = myMode === "limited";
+    const hasNoRemaining = isLimited && myAnalysisRemaining !== null && myAnalysisRemaining <= 0;
+
+    // 形勢バー（0〜100%、50% = 互角、cp +2000 ≈ 100%）
+    const evalCp = topMoves[0]?.cp ?? null;
+    const evalPercent =
+        evalCp !== null ? Math.min(100, Math.max(0, 50 + (evalCp / 2000) * 50)) : 50;
+    const canClickAnalyze = canAnalyze && !isAnalyzing && !hasNoRemaining && seat !== "s";
+
+    return (
+        <div className="flex flex-col rounded-lg border border-border bg-card overflow-hidden">
+            <div className="px-3 py-2 border-b border-border flex items-center justify-between">
+                <span className="text-sm font-semibold text-foreground">AI 解析</span>
+                {isLimited && (
+                    <span className="text-xs text-muted-foreground">
+                        残り {myAnalysisRemaining ?? 0} 回
+                    </span>
+                )}
+            </div>
+
+            <div className="px-3 py-2 flex flex-col gap-2">
+                {/* 形勢バー */}
+                {topMoves.length > 0 && (
+                    <div className="flex flex-col gap-1">
+                        <div className="relative h-3 w-full rounded-full overflow-hidden bg-wafuu-ai">
+                            <div
+                                className="absolute inset-y-0 left-0 bg-wafuu-shu transition-all duration-300"
+                                style={{ width: `${evalPercent}%` }}
+                            />
+                        </div>
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                            <span className="text-wafuu-shu">
+                                ▲ {evalCp !== null && evalCp > 0 ? `+${evalCp}` : ""}
+                            </span>
+                            <span className="text-wafuu-ai">
+                                △ {evalCp !== null && evalCp < 0 ? `+${Math.abs(evalCp)}` : ""}
+                            </span>
+                        </div>
+                    </div>
+                )}
+
+                {/* 候補手（上位 3 手） */}
+                {topMoves.length > 0 && (
+                    <div className="flex flex-col gap-0.5">
+                        {topMoves.slice(0, 3).map((mv, i) => (
+                            <div key={mv.usi} className="flex items-center gap-2 text-xs">
+                                <span className="text-muted-foreground w-4">{i + 1}.</span>
+                                <span className="font-mono text-foreground">{mv.usi}</span>
+                                <span className="text-muted-foreground ml-auto">
+                                    {mv.cp > 0 ? "+" : ""}
+                                    {mv.cp}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {isAnalyzing && topMoves.length === 0 && (
+                    <p className="text-xs text-muted-foreground">解析中...</p>
+                )}
+
+                {/* 制限モードのみ手動ボタン表示 */}
+                {isLimited && seat !== "s" && (
+                    <button
+                        type="button"
+                        onClick={onAnalyze}
+                        disabled={!canClickAnalyze}
+                        className="w-full rounded-md bg-primary py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+                    >
+                        {hasNoRemaining ? "上限到達" : isAnalyzing ? "解析中..." : "解析する"}
+                    </button>
+                )}
             </div>
         </div>
     );

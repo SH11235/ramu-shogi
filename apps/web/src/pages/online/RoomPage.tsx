@@ -10,6 +10,11 @@ import { OnlineGameView } from "./OnlineGameView";
 
 // ─── ルーム情報の型（GET /api/rooms/:roomId のレスポンス） ────────────────────
 
+interface AiSupportPlayerSettings {
+    mode: "unlimited" | "limited";
+    limitCount: number | null;
+}
+
 interface RoomInfo {
     roomId: string;
     status: "waiting" | "playing" | "finished";
@@ -24,6 +29,12 @@ interface RoomInfo {
             | { type: "byoyomi"; initialMs: number; byoyomiMs: number }
             | { type: "fischer"; initialMs: number; fischerIncrementMs: number };
         passRights: { initialCount: number } | null;
+        aiSupport: {
+            b: AiSupportPlayerSettings;
+            w: AiSupportPlayerSettings;
+            searchDepth: number | null;
+            searchTimeMs: number | null;
+        } | null;
     };
 }
 
@@ -385,6 +396,21 @@ export default function RoomPage(): ReactElement {
                         <div className="flex justify-between">
                             <span>パス権</span>
                             <span>各 {roomInfo.settings.passRights.initialCount} 回</span>
+                        </div>
+                    )}
+                    {roomInfo.settings.aiSupport && (
+                        <div className="flex justify-between">
+                            <span>AI サポート</span>
+                            <span>
+                                ▲{" "}
+                                {roomInfo.settings.aiSupport.b.mode === "unlimited"
+                                    ? "無制限"
+                                    : `${roomInfo.settings.aiSupport.b.limitCount ?? 0} 回`}
+                                {" / "}△{" "}
+                                {roomInfo.settings.aiSupport.w.mode === "unlimited"
+                                    ? "無制限"
+                                    : `${roomInfo.settings.aiSupport.w.limitCount ?? 0} 回`}
+                            </span>
                         </div>
                     )}
                 </div>

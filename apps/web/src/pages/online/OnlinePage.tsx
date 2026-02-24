@@ -16,6 +16,14 @@ interface RoomSettings {
     fischerIncrementSeconds: number;
     startSfen: string;
     passRightsCount: number | null;
+    // AI サポート設定
+    aiSupportEnabled: boolean;
+    aiBMode: "unlimited" | "limited";
+    aiWMode: "unlimited" | "limited";
+    aiBLimitCount: number;
+    aiWLimitCount: number;
+    aiSearchDepth: number | null;
+    aiSearchTimeMs: number | null;
 }
 
 const DEFAULT_SETTINGS: RoomSettings = {
@@ -26,6 +34,13 @@ const DEFAULT_SETTINGS: RoomSettings = {
     fischerIncrementSeconds: 10,
     startSfen: "startpos",
     passRightsCount: null,
+    aiSupportEnabled: false,
+    aiBMode: "unlimited",
+    aiWMode: "unlimited",
+    aiBLimitCount: 5,
+    aiWLimitCount: 5,
+    aiSearchDepth: null,
+    aiSearchTimeMs: 5000,
 };
 
 // ─── メインコンポーネント ──────────────────────────────────────────────────────
@@ -67,6 +82,26 @@ export default function OnlinePage(): ReactElement {
                             settings.passRightsCount !== null
                                 ? { initialCount: settings.passRightsCount }
                                 : null,
+                        aiSupport: settings.aiSupportEnabled
+                            ? {
+                                  b: {
+                                      mode: settings.aiBMode,
+                                      limitCount:
+                                          settings.aiBMode === "limited"
+                                              ? settings.aiBLimitCount
+                                              : null,
+                                  },
+                                  w: {
+                                      mode: settings.aiWMode,
+                                      limitCount:
+                                          settings.aiWMode === "limited"
+                                              ? settings.aiWLimitCount
+                                              : null,
+                                  },
+                                  searchDepth: settings.aiSearchDepth,
+                                  searchTimeMs: settings.aiSearchTimeMs,
+                              }
+                            : null,
                     },
                 }),
             });
@@ -362,6 +397,98 @@ function CreateRoomDialog({
                         </div>
                     )}
                 </div>
+            </div>
+
+            {/* AI サポート設定 */}
+            <div className="flex flex-col gap-2">
+                <span className={labelClass}>AI サポート</span>
+                <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                        type="checkbox"
+                        checked={settings.aiSupportEnabled}
+                        onChange={(e) => set("aiSupportEnabled", e.target.checked)}
+                        className="accent-primary"
+                    />
+                    <span className="text-sm text-foreground">有効にする</span>
+                </label>
+                {settings.aiSupportEnabled && (
+                    <div className="flex flex-col gap-3 rounded-md border border-border bg-muted/30 p-3">
+                        {(
+                            [
+                                ["b", "先手（▲）", "aiBMode", "aiBLimitCount"],
+                                ["w", "後手（△）", "aiWMode", "aiWLimitCount"],
+                            ] as const
+                        ).map(([, label, modeKey, countKey]) => (
+                            <div key={modeKey} className="flex flex-col gap-1">
+                                <span className="text-xs font-medium text-muted-foreground">
+                                    {label}
+                                </span>
+                                <div className="flex items-center gap-3">
+                                    {(["unlimited", "limited"] as const).map((mode) => (
+                                        <label
+                                            key={mode}
+                                            className="flex cursor-pointer items-center gap-1"
+                                        >
+                                            <input
+                                                type="radio"
+                                                name={modeKey}
+                                                checked={settings[modeKey] === mode}
+                                                onChange={() => set(modeKey, mode)}
+                                                className="accent-primary"
+                                            />
+                                            <span className="text-sm text-foreground">
+                                                {mode === "unlimited" ? "無制限" : "回数制限"}
+                                            </span>
+                                        </label>
+                                    ))}
+                                    {settings[modeKey] === "limited" && (
+                                        <div className="flex items-center gap-1">
+                                            <input
+                                                type="number"
+                                                min={1}
+                                                max={20}
+                                                value={settings[countKey]}
+                                                onChange={(e) =>
+                                                    set(
+                                                        countKey,
+                                                        Math.max(1, Number(e.target.value)),
+                                                    )
+                                                }
+                                                className="w-14 rounded-md border border-input bg-transparent px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                            />
+                                            <span className="text-sm text-muted-foreground">
+                                                回
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                        <div className="flex items-center gap-2">
+                            <label
+                                htmlFor="ai-search-time"
+                                className="w-24 text-xs text-muted-foreground"
+                            >
+                                解析時間
+                            </label>
+                            <input
+                                id="ai-search-time"
+                                type="number"
+                                min={1}
+                                max={60}
+                                value={Math.round((settings.aiSearchTimeMs ?? 5000) / 1000)}
+                                onChange={(e) =>
+                                    set(
+                                        "aiSearchTimeMs",
+                                        Math.max(1, Number(e.target.value)) * 1000,
+                                    )
+                                }
+                                className="w-16 rounded-md border border-input bg-transparent px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            />
+                            <span className="text-sm text-muted-foreground">秒</span>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {error && <p className="text-sm text-destructive">{error}</p>}
