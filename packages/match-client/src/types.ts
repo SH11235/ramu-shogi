@@ -191,6 +191,7 @@ export type ErrorCode =
     | "ROOM_FULL"
     | "ROOM_NOT_FOUND"
     | "ROOM_FINISHED"
+    | "ROOM_EXPIRED"
     | "INVALID_TOKEN"
     | "DESYNC"
     | "ILLEGAL_MOVE"
