@@ -354,6 +354,8 @@ export class RoomDO implements DurableObject {
         };
 
         await this.doState.storage.put("room", initialState);
+        // 24時間以内にゲームが開始されなかった waiting ルームを自動削除
+        await this.doState.storage.setAlarm(Date.now() + 24 * 60 * 60 * 1000);
         return jsonResponse({ ok: true });
     }
 
@@ -1103,6 +1105,16 @@ export class RoomDO implements DurableObject {
 
         // 対局終了済み: DO Storage を削除（24時間後の自動クリーンアップ）
         if (room.status === "finished") {
+            await this.doState.storage.deleteAll();
+            return;
+        }
+
+        // 待機中のまま24時間経過: 接続中のクライアントに通知してから削除
+        if (room.status === "waiting") {
+            for (const ws of this.doState.getWebSockets()) {
+                sendWsError(ws, "ROOM_EXPIRED", "Room has expired due to inactivity");
+                ws.close(1001, "Room expired");
+            }
             await this.doState.storage.deleteAll();
             return;
         }
