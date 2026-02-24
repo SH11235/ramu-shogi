@@ -31,35 +31,81 @@ async function createRoom(settings?: Record<string, unknown>): Promise<string> {
     return data.roomId;
 }
 
-function connectWs(roomId: string): WebSocket {
+// メッセージキューを持つ WebSocket クライアント
+// リスナー設置前に届いたメッセージも見逃さない
+interface WsClient {
+    ws: WebSocket;
+    messages: Record<string, unknown>[];
+    waitForOpen: () => Promise<void>;
+    waitFor: (
+        predicate: (msg: Record<string, unknown>) => boolean,
+        timeoutMs?: number,
+    ) => Promise<Record<string, unknown>>;
+    send: (t: string, payload: Record<string, unknown>) => void;
+    close: () => void;
+}
+
+function createWsClient(roomId: string): WsClient {
     const wsUrl = BASE_URL.replace(/^http/, "ws");
-    return new WebSocket(`${wsUrl}/api/rooms/${roomId}/ws`);
-}
+    const ws = new WebSocket(`${wsUrl}/api/rooms/${roomId}/ws`);
+    const messages: Record<string, unknown>[] = [];
 
-async function waitForMessage(
-    ws: WebSocket,
-    predicate: (msg: Record<string, unknown>) => boolean,
-    timeoutMs = 3000,
-): Promise<Record<string, unknown>> {
-    return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-            reject(new Error("Timeout waiting for message"));
-        }, timeoutMs);
-
-        const handler = (event: MessageEvent): void => {
+    // 接続開始直後からメッセージをキューに溜める
+    ws.addEventListener("message", (event: MessageEvent) => {
+        try {
             const msg = JSON.parse(event.data as string) as Record<string, unknown>;
-            if (predicate(msg)) {
-                clearTimeout(timer);
-                ws.removeEventListener("message", handler);
-                resolve(msg);
-            }
-        };
-        ws.addEventListener("message", handler);
+            messages.push(msg);
+        } catch {
+            // ignore parse errors
+        }
     });
-}
 
-function sendMsg(ws: WebSocket, t: string, payload: Record<string, unknown>): void {
-    ws.send(JSON.stringify({ v: 1, t, clientMsgId: 1, payload }));
+    const waitForOpen = (): Promise<void> =>
+        new Promise((resolve, reject) => {
+            if ((ws.readyState as number) === 1) {
+                resolve();
+                return;
+            }
+            ws.addEventListener("open", () => resolve(), { once: true });
+            ws.addEventListener("error", () => reject(new Error("WebSocket error")), {
+                once: true,
+            });
+        });
+
+    // キューをポーリングして条件に合うメッセージを待つ
+    const waitFor = (
+        predicate: (msg: Record<string, unknown>) => boolean,
+        timeoutMs = 5000,
+    ): Promise<Record<string, unknown>> => {
+        const start = Date.now();
+        return new Promise((resolve, reject) => {
+            const poll = (): void => {
+                const found = messages.find(predicate);
+                if (found) {
+                    resolve(found);
+                    return;
+                }
+                if (Date.now() - start >= timeoutMs) {
+                    reject(
+                        new Error(
+                            `Timeout after ${timeoutMs}ms. Received: ${JSON.stringify(messages)}`,
+                        ),
+                    );
+                    return;
+                }
+                setTimeout(poll, 30);
+            };
+            poll();
+        });
+    };
+
+    const send = (t: string, payload: Record<string, unknown>): void => {
+        ws.send(JSON.stringify({ v: 1, t, clientMsgId: 1, payload }));
+    };
+
+    const close = (): void => ws.close();
+
+    return { ws, messages, waitForOpen, waitFor, send, close };
 }
 
 // ─── テスト ───────────────────────────────────────────────────────────────────
@@ -108,32 +154,29 @@ describe("RoomDO 統合テスト（wrangler dev が必要）", () => {
 
         itIntegration("先手・後手が参加して game_start を受け取る", async () => {
             const roomId = await createRoom();
-            const wsB = connectWs(roomId);
-            const wsW = connectWs(roomId);
+            const clientB = createWsClient(roomId);
+            const clientW = createWsClient(roomId);
 
-            await Promise.all([
-                new Promise<void>((resolve) => wsB.addEventListener("open", () => resolve())),
-                new Promise<void>((resolve) => wsW.addEventListener("open", () => resolve())),
-            ]);
+            await Promise.all([clientB.waitForOpen(), clientW.waitForOpen()]);
 
-            sendMsg(wsB, "join", { seat: "b", name: "先手テスト" });
-            const joinedB = await waitForMessage(wsB, (m) => m.t === "joined");
+            // 先手参加
+            clientB.send("join", { seat: "b", name: "先手テスト" });
+            const joinedB = await clientB.waitFor((m) => m.t === "joined");
             expect((joinedB as { payload?: { seat?: string } }).payload?.seat).toBe("b");
 
-            sendMsg(wsW, "join", { seat: "w", name: "後手テスト" });
-            const joinedW = await waitForMessage(wsW, (m) => m.t === "joined");
+            // 後手参加（game_start は wsB にも同時に届く → キューに積まれる）
+            clientW.send("join", { seat: "w", name: "後手テスト" });
+            const joinedW = await clientW.waitFor((m) => m.t === "joined");
             expect((joinedW as { payload?: { seat?: string } }).payload?.seat).toBe("w");
 
-            // game_start を両者が受け取る
+            // game_start を両者が受け取る（キューに既に積まれていても検出できる）
             const [gameStartB] = await Promise.all([
-                waitForMessage(
-                    wsB,
+                clientB.waitFor(
                     (m) =>
                         m.t === "event" &&
                         (m.payload as Record<string, unknown>)?.kind === "game_start",
                 ),
-                waitForMessage(
-                    wsW,
+                clientW.waitFor(
                     (m) =>
                         m.t === "event" &&
                         (m.payload as Record<string, unknown>)?.kind === "game_start",
@@ -141,8 +184,8 @@ describe("RoomDO 統合テスト（wrangler dev が必要）", () => {
             ]);
             expect(gameStartB.t).toBe("event");
 
-            wsB.close();
-            wsW.close();
+            clientB.close();
+            clientW.close();
         });
     });
 
@@ -150,70 +193,65 @@ describe("RoomDO 統合テスト（wrangler dev が必要）", () => {
     describe("異常系", () => {
         itIntegration("満席のルームに参加しようとすると ROOM_FULL エラーになる", async () => {
             const roomId = await createRoom();
-            const wsB = connectWs(roomId);
-            const wsW = connectWs(roomId);
-            const wsExtra = connectWs(roomId);
+            const clientB = createWsClient(roomId);
+            const clientW = createWsClient(roomId);
+            const clientExtra = createWsClient(roomId);
 
             await Promise.all([
-                new Promise<void>((resolve) => wsB.addEventListener("open", () => resolve())),
-                new Promise<void>((resolve) => wsW.addEventListener("open", () => resolve())),
-                new Promise<void>((resolve) => wsExtra.addEventListener("open", () => resolve())),
+                clientB.waitForOpen(),
+                clientW.waitForOpen(),
+                clientExtra.waitForOpen(),
             ]);
 
-            sendMsg(wsB, "join", { seat: "b", name: "先手" });
-            await waitForMessage(wsB, (m) => m.t === "joined");
+            clientB.send("join", { seat: "b", name: "先手" });
+            await clientB.waitFor((m) => m.t === "joined");
 
-            sendMsg(wsW, "join", { seat: "w", name: "後手" });
-            await waitForMessage(wsW, (m) => m.t === "joined");
+            clientW.send("join", { seat: "w", name: "後手" });
+            await clientW.waitFor((m) => m.t === "joined");
 
-            sendMsg(wsExtra, "join", { seat: "b", name: "侵入者" });
-            const errMsg = await waitForMessage(wsExtra, (m) => m.t === "error");
+            clientExtra.send("join", { seat: "b", name: "侵入者" });
+            const errMsg = await clientExtra.waitFor((m) => m.t === "error");
             expect((errMsg as { payload?: { code?: string } }).payload?.code).toBe("ROOM_FULL");
 
-            wsB.close();
-            wsW.close();
-            wsExtra.close();
+            clientB.close();
+            clientW.close();
+            clientExtra.close();
         });
 
         itIntegration("自分の手番でないとき move を送ると NOT_YOUR_TURN エラーになる", async () => {
             const roomId = await createRoom();
-            const wsB = connectWs(roomId);
-            const wsW = connectWs(roomId);
+            const clientB = createWsClient(roomId);
+            const clientW = createWsClient(roomId);
 
+            await Promise.all([clientB.waitForOpen(), clientW.waitForOpen()]);
+
+            clientB.send("join", { seat: "b", name: "先手" });
+            await clientB.waitFor((m) => m.t === "joined");
+
+            clientW.send("join", { seat: "w", name: "後手" });
+            await clientW.waitFor((m) => m.t === "joined");
+
+            // game_start を待つ（キューに積まれていても検出）
             await Promise.all([
-                new Promise<void>((resolve) => wsB.addEventListener("open", () => resolve())),
-                new Promise<void>((resolve) => wsW.addEventListener("open", () => resolve())),
-            ]);
-
-            sendMsg(wsB, "join", { seat: "b", name: "先手" });
-            await waitForMessage(wsB, (m) => m.t === "joined");
-
-            sendMsg(wsW, "join", { seat: "w", name: "後手" });
-            await waitForMessage(wsW, (m) => m.t === "joined");
-
-            // game_start を待つ
-            await Promise.all([
-                waitForMessage(
-                    wsB,
+                clientB.waitFor(
                     (m) =>
                         m.t === "event" &&
                         (m.payload as Record<string, unknown>)?.kind === "game_start",
                 ),
-                waitForMessage(
-                    wsW,
+                clientW.waitFor(
                     (m) =>
                         m.t === "event" &&
                         (m.payload as Record<string, unknown>)?.kind === "game_start",
                 ),
             ]);
 
-            // 後手（wsW）が先に指そうとする
-            sendMsg(wsW, "move", { eventId: 1, usi: "3c3d", sfen: "" });
-            const errMsg = await waitForMessage(wsW, (m) => m.t === "error");
+            // 後手（clientW）が先に指そうとする
+            clientW.send("move", { eventId: 1, usi: "3c3d", sfen: "" });
+            const errMsg = await clientW.waitFor((m) => m.t === "error");
             expect((errMsg as { payload?: { code?: string } }).payload?.code).toBe("NOT_YOUR_TURN");
 
-            wsB.close();
-            wsW.close();
+            clientB.close();
+            clientW.close();
         });
 
         itIntegration("無効な JSON body で POST /api/rooms は 400 を返す", async () => {
@@ -256,29 +294,24 @@ describe("RoomDO 統合テスト（wrangler dev が必要）", () => {
                     },
                 });
 
-                const wsB = connectWs(roomId);
-                const wsW = connectWs(roomId);
+                const clientB = createWsClient(roomId);
+                const clientW = createWsClient(roomId);
+
+                await Promise.all([clientB.waitForOpen(), clientW.waitForOpen()]);
+
+                clientB.send("join", { seat: "b", name: "先手" });
+                await clientB.waitFor((m) => m.t === "joined");
+
+                clientW.send("join", { seat: "w", name: "後手" });
+                await clientW.waitFor((m) => m.t === "joined");
 
                 await Promise.all([
-                    new Promise<void>((resolve) => wsB.addEventListener("open", () => resolve())),
-                    new Promise<void>((resolve) => wsW.addEventListener("open", () => resolve())),
-                ]);
-
-                sendMsg(wsB, "join", { seat: "b", name: "先手" });
-                await waitForMessage(wsB, (m) => m.t === "joined");
-
-                sendMsg(wsW, "join", { seat: "w", name: "後手" });
-                await waitForMessage(wsW, (m) => m.t === "joined");
-
-                await Promise.all([
-                    waitForMessage(
-                        wsB,
+                    clientB.waitFor(
                         (m) =>
                             m.t === "event" &&
                             (m.payload as Record<string, unknown>)?.kind === "game_start",
                     ),
-                    waitForMessage(
-                        wsW,
+                    clientW.waitFor(
                         (m) =>
                             m.t === "event" &&
                             (m.payload as Record<string, unknown>)?.kind === "game_start",
@@ -286,9 +319,8 @@ describe("RoomDO 統合テスト（wrangler dev が必要）", () => {
                 ]);
 
                 // 先手が use_analysis を送信（制限モード: 残り 3 → 2）
-                sendMsg(wsB, "use_analysis", { eventId: 1, ply: 0 });
-                const analysisUsedMsg = await waitForMessage(
-                    wsB,
+                clientB.send("use_analysis", { eventId: 1, ply: 0 });
+                const analysisUsedMsg = await clientB.waitFor(
                     (m) =>
                         m.t === "event" &&
                         (m.payload as Record<string, unknown>)?.kind === "analysis_used",
@@ -297,8 +329,8 @@ describe("RoomDO 統合テスト（wrangler dev が必要）", () => {
                     .payload;
                 expect(payload?.analysisRemaining).toBe(2);
 
-                wsB.close();
-                wsW.close();
+                clientB.close();
+                clientW.close();
             },
         );
     });
