@@ -51,6 +51,8 @@ interface UseEngineManagerProps {
     analysisNnueSelection?: NnueSelection;
     /** NNUE を解決する関数（必要ならダウンロード） */
     resolveNnue: (selection: NnueSelection) => Promise<ResolvedNnue | null>;
+    /** 対局中でも解析を許可する（オンライン対戦の AI サポート用） */
+    allowAnalysisDuringMatch?: boolean;
 }
 
 /** 解析リクエストパラメータ */
@@ -111,6 +113,7 @@ export function useEngineManager({
     goteNnueSelection,
     analysisNnueSelection,
     resolveNnue,
+    allowAnalysisDuringMatch,
 }: UseEngineManagerProps): UseEngineManagerReturn {
     const engineOptionsRef = useRef(engineOptions);
     useEffect(() => {
@@ -143,6 +146,7 @@ export function useEngineManager({
             now: () => Date.now(),
             resolveNnue: (selection) => resolveNnueRef.current(selection),
             maxLogs,
+            allowAnalysisDuringMatch,
             callbacks: {
                 onMoveFromEngine: (move) => callbacksRef.current.onMoveFromEngine(move),
                 onMatchEnd: (result) => callbacksRef.current.onMatchEnd(result),

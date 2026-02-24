@@ -145,6 +145,8 @@ interface EngineControllerDependencies {
     now: () => number;
     resolveNnue: (selection: NnueSelection) => Promise<ResolvedNnue | null>;
     maxLogs?: number;
+    /** 対局中でも解析を許可する（オンライン対戦の AI サポート用） */
+    allowAnalysisDuringMatch?: boolean;
     callbacks?: EngineControllerCallbacks;
 }
 
@@ -913,7 +915,7 @@ export function createEngineController(
     };
 
     const startAnalysis = async (request: AnalysisRequest) => {
-        if (context.matchRunning) {
+        if (context.matchRunning && !dependencies.allowAnalysisDuringMatch) {
             addErrorLog("対局中は解析できません");
             return;
         }

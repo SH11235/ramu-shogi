@@ -104,6 +104,8 @@ interface ShogiMatchProps {
     defaultNnuePresetKey?: string;
     /** AIアイコンのURL（GitHub Pages等でbase pathが必要な場合に指定） */
     aiIconUrl?: string;
+    /** 対局中でも解析を許可する（オンライン対戦の AI サポート用） */
+    allowAnalysisDuringMatch?: boolean;
 }
 
 export function ShogiMatch({
@@ -121,6 +123,7 @@ export function ShogiMatch({
     onRequestNnueFilePath,
     defaultNnuePresetKey,
     aiIconUrl,
+    allowAnalysisDuringMatch,
 }: ShogiMatchProps): ReactElement {
     // デフォルトの NNUE 選択（props のプリセットキーを使用、未指定時は DEFAULT_PRESET_KEY）
     const defaultNnueSelection = useMemo(
@@ -619,6 +622,7 @@ export function ShogiMatch({
         goteNnueSelection,
         analysisNnueSelection,
         resolveNnue,
+        allowAnalysisDuringMatch,
     });
     stopAllEnginesRef.current = stopAllEngines;
     restartEngineForNnueRef.current = restartEngineForNnue;

@@ -295,6 +295,13 @@ export class RoomDO implements DurableObject {
             case "resign":
                 await this.handleResign(ws, msg.clientMsgId, msg.payload as { eventId: number });
                 break;
+            case "use_analysis":
+                await this.handleUseAnalysis(
+                    ws,
+                    msg.clientMsgId,
+                    msg.payload as { eventId: number; ply: number },
+                );
+                break;
             case "chat":
                 await this.handleChat(ws, msg.clientMsgId, msg.payload as { text: string });
                 break;
@@ -367,6 +374,7 @@ export class RoomDO implements DurableObject {
                 startSfen: room.settings.startSfen,
                 timeControl: room.settings.timeControl,
                 passRights: room.settings.passRights,
+                aiSupport: room.settings.aiSupport,
             },
         });
     }
@@ -776,6 +784,86 @@ export class RoomDO implements DurableObject {
 
         // 24時間後にルームを削除
         await this.doState.storage.setAlarm(now + 24 * 60 * 60 * 1000);
+    }
+
+    /** T-A002: use_analysis メッセージ処理 */
+    private async handleUseAnalysis(
+        ws: WebSocket,
+        clientMsgId: number,
+        payload: { eventId: number; ply: number },
+    ): Promise<void> {
+        const room = await this.doState.storage.get<RoomStorageState>("room");
+        if (!room) {
+            sendWsError(ws, "ROOM_NOT_FOUND", "Room not found", clientMsgId);
+            return;
+        }
+
+        const meta = ws.deserializeAttachment() as WsConnectionMeta | null;
+        if (!meta || meta.seat === "s") {
+            sendWsError(ws, "SPECTATOR_FORBIDDEN", "Spectators cannot use analysis", clientMsgId);
+            return;
+        }
+
+        const { seat } = meta;
+
+        // AI サポートが有効かチェック
+        if (!room.settings.aiSupport) {
+            sendWsError(
+                ws,
+                "AI_SUPPORT_DISABLED",
+                "AI support is not enabled for this room",
+                clientMsgId,
+            );
+            return;
+        }
+
+        const game = room.game;
+        if (!game || game.status !== "playing") {
+            sendWsError(ws, "ROOM_FINISHED", "Game is not playing", clientMsgId);
+            return;
+        }
+
+        // eventId 一致チェック（DESYNC 検知）
+        if (payload.eventId !== room.latestEventId) {
+            sendWsError(
+                ws,
+                "DESYNC",
+                `Expected eventId ${room.latestEventId}, got ${payload.eventId}`,
+                clientMsgId,
+            );
+            return;
+        }
+
+        // mode: "limited" の場合は残り回数をチェック・消費
+        const aiSettings = room.settings.aiSupport[seat];
+        if (aiSettings.mode === "limited") {
+            const used = game.analysisUsed[seat];
+            const limit = aiSettings.limitCount ?? 0;
+            if (used >= limit) {
+                sendWsError(ws, "ANALYSIS_LIMIT_EXCEEDED", "Analysis limit exceeded", clientMsgId);
+                return;
+            }
+            game.analysisUsed[seat] = used + 1;
+        }
+
+        const analysisRemaining =
+            aiSettings.mode === "limited"
+                ? (aiSettings.limitCount ?? 0) - game.analysisUsed[seat]
+                : null;
+
+        const now = Date.now();
+        const eventId = ++room.latestEventId;
+        const analysisUsedEvent: RoomEvent = {
+            eventId,
+            kind: "analysis_used",
+            seat,
+            analysisRemaining,
+            serverTs: now,
+        };
+
+        room.events.push(analysisUsedEvent);
+        await this.doState.storage.put("room", room);
+        this.broadcastToAll({ v: 1, t: "event", payload: analysisUsedEvent });
     }
 
     /** chat メッセージ処理（基本実装） */
