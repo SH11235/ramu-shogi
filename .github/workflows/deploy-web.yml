@@ -12,6 +12,7 @@ on:
       - 'packages/ui/**'
       - 'packages/engine-client/**'
       - 'packages/engine-wasm/**'
+      - 'packages/match-client/**'
       - 'packages/rust-core/Cargo.toml'
       - 'packages/rust-core/Cargo.lock'
       - 'packages/rust-core/crates/engine-wasm/**'

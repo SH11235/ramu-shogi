@@ -18,5 +18,6 @@
             "@shogi/match-client": ["packages/match-client/src/index.ts"]
         }
     },
-    "include": ["src"]
+    "include": ["src"],
+    "exclude": ["src/**/*.e2e.ts"]
 }

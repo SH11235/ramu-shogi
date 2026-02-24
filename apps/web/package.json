@@ -12,7 +12,9 @@
         "lint": "pnpm --workspace-root exec biome check .",
         "lint:fix": "pnpm --workspace-root exec biome check --write --files-ignore-unknown=true",
         "lint:fix:unsafe": "pnpm --workspace-root exec biome check --write --unsafe --files-ignore-unknown=true",
-        "preview": "vite preview"
+        "preview": "vite preview",
+        "test:integration": "vitest run --reporter verbose worker/room-do.integration.test.ts",
+        "test:e2e": "playwright test"
     },
     "dependencies": {
         "@shogi/app-core": "workspace:*",
@@ -26,6 +28,7 @@
     },
     "devDependencies": {
         "@cloudflare/workers-types": "^4.20260122.0",
+        "@playwright/test": "^1.58.2",
         "@tailwindcss/vite": "^4.1.18",
         "@tanstack/router-vite-plugin": "^1.162.6",
         "@types/node": "^24.10.1",
@@ -35,6 +38,7 @@
         "rollup-plugin-visualizer": "^6.0.5",
         "tailwindcss": "^4.1.18",
         "typescript": "~5.9.3",
-        "vite": "^7.3.0"
+        "vite": "^7.3.0",
+        "vitest": "^4.0.15"
     }
 }

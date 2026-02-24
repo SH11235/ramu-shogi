@@ -1,10 +1,17 @@
 // apps/web/worker/api.ts
 // REST API: POST /api/rooms, GET /api/rooms/:roomId
 
+// Cloudflare Workers Rate Limiting API の型定義
+interface RateLimiter {
+    limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
 export interface Env {
     ASSETS: Fetcher;
     NNUE_BUCKET: R2Bucket;
     ROOM: DurableObjectNamespace;
+    /** POST /api/rooms の IP ごとのレート制限（T-503）。wrangler.toml で設定 */
+    ROOM_RATE_LIMITER?: RateLimiter;
 }
 
 // ─── バリデーション ──────────────────────────────────────────────────────
@@ -163,6 +170,19 @@ function jsonResponse(data: unknown, status = 200): Response {
  * POST /api/rooms: ルームを作成して { roomId, shareUrl } を返す
  */
 async function handleCreateRoom(request: Request, env: Env): Promise<Response> {
+    // IP ごとのレート制限チェック（T-503）
+    if (env.ROOM_RATE_LIMITER) {
+        const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+        const { success } = await env.ROOM_RATE_LIMITER.limit({ key: ip });
+        if (!success) {
+            return apiErrorResponse(
+                429,
+                "RATE_LIMITED",
+                "Too many room creation requests. Please try again later.",
+            );
+        }
+    }
+
     let body: unknown;
     try {
         body = await request.json();
