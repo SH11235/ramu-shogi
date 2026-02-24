@@ -33,7 +33,6 @@
         "@playwright/test": "^1.58.2",
         "@testing-library/react": "^16.3.2",
         "@tailwindcss/vite": "^4.1.18",
-        "@tanstack/router-vite-plugin": "^1.162.6",
         "@types/node": "^24.10.1",
         "happy-dom": "^20.7.0",
         "@types/react": "^19.2.7",
