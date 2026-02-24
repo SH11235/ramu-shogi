@@ -3,7 +3,7 @@
 /** バックオフ時間（ms）: 1s → 2s → 4s → 8s → 16s */
 const BACKOFF_DELAYS_MS = [1000, 2000, 4000, 8000, 16000] as const;
 
-export interface ReconnectManager {
+interface ReconnectManager {
     /** 次の再接続を予約する。最大試行数を超えた場合は onMaxRetriesReached を呼ぶ */
     schedule(connect: () => void): void;
     /** 再接続に成功したときに呼ぶ（試行回数をリセット） */

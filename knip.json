@@ -13,6 +13,8 @@
     "ignore": [
         "apps/desktop/src-tauri/target/**",
         "apps/web/worker/index.ts",
+        "apps/web/worker/api.ts",
+        "apps/web/worker/room-do.ts",
         "packages/rust-core/target/**",
         "packages/rust-core/pkg/**"
     ]
