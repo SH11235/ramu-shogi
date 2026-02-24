@@ -43,6 +43,7 @@ export function PCKifuSection(): ReactElement {
         selectedBranchNodeId,
         onSelectedBranchChange,
         branchMarkers,
+        analysisMarkers,
         lastAddedBranchInfo,
         onLastAddedBranchHandled,
         handleAddPvAsBranch,
@@ -103,6 +104,7 @@ export function PCKifuSection(): ReactElement {
                     }}
                     navigationDisabled={isMatchRunning}
                     branchMarkers={branchMarkers}
+                    analysisMarkers={analysisMarkers}
                     positionHistory={positionHistory}
                     onAddPvAsBranch={handleAddPvAsBranch}
                     onPreviewPv={handlePreviewPv}

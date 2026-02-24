@@ -106,6 +106,10 @@ interface ShogiMatchProps {
     aiIconUrl?: string;
     /** 対局中でも解析を許可する（オンライン対戦の AI サポート用） */
     allowAnalysisDuringMatch?: boolean;
+    /** 棋譜パネルに表示する AI 解析使用マーカー */
+    analysisMarkers?: Array<{ seat: "b" | "w"; ply: number }>;
+    /** マウント時に読み込む棋譜（指定時は検討室モードで開始） */
+    initialReview?: { sfen: string; moves: string[] };
 }
 
 export function ShogiMatch({
@@ -124,6 +128,8 @@ export function ShogiMatch({
     defaultNnuePresetKey,
     aiIconUrl,
     allowAnalysisDuringMatch,
+    analysisMarkers = [],
+    initialReview,
 }: ShogiMatchProps): ReactElement {
     // デフォルトの NNUE 選択（props のプリセットキーを使用、未指定時は DEFAULT_PRESET_KEY）
     const defaultNnueSelection = useMemo(
@@ -1155,6 +1161,15 @@ export function ShogiMatch({
         setIsMatchRunning,
     });
 
+    // マウント時に initialReview が指定されていれば棋譜を読み込む（一度だけ実行）
+    const initialReviewHandledRef = useRef(false);
+    useEffect(() => {
+        if (initialReview && !initialReviewHandledRef.current) {
+            initialReviewHandledRef.current = true;
+            void importSfen(initialReview.sfen, initialReview.moves);
+        }
+    }, [initialReview, importSfen]);
+
     // 棋譜の手数選択コールバック（巻き戻し・リプレイ用）
     const handlePlySelect = useCallback(
         (ply: number) => {
@@ -1401,6 +1416,7 @@ export function ShogiMatch({
             selectedBranchNodeId,
             setSelectedBranchNodeId,
             branchMarkers,
+            analysisMarkers,
             lastAddedBranchInfo,
             setLastAddedBranchInfo,
             handleAddPvAsBranch,
@@ -1437,6 +1453,7 @@ export function ShogiMatch({
             selectedBranchNodeId,
             setSelectedBranchNodeId,
             branchMarkers,
+            analysisMarkers,
             lastAddedBranchInfo,
             setLastAddedBranchInfo,
             handleAddPvAsBranch,

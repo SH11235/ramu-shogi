@@ -40,6 +40,7 @@ interface NavigationProviderProps {
     selectedBranchNodeId: string | null;
     onSelectedBranchChange: (branchNodeId: string | null) => void;
     branchMarkers: Map<number, number>;
+    analysisMarkers: Array<{ seat: "b" | "w"; ply: number }>;
     lastAddedBranchInfo: { ply: number; firstMove: string } | null;
     onLastAddedBranchHandled: () => void;
     handleAddPvAsBranch: (ply: number, pv: string[]) => void;
@@ -78,6 +79,7 @@ export function NavigationProvider({
     selectedBranchNodeId,
     onSelectedBranchChange,
     branchMarkers,
+    analysisMarkers,
     lastAddedBranchInfo,
     onLastAddedBranchHandled,
     handleAddPvAsBranch,
@@ -103,6 +105,7 @@ export function NavigationProvider({
         selectedBranchNodeId,
         onSelectedBranchChange,
         branchMarkers,
+        analysisMarkers,
         lastAddedBranchInfo,
         onLastAddedBranchHandled,
         handleAddPvAsBranch,

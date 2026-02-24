@@ -31,7 +31,9 @@ export { POSITION_PRESETS, PositionPresetSelector } from "./components/PositionP
 export type { ShogiBoardCell, ShogiBoardPiece } from "./components/shogi-board";
 // shogi-board (online game 用)
 export { ShogiBoard } from "./components/shogi-board";
+export { BottomSheet } from "./components/shogi-match/components/BottomSheet";
 export { HandPiecesDisplay } from "./components/shogi-match/components/HandPiecesDisplay";
+export { KifuNavigationToolbar } from "./components/shogi-match/components/KifuNavigationToolbar";
 export { boardToGrid } from "./components/shogi-match/utils/positionUtils";
 // progress
 // shogi-board

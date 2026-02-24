@@ -13,6 +13,7 @@
         "lint:fix": "pnpm --workspace-root exec biome check --write --files-ignore-unknown=true",
         "lint:fix:unsafe": "pnpm --workspace-root exec biome check --write --unsafe --files-ignore-unknown=true",
         "preview": "vite preview",
+        "typecheck": "tsc -p tsconfig.json --noEmit",
         "test": "vitest run",
         "test:integration": "vitest run --reporter verbose worker/room-do.integration.test.ts",
         "test:e2e": "playwright test"

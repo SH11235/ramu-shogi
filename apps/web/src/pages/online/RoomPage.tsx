@@ -1,10 +1,13 @@
 // 待機画面・対局ルームページ（/online/:roomId）
 
+import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type { RoomClient, Seat, ServerMessage, SnapshotPayload } from "@shogi/match-client";
 import { createRoomClient } from "@shogi/match-client";
+import type { EngineOption } from "@shogi/ui";
+import { ShogiMatch } from "@shogi/ui";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { OnlineGameView } from "./OnlineGameView";
 
 // ─── ルーム情報の型（GET /api/rooms/:roomId のレスポンス） ────────────────────
@@ -63,7 +66,12 @@ export default function RoomPage(): ReactElement {
     const [joinError, setJoinError] = useState<string | null>(null);
     const [snapshot, setSnapshot] = useState<SnapshotPayload | null>(null);
     const [joined, setJoined] = useState(false);
-    const [gamePhase, setGamePhase] = useState<"waiting" | "playing">("waiting");
+    const [gamePhase, setGamePhase] = useState<"waiting" | "playing" | "reviewing">("waiting");
+    const [reviewData, setReviewData] = useState<{
+        sfen: string;
+        moves: string[];
+        analysisMarkers: Array<{ seat: "b" | "w"; ply: number }>;
+    } | null>(null);
 
     const clientRef = useRef<RoomClient | null>(null);
     const inviteUrl =
@@ -190,6 +198,30 @@ export default function RoomPage(): ReactElement {
 
     // ─── レンダリング ──────────────────────────────────────────────────────────
 
+    // 検討フェーズ: ShogiMatch で棋譜検討
+    const reviewEngineOptions = useMemo<EngineOption[]>(
+        () => [
+            {
+                id: "wasm",
+                label: "内蔵エンジン",
+                createClient: () => createWasmEngineClient({ stopMode: "terminate" }),
+                kind: "internal",
+            },
+        ],
+        [],
+    );
+
+    if (gamePhase === "reviewing" && reviewData) {
+        return (
+            <ShogiMatch
+                engineOptions={reviewEngineOptions}
+                defaultSides={{ sente: { role: "human" }, gote: { role: "human" } }}
+                initialReview={{ sfen: reviewData.sfen, moves: reviewData.moves }}
+                analysisMarkers={reviewData.analysisMarkers}
+            />
+        );
+    }
+
     // 対局フェーズ: OnlineGameView にインプレース切り替え（WebSocket 維持）
     if (gamePhase === "playing" && snapshot && clientRef.current) {
         return (
@@ -198,6 +230,10 @@ export default function RoomPage(): ReactElement {
                 snapshot={snapshot}
                 seat={joinSeat as Seat}
                 roomId={roomId}
+                onStartReview={(data) => {
+                    setReviewData(data);
+                    setGamePhase("reviewing");
+                }}
             />
         );
     }

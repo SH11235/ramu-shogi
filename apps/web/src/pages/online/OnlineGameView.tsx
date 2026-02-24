@@ -14,7 +14,13 @@ import type {
     Seat,
     SnapshotPayload,
 } from "@shogi/match-client";
-import { boardToGrid, HandPiecesDisplay, ShogiBoard } from "@shogi/ui";
+import {
+    BottomSheet,
+    boardToGrid,
+    HandPiecesDisplay,
+    KifuNavigationToolbar,
+    ShogiBoard,
+} from "@shogi/ui";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "./ChatPanel";
@@ -190,6 +196,11 @@ interface OnlineGameViewProps {
     snapshot: SnapshotPayload;
     seat: Seat;
     roomId: string;
+    onStartReview?: (data: {
+        sfen: string;
+        moves: string[];
+        analysisMarkers: Array<{ seat: "b" | "w"; ply: number }>;
+    }) => void;
 }
 
 export function OnlineGameView({
@@ -197,8 +208,11 @@ export function OnlineGameView({
     snapshot,
     seat,
     roomId,
+    onStartReview,
 }: OnlineGameViewProps): ReactElement {
     const [position, setPosition] = useState<PositionState | null>(null);
+    // ref で subscribe コールバック内から最新局面を参照するためのミラー
+    const positionRef = useRef<PositionState | null>(null);
     const [clockState, setClockState] = useState<ClockState>(snapshot.clock);
     const [turn, setTurn] = useState<"b" | "w">(snapshot.turn);
     const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
@@ -221,6 +235,14 @@ export function OnlineGameView({
         })),
     ]);
     const chatIdRef = useRef(snapshot.recentChat.length);
+
+    // positionHistory: ゲーム参加後の局面履歴（インデックス 0 = 参加時の局面）
+    const [positionHistory, setPositionHistory] = useState<PositionState[]>([]);
+    // navIndex: null = ライブ追従、数値 = 棋譜内の指定局面を表示
+    const [navIndex, setNavIndex] = useState<number | null>(null);
+
+    const [chatSheetOpen, setChatSheetOpen] = useState(false);
+    const [aiSheetOpen, setAiSheetOpen] = useState(false);
 
     // ─── AI サポート状態 ───────────────────────────────────────────────────────
     const aiSupport = snapshot.settings.aiSupport as AiSupportSettings | null;
@@ -251,6 +273,12 @@ export function OnlineGameView({
         ((turn === "b" && myPlayer === "sente") || (turn === "w" && myPlayer === "gote"));
     const isSpectator = seat === "s";
 
+    const totalPly = Math.max(0, positionHistory.length - 1);
+    const isRewound = navIndex !== null;
+    const currentPly = isRewound ? navIndex : totalPly;
+    // 表示用局面: 巻き戻し中は履歴の局面、それ以外はライブ局面
+    const displayPosition = isRewound ? (positionHistory[navIndex] ?? null) : position;
+
     // ─── 初期局面の読み込み ──────────────────────────────────────────────────
 
     useEffect(() => {
@@ -258,7 +286,11 @@ export function OnlineGameView({
         getPositionService()
             .parseSfen(snapshot.sfen)
             .then((pos) => {
-                if (!cancelled) setPosition(pos);
+                if (!cancelled) {
+                    positionRef.current = pos;
+                    setPosition(pos);
+                    setPositionHistory([pos]);
+                }
             })
             .catch(console.error);
         return () => {
@@ -276,11 +308,14 @@ export function OnlineGameView({
                 // サーバーは指し手以外のイベントでも latestEventId を増加させるため
                 latestEventIdRef.current = e.eventId;
                 if (e.kind === "move") {
-                    // 局面を更新
-                    setPosition((prev) => {
-                        if (!prev) return prev;
-                        return applyMoveWithState(prev, e.usi).next;
-                    });
+                    // positionRef で最新局面を参照（subscribe クロージャの stale 問題を回避）
+                    const prevPos = positionRef.current;
+                    if (prevPos) {
+                        const next = applyMoveWithState(prevPos, e.usi).next;
+                        positionRef.current = next;
+                        setPosition(next);
+                        setPositionHistory((ph) => [...ph, next]);
+                    }
                     movesRef.current = [...movesRef.current, e.usi];
                     setTurn(e.turn === "b" ? "w" : "b"); // 次の手番
                     setClockState(e.clock);
@@ -339,7 +374,12 @@ export function OnlineGameView({
                 movesRef.current = [...msg.payload.moves];
                 getPositionService()
                     .parseSfen(msg.payload.sfen)
-                    .then(setPosition)
+                    .then((pos) => {
+                        positionRef.current = pos;
+                        setPosition(pos);
+                        setPositionHistory([pos]);
+                        setNavIndex(null); // 再接続後は最新局面に戻す
+                    })
                     .catch((err) => {
                         console.error("[OnlineGameView] Failed to parse SFEN from snapshot:", err);
                         // サーバーに再同期リクエストを送信して最新状態を取得する
@@ -366,12 +406,46 @@ export function OnlineGameView({
     }, [isMyTurn]);
 
     useEffect(() => {
-        if (isMyTurn && !gameResult) {
+        // 巻き戻し中は合法手を表示しない
+        if (isMyTurn && !gameResult && !isRewound) {
             void fetchLegalMoves();
         } else {
             setLegalMoves([]);
         }
-    }, [isMyTurn, gameResult, fetchLegalMoves]);
+    }, [isMyTurn, gameResult, isRewound, fetchLegalMoves]);
+
+    // ─── 手番切替時に最新局面へ自動移動 ─────────────────────────────────────
+
+    const prevIsMyTurnRef = useRef(isMyTurn);
+    useEffect(() => {
+        const wasMyTurn = prevIsMyTurnRef.current;
+        prevIsMyTurnRef.current = isMyTurn;
+        // 自分の手番になったら巻き戻しを解除して最新局面に戻す
+        if (isMyTurn && !wasMyTurn) {
+            setNavIndex(null);
+        }
+    }, [isMyTurn]);
+
+    // ─── 棋譜ナビゲーションハンドラ ───────────────────────────────────────────
+
+    const handleNavBack = useCallback(() => {
+        setNavIndex((prev) => {
+            const cur = prev !== null ? prev : positionHistory.length - 1;
+            return Math.max(0, cur - 1);
+        });
+    }, [positionHistory.length]);
+
+    const handleNavForward = useCallback(() => {
+        setNavIndex((prev) => {
+            if (prev === null) return null;
+            const next = prev + 1;
+            // 最新局面に追いついたらライブ追従モードに戻す
+            return next >= positionHistory.length - 1 ? null : next;
+        });
+    }, [positionHistory.length]);
+
+    const handleNavStart = useCallback(() => setNavIndex(0), []);
+    const handleNavEnd = useCallback(() => setNavIndex(null), []);
 
     // ─── 盤面クリック処理 ────────────────────────────────────────────────────
 
@@ -454,7 +528,7 @@ export function OnlineGameView({
     }
 
     function handleHandSelect(pieceType: PieceType): void {
-        if (!isMyTurn || gameResult) return;
+        if (!isMyTurn || gameResult || isRewound) return;
         setSelectedHand(selectedHand === pieceType ? null : pieceType);
         setSelectedSquare(null);
     }
@@ -529,7 +603,8 @@ export function OnlineGameView({
 
     // ─── レンダリング ─────────────────────────────────────────────────────────
 
-    const grid = position ? boardToGrid(position.board) : [];
+    // 表示用盤面（巻き戻し中は履歴局面を使用）
+    const grid = displayPosition ? boardToGrid(displayPosition.board) : [];
     const clockDisplay = useOnlineClock(clockState);
 
     const flipBoard = seat === "w";
@@ -550,6 +625,21 @@ export function OnlineGameView({
         b: snapshot.players.b?.name ?? "先手",
         w: snapshot.players.w?.name ?? "後手",
     };
+
+    // PC サイドバーとモバイル BottomSheet で共通利用するコンテンツ
+    const aiPanelContent = aiSupport ? (
+        <OnlineAiPanel
+            aiSupport={aiSupport}
+            seat={seat}
+            myAnalysisRemaining={myAnalysisRemaining}
+            isAnalyzing={isAnalyzing}
+            topMoves={topMoves}
+            canAnalyze={!gameResult && !isSpectator}
+            onAnalyze={() => void handleAnalyze()}
+        />
+    ) : null;
+
+    const chatContent = <ChatPanel messages={chatMessages} client={client} canSend={!gameResult} />;
 
     return (
         <div className="flex flex-col md:flex-row gap-4 p-4 max-w-[900px] mx-auto">
@@ -575,13 +665,13 @@ export function OnlineGameView({
                 />
 
                 {/* 後手持ち駒（上） */}
-                {position && (
+                {displayPosition && (
                     <div className={`flex justify-${flipBoard ? "start" : "end"}`}>
                         <HandPiecesDisplay
                             owner="gote"
-                            hand={position.hands.gote}
+                            hand={displayPosition.hands.gote}
                             selectedPiece={myPlayer === "gote" ? selectedHand : null}
-                            isActive={isMyTurn && myPlayer === "gote"}
+                            isActive={!isRewound && isMyTurn && myPlayer === "gote"}
                             onHandSelect={handleHandSelect}
                             hideEmptyPieces
                             isMatchRunning
@@ -592,11 +682,13 @@ export function OnlineGameView({
                 )}
 
                 {/* 将棋盤 */}
-                {position ? (
+                {displayPosition ? (
                     <ShogiBoard
                         grid={grid}
                         selectedSquare={selectedSquare}
-                        onSelect={isMyTurn && !isSpectator ? handleBoardSelect : undefined}
+                        onSelect={
+                            !isRewound && isMyTurn && !isSpectator ? handleBoardSelect : undefined
+                        }
                         flipBoard={flipBoard}
                         showBoardLabels
                     />
@@ -607,13 +699,13 @@ export function OnlineGameView({
                 )}
 
                 {/* 先手持ち駒（下） */}
-                {position && (
+                {displayPosition && (
                     <div className={`flex justify-${flipBoard ? "end" : "start"}`}>
                         <HandPiecesDisplay
                             owner="sente"
-                            hand={position.hands.sente}
+                            hand={displayPosition.hands.sente}
                             selectedPiece={myPlayer === "sente" ? selectedHand : null}
-                            isActive={isMyTurn && myPlayer === "sente"}
+                            isActive={!isRewound && isMyTurn && myPlayer === "sente"}
                             onHandSelect={handleHandSelect}
                             hideEmptyPieces
                             isMatchRunning
@@ -633,9 +725,22 @@ export function OnlineGameView({
                     isFlipped={flipBoard}
                 />
 
+                {/* 棋譜ナビゲーション */}
+                {positionHistory.length > 0 && (
+                    <KifuNavigationToolbar
+                        currentPly={currentPly}
+                        totalPly={totalPly}
+                        onBack={handleNavBack}
+                        onForward={handleNavForward}
+                        onToStart={handleNavStart}
+                        onToEnd={handleNavEnd}
+                        isRewound={isRewound}
+                    />
+                )}
+
                 {/* 操作ボタン */}
-                {!isSpectator && !gameResult && (
-                    <div className="flex gap-2">
+                <div className="flex gap-2">
+                    {!isSpectator && !gameResult && (
                         <button
                             type="button"
                             onClick={handleResign}
@@ -643,8 +748,27 @@ export function OnlineGameView({
                         >
                             投了
                         </button>
-                    </div>
-                )}
+                    )}
+                    {/* モバイル専用のチャット/AI ボタン */}
+                    <button
+                        type="button"
+                        onClick={() => setChatSheetOpen(true)}
+                        className="md:hidden rounded-md bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80"
+                        aria-label="チャット"
+                    >
+                        💬
+                    </button>
+                    {aiSupport && (
+                        <button
+                            type="button"
+                            onClick={() => setAiSheetOpen(true)}
+                            className="md:hidden rounded-md bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80"
+                            aria-label="AI解析"
+                        >
+                            🤖
+                        </button>
+                    )}
+                </div>
 
                 {/* 観戦者数 */}
                 {snapshot.spectators > 0 && (
@@ -654,23 +778,10 @@ export function OnlineGameView({
                 )}
             </div>
 
-            {/* サイドバー: AI 解析 + チャット */}
-            <div className="w-full md:w-64 flex flex-col gap-3">
-                {/* AI 解析パネル */}
-                {aiSupport && (
-                    <OnlineAiPanel
-                        aiSupport={aiSupport}
-                        seat={seat}
-                        myAnalysisRemaining={myAnalysisRemaining}
-                        isAnalyzing={isAnalyzing}
-                        topMoves={topMoves}
-                        canAnalyze={!gameResult && !isSpectator}
-                        onAnalyze={() => void handleAnalyze()}
-                    />
-                )}
-                <div className="flex-1 h-64 md:h-auto min-h-[160px]">
-                    <ChatPanel messages={chatMessages} client={client} canSend={!gameResult} />
-                </div>
+            {/* サイドバー: AI 解析 + チャット（PC のみ表示） */}
+            <div className="hidden md:flex w-64 flex-col gap-3">
+                {aiPanelContent}
+                <div className="flex-1 h-64 md:h-auto min-h-[160px]">{chatContent}</div>
             </div>
 
             {/* 成り判定ダイアログ */}
@@ -695,7 +806,39 @@ export function OnlineGameView({
                     playerNames={playerNames}
                     onDownloadKifu={handleDownloadKifu}
                     analysisLog={analysisLog}
+                    onStartReview={
+                        onStartReview
+                            ? () =>
+                                  onStartReview({
+                                      sfen: startSfenRef.current,
+                                      moves: movesRef.current,
+                                      analysisMarkers: analysisLog,
+                                  })
+                            : undefined
+                    }
                 />
+            )}
+
+            {/* チャット（モバイル） */}
+            <BottomSheet
+                open={chatSheetOpen}
+                onOpenChange={setChatSheetOpen}
+                title="チャット"
+                height="full"
+            >
+                {chatContent}
+            </BottomSheet>
+
+            {/* AI 解析（モバイル） */}
+            {aiSupport && (
+                <BottomSheet
+                    open={aiSheetOpen}
+                    onOpenChange={setAiSheetOpen}
+                    title="AI 解析"
+                    height="auto"
+                >
+                    {aiPanelContent}
+                </BottomSheet>
             )}
         </div>
     );
@@ -786,6 +929,7 @@ interface GameEndDialogProps {
     playerNames: { b: string; w: string };
     onDownloadKifu: () => void;
     analysisLog: Array<{ seat: "b" | "w"; ply: number }>;
+    onStartReview?: () => void;
 }
 
 function GameEndDialog({
@@ -794,6 +938,7 @@ function GameEndDialog({
     playerNames,
     onDownloadKifu,
     analysisLog,
+    onStartReview,
 }: GameEndDialogProps): ReactElement {
     const winnerName =
         result.winner === "b" ? playerNames.b : result.winner === "w" ? playerNames.w : null;
@@ -831,6 +976,15 @@ function GameEndDialog({
                 )}
 
                 <div className="flex flex-col gap-2">
+                    {onStartReview && (
+                        <button
+                            type="button"
+                            onClick={onStartReview}
+                            className="w-full rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                        >
+                            棋譜を検討する
+                        </button>
+                    )}
                     {kifu && (
                         <>
                             <button
@@ -856,7 +1010,7 @@ function GameEndDialog({
                         onClick={() => {
                             window.location.href = "/";
                         }}
-                        className="w-full rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                        className="w-full rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
                     >
                         トップへ戻る
                     </button>

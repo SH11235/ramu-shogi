@@ -164,6 +164,8 @@ export interface NavigationProps {
     selectedBranchNodeId: string | null;
     setSelectedBranchNodeId: (id: string | null) => void;
     branchMarkers: Map<number, number>;
+    /** AI 解析使用マーカー */
+    analysisMarkers: Array<{ seat: "b" | "w"; ply: number }>;
     lastAddedBranchInfo: { ply: number; firstMove: string } | null;
     setLastAddedBranchInfo: (info: { ply: number; firstMove: string } | null) => void;
     handleAddPvAsBranch: (ply: number, pv: string[]) => void;

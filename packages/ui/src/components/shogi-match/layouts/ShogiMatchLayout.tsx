@@ -168,6 +168,7 @@ export function ShogiMatchLayout({
         selectedBranchNodeId,
         setSelectedBranchNodeId,
         branchMarkers,
+        analysisMarkers,
         lastAddedBranchInfo,
         setLastAddedBranchInfo,
         handleAddPvAsBranch,
@@ -395,6 +396,7 @@ export function ShogiMatchLayout({
                             selectedBranchNodeId={selectedBranchNodeId}
                             onSelectedBranchChange={setSelectedBranchNodeId}
                             branchMarkers={branchMarkers}
+                            analysisMarkers={analysisMarkers}
                             lastAddedBranchInfo={lastAddedBranchInfo}
                             onLastAddedBranchHandled={() => setLastAddedBranchInfo(null)}
                             handleAddPvAsBranch={handleAddPvAsBranch}
@@ -515,6 +517,7 @@ export function ShogiMatchLayout({
                                 selectedBranchNodeId={selectedBranchNodeId}
                                 onSelectedBranchChange={setSelectedBranchNodeId}
                                 branchMarkers={branchMarkers}
+                                analysisMarkers={analysisMarkers}
                                 lastAddedBranchInfo={lastAddedBranchInfo}
                                 onLastAddedBranchHandled={() => setLastAddedBranchInfo(null)}
                                 handleAddPvAsBranch={handleAddPvAsBranch}

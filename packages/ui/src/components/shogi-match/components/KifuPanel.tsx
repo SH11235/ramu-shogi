@@ -105,6 +105,8 @@ interface KifuPanelProps {
     navigationDisabled?: boolean;
     /** 分岐マーカー（ply -> 分岐数） */
     branchMarkers?: Map<number, number>;
+    /** AI 解析使用マーカー（対局後の検討室で表示） */
+    analysisMarkers?: Array<{ seat: "b" | "w"; ply: number }>;
     /** 局面履歴（各手が指された後の局面、PV表示用） */
     positionHistory?: PositionState[];
     /** PVを分岐として追加するコールバック */
@@ -1138,6 +1140,7 @@ export function KifuPanel({
     onViewModeChange,
     isOnMainLine = true,
     onMoveDetailSelect,
+    analysisMarkers,
 }: KifuPanelProps): ReactElement {
     // _onBranchSwitch: 将来的に分岐切り替え機能で使用予定
     const listRef = useRef<HTMLDivElement>(null);
@@ -1147,6 +1150,17 @@ export function KifuPanel({
     const [viewMode, setViewMode] = useState<KifuViewMode>("main");
     // 選択中の分岐情報
     const [selectedBranch, setSelectedBranch] = useState<SelectedBranch | null>(null);
+
+    // analysisMarkers を ply → Set<seat> に変換（棋譜行でのルックアップ用）
+    const analysisMarkersByPly = useMemo(() => {
+        const map = new Map<number, Set<"b" | "w">>();
+        for (const marker of analysisMarkers ?? []) {
+            const seats = map.get(marker.ply) ?? new Set<"b" | "w">();
+            seats.add(marker.seat);
+            map.set(marker.ply, seats);
+        }
+        return map;
+    }, [analysisMarkers]);
 
     // viewMode変更時に親に通知するラッパー（通知は一箇所に集約）
     const setViewModeWithNotify = useCallback(
@@ -1876,6 +1890,7 @@ export function KifuPanel({
                                     : "";
                                 const hasBranch = branchMarkers?.has(move.ply);
                                 const branchCount = branchMarkers?.get(move.ply);
+                                const analysisSeats = analysisMarkersByPly.get(move.ply);
                                 // この手での分岐一覧
                                 const branchesAtPly = branchesByPlyMap.get(move.ply) ?? [];
                                 const isExpanded = expandedPlies.has(move.ply);
@@ -1958,6 +1973,27 @@ export function KifuPanel({
                                                 </button>
                                             )}
                                         </span>
+                                        {/* AI 解析使用マーカー */}
+                                        {analysisSeats && (
+                                            <span className="flex items-center gap-0.5 ml-0.5">
+                                                {analysisSeats.has("b") && (
+                                                    <span
+                                                        className="text-[9px] text-wafuu-shu leading-none"
+                                                        title="先手がAI解析を使用"
+                                                    >
+                                                        ▲
+                                                    </span>
+                                                )}
+                                                {analysisSeats.has("w") && (
+                                                    <span
+                                                        className="text-[9px] text-wafuu-ai leading-none"
+                                                        title="後手がAI解析を使用"
+                                                    >
+                                                        △
+                                                    </span>
+                                                )}
+                                            </span>
+                                        )}
                                         <span
                                             className={`font-medium ${isPastCurrent ? "text-muted-foreground/50" : ""}`}
                                         >
