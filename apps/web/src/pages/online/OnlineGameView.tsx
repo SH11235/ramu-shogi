@@ -243,6 +243,10 @@ export function OnlineGameView({
     // 現在の start SFEN と moves
     const startSfenRef = useRef(snapshot.settings.startSfen);
     const movesRef = useRef<string[]>([...snapshot.moves]);
+    // サーバーの latestEventId を追跡（move/resign/use_analysis 送信時に使用）
+    // 指し手以外のイベント（chat/analysis_used/player_online 等）でも増加するため
+    // snapshot.eventId + moves.length の計算式は使えない
+    const latestEventIdRef = useRef(snapshot.eventId);
 
     // 自分の手番か
     const myPlayer: Player | null = seat === "b" ? "sente" : seat === "w" ? "gote" : null;
@@ -272,6 +276,9 @@ export function OnlineGameView({
         const unsub = client.subscribe((msg) => {
             if (msg.t === "event") {
                 const e = msg.payload;
+                // すべてのイベントで latestEventId を更新する
+                // サーバーは指し手以外のイベントでも latestEventId を増加させるため
+                latestEventIdRef.current = e.eventId;
                 if (e.kind === "move") {
                     // 局面を更新
                     setPosition((prev) => {
@@ -332,6 +339,9 @@ export function OnlineGameView({
                 // 再接続後のスナップショット更新
                 setClockState(msg.payload.clock);
                 setTurn(msg.payload.turn);
+                // latestEventId と moves を最新状態に同期する
+                latestEventIdRef.current = msg.payload.eventId;
+                movesRef.current = [...msg.payload.moves];
                 getPositionService()
                     .parseSfen(msg.payload.sfen)
                     .then(setPosition)
@@ -455,16 +465,14 @@ export function OnlineGameView({
         // 移動後の SFEN を計算して送信
         const nextPos = applyMoveWithState(position, usi).next;
         const nextSfen = await getPositionService().boardToSfen(nextPos);
-        const eventId = snapshot.eventId + movesRef.current.length;
-        client.move({ eventId, usi, sfen: nextSfen });
+        client.move({ eventId: latestEventIdRef.current, usi, sfen: nextSfen });
     }
 
     // ─── 投了 ────────────────────────────────────────────────────────────────
 
     function handleResign(): void {
         if (!isMyTurn && !position) return;
-        const eventId = snapshot.eventId + movesRef.current.length;
-        client.resign({ eventId });
+        client.resign({ eventId: latestEventIdRef.current });
     }
 
     // ─── AI 解析トリガー（T-A007） ────────────────────────────────────────────
@@ -473,9 +481,8 @@ export function OnlineGameView({
         if (!position || !aiSupport || seat === "s") return;
         // 制限モードは use_analysis を先送信してからエンジン解析
         if (myAiSettings?.mode === "limited") {
-            const eventId = snapshot.eventId + movesRef.current.length;
             const ply = movesRef.current.length;
-            client.useAnalysis({ eventId, ply });
+            client.useAnalysis({ eventId: latestEventIdRef.current, ply });
             // analysis_used 受信後に自動で残り回数が更新される
         }
         // WASM 解析開始

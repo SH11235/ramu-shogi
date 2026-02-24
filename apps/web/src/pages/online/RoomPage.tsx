@@ -96,74 +96,79 @@ export default function RoomPage(): ReactElement {
 
     // ─── WebSocket 接続 + join 送信 ────────────────────────────────────────────
 
-    const handleJoin = useCallback(() => {
-        if (!joinName.trim() || isJoining) return;
-        setIsJoining(true);
-        setJoinError(null);
+    const handleJoin = useCallback(
+        (seatToJoin: "b" | "w" | "s") => {
+            if (!joinName.trim() || isJoining) return;
+            setIsJoining(true);
+            setJoinSeat(seatToJoin);
+            setJoinError(null);
 
-        const wsUrl = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/rooms/${roomId}/ws`;
+            const wsUrl = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/rooms/${roomId}/ws`;
 
-        const client = createRoomClient({
-            wsUrl,
-            autoReconnect: true,
-            onReconnect: () => {
-                // 再接続後は subscribe 内の resumed ハンドラが処理
-            },
-        });
+            const client = createRoomClient({
+                wsUrl,
+                autoReconnect: true,
+                onReconnect: () => {
+                    // 再接続後は subscribe 内の resumed ハンドラが処理
+                },
+            });
 
-        clientRef.current = client;
+            clientRef.current = client;
 
-        const unsub = client.subscribe((msg: ServerMessage) => {
-            switch (msg.t) {
-                case "joined": {
-                    setJoined(true);
-                    setIsJoining(false);
-                    break;
-                }
-                case "snapshot": {
-                    setSnapshot(msg.payload);
-                    break;
-                }
-                case "event": {
-                    if (msg.payload.kind === "game_start") {
-                        // game_start → 待機画面からインプレースで対局画面へ切り替え
-                        // WebSocket 接続を維持したまま OnlineGameView を表示する
-                        unsub();
-                        setGamePhase("playing");
+            const unsub = client.subscribe((msg: ServerMessage) => {
+                switch (msg.t) {
+                    case "joined": {
+                        setJoined(true);
+                        setIsJoining(false);
+                        break;
                     }
-                    break;
+                    case "snapshot": {
+                        setSnapshot(msg.payload);
+                        break;
+                    }
+                    case "event": {
+                        if (msg.payload.kind === "game_start") {
+                            // game_start → 待機画面からインプレースで対局画面へ切り替え
+                            // WebSocket 接続を維持したまま OnlineGameView を表示する
+                            unsub();
+                            setGamePhase("playing");
+                        }
+                        break;
+                    }
+                    case "error": {
+                        setJoinError(msg.payload.message ?? "参加に失敗しました");
+                        setIsJoining(false);
+                        client.disconnect();
+                        clientRef.current = null;
+                        break;
+                    }
+                    default:
+                        break;
                 }
-                case "error": {
-                    setJoinError(msg.payload.message ?? "参加に失敗しました");
-                    setIsJoining(false);
-                    client.disconnect();
-                    clientRef.current = null;
-                    break;
-                }
-                default:
-                    break;
-            }
-        });
+            });
 
-        // join メッセージ送信（open 後に自動実行される）
-        // createRoomClient は接続後に send できるよう subscribe + open を待つ
-        // open イベント後 send するため、少し遅延させる
-        const sendJoin = (): void => {
-            if (client.getStatus() === "connected") {
-                client.join({ seat: joinSeat, name: joinName.trim() });
-            } else {
-                setTimeout(sendJoin, 100);
-            }
-        };
-        setTimeout(sendJoin, 50);
-    }, [joinName, joinSeat, isJoining, roomId]);
+            // join メッセージ送信（open 後に自動実行される）
+            // createRoomClient は接続後に send できるよう subscribe + open を待つ
+            // open イベント後 send するため、少し遅延させる
+            const sendJoin = (): void => {
+                if (client.getStatus() === "connected") {
+                    // seatToJoin をクロージャで直接参照し、setState の非同期更新に依存しない
+                    client.join({ seat: seatToJoin, name: joinName.trim() });
+                } else {
+                    setTimeout(sendJoin, 100);
+                }
+            };
+            setTimeout(sendJoin, 50);
+        },
+        [joinName, isJoining, roomId],
+    );
 
     // ルーム作成者（search.seat === "b"）は自動接続
     const autoJoinAttempted = useRef(false);
     useEffect(() => {
         if (search.seat === "b" && search.name && !autoJoinAttempted.current && roomInfo !== null) {
             autoJoinAttempted.current = true;
-            handleJoin();
+            handleJoin("b");
         }
     }, [search.seat, search.name, roomInfo, handleJoin]);
 
@@ -349,10 +354,7 @@ export default function RoomPage(): ReactElement {
                     <div className="flex flex-col gap-2">
                         <button
                             type="button"
-                            onClick={() => {
-                                setJoinSeat("w");
-                                handleJoin();
-                            }}
+                            onClick={() => handleJoin("w")}
                             disabled={isJoining || !joinName.trim()}
                             className="w-full rounded-lg bg-wafuu-ai py-2.5 text-sm font-semibold text-wafuu-ai-fg shadow hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         >
@@ -360,10 +362,7 @@ export default function RoomPage(): ReactElement {
                         </button>
                         <button
                             type="button"
-                            onClick={() => {
-                                setJoinSeat("s");
-                                handleJoin();
-                            }}
+                            onClick={() => handleJoin("s")}
                             disabled={isJoining || !joinName.trim()}
                             className="w-full rounded-lg bg-secondary py-2.5 text-sm font-semibold text-secondary-foreground shadow-sm hover:bg-secondary/80 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         >
