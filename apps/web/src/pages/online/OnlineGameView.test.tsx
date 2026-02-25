@@ -48,6 +48,7 @@ function makeMockClient(overrides: Partial<RoomClient> = {}): RoomClient {
         move: vi.fn(),
         resign: vi.fn(),
         useAnalysis: vi.fn(),
+        updateSettings: vi.fn(),
         ack: vi.fn(),
         sync: vi.fn(),
         ping: vi.fn(),
@@ -83,7 +84,6 @@ function makeSnapshot(overrides: Partial<SnapshotPayload> = {}): SnapshotPayload
             passRights: null,
             aiSupport: null,
         },
-        recentChat: [],
         ...overrides,
     };
 }
