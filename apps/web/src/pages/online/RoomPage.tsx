@@ -4,7 +4,7 @@ import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type { RoomClient, Seat, ServerMessage, SnapshotPayload } from "@shogi/match-client";
 import { createRoomClient } from "@shogi/match-client";
 import type { EngineOption } from "@shogi/ui";
-import { ShogiMatch } from "@shogi/ui";
+import { PositionPresetSelector, ShogiMatch } from "@shogi/ui";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -59,13 +59,12 @@ export default function RoomPage(): ReactElement {
     const [loadError, setLoadError] = useState<string | null>(null);
 
     const [joinName, setJoinName] = useState(search.name ?? "");
-    const [joinSeat, setJoinSeat] = useState<"b" | "w" | "s">(
-        (search.seat as "b" | "w" | "s" | undefined) ?? "w",
-    );
+    const [joinSeat, setJoinSeat] = useState<"b" | "w" | "s">("w");
     const [isJoining, setIsJoining] = useState(false);
     const [joinError, setJoinError] = useState<string | null>(null);
     const [snapshot, setSnapshot] = useState<SnapshotPayload | null>(null);
     const [joined, setJoined] = useState(false);
+    const [localStartSfen, setLocalStartSfen] = useState<string | null>(null);
     const [gamePhase, setGamePhase] = useState<"waiting" | "playing" | "reviewing">("waiting");
     const [reviewData, setReviewData] = useState<{
         sfen: string;
@@ -134,6 +133,9 @@ export default function RoomPage(): ReactElement {
                         break;
                     }
                     case "event": {
+                        if (msg.payload.kind === "settings_updated") {
+                            setLocalStartSfen(msg.payload.settings.startSfen);
+                        }
                         if (msg.payload.kind === "game_start") {
                             // game_start → 待機画面からインプレースで対局画面へ切り替え
                             // WebSocket 接続を維持したまま OnlineGameView を表示する
@@ -170,21 +172,23 @@ export default function RoomPage(): ReactElement {
         [joinName, isJoining, roomId],
     );
 
-    // ルーム作成者（search.seat === "b"）は自動接続
-    const autoJoinAttempted = useRef(false);
-    useEffect(() => {
-        if (search.seat === "b" && search.name && !autoJoinAttempted.current && roomInfo !== null) {
-            autoJoinAttempted.current = true;
-            handleJoin("b");
-        }
-    }, [search.seat, search.name, roomInfo, handleJoin]);
-
     // アンマウント時に WebSocket を閉じる
     useEffect(() => {
         return () => {
             clientRef.current?.disconnect();
         };
     }, []);
+
+    // ─── ヘルパー ──────────────────────────────────────────────────────────────
+
+    function isSeatTaken(seat: "b" | "w"): boolean {
+        return (snapshot?.players ?? roomInfo?.players)?.[seat] != null;
+    }
+
+    function handleUpdateStartSfen(startSfen: string): void {
+        setLocalStartSfen(startSfen);
+        clientRef.current?.updateSettings({ startSfen });
+    }
 
     // ─── コピー処理 ────────────────────────────────────────────────────────────
 
@@ -273,14 +277,16 @@ export default function RoomPage(): ReactElement {
         return `フィッシャー ${min} 分 + ${inc} 秒`;
     })();
 
+    const displayStartSfen = localStartSfen ?? roomInfo.settings.startSfen;
     const startSfenLabel = (() => {
-        const s = roomInfo.settings.startSfen;
+        const s = displayStartSfen;
         if (s === "startpos") return "平手";
         if (s === "handicap:bishop") return "角落ち";
         if (s === "handicap:rook") return "飛車落ち";
         if (s === "handicap:rook-bishop") return "飛車角落ち";
         return "カスタム局面";
     })();
+    const currentStatus = snapshot?.status ?? roomInfo.status;
 
     return (
         <div className="mx-auto flex max-w-[480px] flex-col gap-5 px-4 py-8">
@@ -389,11 +395,27 @@ export default function RoomPage(): ReactElement {
                     <div className="flex flex-col gap-2">
                         <button
                             type="button"
+                            onClick={() => handleJoin("b")}
+                            disabled={isJoining || !joinName.trim() || isSeatTaken("b")}
+                            className="w-full rounded-lg bg-wafuu-shu py-2.5 text-sm font-semibold text-wafuu-shu-fg shadow hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        >
+                            {isJoining && joinSeat === "b"
+                                ? "接続中..."
+                                : isSeatTaken("b")
+                                  ? "先手（▲）は満席です"
+                                  : "先手として参加する"}
+                        </button>
+                        <button
+                            type="button"
                             onClick={() => handleJoin("w")}
-                            disabled={isJoining || !joinName.trim()}
+                            disabled={isJoining || !joinName.trim() || isSeatTaken("w")}
                             className="w-full rounded-lg bg-wafuu-ai py-2.5 text-sm font-semibold text-wafuu-ai-fg shadow hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         >
-                            {isJoining && joinSeat === "w" ? "接続中..." : "後手として参加する"}
+                            {isJoining && joinSeat === "w"
+                                ? "接続中..."
+                                : isSeatTaken("w")
+                                  ? "後手（△）は満席です"
+                                  : "後手として参加する"}
                         </button>
                         <button
                             type="button"
@@ -411,6 +433,17 @@ export default function RoomPage(): ReactElement {
             {joined && (
                 <div className="rounded-lg border border-status-online-border bg-status-online-bg p-4 text-sm text-status-online">
                     接続しました。対局開始を待っています...
+                </div>
+            )}
+
+            {/* 開始局面変更（待機中のみ） */}
+            {joined && currentStatus === "waiting" && (
+                <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4">
+                    <span className="text-sm font-semibold text-foreground">開始局面を変更</span>
+                    <PositionPresetSelector
+                        value={displayStartSfen}
+                        onChange={handleUpdateStartSfen}
+                    />
                 </div>
             )}
 

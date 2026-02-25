@@ -15,7 +15,6 @@ const mockClient = {
     resume: vi.fn(),
     move: vi.fn(),
     resign: vi.fn(),
-    chat: vi.fn(),
     useAnalysis: vi.fn(),
     ack: vi.fn(),
     sync: vi.fn(),

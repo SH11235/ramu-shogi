@@ -227,13 +227,8 @@ function getConnectedMetas(doState: DurableObjectState): Map<WebSocket, WsConnec
  * DurableObject はクラス必須のため class を使用。
  * 内部ロジックは関数型で実装する。
  */
-const CHAT_RATE_LIMIT_WINDOW_MS = 10_000;
-const CHAT_RATE_LIMIT_MAX = 5;
-
 export class RoomDO implements DurableObject {
     private readonly doState: DurableObjectState;
-    // チャットレート制限用: シート → 送信タイムスタンプ一覧（メモリ上で管理）
-    private readonly chatTimestamps = new Map<Seat, number[]>();
 
     constructor(state: DurableObjectState, _env: unknown) {
         this.doState = state;
@@ -313,8 +308,12 @@ export class RoomDO implements DurableObject {
                     msg.payload as { eventId: number; ply: number },
                 );
                 break;
-            case "chat":
-                await this.handleChat(ws, msg.clientMsgId, msg.payload as { text: string });
+            case "update_settings":
+                await this.handleUpdateSettings(
+                    ws,
+                    msg.clientMsgId,
+                    msg.payload as { startSfen: string },
+                );
                 break;
             case "sync":
                 await this.handleSync(ws, msg.payload as { sinceEventId: number });
@@ -879,53 +878,52 @@ export class RoomDO implements DurableObject {
         this.broadcastToAll({ v: 1, t: "event", payload: analysisUsedEvent });
     }
 
-    /** chat メッセージ処理（基本実装） */
-    private async handleChat(
+    /** update_settings メッセージ処理（待機中のみ） */
+    private async handleUpdateSettings(
         ws: WebSocket,
         clientMsgId: number,
-        payload: { text: string },
+        payload: { startSfen: string },
     ): Promise<void> {
         const room = await this.doState.storage.get<RoomStorageState>("room");
-        if (!room) return;
-
-        const meta = ws.deserializeAttachment() as WsConnectionMeta | null;
-        if (!meta) return;
-
-        const text = typeof payload.text === "string" ? payload.text.trim() : "";
-        if (!text || text.length > 200) {
-            sendWsError(ws, "UNKNOWN", "Invalid chat text: must be 1-200 characters", clientMsgId);
+        if (!room) {
+            sendWsError(ws, "ROOM_NOT_FOUND", "Room not found", clientMsgId);
             return;
         }
 
+        if (room.status !== "waiting") {
+            sendWsError(ws, "UNKNOWN", "Settings can only be changed while waiting", clientMsgId);
+            return;
+        }
+
+        const { startSfen } = payload;
+        if (typeof startSfen !== "string") {
+            sendWsError(ws, "UNKNOWN", "Invalid startSfen", clientMsgId);
+            return;
+        }
+
+        // "startpos"、プリセット名、または4フィールド以上のSFENのみ許可
+        const isValid =
+            startSfen === "startpos" ||
+            Object.keys(HANDICAP_SFENS).includes(startSfen) ||
+            startSfen.split(" ").length >= 4;
+
+        if (!isValid) {
+            sendWsError(ws, "UNKNOWN", "Invalid startSfen format", clientMsgId);
+            return;
+        }
+
+        room.settings.startSfen = startSfen;
         const now = Date.now();
-
-        // チャットレート制限チェック（10秒間に5通まで）
-        const seat = meta.seat;
-        const prevTimestamps = this.chatTimestamps.get(seat) ?? [];
-        const recentTimestamps = prevTimestamps.filter((t) => now - t < CHAT_RATE_LIMIT_WINDOW_MS);
-        if (recentTimestamps.length >= CHAT_RATE_LIMIT_MAX) {
-            sendWsError(
-                ws,
-                "RATE_LIMITED",
-                "Chat rate limit exceeded (5 messages per 10 seconds)",
-                clientMsgId,
-            );
-            return;
-        }
-        recentTimestamps.push(now);
-        this.chatTimestamps.set(seat, recentTimestamps);
         const eventId = ++room.latestEventId;
-        const chatEvent: RoomEvent = {
+        const settingsUpdatedEvent: RoomEvent = {
             eventId,
-            kind: "chat",
-            seat: meta.seat,
-            text,
+            kind: "settings_updated",
+            settings: { startSfen },
             serverTs: now,
         };
-
-        room.events.push(chatEvent);
+        room.events.push(settingsUpdatedEvent);
         await this.doState.storage.put("room", room);
-        this.broadcastToAll({ v: 1, t: "event", payload: chatEvent });
+        this.broadcastToAll({ v: 1, t: "event", payload: settingsUpdatedEvent });
     }
 
     // ─── ゲーム開始 ──────────────────────────────────────────────────────
@@ -1004,8 +1002,6 @@ export class RoomDO implements DurableObject {
             (m) => m.seat === "s",
         ).length;
 
-        const chatEvents = room.events.filter((e) => e.kind === "chat").slice(-50);
-
         const snapshot = {
             eventId: room.latestEventId,
             status: room.status,
@@ -1029,7 +1025,6 @@ export class RoomDO implements DurableObject {
             },
             spectators: spectatorCount,
             settings: room.settings,
-            recentChat: chatEvents,
         };
 
         sendWsMessage(ws, { v: 1, t: "snapshot", payload: snapshot });

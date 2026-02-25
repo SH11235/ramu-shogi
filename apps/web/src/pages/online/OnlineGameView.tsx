@@ -23,8 +23,6 @@ import {
 } from "@shogi/ui";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ChatMessage } from "./ChatPanel";
-import { ChatPanel } from "./ChatPanel";
 
 // ─── 型定義 ───────────────────────────────────────────────────────────────────
 
@@ -226,22 +224,11 @@ export function OnlineGameView({
     const [gameResult, setGameResult] = useState<GameResult | null>(null);
     const [kifu, setKifu] = useState<string>("");
     const [offlineSeats, setOfflineSeats] = useState<Set<string>>(new Set());
-    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-        ...snapshot.recentChat.map((e, i) => ({
-            id: i,
-            seat: e.seat,
-            name: e.name,
-            text: e.text,
-        })),
-    ]);
-    const chatIdRef = useRef(snapshot.recentChat.length);
-
     // positionHistory: ゲーム参加後の局面履歴（インデックス 0 = 参加時の局面）
     const [positionHistory, setPositionHistory] = useState<PositionState[]>([]);
     // navIndex: null = ライブ追従、数値 = 棋譜内の指定局面を表示
     const [navIndex, setNavIndex] = useState<number | null>(null);
 
-    const [chatSheetOpen, setChatSheetOpen] = useState(false);
     const [aiSheetOpen, setAiSheetOpen] = useState(false);
 
     // ─── AI サポート状態 ───────────────────────────────────────────────────────
@@ -342,16 +329,6 @@ export function OnlineGameView({
                         next.delete(e.seat);
                         return next;
                     });
-                } else if (e.kind === "chat") {
-                    setChatMessages((prev) => [
-                        ...prev,
-                        {
-                            id: chatIdRef.current++,
-                            seat: e.seat,
-                            name: e.name,
-                            text: e.text,
-                        },
-                    ]);
                 } else if (e.kind === "analysis_used") {
                     // 自分の残り回数を更新
                     if (e.seat === seat && e.seat !== "s") {
@@ -639,8 +616,6 @@ export function OnlineGameView({
         />
     ) : null;
 
-    const chatContent = <ChatPanel messages={chatMessages} client={client} canSend={!gameResult} />;
-
     return (
         <div className="flex flex-col md:flex-row gap-4 p-4 max-w-[900px] mx-auto">
             {/* 切断バナー */}
@@ -749,15 +724,6 @@ export function OnlineGameView({
                             投了
                         </button>
                     )}
-                    {/* モバイル専用のチャット/AI ボタン */}
-                    <button
-                        type="button"
-                        onClick={() => setChatSheetOpen(true)}
-                        className="md:hidden rounded-md bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80"
-                        aria-label="チャット"
-                    >
-                        💬
-                    </button>
                     {aiSupport && (
                         <button
                             type="button"
@@ -778,11 +744,8 @@ export function OnlineGameView({
                 )}
             </div>
 
-            {/* サイドバー: AI 解析 + チャット（PC のみ表示） */}
-            <div className="hidden md:flex w-64 flex-col gap-3">
-                {aiPanelContent}
-                <div className="flex-1 h-64 md:h-auto min-h-[160px]">{chatContent}</div>
-            </div>
+            {/* サイドバー: AI 解析（PC のみ表示） */}
+            <div className="hidden md:flex w-64 flex-col gap-3">{aiPanelContent}</div>
 
             {/* 成り判定ダイアログ */}
             {promoteDialog && (
@@ -818,16 +781,6 @@ export function OnlineGameView({
                     }
                 />
             )}
-
-            {/* チャット（モバイル） */}
-            <BottomSheet
-                open={chatSheetOpen}
-                onOpenChange={setChatSheetOpen}
-                title="チャット"
-                height="full"
-            >
-                {chatContent}
-            </BottomSheet>
 
             {/* AI 解析（モバイル） */}
             {aiSupport && (

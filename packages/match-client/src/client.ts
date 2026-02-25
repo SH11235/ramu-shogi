@@ -138,12 +138,12 @@ export function createRoomClient(
             send("resign", params);
         },
 
-        chat(params) {
-            send("chat", params);
-        },
-
         useAnalysis(params) {
             send("use_analysis", params);
+        },
+
+        updateSettings(params) {
+            send("update_settings", params);
         },
 
         ack(params) {

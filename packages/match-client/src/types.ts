@@ -130,13 +130,6 @@ export interface GameEndEvent extends RoomEventBase {
     kifu: string;
 }
 
-export interface ChatEvent extends RoomEventBase {
-    kind: "chat";
-    seat: Seat;
-    name: string;
-    text: string;
-}
-
 export interface PlayerOnlineEvent extends RoomEventBase {
     kind: "player_online";
     seat: Seat;
@@ -153,6 +146,11 @@ export interface AnalysisUsedEvent extends RoomEventBase {
     analysisRemaining: number;
 }
 
+export interface SettingsUpdatedEvent extends RoomEventBase {
+    kind: "settings_updated";
+    settings: Pick<RoomSettings, "startSfen">;
+}
+
 export type RoomEvent =
     | GameStartEvent
     | MoveEvent
@@ -163,10 +161,10 @@ export type RoomEvent =
     | IllegalMoveEvent
     | DisconnectLossEvent
     | GameEndEvent
-    | ChatEvent
     | PlayerOnlineEvent
     | PlayerOfflineEvent
-    | AnalysisUsedEvent;
+    | AnalysisUsedEvent
+    | SettingsUpdatedEvent;
 
 // ─── SnapshotPayload ──────────────────────────────────────────────────────
 export interface SnapshotPayload {
@@ -183,7 +181,6 @@ export interface SnapshotPayload {
     };
     spectators: number;
     settings: RoomSettings;
-    recentChat: ChatEvent[];
 }
 
 // ─── エラーコード ─────────────────────────────────────────────────────────
@@ -258,8 +255,8 @@ export type ClientMessageType =
     | "resume"
     | "move"
     | "resign"
-    | "chat"
     | "use_analysis"
+    | "update_settings"
     | "ack"
     | "sync"
     | "ping";
@@ -277,8 +274,8 @@ export interface RoomClient {
     resume(params: { resumeToken: string; lastEventId: number }): void;
     move(params: { eventId: number; usi: string; sfen: string }): void;
     resign(params: { eventId: number }): void;
-    chat(params: { text: string }): void;
     useAnalysis(params: { eventId: number; ply: number }): void;
+    updateSettings(params: { startSfen: string }): void;
     ack(params: { lastEventId: number }): void;
     sync(params: { sinceEventId: number }): void;
     ping(): void;

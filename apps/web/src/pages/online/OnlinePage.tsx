@@ -114,7 +114,7 @@ export default function OnlinePage(): ReactElement {
             await navigate({
                 to: "/online/$roomId",
                 params: { roomId: data.roomId },
-                search: { name: settings.name.trim(), seat: "b", mode: undefined },
+                search: { name: settings.name.trim(), seat: undefined, mode: undefined },
             });
         } catch {
             setCreateError("ネットワークエラーが発生しました");
@@ -249,7 +249,7 @@ function CreateRoomDialog({
             {/* 名前入力 */}
             <div className="flex flex-col gap-2">
                 <label htmlFor="player-name" className={labelClass}>
-                    あなたの名前（先手）
+                    あなたの名前
                 </label>
                 <input
                     id="player-name"
