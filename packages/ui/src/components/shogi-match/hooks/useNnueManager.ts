@@ -26,6 +26,11 @@ interface UseNnueManagerParams {
     restartEngineForNnue: (side: Player, selection?: NnueSelection) => Promise<void>;
 }
 
+const getStorageFlag = (key: string): boolean => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(key) !== null;
+};
+
 interface UseNnueManagerResult {
     // 対局用NNUE選択
     senteNnueSelection: NnueSelection;
@@ -63,6 +68,9 @@ export function useNnueManager({
     manifestUrl,
     restartEngineForNnue,
 }: UseNnueManagerParams): UseNnueManagerResult {
+    const hasStoredSenteSelectionRef = useRef(getStorageFlag("shogi:senteNnueSelection"));
+    const hasStoredGoteSelectionRef = useRef(getStorageFlag("shogi:goteNnueSelection"));
+    const hasStoredAnalysisSelectionRef = useRef(getStorageFlag("shogi:analysisNnueSelection"));
     // 対局用 NNUE 選択
     const [senteNnueSelection, setSenteNnueSelection] = useLocalStorage<NnueSelection>(
         "shogi:senteNnueSelection",
@@ -93,7 +101,11 @@ export function useNnueManager({
     } = useNnueStorage();
 
     // プリセット一覧を取得
-    const { presets, isLoading: isPresetsLoading } = usePresetManager({
+    const {
+        presets,
+        isLoading: isPresetsLoading,
+        hasFetchedPresets,
+    } = usePresetManager({
         manifestUrl,
         autoFetch: true,
         onDownloadComplete: () => {
@@ -137,6 +149,10 @@ export function useNnueManager({
         isNnueListLoading,
         presets,
         isPresetsLoading,
+        hasFetchedPresets,
+        hasStoredSenteSelection: hasStoredSenteSelectionRef.current,
+        hasStoredGoteSelection: hasStoredGoteSelectionRef.current,
+        hasStoredAnalysisSelection: hasStoredAnalysisSelectionRef.current,
         defaultNnueSelection,
         manifestUrl,
         restartEngineForNnue: (side, selection) =>

@@ -1,12 +1,6 @@
-import type { NnueFormat } from "@shogi/app-core";
-import {
-    createIndexedDBNnueStorage,
-    createWasmEngineClient,
-    detect_nnue_format,
-    is_nnue_compatible,
-} from "@shogi/engine-wasm";
+import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type { EngineOption } from "@shogi/ui";
-import { EngineControlPanel, NnueProvider, ShogiMatch, useDevMode } from "@shogi/ui";
+import { EngineControlPanel, ShogiMatch, useDevMode } from "@shogi/ui";
 import { useNavigate } from "@tanstack/react-router";
 
 const resolveWasmThreads = () => {
@@ -33,42 +27,33 @@ const engineOptions: EngineOption[] = [
 
 const panelEngine = createEngineClient();
 
-// Web版のストレージも同期的に初期化可能
-const nnueStorage = createIndexedDBNnueStorage();
-// NNUE プリセット manifest.json の URL（環境変数で設定）
-const nnueManifestUrl = import.meta.env.VITE_NNUE_MANIFEST_URL as string | undefined;
-
-const validateNnueHeader = async (header: Uint8Array, fileSize: number) => ({
-    format: detect_nnue_format(header, BigInt(fileSize)) as NnueFormat,
-    isCompatible: is_nnue_compatible(header, BigInt(fileSize)),
-});
+// NNUE プリセット manifest.json の URL（環境変数で設定、必須）
+const nnueManifestUrl = import.meta.env.VITE_NNUE_MANIFEST_URL as string;
 
 function App() {
     const isDevMode = useDevMode();
     const navigate = useNavigate();
 
     return (
-        <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
-            <main className="mx-auto flex max-w-[1100px] flex-col gap-3 md:px-5">
-                <div className="flex items-center justify-end px-1 pt-2">
-                    <button
-                        type="button"
-                        onClick={() => void navigate({ to: "/online" })}
-                        className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    >
-                        オンライン対局を始める
-                    </button>
-                </div>
-                <ShogiMatch
-                    engineOptions={engineOptions}
-                    isDevMode={isDevMode}
-                    manifestUrl={nnueManifestUrl}
-                    defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
-                    aiIconUrl={`${import.meta.env.BASE_URL}ramu.jpeg`}
-                />
-                {isDevMode && <EngineControlPanel engine={panelEngine} />}
-            </main>
-        </NnueProvider>
+        <main className="mx-auto flex max-w-[1100px] flex-col gap-3 md:px-5">
+            <div className="flex items-center justify-end px-1 pt-2">
+                <button
+                    type="button"
+                    onClick={() => void navigate({ to: "/online" })}
+                    className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                    オンライン対局を始める
+                </button>
+            </div>
+            <ShogiMatch
+                engineOptions={engineOptions}
+                isDevMode={isDevMode}
+                manifestUrl={nnueManifestUrl}
+                defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
+                aiIconUrl={`${import.meta.env.BASE_URL}ramu.jpeg`}
+            />
+            {isDevMode && <EngineControlPanel engine={panelEngine} />}
+        </main>
     );
 }
 

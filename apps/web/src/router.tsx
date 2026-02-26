@@ -1,10 +1,11 @@
-import { createRootRoute, createRoute, createRouter, Outlet } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import App from "./App";
+import { AppProviders } from "./AppProviders";
 import OnlinePage from "./pages/online/OnlinePage";
 import RoomPage from "./pages/online/RoomPage";
 
 const rootRoute = createRootRoute({
-    component: Outlet,
+    component: AppProviders,
 });
 
 const indexRoute = createRoute({

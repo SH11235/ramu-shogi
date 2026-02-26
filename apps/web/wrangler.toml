@@ -23,9 +23,9 @@ class_name = "RoomDO"
 
 [[migrations]]
 tag = "v1"
-new_classes = ["RoomDO"]
+new_sqlite_classes = ["RoomDO"]
 
-# Rate Limiting（T-503）: POST /api/rooms への IP ごとのレート制限
+# Rate Limiting: POST /api/rooms への IP ごとのレート制限
 # namespace_id は Cloudflare Dashboard > Workers > Rate Limiting で作成し設定する
 [[unsafe.bindings]]
 name = "ROOM_RATE_LIMITER"
@@ -52,4 +52,4 @@ class_name = "RoomDO"
 
 [[env.stg.migrations]]
 tag = "v1"
-new_classes = ["RoomDO"]
+new_sqlite_classes = ["RoomDO"]

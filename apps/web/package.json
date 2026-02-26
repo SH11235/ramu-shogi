@@ -5,8 +5,9 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
-        "build": "tsc -b && vite build",
-        "build:analyze": "ANALYZE=true tsc -b && ANALYZE=true vite build",
+        "check:env": "node ../../scripts/check-env.mjs --dir . --mode production",
+        "build": "pnpm check:env && tsc -b && vite build",
+        "build:analyze": "pnpm check:env && ANALYZE=true tsc -b && ANALYZE=true vite build",
         "format": "pnpm --workspace-root exec biome format --write .",
         "format:check": "pnpm --workspace-root exec biome format .",
         "lint": "pnpm --workspace-root exec biome check .",

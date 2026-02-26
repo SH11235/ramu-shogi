@@ -26,8 +26,8 @@ const panelEngine = createEngineClient();
 // Tauri版のストレージは同期的に初期化可能
 const nnueStorage = createTauriNnueStorage();
 
-// NNUE プリセット manifest.json の URL（環境変数で設定）
-const nnueManifestUrl = import.meta.env.VITE_NNUE_MANIFEST_URL as string | undefined;
+// NNUE プリセット manifest.json の URL（環境変数で設定、必須）
+const nnueManifestUrl = import.meta.env.VITE_NNUE_MANIFEST_URL as string;
 
 const validateNnueHeader = async (header: Uint8Array, fileSize: number) => ({
     format: (await detect_nnue_format(header, fileSize)) as NnueFormat,

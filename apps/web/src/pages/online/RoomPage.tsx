@@ -10,6 +10,14 @@ import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { OnlineGameView } from "./OnlineGameView";
 
+const nnueManifestUrl: string = (() => {
+    const value = import.meta.env.VITE_NNUE_MANIFEST_URL as string | undefined;
+    if (!value) {
+        throw new Error("VITE_NNUE_MANIFEST_URL is required.");
+    }
+    return value;
+})();
+
 // ─── ルーム情報の型（GET /api/rooms/:roomId のレスポンス） ────────────────────
 
 interface AiSupportPlayerSettings {
@@ -222,6 +230,7 @@ export default function RoomPage(): ReactElement {
                 defaultSides={{ sente: { role: "human" }, gote: { role: "human" } }}
                 initialReview={{ sfen: reviewData.sfen, moves: reviewData.moves }}
                 analysisMarkers={reviewData.analysisMarkers}
+                manifestUrl={nnueManifestUrl}
             />
         );
     }

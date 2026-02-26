@@ -7,7 +7,7 @@ import {
     type PresetManager,
     type PresetWithStatus,
 } from "@shogi/app-core";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNnueContextOptional } from "../providers/NnueContext";
 
 interface UsePresetManagerReturn {
@@ -29,6 +29,8 @@ interface UsePresetManagerReturn {
     clearError: () => void;
     /** manifest URL が設定されているか */
     isConfigured: boolean;
+    /** プリセット取得の試行済みフラグ */
+    hasFetchedPresets: boolean;
 }
 
 interface UsePresetManagerOptions {
@@ -57,8 +59,22 @@ export function usePresetManager(options: UsePresetManagerOptions = {}): UsePres
     const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
     const [downloadProgress, setDownloadProgress] = useState<NnueDownloadProgress | null>(null);
     const [error, setError] = useState<NnueError | null>(null);
+    const [hasFetchedPresets, setHasFetchedPresets] = useState(false);
+
+    const hasLoggedConfigRef = useRef(false);
+    const hasLoggedErrorRef = useRef(false);
 
     const isConfigured = Boolean(manifestUrl && storage);
+
+    useEffect(() => {
+        if (isConfigured) return;
+        if (hasLoggedConfigRef.current) return;
+        hasLoggedConfigRef.current = true;
+        console.warn("[nnue] presets not configured", {
+            manifestUrl: manifestUrl ?? null,
+            storage: Boolean(storage),
+        });
+    }, [isConfigured, manifestUrl, storage]);
 
     // PresetManager インスタンスを作成
     const manager = useMemo<PresetManager | null>(() => {
@@ -76,8 +92,15 @@ export function usePresetManager(options: UsePresetManagerOptions = {}): UsePres
         setIsLoading(true);
         setError(null);
         try {
+            const manifest = await manager.getManifest();
             const statuses = await manager.getPresetStatuses();
             setPresets(statuses);
+            if (statuses.length === 0) {
+                console.warn("[nnue] preset list empty", {
+                    manifestUrl,
+                    manifestPresetCount: manifest.presets.length,
+                });
+            }
         } catch (e) {
             const err =
                 e instanceof NnueError
@@ -90,8 +113,9 @@ export function usePresetManager(options: UsePresetManagerOptions = {}): UsePres
             setError(err);
         } finally {
             setIsLoading(false);
+            setHasFetchedPresets(true);
         }
-    }, [manager]);
+    }, [manager, manifestUrl]);
 
     // 初回自動取得
     useEffect(() => {
@@ -99,6 +123,17 @@ export function usePresetManager(options: UsePresetManagerOptions = {}): UsePres
             void refresh();
         }
     }, [autoFetch, manager, refresh]);
+
+    useEffect(() => {
+        if (!error) return;
+        if (hasLoggedErrorRef.current) return;
+        hasLoggedErrorRef.current = true;
+        console.warn("[nnue] preset fetch error", {
+            code: error.code,
+            message: error.message,
+            manifestUrl: manifestUrl ?? null,
+        });
+    }, [error, manifestUrl]);
 
     const validatePresetMeta = useCallback(
         async (meta: NnueMeta) => {
@@ -220,6 +255,7 @@ export function usePresetManager(options: UsePresetManagerOptions = {}): UsePres
         download,
         clearError,
         isConfigured,
+        hasFetchedPresets,
     };
 }
 

@@ -96,8 +96,8 @@ interface ShogiMatchProps {
     ) => Promise<string[]>;
     /** 開発者モード（エンジンログパネルなどを表示） */
     isDevMode?: boolean;
-    /** NNUE プリセット manifest.json の URL（指定時のみプリセット機能が有効） */
-    manifestUrl?: string;
+    /** NNUE プリセット manifest.json の URL（必須） */
+    manifestUrl: string;
     /** Desktop 用: NNUE ファイル選択ダイアログを開いてパスを取得するコールバック */
     onRequestNnueFilePath?: () => Promise<string | null>;
     /** デフォルトの NNUE プリセットキー（未指定時は DEFAULT_PRESET_KEY） */
