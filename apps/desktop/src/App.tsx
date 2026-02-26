@@ -9,6 +9,7 @@ import {
 import type { EngineOption } from "@shogi/ui";
 import { EngineControlPanel, NnueProvider, ShogiMatch } from "@shogi/ui";
 import { open } from "@tauri-apps/plugin-dialog";
+import { useState } from "react";
 
 const createEngineClient = () =>
     createTauriEngineClient({
@@ -50,6 +51,11 @@ async function requestNnueFilePath(): Promise<string | null> {
 
 function App() {
     // デスクトップ版は常に開発者モードを有効化
+    const [panelPosition, setPanelPosition] = useState<{
+        label?: string;
+        sfen: string;
+        moves?: string[];
+    }>({ label: "現在局面", sfen: "startpos", moves: [] });
     return (
         <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
             <main className="mx-auto flex max-w-[1100px] flex-col gap-3 md:px-5">
@@ -62,8 +68,9 @@ function App() {
                     manifestUrl={nnueManifestUrl}
                     onRequestNnueFilePath={requestNnueFilePath}
                     defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
+                    onPositionSnapshot={(snapshot) => setPanelPosition(snapshot)}
                 />
-                <EngineControlPanel engine={panelEngine} />
+                <EngineControlPanel engine={panelEngine} position={panelPosition} />
             </main>
         </NnueProvider>
     );

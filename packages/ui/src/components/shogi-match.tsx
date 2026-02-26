@@ -54,6 +54,7 @@ import type {
     AnalysisSettings,
     DisplaySettings,
     EngineOption,
+    EngineThreadSettings,
     GameMode,
     PassRightsSettings,
     SideSetting,
@@ -110,6 +111,8 @@ interface ShogiMatchProps {
     analysisMarkers?: Array<{ seat: "b" | "w"; ply: number }>;
     /** マウント時に読み込む棋譜（指定時は検討室モードで開始） */
     initialReview?: { sfen: string; moves: string[] };
+    /** 現在局面のスナップショットを通知 */
+    onPositionSnapshot?: (snapshot: { sfen: string; moves: string[]; label?: string }) => void;
 }
 
 export function ShogiMatch({
@@ -130,6 +133,7 @@ export function ShogiMatch({
     allowAnalysisDuringMatch,
     analysisMarkers = [],
     initialReview,
+    onPositionSnapshot,
 }: ShogiMatchProps): ReactElement {
     // デフォルトの NNUE 選択（props のプリセットキーを使用、未指定時は DEFAULT_PRESET_KEY）
     const defaultNnueSelection = useMemo(
@@ -233,11 +237,35 @@ export function ShogiMatch({
         normalizePassRightsSettings,
         isSamePassRightsSettings,
     );
-    const [engineThreads, setEngineThreads] = useLocalStorage<number>(
-        "shogi-match-engine-threads",
-        0,
+    const [storedEngineThreads, setStoredEngineThreads] = useLocalStorage<
+        EngineThreadSettings | number
+    >("shogi-match-engine-threads", { sente: 0, gote: 0 });
+    const engineThreads = useMemo(() => {
+        if (typeof storedEngineThreads === "number") {
+            const normalized = Math.max(0, Math.trunc(storedEngineThreads));
+            return { sente: normalized, gote: normalized };
+        }
+        if (!storedEngineThreads || typeof storedEngineThreads !== "object") {
+            return { sente: 0, gote: 0 };
+        }
+        const normalize = (value: number | undefined) =>
+            typeof value === "number" && Number.isFinite(value)
+                ? Math.max(0, Math.trunc(value))
+                : 0;
+        return {
+            sente: normalize(storedEngineThreads.sente),
+            gote: normalize(storedEngineThreads.gote),
+        };
+    }, [storedEngineThreads]);
+    const setEngineThreads = useCallback(
+        (next: EngineThreadSettings) => {
+            setStoredEngineThreads({
+                sente: Math.max(0, Math.trunc(next.sente)),
+                gote: Math.max(0, Math.trunc(next.gote)),
+            });
+        },
+        [setStoredEngineThreads],
     );
-
     // UI状態管理（統合フック）
     const {
         flipBoard,
@@ -352,6 +380,14 @@ export function ShogiMatch({
 
     // 互換性用のmoves配列
     const moves = navigation.getMovesArray();
+
+    useEffect(() => {
+        onPositionSnapshot?.({
+            sfen: startSfen,
+            moves,
+            label: "現在局面",
+        });
+    }, [moves, onPositionSnapshot, startSfen]);
 
     // 棋譜＋評価値データ
     const {

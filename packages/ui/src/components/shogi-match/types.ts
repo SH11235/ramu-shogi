@@ -3,6 +3,9 @@ import type { Piece, PieceType, Square } from "@shogi/app-core";
 // Re-export types from app-controller for convenience
 export type { EngineOption, SideSetting } from "@shogi/app-controller";
 
+/** 対局用スレッド数（0=自動） */
+export type EngineThreadSettings = { sente: number; gote: number };
+
 /**
  * 成り判定の結果を表す型
  * - 'none': 成れない（成り手が存在しない）

@@ -5,9 +5,16 @@ import type { ReactElement } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Switch } from "../../switch";
 import type { ClockSettings } from "../hooks/useClockManager";
-import type { DisplaySettings, PassRightsSettings, SideSetting, SquareNotation } from "../types";
+import type {
+    DisplaySettings,
+    EngineThreadSettings,
+    PassRightsSettings,
+    SideSetting,
+    SquareNotation,
+} from "../types";
 import type { KifMoveData } from "../utils/kifParser";
 import { parseKif, parseSfen } from "../utils/kifParser";
+import { buildThreadOptions } from "../utils/threadOptions";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 
 type SideKey = "sente" | "gote";
@@ -92,8 +99,8 @@ interface MobileSettingsSheetProps {
     settingsLocked: boolean;
     isMatchRunning: boolean;
     isDevMode: boolean;
-    engineThreads: number;
-    onEngineThreadsChange: (threads: number) => void;
+    engineThreads: EngineThreadSettings;
+    onEngineThreadsChange: (threads: EngineThreadSettings) => void;
 
     // アクション
     onStartMatch?: () => void;
@@ -289,6 +296,7 @@ export function MobileSettingsSheet({
     onImportKif,
     positionReady = true,
 }: MobileSettingsSheetProps): ReactElement {
+    const threadOptions = buildThreadOptions();
     // カスタム NNUE（プリセット以外）のフィルタリング
     const customNnueList = nnueList.filter((n) => n.source !== "preset");
 
@@ -845,20 +853,53 @@ export function MobileSettingsSheet({
             {isDevMode && (
                 <div className="space-y-3 pt-3 border-t border-border">
                     <div className="font-medium text-sm">開発者向け</div>
-                    <label htmlFor="mobile-engine-threads" className={labelClassName}>
-                        <span className="text-xs text-muted-foreground">スレッド数</span>
-                        <NumericInput
-                            id="mobile-engine-threads"
-                            value={engineThreads}
-                            onChange={(value) => onEngineThreadsChange(Math.max(0, value))}
-                            disabled={settingsLocked}
-                            min={0}
-                            className={inputClassName}
-                        />
-                        <span className="text-[11px] text-muted-foreground">
-                            0 = 自動（次回初期化時に反映）
-                        </span>
-                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                        <label htmlFor="mobile-engine-threads-sente" className={labelClassName}>
+                            <span className="text-xs text-muted-foreground">先手</span>
+                            <select
+                                id="mobile-engine-threads-sente"
+                                value={engineThreads.sente}
+                                disabled={settingsLocked}
+                                onChange={(e) =>
+                                    onEngineThreadsChange({
+                                        ...engineThreads,
+                                        sente: Number(e.target.value),
+                                    })
+                                }
+                                className={selectClassName}
+                            >
+                                {threadOptions.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label htmlFor="mobile-engine-threads-gote" className={labelClassName}>
+                            <span className="text-xs text-muted-foreground">後手</span>
+                            <select
+                                id="mobile-engine-threads-gote"
+                                value={engineThreads.gote}
+                                disabled={settingsLocked}
+                                onChange={(e) =>
+                                    onEngineThreadsChange({
+                                        ...engineThreads,
+                                        gote: Number(e.target.value),
+                                    })
+                                }
+                                className={selectClassName}
+                            >
+                                {threadOptions.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">
+                        0 = 自動（次回初期化時に反映）
+                    </span>
                 </div>
             )}
 

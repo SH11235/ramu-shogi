@@ -15,6 +15,7 @@ import type { SelectionState } from "../contexts/MatchStateContext.types";
 import type { ClockSettings, TickState } from "../hooks/useClockManager";
 import type {
     DisplaySettings,
+    EngineThreadSettings,
     GameMode,
     Message,
     PassRightsSettings,
@@ -38,8 +39,8 @@ export interface MatchSettingsProps {
     handlePassRightsSettingsChange: (settings: PassRightsSettings) => void;
     settingsLocked: boolean;
     isDevMode: boolean;
-    engineThreads: number;
-    setEngineThreads: (threads: number) => void;
+    engineThreads: EngineThreadSettings;
+    setEngineThreads: (threads: EngineThreadSettings) => void;
     senteNnueSelection: NnueSelection;
     handleSenteNnueSelectionChange: (selection: NnueSelection) => void;
     goteNnueSelection: NnueSelection;

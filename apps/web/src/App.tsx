@@ -2,6 +2,7 @@ import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type { EngineOption } from "@shogi/ui";
 import { EngineControlPanel, ShogiMatch, useDevMode } from "@shogi/ui";
 import { useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 
 const resolveWasmThreads = () => {
     const fallback = import.meta.env.DEV ? 4 : 1;
@@ -33,6 +34,11 @@ const nnueManifestUrl = import.meta.env.VITE_NNUE_MANIFEST_URL as string;
 function App() {
     const isDevMode = useDevMode();
     const navigate = useNavigate();
+    const [panelPosition, setPanelPosition] = useState<{
+        label?: string;
+        sfen: string;
+        moves?: string[];
+    }>({ label: "現在局面", sfen: "startpos", moves: [] });
 
     return (
         <main className="mx-auto flex max-w-[1100px] flex-col gap-3 md:px-5">
@@ -51,8 +57,9 @@ function App() {
                 manifestUrl={nnueManifestUrl}
                 defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
                 aiIconUrl={`${import.meta.env.BASE_URL}ramu.jpeg`}
+                onPositionSnapshot={(snapshot) => setPanelPosition(snapshot)}
             />
-            {isDevMode && <EngineControlPanel engine={panelEngine} />}
+            {isDevMode && <EngineControlPanel engine={panelEngine} position={panelPosition} />}
         </main>
     );
 }

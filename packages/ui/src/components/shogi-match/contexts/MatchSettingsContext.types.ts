@@ -6,7 +6,7 @@
 
 import type { NnueMeta, NnueSelection, PresetWithStatus } from "@shogi/app-core";
 import type { ClockSettings } from "../hooks/useClockManager";
-import type { PassRightsSettings, SideSetting } from "../types";
+import type { EngineThreadSettings, PassRightsSettings, SideSetting } from "../types";
 
 /**
  * 対局設定コンテキスト値
@@ -31,8 +31,8 @@ export interface MatchSettingsContextValue {
     /** 開発者モード */
     isDevMode: boolean;
     /** 対局用スレッド数（0=自動） */
-    engineThreads: number;
-    onEngineThreadsChange: (threads: number) => void;
+    engineThreads: EngineThreadSettings;
+    onEngineThreadsChange: (threads: EngineThreadSettings) => void;
 
     // NNUE関連
     senteNnueSelection: NnueSelection;

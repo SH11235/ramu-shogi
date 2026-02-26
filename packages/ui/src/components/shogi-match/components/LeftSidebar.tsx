@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Switch } from "../../switch";
 import { useAnalysis } from "../contexts/AnalysisContext";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
+import { buildThreadOptions } from "../utils/threadOptions";
 import { PlayerIcon } from "./PlayerIcon";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 
@@ -74,6 +75,7 @@ export function LeftSidebar(): ReactElement {
     } = useMatchSettings();
 
     const parallelismConfig = detectParallelism();
+    const threadOptions = buildThreadOptions();
 
     // カスタム NNUE（プリセット以外）のフィルタリング
     const customNnueList = nnueList.filter((n) => n.source !== "preset");
@@ -367,19 +369,62 @@ export function LeftSidebar(): ReactElement {
                 {isDevMode && (
                     <div className="mt-2 flex flex-col gap-1">
                         <span className="text-xs text-muted-foreground">スレッド数</span>
-                        <Input
-                            type="number"
-                            min={0}
-                            value={engineThreads}
-                            disabled={settingsLocked}
-                            title={settingsLocked ? SETTINGS_LOCKED_MESSAGE : "0=自動"}
-                            className={inputClassName}
-                            onChange={(e) => {
-                                const parsed = Number(e.target.value);
-                                if (Number.isNaN(parsed)) return;
-                                onEngineThreadsChange(Math.max(0, Math.trunc(parsed)));
-                            }}
-                        />
+                        <div className="grid grid-cols-2 gap-2">
+                            <div className="flex flex-col gap-1">
+                                <span className="text-[11px] text-muted-foreground">先手</span>
+                                <Select
+                                    value={String(engineThreads.sente)}
+                                    onValueChange={(value) =>
+                                        onEngineThreadsChange({
+                                            ...engineThreads,
+                                            sente: Number(value),
+                                        })
+                                    }
+                                    disabled={settingsLocked}
+                                >
+                                    <SelectTrigger
+                                        title={settingsLocked ? SETTINGS_LOCKED_MESSAGE : undefined}
+                                        className={inputClassName}
+                                    >
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {threadOptions.map((opt) => (
+                                            <SelectItem key={opt.value} value={String(opt.value)}>
+                                                {opt.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <span className="text-[11px] text-muted-foreground">後手</span>
+                                <Select
+                                    value={String(engineThreads.gote)}
+                                    onValueChange={(value) =>
+                                        onEngineThreadsChange({
+                                            ...engineThreads,
+                                            gote: Number(value),
+                                        })
+                                    }
+                                    disabled={settingsLocked}
+                                >
+                                    <SelectTrigger
+                                        title={settingsLocked ? SETTINGS_LOCKED_MESSAGE : undefined}
+                                        className={inputClassName}
+                                    >
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {threadOptions.map((opt) => (
+                                            <SelectItem key={opt.value} value={String(opt.value)}>
+                                                {opt.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
                         <span className="text-[11px] text-muted-foreground">
                             0 = 自動（次回初期化時に反映）
                         </span>

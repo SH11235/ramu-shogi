@@ -14,6 +14,7 @@ import { createEngineController } from "@shogi/app-controller";
 import type { GameResult, NnueSelection, Player, ResolvedNnue } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { EngineThreadSettings } from "../types";
 import type { TickState } from "./useClockManager";
 
 interface UseEngineManagerProps {
@@ -54,7 +55,7 @@ interface UseEngineManagerProps {
     /** 対局中でも解析を許可する（オンライン対戦の AI サポート用） */
     allowAnalysisDuringMatch?: boolean;
     /** 対局用スレッド数（0=自動） */
-    engineThreads?: number;
+    engineThreads?: EngineThreadSettings;
 }
 
 /** 解析リクエストパラメータ */

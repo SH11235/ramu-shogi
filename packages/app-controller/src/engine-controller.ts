@@ -107,7 +107,7 @@ interface EngineControllerSyncContext {
     position?: EngineControllerPosition | null;
     matchRunning?: boolean;
     /** 対局用スレッド数（0または未指定は自動） */
-    engineThreads?: number;
+    engineThreads?: Record<Player, number>;
 }
 
 interface EngineControllerCommand {
@@ -160,7 +160,7 @@ interface EngineControllerContext {
         analysis?: NnueSelection;
     };
     /** 対局用スレッド数（0=自動） */
-    engineThreads: number;
+    engineThreads: Record<Player, number>;
 }
 
 interface EngineInternalState {
@@ -204,13 +204,23 @@ const createDefaultContext = (): EngineControllerContext => ({
         gote: undefined,
         analysis: undefined,
     },
-    engineThreads: 0,
+    engineThreads: { sente: 0, gote: 0 },
 });
 
 const normalizeThreadCount = (value?: number): number | undefined => {
     if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
     if (value <= 0) return undefined;
     return Math.trunc(value);
+};
+
+const getThreadCountForSide = (threads: Record<Player, number>, side: Player) =>
+    normalizeThreadCount(threads[side]);
+
+const getAnalysisThreadCount = (threads: Record<Player, number>) => {
+    const sente = normalizeThreadCount(threads.sente);
+    const gote = normalizeThreadCount(threads.gote);
+    if (sente === undefined && gote === undefined) return undefined;
+    return Math.max(sente ?? 0, gote ?? 0) || undefined;
 };
 
 const applyThreadOption = async (client: EngineClient, threadCount?: number) => {
@@ -690,7 +700,7 @@ export function createEngineController(
             setEngineStatus(side, "idle");
             engineState.ready = false;
 
-            const threadCount = normalizeThreadCount(context.engineThreads);
+            const threadCount = getThreadCountForSide(context.engineThreads, side);
             await client.init(threadCount ? { threads: threadCount } : undefined);
             await applyThreadOption(client, threadCount);
 
@@ -767,7 +777,7 @@ export function createEngineController(
             attachSubscription(side, client, selectedId);
 
             if (!engineState.ready) {
-                const threadCount = normalizeThreadCount(context.engineThreads);
+                const threadCount = getThreadCountForSide(context.engineThreads, side);
                 await client.init(threadCount ? { threads: threadCount } : undefined);
                 await applyThreadOption(client, threadCount);
 
@@ -967,7 +977,7 @@ export function createEngineController(
                 client = dependencies.createClient(engineId);
                 analysisState.client = client;
                 analysisState.engineId = engineId;
-                const threadCount = normalizeThreadCount(context.engineThreads);
+                const threadCount = getAnalysisThreadCount(context.engineThreads);
                 await client.init(threadCount ? { threads: threadCount } : undefined);
                 await applyThreadOption(client, threadCount);
 
@@ -1101,13 +1111,20 @@ export function createEngineController(
         }
     };
 
-    const applyThreadChange = (threadCount?: number) => {
-        const normalized = normalizeThreadCount(threadCount);
+    const applyThreadChange = (
+        nextThreads: Record<Player, number>,
+        prevThreads: Record<Player, number>,
+    ) => {
+        let changed = false;
         for (const side of ["sente", "gote"] as const) {
+            const prevNormalized = getThreadCountForSide(prevThreads, side);
+            const nextNormalized = getThreadCountForSide(nextThreads, side);
+            if (prevNormalized === nextNormalized) continue;
+            changed = true;
             const engineState = engineStates[side];
             if (!engineState.client) continue;
             if (!engineState.ready) {
-                void applyThreadOption(engineState.client, normalized);
+                void applyThreadOption(engineState.client, nextNormalized);
                 continue;
             }
             void reinitializeEngineCore(side, {
@@ -1116,7 +1133,7 @@ export function createEngineController(
             });
         }
 
-        if (analysisState.client) {
+        if (changed && analysisState.client) {
             void disposeAnalysisEngine();
         }
     };
@@ -1146,8 +1163,13 @@ export function createEngineController(
                 void disposeAnalysisEngine();
             }
 
-            if (normalizeThreadCount(prevThreads) !== normalizeThreadCount(nextThreads)) {
-                applyThreadChange(nextThreads);
+            if (
+                getThreadCountForSide(prevThreads, "sente") !==
+                    getThreadCountForSide(nextThreads, "sente") ||
+                getThreadCountForSide(prevThreads, "gote") !==
+                    getThreadCountForSide(nextThreads, "gote")
+            ) {
+                applyThreadChange(nextThreads, prevThreads);
             }
 
             applySkillLevels();

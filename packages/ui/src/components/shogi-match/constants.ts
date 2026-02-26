@@ -3,7 +3,7 @@
  */
 
 /** デフォルト秒読み時間（ミリ秒） */
-export const DEFAULT_BYOYOMI_MS = 5_000;
+export const DEFAULT_BYOYOMI_MS = 10_000;
 
 /** ログ履歴の最大保持件数 */
 export const DEFAULT_MAX_LOGS = 80;
