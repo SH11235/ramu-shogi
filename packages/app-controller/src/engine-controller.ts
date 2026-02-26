@@ -106,6 +106,8 @@ interface EngineControllerSyncContext {
     };
     position?: EngineControllerPosition | null;
     matchRunning?: boolean;
+    /** 対局用スレッド数（0または未指定は自動） */
+    engineThreads?: number;
 }
 
 interface EngineControllerCommand {
@@ -157,6 +159,8 @@ interface EngineControllerContext {
     nnueSelections: Record<Player, NnueSelection | undefined> & {
         analysis?: NnueSelection;
     };
+    /** 対局用スレッド数（0=自動） */
+    engineThreads: number;
 }
 
 interface EngineInternalState {
@@ -200,7 +204,23 @@ const createDefaultContext = (): EngineControllerContext => ({
         gote: undefined,
         analysis: undefined,
     },
+    engineThreads: 0,
 });
+
+const normalizeThreadCount = (value?: number): number | undefined => {
+    if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+    if (value <= 0) return undefined;
+    return Math.trunc(value);
+};
+
+const applyThreadOption = async (client: EngineClient, threadCount?: number) => {
+    if (threadCount === undefined) return;
+    try {
+        await client.setOption("Threads", threadCount);
+    } catch {
+        // ignore unsupported Threads option
+    }
+};
 
 const createInitialState = (): EngineControllerState => ({
     engineReady: { sente: false, gote: false },
@@ -670,7 +690,9 @@ export function createEngineController(
             setEngineStatus(side, "idle");
             engineState.ready = false;
 
-            await client.init();
+            const threadCount = normalizeThreadCount(context.engineThreads);
+            await client.init(threadCount ? { threads: threadCount } : undefined);
+            await applyThreadOption(client, threadCount);
 
             const selection =
                 options.nnueSelection ??
@@ -745,7 +767,9 @@ export function createEngineController(
             attachSubscription(side, client, selectedId);
 
             if (!engineState.ready) {
-                await client.init();
+                const threadCount = normalizeThreadCount(context.engineThreads);
+                await client.init(threadCount ? { threads: threadCount } : undefined);
+                await applyThreadOption(client, threadCount);
 
                 const selection =
                     side === "sente" ? context.nnueSelections.sente : context.nnueSelections.gote;
@@ -943,7 +967,9 @@ export function createEngineController(
                 client = dependencies.createClient(engineId);
                 analysisState.client = client;
                 analysisState.engineId = engineId;
-                await client.init();
+                const threadCount = normalizeThreadCount(context.engineThreads);
+                await client.init(threadCount ? { threads: threadCount } : undefined);
+                await applyThreadOption(client, threadCount);
 
                 const selection = context.nnueSelections.analysis;
                 if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
@@ -1075,19 +1101,42 @@ export function createEngineController(
         }
     };
 
+    const applyThreadChange = (threadCount?: number) => {
+        const normalized = normalizeThreadCount(threadCount);
+        for (const side of ["sente", "gote"] as const) {
+            const engineState = engineStates[side];
+            if (!engineState.client) continue;
+            if (!engineState.ready) {
+                void applyThreadOption(engineState.client, normalized);
+                continue;
+            }
+            void reinitializeEngineCore(side, {
+                loadPosition: true,
+                errorLogPrefix: "スレッド数変更の再初期化に失敗",
+            });
+        }
+
+        if (analysisState.client) {
+            void disposeAnalysisEngine();
+        }
+    };
+
     const command: EngineControllerCommand = {
         syncContext: (next) => {
             const prevAnalysis = context.nnueSelections.analysis;
+            const prevThreads = context.engineThreads;
             const nextNnueSelections = {
                 ...context.nnueSelections,
                 ...next.nnueSelections,
             };
+            const nextThreads = next.engineThreads ?? context.engineThreads;
 
             context = {
                 sides: next.sides ?? context.sides,
                 matchRunning: next.matchRunning ?? context.matchRunning,
                 position: next.position ?? context.position,
                 nnueSelections: nextNnueSelections,
+                engineThreads: nextThreads,
             };
 
             if (
@@ -1095,6 +1144,10 @@ export function createEngineController(
                 prevAnalysis?.nnueId !== nextNnueSelections.analysis?.nnueId
             ) {
                 void disposeAnalysisEngine();
+            }
+
+            if (normalizeThreadCount(prevThreads) !== normalizeThreadCount(nextThreads)) {
+                applyThreadChange(nextThreads);
             }
 
             applySkillLevels();

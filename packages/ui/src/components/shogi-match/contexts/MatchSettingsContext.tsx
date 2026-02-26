@@ -28,6 +28,9 @@ interface MatchSettingsProviderProps {
     passRightsSettings: PassRightsSettings;
     onPassRightsSettingsChange: (settings: PassRightsSettings) => void;
     settingsLocked: boolean;
+    isDevMode: boolean;
+    engineThreads: number;
+    onEngineThreadsChange: (threads: number) => void;
 
     // NNUE関連
     senteNnueSelection: NnueSelection;
@@ -59,6 +62,9 @@ export function MatchSettingsProvider({
     passRightsSettings,
     onPassRightsSettingsChange,
     settingsLocked,
+    isDevMode,
+    engineThreads,
+    onEngineThreadsChange,
     senteNnueSelection,
     onSenteNnueSelectionChange,
     goteNnueSelection,
@@ -79,6 +85,9 @@ export function MatchSettingsProvider({
         passRightsSettings,
         onPassRightsSettingsChange,
         settingsLocked,
+        isDevMode,
+        engineThreads,
+        onEngineThreadsChange,
         senteNnueSelection,
         onSenteNnueSelectionChange,
         goteNnueSelection,

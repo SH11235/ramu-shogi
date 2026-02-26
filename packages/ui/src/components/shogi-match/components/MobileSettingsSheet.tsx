@@ -91,6 +91,9 @@ interface MobileSettingsSheetProps {
     // 状態
     settingsLocked: boolean;
     isMatchRunning: boolean;
+    isDevMode: boolean;
+    engineThreads: number;
+    onEngineThreadsChange: (threads: number) => void;
 
     // アクション
     onStartMatch?: () => void;
@@ -273,6 +276,9 @@ export function MobileSettingsSheet({
     onGoteNnueSelectionChange,
     settingsLocked,
     isMatchRunning,
+    isDevMode,
+    engineThreads,
+    onEngineThreadsChange,
     onStartMatch,
     onStopMatch,
     onResetToStartpos,
@@ -834,6 +840,27 @@ export function MobileSettingsSheet({
                     </label>
                 </div>
             </div>
+
+            {/* 開発者向け: スレッド数 */}
+            {isDevMode && (
+                <div className="space-y-3 pt-3 border-t border-border">
+                    <div className="font-medium text-sm">開発者向け</div>
+                    <label htmlFor="mobile-engine-threads" className={labelClassName}>
+                        <span className="text-xs text-muted-foreground">スレッド数</span>
+                        <NumericInput
+                            id="mobile-engine-threads"
+                            value={engineThreads}
+                            onChange={(value) => onEngineThreadsChange(Math.max(0, value))}
+                            disabled={settingsLocked}
+                            min={0}
+                            className={inputClassName}
+                        />
+                        <span className="text-[11px] text-muted-foreground">
+                            0 = 自動（次回初期化時に反映）
+                        </span>
+                    </label>
+                </div>
+            )}
 
             {/* このアプリについて / ライセンス */}
             {onOpenAbout && (

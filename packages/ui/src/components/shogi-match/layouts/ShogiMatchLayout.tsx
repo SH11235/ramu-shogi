@@ -328,6 +328,9 @@ export function ShogiMatchLayout({
                     passRightsSettings={passRightsSettings}
                     onPassRightsSettingsChange={handlePassRightsSettingsChange}
                     settingsLocked={settingsLocked}
+                    isDevMode={matchSettings.isDevMode}
+                    engineThreads={matchSettings.engineThreads}
+                    onEngineThreadsChange={matchSettings.setEngineThreads}
                     senteNnueSelection={senteNnueSelection}
                     onSenteNnueSelectionChange={handleSenteNnueSelectionChange}
                     goteNnueSelection={goteNnueSelection}
@@ -431,6 +434,9 @@ export function ShogiMatchLayout({
                     passRightsSettings={passRightsSettings}
                     onPassRightsSettingsChange={handlePassRightsSettingsChange}
                     settingsLocked={settingsLocked}
+                    isDevMode={matchSettings.isDevMode}
+                    engineThreads={matchSettings.engineThreads}
+                    onEngineThreadsChange={matchSettings.setEngineThreads}
                     senteNnueSelection={senteNnueSelection}
                     onSenteNnueSelectionChange={handleSenteNnueSelectionChange}
                     goteNnueSelection={goteNnueSelection}

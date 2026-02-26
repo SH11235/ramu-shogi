@@ -233,6 +233,10 @@ export function ShogiMatch({
         normalizePassRightsSettings,
         isSamePassRightsSettings,
     );
+    const [engineThreads, setEngineThreads] = useLocalStorage<number>(
+        "shogi-match-engine-threads",
+        0,
+    );
 
     // UI状態管理（統合フック）
     const {
@@ -629,6 +633,7 @@ export function ShogiMatch({
         analysisNnueSelection,
         resolveNnue,
         allowAnalysisDuringMatch,
+        engineThreads,
     });
     stopAllEnginesRef.current = stopAllEngines;
     restartEngineForNnueRef.current = restartEngineForNnue;
@@ -1243,6 +1248,9 @@ export function ShogiMatch({
             passRightsSettings,
             handlePassRightsSettingsChange,
             settingsLocked,
+            isDevMode,
+            engineThreads,
+            setEngineThreads,
             senteNnueSelection,
             handleSenteNnueSelectionChange,
             goteNnueSelection,
@@ -1261,6 +1269,9 @@ export function ShogiMatch({
             passRightsSettings,
             handlePassRightsSettingsChange,
             settingsLocked,
+            isDevMode,
+            engineThreads,
+            setEngineThreads,
             senteNnueSelection,
             handleSenteNnueSelectionChange,
             goteNnueSelection,

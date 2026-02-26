@@ -28,6 +28,11 @@ export interface MatchSettingsContextValue {
     passRightsSettings: PassRightsSettings;
     onPassRightsSettingsChange: (settings: PassRightsSettings) => void;
     settingsLocked: boolean;
+    /** 開発者モード */
+    isDevMode: boolean;
+    /** 対局用スレッド数（0=自動） */
+    engineThreads: number;
+    onEngineThreadsChange: (threads: number) => void;
 
     // NNUE関連
     senteNnueSelection: NnueSelection;

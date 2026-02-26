@@ -53,6 +53,8 @@ interface UseEngineManagerProps {
     resolveNnue: (selection: NnueSelection) => Promise<ResolvedNnue | null>;
     /** 対局中でも解析を許可する（オンライン対戦の AI サポート用） */
     allowAnalysisDuringMatch?: boolean;
+    /** 対局用スレッド数（0=自動） */
+    engineThreads?: number;
 }
 
 /** 解析リクエストパラメータ */
@@ -114,6 +116,7 @@ export function useEngineManager({
     analysisNnueSelection,
     resolveNnue,
     allowAnalysisDuringMatch,
+    engineThreads,
 }: UseEngineManagerProps): UseEngineManagerReturn {
     const engineOptionsRef = useRef(engineOptions);
     useEffect(() => {
@@ -202,6 +205,7 @@ export function useEngineManager({
                 passRightsSettings,
             },
             matchRunning: isMatchRunning,
+            engineThreads,
         });
     }, [
         analysisNnueSelection,
@@ -215,6 +219,7 @@ export function useEngineManager({
         resolvedSides,
         senteNnueSelection,
         startSfen,
+        engineThreads,
     ]);
 
     useEffect(() => {

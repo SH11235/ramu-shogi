@@ -58,6 +58,9 @@ export function LeftSidebar(): ReactElement {
         passRightsSettings,
         onPassRightsSettingsChange,
         settingsLocked,
+        isDevMode,
+        engineThreads,
+        onEngineThreadsChange,
         internalEngineId,
         nnueList,
         presets,
@@ -360,6 +363,28 @@ export function LeftSidebar(): ReactElement {
                         )}
                     </span>
                 </button>
+
+                {isDevMode && (
+                    <div className="mt-2 flex flex-col gap-1">
+                        <span className="text-xs text-muted-foreground">スレッド数</span>
+                        <Input
+                            type="number"
+                            min={0}
+                            value={engineThreads}
+                            disabled={settingsLocked}
+                            title={settingsLocked ? SETTINGS_LOCKED_MESSAGE : "0=自動"}
+                            className={inputClassName}
+                            onChange={(e) => {
+                                const parsed = Number(e.target.value);
+                                if (Number.isNaN(parsed)) return;
+                                onEngineThreadsChange(Math.max(0, Math.trunc(parsed)));
+                            }}
+                        />
+                        <span className="text-[11px] text-muted-foreground">
+                            0 = 自動（次回初期化時に反映）
+                        </span>
+                    </div>
+                )}
             </div>
 
             {/* NNUE 管理 */}

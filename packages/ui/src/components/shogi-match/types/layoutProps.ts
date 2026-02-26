@@ -37,6 +37,9 @@ export interface MatchSettingsProps {
     passRightsSettings: PassRightsSettings;
     handlePassRightsSettingsChange: (settings: PassRightsSettings) => void;
     settingsLocked: boolean;
+    isDevMode: boolean;
+    engineThreads: number;
+    setEngineThreads: (threads: number) => void;
     senteNnueSelection: NnueSelection;
     handleSenteNnueSelectionChange: (selection: NnueSelection) => void;
     goteNnueSelection: NnueSelection;
