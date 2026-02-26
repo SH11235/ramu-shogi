@@ -475,6 +475,30 @@ export function MobileSettingsSheet({
                             </div>
                         )}
                     </div>
+                    {isDevMode && (
+                        <label htmlFor="mobile-sente-threads" className={labelClassName}>
+                            <span className="text-xs text-muted-foreground">スレッド数</span>
+                            <select
+                                id="mobile-sente-threads"
+                                value={engineThreads.sente}
+                                disabled={settingsLocked}
+                                onChange={(e) =>
+                                    onEngineThreadsChange({
+                                        ...engineThreads,
+                                        sente: Number(e.target.value),
+                                    })
+                                }
+                                className={selectClassName}
+                            >
+                                {threadOptions.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <span className="text-[11px] text-muted-foreground">0 = 自動</span>
+                        </label>
+                    )}
                     <label htmlFor="mobile-sente-main" className={labelClassName}>
                         <span className="text-xs text-muted-foreground">持ち時間(秒)</span>
                         <NumericInput
@@ -557,6 +581,30 @@ export function MobileSettingsSheet({
                             </div>
                         )}
                     </div>
+                    {isDevMode && (
+                        <label htmlFor="mobile-gote-threads" className={labelClassName}>
+                            <span className="text-xs text-muted-foreground">スレッド数</span>
+                            <select
+                                id="mobile-gote-threads"
+                                value={engineThreads.gote}
+                                disabled={settingsLocked}
+                                onChange={(e) =>
+                                    onEngineThreadsChange({
+                                        ...engineThreads,
+                                        gote: Number(e.target.value),
+                                    })
+                                }
+                                className={selectClassName}
+                            >
+                                {threadOptions.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <span className="text-[11px] text-muted-foreground">0 = 自動</span>
+                        </label>
+                    )}
                     <label htmlFor="mobile-gote-main" className={labelClassName}>
                         <span className="text-xs text-muted-foreground">持ち時間(秒)</span>
                         <NumericInput
@@ -848,60 +896,6 @@ export function MobileSettingsSheet({
                     </label>
                 </div>
             </div>
-
-            {/* 開発者向け: スレッド数 */}
-            {isDevMode && (
-                <div className="space-y-3 pt-3 border-t border-border">
-                    <div className="font-medium text-sm">開発者向け</div>
-                    <div className="grid grid-cols-2 gap-2">
-                        <label htmlFor="mobile-engine-threads-sente" className={labelClassName}>
-                            <span className="text-xs text-muted-foreground">先手</span>
-                            <select
-                                id="mobile-engine-threads-sente"
-                                value={engineThreads.sente}
-                                disabled={settingsLocked}
-                                onChange={(e) =>
-                                    onEngineThreadsChange({
-                                        ...engineThreads,
-                                        sente: Number(e.target.value),
-                                    })
-                                }
-                                className={selectClassName}
-                            >
-                                {threadOptions.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>
-                                        {opt.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </label>
-                        <label htmlFor="mobile-engine-threads-gote" className={labelClassName}>
-                            <span className="text-xs text-muted-foreground">後手</span>
-                            <select
-                                id="mobile-engine-threads-gote"
-                                value={engineThreads.gote}
-                                disabled={settingsLocked}
-                                onChange={(e) =>
-                                    onEngineThreadsChange({
-                                        ...engineThreads,
-                                        gote: Number(e.target.value),
-                                    })
-                                }
-                                className={selectClassName}
-                            >
-                                {threadOptions.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>
-                                        {opt.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </label>
-                    </div>
-                    <span className="text-[11px] text-muted-foreground">
-                        0 = 自動（次回初期化時に反映）
-                    </span>
-                </div>
-            )}
 
             {/* このアプリについて / ライセンス */}
             {onOpenAbout && (

@@ -380,14 +380,22 @@ export function ShogiMatch({
 
     // 互換性用のmoves配列
     const moves = navigation.getMovesArray();
+    const movesKey = useMemo(() => moves.join(" "), [moves]);
+
+    const lastSnapshotRef = useRef<{ sfen: string; movesKey: string } | null>(null);
 
     useEffect(() => {
+        const prev = lastSnapshotRef.current;
+        if (prev && prev.sfen === startSfen && prev.movesKey === movesKey) {
+            return;
+        }
+        lastSnapshotRef.current = { sfen: startSfen, movesKey };
         onPositionSnapshot?.({
             sfen: startSfen,
             moves,
             label: "現在局面",
         });
-    }, [moves, onPositionSnapshot, startSfen]);
+    }, [moves, movesKey, onPositionSnapshot, startSfen]);
 
     // 棋譜＋評価値データ
     const {
