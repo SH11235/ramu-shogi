@@ -196,6 +196,7 @@ export function EngineControlPanel({
     );
     const initializedPositionRef = useRef(false);
     const handleRef = useRef<SearchHandle | null>(null);
+    const lastAppliedThreadsRef = useRef<number | null>(null);
 
     const updateThreadInfo = useCallback(() => {
         if (engine.getThreadInfo) {
@@ -281,14 +282,19 @@ export function EngineControlPanel({
         setStatus("error");
     };
 
-    const ensureInitialized = async () => {
-        if (initialized) return;
+    const ensureInitialized = async (force?: boolean) => {
+        if (initialized && !force) return;
         setStatus("init");
-        await engine.init();
+        if (force && engine.reset) {
+            await engine.reset();
+        }
+        const initThreads = threadSetting > 0 ? threadSetting : undefined;
+        await engine.init(initThreads ? { threads: initThreads } : undefined);
         const resolvedSfen = positionSfen.trim() || "startpos";
         await engine.loadPosition(resolvedSfen, parseMovesText(positionMoves));
         setInitialized(true);
         setStatus("ready");
+        lastAppliedThreadsRef.current = initThreads ?? null;
         // Update thread info after init
         updateThreadInfo();
     };
@@ -331,7 +337,12 @@ export function EngineControlPanel({
         if (busy) return;
         setBusy(true);
         try {
-            await ensureInitialized();
+            const handle = handleRef.current;
+            if (handle) {
+                await handle.cancel().catch(() => undefined);
+                handleRef.current = null;
+            }
+            await ensureInitialized(true);
         } catch (error) {
             pushUiError(String(error));
         } finally {
@@ -343,13 +354,19 @@ export function EngineControlPanel({
         if (busy || status === "searching") return;
         setBusy(true);
         try {
-            await ensureInitialized();
+            const requestedThreads = threadSetting > 0 ? threadSetting : null;
+            if (initialized && lastAppliedThreadsRef.current !== requestedThreads) {
+                const handle = handleRef.current;
+                if (handle) {
+                    await handle.cancel().catch(() => undefined);
+                    handleRef.current = null;
+                }
+                await ensureInitialized(true);
+            } else {
+                await ensureInitialized();
+            }
             const resolvedSfen = positionSfen.trim() || "startpos";
             await engine.loadPosition(resolvedSfen, parseMovesText(positionMoves));
-            if (threadSetting > 0) {
-                await engine.setOption("Threads", threadSetting);
-                updateThreadInfo();
-            }
             const ok = await applyOptions();
             if (!ok) {
                 return;
@@ -469,7 +486,17 @@ export function EngineControlPanel({
                             </section>
 
                             <section className={cn(surfaceClassName, "p-3")}>
-                                <div className="mb-2 font-semibold">NPS計測（局面・スレッド）</div>
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                    <div className="font-semibold">NPS計測（局面・スレッド）</div>
+                                    <Button
+                                        type="button"
+                                        onClick={updateThreadInfo}
+                                        variant="secondary"
+                                        className="px-3"
+                                    >
+                                        スレッド情報更新
+                                    </Button>
+                                </div>
                                 <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
                                     <label
                                         htmlFor="engine-panel-threads"
@@ -528,8 +555,13 @@ export function EngineControlPanel({
                                         現在局面をセット
                                     </Button>
                                     <span className="text-[11px] text-muted-foreground">
-                                        探索開始時に局面とスレッド数を反映します
+                                        スレッド変更は init
+                                        で反映されます（探索開始時に差分があれば自動で init します）
                                     </span>
+                                </div>
+                                <div className="mt-2 text-[11px] text-muted-foreground">
+                                    選択中: {threadSetting > 0 ? threadSetting : "自動"} / 適用中:{" "}
+                                    {threadInfo?.activeThreads ?? "-"}
                                 </div>
                             </section>
 

@@ -608,6 +608,10 @@ export function createEngineController(
             }
 
             if (event.type === "error") {
+                if (event.severity === "warning") {
+                    return;
+                }
+
                 const searchState = searchStates[side];
 
                 setEngineStatus(side, "error");
