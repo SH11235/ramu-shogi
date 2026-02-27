@@ -426,7 +426,7 @@ export default function RoomPage(): ReactElement {
 
                     <div className="flex flex-col gap-1">
                         <label htmlFor="join-name" className="text-sm text-foreground">
-                            名前
+                            名前 <span className="text-destructive">*</span>
                         </label>
                         <input
                             id="join-name"
@@ -435,11 +435,17 @@ export default function RoomPage(): ReactElement {
                             onChange={(e) =>
                                 dispatchJoin({ type: "set_name", name: e.target.value })
                             }
-                            placeholder="プレイヤー名"
+                            placeholder="プレイヤー名を入力してください"
                             maxLength={20}
                             disabled={joinForm.isJoining}
+                            autoFocus
                             className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
                         />
+                        {!joinForm.name.trim() && (
+                            <p className="text-xs text-muted-foreground">
+                                名前を入力すると参加できます
+                            </p>
+                        )}
                     </div>
 
                     {joinForm.error && <p className="text-sm text-destructive">{joinForm.error}</p>}
