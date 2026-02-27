@@ -527,8 +527,7 @@ export function OnlineGameView({
         // 制限モードは use_analysis を先送信してからエンジン解析
         if (myAiSettings?.mode === "limited") {
             const ply = movesRef.current.length;
-            // biome-ignore lint/correctness/useHookAtTopLevel: client.useAnalysis は React Hook ではなく WebSocket 送信メソッド
-            client.useAnalysis({ eventId: latestEventIdRef.current, ply });
+            client.consumeAnalysis({ eventId: latestEventIdRef.current, ply });
             // analysis_used 受信後に自動で残り回数が更新される
         }
         // WASM 解析開始
