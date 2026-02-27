@@ -9,7 +9,7 @@
             ]
         }
     },
-    "ignoreDependencies": ["wasm-opt", "wrangler"],
+    "ignoreDependencies": ["wasm-opt", "wrangler", "babel-plugin-react-compiler"],
     "ignore": [
         "apps/desktop/src-tauri/target/**",
         "apps/web/worker/index.ts",
