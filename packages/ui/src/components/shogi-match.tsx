@@ -1191,7 +1191,6 @@ export function ShogiMatch({
         if (!startPos) return;
 
         setPvPreview({
-            open: true,
             ply,
             pv,
             startPosition: startPos,

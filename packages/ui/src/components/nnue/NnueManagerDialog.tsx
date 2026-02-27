@@ -338,13 +338,14 @@ export function NnueManagerDialog({
                 </DialogFooter>
             </DialogContent>
 
-            {/* FV_SCALE 入力ダイアログ */}
-            <NnueFvScaleInputDialog
-                open={hasPendingImport}
-                fileName={pendingFileName}
-                onConfirm={handleFvScaleConfirm}
-                onCancel={handleFvScaleCancel}
-            />
+            {/* FV_SCALE 入力ダイアログ（マウント時に state が初期化されるよう条件レンダリング） */}
+            {hasPendingImport && (
+                <NnueFvScaleInputDialog
+                    fileName={pendingFileName}
+                    onConfirm={handleFvScaleConfirm}
+                    onCancel={handleFvScaleCancel}
+                />
+            )}
         </Dialog>
     );
 }

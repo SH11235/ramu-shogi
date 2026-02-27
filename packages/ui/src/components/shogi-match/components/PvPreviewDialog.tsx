@@ -17,8 +17,6 @@ import { convertPvToDisplay } from "../utils/kifFormat";
 import { HandPiecesDisplay } from "./HandPiecesDisplay";
 
 interface PvPreviewDialogProps {
-    /** ダイアログが開いているか */
-    open: boolean;
     /** 閉じるコールバック */
     onClose: () => void;
     /** PV（USI形式の指し手配列） */
@@ -54,7 +52,6 @@ function boardToGrid(board: BoardState): ShogiBoardCell[][] {
 }
 
 export function PvPreviewDialog({
-    open,
     onClose,
     pv,
     startPosition,
@@ -116,8 +113,6 @@ export function PvPreviewDialog({
 
     // キーボード操作
     const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
-        if (!open) return;
-
         if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
             e.preventDefault();
             setPreviewIndex((prev) => Math.max(0, prev - 1));
@@ -136,14 +131,11 @@ export function PvPreviewDialog({
         }
     });
 
-    // ダイアログを開いたときにリセット＆キーボードイベントをリッスン
+    // キーボードイベントをリッスン（マウント中は常にアクティブ）
     useEffect(() => {
-        if (open) {
-            setPreviewIndex(0);
-            window.addEventListener("keydown", handleKeyDown);
-            return () => window.removeEventListener("keydown", handleKeyDown);
-        }
-    }, [open]);
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, []);
 
     // positions.length が変わったときに previewIndex が範囲外にならないようクランプ
     // （開いたままPVが差し替わった場合への対応）
@@ -166,7 +158,7 @@ export function PvPreviewDialog({
     })();
 
     return (
-        <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+        <Dialog defaultOpen onOpenChange={(isOpen) => !isOpen && onClose()}>
             <DialogContent className="max-w-[500px]">
                 <DialogHeader className="flex flex-row items-center justify-between pr-8">
                     <DialogTitle className="text-sm font-medium">
