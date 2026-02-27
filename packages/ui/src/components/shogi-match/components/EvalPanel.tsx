@@ -19,7 +19,7 @@ interface EvalPanelProps {
     /** 手数クリック時のコールバック */
     onPlySelect?: (ply: number) => void;
     /** デフォルトで開いているか */
-    defaultOpen?: boolean;
+    initialOpen?: boolean;
 }
 
 /**
@@ -30,9 +30,9 @@ export function EvalPanel({
     evalHistory,
     currentPly,
     onPlySelect,
-    defaultOpen = false,
+    initialOpen = false,
 }: EvalPanelProps): ReactElement {
-    const [isOpen, setIsOpen] = useState(defaultOpen);
+    const [isOpen, setIsOpen] = useState(initialOpen);
     const [showEvalModal, setShowEvalModal] = useState(false);
 
     const handleToggle = () => {

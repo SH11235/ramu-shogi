@@ -64,7 +64,7 @@ export function PCKifuSection(): ReactElement {
                 evalHistory={displayEvalHistory}
                 currentPly={navigationState.currentPly}
                 onPlySelect={handlePlySelect}
-                defaultOpen={false}
+                initialOpen={false}
             />
 
             {/* 棋譜パネル + ドロワー（横並び） */}
