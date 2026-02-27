@@ -9,7 +9,7 @@
  */
 
 import type { NnueMeta, NnueSelection, Player, PresetConfig, ResolvedNnue } from "@shogi/app-core";
-import { useCallback, useMemo, useRef } from "react";
+import { useRef } from "react";
 import { useLazyNnueLoader } from "../../../hooks/useLazyNnueLoader";
 import { useNnueStorage } from "../../../hooks/useNnueStorage";
 import { usePresetManager } from "../../../hooks/usePresetManager";
@@ -115,15 +115,12 @@ export function useNnueManager({
     });
 
     // presetKey から displayName を取得する関数
-    const getPresetDisplayName = useCallback(
-        (presetKey: string): string | undefined => {
-            const preset = presets.find(
-                (p: { config: PresetConfig }) => p.config.presetKey === presetKey,
-            );
-            return preset?.config.displayName;
-        },
-        [presets],
-    );
+    const getPresetDisplayName = (presetKey: string): string | undefined => {
+        const preset = presets.find(
+            (p: { config: PresetConfig }) => p.config.presetKey === presetKey,
+        );
+        return preset?.config.displayName;
+    };
 
     // NNUE 解決フック（未ダウンロードのプリセットはエラーをスロー）
     const { resolveNnue } = useLazyNnueLoader({ getPresetDisplayName });
@@ -161,7 +158,7 @@ export function useNnueManager({
 
     // 分析用 NNUE ID の導出
     // preset 選択時は nnueList からダウンロード済みの NNUE を探す
-    const analysisNnueId = useMemo(() => {
+    const analysisNnueId = (() => {
         if (analysisNnueSelection.nnueId) {
             return analysisNnueSelection.nnueId;
         }
@@ -173,33 +170,24 @@ export function useNnueManager({
             return presetNnue?.id ?? null;
         }
         return null;
-    }, [analysisNnueSelection, nnueList]);
+    })();
 
     // プリセット設定のみを抽出（UIコンポーネント用）
-    const presetConfigs = useMemo(
-        () => presets.map((p: { config: PresetConfig }) => p.config),
-        [presets],
-    );
+    const presetConfigs = presets.map((p: { config: PresetConfig }) => p.config);
 
     // NNUE選択変更時にエンジンを再起動するラッパー（先手）
-    const handleSenteNnueSelectionChange = useCallback(
-        (newSelection: NnueSelection) => {
-            setSenteNnueSelection(newSelection);
-            // 新しいselectionを明示的に渡す（state更新前に参照されるのを防ぐ）
-            void restartEngineForNnue("sente", newSelection);
-        },
-        [restartEngineForNnue, setSenteNnueSelection],
-    );
+    const handleSenteNnueSelectionChange = (newSelection: NnueSelection) => {
+        setSenteNnueSelection(newSelection);
+        // 新しいselectionを明示的に渡す（state更新前に参照されるのを防ぐ）
+        void restartEngineForNnue("sente", newSelection);
+    };
 
     // NNUE選択変更時にエンジンを再起動するラッパー（後手）
-    const handleGoteNnueSelectionChange = useCallback(
-        (newSelection: NnueSelection) => {
-            setGoteNnueSelection(newSelection);
-            // 新しいselectionを明示的に渡す（state更新前に参照されるのを防ぐ）
-            void restartEngineForNnue("gote", newSelection);
-        },
-        [restartEngineForNnue, setGoteNnueSelection],
-    );
+    const handleGoteNnueSelectionChange = (newSelection: NnueSelection) => {
+        setGoteNnueSelection(newSelection);
+        // 新しいselectionを明示的に渡す（state更新前に参照されるのを防ぐ）
+        void restartEngineForNnue("gote", newSelection);
+    };
 
     return {
         // 対局用NNUE

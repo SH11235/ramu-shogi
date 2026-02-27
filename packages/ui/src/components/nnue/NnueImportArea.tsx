@@ -1,6 +1,6 @@
 import type { NnueStorageCapabilities } from "@shogi/app-core";
 import type { ReactElement } from "react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -51,11 +51,11 @@ export function NnueImportArea({
     const inputRef = useRef<HTMLInputElement>(null);
     const [isDragOver, setIsDragOver] = useState(false);
     const [pendingFile, setPendingFile] = useState<File | null>(null);
-    const isCoarsePointer = useMemo(() => {
+    const isCoarsePointer = (() => {
         if (typeof window === "undefined") return false;
         if (typeof window.matchMedia !== "function") return false;
         return window.matchMedia("(pointer: coarse)").matches;
-    }, []);
+    })();
 
     // capability とコールバックの両方が必要
     const canFileImport = capabilities.supportsFileImport && Boolean(onFileSelect);
@@ -63,80 +63,68 @@ export function NnueImportArea({
     const canImport = canFileImport || canPathImport;
 
     // ファイルを処理（許可された拡張子ならそのまま、それ以外は確認ダイアログ）
-    const processFile = useCallback(
-        (file: File) => {
-            if (isAllowedExtension(file.name)) {
-                onFileSelect?.(file);
-            } else {
-                setPendingFile(file);
-            }
-        },
-        [onFileSelect],
-    );
+    const processFile = (file: File) => {
+        if (isAllowedExtension(file.name)) {
+            onFileSelect?.(file);
+        } else {
+            setPendingFile(file);
+        }
+    };
 
-    const handleDragOver = useCallback(
-        (e: React.DragEvent) => {
-            e.preventDefault();
-            // canFileImport の場合のみドラッグ＆ドロップをサポート
-            if (!disabled && !isImporting && canFileImport) {
-                setIsDragOver(true);
-            }
-        },
-        [disabled, isImporting, canFileImport],
-    );
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        // canFileImport の場合のみドラッグ＆ドロップをサポート
+        if (!disabled && !isImporting && canFileImport) {
+            setIsDragOver(true);
+        }
+    };
 
-    const handleDragLeave = useCallback((e: React.DragEvent) => {
+    const handleDragLeave = (e: React.DragEvent) => {
         e.preventDefault();
         setIsDragOver(false);
-    }, []);
+    };
 
-    const handleDrop = useCallback(
-        (e: React.DragEvent) => {
-            e.preventDefault();
-            setIsDragOver(false);
-            if (disabled || isImporting || !canFileImport) return;
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragOver(false);
+        if (disabled || isImporting || !canFileImport) return;
 
-            const file = e.dataTransfer.files[0];
-            if (file) {
-                processFile(file);
-            }
-        },
-        [disabled, isImporting, canFileImport, processFile],
-    );
+        const file = e.dataTransfer.files[0];
+        if (file) {
+            processFile(file);
+        }
+    };
 
-    const handleFileChange = useCallback(
-        (e: React.ChangeEvent<HTMLInputElement>) => {
-            const file = e.target.files?.[0];
-            if (file) {
-                processFile(file);
-            }
-            // リセットして同じファイルを再選択可能に
-            e.target.value = "";
-        },
-        [processFile],
-    );
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            processFile(file);
+        }
+        // リセットして同じファイルを再選択可能に
+        e.target.value = "";
+    };
 
-    const handleButtonClick = useCallback(() => {
+    const handleButtonClick = () => {
         // canPathImport が優先される（将来の Desktop drag&drop 対応時）
         if (canPathImport) {
             onRequestFilePath?.();
         } else if (canFileImport) {
             inputRef.current?.click();
         }
-    }, [canPathImport, canFileImport, onRequestFilePath]);
+    };
 
     // 確認ダイアログでOKを押した場合
-    const handleConfirmImport = useCallback(() => {
+    const handleConfirmImport = () => {
         if (pendingFile) {
             onFileSelect?.(pendingFile);
             setPendingFile(null);
         }
-    }, [pendingFile, onFileSelect]);
+    };
 
     // 確認ダイアログでキャンセルを押した場合
-    const handleCancelImport = useCallback(() => {
+    const handleCancelImport = () => {
         setPendingFile(null);
-    }, []);
+    };
 
     // メッセージも capability とコールバックの両方で判定
     const dropMessage = canFileImport

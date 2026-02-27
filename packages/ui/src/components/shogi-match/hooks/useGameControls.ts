@@ -10,7 +10,7 @@ import {
     type Square,
 } from "@shogi/app-core";
 import type { MutableRefObject } from "react";
-import { useCallback, useRef } from "react";
+import { useRef } from "react";
 import type { Message, PassRightsSettings } from "../types";
 import { cloneHandsState } from "../utils/boardUtils";
 import type { UseKifuNavigationResult } from "./useKifuNavigation";
@@ -188,7 +188,7 @@ export function useGameControls({
     /**
      * 編集済み局面を確定する
      */
-    const finalizeEditedPosition = useCallback(async () => {
+    const finalizeEditedPosition = async () => {
         if (isMatchRunning) return;
         const current = positionRef.current;
         setBasePosition(clonePositionState(current));
@@ -202,40 +202,30 @@ export function useGameControls({
         } catch {
             setMessage({ text: "局面の確定に失敗しました。", type: "error" });
         }
-    }, [
-        isMatchRunning,
-        positionRef,
-        navigation,
-        clearLegalCache,
-        refreshStartSfen,
-        setBasePosition,
-        setInitialBoard,
-        setIsEditMode,
-        setMessage,
-    ]);
+    };
 
     /**
      * 対局を一時停止する
      */
-    const pauseAutoPlay = useCallback(async () => {
+    const pauseAutoPlay = async () => {
         setIsMatchRunning(false);
         setIsPaused(true);
         stopTicking();
         await stopAllEngines();
-    }, [setIsMatchRunning, setIsPaused, stopTicking, stopAllEngines]);
+    };
 
     /**
      * 一時停止中から編集モードに移行する
      */
-    const enterEditModeFromPaused = useCallback(() => {
+    const enterEditModeFromPaused = () => {
         setIsPaused(false);
         setIsEditMode(true);
-    }, [setIsPaused, setIsEditMode]);
+    };
 
     /**
      * 対局を開始/再開する
      */
-    const resumeAutoPlay = useCallback(async () => {
+    const resumeAutoPlay = async () => {
         if (isTransitioningRef.current) {
             console.warn("Already transitioning, ignoring duplicate resumeAutoPlay call");
             return;
@@ -302,46 +292,24 @@ export function useGameControls({
         } finally {
             isTransitioningRef.current = false;
         }
-    }, [
-        matchEndedRef,
-        positionReady,
-        isPaused,
-        isEditMode,
-        passRightsSettings,
-        positionRef,
-        position.turn,
-        startSfen,
-        sides,
-        senteNnueSelection,
-        goteNnueSelection,
-        navigation,
-        turnStartTimeRef,
-        finalizeEditedPosition,
-        resolveNnue,
-        startTicking,
-        setIsPaused,
-        setIsMatchRunning,
-        setIsEditMode,
-        setPosition,
-        openNnueManager,
-    ]);
+    };
 
     /**
      * 検討モードを開始する
      */
-    const handleStartReview = useCallback(async () => {
+    const handleStartReview = async () => {
         if (!positionReady) return;
         if (isEditMode) {
             await finalizeEditedPosition();
             setIsEditMode(false);
         }
         // isMatchRunningはfalseのままでisReviewModeになる
-    }, [positionReady, isEditMode, finalizeEditedPosition, setIsEditMode]);
+    };
 
     /**
      * 検討モードから編集モードに移行する
      */
-    const handleEnterEditMode = useCallback(async () => {
+    const handleEnterEditMode = async () => {
         if (isMatchRunning) return;
         if (isTransitioningRef.current) {
             console.warn("Already transitioning, ignoring duplicate handleEnterEditMode call");
@@ -371,25 +339,12 @@ export function useGameControls({
         } finally {
             isTransitioningRef.current = false;
         }
-    }, [
-        isMatchRunning,
-        positionRef,
-        navigation,
-        clearLegalCache,
-        refreshStartSfen,
-        setBasePosition,
-        setInitialBoard,
-        setLastMove,
-        setSelection,
-        setMessage,
-        setLastAddedBranchInfo,
-        setIsEditMode,
-    ]);
+    };
 
     /**
      * 平手初期局面にリセットする
      */
-    const handleResetToStartpos = useCallback(async () => {
+    const handleResetToStartpos = async () => {
         if (isTransitioningRef.current) {
             console.warn("Already transitioning, ignoring duplicate handleResetToStartpos call");
             return;
@@ -435,33 +390,7 @@ export function useGameControls({
         } finally {
             isTransitioningRef.current = false;
         }
-    }, [
-        matchEndedRef,
-        positionRef,
-        turnStartTimeRef,
-        navigation,
-        stopAllEngines,
-        resetClocks,
-        clearLegalCache,
-        setGameResult,
-        setShowResultDialog,
-        setPosition,
-        setInitialBoard,
-        setBasePosition,
-        setStartSfen,
-        setPositionReady,
-        setLastMove,
-        setSelection,
-        setMessage,
-        setLastAddedBranchInfo,
-        setIsMatchRunning,
-        setIsEditMode,
-        setEditFromSquare,
-        setEditTool,
-        setEditPromoted,
-        setEditOwner,
-        setEditPieceType,
-    ]);
+    };
 
     return {
         pauseAutoPlay,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import type { UseLocalStorageReturn } from "./useLocalStorage";
 import { useLocalStorage } from "./useLocalStorage";
 
@@ -30,10 +30,7 @@ export function useNormalizedSettings<T>(
 ): UseLocalStorageReturn<T> {
     const [stored, setStored] = useLocalStorage(key, defaultValue);
 
-    const normalized = useMemo(
-        () => normalize(stored, defaultValue),
-        [stored, defaultValue, normalize],
-    );
+    const normalized = normalize(stored, defaultValue);
 
     useEffect(() => {
         if (!isSame(normalized, stored)) {

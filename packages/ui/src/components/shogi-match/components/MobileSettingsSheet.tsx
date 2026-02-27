@@ -2,7 +2,7 @@ import type { NnueMeta, NnueSelection, PresetWithStatus } from "@shogi/app-core"
 import { NONE_NNUE_SELECTION } from "@shogi/app-core";
 import type { SkillLevelSettings } from "@shogi/engine-client";
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Switch } from "../../switch";
 import type { ClockSettings } from "../hooks/useClockManager";
 import type {
@@ -161,7 +161,7 @@ function KifuImportSection({
         };
     }, []);
 
-    const handleImport = useCallback(async () => {
+    const handleImport = async () => {
         if (!inputValue.trim()) {
             setError("入力が空です");
             return;
@@ -209,7 +209,7 @@ function KifuImportSection({
         } catch (e) {
             setError(e instanceof Error ? e.message : "インポートに失敗しました");
         }
-    }, [inputValue, onImportSfen, onImportKif]);
+    };
 
     return (
         <div className="space-y-2 pt-3 border-t border-border">

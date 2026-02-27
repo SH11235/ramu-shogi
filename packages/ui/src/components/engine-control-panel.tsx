@@ -7,7 +7,7 @@ import type {
     ThreadInfo,
 } from "@shogi/engine-client";
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "./button";
 import {
     Dialog,
@@ -198,30 +198,31 @@ export function EngineControlPanel({
     const handleRef = useRef<SearchHandle | null>(null);
     const lastAppliedThreadsRef = useRef<number | null>(null);
 
-    const updateThreadInfo = useCallback(() => {
+    const updateThreadInfo = () => {
         if (engine.getThreadInfo) {
             setThreadInfo(engine.getThreadInfo());
         }
-    }, [engine]);
+    };
 
-    const optionDefaults = useMemo(() => {
+    const optionDefaults = (() => {
         const defaults: Record<string, string> = {};
         for (const opt of USI_OPTIONS) {
             defaults[opt.name] = String(opt.defaultValue);
         }
         return defaults;
-    }, []);
-    const threadOptions = useMemo(() => buildThreadOptions(), []);
+    })();
+    const threadOptions = buildThreadOptions();
     const [optionValues, setOptionValues] = useState<Record<string, string>>(optionDefaults);
 
     useEffect(() => {
         setOptionValues(optionDefaults);
     }, [optionDefaults]);
 
+    // biome-ignore lint/correctness/useExhaustiveDependencies: React Compiler が updateThreadInfo をメモ化するため deps に追加不要。engine 変更時に再実行する意図
     useEffect(() => {
         // Update thread info on mount and when engine changes
         updateThreadInfo();
-    }, [updateThreadInfo]);
+    }, [engine]);
 
     useEffect(() => {
         if (initializedPositionRef.current) return;

@@ -1,7 +1,7 @@
 import type { NnueMeta } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
-import { useCallback, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Button } from "../button";
 import { Input } from "../input";
 
@@ -95,20 +95,20 @@ export function NnueListItem({
     const [fvScaleValue, setFvScaleValue] = useState(meta.fvScale?.toString() ?? "");
     const [isSavingFvScale, setIsSavingFvScale] = useState(false);
 
-    const startEditing = useCallback(() => {
+    const startEditing = () => {
         if (!canEdit || disabled) return;
         setEditValue(meta.displayName);
         setIsEditing(true);
         // 次のレンダリング後にフォーカス
         setTimeout(() => editInputRef.current?.select(), 0);
-    }, [canEdit, disabled, meta.displayName]);
+    };
 
-    const cancelEditing = useCallback(() => {
+    const cancelEditing = () => {
         setIsEditing(false);
         setEditValue(meta.displayName);
-    }, [meta.displayName]);
+    };
 
-    const saveDisplayName = useCallback(async () => {
+    const saveDisplayName = async () => {
         if (!onDisplayNameChange) return;
         const trimmed = editValue.trim();
         if (trimmed === "" || trimmed === meta.displayName) {
@@ -124,34 +124,31 @@ export function NnueListItem({
         } finally {
             setIsSaving(false);
         }
-    }, [onDisplayNameChange, editValue, meta.displayName, cancelEditing]);
+    };
 
-    const handleKeyDown = useCallback(
-        (e: React.KeyboardEvent) => {
-            if (e.key === "Enter") {
-                e.preventDefault();
-                void saveDisplayName();
-            } else if (e.key === "Escape") {
-                cancelEditing();
-            }
-        },
-        [saveDisplayName, cancelEditing],
-    );
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            void saveDisplayName();
+        } else if (e.key === "Escape") {
+            cancelEditing();
+        }
+    };
 
     // FV_SCALE編集関連
-    const startEditingFvScale = useCallback(() => {
+    const startEditingFvScale = () => {
         if (!canEditFvScale || disabled) return;
         setFvScaleValue(meta.fvScale?.toString() ?? "");
         setIsEditingFvScale(true);
         setTimeout(() => fvScaleInputRef.current?.select(), 0);
-    }, [canEditFvScale, disabled, meta.fvScale]);
+    };
 
-    const cancelEditingFvScale = useCallback(() => {
+    const cancelEditingFvScale = () => {
         setIsEditingFvScale(false);
         setFvScaleValue(meta.fvScale?.toString() ?? "");
-    }, [meta.fvScale]);
+    };
 
-    const saveFvScale = useCallback(async () => {
+    const saveFvScale = async () => {
         if (!onFvScaleChange) return;
         const trimmed = fvScaleValue.trim();
         const newValue = trimmed === "" ? undefined : Number(trimmed);
@@ -180,19 +177,16 @@ export function NnueListItem({
         } finally {
             setIsSavingFvScale(false);
         }
-    }, [onFvScaleChange, fvScaleValue, meta.fvScale, cancelEditingFvScale]);
+    };
 
-    const handleFvScaleKeyDown = useCallback(
-        (e: React.KeyboardEvent) => {
-            if (e.key === "Enter") {
-                e.preventDefault();
-                void saveFvScale();
-            } else if (e.key === "Escape") {
-                cancelEditingFvScale();
-            }
-        },
-        [saveFvScale, cancelEditingFvScale],
-    );
+    const handleFvScaleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            void saveFvScale();
+        } else if (e.key === "Escape") {
+            cancelEditingFvScale();
+        }
+    };
 
     const containerClassName = cn(
         "flex items-center gap-3 rounded-md border p-3",

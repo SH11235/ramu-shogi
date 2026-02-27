@@ -13,7 +13,7 @@ import type {
 } from "@shogi/app-core";
 import { detectParallelism } from "@shogi/app-core";
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "../../popover";
 import { Switch } from "../../switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../tooltip";
@@ -386,7 +386,7 @@ function ExpandedMoveDetails({
     isOnMainLine?: boolean;
 }): ReactElement {
     // 複数PVがある場合はリストで表示、なければ従来の単一PVを使用
-    const pvList = useMemo((): PvEvalInfo[] => {
+    const pvList: PvEvalInfo[] = (() => {
         const multiPv = (move.multiPvEvals ?? []).filter((pv) => pv?.pv && pv.pv.length > 0);
         if (multiPv.length > 0) {
             return multiPv;
@@ -403,18 +403,16 @@ function ExpandedMoveDetails({
             ];
         }
         return [];
-    }, [move.multiPvEvals, move.pv, move.evalCp, move.evalMate, move.depth]);
+    })();
 
     // 評価値の詳細情報（ヘッダー用、最良の候補=multipv1のもの）
-    const evalInfo = useMemo(() => {
-        const bestPv = pvList[0];
-        return getEvalTooltipInfo(
-            bestPv?.evalCp ?? move.evalCp,
-            bestPv?.evalMate ?? move.evalMate,
-            move.ply,
-            bestPv?.depth ?? move.depth,
-        );
-    }, [pvList, move.evalCp, move.evalMate, move.ply, move.depth]);
+    const bestPv = pvList[0];
+    const evalInfo = getEvalTooltipInfo(
+        bestPv?.evalCp ?? move.evalCp,
+        bestPv?.evalMate ?? move.evalMate,
+        move.ply,
+        bestPv?.depth ?? move.depth,
+    );
 
     // この手数が解析中かどうか
     const isThisPlyAnalyzing = isAnalyzing && analyzingPly === move.ply;
@@ -423,16 +421,10 @@ function ExpandedMoveDetails({
     const hasMultiplePv = pvList.length > 1;
 
     // NNUE選択肢を構築（プリセット + カスタムNNUE）
-    const nnueOptions = useMemo(
-        () => buildNnueOptions({ presets, nnueList, isNnueListLoading }),
-        [presets, nnueList, isNnueListLoading],
-    );
+    const nnueOptions = buildNnueOptions({ presets, nnueList, isNnueListLoading });
 
     // 現在の選択値を計算
-    const selectedValue = useMemo(
-        () => toNnueSelectionValue(analysisNnueSelection),
-        [analysisNnueSelection],
-    );
+    const selectedValue = toNnueSelectionValue(analysisNnueSelection);
 
     const showNnueSelector = analysisNnueSelection !== undefined && !!onAnalysisNnueSelectionChange;
 
@@ -601,28 +593,26 @@ function PvCandidateItem({
     kifuTree?: KifuTree;
 }): ReactElement {
     // PVをKIF形式に変換
-    const pvDisplay = useMemo((): PvDisplayMove[] | null => {
+    const pvDisplay: PvDisplayMove[] | null = (() => {
         if (!pv.pv || pv.pv.length === 0) {
             return null;
         }
         return convertPvToDisplay(pv.pv, position);
-    }, [pv.pv, position]);
+    })();
 
     // 評価値の詳細情報
-    const evalInfo = useMemo(() => {
-        return getEvalTooltipInfo(pv.evalCp, pv.evalMate, ply, pv.depth);
-    }, [pv.evalCp, pv.evalMate, ply, pv.depth]);
+    const evalInfo = getEvalTooltipInfo(pv.evalCp, pv.evalMate, ply, pv.depth);
 
     // PVと本譜の比較結果
-    const pvComparison = useMemo((): PvMainLineComparison | null => {
+    const pvComparison: PvMainLineComparison | null = (() => {
         if (!kifuTree || !pv.pv || pv.pv.length === 0) {
             return null;
         }
         return comparePvWithMainLine(kifuTree, ply, pv.pv);
-    }, [kifuTree, ply, pv.pv]);
+    })();
 
     // 分岐追加時のPVが既存分岐と一致するかをチェック
-    const existingBranchNodeId = useMemo((): string | null => {
+    const existingBranchNodeId: string | null = (() => {
         if (!kifuTree || !pv.pv || pv.pv.length === 0 || !pvComparison) {
             return null;
         }
@@ -637,7 +627,7 @@ function PvCandidateItem({
         }
 
         return null;
-    }, [kifuTree, ply, pv.pv, pvComparison]);
+    })();
 
     const hasPv = pvDisplay && pvDisplay.length > 0;
 
@@ -891,16 +881,10 @@ function BatchAnalysisDropdown({
     const parallelismConfig = detectParallelism();
 
     // NNUE選択肢を構築（プリセット + カスタムNNUE）
-    const nnueOptions = useMemo(
-        () => buildNnueOptions({ presets, nnueList, isNnueListLoading }),
-        [presets, nnueList, isNnueListLoading],
-    );
+    const nnueOptions = buildNnueOptions({ presets, nnueList, isNnueListLoading });
 
     // 現在の選択値を計算
-    const selectedValue = useMemo(
-        () => toNnueSelectionValue(analysisNnueSelection),
-        [analysisNnueSelection],
-    );
+    const selectedValue = toNnueSelectionValue(analysisNnueSelection);
 
     const showNnueSelector = analysisNnueSelection !== undefined && !!onAnalysisNnueSelectionChange;
 
@@ -1152,7 +1136,7 @@ export function KifuPanel({
     const [selectedBranch, setSelectedBranch] = useState<SelectedBranch | null>(null);
 
     // analysisMarkers を ply → Set<seat> に変換（棋譜行でのルックアップ用）
-    const analysisMarkersByPly = useMemo(() => {
+    const analysisMarkersByPly = (() => {
         const map = new Map<number, Set<"b" | "w">>();
         for (const marker of analysisMarkers ?? []) {
             const seats = map.get(marker.ply) ?? new Set<"b" | "w">();
@@ -1160,34 +1144,27 @@ export function KifuPanel({
             map.set(marker.ply, seats);
         }
         return map;
-    }, [analysisMarkers]);
+    })();
 
     // viewMode変更時に親に通知するラッパー（通知は一箇所に集約）
-    const setViewModeWithNotify = useCallback(
-        (newMode: KifuViewMode) => {
-            setViewMode(newMode);
-            onViewModeChange?.(newMode);
-        },
-        [onViewModeChange],
-    );
+    const setViewModeWithNotify = (newMode: KifuViewMode) => {
+        setViewMode(newMode);
+        onViewModeChange?.(newMode);
+    };
 
     // 本譜ビューのスクロール位置を保存
     const mainScrollPositionRef = useRef<number>(0);
 
     // 分岐一覧を取得
-    const branches = useMemo<BranchSummary[]>(() => {
-        if (!kifuTree) return [];
-        return getAllBranches(kifuTree);
-    }, [kifuTree]);
+    const branches: BranchSummary[] = kifuTree ? getAllBranches(kifuTree) : [];
 
     // 分岐があるか
     const hasBranches = branches.length > 0;
 
     // 手数ごとの分岐をグルーピング（インライン表示用）
-    const branchesByPlyMap = useMemo(() => {
-        if (!kifuTree) return new Map<number, BranchSummary[]>();
-        return getBranchesByPly(kifuTree);
-    }, [kifuTree]);
+    const branchesByPlyMap = kifuTree
+        ? getBranchesByPly(kifuTree)
+        : new Map<number, BranchSummary[]>();
 
     // 展開されている手数のセット（折りたたみ状態管理）
     const [expandedPlies, setExpandedPlies] = useState<Set<number>>(new Set());
@@ -1196,7 +1173,7 @@ export function KifuPanel({
     const [expandedMoveDetail, setExpandedMoveDetail] = useState<number | null>(null);
 
     // 折りたたみトグル関数
-    const togglePlyExpansion = useCallback((ply: number) => {
+    const togglePlyExpansion = (ply: number) => {
         setExpandedPlies((prev) => {
             const next = new Set(prev);
             if (next.has(ply)) {
@@ -1206,18 +1183,16 @@ export function KifuPanel({
             }
             return next;
         });
-    }, []);
+    };
 
     // 詳細展開トグル関数
-    const toggleMoveDetailExpansion = useCallback((ply: number) => {
+    const toggleMoveDetailExpansion = (ply: number) => {
         setExpandedMoveDetail((prev) => (prev === ply ? null : ply));
-    }, []);
+    };
 
     // 選択中の分岐の手順を取得
-    const selectedBranchMoves = useMemo<FlatTreeNode[]>(() => {
-        if (!kifuTree || !selectedBranch) return [];
-        return getBranchMoves(kifuTree, selectedBranch.nodeId);
-    }, [kifuTree, selectedBranch]);
+    const selectedBranchMoves: FlatTreeNode[] =
+        kifuTree && selectedBranch ? getBranchMoves(kifuTree, selectedBranch.nodeId) : [];
 
     // 処理済みの分岐情報を追跡するref（重複処理防止）
     const processedBranchInfoRef = useRef<{ ply: number; firstMove: string } | null>(null);
@@ -1254,19 +1229,21 @@ export function KifuPanel({
                 nodeId: branchInList.nodeId,
                 tabLabel: branchInList.tabLabel,
             });
-            setViewModeWithNotify("selectedBranch");
+            setViewMode("selectedBranch");
+            onViewModeChange?.("selectedBranch");
             // 処理完了を通知
             onLastAddedBranchHandled?.();
         }
-    }, [lastAddedBranchInfo, branches, kifuTree, onLastAddedBranchHandled, setViewModeWithNotify]);
+    }, [lastAddedBranchInfo, branches, kifuTree, onLastAddedBranchHandled, onViewModeChange]);
 
     // 分岐がなくなった場合は本譜ビューに戻す＆分岐状態をクリア
     useEffect(() => {
         if (branches.length === 0 && viewMode !== "main") {
-            setViewModeWithNotify("main");
+            setViewMode("main");
+            onViewModeChange?.("main");
             setSelectedBranch(null);
         }
-    }, [branches.length, viewMode, setViewModeWithNotify]);
+    }, [branches.length, viewMode, onViewModeChange]);
 
     // 選択中の分岐が変更されたら親に通知（キーボードナビゲーション用）
     // 選択中の分岐が変更されたら親に通知（キーボードナビゲーション用）
@@ -1296,31 +1273,25 @@ export function KifuPanel({
     const handleViewModeChange = setViewModeWithNotify;
 
     // 分岐を選択するハンドラ
-    const handleSelectBranch = useCallback(
-        (branch: BranchSummary) => {
-            setSelectedBranch({
-                nodeId: branch.nodeId,
-                tabLabel: branch.tabLabel,
-            });
-            setViewModeWithNotify("selectedBranch");
-        },
-        [setViewModeWithNotify],
-    );
+    const handleSelectBranch = (branch: BranchSummary) => {
+        setSelectedBranch({
+            nodeId: branch.nodeId,
+            tabLabel: branch.tabLabel,
+        });
+        setViewModeWithNotify("selectedBranch");
+    };
 
     // インライン分岐クリック時のハンドラ（ノードに移動して分岐ビューに切り替え）
-    const handleInlineBranchClick = useCallback(
-        (branch: BranchSummary) => {
-            // ノードに移動
-            onNodeClick?.(branch.nodeId);
-            // 選択した分岐として設定し、分岐ビューに切り替え
-            setSelectedBranch({
-                nodeId: branch.nodeId,
-                tabLabel: branch.tabLabel,
-            });
-            setViewModeWithNotify("selectedBranch");
-        },
-        [onNodeClick, setViewModeWithNotify],
-    );
+    const handleInlineBranchClick = (branch: BranchSummary) => {
+        // ノードに移動
+        onNodeClick?.(branch.nodeId);
+        // 選択した分岐として設定し、分岐ビューに切り替え
+        setSelectedBranch({
+            nodeId: branch.nodeId,
+            tabLabel: branch.tabLabel,
+        });
+        setViewModeWithNotify("selectedBranch");
+    };
 
     // 本譜ビューに戻ったときにスクロール位置を復元
     useEffect(() => {
@@ -1335,13 +1306,10 @@ export function KifuPanel({
     }, [viewMode]);
 
     // 評価値データの存在チェック
-    const evalDataExists = useMemo(() => hasEvalData(kifMoves), [kifMoves]);
+    const evalDataExists = hasEvalData(kifMoves);
 
     // PVがない手の数
-    const movesWithoutPv = useMemo(
-        () => kifMoves.filter((m) => !m.pv || m.pv.length === 0).length,
-        [kifMoves],
-    );
+    const movesWithoutPv = kifMoves.filter((m) => !m.pv || m.pv.length === 0).length;
 
     // ヒントバナーを表示するかどうか
     const showHintBanner = !showEval && evalDataExists && !hintDismissed && onShowEvalChange;
@@ -1368,7 +1336,7 @@ export function KifuPanel({
     }, [currentPly, kifMoves.length]);
 
     // コピーボタンのハンドラ
-    const handleCopy = useCallback(async () => {
+    const handleCopy = async () => {
         if (!onCopyKif) return;
 
         const kifString = onCopyKif();
@@ -1379,7 +1347,7 @@ export function KifuPanel({
         } catch (error) {
             console.error("Failed to copy to clipboard:", error);
         }
-    }, [onCopyKif]);
+    };
 
     return (
         <TooltipProvider delayDuration={300}>

@@ -14,7 +14,7 @@ import type {
     PresetConfig,
 } from "@shogi/app-core";
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     comparePvWithMainLine,
     findExistingBranchForPv,
@@ -113,28 +113,26 @@ function PvCandidateItem({
     kifuTree?: KifuTree;
 }): ReactElement {
     // PVをKIF形式に変換
-    const pvDisplay = useMemo((): PvDisplayMove[] | null => {
+    const pvDisplay: PvDisplayMove[] | null = (() => {
         if (!pv.pv || pv.pv.length === 0) {
             return null;
         }
         return convertPvToDisplay(pv.pv, position);
-    }, [pv.pv, position]);
+    })();
 
     // 評価値の詳細情報
-    const evalInfo = useMemo(() => {
-        return getEvalTooltipInfo(pv.evalCp, pv.evalMate, ply, pv.depth);
-    }, [pv.evalCp, pv.evalMate, ply, pv.depth]);
+    const evalInfo = getEvalTooltipInfo(pv.evalCp, pv.evalMate, ply, pv.depth);
 
     // PVと本譜の比較結果
-    const pvComparison = useMemo((): PvMainLineComparison | null => {
+    const pvComparison: PvMainLineComparison | null = (() => {
         if (!kifuTree || !pv.pv || pv.pv.length === 0) {
             return null;
         }
         return comparePvWithMainLine(kifuTree, ply, pv.pv);
-    }, [kifuTree, ply, pv.pv]);
+    })();
 
     // 分岐追加時のPVが既存分岐と一致するかをチェック
-    const existingBranchNodeId = useMemo((): string | null => {
+    const existingBranchNodeId: string | null = (() => {
         if (!kifuTree || !pv.pv || pv.pv.length === 0 || !pvComparison) {
             return null;
         }
@@ -149,7 +147,7 @@ function PvCandidateItem({
         }
 
         return null;
-    }, [kifuTree, ply, pv.pv, pvComparison]);
+    })();
 
     const hasPv = pvDisplay && pvDisplay.length > 0;
 
@@ -364,28 +362,22 @@ export function MoveDetailWindow({
     const initialSize = useRef<Size>({ width: 0, height: 0 });
 
     // ドラッグ開始（移動）
-    const handleMoveStart = useCallback(
-        (e: React.MouseEvent) => {
-            e.preventDefault();
-            dragMode.current = "move";
-            dragStart.current = { x: e.clientX, y: e.clientY };
-            initialPosition.current = { ...windowPosition };
-        },
-        [windowPosition],
-    );
+    const handleMoveStart = (e: React.MouseEvent) => {
+        e.preventDefault();
+        dragMode.current = "move";
+        dragStart.current = { x: e.clientX, y: e.clientY };
+        initialPosition.current = { ...windowPosition };
+    };
 
     // リサイズ開始（共通）
-    const createResizeHandler = useCallback(
-        (mode: DragMode) => (e: React.MouseEvent) => {
-            e.preventDefault();
-            e.stopPropagation();
-            dragMode.current = mode;
-            dragStart.current = { x: e.clientX, y: e.clientY };
-            initialPosition.current = { ...windowPosition };
-            initialSize.current = { ...size };
-        },
-        [windowPosition, size],
-    );
+    const createResizeHandler = (mode: DragMode) => (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragMode.current = mode;
+        dragStart.current = { x: e.clientX, y: e.clientY };
+        initialPosition.current = { ...windowPosition };
+        initialSize.current = { ...size };
+    };
 
     // Escキーでウィンドウを閉じる
     useEffect(() => {
@@ -512,7 +504,7 @@ export function MoveDetailWindow({
     }, [size.width, size.height, windowPosition.x, windowPosition.y]);
 
     // 複数PVがある場合はリストで表示、なければ従来の単一PVを使用
-    const pvList = useMemo((): PvEvalInfo[] => {
+    const pvList: PvEvalInfo[] = (() => {
         const multiPv = (move.multiPvEvals ?? []).filter((pv) => pv?.pv && pv.pv.length > 0);
         if (multiPv.length > 0) {
             return multiPv;
@@ -529,18 +521,16 @@ export function MoveDetailWindow({
             ];
         }
         return [];
-    }, [move.multiPvEvals, move.pv, move.evalCp, move.evalMate, move.depth]);
+    })();
 
     // 評価値の詳細情報（ヘッダー用、最良の候補=multipv1のもの）
-    const evalInfo = useMemo(() => {
-        const bestPv = pvList[0];
-        return getEvalTooltipInfo(
-            bestPv?.evalCp ?? move.evalCp,
-            bestPv?.evalMate ?? move.evalMate,
-            move.ply,
-            bestPv?.depth ?? move.depth,
-        );
-    }, [pvList, move.evalCp, move.evalMate, move.ply, move.depth]);
+    const bestPv = pvList[0];
+    const evalInfo = getEvalTooltipInfo(
+        bestPv?.evalCp ?? move.evalCp,
+        bestPv?.evalMate ?? move.evalMate,
+        move.ply,
+        bestPv?.depth ?? move.depth,
+    );
 
     // この手数が解析中かどうか
     const isThisPlyAnalyzing = isAnalyzing && analyzingPly === move.ply;
@@ -549,16 +539,10 @@ export function MoveDetailWindow({
     const hasMultiplePv = pvList.length > 1;
 
     // NNUE選択肢を構築（プリセット + カスタムNNUE）
-    const nnueOptions = useMemo(
-        () => buildNnueOptions({ presets, nnueList, isNnueListLoading }),
-        [presets, nnueList, isNnueListLoading],
-    );
+    const nnueOptions = buildNnueOptions({ presets, nnueList, isNnueListLoading });
 
     // 現在の選択値を計算
-    const selectedValue = useMemo(
-        () => toNnueSelectionValue(analysisNnueSelection),
-        [analysisNnueSelection],
-    );
+    const selectedValue = toNnueSelectionValue(analysisNnueSelection);
 
     const showNnueSelector = analysisNnueSelection !== undefined && !!onAnalysisNnueSelectionChange;
 

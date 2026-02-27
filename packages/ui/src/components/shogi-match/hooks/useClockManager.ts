@@ -1,5 +1,5 @@
 import type { Player } from "@shogi/app-core";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // クロック更新インターバル（ms）
 const CLOCK_UPDATE_INTERVAL_MS = 200;
@@ -120,55 +120,49 @@ export function useClockManager({
     /**
      * 時計をリセットする
      */
-    const resetClocks = useCallback(
-        (startTick: boolean) => {
-            setClocks({
-                sente: {
-                    mainMs: timeSettings.sente.mainMs,
-                    byoyomiMs: timeSettings.sente.byoyomiMs,
-                },
-                gote: {
-                    mainMs: timeSettings.gote.mainMs,
-                    byoyomiMs: timeSettings.gote.byoyomiMs,
-                },
-                ticking: startTick ? "sente" : null,
-                lastUpdatedAt: Date.now(),
-            });
-        },
-        [timeSettings],
-    );
+    const resetClocks = (startTick: boolean) => {
+        setClocks({
+            sente: {
+                mainMs: timeSettings.sente.mainMs,
+                byoyomiMs: timeSettings.sente.byoyomiMs,
+            },
+            gote: {
+                mainMs: timeSettings.gote.mainMs,
+                byoyomiMs: timeSettings.gote.byoyomiMs,
+            },
+            ticking: startTick ? "sente" : null,
+            lastUpdatedAt: Date.now(),
+        });
+    };
 
     /**
      * 次の手番に時計を更新する（秒読み時間をリセット）
      */
-    const updateClocksForNextTurn = useCallback(
-        (nextTurn: Player) => {
-            setClocks((prev) => ({
-                ...prev,
-                [nextTurn]: {
-                    mainMs: prev[nextTurn].mainMs,
-                    byoyomiMs: timeSettings[nextTurn].byoyomiMs,
-                },
-                ticking: nextTurn,
-                lastUpdatedAt: Date.now(),
-            }));
-        },
-        [timeSettings],
-    );
+    const updateClocksForNextTurn = (nextTurn: Player) => {
+        setClocks((prev) => ({
+            ...prev,
+            [nextTurn]: {
+                mainMs: prev[nextTurn].mainMs,
+                byoyomiMs: timeSettings[nextTurn].byoyomiMs,
+            },
+            ticking: nextTurn,
+            lastUpdatedAt: Date.now(),
+        }));
+    };
 
     /**
      * 時計を停止する
      */
-    const stopTicking = useCallback(() => {
+    const stopTicking = () => {
         setClocks((prev) => ({ ...prev, ticking: null }));
-    }, []);
+    };
 
     /**
      * 時計を開始する
      */
-    const startTicking = useCallback((turn: Player) => {
+    const startTicking = (turn: Player) => {
         setClocks((prev) => ({ ...prev, ticking: turn, lastUpdatedAt: Date.now() }));
-    }, []);
+    };
 
     // 時計の定期更新（200ms間隔）
     useEffect(() => {

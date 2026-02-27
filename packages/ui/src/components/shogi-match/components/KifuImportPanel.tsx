@@ -5,7 +5,7 @@
  */
 
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { KifMoveData } from "../utils/kifParser";
 import { parseKif, parseSfen } from "../utils/kifParser";
 
@@ -38,7 +38,7 @@ export function KifuImportPanel({
         };
     }, []);
 
-    const handleImport = useCallback(async () => {
+    const handleImport = async () => {
         if (!inputValue.trim()) {
             setError("入力が空です");
             return;
@@ -87,13 +87,13 @@ export function KifuImportPanel({
         } catch (e) {
             setError(e instanceof Error ? e.message : "インポートに失敗しました");
         }
-    }, [inputValue, onImportSfen, onImportKif]);
+    };
 
-    const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         setInputValue(e.target.value);
         setError(null);
         setSuccess(false);
-    }, []);
+    };
 
     return (
         <div className="bg-card border border-border rounded-xl p-3 shadow-lg w-full">

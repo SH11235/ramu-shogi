@@ -2,10 +2,8 @@ import {
     createContext,
     type ReactElement,
     type ReactNode,
-    useCallback,
     useContext,
     useEffect,
-    useMemo,
     useState,
 } from "react";
 
@@ -112,18 +110,15 @@ export function ThemeProvider({
         }
     }, [resolvedTheme, storageKey, theme]);
 
-    const setTheme = useCallback((nextTheme: ThemePreference) => {
+    const setTheme = (nextTheme: ThemePreference) => {
         setThemePreference(nextTheme);
-    }, []);
+    };
 
-    const value = useMemo<ThemeContextValue>(
-        () => ({
-            theme,
-            resolvedTheme,
-            setTheme,
-        }),
-        [resolvedTheme, setTheme, theme],
-    );
+    const value: ThemeContextValue = {
+        theme,
+        resolvedTheme,
+        setTheme,
+    };
 
     return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

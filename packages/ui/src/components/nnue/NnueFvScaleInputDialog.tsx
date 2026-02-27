@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -52,16 +52,16 @@ export function NnueFvScaleInputDialog({
         }
     }, [open, fileName]);
 
-    const handleValueChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const inputValue = e.target.value;
         // 空文字または整数のみ許可（小数点やアルファベットを除外）
         if (inputValue === "" || /^\d+$/.test(inputValue)) {
             setValue(inputValue);
             setError(null);
         }
-    }, []);
+    };
 
-    const handleConfirm = useCallback(() => {
+    const handleConfirm = () => {
         // 表示名のバリデーション
         const trimmedName = displayName.trim();
         if (trimmedName === "") {
@@ -85,34 +85,31 @@ export function NnueFvScaleInputDialog({
         setValue("");
         setDisplayName("");
         setError(null);
-    }, [value, displayName, onConfirm]);
+    };
 
-    const handleCancel = useCallback(() => {
+    const handleCancel = () => {
         onCancel();
         setValue("");
         setDisplayName("");
         setError(null);
-    }, [onCancel]);
+    };
 
-    const handleKeyDown = useCallback(
-        (e: React.KeyboardEvent) => {
-            if (e.key === "Enter") {
-                e.preventDefault();
-                handleConfirm();
-            }
-        },
-        [handleConfirm],
-    );
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            handleConfirm();
+        }
+    };
 
     // インポートボタンの有効/無効判定
-    const canConfirm = useMemo(() => {
+    const canConfirm = (() => {
         const trimmedName = displayName.trim();
         if (trimmedName === "") return false;
         const num = Number(value);
         if (value === "" || Number.isNaN(num)) return false;
         if (!Number.isInteger(num) || num < 1 || num > 100) return false;
         return true;
-    }, [displayName, value]);
+    })();
 
     return (
         <AlertDialog

@@ -1,5 +1,5 @@
 import type { EngineClient, EngineInfoEvent, SearchHandle } from "@shogi/engine-client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * 解析ジョブ
@@ -128,7 +128,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
     }, [onProgress, onResult, onComplete, onError]);
 
     // 進捗を更新する
-    const updateProgress = useCallback(() => {
+    const updateProgress = () => {
         const state = stateRef.current;
         const newProgress: BatchAnalysisProgress = {
             completed: state.completed,
@@ -137,108 +137,105 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         };
         setProgress(newProgress);
         callbacksRef.current.onProgress?.(newProgress);
-    }, []);
+    };
 
     // 次のジョブを取得して実行する
     // Note: JavaScriptはシングルスレッドのため、複数ワーカーが同時にこの関数を呼び出しても
     // jobQueue.shift() は安全にアトミックに実行される
-    const processNextJob = useCallback(
-        async (worker: EngineWorker) => {
-            const state = stateRef.current;
+    const processNextJob = async (worker: EngineWorker) => {
+        const state = stateRef.current;
 
-            // キャンセルされた場合は処理しない
-            if (state.cancelled) {
-                return;
+        // キャンセルされた場合は処理しない
+        if (state.cancelled) {
+            return;
+        }
+
+        // キューからジョブを取得（シングルスレッドのため競合なし）
+        const job = state.jobQueue.shift();
+        if (!job) {
+            // ジョブがない場合、全ワーカーがアイドルかチェック
+            const allIdle = state.workers.every((w) => w.currentPly === null);
+            if (allIdle && state.completed === state.total) {
+                setIsRunning(false);
+                callbacksRef.current.onComplete?.();
+            }
+            return;
+        }
+
+        // ジョブを実行
+        worker.currentPly = job.ply;
+        state.inProgress.add(job.ply);
+        updateProgress();
+
+        try {
+            // 局面を読み込み
+            await worker.client.loadPosition(job.sfen, job.moves);
+
+            // 既存のサブスクリプションを解除
+            if (worker.subscription) {
+                worker.subscription();
+                worker.subscription = null;
             }
 
-            // キューからジョブを取得（シングルスレッドのため競合なし）
-            const job = state.jobQueue.shift();
-            if (!job) {
-                // ジョブがない場合、全ワーカーがアイドルかチェック
-                const allIdle = state.workers.every((w) => w.currentPly === null);
-                if (allIdle && state.completed === state.total) {
-                    setIsRunning(false);
-                    callbacksRef.current.onComplete?.();
+            // イベントを購読
+            worker.subscription = worker.client.subscribe((event) => {
+                if (state.cancelled) return;
+
+                if (event.type === "info") {
+                    // 評価値が含まれている場合のみコールバック
+                    if (event.scoreCp !== undefined || event.scoreMate !== undefined) {
+                        callbacksRef.current.onResult?.(job.ply, event, job.nodeId);
+                    }
                 }
-                return;
-            }
 
-            // ジョブを実行
-            worker.currentPly = job.ply;
-            state.inProgress.add(job.ply);
+                if (event.type === "bestmove") {
+                    // 解析完了
+                    worker.handle = null;
+                    worker.currentPly = null;
+                    state.inProgress.delete(job.ply);
+                    state.completed++;
+                    updateProgress();
+
+                    // 次のジョブを処理
+                    void processNextJob(worker);
+                }
+
+                if (event.type === "error") {
+                    callbacksRef.current.onError?.(job.ply, new Error(event.message));
+                    worker.handle = null;
+                    worker.currentPly = null;
+                    state.inProgress.delete(job.ply);
+                    state.completed++;
+                    updateProgress();
+
+                    // エラーでも次のジョブを処理
+                    void processNextJob(worker);
+                }
+            });
+
+            // 探索開始
+            worker.handle = await worker.client.search({
+                limits: {
+                    movetimeMs: job.timeMs,
+                    maxDepth: job.depth,
+                },
+                ponder: false,
+            });
+        } catch (error) {
+            callbacksRef.current.onError?.(job.ply, error as Error);
+            worker.handle = null;
+            worker.currentPly = null;
+            state.inProgress.delete(job.ply);
+            state.completed++;
             updateProgress();
 
-            try {
-                // 局面を読み込み
-                await worker.client.loadPosition(job.sfen, job.moves);
-
-                // 既存のサブスクリプションを解除
-                if (worker.subscription) {
-                    worker.subscription();
-                    worker.subscription = null;
-                }
-
-                // イベントを購読
-                worker.subscription = worker.client.subscribe((event) => {
-                    if (state.cancelled) return;
-
-                    if (event.type === "info") {
-                        // 評価値が含まれている場合のみコールバック
-                        if (event.scoreCp !== undefined || event.scoreMate !== undefined) {
-                            callbacksRef.current.onResult?.(job.ply, event, job.nodeId);
-                        }
-                    }
-
-                    if (event.type === "bestmove") {
-                        // 解析完了
-                        worker.handle = null;
-                        worker.currentPly = null;
-                        state.inProgress.delete(job.ply);
-                        state.completed++;
-                        updateProgress();
-
-                        // 次のジョブを処理
-                        void processNextJob(worker);
-                    }
-
-                    if (event.type === "error") {
-                        callbacksRef.current.onError?.(job.ply, new Error(event.message));
-                        worker.handle = null;
-                        worker.currentPly = null;
-                        state.inProgress.delete(job.ply);
-                        state.completed++;
-                        updateProgress();
-
-                        // エラーでも次のジョブを処理
-                        void processNextJob(worker);
-                    }
-                });
-
-                // 探索開始
-                worker.handle = await worker.client.search({
-                    limits: {
-                        movetimeMs: job.timeMs,
-                        maxDepth: job.depth,
-                    },
-                    ponder: false,
-                });
-            } catch (error) {
-                callbacksRef.current.onError?.(job.ply, error as Error);
-                worker.handle = null;
-                worker.currentPly = null;
-                state.inProgress.delete(job.ply);
-                state.completed++;
-                updateProgress();
-
-                // エラーでも次のジョブを処理
-                void processNextJob(worker);
-            }
-        },
-        [updateProgress],
-    );
+            // エラーでも次のジョブを処理
+            void processNextJob(worker);
+        }
+    };
 
     // ワーカーを初期化する
-    const initializeWorkers = useCallback(async () => {
+    const initializeWorkers = async () => {
         const state = stateRef.current;
         if (state.initialized) return;
 
@@ -304,71 +301,67 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         state.initialized = true;
         state.currentNnueId = effectiveNnueId;
         state.currentFvScale = effectiveFvScale;
-    }, [createClient, nnueId, workerCount]);
+    };
 
     // 一括解析を開始する
-    const start = useCallback(
-        (jobs: AnalysisJob[], startOptions?: StartOptions) => {
-            const state = stateRef.current;
+    const start = (jobs: AnalysisJob[], startOptions?: StartOptions) => {
+        const state = stateRef.current;
 
-            // 状態をリセット
-            state.jobQueue = [...jobs];
-            state.completed = 0;
-            state.total = jobs.length;
-            state.inProgress.clear();
-            state.cancelled = false;
+        // 状態をリセット
+        state.jobQueue = [...jobs];
+        state.completed = 0;
+        state.total = jobs.length;
+        state.inProgress.clear();
+        state.cancelled = false;
 
-            // start()で渡されたnnueIdとfvScaleを記録
-            state.overrideNnueId = startOptions?.nnueId;
-            state.overrideFvScale = startOptions?.fvScale;
+        // start()で渡されたnnueIdとfvScaleを記録
+        state.overrideNnueId = startOptions?.nnueId;
+        state.overrideFvScale = startOptions?.fvScale;
 
-            const nextNnueId =
-                (state.overrideNnueId !== undefined ? state.overrideNnueId : nnueId) ?? null;
-            const nextFvScale = state.overrideFvScale;
-            const currentNnueId = state.currentNnueId ?? null;
-            const currentFvScale = state.currentFvScale;
+        const nextNnueId =
+            (state.overrideNnueId !== undefined ? state.overrideNnueId : nnueId) ?? null;
+        const nextFvScale = state.overrideFvScale;
+        const currentNnueId = state.currentNnueId ?? null;
+        const currentFvScale = state.currentFvScale;
 
-            // NNUEまたはFV_SCALEが変わった場合は再初期化
-            const shouldReinitialize =
-                state.initialized &&
-                (nextNnueId !== currentNnueId || nextFvScale !== currentFvScale);
+        // NNUEまたはFV_SCALEが変わった場合は再初期化
+        const shouldReinitialize =
+            state.initialized && (nextNnueId !== currentNnueId || nextFvScale !== currentFvScale);
+        if (shouldReinitialize) {
+            state.initialized = false;
+        }
+
+        setIsRunning(true);
+        updateProgress();
+
+        // 遅延初期化してジョブを開始
+        void (async () => {
+            // 再初期化が必要な場合は既存ワーカーを破棄
             if (shouldReinitialize) {
-                state.initialized = false;
+                const disposePromises = state.workers.map(async (worker) => {
+                    try {
+                        await worker.client.dispose();
+                    } catch {
+                        // 無視
+                    }
+                });
+                await Promise.all(disposePromises);
+                state.workers = [];
             }
 
-            setIsRunning(true);
-            updateProgress();
+            await initializeWorkers();
 
-            // 遅延初期化してジョブを開始
-            void (async () => {
-                // 再初期化が必要な場合は既存ワーカーを破棄
-                if (shouldReinitialize) {
-                    const disposePromises = state.workers.map(async (worker) => {
-                        try {
-                            await worker.client.dispose();
-                        } catch {
-                            // 無視
-                        }
-                    });
-                    await Promise.all(disposePromises);
-                    state.workers = [];
+            // 各ワーカーにジョブを割り当て
+            for (const worker of state.workers) {
+                if (!state.cancelled) {
+                    void processNextJob(worker);
                 }
-
-                await initializeWorkers();
-
-                // 各ワーカーにジョブを割り当て
-                for (const worker of state.workers) {
-                    if (!state.cancelled) {
-                        void processNextJob(worker);
-                    }
-                }
-            })();
-        },
-        [initializeWorkers, processNextJob, updateProgress, nnueId],
-    );
+            }
+        })();
+    };
 
     // 一括解析をキャンセルする
-    const cancel = useCallback(async () => {
+    const cancel = async () => {
         const state = stateRef.current;
         state.cancelled = true;
         state.jobQueue = [];
@@ -399,10 +392,10 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             setIsRunning(false);
             setProgress(null);
         }
-    }, []);
+    };
 
     // プールを破棄する
-    const dispose = useCallback(async () => {
+    const dispose = async () => {
         await cancel();
 
         const state = stateRef.current;
@@ -418,19 +411,21 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         state.workers = [];
         state.initialized = false;
         state.currentNnueId = undefined;
-    }, [cancel]);
+    };
 
     // nnueId が変更された時にプールを破棄（次回一括解析開始時に新しい NNUE でロード）
     const prevNnueIdRef = useRef(nnueId);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: React Compiler が dispose をメモ化するため deps に追加不要
     useEffect(() => {
         if (prevNnueIdRef.current !== nnueId) {
             prevNnueIdRef.current = nnueId;
             void dispose();
         }
-    }, [dispose, nnueId]);
+    }, [nnueId]);
 
     // マウント時の初期化とアンマウント時のクリーンアップ
     // React 18 Strict Mode では2回実行されるため、mountedRef で状態を追跡
+    // biome-ignore lint/correctness/useExhaustiveDependencies: アンマウント専用クリーンアップ。dispose は React Compiler がメモ化するため deps 不要
     useEffect(() => {
         mountedRef.current = true;
 
@@ -440,7 +435,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             // Strict Mode では2回目のマウント前にクリーンアップが実行される
             void dispose();
         };
-    }, [dispose]);
+    }, []);
 
     return {
         isRunning,

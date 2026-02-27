@@ -35,7 +35,7 @@ import {
     truncateFromCurrent,
 } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { normalizeEvalToSentePerspective } from "../utils/branchTreeUtils";
 import type { EvalHistory, KifMove, MultiPvNodeData, NodeData } from "../utils/kifFormat";
 import { convertMovesToKif } from "../utils/kifFormat";
@@ -173,40 +173,37 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
      * 1手進む
      * @param preferredBranchNodeId 優先する分岐のノードID（分岐ビューで使用）
      */
-    const goForward = useCallback(
-        (preferredBranchNodeId?: string) => {
-            setTree((prev) => {
-                // キャッシュの取得または作成
-                // refへの書き込みはレンダリングに影響しないため許容
-                let cache: PreferredPathCache | undefined;
-                if (preferredBranchNodeId) {
-                    const currentCache = pathCacheRef.current;
-                    if (currentCache && currentCache.nodeId === preferredBranchNodeId) {
-                        cache = currentCache;
-                    } else {
-                        cache = createPreferredPathCache(prev, preferredBranchNodeId);
-                        pathCacheRef.current = cache;
-                    }
+    const goForward = (preferredBranchNodeId?: string) => {
+        setTree((prev) => {
+            // キャッシュの取得または作成
+            // refへの書き込みはレンダリングに影響しないため許容
+            let cache: PreferredPathCache | undefined;
+            if (preferredBranchNodeId) {
+                const currentCache = pathCacheRef.current;
+                if (currentCache && currentCache.nodeId === preferredBranchNodeId) {
+                    cache = currentCache;
                 } else {
-                    pathCacheRef.current = null;
+                    cache = createPreferredPathCache(prev, preferredBranchNodeId);
+                    pathCacheRef.current = cache;
                 }
+            } else {
+                pathCacheRef.current = null;
+            }
 
-                const newTree = goForwardTree(prev, preferredBranchNodeId, cache);
-                if (newTree !== prev) {
-                    const node = getCurrentNode(newTree);
-                    const lastMove = deriveLastMoveFromUsi(node.usiMove);
-                    onPositionChange?.(node.positionAfter, lastMove);
-                }
-                return newTree;
-            });
-        },
-        [onPositionChange],
-    );
+            const newTree = goForwardTree(prev, preferredBranchNodeId, cache);
+            if (newTree !== prev) {
+                const node = getCurrentNode(newTree);
+                const lastMove = deriveLastMoveFromUsi(node.usiMove);
+                onPositionChange?.(node.positionAfter, lastMove);
+            }
+            return newTree;
+        });
+    };
 
     /**
      * 1手戻る
      */
-    const goBack = useCallback(() => {
+    const goBack = () => {
         setTree((prev) => {
             const newTree = goBackTree(prev);
             if (newTree !== prev) {
@@ -216,12 +213,12 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
             }
             return newTree;
         });
-    }, [onPositionChange]);
+    };
 
     /**
      * 最初へ
      */
-    const goToStart = useCallback(() => {
+    const goToStart = () => {
         setTree((prev) => {
             const newTree = goToStartTree(prev);
             if (newTree !== prev) {
@@ -231,12 +228,12 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
             }
             return newTree;
         });
-    }, [onPositionChange]);
+    };
 
     /**
      * 最後へ（メインライン）
      */
-    const goToEnd = useCallback(() => {
+    const goToEnd = () => {
         setTree((prev) => {
             const newTree = goToEndTree(prev);
             if (newTree !== prev) {
@@ -246,125 +243,110 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
             }
             return newTree;
         });
-    }, [onPositionChange]);
+    };
 
     /**
      * 指定手数へジャンプ
      */
-    const goToPly = useCallback(
-        (ply: number) => {
-            setTree((prev) => {
-                const newTree = goToPlyTree(prev, ply);
-                if (newTree !== prev) {
-                    const node = getCurrentNode(newTree);
-                    const lastMove = deriveLastMoveFromUsi(node.usiMove);
-                    onPositionChange?.(node.positionAfter, lastMove);
-                }
-                return newTree;
-            });
-        },
-        [onPositionChange],
-    );
+    const goToPly = (ply: number) => {
+        setTree((prev) => {
+            const newTree = goToPlyTree(prev, ply);
+            if (newTree !== prev) {
+                const node = getCurrentNode(newTree);
+                const lastMove = deriveLastMoveFromUsi(node.usiMove);
+                onPositionChange?.(node.positionAfter, lastMove);
+            }
+            return newTree;
+        });
+    };
 
     /**
      * 分岐を切り替え
      */
-    const switchBranch = useCallback(
-        (index: number) => {
-            setTree((prev) => {
-                const newTree = switchBranchTree(prev, index);
-                if (newTree !== prev) {
-                    const node = getCurrentNode(newTree);
-                    const lastMove = deriveLastMoveFromUsi(node.usiMove);
-                    onPositionChange?.(node.positionAfter, lastMove);
-                }
-                return newTree;
-            });
-        },
-        [onPositionChange],
-    );
+    const switchBranch = (index: number) => {
+        setTree((prev) => {
+            const newTree = switchBranchTree(prev, index);
+            if (newTree !== prev) {
+                const node = getCurrentNode(newTree);
+                const lastMove = deriveLastMoveFromUsi(node.usiMove);
+                onPositionChange?.(node.positionAfter, lastMove);
+            }
+            return newTree;
+        });
+    };
 
     /**
      * 現在の変化をメインに昇格
      */
-    const promoteCurrentLine = useCallback(() => {
+    const promoteCurrentLine = () => {
         setTree((prev) => promoteToMainLineTree(prev));
-    }, []);
+    };
 
     /**
      * 指定ノードへ直接ジャンプ
      */
-    const goToNodeById = useCallback(
-        (nodeId: string) => {
-            pathCacheRef.current = null; // キャッシュを無効化
-            setTree((prev) => {
-                const newTree = goToNode(prev, nodeId);
-                if (newTree !== prev) {
-                    const node = getCurrentNode(newTree);
-                    const lastMove = deriveLastMoveFromUsi(node.usiMove);
-                    onPositionChange?.(node.positionAfter, lastMove);
-                }
-                return newTree;
-            });
-        },
-        [onPositionChange],
-    );
+    const goToNodeById = (nodeId: string) => {
+        pathCacheRef.current = null; // キャッシュを無効化
+        setTree((prev) => {
+            const newTree = goToNode(prev, nodeId);
+            if (newTree !== prev) {
+                const node = getCurrentNode(newTree);
+                const lastMove = deriveLastMoveFromUsi(node.usiMove);
+                onPositionChange?.(node.positionAfter, lastMove);
+            }
+            return newTree;
+        });
+    };
 
     /**
      * 指定親ノードで分岐を切り替え
      * 親ノードへ移動してから指定インデックスの子ノードへ進む
      */
-    const switchBranchAtNode = useCallback(
-        (parentNodeId: string, branchIndex: number) => {
-            pathCacheRef.current = null; // キャッシュを無効化
-            setTree((prev) => {
-                const parentNode = prev.nodes.get(parentNodeId);
-                if (!parentNode || branchIndex < 0 || branchIndex >= parentNode.children.length) {
-                    return prev;
-                }
-                const targetChildId = parentNode.children[branchIndex];
-                const newTree = goToNode(prev, targetChildId);
-                if (newTree !== prev) {
-                    const node = getCurrentNode(newTree);
-                    const lastMove = deriveLastMoveFromUsi(node.usiMove);
-                    onPositionChange?.(node.positionAfter, lastMove);
-                }
-                return newTree;
-            });
-        },
-        [onPositionChange],
-    );
+    const switchBranchAtNode = (parentNodeId: string, branchIndex: number) => {
+        pathCacheRef.current = null; // キャッシュを無効化
+        setTree((prev) => {
+            const parentNode = prev.nodes.get(parentNodeId);
+            if (!parentNode || branchIndex < 0 || branchIndex >= parentNode.children.length) {
+                return prev;
+            }
+            const targetChildId = parentNode.children[branchIndex];
+            const newTree = goToNode(prev, targetChildId);
+            if (newTree !== prev) {
+                const node = getCurrentNode(newTree);
+                const lastMove = deriveLastMoveFromUsi(node.usiMove);
+                onPositionChange?.(node.positionAfter, lastMove);
+            }
+            return newTree;
+        });
+    };
 
     /**
      * 現在位置以降の手を削除
      */
-    const truncate = useCallback(() => {
+    const truncate = () => {
         pathCacheRef.current = null; // キャッシュを無効化
         setTree((prev) => truncateFromCurrent(prev));
-    }, []);
+    };
 
     /**
      * 指し手を追加
      */
-    const addMove = useCallback(
-        (usiMove: string, positionAfter: PositionState, options?: AddMoveOptions) => {
-            pathCacheRef.current = null; // キャッシュを無効化
-            setTree((prev) => {
-                const newTree = addMoveToTree(prev, usiMove, positionAfter, options);
-                // 新しいノードに移動したので、コールバックを呼ぶ
-                const lastMove = deriveLastMoveFromUsi(usiMove);
-                onPositionChange?.(positionAfter, lastMove);
-                return newTree;
-            });
-        },
-        [onPositionChange],
-    );
+    const addMove = (usiMove: string, positionAfter: PositionState, options?: AddMoveOptions) => {
+        pathCacheRef.current = null; // キャッシュを無効化
+        setTree((prev) => {
+            const newTree = addMoveToTree(prev, usiMove, positionAfter, options);
+            // 新しいノードに移動したので、コールバックを呼ぶ
+            const lastMove = deriveLastMoveFromUsi(usiMove);
+            onPositionChange?.(positionAfter, lastMove);
+            return newTree;
+        });
+    };
 
     /**
      * 評価値を記録（手数で指定）
      * findNodeByPlyInCurrentPathを使用し、見つからなければfindNodeByPlyInMainLineで検索
      */
-    const recordEvalByPly = useCallback((ply: number, event: EngineInfoEvent) => {
+    const recordEvalByPly = (ply: number, event: EngineInfoEvent) => {
         setTree((prev) => {
             // 最適化: 現在位置からルートまで遡りながらplyに一致するノードを探す
             let nodeId = findNodeByPlyInCurrentPath(prev, ply);
@@ -414,13 +396,13 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
 
             return updated;
         });
-    }, []);
+    };
 
     /**
      * ノードIDを指定して評価値を記録
      * 分岐内のノードなど、plyだけでは特定できないノードに評価値を保存する場合に使用
      */
-    const recordEvalByNodeId = useCallback((nodeId: string, event: EngineInfoEvent) => {
+    const recordEvalByNodeId = (nodeId: string, event: EngineInfoEvent) => {
         setTree((prev) => {
             const node = prev.nodes.get(nodeId);
             if (!node) return prev;
@@ -457,13 +439,13 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
 
             return updated;
         });
-    }, []);
+    };
 
     /**
      * 評価値をクリア（手数で指定、再解析用）
      * 既存の評価値を削除して、新しい解析結果で上書きできるようにする
      */
-    const clearEvalByPly = useCallback((ply: number) => {
+    const clearEvalByPly = (ply: number) => {
         setTree((prev) => {
             let nodeId = findNodeByPlyInCurrentPath(prev, ply);
             if (!nodeId) {
@@ -486,12 +468,12 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
 
             return { ...prev, nodes: newNodes };
         });
-    }, []);
+    };
 
     /**
      * 評価値をクリア（ノードIDで指定、再解析用）
      */
-    const clearEvalByNodeId = useCallback((nodeId: string) => {
+    const clearEvalByNodeId = (nodeId: string) => {
         setTree((prev) => {
             const node = prev.nodes.get(nodeId);
             if (!node) return prev;
@@ -507,7 +489,7 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
 
             return { ...prev, nodes: newNodes };
         });
-    }, []);
+    };
 
     /**
      * PVを分岐として追加
@@ -516,117 +498,111 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
      * @param pv PV（読み筋）の手順
      * @param onAdded 分岐が追加された場合に呼ばれるコールバック（ply, firstMoveを渡す）
      */
-    const addPvAsBranch = useCallback(
-        (
-            ply: number,
-            pv: string[],
-            onAdded?: (info: { ply: number; firstMove: string }) => void,
-        ) => {
-            if (pv.length === 0) return;
+    const addPvAsBranch = (
+        ply: number,
+        pv: string[],
+        onAdded?: (info: { ply: number; firstMove: string }) => void,
+    ) => {
+        if (pv.length === 0) return;
 
-            pathCacheRef.current = null; // キャッシュを無効化
+        pathCacheRef.current = null; // キャッシュを無効化
 
-            let branchAdded = false;
-            const firstMove = pv[0];
+        let branchAdded = false;
+        const firstMove = pv[0];
 
-            setTree((prev) => {
-                // 指定plyのノードをメインラインから探す（本譜からの分岐のみサポート）
-                const nodeId = findNodeByPlyInMainLine(prev, ply);
-                if (!nodeId) {
-                    return prev;
-                }
-
-                const node = prev.nodes.get(nodeId);
-                if (!node) {
-                    return prev;
-                }
-
-                // PVの最初の手が既存の子にあるか確認
-                const existingChild = node.children
-                    .map((id) => prev.nodes.get(id))
-                    .find((child) => child?.usiMove === firstMove);
-
-                if (existingChild) {
-                    // 既に同じ手が存在する場合は何もしない
-                    return prev;
-                }
-
-                // 分岐が成立するには、既存の子が1つ以上必要
-                // （子が0の場合は単なるメインライン延長で、分岐ではない）
-                const hadExistingChildren = node.children.length > 0;
-
-                // 新しい分岐を追加
-                let currentTree = goToNode(prev, nodeId);
-                let currentPosition = node.positionAfter;
-                let addedMoves = 0;
-
-                for (const move of pv) {
-                    const moveResult = applyMoveWithState(currentPosition, move, {
-                        validateTurn: false,
-                    });
-                    if (!moveResult.ok) {
-                        // 無効な手があれば終了
-                        break;
-                    }
-                    currentTree = addMoveToTree(currentTree, move, moveResult.next);
-                    currentPosition = moveResult.next;
-                    addedMoves++;
-                }
-
-                // 元の位置に戻る
-                const result = goToNode(currentTree, nodeId);
-
-                // 分岐が成立したかどうかを記録
-                // （既存の子があり、かつ新しい手が追加された場合のみ）
-                if (addedMoves > 0 && hadExistingChildren) {
-                    branchAdded = true;
-                }
-
-                return result;
-            });
-
-            // setTreeの外でコールバックをスケジュール
-            // nodeIdではなくply + firstMoveを渡すことでStrictModeの影響を回避
-            if (onAdded) {
-                setTimeout(() => {
-                    if (branchAdded) {
-                        onAdded({ ply, firstMove });
-                    }
-                }, 0);
+        setTree((prev) => {
+            // 指定plyのノードをメインラインから探す（本譜からの分岐のみサポート）
+            const nodeId = findNodeByPlyInMainLine(prev, ply);
+            if (!nodeId) {
+                return prev;
             }
-        },
-        [],
-    );
+
+            const node = prev.nodes.get(nodeId);
+            if (!node) {
+                return prev;
+            }
+
+            // PVの最初の手が既存の子にあるか確認
+            const existingChild = node.children
+                .map((id) => prev.nodes.get(id))
+                .find((child) => child?.usiMove === firstMove);
+
+            if (existingChild) {
+                // 既に同じ手が存在する場合は何もしない
+                return prev;
+            }
+
+            // 分岐が成立するには、既存の子が1つ以上必要
+            // （子が0の場合は単なるメインライン延長で、分岐ではない）
+            const hadExistingChildren = node.children.length > 0;
+
+            // 新しい分岐を追加
+            let currentTree = goToNode(prev, nodeId);
+            let currentPosition = node.positionAfter;
+            let addedMoves = 0;
+
+            for (const move of pv) {
+                const moveResult = applyMoveWithState(currentPosition, move, {
+                    validateTurn: false,
+                });
+                if (!moveResult.ok) {
+                    // 無効な手があれば終了
+                    break;
+                }
+                currentTree = addMoveToTree(currentTree, move, moveResult.next);
+                currentPosition = moveResult.next;
+                addedMoves++;
+            }
+
+            // 元の位置に戻る
+            const result = goToNode(currentTree, nodeId);
+
+            // 分岐が成立したかどうかを記録
+            // （既存の子があり、かつ新しい手が追加された場合のみ）
+            if (addedMoves > 0 && hadExistingChildren) {
+                branchAdded = true;
+            }
+
+            return result;
+        });
+
+        // setTreeの外でコールバックをスケジュール
+        // nodeIdではなくply + firstMoveを渡すことでStrictModeの影響を回避
+        if (onAdded) {
+            setTimeout(() => {
+                if (branchAdded) {
+                    onAdded({ ply, firstMove });
+                }
+            }, 0);
+        }
+    };
 
     /**
      * リセット
      */
-    const reset = useCallback(
-        (startPosition: PositionState, startSfen: string) => {
-            pathCacheRef.current = null; // キャッシュを無効化
-            const newTree = createKifuTree(startPosition, startSfen);
-            setTree(newTree);
-            onPositionChange?.(startPosition);
-        },
-        [onPositionChange],
-    );
+    const reset = (startPosition: PositionState, startSfen: string) => {
+        pathCacheRef.current = null; // キャッシュを無効化
+        const newTree = createKifuTree(startPosition, startSfen);
+        setTree(newTree);
+        onPositionChange?.(startPosition);
+    };
 
     /**
      * 現在のラインの指し手配列を取得
      */
-    const getMovesArray = useCallback(() => {
+    const getMovesArray = () => {
         return getMovesToCurrent(tree);
-    }, [tree]);
+    };
 
     /**
      * メインラインの指し手配列を取得
      */
-    const getMainLineMovesArray = useCallback(() => {
+    const getMainLineMovesArray = () => {
         return getMainLineMoves(tree);
-    }, [tree]);
+    };
 
     // ナビゲーション状態を計算
-    const state = useMemo((): KifuNavigationState => {
+    const state = ((): KifuNavigationState => {
         const currentNode = getCurrentNode(tree);
         const branchInfo = getBranchInfo(tree);
 
@@ -666,10 +642,10 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
             canGoForward: currentNode.children.length > 0,
             isOnMainLine,
         };
-    }, [tree]);
+    })();
 
     // 現在位置までのノードパスを計算
-    const currentLinePath = useMemo(() => {
+    const currentLinePath = (() => {
         const path: typeof tree.nodes extends Map<string, infer N> ? N[] : never[] = [];
         let nodeId: string | null = tree.currentNodeId;
 
@@ -682,10 +658,10 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
         }
 
         return path;
-    }, [tree]);
+    })();
 
     // 現在位置からライン終端までのフルパスを計算（巻き戻し時の未来の手も含む）
-    const fullLinePath = useMemo(() => {
+    const fullLinePath = (() => {
         // まず現在位置までのパスを取得
         const path = [...currentLinePath];
 
@@ -702,10 +678,10 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
         }
 
         return path;
-    }, [tree, currentLinePath]);
+    })();
 
     // 本譜（メインライン）のフルパスを計算（ルートから children[0] を辿る）
-    const mainLinePath = useMemo(() => {
+    const mainLinePath = (() => {
         const path: typeof tree.nodes extends Map<string, infer N> ? N[] : never[] = [];
 
         // ルートノードから開始
@@ -724,10 +700,10 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
         }
 
         return path;
-    }, [tree]);
+    })();
 
     // 盤面履歴を計算（フルラインから抽出、未来の手も含む）
-    const boardHistory = useMemo((): BoardState[] => {
+    const boardHistory = ((): BoardState[] => {
         const history: BoardState[] = [];
 
         for (const node of fullLinePath) {
@@ -738,10 +714,10 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
         }
 
         return history;
-    }, [fullLinePath]);
+    })();
 
     // 局面履歴を計算（各手が指された後の局面、PV変換用）
-    const positionHistory = useMemo((): PositionState[] => {
+    const positionHistory = ((): PositionState[] => {
         const history: PositionState[] = [];
 
         for (const node of fullLinePath) {
@@ -752,10 +728,10 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
         }
 
         return history;
-    }, [fullLinePath]);
+    })();
 
     // KIF形式の棋譜を生成（フルラインに対応、未来の手も含む）
-    const kifMoves = useMemo((): KifMove[] => {
+    const kifMoves = ((): KifMove[] => {
         // フルラインから指し手を抽出
         const moves: string[] = [];
         const nodeDataMap = new Map<number, NodeData>();
@@ -804,10 +780,10 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
 
         const validMoves = moves.slice(0, boardHistory.length);
         return convertMovesToKif(validMoves, boardHistory, nodeDataMap);
-    }, [fullLinePath, boardHistory]);
+    })();
 
     // 評価値履歴を生成（グラフ用、フルラインに対応、未来の手も含む）
-    const evalHistory = useMemo((): EvalHistory[] => {
+    const evalHistory = ((): EvalHistory[] => {
         const history: EvalHistory[] = [{ ply: 0, evalCp: 0, evalMate: null }];
 
         for (const node of fullLinePath) {
@@ -824,10 +800,10 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
         }
 
         return history;
-    }, [fullLinePath]);
+    })();
 
     // 本譜（メインライン）の評価値履歴を生成（グラフ用）
-    const mainLineEvalHistory = useMemo((): EvalHistory[] => {
+    const mainLineEvalHistory = ((): EvalHistory[] => {
         const history: EvalHistory[] = [{ ply: 0, evalCp: 0, evalMate: null }];
 
         for (const node of mainLinePath) {
@@ -844,10 +820,10 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
         }
 
         return history;
-    }, [mainLinePath]);
+    })();
 
     // 分岐マーカーを計算（フルラインで分岐がある手数とその分岐数）
-    const branchMarkers = useMemo((): Map<number, number> => {
+    const branchMarkers = ((): Map<number, number> => {
         const markers = new Map<number, number>();
 
         for (const node of fullLinePath) {
@@ -858,7 +834,7 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
         }
 
         return markers;
-    }, [fullLinePath]);
+    })();
 
     return {
         state,

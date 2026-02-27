@@ -1,7 +1,7 @@
 import type { NnueFormat, NnueMeta, NnueStorage } from "@shogi/app-core";
 import { NnueError } from "@shogi/app-core";
 import type { ReactNode } from "react";
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
 interface NnueHeaderValidationResult {
     format?: NnueFormat;
@@ -72,7 +72,7 @@ export function NnueProvider({
     const [error, setError] = useState<NnueError | null>(null);
     const [storageUsage, setStorageUsage] = useState<{ used: number; quota?: number } | null>(null);
 
-    const refreshList = useCallback(async () => {
+    const refreshList = async () => {
         setIsLoading(true);
         try {
             const [list, usage] = await Promise.all([storage.listMeta(), storage.getUsage()]);
@@ -90,16 +90,17 @@ export function NnueProvider({
         } finally {
             setIsLoading(false);
         }
-    }, [storage]);
+    };
 
-    const clearError = useCallback(() => {
+    const clearError = () => {
         setError(null);
-    }, []);
+    };
 
-    // 初回マウント時に一覧を取得
+    // 初回マウント時に一覧を取得（storage 変更時も再取得）
+    // biome-ignore lint/correctness/useExhaustiveDependencies: React Compiler が refreshList をメモ化するため deps に追加不要。storage 変更を deps にすることで再実行の意図を明示
     useEffect(() => {
         void refreshList();
-    }, [refreshList]);
+    }, [storage]);
 
     return (
         <NnueContext.Provider

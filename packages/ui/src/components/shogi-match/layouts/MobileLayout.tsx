@@ -11,7 +11,7 @@
 
 import type { PositionState } from "@shogi/app-core";
 import type { ReactElement } from "react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
     BottomSheet,
     GLASS_SURFACE_BLUR_PX,
@@ -172,18 +172,15 @@ export function MobileLayout({
     const evalMate = displayEvalHistory[currentPly]?.evalMate ?? undefined;
 
     // KifuMove 形式に変換（MobileKifuBar 用）
-    const kifMoves: KifuMove[] | undefined = useMemo(() => {
-        if (!fullKifMoves || fullKifMoves.length === 0) return undefined;
-        return fullKifMoves.map((m) => ({
-            ply: m.ply,
-            displayText: m.displayText,
-        }));
-    }, [fullKifMoves]);
+    const kifMoves: KifuMove[] | undefined =
+        fullKifMoves && fullKifMoves.length > 0
+            ? fullKifMoves.map((m) => ({ ply: m.ply, displayText: m.displayText }))
+            : undefined;
 
     // 盤面反転のハンドラ
-    const handleFlipBoard = useCallback(() => {
+    const handleFlipBoard = () => {
         onFlipBoardChange(!flipBoard);
-    }, [onFlipBoardChange, flipBoard]);
+    };
     // 設定BottomSheetの状態
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
@@ -195,32 +192,29 @@ export function MobileLayout({
     const [selectedMovePosition, setSelectedMovePosition] = useState<PositionState | null>(null);
 
     // 手タップ時のハンドラ（検討モードで詳細表示を開く）
-    const handlePlySelectWithDetail = useCallback(
-        (ply: number) => {
-            // まず局面を選択
-            handlePlySelect(ply);
+    const handlePlySelectWithDetail = (ply: number) => {
+        // まず局面を選択
+        handlePlySelect(ply);
 
-            // 検討モードで fullKifMoves がある場合は詳細を表示
-            if (isReviewMode && fullKifMoves && positionHistory) {
-                const move = fullKifMoves.find((m) => m.ply === ply);
-                // 対応する局面（その手が指された後の局面）
-                // ply は 1 始まりの手数、positionHistory は「その手が指された後の局面」を 0 始まりで保持しているため、
-                // 手数 ply に対応する局面は positionHistory[ply - 1] になる。
-                const pos = positionHistory[ply - 1];
-                if (move && pos) {
-                    setSelectedMoveForDetail(move);
-                    setSelectedMovePosition(pos);
-                }
+        // 検討モードで fullKifMoves がある場合は詳細を表示
+        if (isReviewMode && fullKifMoves && positionHistory) {
+            const move = fullKifMoves.find((m) => m.ply === ply);
+            // 対応する局面（その手が指された後の局面）
+            // ply は 1 始まりの手数、positionHistory は「その手が指された後の局面」を 0 始まりで保持しているため、
+            // 手数 ply に対応する局面は positionHistory[ply - 1] になる。
+            const pos = positionHistory[ply - 1];
+            if (move && pos) {
+                setSelectedMoveForDetail(move);
+                setSelectedMovePosition(pos);
             }
-        },
-        [handlePlySelect, isReviewMode, fullKifMoves, positionHistory],
-    );
+        }
+    };
 
     // 詳細シートを閉じる
-    const handleMoveDetailClose = useCallback(() => {
+    const handleMoveDetailClose = () => {
         setSelectedMoveForDetail(null);
         setSelectedMovePosition(null);
-    }, []);
+    };
 
     const graphOverlayRef = useRef<HTMLDivElement>(null);
     const graphDragRef = useRef({
@@ -232,23 +226,20 @@ export function MobileLayout({
     });
     const [graphOffset, setGraphOffset] = useState({ x: 0, y: 0 });
 
-    const handleGraphPointerDown = useCallback(
-        (e: React.PointerEvent<HTMLDivElement>) => {
-            if (e.button !== 0) return;
-            e.preventDefault();
-            e.currentTarget.setPointerCapture(e.pointerId);
-            graphDragRef.current = {
-                active: true,
-                startX: e.clientX,
-                startY: e.clientY,
-                originX: graphOffset.x,
-                originY: graphOffset.y,
-            };
-        },
-        [graphOffset.x, graphOffset.y],
-    );
+    const handleGraphPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        graphDragRef.current = {
+            active: true,
+            startX: e.clientX,
+            startY: e.clientY,
+            originX: graphOffset.x,
+            originY: graphOffset.y,
+        };
+    };
 
-    const handleGraphPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const handleGraphPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
         const state = graphDragRef.current;
         if (!state.active) return;
         const overlay = graphOverlayRef.current;
@@ -267,17 +258,17 @@ export function MobileLayout({
         const nextY = Math.min(maxY, Math.max(minY, state.originY + deltaY));
 
         setGraphOffset({ x: nextX, y: nextY });
-    }, []);
+    };
 
-    const handleGraphPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const handleGraphPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
         if (!graphDragRef.current.active) return;
         graphDragRef.current.active = false;
         e.currentTarget.releasePointerCapture(e.pointerId);
-    }, []);
+    };
 
-    // 持ち駒情報を事前計算（useMemoで安定させてReact.memoを有効にする）
-    const topHand = useMemo(() => getHandInfo("top"), [getHandInfo]);
-    const bottomHand = useMemo(() => getHandInfo("bottom"), [getHandInfo]);
+    // 持ち駒情報を事前計算
+    const topHand = getHandInfo("top");
+    const bottomHand = getHandInfo("bottom");
 
     // 編集モード判定を事前計算（MobileBoardSectionに渡す）
     const isEditModeActive = isEditMode && !isMatchRunning;

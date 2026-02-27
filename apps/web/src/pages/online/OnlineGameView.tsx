@@ -23,7 +23,7 @@ import {
 } from "@shogi/ui";
 import { useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // ─── 型定義 ───────────────────────────────────────────────────────────────────
 
@@ -86,66 +86,63 @@ function useOnlineAnalysis(searchDepth: number | null, searchTimeMs: number | nu
         };
     }, []);
 
-    const startAnalysis = useCallback(
-        async (sfen: string, moves: string[]) => {
-            const engine = engineRef.current;
-            if (!engine) return;
+    const startAnalysis = async (sfen: string, moves: string[]) => {
+        const engine = engineRef.current;
+        if (!engine) return;
 
-            // 前回の解析をキャンセル
-            if (searchHandleRef.current) {
-                await searchHandleRef.current.cancel().catch(() => undefined);
-                searchHandleRef.current = null;
-            }
-            if (unsubscribeRef.current) {
-                unsubscribeRef.current();
-                unsubscribeRef.current = null;
-            }
+        // 前回の解析をキャンセル
+        if (searchHandleRef.current) {
+            await searchHandleRef.current.cancel().catch(() => undefined);
+            searchHandleRef.current = null;
+        }
+        if (unsubscribeRef.current) {
+            unsubscribeRef.current();
+            unsubscribeRef.current = null;
+        }
 
-            topMovesMapRef.current.clear();
-            setTopMoves([]);
-            setIsAnalyzing(true);
+        topMovesMapRef.current.clear();
+        setTopMoves([]);
+        setIsAnalyzing(true);
 
-            const unsub = engine.subscribe((event) => {
-                if (event.type === "info") {
-                    const ev = event as typeof event & {
-                        multipv?: number;
-                        pv?: string[];
-                        scoreCp?: number;
-                    };
-                    const lineIdx = ev.multipv ?? 1;
-                    const pv = ev.pv;
-                    if (!pv || pv.length === 0) return;
-                    const cp = ev.scoreCp ?? 0;
-                    topMovesMapRef.current.set(lineIdx, { usi: pv[0], cp, pv });
-                    const sorted = Array.from(topMovesMapRef.current.entries())
-                        .sort(([a], [b]) => a - b)
-                        .map(([, v]) => v);
-                    setTopMoves(sorted);
-                } else if (event.type === "bestmove") {
-                    setIsAnalyzing(false);
-                    unsub();
-                    unsubscribeRef.current = null;
-                }
-            });
-            unsubscribeRef.current = unsub;
-
-            try {
-                await engine.loadPosition(sfen, moves);
-                const limits: { maxDepth?: number; movetimeMs?: number } = {};
-                if (searchDepth !== null) limits.maxDepth = searchDepth;
-                if (searchTimeMs !== null) limits.movetimeMs = searchTimeMs;
-                const handle = await engine.search({ limits });
-                searchHandleRef.current = handle;
-            } catch {
+        const unsub = engine.subscribe((event) => {
+            if (event.type === "info") {
+                const ev = event as typeof event & {
+                    multipv?: number;
+                    pv?: string[];
+                    scoreCp?: number;
+                };
+                const lineIdx = ev.multipv ?? 1;
+                const pv = ev.pv;
+                if (!pv || pv.length === 0) return;
+                const cp = ev.scoreCp ?? 0;
+                topMovesMapRef.current.set(lineIdx, { usi: pv[0], cp, pv });
+                const sorted = Array.from(topMovesMapRef.current.entries())
+                    .sort(([a], [b]) => a - b)
+                    .map(([, v]) => v);
+                setTopMoves(sorted);
+            } else if (event.type === "bestmove") {
                 setIsAnalyzing(false);
                 unsub();
                 unsubscribeRef.current = null;
             }
-        },
-        [searchDepth, searchTimeMs],
-    );
+        });
+        unsubscribeRef.current = unsub;
 
-    const cancelAnalysis = useCallback(async () => {
+        try {
+            await engine.loadPosition(sfen, moves);
+            const limits: { maxDepth?: number; movetimeMs?: number } = {};
+            if (searchDepth !== null) limits.maxDepth = searchDepth;
+            if (searchTimeMs !== null) limits.movetimeMs = searchTimeMs;
+            const handle = await engine.search({ limits });
+            searchHandleRef.current = handle;
+        } catch {
+            setIsAnalyzing(false);
+            unsub();
+            unsubscribeRef.current = null;
+        }
+    };
+
+    const cancelAnalysis = async () => {
         if (searchHandleRef.current) {
             await searchHandleRef.current.cancel().catch(() => undefined);
             searchHandleRef.current = null;
@@ -155,7 +152,7 @@ function useOnlineAnalysis(searchDepth: number | null, searchTimeMs: number | nu
             unsubscribeRef.current = null;
         }
         setIsAnalyzing(false);
-    }, []);
+    };
 
     return { isAnalyzing, topMoves, startAnalysis, cancelAnalysis };
 }
@@ -370,7 +367,7 @@ export function OnlineGameView({
 
     // ─── 合法手の取得 ────────────────────────────────────────────────────────
 
-    const fetchLegalMoves = useCallback(async () => {
+    const fetchLegalMoves = async () => {
         if (!isMyTurn) return;
         try {
             const moves = await getPositionService().getLegalMoves(
@@ -381,8 +378,9 @@ export function OnlineGameView({
         } catch {
             setLegalMoves([]);
         }
-    }, [isMyTurn]);
+    };
 
+    // biome-ignore lint/correctness/useExhaustiveDependencies: React Compiler が fetchLegalMoves をメモ化するため deps に追加不要
     useEffect(() => {
         // 巻き戻し中は合法手を表示しない
         if (isMyTurn && !gameResult && !isRewound) {
@@ -390,7 +388,7 @@ export function OnlineGameView({
         } else {
             setLegalMoves([]);
         }
-    }, [isMyTurn, gameResult, isRewound, fetchLegalMoves]);
+    }, [isMyTurn, gameResult, isRewound]);
 
     // ─── 手番切替時に最新局面へ自動移動 ─────────────────────────────────────
 
@@ -406,24 +404,24 @@ export function OnlineGameView({
 
     // ─── 棋譜ナビゲーションハンドラ ───────────────────────────────────────────
 
-    const handleNavBack = useCallback(() => {
+    const handleNavBack = () => {
         setNavIndex((prev) => {
             const cur = prev !== null ? prev : positionHistory.length - 1;
             return Math.max(0, cur - 1);
         });
-    }, [positionHistory.length]);
+    };
 
-    const handleNavForward = useCallback(() => {
+    const handleNavForward = () => {
         setNavIndex((prev) => {
             if (prev === null) return null;
             const next = prev + 1;
             // 最新局面に追いついたらライブ追従モードに戻す
             return next >= positionHistory.length - 1 ? null : next;
         });
-    }, [positionHistory.length]);
+    };
 
-    const handleNavStart = useCallback(() => setNavIndex(0), []);
-    const handleNavEnd = useCallback(() => setNavIndex(null), []);
+    const handleNavStart = () => setNavIndex(0);
+    const handleNavEnd = () => setNavIndex(null);
 
     // ─── 盤面クリック処理 ────────────────────────────────────────────────────
 
@@ -528,7 +526,7 @@ export function OnlineGameView({
 
     // ─── AI 解析トリガー ─────────────────────────────────────────────────────
 
-    const handleAnalyze = useCallback(async () => {
+    const handleAnalyze = async () => {
         if (!position || !aiSupport || seat === "s") return;
         // 制限モードは use_analysis を先送信してからエンジン解析
         if (myAiSettings?.mode === "limited") {
@@ -542,7 +540,7 @@ export function OnlineGameView({
             .boardToSfen(position)
             .then((sfen) => startAnalysis(sfen, movesRef.current))
             .catch(console.error);
-    }, [position, aiSupport, myAiSettings, seat, client, startAnalysis]);
+    };
 
     // 無制限モード: 自分の手番になったら自動解析
     const positionSfenRef = useRef<string>("");

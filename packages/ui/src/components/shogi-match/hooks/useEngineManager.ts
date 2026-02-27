@@ -13,7 +13,7 @@ import type {
 import { createEngineController } from "@shogi/app-controller";
 import type { GameResult, NnueSelection, Player, ResolvedNnue } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { EngineThreadSettings } from "../types";
 import type { TickState } from "./useClockManager";
 
@@ -173,23 +173,21 @@ export function useEngineManager({
     }, [controller]);
 
     const defaultEngineId = engineOptions[0]?.id;
-    const resolvedSides = useMemo(
-        () => ({
-            sente:
-                sides.sente.role === "engine"
-                    ? { ...sides.sente, engineId: sides.sente.engineId ?? defaultEngineId }
-                    : { role: "human" as const },
-            gote:
-                sides.gote.role === "engine"
-                    ? { ...sides.gote, engineId: sides.gote.engineId ?? defaultEngineId }
-                    : { role: "human" as const },
-        }),
-        [defaultEngineId, sides],
-    );
+    const resolvedSides = {
+        sente:
+            sides.sente.role === "engine"
+                ? { ...sides.sente, engineId: sides.sente.engineId ?? defaultEngineId }
+                : { role: "human" as const },
+        gote:
+            sides.gote.role === "engine"
+                ? { ...sides.gote, engineId: sides.gote.engineId ?? defaultEngineId }
+                : { role: "human" as const },
+    };
 
     // NOTE: create a snapshot for syncContext
-    const movesSnapshot = useMemo(() => moves, [moves]);
+    const movesSnapshot = moves;
 
+    // biome-ignore lint/correctness/useExhaustiveDependencies: resolvedSides は sides/engineOptions から導出。React Compiler がメモ化するため deps 追加不要。sides/engineOptions の変化で再実行する意図
     useEffect(() => {
         controller.command.syncContext({
             sides: resolvedSides,
@@ -217,7 +215,8 @@ export function useEngineManager({
         passRightsSettings,
         positionReady,
         positionTurn,
-        resolvedSides,
+        sides,
+        engineOptions,
         senteNnueSelection,
         startSfen,
         engineThreads,
@@ -231,40 +230,34 @@ export function useEngineManager({
         };
     }, [controller]);
 
-    const engineMap = useMemo(() => {
+    const engineMap = (() => {
         const map = new Map<string, EngineOption>();
         for (const opt of engineOptions) {
             map.set(opt.id, opt);
         }
         return map;
-    }, [engineOptions]);
+    })();
 
-    const getEngineForSide = useCallback(
-        (side: Player): EngineOption | undefined => {
-            const setting = resolvedSides[side];
-            if (setting.role !== "engine") return undefined;
-            const selectedId = setting.engineId;
-            if (!selectedId) return undefined;
-            return engineMap.get(selectedId);
-        },
-        [engineMap, resolvedSides],
-    );
+    const getEngineForSide = (side: Player): EngineOption | undefined => {
+        const setting = resolvedSides[side];
+        if (setting.role !== "engine") return undefined;
+        const selectedId = setting.engineId;
+        if (!selectedId) return undefined;
+        return engineMap.get(selectedId);
+    };
 
-    const isEngineTurn = useCallback(
-        (turn: Player): boolean => {
-            return sides[turn].role === "engine";
-        },
-        [sides],
-    );
+    const isEngineTurn = (turn: Player): boolean => {
+        return sides[turn].role === "engine";
+    };
 
-    const stopAllEngines = useCallback(async () => {
+    const stopAllEngines = async () => {
         await Promise.all([
             controller.command.dispose("sente"),
             controller.command.dispose("gote"),
         ]);
-    }, [controller]);
+    };
 
-    const resolveAnalysisEngineId = useCallback(() => {
+    const resolveAnalysisEngineId = () => {
         if (resolvedSides.sente.role === "engine" && resolvedSides.sente.engineId) {
             return resolvedSides.sente.engineId;
         }
@@ -272,18 +265,15 @@ export function useEngineManager({
             return resolvedSides.gote.engineId;
         }
         return engineOptions[0]?.id;
-    }, [engineOptions, resolvedSides]);
+    };
 
-    const analyzePosition = useCallback(
-        async (request: AnalysisRequest) => {
-            const engineId = resolveAnalysisEngineId();
-            await controller.command.startAnalysis({
-                ...request,
-                engineId,
-            });
-        },
-        [controller, resolveAnalysisEngineId],
-    );
+    const analyzePosition = async (request: AnalysisRequest) => {
+        const engineId = resolveAnalysisEngineId();
+        await controller.command.startAnalysis({
+            ...request,
+            engineId,
+        });
+    };
 
     return {
         engineReady: controllerState.engineReady,

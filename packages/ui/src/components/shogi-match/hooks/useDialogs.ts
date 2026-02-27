@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 
 /**
  * NNUE管理ダイアログを開いた理由
@@ -79,10 +79,10 @@ export function useDialogs(): DialogStates & DialogActions {
     const [isAboutOpen, setIsAboutOpen] = useState(false);
     const [isPassRightsSettingsOpen, setIsPassRightsSettingsOpen] = useState(false);
 
-    const openSettings = useCallback(() => setIsSettingsModalOpen(true), []);
-    const closeSettings = useCallback(() => setIsSettingsModalOpen(false), []);
+    const openSettings = () => setIsSettingsModalOpen(true);
+    const closeSettings = () => setIsSettingsModalOpen(false);
 
-    const openNnueManager = useCallback((reason?: NnueManagerOpenReason | string) => {
+    const openNnueManager = (reason?: NnueManagerOpenReason | string) => {
         setIsNnueManagerOpen(true);
         if (reason) {
             // 文字列の場合は"missing-analysis"として扱う
@@ -94,21 +94,21 @@ export function useDialogs(): DialogStates & DialogActions {
                     : null;
             setNnueManagerOpenReason(normalizedReason);
         }
-    }, []);
-    const closeNnueManager = useCallback(() => {
+    };
+    const closeNnueManager = () => {
         setIsNnueManagerOpen(false);
         setNnueManagerOpenReason(null);
-    }, []);
-    const clearNnueManagerOpenReason = useCallback(() => setNnueManagerOpenReason(null), []);
+    };
+    const clearNnueManagerOpenReason = () => setNnueManagerOpenReason(null);
 
-    const openDisplaySettings = useCallback(() => setIsDisplaySettingsOpen(true), []);
-    const closeDisplaySettings = useCallback(() => setIsDisplaySettingsOpen(false), []);
+    const openDisplaySettings = () => setIsDisplaySettingsOpen(true);
+    const closeDisplaySettings = () => setIsDisplaySettingsOpen(false);
 
-    const openAbout = useCallback(() => setIsAboutOpen(true), []);
-    const closeAbout = useCallback(() => setIsAboutOpen(false), []);
+    const openAbout = () => setIsAboutOpen(true);
+    const closeAbout = () => setIsAboutOpen(false);
 
-    const openPassRightsSettings = useCallback(() => setIsPassRightsSettingsOpen(true), []);
-    const closePassRightsSettings = useCallback(() => setIsPassRightsSettingsOpen(false), []);
+    const openPassRightsSettings = () => setIsPassRightsSettingsOpen(true);
+    const closePassRightsSettings = () => setIsPassRightsSettingsOpen(false);
 
     return {
         // States

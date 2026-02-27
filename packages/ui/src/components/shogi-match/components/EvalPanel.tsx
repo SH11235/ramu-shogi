@@ -6,7 +6,7 @@
  */
 
 import type { ReactElement } from "react";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import type { EvalHistory } from "../utils/kifFormat";
 import { EvalGraph } from "./EvalGraph";
 import { EvalGraphModal } from "./EvalGraphModal";
@@ -39,13 +39,13 @@ export function EvalPanel({
         setIsOpen(!isOpen);
     };
 
-    const handleGraphClick = useCallback(() => {
+    const handleGraphClick = () => {
         setShowEvalModal(true);
-    }, []);
+    };
 
-    const handleModalClose = useCallback(() => {
+    const handleModalClose = () => {
         setShowEvalModal(false);
-    }, []);
+    };
 
     return (
         <div className="bg-card border border-border rounded-xl shadow-lg w-[var(--panel-width)] overflow-hidden">

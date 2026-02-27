@@ -29,6 +29,17 @@
                 "useImportType": {
                     "level": "error",
                     "fix": "unsafe"
+                },
+                "noRestrictedImports": {
+                    "level": "warn",
+                    "options": {
+                        "paths": {
+                            "react": {
+                                "importNames": ["useMemo", "useCallback", "memo"],
+                                "message": "React Compiler が自動メモ化します。手動 memoization は不要です。Compiler がスキップするコンポーネントに限り biome-ignore で残してください。"
+                            }
+                        }
+                    }
                 }
             },
             "correctness": {

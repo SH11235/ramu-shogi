@@ -7,7 +7,7 @@ import type { EngineOption } from "@shogi/ui";
 import { PositionPresetSelector, ShogiMatch } from "@shogi/ui";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { OnlineGameView } from "./OnlineGameView";
 
 const nnueManifestUrl: string = (() => {
@@ -110,82 +110,79 @@ export default function RoomPage(): ReactElement {
 
     // ─── WebSocket 接続 + join 送信 ────────────────────────────────────────────
 
-    const handleJoin = useCallback(
-        (seatToJoin: "b" | "w" | "s") => {
-            if (!joinName.trim() || isJoining) return;
-            setIsJoining(true);
-            setJoinSeat(seatToJoin);
-            setJoinError(null);
+    const handleJoin = (seatToJoin: "b" | "w" | "s") => {
+        if (!joinName.trim() || isJoining) return;
+        setIsJoining(true);
+        setJoinSeat(seatToJoin);
+        setJoinError(null);
 
-            const wsUrl = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/rooms/${roomId}/ws`;
+        const wsUrl = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/rooms/${roomId}/ws`;
 
-            const client = createRoomClient({
-                wsUrl,
-                autoReconnect: true,
-                onReconnect: () => {
-                    // 再接続後は subscribe 内の resumed ハンドラが処理
-                },
-            });
+        const client = createRoomClient({
+            wsUrl,
+            autoReconnect: true,
+            onReconnect: () => {
+                // 再接続後は subscribe 内の resumed ハンドラが処理
+            },
+        });
 
-            clientRef.current = client;
+        clientRef.current = client;
 
-            const unsub = client.subscribe((msg: ServerMessage) => {
-                switch (msg.t) {
-                    case "joined": {
-                        setJoined(true);
-                        setIsJoining(false);
-                        break;
-                    }
-                    case "snapshot": {
-                        setSnapshot(msg.payload);
-                        break;
-                    }
-                    case "event": {
-                        if (msg.payload.kind === "settings_updated") {
-                            setLocalStartSfen(msg.payload.settings.startSfen);
-                        }
-                        if (msg.payload.kind === "game_start") {
-                            // game_start → 待機画面からインプレースで対局画面へ切り替え
-                            // WebSocket 接続を維持したまま OnlineGameView を表示する
-                            unsub();
-                            setGamePhase("playing");
-                        }
-                        break;
-                    }
-                    case "error": {
-                        setJoinError(msg.payload.message ?? "参加に失敗しました");
-                        setIsJoining(false);
-                        client.disconnect();
-                        clientRef.current = null;
-                        break;
-                    }
-                    default:
-                        break;
+        const unsub = client.subscribe((msg: ServerMessage) => {
+            switch (msg.t) {
+                case "joined": {
+                    setJoined(true);
+                    setIsJoining(false);
+                    break;
                 }
-            });
-
-            // join メッセージ送信（open 後に自動実行される）
-            // createRoomClient は接続後に send できるよう subscribe + open を待つ
-            // open イベント後 send するため、少し遅延させる
-            let joinAttempts = 0;
-            const sendJoin = (): void => {
-                if (client.getStatus() === "connected") {
-                    // seatToJoin をクロージャで直接参照し、setState の非同期更新に依存しない
-                    client.join({ seat: seatToJoin, name: joinName.trim() });
-                } else if (joinAttempts++ < 50) {
-                    // 最大5秒（100ms × 50回）待機
-                    setTimeout(sendJoin, 100);
-                } else {
-                    setJoinError("接続タイムアウト。再度お試しください。");
+                case "snapshot": {
+                    setSnapshot(msg.payload);
+                    break;
+                }
+                case "event": {
+                    if (msg.payload.kind === "settings_updated") {
+                        setLocalStartSfen(msg.payload.settings.startSfen);
+                    }
+                    if (msg.payload.kind === "game_start") {
+                        // game_start → 待機画面からインプレースで対局画面へ切り替え
+                        // WebSocket 接続を維持したまま OnlineGameView を表示する
+                        unsub();
+                        setGamePhase("playing");
+                    }
+                    break;
+                }
+                case "error": {
+                    setJoinError(msg.payload.message ?? "参加に失敗しました");
                     setIsJoining(false);
                     client.disconnect();
                     clientRef.current = null;
+                    break;
                 }
-            };
-            setTimeout(sendJoin, 50);
-        },
-        [joinName, isJoining, roomId],
-    );
+                default:
+                    break;
+            }
+        });
+
+        // join メッセージ送信（open 後に自動実行される）
+        // createRoomClient は接続後に send できるよう subscribe + open を待つ
+        // open イベント後 send するため、少し遅延させる
+        let joinAttempts = 0;
+        const sendJoin = (): void => {
+            if (client.getStatus() === "connected") {
+                // seatToJoin をクロージャで直接参照し、setState の非同期更新に依存しない
+                client.join({ seat: seatToJoin, name: joinName.trim() });
+            } else if (joinAttempts++ < 50) {
+                // 最大5秒（100ms × 50回）待機
+                setTimeout(sendJoin, 100);
+            } else {
+                setJoinError("接続タイムアウト。再度お試しください。");
+                setIsJoining(false);
+                client.disconnect();
+                clientRef.current = null;
+            }
+        };
+        setTimeout(sendJoin, 50);
+    };
 
     // アンマウント時に WebSocket を閉じる
     useEffect(() => {
@@ -218,17 +215,14 @@ export default function RoomPage(): ReactElement {
     // ─── レンダリング ──────────────────────────────────────────────────────────
 
     // 検討フェーズ: ShogiMatch で棋譜検討
-    const reviewEngineOptions = useMemo<EngineOption[]>(
-        () => [
-            {
-                id: "wasm",
-                label: "内蔵エンジン",
-                createClient: () => createWasmEngineClient({ stopMode: "terminate" }),
-                kind: "internal",
-            },
-        ],
-        [],
-    );
+    const reviewEngineOptions: EngineOption[] = [
+        {
+            id: "wasm",
+            label: "内蔵エンジン",
+            createClient: () => createWasmEngineClient({ stopMode: "terminate" }),
+            kind: "internal",
+        },
+    ];
 
     if (gamePhase === "reviewing" && reviewData) {
         return (

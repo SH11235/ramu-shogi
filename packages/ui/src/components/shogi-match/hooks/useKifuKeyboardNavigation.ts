@@ -5,7 +5,7 @@
  * 対局中は無効化される
  */
 
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 interface UseKifuKeyboardNavigationOptions {
     /** 1手進む */
@@ -51,7 +51,7 @@ export function useKifuKeyboardNavigation({
     disabledRef.current = disabled;
 
     // キーボードイベントハンドラ
-    const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
         if (disabledRef.current) return;
 
         // 入力フィールドにフォーカスがある場合は無視
@@ -84,10 +84,10 @@ export function useKifuKeyboardNavigation({
                 callbacksRef.current.onToEnd();
                 break;
         }
-    }, []);
+    };
 
     // ホイールイベントハンドラ
-    const handleWheel = useCallback((event: WheelEvent) => {
+    const handleWheel = (event: WheelEvent) => {
         if (disabledRef.current) return;
 
         // 縦スクロールのみ処理
@@ -102,19 +102,21 @@ export function useKifuKeyboardNavigation({
             // 上にスクロール = 1手戻る
             callbacksRef.current.onBack();
         }
-    }, []);
+    };
 
     // キーボードイベントの登録（document全体）
+    // biome-ignore lint/correctness/useExhaustiveDependencies: handleKeyDown は callbacksRef 経由で常に最新状態にアクセス（ref パターン）
     useEffect(() => {
         document.addEventListener("keydown", handleKeyDown);
         return () => {
             document.removeEventListener("keydown", handleKeyDown);
         };
-    }, [handleKeyDown]);
+    }, []);
 
     // ホイールイベントの登録（コンテナ要素）
     // passive: false を指定してpreventDefaultを有効化
     // スクロール動作を棋譜ナビゲーションに置き換えるため
+    // biome-ignore lint/correctness/useExhaustiveDependencies: handleWheel は callbacksRef 経由で常に最新状態にアクセス（ref パターン）
     useEffect(() => {
         if (!enableWheelNavigation) return;
         const container = containerRef?.current;
@@ -124,5 +126,5 @@ export function useKifuKeyboardNavigation({
         return () => {
             container.removeEventListener("wheel", handleWheel);
         };
-    }, [containerRef, handleWheel, enableWheelNavigation]);
+    }, [containerRef, enableWheelNavigation]);
 }

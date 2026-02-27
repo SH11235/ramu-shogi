@@ -7,7 +7,6 @@
 
 import type { PositionState } from "@shogi/app-core";
 import type { ReactElement } from "react";
-import { useMemo } from "react";
 import type { KifMove, PvDisplayMove, PvEvalInfo } from "../utils/kifFormat";
 import { convertPvToDisplay, formatEval, getEvalTooltipInfo } from "../utils/kifFormat";
 import { BottomSheet } from "./BottomSheet";
@@ -51,17 +50,15 @@ function MobilePvCandidateItem({
     isOnMainLine: boolean;
 }): ReactElement {
     // PVをKIF形式に変換
-    const pvDisplay = useMemo((): PvDisplayMove[] | null => {
+    const pvDisplay: PvDisplayMove[] | null = (() => {
         if (!pv.pv || pv.pv.length === 0) {
             return null;
         }
         return convertPvToDisplay(pv.pv, position);
-    }, [pv.pv, position]);
+    })();
 
     // 評価値の詳細情報
-    const evalInfo = useMemo(() => {
-        return getEvalTooltipInfo(pv.evalCp, pv.evalMate, ply, pv.depth);
-    }, [pv.evalCp, pv.evalMate, ply, pv.depth]);
+    const evalInfo = getEvalTooltipInfo(pv.evalCp, pv.evalMate, ply, pv.depth);
 
     const hasPv = pvDisplay && pvDisplay.length > 0;
 
@@ -165,7 +162,7 @@ export function MoveDetailBottomSheet({
 }: MoveDetailBottomSheetProps): ReactElement | null {
     const handleClose = () => onOpenChange(false);
     // 複数PVがある場合はリストで表示、なければ従来の単一PVを使用
-    const pvList = useMemo((): PvEvalInfo[] => {
+    const pvList: PvEvalInfo[] = (() => {
         if (!move) return [];
 
         const multiPv = (move.multiPvEvals ?? []).filter((pv) => pv?.pv && pv.pv.length > 0);
@@ -184,10 +181,10 @@ export function MoveDetailBottomSheet({
             ];
         }
         return [];
-    }, [move]);
+    })();
 
     // 評価値の詳細情報（ヘッダー用、最良の候補=multipv1のもの）
-    const evalInfo = useMemo(() => {
+    const evalInfo = (() => {
         if (!move) return null;
         const bestPv = pvList[0];
         return getEvalTooltipInfo(
@@ -196,7 +193,7 @@ export function MoveDetailBottomSheet({
             move.ply,
             bestPv?.depth ?? move.depth,
         );
-    }, [pvList, move]);
+    })();
 
     if (!move || !position) return null;
 

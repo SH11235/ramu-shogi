@@ -7,7 +7,7 @@
 import type { BoardState, PositionState, Square } from "@shogi/app-core";
 import { applyMoveWithState, boardToMatrix } from "@shogi/app-core";
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../dialog";
 import type { ShogiBoardCell } from "../../shogi-board";
 import { ShogiBoard } from "../../shogi-board";
@@ -68,10 +68,7 @@ export function PvPreviewDialog({
     const [previewIndex, setPreviewIndex] = useState(0);
 
     // 各ステップの局面を事前計算（有効な手のみ）
-    const { positions, validPv } = useMemo((): {
-        positions: PositionState[];
-        validPv: string[];
-    } => {
+    const { positions, validPv } = (() => {
         const positionResult: PositionState[] = [startPosition];
         const validMoves: string[] = [];
         let currentPosition = startPosition;
@@ -88,15 +85,13 @@ export function PvPreviewDialog({
         }
 
         return { positions: positionResult, validPv: validMoves };
-    }, [pv, startPosition]);
+    })();
 
     // 有効なPVを表示用に変換
-    const pvDisplay = useMemo((): PvDisplayMove[] => {
-        return convertPvToDisplay(validPv, startPosition);
-    }, [validPv, startPosition]);
+    const pvDisplay: PvDisplayMove[] = convertPvToDisplay(validPv, startPosition);
 
     // 最終手情報
-    const lastMove = useMemo(() => {
+    const lastMove = (() => {
         if (previewIndex === 0) return undefined;
         const move = validPv[previewIndex - 1];
         if (!move) return undefined;
@@ -111,50 +106,44 @@ export function PvPreviewDialog({
         const from = move.slice(0, 2) as Square;
         const to = move.slice(2, 4) as Square;
         return { from, to };
-    }, [validPv, previewIndex]);
+    })();
 
     // 現在の局面
-    const currentPosition = useMemo(() => {
-        return positions[previewIndex] ?? startPosition;
-    }, [positions, previewIndex, startPosition]);
+    const currentPosition = positions[previewIndex] ?? startPosition;
 
     // 盤面グリッド
-    const grid = useMemo(() => {
-        return boardToGrid(currentPosition.board);
-    }, [currentPosition]);
+    const grid = boardToGrid(currentPosition.board);
 
     // キーボード操作
-    const handleKeyDown = useCallback(
-        (e: KeyboardEvent) => {
-            if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+        if (!open) return;
 
-            if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
-                e.preventDefault();
-                setPreviewIndex((prev) => Math.max(0, prev - 1));
-            } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
-                e.preventDefault();
-                setPreviewIndex((prev) => Math.min(positions.length - 1, prev + 1));
-            } else if (e.key === "Home") {
-                e.preventDefault();
-                setPreviewIndex(0);
-            } else if (e.key === "End") {
-                e.preventDefault();
-                setPreviewIndex(positions.length - 1);
-            } else if (e.key === "Escape") {
-                e.preventDefault();
-                onClose();
-            }
-        },
-        [open, positions.length, onClose],
-    );
+        if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+            e.preventDefault();
+            setPreviewIndex((prev) => Math.max(0, prev - 1));
+        } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+            e.preventDefault();
+            setPreviewIndex((prev) => Math.min(positions.length - 1, prev + 1));
+        } else if (e.key === "Home") {
+            e.preventDefault();
+            setPreviewIndex(0);
+        } else if (e.key === "End") {
+            e.preventDefault();
+            setPreviewIndex(positions.length - 1);
+        } else if (e.key === "Escape") {
+            e.preventDefault();
+            onClose();
+        }
+    };
 
     // キーボードイベントをリッスン
+    // biome-ignore lint/correctness/useExhaustiveDependencies: handleKeyDown は React Compiler がメモ化するため deps に追加不要
     useEffect(() => {
         if (open) {
             window.addEventListener("keydown", handleKeyDown);
             return () => window.removeEventListener("keydown", handleKeyDown);
         }
-    }, [open, handleKeyDown]);
+    }, [open]);
 
     // ダイアログを開いたときにリセット
     useEffect(() => {
@@ -172,7 +161,7 @@ export function PvPreviewDialog({
     }, [positions.length]);
 
     // 評価値の表示フォーマット
-    const evalText = useMemo(() => {
+    const evalText = (() => {
         if (evalMate !== undefined && evalMate !== null) {
             return evalMate > 0 ? `詰み${evalMate}手` : `被詰み${Math.abs(evalMate)}手`;
         }
@@ -181,7 +170,7 @@ export function PvPreviewDialog({
             return `${sign}${evalCp}`;
         }
         return null;
-    }, [evalCp, evalMate]);
+    })();
 
     return (
         <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>

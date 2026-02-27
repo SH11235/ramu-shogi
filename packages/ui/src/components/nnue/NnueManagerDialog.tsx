@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { useCallback, useMemo, useState } from "react";
+import { useState } from "react";
 import { useNnueStorage } from "../../hooks/useNnueStorage";
 import { usePresetManager } from "../../hooks/usePresetManager";
 import { Button } from "../button";
@@ -69,7 +69,7 @@ export function NnueManagerDialog({
     onClearOpenReason,
     isMatchActive = false,
 }: NnueManagerDialogProps): ReactElement {
-    const reasonMessage = useMemo(() => {
+    const reasonMessage = (() => {
         if (!openReason) return null;
         if (openReason === "missing-sente") {
             return "先手の評価関数が未ダウンロードです。NNUE をダウンロードしてください。";
@@ -81,7 +81,7 @@ export function NnueManagerDialog({
             return "解析用の評価関数が未ダウンロードです。NNUE をダウンロードしてください。";
         }
         return openReason;
-    }, [openReason]);
+    })();
     const {
         nnueList,
         isLoading: isStorageLoading,
@@ -121,13 +121,13 @@ export function NnueManagerDialog({
     const [pendingPath, setPendingPath] = useState<string | null>(null);
 
     // ファイル選択時: FV_SCALE 入力ダイアログを表示
-    const handleFileSelect = useCallback((file: File) => {
+    const handleFileSelect = (file: File) => {
         setPendingPath(null); // 排他的に管理
         setPendingFile(file);
-    }, []);
+    };
 
     // Desktop 用: ファイルダイアログでパスを取得して FV_SCALE 入力ダイアログを表示
-    const handleRequestFilePath = useCallback(async () => {
+    const handleRequestFilePath = async () => {
         if (!onRequestFilePath) return;
         try {
             const filePath = await onRequestFilePath();
@@ -138,75 +138,63 @@ export function NnueManagerDialog({
         } catch {
             // エラーは useNnueStorage で管理される
         }
-    }, [onRequestFilePath]);
+    };
 
     // FV_SCALE と表示名確定時: 実際にインポート
-    const handleFvScaleConfirm = useCallback(
-        async (fvScale: number, displayName: string) => {
-            // 先に pending をクリアしてダイアログを閉じる（二重実行を防止）
-            const fileToImport = pendingFile;
-            const pathToImport = pendingPath;
-            setPendingFile(null);
-            setPendingPath(null);
-
-            setIsImporting(true);
-            try {
-                if (fileToImport) {
-                    await importFromFile(fileToImport, fvScale, displayName);
-                } else if (pathToImport) {
-                    await importFromPath(pathToImport, fvScale, displayName);
-                }
-            } catch {
-                // エラーは useNnueStorage で管理される
-            } finally {
-                setIsImporting(false);
-            }
-        },
-        [pendingFile, pendingPath, importFromFile, importFromPath],
-    );
-
-    // FV_SCALE 入力キャンセル
-    const handleFvScaleCancel = useCallback(() => {
+    const handleFvScaleConfirm = async (fvScale: number, displayName: string) => {
+        // 先に pending をクリアしてダイアログを閉じる（二重実行を防止）
+        const fileToImport = pendingFile;
+        const pathToImport = pendingPath;
         setPendingFile(null);
         setPendingPath(null);
-    }, []);
 
-    const handleDelete = useCallback(
-        async (id: string) => {
-            setDeletingId(id);
-            try {
-                await deleteNnue(id);
-            } catch {
-                // エラーは useNnueStorage で管理される
-            } finally {
-                setDeletingId(null);
+        setIsImporting(true);
+        try {
+            if (fileToImport) {
+                await importFromFile(fileToImport, fvScale, displayName);
+            } else if (pathToImport) {
+                await importFromPath(pathToImport, fvScale, displayName);
             }
-        },
-        [deleteNnue],
-    );
+        } catch {
+            // エラーは useNnueStorage で管理される
+        } finally {
+            setIsImporting(false);
+        }
+    };
 
-    const handleDisplayNameChange = useCallback(
-        async (id: string, newName: string) => {
-            await updateDisplayName(id, newName);
-        },
-        [updateDisplayName],
-    );
+    // FV_SCALE 入力キャンセル
+    const handleFvScaleCancel = () => {
+        setPendingFile(null);
+        setPendingPath(null);
+    };
 
-    const handleFvScaleChange = useCallback(
-        async (id: string, fvScale: number | undefined) => {
-            await updateFvScale(id, fvScale);
-        },
-        [updateFvScale],
-    );
+    const handleDelete = async (id: string) => {
+        setDeletingId(id);
+        try {
+            await deleteNnue(id);
+        } catch {
+            // エラーは useNnueStorage で管理される
+        } finally {
+            setDeletingId(null);
+        }
+    };
 
-    const handleClose = useCallback(() => {
+    const handleDisplayNameChange = async (id: string, newName: string) => {
+        await updateDisplayName(id, newName);
+    };
+
+    const handleFvScaleChange = async (id: string, fvScale: number | undefined) => {
+        await updateFvScale(id, fvScale);
+    };
+
+    const handleClose = () => {
         onOpenChange(false);
-    }, [onOpenChange]);
+    };
 
-    const handleClearError = useCallback(() => {
+    const handleClearError = () => {
         clearStorageError();
         clearPresetError();
-    }, [clearStorageError, clearPresetError]);
+    };
 
     const error = storageError ?? presetError;
     const isOperationInProgress = isImporting || deletingId !== null || downloadingKey !== null;
@@ -214,10 +202,7 @@ export function NnueManagerDialog({
     const pendingFileName = pendingFile?.name ?? pendingPath?.split(/[/\\]/).pop() ?? "";
 
     // NNUE ファイルの合計サイズを計算
-    const totalNnueSize = useMemo(
-        () => nnueList.reduce((sum, meta) => sum + meta.size, 0),
-        [nnueList],
-    );
+    const totalNnueSize = nnueList.reduce((sum, meta) => sum + meta.size, 0);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>

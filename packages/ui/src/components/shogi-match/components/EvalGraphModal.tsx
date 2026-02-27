@@ -6,7 +6,7 @@
  */
 
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { EvalHistory } from "../utils/kifFormat";
 import { EvalGraph } from "./EvalGraph";
 
@@ -72,28 +72,22 @@ export function EvalGraphModal({
     const initialSize = useRef<Size>({ width: 0, height: 0 });
 
     // ドラッグ開始（移動）
-    const handleMoveStart = useCallback(
-        (e: React.MouseEvent) => {
-            e.preventDefault();
-            dragMode.current = "move";
-            dragStart.current = { x: e.clientX, y: e.clientY };
-            initialPosition.current = { ...position };
-        },
-        [position],
-    );
+    const handleMoveStart = (e: React.MouseEvent) => {
+        e.preventDefault();
+        dragMode.current = "move";
+        dragStart.current = { x: e.clientX, y: e.clientY };
+        initialPosition.current = { ...position };
+    };
 
     // リサイズ開始（共通）
-    const createResizeHandler = useCallback(
-        (mode: DragMode) => (e: React.MouseEvent) => {
-            e.preventDefault();
-            e.stopPropagation();
-            dragMode.current = mode;
-            dragStart.current = { x: e.clientX, y: e.clientY };
-            initialPosition.current = { ...position };
-            initialSize.current = { ...size };
-        },
-        [position, size],
-    );
+    const createResizeHandler = (mode: DragMode) => (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragMode.current = mode;
+        dragStart.current = { x: e.clientX, y: e.clientY };
+        initialPosition.current = { ...position };
+        initialSize.current = { ...size };
+    };
 
     // Escキーでウィンドウを閉じる
     useEffect(() => {
