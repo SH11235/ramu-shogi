@@ -274,7 +274,7 @@ export interface RoomClient {
     resume(params: { resumeToken: string; lastEventId: number }): void;
     move(params: { eventId: number; usi: string; sfen: string }): void;
     resign(params: { eventId: number }): void;
-    useAnalysis(params: { eventId: number; ply: number }): void;
+    consumeAnalysis(params: { eventId: number; ply: number }): void;
     updateSettings(params: { startSfen: string }): void;
     ack(params: { lastEventId: number }): void;
     sync(params: { sinceEventId: number }): void;

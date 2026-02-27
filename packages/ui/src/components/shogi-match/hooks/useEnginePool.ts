@@ -1,5 +1,5 @@
 import type { EngineClient, EngineInfoEvent, SearchHandle } from "@shogi/engine-client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 /**
  * 解析ジョブ
@@ -413,19 +413,19 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         state.currentNnueId = undefined;
     };
 
+    const disposeEvent = useEffectEvent(dispose);
+
     // nnueId が変更された時にプールを破棄（次回一括解析開始時に新しい NNUE でロード）
     const prevNnueIdRef = useRef(nnueId);
-    // biome-ignore lint/correctness/useExhaustiveDependencies: React Compiler が dispose をメモ化するため deps に追加不要
     useEffect(() => {
         if (prevNnueIdRef.current !== nnueId) {
             prevNnueIdRef.current = nnueId;
-            void dispose();
+            void disposeEvent();
         }
     }, [nnueId]);
 
     // マウント時の初期化とアンマウント時のクリーンアップ
     // React 18 Strict Mode では2回実行されるため、mountedRef で状態を追跡
-    // biome-ignore lint/correctness/useExhaustiveDependencies: アンマウント専用クリーンアップ。dispose は React Compiler がメモ化するため deps 不要
     useEffect(() => {
         mountedRef.current = true;
 
@@ -433,7 +433,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             mountedRef.current = false;
             // 非同期の dispose を実行（完了を待たない）
             // Strict Mode では2回目のマウント前にクリーンアップが実行される
-            void dispose();
+            void disposeEvent();
         };
     }, []);
 
