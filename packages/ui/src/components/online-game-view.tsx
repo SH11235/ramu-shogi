@@ -5,7 +5,6 @@ import {
     type Player,
     type PositionState,
 } from "@shogi/app-core";
-import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type {
     AiSupportPlayerSettings,
     AiSupportSettings,
@@ -16,16 +15,28 @@ import type {
     Seat,
     SnapshotPayload,
 } from "@shogi/match-client";
-import {
-    BottomSheet,
-    boardToGrid,
-    HandPiecesDisplay,
-    KifuNavigationToolbar,
-    ShogiBoard,
-} from "@shogi/ui";
-import { useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useEffect, useReducer, useRef, useState } from "react";
+import { ShogiBoard } from "./shogi-board";
+import { BottomSheet } from "./shogi-match/components/BottomSheet";
+import { HandPiecesDisplay } from "./shogi-match/components/HandPiecesDisplay";
+import { KifuNavigationToolbar } from "./shogi-match/components/KifuNavigationToolbar";
+import { boardToGrid } from "./shogi-match/utils/positionUtils";
+
+// ─── AI 解析インターフェース（export） ─────────────────────────────────────────
+
+export interface AnalysisMoveResult {
+    usi: string;
+    cp: number;
+    pv: string[];
+}
+
+export interface OnlineAnalysis {
+    isAnalyzing: boolean;
+    topMoves: AnalysisMoveResult[];
+    startAnalysis: (sfen: string, moves: string[]) => Promise<void>;
+    cancelAnalysis: () => Promise<void>;
+}
 
 // ─── 型定義 ───────────────────────────────────────────────────────────────────
 
@@ -187,105 +198,6 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     }
 }
 
-// ─── AI 解析フック ────────────────────────────────────────────────────────────
-
-interface AnalysisMoveResult {
-    usi: string;
-    cp: number;
-    pv: string[];
-}
-
-function useOnlineAnalysis(searchDepth: number | null, searchTimeMs: number | null) {
-    const engineRef = useRef<ReturnType<typeof createWasmEngineClient> | null>(null);
-    const searchHandleRef = useRef<{ cancel(): Promise<void> } | null>(null);
-    const unsubscribeRef = useRef<(() => void) | null>(null);
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
-    const [topMoves, setTopMoves] = useState<AnalysisMoveResult[]>([]);
-    const topMovesMapRef = useRef<Map<number, AnalysisMoveResult>>(new Map());
-
-    useEffect(() => {
-        const engine = createWasmEngineClient({ stopMode: "terminate" });
-        engineRef.current = engine;
-        engine
-            .init({ threads: 1 })
-            .then(() => engine.setOption("MultiPV", 3))
-            .catch(console.error);
-        return () => {
-            engine.dispose().catch(console.error);
-        };
-    }, []);
-
-    const startAnalysis = async (sfen: string, moves: string[]) => {
-        const engine = engineRef.current;
-        if (!engine) return;
-
-        // 前回の解析をキャンセル
-        if (searchHandleRef.current) {
-            await searchHandleRef.current.cancel().catch(() => undefined);
-            searchHandleRef.current = null;
-        }
-        if (unsubscribeRef.current) {
-            unsubscribeRef.current();
-            unsubscribeRef.current = null;
-        }
-
-        topMovesMapRef.current.clear();
-        setTopMoves([]);
-        setIsAnalyzing(true);
-
-        const unsub = engine.subscribe((event) => {
-            if (event.type === "info") {
-                const ev = event as typeof event & {
-                    multipv?: number;
-                    pv?: string[];
-                    scoreCp?: number;
-                };
-                const lineIdx = ev.multipv ?? 1;
-                const pv = ev.pv;
-                if (!pv || pv.length === 0) return;
-                const cp = ev.scoreCp ?? 0;
-                topMovesMapRef.current.set(lineIdx, { usi: pv[0], cp, pv });
-                const sorted = Array.from(topMovesMapRef.current.entries())
-                    .sort(([a], [b]) => a - b)
-                    .map(([, v]) => v);
-                setTopMoves(sorted);
-            } else if (event.type === "bestmove") {
-                setIsAnalyzing(false);
-                unsub();
-                unsubscribeRef.current = null;
-            }
-        });
-        unsubscribeRef.current = unsub;
-
-        try {
-            await engine.loadPosition(sfen, moves);
-            const limits: { maxDepth?: number; movetimeMs?: number } = {};
-            if (searchDepth !== null) limits.maxDepth = searchDepth;
-            if (searchTimeMs !== null) limits.movetimeMs = searchTimeMs;
-            const handle = await engine.search({ limits });
-            searchHandleRef.current = handle;
-        } catch {
-            setIsAnalyzing(false);
-            unsub();
-            unsubscribeRef.current = null;
-        }
-    };
-
-    const cancelAnalysis = async () => {
-        if (searchHandleRef.current) {
-            await searchHandleRef.current.cancel().catch(() => undefined);
-            searchHandleRef.current = null;
-        }
-        if (unsubscribeRef.current) {
-            unsubscribeRef.current();
-            unsubscribeRef.current = null;
-        }
-        setIsAnalyzing(false);
-    };
-
-    return { isAnalyzing, topMoves, startAnalysis, cancelAnalysis };
-}
-
 // ─── クロックフック ────────────────────────────────────────────────────────────
 
 function useOnlineClock(clockState: ClockState | null): { b: number; w: number } {
@@ -321,11 +233,13 @@ interface OnlineGameViewProps {
     snapshot: SnapshotPayload;
     seat: Seat;
     roomId: string;
+    analysis?: OnlineAnalysis;
     onStartReview?: (data: {
         sfen: string;
         moves: string[];
         analysisMarkers: Array<{ seat: "b" | "w"; ply: number }>;
     }) => void;
+    onExit?: () => void;
 }
 
 export function OnlineGameView({
@@ -333,7 +247,9 @@ export function OnlineGameView({
     snapshot,
     seat,
     roomId,
+    analysis,
     onStartReview,
+    onExit,
 }: OnlineGameViewProps): ReactElement {
     // ─── AI サポート設定（makeInitialGameState の引数として使用するため先に定義） ──
     const aiSupport = snapshot.settings.aiSupport as AiSupportSettings | null;
@@ -368,10 +284,9 @@ export function OnlineGameView({
     const [navIndex, setNavIndex] = useState<number | null>(null);
     const [aiSheetOpen, setAiSheetOpen] = useState(false);
 
-    const { isAnalyzing, topMoves, startAnalysis, cancelAnalysis } = useOnlineAnalysis(
-        aiSupport?.searchDepth ?? null,
-        aiSupport?.searchTimeMs ?? null,
-    );
+    // analysis prop から分解（undefined 時のデフォルト値）
+    const isAnalyzing = analysis?.isAnalyzing ?? false;
+    const topMoves = analysis?.topMoves ?? [];
 
     // 現在の start SFEN と moves
     const startSfenRef = useRef(snapshot.settings.startSfen);
@@ -393,7 +308,7 @@ export function OnlineGameView({
     const effectiveNavIndex = isMyTurn ? null : navIndex;
     const isRewound = effectiveNavIndex !== null;
     const currentPly = isRewound ? effectiveNavIndex : totalPly;
-    // 表示用局面: 巻き戻し中は履歴の局面、それ以外はライブ局面
+    // 表示用局面: 巻き戻し中は履歴局面、それ以外はライブ局面
     const displayPosition = isRewound ? (positionHistory[effectiveNavIndex] ?? null) : position;
 
     // ─── 初期局面の読み込み ──────────────────────────────────────────────────
@@ -652,23 +567,24 @@ export function OnlineGameView({
             client.consumeAnalysis({ eventId: latestEventIdRef.current, ply });
             // analysis_used 受信後に自動で残り回数が更新される
         }
-        // WASM 解析開始
-        await getPositionService()
-            .boardToSfen(position)
-            .then((sfen) => startAnalysis(sfen, movesRef.current))
-            .catch(console.error);
+        if (analysis) {
+            await getPositionService()
+                .boardToSfen(position)
+                .then((sfen) => analysis.startAnalysis(sfen, movesRef.current))
+                .catch(console.error);
+        }
     };
 
     // 無制限モード: 自分の手番になったら自動解析
     const positionSfenRef = useRef<string>("");
     useEffect(() => {
-        if (!aiSupport || !position || gameResult) return;
+        if (!aiSupport || !position || gameResult || !analysis) return;
         if (myAiSettings?.mode !== "unlimited") return;
         // 自分の手番（または観戦者）のとき自動解析
         const isMyAnalysisTurn =
             seat === "s" || (seat === "b" && turn === "b") || (seat === "w" && turn === "w");
         if (!isMyAnalysisTurn) {
-            void cancelAnalysis();
+            void analysis.cancelAnalysis();
             return;
         }
         getPositionService()
@@ -676,10 +592,10 @@ export function OnlineGameView({
             .then((sfen) => {
                 if (sfen === positionSfenRef.current) return;
                 positionSfenRef.current = sfen;
-                return startAnalysis(sfen, movesRef.current);
+                return analysis.startAnalysis(sfen, movesRef.current);
             })
             .catch(console.error);
-    }, [aiSupport, myAiSettings, position, turn, seat, gameResult, startAnalysis, cancelAnalysis]);
+    }, [aiSupport, myAiSettings, position, turn, seat, gameResult, analysis]);
 
     // ─── KIF ダウンロード ─────────────────────────────────────────────────────
 
@@ -907,6 +823,7 @@ export function OnlineGameView({
                                   })
                             : undefined
                     }
+                    onExit={onExit}
                 />
             )}
 
@@ -1021,6 +938,7 @@ interface GameEndDialogProps {
     onDownloadKifu: () => void;
     analysisLog: Array<{ seat: "b" | "w"; ply: number }>;
     onStartReview?: () => void;
+    onExit?: () => void;
 }
 
 function GameEndDialog({
@@ -1030,8 +948,8 @@ function GameEndDialog({
     onDownloadKifu,
     analysisLog,
     onStartReview,
+    onExit,
 }: GameEndDialogProps): ReactElement {
-    const navigate = useNavigate();
     const winnerName =
         result.winner === "b" ? playerNames.b : result.winner === "w" ? playerNames.w : null;
 
@@ -1097,13 +1015,15 @@ function GameEndDialog({
                             </button>
                         </>
                     )}
-                    <button
-                        type="button"
-                        onClick={() => void navigate({ to: "/" })}
-                        className="w-full rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
-                    >
-                        トップへ戻る
-                    </button>
+                    {onExit && (
+                        <button
+                            type="button"
+                            onClick={onExit}
+                            className="w-full rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
+                        >
+                            トップへ戻る
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

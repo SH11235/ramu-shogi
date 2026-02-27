@@ -1,6 +1,18 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// @shogi/engine-wasm のモック（useOnlineAnalysis が利用するため）
+vi.mock("@shogi/engine-wasm", () => ({
+    createWasmEngineClient: () => ({
+        init: vi.fn().mockResolvedValue(undefined),
+        setOption: vi.fn().mockResolvedValue(undefined),
+        subscribe: vi.fn().mockReturnValue(() => {}),
+        loadPosition: vi.fn().mockResolvedValue(undefined),
+        search: vi.fn().mockResolvedValue({ cancel: vi.fn().mockResolvedValue(undefined) }),
+        dispose: vi.fn().mockResolvedValue(undefined),
+    }),
+}));
+
 // @tanstack/react-router のモック
 const mockNavigate = vi.fn();
 vi.mock("@tanstack/react-router", () => ({

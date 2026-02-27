@@ -10,7 +10,7 @@
 パッケージ依存関係（`→` は依存方向）:
 - apps/web → ui, design-system, app-controller, engine-wasm
 - apps/desktop → ui, design-system, app-controller, engine-tauri
-- ui → app-core, app-controller, design-system, engine-client
+- ui → app-core, app-controller, design-system, engine-client, match-client
 - app-controller → app-core, engine-client
 - app-core → (依存なし)
 - engine-wasm → engine-client, rust-core

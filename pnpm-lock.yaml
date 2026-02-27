@@ -317,6 +317,9 @@ importers:
       '@shogi/engine-client':
         specifier: workspace:*
         version: link:../engine-client
+      '@shogi/match-client':
+        specifier: workspace:*
+        version: link:../match-client
       class-variance-authority:
         specifier: ^0.7.0
         version: 0.7.1

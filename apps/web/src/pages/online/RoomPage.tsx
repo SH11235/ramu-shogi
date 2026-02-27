@@ -4,11 +4,11 @@ import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type { RoomClient, Seat, ServerMessage, SnapshotPayload } from "@shogi/match-client";
 import { createRoomClient } from "@shogi/match-client";
 import type { EngineOption } from "@shogi/ui";
-import { PositionPresetSelector, ShogiMatch } from "@shogi/ui";
+import { OnlineGameView, PositionPresetSelector, ShogiMatch } from "@shogi/ui";
 import { getRouteApi, useNavigate, useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useEffect, useReducer, useRef, useState } from "react";
-import { OnlineGameView } from "./OnlineGameView";
+import { useOnlineAnalysis } from "../../hooks/useOnlineAnalysis";
 
 const nnueManifestUrl: string = (() => {
     const value = import.meta.env.VITE_NNUE_MANIFEST_URL as string | undefined;
@@ -111,6 +111,12 @@ export default function RoomPage(): ReactElement {
 
     const clientRef = useRef<RoomClient | null>(null);
     const [client, setClient] = useState<RoomClient | null>(null);
+
+    const aiSupport = roomInfo.settings.aiSupport;
+    const analysis = useOnlineAnalysis(
+        aiSupport?.searchDepth ?? null,
+        aiSupport?.searchTimeMs ?? null,
+    );
     const inviteUrl =
         typeof window !== "undefined" ? `${window.location.origin}/online/${roomId}` : "";
 
@@ -253,10 +259,12 @@ export default function RoomPage(): ReactElement {
                 snapshot={snapshot}
                 seat={joinForm.seat as Seat}
                 roomId={roomId}
+                analysis={aiSupport ? analysis : undefined}
                 onStartReview={(data) => {
                     setReviewData(data);
                     setGamePhase("reviewing");
                 }}
+                onExit={() => void navigate({ to: "/" })}
             />
         );
     }
