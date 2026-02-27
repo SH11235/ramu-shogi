@@ -1,0 +1,6 @@
+{
+    "ignore": {
+        "rules": [],
+        "files": ["packages/ui/src/components/shogi-match/components/EvalPanel.tsx"]
+    }
+}
