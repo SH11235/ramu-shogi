@@ -9,7 +9,7 @@
             ]
         }
     },
-    "ignoreDependencies": ["wasm-opt"],
+    "ignoreDependencies": ["wasm-opt", "wrangler"],
     "ignore": [
         "apps/desktop/src-tauri/target/**",
         "apps/web/worker/index.ts",
