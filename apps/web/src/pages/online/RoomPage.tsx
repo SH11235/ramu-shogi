@@ -5,9 +5,9 @@ import type { RoomClient, Seat, ServerMessage, SnapshotPayload } from "@shogi/ma
 import { createRoomClient } from "@shogi/match-client";
 import type { EngineOption } from "@shogi/ui";
 import { PositionPresetSelector, ShogiMatch } from "@shogi/ui";
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { getRouteApi, useNavigate, useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { OnlineGameView } from "./OnlineGameView";
 
 const nnueManifestUrl: string = (() => {
@@ -25,7 +25,7 @@ interface AiSupportPlayerSettings {
     limitCount: number | null;
 }
 
-interface RoomInfo {
+export interface RoomInfo {
     roomId: string;
     status: "waiting" | "playing" | "finished";
     players: {
@@ -48,28 +48,57 @@ interface RoomInfo {
     };
 }
 
+// ─── 参加フォーム状態 ────────────────────────────────────────────────────────
+
+type JoinFormState = {
+    name: string;
+    seat: "b" | "w" | "s";
+    isJoining: boolean;
+    error: string | null;
+};
+
+type JoinFormAction =
+    | { type: "set_name"; name: string }
+    | { type: "start_join"; seat: "b" | "w" | "s" }
+    | { type: "joined" }
+    | { type: "error"; message: string };
+
+function joinFormReducer(state: JoinFormState, action: JoinFormAction): JoinFormState {
+    switch (action.type) {
+        case "set_name":
+            return { ...state, name: action.name };
+        case "start_join":
+            return { ...state, seat: action.seat, isJoining: true, error: null };
+        case "joined":
+            return { ...state, isJoining: false };
+        case "error":
+            return { ...state, isJoining: false, error: action.message };
+    }
+}
+
+// ─── ルートAPI（loaderData アクセス用） ──────────────────────────────────────
+
+const routeApi = getRouteApi("/online/$roomId");
+
 // ─── ページコンポーネント ──────────────────────────────────────────────────────
 
 export default function RoomPage(): ReactElement {
     const { roomId } = useParams({ from: "/online/$roomId" });
-    // URLクエリパラメータ（ルーム作成者から渡される名前・座席）
+    const roomInfo = routeApi.useLoaderData() as RoomInfo;
+
+    // URLクエリパラメータ（ルーム作成者から渡される名前）
     const urlParams = new URLSearchParams(
         typeof window !== "undefined" ? window.location.search : "",
     );
-    const search = {
-        name: urlParams.get("name") ?? undefined,
-        seat: urlParams.get("seat") ?? undefined,
-    };
 
     const navigate = useNavigate();
 
-    const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null);
-    const [loadError, setLoadError] = useState<string | null>(null);
-
-    const [joinName, setJoinName] = useState(search.name ?? "");
-    const [joinSeat, setJoinSeat] = useState<"b" | "w" | "s">("w");
-    const [isJoining, setIsJoining] = useState(false);
-    const [joinError, setJoinError] = useState<string | null>(null);
+    const [joinForm, dispatchJoin] = useReducer(joinFormReducer, {
+        name: urlParams.get("name") ?? "",
+        seat: "w" as "b" | "w" | "s",
+        isJoining: false,
+        error: null,
+    });
     const [snapshot, setSnapshot] = useState<SnapshotPayload | null>(null);
     const [joined, setJoined] = useState(false);
     const [localStartSfen, setLocalStartSfen] = useState<string | null>(null);
@@ -85,37 +114,11 @@ export default function RoomPage(): ReactElement {
     const inviteUrl =
         typeof window !== "undefined" ? `${window.location.origin}/online/${roomId}` : "";
 
-    // ─── ルーム情報取得 ────────────────────────────────────────────────────────
-
-    useEffect(() => {
-        let cancelled = false;
-        fetch(`/api/rooms/${roomId}`)
-            .then(async (res) => {
-                if (!res.ok) {
-                    if (res.status === 404) throw new Error("ルームが見つかりません");
-                    throw new Error("ルーム情報の取得に失敗しました");
-                }
-                return res.json() as Promise<RoomInfo>;
-            })
-            .then((info) => {
-                if (!cancelled) setRoomInfo(info);
-            })
-            .catch((err: unknown) => {
-                if (!cancelled)
-                    setLoadError(err instanceof Error ? err.message : "エラーが発生しました");
-            });
-        return () => {
-            cancelled = true;
-        };
-    }, [roomId]);
-
     // ─── WebSocket 接続 + join 送信 ────────────────────────────────────────────
 
     const handleJoin = (seatToJoin: "b" | "w" | "s") => {
-        if (!joinName.trim() || isJoining) return;
-        setIsJoining(true);
-        setJoinSeat(seatToJoin);
-        setJoinError(null);
+        if (!joinForm.name.trim() || joinForm.isJoining) return;
+        dispatchJoin({ type: "start_join", seat: seatToJoin });
 
         const wsUrl = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/rooms/${roomId}/ws`;
 
@@ -134,7 +137,7 @@ export default function RoomPage(): ReactElement {
             switch (msg.t) {
                 case "joined": {
                     setJoined(true);
-                    setIsJoining(false);
+                    dispatchJoin({ type: "joined" });
                     break;
                 }
                 case "snapshot": {
@@ -154,8 +157,10 @@ export default function RoomPage(): ReactElement {
                     break;
                 }
                 case "error": {
-                    setJoinError(msg.payload.message ?? "参加に失敗しました");
-                    setIsJoining(false);
+                    dispatchJoin({
+                        type: "error",
+                        message: msg.payload.message ?? "参加に失敗しました",
+                    });
                     newClient.disconnect();
                     clientRef.current = null;
                     setClient(null);
@@ -173,14 +178,13 @@ export default function RoomPage(): ReactElement {
         const sendJoin = (): void => {
             if (newClient.getStatus() === "connected") {
                 // seatToJoin をクロージャで直接参照し、setState の非同期更新に依存しない
-                newClient.join({ seat: seatToJoin, name: joinName.trim() });
+                newClient.join({ seat: seatToJoin, name: joinForm.name.trim() });
             } else if (joinAttempts < 50) {
                 // 最大5秒（100ms × 50回）待機
                 joinAttempts = joinAttempts + 1;
                 setTimeout(sendJoin, 100);
             } else {
-                setJoinError("接続タイムアウト。再度お試しください。");
-                setIsJoining(false);
+                dispatchJoin({ type: "error", message: "接続タイムアウト。再度お試しください。" });
                 newClient.disconnect();
                 clientRef.current = null;
                 setClient(null);
@@ -247,36 +251,13 @@ export default function RoomPage(): ReactElement {
             <OnlineGameView
                 client={client}
                 snapshot={snapshot}
-                seat={joinSeat as Seat}
+                seat={joinForm.seat as Seat}
                 roomId={roomId}
                 onStartReview={(data) => {
                     setReviewData(data);
                     setGamePhase("reviewing");
                 }}
             />
-        );
-    }
-
-    if (loadError) {
-        return (
-            <div className="mx-auto flex max-w-[480px] flex-col gap-4 px-4 py-10">
-                <p className="text-destructive">{loadError}</p>
-                <button
-                    type="button"
-                    onClick={() => void navigate({ to: "/online", search: undefined })}
-                    className="text-sm text-muted-foreground hover:text-foreground"
-                >
-                    ← オンライン対局に戻る
-                </button>
-            </div>
-        );
-    }
-
-    if (!roomInfo) {
-        return (
-            <div className="mx-auto flex max-w-[480px] flex-col gap-4 px-4 py-10">
-                <p className="text-muted-foreground">読み込み中...</p>
-            </div>
         );
     }
 
@@ -396,25 +377,29 @@ export default function RoomPage(): ReactElement {
                         <input
                             id="join-name"
                             type="text"
-                            value={joinName}
-                            onChange={(e) => setJoinName(e.target.value)}
+                            value={joinForm.name}
+                            onChange={(e) =>
+                                dispatchJoin({ type: "set_name", name: e.target.value })
+                            }
                             placeholder="プレイヤー名"
                             maxLength={20}
-                            disabled={isJoining}
+                            disabled={joinForm.isJoining}
                             className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
                         />
                     </div>
 
-                    {joinError && <p className="text-sm text-destructive">{joinError}</p>}
+                    {joinForm.error && <p className="text-sm text-destructive">{joinForm.error}</p>}
 
                     <div className="flex flex-col gap-2">
                         <button
                             type="button"
                             onClick={() => handleJoin("b")}
-                            disabled={isJoining || !joinName.trim() || isSeatTaken("b")}
+                            disabled={
+                                joinForm.isJoining || !joinForm.name.trim() || isSeatTaken("b")
+                            }
                             className="w-full rounded-lg bg-wafuu-shu py-2.5 text-sm font-semibold text-wafuu-shu-fg shadow hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         >
-                            {isJoining && joinSeat === "b"
+                            {joinForm.isJoining && joinForm.seat === "b"
                                 ? "接続中..."
                                 : isSeatTaken("b")
                                   ? "先手（▲）は満席です"
@@ -423,10 +408,12 @@ export default function RoomPage(): ReactElement {
                         <button
                             type="button"
                             onClick={() => handleJoin("w")}
-                            disabled={isJoining || !joinName.trim() || isSeatTaken("w")}
+                            disabled={
+                                joinForm.isJoining || !joinForm.name.trim() || isSeatTaken("w")
+                            }
                             className="w-full rounded-lg bg-wafuu-ai py-2.5 text-sm font-semibold text-wafuu-ai-fg shadow hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         >
-                            {isJoining && joinSeat === "w"
+                            {joinForm.isJoining && joinForm.seat === "w"
                                 ? "接続中..."
                                 : isSeatTaken("w")
                                   ? "後手（△）は満席です"
@@ -435,10 +422,12 @@ export default function RoomPage(): ReactElement {
                         <button
                             type="button"
                             onClick={() => handleJoin("s")}
-                            disabled={isJoining || !joinName.trim()}
+                            disabled={joinForm.isJoining || !joinForm.name.trim()}
                             className="w-full rounded-lg bg-secondary py-2.5 text-sm font-semibold text-secondary-foreground shadow-sm hover:bg-secondary/80 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         >
-                            {isJoining && joinSeat === "s" ? "接続中..." : "観戦者として参加する"}
+                            {joinForm.isJoining && joinForm.seat === "s"
+                                ? "接続中..."
+                                : "観戦者として参加する"}
                         </button>
                     </div>
                 </div>
