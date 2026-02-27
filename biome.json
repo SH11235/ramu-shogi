@@ -47,10 +47,10 @@
                     "level": "error",
                     "fix": "unsafe"
                 },
-                "noUnusedVariables": "warn"
+                "noUnusedVariables": "off"
             },
             "suspicious": {
-                "noExplicitAny": "warn"
+                "noExplicitAny": "error"
             }
         }
     },
