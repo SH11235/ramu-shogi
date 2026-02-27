@@ -1,9 +1,11 @@
 import {
     applyMoveWithState,
+    deriveLastMove,
     getPositionService,
     type PieceType,
     type Player,
     type PositionState,
+    type Square,
 } from "@shogi/app-core";
 import type {
     AiSupportPlayerSettings,
@@ -21,6 +23,9 @@ import { ShogiBoard } from "./shogi-board";
 import { BottomSheet } from "./shogi-match/components/BottomSheet";
 import { HandPiecesDisplay } from "./shogi-match/components/HandPiecesDisplay";
 import { KifuNavigationToolbar } from "./shogi-match/components/KifuNavigationToolbar";
+import { type HandInfo, MobileBoardSection } from "./shogi-match/components/MobileBoardSection";
+import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
+import type { PromotionSelection } from "./shogi-match/types";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
 
 // ─── AI 解析インターフェース（export） ─────────────────────────────────────────
@@ -659,6 +664,7 @@ export function OnlineGameView({
     // ─── レンダリング ─────────────────────────────────────────────────────────
 
     const flipBoard = seat === "w";
+    const isMobile = useIsMobile();
 
     // 表示用盤面（巻き戻し中は履歴局面を使用、後手視点は反転）
     const grid = (() => {
@@ -667,6 +673,56 @@ export function OnlineGameView({
         return flipBoard ? [...g].reverse().map((row) => [...row].reverse()) : g;
     })();
     const clockDisplay = useOnlineClock(clockState);
+
+    // 最後の指し手（ハイライト用）
+    const lastMoveUsi = isRewound
+        ? movesRef.current[(effectiveNavIndex ?? 0) - 1]
+        : movesRef.current.at(-1);
+    const lastMove = deriveLastMove(lastMoveUsi);
+
+    // モバイル用 ref（MobileBoardSection の必須 props のため）
+    const boardSectionRef = useRef<HTMLDivElement | null>(null);
+
+    // 成り選択状態（MobileBoardSection へ渡す用）
+    const promotionSelection: PromotionSelection | null = (() => {
+        if (!promoteDialog || !displayPosition) return null;
+        const piece =
+            displayPosition.board[promoteDialog.from as keyof typeof displayPosition.board];
+        if (!piece) return null;
+        return {
+            from: promoteDialog.from as Square,
+            to: promoteDialog.to as Square,
+            piece,
+        };
+    })();
+
+    // 上下の持ち駒情報（MobileBoardSection へ渡す用）
+    const topOwner: Player = flipBoard ? "sente" : "gote";
+    const bottomOwner: Player = flipBoard ? "gote" : "sente";
+    const topHand: HandInfo = {
+        owner: topOwner,
+        hand: displayPosition?.hands[topOwner] ?? ({} as PositionState["hands"]["sente"]),
+        isActive: !isRewound && isMyTurn && myPlayer === topOwner,
+        isAI: false,
+    };
+    const bottomHand: HandInfo = {
+        owner: bottomOwner,
+        hand: displayPosition?.hands[bottomOwner] ?? ({} as PositionState["hands"]["sente"]),
+        isActive: !isRewound && isMyTurn && myPlayer === bottomOwner,
+        isAI: false,
+    };
+    const boardDisplaySettings = {
+        highlightLastMove: true,
+        squareNotation: "none" as const,
+        showBoardLabels: true,
+    };
+    const onSquareSelectForMobile =
+        !isRewound && isMyTurn && !isSpectator ? handleBoardSelect : () => {};
+    const onPromotionChoiceForMobile = (promote: boolean) => {
+        if (!promoteDialog) return;
+        void sendMove(promote ? `${promoteDialog.usi}+` : promoteDialog.usi, promoteDialog.to);
+        dispatchUI({ type: "set_promote_dialog", dialog: null });
+    };
 
     // ハイライト: 選択中マスの合法手先
     const legalTargets = new Set<string>();
@@ -710,7 +766,7 @@ export function OnlineGameView({
             )}
 
             {/* メインコンテンツ */}
-            <div className="flex flex-col gap-3 flex-1">
+            <div className={`flex flex-col gap-3 ${isMobile ? "items-center" : "flex-1"}`}>
                 {/* 後手情報（上） */}
                 <PlayerHeader
                     name={playerNames.w}
@@ -722,55 +778,108 @@ export function OnlineGameView({
                     passRightsCount={passRights != null ? passRights.w : undefined}
                 />
 
-                {/* 後手持ち駒（上） */}
-                {displayPosition && (
-                    <div className={`flex justify-${flipBoard ? "start" : "end"}`}>
-                        <HandPiecesDisplay
-                            owner="gote"
-                            hand={displayPosition.hands.gote}
-                            selectedPiece={myPlayer === "gote" ? selectedHand : null}
-                            isActive={!isRewound && isMyTurn && myPlayer === "gote"}
-                            onHandSelect={handleHandSelect}
-                            hideEmptyPieces
-                            isMatchRunning
-                            size="medium"
+                {isMobile ? (
+                    // === モバイル: MobileBoardSection が持ち駒を含めて表示 ===
+                    displayPosition ? (
+                        <MobileBoardSection
+                            grid={grid}
+                            position={displayPosition}
                             flipBoard={flipBoard}
+                            lastMove={lastMove}
+                            selection={
+                                selectedSquare
+                                    ? { kind: "square", square: selectedSquare }
+                                    : selectedHand
+                                      ? { kind: "hand", piece: selectedHand }
+                                      : null
+                            }
+                            promotionSelection={promotionSelection}
+                            displaySettings={boardDisplaySettings}
+                            isEditModeActive={false}
+                            isMatchRunning={!gameResult}
+                            hideEmptyHandPieces={true}
+                            editFromSquare={null}
+                            candidateNote={null}
+                            onSquareSelect={onSquareSelectForMobile}
+                            onPromotionChoice={onPromotionChoiceForMobile}
+                            onHandSelect={handleHandSelect}
+                            topHand={topHand}
+                            bottomHand={bottomHand}
+                            boardSectionRef={boardSectionRef}
+                            isDraggingPiece={false}
                         />
-                    </div>
-                )}
-
-                {/* 将棋盤 */}
-                {displayPosition ? (
-                    <ShogiBoard
-                        grid={grid}
-                        selectedSquare={selectedSquare}
-                        onSelect={
-                            !isRewound && isMyTurn && !isSpectator ? handleBoardSelect : undefined
-                        }
-                        flipBoard={flipBoard}
-                        showBoardLabels
-                    />
+                    ) : (
+                        <div className="flex h-64 items-center justify-center">
+                            <p className="text-muted-foreground">局面を読み込み中...</p>
+                        </div>
+                    )
                 ) : (
-                    <div className="flex h-64 items-center justify-center rounded-lg border border-border bg-card">
-                        <p className="text-muted-foreground">局面を読み込み中...</p>
-                    </div>
-                )}
+                    // === PC: ShogiBoard + HandPiecesDisplay 構造 ===
+                    <>
+                        {/* 後手持ち駒（上） */}
+                        {displayPosition && (
+                            <div className={`flex justify-${flipBoard ? "start" : "end"}`}>
+                                <HandPiecesDisplay
+                                    owner="gote"
+                                    hand={displayPosition.hands.gote}
+                                    selectedPiece={myPlayer === "gote" ? selectedHand : null}
+                                    isActive={!isRewound && isMyTurn && myPlayer === "gote"}
+                                    onHandSelect={handleHandSelect}
+                                    hideEmptyPieces
+                                    isMatchRunning
+                                    size="medium"
+                                    flipBoard={flipBoard}
+                                />
+                            </div>
+                        )}
 
-                {/* 先手持ち駒（下） */}
-                {displayPosition && (
-                    <div className={`flex justify-${flipBoard ? "end" : "start"}`}>
-                        <HandPiecesDisplay
-                            owner="sente"
-                            hand={displayPosition.hands.sente}
-                            selectedPiece={myPlayer === "sente" ? selectedHand : null}
-                            isActive={!isRewound && isMyTurn && myPlayer === "sente"}
-                            onHandSelect={handleHandSelect}
-                            hideEmptyPieces
-                            isMatchRunning
-                            size="medium"
-                            flipBoard={flipBoard}
-                        />
-                    </div>
+                        {/* 将棋盤 */}
+                        {displayPosition ? (
+                            <ShogiBoard
+                                grid={grid}
+                                selectedSquare={selectedSquare}
+                                lastMove={lastMove}
+                                promotionSquare={promoteDialog?.to ?? null}
+                                onSelect={
+                                    !isRewound && isMyTurn && !isSpectator
+                                        ? handleBoardSelect
+                                        : undefined
+                                }
+                                onPromotionChoice={(promote) => {
+                                    if (!promoteDialog) return;
+                                    void sendMove(
+                                        promote ? `${promoteDialog.usi}+` : promoteDialog.usi,
+                                        promoteDialog.to,
+                                    );
+                                    dispatchUI({ type: "set_promote_dialog", dialog: null });
+                                }}
+                                flipBoard={flipBoard}
+                                showBoardLabels
+                                squareNotation="none"
+                            />
+                        ) : (
+                            <div className="flex h-64 items-center justify-center rounded-lg border border-border bg-card">
+                                <p className="text-muted-foreground">局面を読み込み中...</p>
+                            </div>
+                        )}
+
+                        {/* 先手持ち駒（下） */}
+                        {displayPosition && (
+                            <div className={`flex justify-${flipBoard ? "end" : "start"}`}>
+                                <HandPiecesDisplay
+                                    owner="sente"
+                                    hand={displayPosition.hands.sente}
+                                    selectedPiece={myPlayer === "sente" ? selectedHand : null}
+                                    isActive={!isRewound && isMyTurn && myPlayer === "sente"}
+                                    onHandSelect={handleHandSelect}
+                                    hideEmptyPieces
+                                    isMatchRunning
+                                    size="medium"
+                                    flipBoard={flipBoard}
+                                />
+                            </div>
+                        )}
+                    </>
                 )}
 
                 {/* 先手情報（下） */}
@@ -840,20 +949,6 @@ export function OnlineGameView({
 
             {/* サイドバー: AI 解析（PC のみ表示） */}
             <div className="hidden md:flex w-64 flex-col gap-3">{aiPanelContent}</div>
-
-            {/* 成り判定ダイアログ */}
-            {promoteDialog && (
-                <PromoteDialog
-                    onPromote={() => {
-                        void sendMove(`${promoteDialog.usi}+`, promoteDialog.to);
-                        dispatchUI({ type: "set_promote_dialog", dialog: null });
-                    }}
-                    onNoPromote={() => {
-                        void sendMove(promoteDialog.usi, promoteDialog.to);
-                        dispatchUI({ type: "set_promote_dialog", dialog: null });
-                    }}
-                />
-            )}
 
             {/* 対局結果ダイアログ */}
             {gameResult && (
@@ -937,37 +1032,6 @@ function PlayerHeader({
             >
                 {formatMs(remainMs)}
             </span>
-        </div>
-    );
-}
-
-interface PromoteDialogProps {
-    onPromote: () => void;
-    onNoPromote: () => void;
-}
-
-function PromoteDialog({ onPromote, onNoPromote }: PromoteDialogProps): ReactElement {
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-            <div className="rounded-xl border border-border bg-card p-6 shadow-xl">
-                <p className="mb-4 text-center text-foreground font-semibold">成りますか？</p>
-                <div className="flex gap-3">
-                    <button
-                        type="button"
-                        onClick={onPromote}
-                        className="flex-1 rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-                    >
-                        成る
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onNoPromote}
-                        className="flex-1 rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
-                    >
-                        成らない
-                    </button>
-                </div>
-            </div>
         </div>
     );
 }
