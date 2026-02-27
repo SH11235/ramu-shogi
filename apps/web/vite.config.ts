@@ -45,7 +45,11 @@ export default defineConfig(({ command }) => ({
     },
     plugins: [
         tailwindcss(),
-        react(),
+        react({
+            babel: {
+                plugins: ["babel-plugin-react-compiler"],
+            },
+        }),
         ...(isAnalyze
             ? [
                   visualizer({
