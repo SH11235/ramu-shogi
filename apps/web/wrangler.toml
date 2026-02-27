@@ -1,5 +1,5 @@
 name = "ramu-shogi"
-account_id = "d5d9818649d8722f73cd798c3b1ffb70"
+# account_id は環境変数 CLOUDFLARE_ACCOUNT_ID で設定（wrangler login でも自動解決）
 compatibility_date = "2026-01-20"
 
 # Workerエントリーポイント（COOPヘッダー追加用）
