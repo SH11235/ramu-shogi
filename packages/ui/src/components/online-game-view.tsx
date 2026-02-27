@@ -19,11 +19,10 @@ import type {
 } from "@shogi/match-client";
 import type { ReactElement } from "react";
 import { useEffect, useReducer, useRef, useState } from "react";
-import { ShogiBoard } from "./shogi-board";
 import { BottomSheet } from "./shogi-match/components/BottomSheet";
-import { HandPiecesDisplay } from "./shogi-match/components/HandPiecesDisplay";
 import { KifuNavigationToolbar } from "./shogi-match/components/KifuNavigationToolbar";
 import { type HandInfo, MobileBoardSection } from "./shogi-match/components/MobileBoardSection";
+import { PCBoardContent } from "./shogi-match/components/PCBoardContent";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import type { PromotionSelection } from "./shogi-match/types";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
@@ -784,73 +783,39 @@ export function OnlineGameView({
                             <p className="text-muted-foreground">局面を読み込み中...</p>
                         </div>
                     )
+                ) : // === PC: PCBoardContent（オフラインと共通） ===
+                displayPosition ? (
+                    <PCBoardContent
+                        grid={grid}
+                        flipBoard={flipBoard}
+                        lastMove={lastMove}
+                        selection={
+                            selectedSquare
+                                ? { kind: "square", square: selectedSquare }
+                                : selectedHand
+                                  ? { kind: "hand", piece: selectedHand }
+                                  : null
+                        }
+                        promotionSelection={promotionSelection}
+                        displaySettings={boardDisplaySettings}
+                        isEditModeActive={false}
+                        isMatchRunning={!gameResult}
+                        hideEmptyHandPieces={true}
+                        editFromSquare={null}
+                        candidateNote={null}
+                        onSquareSelect={onSquareSelectForMobile}
+                        onPromotionChoice={onPromotionChoiceForMobile}
+                        onHandSelect={handleHandSelect}
+                        topHand={topHand}
+                        bottomHand={bottomHand}
+                        passRights={
+                            passRights ? { sente: passRights.b, gote: passRights.w } : undefined
+                        }
+                    />
                 ) : (
-                    // === PC: ShogiBoard + HandPiecesDisplay 構造 ===
-                    <>
-                        {/* 後手持ち駒（上） */}
-                        {displayPosition && (
-                            <div className={`flex justify-${flipBoard ? "start" : "end"}`}>
-                                <HandPiecesDisplay
-                                    owner="gote"
-                                    hand={displayPosition.hands.gote}
-                                    selectedPiece={myPlayer === "gote" ? selectedHand : null}
-                                    isActive={!isRewound && isMyTurn && myPlayer === "gote"}
-                                    onHandSelect={handleHandSelect}
-                                    hideEmptyPieces
-                                    isMatchRunning
-                                    size="medium"
-                                    flipBoard={flipBoard}
-                                />
-                            </div>
-                        )}
-
-                        {/* 将棋盤 */}
-                        {displayPosition ? (
-                            <ShogiBoard
-                                grid={grid}
-                                selectedSquare={selectedSquare}
-                                lastMove={lastMove}
-                                promotionSquare={promoteDialog?.to ?? null}
-                                onSelect={
-                                    !isRewound && isMyTurn && !isSpectator
-                                        ? handleBoardSelect
-                                        : undefined
-                                }
-                                onPromotionChoice={(promote) => {
-                                    if (!promoteDialog) return;
-                                    void sendMove(
-                                        promote ? `${promoteDialog.usi}+` : promoteDialog.usi,
-                                        promoteDialog.to,
-                                    );
-                                    dispatchUI({ type: "set_promote_dialog", dialog: null });
-                                }}
-                                flipBoard={flipBoard}
-                                showBoardLabels
-                                squareNotation="none"
-                            />
-                        ) : (
-                            <div className="flex h-64 items-center justify-center rounded-lg border border-border bg-card">
-                                <p className="text-muted-foreground">局面を読み込み中...</p>
-                            </div>
-                        )}
-
-                        {/* 先手持ち駒（下） */}
-                        {displayPosition && (
-                            <div className={`flex justify-${flipBoard ? "end" : "start"}`}>
-                                <HandPiecesDisplay
-                                    owner="sente"
-                                    hand={displayPosition.hands.sente}
-                                    selectedPiece={myPlayer === "sente" ? selectedHand : null}
-                                    isActive={!isRewound && isMyTurn && myPlayer === "sente"}
-                                    onHandSelect={handleHandSelect}
-                                    hideEmptyPieces
-                                    isMatchRunning
-                                    size="medium"
-                                    flipBoard={flipBoard}
-                                />
-                            </div>
-                        )}
-                    </>
+                    <div className="flex h-64 items-center justify-center rounded-lg border border-border bg-card">
+                        <p className="text-muted-foreground">局面を読み込み中...</p>
+                    </div>
                 )}
 
                 {/* 先手情報（下） */}

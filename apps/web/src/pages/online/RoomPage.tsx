@@ -137,6 +137,238 @@ function roomReducer(state: RoomState, action: RoomAction): RoomState {
 
 const routeApi = getRouteApi("/online/$roomId");
 
+// ─── サブコンポーネント ───────────────────────────────────────────────────────
+
+function InviteLinkSection({
+    inviteUrl,
+    copied,
+    onCopy,
+}: {
+    inviteUrl: string;
+    copied: boolean;
+    onCopy: () => void;
+}): ReactElement {
+    return (
+        <div className="flex flex-col gap-1">
+            <span className="text-sm font-medium text-foreground">招待リンク</span>
+            <div className="flex gap-2">
+                <input
+                    readOnly
+                    value={inviteUrl}
+                    className="flex h-10 flex-1 rounded-md border border-input bg-muted px-3 py-2 text-xs text-muted-foreground"
+                />
+                <button
+                    type="button"
+                    onClick={onCopy}
+                    className="rounded-md bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground shadow-sm hover:bg-secondary/80 transition-colors"
+                >
+                    {copied ? "コピーしました！" : "コピー"}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+function PlayersStatusSection({
+    roomInfoPlayers,
+    snapshotPlayers,
+}: {
+    roomInfoPlayers: RoomInfo["players"];
+    snapshotPlayers?: SnapshotPayload["players"] | null;
+}): ReactElement {
+    return (
+        <>
+            <div className="rounded-lg border border-border bg-card p-4">
+                <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-wafuu-shu">
+                            先手（▲）:{" "}
+                            {roomInfoPlayers.b?.name ?? (
+                                <span className="text-muted-foreground">待機中...</span>
+                            )}
+                        </span>
+                        {roomInfoPlayers.b && (
+                            <span className="text-xs text-muted-foreground">✓ 登録済み</span>
+                        )}
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-wafuu-ai">
+                            後手（△）:{" "}
+                            {roomInfoPlayers.w?.name ?? (
+                                <span className="text-muted-foreground">待機中...</span>
+                            )}
+                        </span>
+                        {roomInfoPlayers.w && (
+                            <span className="text-xs text-muted-foreground">✓ 登録済み</span>
+                        )}
+                    </div>
+                </div>
+            </div>
+            {snapshotPlayers && (
+                <div className="rounded-lg border border-border bg-card p-4">
+                    <div className="flex flex-col gap-2">
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-wafuu-shu">
+                                先手（▲）:{" "}
+                                {snapshotPlayers.b?.name ?? (
+                                    <span className="text-muted-foreground">待機中...</span>
+                                )}
+                            </span>
+                            {snapshotPlayers.b?.online && (
+                                <span className="text-xs text-status-online">● オンライン</span>
+                            )}
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-wafuu-ai">
+                                後手（△）:{" "}
+                                {snapshotPlayers.w?.name ?? (
+                                    <span className="text-muted-foreground">待機中...</span>
+                                )}
+                            </span>
+                            {snapshotPlayers.w?.online && (
+                                <span className="text-xs text-status-online">● オンライン</span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
+    );
+}
+
+function JoinFormSection({
+    joinForm,
+    isSeatTaken,
+    onJoin,
+    dispatchJoin,
+}: {
+    joinForm: JoinFormState;
+    isSeatTaken: (seat: "b" | "w") => boolean;
+    onJoin: (seat: "b" | "w" | "s") => void;
+    dispatchJoin: React.Dispatch<JoinFormAction>;
+}): ReactElement {
+    return (
+        <div className="flex flex-col gap-4 rounded-lg border border-border bg-card p-4">
+            <h2 className="text-sm font-semibold text-foreground">参加する</h2>
+            <div className="flex flex-col gap-1">
+                <label htmlFor="join-name" className="text-sm text-foreground">
+                    名前 <span className="text-destructive">*</span>
+                </label>
+                <input
+                    id="join-name"
+                    type="text"
+                    value={joinForm.name}
+                    onChange={(e) => dispatchJoin({ type: "set_name", name: e.target.value })}
+                    placeholder="プレイヤー名を入力してください"
+                    maxLength={20}
+                    disabled={joinForm.isJoining}
+                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
+                />
+            </div>
+            {joinForm.error && <p className="text-sm text-destructive">{joinForm.error}</p>}
+            <div className="flex flex-col gap-2">
+                <button
+                    type="button"
+                    onClick={() => onJoin("b")}
+                    disabled={joinForm.isJoining || isSeatTaken("b")}
+                    className="w-full rounded-lg bg-wafuu-shu py-2.5 text-sm font-semibold text-wafuu-shu-fg shadow hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                    {joinForm.isJoining && joinForm.seat === "b"
+                        ? "接続中..."
+                        : isSeatTaken("b")
+                          ? "先手（▲）は満席です"
+                          : "先手として参加する"}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => onJoin("w")}
+                    disabled={joinForm.isJoining || isSeatTaken("w")}
+                    className="w-full rounded-lg bg-wafuu-ai py-2.5 text-sm font-semibold text-wafuu-ai-fg shadow hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                    {joinForm.isJoining && joinForm.seat === "w"
+                        ? "接続中..."
+                        : isSeatTaken("w")
+                          ? "後手（△）は満席です"
+                          : "後手として参加する"}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => onJoin("s")}
+                    disabled={joinForm.isJoining}
+                    className="w-full rounded-lg bg-secondary py-2.5 text-sm font-semibold text-secondary-foreground shadow-sm hover:bg-secondary/80 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                    {joinForm.isJoining && joinForm.seat === "s"
+                        ? "接続中..."
+                        : "観戦者として参加する"}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+function GameSettingsSection({
+    settings,
+    timeControlLabel,
+    startSfenLabel,
+    joined,
+    currentStatus,
+    displayStartSfen,
+    onUpdateStartSfen,
+}: {
+    settings: RoomInfo["settings"];
+    timeControlLabel: string;
+    startSfenLabel: string;
+    joined: boolean;
+    currentStatus: string;
+    displayStartSfen: string;
+    onUpdateStartSfen: (sfen: string) => void;
+}): ReactElement {
+    return (
+        <>
+            {joined && currentStatus === "waiting" && (
+                <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4">
+                    <span className="text-sm font-semibold text-foreground">開始局面を変更</span>
+                    <PositionPresetSelector value={displayStartSfen} onChange={onUpdateStartSfen} />
+                </div>
+            )}
+            <div className="rounded-lg border border-border bg-card p-4">
+                <h2 className="mb-3 text-sm font-semibold text-foreground">対局設定</h2>
+                <div className="flex flex-col gap-1 text-sm text-muted-foreground">
+                    <div className="flex justify-between">
+                        <span>持ち時間</span>
+                        <span>{timeControlLabel}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span>開始局面</span>
+                        <span>{startSfenLabel}</span>
+                    </div>
+                    {settings.passRights && (
+                        <div className="flex justify-between">
+                            <span>パス権</span>
+                            <span>各 {settings.passRights.initialCount} 回</span>
+                        </div>
+                    )}
+                    {settings.aiSupport && (
+                        <div className="flex justify-between">
+                            <span>AI サポート</span>
+                            <span>
+                                ▲{" "}
+                                {settings.aiSupport.b.mode === "unlimited"
+                                    ? "無制限"
+                                    : `${settings.aiSupport.b.limitCount ?? 0} 回`}
+                                {" / "}△{" "}
+                                {settings.aiSupport.w.mode === "unlimited"
+                                    ? "無制限"
+                                    : `${settings.aiSupport.w.limitCount ?? 0} 回`}
+                            </span>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </>
+    );
+}
+
 // ─── ページコンポーネント ──────────────────────────────────────────────────────
 
 export default function RoomPage(): ReactElement {
@@ -326,7 +558,7 @@ export default function RoomPage(): ReactElement {
             if (newClient.getStatus() === "connected") {
                 newClient.resume({ resumeToken: token, lastEventId: 0 });
             } else if (resumeAttempts < 50) {
-                resumeAttempts++;
+                resumeAttempts = resumeAttempts + 1;
                 setTimeout(sendResume, 100);
             } else {
                 dispatchJoin({
