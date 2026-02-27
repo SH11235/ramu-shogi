@@ -10,7 +10,6 @@ import type {
 } from "@shogi/app-core";
 import {
     applyMoveWithState,
-    cloneBoard,
     createDefaultNnueSelection,
     createEmptyHands,
     DEFAULT_PRESET_KEY,
@@ -80,7 +79,7 @@ import {
     isSamePassRightsSettings,
     normalizePassRightsSettings,
 } from "./shogi-match/utils/passRightsSettings";
-import { boardToGrid, clonePositionState } from "./shogi-match/utils/positionUtils";
+import { boardToGrid } from "./shogi-match/utils/positionUtils";
 import { isSameTimeSettings, normalizeTimeSettings } from "./shogi-match/utils/timeSettings";
 import { TooltipProvider } from "./tooltip";
 
@@ -181,6 +180,7 @@ export function ShogiMatch({
         setEditTool,
         startSfen,
         setStartSfen,
+        initializeBoard,
     } = useBoardState({
         initialPosition: {
             board: emptyBoard,
@@ -867,16 +867,10 @@ export function ShogiMatch({
             try {
                 const pos = await service.getInitialBoard();
                 if (cancelled) return;
-                setPosition(pos);
                 positionRef.current = pos;
-                setInitialBoard(cloneBoard(pos.board));
-                setBasePosition(clonePositionState(pos));
                 let sfen = "startpos";
                 try {
                     sfen = await service.boardToSfen(pos);
-                    if (!cancelled) {
-                        setStartSfen(sfen);
-                    }
                 } catch (error) {
                     if (!cancelled) {
                         setMessage({
@@ -885,10 +879,10 @@ export function ShogiMatch({
                         });
                     }
                 }
-                // 棋譜ナビゲーションを正しい初期局面でリセット
                 if (!cancelled) {
+                    // 局面・initialBoard・basePosition・startSfen・positionReady を一括設定
+                    initializeBoard(pos, sfen);
                     navigationResetRef.current(pos, sfen);
-                    setPositionReady(true);
                 }
             } catch (error) {
                 if (!cancelled) {
@@ -904,7 +898,7 @@ export function ShogiMatch({
         return () => {
             cancelled = true;
         };
-    }, [setBasePosition, setInitialBoard, setMessage, setPosition, setPositionReady, setStartSfen]);
+    }, [initializeBoard, setMessage]);
 
     const grid = (() => {
         const g = boardToGrid(position.board);

@@ -31,7 +31,7 @@
                     "fix": "unsafe"
                 },
                 "noRestrictedImports": {
-                    "level": "warn",
+                    "level": "error",
                     "options": {
                         "paths": {
                             "react": {

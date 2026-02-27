@@ -198,6 +198,60 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     }
 }
 
+// ─── UI インタラクション状態管理 ───────────────────────────────────────────────
+
+interface UIState {
+    selectedSquare: string | null;
+    selectedHand: PieceType | null;
+    legalMoves: string[];
+    promoteDialog: { from: string; to: string; usi: string } | null;
+    navIndex: number | null;
+    aiSheetOpen: boolean;
+}
+
+type UIAction =
+    | { type: "move_received" } // selectedSquare, selectedHand, legalMoves を一括リセット
+    | { type: "resync_received" } // navIndex をリセット
+    | { type: "clear_selection" } // selectedSquare, selectedHand を一括リセット
+    | { type: "select_square"; squareId: string | null }
+    | { type: "select_hand"; pieceType: PieceType | null }
+    | { type: "set_legal_moves"; moves: string[] }
+    | { type: "set_promote_dialog"; dialog: { from: string; to: string; usi: string } | null }
+    | { type: "set_nav_index"; index: number | null }
+    | { type: "set_ai_sheet_open"; open: boolean };
+
+const INITIAL_UI_STATE: UIState = {
+    selectedSquare: null,
+    selectedHand: null,
+    legalMoves: [],
+    promoteDialog: null,
+    navIndex: null,
+    aiSheetOpen: false,
+};
+
+function uiReducer(state: UIState, action: UIAction): UIState {
+    switch (action.type) {
+        case "move_received":
+            return { ...state, selectedSquare: null, selectedHand: null, legalMoves: [] };
+        case "resync_received":
+            return { ...state, navIndex: null };
+        case "clear_selection":
+            return { ...state, selectedSquare: null, selectedHand: null };
+        case "select_square":
+            return { ...state, selectedSquare: action.squareId };
+        case "select_hand":
+            return { ...state, selectedHand: action.pieceType };
+        case "set_legal_moves":
+            return { ...state, legalMoves: action.moves };
+        case "set_promote_dialog":
+            return { ...state, promoteDialog: action.dialog };
+        case "set_nav_index":
+            return { ...state, navIndex: action.index };
+        case "set_ai_sheet_open":
+            return { ...state, aiSheetOpen: action.open };
+    }
+}
+
 // ─── クロックフック ────────────────────────────────────────────────────────────
 
 function useOnlineClock(clockState: ClockState | null): { b: number; w: number } {
@@ -272,17 +326,10 @@ export function OnlineGameView({
         analysisLog,
     } = gameState;
 
-    const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
-    const [selectedHand, setSelectedHand] = useState<PieceType | null>(null);
-    const [legalMoves, setLegalMoves] = useState<string[]>([]);
-    const [promoteDialog, setPromoteDialog] = useState<{
-        from: string;
-        to: string;
-        usi: string;
-    } | null>(null);
-    // navIndex: null = ライブ追従、数値 = 棋譜内の指定局面を表示
-    const [navIndex, setNavIndex] = useState<number | null>(null);
-    const [aiSheetOpen, setAiSheetOpen] = useState(false);
+    // ─── UI インタラクション状態（useReducer） ───────────────────────────────
+    const [uiState, dispatchUI] = useReducer(uiReducer, INITIAL_UI_STATE);
+    const { selectedSquare, selectedHand, legalMoves, promoteDialog, navIndex, aiSheetOpen } =
+        uiState;
 
     // analysis prop から分解（undefined 時のデフォルト値）
     const isAnalyzing = analysis?.isAnalyzing ?? false;
@@ -346,9 +393,7 @@ export function OnlineGameView({
                         passRights: e.passRights,
                     });
                     movesRef.current = [...movesRef.current, e.usi];
-                    setSelectedSquare(null);
-                    setSelectedHand(null);
-                    setLegalMoves([]);
+                    dispatchUI({ type: "move_received" });
                 } else if (
                     e.kind === "resign" ||
                     e.kind === "timeout" ||
@@ -388,7 +433,7 @@ export function OnlineGameView({
                             clock: msg.payload.clock,
                             passRights: msg.payload.passRights,
                         });
-                        setNavIndex(null); // 再接続後は最新局面に戻す
+                        dispatchUI({ type: "resync_received" }); // 再接続後は最新局面に戻す
                     })
                     .catch((err) => {
                         console.error("[OnlineGameView] Failed to parse SFEN from snapshot:", err);
@@ -416,12 +461,12 @@ export function OnlineGameView({
                         movesRef.current,
                         passRightsOption,
                     );
-                    setLegalMoves(moves);
+                    dispatchUI({ type: "set_legal_moves", moves });
                 } catch {
-                    setLegalMoves([]);
+                    dispatchUI({ type: "set_legal_moves", moves: [] });
                 }
             } else {
-                setLegalMoves([]);
+                dispatchUI({ type: "set_legal_moves", moves: [] });
             }
         })();
     }, [isMyTurn, gameResult, isRewound, passRights]);
@@ -429,23 +474,22 @@ export function OnlineGameView({
     // ─── 棋譜ナビゲーションハンドラ ───────────────────────────────────────────
 
     const handleNavBack = () => {
-        setNavIndex((prev) => {
-            const cur = prev !== null ? prev : positionHistory.length - 1;
-            return Math.max(0, cur - 1);
-        });
+        const cur = navIndex !== null ? navIndex : positionHistory.length - 1;
+        dispatchUI({ type: "set_nav_index", index: Math.max(0, cur - 1) });
     };
 
     const handleNavForward = () => {
-        setNavIndex((prev) => {
-            if (prev === null) return null;
-            const next = prev + 1;
-            // 最新局面に追いついたらライブ追従モードに戻す
-            return next >= positionHistory.length - 1 ? null : next;
+        if (navIndex === null) return;
+        const next = navIndex + 1;
+        // 最新局面に追いついたらライブ追従モードに戻す
+        dispatchUI({
+            type: "set_nav_index",
+            index: next >= positionHistory.length - 1 ? null : next,
         });
     };
 
-    const handleNavStart = () => setNavIndex(0);
-    const handleNavEnd = () => setNavIndex(null);
+    const handleNavStart = () => dispatchUI({ type: "set_nav_index", index: 0 });
+    const handleNavEnd = () => dispatchUI({ type: "set_nav_index", index: null });
 
     // ─── 指し手送信 ──────────────────────────────────────────────────────────
 
@@ -472,21 +516,17 @@ export function OnlineGameView({
         // 持ち駒を選択中の場合 → ドロップ
         if (selectedHand !== null) {
             const usi = `${selectedHand}*${squareId.toUpperCase()}`;
-            // 合法手チェック
             if (legalMoves.includes(usi)) {
                 void sendMove(usi, squareId);
-                setSelectedHand(null);
-            } else {
-                setSelectedHand(null);
             }
-            setSelectedSquare(null);
+            dispatchUI({ type: "clear_selection" });
             return;
         }
 
         // 盤上の駒を選択中の場合 → 移動
         if (selectedSquare) {
             if (selectedSquare === squareId) {
-                setSelectedSquare(null);
+                dispatchUI({ type: "select_square", squareId: null });
                 return;
             }
             const from = selectedSquare.toUpperCase();
@@ -503,9 +543,9 @@ export function OnlineGameView({
                     ((piece.owner === "sente" && myPlayer === "sente") ||
                         (piece.owner === "gote" && myPlayer === "gote"))
                 ) {
-                    setSelectedSquare(squareId);
+                    dispatchUI({ type: "select_square", squareId });
                 } else {
-                    setSelectedSquare(null);
+                    dispatchUI({ type: "select_square", squareId: null });
                 }
                 return;
             }
@@ -525,11 +565,14 @@ export function OnlineGameView({
             if (mustPro) {
                 void sendMove(usiPromote, squareId);
             } else if (canPro && legalMoves.includes(usiPromote)) {
-                setPromoteDialog({ from: selectedSquare, to: squareId, usi: usiBase });
+                dispatchUI({
+                    type: "set_promote_dialog",
+                    dialog: { from: selectedSquare, to: squareId, usi: usiBase },
+                });
             } else {
                 void sendMove(usiBase, squareId);
             }
-            setSelectedSquare(null);
+            dispatchUI({ type: "select_square", squareId: null });
             return;
         }
 
@@ -540,14 +583,17 @@ export function OnlineGameView({
             ((piece.owner === "sente" && myPlayer === "sente") ||
                 (piece.owner === "gote" && myPlayer === "gote"))
         ) {
-            setSelectedSquare(squareId);
+            dispatchUI({ type: "select_square", squareId });
         }
     }
 
     function handleHandSelect(pieceType: PieceType): void {
         if (!isMyTurn || gameResult || isRewound) return;
-        setSelectedHand(selectedHand === pieceType ? null : pieceType);
-        setSelectedSquare(null);
+        dispatchUI({
+            type: "select_hand",
+            pieceType: selectedHand === pieceType ? null : pieceType,
+        });
+        dispatchUI({ type: "select_square", squareId: null });
     }
 
     // ─── 投了 ────────────────────────────────────────────────────────────────
@@ -771,7 +817,7 @@ export function OnlineGameView({
                     {aiSupport && (
                         <button
                             type="button"
-                            onClick={() => setAiSheetOpen(true)}
+                            onClick={() => dispatchUI({ type: "set_ai_sheet_open", open: true })}
                             className="md:hidden rounded-md bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80"
                             aria-label="AI解析"
                         >
@@ -796,11 +842,11 @@ export function OnlineGameView({
                 <PromoteDialog
                     onPromote={() => {
                         void sendMove(`${promoteDialog.usi}+`, promoteDialog.to);
-                        setPromoteDialog(null);
+                        dispatchUI({ type: "set_promote_dialog", dialog: null });
                     }}
                     onNoPromote={() => {
                         void sendMove(promoteDialog.usi, promoteDialog.to);
-                        setPromoteDialog(null);
+                        dispatchUI({ type: "set_promote_dialog", dialog: null });
                     }}
                 />
             )}
@@ -831,7 +877,7 @@ export function OnlineGameView({
             {aiSupport && (
                 <BottomSheet
                     open={aiSheetOpen}
-                    onOpenChange={setAiSheetOpen}
+                    onOpenChange={(open) => dispatchUI({ type: "set_ai_sheet_open", open })}
                     title="AI 解析"
                     height="auto"
                 >
