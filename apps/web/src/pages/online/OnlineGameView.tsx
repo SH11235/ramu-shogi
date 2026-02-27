@@ -7,9 +7,11 @@ import {
 } from "@shogi/app-core";
 import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type {
+    AiSupportPlayerSettings,
     AiSupportSettings,
     ClockState,
     GameResult,
+    PassRightsState,
     RoomClient,
     Seat,
     SnapshotPayload,
@@ -23,7 +25,7 @@ import {
 } from "@shogi/ui";
 import { useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 
 // ─── 型定義 ───────────────────────────────────────────────────────────────────
 
@@ -56,6 +58,133 @@ function formatMs(ms: number): string {
     const min = Math.floor(totalSec / 60);
     const sec = totalSec % 60;
     return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
+// ─── ゲーム状態管理 ───────────────────────────────────────────────────────────
+
+interface GameState {
+    position: PositionState | null;
+    positionHistory: PositionState[];
+    turn: "b" | "w";
+    clockState: ClockState;
+    gameResult: GameResult | null;
+    kifu: string;
+    offlineSeats: Set<string>;
+    passRights: PassRightsState | null;
+    myAnalysisRemaining: number | null;
+    analysisLog: Array<{ seat: "b" | "w"; ply: number }>;
+}
+
+type GameAction =
+    | { type: "init"; position: PositionState }
+    | {
+          type: "move";
+          usi: string;
+          turn: "b" | "w";
+          clock: ClockState;
+          passRights: PassRightsState | null;
+      }
+    | { type: "result"; result: GameResult }
+    | { type: "game_end"; result: GameResult; kifu: string }
+    | { type: "player_offline"; seat: string }
+    | { type: "player_online"; seat: string }
+    | {
+          type: "analysis_used";
+          isMySeat: boolean;
+          seat: "b" | "w";
+          analysisRemaining: number;
+          ply: number;
+      }
+    | {
+          type: "resync";
+          position: PositionState;
+          turn: "b" | "w";
+          clock: ClockState;
+          passRights: PassRightsState | null;
+      };
+
+function makeInitialGameState(
+    snapshot: SnapshotPayload,
+    myAiSettings: AiSupportPlayerSettings | null,
+): GameState {
+    return {
+        position: null,
+        positionHistory: [],
+        turn: snapshot.turn,
+        clockState: snapshot.clock,
+        gameResult: null,
+        kifu: "",
+        offlineSeats: new Set(),
+        passRights: snapshot.passRights,
+        myAnalysisRemaining:
+            myAiSettings?.mode === "limited" ? (myAiSettings.limitCount ?? 0) : null,
+        analysisLog: [],
+    };
+}
+
+function gameReducer(state: GameState, action: GameAction): GameState {
+    switch (action.type) {
+        case "init":
+            return {
+                ...state,
+                position: action.position,
+                positionHistory: [action.position],
+            };
+        case "move": {
+            if (!state.position) return state;
+            // パス手は局面変化なし（手番のみ交代）。
+            // PositionState に passRights が未設定のため applyMoveWithState は使わない
+            const next =
+                action.usi === "pass"
+                    ? {
+                          ...state.position,
+                          turn:
+                              state.position.turn === "sente"
+                                  ? ("gote" as const)
+                                  : ("sente" as const),
+                      }
+                    : applyMoveWithState(state.position, action.usi).next;
+            return {
+                ...state,
+                position: next,
+                positionHistory: [...state.positionHistory, next],
+                turn: action.turn === "b" ? "w" : "b",
+                clockState: action.clock,
+                passRights: action.passRights,
+            };
+        }
+        case "result":
+            return { ...state, gameResult: action.result };
+        case "game_end":
+            return { ...state, gameResult: action.result, kifu: action.kifu };
+        case "player_offline":
+            return {
+                ...state,
+                offlineSeats: new Set([...state.offlineSeats, action.seat]),
+            };
+        case "player_online": {
+            const next = new Set(state.offlineSeats);
+            next.delete(action.seat);
+            return { ...state, offlineSeats: next };
+        }
+        case "analysis_used":
+            return {
+                ...state,
+                myAnalysisRemaining: action.isMySeat
+                    ? action.analysisRemaining
+                    : state.myAnalysisRemaining,
+                analysisLog: [...state.analysisLog, { seat: action.seat, ply: action.ply }],
+            };
+        case "resync":
+            return {
+                ...state,
+                position: action.position,
+                positionHistory: [action.position],
+                turn: action.turn,
+                clockState: action.clock,
+                passRights: action.passRights,
+            };
+    }
 }
 
 // ─── AI 解析フック ────────────────────────────────────────────────────────────
@@ -206,11 +335,27 @@ export function OnlineGameView({
     roomId,
     onStartReview,
 }: OnlineGameViewProps): ReactElement {
-    const [position, setPosition] = useState<PositionState | null>(null);
-    // ref で subscribe コールバック内から最新局面を参照するためのミラー
-    const positionRef = useRef<PositionState | null>(null);
-    const [clockState, setClockState] = useState<ClockState>(snapshot.clock);
-    const [turn, setTurn] = useState<"b" | "w">(snapshot.turn);
+    // ─── AI サポート設定（makeInitialGameState の引数として使用するため先に定義） ──
+    const aiSupport = snapshot.settings.aiSupport as AiSupportSettings | null;
+    const myAiSettings = seat !== "s" && aiSupport ? aiSupport[seat === "b" ? "b" : "w"] : null;
+
+    // ─── ゲーム状態（useReducer） ─────────────────────────────────────────────
+    const [gameState, dispatch] = useReducer(gameReducer, undefined, () =>
+        makeInitialGameState(snapshot, myAiSettings),
+    );
+    const {
+        position,
+        positionHistory,
+        turn,
+        clockState,
+        gameResult,
+        kifu,
+        offlineSeats,
+        passRights,
+        myAnalysisRemaining,
+        analysisLog,
+    } = gameState;
+
     const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
     const [selectedHand, setSelectedHand] = useState<PieceType | null>(null);
     const [legalMoves, setLegalMoves] = useState<string[]>([]);
@@ -219,25 +364,10 @@ export function OnlineGameView({
         to: string;
         usi: string;
     } | null>(null);
-    const [gameResult, setGameResult] = useState<GameResult | null>(null);
-    const [kifu, setKifu] = useState<string>("");
-    const [offlineSeats, setOfflineSeats] = useState<Set<string>>(new Set());
-    // positionHistory: ゲーム参加後の局面履歴（インデックス 0 = 参加時の局面）
-    const [positionHistory, setPositionHistory] = useState<PositionState[]>([]);
     // navIndex: null = ライブ追従、数値 = 棋譜内の指定局面を表示
     const [navIndex, setNavIndex] = useState<number | null>(null);
-
     const [aiSheetOpen, setAiSheetOpen] = useState(false);
 
-    // ─── AI サポート状態 ───────────────────────────────────────────────────────
-    const aiSupport = snapshot.settings.aiSupport as AiSupportSettings | null;
-    const myAiSettings = seat !== "s" && aiSupport ? aiSupport[seat === "b" ? "b" : "w"] : null;
-    // 残り解析回数（null = 無制限、数値 = 残り回数）
-    const [myAnalysisRemaining, setMyAnalysisRemaining] = useState<number | null>(
-        myAiSettings?.mode === "limited" ? (myAiSettings.limitCount ?? 0) : null,
-    );
-    // 解析使用ログ
-    const [analysisLog, setAnalysisLog] = useState<Array<{ seat: "b" | "w"; ply: number }>>([]);
     const { isAnalyzing, topMoves, startAnalysis, cancelAnalysis } = useOnlineAnalysis(
         aiSupport?.searchDepth ?? null,
         aiSupport?.searchTimeMs ?? null,
@@ -274,9 +404,7 @@ export function OnlineGameView({
             .parseSfen(snapshot.sfen)
             .then((pos) => {
                 if (!cancelled) {
-                    positionRef.current = pos;
-                    setPosition(pos);
-                    setPositionHistory([pos]);
+                    dispatch({ type: "init", position: pos });
                 }
             })
             .catch(console.error);
@@ -295,17 +423,14 @@ export function OnlineGameView({
                 // サーバーは指し手以外のイベントでも latestEventId を増加させるため
                 latestEventIdRef.current = e.eventId;
                 if (e.kind === "move") {
-                    // positionRef で最新局面を参照（subscribe クロージャの stale 問題を回避）
-                    const prevPos = positionRef.current;
-                    if (prevPos) {
-                        const next = applyMoveWithState(prevPos, e.usi).next;
-                        positionRef.current = next;
-                        setPosition(next);
-                        setPositionHistory((ph) => [...ph, next]);
-                    }
+                    dispatch({
+                        type: "move",
+                        usi: e.usi,
+                        turn: e.turn,
+                        clock: e.clock,
+                        passRights: e.passRights,
+                    });
                     movesRef.current = [...movesRef.current, e.usi];
-                    setTurn(e.turn === "b" ? "w" : "b"); // 次の手番
-                    setClockState(e.clock);
                     setSelectedSquare(null);
                     setSelectedHand(null);
                     setLegalMoves([]);
@@ -317,44 +442,37 @@ export function OnlineGameView({
                     e.kind === "illegal_move" ||
                     e.kind === "disconnect_loss"
                 ) {
-                    setGameResult(e.result);
+                    dispatch({ type: "result", result: e.result });
                 } else if (e.kind === "game_end") {
-                    setGameResult(e.result);
-                    setKifu(e.kifu);
+                    dispatch({ type: "game_end", result: e.result, kifu: e.kifu });
                 } else if (e.kind === "player_offline") {
-                    setOfflineSeats((prev) => new Set([...prev, e.seat]));
+                    dispatch({ type: "player_offline", seat: e.seat });
                 } else if (e.kind === "player_online") {
-                    setOfflineSeats((prev) => {
-                        const next = new Set(prev);
-                        next.delete(e.seat);
-                        return next;
+                    dispatch({ type: "player_online", seat: e.seat });
+                } else if (e.kind === "analysis_used" && (e.seat === "b" || e.seat === "w")) {
+                    dispatch({
+                        type: "analysis_used",
+                        isMySeat: e.seat === seat,
+                        seat: e.seat,
+                        analysisRemaining: e.analysisRemaining,
+                        ply: movesRef.current.length,
                     });
-                } else if (e.kind === "analysis_used") {
-                    // 自分の残り回数を更新
-                    if (e.seat === seat && e.seat !== "s") {
-                        setMyAnalysisRemaining(
-                            typeof e.analysisRemaining === "number" ? e.analysisRemaining : null,
-                        );
-                    }
-                    // 解析ログに追記
-                    if (e.seat === "b" || e.seat === "w") {
-                        const ply = movesRef.current.length;
-                        setAnalysisLog((prev) => [...prev, { seat: e.seat as "b" | "w", ply }]);
-                    }
                 }
             } else if (msg.t === "snapshot") {
                 // 再接続後のスナップショット更新
-                setClockState(msg.payload.clock);
-                setTurn(msg.payload.turn);
                 // latestEventId と moves を最新状態に同期する
                 latestEventIdRef.current = msg.payload.eventId;
                 movesRef.current = [...msg.payload.moves];
                 getPositionService()
                     .parseSfen(msg.payload.sfen)
                     .then((pos) => {
-                        positionRef.current = pos;
-                        setPosition(pos);
-                        setPositionHistory([pos]);
+                        dispatch({
+                            type: "resync",
+                            position: pos,
+                            turn: msg.payload.turn,
+                            clock: msg.payload.clock,
+                            passRights: msg.payload.passRights,
+                        });
                         setNavIndex(null); // 再接続後は最新局面に戻す
                     })
                     .catch((err) => {
@@ -369,14 +487,21 @@ export function OnlineGameView({
 
     // ─── 合法手の取得 ────────────────────────────────────────────────────────
 
+    // passRights は subscribe クロージャの stale 問題を回避するために ref で保持
+    const passRightsRef = useRef(passRights);
+    passRightsRef.current = passRights;
+
     useEffect(() => {
         // 巻き戻し中は合法手を表示しない
         void (async () => {
             if (isMyTurn && !gameResult && !isRewound) {
                 try {
+                    const pr = passRightsRef.current;
+                    const passRightsOption = pr ? { passRights: { sente: pr.b, gote: pr.w } } : {};
                     const moves = await getPositionService().getLegalMoves(
                         startSfenRef.current,
                         movesRef.current,
+                        passRightsOption,
                     );
                     setLegalMoves(moves);
                 } catch {
@@ -413,8 +538,15 @@ export function OnlineGameView({
 
     const sendMove = async (usi: string, _toSquare?: string): Promise<void> => {
         if (!position) return;
-        // 移動後の SFEN を計算して送信
-        const nextPos = applyMoveWithState(position, usi).next;
+        // パス手は局面変化なし（手番のみ交代）。PositionState に passRights がないため
+        // applyMoveWithState は使わず、手番を反転した局面の SFEN を生成する
+        const nextPos =
+            usi === "pass"
+                ? {
+                      ...position,
+                      turn: (position.turn === "sente" ? "gote" : "sente") as "sente" | "gote",
+                  }
+                : applyMoveWithState(position, usi).next;
         const nextSfen = await getPositionService().boardToSfen(nextPos);
         client.move({ eventId: latestEventIdRef.current, usi, sfen: nextSfen });
     };
@@ -623,6 +755,7 @@ export function OnlineGameView({
                     remainMs={clockDisplay.w}
                     isOffline={offlineSeats.has("w")}
                     isFlipped={flipBoard}
+                    passRightsCount={passRights != null ? passRights.w : undefined}
                 />
 
                 {/* 後手持ち駒（上） */}
@@ -684,6 +817,7 @@ export function OnlineGameView({
                     remainMs={clockDisplay.b}
                     isOffline={offlineSeats.has("b")}
                     isFlipped={flipBoard}
+                    passRightsCount={passRights != null ? passRights.b : undefined}
                 />
 
                 {/* 棋譜ナビゲーション */}
@@ -701,6 +835,16 @@ export function OnlineGameView({
 
                 {/* 操作ボタン */}
                 <div className="flex gap-2">
+                    {passRights !== null && !isSpectator && !gameResult && (
+                        <button
+                            type="button"
+                            onClick={() => void sendMove("pass")}
+                            disabled={!legalMoves.includes("pass")}
+                            className="rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            パス
+                        </button>
+                    )}
                     {!isSpectator && !gameResult && (
                         <button
                             type="button"
@@ -792,6 +936,8 @@ interface PlayerHeaderProps {
     remainMs: number;
     isOffline: boolean;
     isFlipped: boolean;
+    /** undefined = パス権機能が無効、数値 = 残りパス権数 */
+    passRightsCount?: number;
 }
 
 function PlayerHeader({
@@ -800,6 +946,7 @@ function PlayerHeader({
     isMyTurn,
     remainMs,
     isOffline,
+    passRightsCount,
 }: PlayerHeaderProps): ReactElement {
     return (
         <div
@@ -812,6 +959,13 @@ function PlayerHeader({
                     {seat === "b" ? "▲" : "△"} {name}
                 </span>
                 {isOffline && <span className="text-xs text-destructive">● 切断中</span>}
+                {passRightsCount !== undefined && (
+                    <span
+                        className={`text-xs ${passRightsCount > 0 ? "text-muted-foreground" : "text-muted-foreground/50"}`}
+                    >
+                        パス権: {passRightsCount}
+                    </span>
+                )}
             </div>
             <span
                 className={`font-mono text-sm tabular-nums ${isMyTurn ? "text-primary font-bold" : "text-muted-foreground"}`}
