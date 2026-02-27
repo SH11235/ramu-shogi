@@ -367,24 +367,20 @@ export function OnlineGameView({
 
     // ─── 合法手の取得 ────────────────────────────────────────────────────────
 
-    const fetchLegalMoves = async () => {
-        if (!isMyTurn) return;
-        try {
-            const moves = await getPositionService().getLegalMoves(
-                startSfenRef.current,
-                movesRef.current,
-            );
-            setLegalMoves(moves);
-        } catch {
-            setLegalMoves([]);
-        }
-    };
-
-    // biome-ignore lint/correctness/useExhaustiveDependencies: React Compiler が fetchLegalMoves をメモ化するため deps に追加不要
     useEffect(() => {
         // 巻き戻し中は合法手を表示しない
         if (isMyTurn && !gameResult && !isRewound) {
-            void fetchLegalMoves();
+            void (async () => {
+                try {
+                    const moves = await getPositionService().getLegalMoves(
+                        startSfenRef.current,
+                        movesRef.current,
+                    );
+                    setLegalMoves(moves);
+                } catch {
+                    setLegalMoves([]);
+                }
+            })();
         } else {
             setLegalMoves([]);
         }

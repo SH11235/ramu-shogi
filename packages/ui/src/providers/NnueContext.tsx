@@ -97,9 +97,26 @@ export function NnueProvider({
     };
 
     // 初回マウント時に一覧を取得（storage 変更時も再取得）
-    // biome-ignore lint/correctness/useExhaustiveDependencies: React Compiler が refreshList をメモ化するため deps に追加不要。storage 変更を deps にすることで再実行の意図を明示
+    // refreshList は外部呼び出し用に維持し、effect では storage を直接参照して deps を明示する
     useEffect(() => {
-        void refreshList();
+        setIsLoading(true);
+        Promise.all([storage.listMeta(), storage.getUsage()])
+            .then(([list, usage]) => {
+                list.sort((a, b) => b.createdAt - a.createdAt);
+                setNnueList(list);
+                setStorageUsage(usage);
+                setError(null);
+            })
+            .catch((e) => {
+                const err =
+                    e instanceof NnueError
+                        ? e
+                        : new NnueError("NNUE_STORAGE_FAILED", "NNUE 一覧の取得に失敗しました", e);
+                setError(err);
+            })
+            .finally(() => {
+                setIsLoading(false);
+            });
     }, [storage]);
 
     return (
