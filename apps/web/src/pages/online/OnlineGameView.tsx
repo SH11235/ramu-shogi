@@ -487,17 +487,15 @@ export function OnlineGameView({
 
     // ─── 合法手の取得 ────────────────────────────────────────────────────────
 
-    // passRights は subscribe クロージャの stale 問題を回避するために ref で保持
-    const passRightsRef = useRef(passRights);
-    passRightsRef.current = passRights;
-
     useEffect(() => {
         // 巻き戻し中は合法手を表示しない
+        // passRightsOption は try/catch の外で計算する（React Compiler の制約）
+        const passRightsOption = passRights
+            ? { passRights: { sente: passRights.b, gote: passRights.w } }
+            : {};
         void (async () => {
             if (isMyTurn && !gameResult && !isRewound) {
                 try {
-                    const pr = passRightsRef.current;
-                    const passRightsOption = pr ? { passRights: { sente: pr.b, gote: pr.w } } : {};
                     const moves = await getPositionService().getLegalMoves(
                         startSfenRef.current,
                         movesRef.current,
@@ -511,7 +509,7 @@ export function OnlineGameView({
                 setLegalMoves([]);
             }
         })();
-    }, [isMyTurn, gameResult, isRewound]);
+    }, [isMyTurn, gameResult, isRewound, passRights]);
 
     // ─── 棋譜ナビゲーションハンドラ ───────────────────────────────────────────
 
