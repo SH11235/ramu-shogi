@@ -304,7 +304,7 @@ export function PvPreviewDialog({
                     <div className="flex flex-wrap gap-0.5 text-[11px] font-mono justify-center">
                         {pvDisplay.map((move, index) => (
                             <button
-                                key={`${index}-${move.usiMove}`}
+                                key={move.usiMove}
                                 type="button"
                                 onClick={() => setPreviewIndex(index + 1)}
                                 className={`px-1 py-0.5 rounded cursor-pointer ${
