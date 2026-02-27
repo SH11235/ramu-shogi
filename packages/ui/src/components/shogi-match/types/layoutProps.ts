@@ -91,7 +91,6 @@ export interface DialogStateProps {
     showResultDialog: boolean;
     setShowResultDialog: (show: boolean) => void;
     pvPreview: {
-        open: boolean;
         ply: number;
         pv: string[];
         startPosition: PositionState;
@@ -100,7 +99,6 @@ export interface DialogStateProps {
     } | null;
     setPvPreview: (
         state: {
-            open: boolean;
             ply: number;
             pv: string[];
             startPosition: PositionState;

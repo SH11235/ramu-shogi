@@ -9,7 +9,14 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-    plugins: [tailwindcss(), react()],
+    plugins: [
+        tailwindcss(),
+        react({
+            babel: {
+                plugins: ["babel-plugin-react-compiler"],
+            },
+        }),
+    ],
     resolve: {
         alias: [
             {

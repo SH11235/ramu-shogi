@@ -39,6 +39,7 @@
         "@shogi/app-controller": "workspace:*",
         "@shogi/design-system": "workspace:*",
         "@shogi/engine-client": "workspace:*",
+        "@shogi/match-client": "workspace:*",
         "class-variance-authority": "^0.7.0"
     },
     "devDependencies": {

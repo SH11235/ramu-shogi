@@ -1,5 +1,9 @@
 import type { NnueMeta, NnueSelection, PresetWithStatus } from "@shogi/app-core";
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
+
+const logFallback = (reason: string, detail: Record<string, unknown>) => {
+    console.warn("[nnue] fallback", { reason, ...detail });
+};
 
 /**
  * NNUE 選択のバリデーションと自動修正のためのフック
@@ -62,10 +66,6 @@ export function useNnueValidation(deps: {
 
     const hasLoggedMaterialDefaultRef = useRef(false);
 
-    const logFallback = useCallback((reason: string, detail: Record<string, unknown>) => {
-        console.warn("[nnue] fallback", { reason, ...detail });
-    }, []);
-
     // 1. カスタム NNUE が削除された場合のリセット
     useEffect(() => {
         if (isNnueListLoading) return;
@@ -110,7 +110,6 @@ export function useNnueValidation(deps: {
         setAnalysisNnueSelection,
         defaultNnueSelection,
         restartEngineForNnue,
-        logFallback,
     ]);
 
     // 2. manifestUrl 未指定時のプリセット選択リセット
@@ -155,7 +154,6 @@ export function useNnueValidation(deps: {
         setSenteNnueSelection,
         setGoteNnueSelection,
         restartEngineForNnue,
-        logFallback,
     ]);
 
     // 3. manifestUrl 指定時のプリセットキーバリデーション
@@ -218,7 +216,6 @@ export function useNnueValidation(deps: {
         setGoteNnueSelection,
         setAnalysisNnueSelection,
         restartEngineForNnue,
-        logFallback,
     ]);
 
     useEffect(() => {
@@ -274,6 +271,5 @@ export function useNnueValidation(deps: {
         setGoteNnueSelection,
         setAnalysisNnueSelection,
         restartEngineForNnue,
-        logFallback,
     ]);
 }

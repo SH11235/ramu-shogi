@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useState } from "react";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -13,8 +13,6 @@ import {
 import { Input } from "../input";
 
 interface NnueFvScaleInputDialogProps {
-    /** ダイアログが開いているか */
-    open: boolean;
     /** インポート対象のファイル名 */
     fileName: string;
     /** 確定時のコールバック */
@@ -27,9 +25,9 @@ interface NnueFvScaleInputDialogProps {
  * FV_SCALE と表示名の入力ダイアログ
  *
  * NNUE ファイルインポート時に FV_SCALE と表示名の入力を求める。
+ * 親側で条件レンダリング（`{open && <NnueFvScaleInputDialog />}`）して使う。
  */
 export function NnueFvScaleInputDialog({
-    open,
     fileName,
     onConfirm,
     onCancel,
@@ -38,30 +36,19 @@ export function NnueFvScaleInputDialog({
     const [value, setValue] = useState("");
     const [error, setError] = useState<string | null>(null);
 
-    // 表示名入力（デフォルト値: 拡張子を除去したファイル名）
-    const [displayName, setDisplayName] = useState("");
+    // 表示名入力（マウント時にファイル名から自動生成）
+    const [displayName, setDisplayName] = useState(() => fileName.replace(/\.(nnue|bin)$/i, ""));
 
-    // Confirm で閉じたかどうかを追跡（onOpenChange で Cancel を誤発火させないため）
-    const confirmedRef = useRef(false);
-
-    // ダイアログが開かれたときにデフォルト値を設定
-    useEffect(() => {
-        if (open) {
-            const defaultName = fileName.replace(/\.(nnue|bin)$/i, "");
-            setDisplayName(defaultName);
-        }
-    }, [open, fileName]);
-
-    const handleValueChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const inputValue = e.target.value;
         // 空文字または整数のみ許可（小数点やアルファベットを除外）
         if (inputValue === "" || /^\d+$/.test(inputValue)) {
             setValue(inputValue);
             setError(null);
         }
-    }, []);
+    };
 
-    const handleConfirm = useCallback(() => {
+    const handleConfirm = () => {
         // 表示名のバリデーション
         const trimmedName = displayName.trim();
         if (trimmedName === "") {
@@ -80,55 +67,29 @@ export function NnueFvScaleInputDialog({
             return;
         }
 
-        confirmedRef.current = true;
         void onConfirm(num, trimmedName);
-        setValue("");
-        setDisplayName("");
-        setError(null);
-    }, [value, displayName, onConfirm]);
+    };
 
-    const handleCancel = useCallback(() => {
-        onCancel();
-        setValue("");
-        setDisplayName("");
-        setError(null);
-    }, [onCancel]);
-
-    const handleKeyDown = useCallback(
-        (e: React.KeyboardEvent) => {
-            if (e.key === "Enter") {
-                e.preventDefault();
-                handleConfirm();
-            }
-        },
-        [handleConfirm],
-    );
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            handleConfirm();
+        }
+    };
 
     // インポートボタンの有効/無効判定
-    const canConfirm = useMemo(() => {
+    const canConfirm = (() => {
         const trimmedName = displayName.trim();
         if (trimmedName === "") return false;
         const num = Number(value);
         if (value === "" || Number.isNaN(num)) return false;
         if (!Number.isInteger(num) || num < 1 || num > 100) return false;
         return true;
-    }, [displayName, value]);
+    })();
 
     return (
-        <AlertDialog
-            open={open}
-            onOpenChange={(isOpen) => {
-                if (!isOpen) {
-                    if (confirmedRef.current) {
-                        // Confirm で閉じた場合は Cancel を呼ばない
-                        confirmedRef.current = false;
-                    } else {
-                        handleCancel();
-                    }
-                }
-            }}
-        >
-            <AlertDialogContent>
+        <AlertDialog defaultOpen>
+            <AlertDialogContent onEscapeKeyDown={onCancel}>
                 <AlertDialogHeader>
                     <AlertDialogTitle>評価関数のインポート</AlertDialogTitle>
                     <AlertDialogDescription>
@@ -180,7 +141,7 @@ export function NnueFvScaleInputDialog({
                     {error && <p className="text-xs text-destructive">{error}</p>}
                 </div>
                 <AlertDialogFooter>
-                    <AlertDialogCancel onClick={handleCancel}>キャンセル</AlertDialogCancel>
+                    <AlertDialogCancel onClick={onCancel}>キャンセル</AlertDialogCancel>
                     <AlertDialogAction onClick={handleConfirm} disabled={!canConfirm}>
                         インポート
                     </AlertDialogAction>

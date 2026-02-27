@@ -6,7 +6,7 @@
  */
 
 import type { ReactElement } from "react";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import type { EvalHistory } from "../utils/kifFormat";
 import { EvalGraph } from "./EvalGraph";
 import { EvalGraphModal } from "./EvalGraphModal";
@@ -19,7 +19,7 @@ interface EvalPanelProps {
     /** 手数クリック時のコールバック */
     onPlySelect?: (ply: number) => void;
     /** デフォルトで開いているか */
-    defaultOpen?: boolean;
+    initialOpen?: boolean;
 }
 
 /**
@@ -30,22 +30,22 @@ export function EvalPanel({
     evalHistory,
     currentPly,
     onPlySelect,
-    defaultOpen = false,
+    initialOpen = false,
 }: EvalPanelProps): ReactElement {
-    const [isOpen, setIsOpen] = useState(defaultOpen);
+    const [isOpen, setIsOpen] = useState(initialOpen);
     const [showEvalModal, setShowEvalModal] = useState(false);
 
     const handleToggle = () => {
         setIsOpen(!isOpen);
     };
 
-    const handleGraphClick = useCallback(() => {
+    const handleGraphClick = () => {
         setShowEvalModal(true);
-    }, []);
+    };
 
-    const handleModalClose = useCallback(() => {
+    const handleModalClose = () => {
         setShowEvalModal(false);
-    }, []);
+    };
 
     return (
         <div className="bg-card border border-border rounded-xl shadow-lg w-[var(--panel-width)] overflow-hidden">

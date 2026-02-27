@@ -1,6 +1,6 @@
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 export interface KifuMove {
     /** 手数（1から始まる） */
@@ -30,7 +30,7 @@ export function MobileKifuBar({
     const containerRef = useRef<HTMLDivElement>(null);
 
     // 現在の手を中央にスクロール（コールバックref）
-    const scrollToCurrentRef = useCallback((node: HTMLButtonElement | null) => {
+    const scrollToCurrentRef = (node: HTMLButtonElement | null) => {
         if (node && containerRef.current) {
             const container = containerRef.current;
             const containerWidth = container.clientWidth;
@@ -40,7 +40,7 @@ export function MobileKifuBar({
             const scrollLeft = currentLeft - containerWidth / 2 + currentWidth / 2;
             container.scrollTo({ left: scrollLeft, behavior: "smooth" });
         }
-    }, []);
+    };
     useEffect(() => {
         if (currentPly !== 0) return;
         if (!containerRef.current) return;

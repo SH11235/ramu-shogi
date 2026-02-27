@@ -16,8 +16,10 @@ import type {
     PositionState,
     Square,
 } from "@shogi/app-core";
+import { cloneBoard } from "@shogi/app-core";
 import { useState } from "react";
 import type { Message, PromotionSelection, Selection } from "../types";
+import { clonePositionState } from "../utils/positionUtils";
 
 interface UseBoardStateParams {
     /** 初期局面 */
@@ -64,6 +66,10 @@ interface UseBoardStateResult {
     // SFEN
     startSfen: string;
     setStartSfen: (sfen: string) => void;
+
+    // 一括初期化
+    /** 初期局面・SFEN・準備完了フラグを一度に設定する */
+    initializeBoard: (pos: PositionState, sfen: string) => void;
 }
 
 /**
@@ -95,6 +101,16 @@ export function useBoardState({ initialPosition }: UseBoardStateParams): UseBoar
 
     // SFEN
     const [startSfen, setStartSfen] = useState<string>("startpos");
+
+    // 一括初期化：初期局面・SFEN・準備完了フラグをまとめて設定
+    // React Compiler が自動メモ化するため useCallback 不要
+    const initializeBoard = (pos: PositionState, sfen: string) => {
+        setPosition(pos);
+        setInitialBoard(cloneBoard(pos.board));
+        setBasePosition(clonePositionState(pos));
+        setStartSfen(sfen);
+        setPositionReady(true);
+    };
 
     return {
         // 局面状態
@@ -132,5 +148,7 @@ export function useBoardState({ initialPosition }: UseBoardStateParams): UseBoar
         // SFEN
         startSfen,
         setStartSfen,
+        // 一括初期化
+        initializeBoard,
     };
 }

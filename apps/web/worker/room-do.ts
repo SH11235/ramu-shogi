@@ -667,6 +667,11 @@ export class RoomDO implements DurableObject {
         game.turn = nextTurn;
         game.ply++;
 
+        // パスの場合はpassRightsを消費
+        if (payload.usi === "pass" && game.passRights) {
+            game.passRights[seat] = Math.max(0, game.passRights[seat] - 1);
+        }
+
         // lastSeenTs を更新
         const movingPlayer = room.players[seat];
         if (movingPlayer) {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import type { UseLocalStorageReturn } from "./useLocalStorage";
 import { useLocalStorage } from "./useLocalStorage";
 
@@ -30,10 +30,7 @@ export function useNormalizedSettings<T>(
 ): UseLocalStorageReturn<T> {
     const [stored, setStored] = useLocalStorage(key, defaultValue);
 
-    const normalized = useMemo(
-        () => normalize(stored, defaultValue),
-        [stored, defaultValue, normalize],
-    );
+    const normalized = normalize(stored, defaultValue);
 
     useEffect(() => {
         if (!isSame(normalized, stored)) {
@@ -41,5 +38,9 @@ export function useNormalizedSettings<T>(
         }
     }, [normalized, stored, setStored, isSame]);
 
-    return [normalized, setStored] as const;
+    // isSame で同一と判定されるなら stored（安定した参照）を返す
+    // これにより normalize() が毎レンダーで新オブジェクトを生成しても
+    // 参照が変化しないため、依存配列を持つフックが不要な再実行をしない
+    const result = isSame(normalized, stored) ? stored : normalized;
+    return [result, setStored] as const;
 }

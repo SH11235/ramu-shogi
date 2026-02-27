@@ -1,11 +1,27 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// @shogi/engine-wasm のモック（useOnlineAnalysis が利用するため）
+vi.mock("@shogi/engine-wasm", () => ({
+    createWasmEngineClient: () => ({
+        init: vi.fn().mockResolvedValue(undefined),
+        setOption: vi.fn().mockResolvedValue(undefined),
+        subscribe: vi.fn().mockReturnValue(() => {}),
+        loadPosition: vi.fn().mockResolvedValue(undefined),
+        search: vi.fn().mockResolvedValue({ cancel: vi.fn().mockResolvedValue(undefined) }),
+        dispose: vi.fn().mockResolvedValue(undefined),
+    }),
+}));
+
 // @tanstack/react-router のモック
 const mockNavigate = vi.fn();
 vi.mock("@tanstack/react-router", () => ({
     useNavigate: () => mockNavigate,
     useParams: () => ({ roomId: "test-room" }),
+    // loader data は routeApi.useLoaderData() 経由で提供される
+    getRouteApi: (_path: string) => ({
+        useLoaderData: () => ROOM_INFO,
+    }),
 }));
 
 // @shogi/match-client のモック
@@ -15,7 +31,7 @@ const mockClient = {
     resume: vi.fn(),
     move: vi.fn(),
     resign: vi.fn(),
-    useAnalysis: vi.fn(),
+    consumeAnalysis: vi.fn(),
     ack: vi.fn(),
     sync: vi.fn(),
     ping: vi.fn(),
@@ -55,40 +71,10 @@ describe("RoomPage", () => {
         vi.unstubAllGlobals();
     });
 
-    it("ローディング中テキストを表示する", () => {
-        vi.stubGlobal(
-            "fetch",
-            vi
-                .fn()
-                .mockReturnValue(new Promise(() => {})), // 解決しない Promise
-        );
-        render(<RoomPage />);
-        expect(screen.getByText("読み込み中...")).toBeTruthy();
-    });
-
-    it("ルームが見つからない場合エラーを表示する", async () => {
-        vi.stubGlobal(
-            "fetch",
-            vi.fn().mockResolvedValue({
-                ok: false,
-                status: 404,
-                json: () => Promise.resolve({ message: "Not found" }),
-            }),
-        );
-        render(<RoomPage />);
-        await waitFor(() => {
-            expect(screen.getByText("ルームが見つかりません")).toBeTruthy();
-        });
-    });
+    // ローディング中・エラー表示は TanStack Router の pendingComponent / errorComponent に移動済み
+    // → router.tsx レベルでテスト対象
 
     it("ルーム情報の読み込み後、参加フォームを表示する", async () => {
-        vi.stubGlobal(
-            "fetch",
-            vi.fn().mockResolvedValue({
-                ok: true,
-                json: () => Promise.resolve(ROOM_INFO),
-            }),
-        );
         render(<RoomPage />);
         await waitFor(() => {
             expect(screen.getByText("対局ルーム")).toBeTruthy();
@@ -97,13 +83,6 @@ describe("RoomPage", () => {
     });
 
     it("招待リンクが表示される", async () => {
-        vi.stubGlobal(
-            "fetch",
-            vi.fn().mockResolvedValue({
-                ok: true,
-                json: () => Promise.resolve(ROOM_INFO),
-            }),
-        );
         render(<RoomPage />);
         await waitFor(() => {
             expect(screen.getByText("招待リンク")).toBeTruthy();

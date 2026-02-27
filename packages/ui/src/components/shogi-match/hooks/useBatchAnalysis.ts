@@ -1,7 +1,7 @@
 import type { KifuTree, NnueSelection, ResolvedNnue } from "@shogi/app-core";
 import { getPathToNode } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { AnalysisSettings, AnalyzingState } from "../types";
 import { ANALYZING_STATE_NONE } from "../types";
 import { collectBranchAnalysisJobs, collectTreeAnalysisJobs } from "../utils/branchTreeUtils";
@@ -121,114 +121,95 @@ export function useBatchAnalysis({
     const [analyzingState, setAnalyzingState] = useState<AnalyzingState>(ANALYZING_STATE_NONE);
 
     // 評価値更新コールバック（分岐解析にも対応）
-    const handleEvalUpdate = useCallback(
-        (ply: number, event: EngineInfoEvent) => {
-            // 分岐解析中の場合はノードIDで保存
-            if (analyzingState.type === "by-node-id") {
-                recordEvalByNodeId(analyzingState.nodeId, event);
-            } else {
-                // 通常解析の場合はplyで保存
-                recordEvalByPly(ply, event);
-            }
-        },
-        [analyzingState, recordEvalByPly, recordEvalByNodeId],
-    );
+    const handleEvalUpdate = (ply: number, event: EngineInfoEvent) => {
+        // 分岐解析中の場合はノードIDで保存
+        if (analyzingState.type === "by-node-id") {
+            recordEvalByNodeId(analyzingState.nodeId, event);
+        } else {
+            // 通常解析の場合はplyで保存
+            recordEvalByPly(ply, event);
+        }
+    };
 
     // 特定の手数の局面を解析するコールバック（オンデマンド解析用）
-    const handleAnalyzePly = useCallback(
-        async (ply: number) => {
-            // NNUE の存在確認（未ダウンロードの場合はエラー）
-            try {
-                await resolveNnue(analysisNnueSelection);
-            } catch (e) {
-                const errorMessage =
-                    e instanceof Error ? e.message : "評価関数の準備に失敗しました";
-                const detailedMessage = `解析を開始できません: ${errorMessage}\n\n対処方法:\n1. NNUE管理画面が開きます\n2. 必要なファイルをダウンロードしてください\n3. 再度解析を実行してください`;
-                setMessage({ text: detailedMessage, type: "error" });
-                // NNUE管理ダイアログを開く
-                openNnueManager("missing-analysis");
-                return;
-            }
+    const handleAnalyzePly = async (ply: number) => {
+        // NNUE の存在確認（未ダウンロードの場合はエラー）
+        try {
+            await resolveNnue(analysisNnueSelection);
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : "評価関数の準備に失敗しました";
+            const detailedMessage = `解析を開始できません: ${errorMessage}\n\n対処方法:\n1. NNUE管理画面が開きます\n2. 必要なファイルをダウンロードしてください\n3. 再度解析を実行してください`;
+            setMessage({ text: detailedMessage, type: "error" });
+            // NNUE管理ダイアログを開く
+            openNnueManager("missing-analysis");
+            return;
+        }
 
-            // ply手目の局面を解析するには、ply-1手までの指し手が必要
-            // （ply 1 = 1手目を指した後の局面 = moves[0]まで適用した局面）
-            const movesForPly = kifMoves.slice(0, ply).map((m) => m.usiMove);
+        // ply手目の局面を解析するには、ply-1手までの指し手が必要
+        // （ply 1 = 1手目を指した後の局面 = moves[0]まで適用した局面）
+        const movesForPly = kifMoves.slice(0, ply).map((m) => m.usiMove);
 
-            // 再解析のために既存の評価値をクリア
-            clearEvalByPly(ply);
+        // 再解析のために既存の評価値をクリア
+        clearEvalByPly(ply);
 
-            setAnalyzingState({ type: "by-ply", ply });
-            try {
-                await analyzePosition({
-                    sfen: startSfen,
-                    moves: movesForPly,
-                    ply,
-                    timeMs: 3000, // 3秒間解析
-                    depth: 20, // 最大深さ20
-                });
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                setAnalyzingState({ type: "error", ply, message: errorMessage });
-            }
-        },
-        [
-            kifMoves,
-            analyzePosition,
-            startSfen,
-            clearEvalByPly,
-            resolveNnue,
-            analysisNnueSelection,
-            openNnueManager,
-            setMessage,
-        ],
-    );
+        setAnalyzingState({ type: "by-ply", ply });
+        try {
+            await analyzePosition({
+                sfen: startSfen,
+                moves: movesForPly,
+                ply,
+                timeMs: 3000, // 3秒間解析
+                depth: 20, // 最大深さ20
+            });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            setAnalyzingState({ type: "error", ply, message: errorMessage });
+        }
+    };
 
     // 分岐内のノードを解析するコールバック
-    const handleAnalyzeNode = useCallback(
-        async (nodeId: string) => {
-            const tree = kifuTree;
-            if (!tree) {
-                setMessage({ text: "棋譜ツリーが初期化されていません", type: "error" });
-                return;
-            }
+    const handleAnalyzeNode = async (nodeId: string) => {
+        const tree = kifuTree;
+        if (!tree) {
+            setMessage({ text: "棋譜ツリーが初期化されていません", type: "error" });
+            return;
+        }
 
-            const node = tree.nodes.get(nodeId);
-            if (!node) {
-                setMessage({ text: "指定されたノードが見つかりません", type: "error" });
-                return;
-            }
+        const node = tree.nodes.get(nodeId);
+        if (!node) {
+            setMessage({ text: "指定されたノードが見つかりません", type: "error" });
+            return;
+        }
 
-            // 再解析のために既存の評価値をクリア
-            clearEvalByNodeId(nodeId);
+        // 再解析のために既存の評価値をクリア
+        clearEvalByNodeId(nodeId);
 
-            try {
-                // ルートからこのノードまでのパスを取得
-                const path = getPathToNode(tree, nodeId);
-                // 各ノードのusiMoveを収集（ルートは除く）
-                const movesForNode: string[] = [];
-                for (const id of path) {
-                    const n = tree.nodes.get(id);
-                    if (n?.usiMove) {
-                        movesForNode.push(n.usiMove);
-                    }
+        try {
+            // ルートからこのノードまでのパスを取得
+            const path = getPathToNode(tree, nodeId);
+            // 各ノードのusiMoveを収集（ルートは除く）
+            const movesForNode: string[] = [];
+            for (const id of path) {
+                const n = tree.nodes.get(id);
+                if (n?.usiMove) {
+                    movesForNode.push(n.usiMove);
                 }
-
-                // 分岐解析用に状態を設定
-                setAnalyzingState({ type: "by-node-id", nodeId, ply: node.ply });
-                await analyzePosition({
-                    sfen: startSfen,
-                    moves: movesForNode,
-                    ply: node.ply,
-                    timeMs: 3000,
-                    depth: 20,
-                });
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                setAnalyzingState({ type: "error", ply: node.ply, message: errorMessage });
             }
-        },
-        [kifuTree, analyzePosition, startSfen, clearEvalByNodeId, setMessage],
-    );
+
+            // 分岐解析用に状態を設定
+            setAnalyzingState({ type: "by-node-id", nodeId, ply: node.ply });
+            await analyzePosition({
+                sfen: startSfen,
+                moves: movesForNode,
+                ply: node.ply,
+                timeMs: 3000,
+                depth: 20,
+            });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            setAnalyzingState({ type: "error", ply: node.ply, message: errorMessage });
+        }
+    };
 
     // 単発解析完了時の処理（エラー状態は自動クリアしない）
     useEffect(() => {
@@ -238,7 +219,7 @@ export function useBatchAnalysis({
     }, [isAnalyzing, analyzingState.type]);
 
     // 一括解析を開始（並列処理）- 本譜のみ
-    const handleStartBatchAnalysis = useCallback(async () => {
+    const handleStartBatchAnalysis = async () => {
         // PVがない手を抽出
         const targetPlies = kifMoves.filter((m) => !m.pv || m.pv.length === 0).map((m) => m.ply);
 
@@ -270,139 +251,104 @@ export function useBatchAnalysis({
 
         // 並列一括解析を開始（resolvedを直接渡す）
         enginePool.start(jobs, { nnueId: resolved?.nnueId ?? null, fvScale: resolved?.fvScale });
-    }, [
-        kifMoves,
-        startSfen,
-        analysisSettings,
-        enginePool,
-        resolveNnue,
-        analysisNnueSelection,
-        openNnueManager,
-        setMessage,
-    ]);
+    };
 
     // ツリー全体（分岐含む）の一括解析を開始
-    const handleStartTreeBatchAnalysis = useCallback(
-        async (options?: { mainLineOnly?: boolean }) => {
-            const tree = kifuTree;
-            if (!tree) return;
+    const handleStartTreeBatchAnalysis = async (options?: { mainLineOnly?: boolean }) => {
+        const tree = kifuTree;
+        if (!tree) return;
 
-            // ツリーから解析ジョブを収集
-            const treeJobs = collectTreeAnalysisJobs(tree, {
-                onlyWithoutEval: true,
-                mainLineOnly: options?.mainLineOnly ?? false,
-            });
+        // ツリーから解析ジョブを収集
+        const treeJobs = collectTreeAnalysisJobs(tree, {
+            onlyWithoutEval: true,
+            mainLineOnly: options?.mainLineOnly ?? false,
+        });
 
-            if (treeJobs.length === 0) {
-                setMessage({ text: "解析対象の手がありません", type: "warning" });
-                setTimeout(() => setMessage(null), 3000);
-                return;
-            }
+        if (treeJobs.length === 0) {
+            setMessage({ text: "解析対象の手がありません", type: "warning" });
+            setTimeout(() => setMessage(null), 3000);
+            return;
+        }
 
-            // NNUE の存在確認（未ダウンロードの場合はエラー）
-            let resolved: ResolvedNnue | null;
-            try {
-                resolved = await resolveNnue(analysisNnueSelection);
-            } catch (e) {
-                const errorMessage =
-                    e instanceof Error ? e.message : "評価関数の準備に失敗しました";
-                const detailedMessage = `ツリー解析を開始できません: ${errorMessage}\n\n対処方法:\n1. NNUE管理画面が開きます\n2. 必要なファイルをダウンロードしてください\n3. 再度ツリー解析を実行してください`;
-                setMessage({ text: detailedMessage, type: "error" });
-                // NNUE管理ダイアログを開く
-                openNnueManager("missing-analysis");
-                return;
-            }
+        // NNUE の存在確認（未ダウンロードの場合はエラー）
+        let resolved: ResolvedNnue | null;
+        try {
+            resolved = await resolveNnue(analysisNnueSelection);
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : "評価関数の準備に失敗しました";
+            const detailedMessage = `ツリー解析を開始できません: ${errorMessage}\n\n対処方法:\n1. NNUE管理画面が開きます\n2. 必要なファイルをダウンロードしてください\n3. 再度ツリー解析を実行してください`;
+            setMessage({ text: detailedMessage, type: "error" });
+            // NNUE管理ダイアログを開く
+            openNnueManager("missing-analysis");
+            return;
+        }
 
-            // AnalysisJob形式に変換
-            const jobs: AnalysisJob[] = treeJobs.map((job) => ({
-                ply: job.ply,
-                sfen: startSfen,
-                moves: job.moves,
-                timeMs: analysisSettings.batchAnalysisTimeMs,
-                depth: analysisSettings.batchAnalysisDepth,
-                nodeId: job.nodeId, // 分岐解析用にnodeIdを保持
-            }));
+        // AnalysisJob形式に変換
+        const jobs: AnalysisJob[] = treeJobs.map((job) => ({
+            ply: job.ply,
+            sfen: startSfen,
+            moves: job.moves,
+            timeMs: analysisSettings.batchAnalysisTimeMs,
+            depth: analysisSettings.batchAnalysisDepth,
+            nodeId: job.nodeId, // 分岐解析用にnodeIdを保持
+        }));
 
-            // 並列一括解析を開始（resolvedを直接渡す）
-            enginePool.start(jobs, {
-                nnueId: resolved?.nnueId ?? null,
-                fvScale: resolved?.fvScale,
-            });
-        },
-        [
-            kifuTree,
-            startSfen,
-            analysisSettings,
-            enginePool,
-            resolveNnue,
-            analysisNnueSelection,
-            openNnueManager,
-            setMessage,
-        ],
-    );
+        // 並列一括解析を開始（resolvedを直接渡す）
+        enginePool.start(jobs, {
+            nnueId: resolved?.nnueId ?? null,
+            fvScale: resolved?.fvScale,
+        });
+    };
 
     // 特定の分岐を一括解析
-    const handleAnalyzeBranch = useCallback(
-        async (branchNodeId: string) => {
-            const tree = kifuTree;
-            if (!tree) return;
+    const handleAnalyzeBranch = async (branchNodeId: string) => {
+        const tree = kifuTree;
+        if (!tree) return;
 
-            // 分岐から解析ジョブを収集
-            const branchJobs = collectBranchAnalysisJobs(tree, branchNodeId, {
-                onlyWithoutEval: true,
-            });
+        // 分岐から解析ジョブを収集
+        const branchJobs = collectBranchAnalysisJobs(tree, branchNodeId, {
+            onlyWithoutEval: true,
+        });
 
-            if (branchJobs.length === 0) {
-                return;
-            }
+        if (branchJobs.length === 0) {
+            return;
+        }
 
-            // NNUE の存在確認（未ダウンロードの場合はエラー）
-            let resolved: ResolvedNnue | null;
-            try {
-                resolved = await resolveNnue(analysisNnueSelection);
-            } catch (e) {
-                const errorMessage =
-                    e instanceof Error ? e.message : "評価関数の準備に失敗しました";
-                const detailedMessage = `分岐解析を開始できません: ${errorMessage}\n\n対処方法:\n1. NNUE管理画面が開きます\n2. 必要なファイルをダウンロードしてください\n3. 再度分岐解析を実行してください`;
-                setMessage({ text: detailedMessage, type: "error" });
-                // NNUE管理ダイアログを開く
-                openNnueManager("missing-analysis");
-                return;
-            }
+        // NNUE の存在確認（未ダウンロードの場合はエラー）
+        let resolved: ResolvedNnue | null;
+        try {
+            resolved = await resolveNnue(analysisNnueSelection);
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : "評価関数の準備に失敗しました";
+            const detailedMessage = `分岐解析を開始できません: ${errorMessage}\n\n対処方法:\n1. NNUE管理画面が開きます\n2. 必要なファイルをダウンロードしてください\n3. 再度分岐解析を実行してください`;
+            setMessage({ text: detailedMessage, type: "error" });
+            // NNUE管理ダイアログを開く
+            openNnueManager("missing-analysis");
+            return;
+        }
 
-            // AnalysisJob形式に変換
-            const jobs: AnalysisJob[] = branchJobs.map((job) => ({
-                ply: job.ply,
-                sfen: startSfen,
-                moves: job.moves,
-                timeMs: analysisSettings.batchAnalysisTimeMs,
-                depth: analysisSettings.batchAnalysisDepth,
-                nodeId: job.nodeId,
-            }));
+        // AnalysisJob形式に変換
+        const jobs: AnalysisJob[] = branchJobs.map((job) => ({
+            ply: job.ply,
+            sfen: startSfen,
+            moves: job.moves,
+            timeMs: analysisSettings.batchAnalysisTimeMs,
+            depth: analysisSettings.batchAnalysisDepth,
+            nodeId: job.nodeId,
+        }));
 
-            // 並列一括解析を開始（resolvedを直接渡す）
-            enginePool.start(jobs, {
-                nnueId: resolved?.nnueId ?? null,
-                fvScale: resolved?.fvScale,
-            });
-        },
-        [
-            kifuTree,
-            startSfen,
-            analysisSettings,
-            enginePool,
-            resolveNnue,
-            analysisNnueSelection,
-            openNnueManager,
-            setMessage,
-        ],
-    );
+        // 並列一括解析を開始（resolvedを直接渡す）
+        enginePool.start(jobs, {
+            nnueId: resolved?.nnueId ?? null,
+            fvScale: resolved?.fvScale,
+        });
+    };
 
     // 一括解析をキャンセル
-    const handleCancelBatchAnalysis = useCallback(() => {
+    const handleCancelBatchAnalysis = () => {
         void enginePool.cancel();
         setBatchAnalysis(null);
-    }, [enginePool, setBatchAnalysis]);
+    };
 
     return {
         analyzingState,

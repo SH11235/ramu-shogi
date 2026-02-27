@@ -4,7 +4,7 @@ import type { EngineEvent } from "@shogi/engine-client";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatEngineEventLog } from "./formatEngineEvent";
-import { useEngineManager } from "./useEngineManager";
+import { resolveSides, useEngineManager } from "./useEngineManager";
 
 // テスト用のNnueSelection作成ヘルパー
 const createNnueSelection = (nnueId: string | null): NnueSelection => ({
@@ -717,5 +717,81 @@ describe("useEngineManager - 明示API", () => {
 
         // 対局中なのでresetは呼ばれない
         expect(mockClient.reset.mock.calls.length).toBe(resetCallCount);
+    });
+});
+
+describe("resolveSides", () => {
+    it("engineId 指定済みのエンジンサイドはそのまま返す", () => {
+        const result = resolveSides(
+            {
+                sente: { role: "engine", engineId: "engine1" },
+                gote: { role: "human" },
+            },
+            "default-engine",
+        );
+        expect(result.sente).toEqual({ role: "engine", engineId: "engine1" });
+        expect(result.gote).toEqual({ role: "human" });
+    });
+
+    it("engineId 未指定のエンジンサイドには defaultEngineId を補完する", () => {
+        const result = resolveSides(
+            {
+                sente: { role: "engine" },
+                gote: { role: "human" },
+            },
+            "default-engine",
+        );
+        expect(result.sente).toEqual({ role: "engine", engineId: "default-engine" });
+    });
+
+    it("defaultEngineId が undefined のとき engineId は undefined のまま", () => {
+        const result = resolveSides(
+            {
+                sente: { role: "engine" },
+                gote: { role: "human" },
+            },
+            undefined,
+        );
+        expect(result.sente).toEqual({ role: "engine", engineId: undefined });
+    });
+
+    it("後手がエンジンで engineId 未指定の場合も補完される", () => {
+        const result = resolveSides(
+            {
+                sente: { role: "human" },
+                gote: { role: "engine" },
+            },
+            "default-engine",
+        );
+        expect(result.sente).toEqual({ role: "human" });
+        expect(result.gote).toEqual({ role: "engine", engineId: "default-engine" });
+    });
+
+    it("両サイドともエンジンの場合、それぞれ独立して処理される", () => {
+        const result = resolveSides(
+            {
+                sente: { role: "engine", engineId: "engine-sente" },
+                gote: { role: "engine" },
+            },
+            "default-engine",
+        );
+        expect(result.sente).toEqual({ role: "engine", engineId: "engine-sente" });
+        expect(result.gote).toEqual({ role: "engine", engineId: "default-engine" });
+    });
+
+    it("skillLevel などの追加フィールドはエンジンサイドに保持される", () => {
+        const skillLevel = { skillLevel: 15 };
+        const result = resolveSides(
+            {
+                sente: { role: "engine", skillLevel },
+                gote: { role: "human" },
+            },
+            "default-engine",
+        );
+        expect(result.sente).toEqual({
+            role: "engine",
+            engineId: "default-engine",
+            skillLevel,
+        });
     });
 });

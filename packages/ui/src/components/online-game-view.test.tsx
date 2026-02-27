@@ -3,17 +3,6 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // 重量依存をモック
-vi.mock("@shogi/engine-wasm", () => ({
-    createWasmEngineClient: () => ({
-        init: vi.fn().mockResolvedValue(undefined),
-        setOption: vi.fn().mockResolvedValue(undefined),
-        subscribe: vi.fn().mockReturnValue(() => {}),
-        loadPosition: vi.fn().mockResolvedValue(undefined),
-        search: vi.fn().mockResolvedValue({ cancel: vi.fn().mockResolvedValue(undefined) }),
-        dispose: vi.fn().mockResolvedValue(undefined),
-    }),
-}));
-
 vi.mock("@shogi/app-core", async () => {
     const actual = await vi.importActual<typeof import("@shogi/app-core")>("@shogi/app-core");
     return {
@@ -29,15 +18,21 @@ vi.mock("@shogi/app-core", async () => {
         applyMoveWithState: vi.fn().mockReturnValue({
             next: { board: {}, hands: { sente: {}, gote: {} } },
         }),
-        boardToGrid: vi.fn().mockReturnValue([]),
     };
 });
 
-vi.mock("@shogi/ui", () => ({
-    ShogiBoard: () => <div data-testid="shogi-board" />,
+vi.mock("./shogi-board", () => ({ ShogiBoard: () => <div data-testid="shogi-board" /> }));
+vi.mock("./shogi-match/components/HandPiecesDisplay", () => ({
     HandPiecesDisplay: () => null,
-    boardToGrid: vi.fn().mockReturnValue([]),
 }));
+vi.mock("./shogi-match/components/BottomSheet", () => ({
+    BottomSheet: ({ children, open }: { children: React.ReactNode; open: boolean }) =>
+        open ? <div>{children}</div> : null,
+}));
+vi.mock("./shogi-match/components/KifuNavigationToolbar", () => ({
+    KifuNavigationToolbar: () => null,
+}));
+vi.mock("./shogi-match/utils/positionUtils", () => ({ boardToGrid: vi.fn(() => []) }));
 
 // ─── ヘルパー ─────────────────────────────────────────────────────────────────
 
@@ -47,7 +42,7 @@ function makeMockClient(overrides: Partial<RoomClient> = {}): RoomClient {
         resume: vi.fn(),
         move: vi.fn(),
         resign: vi.fn(),
-        useAnalysis: vi.fn(),
+        consumeAnalysis: vi.fn(),
         updateSettings: vi.fn(),
         ack: vi.fn(),
         sync: vi.fn(),
@@ -88,7 +83,7 @@ function makeSnapshot(overrides: Partial<SnapshotPayload> = {}): SnapshotPayload
     };
 }
 
-const { OnlineGameView } = await import("./OnlineGameView");
+const { OnlineGameView } = await import("./online-game-view");
 
 describe("OnlineGameView", () => {
     beforeEach(() => {

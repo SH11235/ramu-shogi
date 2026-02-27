@@ -5,7 +5,7 @@
  * PointerEvents を使用し、タッチ・マウス両対応
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { isPromotable } from "../utils/constants";
 import { dropTargetEquals, getDropTarget } from "./hitDetection";
 import type {
@@ -93,7 +93,7 @@ export function usePieceDnd(options: UsePieceDndOptions): PieceDndController {
     }>({ checkSlop: null, cancelOnUp: null });
 
     // クリーンアップ関数
-    const cleanup = useCallback(() => {
+    const cleanup = () => {
         const rt = runtimeRef.current;
 
         // タイマー解除
@@ -142,17 +142,17 @@ export function usePieceDnd(options: UsePieceDndOptions): PieceDndController {
             hoverTarget: null,
             mode: null,
         });
-    }, []);
+    };
 
     // ゴースト位置更新（rAF 経由）
-    const updateGhostPosition = useCallback((x: number, y: number) => {
+    const updateGhostPosition = (x: number, y: number) => {
         if (ghostRef.current) {
             ghostRef.current.style.transform = `translate3d(${x}px, ${y}px, 0)`;
         }
-    }, []);
+    };
 
     // ホバーターゲット更新（変化時のみ state 更新）
-    const updateHoverTarget = useCallback((target: DropTarget | null) => {
+    const updateHoverTarget = (target: DropTarget | null) => {
         const rt = runtimeRef.current;
         if (!dropTargetEquals(rt.hover, target)) {
             rt.hover = target;
@@ -169,105 +169,91 @@ export function usePieceDnd(options: UsePieceDndOptions): PieceDndController {
                 mode,
             }));
         }
-    }, []);
+    };
 
-    const updatePayloadPromotion = useCallback((nextPromoted: boolean) => {
+    const updatePayloadPromotion = (nextPromoted: boolean) => {
         const rt = runtimeRef.current;
         if (!rt.payload) return;
         if (rt.payload.isPromoted === nextPromoted) return;
 
         rt.payload = { ...rt.payload, isPromoted: nextPromoted };
         setState((prev) => (prev.payload ? { ...prev, payload: rt.payload } : prev));
-    }, []);
+    };
 
-    const resolvePromotedByShift = useCallback(
-        (payload: DragPayload, shiftKey: boolean, basePromoted: boolean) => {
-            if (!isPromotable(payload.pieceType)) {
-                return basePromoted;
-            }
-            return basePromoted || shiftKey;
-        },
-        [],
-    );
+    const resolvePromotedByShift = (
+        payload: DragPayload,
+        shiftKey: boolean,
+        basePromoted: boolean,
+    ) => {
+        if (!isPromotable(payload.pieceType)) {
+            return basePromoted;
+        }
+        return basePromoted || shiftKey;
+    };
 
     // PointerMove ハンドラ
-    const handlePointerMove = useCallback(
-        (e: PointerEvent) => {
-            const rt = runtimeRef.current;
-            if (!rt.active || rt.pointerId !== e.pointerId) return;
+    const handlePointerMove = useEffectEvent((e: PointerEvent) => {
+        const rt = runtimeRef.current;
+        if (!rt.active || rt.pointerId !== e.pointerId) return;
 
-            rt.lastClient = { x: e.clientX, y: e.clientY };
+        rt.lastClient = { x: e.clientX, y: e.clientY };
 
-            // rAF でゴースト更新
-            if (rt.raf === null) {
-                rt.raf = requestAnimationFrame(() => {
-                    rt.raf = null;
-                    const { x, y } = rt.lastClient;
+        // rAF でゴースト更新
+        if (rt.raf === null) {
+            rt.raf = requestAnimationFrame(() => {
+                rt.raf = null;
+                const { x, y } = rt.lastClient;
 
-                    // ゴースト位置更新（中心に配置）
-                    updateGhostPosition(x - GHOST_OFFSET, y - GHOST_OFFSET);
+                // ゴースト位置更新（中心に配置）
+                updateGhostPosition(x - GHOST_OFFSET, y - GHOST_OFFSET);
 
-                    // ヒットテスト（DOM の data 属性から直接判定）
-                    const target = getDropTarget(x, y, config.outsideAreaBehavior);
-                    updateHoverTarget(target);
+                // ヒットテスト（DOM の data 属性から直接判定）
+                const target = getDropTarget(x, y, config.outsideAreaBehavior);
+                updateHoverTarget(target);
 
-                    if (rt.payload) {
-                        const promoted = resolvePromotedByShift(
-                            rt.payload,
-                            e.shiftKey,
-                            rt.basePromoted,
-                        );
-                        updatePayloadPromotion(promoted);
-                    }
-                });
-            }
-        },
-        [
-            config.outsideAreaBehavior,
-            updateGhostPosition,
-            updateHoverTarget,
-            resolvePromotedByShift,
-            updatePayloadPromotion,
-        ],
-    );
+                if (rt.payload) {
+                    const promoted = resolvePromotedByShift(
+                        rt.payload,
+                        e.shiftKey,
+                        rt.basePromoted,
+                    );
+                    updatePayloadPromotion(promoted);
+                }
+            });
+        }
+    });
 
     // PointerUp ハンドラ（ドロップ）
-    const handlePointerUp = useCallback(
-        (e: PointerEvent) => {
-            const rt = runtimeRef.current;
-            if (!rt.active || rt.pointerId !== e.pointerId) return;
+    const handlePointerUp = useEffectEvent((e: PointerEvent) => {
+        const rt = runtimeRef.current;
+        if (!rt.active || rt.pointerId !== e.pointerId) return;
 
-            const origin = rt.origin;
-            const payload = rt.payload;
-            const target = rt.hover;
+        const origin = rt.origin;
+        const payload = rt.payload;
+        const target = rt.hover;
 
-            cleanup();
+        cleanup();
 
-            if (origin && payload && target && onDrop) {
-                onDrop({ origin, payload, target });
-            }
-        },
-        [cleanup, onDrop],
-    );
+        if (origin && payload && target && onDrop) {
+            onDrop({ origin, payload, target });
+        }
+    });
 
     // PointerCancel / LostPointerCapture ハンドラ
-    const handlePointerCancel = useCallback(
-        (e: PointerEvent) => {
-            const rt = runtimeRef.current;
-            if (rt.pointerId !== e.pointerId) return;
+    const handlePointerCancel = useEffectEvent((e: PointerEvent) => {
+        const rt = runtimeRef.current;
+        if (rt.pointerId !== e.pointerId) return;
 
-            const origin = rt.origin;
-            cleanup();
+        const origin = rt.origin;
+        cleanup();
 
-            if (origin && onCancel) {
-                onCancel(origin, "pointercancel");
-            }
-        },
-        [cleanup, onCancel],
-    );
+        if (origin && onCancel) {
+            onCancel(origin, "pointercancel");
+        }
+    });
 
     // VisibilityChange ハンドラ
-    const handleVisibilityChange = useCallback(() => {
+    const handleVisibilityChange = useEffectEvent(() => {
         if (document.visibilityState === "hidden") {
             const rt = runtimeRef.current;
             if (rt.active) {
@@ -278,10 +264,10 @@ export function usePieceDnd(options: UsePieceDndOptions): PieceDndController {
                 }
             }
         }
-    }, [cleanup, onCancel]);
+    });
 
     // Resize ハンドラ（ドラッグ中はキャンセル）
-    const handleResize = useCallback(() => {
+    const handleResize = useEffectEvent(() => {
         const rt = runtimeRef.current;
         if (rt.active) {
             const origin = rt.origin;
@@ -290,7 +276,7 @@ export function usePieceDnd(options: UsePieceDndOptions): PieceDndController {
                 onCancel(origin, "resize");
             }
         }
-    }, [cleanup, onCancel]);
+    });
 
     // イベントリスナー登録
     useEffect(() => {
@@ -311,199 +297,184 @@ export function usePieceDnd(options: UsePieceDndOptions): PieceDndController {
             document.removeEventListener("visibilitychange", handleVisibilityChange);
             window.removeEventListener("resize", handleResize);
         };
-    }, [
-        disabled,
-        handlePointerMove,
-        handlePointerUp,
-        handlePointerCancel,
-        handleVisibilityChange,
-        handleResize,
-    ]);
+    }, [disabled]);
 
+    const cleanupEvent = useEffectEvent(cleanup);
     // アンマウント時のクリーンアップ
     useEffect(() => {
         return () => {
-            cleanup();
+            cleanupEvent();
         };
-    }, [cleanup]);
+    }, []);
 
     // ドラッグ開始
-    const startDrag = useCallback(
-        (origin: DragOrigin, payload: DragPayload, e: PointerEvent | React.PointerEvent) => {
-            if (disabled) return;
+    const startDrag = (
+        origin: DragOrigin,
+        payload: DragPayload,
+        e: PointerEvent | React.PointerEvent,
+    ) => {
+        if (disabled) return;
 
-            const rt = runtimeRef.current;
+        const rt = runtimeRef.current;
 
-            // 既にドラッグ中なら無視
-            if (rt.active) return;
+        // 既にドラッグ中なら無視
+        if (rt.active) return;
 
-            const pointerId = e.pointerId;
-            const pointerType = e.pointerType as "mouse" | "touch" | "pen";
-            const clientX = e.clientX;
-            const clientY = e.clientY;
+        const pointerId = e.pointerId;
+        const pointerType = e.pointerType as "mouse" | "touch" | "pen";
+        const clientX = e.clientX;
+        const clientY = e.clientY;
 
-            const activateDrag = (shiftKey = false) => {
-                const basePromoted = payload.isPromoted;
-                const resolvedPromoted = resolvePromotedByShift(payload, shiftKey, basePromoted);
-                const resolvedPayload = { ...payload, isPromoted: resolvedPromoted };
+        const activateDrag = (shiftKey = false) => {
+            const basePromoted = payload.isPromoted;
+            const resolvedPromoted = resolvePromotedByShift(payload, shiftKey, basePromoted);
+            const resolvedPayload = { ...payload, isPromoted: resolvedPromoted };
 
-                rt.active = true;
-                rt.pointerId = pointerId;
-                rt.pointerType = pointerType;
-                rt.origin = origin;
-                rt.payload = resolvedPayload;
-                rt.basePromoted = basePromoted;
-                rt.startClient = { x: clientX, y: clientY };
-                rt.lastClient = { x: clientX, y: clientY };
+            rt.active = true;
+            rt.pointerId = pointerId;
+            rt.pointerType = pointerType;
+            rt.origin = origin;
+            rt.payload = resolvedPayload;
+            rt.basePromoted = basePromoted;
+            rt.startClient = { x: clientX, y: clientY };
+            rt.lastClient = { x: clientX, y: clientY };
 
-                // Pointer capture
-                const captureEl = e.target as Element;
-                try {
-                    captureEl.setPointerCapture(pointerId);
-                    rt.captureTarget = captureEl;
-                } catch {
-                    // 失敗しても続行
-                    rt.captureTarget = null;
+            // Pointer capture
+            const captureEl = e.target as Element;
+            try {
+                captureEl.setPointerCapture(pointerId);
+                rt.captureTarget = captureEl;
+            } catch {
+                // 失敗しても続行
+                rt.captureTarget = null;
+            }
+
+            // ゴースト表示
+            if (ghostRef.current) {
+                ghostRef.current.style.display = "block";
+                updateGhostPosition(clientX - GHOST_OFFSET, clientY - GHOST_OFFSET);
+            }
+
+            // 初期ヒットテスト（DOM の data 属性から直接判定）
+            const dropTarget = getDropTarget(clientX, clientY, config.outsideAreaBehavior);
+            rt.hover = dropTarget;
+
+            // React state 更新
+            setState({
+                isDragging: true,
+                payload: resolvedPayload,
+                hoverTarget: rt.hover,
+                mode: rt.hover?.type === "delete" ? "delete" : "valid",
+            });
+        };
+
+        if (pointerType === "touch") {
+            // タッチ: ロングプレス + スロップ判定
+            rt.startClient = { x: clientX, y: clientY };
+
+            // リスナークリーンアップ用のヘルパー
+            const cleanupTouchListeners = () => {
+                const tl = touchListenersRef.current;
+                if (tl.checkSlop) {
+                    document.removeEventListener("pointermove", tl.checkSlop);
+                    tl.checkSlop = null;
                 }
-
-                // ゴースト表示
-                if (ghostRef.current) {
-                    ghostRef.current.style.display = "block";
-                    updateGhostPosition(clientX - GHOST_OFFSET, clientY - GHOST_OFFSET);
+                if (tl.cancelOnUp) {
+                    document.removeEventListener("pointerup", tl.cancelOnUp);
+                    document.removeEventListener("pointercancel", tl.cancelOnUp);
+                    tl.cancelOnUp = null;
                 }
-
-                // 初期ヒットテスト（DOM の data 属性から直接判定）
-                const dropTarget = getDropTarget(clientX, clientY, config.outsideAreaBehavior);
-                rt.hover = dropTarget;
-
-                // React state 更新
-                setState({
-                    isDragging: true,
-                    payload: resolvedPayload,
-                    hoverTarget: rt.hover,
-                    mode: rt.hover?.type === "delete" ? "delete" : "valid",
-                });
             };
 
-            if (pointerType === "touch") {
-                // タッチ: ロングプレス + スロップ判定
-                rt.startClient = { x: clientX, y: clientY };
+            const checkSlop = (moveEvent: PointerEvent) => {
+                if (moveEvent.pointerId !== pointerId) return;
+                const dx = moveEvent.clientX - rt.startClient.x;
+                const dy = moveEvent.clientY - rt.startClient.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
 
-                // リスナークリーンアップ用のヘルパー
-                const cleanupTouchListeners = () => {
-                    const tl = touchListenersRef.current;
-                    if (tl.checkSlop) {
-                        document.removeEventListener("pointermove", tl.checkSlop);
-                        tl.checkSlop = null;
-                    }
-                    if (tl.cancelOnUp) {
-                        document.removeEventListener("pointerup", tl.cancelOnUp);
-                        document.removeEventListener("pointercancel", tl.cancelOnUp);
-                        tl.cancelOnUp = null;
-                    }
-                };
-
-                const checkSlop = (moveEvent: PointerEvent) => {
-                    if (moveEvent.pointerId !== pointerId) return;
-                    const dx = moveEvent.clientX - rt.startClient.x;
-                    const dy = moveEvent.clientY - rt.startClient.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-
-                    if (distance > config.slopPx) {
-                        // スロップ超過 → キャンセル（スクロールに譲る）
-                        if (rt.longPressTimer !== null) {
-                            clearTimeout(rt.longPressTimer);
-                            rt.longPressTimer = null;
-                        }
-                        cleanupTouchListeners();
-                    }
-                };
-
-                const cancelOnUp = (upEvent: PointerEvent) => {
-                    if (upEvent.pointerId !== pointerId) return;
+                if (distance > config.slopPx) {
+                    // スロップ超過 → キャンセル（スクロールに譲る）
                     if (rt.longPressTimer !== null) {
                         clearTimeout(rt.longPressTimer);
                         rt.longPressTimer = null;
                     }
                     cleanupTouchListeners();
-                };
+                }
+            };
 
-                // ref に保存してクリーンアップ時にアクセス可能にする
-                touchListenersRef.current.checkSlop = checkSlop;
-                touchListenersRef.current.cancelOnUp = cancelOnUp;
-
-                document.addEventListener("pointermove", checkSlop);
-                document.addEventListener("pointerup", cancelOnUp);
-                document.addEventListener("pointercancel", cancelOnUp);
-
-                rt.longPressTimer = setTimeout(() => {
+            const cancelOnUp = (upEvent: PointerEvent) => {
+                if (upEvent.pointerId !== pointerId) return;
+                if (rt.longPressTimer !== null) {
+                    clearTimeout(rt.longPressTimer);
                     rt.longPressTimer = null;
-                    cleanupTouchListeners();
-                    activateDrag(false);
-                }, config.longPressMs);
-            } else {
-                // マウス/ペン: スロップ判定後に開始（クリックとドラッグを区別）
-                rt.startClient = { x: clientX, y: clientY };
-                rt.pointerId = pointerId;
-                rt.pointerType = pointerType;
-                rt.origin = origin;
-                rt.payload = payload;
+                }
+                cleanupTouchListeners();
+            };
 
-                const checkMouseSlop = (moveEvent: PointerEvent) => {
-                    if (moveEvent.pointerId !== pointerId) return;
-                    const dx = moveEvent.clientX - rt.startClient.x;
-                    const dy = moveEvent.clientY - rt.startClient.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
+            // ref に保存してクリーンアップ時にアクセス可能にする
+            touchListenersRef.current.checkSlop = checkSlop;
+            touchListenersRef.current.cancelOnUp = cancelOnUp;
 
-                    if (distance > config.slopPx) {
-                        // スロップ超過 → DnD開始
-                        document.removeEventListener("pointermove", checkMouseSlop);
-                        document.removeEventListener("pointerup", cancelMouseOnUp);
-                        activateDrag(moveEvent.shiftKey);
-                    }
-                };
+            document.addEventListener("pointermove", checkSlop);
+            document.addEventListener("pointerup", cancelOnUp);
+            document.addEventListener("pointercancel", cancelOnUp);
 
-                const cancelMouseOnUp = (upEvent: PointerEvent) => {
-                    if (upEvent.pointerId !== pointerId) return;
-                    // クリック扱い（DnD開始せずに終了）
+            rt.longPressTimer = setTimeout(() => {
+                rt.longPressTimer = null;
+                cleanupTouchListeners();
+                activateDrag(false);
+            }, config.longPressMs);
+        } else {
+            // マウス/ペン: スロップ判定後に開始（クリックとドラッグを区別）
+            rt.startClient = { x: clientX, y: clientY };
+            rt.pointerId = pointerId;
+            rt.pointerType = pointerType;
+            rt.origin = origin;
+            rt.payload = payload;
+
+            const checkMouseSlop = (moveEvent: PointerEvent) => {
+                if (moveEvent.pointerId !== pointerId) return;
+                const dx = moveEvent.clientX - rt.startClient.x;
+                const dy = moveEvent.clientY - rt.startClient.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance > config.slopPx) {
+                    // スロップ超過 → DnD開始
                     document.removeEventListener("pointermove", checkMouseSlop);
                     document.removeEventListener("pointerup", cancelMouseOnUp);
-                    // runtimeをリセット
-                    rt.pointerId = null;
-                    rt.pointerType = null;
-                    rt.origin = null;
-                    rt.payload = null;
-                };
+                    activateDrag(moveEvent.shiftKey);
+                }
+            };
 
-                document.addEventListener("pointermove", checkMouseSlop);
-                document.addEventListener("pointerup", cancelMouseOnUp);
-            }
-        },
-        [
-            disabled,
-            config.longPressMs,
-            config.slopPx,
-            config.outsideAreaBehavior,
-            updateGhostPosition,
-            resolvePromotedByShift,
-        ],
-    );
+            const cancelMouseOnUp = (upEvent: PointerEvent) => {
+                if (upEvent.pointerId !== pointerId) return;
+                // クリック扱い（DnD開始せずに終了）
+                document.removeEventListener("pointermove", checkMouseSlop);
+                document.removeEventListener("pointerup", cancelMouseOnUp);
+                // runtimeをリセット
+                rt.pointerId = null;
+                rt.pointerType = null;
+                rt.origin = null;
+                rt.payload = null;
+            };
+
+            document.addEventListener("pointermove", checkMouseSlop);
+            document.addEventListener("pointerup", cancelMouseOnUp);
+        }
+    };
 
     // キャンセル
-    const cancelDrag = useCallback(
-        (reason: string) => {
-            const rt = runtimeRef.current;
-            if (!rt.active) return;
+    const cancelDrag = (reason: string) => {
+        const rt = runtimeRef.current;
+        if (!rt.active) return;
 
-            const origin = rt.origin;
-            cleanup();
+        const origin = rt.origin;
+        cleanup();
 
-            if (origin && onCancel) {
-                onCancel(origin, reason);
-            }
-        },
-        [cleanup, onCancel],
-    );
+        if (origin && onCancel) {
+            onCancel(origin, reason);
+        }
+    };
 
     return {
         state,

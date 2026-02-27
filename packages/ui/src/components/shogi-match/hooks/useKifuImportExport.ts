@@ -5,7 +5,6 @@ import {
     deriveLastMove,
     getPositionService,
 } from "@shogi/app-core";
-import { useCallback } from "react";
 import type { Message, PassRightsSettings, SideSetting } from "../types";
 import type { KifMove } from "../utils/kifFormat";
 import { exportToKifString } from "../utils/kifFormat";
@@ -109,86 +108,66 @@ export function useKifuImportExport({
     /**
      * 棋譜を読み込む（内部用）
      */
-    const loadMoves = useCallback(
-        async (
-            list: string[],
-            moveData: KifMoveData[] | undefined,
-            startPosition: PositionState,
-            startSfenToLoad: string,
-        ) => {
-            const filtered = list.filter(Boolean);
-            const service = getPositionService();
-            // パス入り棋譜の場合はpassRightsを渡す
-            const passRightsOption = buildPassRightsOptionForLegalMoves(
-                passRightsSettings,
-                filtered,
-            );
-            const result = await service.replayMovesStrict(
-                startSfenToLoad,
-                filtered,
-                passRightsOption,
-            );
+    const loadMoves = async (
+        list: string[],
+        moveData: KifMoveData[] | undefined,
+        startPosition: PositionState,
+        startSfenToLoad: string,
+    ) => {
+        const filtered = list.filter(Boolean);
+        const service = getPositionService();
+        // パス入り棋譜の場合はpassRightsを渡す
+        const passRightsOption = buildPassRightsOptionForLegalMoves(passRightsSettings, filtered);
+        const result = await service.replayMovesStrict(startSfenToLoad, filtered, passRightsOption);
 
-            // 棋譜ナビゲーションをリセット
-            navigation.reset(startPosition, startSfenToLoad);
-            setLastAddedBranchInfo(null); // 分岐状態をクリア
+        // 棋譜ナビゲーションをリセット
+        navigation.reset(startPosition, startSfenToLoad);
+        setLastAddedBranchInfo(null); // 分岐状態をクリア
 
-            // 各手を順番に追加
-            let currentPos = startPosition;
-            for (let i = 0; i < result.applied.length; i++) {
-                const move = result.applied[i];
-                const data = moveData?.[i];
-                const applyResult = applyMoveWithState(currentPos, move, {
-                    validateTurn: false,
+        // 各手を順番に追加
+        let currentPos = startPosition;
+        for (let i = 0; i < result.applied.length; i++) {
+            const move = result.applied[i];
+            const data = moveData?.[i];
+            const applyResult = applyMoveWithState(currentPos, move, {
+                validateTurn: false,
+            });
+            if (applyResult.ok) {
+                // 消費時間と評価値を渡す
+                // KIFインポートの評価値は既に先手視点なので normalized: true
+                navigation.addMove(move, applyResult.next, {
+                    elapsedMs: data?.elapsedMs,
+                    eval:
+                        data?.evalCp !== undefined || data?.evalMate !== undefined
+                            ? {
+                                  scoreCp: data.evalCp,
+                                  scoreMate: data.evalMate,
+                                  depth: data.depth,
+                                  normalized: true,
+                              }
+                            : undefined,
                 });
-                if (applyResult.ok) {
-                    // 消費時間と評価値を渡す
-                    // KIFインポートの評価値は既に先手視点なので normalized: true
-                    navigation.addMove(move, applyResult.next, {
-                        elapsedMs: data?.elapsedMs,
-                        eval:
-                            data?.evalCp !== undefined || data?.evalMate !== undefined
-                                ? {
-                                      scoreCp: data.evalCp,
-                                      scoreMate: data.evalMate,
-                                      depth: data.depth,
-                                      normalized: true,
-                                  }
-                                : undefined,
-                    });
-                    currentPos = applyResult.next;
-                }
+                currentPos = applyResult.next;
             }
+        }
 
-            setLastMove(deriveLastMove(result.applied.at(-1)));
-            setSelection(null);
-            setMessage(null);
-            resetClocks(false);
+        setLastMove(deriveLastMove(result.applied.at(-1)));
+        setSelection(null);
+        setMessage(null);
+        resetClocks(false);
 
-            clearLegalCache();
-            setPositionReady(true);
+        clearLegalCache();
+        setPositionReady(true);
 
-            if (result.error) {
-                throw new Error(result.error);
-            }
-        },
-        [
-            clearLegalCache,
-            navigation,
-            resetClocks,
-            passRightsSettings,
-            setLastMove,
-            setSelection,
-            setMessage,
-            setPositionReady,
-            setLastAddedBranchInfo,
-        ],
-    );
+        if (result.error) {
+            throw new Error(result.error);
+        }
+    };
 
     /**
      * KIFコピー用コールバック
      */
-    const handleCopyKif = useCallback((): string => {
+    const handleCopyKif = (): string => {
         return exportToKifString(kifMoves, boardHistory, {
             startTime: new Date(),
             senteName: sides.sente.role === "engine" ? "エンジン" : "人間",
@@ -196,121 +175,99 @@ export function useKifuImportExport({
             includeEval: true, // 評価値もコメントとして出力
             startSfen,
         });
-    }, [kifMoves, boardHistory, sides.sente.role, sides.gote.role, startSfen]);
+    };
 
     /**
      * SFENインポート（局面 + 指し手）
      * インポート後は自動的に検討モードに入る
      */
-    const importSfen = useCallback(
-        async (sfen: string, movesToLoad: string[]) => {
-            const service = getPositionService();
-            try {
-                // 新しい開始局面を設定
-                const newPosition = await service.parseSfen(sfen);
-                setBasePosition(newPosition);
-                setStartSfen(sfen);
-                setInitialBoard(newPosition.board);
+    const importSfen = async (sfen: string, movesToLoad: string[]) => {
+        const service = getPositionService();
+        try {
+            // 新しい開始局面を設定
+            const newPosition = await service.parseSfen(sfen);
+            setBasePosition(newPosition);
+            setStartSfen(sfen);
+            setInitialBoard(newPosition.board);
 
-                // 棋譜ナビゲーションをリセット
-                navigation.reset(newPosition, sfen);
-                setLastAddedBranchInfo(null); // 分岐状態をクリア
+            // 棋譜ナビゲーションをリセット
+            navigation.reset(newPosition, sfen);
+            setLastAddedBranchInfo(null); // 分岐状態をクリア
 
-                // 指し手がある場合は適用
-                if (movesToLoad.length > 0) {
-                    let currentPos = newPosition;
-                    const appliedMoves: string[] = [];
-                    for (const move of movesToLoad) {
-                        const applyResult = applyMoveWithState(currentPos, move, {
-                            validateTurn: false,
-                        });
-                        if (applyResult.ok) {
-                            navigation.addMove(move, applyResult.next);
-                            currentPos = applyResult.next;
-                            appliedMoves.push(move);
-                        } else {
-                            break;
-                        }
+            // 指し手がある場合は適用
+            if (movesToLoad.length > 0) {
+                let currentPos = newPosition;
+                const appliedMoves: string[] = [];
+                for (const move of movesToLoad) {
+                    const applyResult = applyMoveWithState(currentPos, move, {
+                        validateTurn: false,
+                    });
+                    if (applyResult.ok) {
+                        navigation.addMove(move, applyResult.next);
+                        currentPos = applyResult.next;
+                        appliedMoves.push(move);
+                    } else {
+                        break;
                     }
-                    setLastMove(deriveLastMove(appliedMoves.at(-1)));
-                } else {
-                    setLastMove(undefined);
                 }
-
-                setSelection(null);
-                resetClocks(false);
-                clearLegalCache();
-                setPositionReady(true);
-
-                // インポート後は自動的に検討モードに入る
-                setIsEditMode(false);
-                setIsMatchRunning(false);
-            } catch (error) {
-                throw new Error(`SFENの適用に失敗しました: ${String(error)}`);
+                setLastMove(deriveLastMove(appliedMoves.at(-1)));
+            } else {
+                setLastMove(undefined);
             }
-        },
-        [
-            clearLegalCache,
-            navigation,
-            resetClocks,
-            setLastMove,
-            setSelection,
-            setPositionReady,
-            setBasePosition,
-            setStartSfen,
-            setInitialBoard,
-            setLastAddedBranchInfo,
-            setIsEditMode,
-            setIsMatchRunning,
-        ],
-    );
+
+            setSelection(null);
+            resetClocks(false);
+            clearLegalCache();
+            setPositionReady(true);
+
+            // インポート後は自動的に検討モードに入る
+            setIsEditMode(false);
+            setIsMatchRunning(false);
+        } catch (error) {
+            throw new Error(`SFENの適用に失敗しました: ${String(error)}`);
+        }
+    };
 
     /**
      * KIFインポート（開始局面情報があれば使用）
      * インポート後は自動的に検討モードに入る
      */
-    const importKif = useCallback(
-        async (movesToLoad: string[], moveData: KifMoveData[], startSfenFromKif?: string) => {
-            const service = getPositionService();
+    const importKif = async (
+        movesToLoad: string[],
+        moveData: KifMoveData[],
+        startSfenFromKif?: string,
+    ) => {
+        const service = getPositionService();
 
-            let startPosition: PositionState;
-            let startSfenToLoad: string;
+        let startPosition: PositionState;
+        let startSfenToLoad: string;
 
-            if (startSfenFromKif?.trim()) {
-                const parsed = parseSfen(startSfenFromKif);
-                if (!parsed.sfen) {
-                    throw new Error("開始局面のSFENが空です。");
-                }
-                startSfenToLoad = parsed.sfen;
-                try {
-                    startPosition = await service.parseSfen(startSfenToLoad);
-                } catch (error) {
-                    throw new Error(`開始局面の解析に失敗しました: ${String(error)}`);
-                }
-            } else {
-                startSfenToLoad = "startpos";
-                startPosition = await service.parseSfen(startSfenToLoad);
+        if (startSfenFromKif?.trim()) {
+            const parsed = parseSfen(startSfenFromKif);
+            if (!parsed.sfen) {
+                throw new Error("開始局面のSFENが空です。");
             }
+            startSfenToLoad = parsed.sfen;
+            try {
+                startPosition = await service.parseSfen(startSfenToLoad);
+            } catch (error) {
+                throw new Error(`開始局面の解析に失敗しました: ${String(error)}`);
+            }
+        } else {
+            startSfenToLoad = "startpos";
+            startPosition = await service.parseSfen(startSfenToLoad);
+        }
 
-            setBasePosition(startPosition);
-            setStartSfen(startSfenToLoad);
-            setInitialBoard(cloneBoard(startPosition.board));
+        setBasePosition(startPosition);
+        setStartSfen(startSfenToLoad);
+        setInitialBoard(cloneBoard(startPosition.board));
 
-            await loadMoves(movesToLoad, moveData, startPosition, startSfenToLoad);
+        await loadMoves(movesToLoad, moveData, startPosition, startSfenToLoad);
 
-            // KIFインポート後は自動的に検討モードに入る
-            setIsEditMode(false);
-            setIsMatchRunning(false);
-        },
-        [
-            loadMoves,
-            setBasePosition,
-            setStartSfen,
-            setInitialBoard,
-            setIsEditMode,
-            setIsMatchRunning,
-        ],
-    );
+        // KIFインポート後は自動的に検討モードに入る
+        setIsEditMode(false);
+        setIsMatchRunning(false);
+    };
 
     return {
         loadMoves,

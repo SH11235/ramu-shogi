@@ -6,7 +6,7 @@
  */
 
 import type { MouseEvent, ReactElement } from "react";
-import { useCallback, useMemo, useRef } from "react";
+import { useRef } from "react";
 import type { EvalHistory } from "../utils/kifFormat";
 
 interface EvalGraphProps {
@@ -89,45 +89,40 @@ export function EvalGraph({
     const graphContainerRef = useRef<HTMLElement>(null);
 
     // グラフクリック時に手数を計算
-    const handleGraphClick = useCallback(
-        (e: MouseEvent<HTMLDivElement | HTMLButtonElement>) => {
-            if (!onPlySelect || evalHistory.length <= 1) return;
+    const handleGraphClick = (e: MouseEvent<HTMLDivElement | HTMLButtonElement>) => {
+        if (!onPlySelect || evalHistory.length <= 1) return;
 
-            const container = graphContainerRef.current;
-            if (!container) return;
+        const container = graphContainerRef.current;
+        if (!container) return;
 
-            const rect = container.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const width = rect.width;
+        const rect = container.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const width = rect.width;
 
-            // クリック位置から手数を計算
-            const maxPly = evalHistory.length - 1;
-            const clickedPly = Math.round((x / width) * maxPly);
-            const clampedPly = Math.max(0, Math.min(maxPly, clickedPly));
+        // クリック位置から手数を計算
+        const maxPly = evalHistory.length - 1;
+        const clickedPly = Math.round((x / width) * maxPly);
+        const clampedPly = Math.max(0, Math.min(maxPly, clickedPly));
 
-            onPlySelect(clampedPly);
-        },
-        [onPlySelect, evalHistory.length],
-    );
+        onPlySelect(clampedPly);
+    };
 
     // 自動スケール計算
-    const scaleMax = useMemo(() => {
-        let maxAbs = 0;
-        for (const entry of evalHistory) {
-            if (entry.evalCp !== null && entry.evalCp !== undefined) {
-                maxAbs = Math.max(maxAbs, Math.abs(entry.evalCp));
-            }
-            // 詰みの場合は大きな値として扱う
-            if (entry.evalMate !== null && entry.evalMate !== undefined) {
-                maxAbs = Math.max(maxAbs, 10000);
-            }
+    let maxAbs = 0;
+    for (const entry of evalHistory) {
+        if (entry.evalCp !== null && entry.evalCp !== undefined) {
+            maxAbs = Math.max(maxAbs, Math.abs(entry.evalCp));
         }
-        return computeNiceScale(maxAbs, minScale);
-    }, [evalHistory, minScale]);
+        // 詰みの場合は大きな値として扱う
+        if (entry.evalMate !== null && entry.evalMate !== undefined) {
+            maxAbs = Math.max(maxAbs, 10000);
+        }
+    }
+    const scaleMax = computeNiceScale(maxAbs, minScale);
 
     // ポイントの計算（先手・後手を分離して別々のセグメントを生成）
     // viewBox="0 0 100 height" なので x は 0-100 の数値、y はピクセル値
-    const { senteSegments, goteSegments } = useMemo(() => {
+    const { senteSegments, goteSegments } = (() => {
         if (evalHistory.length === 0) return { senteSegments: [], goteSegments: [] };
 
         const maxPly = Math.max(evalHistory.length - 1, 1);
@@ -183,10 +178,10 @@ export function EvalGraph({
         }
 
         return { senteSegments: sente, goteSegments: gote };
-    }, [evalHistory, graphHeight, scaleMax]);
+    })();
 
     // 現在位置のマーカー
-    const currentMarker = useMemo(() => {
+    const currentMarker = (() => {
         if (currentPly < 0 || currentPly >= evalHistory.length) return null;
 
         const maxPly = Math.max(evalHistory.length - 1, 1);
@@ -196,10 +191,10 @@ export function EvalGraph({
             padding.top + evalToYWithScale(entry?.evalCp, entry?.evalMate, graphHeight, scaleMax);
 
         return { x, y };
-    }, [currentPly, evalHistory, graphHeight, scaleMax]);
+    })();
 
     // Y軸の目盛り値（センチポーン → 表示用）
-    const yAxisLabels = useMemo(() => {
+    const yAxisLabels = (() => {
         const displayMax = scaleMax / 100;
         const halfValue = displayMax / 2;
         return [
@@ -209,10 +204,10 @@ export function EvalGraph({
             { value: `-${halfValue.toFixed(0)}`, position: padding.top + (graphHeight * 3) / 4 },
             { value: `-${displayMax}`, position: padding.top + graphHeight },
         ];
-    }, [scaleMax, graphHeight]);
+    })();
 
     // X軸の目盛り（手数）
-    const xAxisLabels = useMemo(() => {
+    const xAxisLabels = (() => {
         const maxPly = Math.max(evalHistory.length - 1, 1);
         if (maxPly <= 10) {
             return [0, maxPly];
@@ -224,7 +219,7 @@ export function EvalGraph({
         // 50手以上の場合は4分割
         const quarter = Math.round(maxPly / 4);
         return [0, quarter, quarter * 2, quarter * 3, maxPly];
-    }, [evalHistory.length]);
+    })();
 
     if (compact) {
         // コンパクト表示用のSVGコンテンツ

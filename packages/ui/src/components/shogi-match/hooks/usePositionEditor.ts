@@ -1,6 +1,6 @@
 import type { BoardState, Piece, PieceType, Player, PositionState, Square } from "@shogi/app-core";
 import { cloneBoard, getPositionService } from "@shogi/app-core";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { addToHand, cloneHandsState, consumeFromHand, countPieces } from "../utils/boardUtils";
 import { PIECE_CAP, PIECE_LABELS } from "../utils/constants";
 import type { LegalMoveCache } from "../utils/legalMoveCache";
@@ -100,42 +100,39 @@ export function usePositionEditor(props: UsePositionEditorProps): UsePositionEdi
     /**
      * 編集後の局面を主状態に反映する
      */
-    const applyEditedPosition = useCallback(
-        (nextPosition: PositionState) => {
-            props.onPositionChange(nextPosition);
-            props.positionRef.current = nextPosition;
-            props.onInitialBoardChange(cloneBoard(nextPosition.board));
-            props.onMovesChange([]);
-            props.movesRef.current = [];
-            props.onLastMoveChange(undefined);
-            props.onSelectionChange(null);
-            props.onMessageChange(null);
-            setEditFromSquare(null);
+    const applyEditedPosition = (nextPosition: PositionState) => {
+        props.onPositionChange(nextPosition);
+        props.positionRef.current = nextPosition;
+        props.onInitialBoardChange(cloneBoard(nextPosition.board));
+        props.onMovesChange([]);
+        props.movesRef.current = [];
+        props.onLastMoveChange(undefined);
+        props.onSelectionChange(null);
+        props.onMessageChange(null);
+        setEditFromSquare(null);
 
-            // 検索状態のリセット
-            props.onSearchStatesReset();
-            props.onActiveSearchReset();
+        // 検索状態のリセット
+        props.onSearchStatesReset();
+        props.onActiveSearchReset();
 
-            // キャッシュのクリア
-            props.legalCache.clear();
+        // キャッシュのクリア
+        props.legalCache.clear();
 
-            // クロックを停止
-            props.onClockStop();
+        // クロックを停止
+        props.onClockStop();
 
-            // 対局終了フラグをリセット
-            props.matchEndedRef.current = false;
-            props.onMatchRunningChange(false);
+        // 対局終了フラグをリセット
+        props.matchEndedRef.current = false;
+        props.onMatchRunningChange(false);
 
-            // SFEN を更新（非同期）
-            void props.onStartSfenRefresh(nextPosition);
-        },
-        [props],
-    );
+        // SFEN を更新（非同期）
+        void props.onStartSfenRefresh(nextPosition);
+    };
 
     /**
      * 平手初期局面を復元する
      */
-    const resetToStartposForEdit = useCallback(async () => {
+    const resetToStartposForEdit = async () => {
         if (props.isMatchRunning) return;
 
         try {
@@ -153,106 +150,104 @@ export function usePositionEditor(props: UsePositionEditorProps): UsePositionEdi
         } catch (error) {
             props.onMessageChange(`平手初期化に失敗しました: ${String(error)}`);
         }
-    }, [props, applyEditedPosition]);
+    };
 
     /**
      * 手番を更新する
      */
-    const updateTurnForEdit = useCallback(
-        (turn: Player) => {
-            if (props.isMatchRunning) return;
+    const updateTurnForEdit = (turn: Player) => {
+        if (props.isMatchRunning) return;
 
-            const current = props.positionRef.current;
-            applyEditedPosition({ ...current, turn });
-        },
-        [props, applyEditedPosition],
-    );
+        const current = props.positionRef.current;
+        applyEditedPosition({ ...current, turn });
+    };
 
     /**
      * 指定マスに駒を配置・削除する
      */
-    const placePieceAt = useCallback(
-        (square: Square, piece: Piece | null, options?: { fromSquare?: Square }): boolean => {
-            const current = props.positionRef.current;
-            const nextBoard = cloneBoard(current.board);
-            let workingHands = cloneHandsState(current.hands);
+    const placePieceAt = (
+        square: Square,
+        piece: Piece | null,
+        options?: { fromSquare?: Square },
+    ): boolean => {
+        const current = props.positionRef.current;
+        const nextBoard = cloneBoard(current.board);
+        let workingHands = cloneHandsState(current.hands);
 
-            // 移動元が指定されている場合は、そのマスから駒を削除
-            if (options?.fromSquare) {
-                nextBoard[options.fromSquare] = null;
-            }
+        // 移動元が指定されている場合は、そのマスから駒を削除
+        if (options?.fromSquare) {
+            nextBoard[options.fromSquare] = null;
+        }
 
-            // 配置先に既に駒がある場合は、その駒を手駒に回収
-            const existing = nextBoard[square];
-            if (existing) {
-                const base = existing.type;
-                workingHands = addToHand(workingHands, existing.owner, base);
-            }
+        // 配置先に既に駒がある場合は、その駒を手駒に回収
+        const existing = nextBoard[square];
+        if (existing) {
+            const base = existing.type;
+            workingHands = addToHand(workingHands, existing.owner, base);
+        }
 
-            // piece が null の場合：駒を削除
-            if (!piece) {
-                // 玉は削除できない
-                if (existing?.type === "K") {
-                    props.onMessageChange("玉は削除できません。");
-                    return false;
-                }
-                nextBoard[square] = null;
-                const nextPosition: PositionState = {
-                    ...current,
-                    board: nextBoard,
-                    hands: workingHands,
-                };
-                applyEditedPosition(nextPosition);
-                return true;
-            }
-
-            // 駒を配置する場合
-            const baseType = piece.type;
-            const consumedHands = consumeFromHand(workingHands, piece.owner, baseType);
-            const handsForPlacement = consumedHands ?? workingHands;
-
-            // 配置後の駒数をカウント
-            const countsBefore = countPieces({
-                ...current,
-                board: nextBoard,
-                hands: handsForPlacement,
-            });
-
-            const nextCount = countsBefore[piece.owner][baseType] + 1;
-
-            // 駒の上限枚数チェック
-            if (nextCount > PIECE_CAP[baseType]) {
-                const ownerLabel = piece.owner === "sente" ? "先手" : "後手";
-                props.onMessageChange(
-                    `${ownerLabel}の${PIECE_LABELS[baseType]}は最大${PIECE_CAP[baseType]}枚までです`,
-                );
+        // piece が null の場合：駒を削除
+        if (!piece) {
+            // 玉は削除できない
+            if (existing?.type === "K") {
+                props.onMessageChange("玉は削除できません。");
                 return false;
             }
-
-            // 玉は1枚限定チェック
-            if (piece.type === "K" && countsBefore[piece.owner][baseType] >= PIECE_CAP.K) {
-                props.onMessageChange("玉はそれぞれ1枚まで配置できます。");
-                return false;
-            }
-
-            // 駒を配置
-            nextBoard[square] = piece.promoted ? { ...piece, promoted: true } : { ...piece };
-            const finalHands = consumedHands ?? workingHands;
+            nextBoard[square] = null;
             const nextPosition: PositionState = {
                 ...current,
                 board: nextBoard,
-                hands: finalHands,
+                hands: workingHands,
             };
             applyEditedPosition(nextPosition);
             return true;
-        },
-        [props, applyEditedPosition],
-    );
+        }
+
+        // 駒を配置する場合
+        const baseType = piece.type;
+        const consumedHands = consumeFromHand(workingHands, piece.owner, baseType);
+        const handsForPlacement = consumedHands ?? workingHands;
+
+        // 配置後の駒数をカウント
+        const countsBefore = countPieces({
+            ...current,
+            board: nextBoard,
+            hands: handsForPlacement,
+        });
+
+        const nextCount = countsBefore[piece.owner][baseType] + 1;
+
+        // 駒の上限枚数チェック
+        if (nextCount > PIECE_CAP[baseType]) {
+            const ownerLabel = piece.owner === "sente" ? "先手" : "後手";
+            props.onMessageChange(
+                `${ownerLabel}の${PIECE_LABELS[baseType]}は最大${PIECE_CAP[baseType]}枚までです`,
+            );
+            return false;
+        }
+
+        // 玉は1枚限定チェック
+        if (piece.type === "K" && countsBefore[piece.owner][baseType] >= PIECE_CAP.K) {
+            props.onMessageChange("玉はそれぞれ1枚まで配置できます。");
+            return false;
+        }
+
+        // 駒を配置
+        nextBoard[square] = piece.promoted ? { ...piece, promoted: true } : { ...piece };
+        const finalHands = consumedHands ?? workingHands;
+        const nextPosition: PositionState = {
+            ...current,
+            board: nextBoard,
+            hands: finalHands,
+        };
+        applyEditedPosition(nextPosition);
+        return true;
+    };
 
     /**
      * 編集済み局面を確定する
      */
-    const finalizeEditedPosition = useCallback(async () => {
+    const finalizeEditedPosition = async () => {
         if (props.isMatchRunning) return;
 
         const current = props.positionRef.current;
@@ -267,7 +262,7 @@ export function usePositionEditor(props: UsePositionEditorProps): UsePositionEdi
         await props.onStartSfenRefresh(current);
         props.legalCache.clear();
         setIsEditMode(false);
-    }, [props]);
+    };
 
     return {
         // 編集状態

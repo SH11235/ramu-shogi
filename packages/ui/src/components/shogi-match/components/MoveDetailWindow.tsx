@@ -14,7 +14,8 @@ import type {
     PresetConfig,
 } from "@shogi/app-core";
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect } from "react";
+import { useDraggableWindow } from "../hooks/useDraggableWindow";
 import {
     comparePvWithMainLine,
     findExistingBranchForPv,
@@ -63,29 +64,6 @@ interface MoveDetailWindowProps {
     isOnMainLine?: boolean;
 }
 
-interface Position {
-    x: number;
-    y: number;
-}
-
-interface Size {
-    width: number;
-    height: number;
-}
-
-/** ドラッグモード: none=なし, move=移動, resize-XX=リサイズ（隅・辺） */
-type DragMode =
-    | "none"
-    | "move"
-    | "resize-n"
-    | "resize-s"
-    | "resize-e"
-    | "resize-w"
-    | "resize-ne"
-    | "resize-nw"
-    | "resize-se"
-    | "resize-sw";
-
 const DEFAULT_WIDTH = 320;
 const DEFAULT_HEIGHT = 400;
 const MIN_WIDTH = 280;
@@ -113,28 +91,26 @@ function PvCandidateItem({
     kifuTree?: KifuTree;
 }): ReactElement {
     // PVをKIF形式に変換
-    const pvDisplay = useMemo((): PvDisplayMove[] | null => {
+    const pvDisplay: PvDisplayMove[] | null = (() => {
         if (!pv.pv || pv.pv.length === 0) {
             return null;
         }
         return convertPvToDisplay(pv.pv, position);
-    }, [pv.pv, position]);
+    })();
 
     // 評価値の詳細情報
-    const evalInfo = useMemo(() => {
-        return getEvalTooltipInfo(pv.evalCp, pv.evalMate, ply, pv.depth);
-    }, [pv.evalCp, pv.evalMate, ply, pv.depth]);
+    const evalInfo = getEvalTooltipInfo(pv.evalCp, pv.evalMate, ply, pv.depth);
 
     // PVと本譜の比較結果
-    const pvComparison = useMemo((): PvMainLineComparison | null => {
+    const pvComparison: PvMainLineComparison | null = (() => {
         if (!kifuTree || !pv.pv || pv.pv.length === 0) {
             return null;
         }
         return comparePvWithMainLine(kifuTree, ply, pv.pv);
-    }, [kifuTree, ply, pv.pv]);
+    })();
 
     // 分岐追加時のPVが既存分岐と一致するかをチェック
-    const existingBranchNodeId = useMemo((): string | null => {
+    const existingBranchNodeId: string | null = (() => {
         if (!kifuTree || !pv.pv || pv.pv.length === 0 || !pvComparison) {
             return null;
         }
@@ -149,7 +125,7 @@ function PvCandidateItem({
         }
 
         return null;
-    }, [kifuTree, ply, pv.pv, pvComparison]);
+    })();
 
     const hasPv = pvDisplay && pvDisplay.length > 0;
 
@@ -186,7 +162,7 @@ function PvCandidateItem({
                 <div className="flex flex-wrap gap-1 text-[12px] font-mono mb-2">
                     {pvDisplay.map((m, index) => (
                         <span
-                            key={`${index}-${m.usiMove}`}
+                            key={m.usiMove}
                             className={
                                 m.turn === "sente" ? "text-wafuu-shu" : "text-[hsl(210_70%_45%)]"
                             }
@@ -348,44 +324,20 @@ export function MoveDetailWindow({
     onClose,
     isOnMainLine = true,
 }: MoveDetailWindowProps): ReactElement {
-    // 初期位置を画面中央やや右上に設定
-    const [windowPosition, setWindowPosition] = useState<Position>(() => ({
-        x:
-            typeof window !== "undefined"
-                ? Math.max(50, window.innerWidth - DEFAULT_WIDTH - 100)
-                : 100,
-        y: typeof window !== "undefined" ? 100 : 100,
-    }));
-    const [size, setSize] = useState<Size>({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT });
-
-    const dragMode = useRef<DragMode>("none");
-    const dragStart = useRef<Position>({ x: 0, y: 0 });
-    const initialPosition = useRef<Position>({ x: 0, y: 0 });
-    const initialSize = useRef<Size>({ width: 0, height: 0 });
-
-    // ドラッグ開始（移動）
-    const handleMoveStart = useCallback(
-        (e: React.MouseEvent) => {
-            e.preventDefault();
-            dragMode.current = "move";
-            dragStart.current = { x: e.clientX, y: e.clientY };
-            initialPosition.current = { ...windowPosition };
+    const { geometry, handlers } = useDraggableWindow(
+        {
+            x:
+                typeof window !== "undefined"
+                    ? Math.max(50, window.innerWidth - DEFAULT_WIDTH - 100)
+                    : 100,
+            y: typeof window !== "undefined" ? 100 : 100,
         },
-        [windowPosition],
+        { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT },
+        { minWidth: MIN_WIDTH, minHeight: MIN_HEIGHT },
     );
 
-    // リサイズ開始（共通）
-    const createResizeHandler = useCallback(
-        (mode: DragMode) => (e: React.MouseEvent) => {
-            e.preventDefault();
-            e.stopPropagation();
-            dragMode.current = mode;
-            dragStart.current = { x: e.clientX, y: e.clientY };
-            initialPosition.current = { ...windowPosition };
-            initialSize.current = { ...size };
-        },
-        [windowPosition, size],
-    );
+    const { position: windowPosition, size } = geometry;
+    const { onMoveStart: handleMoveStart, createResizeHandler } = handlers;
 
     // Escキーでウィンドウを閉じる
     useEffect(() => {
@@ -399,120 +351,8 @@ export function MoveDetailWindow({
         return () => document.removeEventListener("keydown", handleEscape);
     }, [onClose]);
 
-    // マウス移動・終了のグローバルハンドラ
-    useEffect(() => {
-        const handleMouseMove = (e: MouseEvent) => {
-            if (dragMode.current === "none") return;
-
-            const deltaX = e.clientX - dragStart.current.x;
-            const deltaY = e.clientY - dragStart.current.y;
-
-            if (dragMode.current === "move") {
-                const newX = initialPosition.current.x + deltaX;
-                const newY = initialPosition.current.y + deltaY;
-                const maxX = window.innerWidth - size.width;
-                const maxY = window.innerHeight - size.height;
-                setWindowPosition({
-                    x: Math.max(0, Math.min(newX, maxX)),
-                    y: Math.max(0, Math.min(newY, maxY)),
-                });
-            } else if (dragMode.current === "resize-e") {
-                const newWidth = initialSize.current.width + deltaX;
-                const maxWidth = window.innerWidth - windowPosition.x;
-                setSize((prev) => ({
-                    ...prev,
-                    width: Math.max(MIN_WIDTH, Math.min(newWidth, maxWidth)),
-                }));
-            } else if (dragMode.current === "resize-w") {
-                const newX = initialPosition.current.x + deltaX;
-                const maxX = initialPosition.current.x + initialSize.current.width - MIN_WIDTH;
-                const clampedX = Math.max(0, Math.min(newX, maxX));
-                const clampedWidth =
-                    initialPosition.current.x + initialSize.current.width - clampedX;
-                setSize((prev) => ({ ...prev, width: Math.max(MIN_WIDTH, clampedWidth) }));
-                setWindowPosition((prev) => ({ ...prev, x: clampedX }));
-            } else if (dragMode.current === "resize-s") {
-                const newHeight = initialSize.current.height + deltaY;
-                const maxHeight = window.innerHeight - windowPosition.y;
-                setSize((prev) => ({
-                    ...prev,
-                    height: Math.max(MIN_HEIGHT, Math.min(newHeight, maxHeight)),
-                }));
-            } else if (dragMode.current === "resize-n") {
-                const newY = initialPosition.current.y + deltaY;
-                const maxY = initialPosition.current.y + initialSize.current.height - MIN_HEIGHT;
-                const clampedY = Math.max(0, Math.min(newY, maxY));
-                const clampedHeight =
-                    initialPosition.current.y + initialSize.current.height - clampedY;
-                setSize((prev) => ({ ...prev, height: Math.max(MIN_HEIGHT, clampedHeight) }));
-                setWindowPosition((prev) => ({ ...prev, y: clampedY }));
-            } else if (dragMode.current === "resize-se") {
-                const newWidth = initialSize.current.width + deltaX;
-                const newHeight = initialSize.current.height + deltaY;
-                const maxWidth = window.innerWidth - windowPosition.x;
-                const maxHeight = window.innerHeight - windowPosition.y;
-                setSize({
-                    width: Math.max(MIN_WIDTH, Math.min(newWidth, maxWidth)),
-                    height: Math.max(MIN_HEIGHT, Math.min(newHeight, maxHeight)),
-                });
-            } else if (dragMode.current === "resize-ne") {
-                const newWidth = initialSize.current.width + deltaX;
-                const newY = initialPosition.current.y + deltaY;
-                const maxWidth = window.innerWidth - windowPosition.x;
-                const clampedWidth = Math.max(MIN_WIDTH, Math.min(newWidth, maxWidth));
-                const maxY = initialPosition.current.y + initialSize.current.height - MIN_HEIGHT;
-                const clampedY = Math.max(0, Math.min(newY, maxY));
-                const clampedHeight =
-                    initialPosition.current.y + initialSize.current.height - clampedY;
-                setSize({ width: clampedWidth, height: Math.max(MIN_HEIGHT, clampedHeight) });
-                setWindowPosition((prev) => ({ ...prev, y: clampedY }));
-            } else if (dragMode.current === "resize-sw") {
-                const newX = initialPosition.current.x + deltaX;
-                const newHeight = initialSize.current.height + deltaY;
-                const maxX = initialPosition.current.x + initialSize.current.width - MIN_WIDTH;
-                const clampedX = Math.max(0, Math.min(newX, maxX));
-                const clampedWidth =
-                    initialPosition.current.x + initialSize.current.width - clampedX;
-                const maxHeight = window.innerHeight - windowPosition.y;
-                setSize({
-                    width: Math.max(MIN_WIDTH, clampedWidth),
-                    height: Math.max(MIN_HEIGHT, Math.min(newHeight, maxHeight)),
-                });
-                setWindowPosition((prev) => ({ ...prev, x: clampedX }));
-            } else if (dragMode.current === "resize-nw") {
-                const newX = initialPosition.current.x + deltaX;
-                const newY = initialPosition.current.y + deltaY;
-                const maxX = initialPosition.current.x + initialSize.current.width - MIN_WIDTH;
-                const clampedX = Math.max(0, Math.min(newX, maxX));
-                const clampedWidth =
-                    initialPosition.current.x + initialSize.current.width - clampedX;
-                const maxY = initialPosition.current.y + initialSize.current.height - MIN_HEIGHT;
-                const clampedY = Math.max(0, Math.min(newY, maxY));
-                const clampedHeight =
-                    initialPosition.current.y + initialSize.current.height - clampedY;
-                setSize({
-                    width: Math.max(MIN_WIDTH, clampedWidth),
-                    height: Math.max(MIN_HEIGHT, clampedHeight),
-                });
-                setWindowPosition({ x: clampedX, y: clampedY });
-            }
-        };
-
-        const handleMouseUp = () => {
-            dragMode.current = "none";
-        };
-
-        document.addEventListener("mousemove", handleMouseMove);
-        document.addEventListener("mouseup", handleMouseUp);
-
-        return () => {
-            document.removeEventListener("mousemove", handleMouseMove);
-            document.removeEventListener("mouseup", handleMouseUp);
-        };
-    }, [size.width, size.height, windowPosition.x, windowPosition.y]);
-
     // 複数PVがある場合はリストで表示、なければ従来の単一PVを使用
-    const pvList = useMemo((): PvEvalInfo[] => {
+    const pvList: PvEvalInfo[] = (() => {
         const multiPv = (move.multiPvEvals ?? []).filter((pv) => pv?.pv && pv.pv.length > 0);
         if (multiPv.length > 0) {
             return multiPv;
@@ -529,18 +369,16 @@ export function MoveDetailWindow({
             ];
         }
         return [];
-    }, [move.multiPvEvals, move.pv, move.evalCp, move.evalMate, move.depth]);
+    })();
 
     // 評価値の詳細情報（ヘッダー用、最良の候補=multipv1のもの）
-    const evalInfo = useMemo(() => {
-        const bestPv = pvList[0];
-        return getEvalTooltipInfo(
-            bestPv?.evalCp ?? move.evalCp,
-            bestPv?.evalMate ?? move.evalMate,
-            move.ply,
-            bestPv?.depth ?? move.depth,
-        );
-    }, [pvList, move.evalCp, move.evalMate, move.ply, move.depth]);
+    const bestPv = pvList[0];
+    const evalInfo = getEvalTooltipInfo(
+        bestPv?.evalCp ?? move.evalCp,
+        bestPv?.evalMate ?? move.evalMate,
+        move.ply,
+        bestPv?.depth ?? move.depth,
+    );
 
     // この手数が解析中かどうか
     const isThisPlyAnalyzing = isAnalyzing && analyzingPly === move.ply;
@@ -549,16 +387,10 @@ export function MoveDetailWindow({
     const hasMultiplePv = pvList.length > 1;
 
     // NNUE選択肢を構築（プリセット + カスタムNNUE）
-    const nnueOptions = useMemo(
-        () => buildNnueOptions({ presets, nnueList, isNnueListLoading }),
-        [presets, nnueList, isNnueListLoading],
-    );
+    const nnueOptions = buildNnueOptions({ presets, nnueList, isNnueListLoading });
 
     // 現在の選択値を計算
-    const selectedValue = useMemo(
-        () => toNnueSelectionValue(analysisNnueSelection),
-        [analysisNnueSelection],
-    );
+    const selectedValue = toNnueSelectionValue(analysisNnueSelection);
 
     const showNnueSelector = analysisNnueSelection !== undefined && !!onAnalysisNnueSelectionChange;
 

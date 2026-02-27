@@ -10,7 +10,6 @@ import type {
 } from "@shogi/app-core";
 import {
     applyMoveWithState,
-    cloneBoard,
     createDefaultNnueSelection,
     createEmptyHands,
     DEFAULT_PRESET_KEY,
@@ -19,7 +18,7 @@ import {
     resolveWorkerCount,
 } from "@shogi/app-core";
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
     DEFAULT_BYOYOMI_MS,
     DEFAULT_MAX_LOGS,
@@ -80,9 +79,11 @@ import {
     isSamePassRightsSettings,
     normalizePassRightsSettings,
 } from "./shogi-match/utils/passRightsSettings";
-import { boardToGrid, clonePositionState } from "./shogi-match/utils/positionUtils";
+import { boardToGrid } from "./shogi-match/utils/positionUtils";
 import { isSameTimeSettings, normalizeTimeSettings } from "./shogi-match/utils/timeSettings";
 import { TooltipProvider } from "./tooltip";
+
+const EMPTY_ANALYSIS_MARKERS: Array<{ seat: "b" | "w"; ply: number }> = [];
 
 interface ShogiMatchProps {
     engineOptions: EngineOption[];
@@ -131,19 +132,17 @@ export function ShogiMatch({
     defaultNnuePresetKey,
     aiIconUrl,
     allowAnalysisDuringMatch,
-    analysisMarkers = [],
+    analysisMarkers = EMPTY_ANALYSIS_MARKERS,
     initialReview,
     onPositionSnapshot,
 }: ShogiMatchProps): ReactElement {
     // デフォルトの NNUE 選択（props のプリセットキーを使用、未指定時は DEFAULT_PRESET_KEY）
-    const defaultNnueSelection = useMemo(
-        () => createDefaultNnueSelection(defaultNnuePresetKey ?? DEFAULT_PRESET_KEY),
-        [defaultNnuePresetKey],
+    const defaultNnueSelection = createDefaultNnueSelection(
+        defaultNnuePresetKey ?? DEFAULT_PRESET_KEY,
     );
-    const emptyBoard = useMemo<BoardState>(
-        () => Object.fromEntries(getAllSquares().map((sq) => [sq, null])) as BoardState,
-        [],
-    );
+    const emptyBoard: BoardState = Object.fromEntries(
+        getAllSquares().map((sq) => [sq, null]),
+    ) as BoardState;
     const [sides, setSides] = useLocalStorage<{ sente: SideSetting; gote: SideSetting }>(
         "shogi-match-sides",
         defaultSides,
@@ -181,6 +180,7 @@ export function ShogiMatch({
         setEditTool,
         startSfen,
         setStartSfen,
+        initializeBoard,
     } = useBoardState({
         initialPosition: {
             board: emptyBoard,
@@ -189,21 +189,19 @@ export function ShogiMatch({
             ply: 1,
         },
     });
-    const defaultTimeSettings = useMemo(
-        () => ({
-            sente: {
-                mainMs: initialMainTimeMs,
-                byoyomiMs: initialByoyomiMs,
-                enabled: defaultSides.sente.role !== "human",
-            },
-            gote: {
-                mainMs: initialMainTimeMs,
-                byoyomiMs: initialByoyomiMs,
-                enabled: defaultSides.gote.role !== "human",
-            },
-        }),
-        [initialMainTimeMs, initialByoyomiMs, defaultSides.sente.role, defaultSides.gote.role],
-    );
+    const initializeBoardEvent = useEffectEvent(initializeBoard);
+    const defaultTimeSettings = {
+        sente: {
+            mainMs: initialMainTimeMs,
+            byoyomiMs: initialByoyomiMs,
+            enabled: defaultSides.sente.role !== "human",
+        },
+        gote: {
+            mainMs: initialMainTimeMs,
+            byoyomiMs: initialByoyomiMs,
+            enabled: defaultSides.gote.role !== "human",
+        },
+    };
     const [timeSettings, setTimeSettings] = useNormalizedSettings(
         "shogi-match-time-settings",
         defaultTimeSettings,
@@ -227,9 +225,7 @@ export function ShogiMatch({
         "shogi-analysis-settings",
         DEFAULT_ANALYSIS_SETTINGS,
     );
-    const analysisSettings = useMemo(() => {
-        return { ...DEFAULT_ANALYSIS_SETTINGS, ...storedAnalysisSettings };
-    }, [storedAnalysisSettings]);
+    const analysisSettings = { ...DEFAULT_ANALYSIS_SETTINGS, ...storedAnalysisSettings };
     // パス権設定
     const [passRightsSettings, setPassRightsSettings] = useNormalizedSettings(
         "shogi-pass-rights-settings",
@@ -240,7 +236,7 @@ export function ShogiMatch({
     const [storedEngineThreads, setStoredEngineThreads] = useLocalStorage<
         EngineThreadSettings | number
     >("shogi-match-engine-threads", { sente: 0, gote: 0 });
-    const engineThreads = useMemo(() => {
+    const engineThreads = (() => {
         if (typeof storedEngineThreads === "number") {
             const normalized = Math.max(0, Math.trunc(storedEngineThreads));
             return { sente: normalized, gote: normalized };
@@ -256,16 +252,13 @@ export function ShogiMatch({
             sente: normalize(storedEngineThreads.sente),
             gote: normalize(storedEngineThreads.gote),
         };
-    }, [storedEngineThreads]);
-    const setEngineThreads = useCallback(
-        (next: EngineThreadSettings) => {
-            setStoredEngineThreads({
-                sente: Math.max(0, Math.trunc(next.sente)),
-                gote: Math.max(0, Math.trunc(next.gote)),
-            });
-        },
-        [setStoredEngineThreads],
-    );
+    })();
+    const setEngineThreads = (next: EngineThreadSettings) => {
+        setStoredEngineThreads({
+            sente: Math.max(0, Math.trunc(next.sente)),
+            gote: Math.max(0, Math.trunc(next.gote)),
+        });
+    };
     // UI状態管理（統合フック）
     const {
         flipBoard,
@@ -346,24 +339,24 @@ export function ShogiMatch({
     // 編集操作のバージョンカウンター（非同期SFEN計算の競合状態を防止）
     const editVersionRef = useRef(0);
 
-    // ナビゲーションからの局面変更コールバック（メモ化して安定した参照を維持）
-    const handleNavigationPositionChange = useCallback(
-        (newPosition: PositionState, lastMoveInfo?: { from?: string; to: string }) => {
-            setPosition(newPosition);
-            positionRef.current = newPosition;
-            // ナビゲーションからのlastMove情報を反映
-            if (lastMoveInfo) {
-                setLastMove({
-                    from: (lastMoveInfo.from ?? null) as Square | null,
-                    to: lastMoveInfo.to as Square,
-                    promotes: false, // ナビゲーションでは成り情報を追跡しない
-                });
-            } else {
-                setLastMove(undefined);
-            }
-        },
-        [setPosition, setLastMove],
-    );
+    // ナビゲーションからの局面変更コールバック
+    const handleNavigationPositionChange = (
+        newPosition: PositionState,
+        lastMoveInfo?: { from?: string; to: string },
+    ) => {
+        setPosition(newPosition);
+        positionRef.current = newPosition;
+        // ナビゲーションからのlastMove情報を反映
+        if (lastMoveInfo) {
+            setLastMove({
+                from: (lastMoveInfo.from ?? null) as Square | null,
+                to: lastMoveInfo.to as Square,
+                promotes: false, // ナビゲーションでは成り情報を追跡しない
+            });
+        } else {
+            setLastMove(undefined);
+        }
+    };
 
     // 棋譜ナビゲーション管理フック
     const navigation = useKifuNavigation({
@@ -380,7 +373,7 @@ export function ShogiMatch({
 
     // 互換性用のmoves配列
     const moves = navigation.getMovesArray();
-    const movesKey = useMemo(() => moves.join(" "), [moves]);
+    const movesKey = moves.join(" ");
 
     const lastSnapshotRef = useRef<{ sfen: string; movesKey: string } | null>(null);
 
@@ -413,19 +406,17 @@ export function ShogiMatch({
     } = navigation;
 
     // 評価値グラフ用: ビューモードに応じて本譜 or 分岐の評価履歴を選択
-    const displayEvalHistory = useMemo(() => {
-        // "main" モード時は本譜の評価値を表示
-        // "branches" や "selectedBranch" モード時は現在の経路（分岐含む）の評価値を表示
-        return kifuViewMode === "main" ? mainLineEvalHistory : evalHistory;
-    }, [kifuViewMode, mainLineEvalHistory, evalHistory]);
+    // "main" モード時は本譜の評価値を表示
+    // "branches" や "selectedBranch" モード時は現在の経路（分岐含む）の評価値を表示
+    const displayEvalHistory = kifuViewMode === "main" ? mainLineEvalHistory : evalHistory;
 
     // 選択中の手の詳細を最新のkifMovesから取得
-    const selectedMoveDetail = useMemo(() => {
+    const selectedMoveDetail = (() => {
         if (!selectedMoveDetailPly) return null;
         const move = kifMoves.find((m) => m.ply === selectedMoveDetailPly.ply);
         if (!move) return null;
         return { move, position: selectedMoveDetailPly.position };
-    }, [selectedMoveDetailPly, kifMoves]);
+    })();
 
     // 後手が人間の場合は盤面を反転して手前側に表示
     useEffect(() => {
@@ -437,28 +428,27 @@ export function ShogiMatch({
     }, [setFlipBoard, sides.gote.role, sides.sente.role]);
 
     // 持ち駒表示用のヘルパー関数（メモ化してMobileBoardSectionの再レンダリングを防ぐ）
-    const getHandInfo = useCallback(
-        (pos: "top" | "bottom") => {
-            const owner: Player =
-                pos === "top" ? (flipBoard ? "sente" : "gote") : flipBoard ? "gote" : "sente";
-            // 検討モードでは手番の持ち駒を選択可能（対局設定に関係なく）
-            const isActiveInReview = isReviewMode && position.turn === owner;
-            const isActiveInMatch =
-                !isEditMode &&
-                !isReviewMode &&
-                position.turn === owner &&
-                sides[owner].role === "human";
-            return {
-                owner,
-                hand: owner === "sente" ? position.hands.sente : position.hands.gote,
-                isActive: isActiveInReview || isActiveInMatch,
-                isAI: sides[owner].role === "engine",
-            };
-        },
-        [flipBoard, isReviewMode, isEditMode, position.turn, position.hands, sides],
-    );
+    const getHandInfo = (pos: "top" | "bottom") => {
+        const owner: Player =
+            pos === "top" ? (flipBoard ? "sente" : "gote") : flipBoard ? "gote" : "sente";
+        // 検討モードでは手番の持ち駒を選択可能（対局設定に関係なく）
+        const isActiveInReview = isReviewMode && position.turn === owner;
+        const isActiveInMatch =
+            !isEditMode &&
+            !isReviewMode &&
+            position.turn === owner &&
+            sides[owner].role === "human";
+        return {
+            owner,
+            hand: owner === "sente" ? position.hands.sente : position.hands.gote,
+            isActive: isActiveInReview || isActiveInMatch,
+            isAI: sides[owner].role === "engine",
+        };
+    };
 
-    const legalCache = useMemo(() => new LegalMoveCache(), []);
+    const legalCacheRef = useRef<LegalMoveCache | null>(null);
+    if (!legalCacheRef.current) legalCacheRef.current = new LegalMoveCache();
+    const legalCache = legalCacheRef.current;
 
     const matchEndedRef = useRef(false);
     const boardSectionRef = useRef<HTMLDivElement>(null);
@@ -469,12 +459,9 @@ export function ShogiMatch({
     // endMatch のための ref（循環依存を回避）
     const endMatchRef = useRef<((result: GameResult) => Promise<void>) | null>(null);
 
-    const handleClockError = useCallback(
-        (text: string) => {
-            setMessage({ text, type: "error" });
-        },
-        [setMessage],
-    );
+    const handleClockError = (text: string) => {
+        setMessage({ text, type: "error" });
+    };
 
     const stopAllEnginesRef = useRef<() => Promise<void>>(async () => {});
 
@@ -496,23 +483,20 @@ export function ShogiMatch({
             onClockError: handleClockError,
         });
 
-    const getRemainingTimeMs = useCallback(
-        (side: Player) => {
-            const clock = clocksRef.current;
-            const state = clock[side];
-            if (!state) return 0;
-            const isTicking = clock.ticking === side;
-            const elapsed = isTicking ? Date.now() - clock.lastUpdatedAt : 0;
-            const mainLeft = Math.max(0, state.mainMs - elapsed);
-            const overMain = Math.max(0, elapsed - state.mainMs);
-            const byoyomiLeft =
-                state.mainMs === 0 && isTicking
-                    ? Math.max(0, state.byoyomiMs - elapsed)
-                    : Math.max(0, state.byoyomiMs - overMain);
-            return mainLeft + byoyomiLeft;
-        },
-        [clocksRef],
-    );
+    const getRemainingTimeMs = (side: Player) => {
+        const clock = clocksRef.current;
+        const state = clock[side];
+        if (!state) return 0;
+        const isTicking = clock.ticking === side;
+        const elapsed = isTicking ? Date.now() - clock.lastUpdatedAt : 0;
+        const mainLeft = Math.max(0, state.mainMs - elapsed);
+        const overMain = Math.max(0, elapsed - state.mainMs);
+        const byoyomiLeft =
+            state.mainMs === 0 && isTicking
+                ? Math.max(0, state.byoyomiMs - elapsed)
+                : Math.max(0, state.byoyomiMs - overMain);
+        return mainLeft + byoyomiLeft;
+    };
 
     // パス権管理フック
     const passRights = usePassRights({
@@ -526,23 +510,22 @@ export function ShogiMatch({
         getRemainingTimeMs,
     });
 
-    const clearLegalCache = useCallback(() => {
+    const clearLegalCache = () => {
         legalCache.clear();
         passRights.setCanPassLegal(false);
-    }, [legalCache, passRights]);
+    };
+    const clearLegalCacheEvent = useEffectEvent(clearLegalCache);
     // ナビゲーションで局面が変わったらキャッシュをクリア
+    // biome-ignore lint/correctness/useExhaustiveDependencies: movesKey はキャッシュクリアのトリガー用で意図的
     useEffect(() => {
-        clearLegalCache();
-    }, [clearLegalCache]);
+        clearLegalCacheEvent();
+    }, [movesKey]);
     // パス権設定変更時にキャッシュもクリアするラッパー
     // （合法手にpassが含まれるかどうかが変わるため）
-    const handlePassRightsSettingsChange = useCallback(
-        (newSettings: PassRightsSettings) => {
-            setPassRightsSettings(newSettings);
-            clearLegalCache();
-        },
-        [setPassRightsSettings, clearLegalCache],
-    );
+    const handlePassRightsSettingsChange = (newSettings: PassRightsSettings) => {
+        setPassRightsSettings(newSettings);
+        clearLegalCache();
+    };
 
     // 対局前に timeSettings が変更されたら clocks を同期
     // （resetClocks は timeSettings に依存しているため、resetClocks の変更で検知可能）
@@ -553,32 +536,29 @@ export function ShogiMatch({
     }, [isMatchRunning, resetClocks]);
 
     // 対局終了処理（エンジン管理フックから呼ばれる）
-    const endMatch = useCallback(
-        async (result: GameResult) => {
-            if (matchEndedRef.current) return;
-            matchEndedRef.current = true;
-            setGameResult(result);
-            setShowResultDialog(true);
-            setIsMatchRunning(false);
-            stopTicking();
-            try {
-                await stopAllEnginesRef.current();
-            } catch (error) {
-                console.error("エンジン停止に失敗しました:", error);
-                setMessage({
-                    text: `対局終了処理でエンジン停止に失敗しました: ${String(error ?? "unknown")}`,
-                    type: "error",
-                });
-            }
-        },
-        [setGameResult, setMessage, setShowResultDialog, stopTicking],
-    );
+    const endMatch = async (result: GameResult) => {
+        if (matchEndedRef.current) return;
+        matchEndedRef.current = true;
+        setGameResult(result);
+        setShowResultDialog(true);
+        setIsMatchRunning(false);
+        stopTicking();
+        try {
+            await stopAllEnginesRef.current();
+        } catch (error) {
+            console.error("エンジン停止に失敗しました:", error);
+            setMessage({
+                text: `対局終了処理でエンジン停止に失敗しました: ${String(error ?? "unknown")}`,
+                type: "error",
+            });
+        }
+    };
 
     // endMatchRef を更新
     endMatchRef.current = endMatch;
 
     // 投了処理
-    const handleResign = useCallback(async () => {
+    const handleResign = async () => {
         const currentTurn = positionRef.current.turn;
         const result: GameResult = {
             winner: currentTurn === "sente" ? "gote" : "sente",
@@ -586,13 +566,13 @@ export function ShogiMatch({
             totalMoves: moves.length,
         };
         await endMatch(result);
-    }, [endMatch, moves.length]);
+    };
 
     // 手の処理中フラグ（待った・パス等の連打・競合防止用）
     const moveProcessingRef = useRef(false);
 
     // 待った処理（2手戻す：相手の手と自分の前の手を戻す）
-    const handleUndo = useCallback(async () => {
+    const handleUndo = async () => {
         // 処理中なら無視（連打・競合防止）
         if (moveProcessingRef.current) return;
 
@@ -634,7 +614,7 @@ export function ShogiMatch({
         } finally {
             moveProcessingRef.current = false;
         }
-    }, [navigation, stopTicking, updateClocksForNextTurn, moves.length]);
+    };
 
     const handleMoveFromEngineRef = useRef<(move: string) => void>(() => {});
 
@@ -683,18 +663,15 @@ export function ShogiMatch({
     restartEngineForNnueRef.current = restartEngineForNnue;
 
     // role変更時にエンジンを破棄するラッパー
-    const handleSidesChange = useCallback(
-        (newSides: { sente: SideSetting; gote: SideSetting }) => {
-            // role が engine から human に変わった場合はエンジンを破棄
-            for (const side of ["sente", "gote"] as const) {
-                if (sides[side].role === "engine" && newSides[side].role !== "engine") {
-                    void disposeEngine(side);
-                }
+    const handleSidesChange = (newSides: { sente: SideSetting; gote: SideSetting }) => {
+        // role が engine から human に変わった場合はエンジンを破棄
+        for (const side of ["sente", "gote"] as const) {
+            if (sides[side].role === "engine" && newSides[side].role !== "engine") {
+                void disposeEngine(side);
             }
-            setSides(newSides);
-        },
-        [disposeEngine, setSides, sides],
-    );
+        }
+        setSides(newSides);
+    };
 
     // 並列一括解析用のエンジンプール
     const engineOpt = engineOptions[0]; // デフォルトのエンジンオプションを使用
@@ -765,34 +742,28 @@ export function ShogiMatch({
     handleEvalUpdateRef.current = handleEvalUpdate;
 
     // 手の適用後の共通処理（エンジンの手・パス手・人間の手で共通）
-    const applyMoveAndUpdateState = useCallback(
-        (move: string, nextPosition: PositionState, lastMoveInfo: LastMove | undefined) => {
-            // 消費時間を計算
-            const elapsedMs = Date.now() - turnStartTimeRef.current;
-            // 棋譜ナビゲーションに手を追加（局面更新はonPositionChangeで自動実行）
-            navigation.addMove(move, nextPosition, { elapsedMs });
-            setLastMove(lastMoveInfo);
-            setSelection(null);
-            setMessage(null);
-            clearLegalCache();
-            // ターン開始時刻をリセット
-            turnStartTimeRef.current = Date.now();
-            updateClocksForNextTurn(nextPosition.turn);
-        },
-        [
-            clearLegalCache,
-            navigation,
-            setLastMove,
-            setMessage,
-            setSelection,
-            updateClocksForNextTurn,
-        ],
-    );
+    const applyMoveAndUpdateState = (
+        move: string,
+        nextPosition: PositionState,
+        lastMoveInfo: LastMove | undefined,
+    ) => {
+        // 消費時間を計算
+        const elapsedMs = Date.now() - turnStartTimeRef.current;
+        // 棋譜ナビゲーションに手を追加（局面更新はonPositionChangeで自動実行）
+        navigation.addMove(move, nextPosition, { elapsedMs });
+        setLastMove(lastMoveInfo);
+        setSelection(null);
+        setMessage(null);
+        clearLegalCache();
+        // ターン開始時刻をリセット
+        turnStartTimeRef.current = Date.now();
+        updateClocksForNextTurn(nextPosition.turn);
+    };
 
     // キーボード・ホイールナビゲーション用のgoForward（分岐対応）
-    const handleKeyboardForward = useCallback(() => {
+    const handleKeyboardForward = () => {
         navigation.goForward(selectedBranchNodeId ?? undefined);
-    }, [navigation, selectedBranchNodeId]);
+    };
 
     // キーボード・ホイールナビゲーション（対局中は無効）
     // selectedBranchNodeIdがある場合は、分岐に沿って進む
@@ -807,37 +778,34 @@ export function ShogiMatch({
     });
 
     // エンジンからの手を受け取って適用するコールバック
-    const handleMoveFromEngine = useCallback(
-        (move: string) => {
-            // 待った・パス処理中は無視（旧局面への適用防止）
-            if (moveProcessingRef.current) return;
-            if (matchEndedRef.current) return;
-            // 手番チェック: エンジンの手番でない場合は無視
-            // （待った→パス→待った等の連続操作で古いbestmoveが届く競合状態を防止）
-            if (sides[positionRef.current.turn].role !== "engine") {
-                console.warn(
-                    `Ignoring engine move "${move}": current turn is ${positionRef.current.turn} (human)`,
-                );
-                return;
-            }
-            const result = applyMoveWithState(positionRef.current, move, {
-                validateTurn: false,
-            });
-            if (!result.ok) {
-                logEngineError(
-                    `engine move rejected (${move || "empty"}): ${result.error ?? "unknown"}`,
-                );
-                return;
-            }
-            applyMoveAndUpdateState(move, result.next, result.lastMove);
-        },
-        [applyMoveAndUpdateState, logEngineError, sides],
-    );
+    const handleMoveFromEngine = (move: string) => {
+        // 待った・パス処理中は無視（旧局面への適用防止）
+        if (moveProcessingRef.current) return;
+        if (matchEndedRef.current) return;
+        // 手番チェック: エンジンの手番でない場合は無視
+        // （待った→パス→待った等の連続操作で古いbestmoveが届く競合状態を防止）
+        if (sides[positionRef.current.turn].role !== "engine") {
+            console.warn(
+                `Ignoring engine move "${move}": current turn is ${positionRef.current.turn} (human)`,
+            );
+            return;
+        }
+        const result = applyMoveWithState(positionRef.current, move, {
+            validateTurn: false,
+        });
+        if (!result.ok) {
+            logEngineError(
+                `engine move rejected (${move || "empty"}): ${result.error ?? "unknown"}`,
+            );
+            return;
+        }
+        applyMoveAndUpdateState(move, result.next, result.lastMove);
+    };
     handleMoveFromEngineRef.current = handleMoveFromEngine;
 
     // パス手を処理するコールバック
     // 人間・エンジン両方のパス手で使用される
-    const handlePassMove = useCallback(async () => {
+    const handlePassMove = async () => {
         // 処理中なら無視（待ったとの競合防止）
         if (moveProcessingRef.current) return;
         if (matchEndedRef.current) return;
@@ -893,17 +861,7 @@ export function ShogiMatch({
         } finally {
             moveProcessingRef.current = false;
         }
-    }, [
-        applyMoveAndUpdateState,
-        clearLegalCache,
-        fetchLegalMoves,
-        legalCache,
-        moves,
-        passRights,
-        passRightsSettings,
-        setMessage,
-        startSfen,
-    ]);
+    };
 
     useEffect(() => {
         let cancelled = false;
@@ -913,16 +871,10 @@ export function ShogiMatch({
             try {
                 const pos = await service.getInitialBoard();
                 if (cancelled) return;
-                setPosition(pos);
                 positionRef.current = pos;
-                setInitialBoard(cloneBoard(pos.board));
-                setBasePosition(clonePositionState(pos));
                 let sfen = "startpos";
                 try {
                     sfen = await service.boardToSfen(pos);
-                    if (!cancelled) {
-                        setStartSfen(sfen);
-                    }
                 } catch (error) {
                     if (!cancelled) {
                         setMessage({
@@ -931,10 +883,10 @@ export function ShogiMatch({
                         });
                     }
                 }
-                // 棋譜ナビゲーションを正しい初期局面でリセット
                 if (!cancelled) {
+                    // 局面・initialBoard・basePosition・startSfen・positionReady を一括設定
+                    initializeBoardEvent(pos, sfen);
                     navigationResetRef.current(pos, sfen);
-                    setPositionReady(true);
                 }
             } catch (error) {
                 if (!cancelled) {
@@ -950,29 +902,26 @@ export function ShogiMatch({
         return () => {
             cancelled = true;
         };
-    }, [setBasePosition, setInitialBoard, setMessage, setPosition, setPositionReady, setStartSfen]);
+    }, [setMessage]);
 
-    const grid = useMemo(() => {
+    const grid = (() => {
         const g = boardToGrid(position.board);
         return flipBoard ? [...g].reverse().map((row) => [...row].reverse()) : g;
-    }, [position.board, flipBoard]);
+    })();
 
-    const refreshStartSfen = useCallback(
-        async (pos: PositionState): Promise<string> => {
-            try {
-                const sfen = await getPositionService().boardToSfen(pos);
-                setStartSfen(sfen);
-                return sfen;
-            } catch (error) {
-                setMessage({
-                    text: `局面のSFEN変換に失敗しました: ${String(error)}`,
-                    type: "error",
-                });
-                throw error;
-            }
-        },
-        [setMessage, setStartSfen],
-    );
+    const refreshStartSfen = async (pos: PositionState): Promise<string> => {
+        try {
+            const sfen = await getPositionService().boardToSfen(pos);
+            setStartSfen(sfen);
+            return sfen;
+        } catch (error) {
+            setMessage({
+                text: `局面のSFEN変換に失敗しました: ${String(error)}`,
+                type: "error",
+            });
+            throw error;
+        }
+    };
 
     // 対局制御フック
     const {
@@ -1078,20 +1027,17 @@ export function ShogiMatch({
     });
 
     // DnD ドロップハンドラ
-    const handleDndDrop = useCallback(
-        (result: DropResult) => {
-            if (!isEditMode) return;
+    const handleDndDrop = (result: DropResult) => {
+        if (!isEditMode) return;
 
-            const applied = applyDropResult(result, positionRef.current);
-            if (!applied.ok) {
-                setMessage({ text: applied.error ?? "ドロップに失敗しました", type: "error" });
-                return;
-            }
+        const applied = applyDropResult(result, positionRef.current);
+        if (!applied.ok) {
+            setMessage({ text: applied.error ?? "ドロップに失敗しました", type: "error" });
+            return;
+        }
 
-            applyEditedPosition(applied.next);
-        },
-        [applyEditedPosition, isEditMode, setMessage],
-    );
+        applyEditedPosition(applied.next);
+    };
 
     // DnD コントローラー
     const dndController = usePieceDnd({
@@ -1102,56 +1048,51 @@ export function ShogiMatch({
     // DnD ドラッグ開始ハンドラ（盤上の駒）
     // 注: isEditMode チェックは usePieceDnd の disabled オプションと
     //     JSX での条件付き props 渡しで行うため、ここでは不要
-    const handlePiecePointerDown = useCallback(
-        (
-            square: string,
-            piece: { owner: "sente" | "gote"; type: string; promoted?: boolean },
-            e: React.PointerEvent,
-        ) => {
-            const origin = { type: "board" as const, square: square as Square };
-            const payload = {
-                owner: piece.owner as Player,
-                pieceType: piece.type as PieceType,
-                isPromoted: piece.promoted ?? false,
-            };
+    const handlePiecePointerDown = (
+        square: string,
+        piece: { owner: "sente" | "gote"; type: string; promoted?: boolean },
+        e: React.PointerEvent,
+    ) => {
+        const origin = { type: "board" as const, square: square as Square };
+        const payload = {
+            owner: piece.owner as Player,
+            pieceType: piece.type as PieceType,
+            isPromoted: piece.promoted ?? false,
+        };
 
-            dndController.startDrag(origin, payload, e);
-        },
-        [dndController],
-    );
+        dndController.startDrag(origin, payload, e);
+    };
 
     // DnD ドラッグ開始ハンドラ（持ち駒）
-    const handleHandPiecePointerDown = useCallback(
-        (owner: Player, pieceType: PieceType, e: React.PointerEvent) => {
-            // 持ち駒が0個の場合はストック扱い（編集モード時、無限供給）
-            const count = position?.hands[owner][pieceType] ?? 0;
-            const origin =
-                count > 0
-                    ? { type: "hand" as const, owner, pieceType }
-                    : { type: "stock" as const, owner, pieceType };
-            const payload = {
-                owner,
-                pieceType,
-                isPromoted: false,
-            };
+    const handleHandPiecePointerDown = (
+        owner: Player,
+        pieceType: PieceType,
+        e: React.PointerEvent,
+    ) => {
+        // 持ち駒が0個の場合はストック扱い（編集モード時、無限供給）
+        const count = position?.hands[owner][pieceType] ?? 0;
+        const origin =
+            count > 0
+                ? { type: "hand" as const, owner, pieceType }
+                : { type: "stock" as const, owner, pieceType };
+        const payload = {
+            owner,
+            pieceType,
+            isPromoted: false,
+        };
 
-            dndController.startDrag(origin, payload, e);
-        },
-        [dndController, position],
-    );
+        dndController.startDrag(origin, payload, e);
+    };
 
-    const handlePieceTogglePromote = useCallback(
-        (
-            square: string,
-            piece: { owner: "sente" | "gote"; type: string; promoted?: boolean },
-            _event: React.MouseEvent<HTMLButtonElement>,
-        ) => {
-            if (!isEditMode) return;
-            const sq = square as Square;
-            setPiecePromotion(sq, !piece.promoted);
-        },
-        [isEditMode, setPiecePromotion],
-    );
+    const handlePieceTogglePromote = (
+        square: string,
+        piece: { owner: "sente" | "gote"; type: string; promoted?: boolean },
+        _event: React.MouseEvent<HTMLButtonElement>,
+    ) => {
+        if (!isEditMode) return;
+        const sq = square as Square;
+        setPiecePromotion(sq, !piece.promoted);
+    };
 
     // 指し手実行管理フック
     const { handleSquareSelect, handlePromotionChoice, handleHandSelect } = useMoveExecution({
@@ -1220,417 +1161,235 @@ export function ShogiMatch({
     }, [initialReview, importSfen]);
 
     // 棋譜の手数選択コールバック（巻き戻し・リプレイ用）
-    const handlePlySelect = useCallback(
-        (ply: number) => {
-            // 対局中は自動進行を一時停止し、編集モードに戻す
-            if (isMatchRunning) {
-                setIsMatchRunning(false);
-                setIsEditMode(true);
-                stopTicking();
-                void stopAllEngines();
-            }
-            // 指定手数に移動（lastMoveはonPositionChangeで自動設定される）
-            navigation.goToPly(ply);
-        },
-        [isMatchRunning, navigation, stopTicking, stopAllEngines],
-    );
+    const handlePlySelect = (ply: number) => {
+        // 対局中は自動進行を一時停止し、編集モードに戻す
+        if (isMatchRunning) {
+            setIsMatchRunning(false);
+            setIsEditMode(true);
+            stopTicking();
+            void stopAllEngines();
+        }
+        // 指定手数に移動（lastMoveはonPositionChangeで自動設定される）
+        navigation.goToPly(ply);
+    };
 
     // PVを分岐として追加するコールバック（シグナル付き）
-    const handleAddPvAsBranch = useCallback(
-        (ply: number, pv: string[]) => {
-            // 分岐が実際に追加された場合、ply+firstMoveを記録
-            addPvAsBranch(ply, pv, (info) => {
-                setLastAddedBranchInfo(info);
-            });
-        },
-        [addPvAsBranch, setLastAddedBranchInfo],
-    );
+    const handleAddPvAsBranch = (ply: number, pv: string[]) => {
+        // 分岐が実際に追加された場合、ply+firstMoveを記録
+        addPvAsBranch(ply, pv, (info) => {
+            setLastAddedBranchInfo(info);
+        });
+    };
 
     // PVプレビューを開くコールバック
-    const handlePreviewPv = useCallback(
-        (ply: number, pv: string[], evalCp?: number, evalMate?: number) => {
-            // PVはply手目を指した後の局面から計算されている
-            // positionHistory[ply-1] = ply手目を指した後の局面
-            const startPos = positionHistory[ply - 1];
-            if (!startPos) return;
+    const handlePreviewPv = (ply: number, pv: string[], evalCp?: number, evalMate?: number) => {
+        // PVはply手目を指した後の局面から計算されている
+        // positionHistory[ply-1] = ply手目を指した後の局面
+        const startPos = positionHistory[ply - 1];
+        if (!startPos) return;
 
-            setPvPreview({
-                open: true,
-                ply,
-                pv,
-                startPosition: startPos,
-                evalCp,
-                evalMate,
-            });
-        },
-        [positionHistory, setPvPreview],
-    );
+        setPvPreview({
+            ply,
+            pv,
+            startPosition: startPos,
+            evalCp,
+            evalMate,
+        });
+    };
 
     // 手の詳細を選択するコールバック（右パネル表示用）
-    const handleMoveDetailSelect = useCallback(
-        (move: KifMove | null, pos: PositionState | null) => {
-            if (move && pos) {
-                setSelectedMoveDetailPly({ ply: move.ply, position: pos });
-            } else {
-                setSelectedMoveDetailPly(null);
-            }
-        },
-        [setSelectedMoveDetailPly],
-    );
+    const handleMoveDetailSelect = (move: KifMove | null, pos: PositionState | null) => {
+        if (move && pos) {
+            setSelectedMoveDetailPly({ ply: move.ply, position: pos });
+        } else {
+            setSelectedMoveDetailPly(null);
+        }
+    };
 
     const candidateNote = positionReady ? null : "局面を読み込み中です。";
     const isDraggingPiece = isEditMode && dndController.state.isDragging;
     const internalEngineId = engineOptions[0]?.id ?? "wasm";
 
     // Props グループ化: 対局設定
-    const matchSettings = useMemo<MatchSettingsProps>(
-        () => ({
-            sides,
-            handleSidesChange,
-            timeSettings,
-            setTimeSettings,
-            passRightsSettings,
-            handlePassRightsSettingsChange,
-            settingsLocked,
-            isDevMode,
-            engineThreads,
-            setEngineThreads,
-            senteNnueSelection,
-            handleSenteNnueSelectionChange,
-            goteNnueSelection,
-            handleGoteNnueSelectionChange,
-            nnueList,
-            presets,
-            internalEngineId,
-            setIsDisplaySettingsOpen,
-            setIsPassRightsSettingsOpen,
-        }),
-        [
-            sides,
-            handleSidesChange,
-            timeSettings,
-            setTimeSettings,
-            passRightsSettings,
-            handlePassRightsSettingsChange,
-            settingsLocked,
-            isDevMode,
-            engineThreads,
-            setEngineThreads,
-            senteNnueSelection,
-            handleSenteNnueSelectionChange,
-            goteNnueSelection,
-            handleGoteNnueSelectionChange,
-            nnueList,
-            presets,
-            internalEngineId,
-            setIsDisplaySettingsOpen,
-            setIsPassRightsSettingsOpen,
-        ],
-    );
+    const matchSettings: MatchSettingsProps = {
+        sides,
+        handleSidesChange,
+        timeSettings,
+        setTimeSettings,
+        passRightsSettings,
+        handlePassRightsSettingsChange,
+        settingsLocked,
+        isDevMode,
+        engineThreads,
+        setEngineThreads,
+        senteNnueSelection,
+        handleSenteNnueSelectionChange,
+        goteNnueSelection,
+        handleGoteNnueSelectionChange,
+        nnueList,
+        presets,
+        internalEngineId,
+        setIsDisplaySettingsOpen,
+        setIsPassRightsSettingsOpen,
+    };
 
     // Props グループ化: 盤面状態
-    const boardState = useMemo<BoardStateProps>(
-        () => ({
-            position,
-            clocks,
-            grid,
-            gameMode,
-            message,
-            selection,
-            promotionSelection,
-            lastMove,
-            moves,
-            editFromSquare,
-            flipBoard,
-            displaySettings,
-            onFlipBoardChange: setFlipBoard,
-        }),
-        [
-            position,
-            clocks,
-            grid,
-            gameMode,
-            message,
-            selection,
-            promotionSelection,
-            lastMove,
-            moves,
-            editFromSquare,
-            flipBoard,
-            displaySettings,
-            setFlipBoard,
-        ],
-    );
+    const boardState: BoardStateProps = {
+        position,
+        clocks,
+        grid,
+        gameMode,
+        message,
+        selection,
+        promotionSelection,
+        lastMove,
+        moves,
+        editFromSquare,
+        flipBoard,
+        displaySettings,
+        onFlipBoardChange: setFlipBoard,
+    };
 
     // Props グループ化: ダイアログ状態
-    const dialogState = useMemo<DialogStateProps>(
-        () => ({
-            gameResult,
-            showResultDialog,
-            setShowResultDialog,
-            pvPreview,
-            setPvPreview,
-            isNnueManagerOpen,
-            openNnueManager,
-            closeNnueManager,
-            nnueManagerOpenReason,
-            clearNnueManagerOpenReason,
-            manifestUrl,
-            onRequestNnueFilePath,
-            selectedMoveDetail,
-            setSelectedMoveDetailPly,
-            isAboutOpen,
-            setIsAboutOpen,
-        }),
-        [
-            gameResult,
-            showResultDialog,
-            setShowResultDialog,
-            pvPreview,
-            setPvPreview,
-            isNnueManagerOpen,
-            openNnueManager,
-            closeNnueManager,
-            nnueManagerOpenReason,
-            clearNnueManagerOpenReason,
-            manifestUrl,
-            onRequestNnueFilePath,
-            selectedMoveDetail,
-            setSelectedMoveDetailPly,
-            isAboutOpen,
-            setIsAboutOpen,
-        ],
-    );
+    const dialogState: DialogStateProps = {
+        gameResult,
+        showResultDialog,
+        setShowResultDialog,
+        pvPreview,
+        setPvPreview,
+        isNnueManagerOpen,
+        openNnueManager,
+        closeNnueManager,
+        nnueManagerOpenReason,
+        clearNnueManagerOpenReason,
+        manifestUrl,
+        onRequestNnueFilePath,
+        selectedMoveDetail,
+        setSelectedMoveDetailPly,
+        isAboutOpen,
+        setIsAboutOpen,
+    };
 
     // Props グループ化: 解析機能
-    const analysisProps = useMemo<AnalysisProps>(
-        () => ({
-            analysisSettings,
-            setAnalysisSettings,
-            analysisNnueSelection,
-            setAnalysisNnueSelection,
-            isNnueListLoading,
-            presetConfigs,
-            isAnalyzing,
-            analyzingState,
-            batchAnalysis,
-            handleAnalyzePly,
-            handleStartBatchAnalysis,
-            handleCancelBatchAnalysis,
-            handleAnalyzeNode,
-            handleAnalyzeBranch,
-            handleStartTreeBatchAnalysis,
-        }),
-        [
-            analysisSettings,
-            setAnalysisSettings,
-            analysisNnueSelection,
-            setAnalysisNnueSelection,
-            isNnueListLoading,
-            presetConfigs,
-            isAnalyzing,
-            analyzingState,
-            batchAnalysis,
-            handleAnalyzePly,
-            handleStartBatchAnalysis,
-            handleCancelBatchAnalysis,
-            handleAnalyzeNode,
-            handleAnalyzeBranch,
-            handleStartTreeBatchAnalysis,
-        ],
-    );
+    const analysisProps: AnalysisProps = {
+        analysisSettings,
+        setAnalysisSettings,
+        analysisNnueSelection,
+        setAnalysisNnueSelection,
+        isNnueListLoading,
+        presetConfigs,
+        isAnalyzing,
+        analyzingState,
+        batchAnalysis,
+        handleAnalyzePly,
+        handleStartBatchAnalysis,
+        handleCancelBatchAnalysis,
+        handleAnalyzeNode,
+        handleAnalyzeBranch,
+        handleStartTreeBatchAnalysis,
+    };
 
     // Props グループ化: ナビゲーション・棋譜
-    const navigationProps = useMemo<NavigationProps>(
-        () => ({
-            navigationState: {
-                currentPly: navigation.state.currentPly,
-                totalPly: navigation.state.totalPly,
-                isRewound: navigation.state.isRewound,
-                canGoForward: navigation.state.canGoForward,
-                hasBranches: navigation.state.hasBranches,
-                currentBranchIndex: navigation.state.currentBranchIndex,
-                branchCount: navigation.state.branchCount,
-                isOnMainLine: navigation.state.isOnMainLine,
-            },
-            navigationHandlers: {
-                goBack: navigation.goBack,
-                goForward: handleKeyboardForward,
-                goToStart: navigation.goToStart,
-                goToEnd: navigation.goToEnd,
-                switchBranch: navigation.switchBranch,
-                promoteCurrentLine: navigation.promoteCurrentLine,
-                goToNodeById: navigation.goToNodeById,
-                switchBranchAtNode: navigation.switchBranchAtNode,
-            },
-            kifMoves,
-            evalHistory,
-            displayEvalHistory,
-            positionHistory,
-            kifuTree: navigation.tree,
-            selectedBranchNodeId,
-            setSelectedBranchNodeId,
-            branchMarkers,
-            analysisMarkers,
-            lastAddedBranchInfo,
-            setLastAddedBranchInfo,
-            handleAddPvAsBranch,
-            handlePreviewPv,
-            kifuViewMode,
-            setKifuViewMode,
-            setDisplaySettings,
-            handlePlySelect,
-            handleCopyKif,
-            handleMoveDetailSelect,
-        }),
-        [
-            navigation.state.currentPly,
-            navigation.state.totalPly,
-            navigation.state.isRewound,
-            navigation.state.canGoForward,
-            navigation.state.hasBranches,
-            navigation.state.currentBranchIndex,
-            navigation.state.branchCount,
-            navigation.state.isOnMainLine,
-            navigation.goBack,
-            handleKeyboardForward,
-            navigation.goToStart,
-            navigation.goToEnd,
-            navigation.switchBranch,
-            navigation.promoteCurrentLine,
-            navigation.goToNodeById,
-            navigation.switchBranchAtNode,
-            kifMoves,
-            evalHistory,
-            displayEvalHistory,
-            positionHistory,
-            navigation.tree,
-            selectedBranchNodeId,
-            setSelectedBranchNodeId,
-            branchMarkers,
-            analysisMarkers,
-            lastAddedBranchInfo,
-            setLastAddedBranchInfo,
-            handleAddPvAsBranch,
-            handlePreviewPv,
-            kifuViewMode,
-            setKifuViewMode,
-            setDisplaySettings,
-            handlePlySelect,
-            handleCopyKif,
-            handleMoveDetailSelect,
-        ],
-    );
+    const navigationProps: NavigationProps = {
+        navigationState: {
+            currentPly: navigation.state.currentPly,
+            totalPly: navigation.state.totalPly,
+            isRewound: navigation.state.isRewound,
+            canGoForward: navigation.state.canGoForward,
+            hasBranches: navigation.state.hasBranches,
+            currentBranchIndex: navigation.state.currentBranchIndex,
+            branchCount: navigation.state.branchCount,
+            isOnMainLine: navigation.state.isOnMainLine,
+        },
+        navigationHandlers: {
+            goBack: navigation.goBack,
+            goForward: handleKeyboardForward,
+            goToStart: navigation.goToStart,
+            goToEnd: navigation.goToEnd,
+            switchBranch: navigation.switchBranch,
+            promoteCurrentLine: navigation.promoteCurrentLine,
+            goToNodeById: navigation.goToNodeById,
+            switchBranchAtNode: navigation.switchBranchAtNode,
+        },
+        kifMoves,
+        evalHistory,
+        displayEvalHistory,
+        positionHistory,
+        kifuTree: navigation.tree,
+        selectedBranchNodeId,
+        setSelectedBranchNodeId,
+        branchMarkers,
+        analysisMarkers,
+        lastAddedBranchInfo,
+        setLastAddedBranchInfo,
+        handleAddPvAsBranch,
+        handlePreviewPv,
+        kifuViewMode,
+        setKifuViewMode,
+        setDisplaySettings,
+        handlePlySelect,
+        handleCopyKif,
+        handleMoveDetailSelect,
+    };
 
     // Props グループ化: 盤面操作ハンドラー
-    const boardHandlers = useMemo<BoardHandlersProps>(
-        () => ({
-            hideEmptyHandPieces,
-            getHandInfo,
-            handleSquareSelect,
-            handlePromotionChoice,
-            handleHandSelect,
-            handleHandPiecePointerDown,
-            handlePiecePointerDown,
-            handlePieceTogglePromote,
-            handleIncrementHand,
-            handleDecrementHand,
-            handleResetToStartpos,
-            pauseAutoPlay,
-            resumeAutoPlay,
-            handleStartReview,
-            handleEnterEditMode,
-            enterEditModeFromPaused,
-            handleResign,
-            handleUndo,
-            setIsSettingsModalOpen,
-            shouldRenderPassButton: passRights.shouldRenderPassButton,
-            canMakePassMove: passRights.canMakePassMove,
-            passButtonDisabledReason: passRights.passButtonDisabledReason,
-            handlePassMove,
-            shouldShowPassConfirm: passRights.shouldShowPassConfirm,
-            isDraggingPiece,
-            boardSectionRef,
-        }),
-        [
-            hideEmptyHandPieces,
-            getHandInfo,
-            handleSquareSelect,
-            handlePromotionChoice,
-            handleHandSelect,
-            handleHandPiecePointerDown,
-            handlePiecePointerDown,
-            handlePieceTogglePromote,
-            handleIncrementHand,
-            handleDecrementHand,
-            handleResetToStartpos,
-            pauseAutoPlay,
-            resumeAutoPlay,
-            handleStartReview,
-            handleEnterEditMode,
-            enterEditModeFromPaused,
-            handleResign,
-            handleUndo,
-            setIsSettingsModalOpen,
-            passRights.shouldRenderPassButton,
-            passRights.canMakePassMove,
-            passRights.passButtonDisabledReason,
-            handlePassMove,
-            passRights.shouldShowPassConfirm,
-            isDraggingPiece,
-        ],
-    );
+    const boardHandlers: BoardHandlersProps = {
+        hideEmptyHandPieces,
+        getHandInfo,
+        handleSquareSelect,
+        handlePromotionChoice,
+        handleHandSelect,
+        handleHandPiecePointerDown,
+        handlePiecePointerDown,
+        handlePieceTogglePromote,
+        handleIncrementHand,
+        handleDecrementHand,
+        handleResetToStartpos,
+        pauseAutoPlay,
+        resumeAutoPlay,
+        handleStartReview,
+        handleEnterEditMode,
+        enterEditModeFromPaused,
+        handleResign,
+        handleUndo,
+        setIsSettingsModalOpen,
+        shouldRenderPassButton: passRights.shouldRenderPassButton,
+        canMakePassMove: passRights.canMakePassMove,
+        passButtonDisabledReason: passRights.passButtonDisabledReason,
+        handlePassMove,
+        shouldShowPassConfirm: passRights.shouldShowPassConfirm,
+        isDraggingPiece,
+        boardSectionRef,
+    };
 
     // Props グループ化: PC専用
-    const pcSpecificProps = useMemo<PCSpecificProps>(
-        () => ({
-            matchLayoutClasses: MATCH_LAYOUT_CLASSES,
-            candidateNote,
-            isSettingsModalOpen,
-            importSfen,
-            importKif,
-            positionReady,
-            isDevMode,
-            eventLogs,
-            errorLogs,
-            engineErrorDetails,
-            retryEngine,
-            isRetrying,
-            isDisplaySettingsOpen,
-            onDisplaySettingsOpenChange: setIsDisplaySettingsOpen,
-            isPassRightsSettingsOpen,
-            onPassRightsSettingsOpenChange: setIsPassRightsSettingsOpen,
-        }),
-        [
-            candidateNote,
-            isSettingsModalOpen,
-            importSfen,
-            importKif,
-            positionReady,
-            isDevMode,
-            eventLogs,
-            errorLogs,
-            engineErrorDetails,
-            retryEngine,
-            isRetrying,
-            isDisplaySettingsOpen,
-            setIsDisplaySettingsOpen,
-            isPassRightsSettingsOpen,
-            setIsPassRightsSettingsOpen,
-        ],
-    );
+    const pcSpecificProps: PCSpecificProps = {
+        matchLayoutClasses: MATCH_LAYOUT_CLASSES,
+        candidateNote,
+        isSettingsModalOpen,
+        importSfen,
+        importKif,
+        positionReady,
+        isDevMode,
+        eventLogs,
+        errorLogs,
+        engineErrorDetails,
+        retryEngine,
+        isRetrying,
+        isDisplaySettingsOpen,
+        onDisplaySettingsOpenChange: setIsDisplaySettingsOpen,
+        isPassRightsSettingsOpen,
+        onPassRightsSettingsOpenChange: setIsPassRightsSettingsOpen,
+    };
 
     // Props グループ化: Mobile専用
-    const mobileSpecificProps = useMemo<MobileSpecificProps>(
-        () => ({
-            isReviewMode,
-            onOpenAbout: () => setIsAboutOpen(true),
-            onImportSfen: importSfen,
-            onImportKif: importKif,
-            onDisplaySettingsChange: setDisplaySettings,
-        }),
-        [isReviewMode, setIsAboutOpen, importSfen, importKif, setDisplaySettings],
-    );
+    const mobileSpecificProps: MobileSpecificProps = {
+        isReviewMode,
+        onOpenAbout: () => setIsAboutOpen(true),
+        onImportSfen: importSfen,
+        onImportKif: importKif,
+        onDisplaySettingsChange: setDisplaySettings,
+    };
 
     return (
         <ShogiMatchProvider config={{ aiIconUrl }}>

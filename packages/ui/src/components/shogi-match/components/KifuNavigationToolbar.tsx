@@ -6,7 +6,7 @@
  */
 
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface BranchInfo {
     hasBranches: boolean;
@@ -110,13 +110,10 @@ export function KifuNavigationToolbar({
     // canGoForward: propsで明示されていればそれを使用、そうでなければ従来の計算
     const canGoForward = canGoForwardProp ?? currentPly < totalPly;
 
-    const handleBranchSelect = useCallback(
-        (index: number) => {
-            branchInfo?.onSwitch(index);
-            setShowBranchMenu(false);
-        },
-        [branchInfo],
-    );
+    const handleBranchSelect = (index: number) => {
+        branchInfo?.onSwitch(index);
+        setShowBranchMenu(false);
+    };
 
     return (
         <div className="flex items-center gap-1.5 mb-2">

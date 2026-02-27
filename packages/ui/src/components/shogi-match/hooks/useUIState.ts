@@ -14,7 +14,6 @@ import { useState } from "react";
 import type { KifuViewMode } from "../components/KifuPanel";
 
 interface PvPreviewState {
-    open: boolean;
     ply: number;
     pv: string[];
     startPosition: PositionState;

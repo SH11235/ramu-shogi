@@ -1,0 +1,9 @@
+{
+    "ignore": {
+        "rules": [],
+        "files": [
+            "src/components/shogi-match/components/EvalPanel.tsx",
+            "src/components/online-game-view.tsx"
+        ]
+    }
+}

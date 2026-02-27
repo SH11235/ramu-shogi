@@ -1,5 +1,5 @@
 import type { PositionState } from "@shogi/app-core";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import type { PassDisabledReason } from "../components/PassButton";
 import type { PassRightsSettings } from "../types";
 import type { LegalMoveCache } from "../utils/legalMoveCache";
@@ -66,7 +66,7 @@ export function usePassRights(deps: {
      * パス権を初期化（未設定時のみ）
      * @returns 初期化後のパス権、または既存のパス権
      */
-    const ensurePassRightsInitialized = useCallback(() => {
+    const ensurePassRightsInitialized = () => {
         if (!passRightsSettings?.enabled) return null;
         if (positionRef.current?.passRights) return positionRef.current.passRights;
 
@@ -78,25 +78,26 @@ export function usePassRights(deps: {
         setPosition(updated);
         positionRef.current = updated;
         return rights;
-    }, [passRightsSettings, positionRef, setPosition]);
+    };
 
     /**
      * 合法手取得用のパス権オプションを返す
      * build_position（Rust側）はパス権を設定してからmovesを適用するため、
      * 現在のパス権ではなく初期パス権を渡す必要がある（二重消費を防ぐため）
      */
-    const getPassRightsOption = useCallback((): {
+    const getPassRightsOption = (): {
         passRights?: { sente: number; gote: number };
     } => {
         if (!passRightsSettings) return {};
         return buildPassRightsOptionForLegalMoves(passRightsSettings, moves);
-    }, [passRightsSettings, moves]);
+    };
 
+    const ensurePassRightsInitializedEvent = useEffectEvent(ensurePassRightsInitialized);
     // パス権が有効なら、不足時に初期化しておく
     useEffect(() => {
         if (!passRightsSettings?.enabled) return;
-        ensurePassRightsInitialized();
-    }, [ensurePassRightsInitialized, passRightsSettings?.enabled]);
+        ensurePassRightsInitializedEvent();
+    }, [passRightsSettings?.enabled]);
 
     // パス権の有無
     const position = positionRef.current;
@@ -123,13 +124,13 @@ export function usePassRights(deps: {
     );
 
     // パスボタンの非活性理由
-    const passButtonDisabledReason: PassDisabledReason | undefined = useMemo(() => {
+    const passButtonDisabledReason: PassDisabledReason | undefined = (() => {
         if (!isMatchRunning) return "match-not-running";
         if (currentTurnRole !== "human") return "not-your-turn";
         if (!hasPassRights) return "no-rights";
         if (passLegalKnown && !canPassLegal) return "in-check";
         return undefined;
-    }, [isMatchRunning, currentTurnRole, hasPassRights, passLegalKnown, canPassLegal]);
+    })();
 
     // パス確認ダイアログを表示するかどうか
     const shouldShowPassConfirm =

@@ -138,7 +138,7 @@ export function createRoomClient(
             send("resign", params);
         },
 
-        useAnalysis(params) {
+        consumeAnalysis(params) {
             send("use_analysis", params);
         },
 

@@ -35,9 +35,14 @@ export { BottomSheet } from "./components/shogi-match/components/BottomSheet";
 export { HandPiecesDisplay } from "./components/shogi-match/components/HandPiecesDisplay";
 export { KifuNavigationToolbar } from "./components/shogi-match/components/KifuNavigationToolbar";
 export { boardToGrid } from "./components/shogi-match/utils/positionUtils";
+
 // progress
 // shogi-board
 
+export type { AnalysisMoveResult, OnlineAnalysis } from "./components/online-game-view";
+
+// online-game-view
+export { OnlineGameView } from "./components/online-game-view";
 // shogi-match
 export { ShogiMatch } from "./components/shogi-match";
 

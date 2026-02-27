@@ -5,25 +5,38 @@ import {
     type Player,
     type PositionState,
 } from "@shogi/app-core";
-import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type {
+    AiSupportPlayerSettings,
     AiSupportSettings,
     ClockState,
     GameResult,
+    PassRightsState,
     RoomClient,
     Seat,
     SnapshotPayload,
 } from "@shogi/match-client";
-import {
-    BottomSheet,
-    boardToGrid,
-    HandPiecesDisplay,
-    KifuNavigationToolbar,
-    ShogiBoard,
-} from "@shogi/ui";
-import { useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
+import { ShogiBoard } from "./shogi-board";
+import { BottomSheet } from "./shogi-match/components/BottomSheet";
+import { HandPiecesDisplay } from "./shogi-match/components/HandPiecesDisplay";
+import { KifuNavigationToolbar } from "./shogi-match/components/KifuNavigationToolbar";
+import { boardToGrid } from "./shogi-match/utils/positionUtils";
+
+// ─── AI 解析インターフェース（export） ─────────────────────────────────────────
+
+export interface AnalysisMoveResult {
+    usi: string;
+    cp: number;
+    pv: string[];
+}
+
+export interface OnlineAnalysis {
+    isAnalyzing: boolean;
+    topMoves: AnalysisMoveResult[];
+    startAnalysis: (sfen: string, moves: string[]) => Promise<void>;
+    cancelAnalysis: () => Promise<void>;
+}
 
 // ─── 型定義 ───────────────────────────────────────────────────────────────────
 
@@ -58,106 +71,185 @@ function formatMs(ms: number): string {
     return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
-// ─── AI 解析フック ────────────────────────────────────────────────────────────
+// ─── ゲーム状態管理 ───────────────────────────────────────────────────────────
 
-interface AnalysisMoveResult {
-    usi: string;
-    cp: number;
-    pv: string[];
+interface GameState {
+    position: PositionState | null;
+    positionHistory: PositionState[];
+    turn: "b" | "w";
+    clockState: ClockState;
+    gameResult: GameResult | null;
+    kifu: string;
+    offlineSeats: Set<string>;
+    passRights: PassRightsState | null;
+    myAnalysisRemaining: number | null;
+    analysisLog: Array<{ seat: "b" | "w"; ply: number }>;
 }
 
-function useOnlineAnalysis(searchDepth: number | null, searchTimeMs: number | null) {
-    const engineRef = useRef<ReturnType<typeof createWasmEngineClient> | null>(null);
-    const searchHandleRef = useRef<{ cancel(): Promise<void> } | null>(null);
-    const unsubscribeRef = useRef<(() => void) | null>(null);
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
-    const [topMoves, setTopMoves] = useState<AnalysisMoveResult[]>([]);
-    const topMovesMapRef = useRef<Map<number, AnalysisMoveResult>>(new Map());
+type GameAction =
+    | { type: "init"; position: PositionState }
+    | {
+          type: "move";
+          usi: string;
+          turn: "b" | "w";
+          clock: ClockState;
+          passRights: PassRightsState | null;
+      }
+    | { type: "result"; result: GameResult }
+    | { type: "game_end"; result: GameResult; kifu: string }
+    | { type: "player_offline"; seat: string }
+    | { type: "player_online"; seat: string }
+    | {
+          type: "analysis_used";
+          isMySeat: boolean;
+          seat: "b" | "w";
+          analysisRemaining: number;
+          ply: number;
+      }
+    | {
+          type: "resync";
+          position: PositionState;
+          turn: "b" | "w";
+          clock: ClockState;
+          passRights: PassRightsState | null;
+      };
 
-    useEffect(() => {
-        const engine = createWasmEngineClient({ stopMode: "terminate" });
-        engineRef.current = engine;
-        engine
-            .init({ threads: 1 })
-            .then(() => engine.setOption("MultiPV", 3))
-            .catch(console.error);
-        return () => {
-            engine.dispose().catch(console.error);
-        };
-    }, []);
+function makeInitialGameState(
+    snapshot: SnapshotPayload,
+    myAiSettings: AiSupportPlayerSettings | null,
+): GameState {
+    return {
+        position: null,
+        positionHistory: [],
+        turn: snapshot.turn,
+        clockState: snapshot.clock,
+        gameResult: null,
+        kifu: "",
+        offlineSeats: new Set(),
+        passRights: snapshot.passRights,
+        myAnalysisRemaining:
+            myAiSettings?.mode === "limited" ? (myAiSettings.limitCount ?? 0) : null,
+        analysisLog: [],
+    };
+}
 
-    const startAnalysis = useCallback(
-        async (sfen: string, moves: string[]) => {
-            const engine = engineRef.current;
-            if (!engine) return;
-
-            // 前回の解析をキャンセル
-            if (searchHandleRef.current) {
-                await searchHandleRef.current.cancel().catch(() => undefined);
-                searchHandleRef.current = null;
-            }
-            if (unsubscribeRef.current) {
-                unsubscribeRef.current();
-                unsubscribeRef.current = null;
-            }
-
-            topMovesMapRef.current.clear();
-            setTopMoves([]);
-            setIsAnalyzing(true);
-
-            const unsub = engine.subscribe((event) => {
-                if (event.type === "info") {
-                    const ev = event as typeof event & {
-                        multipv?: number;
-                        pv?: string[];
-                        scoreCp?: number;
-                    };
-                    const lineIdx = ev.multipv ?? 1;
-                    const pv = ev.pv;
-                    if (!pv || pv.length === 0) return;
-                    const cp = ev.scoreCp ?? 0;
-                    topMovesMapRef.current.set(lineIdx, { usi: pv[0], cp, pv });
-                    const sorted = Array.from(topMovesMapRef.current.entries())
-                        .sort(([a], [b]) => a - b)
-                        .map(([, v]) => v);
-                    setTopMoves(sorted);
-                } else if (event.type === "bestmove") {
-                    setIsAnalyzing(false);
-                    unsub();
-                    unsubscribeRef.current = null;
-                }
-            });
-            unsubscribeRef.current = unsub;
-
-            try {
-                await engine.loadPosition(sfen, moves);
-                const limits: { maxDepth?: number; movetimeMs?: number } = {};
-                if (searchDepth !== null) limits.maxDepth = searchDepth;
-                if (searchTimeMs !== null) limits.movetimeMs = searchTimeMs;
-                const handle = await engine.search({ limits });
-                searchHandleRef.current = handle;
-            } catch {
-                setIsAnalyzing(false);
-                unsub();
-                unsubscribeRef.current = null;
-            }
-        },
-        [searchDepth, searchTimeMs],
-    );
-
-    const cancelAnalysis = useCallback(async () => {
-        if (searchHandleRef.current) {
-            await searchHandleRef.current.cancel().catch(() => undefined);
-            searchHandleRef.current = null;
+function gameReducer(state: GameState, action: GameAction): GameState {
+    switch (action.type) {
+        case "init":
+            return {
+                ...state,
+                position: action.position,
+                positionHistory: [action.position],
+            };
+        case "move": {
+            if (!state.position) return state;
+            // パス手は局面変化なし（手番のみ交代）。
+            // PositionState に passRights が未設定のため applyMoveWithState は使わない
+            const next =
+                action.usi === "pass"
+                    ? {
+                          ...state.position,
+                          turn:
+                              state.position.turn === "sente"
+                                  ? ("gote" as const)
+                                  : ("sente" as const),
+                      }
+                    : applyMoveWithState(state.position, action.usi).next;
+            return {
+                ...state,
+                position: next,
+                positionHistory: [...state.positionHistory, next],
+                turn: action.turn === "b" ? "w" : "b",
+                clockState: action.clock,
+                passRights: action.passRights,
+            };
         }
-        if (unsubscribeRef.current) {
-            unsubscribeRef.current();
-            unsubscribeRef.current = null;
+        case "result":
+            return { ...state, gameResult: action.result };
+        case "game_end":
+            return { ...state, gameResult: action.result, kifu: action.kifu };
+        case "player_offline":
+            return {
+                ...state,
+                offlineSeats: new Set([...state.offlineSeats, action.seat]),
+            };
+        case "player_online": {
+            const next = new Set(state.offlineSeats);
+            next.delete(action.seat);
+            return { ...state, offlineSeats: next };
         }
-        setIsAnalyzing(false);
-    }, []);
+        case "analysis_used":
+            return {
+                ...state,
+                myAnalysisRemaining: action.isMySeat
+                    ? action.analysisRemaining
+                    : state.myAnalysisRemaining,
+                analysisLog: [...state.analysisLog, { seat: action.seat, ply: action.ply }],
+            };
+        case "resync":
+            return {
+                ...state,
+                position: action.position,
+                positionHistory: [action.position],
+                turn: action.turn,
+                clockState: action.clock,
+                passRights: action.passRights,
+            };
+    }
+}
 
-    return { isAnalyzing, topMoves, startAnalysis, cancelAnalysis };
+// ─── UI インタラクション状態管理 ───────────────────────────────────────────────
+
+interface UIState {
+    selectedSquare: string | null;
+    selectedHand: PieceType | null;
+    legalMoves: string[];
+    promoteDialog: { from: string; to: string; usi: string } | null;
+    navIndex: number | null;
+    aiSheetOpen: boolean;
+}
+
+type UIAction =
+    | { type: "move_received" } // selectedSquare, selectedHand, legalMoves を一括リセット
+    | { type: "resync_received" } // navIndex をリセット
+    | { type: "clear_selection" } // selectedSquare, selectedHand を一括リセット
+    | { type: "select_square"; squareId: string | null }
+    | { type: "select_hand"; pieceType: PieceType | null }
+    | { type: "set_legal_moves"; moves: string[] }
+    | { type: "set_promote_dialog"; dialog: { from: string; to: string; usi: string } | null }
+    | { type: "set_nav_index"; index: number | null }
+    | { type: "set_ai_sheet_open"; open: boolean };
+
+const INITIAL_UI_STATE: UIState = {
+    selectedSquare: null,
+    selectedHand: null,
+    legalMoves: [],
+    promoteDialog: null,
+    navIndex: null,
+    aiSheetOpen: false,
+};
+
+function uiReducer(state: UIState, action: UIAction): UIState {
+    switch (action.type) {
+        case "move_received":
+            return { ...state, selectedSquare: null, selectedHand: null, legalMoves: [] };
+        case "resync_received":
+            return { ...state, navIndex: null };
+        case "clear_selection":
+            return { ...state, selectedSquare: null, selectedHand: null };
+        case "select_square":
+            return { ...state, selectedSquare: action.squareId };
+        case "select_hand":
+            return { ...state, selectedHand: action.pieceType };
+        case "set_legal_moves":
+            return { ...state, legalMoves: action.moves };
+        case "set_promote_dialog":
+            return { ...state, promoteDialog: action.dialog };
+        case "set_nav_index":
+            return { ...state, navIndex: action.index };
+        case "set_ai_sheet_open":
+            return { ...state, aiSheetOpen: action.open };
+    }
 }
 
 // ─── クロックフック ────────────────────────────────────────────────────────────
@@ -195,11 +287,13 @@ interface OnlineGameViewProps {
     snapshot: SnapshotPayload;
     seat: Seat;
     roomId: string;
+    analysis?: OnlineAnalysis;
     onStartReview?: (data: {
         sfen: string;
         moves: string[];
         analysisMarkers: Array<{ seat: "b" | "w"; ply: number }>;
     }) => void;
+    onExit?: () => void;
 }
 
 export function OnlineGameView({
@@ -207,44 +301,39 @@ export function OnlineGameView({
     snapshot,
     seat,
     roomId,
+    analysis,
     onStartReview,
+    onExit,
 }: OnlineGameViewProps): ReactElement {
-    const [position, setPosition] = useState<PositionState | null>(null);
-    // ref で subscribe コールバック内から最新局面を参照するためのミラー
-    const positionRef = useRef<PositionState | null>(null);
-    const [clockState, setClockState] = useState<ClockState>(snapshot.clock);
-    const [turn, setTurn] = useState<"b" | "w">(snapshot.turn);
-    const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
-    const [selectedHand, setSelectedHand] = useState<PieceType | null>(null);
-    const [legalMoves, setLegalMoves] = useState<string[]>([]);
-    const [promoteDialog, setPromoteDialog] = useState<{
-        from: string;
-        to: string;
-        usi: string;
-    } | null>(null);
-    const [gameResult, setGameResult] = useState<GameResult | null>(null);
-    const [kifu, setKifu] = useState<string>("");
-    const [offlineSeats, setOfflineSeats] = useState<Set<string>>(new Set());
-    // positionHistory: ゲーム参加後の局面履歴（インデックス 0 = 参加時の局面）
-    const [positionHistory, setPositionHistory] = useState<PositionState[]>([]);
-    // navIndex: null = ライブ追従、数値 = 棋譜内の指定局面を表示
-    const [navIndex, setNavIndex] = useState<number | null>(null);
-
-    const [aiSheetOpen, setAiSheetOpen] = useState(false);
-
-    // ─── AI サポート状態 ───────────────────────────────────────────────────────
+    // ─── AI サポート設定（makeInitialGameState の引数として使用するため先に定義） ──
     const aiSupport = snapshot.settings.aiSupport as AiSupportSettings | null;
     const myAiSettings = seat !== "s" && aiSupport ? aiSupport[seat === "b" ? "b" : "w"] : null;
-    // 残り解析回数（null = 無制限、数値 = 残り回数）
-    const [myAnalysisRemaining, setMyAnalysisRemaining] = useState<number | null>(
-        myAiSettings?.mode === "limited" ? (myAiSettings.limitCount ?? 0) : null,
+
+    // ─── ゲーム状態（useReducer） ─────────────────────────────────────────────
+    const [gameState, dispatch] = useReducer(gameReducer, undefined, () =>
+        makeInitialGameState(snapshot, myAiSettings),
     );
-    // 解析使用ログ
-    const [analysisLog, setAnalysisLog] = useState<Array<{ seat: "b" | "w"; ply: number }>>([]);
-    const { isAnalyzing, topMoves, startAnalysis, cancelAnalysis } = useOnlineAnalysis(
-        aiSupport?.searchDepth ?? null,
-        aiSupport?.searchTimeMs ?? null,
-    );
+    const {
+        position,
+        positionHistory,
+        turn,
+        clockState,
+        gameResult,
+        kifu,
+        offlineSeats,
+        passRights,
+        myAnalysisRemaining,
+        analysisLog,
+    } = gameState;
+
+    // ─── UI インタラクション状態（useReducer） ───────────────────────────────
+    const [uiState, dispatchUI] = useReducer(uiReducer, INITIAL_UI_STATE);
+    const { selectedSquare, selectedHand, legalMoves, promoteDialog, navIndex, aiSheetOpen } =
+        uiState;
+
+    // analysis prop から分解（undefined 時のデフォルト値）
+    const isAnalyzing = analysis?.isAnalyzing ?? false;
+    const topMoves = analysis?.topMoves ?? [];
 
     // 現在の start SFEN と moves
     const startSfenRef = useRef(snapshot.settings.startSfen);
@@ -262,10 +351,12 @@ export function OnlineGameView({
     const isSpectator = seat === "s";
 
     const totalPly = Math.max(0, positionHistory.length - 1);
-    const isRewound = navIndex !== null;
-    const currentPly = isRewound ? navIndex : totalPly;
-    // 表示用局面: 巻き戻し中は履歴の局面、それ以外はライブ局面
-    const displayPosition = isRewound ? (positionHistory[navIndex] ?? null) : position;
+    // 自分の手番になったら巻き戻しを解除してライブ追従（effect 不要、レンダー時に派生）
+    const effectiveNavIndex = isMyTurn ? null : navIndex;
+    const isRewound = effectiveNavIndex !== null;
+    const currentPly = isRewound ? effectiveNavIndex : totalPly;
+    // 表示用局面: 巻き戻し中は履歴局面、それ以外はライブ局面
+    const displayPosition = isRewound ? (positionHistory[effectiveNavIndex] ?? null) : position;
 
     // ─── 初期局面の読み込み ──────────────────────────────────────────────────
 
@@ -275,9 +366,7 @@ export function OnlineGameView({
             .parseSfen(snapshot.sfen)
             .then((pos) => {
                 if (!cancelled) {
-                    positionRef.current = pos;
-                    setPosition(pos);
-                    setPositionHistory([pos]);
+                    dispatch({ type: "init", position: pos });
                 }
             })
             .catch(console.error);
@@ -296,20 +385,15 @@ export function OnlineGameView({
                 // サーバーは指し手以外のイベントでも latestEventId を増加させるため
                 latestEventIdRef.current = e.eventId;
                 if (e.kind === "move") {
-                    // positionRef で最新局面を参照（subscribe クロージャの stale 問題を回避）
-                    const prevPos = positionRef.current;
-                    if (prevPos) {
-                        const next = applyMoveWithState(prevPos, e.usi).next;
-                        positionRef.current = next;
-                        setPosition(next);
-                        setPositionHistory((ph) => [...ph, next]);
-                    }
+                    dispatch({
+                        type: "move",
+                        usi: e.usi,
+                        turn: e.turn,
+                        clock: e.clock,
+                        passRights: e.passRights,
+                    });
                     movesRef.current = [...movesRef.current, e.usi];
-                    setTurn(e.turn === "b" ? "w" : "b"); // 次の手番
-                    setClockState(e.clock);
-                    setSelectedSquare(null);
-                    setSelectedHand(null);
-                    setLegalMoves([]);
+                    dispatchUI({ type: "move_received" });
                 } else if (
                     e.kind === "resign" ||
                     e.kind === "timeout" ||
@@ -318,45 +402,38 @@ export function OnlineGameView({
                     e.kind === "illegal_move" ||
                     e.kind === "disconnect_loss"
                 ) {
-                    setGameResult(e.result);
+                    dispatch({ type: "result", result: e.result });
                 } else if (e.kind === "game_end") {
-                    setGameResult(e.result);
-                    setKifu(e.kifu);
+                    dispatch({ type: "game_end", result: e.result, kifu: e.kifu });
                 } else if (e.kind === "player_offline") {
-                    setOfflineSeats((prev) => new Set([...prev, e.seat]));
+                    dispatch({ type: "player_offline", seat: e.seat });
                 } else if (e.kind === "player_online") {
-                    setOfflineSeats((prev) => {
-                        const next = new Set(prev);
-                        next.delete(e.seat);
-                        return next;
+                    dispatch({ type: "player_online", seat: e.seat });
+                } else if (e.kind === "analysis_used" && (e.seat === "b" || e.seat === "w")) {
+                    dispatch({
+                        type: "analysis_used",
+                        isMySeat: e.seat === seat,
+                        seat: e.seat,
+                        analysisRemaining: e.analysisRemaining,
+                        ply: movesRef.current.length,
                     });
-                } else if (e.kind === "analysis_used") {
-                    // 自分の残り回数を更新
-                    if (e.seat === seat && e.seat !== "s") {
-                        setMyAnalysisRemaining(
-                            typeof e.analysisRemaining === "number" ? e.analysisRemaining : null,
-                        );
-                    }
-                    // 解析ログに追記
-                    if (e.seat === "b" || e.seat === "w") {
-                        const ply = movesRef.current.length;
-                        setAnalysisLog((prev) => [...prev, { seat: e.seat as "b" | "w", ply }]);
-                    }
                 }
             } else if (msg.t === "snapshot") {
                 // 再接続後のスナップショット更新
-                setClockState(msg.payload.clock);
-                setTurn(msg.payload.turn);
                 // latestEventId と moves を最新状態に同期する
                 latestEventIdRef.current = msg.payload.eventId;
                 movesRef.current = [...msg.payload.moves];
                 getPositionService()
                     .parseSfen(msg.payload.sfen)
                     .then((pos) => {
-                        positionRef.current = pos;
-                        setPosition(pos);
-                        setPositionHistory([pos]);
-                        setNavIndex(null); // 再接続後は最新局面に戻す
+                        dispatch({
+                            type: "resync",
+                            position: pos,
+                            turn: msg.payload.turn,
+                            clock: msg.payload.clock,
+                            passRights: msg.payload.passRights,
+                        });
+                        dispatchUI({ type: "resync_received" }); // 再接続後は最新局面に戻す
                     })
                     .catch((err) => {
                         console.error("[OnlineGameView] Failed to parse SFEN from snapshot:", err);
@@ -370,60 +447,66 @@ export function OnlineGameView({
 
     // ─── 合法手の取得 ────────────────────────────────────────────────────────
 
-    const fetchLegalMoves = useCallback(async () => {
-        if (!isMyTurn) return;
-        try {
-            const moves = await getPositionService().getLegalMoves(
-                startSfenRef.current,
-                movesRef.current,
-            );
-            setLegalMoves(moves);
-        } catch {
-            setLegalMoves([]);
-        }
-    }, [isMyTurn]);
-
     useEffect(() => {
         // 巻き戻し中は合法手を表示しない
-        if (isMyTurn && !gameResult && !isRewound) {
-            void fetchLegalMoves();
-        } else {
-            setLegalMoves([]);
-        }
-    }, [isMyTurn, gameResult, isRewound, fetchLegalMoves]);
-
-    // ─── 手番切替時に最新局面へ自動移動 ─────────────────────────────────────
-
-    const prevIsMyTurnRef = useRef(isMyTurn);
-    useEffect(() => {
-        const wasMyTurn = prevIsMyTurnRef.current;
-        prevIsMyTurnRef.current = isMyTurn;
-        // 自分の手番になったら巻き戻しを解除して最新局面に戻す
-        if (isMyTurn && !wasMyTurn) {
-            setNavIndex(null);
-        }
-    }, [isMyTurn]);
+        // passRightsOption は try/catch の外で計算する（React Compiler の制約）
+        const passRightsOption = passRights
+            ? { passRights: { sente: passRights.b, gote: passRights.w } }
+            : {};
+        void (async () => {
+            if (isMyTurn && !gameResult && !isRewound) {
+                try {
+                    const moves = await getPositionService().getLegalMoves(
+                        startSfenRef.current,
+                        movesRef.current,
+                        passRightsOption,
+                    );
+                    dispatchUI({ type: "set_legal_moves", moves });
+                } catch {
+                    dispatchUI({ type: "set_legal_moves", moves: [] });
+                }
+            } else {
+                dispatchUI({ type: "set_legal_moves", moves: [] });
+            }
+        })();
+    }, [isMyTurn, gameResult, isRewound, passRights]);
 
     // ─── 棋譜ナビゲーションハンドラ ───────────────────────────────────────────
 
-    const handleNavBack = useCallback(() => {
-        setNavIndex((prev) => {
-            const cur = prev !== null ? prev : positionHistory.length - 1;
-            return Math.max(0, cur - 1);
-        });
-    }, [positionHistory.length]);
+    const handleNavBack = () => {
+        const cur = navIndex !== null ? navIndex : positionHistory.length - 1;
+        dispatchUI({ type: "set_nav_index", index: Math.max(0, cur - 1) });
+    };
 
-    const handleNavForward = useCallback(() => {
-        setNavIndex((prev) => {
-            if (prev === null) return null;
-            const next = prev + 1;
-            // 最新局面に追いついたらライブ追従モードに戻す
-            return next >= positionHistory.length - 1 ? null : next;
+    const handleNavForward = () => {
+        if (navIndex === null) return;
+        const next = navIndex + 1;
+        // 最新局面に追いついたらライブ追従モードに戻す
+        dispatchUI({
+            type: "set_nav_index",
+            index: next >= positionHistory.length - 1 ? null : next,
         });
-    }, [positionHistory.length]);
+    };
 
-    const handleNavStart = useCallback(() => setNavIndex(0), []);
-    const handleNavEnd = useCallback(() => setNavIndex(null), []);
+    const handleNavStart = () => dispatchUI({ type: "set_nav_index", index: 0 });
+    const handleNavEnd = () => dispatchUI({ type: "set_nav_index", index: null });
+
+    // ─── 指し手送信 ──────────────────────────────────────────────────────────
+
+    const sendMove = async (usi: string, _toSquare?: string): Promise<void> => {
+        if (!position) return;
+        // パス手は局面変化なし（手番のみ交代）。PositionState に passRights がないため
+        // applyMoveWithState は使わず、手番を反転した局面の SFEN を生成する
+        const nextPos =
+            usi === "pass"
+                ? {
+                      ...position,
+                      turn: (position.turn === "sente" ? "gote" : "sente") as "sente" | "gote",
+                  }
+                : applyMoveWithState(position, usi).next;
+        const nextSfen = await getPositionService().boardToSfen(nextPos);
+        client.move({ eventId: latestEventIdRef.current, usi, sfen: nextSfen });
+    };
 
     // ─── 盤面クリック処理 ────────────────────────────────────────────────────
 
@@ -433,21 +516,17 @@ export function OnlineGameView({
         // 持ち駒を選択中の場合 → ドロップ
         if (selectedHand !== null) {
             const usi = `${selectedHand}*${squareId.toUpperCase()}`;
-            // 合法手チェック
             if (legalMoves.includes(usi)) {
                 void sendMove(usi, squareId);
-                setSelectedHand(null);
-            } else {
-                setSelectedHand(null);
             }
-            setSelectedSquare(null);
+            dispatchUI({ type: "clear_selection" });
             return;
         }
 
         // 盤上の駒を選択中の場合 → 移動
         if (selectedSquare) {
             if (selectedSquare === squareId) {
-                setSelectedSquare(null);
+                dispatchUI({ type: "select_square", squareId: null });
                 return;
             }
             const from = selectedSquare.toUpperCase();
@@ -464,9 +543,9 @@ export function OnlineGameView({
                     ((piece.owner === "sente" && myPlayer === "sente") ||
                         (piece.owner === "gote" && myPlayer === "gote"))
                 ) {
-                    setSelectedSquare(squareId);
+                    dispatchUI({ type: "select_square", squareId });
                 } else {
-                    setSelectedSquare(null);
+                    dispatchUI({ type: "select_square", squareId: null });
                 }
                 return;
             }
@@ -486,11 +565,14 @@ export function OnlineGameView({
             if (mustPro) {
                 void sendMove(usiPromote, squareId);
             } else if (canPro && legalMoves.includes(usiPromote)) {
-                setPromoteDialog({ from: selectedSquare, to: squareId, usi: usiBase });
+                dispatchUI({
+                    type: "set_promote_dialog",
+                    dialog: { from: selectedSquare, to: squareId, usi: usiBase },
+                });
             } else {
                 void sendMove(usiBase, squareId);
             }
-            setSelectedSquare(null);
+            dispatchUI({ type: "select_square", squareId: null });
             return;
         }
 
@@ -501,22 +583,17 @@ export function OnlineGameView({
             ((piece.owner === "sente" && myPlayer === "sente") ||
                 (piece.owner === "gote" && myPlayer === "gote"))
         ) {
-            setSelectedSquare(squareId);
+            dispatchUI({ type: "select_square", squareId });
         }
     }
 
     function handleHandSelect(pieceType: PieceType): void {
         if (!isMyTurn || gameResult || isRewound) return;
-        setSelectedHand(selectedHand === pieceType ? null : pieceType);
-        setSelectedSquare(null);
-    }
-
-    async function sendMove(usi: string, _toSquare?: string): Promise<void> {
-        if (!position) return;
-        // 移動後の SFEN を計算して送信
-        const nextPos = applyMoveWithState(position, usi).next;
-        const nextSfen = await getPositionService().boardToSfen(nextPos);
-        client.move({ eventId: latestEventIdRef.current, usi, sfen: nextSfen });
+        dispatchUI({
+            type: "select_hand",
+            pieceType: selectedHand === pieceType ? null : pieceType,
+        });
+        dispatchUI({ type: "select_square", squareId: null });
     }
 
     // ─── 投了 ────────────────────────────────────────────────────────────────
@@ -528,32 +605,32 @@ export function OnlineGameView({
 
     // ─── AI 解析トリガー ─────────────────────────────────────────────────────
 
-    const handleAnalyze = useCallback(async () => {
+    const handleAnalyze = async () => {
         if (!position || !aiSupport || seat === "s") return;
         // 制限モードは use_analysis を先送信してからエンジン解析
         if (myAiSettings?.mode === "limited") {
             const ply = movesRef.current.length;
-            // biome-ignore lint/correctness/useHookAtTopLevel: client.useAnalysis は React Hook ではなく WebSocket 送信メソッド
-            client.useAnalysis({ eventId: latestEventIdRef.current, ply });
+            client.consumeAnalysis({ eventId: latestEventIdRef.current, ply });
             // analysis_used 受信後に自動で残り回数が更新される
         }
-        // WASM 解析開始
-        await getPositionService()
-            .boardToSfen(position)
-            .then((sfen) => startAnalysis(sfen, movesRef.current))
-            .catch(console.error);
-    }, [position, aiSupport, myAiSettings, seat, client, startAnalysis]);
+        if (analysis) {
+            await getPositionService()
+                .boardToSfen(position)
+                .then((sfen) => analysis.startAnalysis(sfen, movesRef.current))
+                .catch(console.error);
+        }
+    };
 
     // 無制限モード: 自分の手番になったら自動解析
     const positionSfenRef = useRef<string>("");
     useEffect(() => {
-        if (!aiSupport || !position || gameResult) return;
+        if (!aiSupport || !position || gameResult || !analysis) return;
         if (myAiSettings?.mode !== "unlimited") return;
         // 自分の手番（または観戦者）のとき自動解析
         const isMyAnalysisTurn =
             seat === "s" || (seat === "b" && turn === "b") || (seat === "w" && turn === "w");
         if (!isMyAnalysisTurn) {
-            void cancelAnalysis();
+            void analysis.cancelAnalysis();
             return;
         }
         getPositionService()
@@ -561,10 +638,10 @@ export function OnlineGameView({
             .then((sfen) => {
                 if (sfen === positionSfenRef.current) return;
                 positionSfenRef.current = sfen;
-                return startAnalysis(sfen, movesRef.current);
+                return analysis.startAnalysis(sfen, movesRef.current);
             })
             .catch(console.error);
-    }, [aiSupport, myAiSettings, position, turn, seat, gameResult, startAnalysis, cancelAnalysis]);
+    }, [aiSupport, myAiSettings, position, turn, seat, gameResult, analysis]);
 
     // ─── KIF ダウンロード ─────────────────────────────────────────────────────
 
@@ -638,6 +715,7 @@ export function OnlineGameView({
                     remainMs={clockDisplay.w}
                     isOffline={offlineSeats.has("w")}
                     isFlipped={flipBoard}
+                    passRightsCount={passRights != null ? passRights.w : undefined}
                 />
 
                 {/* 後手持ち駒（上） */}
@@ -699,6 +777,7 @@ export function OnlineGameView({
                     remainMs={clockDisplay.b}
                     isOffline={offlineSeats.has("b")}
                     isFlipped={flipBoard}
+                    passRightsCount={passRights != null ? passRights.b : undefined}
                 />
 
                 {/* 棋譜ナビゲーション */}
@@ -716,6 +795,16 @@ export function OnlineGameView({
 
                 {/* 操作ボタン */}
                 <div className="flex gap-2">
+                    {passRights !== null && !isSpectator && !gameResult && (
+                        <button
+                            type="button"
+                            onClick={() => void sendMove("pass")}
+                            disabled={!legalMoves.includes("pass")}
+                            className="rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            パス
+                        </button>
+                    )}
                     {!isSpectator && !gameResult && (
                         <button
                             type="button"
@@ -728,7 +817,7 @@ export function OnlineGameView({
                     {aiSupport && (
                         <button
                             type="button"
-                            onClick={() => setAiSheetOpen(true)}
+                            onClick={() => dispatchUI({ type: "set_ai_sheet_open", open: true })}
                             className="md:hidden rounded-md bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80"
                             aria-label="AI解析"
                         >
@@ -753,11 +842,11 @@ export function OnlineGameView({
                 <PromoteDialog
                     onPromote={() => {
                         void sendMove(`${promoteDialog.usi}+`, promoteDialog.to);
-                        setPromoteDialog(null);
+                        dispatchUI({ type: "set_promote_dialog", dialog: null });
                     }}
                     onNoPromote={() => {
                         void sendMove(promoteDialog.usi, promoteDialog.to);
-                        setPromoteDialog(null);
+                        dispatchUI({ type: "set_promote_dialog", dialog: null });
                     }}
                 />
             )}
@@ -780,6 +869,7 @@ export function OnlineGameView({
                                   })
                             : undefined
                     }
+                    onExit={onExit}
                 />
             )}
 
@@ -787,7 +877,7 @@ export function OnlineGameView({
             {aiSupport && (
                 <BottomSheet
                     open={aiSheetOpen}
-                    onOpenChange={setAiSheetOpen}
+                    onOpenChange={(open) => dispatchUI({ type: "set_ai_sheet_open", open })}
                     title="AI 解析"
                     height="auto"
                 >
@@ -807,6 +897,8 @@ interface PlayerHeaderProps {
     remainMs: number;
     isOffline: boolean;
     isFlipped: boolean;
+    /** undefined = パス権機能が無効、数値 = 残りパス権数 */
+    passRightsCount?: number;
 }
 
 function PlayerHeader({
@@ -815,6 +907,7 @@ function PlayerHeader({
     isMyTurn,
     remainMs,
     isOffline,
+    passRightsCount,
 }: PlayerHeaderProps): ReactElement {
     return (
         <div
@@ -827,6 +920,13 @@ function PlayerHeader({
                     {seat === "b" ? "▲" : "△"} {name}
                 </span>
                 {isOffline && <span className="text-xs text-destructive">● 切断中</span>}
+                {passRightsCount !== undefined && (
+                    <span
+                        className={`text-xs ${passRightsCount > 0 ? "text-muted-foreground" : "text-muted-foreground/50"}`}
+                    >
+                        パス権: {passRightsCount}
+                    </span>
+                )}
             </div>
             <span
                 className={`font-mono text-sm tabular-nums ${isMyTurn ? "text-primary font-bold" : "text-muted-foreground"}`}
@@ -884,6 +984,7 @@ interface GameEndDialogProps {
     onDownloadKifu: () => void;
     analysisLog: Array<{ seat: "b" | "w"; ply: number }>;
     onStartReview?: () => void;
+    onExit?: () => void;
 }
 
 function GameEndDialog({
@@ -893,8 +994,8 @@ function GameEndDialog({
     onDownloadKifu,
     analysisLog,
     onStartReview,
+    onExit,
 }: GameEndDialogProps): ReactElement {
-    const navigate = useNavigate();
     const winnerName =
         result.winner === "b" ? playerNames.b : result.winner === "w" ? playerNames.w : null;
 
@@ -960,13 +1061,15 @@ function GameEndDialog({
                             </button>
                         </>
                     )}
-                    <button
-                        type="button"
-                        onClick={() => void navigate({ to: "/" })}
-                        className="w-full rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
-                    >
-                        トップへ戻る
-                    </button>
+                    {onExit && (
+                        <button
+                            type="button"
+                            onClick={onExit}
+                            className="w-full rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
+                        >
+                            トップへ戻る
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

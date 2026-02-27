@@ -10,7 +10,7 @@
 パッケージ依存関係（`→` は依存方向）:
 - apps/web → ui, design-system, app-controller, engine-wasm
 - apps/desktop → ui, design-system, app-controller, engine-tauri
-- ui → app-core, app-controller, design-system, engine-client
+- ui → app-core, app-controller, design-system, engine-client, match-client
 - app-controller → app-core, engine-client
 - app-core → (依存なし)
 - engine-wasm → engine-client, rust-core
@@ -38,6 +38,8 @@
 
 ## 実装方針メモ
 - Web と Desktop は極力足並みを揃え、同じ UI/ロジックを共有する。独自実装の分岐は最小限にする。
+- React Compiler（`babel-plugin-react-compiler`）が有効なため、`useMemo`/`useCallback`/`React.memo` の手動最適化は不要。
+- エフェクト内のスタールクロージャ問題は `useEffectEvent`（React 19.2 stable）で解決する。
 
 ## UI-Specific Notes
 - Desktop (Tauri) UI rules: see `apps/desktop/AGENTS.md` (StrictMode impact, engine client handling).

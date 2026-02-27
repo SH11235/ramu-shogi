@@ -1,6 +1,5 @@
 import type { LastMove, PieceType, Player, PositionState, Square } from "@shogi/app-core";
 import type { ReactElement, RefObject } from "react";
-import { memo } from "react";
 import type { ShogiBoardCell, ShogiBoardPiece } from "../../shogi-board";
 import { ShogiBoard } from "../../shogi-board";
 import { useMobileCellSize } from "../hooks/useMobileCellSize";
@@ -79,10 +78,9 @@ interface MobileBoardSectionProps {
 
 /**
  * モバイル用盤面セクション
- * React.memoでラップし、対局開始時の再レンダリングを防止
  * useMobileCellSize()を内部で呼び、CSS変数を設定
  */
-export const MobileBoardSection = memo(function MobileBoardSection({
+export function MobileBoardSection({
     grid,
     flipBoard,
     lastMove,
@@ -255,4 +253,4 @@ export const MobileBoardSection = memo(function MobileBoardSection({
             </div>
         </div>
     );
-});
+}

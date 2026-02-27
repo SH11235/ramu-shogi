@@ -5,7 +5,7 @@ import {
     type NnueMeta,
     type NnueStorageCapabilities,
 } from "@shogi/app-core";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { useNnueContextOptional } from "../providers/NnueContext";
 
 interface UseNnueStorageReturn {
@@ -66,258 +66,220 @@ export function useNnueStorage(): UseNnueStorageReturn {
     // エラーはローカルエラーを優先、なければ Context のエラー
     const error = localError ?? contextError;
 
-    const refreshList = useCallback(async () => {
+    const refreshList = async () => {
         if (contextRefreshList) {
             await contextRefreshList();
         }
-    }, [contextRefreshList]);
+    };
 
-    const importFromFile = useCallback(
-        async (file: File, fvScale: number, displayName?: string): Promise<NnueMeta> => {
-            if (!storage) {
-                throw new NnueError(
-                    "NNUE_STORAGE_FAILED",
-                    "NnueProvider が設定されていません",
-                    null,
-                );
-            }
-            if (!storage.capabilities.supportsFileImport) {
-                throw new NnueError(
-                    "NNUE_STORAGE_FAILED",
-                    "このプラットフォームでは File からのインポートがサポートされていません",
-                    null,
-                );
-            }
-            setIsOperating(true);
-            setLocalError(null);
-            try {
-                const arrayBuffer = await file.arrayBuffer();
-                const data = new Uint8Array(arrayBuffer);
+    const importFromFile = async (
+        file: File,
+        fvScale: number,
+        displayName?: string,
+    ): Promise<NnueMeta> => {
+        if (!storage) {
+            throw new NnueError("NNUE_STORAGE_FAILED", "NnueProvider が設定されていません", null);
+        }
+        if (!storage.capabilities.supportsFileImport) {
+            throw new NnueError(
+                "NNUE_STORAGE_FAILED",
+                "このプラットフォームでは File からのインポートがサポートされていません",
+                null,
+            );
+        }
+        setIsOperating(true);
+        setLocalError(null);
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const data = new Uint8Array(arrayBuffer);
 
-                let format: NnueMeta["format"] | undefined;
-                if (validateNnueHeader) {
-                    try {
-                        const header = data.subarray(
-                            0,
-                            Math.min(NNUE_HEADER_SIZE, data.byteLength),
+            let format: NnueMeta["format"] | undefined;
+            if (validateNnueHeader) {
+                try {
+                    const header = data.subarray(0, Math.min(NNUE_HEADER_SIZE, data.byteLength));
+                    const result = await validateNnueHeader(header, data.byteLength);
+                    if (!result.isCompatible) {
+                        throw new NnueError(
+                            "NNUE_INCOMPATIBLE",
+                            "このエンジンは指定された NNUE 形式に対応していません",
                         );
-                        const result = await validateNnueHeader(header, data.byteLength);
-                        if (!result.isCompatible) {
-                            throw new NnueError(
-                                "NNUE_INCOMPATIBLE",
-                                "このエンジンは指定された NNUE 形式に対応していません",
-                            );
-                        }
-                        format = result.format;
-                    } catch (e) {
-                        const err =
-                            e instanceof NnueError
-                                ? e
-                                : new NnueError(
-                                      "NNUE_INVALID_FORMAT",
-                                      "このファイルは NNUE 形式ではありません",
-                                      e,
-                                  );
-                        throw err;
                     }
+                    format = result.format;
+                } catch (e) {
+                    const err =
+                        e instanceof NnueError
+                            ? e
+                            : new NnueError(
+                                  "NNUE_INVALID_FORMAT",
+                                  "このファイルは NNUE 形式ではありません",
+                                  e,
+                              );
+                    throw err;
                 }
+            }
 
-                // SHA-256 ハッシュを計算
-                const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-                const hashArray = Array.from(new Uint8Array(hashBuffer));
-                const hash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+            // SHA-256 ハッシュを計算
+            const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 
-                // 重複チェック
-                const existing = await storage.listByContentHash(hash);
-                if (existing.length > 0) {
-                    const existingMeta = existing[0];
-                    // format や fvScale が更新される場合は更新
-                    const updates: Partial<NnueMeta> = {};
-                    if (format && !existingMeta.format) {
-                        updates.format = format;
-                    }
-                    if (existingMeta.fvScale !== fvScale) {
-                        updates.fvScale = fvScale;
-                    }
-                    if (Object.keys(updates).length > 0) {
-                        console.info(
-                            `既存の評価関数「${existingMeta.displayName}」の情報を更新しました`,
-                            updates,
-                        );
-                        await storage.updateMeta(existingMeta.id, updates);
-                        await refreshList();
-                        return { ...existingMeta, ...updates };
-                    }
-                    // 既存のものを返す（重複保存しない）
+            // 重複チェック
+            const existing = await storage.listByContentHash(hash);
+            if (existing.length > 0) {
+                const existingMeta = existing[0];
+                // format や fvScale が更新される場合は更新
+                const updates: Partial<NnueMeta> = {};
+                if (format && !existingMeta.format) {
+                    updates.format = format;
+                }
+                if (existingMeta.fvScale !== fvScale) {
+                    updates.fvScale = fvScale;
+                }
+                if (Object.keys(updates).length > 0) {
                     console.info(
-                        `この評価関数は既にインポート済みです:「${existingMeta.displayName}」`,
+                        `既存の評価関数「${existingMeta.displayName}」の情報を更新しました`,
+                        updates,
                     );
-                    return existingMeta;
+                    await storage.updateMeta(existingMeta.id, updates);
+                    await refreshList();
+                    return { ...existingMeta, ...updates };
                 }
-
-                // ID を生成
-                const id = generateNnueId();
-
-                // メタデータを作成
-                const meta: NnueMeta = {
-                    id,
-                    displayName: displayName ?? file.name.replace(/\.(nnue|bin)$/i, ""),
-                    originalFileName: file.name,
-                    size: data.byteLength,
-                    contentHashSha256: hash,
-                    source: "user-uploaded",
-                    createdAt: Date.now(),
-                    verified: false,
-                    format,
-                    fvScale,
-                };
-
-                // 保存
-                await storage.save(id, data, meta);
-                await refreshList();
-                return meta;
-            } catch (e) {
-                const err =
-                    e instanceof NnueError
-                        ? e
-                        : new NnueError(
-                              "NNUE_STORAGE_FAILED",
-                              "NNUE のインポートに失敗しました",
-                              e,
-                          );
-                setLocalError(err);
-                throw err;
-            } finally {
-                setIsOperating(false);
-            }
-        },
-        [storage, refreshList, validateNnueHeader],
-    );
-
-    const importFromPath = useCallback(
-        async (srcPath: string, fvScale: number, displayName?: string): Promise<NnueMeta> => {
-            if (!storage) {
-                throw new NnueError(
-                    "NNUE_STORAGE_FAILED",
-                    "NnueProvider が設定されていません",
-                    null,
+                // 既存のものを返す（重複保存しない）
+                console.info(
+                    `この評価関数は既にインポート済みです:「${existingMeta.displayName}」`,
                 );
+                return existingMeta;
             }
-            if (!storage.capabilities.supportsPathImport || !storage.importFromPath) {
-                throw new NnueError(
-                    "NNUE_STORAGE_FAILED",
-                    "このプラットフォームではパスからのインポートがサポートされていません",
-                    null,
-                );
-            }
-            setIsOperating(true);
-            setLocalError(null);
-            try {
-                const meta = await storage.importFromPath(srcPath, displayName);
-                // fvScale を設定
-                await storage.updateMeta(meta.id, { fvScale });
-                await refreshList();
-                return { ...meta, fvScale };
-            } catch (e) {
-                const err =
-                    e instanceof NnueError
-                        ? e
-                        : new NnueError(
-                              "NNUE_STORAGE_FAILED",
-                              "NNUE のインポートに失敗しました",
-                              e,
-                          );
-                setLocalError(err);
-                throw err;
-            } finally {
-                setIsOperating(false);
-            }
-        },
-        [storage, refreshList],
-    );
 
-    const deleteNnue = useCallback(
-        async (id: string) => {
-            if (!storage) {
-                throw new NnueError(
-                    "NNUE_STORAGE_FAILED",
-                    "NnueProvider が設定されていません",
-                    null,
-                );
-            }
-            setIsOperating(true);
-            setLocalError(null);
-            try {
-                await storage.delete(id);
-                await refreshList();
-            } catch (e) {
-                const err =
-                    e instanceof NnueError
-                        ? e
-                        : new NnueError("NNUE_DELETE_FAILED", "NNUE の削除に失敗しました", e);
-                setLocalError(err);
-                throw err;
-            } finally {
-                setIsOperating(false);
-            }
-        },
-        [storage, refreshList],
-    );
+            // ID を生成
+            const id = generateNnueId();
 
-    const updateDisplayName = useCallback(
-        async (id: string, displayName: string) => {
-            if (!storage) {
-                throw new NnueError(
-                    "NNUE_STORAGE_FAILED",
-                    "NnueProvider が設定されていません",
-                    null,
-                );
-            }
-            setLocalError(null);
-            try {
-                await storage.updateMeta(id, { displayName });
-                await refreshList();
-            } catch (e) {
-                const err =
-                    e instanceof NnueError
-                        ? e
-                        : new NnueError("NNUE_STORAGE_FAILED", "表示名の更新に失敗しました", e);
-                setLocalError(err);
-                throw err;
-            }
-        },
-        [storage, refreshList],
-    );
+            // メタデータを作成
+            const meta: NnueMeta = {
+                id,
+                displayName: displayName ?? file.name.replace(/\.(nnue|bin)$/i, ""),
+                originalFileName: file.name,
+                size: data.byteLength,
+                contentHashSha256: hash,
+                source: "user-uploaded",
+                createdAt: Date.now(),
+                verified: false,
+                format,
+                fvScale,
+            };
 
-    const updateFvScale = useCallback(
-        async (id: string, fvScale: number | undefined) => {
-            if (!storage) {
-                throw new NnueError(
-                    "NNUE_STORAGE_FAILED",
-                    "NnueProvider が設定されていません",
-                    null,
-                );
-            }
-            setLocalError(null);
-            try {
-                await storage.updateMeta(id, { fvScale });
-                await refreshList();
-            } catch (e) {
-                const err =
-                    e instanceof NnueError
-                        ? e
-                        : new NnueError("NNUE_STORAGE_FAILED", "FV_SCALE の更新に失敗しました", e);
-                setLocalError(err);
-                throw err;
-            }
-        },
-        [storage, refreshList],
-    );
+            // 保存
+            await storage.save(id, data, meta);
+            await refreshList();
+            return meta;
+        } catch (e) {
+            const err =
+                e instanceof NnueError
+                    ? e
+                    : new NnueError("NNUE_STORAGE_FAILED", "NNUE のインポートに失敗しました", e);
+            setLocalError(err);
+            throw err;
+        } finally {
+            setIsOperating(false);
+        }
+    };
 
-    const clearError = useCallback(() => {
+    const importFromPath = async (
+        srcPath: string,
+        fvScale: number,
+        displayName?: string,
+    ): Promise<NnueMeta> => {
+        if (!storage) {
+            throw new NnueError("NNUE_STORAGE_FAILED", "NnueProvider が設定されていません", null);
+        }
+        if (!storage.capabilities.supportsPathImport || !storage.importFromPath) {
+            throw new NnueError(
+                "NNUE_STORAGE_FAILED",
+                "このプラットフォームではパスからのインポートがサポートされていません",
+                null,
+            );
+        }
+        setIsOperating(true);
+        setLocalError(null);
+        try {
+            const meta = await storage.importFromPath(srcPath, displayName);
+            // fvScale を設定
+            await storage.updateMeta(meta.id, { fvScale });
+            await refreshList();
+            return { ...meta, fvScale };
+        } catch (e) {
+            const err =
+                e instanceof NnueError
+                    ? e
+                    : new NnueError("NNUE_STORAGE_FAILED", "NNUE のインポートに失敗しました", e);
+            setLocalError(err);
+            throw err;
+        } finally {
+            setIsOperating(false);
+        }
+    };
+
+    const deleteNnue = async (id: string) => {
+        if (!storage) {
+            throw new NnueError("NNUE_STORAGE_FAILED", "NnueProvider が設定されていません", null);
+        }
+        setIsOperating(true);
+        setLocalError(null);
+        try {
+            await storage.delete(id);
+            await refreshList();
+        } catch (e) {
+            const err =
+                e instanceof NnueError
+                    ? e
+                    : new NnueError("NNUE_DELETE_FAILED", "NNUE の削除に失敗しました", e);
+            setLocalError(err);
+            throw err;
+        } finally {
+            setIsOperating(false);
+        }
+    };
+
+    const updateDisplayName = async (id: string, displayName: string) => {
+        if (!storage) {
+            throw new NnueError("NNUE_STORAGE_FAILED", "NnueProvider が設定されていません", null);
+        }
+        setLocalError(null);
+        try {
+            await storage.updateMeta(id, { displayName });
+            await refreshList();
+        } catch (e) {
+            const err =
+                e instanceof NnueError
+                    ? e
+                    : new NnueError("NNUE_STORAGE_FAILED", "表示名の更新に失敗しました", e);
+            setLocalError(err);
+            throw err;
+        }
+    };
+
+    const updateFvScale = async (id: string, fvScale: number | undefined) => {
+        if (!storage) {
+            throw new NnueError("NNUE_STORAGE_FAILED", "NnueProvider が設定されていません", null);
+        }
+        setLocalError(null);
+        try {
+            await storage.updateMeta(id, { fvScale });
+            await refreshList();
+        } catch (e) {
+            const err =
+                e instanceof NnueError
+                    ? e
+                    : new NnueError("NNUE_STORAGE_FAILED", "FV_SCALE の更新に失敗しました", e);
+            setLocalError(err);
+            throw err;
+        }
+    };
+
+    const clearError = () => {
         setLocalError(null);
         contextClearError?.();
-    }, [contextClearError]);
+    };
 
     return {
         nnueList,

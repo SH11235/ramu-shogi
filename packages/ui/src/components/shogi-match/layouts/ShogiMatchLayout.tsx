@@ -256,7 +256,6 @@ export function ShogiMatchLayout({
             {/* PVプレビューダイアログ */}
             {pvPreview && (
                 <PvPreviewDialog
-                    open={pvPreview.open}
                     onClose={() => setPvPreview(null)}
                     pv={pvPreview.pv}
                     startPosition={pvPreview.startPosition}

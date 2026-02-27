@@ -5,7 +5,7 @@
  * 対局中は無効化される
  */
 
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useEffectEvent } from "react";
 
 interface UseKifuKeyboardNavigationOptions {
     /** 1手進む */
@@ -43,16 +43,9 @@ export function useKifuKeyboardNavigation({
     containerRef,
     enableWheelNavigation = true,
 }: UseKifuKeyboardNavigationOptions): void {
-    // コールバックをrefで保持して最新の値を参照
-    const callbacksRef = useRef({ onForward, onBack, onToStart, onToEnd });
-    callbacksRef.current = { onForward, onBack, onToStart, onToEnd };
-
-    const disabledRef = useRef(disabled);
-    disabledRef.current = disabled;
-
     // キーボードイベントハンドラ
-    const handleKeyDown = useCallback((event: KeyboardEvent) => {
-        if (disabledRef.current) return;
+    const handleKeyDown = useEffectEvent((event: KeyboardEvent) => {
+        if (disabled) return;
 
         // 入力フィールドにフォーカスがある場合は無視
         const target = event.target as HTMLElement;
@@ -68,27 +61,27 @@ export function useKifuKeyboardNavigation({
             case "ArrowLeft":
             case "ArrowUp":
                 event.preventDefault();
-                callbacksRef.current.onBack();
+                onBack();
                 break;
             case "ArrowRight":
             case "ArrowDown":
                 event.preventDefault();
-                callbacksRef.current.onForward();
+                onForward();
                 break;
             case "Home":
                 event.preventDefault();
-                callbacksRef.current.onToStart();
+                onToStart();
                 break;
             case "End":
                 event.preventDefault();
-                callbacksRef.current.onToEnd();
+                onToEnd();
                 break;
         }
-    }, []);
+    });
 
     // ホイールイベントハンドラ
-    const handleWheel = useCallback((event: WheelEvent) => {
-        if (disabledRef.current) return;
+    const handleWheel = useEffectEvent((event: WheelEvent) => {
+        if (disabled) return;
 
         // 縦スクロールのみ処理
         if (Math.abs(event.deltaY) < Math.abs(event.deltaX)) return;
@@ -97,12 +90,12 @@ export function useKifuKeyboardNavigation({
 
         if (event.deltaY > 0) {
             // 下にスクロール = 1手進む
-            callbacksRef.current.onForward();
+            onForward();
         } else if (event.deltaY < 0) {
             // 上にスクロール = 1手戻る
-            callbacksRef.current.onBack();
+            onBack();
         }
-    }, []);
+    });
 
     // キーボードイベントの登録（document全体）
     useEffect(() => {
@@ -110,7 +103,7 @@ export function useKifuKeyboardNavigation({
         return () => {
             document.removeEventListener("keydown", handleKeyDown);
         };
-    }, [handleKeyDown]);
+    }, []);
 
     // ホイールイベントの登録（コンテナ要素）
     // passive: false を指定してpreventDefaultを有効化
@@ -124,5 +117,5 @@ export function useKifuKeyboardNavigation({
         return () => {
             container.removeEventListener("wheel", handleWheel);
         };
-    }, [containerRef, handleWheel, enableWheelNavigation]);
+    }, [containerRef, enableWheelNavigation]);
 }
