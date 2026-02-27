@@ -1775,6 +1775,7 @@ export function KifuPanel({
                                             )}
                                             <div
                                                 role="option"
+                                                aria-selected={isCurrent}
                                                 className={`
                                                 grid grid-cols-[32px_1fr_auto_auto] gap-1 items-center px-1 py-0.5 text-[13px] font-mono rounded
                                                 cursor-pointer hover:bg-accent/50
@@ -2028,6 +2029,7 @@ export function KifuPanel({
                                                     : undefined
                                             }
                                             role="option"
+                                            aria-selected={isCurrent}
                                             className={`${rowClassName} w-full text-left cursor-pointer hover:bg-accent/50`}
                                             onClick={handleRowClick}
                                             onKeyDown={(e) => {

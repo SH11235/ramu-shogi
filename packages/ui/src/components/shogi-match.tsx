@@ -84,6 +84,8 @@ import { boardToGrid, clonePositionState } from "./shogi-match/utils/positionUti
 import { isSameTimeSettings, normalizeTimeSettings } from "./shogi-match/utils/timeSettings";
 import { TooltipProvider } from "./tooltip";
 
+const EMPTY_ANALYSIS_MARKERS: Array<{ seat: "b" | "w"; ply: number }> = [];
+
 interface ShogiMatchProps {
     engineOptions: EngineOption[];
     defaultSides?: { sente: SideSetting; gote: SideSetting };
@@ -131,7 +133,7 @@ export function ShogiMatch({
     defaultNnuePresetKey,
     aiIconUrl,
     allowAnalysisDuringMatch,
-    analysisMarkers = [],
+    analysisMarkers = EMPTY_ANALYSIS_MARKERS,
     initialReview,
     onPositionSnapshot,
 }: ShogiMatchProps): ReactElement {
