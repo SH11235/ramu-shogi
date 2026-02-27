@@ -664,7 +664,7 @@ function PvCandidateItem({
                 <div className="flex flex-wrap gap-1 text-[12px] font-mono mb-2">
                     {pvDisplay.map((m, index) => (
                         <span
-                            key={`${index}-${m.usiMove}`}
+                            key={m.usiMove}
                             className={
                                 m.turn === "sente" ? "text-wafuu-shu" : "text-[hsl(210_70%_45%)]"
                             }

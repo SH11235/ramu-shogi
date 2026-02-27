@@ -14,7 +14,7 @@ import type {
     PresetConfig,
 } from "@shogi/app-core";
 import type { ReactElement } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 import {
     comparePvWithMainLine,
     findExistingBranchForPv,
@@ -28,6 +28,7 @@ import {
     toNnueSelectionValue,
     toOptionValue,
 } from "../utils/nnueSelectionUtils";
+import { useDraggableWindow } from "../hooks/useDraggableWindow";
 
 interface MoveDetailWindowProps {
     /** 選択された手 */
@@ -62,29 +63,6 @@ interface MoveDetailWindowProps {
     /** 現在位置がメインライン上にあるか */
     isOnMainLine?: boolean;
 }
-
-interface Position {
-    x: number;
-    y: number;
-}
-
-interface Size {
-    width: number;
-    height: number;
-}
-
-/** ドラッグモード: none=なし, move=移動, resize-XX=リサイズ（隅・辺） */
-type DragMode =
-    | "none"
-    | "move"
-    | "resize-n"
-    | "resize-s"
-    | "resize-e"
-    | "resize-w"
-    | "resize-ne"
-    | "resize-nw"
-    | "resize-se"
-    | "resize-sw";
 
 const DEFAULT_WIDTH = 320;
 const DEFAULT_HEIGHT = 400;
@@ -184,7 +162,7 @@ function PvCandidateItem({
                 <div className="flex flex-wrap gap-1 text-[12px] font-mono mb-2">
                     {pvDisplay.map((m, index) => (
                         <span
-                            key={`${index}-${m.usiMove}`}
+                            key={m.usiMove}
                             className={
                                 m.turn === "sente" ? "text-wafuu-shu" : "text-[hsl(210_70%_45%)]"
                             }
