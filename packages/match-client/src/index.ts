@@ -1,5 +1,12 @@
 export { createRoomClient } from "./client";
-export { getStoredResumeToken, removeStoredResumeToken, storeResumeToken } from "./reconnect";
+export {
+    getStoredResumeToken,
+    getStoredSeat,
+    removeStoredResumeToken,
+    removeStoredSeat,
+    storeResumeToken,
+    storeSeat,
+} from "./reconnect";
 export type {
     AiSupportPlayerSettings,
     AiSupportSettings,

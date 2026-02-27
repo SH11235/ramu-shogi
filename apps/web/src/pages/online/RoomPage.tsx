@@ -2,7 +2,12 @@
 
 import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type { RoomClient, Seat, ServerMessage, SnapshotPayload } from "@shogi/match-client";
-import { createRoomClient } from "@shogi/match-client";
+import {
+    createRoomClient,
+    getStoredResumeToken,
+    getStoredSeat,
+    storeSeat,
+} from "@shogi/match-client";
 import type { EngineOption } from "@shogi/ui";
 import { OnlineGameView, PositionPresetSelector, ShogiMatch } from "@shogi/ui";
 import { getRouteApi, useNavigate, useParams } from "@tanstack/react-router";
@@ -190,12 +195,20 @@ export default function RoomPage(): ReactElement {
         const unsub = newClient.subscribe((msg: ServerMessage) => {
             switch (msg.t) {
                 case "joined": {
+                    storeSeat(roomId, seatToJoin);
                     dispatchRoom({ type: "joined" });
                     dispatchJoin({ type: "joined" });
                     break;
                 }
                 case "snapshot": {
                     dispatchRoom({ type: "snapshot_received", snapshot: msg.payload });
+                    // resume 後に対局中のスナップショットが届いた場合は直接対局画面へ
+                    if (msg.payload.status !== "waiting") {
+                        unsub();
+                        dispatchRoom({ type: "joined" });
+                        dispatchJoin({ type: "joined" });
+                        dispatchRoom({ type: "game_start" });
+                    }
                     break;
                 }
                 case "event": {
@@ -256,6 +269,60 @@ export default function RoomPage(): ReactElement {
             clientRef.current?.disconnect();
         };
     }, []);
+
+    // ページロード時に resumeToken + seat があれば自動的に再接続する
+    useEffect(() => {
+        const token = getStoredResumeToken(roomId);
+        const seat = getStoredSeat(roomId);
+        if (!token || !seat) return;
+
+        dispatchJoin({ type: "start_join", seat });
+
+        const wsUrl = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/rooms/${roomId}/ws`;
+        const newClient = createRoomClient({ wsUrl, autoReconnect: true, onReconnect: () => {} });
+
+        clientRef.current = newClient;
+        dispatchRoom({ type: "client_set", client: newClient });
+
+        const unsub = newClient.subscribe((msg: ServerMessage) => {
+            switch (msg.t) {
+                case "joined": {
+                    // resume 後にサーバーが joined を返した場合
+                    storeSeat(roomId, seat);
+                    dispatchRoom({ type: "joined" });
+                    dispatchJoin({ type: "joined" });
+                    break;
+                }
+                case "snapshot": {
+                    dispatchRoom({ type: "snapshot_received", snapshot: msg.payload });
+                    dispatchRoom({ type: "joined" });
+                    dispatchJoin({ type: "joined" });
+                    if (msg.payload.status !== "waiting") {
+                        unsub();
+                        dispatchRoom({ type: "game_start" });
+                    }
+                    break;
+                }
+                case "error": {
+                    // resumeToken 失効等
+                    dispatchJoin({
+                        type: "error",
+                        message: "セッションが切れました。再度参加してください。",
+                    });
+                    newClient.disconnect();
+                    clientRef.current = null;
+                    dispatchRoom({ type: "client_cleared" });
+                    break;
+                }
+                default:
+                    break;
+            }
+        });
+
+        return () => {
+            unsub();
+        };
+    }, [roomId]);
 
     // ─── ヘルパー ──────────────────────────────────────────────────────────────
 

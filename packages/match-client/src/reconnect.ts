@@ -1,4 +1,6 @@
-// 自動再接続ロジック（指数バックオフ）と resumeToken の sessionStorage 管理
+// 自動再接続ロジック（指数バックオフ）と resumeToken/seat の sessionStorage 管理
+
+import type { Seat } from "./types";
 
 /** バックオフ時間（ms）: 1s → 2s → 4s → 8s → 16s */
 const BACKOFF_DELAYS_MS = [1000, 2000, 4000, 8000, 16000] as const;
@@ -85,6 +87,41 @@ export function storeResumeToken(roomId: string, token: string): void {
 export function removeStoredResumeToken(roomId: string): void {
     try {
         sessionStorage.removeItem(resumeTokenKey(roomId));
+    } catch {
+        // 無視
+    }
+}
+
+// ─── seat の sessionStorage 管理 ──────────────────────────────────────────────
+
+function seatKey(roomId: string): string {
+    return `ramu_seat_${roomId}`;
+}
+
+/** seat を sessionStorage から取得する */
+export function getStoredSeat(roomId: string): Seat | null {
+    try {
+        const s = sessionStorage.getItem(seatKey(roomId));
+        if (s === "b" || s === "w" || s === "s") return s;
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+/** seat を sessionStorage に保存する */
+export function storeSeat(roomId: string, seat: Seat): void {
+    try {
+        sessionStorage.setItem(seatKey(roomId), seat);
+    } catch {
+        // 保存できない場合は無視
+    }
+}
+
+/** seat を sessionStorage から削除する */
+export function removeStoredSeat(roomId: string): void {
+    try {
+        sessionStorage.removeItem(seatKey(roomId));
     } catch {
         // 無視
     }

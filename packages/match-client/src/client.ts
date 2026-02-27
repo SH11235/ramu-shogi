@@ -79,8 +79,8 @@ export function createRoomClient(
         ws = wsFactory(options.wsUrl);
 
         ws.addEventListener("open", () => {
-            // 再接続の場合は resume を試みる
-            if (status === "reconnecting" && roomId) {
+            // 初回・再接続問わず resumeToken があれば resume を試みる
+            if (roomId) {
                 const token = getStoredResumeToken(roomId);
                 if (token) {
                     status = "connected";
