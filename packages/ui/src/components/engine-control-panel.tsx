@@ -218,10 +218,11 @@ export function EngineControlPanel({
         setOptionValues(optionDefaults);
     }, [optionDefaults]);
 
-    // biome-ignore lint/correctness/useExhaustiveDependencies: React Compiler が updateThreadInfo をメモ化するため deps に追加不要。engine 変更時に再実行する意図
     useEffect(() => {
         // Update thread info on mount and when engine changes
-        updateThreadInfo();
+        if (engine.getThreadInfo) {
+            setThreadInfo(engine.getThreadInfo());
+        }
     }, [engine]);
 
     useEffect(() => {

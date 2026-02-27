@@ -5,7 +5,7 @@
  * PointerEvents を使用し、タッチ・マウス両対応
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { isPromotable } from "../utils/constants";
 import { dropTargetEquals, getDropTarget } from "./hitDetection";
 import type {
@@ -192,7 +192,7 @@ export function usePieceDnd(options: UsePieceDndOptions): PieceDndController {
     };
 
     // PointerMove ハンドラ
-    const handlePointerMove = (e: PointerEvent) => {
+    const handlePointerMove = useEffectEvent((e: PointerEvent) => {
         const rt = runtimeRef.current;
         if (!rt.active || rt.pointerId !== e.pointerId) return;
 
@@ -221,10 +221,10 @@ export function usePieceDnd(options: UsePieceDndOptions): PieceDndController {
                 }
             });
         }
-    };
+    });
 
     // PointerUp ハンドラ（ドロップ）
-    const handlePointerUp = (e: PointerEvent) => {
+    const handlePointerUp = useEffectEvent((e: PointerEvent) => {
         const rt = runtimeRef.current;
         if (!rt.active || rt.pointerId !== e.pointerId) return;
 
@@ -237,10 +237,10 @@ export function usePieceDnd(options: UsePieceDndOptions): PieceDndController {
         if (origin && payload && target && onDrop) {
             onDrop({ origin, payload, target });
         }
-    };
+    });
 
     // PointerCancel / LostPointerCapture ハンドラ
-    const handlePointerCancel = (e: PointerEvent) => {
+    const handlePointerCancel = useEffectEvent((e: PointerEvent) => {
         const rt = runtimeRef.current;
         if (rt.pointerId !== e.pointerId) return;
 
@@ -250,10 +250,10 @@ export function usePieceDnd(options: UsePieceDndOptions): PieceDndController {
         if (origin && onCancel) {
             onCancel(origin, "pointercancel");
         }
-    };
+    });
 
     // VisibilityChange ハンドラ
-    const handleVisibilityChange = () => {
+    const handleVisibilityChange = useEffectEvent(() => {
         if (document.visibilityState === "hidden") {
             const rt = runtimeRef.current;
             if (rt.active) {
@@ -264,10 +264,10 @@ export function usePieceDnd(options: UsePieceDndOptions): PieceDndController {
                 }
             }
         }
-    };
+    });
 
     // Resize ハンドラ（ドラッグ中はキャンセル）
-    const handleResize = () => {
+    const handleResize = useEffectEvent(() => {
         const rt = runtimeRef.current;
         if (rt.active) {
             const origin = rt.origin;
@@ -276,10 +276,9 @@ export function usePieceDnd(options: UsePieceDndOptions): PieceDndController {
                 onCancel(origin, "resize");
             }
         }
-    };
+    });
 
     // イベントリスナー登録
-    // biome-ignore lint/correctness/useExhaustiveDependencies: イベントハンドラは runtimeRef 経由でアクセスするため React Compiler のメモ化により安定している
     useEffect(() => {
         if (disabled) return;
 
@@ -300,11 +299,11 @@ export function usePieceDnd(options: UsePieceDndOptions): PieceDndController {
         };
     }, [disabled]);
 
+    const cleanupEvent = useEffectEvent(cleanup);
     // アンマウント時のクリーンアップ
-    // biome-ignore lint/correctness/useExhaustiveDependencies: アンマウント専用クリーンアップ。cleanup は runtimeRef 経由のため deps 不要
     useEffect(() => {
         return () => {
-            cleanup();
+            cleanupEvent();
         };
     }, []);
 

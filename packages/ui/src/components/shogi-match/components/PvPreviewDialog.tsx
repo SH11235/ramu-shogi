@@ -7,7 +7,7 @@
 import type { BoardState, PositionState, Square } from "@shogi/app-core";
 import { applyMoveWithState, boardToMatrix } from "@shogi/app-core";
 import type { ReactElement } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../dialog";
 import type { ShogiBoardCell } from "../../shogi-board";
 import { ShogiBoard } from "../../shogi-board";
@@ -115,7 +115,7 @@ export function PvPreviewDialog({
     const grid = boardToGrid(currentPosition.board);
 
     // キーボード操作
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
         if (!open) return;
 
         if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
@@ -134,10 +134,9 @@ export function PvPreviewDialog({
             e.preventDefault();
             onClose();
         }
-    };
+    });
 
     // キーボードイベントをリッスン
-    // biome-ignore lint/correctness/useExhaustiveDependencies: handleKeyDown は React Compiler がメモ化するため deps に追加不要
     useEffect(() => {
         if (open) {
             window.addEventListener("keydown", handleKeyDown);

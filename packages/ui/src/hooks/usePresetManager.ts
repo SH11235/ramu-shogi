@@ -7,7 +7,7 @@ import {
     type PresetManager,
     type PresetWithStatus,
 } from "@shogi/app-core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useNnueContextOptional } from "../providers/NnueContext";
 
 interface UsePresetManagerReturn {
@@ -117,11 +117,11 @@ export function usePresetManager(options: UsePresetManagerOptions = {}): UsePres
         }
     };
 
+    const refreshEvent = useEffectEvent(refresh);
     // 初回自動取得
-    // biome-ignore lint/correctness/useExhaustiveDependencies: React Compiler が refresh をメモ化するため deps に追加不要。manager が deps に含まれるため意味的にも正しい
     useEffect(() => {
         if (autoFetch && manager) {
-            void refresh();
+            void refreshEvent();
         }
     }, [autoFetch, manager]);
 

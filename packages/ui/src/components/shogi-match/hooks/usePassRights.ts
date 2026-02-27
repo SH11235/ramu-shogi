@@ -1,5 +1,5 @@
 import type { PositionState } from "@shogi/app-core";
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import type { PassDisabledReason } from "../components/PassButton";
 import type { PassRightsSettings } from "../types";
 import type { LegalMoveCache } from "../utils/legalMoveCache";
@@ -92,11 +92,11 @@ export function usePassRights(deps: {
         return buildPassRightsOptionForLegalMoves(passRightsSettings, moves);
     };
 
+    const ensurePassRightsInitializedEvent = useEffectEvent(ensurePassRightsInitialized);
     // パス権が有効なら、不足時に初期化しておく
-    // biome-ignore lint/correctness/useExhaustiveDependencies: React Compiler が ensurePassRightsInitialized をメモ化するため deps に追加不要
     useEffect(() => {
         if (!passRightsSettings?.enabled) return;
-        ensurePassRightsInitialized();
+        ensurePassRightsInitializedEvent();
     }, [passRightsSettings?.enabled]);
 
     // パス権の有無

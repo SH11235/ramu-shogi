@@ -19,7 +19,7 @@ import {
     resolveWorkerCount,
 } from "@shogi/app-core";
 import type { ReactElement } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
     DEFAULT_BYOYOMI_MS,
     DEFAULT_MAX_LOGS,
@@ -509,10 +509,10 @@ export function ShogiMatch({
         legalCache.clear();
         passRights.setCanPassLegal(false);
     };
+    const clearLegalCacheEvent = useEffectEvent(clearLegalCache);
     // ナビゲーションで局面が変わったらキャッシュをクリア
-    // biome-ignore lint/correctness/useExhaustiveDependencies: React Compiler が clearLegalCache をメモ化するため deps に追加不要
     useEffect(() => {
-        clearLegalCache();
+        clearLegalCacheEvent();
     }, []);
     // パス権設定変更時にキャッシュもクリアするラッパー
     // （合法手にpassが含まれるかどうかが変わるため）
