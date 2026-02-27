@@ -136,18 +136,12 @@ export function PvPreviewDialog({
         }
     });
 
-    // キーボードイベントをリッスン
-    useEffect(() => {
-        if (open) {
-            window.addEventListener("keydown", handleKeyDown);
-            return () => window.removeEventListener("keydown", handleKeyDown);
-        }
-    }, [open]);
-
-    // ダイアログを開いたときにリセット
+    // ダイアログを開いたときにリセット＆キーボードイベントをリッスン
     useEffect(() => {
         if (open) {
             setPreviewIndex(0);
+            window.addEventListener("keydown", handleKeyDown);
+            return () => window.removeEventListener("keydown", handleKeyDown);
         }
     }, [open]);
 
