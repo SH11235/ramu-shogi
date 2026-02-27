@@ -22,7 +22,7 @@ export default defineConfig(({ command }) => ({
             "Cross-Origin-Opener-Policy": "same-origin",
             "Cross-Origin-Embedder-Policy": "require-corp",
         },
-        allowedHosts: ["desktop-p3io5k1-1.tail0ae59.ts.net"],
+        allowedHosts: process.env.VITE_ALLOWED_HOSTS?.split(",") ?? [],
     },
     worker: {
         // ES モジュール形式の Worker を使用する。
