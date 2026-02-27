@@ -61,6 +61,26 @@ interface UseEngineManagerProps {
 /** 解析リクエストパラメータ */
 type AnalysisRequest = Omit<ControllerAnalysisRequest, "engineId">;
 
+/**
+ * sides を正規化する純粋関数。
+ * engineId が未指定のエンジンサイドには defaultEngineId を補完する。
+ */
+export function resolveSides(
+    sides: { sente: SideSetting; gote: SideSetting },
+    defaultEngineId: string | undefined,
+): { sente: SideSetting; gote: SideSetting } {
+    return {
+        sente:
+            sides.sente.role === "engine"
+                ? { ...sides.sente, engineId: sides.sente.engineId ?? defaultEngineId }
+                : { role: "human" },
+        gote:
+            sides.gote.role === "engine"
+                ? { ...sides.gote, engineId: sides.gote.engineId ?? defaultEngineId }
+                : { role: "human" },
+    };
+}
+
 interface UseEngineManagerReturn {
     /** エンジンの準備状態 */
     engineReady: Record<Player, boolean>;
@@ -173,24 +193,16 @@ export function useEngineManager({
     }, [controller]);
 
     const defaultEngineId = engineOptions[0]?.id;
-    const resolvedSides = {
-        sente:
-            sides.sente.role === "engine"
-                ? { ...sides.sente, engineId: sides.sente.engineId ?? defaultEngineId }
-                : { role: "human" as const },
-        gote:
-            sides.gote.role === "engine"
-                ? { ...sides.gote, engineId: sides.gote.engineId ?? defaultEngineId }
-                : { role: "human" as const },
-    };
+    // getEngineForSide / resolveAnalysisEngineId で同期的に参照する用
+    const resolvedSides = resolveSides(sides, defaultEngineId);
 
     // NOTE: create a snapshot for syncContext
     const movesSnapshot = moves;
 
-    // biome-ignore lint/correctness/useExhaustiveDependencies: resolvedSides は sides/engineOptions から導出。React Compiler がメモ化するため deps 追加不要。sides/engineOptions の変化で再実行する意図
     useEffect(() => {
         controller.command.syncContext({
-            sides: resolvedSides,
+            // effect 内で sides/engineOptions から直接導出することで deps を明示
+            sides: resolveSides(sides, engineOptions[0]?.id),
             nnueSelections: {
                 sente: senteNnueSelection,
                 gote: goteNnueSelection,
