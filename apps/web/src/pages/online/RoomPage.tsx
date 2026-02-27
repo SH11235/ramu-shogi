@@ -167,7 +167,11 @@ export default function RoomPage(): ReactElement {
     // ─── WebSocket 接続 + join 送信 ────────────────────────────────────────────
 
     const handleJoin = (seatToJoin: "b" | "w" | "s") => {
-        if (!joinForm.name.trim() || joinForm.isJoining) return;
+        if (joinForm.isJoining) return;
+        if (!joinForm.name.trim()) {
+            dispatchJoin({ type: "error", message: "プレイヤー名を入力してください" });
+            return;
+        }
         dispatchJoin({ type: "start_join", seat: seatToJoin });
 
         const wsUrl = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/rooms/${roomId}/ws`;
@@ -438,14 +442,8 @@ export default function RoomPage(): ReactElement {
                             placeholder="プレイヤー名を入力してください"
                             maxLength={20}
                             disabled={joinForm.isJoining}
-                            autoFocus
                             className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
                         />
-                        {!joinForm.name.trim() && (
-                            <p className="text-xs text-muted-foreground">
-                                名前を入力すると参加できます
-                            </p>
-                        )}
                     </div>
 
                     {joinForm.error && <p className="text-sm text-destructive">{joinForm.error}</p>}
@@ -454,9 +452,7 @@ export default function RoomPage(): ReactElement {
                         <button
                             type="button"
                             onClick={() => handleJoin("b")}
-                            disabled={
-                                joinForm.isJoining || !joinForm.name.trim() || isSeatTaken("b")
-                            }
+                            disabled={joinForm.isJoining || isSeatTaken("b")}
                             className="w-full rounded-lg bg-wafuu-shu py-2.5 text-sm font-semibold text-wafuu-shu-fg shadow hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         >
                             {joinForm.isJoining && joinForm.seat === "b"
@@ -468,9 +464,7 @@ export default function RoomPage(): ReactElement {
                         <button
                             type="button"
                             onClick={() => handleJoin("w")}
-                            disabled={
-                                joinForm.isJoining || !joinForm.name.trim() || isSeatTaken("w")
-                            }
+                            disabled={joinForm.isJoining || isSeatTaken("w")}
                             className="w-full rounded-lg bg-wafuu-ai py-2.5 text-sm font-semibold text-wafuu-ai-fg shadow hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         >
                             {joinForm.isJoining && joinForm.seat === "w"
@@ -482,7 +476,7 @@ export default function RoomPage(): ReactElement {
                         <button
                             type="button"
                             onClick={() => handleJoin("s")}
-                            disabled={joinForm.isJoining || !joinForm.name.trim()}
+                            disabled={joinForm.isJoining}
                             className="w-full rounded-lg bg-secondary py-2.5 text-sm font-semibold text-secondary-foreground shadow-sm hover:bg-secondary/80 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         >
                             {joinForm.isJoining && joinForm.seat === "s"
