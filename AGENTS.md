@@ -38,6 +38,8 @@
 
 ## 実装方針メモ
 - Web と Desktop は極力足並みを揃え、同じ UI/ロジックを共有する。独自実装の分岐は最小限にする。
+- React Compiler（`babel-plugin-react-compiler`）が有効なため、`useMemo`/`useCallback`/`React.memo` の手動最適化は不要。
+- エフェクト内のスタールクロージャ問題は `useEffectEvent`（React 19.2 stable）で解決する。
 
 ## UI-Specific Notes
 - Desktop (Tauri) UI rules: see `apps/desktop/AGENTS.md` (StrictMode impact, engine client handling).
