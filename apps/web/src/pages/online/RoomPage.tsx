@@ -12,7 +12,7 @@ import type { EngineOption } from "@shogi/ui";
 import { OnlineGameView, PositionPresetSelector, ShogiMatch } from "@shogi/ui";
 import { getRouteApi, useNavigate, useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";
-import { useEffect, useReducer, useRef } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { useOnlineAnalysis } from "../../hooks/useOnlineAnalysis";
 
 const nnueManifestUrl: string = (() => {
@@ -160,6 +160,7 @@ export default function RoomPage(): ReactElement {
     const { snapshot, joined, localStartSfen, gamePhase, reviewData, client } = roomState;
 
     const clientRef = useRef<RoomClient | null>(null);
+    const [copied, setCopied] = useState(false);
 
     const aiSupport = roomInfo.settings.aiSupport;
     const analysis = useOnlineAnalysis(
@@ -319,6 +320,26 @@ export default function RoomPage(): ReactElement {
             }
         });
 
+        // resume メッセージ送信（open 後に接続確認してから送る）
+        let resumeAttempts = 0;
+        const sendResume = (): void => {
+            if (newClient.getStatus() === "connected") {
+                newClient.resume({ resumeToken: token, lastEventId: 0 });
+            } else if (resumeAttempts < 50) {
+                resumeAttempts++;
+                setTimeout(sendResume, 100);
+            } else {
+                dispatchJoin({
+                    type: "error",
+                    message: "接続タイムアウト。再度参加してください。",
+                });
+                newClient.disconnect();
+                clientRef.current = null;
+                dispatchRoom({ type: "client_cleared" });
+            }
+        };
+        setTimeout(sendResume, 50);
+
         return () => {
             unsub();
         };
@@ -340,6 +361,8 @@ export default function RoomPage(): ReactElement {
     async function handleCopyLink(): Promise<void> {
         try {
             await navigator.clipboard.writeText(inviteUrl);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
         } catch {
             // フォールバック: 選択状態にする
         }
@@ -425,9 +448,9 @@ export default function RoomPage(): ReactElement {
                     <button
                         type="button"
                         onClick={() => void handleCopyLink()}
-                        className="rounded-md bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground shadow-sm hover:bg-secondary/80"
+                        className="rounded-md bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground shadow-sm hover:bg-secondary/80 transition-colors"
                     >
-                        コピー
+                        {copied ? "コピーしました！" : "コピー"}
                     </button>
                 </div>
             </div>

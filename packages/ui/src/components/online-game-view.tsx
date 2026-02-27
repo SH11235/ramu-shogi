@@ -658,11 +658,15 @@ export function OnlineGameView({
 
     // ─── レンダリング ─────────────────────────────────────────────────────────
 
-    // 表示用盤面（巻き戻し中は履歴局面を使用）
-    const grid = displayPosition ? boardToGrid(displayPosition.board) : [];
-    const clockDisplay = useOnlineClock(clockState);
-
     const flipBoard = seat === "w";
+
+    // 表示用盤面（巻き戻し中は履歴局面を使用、後手視点は反転）
+    const grid = (() => {
+        if (!displayPosition) return [];
+        const g = boardToGrid(displayPosition.board);
+        return flipBoard ? [...g].reverse().map((row) => [...row].reverse()) : g;
+    })();
+    const clockDisplay = useOnlineClock(clockState);
 
     // ハイライト: 選択中マスの合法手先
     const legalTargets = new Set<string>();

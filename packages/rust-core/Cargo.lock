@@ -234,7 +234,7 @@ dependencies = [
 
 [[package]]
 name = "rshogi-core"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "getrandom",
