@@ -409,6 +409,16 @@ export function OnlineGameView({
     const handleNavStart = () => setNavIndex(0);
     const handleNavEnd = () => setNavIndex(null);
 
+    // ─── 指し手送信 ──────────────────────────────────────────────────────────
+
+    const sendMove = async (usi: string, _toSquare?: string): Promise<void> => {
+        if (!position) return;
+        // 移動後の SFEN を計算して送信
+        const nextPos = applyMoveWithState(position, usi).next;
+        const nextSfen = await getPositionService().boardToSfen(nextPos);
+        client.move({ eventId: latestEventIdRef.current, usi, sfen: nextSfen });
+    };
+
     // ─── 盤面クリック処理 ────────────────────────────────────────────────────
 
     function handleBoardSelect(squareId: string): void {
@@ -493,14 +503,6 @@ export function OnlineGameView({
         if (!isMyTurn || gameResult || isRewound) return;
         setSelectedHand(selectedHand === pieceType ? null : pieceType);
         setSelectedSquare(null);
-    }
-
-    async function sendMove(usi: string, _toSquare?: string): Promise<void> {
-        if (!position) return;
-        // 移動後の SFEN を計算して送信
-        const nextPos = applyMoveWithState(position, usi).next;
-        const nextSfen = await getPositionService().boardToSfen(nextPos);
-        client.move({ eventId: latestEventIdRef.current, usi, sfen: nextSfen });
     }
 
     // ─── 投了 ────────────────────────────────────────────────────────────────

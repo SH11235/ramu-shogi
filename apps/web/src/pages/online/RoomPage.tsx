@@ -81,6 +81,7 @@ export default function RoomPage(): ReactElement {
     } | null>(null);
 
     const clientRef = useRef<RoomClient | null>(null);
+    const [client, setClient] = useState<RoomClient | null>(null);
     const inviteUrl =
         typeof window !== "undefined" ? `${window.location.origin}/online/${roomId}` : "";
 
@@ -118,7 +119,7 @@ export default function RoomPage(): ReactElement {
 
         const wsUrl = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/rooms/${roomId}/ws`;
 
-        const client = createRoomClient({
+        const newClient = createRoomClient({
             wsUrl,
             autoReconnect: true,
             onReconnect: () => {
@@ -126,9 +127,10 @@ export default function RoomPage(): ReactElement {
             },
         });
 
-        clientRef.current = client;
+        clientRef.current = newClient;
+        setClient(newClient);
 
-        const unsub = client.subscribe((msg: ServerMessage) => {
+        const unsub = newClient.subscribe((msg: ServerMessage) => {
             switch (msg.t) {
                 case "joined": {
                     setJoined(true);
@@ -154,8 +156,9 @@ export default function RoomPage(): ReactElement {
                 case "error": {
                     setJoinError(msg.payload.message ?? "参加に失敗しました");
                     setIsJoining(false);
-                    client.disconnect();
+                    newClient.disconnect();
                     clientRef.current = null;
+                    setClient(null);
                     break;
                 }
                 default:
@@ -168,9 +171,9 @@ export default function RoomPage(): ReactElement {
         // open イベント後 send するため、少し遅延させる
         let joinAttempts = 0;
         const sendJoin = (): void => {
-            if (client.getStatus() === "connected") {
+            if (newClient.getStatus() === "connected") {
                 // seatToJoin をクロージャで直接参照し、setState の非同期更新に依存しない
-                client.join({ seat: seatToJoin, name: joinName.trim() });
+                newClient.join({ seat: seatToJoin, name: joinName.trim() });
             } else if (joinAttempts < 50) {
                 // 最大5秒（100ms × 50回）待機
                 joinAttempts = joinAttempts + 1;
@@ -178,8 +181,9 @@ export default function RoomPage(): ReactElement {
             } else {
                 setJoinError("接続タイムアウト。再度お試しください。");
                 setIsJoining(false);
-                client.disconnect();
+                newClient.disconnect();
                 clientRef.current = null;
+                setClient(null);
             }
         };
         setTimeout(sendJoin, 50);
@@ -238,10 +242,10 @@ export default function RoomPage(): ReactElement {
     }
 
     // 対局フェーズ: OnlineGameView にインプレース切り替え（WebSocket 維持）
-    if (gamePhase === "playing" && snapshot && clientRef.current) {
+    if (gamePhase === "playing" && snapshot && client) {
         return (
             <OnlineGameView
-                client={clientRef.current}
+                client={client}
                 snapshot={snapshot}
                 seat={joinSeat as Seat}
                 roomId={roomId}
