@@ -259,10 +259,12 @@ export function OnlineGameView({
     const isSpectator = seat === "s";
 
     const totalPly = Math.max(0, positionHistory.length - 1);
-    const isRewound = navIndex !== null;
-    const currentPly = isRewound ? navIndex : totalPly;
+    // 自分の手番になったら巻き戻しを解除してライブ追従（effect 不要、レンダー時に派生）
+    const effectiveNavIndex = isMyTurn ? null : navIndex;
+    const isRewound = effectiveNavIndex !== null;
+    const currentPly = isRewound ? effectiveNavIndex : totalPly;
     // 表示用局面: 巻き戻し中は履歴の局面、それ以外はライブ局面
-    const displayPosition = isRewound ? (positionHistory[navIndex] ?? null) : position;
+    const displayPosition = isRewound ? (positionHistory[effectiveNavIndex] ?? null) : position;
 
     // ─── 初期局面の読み込み ──────────────────────────────────────────────────
 
@@ -369,8 +371,8 @@ export function OnlineGameView({
 
     useEffect(() => {
         // 巻き戻し中は合法手を表示しない
-        if (isMyTurn && !gameResult && !isRewound) {
-            void (async () => {
+        void (async () => {
+            if (isMyTurn && !gameResult && !isRewound) {
                 try {
                     const moves = await getPositionService().getLegalMoves(
                         startSfenRef.current,
@@ -380,23 +382,11 @@ export function OnlineGameView({
                 } catch {
                     setLegalMoves([]);
                 }
-            })();
-        } else {
-            setLegalMoves([]);
-        }
+            } else {
+                setLegalMoves([]);
+            }
+        })();
     }, [isMyTurn, gameResult, isRewound]);
-
-    // ─── 手番切替時に最新局面へ自動移動 ─────────────────────────────────────
-
-    const prevIsMyTurnRef = useRef(isMyTurn);
-    useEffect(() => {
-        const wasMyTurn = prevIsMyTurnRef.current;
-        prevIsMyTurnRef.current = isMyTurn;
-        // 自分の手番になったら巻き戻しを解除して最新局面に戻す
-        if (isMyTurn && !wasMyTurn) {
-            setNavIndex(null);
-        }
-    }, [isMyTurn]);
 
     // ─── 棋譜ナビゲーションハンドラ ───────────────────────────────────────────
 

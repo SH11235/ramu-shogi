@@ -1,7 +1,7 @@
 import type { NnueFormat, NnueMeta, NnueStorage } from "@shogi/app-core";
 import { NnueError } from "@shogi/app-core";
 import type { ReactNode } from "react";
-import { createContext, useContext, useEffect, useEffectEvent, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
 interface NnueHeaderValidationResult {
     format?: NnueFormat;
@@ -43,6 +43,34 @@ interface NnueProviderProps {
     children: ReactNode;
 }
 
+type NnueStateSetters = {
+    setIsLoading: (v: boolean) => void;
+    setNnueList: (v: NnueMeta[]) => void;
+    setStorageUsage: (v: { used: number; quota?: number } | null) => void;
+    setError: (v: NnueError | null) => void;
+};
+
+async function fetchNnueList(storage: NnueStorage, setters: NnueStateSetters): Promise<void> {
+    const { setIsLoading, setNnueList, setStorageUsage, setError } = setters;
+    setIsLoading(true);
+    try {
+        const [list, usage] = await Promise.all([storage.listMeta(), storage.getUsage()]);
+        // ソート: 作成日時の新しい順
+        list.sort((a, b) => b.createdAt - a.createdAt);
+        setNnueList(list);
+        setStorageUsage(usage);
+        setError(null);
+    } catch (e) {
+        const err =
+            e instanceof NnueError
+                ? e
+                : new NnueError("NNUE_STORAGE_FAILED", "NNUE 一覧の取得に失敗しました", e);
+        setError(err);
+    } finally {
+        setIsLoading(false);
+    }
+}
+
 /**
  * NNUE ストレージを提供する Provider
  *
@@ -72,35 +100,17 @@ export function NnueProvider({
     const [error, setError] = useState<NnueError | null>(null);
     const [storageUsage, setStorageUsage] = useState<{ used: number; quota?: number } | null>(null);
 
-    const refreshList = async () => {
-        setIsLoading(true);
-        try {
-            const [list, usage] = await Promise.all([storage.listMeta(), storage.getUsage()]);
-            // ソート: 作成日時の新しい順
-            list.sort((a, b) => b.createdAt - a.createdAt);
-            setNnueList(list);
-            setStorageUsage(usage);
-            setError(null);
-        } catch (e) {
-            const err =
-                e instanceof NnueError
-                    ? e
-                    : new NnueError("NNUE_STORAGE_FAILED", "NNUE 一覧の取得に失敗しました", e);
-            setError(err);
-        } finally {
-            setIsLoading(false);
-        }
-    };
+    const setters: NnueStateSetters = { setIsLoading, setNnueList, setStorageUsage, setError };
+
+    const refreshList = () => fetchNnueList(storage, setters);
 
     const clearError = () => {
         setError(null);
     };
 
-    const refreshListEvent = useEffectEvent(refreshList);
-
     // 初回マウント時に一覧を取得（storage 変更時も再取得）
     useEffect(() => {
-        void refreshListEvent();
+        void fetchNnueList(storage, { setIsLoading, setNnueList, setStorageUsage, setError });
     }, [storage]);
 
     return (
