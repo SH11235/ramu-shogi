@@ -82,7 +82,6 @@ const LIMIT_INPUT_IDS = {
 const USI_OPTIONS: UsiOptionDefinition[] = [
     {
         name: "Threads",
-
         type: "spin",
         defaultValue: 1,
         min: 1,
