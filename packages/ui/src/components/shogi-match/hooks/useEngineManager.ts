@@ -14,6 +14,7 @@ import { createEngineController } from "@shogi/app-controller";
 import type { GameResult, NnueSelection, Player, ResolvedNnue } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { EngineThreadSettings } from "../types";
 import type { TickState } from "./useClockManager";
 
 interface UseEngineManagerProps {
@@ -51,6 +52,10 @@ interface UseEngineManagerProps {
     analysisNnueSelection?: NnueSelection;
     /** NNUE を解決する関数（必要ならダウンロード） */
     resolveNnue: (selection: NnueSelection) => Promise<ResolvedNnue | null>;
+    /** 対局中でも解析を許可する（オンライン対戦の AI サポート用） */
+    allowAnalysisDuringMatch?: boolean;
+    /** 対局用スレッド数（0=自動） */
+    engineThreads?: EngineThreadSettings;
 }
 
 /** 解析リクエストパラメータ */
@@ -111,6 +116,8 @@ export function useEngineManager({
     goteNnueSelection,
     analysisNnueSelection,
     resolveNnue,
+    allowAnalysisDuringMatch,
+    engineThreads,
 }: UseEngineManagerProps): UseEngineManagerReturn {
     const engineOptionsRef = useRef(engineOptions);
     useEffect(() => {
@@ -143,6 +150,7 @@ export function useEngineManager({
             now: () => Date.now(),
             resolveNnue: (selection) => resolveNnueRef.current(selection),
             maxLogs,
+            allowAnalysisDuringMatch,
             callbacks: {
                 onMoveFromEngine: (move) => callbacksRef.current.onMoveFromEngine(move),
                 onMatchEnd: (result) => callbacksRef.current.onMatchEnd(result),
@@ -198,6 +206,7 @@ export function useEngineManager({
                 passRightsSettings,
             },
             matchRunning: isMatchRunning,
+            engineThreads,
         });
     }, [
         analysisNnueSelection,
@@ -211,6 +220,7 @@ export function useEngineManager({
         resolvedSides,
         senteNnueSelection,
         startSfen,
+        engineThreads,
     ]);
 
     useEffect(() => {

@@ -69,6 +69,19 @@ export function NnueManagerDialog({
     onClearOpenReason,
     isMatchActive = false,
 }: NnueManagerDialogProps): ReactElement {
+    const reasonMessage = useMemo(() => {
+        if (!openReason) return null;
+        if (openReason === "missing-sente") {
+            return "先手の評価関数が未ダウンロードです。NNUE をダウンロードしてください。";
+        }
+        if (openReason === "missing-gote") {
+            return "後手の評価関数が未ダウンロードです。NNUE をダウンロードしてください。";
+        }
+        if (openReason === "missing-analysis") {
+            return "解析用の評価関数が未ダウンロードです。NNUE をダウンロードしてください。";
+        }
+        return openReason;
+    }, [openReason]);
     const {
         nnueList,
         isLoading: isStorageLoading,
@@ -215,11 +228,11 @@ export function NnueManagerDialog({
 
                 <div className="relative flex min-h-[200px] flex-1 flex-col gap-4 overflow-auto">
                     {/* 開いた理由（対局開始時にNNUE未ダウンロードだった場合など） */}
-                    {openReason && (
+                    {reasonMessage && (
                         <div className="flex items-start gap-2 rounded-md border border-[hsl(var(--warning,38_92%_50%)/0.3)] bg-[hsl(var(--warning,38_92%_50%)/0.1)] p-3">
                             <span className="text-base leading-none">⚠️</span>
                             <div className="flex-1">
-                                <p className="m-0 text-[13px] text-foreground">{openReason}</p>
+                                <p className="m-0 text-[13px] text-foreground">{reasonMessage}</p>
                             </div>
                             {onClearOpenReason && (
                                 <button

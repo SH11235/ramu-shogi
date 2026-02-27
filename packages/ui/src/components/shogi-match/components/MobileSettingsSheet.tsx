@@ -5,9 +5,16 @@ import type { ReactElement } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Switch } from "../../switch";
 import type { ClockSettings } from "../hooks/useClockManager";
-import type { DisplaySettings, PassRightsSettings, SideSetting, SquareNotation } from "../types";
+import type {
+    DisplaySettings,
+    EngineThreadSettings,
+    PassRightsSettings,
+    SideSetting,
+    SquareNotation,
+} from "../types";
 import type { KifMoveData } from "../utils/kifParser";
 import { parseKif, parseSfen } from "../utils/kifParser";
+import { buildThreadOptions } from "../utils/threadOptions";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 
 type SideKey = "sente" | "gote";
@@ -91,6 +98,9 @@ interface MobileSettingsSheetProps {
     // 状態
     settingsLocked: boolean;
     isMatchRunning: boolean;
+    isDevMode: boolean;
+    engineThreads: EngineThreadSettings;
+    onEngineThreadsChange: (threads: EngineThreadSettings) => void;
 
     // アクション
     onStartMatch?: () => void;
@@ -273,6 +283,9 @@ export function MobileSettingsSheet({
     onGoteNnueSelectionChange,
     settingsLocked,
     isMatchRunning,
+    isDevMode,
+    engineThreads,
+    onEngineThreadsChange,
     onStartMatch,
     onStopMatch,
     onResetToStartpos,
@@ -283,6 +296,7 @@ export function MobileSettingsSheet({
     onImportKif,
     positionReady = true,
 }: MobileSettingsSheetProps): ReactElement {
+    const threadOptions = buildThreadOptions();
     // カスタム NNUE（プリセット以外）のフィルタリング
     const customNnueList = nnueList.filter((n) => n.source !== "preset");
 
@@ -461,6 +475,30 @@ export function MobileSettingsSheet({
                             </div>
                         )}
                     </div>
+                    {isDevMode && (
+                        <label htmlFor="mobile-sente-threads" className={labelClassName}>
+                            <span className="text-xs text-muted-foreground">スレッド数</span>
+                            <select
+                                id="mobile-sente-threads"
+                                value={engineThreads.sente}
+                                disabled={settingsLocked}
+                                onChange={(e) =>
+                                    onEngineThreadsChange({
+                                        ...engineThreads,
+                                        sente: Number(e.target.value),
+                                    })
+                                }
+                                className={selectClassName}
+                            >
+                                {threadOptions.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <span className="text-[11px] text-muted-foreground">0 = 自動</span>
+                        </label>
+                    )}
                     <label htmlFor="mobile-sente-main" className={labelClassName}>
                         <span className="text-xs text-muted-foreground">持ち時間(秒)</span>
                         <NumericInput
@@ -543,6 +581,30 @@ export function MobileSettingsSheet({
                             </div>
                         )}
                     </div>
+                    {isDevMode && (
+                        <label htmlFor="mobile-gote-threads" className={labelClassName}>
+                            <span className="text-xs text-muted-foreground">スレッド数</span>
+                            <select
+                                id="mobile-gote-threads"
+                                value={engineThreads.gote}
+                                disabled={settingsLocked}
+                                onChange={(e) =>
+                                    onEngineThreadsChange({
+                                        ...engineThreads,
+                                        gote: Number(e.target.value),
+                                    })
+                                }
+                                className={selectClassName}
+                            >
+                                {threadOptions.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <span className="text-[11px] text-muted-foreground">0 = 自動</span>
+                        </label>
+                    )}
                     <label htmlFor="mobile-gote-main" className={labelClassName}>
                         <span className="text-xs text-muted-foreground">持ち時間(秒)</span>
                         <NumericInput

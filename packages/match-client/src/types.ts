@@ -1,0 +1,292 @@
+// ─── 基本型 ──────────────────────────────────────────────────────────────
+export type Seat = "b" | "w" | "s";
+export type RoomStatus = "waiting" | "playing" | "finished";
+export type GameEndReason =
+    | "resign"
+    | "checkmate"
+    | "timeout"
+    | "sennichite"
+    | "illegal_move"
+    | "disconnect";
+
+// ─── ルーム設定 ──────────────────────────────────────────────────────────
+export interface TimeControlSettings {
+    type: "byoyomi" | "fischer";
+    initialMs: number;
+    byoyomiMs?: number;
+    fischerIncrementMs?: number;
+}
+
+export interface PassRightsConfig {
+    initialCount: number;
+}
+
+export interface AiSupportPlayerSettings {
+    mode: "unlimited" | "limited";
+    limitCount: number | null;
+}
+
+export interface AiSupportSettings {
+    b: AiSupportPlayerSettings;
+    w: AiSupportPlayerSettings;
+    searchDepth: number | null;
+    searchTimeMs: number | null;
+}
+
+export interface RoomSettings {
+    startSfen: string;
+    timeControl: TimeControlSettings;
+    passRights: PassRightsConfig | null;
+    aiSupport: AiSupportSettings | null;
+}
+
+// ─── 時計 ─────────────────────────────────────────────────────────────────
+export interface ClockState {
+    b: { remainMs: number };
+    w: { remainMs: number };
+    running: "b" | "w" | null;
+    lastTickTs: number;
+}
+
+// ─── パス権 ───────────────────────────────────────────────────────────────
+export interface PassRightsState {
+    b: number;
+    w: number;
+}
+
+// ─── ゲーム結果 ──────────────────────────────────────────────────────────
+export interface GameResult {
+    winner: "b" | "w" | null;
+    reason: GameEndReason;
+}
+
+// ─── プレイヤー情報 ──────────────────────────────────────────────────────
+export interface PlayerPublicInfo {
+    name: string;
+    online: boolean;
+}
+
+// ─── RoomEvent（サーバ → クライアント差分イベント） ────────────────────────
+interface RoomEventBase {
+    eventId: number;
+    serverTs: number;
+}
+
+export interface GameStartEvent extends RoomEventBase {
+    kind: "game_start";
+    settings: RoomSettings;
+    players: {
+        b: PlayerPublicInfo;
+        w: PlayerPublicInfo;
+    };
+}
+
+export interface MoveEvent extends RoomEventBase {
+    kind: "move";
+    usi: string;
+    turn: "b" | "w";
+    clock: ClockState;
+    passRights: PassRightsState | null;
+}
+
+export interface ResignEvent extends RoomEventBase {
+    kind: "resign";
+    seat: Seat;
+    result: GameResult;
+}
+
+export interface TimeoutEvent extends RoomEventBase {
+    kind: "timeout";
+    seat: Seat;
+    result: GameResult;
+}
+
+export interface CheckmateEvent extends RoomEventBase {
+    kind: "checkmate";
+    result: GameResult;
+}
+
+export interface SennichiteEvent extends RoomEventBase {
+    kind: "sennichite";
+    result: GameResult;
+}
+
+export interface IllegalMoveEvent extends RoomEventBase {
+    kind: "illegal_move";
+    seat: Seat;
+    usi: string;
+    result: GameResult;
+}
+
+export interface DisconnectLossEvent extends RoomEventBase {
+    kind: "disconnect_loss";
+    seat: Seat;
+    result: GameResult;
+}
+
+export interface GameEndEvent extends RoomEventBase {
+    kind: "game_end";
+    result: GameResult;
+    kifu: string;
+}
+
+export interface PlayerOnlineEvent extends RoomEventBase {
+    kind: "player_online";
+    seat: Seat;
+}
+
+export interface PlayerOfflineEvent extends RoomEventBase {
+    kind: "player_offline";
+    seat: Seat;
+}
+
+export interface AnalysisUsedEvent extends RoomEventBase {
+    kind: "analysis_used";
+    seat: Seat;
+    analysisRemaining: number;
+}
+
+export interface SettingsUpdatedEvent extends RoomEventBase {
+    kind: "settings_updated";
+    settings: Pick<RoomSettings, "startSfen">;
+}
+
+export type RoomEvent =
+    | GameStartEvent
+    | MoveEvent
+    | ResignEvent
+    | TimeoutEvent
+    | CheckmateEvent
+    | SennichiteEvent
+    | IllegalMoveEvent
+    | DisconnectLossEvent
+    | GameEndEvent
+    | PlayerOnlineEvent
+    | PlayerOfflineEvent
+    | AnalysisUsedEvent
+    | SettingsUpdatedEvent;
+
+// ─── SnapshotPayload ──────────────────────────────────────────────────────
+export interface SnapshotPayload {
+    eventId: number;
+    status: RoomStatus;
+    sfen: string;
+    moves: string[];
+    turn: "b" | "w";
+    clock: ClockState;
+    passRights: PassRightsState | null;
+    players: {
+        b: PlayerPublicInfo | null;
+        w: PlayerPublicInfo | null;
+    };
+    spectators: number;
+    settings: RoomSettings;
+}
+
+// ─── エラーコード ─────────────────────────────────────────────────────────
+export type ErrorCode =
+    | "ROOM_FULL"
+    | "ROOM_NOT_FOUND"
+    | "ROOM_FINISHED"
+    | "ROOM_EXPIRED"
+    | "INVALID_TOKEN"
+    | "DESYNC"
+    | "ILLEGAL_MOVE"
+    | "NOT_YOUR_TURN"
+    | "RATE_LIMITED"
+    | "SPECTATOR_FORBIDDEN"
+    | "ANALYSIS_LIMIT_EXCEEDED"
+    | "AI_SUPPORT_DISABLED"
+    | "UNKNOWN";
+
+// ─── サーバ → クライアント メッセージ ───────────────────────────────────────
+export interface JoinedMessage {
+    v: 1;
+    t: "joined";
+    payload: {
+        roomId: string;
+        seat: Seat;
+        resumeToken?: string;
+        youAre: "player" | "spectator";
+    };
+}
+
+export interface SnapshotMessage {
+    v: 1;
+    t: "snapshot";
+    payload: SnapshotPayload;
+}
+
+export interface EventMessage {
+    v: 1;
+    t: "event";
+    payload: RoomEvent;
+}
+
+export interface ErrorMessage {
+    v: 1;
+    t: "error";
+    payload: {
+        code: ErrorCode;
+        message: string;
+        clientMsgId?: number;
+    };
+}
+
+export interface PongMessage {
+    v: 1;
+    t: "pong";
+    payload: {
+        ts: number;
+        serverTs: number;
+    };
+}
+
+export type ServerMessage =
+    | JoinedMessage
+    | SnapshotMessage
+    | EventMessage
+    | ErrorMessage
+    | PongMessage;
+
+// ─── クライアント → サーバ メッセージ ───────────────────────────────────────
+export type ClientMessageType =
+    | "join"
+    | "resume"
+    | "move"
+    | "resign"
+    | "use_analysis"
+    | "update_settings"
+    | "ack"
+    | "sync"
+    | "ping";
+
+export interface ClientMessage<T = unknown> {
+    v: 1;
+    t: ClientMessageType;
+    clientMsgId: number;
+    payload: T;
+}
+
+// ─── RoomClient インターフェース ──────────────────────────────────────────
+export interface RoomClient {
+    join(params: { seat: Seat; name: string }): void;
+    resume(params: { resumeToken: string; lastEventId: number }): void;
+    move(params: { eventId: number; usi: string; sfen: string }): void;
+    resign(params: { eventId: number }): void;
+    useAnalysis(params: { eventId: number; ply: number }): void;
+    updateSettings(params: { startSfen: string }): void;
+    ack(params: { lastEventId: number }): void;
+    sync(params: { sinceEventId: number }): void;
+    ping(): void;
+
+    subscribe(handler: (msg: ServerMessage) => void): () => void;
+    disconnect(): void;
+    getStatus(): "connecting" | "connected" | "reconnecting" | "disconnected";
+}
+
+export interface RoomClientOptions {
+    wsUrl: string;
+    onReconnect?: () => void;
+    autoReconnect?: boolean;
+}

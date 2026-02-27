@@ -168,6 +168,7 @@ export function ShogiMatchLayout({
         selectedBranchNodeId,
         setSelectedBranchNodeId,
         branchMarkers,
+        analysisMarkers,
         lastAddedBranchInfo,
         setLastAddedBranchInfo,
         handleAddPvAsBranch,
@@ -327,6 +328,9 @@ export function ShogiMatchLayout({
                     passRightsSettings={passRightsSettings}
                     onPassRightsSettingsChange={handlePassRightsSettingsChange}
                     settingsLocked={settingsLocked}
+                    isDevMode={matchSettings.isDevMode}
+                    engineThreads={matchSettings.engineThreads}
+                    onEngineThreadsChange={matchSettings.setEngineThreads}
                     senteNnueSelection={senteNnueSelection}
                     onSenteNnueSelectionChange={handleSenteNnueSelectionChange}
                     goteNnueSelection={goteNnueSelection}
@@ -395,6 +399,7 @@ export function ShogiMatchLayout({
                             selectedBranchNodeId={selectedBranchNodeId}
                             onSelectedBranchChange={setSelectedBranchNodeId}
                             branchMarkers={branchMarkers}
+                            analysisMarkers={analysisMarkers}
                             lastAddedBranchInfo={lastAddedBranchInfo}
                             onLastAddedBranchHandled={() => setLastAddedBranchInfo(null)}
                             handleAddPvAsBranch={handleAddPvAsBranch}
@@ -429,6 +434,9 @@ export function ShogiMatchLayout({
                     passRightsSettings={passRightsSettings}
                     onPassRightsSettingsChange={handlePassRightsSettingsChange}
                     settingsLocked={settingsLocked}
+                    isDevMode={matchSettings.isDevMode}
+                    engineThreads={matchSettings.engineThreads}
+                    onEngineThreadsChange={matchSettings.setEngineThreads}
                     senteNnueSelection={senteNnueSelection}
                     onSenteNnueSelectionChange={handleSenteNnueSelectionChange}
                     goteNnueSelection={goteNnueSelection}
@@ -515,6 +523,7 @@ export function ShogiMatchLayout({
                                 selectedBranchNodeId={selectedBranchNodeId}
                                 onSelectedBranchChange={setSelectedBranchNodeId}
                                 branchMarkers={branchMarkers}
+                                analysisMarkers={analysisMarkers}
                                 lastAddedBranchInfo={lastAddedBranchInfo}
                                 onLastAddedBranchHandled={() => setLastAddedBranchInfo(null)}
                                 handleAddPvAsBranch={handleAddPvAsBranch}

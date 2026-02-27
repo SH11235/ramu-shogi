@@ -15,6 +15,7 @@ import type { SelectionState } from "../contexts/MatchStateContext.types";
 import type { ClockSettings, TickState } from "../hooks/useClockManager";
 import type {
     DisplaySettings,
+    EngineThreadSettings,
     GameMode,
     Message,
     PassRightsSettings,
@@ -37,6 +38,9 @@ export interface MatchSettingsProps {
     passRightsSettings: PassRightsSettings;
     handlePassRightsSettingsChange: (settings: PassRightsSettings) => void;
     settingsLocked: boolean;
+    isDevMode: boolean;
+    engineThreads: EngineThreadSettings;
+    setEngineThreads: (threads: EngineThreadSettings) => void;
     senteNnueSelection: NnueSelection;
     handleSenteNnueSelectionChange: (selection: NnueSelection) => void;
     goteNnueSelection: NnueSelection;
@@ -164,6 +168,8 @@ export interface NavigationProps {
     selectedBranchNodeId: string | null;
     setSelectedBranchNodeId: (id: string | null) => void;
     branchMarkers: Map<number, number>;
+    /** AI 解析使用マーカー */
+    analysisMarkers: Array<{ seat: "b" | "w"; ply: number }>;
     lastAddedBranchInfo: { ply: number; firstMove: string } | null;
     setLastAddedBranchInfo: (info: { ply: number; firstMove: string } | null) => void;
     handleAddPvAsBranch: (ply: number, pv: string[]) => void;

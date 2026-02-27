@@ -20,8 +20,21 @@ export { useDevMode } from "./hooks/useDevMode";
 
 // engine-control-panel
 export { EngineControlPanel } from "./components/engine-control-panel";
+export type {
+    PositionPreset,
+    PositionPresetSelectorProps,
+} from "./components/PositionPresetSelector";
 // input
 // popover
+// position-preset-selector
+export { POSITION_PRESETS, PositionPresetSelector } from "./components/PositionPresetSelector";
+export type { ShogiBoardCell, ShogiBoardPiece } from "./components/shogi-board";
+// shogi-board (online game 用)
+export { ShogiBoard } from "./components/shogi-board";
+export { BottomSheet } from "./components/shogi-match/components/BottomSheet";
+export { HandPiecesDisplay } from "./components/shogi-match/components/HandPiecesDisplay";
+export { KifuNavigationToolbar } from "./components/shogi-match/components/KifuNavigationToolbar";
+export { boardToGrid } from "./components/shogi-match/utils/positionUtils";
 // progress
 // shogi-board
 

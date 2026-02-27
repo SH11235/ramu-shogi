@@ -1,5 +1,5 @@
 import type { NnueMeta, NnueSelection, PresetWithStatus } from "@shogi/app-core";
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 /**
  * NNUE 選択のバリデーションと自動修正のためのフック
@@ -27,6 +27,12 @@ export function useNnueValidation(deps: {
     presets: PresetWithStatus[];
     /** プリセット一覧のロード状態 */
     isPresetsLoading: boolean;
+    /** プリセット取得の試行済みフラグ */
+    hasFetchedPresets: boolean;
+    /** localStorageに選択が保存されているか */
+    hasStoredSenteSelection: boolean;
+    hasStoredGoteSelection: boolean;
+    hasStoredAnalysisSelection: boolean;
     /** デフォルトの NNUE 選択 */
     defaultNnueSelection: NnueSelection;
     /** manifest.json の URL（未指定時は null） */
@@ -45,10 +51,20 @@ export function useNnueValidation(deps: {
         isNnueListLoading,
         presets,
         isPresetsLoading,
+        hasFetchedPresets,
+        hasStoredSenteSelection,
+        hasStoredGoteSelection,
+        hasStoredAnalysisSelection,
         defaultNnueSelection,
         manifestUrl,
         restartEngineForNnue,
     } = deps;
+
+    const hasLoggedMaterialDefaultRef = useRef(false);
+
+    const logFallback = useCallback((reason: string, detail: Record<string, unknown>) => {
+        console.warn("[nnue] fallback", { reason, ...detail });
+    }, []);
 
     // 1. カスタム NNUE が削除された場合のリセット
     useEffect(() => {
@@ -62,6 +78,7 @@ export function useNnueValidation(deps: {
         ) {
             setSenteNnueSelection(defaultNnueSelection);
             restartEngineForNnue?.("sente", defaultNnueSelection);
+            logFallback("missing-custom-nnue", { side: "sente" });
         }
 
         if (
@@ -71,6 +88,7 @@ export function useNnueValidation(deps: {
         ) {
             setGoteNnueSelection(defaultNnueSelection);
             restartEngineForNnue?.("gote", defaultNnueSelection);
+            logFallback("missing-custom-nnue", { side: "gote" });
         }
 
         if (
@@ -79,6 +97,7 @@ export function useNnueValidation(deps: {
             !nnueList.some((n) => n.id === analysisNnueSelection.nnueId)
         ) {
             setAnalysisNnueSelection(defaultNnueSelection);
+            logFallback("missing-custom-nnue", { side: "analysis" });
         }
     }, [
         senteNnueSelection,
@@ -91,6 +110,7 @@ export function useNnueValidation(deps: {
         setAnalysisNnueSelection,
         defaultNnueSelection,
         restartEngineForNnue,
+        logFallback,
     ]);
 
     // 2. manifestUrl 未指定時のプリセット選択リセット
@@ -110,16 +130,19 @@ export function useNnueValidation(deps: {
 
         if (shouldReset(analysisNnueSelection.presetKey)) {
             setAnalysisNnueSelection({ presetKey: null, nnueId: null });
+            logFallback("manifest-url-missing", { side: "analysis" });
         }
         if (shouldReset(senteNnueSelection.presetKey)) {
             const newSelection = { presetKey: null, nnueId: null };
             setSenteNnueSelection(newSelection);
             restartEngineForNnue?.("sente", newSelection);
+            logFallback("manifest-url-missing", { side: "sente" });
         }
         if (shouldReset(goteNnueSelection.presetKey)) {
             const newSelection = { presetKey: null, nnueId: null };
             setGoteNnueSelection(newSelection);
             restartEngineForNnue?.("gote", newSelection);
+            logFallback("manifest-url-missing", { side: "gote" });
         }
     }, [
         manifestUrl,
@@ -132,12 +155,14 @@ export function useNnueValidation(deps: {
         setSenteNnueSelection,
         setGoteNnueSelection,
         restartEngineForNnue,
+        logFallback,
     ]);
 
     // 3. manifestUrl 指定時のプリセットキーバリデーション
     useEffect(() => {
         if (!manifestUrl) return;
         if (isPresetsLoading) return;
+        if (!hasFetchedPresets) return;
 
         const validateAndFix = (
             selection: NnueSelection,
@@ -150,6 +175,7 @@ export function useNnueValidation(deps: {
             if (presets.length === 0) {
                 const newSelection = { presetKey: null, nnueId: null };
                 setSelection(newSelection);
+                logFallback("preset-empty", { side: "unknown" });
                 return newSelection;
             }
 
@@ -159,6 +185,11 @@ export function useNnueValidation(deps: {
                 // 先頭のプリセットにフォールバック
                 const newSelection = { presetKey: presets[0].config.presetKey, nnueId: null };
                 setSelection(newSelection);
+                logFallback("invalid-preset-key", {
+                    side: "unknown",
+                    presetKey: selection.presetKey,
+                    nextPresetKey: presets[0]?.config.presetKey,
+                });
                 return newSelection;
             }
             return null;
@@ -178,6 +209,7 @@ export function useNnueValidation(deps: {
     }, [
         manifestUrl,
         isPresetsLoading,
+        hasFetchedPresets,
         presets,
         senteNnueSelection,
         goteNnueSelection,
@@ -186,5 +218,62 @@ export function useNnueValidation(deps: {
         setGoteNnueSelection,
         setAnalysisNnueSelection,
         restartEngineForNnue,
+        logFallback,
+    ]);
+
+    useEffect(() => {
+        if (!manifestUrl) return;
+        if (isPresetsLoading) return;
+        if (!hasFetchedPresets) return;
+
+        const isDefaultPreset =
+            defaultNnueSelection.presetKey !== null && defaultNnueSelection.nnueId === null;
+        if (!isDefaultPreset) return;
+
+        const isSenteMaterial =
+            senteNnueSelection.presetKey === null && senteNnueSelection.nnueId === null;
+        const isGoteMaterial =
+            goteNnueSelection.presetKey === null && goteNnueSelection.nnueId === null;
+        const isAnalysisMaterial =
+            analysisNnueSelection.presetKey === null && analysisNnueSelection.nnueId === null;
+
+        if (!hasStoredSenteSelection && isSenteMaterial) {
+            setSenteNnueSelection(defaultNnueSelection);
+            restartEngineForNnue?.("sente", defaultNnueSelection);
+            logFallback("material-default-migrated", { side: "sente" });
+        }
+
+        if (!hasStoredGoteSelection && isGoteMaterial) {
+            setGoteNnueSelection(defaultNnueSelection);
+            restartEngineForNnue?.("gote", defaultNnueSelection);
+            logFallback("material-default-migrated", { side: "gote" });
+        }
+
+        if (!hasStoredAnalysisSelection && isAnalysisMaterial) {
+            setAnalysisNnueSelection(defaultNnueSelection);
+            logFallback("material-default-migrated", { side: "analysis" });
+        }
+
+        if (hasLoggedMaterialDefaultRef.current) return;
+        if (hasStoredSenteSelection && isSenteMaterial) {
+            hasLoggedMaterialDefaultRef.current = true;
+            logFallback("selection-stored-as-material", { side: "sente" });
+        }
+    }, [
+        manifestUrl,
+        isPresetsLoading,
+        hasFetchedPresets,
+        defaultNnueSelection,
+        hasStoredSenteSelection,
+        hasStoredGoteSelection,
+        hasStoredAnalysisSelection,
+        senteNnueSelection,
+        goteNnueSelection,
+        analysisNnueSelection,
+        setSenteNnueSelection,
+        setGoteNnueSelection,
+        setAnalysisNnueSelection,
+        restartEngineForNnue,
+        logFallback,
     ]);
 }

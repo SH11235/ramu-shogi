@@ -289,13 +289,8 @@ export function useGameControls({
                 if (nnuePreparations.length > 0) {
                     await Promise.all(nnuePreparations);
                 }
-            } catch (e) {
-                // NNUE未ダウンロードエラー → 評価関数ファイル管理を開いて理由を表示
-                const errorMessage =
-                    e instanceof Error ? e.message : "評価関数の準備に失敗しました";
-                const detailedMessage = `対局を開始できません: ${errorMessage}\n\n対処方法:\n1. NNUE管理画面が開きます\n2. エンジンに必要なファイルをダウンロードしてください\n3. 再度対局を開始してください`;
-                setMessage({ text: detailedMessage, type: "error" });
-                // NNUE管理ダイアログを開く
+            } catch {
+                // NNUE未ダウンロードエラー → 評価関数ファイル管理を開く
                 openNnueManager("missing-sente"); // または "missing-gote" を適切に判定
                 return;
             }
@@ -329,7 +324,6 @@ export function useGameControls({
         setIsEditMode,
         setPosition,
         openNnueManager,
-        setMessage,
     ]);
 
     /**

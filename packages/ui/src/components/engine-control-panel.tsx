@@ -18,6 +18,7 @@ import {
     DialogTrigger,
 } from "./dialog";
 import { Input } from "./input";
+import { buildThreadOptions } from "./shogi-match/utils/threadOptions";
 
 type PanelStatus = "idle" | "init" | "ready" | "searching" | "stopping" | "error";
 
@@ -64,7 +65,7 @@ const DEFAULT_POSITION: EnginePosition = { label: "開始局面 (startpos)", sfe
 const DEFAULT_LIMITS: LimitsFormState = {
     depth: "",
     nodes: "",
-    byoyomi: "5000",
+    byoyomi: "10000",
     movetime: "",
     ponder: false,
 };
@@ -106,6 +107,14 @@ const surfaceClassName =
 const gridClassName = "grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]";
 const labelClassName = "text-xs text-muted-foreground";
 const inputClassName = "bg-background";
+const selectClassName =
+    "h-10 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground";
+
+const parseMovesText = (text: string): string[] =>
+    text
+        .split(/\s+/)
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0);
 
 function formatEvent(event: EngineEvent): string {
     if (event.type === "bestmove") {
@@ -180,7 +189,14 @@ export function EngineControlPanel({
     const [customOption, setCustomOption] = useState({ name: "", value: "" });
     const [threadInfo, setThreadInfo] = useState<ThreadInfo | null>(null);
     const [latestNps, setLatestNps] = useState<number | null>(null);
+    const [threadSetting, setThreadSetting] = useState<number>(0);
+    const [positionSfen, setPositionSfen] = useState(position.sfen);
+    const [positionMoves, setPositionMoves] = useState(
+        position.moves && position.moves.length > 0 ? position.moves.join(" ") : "",
+    );
+    const initializedPositionRef = useRef(false);
     const handleRef = useRef<SearchHandle | null>(null);
+    const lastAppliedThreadsRef = useRef<number | null>(null);
 
     const updateThreadInfo = useCallback(() => {
         if (engine.getThreadInfo) {
@@ -195,6 +211,7 @@ export function EngineControlPanel({
         }
         return defaults;
     }, []);
+    const threadOptions = useMemo(() => buildThreadOptions(), []);
     const [optionValues, setOptionValues] = useState<Record<string, string>>(optionDefaults);
 
     useEffect(() => {
@@ -205,6 +222,13 @@ export function EngineControlPanel({
         // Update thread info on mount and when engine changes
         updateThreadInfo();
     }, [updateThreadInfo]);
+
+    useEffect(() => {
+        if (initializedPositionRef.current) return;
+        setPositionSfen(position.sfen);
+        setPositionMoves(position.moves?.join(" ") ?? "");
+        initializedPositionRef.current = true;
+    }, [position.moves, position.sfen]);
 
     useEffect(() => {
         const unsubscribe = engine.subscribe((event) => {
@@ -258,13 +282,19 @@ export function EngineControlPanel({
         setStatus("error");
     };
 
-    const ensureInitialized = async () => {
-        if (initialized) return;
+    const ensureInitialized = async (force?: boolean) => {
+        if (initialized && !force) return;
         setStatus("init");
-        await engine.init();
-        await engine.loadPosition(position.sfen, position.moves);
+        if (force && engine.reset) {
+            await engine.reset();
+        }
+        const initThreads = threadSetting > 0 ? threadSetting : undefined;
+        await engine.init(initThreads ? { threads: initThreads } : undefined);
+        const resolvedSfen = positionSfen.trim() || "startpos";
+        await engine.loadPosition(resolvedSfen, parseMovesText(positionMoves));
         setInitialized(true);
         setStatus("ready");
+        lastAppliedThreadsRef.current = initThreads ?? null;
         // Update thread info after init
         updateThreadInfo();
     };
@@ -307,7 +337,12 @@ export function EngineControlPanel({
         if (busy) return;
         setBusy(true);
         try {
-            await ensureInitialized();
+            const handle = handleRef.current;
+            if (handle) {
+                await handle.cancel().catch(() => undefined);
+                handleRef.current = null;
+            }
+            await ensureInitialized(true);
         } catch (error) {
             pushUiError(String(error));
         } finally {
@@ -319,7 +354,19 @@ export function EngineControlPanel({
         if (busy || status === "searching") return;
         setBusy(true);
         try {
-            await ensureInitialized();
+            const requestedThreads = threadSetting > 0 ? threadSetting : null;
+            if (initialized && lastAppliedThreadsRef.current !== requestedThreads) {
+                const handle = handleRef.current;
+                if (handle) {
+                    await handle.cancel().catch(() => undefined);
+                    handleRef.current = null;
+                }
+                await ensureInitialized(true);
+            } else {
+                await ensureInitialized();
+            }
+            const resolvedSfen = positionSfen.trim() || "startpos";
+            await engine.loadPosition(resolvedSfen, parseMovesText(positionMoves));
             const ok = await applyOptions();
             if (!ok) {
                 return;
@@ -355,6 +402,11 @@ export function EngineControlPanel({
     };
 
     const resetLogs = () => setLogs([]);
+
+    const handleApplyCurrentPosition = () => {
+        setPositionSfen(position.sfen);
+        setPositionMoves(position.moves?.join(" ") ?? "");
+    };
 
     const statusLabel =
         status === "idle"
@@ -430,6 +482,86 @@ export function EngineControlPanel({
                                             ログクリア
                                         </Button>
                                     </div>
+                                </div>
+                            </section>
+
+                            <section className={cn(surfaceClassName, "p-3")}>
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                    <div className="font-semibold">NPS計測（局面・スレッド）</div>
+                                    <Button
+                                        type="button"
+                                        onClick={updateThreadInfo}
+                                        variant="secondary"
+                                        className="px-3"
+                                    >
+                                        スレッド情報更新
+                                    </Button>
+                                </div>
+                                <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
+                                    <label
+                                        htmlFor="engine-panel-threads"
+                                        className="flex flex-col gap-1"
+                                    >
+                                        <span className={labelClassName}>スレッド数</span>
+                                        <select
+                                            id="engine-panel-threads"
+                                            value={String(threadSetting)}
+                                            onChange={(e) =>
+                                                setThreadSetting(
+                                                    Math.max(0, Number(e.target.value)),
+                                                )
+                                            }
+                                            className={selectClassName}
+                                        >
+                                            {threadOptions.map((opt) => (
+                                                <option key={opt.value} value={opt.value}>
+                                                    {opt.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </label>
+                                    <label
+                                        htmlFor="engine-panel-sfen"
+                                        className="flex flex-col gap-1"
+                                    >
+                                        <span className={labelClassName}>SFEN</span>
+                                        <Input
+                                            id="engine-panel-sfen"
+                                            value={positionSfen}
+                                            onChange={(e) => setPositionSfen(e.target.value)}
+                                            className={inputClassName}
+                                        />
+                                    </label>
+                                    <label
+                                        htmlFor="engine-panel-moves"
+                                        className="flex flex-col gap-1"
+                                    >
+                                        <span className={labelClassName}>moves（空白区切り）</span>
+                                        <Input
+                                            id="engine-panel-moves"
+                                            value={positionMoves}
+                                            onChange={(e) => setPositionMoves(e.target.value)}
+                                            className={inputClassName}
+                                        />
+                                    </label>
+                                </div>
+                                <div className="mt-3 flex items-center gap-2">
+                                    <Button
+                                        type="button"
+                                        onClick={handleApplyCurrentPosition}
+                                        variant="secondary"
+                                        className="px-3"
+                                    >
+                                        現在局面をセット
+                                    </Button>
+                                    <span className="text-[11px] text-muted-foreground">
+                                        スレッド変更は init
+                                        で反映されます（探索開始時に差分があれば自動で init します）
+                                    </span>
+                                </div>
+                                <div className="mt-2 text-[11px] text-muted-foreground">
+                                    選択中: {threadSetting > 0 ? threadSetting : "自動"} / 適用中:{" "}
+                                    {threadInfo?.activeThreads ?? "-"}
                                 </div>
                             </section>
 

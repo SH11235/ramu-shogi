@@ -54,6 +54,7 @@ import type {
     AnalysisSettings,
     DisplaySettings,
     EngineOption,
+    EngineThreadSettings,
     GameMode,
     PassRightsSettings,
     SideSetting,
@@ -96,14 +97,22 @@ interface ShogiMatchProps {
     ) => Promise<string[]>;
     /** 開発者モード（エンジンログパネルなどを表示） */
     isDevMode?: boolean;
-    /** NNUE プリセット manifest.json の URL（指定時のみプリセット機能が有効） */
-    manifestUrl?: string;
+    /** NNUE プリセット manifest.json の URL（必須） */
+    manifestUrl: string;
     /** Desktop 用: NNUE ファイル選択ダイアログを開いてパスを取得するコールバック */
     onRequestNnueFilePath?: () => Promise<string | null>;
     /** デフォルトの NNUE プリセットキー（未指定時は DEFAULT_PRESET_KEY） */
     defaultNnuePresetKey?: string;
     /** AIアイコンのURL（GitHub Pages等でbase pathが必要な場合に指定） */
     aiIconUrl?: string;
+    /** 対局中でも解析を許可する（オンライン対戦の AI サポート用） */
+    allowAnalysisDuringMatch?: boolean;
+    /** 棋譜パネルに表示する AI 解析使用マーカー */
+    analysisMarkers?: Array<{ seat: "b" | "w"; ply: number }>;
+    /** マウント時に読み込む棋譜（指定時は検討室モードで開始） */
+    initialReview?: { sfen: string; moves: string[] };
+    /** 現在局面のスナップショットを通知 */
+    onPositionSnapshot?: (snapshot: { sfen: string; moves: string[]; label?: string }) => void;
 }
 
 export function ShogiMatch({
@@ -121,6 +130,10 @@ export function ShogiMatch({
     onRequestNnueFilePath,
     defaultNnuePresetKey,
     aiIconUrl,
+    allowAnalysisDuringMatch,
+    analysisMarkers = [],
+    initialReview,
+    onPositionSnapshot,
 }: ShogiMatchProps): ReactElement {
     // デフォルトの NNUE 選択（props のプリセットキーを使用、未指定時は DEFAULT_PRESET_KEY）
     const defaultNnueSelection = useMemo(
@@ -224,7 +237,35 @@ export function ShogiMatch({
         normalizePassRightsSettings,
         isSamePassRightsSettings,
     );
-
+    const [storedEngineThreads, setStoredEngineThreads] = useLocalStorage<
+        EngineThreadSettings | number
+    >("shogi-match-engine-threads", { sente: 0, gote: 0 });
+    const engineThreads = useMemo(() => {
+        if (typeof storedEngineThreads === "number") {
+            const normalized = Math.max(0, Math.trunc(storedEngineThreads));
+            return { sente: normalized, gote: normalized };
+        }
+        if (!storedEngineThreads || typeof storedEngineThreads !== "object") {
+            return { sente: 0, gote: 0 };
+        }
+        const normalize = (value: number | undefined) =>
+            typeof value === "number" && Number.isFinite(value)
+                ? Math.max(0, Math.trunc(value))
+                : 0;
+        return {
+            sente: normalize(storedEngineThreads.sente),
+            gote: normalize(storedEngineThreads.gote),
+        };
+    }, [storedEngineThreads]);
+    const setEngineThreads = useCallback(
+        (next: EngineThreadSettings) => {
+            setStoredEngineThreads({
+                sente: Math.max(0, Math.trunc(next.sente)),
+                gote: Math.max(0, Math.trunc(next.gote)),
+            });
+        },
+        [setStoredEngineThreads],
+    );
     // UI状態管理（統合フック）
     const {
         flipBoard,
@@ -339,6 +380,22 @@ export function ShogiMatch({
 
     // 互換性用のmoves配列
     const moves = navigation.getMovesArray();
+    const movesKey = useMemo(() => moves.join(" "), [moves]);
+
+    const lastSnapshotRef = useRef<{ sfen: string; movesKey: string } | null>(null);
+
+    useEffect(() => {
+        const prev = lastSnapshotRef.current;
+        if (prev && prev.sfen === startSfen && prev.movesKey === movesKey) {
+            return;
+        }
+        lastSnapshotRef.current = { sfen: startSfen, movesKey };
+        onPositionSnapshot?.({
+            sfen: startSfen,
+            moves,
+            label: "現在局面",
+        });
+    }, [moves, movesKey, onPositionSnapshot, startSfen]);
 
     // 棋譜＋評価値データ
     const {
@@ -619,6 +676,8 @@ export function ShogiMatch({
         goteNnueSelection,
         analysisNnueSelection,
         resolveNnue,
+        allowAnalysisDuringMatch,
+        engineThreads,
     });
     stopAllEnginesRef.current = stopAllEngines;
     restartEngineForNnueRef.current = restartEngineForNnue;
@@ -1151,6 +1210,15 @@ export function ShogiMatch({
         setIsMatchRunning,
     });
 
+    // マウント時に initialReview が指定されていれば棋譜を読み込む（一度だけ実行）
+    const initialReviewHandledRef = useRef(false);
+    useEffect(() => {
+        if (initialReview && !initialReviewHandledRef.current) {
+            initialReviewHandledRef.current = true;
+            void importSfen(initialReview.sfen, initialReview.moves);
+        }
+    }, [initialReview, importSfen]);
+
     // 棋譜の手数選択コールバック（巻き戻し・リプレイ用）
     const handlePlySelect = useCallback(
         (ply: number) => {
@@ -1224,6 +1292,9 @@ export function ShogiMatch({
             passRightsSettings,
             handlePassRightsSettingsChange,
             settingsLocked,
+            isDevMode,
+            engineThreads,
+            setEngineThreads,
             senteNnueSelection,
             handleSenteNnueSelectionChange,
             goteNnueSelection,
@@ -1242,6 +1313,9 @@ export function ShogiMatch({
             passRightsSettings,
             handlePassRightsSettingsChange,
             settingsLocked,
+            isDevMode,
+            engineThreads,
+            setEngineThreads,
             senteNnueSelection,
             handleSenteNnueSelectionChange,
             goteNnueSelection,
@@ -1397,6 +1471,7 @@ export function ShogiMatch({
             selectedBranchNodeId,
             setSelectedBranchNodeId,
             branchMarkers,
+            analysisMarkers,
             lastAddedBranchInfo,
             setLastAddedBranchInfo,
             handleAddPvAsBranch,
@@ -1433,6 +1508,7 @@ export function ShogiMatch({
             selectedBranchNodeId,
             setSelectedBranchNodeId,
             branchMarkers,
+            analysisMarkers,
             lastAddedBranchInfo,
             setLastAddedBranchInfo,
             handleAddPvAsBranch,

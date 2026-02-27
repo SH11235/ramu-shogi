@@ -53,13 +53,22 @@ const preset: Omit<Config, "content"> = {
                     "sumi-light": "hsl(var(--wafuu-sumi-light))",
                     shu: "hsl(var(--wafuu-shu))",
                     "shu-light": "hsl(var(--wafuu-shu-light))",
+                    "shu-fg": "hsl(var(--wafuu-shu-fg))",
                     ai: "hsl(var(--wafuu-ai))",
                     "ai-light": "hsl(var(--wafuu-ai-light))",
+                    "ai-fg": "hsl(var(--wafuu-ai-fg))",
                     kin: "hsl(var(--wafuu-kin))",
                     kincha: "hsl(var(--wafuu-kincha))",
                     washi: "hsl(var(--wafuu-washi))",
                     "washi-warm": "hsl(var(--wafuu-washi-warm))",
                     border: "hsl(var(--wafuu-border))",
+                },
+                // 接続状態・成功状態
+                status: {
+                    online: "hsl(var(--status-online))",
+                    "online-fg": "hsl(var(--status-online-fg))",
+                    "online-bg": "hsl(var(--status-online-bg))",
+                    "online-border": "hsl(var(--status-online-border))",
                 },
                 // 将棋盤配色
                 shogi: {

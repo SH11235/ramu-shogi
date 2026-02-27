@@ -26,12 +26,12 @@ export function detectParallelism(): ParallelismConfig {
             : 1;
     const hardwareConcurrency = Math.max(1, Math.min(rawConcurrency, 128));
 
-    // 推奨: コア数の半分（最低1、最大4）
-    // Wasm の MAX_WASM_THREADS = 4 制限を考慮
-    const recommended = Math.max(1, Math.min(4, Math.floor(hardwareConcurrency / 2)));
+    // 推奨: コア数の半分（最低1、最大32）
+    // Wasm の MAX_WASM_THREADS = 32 制限を考慮
+    const recommended = Math.max(1, Math.min(32, Math.floor(hardwareConcurrency / 2)));
 
     return {
-        maxWorkers: 4, // Wasm MAX_WASM_THREADS 制限
+        maxWorkers: 32, // Wasm MAX_WASM_THREADS 制限
         detectedConcurrency: hardwareConcurrency,
         recommendedWorkers: recommended,
     };

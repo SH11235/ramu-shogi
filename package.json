@@ -9,6 +9,7 @@
         "packages/*"
     ],
     "scripts": {
+        "check:env": "node scripts/check-env.mjs",
         "build": "turbo build",
         "dev": "turbo dev",
         "test": "turbo test -- --run",

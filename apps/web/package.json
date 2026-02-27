@@ -5,33 +5,45 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
-        "build": "tsc -b && vite build",
-        "build:analyze": "ANALYZE=true tsc -b && ANALYZE=true vite build",
+        "check:env": "node ../../scripts/check-env.mjs --dir . --mode production",
+        "build": "pnpm check:env && tsc -b && vite build",
+        "build:analyze": "pnpm check:env && ANALYZE=true tsc -b && ANALYZE=true vite build",
         "format": "pnpm --workspace-root exec biome format --write .",
         "format:check": "pnpm --workspace-root exec biome format .",
         "lint": "pnpm --workspace-root exec biome check .",
         "lint:fix": "pnpm --workspace-root exec biome check --write --files-ignore-unknown=true",
         "lint:fix:unsafe": "pnpm --workspace-root exec biome check --write --unsafe --files-ignore-unknown=true",
-        "preview": "vite preview"
+        "preview": "vite preview",
+        "typecheck": "tsc -p tsconfig.json --noEmit",
+        "test": "vitest run",
+        "test:integration": "vitest run --reporter verbose worker/room-do.integration.test.ts",
+        "test:e2e": "playwright test"
     },
     "dependencies": {
         "@shogi/app-core": "workspace:*",
         "@shogi/design-system": "workspace:*",
         "@shogi/engine-wasm": "workspace:*",
+        "@shogi/match-client": "workspace:*",
         "@shogi/ui": "workspace:*",
+        "@tanstack/react-router": "^1.162.6",
         "react": "^19.2.3",
         "react-dom": "^19.2.3"
     },
     "devDependencies": {
         "@cloudflare/workers-types": "^4.20260122.0",
+        "@playwright/test": "^1.58.2",
         "@tailwindcss/vite": "^4.1.18",
+        "@testing-library/react": "^16.3.2",
         "@types/node": "^24.10.1",
         "@types/react": "^19.2.7",
         "@types/react-dom": "^19.2.3",
         "@vitejs/plugin-react": "^5.1.2",
+        "happy-dom": "^20.7.0",
         "rollup-plugin-visualizer": "^6.0.5",
         "tailwindcss": "^4.1.18",
         "typescript": "~5.9.3",
-        "vite": "^7.3.0"
+        "vite": "^7.3.0",
+        "vitest": "^4.0.15",
+        "wrangler": "^4.68.1"
     }
 }

@@ -16,6 +16,7 @@
 - engine-wasm → engine-client, rust-core
 - engine-tauri → engine-client
 - engine-client → (依存なし、インターフェース定義のみ)
+- match-client → (依存なし。通信メッセージ型とクライアント実装のみ)
 - design-system → (依存なし)
 
 設計制約:
@@ -32,6 +33,7 @@
 - engine-tauri: Tauri IPCエンジン実装（invoke/listen）
 - rust-core: Rustエンジン本体（探索、評価関数、USIプロトコル）
 - ui: 共通UIコンポーネント、design-system前提、必要なものだけ昇格
+- match-client: WebSocket ルームクライアント、通信プロトコル型定義。外部依存なし
 - design-system: テーマ/トークン/Provider、shadcn/ui基盤
 
 ## 実装方針メモ

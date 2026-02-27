@@ -138,6 +138,9 @@ export function MobileLayout({
         nnueList,
         presets,
         internalEngineId,
+        isDevMode,
+        engineThreads,
+        onEngineThreadsChange,
         settingsLocked,
         onOpenNnueManager,
         onPassRightsSettingsChange,
@@ -574,6 +577,9 @@ export function MobileLayout({
                     goteNnueSelection={goteNnueSelection}
                     onGoteNnueSelectionChange={onGoteNnueSelectionChange}
                     settingsLocked={settingsLocked}
+                    isDevMode={isDevMode}
+                    engineThreads={engineThreads}
+                    onEngineThreadsChange={onEngineThreadsChange}
                     passRightsSettings={passRightsSettings}
                     onPassRightsSettingsChange={onPassRightsSettingsChange}
                     isMatchRunning={isMatchRunning}

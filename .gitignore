@@ -56,3 +56,8 @@ packages/engine-wasm/pkg-threaded/
 
 # Local cargo config (use .cargo/config.toml.example as template)
 .cargo/config.toml
+
+kif/*.kif
+apps/web/.env.production
+apps/web/.wrangler/state/
+apps/web/.wrangler/tmp/

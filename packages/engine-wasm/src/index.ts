@@ -212,11 +212,9 @@ const MSG_COOPERATIVE_STOP_NOT_SUPPORTED =
 const DEFAULT_WORKER_TIMEOUT_MS = 30_000; // Worker リクエストのタイムアウト（30秒）
 
 // Maximum threads for wasm: limited by browser implementation and memory constraints.
-// - Chrome/Edge: 4-8 threads are typically stable
-// - Firefox: similar limitations apply
 // - Higher values may cause memory allocation failures or performance degradation
-// - Conservative limit of 4 balances performance gains with stability
-const MAX_WASM_THREADS = 4;
+// - Developer override: allow up to 32
+const MAX_WASM_THREADS = 32;
 
 /**
  * NNUE ロード進捗イベント

@@ -68,6 +68,8 @@ export interface NavigationContextValue {
     selectedBranchNodeId: string | null;
     onSelectedBranchChange: (branchNodeId: string | null) => void;
     branchMarkers: Map<number, number>;
+    /** AI 解析使用マーカー（ply -> 使用したシート一覧） */
+    analysisMarkers: Array<{ seat: "b" | "w"; ply: number }>;
     lastAddedBranchInfo: { ply: number; firstMove: string } | null;
     onLastAddedBranchHandled: () => void;
     handleAddPvAsBranch: (ply: number, pv: string[]) => void;

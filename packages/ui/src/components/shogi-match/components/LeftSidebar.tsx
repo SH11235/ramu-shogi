@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Switch } from "../../switch";
 import { useAnalysis } from "../contexts/AnalysisContext";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
+import { buildThreadOptions } from "../utils/threadOptions";
 import { PlayerIcon } from "./PlayerIcon";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 
@@ -58,6 +59,9 @@ export function LeftSidebar(): ReactElement {
         passRightsSettings,
         onPassRightsSettingsChange,
         settingsLocked,
+        isDevMode,
+        engineThreads,
+        onEngineThreadsChange,
         internalEngineId,
         nnueList,
         presets,
@@ -71,6 +75,7 @@ export function LeftSidebar(): ReactElement {
     } = useMatchSettings();
 
     const parallelismConfig = detectParallelism();
+    const threadOptions = buildThreadOptions();
 
     // カスタム NNUE（プリセット以外）のフィルタリング
     const customNnueList = nnueList.filter((n) => n.source !== "preset");
@@ -257,6 +262,29 @@ export function LeftSidebar(): ReactElement {
                         </div>
                     )}
                 </div>
+                {isDevMode && (
+                    <div className={labelClassName}>
+                        <span>スレッド数</span>
+                        <select
+                            value={String(engineThreads[side])}
+                            disabled={settingsLocked}
+                            onChange={(e) =>
+                                onEngineThreadsChange({
+                                    ...engineThreads,
+                                    [side]: Number(e.target.value),
+                                })
+                            }
+                            className={inputClassName}
+                        >
+                            {threadOptions.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </option>
+                            ))}
+                        </select>
+                        <span className="text-[11px] text-muted-foreground">0 = 自動</span>
+                    </div>
+                )}
                 <div className={labelClassName}>
                     <span>持ち時間(秒)</span>
                     <Input
