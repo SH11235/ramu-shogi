@@ -142,7 +142,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
                 ...state,
                 position: next,
                 positionHistory: [...state.positionHistory, next],
-                turn: action.turn === "b" ? "w" : "b",
+                turn: action.turn,
                 clockState: action.clock,
                 passRights: action.passRights,
             };
