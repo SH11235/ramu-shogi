@@ -6,17 +6,17 @@
  */
 import { useEffect, useReducer, useRef } from "react";
 
-export interface Position {
+interface Position {
     x: number;
     y: number;
 }
 
-export interface Size {
+interface Size {
     width: number;
     height: number;
 }
 
-export type DragMode =
+type DragMode =
     | "none"
     | "move"
     | "resize-n"
@@ -28,7 +28,7 @@ export type DragMode =
     | "resize-se"
     | "resize-sw";
 
-export interface WindowGeometry {
+interface WindowGeometry {
     position: Position;
     size: Size;
 }
@@ -52,12 +52,12 @@ function geometryReducer(state: WindowGeometry, action: GeometryAction): WindowG
     }
 }
 
-export interface DraggableWindowHandlers {
+interface DraggableWindowHandlers {
     onMoveStart: (e: React.MouseEvent) => void;
     createResizeHandler: (mode: DragMode) => (e: React.MouseEvent) => void;
 }
 
-export interface UseDraggableWindowOptions {
+interface UseDraggableWindowOptions {
     minWidth: number;
     minHeight: number;
     /** ウィンドウが開いているか（false の場合リスナーを登録しない） */
