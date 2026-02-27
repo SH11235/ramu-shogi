@@ -27,6 +27,7 @@ import { type HandInfo, MobileBoardSection } from "./shogi-match/components/Mobi
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import type { PromotionSelection } from "./shogi-match/types";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
+import { determinePromotion } from "./shogi-match/utils/promotionLogic";
 
 // ─── AI 解析インターフェース（export） ─────────────────────────────────────────
 
@@ -44,29 +45,6 @@ export interface OnlineAnalysis {
 }
 
 // ─── 型定義 ───────────────────────────────────────────────────────────────────
-
-// 成り判定：駒の種類と目的のランクから成れるか
-function canPromote(
-    pieceType: PieceType,
-    fromRank: string,
-    toRank: string,
-    player: Player,
-): boolean {
-    if (["K", "G"].includes(pieceType)) return false;
-    const promotionRanks = player === "sente" ? ["a", "b", "c"] : ["g", "h", "i"];
-    return promotionRanks.includes(fromRank) || promotionRanks.includes(toRank);
-}
-
-// 強制成り：成らないと動けない場合
-function mustPromote(pieceType: PieceType, toRank: string, player: Player): boolean {
-    if (pieceType === "P" || pieceType === "L") {
-        return player === "sente" ? toRank === "a" : toRank === "i";
-    }
-    if (pieceType === "N") {
-        return player === "sente" ? ["a", "b"].includes(toRank) : ["h", "i"].includes(toRank);
-    }
-    return false;
-}
 
 // 時間フォーマット
 function formatMs(ms: number): string {
@@ -520,7 +498,8 @@ export function OnlineGameView({
 
         // 持ち駒を選択中の場合 → ドロップ
         if (selectedHand !== null) {
-            const usi = `${selectedHand}*${squareId.toUpperCase()}`;
+            // 合法手は小文字 USI 形式（例: "P*7f"）。squareId は小文字
+            const usi = `${selectedHand}*${squareId}`;
             if (legalMoves.includes(usi)) {
                 void sendMove(usi, squareId);
             }
@@ -534,8 +513,10 @@ export function OnlineGameView({
                 dispatchUI({ type: "select_square", squareId: null });
                 return;
             }
-            const from = selectedSquare.toUpperCase();
-            const to = squareId.toUpperCase();
+            // 合法手は小文字 USI 形式（例: "7g7f", "7g7f+"）
+            // selectedSquare / squareId はマス ID（小文字）なのでそのまま使用
+            const from = selectedSquare;
+            const to = squareId;
             const usiBase = `${from}${to}`;
             const usiPromote = `${usiBase}+`;
 
@@ -555,21 +536,11 @@ export function OnlineGameView({
                 return;
             }
 
-            const fromRank = from.slice(1).toLowerCase();
-            const toRank = to.slice(1).toLowerCase();
-            const piece = position.board[selectedSquare as keyof typeof position.board];
-            const pieceType = piece?.type ?? null;
+            const promotion = determinePromotion(new Set(legalMoves), from, to);
 
-            const mustPro =
-                pieceType && myPlayer ? mustPromote(pieceType, toRank, myPlayer) : false;
-            const canPro =
-                pieceType && myPlayer && !piece?.promoted
-                    ? canPromote(pieceType, fromRank, toRank, myPlayer)
-                    : false;
-
-            if (mustPro) {
+            if (promotion === "forced") {
                 void sendMove(usiPromote, squareId);
-            } else if (canPro && legalMoves.includes(usiPromote)) {
+            } else if (promotion === "optional") {
                 dispatchUI({
                     type: "set_promote_dialog",
                     dialog: { from: selectedSquare, to: squareId, usi: usiBase },
