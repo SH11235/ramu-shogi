@@ -189,6 +189,7 @@ export function ShogiMatch({
             ply: 1,
         },
     });
+    const initializeBoardEvent = useEffectEvent(initializeBoard);
     const defaultTimeSettings = {
         sente: {
             mainMs: initialMainTimeMs,
@@ -445,7 +446,9 @@ export function ShogiMatch({
         };
     };
 
-    const legalCache = new LegalMoveCache();
+    const legalCacheRef = useRef<LegalMoveCache | null>(null);
+    if (!legalCacheRef.current) legalCacheRef.current = new LegalMoveCache();
+    const legalCache = legalCacheRef.current;
 
     const matchEndedRef = useRef(false);
     const boardSectionRef = useRef<HTMLDivElement>(null);
@@ -513,9 +516,10 @@ export function ShogiMatch({
     };
     const clearLegalCacheEvent = useEffectEvent(clearLegalCache);
     // ナビゲーションで局面が変わったらキャッシュをクリア
+    // biome-ignore lint/correctness/useExhaustiveDependencies: movesKey はキャッシュクリアのトリガー用で意図的
     useEffect(() => {
         clearLegalCacheEvent();
-    }, []);
+    }, [movesKey]);
     // パス権設定変更時にキャッシュもクリアするラッパー
     // （合法手にpassが含まれるかどうかが変わるため）
     const handlePassRightsSettingsChange = (newSettings: PassRightsSettings) => {
@@ -881,7 +885,7 @@ export function ShogiMatch({
                 }
                 if (!cancelled) {
                     // 局面・initialBoard・basePosition・startSfen・positionReady を一括設定
-                    initializeBoard(pos, sfen);
+                    initializeBoardEvent(pos, sfen);
                     navigationResetRef.current(pos, sfen);
                 }
             } catch (error) {
@@ -898,7 +902,7 @@ export function ShogiMatch({
         return () => {
             cancelled = true;
         };
-    }, [initializeBoard, setMessage]);
+    }, [setMessage]);
 
     const grid = (() => {
         const g = boardToGrid(position.board);

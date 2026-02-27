@@ -7,7 +7,7 @@ import type { EngineOption } from "@shogi/ui";
 import { OnlineGameView, PositionPresetSelector, ShogiMatch } from "@shogi/ui";
 import { getRouteApi, useNavigate, useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useRef } from "react";
 import { useOnlineAnalysis } from "../../hooks/useOnlineAnalysis";
 
 const nnueManifestUrl: string = (() => {
@@ -76,6 +76,58 @@ function joinFormReducer(state: JoinFormState, action: JoinFormAction): JoinForm
     }
 }
 
+// ─── ルーム状態 ───────────────────────────────────────────────────────────────
+
+interface RoomState {
+    snapshot: SnapshotPayload | null;
+    joined: boolean;
+    localStartSfen: string | null;
+    gamePhase: "waiting" | "playing" | "reviewing";
+    reviewData: {
+        sfen: string;
+        moves: string[];
+        analysisMarkers: Array<{ seat: "b" | "w"; ply: number }>;
+    } | null;
+    client: RoomClient | null;
+}
+
+type RoomAction =
+    | { type: "joined" }
+    | { type: "snapshot_received"; snapshot: SnapshotPayload }
+    | { type: "settings_updated"; startSfen: string }
+    | { type: "game_start" }
+    | { type: "client_set"; client: RoomClient }
+    | { type: "client_cleared" }
+    | { type: "start_review"; data: RoomState["reviewData"] };
+
+const INITIAL_ROOM_STATE: RoomState = {
+    snapshot: null,
+    joined: false,
+    localStartSfen: null,
+    gamePhase: "waiting",
+    reviewData: null,
+    client: null,
+};
+
+function roomReducer(state: RoomState, action: RoomAction): RoomState {
+    switch (action.type) {
+        case "joined":
+            return { ...state, joined: true };
+        case "snapshot_received":
+            return { ...state, snapshot: action.snapshot };
+        case "settings_updated":
+            return { ...state, localStartSfen: action.startSfen };
+        case "game_start":
+            return { ...state, gamePhase: "playing" };
+        case "client_set":
+            return { ...state, client: action.client };
+        case "client_cleared":
+            return { ...state, client: null };
+        case "start_review":
+            return { ...state, reviewData: action.data, gamePhase: "reviewing" };
+    }
+}
+
 // ─── ルートAPI（loaderData アクセス用） ──────────────────────────────────────
 
 const routeApi = getRouteApi("/online/$roomId");
@@ -99,18 +151,10 @@ export default function RoomPage(): ReactElement {
         isJoining: false,
         error: null,
     });
-    const [snapshot, setSnapshot] = useState<SnapshotPayload | null>(null);
-    const [joined, setJoined] = useState(false);
-    const [localStartSfen, setLocalStartSfen] = useState<string | null>(null);
-    const [gamePhase, setGamePhase] = useState<"waiting" | "playing" | "reviewing">("waiting");
-    const [reviewData, setReviewData] = useState<{
-        sfen: string;
-        moves: string[];
-        analysisMarkers: Array<{ seat: "b" | "w"; ply: number }>;
-    } | null>(null);
+    const [roomState, dispatchRoom] = useReducer(roomReducer, INITIAL_ROOM_STATE);
+    const { snapshot, joined, localStartSfen, gamePhase, reviewData, client } = roomState;
 
     const clientRef = useRef<RoomClient | null>(null);
-    const [client, setClient] = useState<RoomClient | null>(null);
 
     const aiSupport = roomInfo.settings.aiSupport;
     const analysis = useOnlineAnalysis(
@@ -137,28 +181,31 @@ export default function RoomPage(): ReactElement {
         });
 
         clientRef.current = newClient;
-        setClient(newClient);
+        dispatchRoom({ type: "client_set", client: newClient });
 
         const unsub = newClient.subscribe((msg: ServerMessage) => {
             switch (msg.t) {
                 case "joined": {
-                    setJoined(true);
+                    dispatchRoom({ type: "joined" });
                     dispatchJoin({ type: "joined" });
                     break;
                 }
                 case "snapshot": {
-                    setSnapshot(msg.payload);
+                    dispatchRoom({ type: "snapshot_received", snapshot: msg.payload });
                     break;
                 }
                 case "event": {
                     if (msg.payload.kind === "settings_updated") {
-                        setLocalStartSfen(msg.payload.settings.startSfen);
+                        dispatchRoom({
+                            type: "settings_updated",
+                            startSfen: msg.payload.settings.startSfen,
+                        });
                     }
                     if (msg.payload.kind === "game_start") {
                         // game_start → 待機画面からインプレースで対局画面へ切り替え
                         // WebSocket 接続を維持したまま OnlineGameView を表示する
                         unsub();
-                        setGamePhase("playing");
+                        dispatchRoom({ type: "game_start" });
                     }
                     break;
                 }
@@ -169,7 +216,7 @@ export default function RoomPage(): ReactElement {
                     });
                     newClient.disconnect();
                     clientRef.current = null;
-                    setClient(null);
+                    dispatchRoom({ type: "client_cleared" });
                     break;
                 }
                 default:
@@ -193,7 +240,7 @@ export default function RoomPage(): ReactElement {
                 dispatchJoin({ type: "error", message: "接続タイムアウト。再度お試しください。" });
                 newClient.disconnect();
                 clientRef.current = null;
-                setClient(null);
+                dispatchRoom({ type: "client_cleared" });
             }
         };
         setTimeout(sendJoin, 50);
@@ -213,7 +260,7 @@ export default function RoomPage(): ReactElement {
     }
 
     function handleUpdateStartSfen(startSfen: string): void {
-        setLocalStartSfen(startSfen);
+        dispatchRoom({ type: "settings_updated", startSfen });
         clientRef.current?.updateSettings({ startSfen });
     }
 
@@ -261,8 +308,7 @@ export default function RoomPage(): ReactElement {
                 roomId={roomId}
                 analysis={aiSupport ? analysis : undefined}
                 onStartReview={(data) => {
-                    setReviewData(data);
-                    setGamePhase("reviewing");
+                    dispatchRoom({ type: "start_review", data });
                 }}
                 onExit={() => void navigate({ to: "/" })}
             />
