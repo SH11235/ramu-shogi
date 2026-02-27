@@ -82,6 +82,7 @@ const LIMIT_INPUT_IDS = {
 const USI_OPTIONS: UsiOptionDefinition[] = [
     {
         name: "Threads",
+
         type: "spin",
         defaultValue: 1,
         min: 1,
@@ -101,6 +102,11 @@ const USI_OPTIONS: UsiOptionDefinition[] = [
     { name: "UCI_LimitStrength", type: "check", defaultValue: false },
     { name: "UCI_Elo", type: "spin", defaultValue: 0, min: 0, max: 4000 },
 ];
+
+const OPTION_DEFAULTS: Record<string, string> = Object.fromEntries(
+    USI_OPTIONS.map((opt) => [opt.name, String(opt.defaultValue)]),
+);
+const THREAD_OPTIONS = buildThreadOptions();
 
 const surfaceClassName =
     "rounded-xl border border-border bg-card p-4 text-foreground shadow-[0_18px_38px_rgba(0,0,0,0.18)]";
@@ -204,19 +210,7 @@ export function EngineControlPanel({
         }
     };
 
-    const optionDefaults = (() => {
-        const defaults: Record<string, string> = {};
-        for (const opt of USI_OPTIONS) {
-            defaults[opt.name] = String(opt.defaultValue);
-        }
-        return defaults;
-    })();
-    const threadOptions = buildThreadOptions();
-    const [optionValues, setOptionValues] = useState<Record<string, string>>(optionDefaults);
-
-    useEffect(() => {
-        setOptionValues(optionDefaults);
-    }, [optionDefaults]);
+    const [optionValues, setOptionValues] = useState<Record<string, string>>(OPTION_DEFAULTS);
 
     useEffect(() => {
         // Update thread info on mount and when engine changes
@@ -515,7 +509,7 @@ export function EngineControlPanel({
                                             }
                                             className={selectClassName}
                                         >
-                                            {threadOptions.map((opt) => (
+                                            {THREAD_OPTIONS.map((opt) => (
                                                 <option key={opt.value} value={opt.value}>
                                                     {opt.label}
                                                 </option>
