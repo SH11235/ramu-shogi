@@ -7,7 +7,7 @@ import type {
     ThreadInfo,
 } from "@shogi/engine-client";
 import type { ReactElement } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { Button } from "./button";
 import {
     Dialog,
@@ -174,6 +174,120 @@ function nextLogId(): number {
     return Date.now() + Math.random();
 }
 
+// ---- useReducer 用の型・初期値・reducer ----
+
+type EngineControlState = {
+    status: PanelStatus;
+    initialized: boolean;
+    busy: boolean;
+    logs: EngineLogEntry[];
+    bestmove: string | null;
+    latestNps: number | null;
+    threadInfo: ThreadInfo | null;
+    limits: LimitsFormState;
+    positionSfen: string;
+    positionMoves: string;
+    threadSetting: number;
+};
+
+type EngineControlAction =
+    | { type: "ENGINE_EVENT"; event: EngineEvent; maxLogs: number }
+    | { type: "INIT_START" }
+    | { type: "INIT_DONE" }
+    | { type: "SEARCH_START" }
+    | { type: "STOP_START" }
+    | { type: "STOP_DONE" }
+    | { type: "SET_BUSY"; busy: boolean }
+    | { type: "SET_THREAD_INFO"; threadInfo: ThreadInfo | null }
+    | { type: "SET_LIMITS"; limits: LimitsFormState }
+    | { type: "SET_POSITION"; sfen: string; moves: string }
+    | { type: "SET_THREAD_SETTING"; value: number }
+    | { type: "PUSH_UI_ERROR"; message: string; maxLogs: number }
+    | { type: "CLEAR_LOGS" };
+
+function engineControlReducer(
+    state: EngineControlState,
+    action: EngineControlAction,
+): EngineControlState {
+    switch (action.type) {
+        case "ENGINE_EVENT": {
+            const entry: EngineLogEntry = {
+                id: nextLogId(),
+                text: formatEvent(action.event),
+                event: action.event,
+                timestamp: new Date(),
+            };
+            const next = [entry, ...state.logs];
+            const trimmed = next.length > action.maxLogs ? next.slice(0, action.maxLogs) : next;
+            const event = action.event;
+            if (event.type === "bestmove") {
+                return {
+                    ...state,
+                    logs: trimmed,
+                    bestmove: event.move,
+                    status: "idle",
+                };
+            }
+            if (event.type === "info" && event.nps !== undefined) {
+                return { ...state, logs: trimmed, latestNps: event.nps };
+            }
+            if (event.type === "error") {
+                return { ...state, logs: trimmed, status: "error" };
+            }
+            return { ...state, logs: trimmed };
+        }
+        case "INIT_START":
+            return { ...state, status: "init" };
+        case "INIT_DONE":
+            return { ...state, initialized: true, status: "ready" };
+        case "SEARCH_START":
+            return { ...state, status: "searching" };
+        case "STOP_START":
+            return { ...state, status: "stopping", busy: true };
+        case "STOP_DONE":
+            return { ...state, status: "idle", busy: false };
+        case "SET_BUSY":
+            return { ...state, busy: action.busy };
+        case "SET_THREAD_INFO":
+            return { ...state, threadInfo: action.threadInfo };
+        case "SET_LIMITS":
+            return { ...state, limits: action.limits };
+        case "SET_POSITION":
+            return { ...state, positionSfen: action.sfen, positionMoves: action.moves };
+        case "SET_THREAD_SETTING":
+            return { ...state, threadSetting: action.value };
+        case "PUSH_UI_ERROR": {
+            const entry: EngineLogEntry = {
+                id: nextLogId(),
+                text: `ui error: ${action.message}`,
+                event: { type: "error", message: action.message },
+                timestamp: new Date(),
+            };
+            const next = [entry, ...state.logs];
+            const trimmed = next.length > action.maxLogs ? next.slice(0, action.maxLogs) : next;
+            return { ...state, logs: trimmed, status: "error" };
+        }
+        case "CLEAR_LOGS":
+            return { ...state, logs: [] };
+    }
+}
+
+function makeInitialState(position: { sfen: string; moves?: string[] }): EngineControlState {
+    return {
+        status: "idle",
+        initialized: false,
+        busy: false,
+        logs: [],
+        bestmove: null,
+        latestNps: null,
+        threadInfo: null,
+        limits: DEFAULT_LIMITS,
+        positionSfen: position.sfen,
+        positionMoves: position.moves?.join(" ") ?? "",
+        threadSetting: 0,
+    };
+}
+
 function normalizeOptionId(name: string): string {
     return `usi-option-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
 }
@@ -185,71 +299,56 @@ export function EngineControlPanel({
     maxLogs = DEFAULT_MAX_LOGS,
 }: EngineControlPanelProps): ReactElement {
     const [open, setOpen] = useState(false);
-    const [status, setStatus] = useState<PanelStatus>("idle");
-    const [limits, setLimits] = useState<LimitsFormState>(DEFAULT_LIMITS);
-    const [logs, setLogs] = useState<EngineLogEntry[]>([]);
-    const [bestmove, setBestmove] = useState<string | null>(null);
-    const [initialized, setInitialized] = useState(false);
-    const [busy, setBusy] = useState(false);
     const [customOption, setCustomOption] = useState({ name: "", value: "" });
-    const [threadInfo, setThreadInfo] = useState<ThreadInfo | null>(null);
-    const [latestNps, setLatestNps] = useState<number | null>(null);
-    const [threadSetting, setThreadSetting] = useState<number>(0);
-    const [positionSfen, setPositionSfen] = useState(position.sfen);
-    const [positionMoves, setPositionMoves] = useState(
-        position.moves && position.moves.length > 0 ? position.moves.join(" ") : "",
-    );
+    const [optionValues, setOptionValues] = useState<Record<string, string>>(OPTION_DEFAULTS);
+
+    const [state, dispatch] = useReducer(engineControlReducer, position, makeInitialState);
+    const {
+        status,
+        initialized,
+        busy,
+        logs,
+        bestmove,
+        latestNps,
+        threadInfo,
+        limits,
+        positionSfen,
+        positionMoves,
+        threadSetting,
+    } = state;
+
     const initializedPositionRef = useRef(false);
     const handleRef = useRef<SearchHandle | null>(null);
     const lastAppliedThreadsRef = useRef<number | null>(null);
 
     const updateThreadInfo = () => {
         if (engine.getThreadInfo) {
-            setThreadInfo(engine.getThreadInfo());
+            dispatch({ type: "SET_THREAD_INFO", threadInfo: engine.getThreadInfo() });
         }
     };
-
-    const [optionValues, setOptionValues] = useState<Record<string, string>>(OPTION_DEFAULTS);
 
     useEffect(() => {
         // Update thread info on mount and when engine changes
         if (engine.getThreadInfo) {
-            setThreadInfo(engine.getThreadInfo());
+            dispatch({ type: "SET_THREAD_INFO", threadInfo: engine.getThreadInfo() });
         }
     }, [engine]);
 
     useEffect(() => {
         if (initializedPositionRef.current) return;
-        setPositionSfen(position.sfen);
-        setPositionMoves(position.moves?.join(" ") ?? "");
+        dispatch({
+            type: "SET_POSITION",
+            sfen: position.sfen,
+            moves: position.moves?.join(" ") ?? "",
+        });
         initializedPositionRef.current = true;
     }, [position.moves, position.sfen]);
 
     useEffect(() => {
         const unsubscribe = engine.subscribe((event) => {
-            setLogs((prev) => {
-                const entry: EngineLogEntry = {
-                    id: nextLogId(),
-                    text: formatEvent(event),
-                    event,
-                    timestamp: new Date(),
-                };
-                const next = [entry, ...prev];
-                if (next.length > maxLogs) {
-                    return next.slice(0, maxLogs);
-                }
-                return next;
-            });
-            if (event.type === "info" && event.nps !== undefined) {
-                setLatestNps(event.nps);
-            }
+            dispatch({ type: "ENGINE_EVENT", event, maxLogs });
             if (event.type === "bestmove") {
-                setBestmove(event.move);
-                setStatus("idle");
                 handleRef.current = null;
-            }
-            if (event.type === "error") {
-                setStatus("error");
             }
         });
 
@@ -264,22 +363,12 @@ export function EngineControlPanel({
     }, [engine, maxLogs]);
 
     const pushUiError = (message: string) => {
-        setLogs((prev) => {
-            const entry: EngineLogEntry = {
-                id: nextLogId(),
-                text: `ui error: ${message}`,
-                event: { type: "error", message },
-                timestamp: new Date(),
-            };
-            const next = [entry, ...prev];
-            return next.length > maxLogs ? next.slice(0, maxLogs) : next;
-        });
-        setStatus("error");
+        dispatch({ type: "PUSH_UI_ERROR", message, maxLogs });
     };
 
     const ensureInitialized = async (force?: boolean) => {
         if (initialized && !force) return;
-        setStatus("init");
+        dispatch({ type: "INIT_START" });
         if (force && engine.reset) {
             await engine.reset();
         }
@@ -287,8 +376,7 @@ export function EngineControlPanel({
         await engine.init(initThreads ? { threads: initThreads } : undefined);
         const resolvedSfen = positionSfen.trim() || "startpos";
         await engine.loadPosition(resolvedSfen, parseMovesText(positionMoves));
-        setInitialized(true);
-        setStatus("ready");
+        dispatch({ type: "INIT_DONE" });
         lastAppliedThreadsRef.current = initThreads ?? null;
         // Update thread info after init
         updateThreadInfo();
@@ -330,7 +418,7 @@ export function EngineControlPanel({
 
     const handleInitClick = async () => {
         if (busy) return;
-        setBusy(true);
+        dispatch({ type: "SET_BUSY", busy: true });
         try {
             const handle = handleRef.current;
             if (handle) {
@@ -341,13 +429,13 @@ export function EngineControlPanel({
         } catch (error) {
             pushUiError(String(error));
         } finally {
-            setBusy(false);
+            dispatch({ type: "SET_BUSY", busy: false });
         }
     };
 
     const handleStart = async () => {
         if (busy || status === "searching") return;
-        setBusy(true);
+        dispatch({ type: "SET_BUSY", busy: true });
         try {
             const requestedThreads = threadSetting > 0 ? threadSetting : null;
             if (initialized && lastAppliedThreadsRef.current !== requestedThreads) {
@@ -367,20 +455,19 @@ export function EngineControlPanel({
                 return;
             }
             const searchLimits = buildLimits(limits);
-            setStatus("searching");
+            dispatch({ type: "SEARCH_START" });
             const handle = await engine.search({ limits: searchLimits, ponder: limits.ponder });
             handleRef.current = handle;
         } catch (error) {
             pushUiError(String(error));
         } finally {
-            setBusy(false);
+            dispatch({ type: "SET_BUSY", busy: false });
         }
     };
 
     const handleStop = async () => {
         if (busy) return;
-        setBusy(true);
-        setStatus("stopping");
+        dispatch({ type: "STOP_START" });
         try {
             const handle = handleRef.current;
             if (handle) {
@@ -388,19 +475,22 @@ export function EngineControlPanel({
                 handleRef.current = null;
             }
             await engine.stop();
-            setStatus("idle");
+            dispatch({ type: "STOP_DONE" });
         } catch (error) {
             pushUiError(String(error));
         } finally {
-            setBusy(false);
+            dispatch({ type: "SET_BUSY", busy: false });
         }
     };
 
-    const resetLogs = () => setLogs([]);
+    const resetLogs = () => dispatch({ type: "CLEAR_LOGS" });
 
     const handleApplyCurrentPosition = () => {
-        setPositionSfen(position.sfen);
-        setPositionMoves(position.moves?.join(" ") ?? "");
+        dispatch({
+            type: "SET_POSITION",
+            sfen: position.sfen,
+            moves: position.moves?.join(" ") ?? "",
+        });
     };
 
     const statusLabel =
@@ -502,9 +592,10 @@ export function EngineControlPanel({
                                             id="engine-panel-threads"
                                             value={String(threadSetting)}
                                             onChange={(e) =>
-                                                setThreadSetting(
-                                                    Math.max(0, Number(e.target.value)),
-                                                )
+                                                dispatch({
+                                                    type: "SET_THREAD_SETTING",
+                                                    value: Math.max(0, Number(e.target.value)),
+                                                })
                                             }
                                             className={selectClassName}
                                         >
@@ -523,7 +614,13 @@ export function EngineControlPanel({
                                         <Input
                                             id="engine-panel-sfen"
                                             value={positionSfen}
-                                            onChange={(e) => setPositionSfen(e.target.value)}
+                                            onChange={(e) =>
+                                                dispatch({
+                                                    type: "SET_POSITION",
+                                                    sfen: e.target.value,
+                                                    moves: positionMoves,
+                                                })
+                                            }
                                             className={inputClassName}
                                         />
                                     </label>
@@ -535,7 +632,13 @@ export function EngineControlPanel({
                                         <Input
                                             id="engine-panel-moves"
                                             value={positionMoves}
-                                            onChange={(e) => setPositionMoves(e.target.value)}
+                                            onChange={(e) =>
+                                                dispatch({
+                                                    type: "SET_POSITION",
+                                                    sfen: positionSfen,
+                                                    moves: e.target.value,
+                                                })
+                                            }
                                             className={inputClassName}
                                         />
                                     </label>
@@ -651,7 +754,10 @@ export function EngineControlPanel({
                                             min={1}
                                             value={limits.depth}
                                             onChange={(e) =>
-                                                setLimits({ ...limits, depth: e.target.value })
+                                                dispatch({
+                                                    type: "SET_LIMITS",
+                                                    limits: { ...limits, depth: e.target.value },
+                                                })
                                             }
                                             placeholder="例: 12"
                                             className={inputClassName}
@@ -668,7 +774,10 @@ export function EngineControlPanel({
                                             min={0}
                                             value={limits.byoyomi}
                                             onChange={(e) =>
-                                                setLimits({ ...limits, byoyomi: e.target.value })
+                                                dispatch({
+                                                    type: "SET_LIMITS",
+                                                    limits: { ...limits, byoyomi: e.target.value },
+                                                })
                                             }
                                             placeholder="例: 5000"
                                             className={inputClassName}
@@ -685,7 +794,10 @@ export function EngineControlPanel({
                                             min={0}
                                             value={limits.nodes}
                                             onChange={(e) =>
-                                                setLimits({ ...limits, nodes: e.target.value })
+                                                dispatch({
+                                                    type: "SET_LIMITS",
+                                                    limits: { ...limits, nodes: e.target.value },
+                                                })
                                             }
                                             placeholder="例: 100000"
                                             className={inputClassName}
@@ -702,7 +814,13 @@ export function EngineControlPanel({
                                             min={0}
                                             value={limits.movetime}
                                             onChange={(e) =>
-                                                setLimits({ ...limits, movetime: e.target.value })
+                                                dispatch({
+                                                    type: "SET_LIMITS",
+                                                    limits: {
+                                                        ...limits,
+                                                        movetime: e.target.value,
+                                                    },
+                                                })
                                             }
                                             placeholder="例: 1000"
                                             className={inputClassName}
@@ -718,7 +836,10 @@ export function EngineControlPanel({
                                         type="checkbox"
                                         checked={limits.ponder}
                                         onChange={(e) =>
-                                            setLimits({ ...limits, ponder: e.target.checked })
+                                            dispatch({
+                                                type: "SET_LIMITS",
+                                                limits: { ...limits, ponder: e.target.checked },
+                                            })
                                         }
                                     />
                                     <span className="text-[13px]">ponder を有効化</span>

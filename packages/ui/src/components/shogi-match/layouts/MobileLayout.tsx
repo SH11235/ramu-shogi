@@ -184,12 +184,20 @@ export function MobileLayout({
     // 設定BottomSheetの状態
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-    // 評価値グラフの表示状態（盤面上オーバーレイ）
-    const [isKifuDetailOpen, setIsKifuDetailOpen] = useState(false);
+    // 評価値グラフのオーバーレイ状態（表示フラグ + ドラッグオフセット）
+    const [graphOverlay, setGraphOverlay] = useState({ isOpen: false, offset: { x: 0, y: 0 } });
+    const isKifuDetailOpen = graphOverlay.isOpen;
+    const graphOffset = graphOverlay.offset;
+    const setIsKifuDetailOpen = (open: boolean) =>
+        setGraphOverlay((prev) => ({ ...prev, isOpen: open }));
 
     // 手詳細BottomSheetの状態
-    const [selectedMoveForDetail, setSelectedMoveForDetail] = useState<FullKifMove | null>(null);
-    const [selectedMovePosition, setSelectedMovePosition] = useState<PositionState | null>(null);
+    const [moveDetail, setMoveDetail] = useState<{
+        move: FullKifMove | null;
+        position: PositionState | null;
+    }>({ move: null, position: null });
+    const selectedMoveForDetail = moveDetail.move;
+    const selectedMovePosition = moveDetail.position;
 
     // 手タップ時のハンドラ（検討モードで詳細表示を開く）
     const handlePlySelectWithDetail = (ply: number) => {
@@ -204,16 +212,14 @@ export function MobileLayout({
             // 手数 ply に対応する局面は positionHistory[ply - 1] になる。
             const pos = positionHistory[ply - 1];
             if (move && pos) {
-                setSelectedMoveForDetail(move);
-                setSelectedMovePosition(pos);
+                setMoveDetail({ move, position: pos });
             }
         }
     };
 
     // 詳細シートを閉じる
     const handleMoveDetailClose = () => {
-        setSelectedMoveForDetail(null);
-        setSelectedMovePosition(null);
+        setMoveDetail({ move: null, position: null });
     };
 
     const graphOverlayRef = useRef<HTMLDivElement>(null);
@@ -224,7 +230,6 @@ export function MobileLayout({
         originX: 0,
         originY: 0,
     });
-    const [graphOffset, setGraphOffset] = useState({ x: 0, y: 0 });
 
     const handleGraphPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
         if (e.button !== 0) return;
@@ -257,7 +262,7 @@ export function MobileLayout({
         const nextX = Math.min(maxX, Math.max(minX, state.originX + deltaX));
         const nextY = Math.min(maxY, Math.max(minY, state.originY + deltaY));
 
-        setGraphOffset({ x: nextX, y: nextY });
+        setGraphOverlay((prev) => ({ ...prev, offset: { x: nextX, y: nextY } }));
     };
 
     const handleGraphPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -476,7 +481,7 @@ export function MobileLayout({
                             {/* 詳細ボタン */}
                             <button
                                 type="button"
-                                onClick={() => setIsKifuDetailOpen((prev) => !prev)}
+                                onClick={() => setIsKifuDetailOpen(!isKifuDetailOpen)}
                                 aria-pressed={isKifuDetailOpen}
                                 className={`px-2 py-0.5 text-xs rounded active:scale-95 transition-all ${
                                     isKifuDetailOpen

@@ -1131,9 +1131,11 @@ export function KifuPanel({
     const currentRowRef = useRef<HTMLElement>(null);
     const [copySuccess, setCopySuccess] = useState(false);
     const [hintDismissed, setHintDismissed] = useState(false);
-    const [viewMode, setViewMode] = useState<KifuViewMode>("main");
-    // 選択中の分岐情報
-    const [selectedBranch, setSelectedBranch] = useState<SelectedBranch | null>(null);
+    const [viewState, setViewState] = useState({
+        viewMode: "main" as KifuViewMode,
+        selectedBranch: null as SelectedBranch | null,
+    });
+    const { viewMode, selectedBranch } = viewState;
 
     // analysisMarkers を ply → Set<seat> に変換（棋譜行でのルックアップ用）
     const analysisMarkersByPly = (() => {
@@ -1145,6 +1147,14 @@ export function KifuPanel({
         }
         return map;
     })();
+
+    const setViewMode = (newMode: KifuViewMode) => {
+        setViewState((prev) => ({ ...prev, viewMode: newMode }));
+    };
+
+    const setSelectedBranch = (branch: SelectedBranch | null) => {
+        setViewState((prev) => ({ ...prev, selectedBranch: branch }));
+    };
 
     // viewMode変更時に親に通知するラッパー（通知は一箇所に集約）
     const setViewModeWithNotify = (newMode: KifuViewMode) => {
@@ -1166,28 +1176,31 @@ export function KifuPanel({
         ? getBranchesByPly(kifuTree)
         : new Map<number, BranchSummary[]>();
 
-    // 展開されている手数のセット（折りたたみ状態管理）
-    const [expandedPlies, setExpandedPlies] = useState<Set<number>>(new Set());
-
-    // 詳細展開中の手数（null = 非展開）
-    const [expandedMoveDetail, setExpandedMoveDetail] = useState<number | null>(null);
+    const [expandState, setExpandState] = useState({
+        expandedPlies: new Set<number>(),
+        expandedMoveDetail: null as number | null,
+    });
+    const { expandedPlies, expandedMoveDetail } = expandState;
 
     // 折りたたみトグル関数
     const togglePlyExpansion = (ply: number) => {
-        setExpandedPlies((prev) => {
-            const next = new Set(prev);
+        setExpandState((prev) => {
+            const next = new Set(prev.expandedPlies);
             if (next.has(ply)) {
                 next.delete(ply);
             } else {
                 next.add(ply);
             }
-            return next;
+            return { ...prev, expandedPlies: next };
         });
     };
 
     // 詳細展開トグル関数
     const toggleMoveDetailExpansion = (ply: number) => {
-        setExpandedMoveDetail((prev) => (prev === ply ? null : ply));
+        setExpandState((prev) => ({
+            ...prev,
+            expandedMoveDetail: prev.expandedMoveDetail === ply ? null : ply,
+        }));
     };
 
     // 選択中の分岐の手順を取得
@@ -1225,11 +1238,13 @@ export function KifuPanel({
             processedBranchInfoRef.current = lastAddedBranchInfo;
             // 追加された分岐を選択して「選択分岐」ビューに遷移
             // （スクロール位置はviewMode遷移検知のuseEffectで自動保存される）
-            setSelectedBranch({
-                nodeId: branchInList.nodeId,
-                tabLabel: branchInList.tabLabel,
+            setViewState({
+                viewMode: "selectedBranch",
+                selectedBranch: {
+                    nodeId: branchInList.nodeId,
+                    tabLabel: branchInList.tabLabel,
+                },
             });
-            setViewMode("selectedBranch");
             onViewModeChange?.("selectedBranch");
             // 処理完了を通知
             onLastAddedBranchHandled?.();
@@ -1239,9 +1254,8 @@ export function KifuPanel({
     // 分岐がなくなった場合は本譜ビューに戻す＆分岐状態をクリア
     useEffect(() => {
         if (branches.length === 0 && viewMode !== "main") {
-            setViewMode("main");
+            setViewState({ viewMode: "main", selectedBranch: null });
             onViewModeChange?.("main");
-            setSelectedBranch(null);
         }
     }, [branches.length, viewMode, onViewModeChange]);
 
@@ -1908,10 +1922,16 @@ export function KifuPanel({
                                         // 同じ手をもう一度クリックしたら選択解除
                                         if (isDetailExpanded) {
                                             onMoveDetailSelect(null, null);
-                                            setExpandedMoveDetail(null);
+                                            setExpandState((prev) => ({
+                                                ...prev,
+                                                expandedMoveDetail: null,
+                                            }));
                                         } else {
                                             onMoveDetailSelect(move, position);
-                                            setExpandedMoveDetail(move.ply);
+                                            setExpandState((prev) => ({
+                                                ...prev,
+                                                expandedMoveDetail: move.ply,
+                                            }));
                                         }
                                         return;
                                     }
@@ -2014,7 +2034,12 @@ export function KifuPanel({
                                                 nnueList={nnueList}
                                                 isNnueListLoading={isNnueListLoading}
                                                 presets={presets}
-                                                onCollapse={() => setExpandedMoveDetail(null)}
+                                                onCollapse={() =>
+                                                    setExpandState((prev) => ({
+                                                        ...prev,
+                                                        expandedMoveDetail: null,
+                                                    }))
+                                                }
                                                 isOnMainLine={isOnMainLine}
                                             />
                                         </div>

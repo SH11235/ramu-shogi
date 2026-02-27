@@ -15,6 +15,7 @@ import type {
 } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useEffect } from "react";
+import { useDraggableWindow } from "../hooks/useDraggableWindow";
 import {
     comparePvWithMainLine,
     findExistingBranchForPv,
@@ -28,7 +29,6 @@ import {
     toNnueSelectionValue,
     toOptionValue,
 } from "../utils/nnueSelectionUtils";
-import { useDraggableWindow } from "../hooks/useDraggableWindow";
 
 interface MoveDetailWindowProps {
     /** 選択された手 */
@@ -324,38 +324,20 @@ export function MoveDetailWindow({
     onClose,
     isOnMainLine = true,
 }: MoveDetailWindowProps): ReactElement {
-    // 初期位置を画面中央やや右上に設定
-    const [windowPosition, setWindowPosition] = useState<Position>(() => ({
-        x:
-            typeof window !== "undefined"
-                ? Math.max(50, window.innerWidth - DEFAULT_WIDTH - 100)
-                : 100,
-        y: typeof window !== "undefined" ? 100 : 100,
-    }));
-    const [size, setSize] = useState<Size>({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT });
+    const { geometry, handlers } = useDraggableWindow(
+        {
+            x:
+                typeof window !== "undefined"
+                    ? Math.max(50, window.innerWidth - DEFAULT_WIDTH - 100)
+                    : 100,
+            y: typeof window !== "undefined" ? 100 : 100,
+        },
+        { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT },
+        { minWidth: MIN_WIDTH, minHeight: MIN_HEIGHT },
+    );
 
-    const dragMode = useRef<DragMode>("none");
-    const dragStart = useRef<Position>({ x: 0, y: 0 });
-    const initialPosition = useRef<Position>({ x: 0, y: 0 });
-    const initialSize = useRef<Size>({ width: 0, height: 0 });
-
-    // ドラッグ開始（移動）
-    const handleMoveStart = (e: React.MouseEvent) => {
-        e.preventDefault();
-        dragMode.current = "move";
-        dragStart.current = { x: e.clientX, y: e.clientY };
-        initialPosition.current = { ...windowPosition };
-    };
-
-    // リサイズ開始（共通）
-    const createResizeHandler = (mode: DragMode) => (e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dragMode.current = mode;
-        dragStart.current = { x: e.clientX, y: e.clientY };
-        initialPosition.current = { ...windowPosition };
-        initialSize.current = { ...size };
-    };
+    const { position: windowPosition, size } = geometry;
+    const { onMoveStart: handleMoveStart, createResizeHandler } = handlers;
 
     // Escキーでウィンドウを閉じる
     useEffect(() => {
@@ -368,118 +350,6 @@ export function MoveDetailWindow({
         document.addEventListener("keydown", handleEscape);
         return () => document.removeEventListener("keydown", handleEscape);
     }, [onClose]);
-
-    // マウス移動・終了のグローバルハンドラ
-    useEffect(() => {
-        const handleMouseMove = (e: MouseEvent) => {
-            if (dragMode.current === "none") return;
-
-            const deltaX = e.clientX - dragStart.current.x;
-            const deltaY = e.clientY - dragStart.current.y;
-
-            if (dragMode.current === "move") {
-                const newX = initialPosition.current.x + deltaX;
-                const newY = initialPosition.current.y + deltaY;
-                const maxX = window.innerWidth - size.width;
-                const maxY = window.innerHeight - size.height;
-                setWindowPosition({
-                    x: Math.max(0, Math.min(newX, maxX)),
-                    y: Math.max(0, Math.min(newY, maxY)),
-                });
-            } else if (dragMode.current === "resize-e") {
-                const newWidth = initialSize.current.width + deltaX;
-                const maxWidth = window.innerWidth - windowPosition.x;
-                setSize((prev) => ({
-                    ...prev,
-                    width: Math.max(MIN_WIDTH, Math.min(newWidth, maxWidth)),
-                }));
-            } else if (dragMode.current === "resize-w") {
-                const newX = initialPosition.current.x + deltaX;
-                const maxX = initialPosition.current.x + initialSize.current.width - MIN_WIDTH;
-                const clampedX = Math.max(0, Math.min(newX, maxX));
-                const clampedWidth =
-                    initialPosition.current.x + initialSize.current.width - clampedX;
-                setSize((prev) => ({ ...prev, width: Math.max(MIN_WIDTH, clampedWidth) }));
-                setWindowPosition((prev) => ({ ...prev, x: clampedX }));
-            } else if (dragMode.current === "resize-s") {
-                const newHeight = initialSize.current.height + deltaY;
-                const maxHeight = window.innerHeight - windowPosition.y;
-                setSize((prev) => ({
-                    ...prev,
-                    height: Math.max(MIN_HEIGHT, Math.min(newHeight, maxHeight)),
-                }));
-            } else if (dragMode.current === "resize-n") {
-                const newY = initialPosition.current.y + deltaY;
-                const maxY = initialPosition.current.y + initialSize.current.height - MIN_HEIGHT;
-                const clampedY = Math.max(0, Math.min(newY, maxY));
-                const clampedHeight =
-                    initialPosition.current.y + initialSize.current.height - clampedY;
-                setSize((prev) => ({ ...prev, height: Math.max(MIN_HEIGHT, clampedHeight) }));
-                setWindowPosition((prev) => ({ ...prev, y: clampedY }));
-            } else if (dragMode.current === "resize-se") {
-                const newWidth = initialSize.current.width + deltaX;
-                const newHeight = initialSize.current.height + deltaY;
-                const maxWidth = window.innerWidth - windowPosition.x;
-                const maxHeight = window.innerHeight - windowPosition.y;
-                setSize({
-                    width: Math.max(MIN_WIDTH, Math.min(newWidth, maxWidth)),
-                    height: Math.max(MIN_HEIGHT, Math.min(newHeight, maxHeight)),
-                });
-            } else if (dragMode.current === "resize-ne") {
-                const newWidth = initialSize.current.width + deltaX;
-                const newY = initialPosition.current.y + deltaY;
-                const maxWidth = window.innerWidth - windowPosition.x;
-                const clampedWidth = Math.max(MIN_WIDTH, Math.min(newWidth, maxWidth));
-                const maxY = initialPosition.current.y + initialSize.current.height - MIN_HEIGHT;
-                const clampedY = Math.max(0, Math.min(newY, maxY));
-                const clampedHeight =
-                    initialPosition.current.y + initialSize.current.height - clampedY;
-                setSize({ width: clampedWidth, height: Math.max(MIN_HEIGHT, clampedHeight) });
-                setWindowPosition((prev) => ({ ...prev, y: clampedY }));
-            } else if (dragMode.current === "resize-sw") {
-                const newX = initialPosition.current.x + deltaX;
-                const newHeight = initialSize.current.height + deltaY;
-                const maxX = initialPosition.current.x + initialSize.current.width - MIN_WIDTH;
-                const clampedX = Math.max(0, Math.min(newX, maxX));
-                const clampedWidth =
-                    initialPosition.current.x + initialSize.current.width - clampedX;
-                const maxHeight = window.innerHeight - windowPosition.y;
-                setSize({
-                    width: Math.max(MIN_WIDTH, clampedWidth),
-                    height: Math.max(MIN_HEIGHT, Math.min(newHeight, maxHeight)),
-                });
-                setWindowPosition((prev) => ({ ...prev, x: clampedX }));
-            } else if (dragMode.current === "resize-nw") {
-                const newX = initialPosition.current.x + deltaX;
-                const newY = initialPosition.current.y + deltaY;
-                const maxX = initialPosition.current.x + initialSize.current.width - MIN_WIDTH;
-                const clampedX = Math.max(0, Math.min(newX, maxX));
-                const clampedWidth =
-                    initialPosition.current.x + initialSize.current.width - clampedX;
-                const maxY = initialPosition.current.y + initialSize.current.height - MIN_HEIGHT;
-                const clampedY = Math.max(0, Math.min(newY, maxY));
-                const clampedHeight =
-                    initialPosition.current.y + initialSize.current.height - clampedY;
-                setSize({
-                    width: Math.max(MIN_WIDTH, clampedWidth),
-                    height: Math.max(MIN_HEIGHT, clampedHeight),
-                });
-                setWindowPosition({ x: clampedX, y: clampedY });
-            }
-        };
-
-        const handleMouseUp = () => {
-            dragMode.current = "none";
-        };
-
-        document.addEventListener("mousemove", handleMouseMove);
-        document.addEventListener("mouseup", handleMouseUp);
-
-        return () => {
-            document.removeEventListener("mousemove", handleMouseMove);
-            document.removeEventListener("mouseup", handleMouseUp);
-        };
-    }, [size.width, size.height, windowPosition.x, windowPosition.y]);
 
     // 複数PVがある場合はリストで表示、なければ従来の単一PVを使用
     const pvList: PvEvalInfo[] = (() => {

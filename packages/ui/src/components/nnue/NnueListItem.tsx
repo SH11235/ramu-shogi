@@ -1,7 +1,7 @@
 import type { NnueMeta } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
-import { useId, useRef, useState } from "react";
+import { useId, useReducer, useRef } from "react";
 import { Button } from "../button";
 import { Input } from "../input";
 
@@ -30,6 +30,31 @@ interface NnueListItemProps {
     onDisplayNameChange?: (newName: string) => Promise<void>;
     /** FV_SCALE変更時のコールバック（指定時、インライン編集が有効になる） */
     onFvScaleChange?: (fvScale: number | undefined) => Promise<void>;
+}
+
+// ---- インライン編集フィールド用 reducer ----
+
+type EditFieldState = { isEditing: boolean; value: string; isSaving: boolean };
+type EditFieldAction =
+    | { type: "START_EDIT"; value: string }
+    | { type: "CHANGE"; value: string }
+    | { type: "START_SAVE" }
+    | { type: "DONE_SAVE" }
+    | { type: "CANCEL"; value: string };
+
+function editFieldReducer(state: EditFieldState, action: EditFieldAction): EditFieldState {
+    switch (action.type) {
+        case "START_EDIT":
+            return { isEditing: true, value: action.value, isSaving: false };
+        case "CHANGE":
+            return { ...state, value: action.value };
+        case "START_SAVE":
+            return { ...state, isSaving: true };
+        case "DONE_SAVE":
+            return { isEditing: false, value: state.value, isSaving: false };
+        case "CANCEL":
+            return { isEditing: false, value: action.value, isSaving: false };
+    }
 }
 
 function formatSize(bytes: number): string {
@@ -86,26 +111,34 @@ export function NnueListItem({
     const architectureLabel = getArchitectureLabel(meta);
 
     // 表示名編集状態
-    const [isEditing, setIsEditing] = useState(false);
-    const [editValue, setEditValue] = useState(meta.displayName);
-    const [isSaving, setIsSaving] = useState(false);
+    const [displayNameEdit, dispatchDisplayName] = useReducer(editFieldReducer, {
+        isEditing: false,
+        value: meta.displayName,
+        isSaving: false,
+    });
+    const { isEditing, value: editValue, isSaving } = displayNameEdit;
 
     // FV_SCALE編集状態
-    const [isEditingFvScale, setIsEditingFvScale] = useState(false);
-    const [fvScaleValue, setFvScaleValue] = useState(meta.fvScale?.toString() ?? "");
-    const [isSavingFvScale, setIsSavingFvScale] = useState(false);
+    const [fvScaleEdit, dispatchFvScale] = useReducer(editFieldReducer, {
+        isEditing: false,
+        value: meta.fvScale?.toString() ?? "",
+        isSaving: false,
+    });
+    const {
+        isEditing: isEditingFvScale,
+        value: fvScaleValue,
+        isSaving: isSavingFvScale,
+    } = fvScaleEdit;
 
     const startEditing = () => {
         if (!canEdit || disabled) return;
-        setEditValue(meta.displayName);
-        setIsEditing(true);
+        dispatchDisplayName({ type: "START_EDIT", value: meta.displayName });
         // 次のレンダリング後にフォーカス
         setTimeout(() => editInputRef.current?.select(), 0);
     };
 
     const cancelEditing = () => {
-        setIsEditing(false);
-        setEditValue(meta.displayName);
+        dispatchDisplayName({ type: "CANCEL", value: meta.displayName });
     };
 
     const saveDisplayName = async () => {
@@ -115,14 +148,14 @@ export function NnueListItem({
             cancelEditing();
             return;
         }
-        setIsSaving(true);
+        dispatchDisplayName({ type: "START_SAVE" });
         try {
             await onDisplayNameChange(trimmed);
-            setIsEditing(false);
+            dispatchDisplayName({ type: "DONE_SAVE" });
         } catch {
             // エラーは親コンポーネントで処理される
         } finally {
-            setIsSaving(false);
+            dispatchDisplayName({ type: "DONE_SAVE" });
         }
     };
 
@@ -138,14 +171,12 @@ export function NnueListItem({
     // FV_SCALE編集関連
     const startEditingFvScale = () => {
         if (!canEditFvScale || disabled) return;
-        setFvScaleValue(meta.fvScale?.toString() ?? "");
-        setIsEditingFvScale(true);
+        dispatchFvScale({ type: "START_EDIT", value: meta.fvScale?.toString() ?? "" });
         setTimeout(() => fvScaleInputRef.current?.select(), 0);
     };
 
     const cancelEditingFvScale = () => {
-        setIsEditingFvScale(false);
-        setFvScaleValue(meta.fvScale?.toString() ?? "");
+        dispatchFvScale({ type: "CANCEL", value: meta.fvScale?.toString() ?? "" });
     };
 
     const saveFvScale = async () => {
@@ -168,14 +199,14 @@ export function NnueListItem({
             cancelEditingFvScale();
             return;
         }
-        setIsSavingFvScale(true);
+        dispatchFvScale({ type: "START_SAVE" });
         try {
             await onFvScaleChange(newValue);
-            setIsEditingFvScale(false);
+            dispatchFvScale({ type: "DONE_SAVE" });
         } catch {
             // エラーは親コンポーネントで処理される
         } finally {
-            setIsSavingFvScale(false);
+            dispatchFvScale({ type: "DONE_SAVE" });
         }
     };
 
@@ -236,7 +267,12 @@ export function NnueListItem({
                                     <Input
                                         ref={editInputRef}
                                         value={editValue}
-                                        onChange={(e) => setEditValue(e.target.value)}
+                                        onChange={(e) =>
+                                            dispatchDisplayName({
+                                                type: "CHANGE",
+                                                value: e.target.value,
+                                            })
+                                        }
                                         onBlur={() => void saveDisplayName()}
                                         onKeyDown={handleKeyDown}
                                         disabled={isSaving}
@@ -308,7 +344,12 @@ export function NnueListItem({
                                             min={1}
                                             max={100}
                                             value={fvScaleValue}
-                                            onChange={(e) => setFvScaleValue(e.target.value)}
+                                            onChange={(e) =>
+                                                dispatchFvScale({
+                                                    type: "CHANGE",
+                                                    value: e.target.value,
+                                                })
+                                            }
                                             onBlur={() => void saveFvScale()}
                                             onKeyDown={handleFvScaleKeyDown}
                                             disabled={isSavingFvScale}
@@ -371,7 +412,9 @@ export function NnueListItem({
                             <Input
                                 ref={editInputRef}
                                 value={editValue}
-                                onChange={(e) => setEditValue(e.target.value)}
+                                onChange={(e) =>
+                                    dispatchDisplayName({ type: "CHANGE", value: e.target.value })
+                                }
                                 onBlur={() => void saveDisplayName()}
                                 onKeyDown={handleKeyDown}
                                 disabled={isSaving}
@@ -422,7 +465,9 @@ export function NnueListItem({
                                     min={1}
                                     max={100}
                                     value={fvScaleValue}
-                                    onChange={(e) => setFvScaleValue(e.target.value)}
+                                    onChange={(e) =>
+                                        dispatchFvScale({ type: "CHANGE", value: e.target.value })
+                                    }
                                     onBlur={() => void saveFvScale()}
                                     onKeyDown={handleFvScaleKeyDown}
                                     disabled={isSavingFvScale}
