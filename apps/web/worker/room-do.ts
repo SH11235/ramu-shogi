@@ -238,6 +238,8 @@ export class RoomDO implements DurableObject {
         const url = new URL(request.url);
 
         // 内部初期化エンドポイント（REST API から呼ばれる）
+        // Cloudflare Workers のアーキテクチャ上、DO は Worker 経由でのみ呼び出せるため
+        // 外部から直接アクセスされるリスクは低い
         if (url.pathname === "/init" && request.method === "POST") {
             return this.handleInit(request);
         }
@@ -719,6 +721,8 @@ export class RoomDO implements DurableObject {
             game.clock.running = null;
             room.status = "finished";
             room.events.push(sennichiteEvent, gameEndEvent);
+            // ゲーム終了後は直近2件のみ保持してストレージを節約
+            room.events = room.events.slice(-2);
 
             await this.doState.storage.put("room", room);
             this.broadcastToAll({ v: 1, t: "event", payload: moveEvent });
@@ -789,6 +793,8 @@ export class RoomDO implements DurableObject {
         game.clock.running = null;
         room.status = "finished";
         room.events.push(resignEvent, gameEndEvent);
+        // ゲーム終了後は直近2件のみ保持してストレージを節約
+        room.events = room.events.slice(-2);
 
         await this.doState.storage.put("room", room);
         this.broadcastToAll({ v: 1, t: "event", payload: resignEvent });
@@ -1168,6 +1174,8 @@ export class RoomDO implements DurableObject {
                 game.clock.running = null;
                 room.status = "finished";
                 room.events.push(disconnectEvent, gameEndEvent);
+                // ゲーム終了後は直近2件のみ保持してストレージを節約
+                room.events = room.events.slice(-2);
 
                 await this.doState.storage.put("room", room);
                 this.broadcastToAll({ v: 1, t: "event", payload: disconnectEvent });
@@ -1221,6 +1229,8 @@ export class RoomDO implements DurableObject {
                 game.clock.running = null;
                 room.status = "finished";
                 room.events.push(timeoutEvent, gameEndEvent);
+                // ゲーム終了後は直近2件のみ保持してストレージを節約
+                room.events = room.events.slice(-2);
 
                 await this.doState.storage.put("room", room);
                 this.broadcastToAll({ v: 1, t: "event", payload: timeoutEvent });

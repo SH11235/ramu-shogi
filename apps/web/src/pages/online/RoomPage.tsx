@@ -167,12 +167,19 @@ export default function RoomPage(): ReactElement {
             // join メッセージ送信（open 後に自動実行される）
             // createRoomClient は接続後に send できるよう subscribe + open を待つ
             // open イベント後 send するため、少し遅延させる
+            let joinAttempts = 0;
             const sendJoin = (): void => {
                 if (client.getStatus() === "connected") {
                     // seatToJoin をクロージャで直接参照し、setState の非同期更新に依存しない
                     client.join({ seat: seatToJoin, name: joinName.trim() });
-                } else {
+                } else if (joinAttempts++ < 50) {
+                    // 最大5秒（100ms × 50回）待機
                     setTimeout(sendJoin, 100);
+                } else {
+                    setJoinError("接続タイムアウト。再度お試しください。");
+                    setIsJoining(false);
+                    client.disconnect();
+                    clientRef.current = null;
                 }
             };
             setTimeout(sendJoin, 50);

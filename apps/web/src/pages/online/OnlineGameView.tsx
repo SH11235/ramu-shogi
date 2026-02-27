@@ -21,6 +21,7 @@ import {
     KifuNavigationToolbar,
     ShogiBoard,
 } from "@shogi/ui";
+import { useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -893,6 +894,7 @@ function GameEndDialog({
     analysisLog,
     onStartReview,
 }: GameEndDialogProps): ReactElement {
+    const navigate = useNavigate();
     const winnerName =
         result.winner === "b" ? playerNames.b : result.winner === "w" ? playerNames.w : null;
 
@@ -960,9 +962,7 @@ function GameEndDialog({
                     )}
                     <button
                         type="button"
-                        onClick={() => {
-                            window.location.href = "/";
-                        }}
+                        onClick={() => void navigate({ to: "/" })}
                         className="w-full rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
                     >
                         トップへ戻る
