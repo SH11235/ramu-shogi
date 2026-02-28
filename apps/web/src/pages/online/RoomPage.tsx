@@ -100,7 +100,7 @@ type RoomAction =
     | { type: "joined" }
     | { type: "snapshot_received"; snapshot: SnapshotPayload }
     | { type: "settings_updated"; startSfen: string }
-    | { type: "game_start" }
+    | { type: "game_start"; eventId: number }
     | { type: "client_set"; client: RoomClient }
     | { type: "client_cleared" }
     | { type: "start_review"; data: RoomState["reviewData"] };
@@ -123,7 +123,15 @@ function roomReducer(state: RoomState, action: RoomAction): RoomState {
         case "settings_updated":
             return { ...state, localStartSfen: action.startSfen };
         case "game_start":
-            return { ...state, gamePhase: "playing" };
+            return {
+                ...state,
+                gamePhase: "playing",
+                // snapshotのeventIdをgame_startイベントのeventIdに更新する。
+                // これにより OnlineGameView の latestEventIdRef が正しい初期値を持つ。
+                snapshot: state.snapshot
+                    ? { ...state.snapshot, eventId: action.eventId }
+                    : state.snapshot,
+            };
         case "client_set":
             return { ...state, client: action.client };
         case "client_cleared":
@@ -440,7 +448,8 @@ export default function RoomPage(): ReactElement {
                         unsub();
                         dispatchRoom({ type: "joined" });
                         dispatchJoin({ type: "joined" });
-                        dispatchRoom({ type: "game_start" });
+                        // resumeパスではsnapshotのeventIdが最新なのでそのまま使う
+                        dispatchRoom({ type: "game_start", eventId: msg.payload.eventId });
                     }
                     break;
                 }
@@ -455,7 +464,9 @@ export default function RoomPage(): ReactElement {
                         // game_start → 待機画面からインプレースで対局画面へ切り替え
                         // WebSocket 接続を維持したまま OnlineGameView を表示する
                         unsub();
-                        dispatchRoom({ type: "game_start" });
+                        // game_startイベントのeventIdをsnapshotに反映し、
+                        // OnlineGameView の latestEventIdRef が正しい値で初期化されるようにする
+                        dispatchRoom({ type: "game_start", eventId: msg.payload.eventId });
                     }
                     break;
                 }
@@ -532,7 +543,7 @@ export default function RoomPage(): ReactElement {
                     dispatchJoin({ type: "joined" });
                     if (msg.payload.status !== "waiting") {
                         unsub();
-                        dispatchRoom({ type: "game_start" });
+                        dispatchRoom({ type: "game_start", eventId: msg.payload.eventId });
                     }
                     break;
                 }
@@ -553,13 +564,18 @@ export default function RoomPage(): ReactElement {
         });
 
         // resume メッセージ送信（open 後に接続確認してから送る）
+        // StrictMode では cleanup → re-run が発生するため、
+        // cancelled フラグとタイマー ID でクリーンアップ時に確実にキャンセルする
+        let cancelled = false;
+        let timerId: ReturnType<typeof setTimeout>;
         let resumeAttempts = 0;
         const sendResume = (): void => {
+            if (cancelled) return;
             if (newClient.getStatus() === "connected") {
                 newClient.resume({ resumeToken: token, lastEventId: 0 });
             } else if (resumeAttempts < 50) {
                 resumeAttempts = resumeAttempts + 1;
-                setTimeout(sendResume, 100);
+                timerId = setTimeout(sendResume, 100);
             } else {
                 dispatchJoin({
                     type: "error",
@@ -570,10 +586,13 @@ export default function RoomPage(): ReactElement {
                 dispatchRoom({ type: "client_cleared" });
             }
         };
-        setTimeout(sendResume, 50);
+        timerId = setTimeout(sendResume, 50);
 
         return () => {
+            cancelled = true;
+            clearTimeout(timerId);
             unsub();
+            newClient.disconnect();
         };
     }, [roomId]);
 

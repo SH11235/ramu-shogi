@@ -530,9 +530,11 @@ export class RoomDO implements DurableObject {
         player.offlineSince = null;
         await this.doState.storage.put("room", room);
 
-        // 差分イベントを送信（件数が多い場合は snapshot）
+        // 差分イベントを送信（件数が多い場合・初回再接続(lastEventId=0)は snapshot）
+        // lastEventId=0 はページリロード等でクライアントが全状態を失った場合。
+        // この場合は個別イベントで再生するより snapshot を送るのが確実。
         const eventsToSend = room.events.filter((e) => e.eventId > lastEventId);
-        if (eventsToSend.length === 0 || eventsToSend.length > 20) {
+        if (lastEventId === 0 || eventsToSend.length === 0 || eventsToSend.length > 20) {
             await this.sendSnapshot(ws, room);
         } else {
             for (const event of eventsToSend) {

@@ -435,16 +435,37 @@ export function OnlineGameView({
         const passRightsOption = passRights
             ? { passRights: { sente: passRights.b, gote: passRights.w } }
             : {};
+        console.log(
+            "[getLegalMoves effect] isMyTurn:",
+            isMyTurn,
+            "gameResult:",
+            gameResult,
+            "isRewound:",
+            isRewound,
+        );
         void (async () => {
             if (isMyTurn && !gameResult && !isRewound) {
                 try {
+                    console.log(
+                        "[getLegalMoves] calling with sfen:",
+                        startSfenRef.current,
+                        "moves:",
+                        movesRef.current,
+                    );
                     const moves = await getPositionService().getLegalMoves(
                         startSfenRef.current,
                         movesRef.current,
                         passRightsOption,
                     );
+                    console.log(
+                        "[getLegalMoves] result:",
+                        moves.length,
+                        "moves, sample:",
+                        moves.slice(0, 5),
+                    );
                     dispatchUI({ type: "set_legal_moves", moves });
-                } catch {
+                } catch (err) {
+                    console.error("[getLegalMoves] error:", err);
                     dispatchUI({ type: "set_legal_moves", moves: [] });
                 }
             } else {
@@ -476,7 +497,11 @@ export function OnlineGameView({
     // ─── 指し手送信 ──────────────────────────────────────────────────────────
 
     const sendMove = async (usi: string, _toSquare?: string): Promise<void> => {
-        if (!position) return;
+        if (!position) {
+            console.warn("[sendMove] position is null, aborting");
+            return;
+        }
+        console.log("[sendMove] sending move:", usi, "eventId:", latestEventIdRef.current);
         // パス手は局面変化なし（手番のみ交代）。PositionState に passRights がないため
         // applyMoveWithState は使わず、手番を反転した局面の SFEN を生成する
         const nextPos =
@@ -487,12 +512,26 @@ export function OnlineGameView({
                   }
                 : applyMoveWithState(position, usi).next;
         const nextSfen = await getPositionService().boardToSfen(nextPos);
+        console.log("[sendMove] nextSfen:", nextSfen);
         client.move({ eventId: latestEventIdRef.current, usi, sfen: nextSfen });
+        console.log("[sendMove] client.move() called");
     };
 
     // ─── 盤面クリック処理 ────────────────────────────────────────────────────
 
     function handleBoardSelect(squareId: string): void {
+        console.log(
+            "[handleBoardSelect]",
+            squareId,
+            "isMyTurn:",
+            isMyTurn,
+            "position:",
+            !!position,
+            "legalMoves:",
+            legalMoves.length,
+            "selectedSquare:",
+            selectedSquare,
+        );
         if (!isMyTurn || gameResult || !position) return;
 
         // 持ち駒を選択中の場合 → ドロップ
@@ -520,6 +559,14 @@ export function OnlineGameView({
             const usiPromote = `${usiBase}+`;
 
             const canMove = legalMoves.some((m) => m === usiBase || m === usiPromote);
+            console.log(
+                "[handleBoardSelect] canMove:",
+                canMove,
+                "usiBase:",
+                usiBase,
+                "usiPromote:",
+                usiPromote,
+            );
             if (!canMove) {
                 // 別の自分の駒を選択
                 const piece = position.board[squareId as keyof typeof position.board];
@@ -785,33 +832,37 @@ export function OnlineGameView({
                     )
                 ) : // === PC: PCBoardContent（オフラインと共通） ===
                 displayPosition ? (
-                    <PCBoardContent
-                        grid={grid}
-                        flipBoard={flipBoard}
-                        lastMove={lastMove}
-                        selection={
-                            selectedSquare
-                                ? { kind: "square", square: selectedSquare }
-                                : selectedHand
-                                  ? { kind: "hand", piece: selectedHand }
-                                  : null
-                        }
-                        promotionSelection={promotionSelection}
-                        displaySettings={boardDisplaySettings}
-                        isEditModeActive={false}
-                        isMatchRunning={!gameResult}
-                        hideEmptyHandPieces={true}
-                        editFromSquare={null}
-                        candidateNote={null}
-                        onSquareSelect={onSquareSelectForMobile}
-                        onPromotionChoice={onPromotionChoiceForMobile}
-                        onHandSelect={handleHandSelect}
-                        topHand={topHand}
-                        bottomHand={bottomHand}
-                        passRights={
-                            passRights ? { sente: passRights.b, gote: passRights.w } : undefined
-                        }
-                    />
+                    // w-fit + items-center でオフライン PCBoardSection と同じ構造にする
+                    // （持ち駒の w-full が盤面幅に揃い、gap-2 でオフラインと間隔を統一）
+                    <div className="w-fit flex flex-col gap-2 items-center self-center">
+                        <PCBoardContent
+                            grid={grid}
+                            flipBoard={flipBoard}
+                            lastMove={lastMove}
+                            selection={
+                                selectedSquare
+                                    ? { kind: "square", square: selectedSquare }
+                                    : selectedHand
+                                      ? { kind: "hand", piece: selectedHand }
+                                      : null
+                            }
+                            promotionSelection={promotionSelection}
+                            displaySettings={boardDisplaySettings}
+                            isEditModeActive={false}
+                            isMatchRunning={!gameResult}
+                            hideEmptyHandPieces={true}
+                            editFromSquare={null}
+                            candidateNote={null}
+                            onSquareSelect={onSquareSelectForMobile}
+                            onPromotionChoice={onPromotionChoiceForMobile}
+                            onHandSelect={handleHandSelect}
+                            topHand={topHand}
+                            bottomHand={bottomHand}
+                            passRights={
+                                passRights ? { sente: passRights.b, gote: passRights.w } : undefined
+                            }
+                        />
+                    </div>
                 ) : (
                     <div className="flex h-64 items-center justify-center rounded-lg border border-border bg-card">
                         <p className="text-muted-foreground">局面を読み込み中...</p>
