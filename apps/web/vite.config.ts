@@ -23,6 +23,13 @@ export default defineConfig(({ command }) => ({
             "Cross-Origin-Embedder-Policy": "require-corp",
         },
         allowedHosts: process.env.VITE_ALLOWED_HOSTS?.split(",") ?? [],
+        proxy: {
+            "/api": {
+                target: "http://localhost:8787",
+                changeOrigin: true,
+                ws: true,
+            },
+        },
     },
     worker: {
         // ES モジュール形式の Worker を使用する。
