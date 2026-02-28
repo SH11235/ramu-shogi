@@ -772,7 +772,10 @@ export function OnlineGameView({
     ) : null;
 
     return (
-        <div className="flex flex-col md:flex-row gap-4 p-4 max-w-[900px] mx-auto">
+        <div className="flex flex-col md:flex-row gap-4 p-4 max-w-[1100px] mx-auto">
+            {/* 左サイドバー: 対局後検討・NNUE設定など（PC のみ表示） */}
+            <div className="hidden md:flex w-64 flex-col gap-3" />
+
             {/* 切断バナー */}
             {offlineSeats.size > 0 && (
                 <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-destructive px-4 py-2 text-sm text-destructive-foreground shadow-lg">
