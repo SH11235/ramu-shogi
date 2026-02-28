@@ -24,6 +24,7 @@ export function createRoomClient(
     let ws: WebSocket | null = null;
     let msgId = 0;
     let lastKnownEventId = 0;
+    let pingIntervalId: ReturnType<typeof setInterval> | null = null;
     const handlers = new Set<(msg: ServerMessage) => void>();
 
     // wsUrl から roomId を抽出（sessionStorage のキー生成に使用）
@@ -87,11 +88,23 @@ export function createRoomClient(
                     reconnectManager.reset();
                     send("resume", { resumeToken: token, lastEventId: lastKnownEventId });
                     options.onReconnect?.();
-                    return;
+                } else {
+                    status = "connected";
+                    reconnectManager.reset();
                 }
+            } else {
+                status = "connected";
+                reconnectManager.reset();
             }
-            status = "connected";
-            reconnectManager.reset();
+            // 接続確立後、30秒ごとにpingを送ってサーバーのオフライン判定を防ぐ
+            // サーバーは lastSeenTs が 60秒以上更新されないとオフライン判定するため
+            if (pingIntervalId === null) {
+                pingIntervalId = setInterval(() => {
+                    if (status === "connected") {
+                        send("ping", { ts: Date.now() });
+                    }
+                }, 30_000);
+            }
         });
 
         ws.addEventListener("message", (event: MessageEvent) => {
@@ -106,6 +119,10 @@ export function createRoomClient(
 
         ws.addEventListener("close", () => {
             ws = null;
+            if (pingIntervalId !== null) {
+                clearInterval(pingIntervalId);
+                pingIntervalId = null;
+            }
             if (status !== "disconnected" && options.autoReconnect !== false) {
                 reconnectManager.schedule(connect);
             } else {
@@ -166,6 +183,10 @@ export function createRoomClient(
         disconnect() {
             reconnectManager.cancel();
             status = "disconnected";
+            if (pingIntervalId !== null) {
+                clearInterval(pingIntervalId);
+                pingIntervalId = null;
+            }
             ws?.close();
             ws = null;
             handlers.clear();

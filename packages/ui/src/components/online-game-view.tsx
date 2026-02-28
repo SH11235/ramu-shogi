@@ -890,6 +890,7 @@ export function OnlineGameView({
                         onToStart={handleNavStart}
                         onToEnd={handleNavEnd}
                         isRewound={isRewound}
+                        disabled={!gameResult}
                     />
                 )}
 
