@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,12 +10,9 @@ const crateName = "engine-wasm";
 const artifactName = crateName.replace(/-/g, "_");
 const rustRoot = path.resolve(__dirname, "../../rust-core");
 const nightlyToolchain = process.env.RUST_NIGHTLY_TOOLCHAIN ?? "nightly-2025-12-25";
-const pnpmCmd = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
 // --production フラグで本番ビルド（最大最適化）
 const isProduction = process.argv.includes("--production");
-// --skip-wasm-opt フラグでwasm-optをスキップ（デバッグ用）
-const skipWasmOpt = process.argv.includes("--skip-wasm-opt");
 const profile = isProduction ? "production" : "release";
 const targetDir = isProduction ? "production" : "release";
 
@@ -75,48 +72,6 @@ function ensureWasmBindgen() {
     }
 }
 
-function runWasmOpt(wasmFile) {
-    const beforeSize = statSync(wasmFile).size;
-
-    // Rustが使用するWASM機能を有効化
-    const enableFlags = [
-        "--enable-simd",
-        "--enable-bulk-memory",
-        "--enable-nontrapping-float-to-int",
-        "--enable-sign-ext",
-        "--enable-mutable-globals",
-        "--enable-threads",
-    ];
-
-    // productionでは-Oz（サイズ最適化）、それ以外は-O3（速度最適化）
-    const optLevel = isProduction ? "-Oz" : "-O3";
-
-    console.log(`Optimizing WASM with wasm-opt ${optLevel}...`);
-
-    const result = spawnSync(
-        pnpmCmd,
-        ["exec", "wasm-opt", optLevel, ...enableFlags, wasmFile, "-o", wasmFile],
-        { stdio: "inherit" },
-    );
-
-    if (result.status !== 0) {
-        console.warn(
-            `wasm-opt failed with status ${result.status}, continuing without optimization`,
-        );
-        if (result.error) {
-            console.warn(`Error details: ${result.error.message}`);
-        }
-        return;
-    }
-
-    const afterSize = statSync(wasmFile).size;
-    const reduction = beforeSize - afterSize;
-    const percent = ((reduction / beforeSize) * 100).toFixed(1);
-    console.log(
-        `wasm-opt: ${(beforeSize / 1024).toFixed(0)}KB -> ${(afterSize / 1024).toFixed(0)}KB (${percent}% reduction)`,
-    );
-}
-
 function buildWasm({
     label,
     cargoArgs,
@@ -126,7 +81,6 @@ function buildWasm({
     cargoZArgs,
     emitThreadWorker,
     target,
-    enableWasmOpt = true,
 }) {
     const targetArg = target ?? "wasm32-unknown-unknown";
     const targetName = targetArg.endsWith(".json") ? path.basename(targetArg, ".json") : targetArg;
@@ -167,11 +121,7 @@ function buildWasm({
         rustRoot,
     );
 
-    // wasm-optで最適化（--skip-wasm-optでスキップ可能）
-    const outputWasm = path.join(outputDir, `${artifactName}_bg.wasm`);
-    if (enableWasmOpt && !skipWasmOpt && existsSync(outputWasm)) {
-        runWasmOpt(outputWasm);
-    }
+    // wasm-opt は不使用（Cargo LTO で十分最適化済み、wasm-opt は逆効果: -8〜12% NPS低下）
 
     if (emitThreadWorker) {
         const workerPath = path.join(outputDir, `${artifactName}_worker.js`);
@@ -242,7 +192,6 @@ try {
         cargoZArgs: ["-Z", "build-std=core,alloc,std"],
         emitThreadWorker: true,
         target: threadedTarget,
-        enableWasmOpt: true,
     });
 
     verifyThreadedOutput(threadedOutDir);

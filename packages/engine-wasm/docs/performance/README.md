@@ -147,6 +147,52 @@ RUSTFLAGS="-C target-cpu=native" cargo build --release
 
 ---
 
+## wasm-opt 最適化レベル比較
+
+計測日: 2026-03-02
+計測コマンド:
+
+```bash
+# 1. production プロファイルで WASM ビルド（wasm-opt スキップ）
+node ./scripts/build-wasm.mjs --production --skip-wasm-opt
+
+# 2. ベースの .wasm をコピーし、各レベルで wasm-opt 適用
+for level in Oz Os O3 O4; do
+  cp pkg/engine_wasm_bg.wasm "/tmp/wasm-bench/${level}.wasm"
+  pnpm exec wasm-opt "-${level}" --enable-simd --enable-bulk-memory \
+    --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals \
+    "/tmp/wasm-bench/${level}.wasm" -o "/tmp/wasm-bench/${level}.wasm"
+done
+
+# 3. 各バリアントを直列でベンチ（warmup 1, iterations 3）
+for level in none Oz Os O3 O4; do
+  node ./scripts/bench-wasm.mjs --wasm "/tmp/wasm-bench/${level}.wasm" \
+    --nnue-file .../eval/halfkp_256x2-32-32_crelu/suisho5.bin \
+    --warmup 1 --iterations 3 --nodes 1000000
+done
+```
+
+Cargo プロファイル: `production`（`lto = "fat"`, `codegen-units = 1`, `overflow-checks = false`, `panic = "abort"`）
+NNUE ファイル: `eval/halfkp_256x2-32-32_crelu/suisho5.bin`
+
+### 結果
+
+| wasm-opt | 平均 NPS | .wasm サイズ | 対 none 比 |
+|----------|----------|-------------|-----------|
+| **none（スキップ）** | **109,266** | 968 KB | — |
+| `-O3` | 98,402 | 729 KB | **-10.0%** |
+| `-O4` | 97,621 | 731 KB | **-10.7%** |
+| `-Os` | 99,893 | 730 KB | **-8.6%** |
+| `-Oz` | 96,155 | 702 KB | **-12.0%** |
+
+### 考察
+
+- **wasm-opt を適用しない方が最速**。どのレベルでも NPS が 8〜12% 低下する。
+- Cargo の `production` プロファイル（`lto = "fat"` + `codegen-units = 1`）が LLVM レベルで十分に最適化しており、wasm-opt の変換がむしろ LLVM の最適化結果（特に NNUE SIMD ホットパス）を崩していると考えられる。
+- サイズ差（968 → 702 KB）は brotli/gzip 圧縮でカバー可能なため、production ビルドでは wasm-opt をスキップすべき。
+
+---
+
 ## 変更履歴
 
 | 日付 | NNUE平均NPS | Material平均NPS | 内容 |
@@ -156,5 +202,6 @@ RUSTFLAGS="-C target-cpu=native" cargo build --release
 | 2025-12-24 | - | - | **並列探索実装**（parallel-searchブランチ）。Lazy SMP方式による並列探索を実装。8スレッドでNNUE: 5.88x、Material: 5.61xのスケーラビリティを達成 |
 | 2025-12-25 | ~~306,925~~ | 311,063 | **定期計測**（opt-parallel-searchブランチ）。**※NNUE値は信頼性なし**（後述） |
 | 2026-02-14 | 125,555 | 456,701 | **NNUE初の正常計測**（fix-search-ttブランチ）。Material NPS大幅向上（311,063→456,701、**+47%**）は探索ロジック改善の累積効果。NNUE NPS（125,555）はWASM SIMD128有効だがネイティブAVX2（256-bit）との差が大きく、Materialの約28% |
+| 2026-03-02 | - | - | **wasm-opt 最適化レベル比較**。production プロファイル（`lto=fat`, `codegen-units=1`）ではwasm-optが逆効果（-8〜12% NPS低下）と判明。production ビルドでは wasm-opt スキップを推奨 |
 
 **※2025-12-21〜25のNNUE計測値について**: NNUE平均NPSがMaterialとほぼ同値（誤差1%以内）であり、WASM環境ではNNUE評価がMaterialより大幅に遅くなるのが妥当であることから、**NNUEファイルの読み込みに失敗し、サイレントにMaterial評価にフォールバックしていた可能性が高い**。`evaluate_dispatch()`はNNUE未ロード時に警告なしでMaterial評価にフォールバックする設計であり、ベンチスクリプト側にもNNUEロード成功の検証ロジックがなかった。2026-02-14の計測が**WASM版NNUE評価の初の正常な計測値**と考えられる。なおWASMビルドはSIMD128を有効化済み（`build-wasm.mjs`で`-C target-feature=+simd128`指定）であり、NNUE評価の主要関数（AffineTransform、FeatureTransformer、ClippedReLU等）にWASM SIMD128実装が存在する。
