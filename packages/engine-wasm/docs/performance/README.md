@@ -1,7 +1,7 @@
 # WASM パフォーマンス計測レポート
 
 Web/WASM 版のベンチ計測結果を記録する。
-Rust 側の `packages/rust-core/docs/performance/README.md` の形式に合わせた簡易版。
+Rust 側の `docs/performance/README.md` の形式に合わせた簡易版。
 
 ## 計測環境
 
@@ -25,39 +25,39 @@ Rust 側の `packages/rust-core/docs/performance/README.md` の形式に合わ�
 
 ## NNUE 有効時
 
-計測日: 2025-12-25T16:19:20Z
+計測日: 2026-02-14T15:02:33Z
 計測コマンド:
 
 ```bash
-pnpm --filter @shogi/engine-wasm bench:wasm -- --nnue-file ../rust-core/memo/YaneuraOu/eval/nn.bin
+pnpm --filter @shogi/engine-wasm bench:wasm -- --nnue-file /home/sh11235/development/rshogi/eval/halfkp_256x2-32-32_crelu/suisho5.bin
 ```
 
-NNUE ファイル: `packages/rust-core/memo/YaneuraOu/eval/nn.bin`
+NNUE ファイル: `eval/halfkp_256x2-32-32_crelu/suisho5.bin`
 
 ### 集計
 
 | 指標 | 値 |
 |------|-----|
-| 合計ノード数 | 4,000,000 |
-| 合計時間 | 13,037ms |
-| 平均NPS | 306,925 |
-| 平均探索深さ | 14.50 |
-| 平均hashfull | 138.50 |
+| 合計ノード数 | 4,000,284 |
+| 合計時間 | 31,861ms |
+| 平均NPS | 125,555 |
+| 平均探索深さ | 16.75 |
+| 平均hashfull | 252.50 |
 
 ### 局面別
 
 | 局面 | depth | nodes | time_ms | nps | hashfull | bestmove |
 |------|-------|-------|---------|-----|----------|----------|
-| hirate-like | 16 | 1,000,000 | 2,610 | 383,141 | 19 | 2e2d |
-| complex-middle | 15 | 1,000,000 | 3,838 | 260,552 | 113 | 8d8f |
-| tactical | 13 | 1,000,000 | 3,443 | 290,444 | 180 | S*4a |
-| movegen-heavy | 14 | 1,000,000 | 3,146 | 317,863 | 242 | G*2h |
+| hirate-like | 21 | 1,000,062 | 9,048 | 110,528 | 105 | 3g3f |
+| complex-middle | 15 | 1,000,090 | 6,993 | 143,013 | 202 | B*6h |
+| tactical | 14 | 1,000,080 | 7,945 | 125,875 | 304 | 5d6c+ |
+| movegen-heavy | 17 | 1,000,052 | 7,875 | 126,990 | 399 | N*2c |
 
 ---
 
 ## Material 評価時（NNUE 無効）
 
-計測日: 2025-12-25T16:19:39Z
+計測日: 2026-02-14T15:03:10Z
 計測コマンド:
 
 ```bash
@@ -68,20 +68,20 @@ pnpm --filter @shogi/engine-wasm bench:wasm -- --material
 
 | 指標 | 値 |
 |------|-----|
-| 合計ノード数 | 4,000,000 |
-| 合計時間 | 12,859ms |
-| 平均NPS | 311,063 |
-| 平均探索深さ | 15.00 |
-| 平均hashfull | 177.00 |
+| 合計ノード数 | 4,000,377 |
+| 合計時間 | 8,759ms |
+| 平均NPS | 456,701 |
+| 平均探索深さ | 14.25 |
+| 平均hashfull | 273.00 |
 
 ### 局面別
 
 | 局面 | depth | nodes | time_ms | nps | hashfull | bestmove |
 |------|-------|-------|---------|-----|----------|----------|
-| hirate-like | 14 | 1,000,000 | 2,731 | 366,166 | 45 | 2h2f |
-| complex-middle | 16 | 1,000,000 | 3,431 | 291,460 | 133 | 8d7d |
-| tactical | 15 | 1,000,000 | 3,324 | 300,842 | 227 | S*6a |
-| movegen-heavy | 15 | 1,000,000 | 3,373 | 296,471 | 303 | G*3c |
+| hirate-like | 17 | 1,000,017 | 2,150 | 465,124 | 107 | 2h2f |
+| complex-middle | 14 | 1,000,128 | 2,236 | 447,284 | 232 | B*6h |
+| tactical | 12 | 1,000,053 | 2,197 | 455,190 | 328 | S*6a |
+| movegen-heavy | 14 | 1,000,179 | 2,176 | 459,641 | 425 | G*3c |
 
 ---
 
@@ -147,11 +147,61 @@ RUSTFLAGS="-C target-cpu=native" cargo build --release
 
 ---
 
+## wasm-opt 最適化レベル比較
+
+計測日: 2026-03-02
+計測コマンド:
+
+```bash
+# 1. production プロファイルで WASM ビルド（wasm-opt スキップ）
+node ./scripts/build-wasm.mjs --production --skip-wasm-opt
+
+# 2. ベースの .wasm をコピーし、各レベルで wasm-opt 適用
+for level in Oz Os O3 O4; do
+  cp pkg/engine_wasm_bg.wasm "/tmp/wasm-bench/${level}.wasm"
+  pnpm exec wasm-opt "-${level}" --enable-simd --enable-bulk-memory \
+    --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals \
+    "/tmp/wasm-bench/${level}.wasm" -o "/tmp/wasm-bench/${level}.wasm"
+done
+
+# 3. 各バリアントを直列でベンチ（warmup 1, iterations 3）
+for level in none Oz Os O3 O4; do
+  node ./scripts/bench-wasm.mjs --wasm "/tmp/wasm-bench/${level}.wasm" \
+    --nnue-file .../eval/halfkp_256x2-32-32_crelu/suisho5.bin \
+    --warmup 1 --iterations 3 --nodes 1000000
+done
+```
+
+Cargo プロファイル: `production`（`lto = "fat"`, `codegen-units = 1`, `overflow-checks = false`, `panic = "abort"`）
+NNUE ファイル: `eval/halfkp_256x2-32-32_crelu/suisho5.bin`
+
+### 結果
+
+| wasm-opt | 平均 NPS | .wasm サイズ | 対 none 比 |
+|----------|----------|-------------|-----------|
+| **none（スキップ）** | **109,266** | 968 KB | — |
+| `-O3` | 98,402 | 729 KB | **-10.0%** |
+| `-O4` | 97,621 | 731 KB | **-10.7%** |
+| `-Os` | 99,893 | 730 KB | **-8.6%** |
+| `-Oz` | 96,155 | 702 KB | **-12.0%** |
+
+### 考察
+
+- **wasm-opt を適用しない方が最速**。どのレベルでも NPS が 8〜12% 低下する。
+- Cargo の `production` プロファイル（`lto = "fat"` + `codegen-units = 1`）が LLVM レベルで十分に最適化しており、wasm-opt の変換がむしろ LLVM の最適化結果（特に NNUE SIMD ホットパス）を崩していると考えられる。
+- サイズ差（968 → 702 KB）は brotli/gzip 圧縮でカバー可能なため、production ビルドでは wasm-opt をスキップすべき。
+
+---
+
 ## 変更履歴
 
 | 日付 | NNUE平均NPS | Material平均NPS | 内容 |
 |------|----------:|---------------:|------|
-| 2025-12-21 | 310,824 | 314,712 | 初回計測 |
-| 2025-12-23 | 309,932 | 312,866 | **board_effect機能追加**（fix-material-board_effectブランチ）。Material評価で利きの情報を使用する機能を追加。NNUE評価時はboard_effectを使わない設計により、NPSへの影響は誤差範囲（NNUE: -0.3%、Material: -0.6%）に抑制。評価精度向上とパフォーマンス維持を両立 |
+| 2025-12-21 | ~~310,824~~ | 314,712 | 初回計測。**※NNUE値は信頼性なし**（後述） |
+| 2025-12-23 | ~~309,932~~ | 312,866 | **board_effect機能追加**（fix-material-board_effectブランチ）。Material評価で利きの情報を使用する機能を追加。**※NNUE値は信頼性なし**（後述） |
 | 2025-12-24 | - | - | **並列探索実装**（parallel-searchブランチ）。Lazy SMP方式による並列探索を実装。8スレッドでNNUE: 5.88x、Material: 5.61xのスケーラビリティを達成 |
-| 2025-12-25 | 306,925 | 311,063 | **定期計測**（opt-parallel-searchブランチ）。PDQSort導入等の最適化後の計測。NPSは誤差範囲内で安定（NNUE: -1.0%、Material: -0.6%） |
+| 2025-12-25 | ~~306,925~~ | 311,063 | **定期計測**（opt-parallel-searchブランチ）。**※NNUE値は信頼性なし**（後述） |
+| 2026-02-14 | 125,555 | 456,701 | **NNUE初の正常計測**（fix-search-ttブランチ）。Material NPS大幅向上（311,063→456,701、**+47%**）は探索ロジック改善の累積効果。NNUE NPS（125,555）はWASM SIMD128有効だがネイティブAVX2（256-bit）との差が大きく、Materialの約28% |
+| 2026-03-02 | - | - | **wasm-opt 最適化レベル比較**。production プロファイル（`lto=fat`, `codegen-units=1`）ではwasm-optが逆効果（-8〜12% NPS低下）と判明。production ビルドでは wasm-opt スキップを推奨 |
+
+**※2025-12-21〜25のNNUE計測値について**: NNUE平均NPSがMaterialとほぼ同値（誤差1%以内）であり、WASM環境ではNNUE評価がMaterialより大幅に遅くなるのが妥当であることから、**NNUEファイルの読み込みに失敗し、サイレントにMaterial評価にフォールバックしていた可能性が高い**。`evaluate_dispatch()`はNNUE未ロード時に警告なしでMaterial評価にフォールバックする設計であり、ベンチスクリプト側にもNNUEロード成功の検証ロジックがなかった。2026-02-14の計測が**WASM版NNUE評価の初の正常な計測値**と考えられる。なおWASMビルドはSIMD128を有効化済み（`build-wasm.mjs`で`-C target-feature=+simd128`指定）であり、NNUE評価の主要関数（AffineTransform、FeatureTransformer、ClippedReLU等）にWASM SIMD128実装が存在する。
