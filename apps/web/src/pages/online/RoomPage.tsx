@@ -5,6 +5,7 @@ import type { Seat, SnapshotPayload } from "@shogi/match-client";
 import type { EngineOption } from "@shogi/ui";
 import { OnlineGameView, PositionPresetSelector, ShogiMatch, useRoomConnection } from "@shogi/ui";
 import { getRouteApi, useNavigate, useParams } from "@tanstack/react-router";
+import { PageHeader } from "../../components/PageHeader";
 import type { ReactElement } from "react";
 import { useEffect, useState } from "react";
 import { useOnlineAnalysis } from "../../hooks/useOnlineAnalysis";
@@ -414,55 +415,56 @@ export default function RoomPage(): ReactElement {
     const currentStatus = snapshot?.status ?? roomInfo.status;
 
     return (
-        <div className="mx-auto flex max-w-[480px] flex-col gap-5 px-4 py-8">
-            <h1 className="text-xl font-bold text-foreground">対局ルーム</h1>
-
-            <InviteLinkSection
-                inviteUrl={inviteUrl}
-                copied={copied}
-                onCopy={() => void handleCopyLink()}
+        <>
+            <PageHeader
+                items={[
+                    { label: "ラム将棋", to: "/" },
+                    { label: "オンライン対局", to: "/online" },
+                    { label: "対局ルーム" },
+                ]}
             />
+            <div className="mx-auto flex max-w-[480px] flex-col gap-5 px-4 py-8">
+                <h1 className="text-xl font-bold text-foreground">対局ルーム</h1>
 
-            <PlayersStatusSection
-                roomInfoPlayers={roomInfo.players}
-                snapshotPlayers={snapshot?.players}
-            />
-
-            {!joined && (
-                <JoinFormSection
-                    joinName={joinName}
-                    onJoinNameChange={setJoinName}
-                    isJoining={isJoining}
-                    joinSeat={joinSeat}
-                    error={joinError}
-                    isSeatTaken={isSeatTaken}
-                    onJoin={handleJoin}
+                <InviteLinkSection
+                    inviteUrl={inviteUrl}
+                    copied={copied}
+                    onCopy={() => void handleCopyLink()}
                 />
-            )}
 
-            {joined && (
-                <div className="rounded-lg border border-status-online-border bg-status-online-bg p-4 text-sm text-status-online">
-                    接続しました。対局開始を待っています...
-                </div>
-            )}
+                <PlayersStatusSection
+                    roomInfoPlayers={roomInfo.players}
+                    snapshotPlayers={snapshot?.players}
+                />
 
-            <GameSettingsSection
-                settings={roomInfo.settings}
-                timeControlLabel={timeControlLabel}
-                startSfenLabel={startSfenLabel}
-                joined={joined}
-                currentStatus={currentStatus}
-                displayStartSfen={displayStartSfen}
-                onUpdateStartSfen={handleUpdateStartSfen}
-            />
+                {!joined && (
+                    <JoinFormSection
+                        joinName={joinName}
+                        onJoinNameChange={setJoinName}
+                        isJoining={isJoining}
+                        joinSeat={joinSeat}
+                        error={joinError}
+                        isSeatTaken={isSeatTaken}
+                        onJoin={handleJoin}
+                    />
+                )}
 
-            <button
-                type="button"
-                onClick={() => void navigate({ to: "/online", search: undefined })}
-                className="text-sm text-muted-foreground hover:text-foreground"
-            >
-                ← オンライン対局に戻る
-            </button>
-        </div>
+                {joined && (
+                    <div className="rounded-lg border border-status-online-border bg-status-online-bg p-4 text-sm text-status-online">
+                        接続しました。対局開始を待っています...
+                    </div>
+                )}
+
+                <GameSettingsSection
+                    settings={roomInfo.settings}
+                    timeControlLabel={timeControlLabel}
+                    startSfenLabel={startSfenLabel}
+                    joined={joined}
+                    currentStatus={currentStatus}
+                    displayStartSfen={displayStartSfen}
+                    onUpdateStartSfen={handleUpdateStartSfen}
+                />
+            </div>
+        </>
     );
 }
