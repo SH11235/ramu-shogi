@@ -25,6 +25,7 @@ import { type HandInfo, MobileBoardSection } from "./shogi-match/components/Mobi
 import { PCBoardContent } from "./shogi-match/components/PCBoardContent";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import type { PromotionSelection } from "./shogi-match/types";
+import { exportToKifString } from "./shogi-match/utils/kifFormat";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
 import { determinePromotion } from "./shogi-match/utils/promotionLogic";
 
@@ -61,11 +62,11 @@ interface GameState {
     turn: "b" | "w";
     clockState: ClockState;
     gameResult: GameResult | null;
-    kifu: string;
     offlineSeats: Set<string>;
     passRights: PassRightsState | null;
     myAnalysisRemaining: number | null;
     analysisLog: Array<{ seat: "b" | "w"; ply: number }>;
+    usiMoveLog: Array<{ usi: string; elapsedMs: number }>;
 }
 
 type GameAction =
@@ -78,7 +79,7 @@ type GameAction =
           passRights: PassRightsState | null;
       }
     | { type: "result"; result: GameResult }
-    | { type: "game_end"; result: GameResult; kifu: string }
+    | { type: "game_end"; result: GameResult }
     | { type: "player_offline"; seat: string }
     | { type: "player_online"; seat: string }
     | {
@@ -106,12 +107,12 @@ function makeInitialGameState(
         turn: snapshot.turn,
         clockState: snapshot.clock,
         gameResult: null,
-        kifu: "",
         offlineSeats: new Set(),
         passRights: snapshot.passRights,
         myAnalysisRemaining:
             myAiSettings?.mode === "limited" ? (myAiSettings.limitCount ?? 0) : null,
         analysisLog: [],
+        usiMoveLog: [],
     };
 }
 
@@ -125,6 +126,12 @@ function gameReducer(state: GameState, action: GameAction): GameState {
             };
         case "move": {
             if (!state.position) return state;
+            // 消費時間: 動いた側の残り時間の差分（手番交代前の turn が動いた側）
+            const movedSeat = state.turn;
+            const elapsedMs = Math.max(
+                0,
+                state.clockState[movedSeat].remainMs - action.clock[movedSeat].remainMs,
+            );
             // パス手は局面変化なし（手番のみ交代）。
             // PositionState に passRights が未設定のため applyMoveWithState は使わない
             const next =
@@ -144,12 +151,13 @@ function gameReducer(state: GameState, action: GameAction): GameState {
                 turn: action.turn,
                 clockState: action.clock,
                 passRights: action.passRights,
+                usiMoveLog: [...state.usiMoveLog, { usi: action.usi, elapsedMs }],
             };
         }
         case "result":
             return { ...state, gameResult: action.result };
         case "game_end":
-            return { ...state, gameResult: action.result, kifu: action.kifu };
+            return { ...state, gameResult: action.result };
         case "player_offline":
             return {
                 ...state,
@@ -301,11 +309,11 @@ export function OnlineGameView({
         turn,
         clockState,
         gameResult,
-        kifu,
         offlineSeats,
         passRights,
         myAnalysisRemaining,
         analysisLog,
+        usiMoveLog,
     } = gameState;
 
     // ─── UI インタラクション状態（useReducer） ───────────────────────────────
@@ -386,7 +394,7 @@ export function OnlineGameView({
                 ) {
                     dispatch({ type: "result", result: e.result });
                 } else if (e.kind === "game_end") {
-                    dispatch({ type: "game_end", result: e.result, kifu: e.kifu });
+                    dispatch({ type: "game_end", result: e.result });
                 } else if (e.kind === "player_offline") {
                     dispatch({ type: "player_offline", seat: e.seat });
                 } else if (e.kind === "player_online") {
@@ -668,8 +676,8 @@ export function OnlineGameView({
     // ─── KIF ダウンロード ─────────────────────────────────────────────────────
 
     function handleDownloadKifu(): void {
-        if (!kifu) return;
-        const blob = new Blob([kifu], { type: "text/plain;charset=utf-8" });
+        if (!generatedKif) return;
+        const blob = new Blob([generatedKif], { type: "text/plain;charset=utf-8" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
@@ -757,6 +765,22 @@ export function OnlineGameView({
         b: snapshot.players.b?.name ?? "先手",
         w: snapshot.players.w?.name ?? "後手",
     };
+
+    // KIF テキスト（対局終了後のダウンロード・コピー用）
+    const generatedKif =
+        usiMoveLog.length > 0
+            ? exportToKifString(
+                  usiMoveLog.map((entry, i) => ({
+                      ply: i + 1,
+                      usiMove: entry.usi,
+                      elapsedMs: entry.elapsedMs,
+                      kifText: "",
+                      displayText: "",
+                  })),
+                  positionHistory.slice(0, usiMoveLog.length).map((p) => p.board),
+                  { senteName: playerNames.b, goteName: playerNames.w },
+              )
+            : "";
 
     // PC サイドバーとモバイル BottomSheet で共通利用するコンテンツ
     const aiPanelContent = aiSupport ? (
@@ -945,7 +969,7 @@ export function OnlineGameView({
             {gameResult && (
                 <GameEndDialog
                     result={gameResult}
-                    kifu={kifu}
+                    kifu={generatedKif}
                     playerNames={playerNames}
                     onDownloadKifu={handleDownloadKifu}
                     analysisLog={analysisLog}
@@ -1055,6 +1079,8 @@ function GameEndDialog({
     onStartReview,
     onExit,
 }: GameEndDialogProps): ReactElement {
+    const [kifuCopied, setKifuCopied] = useState(false);
+
     const winnerName =
         result.winner === "b" ? playerNames.b : result.winner === "w" ? playerNames.w : null;
 
@@ -1106,10 +1132,12 @@ function GameEndDialog({
                                 type="button"
                                 onClick={async () => {
                                     await navigator.clipboard.writeText(kifu);
+                                    setKifuCopied(true);
+                                    setTimeout(() => setKifuCopied(false), 2000);
                                 }}
                                 className="w-full rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
                             >
-                                棋譜をコピー
+                                {kifuCopied ? "コピーしました！" : "棋譜をコピー"}
                             </button>
                             <button
                                 type="button"
