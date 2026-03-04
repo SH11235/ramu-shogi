@@ -46,6 +46,12 @@ export interface OnlineAnalysis {
 
 // ─── 型定義 ───────────────────────────────────────────────────────────────────
 
+const BOARD_DISPLAY_SETTINGS = {
+    highlightLastMove: true,
+    squareNotation: "none" as const,
+    showBoardLabels: true,
+};
+
 // 時間フォーマット
 function formatMs(ms: number): string {
     const totalSec = Math.max(0, Math.floor(ms / 1000));
@@ -443,37 +449,16 @@ export function OnlineGameView({
         const passRightsOption = passRights
             ? { passRights: { sente: passRights.b, gote: passRights.w } }
             : {};
-        console.log(
-            "[getLegalMoves effect] isMyTurn:",
-            isMyTurn,
-            "gameResult:",
-            gameResult,
-            "isRewound:",
-            isRewound,
-        );
         void (async () => {
             if (isMyTurn && !gameResult && !isRewound) {
                 try {
-                    console.log(
-                        "[getLegalMoves] calling with sfen:",
-                        startSfenRef.current,
-                        "moves:",
-                        movesRef.current,
-                    );
                     const moves = await getPositionService().getLegalMoves(
                         startSfenRef.current,
                         movesRef.current,
                         passRightsOption,
                     );
-                    console.log(
-                        "[getLegalMoves] result:",
-                        moves.length,
-                        "moves, sample:",
-                        moves.slice(0, 5),
-                    );
                     dispatchUI({ type: "set_legal_moves", moves });
-                } catch (err) {
-                    console.error("[getLegalMoves] error:", err);
+                } catch {
                     dispatchUI({ type: "set_legal_moves", moves: [] });
                 }
             } else {
@@ -505,11 +490,7 @@ export function OnlineGameView({
     // ─── 指し手送信 ──────────────────────────────────────────────────────────
 
     const sendMove = async (usi: string, _toSquare?: string): Promise<void> => {
-        if (!position) {
-            console.warn("[sendMove] position is null, aborting");
-            return;
-        }
-        console.log("[sendMove] sending move:", usi, "eventId:", latestEventIdRef.current);
+        if (!position) return;
         // パス手は局面変化なし（手番のみ交代）。PositionState に passRights がないため
         // applyMoveWithState は使わず、手番を反転した局面の SFEN を生成する
         const nextPos =
@@ -520,26 +501,12 @@ export function OnlineGameView({
                   }
                 : applyMoveWithState(position, usi).next;
         const nextSfen = await getPositionService().boardToSfen(nextPos);
-        console.log("[sendMove] nextSfen:", nextSfen);
         client.move({ eventId: latestEventIdRef.current, usi, sfen: nextSfen });
-        console.log("[sendMove] client.move() called");
     };
 
     // ─── 盤面クリック処理 ────────────────────────────────────────────────────
 
     function handleBoardSelect(squareId: string): void {
-        console.log(
-            "[handleBoardSelect]",
-            squareId,
-            "isMyTurn:",
-            isMyTurn,
-            "position:",
-            !!position,
-            "legalMoves:",
-            legalMoves.length,
-            "selectedSquare:",
-            selectedSquare,
-        );
         if (!isMyTurn || gameResult || !position) return;
 
         // 持ち駒を選択中の場合 → ドロップ
@@ -567,14 +534,6 @@ export function OnlineGameView({
             const usiPromote = `${usiBase}+`;
 
             const canMove = legalMoves.some((m) => m === usiBase || m === usiPromote);
-            console.log(
-                "[handleBoardSelect] canMove:",
-                canMove,
-                "usiBase:",
-                usiBase,
-                "usiPromote:",
-                usiPromote,
-            );
             if (!canMove) {
                 // 別の自分の駒を選択
                 const piece = position.board[squareId as keyof typeof position.board];
@@ -736,13 +695,7 @@ export function OnlineGameView({
         isActive: !isRewound && isMyTurn && myPlayer === bottomOwner,
         isAI: false,
     };
-    const boardDisplaySettings = {
-        highlightLastMove: true,
-        squareNotation: "none" as const,
-        showBoardLabels: true,
-    };
-    const onSquareSelectForMobile =
-        !isRewound && isMyTurn && !isSpectator ? handleBoardSelect : () => {};
+    const onSquareSelect = !isRewound && isMyTurn && !isSpectator ? handleBoardSelect : () => {};
     const onPromotionChoiceForMobile = (promote: boolean) => {
         if (!promoteDialog) return;
         void sendMove(promote ? `${promoteDialog.usi}+` : promoteDialog.usi, promoteDialog.to);
@@ -838,13 +791,13 @@ export function OnlineGameView({
                                       : null
                             }
                             promotionSelection={promotionSelection}
-                            displaySettings={boardDisplaySettings}
+                            displaySettings={BOARD_DISPLAY_SETTINGS}
                             isEditModeActive={false}
                             isMatchRunning={!gameResult}
                             hideEmptyHandPieces={true}
                             editFromSquare={null}
                             candidateNote={null}
-                            onSquareSelect={onSquareSelectForMobile}
+                            onSquareSelect={onSquareSelect}
                             onPromotionChoice={onPromotionChoiceForMobile}
                             onHandSelect={handleHandSelect}
                             topHand={topHand}
@@ -874,13 +827,13 @@ export function OnlineGameView({
                                       : null
                             }
                             promotionSelection={promotionSelection}
-                            displaySettings={boardDisplaySettings}
+                            displaySettings={BOARD_DISPLAY_SETTINGS}
                             isEditModeActive={false}
                             isMatchRunning={!gameResult}
                             hideEmptyHandPieces={true}
                             editFromSquare={null}
                             candidateNote={null}
-                            onSquareSelect={onSquareSelectForMobile}
+                            onSquareSelect={onSquareSelect}
                             onPromotionChoice={onPromotionChoiceForMobile}
                             onHandSelect={handleHandSelect}
                             topHand={topHand}
@@ -1080,6 +1033,11 @@ function GameEndDialog({
     onExit,
 }: GameEndDialogProps): ReactElement {
     const [kifuCopied, setKifuCopied] = useState(false);
+    useEffect(() => {
+        if (!kifuCopied) return;
+        const timerId = setTimeout(() => setKifuCopied(false), 2000);
+        return () => clearTimeout(timerId);
+    }, [kifuCopied]);
 
     const winnerName =
         result.winner === "b" ? playerNames.b : result.winner === "w" ? playerNames.w : null;
@@ -1133,7 +1091,6 @@ function GameEndDialog({
                                 onClick={async () => {
                                     await navigator.clipboard.writeText(kifu);
                                     setKifuCopied(true);
-                                    setTimeout(() => setKifuCopied(false), 2000);
                                 }}
                                 className="w-full rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
                             >

@@ -278,7 +278,7 @@ function JoinFormSection({
                 <button
                     type="button"
                     onClick={() => onJoin("b")}
-                    disabled={joinForm.isJoining || isSeatTaken("b")}
+                    disabled={joinForm.isJoining || !joinForm.name.trim() || isSeatTaken("b")}
                     className="w-full rounded-lg bg-wafuu-shu py-2.5 text-sm font-semibold text-wafuu-shu-fg shadow hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                     {joinForm.isJoining && joinForm.seat === "b"
@@ -290,7 +290,7 @@ function JoinFormSection({
                 <button
                     type="button"
                     onClick={() => onJoin("w")}
-                    disabled={joinForm.isJoining || isSeatTaken("w")}
+                    disabled={joinForm.isJoining || !joinForm.name.trim() || isSeatTaken("w")}
                     className="w-full rounded-lg bg-wafuu-ai py-2.5 text-sm font-semibold text-wafuu-ai-fg shadow hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                     {joinForm.isJoining && joinForm.seat === "w"
@@ -302,7 +302,7 @@ function JoinFormSection({
                 <button
                     type="button"
                     onClick={() => onJoin("s")}
-                    disabled={joinForm.isJoining}
+                    disabled={joinForm.isJoining || !joinForm.name.trim()}
                     className="w-full rounded-lg bg-secondary py-2.5 text-sm font-semibold text-secondary-foreground shadow-sm hover:bg-secondary/80 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                     {joinForm.isJoining && joinForm.seat === "s"
@@ -377,6 +377,12 @@ function GameSettingsSection({
     );
 }
 
+// ─── ヘルパー ─────────────────────────────────────────────────────────────────
+
+function buildWsUrl(roomId: string): string {
+    return `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/rooms/${roomId}/ws`;
+}
+
 // ─── ページコンポーネント ──────────────────────────────────────────────────────
 
 export default function RoomPage(): ReactElement {
@@ -401,6 +407,11 @@ export default function RoomPage(): ReactElement {
 
     const clientRef = useRef<RoomClient | null>(null);
     const [copied, setCopied] = useState(false);
+    useEffect(() => {
+        if (!copied) return;
+        const timerId = setTimeout(() => setCopied(false), 2000);
+        return () => clearTimeout(timerId);
+    }, [copied]);
 
     const aiSupport = roomInfo.settings.aiSupport;
     const analysis = useOnlineAnalysis(
@@ -420,7 +431,7 @@ export default function RoomPage(): ReactElement {
         }
         dispatchJoin({ type: "start_join", seat: seatToJoin });
 
-        const wsUrl = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/rooms/${roomId}/ws`;
+        const wsUrl = buildWsUrl(roomId);
 
         const newClient = createRoomClient({
             wsUrl,
@@ -522,8 +533,11 @@ export default function RoomPage(): ReactElement {
 
         dispatchJoin({ type: "start_join", seat });
 
-        const wsUrl = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/rooms/${roomId}/ws`;
-        const newClient = createRoomClient({ wsUrl, autoReconnect: true, onReconnect: () => {} });
+        const newClient = createRoomClient({
+            wsUrl: buildWsUrl(roomId),
+            autoReconnect: true,
+            onReconnect: () => {},
+        });
 
         clientRef.current = newClient;
         dispatchRoom({ type: "client_set", client: newClient });
@@ -613,7 +627,6 @@ export default function RoomPage(): ReactElement {
         try {
             await navigator.clipboard.writeText(inviteUrl);
             setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
         } catch {
             // フォールバック: 選択状態にする
         }
