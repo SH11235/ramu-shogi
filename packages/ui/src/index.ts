@@ -9,6 +9,8 @@
 // ============================================================
 
 export { useDevMode } from "./hooks/useDevMode";
+export type { UseRoomConnectionOptions, UseRoomConnectionReturn } from "./hooks/useRoomConnection";
+export { useRoomConnection } from "./hooks/useRoomConnection";
 // ============================================================
 // Components
 // ============================================================
