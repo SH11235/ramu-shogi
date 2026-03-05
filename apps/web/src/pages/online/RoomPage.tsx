@@ -5,9 +5,9 @@ import type { Seat, SnapshotPayload } from "@shogi/match-client";
 import type { EngineOption } from "@shogi/ui";
 import { OnlineGameView, PositionPresetSelector, ShogiMatch, useRoomConnection } from "@shogi/ui";
 import { getRouteApi, useNavigate, useParams } from "@tanstack/react-router";
-import { PageHeader } from "../../components/PageHeader";
 import type { ReactElement } from "react";
 import { useEffect, useState } from "react";
+import { PageHeader } from "../../components/PageHeader";
 import { useOnlineAnalysis } from "../../hooks/useOnlineAnalysis";
 
 const nnueManifestUrl: string = (() => {
@@ -383,6 +383,7 @@ export default function RoomPage(): ReactElement {
                 seat={joinSeat as Seat}
                 roomId={roomId}
                 analysis={aiSupport ? analysis : undefined}
+                manifestUrl={nnueManifestUrl}
                 onStartReview={(data) => {
                     startReview(data);
                 }}

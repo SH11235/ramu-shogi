@@ -93,5 +93,11 @@ export function useOnlineAnalysis(
         setIsAnalyzing(false);
     };
 
-    return { isAnalyzing, topMoves, startAnalysis, cancelAnalysis };
+    const loadNnue = async (nnueId: string | null): Promise<void> => {
+        const engine = engineRef.current;
+        if (!engine?.loadNnue) return;
+        if (nnueId) await engine.loadNnue(nnueId);
+    };
+
+    return { isAnalyzing, topMoves, startAnalysis, cancelAnalysis, loadNnue };
 }

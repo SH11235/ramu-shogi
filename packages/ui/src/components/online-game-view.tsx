@@ -2,6 +2,8 @@ import {
     applyMoveWithState,
     deriveLastMove,
     getPositionService,
+    type NnueSelection,
+    NONE_NNUE_SELECTION,
     type PieceType,
     type Player,
     type PositionState,
@@ -18,14 +20,17 @@ import type {
     SnapshotPayload,
 } from "@shogi/match-client";
 import type { ReactElement } from "react";
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
+import { useLazyNnueLoader } from "../hooks/useLazyNnueLoader";
+import { useNnueContextOptional } from "../providers/NnueContext";
+import { NnueManagerDialog } from "./nnue/NnueManagerDialog";
 import { BottomSheet } from "./shogi-match/components/BottomSheet";
 import { KifuNavigationToolbar } from "./shogi-match/components/KifuNavigationToolbar";
 import { type HandInfo, MobileBoardSection } from "./shogi-match/components/MobileBoardSection";
 import { PCBoardContent } from "./shogi-match/components/PCBoardContent";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import type { PromotionSelection } from "./shogi-match/types";
-import { exportToKifString } from "./shogi-match/utils/kifFormat";
+import { exportToKifString, formatMoveSimple } from "./shogi-match/utils/kifFormat";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
 import { determinePromotion } from "./shogi-match/utils/promotionLogic";
 
@@ -42,6 +47,7 @@ export interface OnlineAnalysis {
     topMoves: AnalysisMoveResult[];
     startAnalysis: (sfen: string, moves: string[]) => Promise<void>;
     cancelAnalysis: () => Promise<void>;
+    loadNnue?: (nnueId: string | null) => Promise<void>;
 }
 
 // ─── 型定義 ───────────────────────────────────────────────────────────────────
@@ -284,6 +290,7 @@ interface OnlineGameViewProps {
     seat: Seat;
     roomId: string;
     analysis?: OnlineAnalysis;
+    manifestUrl?: string;
     onStartReview?: (data: {
         sfen: string;
         moves: string[];
@@ -298,6 +305,7 @@ export function OnlineGameView({
     seat,
     roomId,
     analysis,
+    manifestUrl,
     onStartReview,
     onExit,
 }: OnlineGameViewProps): ReactElement {
@@ -632,6 +640,29 @@ export function OnlineGameView({
             .catch(console.error);
     }, [aiSupport, myAiSettings, position, turn, seat, gameResult, analysis]);
 
+    // ─── NNUE 管理 ───────────────────────────────────────────────────────────
+
+    const [nnueSelection, setNnueSelection] = useState<NnueSelection>(NONE_NNUE_SELECTION);
+    const [nnueManagerOpen, setNnueManagerOpen] = useState(false);
+    const { resolveNnue } = useLazyNnueLoader();
+
+    const loadNnueEvent = useEffectEvent((sel: NnueSelection) => {
+        if (!analysis?.loadNnue) return;
+        resolveNnue(sel)
+            .then((resolved) => analysis.loadNnue?.(resolved?.nnueId ?? null))
+            .catch(console.error);
+    });
+    useEffect(() => {
+        loadNnueEvent(nnueSelection);
+    }, [nnueSelection]);
+
+    // ─── AI 手の盤面適用 ──────────────────────────────────────────────────────
+
+    function handleApplyAiMove(usiMove: string): void {
+        if (!position || !isMyTurn || gameResult) return;
+        void sendMove(usiMove);
+    }
+
     // ─── KIF ダウンロード ─────────────────────────────────────────────────────
 
     function handleDownloadKifu(): void {
@@ -745,6 +776,12 @@ export function OnlineGameView({
             topMoves={topMoves}
             canAnalyze={!gameResult && !isSpectator}
             onAnalyze={() => void handleAnalyze()}
+            position={displayPosition}
+            turn={turn}
+            nnueSelection={nnueSelection}
+            onNnueSelectionChange={setNnueSelection}
+            onOpenNnueManager={() => setNnueManagerOpen(true)}
+            onApplyMove={isMyTurn && !gameResult && !isSpectator ? handleApplyAiMove : undefined}
         />
     ) : null;
 
@@ -951,6 +988,16 @@ export function OnlineGameView({
                     {aiPanelContent}
                 </BottomSheet>
             )}
+
+            {/* NNUE ファイル管理ダイアログ */}
+            {manifestUrl && (
+                <NnueManagerDialog
+                    open={nnueManagerOpen}
+                    onOpenChange={setNnueManagerOpen}
+                    manifestUrl={manifestUrl}
+                    isMatchActive={!gameResult}
+                />
+            )}
         </div>
     );
 }
@@ -1130,6 +1177,12 @@ interface OnlineAiPanelProps {
     topMoves: AnalysisMoveResult[];
     canAnalyze: boolean;
     onAnalyze: () => void;
+    position: PositionState | null;
+    turn: "b" | "w";
+    nnueSelection: NnueSelection;
+    onNnueSelectionChange: (sel: NnueSelection) => void;
+    onOpenNnueManager: () => void;
+    onApplyMove?: (usiMove: string) => void;
 }
 
 function OnlineAiPanel({
@@ -1140,6 +1193,12 @@ function OnlineAiPanel({
     topMoves,
     canAnalyze,
     onAnalyze,
+    position,
+    turn,
+    nnueSelection,
+    onNnueSelectionChange,
+    onOpenNnueManager,
+    onApplyMove,
 }: OnlineAiPanelProps): ReactElement {
     const mySeatKey = seat === "b" ? "b" : seat === "w" ? "w" : null;
     const myMode = mySeatKey ? aiSupport[mySeatKey].mode : null;
@@ -1151,6 +1210,10 @@ function OnlineAiPanel({
     const evalPercent =
         evalCp !== null ? Math.min(100, Math.max(0, 50 + (evalCp / 2000) * 50)) : 50;
     const canClickAnalyze = canAnalyze && !isAnalyzing && !hasNoRemaining && seat !== "s";
+
+    // NNUE リスト
+    const nnueCtx = useNnueContextOptional();
+    const nnueList = nnueCtx?.nnueList ?? [];
 
     return (
         <div className="flex flex-col rounded-lg border border-border bg-card overflow-hidden">
@@ -1164,6 +1227,34 @@ function OnlineAiPanel({
             </div>
 
             <div className="px-3 py-2 flex flex-col gap-2">
+                {/* NNUE 選択 */}
+                <div className="flex items-center gap-1.5">
+                    <select
+                        value={nnueSelection.nnueId ?? ""}
+                        onChange={(e) =>
+                            onNnueSelectionChange({
+                                presetKey: null,
+                                nnueId: e.target.value || null,
+                            })
+                        }
+                        className="flex-1 rounded-md border border-input bg-transparent px-2 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                        <option value="">駒得（NNUE なし）</option>
+                        {nnueList.map((n) => (
+                            <option key={n.id} value={n.id}>
+                                {n.displayName}
+                            </option>
+                        ))}
+                    </select>
+                    <button
+                        type="button"
+                        onClick={onOpenNnueManager}
+                        className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+                    >
+                        管理
+                    </button>
+                </div>
+
                 {/* 形勢バー */}
                 {topMoves.length > 0 && (
                     <div className="flex flex-col gap-1">
@@ -1187,16 +1278,34 @@ function OnlineAiPanel({
                 {/* 候補手（上位 3 手） */}
                 {topMoves.length > 0 && (
                     <div className="flex flex-col gap-0.5">
-                        {topMoves.slice(0, 3).map((mv, i) => (
-                            <div key={mv.usi} className="flex items-center gap-2 text-xs">
-                                <span className="text-muted-foreground w-4">{i + 1}.</span>
-                                <span className="font-mono text-foreground">{mv.usi}</span>
-                                <span className="text-muted-foreground ml-auto">
-                                    {mv.cp > 0 ? "+" : ""}
-                                    {mv.cp}
-                                </span>
-                            </div>
-                        ))}
+                        {topMoves.slice(0, 3).map((mv, i) => {
+                            const displayText = position
+                                ? formatMoveSimple(
+                                      mv.usi,
+                                      turn === "b" ? "sente" : "gote",
+                                      position.board,
+                                  )
+                                : mv.usi;
+                            return (
+                                <div key={mv.usi} className="flex items-center gap-2 text-xs">
+                                    <span className="text-muted-foreground w-4">{i + 1}.</span>
+                                    <span className="flex-1 text-foreground">{displayText}</span>
+                                    <span className="text-muted-foreground">
+                                        {mv.cp > 0 ? "+" : ""}
+                                        {mv.cp}
+                                    </span>
+                                    {i === 0 && onApplyMove && (
+                                        <button
+                                            type="button"
+                                            onClick={() => onApplyMove(mv.usi)}
+                                            className="rounded px-1.5 py-0.5 text-xs bg-wafuu-shu text-wafuu-shu-fg hover:bg-wafuu-shu-light"
+                                        >
+                                            指す
+                                        </button>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
 
