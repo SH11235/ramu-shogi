@@ -338,6 +338,10 @@ export function OnlineGameView({
     // analysis prop から分解（undefined 時のデフォルト値）
     const isAnalyzing = analysis?.isAnalyzing ?? false;
     const topMoves = analysis?.topMoves ?? [];
+    // ミニサマリバー用評価値（先手視点 cp）
+    const summaryEvalCp = topMoves[0]?.cp ?? null;
+    const summaryEvalPercent =
+        summaryEvalCp !== null ? Math.min(100, Math.max(0, 50 + (summaryEvalCp / 2000) * 50)) : 50;
 
     // 現在の start SFEN と moves
     const startSfenRef = useRef(snapshot.settings.startSfen);
@@ -663,6 +667,18 @@ export function OnlineGameView({
         void sendMove(usiMove);
     }
 
+    // ─── 制限モード: 自分の手番になったらAIシートを自動で開く ────────────────────
+
+    const prevIsMyTurnRef = useRef(false);
+    useEffect(() => {
+        if (!aiSupport || isSpectator || !myAiSettings || gameResult) return;
+        if (myAiSettings.mode !== "limited") return;
+        if (isMyTurn && !prevIsMyTurnRef.current && (myAnalysisRemaining ?? 1) > 0) {
+            dispatchUI({ type: "set_ai_sheet_open", open: true });
+        }
+        prevIsMyTurnRef.current = isMyTurn;
+    }, [isMyTurn, aiSupport, isSpectator, myAiSettings, myAnalysisRemaining, gameResult]);
+
     // ─── KIF ダウンロード ─────────────────────────────────────────────────────
 
     function handleDownloadKifu(): void {
@@ -936,13 +952,40 @@ export function OnlineGameView({
                         <button
                             type="button"
                             onClick={() => dispatchUI({ type: "set_ai_sheet_open", open: true })}
-                            className="md:hidden rounded-md bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80"
+                            className="md:hidden rounded-md border border-wafuu-ai/40 bg-wafuu-ai/10 px-3 py-2 text-sm font-medium text-wafuu-ai hover:bg-wafuu-ai/20"
                             aria-label="AI解析"
                         >
-                            🤖
+                            🤖 AI解析
                         </button>
                     )}
                 </div>
+
+                {/* AI解析ミニサマリバー（モバイルのみ・シート閉じているとき） */}
+                {aiSupport && topMoves.length > 0 && (
+                    <button
+                        type="button"
+                        onClick={() => dispatchUI({ type: "set_ai_sheet_open", open: true })}
+                        className="md:hidden flex items-center gap-2 rounded-md border border-border bg-card/80 px-3 py-1.5 text-xs w-full"
+                    >
+                        <span className="text-muted-foreground shrink-0">🤖</span>
+                        <div className="flex-1 h-1.5 rounded-full bg-wafuu-ai overflow-hidden">
+                            <div
+                                className="h-full bg-wafuu-shu transition-all duration-300"
+                                style={{ width: `${summaryEvalPercent}%` }}
+                            />
+                        </div>
+                        <span
+                            className={`font-mono tabular-nums shrink-0 ${summaryEvalCp !== null && summaryEvalCp < 0 ? "text-wafuu-ai" : "text-wafuu-shu"}`}
+                        >
+                            {summaryEvalCp !== null
+                                ? summaryEvalCp > 0
+                                    ? `+${summaryEvalCp}`
+                                    : String(summaryEvalCp)
+                                : "---"}
+                        </span>
+                        <span className="text-muted-foreground shrink-0">詳細 ›</span>
+                    </button>
+                )}
 
                 {/* 観戦者数 */}
                 {snapshot.spectators > 0 && (
@@ -1287,7 +1330,7 @@ function OnlineAiPanel({
                                   )
                                 : mv.usi;
                             return (
-                                <div key={mv.usi} className="flex items-center gap-2 text-xs">
+                                <div key={i} className="flex items-center gap-2 text-xs">
                                     <span className="text-muted-foreground w-4">{i + 1}.</span>
                                     <span className="flex-1 text-foreground">{displayText}</span>
                                     <span className="text-muted-foreground">
@@ -1311,6 +1354,15 @@ function OnlineAiPanel({
 
                 {isAnalyzing && topMoves.length === 0 && (
                     <p className="text-xs text-muted-foreground">解析中...</p>
+                )}
+
+                {/* 解析前ヒント（未解析かつ待機中） */}
+                {!isAnalyzing && topMoves.length === 0 && (
+                    <p className="text-xs text-muted-foreground text-center py-1 leading-relaxed">
+                        {isLimited
+                            ? "「解析する」を押すと現在の局面をAIが分析します"
+                            : "自分の手番になると自動で解析します"}
+                    </p>
                 )}
 
                 {/* 制限モードのみ手動ボタン表示 */}

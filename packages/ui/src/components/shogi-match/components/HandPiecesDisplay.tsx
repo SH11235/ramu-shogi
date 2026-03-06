@@ -173,6 +173,11 @@ export function HandPiecesDisplay({
     const iconSize = size === "compact" ? "xs" : size === "medium" || size === "edit" ? "sm" : "lg";
     const shouldHideEmptyPieces = hideEmptyPieces ?? (isMatchRunning && !isEditMode);
 
+    // 持ち駒が全て 0 かつ空駒を非表示にする設定の場合は行ごと非表示
+    if (shouldHideEmptyPieces && HAND_ORDER.every((p) => (hand[p] ?? 0) === 0)) {
+        return <></>;
+    }
+
     return (
         <div
             className={cn(
