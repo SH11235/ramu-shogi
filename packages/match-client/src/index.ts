@@ -1,16 +1,3 @@
-export { createRoomClient } from "./client";
-export {
-    getStoredResumeToken,
-    getStoredSeat,
-    removeStoredResumeToken,
-    removeStoredSeat,
-    storeResumeToken,
-    storeSeat,
-} from "./reconnect";
-export type {
-    RoomClient,
-    RoomClientOptions,
-} from "./types";
 export type {
     AiSupportPlayerSettings,
     AiSupportSettings,
@@ -49,3 +36,16 @@ export type {
     TimeControlSettings,
     TimeoutEvent,
 } from "@shogi/match-protocol";
+export { createRoomClient } from "./client";
+export {
+    getStoredResumeToken,
+    getStoredSeat,
+    removeStoredResumeToken,
+    removeStoredSeat,
+    storeResumeToken,
+    storeSeat,
+} from "./reconnect";
+export type {
+    RoomClient,
+    RoomClientOptions,
+} from "./types";

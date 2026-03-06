@@ -1,3 +1,6 @@
+import type { ApiErrorResponse, CreateRoomRequest, CreateRoomResponse } from "@shogi/api-contract";
+import type { RoomSettings } from "@shogi/match-protocol";
+
 // REST API: POST /api/rooms, GET /api/rooms/:roomId
 
 // Cloudflare Workers Rate Limiting API の型定義
@@ -13,37 +16,10 @@ export interface Env {
     ROOM_RATE_LIMITER?: RateLimiter;
 }
 
-// ─── バリデーション ──────────────────────────────────────────────────────
-
-interface TimeControlSettings {
-    type: "byoyomi" | "fischer";
-    initialMs: number;
-    byoyomiMs?: number;
-    fischerIncrementMs?: number;
-}
-
-interface PassRightsConfig {
-    initialCount: number;
-}
-
-interface AiSupportPlayerSettings {
-    mode: "unlimited" | "limited";
-    limitCount: number | null;
-}
-
-interface AiSupportSettings {
-    b: AiSupportPlayerSettings;
-    w: AiSupportPlayerSettings;
-    searchDepth: number | null;
-    searchTimeMs: number | null;
-}
-
-export interface RoomSettings {
-    startSfen: string;
-    timeControl: TimeControlSettings;
-    passRights: PassRightsConfig | null;
-    aiSupport: AiSupportSettings | null;
-}
+type ValidationError = { error: string };
+type TimeControlSettings = RoomSettings["timeControl"];
+type PassRightsConfig = NonNullable<RoomSettings["passRights"]>;
+type AiSupportSettings = NonNullable<RoomSettings["aiSupport"]>;
 
 const HANDICAP_SFENS = new Set(["handicap:bishop", "handicap:rook", "handicap:rook-bishop"]);
 
@@ -81,7 +57,7 @@ function validateTimeControl(tc: unknown): tc is TimeControlSettings {
     return true;
 }
 
-function validateSettings(settings: unknown): RoomSettings | { error: string } {
+function validateSettings(settings: unknown): RoomSettings | ValidationError {
     if (!settings || typeof settings !== "object") {
         return { error: "settings is required" };
     }
@@ -150,7 +126,8 @@ function generateRoomId(): string {
 // ─── ヘルパー ────────────────────────────────────────────────────────────
 
 function apiErrorResponse(status: number, error: string, message?: string): Response {
-    return new Response(JSON.stringify({ error, ...(message ? { message } : {}) }), {
+    const body: ApiErrorResponse = { error, ...(message ? { message } : {}) };
+    return new Response(JSON.stringify(body), {
         status,
         headers: { "Content-Type": "application/json" },
     });
@@ -189,7 +166,8 @@ async function handleCreateRoom(request: Request, env: Env): Promise<Response> {
         return apiErrorResponse(400, "INVALID_REQUEST", "Invalid JSON body");
     }
 
-    const settingsResult = validateSettings((body as Record<string, unknown>)?.settings);
+    const requestBody = body as Partial<CreateRoomRequest>;
+    const settingsResult = validateSettings(requestBody.settings);
     if ("error" in settingsResult) {
         return apiErrorResponse(400, "INVALID_SETTINGS", settingsResult.error);
     }
@@ -211,8 +189,9 @@ async function handleCreateRoom(request: Request, env: Env): Promise<Response> {
 
     const origin = new URL(request.url).origin;
     const shareUrl = `${origin}/online/${roomId}`;
+    const responseBody: CreateRoomResponse = { roomId, shareUrl };
 
-    return jsonResponse({ roomId, shareUrl });
+    return jsonResponse(responseBody);
 }
 
 /**

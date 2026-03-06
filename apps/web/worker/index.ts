@@ -6,10 +6,12 @@ interface Env {
     ASSETS: Fetcher;
     NNUE_BUCKET: R2Bucket;
     ROOM: DurableObjectNamespace;
+    BACKEND_ORIGIN?: string;
 }
 
 const NNUE_MANIFEST_PATH = "/nnue/manifest.json";
 const NNUE_FILES_PREFIX = "/nnue/files/";
+const API_PREFIX = "/api/";
 const SECURITY_HEADERS: Record<string, string> = {
     "Cross-Origin-Opener-Policy": "same-origin",
     "Cross-Origin-Embedder-Policy": "require-corp",
@@ -57,6 +59,33 @@ function handleNnueOptions(): Response {
     const headers = new Headers();
     withNnueHeaders(headers);
     return new Response(null, { status: 204, headers });
+}
+
+function resolveBackendUrl(requestUrl: string, backendOrigin: string): URL | null {
+    try {
+        const url = new URL(requestUrl);
+        const targetOrigin = new URL(backendOrigin);
+        url.protocol = targetOrigin.protocol;
+        url.hostname = targetOrigin.hostname;
+        url.port = targetOrigin.port;
+        return url;
+    } catch {
+        return null;
+    }
+}
+
+async function handleApiProxyRequest(request: Request, env: Env): Promise<Response | null> {
+    const { pathname } = new URL(request.url);
+    if (!pathname.startsWith(API_PREFIX) || !env.BACKEND_ORIGIN) {
+        return null;
+    }
+
+    const targetUrl = resolveBackendUrl(request.url, env.BACKEND_ORIGIN);
+    if (!targetUrl) {
+        return new Response("Invalid BACKEND_ORIGIN", { status: 500 });
+    }
+
+    return fetch(new Request(targetUrl.toString(), request));
 }
 
 async function handleNnueRequest(request: Request, env: Env): Promise<Response | null> {
@@ -137,6 +166,9 @@ async function handleNnueRequest(request: Request, env: Env): Promise<Response |
 
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+        const proxiedApiResponse = await handleApiProxyRequest(request, env);
+        if (proxiedApiResponse) return proxiedApiResponse;
+
         // /api/* リクエストを API ハンドラにルーティング
         const apiResponse = await handleApiRequest(request, env, ctx);
         if (apiResponse) return apiResponse;

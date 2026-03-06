@@ -1,16 +1,19 @@
+import type { GetRoomResponse } from "@shogi/api-contract";
+import type {
+    ClockState,
+    ErrorCode,
+    GameResult,
+    RoomEvent,
+    RoomSettings,
+    RoomStatus,
+    Seat,
+    ServerMessage,
+    SnapshotPayload,
+} from "@shogi/match-protocol";
+
 // Durable Object: ルーム状態管理、WebSocket 接続管理
 
 // ─── 型定義 ──────────────────────────────────────────────────────────────
-
-type Seat = "b" | "w" | "s";
-type RoomStatus = "waiting" | "playing" | "finished";
-type GameEndReason =
-    | "resign"
-    | "checkmate"
-    | "timeout"
-    | "sennichite"
-    | "illegal_move"
-    | "disconnect";
 
 interface PlayerInfo {
     seat: "b" | "w";
@@ -20,53 +23,7 @@ interface PlayerInfo {
     lastSeenTs: number;
     offlineSince: number | null; // null = オンライン, timestamp = オフライン開始時刻
 }
-
-interface TimeControlSettings {
-    type: "byoyomi" | "fischer";
-    initialMs: number;
-    byoyomiMs?: number;
-    fischerIncrementMs?: number;
-}
-
-interface PassRightsConfig {
-    initialCount: number;
-}
-
-interface AiSupportPlayerSettings {
-    mode: "unlimited" | "limited";
-    limitCount: number | null;
-}
-
-interface AiSupportSettings {
-    b: AiSupportPlayerSettings;
-    w: AiSupportPlayerSettings;
-    searchDepth: number | null;
-    searchTimeMs: number | null;
-}
-
-interface RoomSettings {
-    startSfen: string;
-    timeControl: TimeControlSettings;
-    passRights: PassRightsConfig | null;
-    aiSupport: AiSupportSettings | null;
-}
-
-interface ClockState {
-    b: { remainMs: number };
-    w: { remainMs: number };
-    running: "b" | "w" | null; // 現在時計が動いている側
-    lastTickTs: number; // 最後に時計を更新したサーバ時刻（ms）
-}
-
-interface PassRightsState {
-    b: number;
-    w: number;
-}
-
-interface GameResult {
-    winner: "b" | "w" | null;
-    reason: GameEndReason;
-}
+type PassRightsState = NonNullable<SnapshotPayload["passRights"]>;
 
 interface GameState {
     sfen: string; // 現在の局面（SFEN）
@@ -79,13 +36,6 @@ interface GameState {
     status: "playing" | "finished";
     result: GameResult | null;
     sfenCounts: Record<string, number>; // 千日手検知用: 正規化SFEN → 出現回数
-}
-
-interface RoomEvent {
-    eventId: number;
-    kind: string;
-    serverTs: number;
-    [key: string]: unknown;
 }
 
 interface RoomStorageState {
@@ -174,7 +124,7 @@ function buildKifu(room: RoomStorageState): string {
     return lines.join("\n");
 }
 
-function sendWsMessage(ws: WebSocket, msg: unknown): void {
+function sendWsMessage(ws: WebSocket, msg: ServerMessage): void {
     try {
         ws.send(JSON.stringify(msg));
     } catch {
@@ -196,7 +146,7 @@ function jsonResponse(data: unknown, status = 200): Response {
     });
 }
 
-function sendWsError(ws: WebSocket, code: string, message: string, clientMsgId?: number): void {
+function sendWsError(ws: WebSocket, code: ErrorCode, message: string, clientMsgId?: number): void {
     sendWsMessage(ws, {
         v: 1,
         t: "error",
@@ -372,7 +322,7 @@ export class RoomDO implements DurableObject {
             (m) => m.seat === "s",
         ).length;
 
-        return jsonResponse({
+        const responseBody: GetRoomResponse = {
             roomId: room.roomId,
             status: room.status,
             players: {
@@ -390,7 +340,9 @@ export class RoomDO implements DurableObject {
                 passRights: room.settings.passRights,
                 aiSupport: room.settings.aiSupport,
             },
-        });
+        };
+
+        return jsonResponse(responseBody);
     }
 
     private handleWebSocketUpgrade(): Response {
@@ -1015,7 +967,7 @@ export class RoomDO implements DurableObject {
             (m) => m.seat === "s",
         ).length;
 
-        const snapshot = {
+        const snapshot: SnapshotPayload = {
             eventId: room.latestEventId,
             status: room.status,
             sfen: room.game?.sfen ?? resolveSfen(room.settings.startSfen),
@@ -1043,7 +995,7 @@ export class RoomDO implements DurableObject {
         sendWsMessage(ws, { v: 1, t: "snapshot", payload: snapshot });
     }
 
-    private broadcastToAll(msg: unknown): void {
+    private broadcastToAll(msg: ServerMessage): void {
         for (const ws of this.doState.getWebSockets()) {
             sendWsMessage(ws, msg);
         }

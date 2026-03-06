@@ -143,7 +143,7 @@ export interface PlayerOfflineEvent extends RoomEventBase {
 export interface AnalysisUsedEvent extends RoomEventBase {
     kind: "analysis_used";
     seat: Seat;
-    analysisRemaining: number;
+    analysisRemaining: number | null;
 }
 
 export interface SettingsUpdatedEvent extends RoomEventBase {

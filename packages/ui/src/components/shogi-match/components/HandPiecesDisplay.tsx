@@ -166,7 +166,7 @@ export function HandPiecesDisplay({
     flipBoard = false,
     size = "normal",
     isAI = false,
-}: HandPiecesDisplayProps): ReactElement {
+}: HandPiecesDisplayProps): ReactElement | null {
     const containerConfig = CONTAINER_SIZE_CONFIG[size];
     const isCompactLayout = size === "compact" || size === "edit" || size === "medium";
     // PlayerIcon用のサイズマッピング
@@ -175,7 +175,7 @@ export function HandPiecesDisplay({
 
     // 持ち駒が全て 0 かつ空駒を非表示にする設定の場合は行ごと非表示
     if (shouldHideEmptyPieces && HAND_ORDER.every((p) => (hand[p] ?? 0) === 0)) {
-        return <></>;
+        return null;
     }
 
     return (

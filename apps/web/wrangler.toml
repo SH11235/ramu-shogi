@@ -6,6 +6,10 @@ compatibility_date = "2026-01-20"
 main = "./worker/index.ts"
 # custom_domains = ["ramu-shogi.sh11235.com"]
 
+# backend 分離後に /api/* を proxy する場合に設定
+# [vars]
+# BACKEND_ORIGIN = "https://api.ramu-shogi.com"
+
 [assets]
 directory = "./dist"
 binding = "ASSETS"
@@ -41,6 +45,7 @@ name = "ramu-shogi-stg"
 # custom_domains = ["ramu-shogi-stg.sh11235.workers.dev"]
 # staging用の環境変数/Binding/DB等を分ける
 # vars = { ... }
+# BACKEND_ORIGIN = "https://stg-api.ramu-shogi.com"
 
 [[env.stg.r2_buckets]]
 binding = "NNUE_BUCKET"

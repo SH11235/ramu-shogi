@@ -99,6 +99,9 @@ importers:
       '@shogi/match-client':
         specifier: workspace:*
         version: link:../../packages/match-client
+      '@shogi/match-protocol':
+        specifier: workspace:*
+        version: link:../../packages/match-protocol
       '@shogi/ui':
         specifier: workspace:*
         version: link:../../packages/ui

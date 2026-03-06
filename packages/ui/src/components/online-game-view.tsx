@@ -98,7 +98,7 @@ type GameAction =
           type: "analysis_used";
           isMySeat: boolean;
           seat: "b" | "w";
-          analysisRemaining: number;
+          analysisRemaining: number | null;
           ply: number;
       }
     | {
@@ -1330,7 +1330,7 @@ function OnlineAiPanel({
                                   )
                                 : mv.usi;
                             return (
-                                <div key={i} className="flex items-center gap-2 text-xs">
+                                <div key={mv.usi} className="flex items-center gap-2 text-xs">
                                     <span className="text-muted-foreground w-4">{i + 1}.</span>
                                     <span className="flex-1 text-foreground">{displayText}</span>
                                     <span className="text-muted-foreground">
