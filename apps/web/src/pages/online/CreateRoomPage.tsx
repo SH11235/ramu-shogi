@@ -1,3 +1,4 @@
+import type { ApiErrorResponse, CreateRoomRequest, CreateRoomResponse } from "@shogi/api-contract";
 import { PositionPresetSelector } from "@shogi/ui";
 import { useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
@@ -6,7 +7,7 @@ import { PageHeader } from "../../components/PageHeader";
 
 // ─── ルーム設定の型 ───────────────────────────────────────────────────────────
 
-interface RoomSettings {
+interface RoomFormState {
     name: string;
     timeType: "byoyomi" | "fischer";
     initialMinutes: number;
@@ -23,7 +24,7 @@ interface RoomSettings {
     aiSearchTimeMs: number | null;
 }
 
-const DEFAULT_SETTINGS: RoomSettings = {
+const DEFAULT_SETTINGS: RoomFormState = {
     name: "",
     timeType: "byoyomi",
     initialMinutes: 10,
@@ -40,88 +41,91 @@ const DEFAULT_SETTINGS: RoomSettings = {
     aiSearchTimeMs: 5000,
 };
 
+function buildCreateRoomRequest(settings: RoomFormState): CreateRoomRequest {
+    const timeControl =
+        settings.timeType === "byoyomi"
+            ? {
+                  type: "byoyomi" as const,
+                  initialMs: settings.initialMinutes * 60_000,
+                  byoyomiMs: settings.byoyomiSeconds * 1000,
+              }
+            : {
+                  type: "fischer" as const,
+                  initialMs: settings.initialMinutes * 60_000,
+                  fischerIncrementMs: settings.fischerIncrementSeconds * 1000,
+              };
+
+    return {
+        settings: {
+            startSfen: settings.startSfen || "startpos",
+            timeControl,
+            passRights:
+                settings.passRightsCount !== null
+                    ? { initialCount: settings.passRightsCount }
+                    : null,
+            aiSupport: settings.aiSupportEnabled
+                ? {
+                      b: {
+                          mode: settings.aiBMode,
+                          limitCount:
+                              settings.aiBMode === "limited" ? settings.aiBLimitCount : null,
+                      },
+                      w: {
+                          mode: settings.aiWMode,
+                          limitCount:
+                              settings.aiWMode === "limited" ? settings.aiWLimitCount : null,
+                      },
+                      searchDepth: settings.aiSearchDepth,
+                      searchTimeMs: settings.aiSearchTimeMs,
+                  }
+                : null,
+        },
+    };
+}
+
 // ─── ページコンポーネント ─────────────────────────────────────────────────────
 
 export default function CreateRoomPage(): ReactElement {
     const navigate = useNavigate();
-    const [settings, setSettings] = useState<RoomSettings>(DEFAULT_SETTINGS);
+    const [settings, setSettings] = useState<RoomFormState>(DEFAULT_SETTINGS);
     const [isCreating, setIsCreating] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    function set<K extends keyof RoomSettings>(key: K, value: RoomSettings[K]): void {
+    function set<K extends keyof RoomFormState>(key: K, value: RoomFormState[K]): void {
         setSettings((prev) => ({ ...prev, [key]: value }));
     }
 
-    async function handleSubmit(): Promise<void> {
+    function handleSubmit(): void {
         if (!settings.name.trim()) return;
         setIsCreating(true);
         setError(null);
-        try {
-            const timeControl =
-                settings.timeType === "byoyomi"
-                    ? {
-                          type: "byoyomi" as const,
-                          initialMs: settings.initialMinutes * 60_000,
-                          byoyomiMs: settings.byoyomiSeconds * 1000,
-                      }
-                    : {
-                          type: "fischer" as const,
-                          initialMs: settings.initialMinutes * 60_000,
-                          fischerIncrementMs: settings.fischerIncrementSeconds * 1000,
-                      };
+        const requestBody = buildCreateRoomRequest(settings);
 
-            const res = await fetch("/api/rooms", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    settings: {
-                        startSfen: settings.startSfen || "startpos",
-                        timeControl,
-                        passRights:
-                            settings.passRightsCount !== null
-                                ? { initialCount: settings.passRightsCount }
-                                : null,
-                        aiSupport: settings.aiSupportEnabled
-                            ? {
-                                  b: {
-                                      mode: settings.aiBMode,
-                                      limitCount:
-                                          settings.aiBMode === "limited"
-                                              ? settings.aiBLimitCount
-                                              : null,
-                                  },
-                                  w: {
-                                      mode: settings.aiWMode,
-                                      limitCount:
-                                          settings.aiWMode === "limited"
-                                              ? settings.aiWLimitCount
-                                              : null,
-                                  },
-                                  searchDepth: settings.aiSearchDepth,
-                                  searchTimeMs: settings.aiSearchTimeMs,
-                              }
-                            : null,
-                    },
-                }),
+        void fetch("/api/rooms", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(requestBody),
+        })
+            .then(async (res) => {
+                if (!res.ok) {
+                    const err = (await res.json()) as ApiErrorResponse;
+                    setError(err.message ?? "ルームの作成に失敗しました");
+                    return;
+                }
+
+                const data = (await res.json()) as CreateRoomResponse;
+                await navigate({
+                    to: "/online/$roomId",
+                    params: { roomId: data.roomId },
+                    search: { name: settings.name.trim(), seat: undefined, mode: undefined },
+                });
+            })
+            .catch(() => {
+                setError("ネットワークエラーが発生しました");
+            })
+            .finally(() => {
+                setIsCreating(false);
             });
-
-            if (!res.ok) {
-                const err = (await res.json()) as { message?: string };
-                setError(err.message ?? "ルームの作成に失敗しました");
-                return;
-            }
-
-            const data = (await res.json()) as { roomId: string };
-            await navigate({
-                to: "/online/$roomId",
-                params: { roomId: data.roomId },
-                search: { name: settings.name.trim(), seat: undefined, mode: undefined },
-            });
-        } catch {
-            setError("ネットワークエラーが発生しました");
-        } finally {
-            setIsCreating(false);
-        }
     }
 
     const labelClass = "text-sm font-medium text-foreground";

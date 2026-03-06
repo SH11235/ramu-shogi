@@ -20,6 +20,7 @@
         "test:e2e": "playwright test"
     },
     "dependencies": {
+        "@shogi/api-contract": "workspace:*",
         "@shogi/app-core": "workspace:*",
         "@shogi/design-system": "workspace:*",
         "@shogi/engine-wasm": "workspace:*",

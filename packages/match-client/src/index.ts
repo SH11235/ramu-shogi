@@ -8,6 +8,10 @@ export {
     storeSeat,
 } from "./reconnect";
 export type {
+    RoomClient,
+    RoomClientOptions,
+} from "./types";
+export type {
     AiSupportPlayerSettings,
     AiSupportSettings,
     AnalysisUsedEvent,
@@ -33,8 +37,6 @@ export type {
     PlayerPublicInfo,
     PongMessage,
     ResignEvent,
-    RoomClient,
-    RoomClientOptions,
     RoomEvent,
     RoomSettings,
     RoomStatus,
@@ -46,4 +48,4 @@ export type {
     SnapshotPayload,
     TimeControlSettings,
     TimeoutEvent,
-} from "./types";
+} from "@shogi/match-protocol";

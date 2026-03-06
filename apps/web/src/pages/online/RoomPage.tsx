@@ -1,5 +1,6 @@
 // 待機画面・対局ルームページ（/online/:roomId）
 
+import type { RoomInfo } from "@shogi/api-contract";
 import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type { Seat, SnapshotPayload } from "@shogi/match-client";
 import type { EngineOption } from "@shogi/ui";
@@ -17,36 +18,6 @@ const nnueManifestUrl: string = (() => {
     }
     return value;
 })();
-
-// ─── ルーム情報の型（GET /api/rooms/:roomId のレスポンス） ────────────────────
-
-interface AiSupportPlayerSettings {
-    mode: "unlimited" | "limited";
-    limitCount: number | null;
-}
-
-export interface RoomInfo {
-    roomId: string;
-    status: "waiting" | "playing" | "finished";
-    players: {
-        b: { name: string } | null;
-        w: { name: string } | null;
-    };
-    spectators: number;
-    settings: {
-        startSfen: string;
-        timeControl:
-            | { type: "byoyomi"; initialMs: number; byoyomiMs: number }
-            | { type: "fischer"; initialMs: number; fischerIncrementMs: number };
-        passRights: { initialCount: number } | null;
-        aiSupport: {
-            b: AiSupportPlayerSettings;
-            w: AiSupportPlayerSettings;
-            searchDepth: number | null;
-            searchTimeMs: number | null;
-        } | null;
-    };
-}
 
 // ─── ルートAPI（loaderData アクセス用） ──────────────────────────────────────
 

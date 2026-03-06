@@ -1,5 +1,5 @@
 {
-    "name": "@shogi/match-client",
+    "name": "@shogi/api-contract",
     "private": true,
     "version": "0.0.0",
     "type": "module",
@@ -8,13 +8,13 @@
     "exports": {
         ".": "./src/index.ts"
     },
-    "dependencies": {
-        "@shogi/match-protocol": "workspace:*"
-    },
     "scripts": {
         "build": "tsc -b tsconfig.build.json",
         "typecheck": "tsc --noEmit",
         "test": "vitest"
+    },
+    "dependencies": {
+        "@shogi/match-protocol": "workspace:*"
     },
     "devDependencies": {
         "typescript": "~5.9.3",

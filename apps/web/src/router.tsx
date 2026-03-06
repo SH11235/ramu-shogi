@@ -1,9 +1,10 @@
+import type { RoomInfo } from "@shogi/api-contract";
 import { createRootRoute, createRoute, createRouter, useNavigate } from "@tanstack/react-router";
 import App from "./App";
 import { AppProviders } from "./AppProviders";
 import CreateRoomPage from "./pages/online/CreateRoomPage";
 import OnlinePage from "./pages/online/OnlinePage";
-import RoomPage, { type RoomInfo } from "./pages/online/RoomPage";
+import RoomPage from "./pages/online/RoomPage";
 
 const rootRoute = createRootRoute({
     component: AppProviders,
