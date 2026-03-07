@@ -40,18 +40,26 @@ function App() {
         moves?: string[];
     }>({ label: "現在局面", sfen: "startpos", moves: [] });
 
-    const onlineLink = (
-        <Link
-            to="/online"
-            className="rounded-md border border-wafuu-shu px-3 py-0.5 text-xs text-wafuu-shu transition-colors hover:bg-wafuu-shu/10"
-        >
-            オンライン対局 →
-        </Link>
+    const headerLinks = (
+        <div className="flex items-center gap-2">
+            <Link
+                to="/auth"
+                className="rounded-md border border-border px-3 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+            >
+                ログイン
+            </Link>
+            <Link
+                to="/online"
+                className="rounded-md border border-wafuu-shu px-3 py-0.5 text-xs text-wafuu-shu transition-colors hover:bg-wafuu-shu/10"
+            >
+                オンライン対局 →
+            </Link>
+        </div>
     );
 
     return (
         <>
-            <PageHeader items={[{ label: "ラム将棋" }]} right={onlineLink} />
+            <PageHeader items={[{ label: "ラム将棋" }]} right={headerLinks} />
             <main className="mx-auto flex max-w-[1100px] flex-col gap-3 pt-3 md:px-5">
                 <ShogiMatch
                     engineOptions={engineOptions}

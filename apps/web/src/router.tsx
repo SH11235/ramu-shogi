@@ -2,6 +2,7 @@ import type { RoomInfo } from "@shogi/api-contract";
 import { createRootRoute, createRoute, createRouter, useNavigate } from "@tanstack/react-router";
 import App from "./App";
 import { AppProviders } from "./AppProviders";
+import AuthPage from "./pages/auth/AuthPage";
 import CreateRoomPage from "./pages/online/CreateRoomPage";
 import OnlinePage from "./pages/online/OnlinePage";
 import RoomPage from "./pages/online/RoomPage";
@@ -20,6 +21,12 @@ const onlineRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/online",
     component: OnlinePage,
+});
+
+const authRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/auth",
+    component: AuthPage,
 });
 
 const createRoomRoute = createRoute({
@@ -71,7 +78,13 @@ const roomRoute = createRoute({
     }),
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, onlineRoute, createRoomRoute, roomRoute]);
+const routeTree = rootRoute.addChildren([
+    indexRoute,
+    onlineRoute,
+    authRoute,
+    createRoomRoute,
+    roomRoute,
+]);
 
 export const router = createRouter({ routeTree });
 

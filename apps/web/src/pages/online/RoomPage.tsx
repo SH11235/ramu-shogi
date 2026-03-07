@@ -7,8 +7,9 @@ import type { EngineOption } from "@shogi/ui";
 import { OnlineGameView, PositionPresetSelector, ShogiMatch, useRoomConnection } from "@shogi/ui";
 import { getRouteApi, useNavigate, useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
+import { syncProfileDisplayNameIfNeeded, useAuthSession } from "../../hooks/useAuthSession";
 import { useOnlineAnalysis } from "../../hooks/useOnlineAnalysis";
 
 const nnueManifestUrl: string = (() => {
@@ -264,6 +265,7 @@ function GameSettingsSection({
 export default function RoomPage(): ReactElement {
     const { roomId } = useParams({ from: "/online/$roomId" });
     const roomInfo = routeApi.useLoaderData() as RoomInfo;
+    const { session } = useAuthSession();
 
     // URLクエリパラメータ（ルーム作成者から渡される名前）
     const urlParams = new URLSearchParams(
@@ -271,6 +273,10 @@ export default function RoomPage(): ReactElement {
     );
 
     const navigate = useNavigate();
+    const didAutofillNameRef = useRef(false);
+    const [joinActionError, setJoinActionError] = useState<string | null>(null);
+    const [isPreparingJoin, setIsPreparingJoin] = useState(false);
+    const [pendingJoinSeat, setPendingJoinSeat] = useState<"b" | "w" | "s" | null>(null);
 
     const {
         joinName,
@@ -295,6 +301,35 @@ export default function RoomPage(): ReactElement {
         const timerId = setTimeout(() => setCopied(false), 2000);
         return () => clearTimeout(timerId);
     }, [copied]);
+
+    useEffect(() => {
+        if (didAutofillNameRef.current || joined || !session?.authenticated) return;
+        if (!session.user.displayName.trim() || joinName.trim()) return;
+        setJoinName(session.user.displayName);
+        didAutofillNameRef.current = true;
+    }, [joined, joinName, session, setJoinName]);
+
+    async function handleJoinWithProfileSync(seat: "b" | "w" | "s"): Promise<void> {
+        const trimmedName = joinName.trim();
+        if (!trimmedName) return;
+
+        setJoinActionError(null);
+        setIsPreparingJoin(true);
+        setPendingJoinSeat(seat);
+
+        try {
+            await syncProfileDisplayNameIfNeeded(session, trimmedName);
+            handleJoin(seat);
+        } catch (nextError) {
+            setJoinActionError(
+                nextError instanceof Error
+                    ? nextError.message
+                    : "ユーザー名の保存に失敗しました",
+            );
+            setIsPreparingJoin(false);
+            setPendingJoinSeat(null);
+        }
+    }
 
     const aiSupport = roomInfo.settings.aiSupport;
     const analysis = useOnlineAnalysis(
@@ -412,12 +447,15 @@ export default function RoomPage(): ReactElement {
                 {!joined && (
                     <JoinFormSection
                         joinName={joinName}
-                        onJoinNameChange={setJoinName}
-                        isJoining={isJoining}
-                        joinSeat={joinSeat}
-                        error={joinError}
+                        onJoinNameChange={(name) => {
+                            setJoinActionError(null);
+                            setJoinName(name);
+                        }}
+                        isJoining={isJoining || isPreparingJoin}
+                        joinSeat={pendingJoinSeat ?? joinSeat}
+                        error={joinActionError ?? joinError}
                         isSeatTaken={isSeatTaken}
-                        onJoin={handleJoin}
+                        onJoin={(seat) => void handleJoinWithProfileSync(seat)}
                     />
                 )}
 

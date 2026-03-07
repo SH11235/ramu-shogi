@@ -85,7 +85,25 @@ async function handleApiProxyRequest(request: Request, env: Env): Promise<Respon
         return new Response("Invalid BACKEND_ORIGIN", { status: 500 });
     }
 
-    return fetch(new Request(targetUrl.toString(), request));
+    const sourceUrl = new URL(request.url);
+    const headers = new Headers(request.headers);
+    headers.set("X-Forwarded-Host", sourceUrl.host);
+    headers.set("X-Forwarded-Proto", sourceUrl.protocol.replace(":", ""));
+
+    const response = await fetch(targetUrl.toString(), {
+        method: request.method,
+        headers,
+        body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
+        redirect: "manual",
+    });
+
+    const responseHeaders = new Headers(response.headers);
+    responseHeaders.set("cache-control", "no-store");
+    return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+    });
 }
 
 async function handleNnueRequest(request: Request, env: Env): Promise<Response | null> {
@@ -166,12 +184,22 @@ async function handleNnueRequest(request: Request, env: Env): Promise<Response |
 
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+        const { pathname } = new URL(request.url);
         const proxiedApiResponse = await handleApiProxyRequest(request, env);
         if (proxiedApiResponse) return proxiedApiResponse;
 
         // /api/* リクエストを API ハンドラにルーティング
         const apiResponse = await handleApiRequest(request, env, ctx);
         if (apiResponse) return apiResponse;
+
+        if (pathname.startsWith(API_PREFIX)) {
+            return new Response("Not Found", {
+                status: 404,
+                headers: {
+                    "cache-control": "no-store",
+                },
+            });
+        }
 
         const nnueResponse = await handleNnueRequest(request, env);
         if (nnueResponse) return nnueResponse;

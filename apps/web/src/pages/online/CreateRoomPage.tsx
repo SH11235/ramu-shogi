@@ -2,8 +2,9 @@ import type { ApiErrorResponse, CreateRoomRequest, CreateRoomResponse } from "@s
 import { PositionPresetSelector } from "@shogi/ui";
 import { useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
+import { syncProfileDisplayNameIfNeeded, useAuthSession } from "../../hooks/useAuthSession";
 
 // ─── ルーム設定の型 ───────────────────────────────────────────────────────────
 
@@ -87,29 +88,47 @@ function buildCreateRoomRequest(settings: RoomFormState): CreateRoomRequest {
 
 export default function CreateRoomPage(): ReactElement {
     const navigate = useNavigate();
+    const { session } = useAuthSession();
     const [settings, setSettings] = useState<RoomFormState>(DEFAULT_SETTINGS);
     const [isCreating, setIsCreating] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const didAutofillNameRef = useRef(false);
 
     function set<K extends keyof RoomFormState>(key: K, value: RoomFormState[K]): void {
         setSettings((prev) => ({ ...prev, [key]: value }));
     }
 
-    function handleSubmit(): void {
-        if (!settings.name.trim()) return;
+    useEffect(() => {
+        if (didAutofillNameRef.current || !session?.authenticated) return;
+        if (!session.user.displayName.trim()) return;
+
+        setSettings((prev) => {
+            if (prev.name.trim()) return prev;
+            didAutofillNameRef.current = true;
+            return { ...prev, name: session.user.displayName };
+        });
+    }, [session]);
+
+    async function handleSubmit(): Promise<void> {
+        const trimmedName = settings.name.trim();
+        if (!trimmedName) return;
         setIsCreating(true);
         setError(null);
         const requestBody = buildCreateRoomRequest(settings);
 
-        void fetch("/api/rooms", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(requestBody),
-        })
+        await syncProfileDisplayNameIfNeeded(session, trimmedName)
+            .then(() =>
+                fetch("/api/rooms", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(requestBody),
+                }),
+            )
             .then(async (res) => {
                 if (!res.ok) {
                     const err = (await res.json()) as ApiErrorResponse;
                     setError(err.message ?? "ルームの作成に失敗しました");
+                    setIsCreating(false);
                     return;
                 }
 
@@ -117,13 +136,15 @@ export default function CreateRoomPage(): ReactElement {
                 await navigate({
                     to: "/online/$roomId",
                     params: { roomId: data.roomId },
-                    search: { name: settings.name.trim(), seat: undefined, mode: undefined },
+                    search: { name: trimmedName, seat: undefined, mode: undefined },
                 });
             })
-            .catch(() => {
-                setError("ネットワークエラーが発生しました");
-            })
-            .finally(() => {
+            .catch((nextError: unknown) => {
+                setError(
+                    nextError instanceof Error
+                        ? nextError.message
+                        : "ネットワークエラーが発生しました",
+                );
                 setIsCreating(false);
             });
     }

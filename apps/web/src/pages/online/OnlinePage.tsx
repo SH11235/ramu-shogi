@@ -1,4 +1,4 @@
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
@@ -19,7 +19,17 @@ export default function OnlinePage(): ReactElement {
 
     return (
         <>
-            <PageHeader items={[{ label: "ラム将棋", to: "/" }, { label: "オンライン対局" }]} />
+            <PageHeader
+                items={[{ label: "ラム将棋", to: "/" }, { label: "オンライン対局" }]}
+                right={
+                    <Link
+                        to="/auth"
+                        className="rounded-md border border-border px-3 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                    >
+                        ログイン
+                    </Link>
+                }
+            />
             <div className="mx-auto flex max-w-[480px] flex-col gap-6 px-4 py-10">
                 <h1 className="text-2xl font-bold text-foreground">オンライン対局</h1>
 
