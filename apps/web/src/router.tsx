@@ -3,6 +3,9 @@ import { createRootRoute, createRoute, createRouter, useNavigate } from "@tansta
 import App from "./App";
 import { AppProviders } from "./AppProviders";
 import AuthPage from "./pages/auth/AuthPage";
+import GameDetailPage from "./pages/games/GameDetailPage";
+import GamesPage from "./pages/games/GamesPage";
+import PublicGamePage from "./pages/games/PublicGamePage";
 import CreateRoomPage from "./pages/online/CreateRoomPage";
 import OnlinePage from "./pages/online/OnlinePage";
 import RoomPage from "./pages/online/RoomPage";
@@ -27,6 +30,24 @@ const authRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/auth",
     component: AuthPage,
+});
+
+const gamesRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/games",
+    component: GamesPage,
+});
+
+const gameDetailRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/games/$gameId",
+    component: GameDetailPage,
+});
+
+const publicGameRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/public/games/$publicId",
+    component: PublicGamePage,
 });
 
 const createRoomRoute = createRoute({
@@ -82,6 +103,9 @@ const routeTree = rootRoute.addChildren([
     indexRoute,
     onlineRoute,
     authRoute,
+    gamesRoute,
+    gameDetailRoute,
+    publicGameRoute,
     createRoomRoute,
     roomRoute,
 ]);

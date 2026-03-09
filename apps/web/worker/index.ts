@@ -97,6 +97,10 @@ async function handleApiProxyRequest(request: Request, env: Env): Promise<Respon
         redirect: "manual",
     });
 
+    if (request.headers.get("Upgrade") === "websocket" && response.status === 101) {
+        return response;
+    }
+
     const responseHeaders = new Headers(response.headers);
     responseHeaders.set("cache-control", "no-store");
     return new Response(response.body, {

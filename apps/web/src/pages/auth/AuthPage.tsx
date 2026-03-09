@@ -1,8 +1,90 @@
 import { useRouter } from "@tanstack/react-router";
 import type { FormEvent, ReactElement } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
-import { parseApiError, useAuthSession } from "../../hooks/useAuthSession";
+import {
+    dispatchAuthSessionSyncEvent,
+    parseApiError,
+    type SessionUser,
+    useAuthSession,
+} from "../../hooks/useAuthSession";
+
+function AuthenticatedProfileSection({
+    sessionUser,
+    isLoadingSession,
+    isSubmitting,
+    onRefreshSession,
+    onSaveDisplayName,
+    onLogout,
+}: {
+    sessionUser: SessionUser;
+    isLoadingSession: boolean;
+    isSubmitting: boolean;
+    onRefreshSession: () => Promise<void>;
+    onSaveDisplayName: (displayName: string) => Promise<void>;
+    onLogout: () => Promise<void>;
+}): ReactElement {
+    const [profileDisplayName, setProfileDisplayName] = useState(sessionUser.displayName);
+
+    return (
+        <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                    <h2 className="text-lg font-semibold text-foreground">ユーザー名設定</h2>
+                    <p className="text-sm text-muted-foreground">
+                        ログイン後のオンライン対局で自動入力される名前です。
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => void onRefreshSession()}
+                    disabled={isLoadingSession || isSubmitting}
+                    className="rounded-md border border-input px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted/50 disabled:pointer-events-none disabled:opacity-50"
+                >
+                    再読み込み
+                </button>
+            </div>
+
+            <form
+                onSubmit={(event) => {
+                    event.preventDefault();
+                    void onSaveDisplayName(profileDisplayName);
+                }}
+                className="flex flex-col gap-3"
+            >
+                <label className="flex flex-col gap-1 text-sm">
+                    <span className="font-medium text-foreground">ユーザー名</span>
+                    <input
+                        type="text"
+                        value={profileDisplayName}
+                        onChange={(event) => setProfileDisplayName(event.target.value)}
+                        autoComplete="nickname"
+                        maxLength={50}
+                        required
+                        className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    />
+                </label>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                    <button
+                        type="submit"
+                        disabled={isSubmitting || !profileDisplayName.trim()}
+                        className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+                    >
+                        ユーザー名を保存
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => void onLogout()}
+                        disabled={isSubmitting}
+                        className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground shadow-sm transition-colors hover:bg-destructive/90 disabled:pointer-events-none disabled:opacity-50"
+                    >
+                        ログアウト
+                    </button>
+                </div>
+            </form>
+        </section>
+    );
+}
 
 export default function AuthPage(): ReactElement {
     const router = useRouter();
@@ -15,24 +97,12 @@ export default function AuthPage(): ReactElement {
     const [status, setStatus] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [profileDisplayName, setProfileDisplayName] = useState("");
     const [registerDisplayName, setRegisterDisplayName] = useState("");
     const [registerEmail, setRegisterEmail] = useState("");
     const [registerPassword, setRegisterPassword] = useState("");
     const [loginEmail, setLoginEmail] = useState("");
     const [loginPassword, setLoginPassword] = useState("");
-
-    useEffect(() => {
-        if (session?.authenticated) {
-            setProfileDisplayName(session.user.displayName);
-            return;
-        }
-        setProfileDisplayName("");
-    }, [session]);
-
-    useEffect(() => {
-        setError(sessionError);
-    }, [sessionError]);
+    const displayedError = error ?? sessionError;
 
     async function handleRegister(event: FormEvent<HTMLFormElement>): Promise<void> {
         event.preventDefault();
@@ -57,18 +127,21 @@ export default function AuthPage(): ReactElement {
             });
 
             if (!response.ok) {
-                throw new Error(await parseApiError(response));
+                setError(await parseApiError(response));
+                setIsSubmitting(false);
+                return;
             }
 
             setRegisterPassword("");
             setRegisterEmail("");
             setRegisterDisplayName("");
+            dispatchAuthSessionSyncEvent();
             await refreshSession();
             await router.invalidate();
             setStatus("アカウントを作成しました。メール確認が必要です。");
+            setIsSubmitting(false);
         } catch (nextError) {
             setError(nextError instanceof Error ? nextError.message : "新規登録に失敗しました");
-        } finally {
             setIsSubmitting(false);
         }
     }
@@ -95,17 +168,20 @@ export default function AuthPage(): ReactElement {
             });
 
             if (!response.ok) {
-                throw new Error(await parseApiError(response));
+                setError(await parseApiError(response));
+                setIsSubmitting(false);
+                return;
             }
 
             setLoginPassword("");
             setLoginEmail("");
+            dispatchAuthSessionSyncEvent();
             await refreshSession();
             await router.invalidate();
             setStatus("ログインしました。");
+            setIsSubmitting(false);
         } catch (nextError) {
             setError(nextError instanceof Error ? nextError.message : "ログインに失敗しました");
-        } finally {
             setIsSubmitting(false);
         }
     }
@@ -123,61 +199,71 @@ export default function AuthPage(): ReactElement {
                 credentials: "same-origin",
             });
             if (!response.ok) {
-                throw new Error(await parseApiError(response));
+                setError(await parseApiError(response));
+                setIsSubmitting(false);
+                return;
             }
 
+            dispatchAuthSessionSyncEvent();
             await refreshSession();
             await router.invalidate();
             setStatus("ログアウトしました。");
+            setIsSubmitting(false);
         } catch (nextError) {
             setError(nextError instanceof Error ? nextError.message : "ログアウトに失敗しました");
-        } finally {
             setIsSubmitting(false);
         }
     }
 
-    async function handleUpdateProfile(event: FormEvent<HTMLFormElement>): Promise<void> {
-        event.preventDefault();
+    async function handleUpdateProfile(displayName: string): Promise<void> {
         if (isSubmitting || !session?.authenticated) return;
 
         setIsSubmitting(true);
         setError(null);
         setStatus(null);
 
-        try {
-            const response = await fetch("/api/auth/profile", {
-                method: "PATCH",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                credentials: "same-origin",
-                body: JSON.stringify({
-                    displayName: profileDisplayName,
-                }),
-            });
-
-            if (!response.ok) {
-                throw new Error(await parseApiError(response));
-            }
-
-            await refreshSession();
-            await router.invalidate();
-
-            if (requiresUsernameSetup) {
-                const destination = nextPath?.startsWith("/") ? nextPath : null;
-                if (destination && destination !== "/auth") {
-                    window.location.assign(destination);
+        await fetch("/api/auth/profile", {
+            method: "PATCH",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            credentials: "same-origin",
+            body: JSON.stringify({
+                displayName,
+            }),
+        })
+            .then(async (response) => {
+                if (!response.ok) {
+                    setError(await parseApiError(response));
+                    setIsSubmitting(false);
                     return;
                 }
-                window.history.replaceState(null, "", "/auth");
-            }
 
-            setStatus("ユーザー名を更新しました。");
-        } catch (nextError) {
-            setError(nextError instanceof Error ? nextError.message : "ユーザー名の更新に失敗しました");
-        } finally {
-            setIsSubmitting(false);
-        }
+                dispatchAuthSessionSyncEvent();
+                await refreshSession();
+                await router.invalidate();
+
+                if (requiresUsernameSetup) {
+                    const destination = nextPath?.startsWith("/") ? nextPath : null;
+                    setIsSubmitting(false);
+                    if (destination && destination !== "/auth") {
+                        window.location.assign(destination);
+                        return;
+                    }
+                    window.history.replaceState(null, "", "/auth");
+                }
+
+                setStatus("ユーザー名を更新しました。");
+                setIsSubmitting(false);
+            })
+            .catch((nextError: unknown) => {
+                setError(
+                    nextError instanceof Error
+                        ? nextError.message
+                        : "ユーザー名の更新に失敗しました",
+                );
+                setIsSubmitting(false);
+            });
     }
 
     function handleGoogleLogin(): void {
@@ -214,9 +300,9 @@ export default function AuthPage(): ReactElement {
                         {status}
                     </div>
                 )}
-                {error && (
+                {displayedError && (
                     <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                        {error}
+                        {displayedError}
                     </div>
                 )}
 
@@ -278,7 +364,9 @@ export default function AuthPage(): ReactElement {
                                         <input
                                             type="password"
                                             value={loginPassword}
-                                            onChange={(event) => setLoginPassword(event.target.value)}
+                                            onChange={(event) =>
+                                                setLoginPassword(event.target.value)
+                                            }
                                             autoComplete="current-password"
                                             required
                                             className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -330,7 +418,9 @@ export default function AuthPage(): ReactElement {
                                         <input
                                             type="email"
                                             value={registerEmail}
-                                            onChange={(event) => setRegisterEmail(event.target.value)}
+                                            onChange={(event) =>
+                                                setRegisterEmail(event.target.value)
+                                            }
                                             autoComplete="email"
                                             required
                                             className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -367,67 +457,25 @@ export default function AuthPage(): ReactElement {
                     </>
                 )}
 
-                <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                        <div>
-                            <h2 className="text-lg font-semibold text-foreground">ユーザー名設定</h2>
-                            <p className="text-sm text-muted-foreground">
-                                ログイン後のオンライン対局で自動入力される名前です。
-                            </p>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => void refreshSession()}
-                            disabled={isLoadingSession || isSubmitting}
-                            className="rounded-md border border-input px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted/50 disabled:pointer-events-none disabled:opacity-50"
-                        >
-                            再読み込み
-                        </button>
-                    </div>
-
-                    {isLoadingSession ? (
+                {isLoadingSession ? (
+                    <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
                         <p className="text-sm text-muted-foreground">読み込み中...</p>
-                    ) : session?.authenticated ? (
-                        <div className="space-y-4">
-                            <form
-                                onSubmit={(event) => void handleUpdateProfile(event)}
-                                className="flex flex-col gap-3"
-                            >
-                                <label className="flex flex-col gap-1 text-sm">
-                                    <span className="font-medium text-foreground">ユーザー名</span>
-                                    <input
-                                        type="text"
-                                        value={profileDisplayName}
-                                        onChange={(event) => setProfileDisplayName(event.target.value)}
-                                        autoComplete="nickname"
-                                        maxLength={50}
-                                        required
-                                        className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                    />
-                                </label>
-                                <div className="flex flex-col gap-2 sm:flex-row">
-                                    <button
-                                        type="submit"
-                                        disabled={isSubmitting || !profileDisplayName.trim()}
-                                        className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
-                                    >
-                                        ユーザー名を保存
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => void handleLogout()}
-                                        disabled={isSubmitting}
-                                        className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground shadow-sm transition-colors hover:bg-destructive/90 disabled:pointer-events-none disabled:opacity-50"
-                                    >
-                                        ログアウト
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    ) : (
+                    </section>
+                ) : session?.authenticated ? (
+                    <AuthenticatedProfileSection
+                        key={`${session.user.id}:${session.user.displayName}`}
+                        sessionUser={session.user}
+                        isLoadingSession={isLoadingSession}
+                        isSubmitting={isSubmitting}
+                        onRefreshSession={refreshSession}
+                        onSaveDisplayName={handleUpdateProfile}
+                        onLogout={handleLogout}
+                    />
+                ) : (
+                    <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
                         <p className="text-sm text-muted-foreground">未ログインです。</p>
-                    )}
-                </section>
+                    </section>
+                )}
             </main>
         </>
     );

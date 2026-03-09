@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
+
+export const AUTH_SESSION_SYNC_EVENT = "ramu-auth-session-sync";
 
 export interface SessionUser {
     id: string;
@@ -40,6 +42,11 @@ export async function parseApiError(response: Response): Promise<string> {
     return `リクエストに失敗しました (${response.status})`;
 }
 
+export function dispatchAuthSessionSyncEvent(): void {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new Event(AUTH_SESSION_SYNC_EVENT));
+}
+
 export async function syncProfileDisplayNameIfNeeded(
     session: AuthSessionResponse | null,
     displayName: string,
@@ -66,6 +73,8 @@ export async function syncProfileDisplayNameIfNeeded(
     if (!response.ok) {
         throw new Error(await parseApiError(response));
     }
+
+    dispatchAuthSessionSyncEvent();
 }
 
 export function useAuthSession() {
@@ -86,14 +95,33 @@ export function useAuthSession() {
             }
             setSession((await response.json()) as AuthSessionResponse);
         } catch (nextError) {
-            setError(nextError instanceof Error ? nextError.message : "セッションの取得に失敗しました");
+            setError(
+                nextError instanceof Error ? nextError.message : "セッションの取得に失敗しました",
+            );
         } finally {
             setIsLoading(false);
         }
     }
 
+    const refreshSessionEvent = useEffectEvent(async (): Promise<void> => {
+        await refreshSession();
+    });
+
     useEffect(() => {
-        void refreshSession();
+        void refreshSessionEvent();
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const handleSessionSync = (): void => {
+            void refreshSessionEvent();
+        };
+
+        window.addEventListener(AUTH_SESSION_SYNC_EVENT, handleSessionSync);
+        return () => {
+            window.removeEventListener(AUTH_SESSION_SYNC_EVENT, handleSessionSync);
+        };
     }, []);
 
     return {

@@ -322,9 +322,7 @@ export default function RoomPage(): ReactElement {
             handleJoin(seat);
         } catch (nextError) {
             setJoinActionError(
-                nextError instanceof Error
-                    ? nextError.message
-                    : "ユーザー名の保存に失敗しました",
+                nextError instanceof Error ? nextError.message : "ユーザー名の保存に失敗しました",
             );
             setIsPreparingJoin(false);
             setPendingJoinSeat(null);

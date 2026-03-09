@@ -79,7 +79,10 @@ export default defineConfig(({ command, mode }) => {
                     find: /^@shogi\/design-system$/,
                     replacement: path.resolve(rootDir, "../../packages/design-system/src"),
                 },
-                { find: /^@shogi\/ui$/, replacement: path.resolve(rootDir, "../../packages/ui/src") },
+                {
+                    find: /^@shogi\/ui$/,
+                    replacement: path.resolve(rootDir, "../../packages/ui/src"),
+                },
                 {
                     find: /^@shogi\/engine-client$/,
                     replacement: path.resolve(rootDir, "../../packages/engine-client/src"),

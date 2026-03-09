@@ -8,6 +8,10 @@
 // Hooks
 // ============================================================
 
+export {
+    dispatchLocalStorageSyncEvent,
+    LOCAL_STORAGE_SYNC_EVENT,
+} from "./components/shogi-match/hooks/useLocalStorage";
 export { useDevMode } from "./hooks/useDevMode";
 export type { UseRoomConnectionOptions, UseRoomConnectionReturn } from "./hooks/useRoomConnection";
 export { useRoomConnection } from "./hooks/useRoomConnection";

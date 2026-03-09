@@ -7,6 +7,7 @@ import {
 import { NnueProvider } from "@shogi/ui";
 import { Outlet } from "@tanstack/react-router";
 import type { ReactElement } from "react";
+import { useUserSettingsSync } from "./hooks/useUserSettingsSync";
 
 // Web版のストレージも同期的に初期化可能
 const nnueStorage = createIndexedDBNnueStorage();
@@ -17,6 +18,8 @@ const validateNnueHeader = async (header: Uint8Array, fileSize: number) => ({
 });
 
 export function AppProviders(): ReactElement {
+    useUserSettingsSync();
+
     return (
         <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
             <Outlet />
