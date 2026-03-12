@@ -8,30 +8,9 @@ import type { ReactElement } from "react";
 import { useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { parseApiError } from "../../hooks/useAuthSession";
+import { formatGameResult } from "./gameResultUtils";
 
 const routeApi = getRouteApi("/games/$gameId");
-
-const RESULT_REASON_LABELS: Record<string, string> = {
-    resign: "投了",
-    timeout: "時間切れ",
-    sennichite: "千日手",
-    disconnect: "切断",
-    checkmate: "詰み",
-    illegal_move: "反則",
-};
-
-function formatResult(game: GameRecordDetail): string {
-    if (!game.result) return "結果不明";
-    const reason = RESULT_REASON_LABELS[game.result.reason] ?? game.result.reason;
-    if (!game.result.winner) {
-        return `引き分け (${reason})`;
-    }
-
-    const winner = game.participants.find(
-        (participant) => participant.seat === game.result?.winner,
-    );
-    return `${winner?.displayNameSnapshot ?? (game.result.winner === "b" ? "先手" : "後手")} 勝ち (${reason})`;
-}
 
 export default function GameDetailPage(): ReactElement {
     const { gameId } = useParams({ from: "/games/$gameId" });
@@ -125,7 +104,9 @@ export default function GameDetailPage(): ReactElement {
                                     .map((participant) => participant.displayNameSnapshot)
                                     .join(" vs ")}
                             </h1>
-                            <p className="text-sm text-muted-foreground">{formatResult(game)}</p>
+                            <p className="text-sm text-muted-foreground">
+                                {formatGameResult(game)}
+                            </p>
                         </div>
 
                         <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">

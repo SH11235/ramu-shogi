@@ -34,7 +34,7 @@ export function PageHeader({ items, right }: PageHeaderProps): ReactElement {
                         </span>
                     ))}
                 </nav>
-                {right && <div>{right}</div>}
+                {right}
             </div>
         </header>
     );
