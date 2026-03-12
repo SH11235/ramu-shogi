@@ -19,6 +19,7 @@ import NnueFilesPage from "./pages/nnue/NnueFilesPage";
 import CreateRoomPage from "./pages/online/CreateRoomPage";
 import OnlinePage from "./pages/online/OnlinePage";
 import RoomPage from "./pages/online/RoomPage";
+import { handleLoaderResponse } from "./router-loader-utils";
 
 const rootRoute = createRootRoute({
     component: AppProviders,
@@ -52,15 +53,16 @@ async function fetchGamesLoaderData(): Promise<GamesRouteLoaderData> {
         credentials: "same-origin",
     });
 
-    if (response.status === 401) {
+    if (
+        handleLoaderResponse(response, {
+            errorMessage: "棋譜一覧の取得に失敗しました",
+            onUnauthorized: "return_needs_auth",
+        }) === "needs_auth"
+    ) {
         return {
             needsAuth: true,
             games: [],
         };
-    }
-
-    if (!response.ok) {
-        throw new Error("棋譜一覧の取得に失敗しました");
     }
 
     const payload = (await response.json()) as ListGamesResponse;
@@ -86,15 +88,11 @@ const gameDetailRoute = createRoute({
             credentials: "same-origin",
         });
 
-        if (response.status === 401) {
-            throw new Error("ログインが必要です");
-        }
-        if (response.status === 404) {
-            throw new Error("棋譜が見つかりません");
-        }
-        if (!response.ok) {
-            throw new Error("棋譜の取得に失敗しました");
-        }
+        handleLoaderResponse(response, {
+            errorMessage: "棋譜の取得に失敗しました",
+            notFoundMessage: "棋譜が見つかりません",
+            onUnauthorized: "throw",
+        });
 
         const payload = (await response.json()) as GetGameResponse;
         return payload.game satisfies GameRecordDetail;
@@ -115,15 +113,15 @@ const gameReviewRoute = createRoute({
             }),
         ]);
 
-        if (gameResponse.status === 401 || snapshotsResponse.status === 401) {
-            throw new Error("ログインが必要です");
-        }
-        if (gameResponse.status === 404) {
-            throw new Error("棋譜が見つかりません");
-        }
-        if (!gameResponse.ok || !snapshotsResponse.ok) {
-            throw new Error("検討データの取得に失敗しました");
-        }
+        handleLoaderResponse(gameResponse, {
+            errorMessage: "検討データの取得に失敗しました",
+            notFoundMessage: "棋譜が見つかりません",
+            onUnauthorized: "throw",
+        });
+        handleLoaderResponse(snapshotsResponse, {
+            errorMessage: "検討データの取得に失敗しました",
+            onUnauthorized: "throw",
+        });
 
         const gamePayload = (await gameResponse.json()) as GetGameResponse;
         const snapshotsPayload = (await snapshotsResponse.json()) as ListAnalysisSnapshotsResponse;
@@ -144,12 +142,10 @@ const publicGameRoute = createRoute({
             credentials: "same-origin",
         });
 
-        if (response.status === 404) {
-            throw new Error("棋譜が見つかりません");
-        }
-        if (!response.ok) {
-            throw new Error("棋譜の取得に失敗しました");
-        }
+        handleLoaderResponse(response, {
+            errorMessage: "棋譜の取得に失敗しました",
+            notFoundMessage: "棋譜が見つかりません",
+        });
 
         const payload = (await response.json()) as GetPublicGameResponse;
         return payload.game satisfies GameRecordDetail;
@@ -165,14 +161,16 @@ const nnueFilesRoute = createRoute({
             credentials: "same-origin",
         });
 
-        if (response.status === 401) {
+        if (
+            handleLoaderResponse(response, {
+                errorMessage: "NNUE 一覧の取得に失敗しました",
+                onUnauthorized: "return_needs_auth",
+            }) === "needs_auth"
+        ) {
             return {
                 needsAuth: true,
                 files: [],
             };
-        }
-        if (!response.ok) {
-            throw new Error("NNUE 一覧の取得に失敗しました");
         }
 
         return {
@@ -218,8 +216,10 @@ const roomRoute = createRoute({
     component: RoomPage,
     loader: async ({ params: { roomId } }) => {
         const res = await fetch(`/api/rooms/${roomId}`);
-        if (res.status === 404) throw new Error("ルームが見つかりません");
-        if (!res.ok) throw new Error("ルーム情報の取得に失敗しました");
+        handleLoaderResponse(res, {
+            errorMessage: "ルーム情報の取得に失敗しました",
+            notFoundMessage: "ルームが見つかりません",
+        });
         return res.json() as Promise<RoomInfo>;
     },
     pendingComponent: RoomPendingComponent,

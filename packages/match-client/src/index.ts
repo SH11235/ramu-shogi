@@ -47,5 +47,6 @@ export {
 } from "./reconnect";
 export type {
     RoomClient,
+    RoomClientOpenEvent,
     RoomClientOptions,
 } from "./types";

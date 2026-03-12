@@ -150,6 +150,86 @@ export function useRoomConnection({
 
     const clientRef = useRef<RoomClient | null>(null);
 
+    const connectClient = ({
+        timeoutMessage,
+        onOpen,
+        onMessage,
+    }: {
+        timeoutMessage: string;
+        onOpen: (client: RoomClient) => void;
+        onMessage: (context: {
+            client: RoomClient;
+            message: ServerMessage;
+            stopListening: () => void;
+            fail: (message: string) => void;
+        }) => void;
+    }): (() => void) => {
+        clientRef.current?.disconnect();
+
+        let isDisposed = false;
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+        const newClient = createRoomClient({
+            wsUrl: buildWsUrl(roomId),
+            autoReconnect: true,
+            onOpen: ({ reconnect }) => {
+                if (reconnect || isDisposed) {
+                    return;
+                }
+                if (timeoutId !== null) {
+                    clearTimeout(timeoutId);
+                    timeoutId = null;
+                }
+                onOpen(newClient);
+            },
+        });
+
+        clientRef.current = newClient;
+        dispatchRoom({ type: "client_set", client: newClient });
+
+        const unsubscribe = newClient.subscribe((message: ServerMessage) => {
+            if (isDisposed) {
+                return;
+            }
+            onMessage({
+                client: newClient,
+                message,
+                stopListening: unsubscribe,
+                fail: (messageText: string) => {
+                    if (isDisposed) {
+                        return;
+                    }
+                    dispatchJoin({ type: "error", message: messageText });
+                    cleanup();
+                },
+            });
+        });
+
+        const cleanup = (): void => {
+            if (isDisposed) {
+                return;
+            }
+            isDisposed = true;
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+            unsubscribe();
+            newClient.disconnect();
+            if (clientRef.current === newClient) {
+                clientRef.current = null;
+                dispatchRoom({ type: "client_cleared" });
+            }
+        };
+
+        timeoutId = setTimeout(() => {
+            dispatchJoin({ type: "error", message: timeoutMessage });
+            cleanup();
+        }, 5_000);
+
+        return cleanup;
+    };
+
     // ─── WebSocket 接続 + join 送信 ──────────────────────────────────────────
 
     const handleJoin = (seatToJoin: "b" | "w" | "s"): void => {
@@ -160,78 +240,53 @@ export function useRoomConnection({
         }
         dispatchJoin({ type: "start_join", seat: seatToJoin });
 
-        const wsUrl = buildWsUrl(roomId);
+        const trimmedName = joinForm.name.trim();
 
-        const newClient = createRoomClient({
-            wsUrl,
-            autoReconnect: true,
-            onReconnect: () => {},
-        });
-
-        clientRef.current = newClient;
-        dispatchRoom({ type: "client_set", client: newClient });
-
-        const unsub = newClient.subscribe((msg: ServerMessage) => {
-            switch (msg.t) {
-                case "joined": {
-                    storeSeat(roomId, seatToJoin);
-                    dispatchRoom({ type: "joined" });
-                    dispatchJoin({ type: "joined" });
-                    break;
-                }
-                case "snapshot": {
-                    dispatchRoom({ type: "snapshot_received", snapshot: msg.payload });
-                    if (msg.payload.status !== "waiting") {
-                        unsub();
+        connectClient({
+            timeoutMessage: "接続タイムアウト。再度お試しください。",
+            onOpen: (client) => {
+                client.join({ seat: seatToJoin, name: trimmedName });
+            },
+            onMessage: ({ message, stopListening, fail }) => {
+                switch (message.t) {
+                    case "joined": {
+                        storeSeat(roomId, seatToJoin);
                         dispatchRoom({ type: "joined" });
                         dispatchJoin({ type: "joined" });
-                        dispatchRoom({ type: "game_start", eventId: msg.payload.eventId });
+                        break;
                     }
-                    break;
-                }
-                case "event": {
-                    if (msg.payload.kind === "settings_updated") {
-                        dispatchRoom({
-                            type: "settings_updated",
-                            startSfen: msg.payload.settings.startSfen,
-                        });
+                    case "snapshot": {
+                        dispatchRoom({ type: "snapshot_received", snapshot: message.payload });
+                        if (message.payload.status !== "waiting") {
+                            stopListening();
+                            dispatchRoom({ type: "joined" });
+                            dispatchJoin({ type: "joined" });
+                            dispatchRoom({ type: "game_start", eventId: message.payload.eventId });
+                        }
+                        break;
                     }
-                    if (msg.payload.kind === "game_start") {
-                        unsub();
-                        dispatchRoom({ type: "game_start", eventId: msg.payload.eventId });
+                    case "event": {
+                        if (message.payload.kind === "settings_updated") {
+                            dispatchRoom({
+                                type: "settings_updated",
+                                startSfen: message.payload.settings.startSfen,
+                            });
+                        }
+                        if (message.payload.kind === "game_start") {
+                            stopListening();
+                            dispatchRoom({ type: "game_start", eventId: message.payload.eventId });
+                        }
+                        break;
                     }
-                    break;
+                    case "error": {
+                        fail(message.payload.message ?? "参加に失敗しました");
+                        break;
+                    }
+                    default:
+                        break;
                 }
-                case "error": {
-                    dispatchJoin({
-                        type: "error",
-                        message: msg.payload.message ?? "参加に失敗しました",
-                    });
-                    newClient.disconnect();
-                    clientRef.current = null;
-                    dispatchRoom({ type: "client_cleared" });
-                    break;
-                }
-                default:
-                    break;
-            }
+            },
         });
-
-        let joinAttempts = 0;
-        const sendJoin = (): void => {
-            if (newClient.getStatus() === "connected") {
-                newClient.join({ seat: seatToJoin, name: joinForm.name.trim() });
-            } else if (joinAttempts < 50) {
-                joinAttempts = joinAttempts + 1;
-                setTimeout(sendJoin, 100);
-            } else {
-                dispatchJoin({ type: "error", message: "接続タイムアウト。再度お試しください。" });
-                newClient.disconnect();
-                clientRef.current = null;
-                dispatchRoom({ type: "client_cleared" });
-            }
-        };
-        setTimeout(sendJoin, 50);
     };
 
     // ─── アンマウント時 cleanup ───────────────────────────────────────────────
@@ -251,76 +306,38 @@ export function useRoomConnection({
 
         dispatchJoin({ type: "start_join", seat });
 
-        const newClient = createRoomClient({
-            wsUrl: buildWsUrl(roomId),
-            autoReconnect: true,
-            onReconnect: () => {},
-        });
-
-        clientRef.current = newClient;
-        dispatchRoom({ type: "client_set", client: newClient });
-
-        const unsub = newClient.subscribe((msg: ServerMessage) => {
-            switch (msg.t) {
-                case "joined": {
-                    storeSeat(roomId, seat);
-                    dispatchRoom({ type: "joined" });
-                    dispatchJoin({ type: "joined" });
-                    break;
-                }
-                case "snapshot": {
-                    dispatchRoom({ type: "snapshot_received", snapshot: msg.payload });
-                    dispatchRoom({ type: "joined" });
-                    dispatchJoin({ type: "joined" });
-                    if (msg.payload.status !== "waiting") {
-                        unsub();
-                        dispatchRoom({ type: "game_start", eventId: msg.payload.eventId });
+        return connectClient({
+            timeoutMessage: "接続タイムアウト。再度参加してください。",
+            onOpen: (client) => {
+                client.resume({ resumeToken: token, lastEventId: 0 });
+            },
+            onMessage: ({ message, stopListening, fail }) => {
+                switch (message.t) {
+                    case "joined": {
+                        storeSeat(roomId, seat);
+                        dispatchRoom({ type: "joined" });
+                        dispatchJoin({ type: "joined" });
+                        break;
                     }
-                    break;
+                    case "snapshot": {
+                        dispatchRoom({ type: "snapshot_received", snapshot: message.payload });
+                        dispatchRoom({ type: "joined" });
+                        dispatchJoin({ type: "joined" });
+                        if (message.payload.status !== "waiting") {
+                            stopListening();
+                            dispatchRoom({ type: "game_start", eventId: message.payload.eventId });
+                        }
+                        break;
+                    }
+                    case "error": {
+                        fail("セッションが切れました。再度参加してください。");
+                        break;
+                    }
+                    default:
+                        break;
                 }
-                case "error": {
-                    dispatchJoin({
-                        type: "error",
-                        message: "セッションが切れました。再度参加してください。",
-                    });
-                    newClient.disconnect();
-                    clientRef.current = null;
-                    dispatchRoom({ type: "client_cleared" });
-                    break;
-                }
-                default:
-                    break;
-            }
+            },
         });
-
-        let cancelled = false;
-        let timerId: ReturnType<typeof setTimeout>;
-        let resumeAttempts = 0;
-        const sendResume = (): void => {
-            if (cancelled) return;
-            if (newClient.getStatus() === "connected") {
-                newClient.resume({ resumeToken: token, lastEventId: 0 });
-            } else if (resumeAttempts < 50) {
-                resumeAttempts = resumeAttempts + 1;
-                timerId = setTimeout(sendResume, 100);
-            } else {
-                dispatchJoin({
-                    type: "error",
-                    message: "接続タイムアウト。再度参加してください。",
-                });
-                newClient.disconnect();
-                clientRef.current = null;
-                dispatchRoom({ type: "client_cleared" });
-            }
-        };
-        timerId = setTimeout(sendResume, 50);
-
-        return () => {
-            cancelled = true;
-            clearTimeout(timerId);
-            unsub();
-            newClient.disconnect();
-        };
     }, [roomId, buildWsUrl]);
 
     // ─── ヘルパー ─────────────────────────────────────────────────────────────

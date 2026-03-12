@@ -34,6 +34,10 @@ const SETTINGS_STORAGE_MAPPINGS: readonly UserSettingsStorageMapping[] = [
 
 const LAST_SYNCED_USER_ID_STORAGE_KEY = "shogi-user-settings-last-user-id";
 
+function serializeJsonValue(value: JsonValue): string {
+    return JSON.stringify(value);
+}
+
 function readLocalDocument(storageKey: string): JsonValue | null {
     if (typeof window === "undefined") return null;
 
@@ -67,7 +71,7 @@ function writeLastSyncedUserId(userId: string): void {
 }
 
 function isSameJsonValue(left: JsonValue | null, right: JsonValue): boolean {
-    return JSON.stringify(left) === JSON.stringify(right);
+    return serializeJsonValue(left) === serializeJsonValue(right);
 }
 
 async function putUserSettingsDocument(
@@ -94,6 +98,7 @@ export function useUserSettingsSync(): void {
     const syncedUserIdRef = useRef<string | null>(null);
     const suppressUploadKeysRef = useRef<Set<string>>(new Set());
     const initialSyncCompletedRef = useRef(false);
+    const syncedDocumentValuesRef = useRef<Map<string, string>>(new Map());
 
     useEffect(() => {
         if (typeof window === "undefined") {
@@ -106,6 +111,7 @@ export function useUserSettingsSync(): void {
         if (!session?.authenticated) {
             syncedUserIdRef.current = null;
             initialSyncCompletedRef.current = false;
+            syncedDocumentValuesRef.current.clear();
             return;
         }
 
@@ -121,6 +127,7 @@ export function useUserSettingsSync(): void {
         let cancelled = false;
         syncedUserIdRef.current = session.user.id;
         initialSyncCompletedRef.current = false;
+        syncedDocumentValuesRef.current.clear();
 
         void fetch("/api/user/settings", {
             credentials: "same-origin",
@@ -141,6 +148,10 @@ export function useUserSettingsSync(): void {
                     const localValue = readLocalDocument(mapping.storageKey);
 
                     if (remoteDocument) {
+                        syncedDocumentValuesRef.current.set(
+                            mapping.storageKey,
+                            serializeJsonValue(remoteDocument.value),
+                        );
                         if (!isSameJsonValue(localValue, remoteDocument.value)) {
                             suppressUploadKeysRef.current.add(mapping.storageKey);
                             writeLocalDocument(mapping.storageKey, remoteDocument.value);
@@ -151,6 +162,10 @@ export function useUserSettingsSync(): void {
 
                     if (canSeedRemoteFromLocal && localValue !== null) {
                         await putUserSettingsDocument(mapping.documentKey, localValue);
+                        syncedDocumentValuesRef.current.set(
+                            mapping.storageKey,
+                            serializeJsonValue(localValue),
+                        );
                     }
                 }
 
@@ -203,12 +218,21 @@ export function useUserSettingsSync(): void {
                 return;
             }
 
-            void putUserSettingsDocument(mapping.documentKey, value).catch((error: unknown) => {
-                console.error("[user-settings-sync] document upload failed", {
-                    documentKey: mapping.documentKey,
-                    error,
+            const serializedValue = serializeJsonValue(value);
+            if (syncedDocumentValuesRef.current.get(storageKey) === serializedValue) {
+                return;
+            }
+
+            void putUserSettingsDocument(mapping.documentKey, value)
+                .then(() => {
+                    syncedDocumentValuesRef.current.set(storageKey, serializedValue);
+                })
+                .catch((error: unknown) => {
+                    console.error("[user-settings-sync] document upload failed", {
+                        documentKey: mapping.documentKey,
+                        error,
+                    });
                 });
-            });
         };
 
         window.addEventListener(LOCAL_STORAGE_SYNC_EVENT, handleLocalStorageSync as EventListener);

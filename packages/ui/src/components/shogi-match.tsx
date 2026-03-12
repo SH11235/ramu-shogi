@@ -447,8 +447,14 @@ export function ShogiMatch({
             entries,
         } satisfies AnalysisSnapshotDraft;
     })();
+    const lastAnalysisSnapshotSignatureRef = useRef<string | null>(null);
 
     useEffect(() => {
+        const signature = analysisSnapshotDraft ? JSON.stringify(analysisSnapshotDraft) : null;
+        if (lastAnalysisSnapshotSignatureRef.current === signature) {
+            return;
+        }
+        lastAnalysisSnapshotSignatureRef.current = signature;
         onAnalysisSnapshotChange?.(analysisSnapshotDraft);
     }, [analysisSnapshotDraft, onAnalysisSnapshotChange]);
 

@@ -44,6 +44,40 @@ const engineOptions: EngineOption[] = [
 
 const routeApi = getRouteApi("/games/$gameId/review");
 
+async function createAnalysisSnapshot(
+    gameId: string,
+    requestBody: CreateAnalysisSnapshotRequest,
+): Promise<CreateAnalysisSnapshotResponse> {
+    const response = await fetch(`/api/games/${gameId}/analysis-snapshots`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        credentials: "same-origin",
+        body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+        throw new Error(await parseApiError(response));
+    }
+
+    return (await response.json()) as CreateAnalysisSnapshotResponse;
+}
+
+async function getAnalysisSnapshot(
+    gameId: string,
+    snapshotId: string,
+): Promise<GetAnalysisSnapshotResponse> {
+    const response = await fetch(`/api/games/${gameId}/analysis-snapshots/${snapshotId}`, {
+        credentials: "same-origin",
+    });
+    if (!response.ok) {
+        throw new Error(await parseApiError(response));
+    }
+
+    return (await response.json()) as GetAnalysisSnapshotResponse;
+}
+
 export default function GameReviewPage(): ReactElement {
     const { gameId } = useParams({ from: "/games/$gameId/review" });
     const loaderData = routeApi.useLoaderData() as {
@@ -95,69 +129,51 @@ export default function GameReviewPage(): ReactElement {
         setStatus(null);
         setError(null);
 
-        try {
-            const requestBody: CreateAnalysisSnapshotRequest = {
-                label: snapshotLabel.trim() || null,
-                lineMoves: effectiveDraft.lineMoves,
-                analysisSettings: effectiveDraft.analysisSettings as unknown as JsonValue,
-                metadata: {
-                    startSfen: effectiveDraft.startSfen,
-                },
-                entries: effectiveDraft.entries.map((entry) => ({
-                    ply: entry.ply,
-                    evalCp: entry.evalCp,
-                    evalMate: entry.evalMate,
-                    depth: entry.depth,
-                    pv: entry.pv,
-                    multiPv: entry.multiPv,
-                })),
-            };
+        const requestBody: CreateAnalysisSnapshotRequest = {
+            label: snapshotLabel.trim() || null,
+            lineMoves: effectiveDraft.lineMoves,
+            analysisSettings: effectiveDraft.analysisSettings as unknown as JsonValue,
+            metadata: {
+                startSfen: effectiveDraft.startSfen,
+            },
+            entries: effectiveDraft.entries.map((entry) => ({
+                ply: entry.ply,
+                evalCp: entry.evalCp,
+                evalMate: entry.evalMate,
+                depth: entry.depth,
+                pv: entry.pv,
+                multiPv: entry.multiPv,
+            })),
+        };
 
-            const response = await fetch(`/api/games/${game.id}/analysis-snapshots`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                credentials: "same-origin",
-                body: JSON.stringify(requestBody),
+        await createAnalysisSnapshot(game.id, requestBody)
+            .then((payload) => {
+                setSnapshots((prev) => [payload.snapshot, ...prev]);
+                setSnapshotLabel("");
+                setStatus("解析結果を保存しました。");
+            })
+            .catch((nextError: unknown) => {
+                setError(
+                    nextError instanceof Error ? nextError.message : "解析結果の保存に失敗しました",
+                );
             });
 
-            if (!response.ok) {
-                throw new Error(await parseApiError(response));
-            }
-
-            const payload = (await response.json()) as CreateAnalysisSnapshotResponse;
-            setSnapshots((prev) => [payload.snapshot, ...prev]);
-            setSnapshotLabel("");
-            setStatus("解析結果を保存しました。");
-        } catch (nextError) {
-            setError(
-                nextError instanceof Error ? nextError.message : "解析結果の保存に失敗しました",
-            );
-        } finally {
-            setIsSaving(false);
-        }
+        setIsSaving(false);
     }
 
     async function handleSelectSnapshot(snapshotId: string): Promise<void> {
         setStatus(null);
         setError(null);
 
-        try {
-            const response = await fetch(`/api/games/${gameId}/analysis-snapshots/${snapshotId}`, {
-                credentials: "same-origin",
+        await getAnalysisSnapshot(gameId, snapshotId)
+            .then((payload) => {
+                setSelectedSnapshot(payload.snapshot);
+            })
+            .catch((nextError: unknown) => {
+                setError(
+                    nextError instanceof Error ? nextError.message : "解析結果の取得に失敗しました",
+                );
             });
-            if (!response.ok) {
-                throw new Error(await parseApiError(response));
-            }
-
-            const payload = (await response.json()) as GetAnalysisSnapshotResponse;
-            setSelectedSnapshot(payload.snapshot);
-        } catch (nextError) {
-            setError(
-                nextError instanceof Error ? nextError.message : "解析結果の取得に失敗しました",
-            );
-        }
     }
 
     return (

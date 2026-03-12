@@ -60,6 +60,7 @@ export function usePresetManager(options: UsePresetManagerOptions = {}): UsePres
     const [downloadProgress, setDownloadProgress] = useState<NnueDownloadProgress | null>(null);
     const [error, setError] = useState<NnueError | null>(null);
     const [hasFetchedPresets, setHasFetchedPresets] = useState(false);
+    const [manager, setManager] = useState<PresetManager | null>(null);
 
     const hasLoggedConfigRef = useRef(false);
     const hasLoggedErrorRef = useRef(false);
@@ -76,25 +77,14 @@ export function usePresetManager(options: UsePresetManagerOptions = {}): UsePres
         });
     }, [isConfigured, manifestUrl, storage]);
 
-    // PresetManager インスタンスを作成（manifestUrl/storage が変わった時だけ再生成）
-    const managerRef = useRef<{
-        deps: [string | undefined, typeof storage];
-        value: PresetManager | null;
-    } | null>(null);
-    if (
-        !managerRef.current ||
-        managerRef.current.deps[0] !== manifestUrl ||
-        managerRef.current.deps[1] !== storage
-    ) {
-        managerRef.current = {
-            deps: [manifestUrl, storage],
-            value:
-                manifestUrl && storage
-                    ? createPresetManager({ manifestUrl, storage, onProgress: setDownloadProgress })
-                    : null,
-        };
-    }
-    const manager = managerRef.current.value;
+    useEffect(() => {
+        if (!manifestUrl || !storage) {
+            setManager(null);
+            return;
+        }
+
+        setManager(createPresetManager({ manifestUrl, storage, onProgress: setDownloadProgress }));
+    }, [manifestUrl, storage]);
 
     // プリセット一覧を取得
     const refresh = async () => {

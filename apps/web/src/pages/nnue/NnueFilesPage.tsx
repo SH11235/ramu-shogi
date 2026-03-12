@@ -27,6 +27,104 @@ async function sha256Hex(file: File): Promise<string> {
         .join("");
 }
 
+async function fetchNnueFiles(): Promise<ListNnueFilesResponse> {
+    const response = await fetch("/api/nnue/files", {
+        credentials: "same-origin",
+    });
+    if (!response.ok) {
+        throw new Error(await parseApiError(response));
+    }
+
+    return (await response.json()) as ListNnueFilesResponse;
+}
+
+async function uploadNnueFile(file: File, onProgress: (progress: number) => void): Promise<void> {
+    const hash = await sha256Hex(file);
+    const initResponse = await fetch("/api/nnue/uploads/init", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({
+            originalFilename: file.name,
+            sizeBytes: file.size,
+            sha256Hex: hash,
+        }),
+    });
+
+    if (!initResponse.ok) {
+        throw new Error(await parseApiError(initResponse));
+    }
+
+    const initPayload = (await initResponse.json()) as InitializeNnueUploadResponse;
+    const parts: Array<{ partNumber: number; etag: string }> = [];
+    const totalParts = Math.ceil(file.size / CHUNK_SIZE_BYTES);
+
+    for (let index = 0; index < totalParts; index++) {
+        const partNumber = index + 1;
+        const start = index * CHUNK_SIZE_BYTES;
+        const end = Math.min(start + CHUNK_SIZE_BYTES, file.size);
+        const chunk = file.slice(start, end);
+
+        const partResponse = await fetch(
+            `/api/nnue/uploads/${initPayload.file.id}/parts/${partNumber}?uploadId=${encodeURIComponent(initPayload.uploadId)}`,
+            {
+                method: "PUT",
+                credentials: "same-origin",
+                body: chunk,
+            },
+        );
+        if (!partResponse.ok) {
+            throw new Error(await parseApiError(partResponse));
+        }
+
+        const partPayload = (await partResponse.json()) as {
+            partNumber: number;
+            etag: string;
+        };
+        parts.push({ partNumber: partPayload.partNumber, etag: partPayload.etag });
+        onProgress(Math.round((end / file.size) * 100));
+    }
+
+    const completeResponse = await fetch(`/api/nnue/uploads/${initPayload.file.id}/complete`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({
+            uploadId: initPayload.uploadId,
+            parts,
+        }),
+    });
+
+    if (!completeResponse.ok) {
+        throw new Error(await parseApiError(completeResponse));
+    }
+}
+
+async function downloadNnueFile(fileId: string): Promise<Blob> {
+    const response = await fetch(`/api/nnue/files/${fileId}`, {
+        credentials: "same-origin",
+    });
+    if (!response.ok) {
+        throw new Error(await parseApiError(response));
+    }
+
+    return response.blob();
+}
+
+async function deleteNnueFile(fileId: string): Promise<void> {
+    const response = await fetch(`/api/nnue/files/${fileId}`, {
+        method: "DELETE",
+        credentials: "same-origin",
+    });
+    if (!response.ok) {
+        throw new Error(await parseApiError(response));
+    }
+}
+
 export default function NnueFilesPage(): ReactElement {
     const loaderData = routeApi.useLoaderData() as {
         needsAuth: boolean;
@@ -44,149 +142,72 @@ export default function NnueFilesPage(): ReactElement {
     }
 
     async function refreshFiles(): Promise<void> {
-        const response = await fetch("/api/nnue/files", {
-            credentials: "same-origin",
-        });
-        if (!response.ok) {
-            throw new Error(await parseApiError(response));
-        }
-
-        const payload = (await response.json()) as ListNnueFilesResponse;
+        const payload = await fetchNnueFiles();
         setFiles(payload.files);
     }
 
     async function handleUpload(): Promise<void> {
         if (!selectedFile || isUploading) return;
+        const fileToUpload = selectedFile;
 
         setIsUploading(true);
         setUploadProgress(0);
         setStatus(null);
         setError(null);
 
-        try {
-            const hash = await sha256Hex(selectedFile);
-            const initResponse = await fetch("/api/nnue/uploads/init", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                credentials: "same-origin",
-                body: JSON.stringify({
-                    originalFilename: selectedFile.name,
-                    sizeBytes: selectedFile.size,
-                    sha256Hex: hash,
-                }),
+        await uploadNnueFile(fileToUpload, setUploadProgress)
+            .then(async () => {
+                await refreshFiles();
+                setSelectedFile(null);
+                setStatus("NNUE ファイルをアップロードしました。");
+            })
+            .catch((nextError: unknown) => {
+                setError(
+                    nextError instanceof Error
+                        ? nextError.message
+                        : "NNUE アップロードに失敗しました",
+                );
             });
 
-            if (!initResponse.ok) {
-                throw new Error(await parseApiError(initResponse));
-            }
-
-            const initPayload = (await initResponse.json()) as InitializeNnueUploadResponse;
-            const parts: Array<{ partNumber: number; etag: string }> = [];
-            const totalParts = Math.ceil(selectedFile.size / CHUNK_SIZE_BYTES);
-
-            for (let index = 0; index < totalParts; index++) {
-                const partNumber = index + 1;
-                const start = index * CHUNK_SIZE_BYTES;
-                const end = Math.min(start + CHUNK_SIZE_BYTES, selectedFile.size);
-                const chunk = selectedFile.slice(start, end);
-
-                const partResponse = await fetch(
-                    `/api/nnue/uploads/${initPayload.file.id}/parts/${partNumber}?uploadId=${encodeURIComponent(initPayload.uploadId)}`,
-                    {
-                        method: "PUT",
-                        credentials: "same-origin",
-                        body: chunk,
-                    },
-                );
-                if (!partResponse.ok) {
-                    throw new Error(await parseApiError(partResponse));
-                }
-
-                const partPayload = (await partResponse.json()) as {
-                    partNumber: number;
-                    etag: string;
-                };
-                parts.push({ partNumber: partPayload.partNumber, etag: partPayload.etag });
-                setUploadProgress(Math.round((end / selectedFile.size) * 100));
-            }
-
-            const completeResponse = await fetch(
-                `/api/nnue/uploads/${initPayload.file.id}/complete`,
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    credentials: "same-origin",
-                    body: JSON.stringify({
-                        uploadId: initPayload.uploadId,
-                        parts,
-                    }),
-                },
-            );
-
-            if (!completeResponse.ok) {
-                throw new Error(await parseApiError(completeResponse));
-            }
-
-            await refreshFiles();
-            setSelectedFile(null);
-            setStatus("NNUE ファイルをアップロードしました。");
-        } catch (nextError) {
-            setError(
-                nextError instanceof Error ? nextError.message : "NNUE アップロードに失敗しました",
-            );
-        } finally {
-            setIsUploading(false);
-        }
+        setIsUploading(false);
     }
 
     async function handleDownload(file: NnueFileSummary): Promise<void> {
         setStatus(null);
         setError(null);
 
-        try {
-            const response = await fetch(`/api/nnue/files/${file.id}`, {
-                credentials: "same-origin",
+        await downloadNnueFile(file.id)
+            .then((blob) => {
+                const url = URL.createObjectURL(blob);
+                const anchor = document.createElement("a");
+                anchor.href = url;
+                anchor.download = file.originalFilename;
+                anchor.click();
+                URL.revokeObjectURL(url);
+            })
+            .catch((nextError: unknown) => {
+                setError(
+                    nextError instanceof Error
+                        ? nextError.message
+                        : "NNUE ダウンロードに失敗しました",
+                );
             });
-            if (!response.ok) {
-                throw new Error(await parseApiError(response));
-            }
-
-            const blob = await response.blob();
-            const url = URL.createObjectURL(blob);
-            const anchor = document.createElement("a");
-            anchor.href = url;
-            anchor.download = file.originalFilename;
-            anchor.click();
-            URL.revokeObjectURL(url);
-        } catch (nextError) {
-            setError(
-                nextError instanceof Error ? nextError.message : "NNUE ダウンロードに失敗しました",
-            );
-        }
     }
 
     async function handleDelete(file: NnueFileSummary): Promise<void> {
         setStatus(null);
         setError(null);
 
-        try {
-            const response = await fetch(`/api/nnue/files/${file.id}`, {
-                method: "DELETE",
-                credentials: "same-origin",
+        await deleteNnueFile(file.id)
+            .then(async () => {
+                await refreshFiles();
+                setStatus("NNUE ファイルを削除しました。");
+            })
+            .catch((nextError: unknown) => {
+                setError(
+                    nextError instanceof Error ? nextError.message : "NNUE 削除に失敗しました",
+                );
             });
-            if (!response.ok) {
-                throw new Error(await parseApiError(response));
-            }
-
-            await refreshFiles();
-            setStatus("NNUE ファイルを削除しました。");
-        } catch (nextError) {
-            setError(nextError instanceof Error ? nextError.message : "NNUE 削除に失敗しました");
-        }
     }
 
     return (

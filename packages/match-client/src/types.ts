@@ -19,8 +19,13 @@ export interface RoomClient {
     getStatus(): "connecting" | "connected" | "reconnecting" | "disconnected";
 }
 
+export interface RoomClientOpenEvent {
+    reconnect: boolean;
+}
+
 export interface RoomClientOptions {
     wsUrl: string;
+    onOpen?: (event: RoomClientOpenEvent) => void;
     onReconnect?: () => void;
     autoReconnect?: boolean;
 }

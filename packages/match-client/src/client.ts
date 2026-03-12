@@ -80,8 +80,9 @@ export function createRoomClient(
         ws = wsFactory(options.wsUrl);
 
         ws.addEventListener("open", () => {
+            const isReconnect = status === "reconnecting";
             // 再接続の場合は resume を試みる
-            if (status === "reconnecting" && roomId) {
+            if (isReconnect && roomId) {
                 const token = getStoredResumeToken(roomId);
                 if (token) {
                     status = "connected";
@@ -96,6 +97,7 @@ export function createRoomClient(
                 status = "connected";
                 reconnectManager.reset();
             }
+            options.onOpen?.({ reconnect: isReconnect });
             // 接続確立後、30秒ごとにpingを送ってサーバーのオフライン判定を防ぐ
             // サーバーは lastSeenTs が 60秒以上更新されないとオフライン判定するため
             if (pingIntervalId === null) {
