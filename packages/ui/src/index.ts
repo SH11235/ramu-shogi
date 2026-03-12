@@ -53,7 +53,11 @@ export { OnlineGameView } from "./components/online-game-view";
 export { ShogiMatch } from "./components/shogi-match";
 
 // shogi-match/types
-export type { EngineOption } from "./components/shogi-match/types";
+export type {
+    AnalysisSettings,
+    AnalysisSnapshotDraft,
+    EngineOption,
+} from "./components/shogi-match/types";
 // spinner
 // tooltip
 

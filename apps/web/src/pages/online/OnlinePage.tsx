@@ -24,6 +24,12 @@ export default function OnlinePage(): ReactElement {
                 right={
                     <div className="flex items-center gap-2">
                         <Link
+                            to="/nnue"
+                            className="rounded-md border border-border px-3 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                        >
+                            NNUE
+                        </Link>
+                        <Link
                             to="/games"
                             className="rounded-md border border-border px-3 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
                         >

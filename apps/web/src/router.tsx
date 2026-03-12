@@ -1,11 +1,21 @@
-import type { RoomInfo } from "@shogi/api-contract";
+import type {
+    GameRecordDetail,
+    GameRecordSummary,
+    GetGameResponse,
+    GetPublicGameResponse,
+    ListAnalysisSnapshotsResponse,
+    ListGamesResponse,
+    RoomInfo,
+} from "@shogi/api-contract";
 import { createRootRoute, createRoute, createRouter, useNavigate } from "@tanstack/react-router";
 import App from "./App";
 import { AppProviders } from "./AppProviders";
 import AuthPage from "./pages/auth/AuthPage";
 import GameDetailPage from "./pages/games/GameDetailPage";
+import GameReviewPage from "./pages/games/GameReviewPage";
 import GamesPage from "./pages/games/GamesPage";
 import PublicGamePage from "./pages/games/PublicGamePage";
+import NnueFilesPage from "./pages/nnue/NnueFilesPage";
 import CreateRoomPage from "./pages/online/CreateRoomPage";
 import OnlinePage from "./pages/online/OnlinePage";
 import RoomPage from "./pages/online/RoomPage";
@@ -32,22 +42,144 @@ const authRoute = createRoute({
     component: AuthPage,
 });
 
+interface GamesRouteLoaderData {
+    needsAuth: boolean;
+    games: GameRecordSummary[];
+}
+
+async function fetchGamesLoaderData(): Promise<GamesRouteLoaderData> {
+    const response = await fetch("/api/games", {
+        credentials: "same-origin",
+    });
+
+    if (response.status === 401) {
+        return {
+            needsAuth: true,
+            games: [],
+        };
+    }
+
+    if (!response.ok) {
+        throw new Error("棋譜一覧の取得に失敗しました");
+    }
+
+    const payload = (await response.json()) as ListGamesResponse;
+    return {
+        needsAuth: false,
+        games: payload.games,
+    };
+}
+
 const gamesRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/games",
     component: GamesPage,
+    loader: fetchGamesLoaderData,
 });
 
 const gameDetailRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/games/$gameId",
     component: GameDetailPage,
+    loader: async ({ params: { gameId } }) => {
+        const response = await fetch(`/api/games/${gameId}`, {
+            credentials: "same-origin",
+        });
+
+        if (response.status === 401) {
+            throw new Error("ログインが必要です");
+        }
+        if (response.status === 404) {
+            throw new Error("棋譜が見つかりません");
+        }
+        if (!response.ok) {
+            throw new Error("棋譜の取得に失敗しました");
+        }
+
+        const payload = (await response.json()) as GetGameResponse;
+        return payload.game satisfies GameRecordDetail;
+    },
+});
+
+const gameReviewRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/games/$gameId/review",
+    component: GameReviewPage,
+    loader: async ({ params: { gameId } }) => {
+        const [gameResponse, snapshotsResponse] = await Promise.all([
+            fetch(`/api/games/${gameId}`, {
+                credentials: "same-origin",
+            }),
+            fetch(`/api/games/${gameId}/analysis-snapshots`, {
+                credentials: "same-origin",
+            }),
+        ]);
+
+        if (gameResponse.status === 401 || snapshotsResponse.status === 401) {
+            throw new Error("ログインが必要です");
+        }
+        if (gameResponse.status === 404) {
+            throw new Error("棋譜が見つかりません");
+        }
+        if (!gameResponse.ok || !snapshotsResponse.ok) {
+            throw new Error("検討データの取得に失敗しました");
+        }
+
+        const gamePayload = (await gameResponse.json()) as GetGameResponse;
+        const snapshotsPayload = (await snapshotsResponse.json()) as ListAnalysisSnapshotsResponse;
+
+        return {
+            game: gamePayload.game,
+            snapshots: snapshotsPayload.snapshots,
+        };
+    },
 });
 
 const publicGameRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/public/games/$publicId",
     component: PublicGamePage,
+    loader: async ({ params: { publicId } }) => {
+        const response = await fetch(`/api/public/games/${publicId}`, {
+            credentials: "same-origin",
+        });
+
+        if (response.status === 404) {
+            throw new Error("棋譜が見つかりません");
+        }
+        if (!response.ok) {
+            throw new Error("棋譜の取得に失敗しました");
+        }
+
+        const payload = (await response.json()) as GetPublicGameResponse;
+        return payload.game satisfies GameRecordDetail;
+    },
+});
+
+const nnueFilesRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/nnue",
+    component: NnueFilesPage,
+    loader: async () => {
+        const response = await fetch("/api/nnue/files", {
+            credentials: "same-origin",
+        });
+
+        if (response.status === 401) {
+            return {
+                needsAuth: true,
+                files: [],
+            };
+        }
+        if (!response.ok) {
+            throw new Error("NNUE 一覧の取得に失敗しました");
+        }
+
+        return {
+            needsAuth: false,
+            files: (await response.json()).files,
+        };
+    },
 });
 
 const createRoomRoute = createRoute({
@@ -105,7 +237,9 @@ const routeTree = rootRoute.addChildren([
     authRoute,
     gamesRoute,
     gameDetailRoute,
+    gameReviewRoute,
     publicGameRoute,
+    nnueFilesRoute,
     createRoomRoute,
     roomRoute,
 ]);

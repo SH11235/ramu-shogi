@@ -1,9 +1,9 @@
-import type { GameRecordSummary, ListGamesResponse } from "@shogi/api-contract";
-import { Link } from "@tanstack/react-router";
+import type { GameRecordSummary } from "@shogi/api-contract";
+import { getRouteApi, Link } from "@tanstack/react-router";
 import type { ReactElement } from "react";
-import { useEffect, useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
-import { parseApiError } from "../../hooks/useAuthSession";
+
+const routeApi = getRouteApi("/games");
 
 const RESULT_REASON_LABELS: Record<string, string> = {
     resign: "投了",
@@ -33,51 +33,12 @@ function formatFinishedAt(finishedAt: string | null): string {
 }
 
 export default function GamesPage(): ReactElement {
-    const [games, setGames] = useState<GameRecordSummary[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [needsAuth, setNeedsAuth] = useState(false);
-
-    useEffect(() => {
-        let cancelled = false;
-
-        void fetch("/api/games", {
-            credentials: "same-origin",
-        })
-            .then(async (response) => {
-                if (response.status === 401) {
-                    if (!cancelled) {
-                        setNeedsAuth(true);
-                        setGames([]);
-                        setError(null);
-                        setIsLoading(false);
-                    }
-                    return;
-                }
-
-                if (!response.ok) {
-                    throw new Error(await parseApiError(response));
-                }
-
-                const payload = (await response.json()) as ListGamesResponse;
-                if (cancelled) return;
-                setNeedsAuth(false);
-                setGames(payload.games);
-                setError(null);
-                setIsLoading(false);
-            })
-            .catch((nextError: unknown) => {
-                if (cancelled) return;
-                setError(
-                    nextError instanceof Error ? nextError.message : "棋譜一覧の取得に失敗しました",
-                );
-                setIsLoading(false);
-            });
-
-        return () => {
-            cancelled = true;
-        };
-    }, []);
+    const loaderData = routeApi.useLoaderData() as {
+        needsAuth: boolean;
+        games: GameRecordSummary[];
+    };
+    const needsAuth = loaderData.needsAuth;
+    const games = loaderData.games;
 
     return (
         <>
@@ -100,8 +61,6 @@ export default function GamesPage(): ReactElement {
                     </p>
                 </div>
 
-                {isLoading && <p className="text-sm text-muted-foreground">読み込み中...</p>}
-
                 {needsAuth && (
                     <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
                         <p className="text-sm text-muted-foreground">
@@ -110,13 +69,7 @@ export default function GamesPage(): ReactElement {
                     </div>
                 )}
 
-                {error && (
-                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                        {error}
-                    </div>
-                )}
-
-                {!isLoading && !needsAuth && !error && games.length === 0 && (
+                {!needsAuth && games.length === 0 && (
                     <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
                         <p className="text-sm text-muted-foreground">
                             まだ保存済みの棋譜はありません。
@@ -124,7 +77,7 @@ export default function GamesPage(): ReactElement {
                     </div>
                 )}
 
-                {!isLoading && !needsAuth && games.length > 0 && (
+                {!needsAuth && games.length > 0 && (
                     <div className="grid gap-4">
                         {games.map((game) => (
                             <Link

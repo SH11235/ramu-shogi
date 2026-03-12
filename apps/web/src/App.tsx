@@ -55,6 +55,12 @@ function App() {
                 棋譜一覧
             </Link>
             <Link
+                to="/nnue"
+                className="rounded-md border border-border px-3 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+            >
+                NNUE
+            </Link>
+            <Link
                 to="/online"
                 className="rounded-md border border-wafuu-shu px-3 py-0.5 text-xs text-wafuu-shu transition-colors hover:bg-wafuu-shu/10"
             >

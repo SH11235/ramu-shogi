@@ -51,6 +51,8 @@ import { ShogiMatchLayout } from "./shogi-match/layouts/ShogiMatchLayout";
 import { ShogiMatchProvider } from "./shogi-match/ShogiMatchContext";
 import type {
     AnalysisSettings,
+    AnalysisSnapshotDraft,
+    AnalysisSnapshotEntryDraft,
     DisplaySettings,
     EngineOption,
     EngineThreadSettings,
@@ -114,6 +116,10 @@ interface ShogiMatchProps {
     initialReview?: { sfen: string; moves: string[] };
     /** 現在局面のスナップショットを通知 */
     onPositionSnapshot?: (snapshot: { sfen: string; moves: string[]; label?: string }) => void;
+    /** 現在の解析結果スナップショットを通知 */
+    onAnalysisSnapshotChange?: (snapshot: AnalysisSnapshotDraft | null) => void;
+    /** 初期表示時に適用する分析結果 */
+    initialAnalysisEntries?: AnalysisSnapshotEntryDraft[] | null;
 }
 
 export function ShogiMatch({
@@ -135,6 +141,8 @@ export function ShogiMatch({
     analysisMarkers = EMPTY_ANALYSIS_MARKERS,
     initialReview,
     onPositionSnapshot,
+    onAnalysisSnapshotChange,
+    initialAnalysisEntries = null,
 }: ShogiMatchProps): ReactElement {
     // デフォルトの NNUE 選択（props のプリセットキーを使用、未指定時は DEFAULT_PRESET_KEY）
     const defaultNnueSelection = createDefaultNnueSelection(
@@ -409,6 +417,40 @@ export function ShogiMatch({
     // "main" モード時は本譜の評価値を表示
     // "branches" や "selectedBranch" モード時は現在の経路（分岐含む）の評価値を表示
     const displayEvalHistory = kifuViewMode === "main" ? mainLineEvalHistory : evalHistory;
+    const analysisSnapshotDraft = (() => {
+        const entries = kifMoves
+            .filter(
+                (move) =>
+                    move.evalCp !== undefined ||
+                    move.evalMate !== undefined ||
+                    move.depth !== undefined ||
+                    move.pv !== undefined ||
+                    move.multiPvEvals !== undefined,
+            )
+            .map((move) => ({
+                ply: move.ply,
+                evalCp: move.evalCp ?? null,
+                evalMate: move.evalMate ?? null,
+                depth: move.depth ?? null,
+                pv: move.pv ?? null,
+                multiPv: move.multiPvEvals ?? null,
+            }));
+
+        if (entries.length === 0) {
+            return null;
+        }
+
+        return {
+            startSfen,
+            lineMoves: kifMoves.map((move) => move.usiMove),
+            analysisSettings,
+            entries,
+        } satisfies AnalysisSnapshotDraft;
+    })();
+
+    useEffect(() => {
+        onAnalysisSnapshotChange?.(analysisSnapshotDraft);
+    }, [analysisSnapshotDraft, onAnalysisSnapshotChange]);
 
     // 選択中の手の詳細を最新のkifMovesから取得
     const selectedMoveDetail = (() => {
@@ -1153,12 +1195,41 @@ export function ShogiMatch({
 
     // マウント時に initialReview が指定されていれば棋譜を読み込む（一度だけ実行）
     const initialReviewHandledRef = useRef(false);
+    const initialAnalysisAppliedRef = useRef<string | null>(null);
     useEffect(() => {
+        if (!positionReady) {
+            return;
+        }
         if (initialReview && !initialReviewHandledRef.current) {
             initialReviewHandledRef.current = true;
             void importSfen(initialReview.sfen, initialReview.moves);
         }
-    }, [initialReview, importSfen]);
+    }, [importSfen, initialReview, positionReady]);
+
+    useEffect(() => {
+        if (!positionReady || !initialAnalysisEntries || initialAnalysisEntries.length === 0) {
+            return;
+        }
+
+        const signature = JSON.stringify(initialAnalysisEntries);
+        if (initialAnalysisAppliedRef.current === signature) {
+            return;
+        }
+
+        for (const entry of initialAnalysisEntries) {
+            clearEvalByPly(entry.ply);
+            recordEvalByPly(entry.ply, {
+                type: "info",
+                scoreCp: entry.evalCp ?? undefined,
+                scoreMate: entry.evalMate ?? undefined,
+                depth: entry.depth ?? undefined,
+                pv: entry.pv ?? undefined,
+                multipv: 1,
+            });
+        }
+
+        initialAnalysisAppliedRef.current = signature;
+    }, [clearEvalByPly, initialAnalysisEntries, positionReady, recordEvalByPly]);
 
     // 棋譜の手数選択コールバック（巻き戻し・リプレイ用）
     const handlePlySelect = (ply: number) => {

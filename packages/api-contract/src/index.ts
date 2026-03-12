@@ -126,3 +126,91 @@ export interface UpdateGameVisibilityResponse {
 export interface GetPublicGameResponse {
     game: GameRecordDetail;
 }
+
+export interface AnalysisSnapshotEntry {
+    ply: number;
+    evalCp: number | null;
+    evalMate: number | null;
+    depth: number | null;
+    pv: string[] | null;
+    multiPv: JsonValue | null;
+}
+
+export interface AnalysisSnapshotSummary {
+    id: string;
+    gameId: string;
+    label: string | null;
+    createdAt: string;
+    entryCount: number;
+}
+
+export interface AnalysisSnapshotDetail extends AnalysisSnapshotSummary {
+    lineMoves: string[];
+    analysisSettings: JsonValue;
+    metadata: JsonValue;
+    entries: AnalysisSnapshotEntry[];
+}
+
+export interface CreateAnalysisSnapshotRequest {
+    label?: string | null;
+    lineMoves: string[];
+    analysisSettings: JsonValue;
+    metadata?: JsonValue;
+    entries: AnalysisSnapshotEntry[];
+}
+
+export interface CreateAnalysisSnapshotResponse {
+    snapshot: AnalysisSnapshotSummary;
+}
+
+export interface ListAnalysisSnapshotsResponse {
+    snapshots: AnalysisSnapshotSummary[];
+}
+
+export interface GetAnalysisSnapshotResponse {
+    snapshot: AnalysisSnapshotDetail;
+}
+
+export type NnueUploadStatus = "pending" | "completed" | "failed" | "deleted";
+
+export interface NnueFileSummary {
+    id: string;
+    originalFilename: string;
+    sizeBytes: number;
+    sha256Hex: string;
+    uploadStatus: NnueUploadStatus;
+    createdAt: string;
+    completedAt: string | null;
+}
+
+export interface ListNnueFilesResponse {
+    files: NnueFileSummary[];
+}
+
+export interface InitializeNnueUploadRequest {
+    originalFilename: string;
+    sizeBytes: number;
+    sha256Hex: string;
+}
+
+export interface InitializeNnueUploadResponse {
+    file: NnueFileSummary;
+    uploadId: string;
+}
+
+export interface UploadNnuePartResponse {
+    partNumber: number;
+    etag: string;
+}
+
+export interface CompleteNnueUploadRequest {
+    uploadId: string;
+    parts: Array<{
+        partNumber: number;
+        etag: string;
+    }>;
+}
+
+export interface CompleteNnueUploadResponse {
+    file: NnueFileSummary;
+}

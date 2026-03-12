@@ -1,9 +1,9 @@
-import type { GameRecordDetail, GetPublicGameResponse } from "@shogi/api-contract";
-import { Link, useParams } from "@tanstack/react-router";
+import type { GameRecordDetail } from "@shogi/api-contract";
+import { getRouteApi, Link } from "@tanstack/react-router";
 import type { ReactElement } from "react";
-import { useEffect, useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
-import { parseApiError } from "../../hooks/useAuthSession";
+
+const routeApi = getRouteApi("/public/games/$publicId");
 
 const RESULT_REASON_LABELS: Record<string, string> = {
     resign: "投了",
@@ -28,43 +28,7 @@ function formatResult(game: GameRecordDetail): string {
 }
 
 export default function PublicGamePage(): ReactElement {
-    const { publicId } = useParams({ from: "/public/games/$publicId" });
-    const [game, setGame] = useState<GameRecordDetail | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    useEffect(() => {
-        let cancelled = false;
-
-        void fetch(`/api/public/games/${publicId}`, {
-            credentials: "same-origin",
-        })
-            .then(async (response) => {
-                if (response.status === 404) {
-                    throw new Error("棋譜が見つかりません");
-                }
-                if (!response.ok) {
-                    throw new Error(await parseApiError(response));
-                }
-
-                const payload = (await response.json()) as GetPublicGameResponse;
-                if (cancelled) return;
-                setGame(payload.game);
-                setError(null);
-                setIsLoading(false);
-            })
-            .catch((nextError: unknown) => {
-                if (cancelled) return;
-                setError(
-                    nextError instanceof Error ? nextError.message : "棋譜の取得に失敗しました",
-                );
-                setIsLoading(false);
-            });
-
-        return () => {
-            cancelled = true;
-        };
-    }, [publicId]);
+    const game = routeApi.useLoaderData() as GameRecordDetail;
 
     return (
         <>
@@ -80,63 +44,50 @@ export default function PublicGamePage(): ReactElement {
                 }
             />
             <main className="mx-auto flex max-w-[960px] flex-col gap-6 px-4 py-8">
-                {isLoading && <p className="text-sm text-muted-foreground">読み込み中...</p>}
-
-                {error && (
-                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                        {error}
+                <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
+                    <div className="flex flex-col gap-3">
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
+                                {game.visibility}
+                            </span>
+                            <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
+                                {game.source}
+                            </span>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <h1 className="text-2xl font-bold text-foreground">
+                                {game.participants
+                                    .map((participant) => participant.displayNameSnapshot)
+                                    .join(" vs ")}
+                            </h1>
+                            <p className="text-sm text-muted-foreground">{formatResult(game)}</p>
+                        </div>
                     </div>
-                )}
+                </section>
 
-                {game && (
-                    <>
-                        <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                            <div className="flex flex-col gap-3">
-                                <div className="flex flex-wrap items-center gap-2 text-xs">
-                                    <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
-                                        {game.visibility}
-                                    </span>
-                                    <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
-                                        {game.source}
-                                    </span>
-                                </div>
-                                <div className="flex flex-col gap-1">
-                                    <h1 className="text-2xl font-bold text-foreground">
-                                        {game.participants
-                                            .map((participant) => participant.displayNameSnapshot)
-                                            .join(" vs ")}
-                                    </h1>
-                                    <p className="text-sm text-muted-foreground">
-                                        {formatResult(game)}
-                                    </p>
-                                </div>
-                            </div>
-                        </section>
+                <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
+                    <h2 className="mb-3 text-lg font-semibold text-foreground">指し手</h2>
+                    <ol className="grid gap-2 text-sm text-foreground">
+                        {game.moves.map((move, index) => {
+                            const ply = index + 1;
+                            return (
+                                <li
+                                    key={`${game.id}:${ply}:${move}`}
+                                    className="rounded-md border border-border px-3 py-2"
+                                >
+                                    {ply}. {move}
+                                </li>
+                            );
+                        })}
+                    </ol>
+                </section>
 
-                        <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                            <h2 className="mb-3 text-lg font-semibold text-foreground">指し手</h2>
-                            <ol className="grid gap-2 text-sm text-foreground">
-                                {game.moves.map((move, index) => (
-                                    <li
-                                        key={`${game.id}:${move}:${index}`}
-                                        className="rounded-md border border-border px-3 py-2"
-                                    >
-                                        {index + 1}. {move}
-                                    </li>
-                                ))}
-                            </ol>
-                        </section>
-
-                        <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                            <h2 className="mb-3 text-lg font-semibold text-foreground">
-                                KIF テキスト
-                            </h2>
-                            <pre className="overflow-x-auto rounded-md bg-muted/40 p-4 text-xs text-foreground">
-                                {game.kifuText}
-                            </pre>
-                        </section>
-                    </>
-                )}
+                <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
+                    <h2 className="mb-3 text-lg font-semibold text-foreground">KIF テキスト</h2>
+                    <pre className="overflow-x-auto rounded-md bg-muted/40 p-4 text-xs text-foreground">
+                        {game.kifuText}
+                    </pre>
+                </section>
             </main>
         </>
     );
