@@ -15,6 +15,7 @@ import type { ReactElement } from "react";
 import { useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { parseApiError } from "../../hooks/useAuthSession";
+import type { AnalysisSettings } from "@shogi/ui";
 
 const resolveWasmThreads = () => {
     const fallback = import.meta.env.DEV ? 4 : 1;
@@ -68,9 +69,27 @@ export default function GameReviewPage(): ReactElement {
                 ? (entry.multiPv as AnalysisSnapshotDraft["entries"][number]["multiPv"])
                 : null,
         })) ?? null;
+    const effectiveDraft =
+        draft && draft.entries.length > 0
+            ? draft
+            : selectedSnapshot && selectedSnapshotEntries
+              ? ({
+                    startSfen:
+                        typeof selectedSnapshot.metadata === "object" &&
+                        selectedSnapshot.metadata !== null &&
+                        "startSfen" in selectedSnapshot.metadata &&
+                        typeof selectedSnapshot.metadata.startSfen === "string"
+                            ? selectedSnapshot.metadata.startSfen
+                            : game.initialSfen,
+                    lineMoves: selectedSnapshot.lineMoves,
+                    analysisSettings:
+                        selectedSnapshot.analysisSettings as unknown as AnalysisSettings,
+                    entries: selectedSnapshotEntries,
+                } satisfies AnalysisSnapshotDraft)
+              : null;
 
     async function handleSaveSnapshot(): Promise<void> {
-        if (!draft || !game || isSaving) return;
+        if (!effectiveDraft || !game || isSaving) return;
 
         setIsSaving(true);
         setStatus(null);
@@ -79,12 +98,12 @@ export default function GameReviewPage(): ReactElement {
         try {
             const requestBody: CreateAnalysisSnapshotRequest = {
                 label: snapshotLabel.trim() || null,
-                lineMoves: draft.lineMoves,
-                analysisSettings: draft.analysisSettings as unknown as JsonValue,
+                lineMoves: effectiveDraft.lineMoves,
+                analysisSettings: effectiveDraft.analysisSettings as unknown as JsonValue,
                 metadata: {
-                    startSfen: draft.startSfen,
+                    startSfen: effectiveDraft.startSfen,
                 },
-                entries: draft.entries.map((entry) => ({
+                entries: effectiveDraft.entries.map((entry) => ({
                     ply: entry.ply,
                     evalCp: entry.evalCp,
                     evalMate: entry.evalMate,
@@ -194,7 +213,11 @@ export default function GameReviewPage(): ReactElement {
                             <button
                                 type="button"
                                 onClick={() => void handleSaveSnapshot()}
-                                disabled={isSaving || !draft || draft.entries.length === 0}
+                                disabled={
+                                    isSaving ||
+                                    !effectiveDraft ||
+                                    effectiveDraft.entries.length === 0
+                                }
                                 className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
                             >
                                 {isSaving ? "保存中..." : "解析結果を保存"}
@@ -202,7 +225,7 @@ export default function GameReviewPage(): ReactElement {
                         </div>
                     </div>
                     <div className="mt-3 text-xs text-muted-foreground">
-                        現在の保存対象: {draft?.entries.length ?? 0} 手
+                        現在の保存対象: {effectiveDraft?.entries.length ?? 0} 手
                     </div>
                 </section>
 
@@ -221,7 +244,7 @@ export default function GameReviewPage(): ReactElement {
                         />
                     </div>
 
-                    <div className="flex flex-col gap-4">
+                    <div className="relative z-10 flex flex-col gap-4">
                         <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
                             <h2 className="mb-3 text-lg font-semibold text-foreground">
                                 保存済み snapshot
@@ -237,7 +260,7 @@ export default function GameReviewPage(): ReactElement {
                                             key={snapshot.id}
                                             type="button"
                                             onClick={() => void handleSelectSnapshot(snapshot.id)}
-                                            className="rounded-md border border-input px-3 py-3 text-left transition-colors hover:bg-muted/50"
+                                            className="relative z-10 rounded-md border border-input px-3 py-3 text-left transition-colors hover:bg-muted/50"
                                         >
                                             <div className="text-sm font-medium text-foreground">
                                                 {snapshot.label ?? "無題の snapshot"}
