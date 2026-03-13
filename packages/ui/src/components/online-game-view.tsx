@@ -24,6 +24,7 @@ import { useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
 import { useLazyNnueLoader } from "../hooks/useLazyNnueLoader";
 import { useNnueContextOptional } from "../providers/NnueContext";
 import { NnueManagerDialog } from "./nnue/NnueManagerDialog";
+import type { RemoteNnueManager } from "./nnue/types";
 import { BottomSheet } from "./shogi-match/components/BottomSheet";
 import { KifuNavigationToolbar } from "./shogi-match/components/KifuNavigationToolbar";
 import { type HandInfo, MobileBoardSection } from "./shogi-match/components/MobileBoardSection";
@@ -291,6 +292,7 @@ interface OnlineGameViewProps {
     roomId: string;
     analysis?: OnlineAnalysis;
     manifestUrl?: string;
+    remoteNnueManager?: RemoteNnueManager;
     onStartReview?: (data: {
         sfen: string;
         moves: string[];
@@ -306,6 +308,7 @@ export function OnlineGameView({
     roomId,
     analysis,
     manifestUrl,
+    remoteNnueManager,
     onStartReview,
     onExit,
 }: OnlineGameViewProps): ReactElement {
@@ -1038,6 +1041,7 @@ export function OnlineGameView({
                     open={nnueManagerOpen}
                     onOpenChange={setNnueManagerOpen}
                     manifestUrl={manifestUrl}
+                    remoteNnueManager={remoteNnueManager}
                     isMatchActive={!gameResult}
                 />
             )}

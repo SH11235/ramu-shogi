@@ -1,5 +1,5 @@
 import { useRouter } from "@tanstack/react-router";
-import type { FormEvent, ReactElement } from "react";
+import type { ReactElement } from "react";
 import { useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import {
@@ -97,94 +97,7 @@ export default function AuthPage(): ReactElement {
     const [status, setStatus] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [registerDisplayName, setRegisterDisplayName] = useState("");
-    const [registerEmail, setRegisterEmail] = useState("");
-    const [registerPassword, setRegisterPassword] = useState("");
-    const [loginEmail, setLoginEmail] = useState("");
-    const [loginPassword, setLoginPassword] = useState("");
     const displayedError = error ?? sessionError;
-
-    async function handleRegister(event: FormEvent<HTMLFormElement>): Promise<void> {
-        event.preventDefault();
-        if (isSubmitting) return;
-
-        setIsSubmitting(true);
-        setError(null);
-        setStatus(null);
-
-        try {
-            const response = await fetch("/api/auth/password/register", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                credentials: "same-origin",
-                body: JSON.stringify({
-                    displayName: registerDisplayName,
-                    email: registerEmail,
-                    password: registerPassword,
-                }),
-            });
-
-            if (!response.ok) {
-                setError(await parseApiError(response));
-                setIsSubmitting(false);
-                return;
-            }
-
-            setRegisterPassword("");
-            setRegisterEmail("");
-            setRegisterDisplayName("");
-            dispatchAuthSessionSyncEvent();
-            await refreshSession();
-            await router.invalidate();
-            setStatus("アカウントを作成しました。メール確認が必要です。");
-            setIsSubmitting(false);
-        } catch (nextError) {
-            setError(nextError instanceof Error ? nextError.message : "新規登録に失敗しました");
-            setIsSubmitting(false);
-        }
-    }
-
-    async function handleLogin(event: FormEvent<HTMLFormElement>): Promise<void> {
-        event.preventDefault();
-        if (isSubmitting) return;
-
-        setIsSubmitting(true);
-        setError(null);
-        setStatus(null);
-
-        try {
-            const response = await fetch("/api/auth/password/login", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                credentials: "same-origin",
-                body: JSON.stringify({
-                    email: loginEmail,
-                    password: loginPassword,
-                }),
-            });
-
-            if (!response.ok) {
-                setError(await parseApiError(response));
-                setIsSubmitting(false);
-                return;
-            }
-
-            setLoginPassword("");
-            setLoginEmail("");
-            dispatchAuthSessionSyncEvent();
-            await refreshSession();
-            await router.invalidate();
-            setStatus("ログインしました。");
-            setIsSubmitting(false);
-        } catch (nextError) {
-            setError(nextError instanceof Error ? nextError.message : "ログインに失敗しました");
-            setIsSubmitting(false);
-        }
-    }
 
     async function handleLogout(): Promise<void> {
         if (isSubmitting) return;
@@ -291,7 +204,7 @@ export default function AuthPage(): ReactElement {
                             ? requiresUsernameSetup && !session.user.displayName.trim()
                                 ? "オンライン対局で使うユーザー名を設定してください。"
                                 : "オンライン対局で使うユーザー名を設定できます。"
-                            : "Google アカウント連携、またはメールアドレスとパスワードで認証できます。"}
+                            : "Google アカウントで認証できます。"}
                     </p>
                 </div>
 
@@ -309,13 +222,13 @@ export default function AuthPage(): ReactElement {
                 {!session?.authenticated && (
                     <>
                         <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <div className="flex flex-col gap-4">
                                 <div className="space-y-1">
                                     <h2 className="text-lg font-semibold text-foreground">
                                         Google でログイン
                                     </h2>
                                     <p className="text-sm text-muted-foreground">
-                                        認証後はこのページに戻ります。
+                                        Google アカウントでログインすると、このページに戻ります。
                                     </p>
                                 </div>
                                 <button
@@ -325,134 +238,10 @@ export default function AuthPage(): ReactElement {
                                 >
                                     Google アカウントでログイン
                                 </button>
+                                <p className="text-xs text-muted-foreground">
+                                    メールアドレスとパスワードによる認証は廃止しました。
+                                </p>
                             </div>
-                        </section>
-
-                        <section className="grid gap-6 md:grid-cols-2">
-                            <form
-                                onSubmit={(event) => void handleLogin(event)}
-                                className="rounded-xl border border-border bg-card p-5 shadow-sm"
-                            >
-                                <div className="mb-4 space-y-1">
-                                    <h2 className="text-lg font-semibold text-foreground">
-                                        メールでログイン
-                                    </h2>
-                                    <p className="text-sm text-muted-foreground">
-                                        既存アカウントを使ってログインします。
-                                    </p>
-                                </div>
-
-                                <div className="space-y-3">
-                                    <label className="flex flex-col gap-1 text-sm">
-                                        <span className="font-medium text-foreground">
-                                            メールアドレス
-                                        </span>
-                                        <input
-                                            type="email"
-                                            value={loginEmail}
-                                            onChange={(event) => setLoginEmail(event.target.value)}
-                                            autoComplete="email"
-                                            required
-                                            className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                        />
-                                    </label>
-
-                                    <label className="flex flex-col gap-1 text-sm">
-                                        <span className="font-medium text-foreground">
-                                            パスワード
-                                        </span>
-                                        <input
-                                            type="password"
-                                            value={loginPassword}
-                                            onChange={(event) =>
-                                                setLoginPassword(event.target.value)
-                                            }
-                                            autoComplete="current-password"
-                                            required
-                                            className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                        />
-                                    </label>
-
-                                    <button
-                                        type="submit"
-                                        disabled={isSubmitting}
-                                        className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
-                                    >
-                                        ログイン
-                                    </button>
-                                </div>
-                            </form>
-
-                            <form
-                                onSubmit={(event) => void handleRegister(event)}
-                                className="rounded-xl border border-border bg-card p-5 shadow-sm"
-                            >
-                                <div className="mb-4 space-y-1">
-                                    <h2 className="text-lg font-semibold text-foreground">
-                                        新規登録
-                                    </h2>
-                                    <p className="text-sm text-muted-foreground">
-                                        メール確認前でもログイン状態は作成されます。
-                                    </p>
-                                </div>
-
-                                <div className="space-y-3">
-                                    <label className="flex flex-col gap-1 text-sm">
-                                        <span className="font-medium text-foreground">表示名</span>
-                                        <input
-                                            type="text"
-                                            value={registerDisplayName}
-                                            onChange={(event) =>
-                                                setRegisterDisplayName(event.target.value)
-                                            }
-                                            autoComplete="nickname"
-                                            required
-                                            className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                        />
-                                    </label>
-
-                                    <label className="flex flex-col gap-1 text-sm">
-                                        <span className="font-medium text-foreground">
-                                            メールアドレス
-                                        </span>
-                                        <input
-                                            type="email"
-                                            value={registerEmail}
-                                            onChange={(event) =>
-                                                setRegisterEmail(event.target.value)
-                                            }
-                                            autoComplete="email"
-                                            required
-                                            className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                        />
-                                    </label>
-
-                                    <label className="flex flex-col gap-1 text-sm">
-                                        <span className="font-medium text-foreground">
-                                            パスワード
-                                        </span>
-                                        <input
-                                            type="password"
-                                            value={registerPassword}
-                                            onChange={(event) =>
-                                                setRegisterPassword(event.target.value)
-                                            }
-                                            autoComplete="new-password"
-                                            minLength={8}
-                                            required
-                                            className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                        />
-                                    </label>
-
-                                    <button
-                                        type="submit"
-                                        disabled={isSubmitting}
-                                        className="w-full rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground shadow-sm transition-colors hover:bg-secondary/80 disabled:pointer-events-none disabled:opacity-50"
-                                    >
-                                        アカウントを作成
-                                    </button>
-                                </div>
-                            </form>
                         </section>
                     </>
                 )}

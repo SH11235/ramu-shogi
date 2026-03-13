@@ -4,6 +4,7 @@ import { EngineControlPanel, ShogiMatch, useDevMode } from "@shogi/ui";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { PageHeader } from "./components/PageHeader";
+import { useRemotePrivateNnueManager } from "./hooks/useRemotePrivateNnueManager";
 
 const resolveWasmThreads = () => {
     const fallback = import.meta.env.DEV ? 4 : 1;
@@ -34,6 +35,7 @@ const nnueManifestUrl = import.meta.env.VITE_NNUE_MANIFEST_URL as string;
 
 function App() {
     const isDevMode = useDevMode();
+    const remoteNnueManager = useRemotePrivateNnueManager();
     const [panelPosition, setPanelPosition] = useState<{
         label?: string;
         sfen: string;
@@ -77,6 +79,7 @@ function App() {
                     engineOptions={engineOptions}
                     isDevMode={isDevMode}
                     manifestUrl={nnueManifestUrl}
+                    remoteNnueManager={remoteNnueManager}
                     defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
                     aiIconUrl={`${import.meta.env.BASE_URL}ramu.jpeg`}
                     onPositionSnapshot={(snapshot) => setPanelPosition(snapshot)}

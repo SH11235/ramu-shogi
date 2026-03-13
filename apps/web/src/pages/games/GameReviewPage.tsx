@@ -15,6 +15,7 @@ import type { ReactElement } from "react";
 import { useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { parseApiError } from "../../hooks/useAuthSession";
+import { useRemotePrivateNnueManager } from "../../hooks/useRemotePrivateNnueManager";
 import type { AnalysisSettings } from "@shogi/ui";
 
 const resolveWasmThreads = () => {
@@ -84,6 +85,7 @@ export default function GameReviewPage(): ReactElement {
         game: GameRecordDetail;
         snapshots: AnalysisSnapshotSummary[];
     };
+    const remoteNnueManager = useRemotePrivateNnueManager();
     const game = loaderData.game;
     const [snapshots, setSnapshots] = useState<AnalysisSnapshotSummary[]>(loaderData.snapshots);
     const [selectedSnapshot, setSelectedSnapshot] = useState<AnalysisSnapshotDetail | null>(null);
@@ -251,6 +253,7 @@ export default function GameReviewPage(): ReactElement {
                             key={selectedSnapshot?.id ?? "live-analysis"}
                             engineOptions={engineOptions}
                             manifestUrl={import.meta.env.VITE_NNUE_MANIFEST_URL as string}
+                            remoteNnueManager={remoteNnueManager}
                             initialReview={{
                                 sfen: game.initialSfen,
                                 moves: selectedSnapshot?.lineMoves ?? game.moves,

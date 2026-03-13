@@ -72,6 +72,7 @@ describe("useNnueStorage", () => {
                 supportsPathImport: false,
                 supportsLoad: true,
             });
+            expect(typeof result.current.importFromBlob).toBe("function");
         });
     });
 

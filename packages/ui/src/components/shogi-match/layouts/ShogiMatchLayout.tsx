@@ -131,6 +131,7 @@ export function ShogiMatchLayout({
         clearNnueManagerOpenReason,
         manifestUrl,
         onRequestNnueFilePath,
+        remoteNnueManager,
         selectedMoveDetail,
         setSelectedMoveDetailPly,
         isAboutOpen,
@@ -279,6 +280,7 @@ export function ShogiMatchLayout({
                 }}
                 manifestUrl={manifestUrl}
                 onRequestFilePath={onRequestNnueFilePath}
+                remoteNnueManager={remoteNnueManager}
                 openReason={nnueManagerOpenReason ?? undefined}
                 onClearOpenReason={clearNnueManagerOpenReason}
                 isMatchActive={isMatchRunning || isPaused}

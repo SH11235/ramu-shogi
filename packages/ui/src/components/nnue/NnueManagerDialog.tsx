@@ -10,8 +10,10 @@ import { NnueFvScaleInputDialog } from "./NnueFvScaleInputDialog";
 import { NnueImportArea } from "./NnueImportArea";
 import { NnueListItem } from "./NnueListItem";
 import { NnueProgressOverlay } from "./NnueProgressOverlay";
+import { RemoteNnueListItem } from "./RemoteNnueListItem";
 import { NnueSupportInfo } from "./NnueSupportInfo";
 import { PresetListItem } from "./PresetListItem";
+import type { RemoteNnueFile, RemoteNnueManager } from "./types";
 
 interface NnueManagerDialogProps {
     /** モーダルが開いているか */
@@ -28,6 +30,8 @@ interface NnueManagerDialogProps {
     onClearOpenReason?: () => void;
     /** 対局中かどうか（対局中は削除禁止） */
     isMatchActive?: boolean;
+    /** Web 用: remote private NNUE の取り込み導線 */
+    remoteNnueManager?: RemoteNnueManager;
 }
 
 /**
@@ -68,6 +72,7 @@ export function NnueManagerDialog({
     openReason,
     onClearOpenReason,
     isMatchActive = false,
+    remoteNnueManager,
 }: NnueManagerDialogProps): ReactElement {
     const reasonMessage = (() => {
         if (!openReason) return null;
@@ -119,9 +124,11 @@ export function NnueManagerDialog({
     // FV_SCALE 入力待ちのファイル/パス
     const [pendingFile, setPendingFile] = useState<File | null>(null);
     const [pendingPath, setPendingPath] = useState<string | null>(null);
+    const [pendingRemoteFile, setPendingRemoteFile] = useState<RemoteNnueFile | null>(null);
 
     // ファイル選択時: FV_SCALE 入力ダイアログを表示
     const handleFileSelect = (file: File) => {
+        setPendingRemoteFile(null);
         setPendingPath(null); // 排他的に管理
         setPendingFile(file);
     };
@@ -133,6 +140,7 @@ export function NnueManagerDialog({
             const filePath = await onRequestFilePath();
             if (filePath) {
                 setPendingFile(null); // 排他的に管理
+                setPendingRemoteFile(null);
                 setPendingPath(filePath);
             }
         } catch {
@@ -140,13 +148,21 @@ export function NnueManagerDialog({
         }
     };
 
+    const handleRemoteImportSelect = (file: RemoteNnueFile) => {
+        setPendingFile(null);
+        setPendingPath(null);
+        setPendingRemoteFile(file);
+    };
+
     // FV_SCALE と表示名確定時: 実際にインポート
     const handleFvScaleConfirm = async (fvScale: number, displayName: string) => {
         // 先に pending をクリアしてダイアログを閉じる（二重実行を防止）
         const fileToImport = pendingFile;
         const pathToImport = pendingPath;
+        const remoteFileToImport = pendingRemoteFile;
         setPendingFile(null);
         setPendingPath(null);
+        setPendingRemoteFile(null);
 
         setIsImporting(true);
         try {
@@ -154,6 +170,8 @@ export function NnueManagerDialog({
                 await importFromFile(fileToImport, fvScale, displayName);
             } else if (pathToImport) {
                 await importFromPath(pathToImport, fvScale, displayName);
+            } else if (remoteFileToImport && remoteNnueManager) {
+                await remoteNnueManager.importFile(remoteFileToImport, fvScale, displayName);
             }
         } catch {
             // エラーは useNnueStorage で管理される
@@ -166,6 +184,7 @@ export function NnueManagerDialog({
     const handleFvScaleCancel = () => {
         setPendingFile(null);
         setPendingPath(null);
+        setPendingRemoteFile(null);
     };
 
     const handleDelete = async (id: string) => {
@@ -194,12 +213,22 @@ export function NnueManagerDialog({
     const handleClearError = () => {
         clearStorageError();
         clearPresetError();
+        remoteNnueManager?.clearError();
     };
 
     const error = storageError ?? presetError;
-    const isOperationInProgress = isImporting || deletingId !== null || downloadingKey !== null;
-    const hasPendingImport = pendingFile !== null || pendingPath !== null;
-    const pendingFileName = pendingFile?.name ?? pendingPath?.split(/[/\\]/).pop() ?? "";
+    const isOperationInProgress =
+        isImporting ||
+        deletingId !== null ||
+        downloadingKey !== null ||
+        remoteNnueManager?.importingFileId !== null;
+    const hasPendingImport =
+        pendingFile !== null || pendingPath !== null || pendingRemoteFile !== null;
+    const pendingFileName =
+        pendingFile?.name ??
+        pendingPath?.split(/[/\\]/).pop() ??
+        pendingRemoteFile?.originalFilename ??
+        "";
 
     // NNUE ファイルの合計サイズを計算
     const totalNnueSize = nnueList.reduce((sum, meta) => sum + meta.size, 0);
@@ -234,6 +263,11 @@ export function NnueManagerDialog({
 
                     {/* エラー表示 */}
                     <NnueErrorAlert error={error} onClose={handleClearError} />
+                    {remoteNnueManager?.error && (
+                        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                            {remoteNnueManager.error}
+                        </div>
+                    )}
 
                     {/* NNUE 一覧（選択なし、削除のみ） */}
                     {nnueList.length > 0 ? (
@@ -264,6 +298,58 @@ export function NnueManagerDialog({
                     ) : (
                         <div className="p-4 text-center text-[13px] text-muted-foreground">
                             インポートされた NNUE ファイルはありません
+                        </div>
+                    )}
+
+                    {remoteNnueManager && (
+                        <div className="flex flex-col gap-2">
+                            <div className="mb-1 mt-2 flex items-center justify-between gap-3 text-xs font-medium text-muted-foreground">
+                                <span>クラウド上の private NNUE</span>
+                                {remoteNnueManager.manageHref && (
+                                    <a
+                                        href={remoteNnueManager.manageHref}
+                                        className="text-xs text-primary hover:underline"
+                                    >
+                                        upload / delete を開く
+                                    </a>
+                                )}
+                            </div>
+
+                            {!remoteNnueManager.isAuthenticated ? (
+                                <div className="rounded-md border border-border bg-muted/40 px-3 py-3 text-[13px] text-muted-foreground">
+                                    ログインすると、アカウントに保存した private NNUE
+                                    をブラウザへ取り込めます。
+                                    {remoteNnueManager.loginHref && (
+                                        <>
+                                            {" "}
+                                            <a
+                                                href={remoteNnueManager.loginHref}
+                                                className="text-primary hover:underline"
+                                            >
+                                                ログインへ
+                                            </a>
+                                        </>
+                                    )}
+                                </div>
+                            ) : remoteNnueManager.files.length > 0 ? (
+                                remoteNnueManager.files.map((file) => (
+                                    <RemoteNnueListItem
+                                        key={file.id}
+                                        file={file}
+                                        onImport={handleRemoteImportSelect}
+                                        isImporting={remoteNnueManager.importingFileId === file.id}
+                                        disabled={isOperationInProgress}
+                                    />
+                                ))
+                            ) : remoteNnueManager.isLoading ? (
+                                <div className="p-4 text-center text-[13px] text-muted-foreground">
+                                    クラウド NNUE 一覧を読み込み中...
+                                </div>
+                            ) : (
+                                <div className="p-4 text-center text-[13px] text-muted-foreground">
+                                    クラウド上の private NNUE はありません
+                                </div>
+                            )}
                         </div>
                     )}
 

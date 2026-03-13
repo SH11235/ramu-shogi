@@ -19,6 +19,13 @@ interface UseNnueStorageReturn {
     refreshList: () => Promise<void>;
     /** ファイルから NNUE をインポート（capabilities.supportsFileImport === true の場合） */
     importFromFile: (file: File, fvScale: number, displayName?: string) => Promise<NnueMeta>;
+    /** Blob から NNUE をインポート */
+    importFromBlob: (
+        blob: Blob,
+        originalFileName: string,
+        fvScale: number,
+        displayName?: string,
+    ) => Promise<NnueMeta>;
     /** パスから NNUE をインポート（capabilities.supportsPathImport === true の場合） */
     importFromPath: (srcPath: string, fvScale: number, displayName?: string) => Promise<NnueMeta>;
     /** NNUE を削除 */
@@ -72,6 +79,96 @@ export function useNnueStorage(): UseNnueStorageReturn {
         }
     };
 
+    const importFromBinary = async (
+        data: Uint8Array,
+        originalFileName: string,
+        fvScale: number,
+        displayName?: string,
+    ): Promise<NnueMeta> => {
+        if (!storage) {
+            throw new NnueError("NNUE_STORAGE_FAILED", "NnueProvider が設定されていません", null);
+        }
+        let format: NnueMeta["format"] | undefined;
+        if (validateNnueHeader) {
+            try {
+                const header = data.subarray(0, Math.min(NNUE_HEADER_SIZE, data.byteLength));
+                const result = await validateNnueHeader(header, data.byteLength);
+                if (!result.isCompatible) {
+                    throw new NnueError(
+                        "NNUE_INCOMPATIBLE",
+                        "このエンジンは指定された NNUE 形式に対応していません",
+                    );
+                }
+                format = result.format;
+            } catch (e) {
+                const err =
+                    e instanceof NnueError
+                        ? e
+                        : new NnueError(
+                              "NNUE_INVALID_FORMAT",
+                              "このファイルは NNUE 形式ではありません",
+                              e,
+                          );
+                throw err;
+            }
+        }
+
+        // SHA-256 ハッシュを計算
+        const hashBytes = new Uint8Array(data.byteLength);
+        hashBytes.set(data);
+        const hashBuffer = await crypto.subtle.digest("SHA-256", hashBytes);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+
+        // 重複チェック
+        const existing = await storage.listByContentHash(hash);
+        if (existing.length > 0) {
+            const existingMeta = existing[0];
+            // format や fvScale が更新される場合は更新
+            const updates: Partial<NnueMeta> = {};
+            if (format && !existingMeta.format) {
+                updates.format = format;
+            }
+            if (existingMeta.fvScale !== fvScale) {
+                updates.fvScale = fvScale;
+            }
+            if (Object.keys(updates).length > 0) {
+                console.info(
+                    `既存の評価関数「${existingMeta.displayName}」の情報を更新しました`,
+                    updates,
+                );
+                await storage.updateMeta(existingMeta.id, updates);
+                await refreshList();
+                return { ...existingMeta, ...updates };
+            }
+            // 既存のものを返す（重複保存しない）
+            console.info(`この評価関数は既にインポート済みです:「${existingMeta.displayName}」`);
+            return existingMeta;
+        }
+
+        // ID を生成
+        const id = generateNnueId();
+
+        // メタデータを作成
+        const meta: NnueMeta = {
+            id,
+            displayName: displayName ?? originalFileName.replace(/\.(nnue|bin)$/i, ""),
+            originalFileName,
+            size: data.byteLength,
+            contentHashSha256: hash,
+            source: "user-uploaded",
+            createdAt: Date.now(),
+            verified: false,
+            format,
+            fvScale,
+        };
+
+        // 保存
+        await storage.save(id, data, meta);
+        await refreshList();
+        return meta;
+    };
+
     const importFromFile = async (
         file: File,
         fvScale: number,
@@ -91,87 +188,43 @@ export function useNnueStorage(): UseNnueStorageReturn {
         setLocalError(null);
         try {
             const arrayBuffer = await file.arrayBuffer();
-            const data = new Uint8Array(arrayBuffer);
-
-            let format: NnueMeta["format"] | undefined;
-            if (validateNnueHeader) {
-                try {
-                    const header = data.subarray(0, Math.min(NNUE_HEADER_SIZE, data.byteLength));
-                    const result = await validateNnueHeader(header, data.byteLength);
-                    if (!result.isCompatible) {
-                        throw new NnueError(
-                            "NNUE_INCOMPATIBLE",
-                            "このエンジンは指定された NNUE 形式に対応していません",
-                        );
-                    }
-                    format = result.format;
-                } catch (e) {
-                    const err =
-                        e instanceof NnueError
-                            ? e
-                            : new NnueError(
-                                  "NNUE_INVALID_FORMAT",
-                                  "このファイルは NNUE 形式ではありません",
-                                  e,
-                              );
-                    throw err;
-                }
-            }
-
-            // SHA-256 ハッシュを計算
-            const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            const hash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-
-            // 重複チェック
-            const existing = await storage.listByContentHash(hash);
-            if (existing.length > 0) {
-                const existingMeta = existing[0];
-                // format や fvScale が更新される場合は更新
-                const updates: Partial<NnueMeta> = {};
-                if (format && !existingMeta.format) {
-                    updates.format = format;
-                }
-                if (existingMeta.fvScale !== fvScale) {
-                    updates.fvScale = fvScale;
-                }
-                if (Object.keys(updates).length > 0) {
-                    console.info(
-                        `既存の評価関数「${existingMeta.displayName}」の情報を更新しました`,
-                        updates,
-                    );
-                    await storage.updateMeta(existingMeta.id, updates);
-                    await refreshList();
-                    return { ...existingMeta, ...updates };
-                }
-                // 既存のものを返す（重複保存しない）
-                console.info(
-                    `この評価関数は既にインポート済みです:「${existingMeta.displayName}」`,
-                );
-                return existingMeta;
-            }
-
-            // ID を生成
-            const id = generateNnueId();
-
-            // メタデータを作成
-            const meta: NnueMeta = {
-                id,
-                displayName: displayName ?? file.name.replace(/\.(nnue|bin)$/i, ""),
-                originalFileName: file.name,
-                size: data.byteLength,
-                contentHashSha256: hash,
-                source: "user-uploaded",
-                createdAt: Date.now(),
-                verified: false,
-                format,
+            return await importFromBinary(
+                new Uint8Array(arrayBuffer),
+                file.name,
                 fvScale,
-            };
+                displayName,
+            );
+        } catch (e) {
+            const err =
+                e instanceof NnueError
+                    ? e
+                    : new NnueError("NNUE_STORAGE_FAILED", "NNUE のインポートに失敗しました", e);
+            setLocalError(err);
+            throw err;
+        } finally {
+            setIsOperating(false);
+        }
+    };
 
-            // 保存
-            await storage.save(id, data, meta);
-            await refreshList();
-            return meta;
+    const importFromBlob = async (
+        blob: Blob,
+        originalFileName: string,
+        fvScale: number,
+        displayName?: string,
+    ): Promise<NnueMeta> => {
+        if (!storage) {
+            throw new NnueError("NNUE_STORAGE_FAILED", "NnueProvider が設定されていません", null);
+        }
+        setIsOperating(true);
+        setLocalError(null);
+        try {
+            const arrayBuffer = await blob.arrayBuffer();
+            return await importFromBinary(
+                new Uint8Array(arrayBuffer),
+                originalFileName,
+                fvScale,
+                displayName,
+            );
         } catch (e) {
             const err =
                 e instanceof NnueError
@@ -287,6 +340,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
         error,
         refreshList,
         importFromFile,
+        importFromBlob,
         importFromPath,
         deleteNnue,
         updateDisplayName,

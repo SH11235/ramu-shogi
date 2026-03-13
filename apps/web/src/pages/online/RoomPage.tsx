@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { syncProfileDisplayNameIfNeeded, useAuthSession } from "../../hooks/useAuthSession";
 import { useOnlineAnalysis } from "../../hooks/useOnlineAnalysis";
+import { useRemotePrivateNnueManager } from "../../hooks/useRemotePrivateNnueManager";
 
 const nnueManifestUrl: string = (() => {
     const value = import.meta.env.VITE_NNUE_MANIFEST_URL as string | undefined;
@@ -266,6 +267,7 @@ export default function RoomPage(): ReactElement {
     const { roomId } = useParams({ from: "/online/$roomId" });
     const roomInfo = routeApi.useLoaderData() as RoomInfo;
     const { session } = useAuthSession();
+    const remoteNnueManager = useRemotePrivateNnueManager();
 
     // URLクエリパラメータ（ルーム作成者から渡される名前）
     const urlParams = new URLSearchParams(
@@ -374,6 +376,7 @@ export default function RoomPage(): ReactElement {
                 initialReview={{ sfen: reviewData.sfen, moves: reviewData.moves }}
                 analysisMarkers={reviewData.analysisMarkers}
                 manifestUrl={nnueManifestUrl}
+                remoteNnueManager={remoteNnueManager}
             />
         );
     }
@@ -388,6 +391,7 @@ export default function RoomPage(): ReactElement {
                 roomId={roomId}
                 analysis={aiSupport ? analysis : undefined}
                 manifestUrl={nnueManifestUrl}
+                remoteNnueManager={remoteNnueManager}
                 onStartReview={(data) => {
                     startReview(data);
                 }}

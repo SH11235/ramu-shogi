@@ -19,6 +19,7 @@ import {
 } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import type { RemoteNnueManager } from "./nnue/types";
 import {
     DEFAULT_BYOYOMI_MS,
     DEFAULT_MAX_LOGS,
@@ -104,6 +105,8 @@ interface ShogiMatchProps {
     manifestUrl: string;
     /** Desktop 用: NNUE ファイル選択ダイアログを開いてパスを取得するコールバック */
     onRequestNnueFilePath?: () => Promise<string | null>;
+    /** Web 用: remote private NNUE の取り込み導線 */
+    remoteNnueManager?: RemoteNnueManager;
     /** デフォルトの NNUE プリセットキー（未指定時は DEFAULT_PRESET_KEY） */
     defaultNnuePresetKey?: string;
     /** AIアイコンのURL（GitHub Pages等でbase pathが必要な場合に指定） */
@@ -135,6 +138,7 @@ export function ShogiMatch({
     isDevMode = false,
     manifestUrl,
     onRequestNnueFilePath,
+    remoteNnueManager,
     defaultNnuePresetKey,
     aiIconUrl,
     allowAnalysisDuringMatch,
@@ -1341,6 +1345,7 @@ export function ShogiMatch({
         clearNnueManagerOpenReason,
         manifestUrl,
         onRequestNnueFilePath,
+        remoteNnueManager,
         selectedMoveDetail,
         setSelectedMoveDetailPly,
         isAboutOpen,

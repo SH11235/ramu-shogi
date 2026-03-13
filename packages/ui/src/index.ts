@@ -13,6 +13,7 @@ export {
     LOCAL_STORAGE_SYNC_EVENT,
 } from "./components/shogi-match/hooks/useLocalStorage";
 export { useDevMode } from "./hooks/useDevMode";
+export { useNnueStorage } from "./hooks/useNnueStorage";
 export type { UseRoomConnectionOptions, UseRoomConnectionReturn } from "./hooks/useRoomConnection";
 export { useRoomConnection } from "./hooks/useRoomConnection";
 // ============================================================
@@ -49,6 +50,7 @@ export type { AnalysisMoveResult, OnlineAnalysis } from "./components/online-gam
 
 // online-game-view
 export { OnlineGameView } from "./components/online-game-view";
+export type { RemoteNnueFile, RemoteNnueManager } from "./components/nnue/types";
 // shogi-match
 export { ShogiMatch } from "./components/shogi-match";
 
