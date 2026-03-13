@@ -6,6 +6,7 @@ interface AuthRequiredCardProps {
     description: ReactNode;
     details: string[];
     nextPath: string;
+    loginLabel?: string;
 }
 
 export function AuthRequiredCard({
@@ -13,6 +14,7 @@ export function AuthRequiredCard({
     description,
     details,
     nextPath,
+    loginLabel = "Googleでログイン",
 }: AuthRequiredCardProps): ReactElement {
     const authHref = `/auth?next=${encodeURIComponent(nextPath)}`;
 
@@ -35,7 +37,7 @@ export function AuthRequiredCard({
                         href={authHref}
                         className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90"
                     >
-                        Googleでログイン
+                        {loginLabel}
                     </a>
                     <Link
                         to="/"

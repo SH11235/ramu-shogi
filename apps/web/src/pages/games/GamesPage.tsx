@@ -52,6 +52,7 @@ export default function GamesPage(): ReactElement {
                             "公開設定を切り替えて共有リンクを管理できます。",
                         ]}
                         nextPath="/games"
+                        loginLabel="Googleでログインして棋譜を見る"
                     />
                 )}
 

@@ -652,6 +652,7 @@ export function OnlineGameView({
     const [nnueSelection, setNnueSelection] = useState<NnueSelection>(NONE_NNUE_SELECTION);
     const [nnueManagerOpen, setNnueManagerOpen] = useState(false);
     const { resolveNnue } = useLazyNnueLoader();
+    const isMobile = useIsMobile();
 
     const loadNnueEvent = useEffectEvent((sel: NnueSelection) => {
         if (!analysis?.loadNnue) return;
@@ -674,13 +675,20 @@ export function OnlineGameView({
 
     const prevIsMyTurnRef = useRef(false);
     useEffect(() => {
+        if (!isMobile) return;
         if (!aiSupport || isSpectator || !myAiSettings || gameResult) return;
         if (myAiSettings.mode !== "limited") return;
         if (isMyTurn && !prevIsMyTurnRef.current && (myAnalysisRemaining ?? 1) > 0) {
             dispatchUI({ type: "set_ai_sheet_open", open: true });
         }
         prevIsMyTurnRef.current = isMyTurn;
-    }, [isMyTurn, aiSupport, isSpectator, myAiSettings, myAnalysisRemaining, gameResult]);
+    }, [isMyTurn, aiSupport, isMobile, isSpectator, myAiSettings, myAnalysisRemaining, gameResult]);
+
+    useEffect(() => {
+        if (isMobile) return;
+        if (!aiSheetOpen) return;
+        dispatchUI({ type: "set_ai_sheet_open", open: false });
+    }, [aiSheetOpen, isMobile]);
 
     // ─── KIF ダウンロード ─────────────────────────────────────────────────────
 
@@ -698,8 +706,6 @@ export function OnlineGameView({
     // ─── レンダリング ─────────────────────────────────────────────────────────
 
     const flipBoard = seat === "w";
-    const isMobile = useIsMobile();
-
     // 表示用盤面（巻き戻し中は履歴局面を使用、後手視点は反転）
     const grid = (() => {
         if (!displayPosition) return [];
@@ -1024,7 +1030,7 @@ export function OnlineGameView({
             )}
 
             {/* AI 解析（モバイル） */}
-            {aiSupport && (
+            {isMobile && aiSupport && (
                 <BottomSheet
                     open={aiSheetOpen}
                     onOpenChange={(open) => dispatchUI({ type: "set_ai_sheet_open", open })}

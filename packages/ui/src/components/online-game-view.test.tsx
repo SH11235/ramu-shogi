@@ -2,6 +2,8 @@ import type { RoomClient, SnapshotPayload } from "@shogi/match-client";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const mockUseIsMobile = vi.fn(() => false);
+
 // 重量依存をモック
 vi.mock("@shogi/app-core", async () => {
     const actual = await vi.importActual<typeof import("@shogi/app-core")>("@shogi/app-core");
@@ -27,12 +29,15 @@ vi.mock("./shogi-match/components/HandPiecesDisplay", () => ({
 }));
 vi.mock("./shogi-match/components/BottomSheet", () => ({
     BottomSheet: ({ children, open }: { children: React.ReactNode; open: boolean }) =>
-        open ? <div>{children}</div> : null,
+        open ? <div data-testid="bottom-sheet">{children}</div> : null,
 }));
 vi.mock("./shogi-match/components/KifuNavigationToolbar", () => ({
     KifuNavigationToolbar: () => null,
 }));
 vi.mock("./shogi-match/utils/positionUtils", () => ({ boardToGrid: vi.fn(() => []) }));
+vi.mock("./shogi-match/hooks/useMediaQuery", () => ({
+    useIsMobile: () => mockUseIsMobile(),
+}));
 
 // ─── ヘルパー ─────────────────────────────────────────────────────────────────
 
@@ -88,6 +93,7 @@ const { OnlineGameView } = await import("./online-game-view");
 describe("OnlineGameView", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockUseIsMobile.mockReturnValue(false);
     });
 
     it("観戦者には投了ボタンが表示されない", () => {
@@ -161,5 +167,34 @@ describe("OnlineGameView", () => {
         );
         expect(screen.getByText(/Alice/)).toBeTruthy();
         expect(screen.getByText(/Bob/)).toBeTruthy();
+    });
+
+    it("desktop では AIシート用 BottomSheet を開かない", () => {
+        const client = makeMockClient();
+        render(
+            <OnlineGameView
+                client={client}
+                snapshot={makeSnapshot({
+                    turn: "b",
+                    settings: {
+                        startSfen: "startpos",
+                        timeControl: { type: "byoyomi", initialMs: 600_000, byoyomiMs: 30_000 },
+                        passRights: null,
+                        aiSupport: {
+                            b: { mode: "limited", limitCount: 5 },
+                            w: { mode: "limited", limitCount: 5 },
+                            searchDepth: null,
+                            searchTimeMs: 1000,
+                        },
+                    },
+                })}
+                seat="b"
+                roomId="test-room"
+            />,
+        );
+
+        fireEvent.click(screen.getByLabelText("AI解析"));
+
+        expect(screen.queryByTestId("bottom-sheet")).toBeNull();
     });
 });

@@ -255,6 +255,7 @@ export default function NnueFilesPage(): ReactElement {
                             "保存したオンライン対局の棋譜もアカウントに紐づいて共有されます。",
                         ]}
                         nextPath="/nnue"
+                        loginLabel="GoogleでログインしてNNUEを管理"
                     />
                 ) : (
                     <>
