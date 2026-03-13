@@ -82,7 +82,7 @@ export function PCBoardSection({ candidateNote }: PCBoardSectionProps): ReactEle
     const bottomHandInfo = getHandInfo("bottom");
 
     return (
-        <div className="flex flex-col gap-2 items-center shrink-0 self-center">
+        <div className="flex flex-col gap-2 items-center shrink-0">
             <div ref={boardSectionRef} className="w-fit relative flex flex-col gap-2">
                 <div
                     className={`flex flex-col gap-2 items-center ${isDraggingPiece ? "touch-none" : ""}`}

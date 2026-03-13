@@ -1,9 +1,8 @@
 import { Link } from "@tanstack/react-router";
-import type { ReactElement, ReactNode } from "react";
+import type { ReactElement } from "react";
 
 interface AuthRequiredCardProps {
     title: string;
-    description: ReactNode;
     details: string[];
     nextPath: string;
     loginLabel?: string;
@@ -11,7 +10,6 @@ interface AuthRequiredCardProps {
 
 export function AuthRequiredCard({
     title,
-    description,
     details,
     nextPath,
     loginLabel = "Googleでログイン",
@@ -21,10 +19,7 @@ export function AuthRequiredCard({
     return (
         <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
             <div className="flex flex-col gap-4">
-                <div className="space-y-2">
-                    <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-                    <p className="text-sm text-muted-foreground">{description}</p>
-                </div>
+                <h2 className="text-lg font-semibold text-foreground">{title}</h2>
 
                 <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
                     {details.map((detail) => (

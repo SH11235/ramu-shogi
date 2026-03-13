@@ -94,7 +94,7 @@ export default function AuthPage(): ReactElement {
     );
     const requiresUsernameSetup = searchParams.get("setup") === "username";
     const nextPath = searchParams.get("next");
-    const resolvedNextPath = nextPath?.startsWith("/") ? nextPath : "/auth";
+    const resolvedNextPath = nextPath?.startsWith("/") && nextPath !== "/auth" ? nextPath : "/";
     const [status, setStatus] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -158,13 +158,11 @@ export default function AuthPage(): ReactElement {
                 await router.invalidate();
 
                 if (requiresUsernameSetup) {
-                    const destination = nextPath?.startsWith("/") ? nextPath : null;
+                    const destination =
+                        nextPath?.startsWith("/") && nextPath !== "/auth" ? nextPath : "/";
                     setIsSubmitting(false);
-                    if (destination && destination !== "/auth") {
-                        window.location.assign(destination);
-                        return;
-                    }
-                    window.history.replaceState(null, "", "/auth");
+                    await router.navigate({ to: destination });
+                    return;
                 }
 
                 setStatus("ユーザー名を更新しました。");

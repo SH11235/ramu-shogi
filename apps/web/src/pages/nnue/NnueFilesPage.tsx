@@ -248,7 +248,6 @@ export default function NnueFilesPage(): ReactElement {
                 {loaderData.needsAuth ? (
                     <AuthRequiredCard
                         title="ログインすると private NNUE と保存済み棋譜を端末を跨いで使えます"
-                        description="アップロードした private NNUE はアカウントに保存され、別の端末からでも download や browser import ができます。あわせて、保存したオンライン対局の棋譜も同じアカウントで参照できます。"
                         details={[
                             "private NNUE を upload / download / browser import できます。",
                             "別の端末でログインしても、同じ private NNUE を取り込んで使えます。",

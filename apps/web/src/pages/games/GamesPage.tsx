@@ -45,7 +45,6 @@ export default function GamesPage(): ReactElement {
                 {needsAuth && (
                     <AuthRequiredCard
                         title="ログインすると棋譜を保存して確認できます"
-                        description="オンライン対局の棋譜はアカウントに紐づいて保存され、別の端末でログインしても一覧や詳細を開けます。"
                         details={[
                             "保存済みのオンライン対局を一覧で見返せます。",
                             "別の端末から同じアカウントでログインしても棋譜を参照できます。",
