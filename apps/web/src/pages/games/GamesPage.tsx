@@ -1,6 +1,7 @@
 import type { GameRecordSummary } from "@shogi/api-contract";
 import { getRouteApi, Link } from "@tanstack/react-router";
 import type { ReactElement } from "react";
+import { AuthRequiredCard } from "../../components/AuthRequiredCard";
 import { PageHeader } from "../../components/PageHeader";
 import { formatGameResult } from "./gameResultUtils";
 
@@ -18,18 +19,19 @@ export default function GamesPage(): ReactElement {
     };
     const needsAuth = loaderData.needsAuth;
     const games = loaderData.games;
+    const authHref = "/auth?next=%2Fgames";
 
     return (
         <>
             <PageHeader
                 items={[{ label: "ラム将棋", to: "/" }, { label: "棋譜一覧" }]}
                 right={
-                    <Link
-                        to="/auth"
+                    <a
+                        href={authHref}
                         className="rounded-md border border-border px-3 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
                     >
                         ログイン
-                    </Link>
+                    </a>
                 }
             />
             <main className="mx-auto flex max-w-[960px] flex-col gap-6 px-4 py-8">
@@ -41,11 +43,16 @@ export default function GamesPage(): ReactElement {
                 </div>
 
                 {needsAuth && (
-                    <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                        <p className="text-sm text-muted-foreground">
-                            棋譜一覧の表示にはログインが必要です。
-                        </p>
-                    </div>
+                    <AuthRequiredCard
+                        title="ログインすると棋譜を保存して確認できます"
+                        description="オンライン対局の棋譜はアカウントに紐づいて保存され、別の端末でログインしても一覧や詳細を開けます。"
+                        details={[
+                            "保存済みのオンライン対局を一覧で見返せます。",
+                            "別の端末から同じアカウントでログインしても棋譜を参照できます。",
+                            "公開設定を切り替えて共有リンクを管理できます。",
+                        ]}
+                        nextPath="/games"
+                    />
                 )}
 
                 {!needsAuth && games.length === 0 && (

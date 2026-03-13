@@ -94,6 +94,7 @@ export default function AuthPage(): ReactElement {
     );
     const requiresUsernameSetup = searchParams.get("setup") === "username";
     const nextPath = searchParams.get("next");
+    const resolvedNextPath = nextPath?.startsWith("/") ? nextPath : "/auth";
     const [status, setStatus] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -181,7 +182,7 @@ export default function AuthPage(): ReactElement {
 
     function handleGoogleLogin(): void {
         const query = new URLSearchParams({
-            next: "/auth",
+            next: resolvedNextPath,
             t: String(Date.now()),
         });
         window.location.assign(`/api/auth/google/start?${query.toString()}`);
@@ -228,7 +229,9 @@ export default function AuthPage(): ReactElement {
                                         Google でログイン
                                     </h2>
                                     <p className="text-sm text-muted-foreground">
-                                        Google アカウントでログインすると、このページに戻ります。
+                                        {resolvedNextPath === "/auth"
+                                            ? "Google アカウントでログインすると、このページに戻ります。"
+                                            : "Google アカウントでログインすると、元のページに戻ります。"}
                                     </p>
                                 </div>
                                 <button
@@ -238,9 +241,6 @@ export default function AuthPage(): ReactElement {
                                 >
                                     Google アカウントでログイン
                                 </button>
-                                <p className="text-xs text-muted-foreground">
-                                    メールアドレスとパスワードによる認証は廃止しました。
-                                </p>
                             </div>
                         </section>
                     </>

@@ -3,9 +3,10 @@ import type {
     ListNnueFilesResponse,
     NnueFileSummary,
 } from "@shogi/api-contract";
-import { Link, getRouteApi } from "@tanstack/react-router";
+import { getRouteApi } from "@tanstack/react-router";
 import type { ChangeEvent, ReactElement } from "react";
 import { useState } from "react";
+import { AuthRequiredCard } from "../../components/AuthRequiredCard";
 import { PageHeader } from "../../components/PageHeader";
 import { parseApiError } from "../../hooks/useAuthSession";
 
@@ -136,6 +137,7 @@ export default function NnueFilesPage(): ReactElement {
     const [uploadProgress, setUploadProgress] = useState(0);
     const [status, setStatus] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const authHref = "/auth?next=%2Fnnue";
 
     function handleFileChange(event: ChangeEvent<HTMLInputElement>): void {
         setSelectedFile(event.target.files?.[0] ?? null);
@@ -215,12 +217,12 @@ export default function NnueFilesPage(): ReactElement {
             <PageHeader
                 items={[{ label: "ラム将棋", to: "/" }, { label: "NNUE ファイル" }]}
                 right={
-                    <Link
-                        to="/auth"
+                    <a
+                        href={authHref}
                         className="rounded-md border border-border px-3 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
                     >
                         ログイン
-                    </Link>
+                    </a>
                 }
             />
             <main className="mx-auto flex max-w-[960px] flex-col gap-6 px-4 py-8">
@@ -244,11 +246,16 @@ export default function NnueFilesPage(): ReactElement {
                 )}
 
                 {loaderData.needsAuth ? (
-                    <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                        <p className="text-sm text-muted-foreground">
-                            NNUE 管理にはログインが必要です。
-                        </p>
-                    </div>
+                    <AuthRequiredCard
+                        title="ログインすると private NNUE と保存済み棋譜を端末を跨いで使えます"
+                        description="アップロードした private NNUE はアカウントに保存され、別の端末からでも download や browser import ができます。あわせて、保存したオンライン対局の棋譜も同じアカウントで参照できます。"
+                        details={[
+                            "private NNUE を upload / download / browser import できます。",
+                            "別の端末でログインしても、同じ private NNUE を取り込んで使えます。",
+                            "保存したオンライン対局の棋譜もアカウントに紐づいて共有されます。",
+                        ]}
+                        nextPath="/nnue"
+                    />
                 ) : (
                     <>
                         <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
