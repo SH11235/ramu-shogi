@@ -566,12 +566,6 @@ export function ShogiMatch({
         legalCache.clear();
         passRights.setCanPassLegal(false);
     };
-    const clearLegalCacheEvent = useEffectEvent(clearLegalCache);
-    // ナビゲーションで局面が変わったらキャッシュをクリア
-    // biome-ignore lint/correctness/useExhaustiveDependencies: movesKey はキャッシュクリアのトリガー用で意図的
-    useEffect(() => {
-        clearLegalCacheEvent();
-    }, [movesKey]);
     // パス権設定変更時にキャッシュもクリアするラッパー
     // （合法手にpassが含まれるかどうかが変わるため）
     const handlePassRightsSettingsChange = (newSettings: PassRightsSettings) => {
@@ -765,6 +759,7 @@ export function ShogiMatch({
         analyzingState,
         handleEvalUpdate,
         handleAnalyzePly,
+        handleAnalyzeHintPly,
         handleAnalyzeNode,
         handleStartBatchAnalysis,
         handleStartTreeBatchAnalysis,
@@ -880,12 +875,12 @@ export function ShogiMatch({
                 const resolver = fetchLegalMoves
                     ? () => fetchLegalMoves(startSfen, moves, passRightsOption)
                     : () => getPositionService().getLegalMoves(startSfen, moves, passRightsOption);
-                const ply = moves.length;
-                let legal = await legalCache.getOrResolve(ply, resolver);
+                const movesKey = moves.join(" ");
+                let legal = await legalCache.getOrResolve(movesKey, resolver);
                 if (!legal || !legal.has("pass")) {
                     // パス権ありでも合法手に含まれない場合はキャッシュをクリアして再取得（パス権オプション漏れ対策）
                     clearLegalCache();
-                    legal = await legalCache.getOrResolve(ply, resolver);
+                    legal = await legalCache.getOrResolve(movesKey, resolver);
                     if (!legal || !legal.has("pass")) {
                         setMessage({ text: "王手されているためパスできません", type: "error" });
                         return;
@@ -1147,39 +1142,40 @@ export function ShogiMatch({
     };
 
     // 指し手実行管理フック
-    const { handleSquareSelect, handlePromotionChoice, handleHandSelect } = useMoveExecution({
-        position,
-        navigation,
-        isEditMode,
-        isReviewMode,
-        isPaused,
-        positionReady,
-        fetchLegalMoves,
-        startSfen,
-        moves,
-        legalCache,
-        clearLegalCache,
-        setCanPassLegal: passRights.setCanPassLegal,
-        getPassRightsOption: passRights.getPassRightsOption,
-        updateClocksForNextTurn,
-        turnStartTimeRef,
-        isEngineTurn,
-        selection,
-        setSelection,
-        promotionSelection,
-        setPromotionSelection,
-        setLastMove,
-        setMessage,
-        setLastAddedBranchInfo,
-        editFromSquare,
-        setEditFromSquare,
-        editTool,
-        editPieceType,
-        editOwner,
-        editPromoted,
-        placePieceAt,
-        moveProcessingRef,
-    });
+    const { handleSquareSelect, handlePromotionChoice, handleHandSelect, applyUsiMove } =
+        useMoveExecution({
+            position,
+            navigation,
+            isEditMode,
+            isReviewMode,
+            isPaused,
+            positionReady,
+            fetchLegalMoves,
+            startSfen,
+            moves,
+            legalCache,
+            clearLegalCache,
+            setCanPassLegal: passRights.setCanPassLegal,
+            getPassRightsOption: passRights.getPassRightsOption,
+            updateClocksForNextTurn,
+            turnStartTimeRef,
+            isEngineTurn,
+            selection,
+            setSelection,
+            promotionSelection,
+            setPromotionSelection,
+            setLastMove,
+            setMessage,
+            setLastAddedBranchInfo,
+            editFromSquare,
+            setEditFromSquare,
+            editTool,
+            editPieceType,
+            editOwner,
+            editPromoted,
+            placePieceAt,
+            moveProcessingRef,
+        });
 
     // 棋譜インポート・エクスポート管理フック
     const { handleCopyKif, importSfen, importKif } = useKifuImportExport({
@@ -1364,6 +1360,7 @@ export function ShogiMatch({
         analyzingState,
         batchAnalysis,
         handleAnalyzePly,
+        handleAnalyzeHintPly,
         handleStartBatchAnalysis,
         handleCancelBatchAnalysis,
         handleAnalyzeNode,
@@ -1421,6 +1418,7 @@ export function ShogiMatch({
         handleSquareSelect,
         handlePromotionChoice,
         handleHandSelect,
+        applyUsiMove,
         handleHandPiecePointerDown,
         handlePiecePointerDown,
         handlePieceTogglePromote,

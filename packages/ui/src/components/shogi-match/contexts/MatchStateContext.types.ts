@@ -83,6 +83,7 @@ export interface MatchStateContextValue {
     handleSquareSelect: (sq: string, shiftKey?: boolean) => Promise<void>;
     handlePromotionChoice: (promote: boolean) => void;
     handleHandSelect: (piece: PieceType) => void;
+    applyUsiMove: (usiMove: string) => Promise<boolean>;
     handleHandPiecePointerDown: (
         owner: Player,
         pieceType: PieceType,

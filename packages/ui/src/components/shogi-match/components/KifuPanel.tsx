@@ -12,6 +12,7 @@ import type {
     PresetConfig,
 } from "@shogi/app-core";
 import { detectParallelism } from "@shogi/app-core";
+import { ANALYSIS_TIME_OPTIONS, PARALLEL_WORKER_OPTIONS } from "../utils/threadOptions";
 import type { ReactElement } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "../../popover";
@@ -821,27 +822,6 @@ function getEvalClassName(evalCp?: number, evalMate?: number): string {
     }
     return `${baseClass} text-muted-foreground`;
 }
-
-/**
- * 並列ワーカー数の選択肢
- */
-const PARALLEL_WORKER_OPTIONS: { value: number; label: string }[] = [
-    { value: 0, label: "自動" },
-    { value: 1, label: "1" },
-    { value: 2, label: "2" },
-    { value: 3, label: "3" },
-    { value: 4, label: "4" },
-];
-
-/**
- * 解析時間の選択肢
- */
-const ANALYSIS_TIME_OPTIONS: { value: number; label: string }[] = [
-    { value: 500, label: "0.5秒" },
-    { value: 1000, label: "1秒" },
-    { value: 2000, label: "2秒" },
-    { value: 3000, label: "3秒" },
-];
 
 /** 解析対象の選択肢 */
 type AnalysisTarget = "mainOnly" | "includeBranches";

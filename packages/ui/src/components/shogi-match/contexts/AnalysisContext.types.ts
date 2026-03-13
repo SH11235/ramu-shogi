@@ -47,6 +47,7 @@ export interface AnalysisContextValue {
 
     // 分析操作
     handleAnalyzePly: (ply: number) => void;
+    handleAnalyzeHintPly: (ply: number) => void;
     handleStartBatchAnalysis: () => void;
     handleCancelBatchAnalysis: () => void;
     handleAnalyzeNode: (nodeId: string) => void;

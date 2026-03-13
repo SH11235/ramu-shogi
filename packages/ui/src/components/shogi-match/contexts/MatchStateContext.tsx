@@ -65,6 +65,7 @@ interface MatchStateProviderProps {
     handleSquareSelect: (sq: string, shiftKey?: boolean) => Promise<void>;
     handlePromotionChoice: (promote: boolean) => void;
     handleHandSelect: (piece: PieceType) => void;
+    applyUsiMove: (usiMove: string) => Promise<boolean>;
     handleHandPiecePointerDown: (
         owner: Player,
         pieceType: PieceType,
@@ -133,6 +134,7 @@ export function MatchStateProvider({
     handleSquareSelect,
     handlePromotionChoice,
     handleHandSelect,
+    applyUsiMove,
     handleHandPiecePointerDown,
     handlePiecePointerDown,
     handlePieceTogglePromote,
@@ -180,6 +182,7 @@ export function MatchStateProvider({
         handleSquareSelect,
         handlePromotionChoice,
         handleHandSelect,
+        applyUsiMove,
         handleHandPiecePointerDown,
         handlePiecePointerDown,
         handlePieceTogglePromote,

@@ -1,32 +1,16 @@
 import type { NnueSelection } from "@shogi/app-core";
-import { detectParallelism, NONE_NNUE_SELECTION } from "@shogi/app-core";
+import { NONE_NNUE_SELECTION } from "@shogi/app-core";
 import type { SkillLevelSettings } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 import { Input } from "../../input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../select";
 import { Switch } from "../../switch";
-import { useAnalysis } from "../contexts/AnalysisContext";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { buildThreadOptions } from "../utils/threadOptions";
 import { PlayerIcon } from "./PlayerIcon";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 
 type SideKey = "sente" | "gote";
-
-const PARALLEL_WORKER_OPTIONS = [
-    { value: 0, label: "自動" },
-    { value: 1, label: "1" },
-    { value: 2, label: "2" },
-    { value: 3, label: "3" },
-    { value: 4, label: "4" },
-];
-
-const ANALYSIS_TIME_OPTIONS = [
-    { value: 500, label: "0.5秒" },
-    { value: 1000, label: "1秒" },
-    { value: 2000, label: "2秒" },
-    { value: 3000, label: "3秒" },
-];
 
 const EVAL_FILE_MANAGER_LABEL = "評価関数ファイル管理";
 const SETTINGS_LOCKED_MESSAGE = "対局中は変更不可";
@@ -43,13 +27,6 @@ const inputClassName = "border border-wafuu-border bg-wafuu-washi text-sm text-x
  * 分析設定は AnalysisContext から取得
  */
 export function LeftSidebar(): ReactElement {
-    // 分析設定は Context から取得
-    const {
-        analysisSettings,
-        onAnalysisSettingsChange,
-        analysisNnueSelection,
-        onAnalysisNnueSelectionChange,
-    } = useAnalysis();
     // 対局設定は Context から取得
     const {
         sides,
@@ -74,7 +51,6 @@ export function LeftSidebar(): ReactElement {
         onOpenPassRightsSettings,
     } = useMatchSettings();
 
-    const parallelismConfig = detectParallelism();
     const threadOptions = buildThreadOptions();
 
     // カスタム NNUE（プリセット以外）のフィルタリング
@@ -399,122 +375,6 @@ export function LeftSidebar(): ReactElement {
                 <span>📁</span>
                 <span>{EVAL_FILE_MANAGER_LABEL}...</span>
             </button>
-
-            {/* 分析設定 */}
-            <div className={sectionClassName}>
-                <div className={sectionTitleClassName}>分析設定</div>
-
-                {/* 分析用 NNUE 選択 */}
-                <div className={labelClassName}>
-                    <span>
-                        将棋エンジンの評価関数（
-                        <button
-                            type="button"
-                            onClick={onOpenNnueManager}
-                            className="text-wafuu-ai hover:underline"
-                        >
-                            {EVAL_FILE_MANAGER_LABEL}
-                        </button>
-                        から追加）
-                    </span>
-                    <Select
-                        value={
-                            analysisNnueSelection.presetKey
-                                ? `preset:${analysisNnueSelection.presetKey}`
-                                : analysisNnueSelection.nnueId
-                                  ? `nnue:${analysisNnueSelection.nnueId}`
-                                  : "material"
-                        }
-                        onValueChange={(value) => {
-                            if (value === "material") {
-                                onAnalysisNnueSelectionChange(NONE_NNUE_SELECTION);
-                            } else if (value.startsWith("preset:")) {
-                                const presetKey = value.slice("preset:".length);
-                                onAnalysisNnueSelectionChange({ presetKey, nnueId: null });
-                            } else if (value.startsWith("nnue:")) {
-                                const nnueId = value.slice("nnue:".length);
-                                onAnalysisNnueSelectionChange({ presetKey: null, nnueId });
-                            }
-                        }}
-                    >
-                        <SelectTrigger>
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {/* プリセット NNUE */}
-                            {presets.map((preset) => (
-                                <SelectItem
-                                    key={preset.config.presetKey}
-                                    value={`preset:${preset.config.presetKey}`}
-                                >
-                                    {preset.config.displayName}
-                                </SelectItem>
-                            ))}
-                            {/* カスタム NNUE */}
-                            {customNnueList.map((nnue) => (
-                                <SelectItem key={nnue.id} value={`nnue:${nnue.id}`}>
-                                    {nnue.displayName}
-                                </SelectItem>
-                            ))}
-                            <SelectItem value="material">簡易AI（駒得）</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-
-                {/* 並列数 */}
-                <div className="flex flex-col gap-1">
-                    <span className="text-xs text-muted-foreground">並列数</span>
-                    <div className="flex gap-1 flex-wrap">
-                        {PARALLEL_WORKER_OPTIONS.map((opt) => (
-                            <button
-                                key={opt.value}
-                                type="button"
-                                onClick={() =>
-                                    onAnalysisSettingsChange({
-                                        ...analysisSettings,
-                                        parallelWorkers: opt.value,
-                                    })
-                                }
-                                className={`px-2 py-1 rounded text-xs transition-colors ${
-                                    analysisSettings.parallelWorkers === opt.value
-                                        ? "bg-wafuu-kincha text-white"
-                                        : "bg-wafuu-washi text-wafuu-sumi hover:bg-wafuu-border"
-                                }`}
-                            >
-                                {opt.value === 0
-                                    ? `自動(${parallelismConfig.recommendedWorkers})`
-                                    : opt.label}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                {/* 解析時間 */}
-                <div className="flex flex-col gap-1">
-                    <span className="text-xs text-muted-foreground">解析時間</span>
-                    <div className="flex gap-1 flex-wrap">
-                        {ANALYSIS_TIME_OPTIONS.map((opt) => (
-                            <button
-                                key={opt.value}
-                                type="button"
-                                onClick={() =>
-                                    onAnalysisSettingsChange({
-                                        ...analysisSettings,
-                                        batchAnalysisTimeMs: opt.value,
-                                    })
-                                }
-                                className={`px-2 py-1 rounded text-xs transition-colors ${
-                                    analysisSettings.batchAnalysisTimeMs === opt.value
-                                        ? "bg-wafuu-kincha text-white"
-                                        : "bg-wafuu-washi text-wafuu-sumi hover:bg-wafuu-border"
-                                }`}
-                            >
-                                {opt.label}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            </div>
 
             {/* 表示設定 */}
             <button

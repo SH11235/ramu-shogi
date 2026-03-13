@@ -27,6 +27,7 @@ import { MobileNavigation } from "../components/MobileNavigation";
 import { MobileSettingsActions } from "../components/MobileSettingsActions";
 import { MobileSettingsSheet } from "../components/MobileSettingsSheet";
 import { MoveDetailBottomSheet } from "../components/MoveDetailBottomSheet";
+import { CurrentPositionAiHintPanel } from "../components/CurrentPositionAiHintPanel";
 import { PassButton } from "../components/PassButton";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
@@ -183,6 +184,7 @@ export function MobileLayout({
     };
     // 設定BottomSheetの状態
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isAiHintOpen, setIsAiHintOpen] = useState(false);
 
     // 評価値グラフのオーバーレイ状態（表示フラグ + ドラッグオフセット）
     const [graphOverlay, setGraphOverlay] = useState({ isOpen: false, offset: { x: 0, y: 0 } });
@@ -417,6 +419,13 @@ export function MobileLayout({
                                     compact
                                 />
                             )}
+                            <button
+                                type="button"
+                                onClick={() => setIsAiHintOpen(true)}
+                                className="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted active:scale-95 transition-all"
+                            >
+                                🤖 ヒント
+                            </button>
                         </div>
                     </div>
                 ) : gameMode === "paused" ? (
@@ -439,6 +448,13 @@ export function MobileLayout({
                                 onEnterEditMode={enterEditModeFromPaused}
                                 onResign={handleResign}
                             />
+                            <button
+                                type="button"
+                                onClick={() => setIsAiHintOpen(true)}
+                                className="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted active:scale-95 transition-all"
+                            >
+                                🤖 ヒント
+                            </button>
                         </div>
                     </div>
                 ) : isReviewMode && totalPly === 0 ? (
@@ -490,6 +506,13 @@ export function MobileLayout({
                                 }`}
                             >
                                 📊 グラフ
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setIsAiHintOpen(true)}
+                                className="px-2 py-0.5 text-xs rounded bg-muted hover:bg-muted/80 active:scale-95 transition-all"
+                            >
+                                🤖 ヒント
                             </button>
                         </div>
 
@@ -595,6 +618,15 @@ export function MobileLayout({
                     onImportKif={onImportKif}
                     positionReady={positionReady}
                 />
+            </BottomSheet>
+
+            <BottomSheet
+                open={isAiHintOpen}
+                onOpenChange={setIsAiHintOpen}
+                title="AI ヒント"
+                height="auto"
+            >
+                <CurrentPositionAiHintPanel title="AI ヒント" />
             </BottomSheet>
 
             {/* 手詳細BottomSheet（検討モード用） */}

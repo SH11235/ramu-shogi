@@ -137,7 +137,7 @@ export default function NnueFilesPage(): ReactElement {
     const [uploadProgress, setUploadProgress] = useState(0);
     const [status, setStatus] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const authHref = "/auth?next=%2Fnnue";
+    const loginHref = "/auth?next=%2Fnnue";
 
     function handleFileChange(event: ChangeEvent<HTMLInputElement>): void {
         setSelectedFile(event.target.files?.[0] ?? null);
@@ -218,7 +218,7 @@ export default function NnueFilesPage(): ReactElement {
                 items={[{ label: "ラム将棋", to: "/" }, { label: "NNUE ファイル" }]}
                 right={
                     <a
-                        href={authHref}
+                        href={loginHref}
                         className="rounded-md border border-border px-3 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
                     >
                         ログイン

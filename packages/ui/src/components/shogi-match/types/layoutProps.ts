@@ -142,6 +142,7 @@ export interface AnalysisProps {
     analyzingState: import("../types").AnalyzingState;
     batchAnalysis: import("../contexts/types").BatchAnalysisState | null;
     handleAnalyzePly: (ply: number) => void;
+    handleAnalyzeHintPly: (ply: number) => void;
     handleStartBatchAnalysis: () => void;
     handleCancelBatchAnalysis: () => void;
     handleAnalyzeNode: (nodeId: string) => void;
@@ -198,6 +199,7 @@ export interface BoardHandlersProps {
     handleSquareSelect: (sq: string, shiftKey?: boolean) => Promise<void>;
     handlePromotionChoice: (promote: boolean) => void;
     handleHandSelect: (piece: import("@shogi/app-core").PieceType) => void;
+    applyUsiMove: (usiMove: string) => Promise<boolean>;
     handleHandPiecePointerDown: (
         owner: import("@shogi/app-core").Player,
         pieceType: import("@shogi/app-core").PieceType,

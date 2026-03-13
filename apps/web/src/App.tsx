@@ -80,6 +80,7 @@ function App() {
                     isDevMode={isDevMode}
                     manifestUrl={nnueManifestUrl}
                     remoteNnueManager={remoteNnueManager}
+                    allowAnalysisDuringMatch={true}
                     defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
                     aiIconUrl={`${import.meta.env.BASE_URL}ramu.jpeg`}
                     onPositionSnapshot={(snapshot) => setPanelPosition(snapshot)}

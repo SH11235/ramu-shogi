@@ -67,6 +67,7 @@ function App() {
                     isDevMode={true}
                     manifestUrl={nnueManifestUrl}
                     onRequestNnueFilePath={requestNnueFilePath}
+                    allowAnalysisDuringMatch={true}
                     defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
                     onPositionSnapshot={(snapshot) => setPanelPosition(snapshot)}
                 />

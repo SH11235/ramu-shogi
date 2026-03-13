@@ -101,6 +101,8 @@ interface UseMoveExecutionReturn {
     handlePromotionChoice: (promote: boolean) => void;
     /** 持ち駒選択ハンドラ */
     handleHandSelect: (piece: PieceType) => void;
+    /** USI形式の指し手を現在局面に適用する */
+    applyUsiMove: (usiMove: string) => Promise<boolean>;
 }
 
 /**
@@ -148,6 +150,7 @@ export function useMoveExecution({
     const getLegalSet = async (): Promise<Set<string> | null> => {
         if (!positionReady) return null;
         const ply = moves.length;
+        const movesKey = moves.join(" ");
         const passRightsOption = getPassRightsOption();
         const resolver = async () => {
             if (fetchLegalMoves) {
@@ -155,7 +158,7 @@ export function useMoveExecution({
             }
             return getPositionService().getLegalMoves(startSfen, moves, passRightsOption);
         };
-        const result = await legalCache.getOrResolve(ply, resolver);
+        const result = await legalCache.getOrResolve(movesKey, resolver);
         if (moves.length === ply) {
             setCanPassLegal(result.has("pass"));
         }
@@ -570,9 +573,49 @@ export function useMoveExecution({
         setMessage(null);
     };
 
+    const applyUsiMove = async (usiMove: string): Promise<boolean> => {
+        setMessage(null);
+
+        if (!positionReady || isEditMode) {
+            return false;
+        }
+
+        if (moveProcessingRef.current) {
+            return false;
+        }
+
+        if (!isReviewMode) {
+            if (isPaused) {
+                return false;
+            }
+            if (isEngineTurn(position.turn)) {
+                return false;
+            }
+        }
+
+        const result = applyMoveWithState(position, usiMove, { validateTurn: !isReviewMode });
+        if (!result.ok) {
+            setMessage({
+                text: result.error ?? "指し手を適用できませんでした",
+                type: "error",
+            });
+            return false;
+        }
+
+        if (isReviewMode) {
+            applyMoveForReview(result.next, usiMove, result.lastMove);
+        } else {
+            applyMoveCommon(result.next, usiMove, result.lastMove);
+        }
+
+        setPromotionSelection(null);
+        return true;
+    };
+
     return {
         handleSquareSelect,
         handlePromotionChoice,
         handleHandSelect,
+        applyUsiMove,
     };
 }

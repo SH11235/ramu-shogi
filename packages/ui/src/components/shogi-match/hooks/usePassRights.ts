@@ -104,7 +104,7 @@ export function usePassRights(deps: {
     const hasPassRights = !!(position?.passRights && position.passRights[position.turn] > 0);
 
     // パス合法可否が計算済みか
-    const passLegalKnown = legalCache.isCached(moves.length);
+    const passLegalKnown = legalCache.isCached(moves.join(" "));
 
     // パス可能かどうかの判定（合法手キャッシュに"pass"が含まれるかでのみ判定）
     // 判定前は楽観的に true とし、実際の適用時に再チェックする

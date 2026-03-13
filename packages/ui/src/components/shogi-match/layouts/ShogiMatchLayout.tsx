@@ -150,6 +150,7 @@ export function ShogiMatchLayout({
         analyzingState,
         batchAnalysis,
         handleAnalyzePly,
+        handleAnalyzeHintPly,
         handleStartBatchAnalysis,
         handleCancelBatchAnalysis,
         handleAnalyzeNode,
@@ -189,6 +190,7 @@ export function ShogiMatchLayout({
         handleSquareSelect,
         handlePromotionChoice,
         handleHandSelect,
+        applyUsiMove,
         handleHandPiecePointerDown,
         handlePiecePointerDown,
         handlePieceTogglePromote,
@@ -367,6 +369,7 @@ export function ShogiMatchLayout({
                         handleSquareSelect={handleSquareSelect}
                         handlePromotionChoice={handlePromotionChoice}
                         handleHandSelect={handleHandSelect}
+                        applyUsiMove={applyUsiMove}
                         handleHandPiecePointerDown={handleHandPiecePointerDown}
                         handlePiecePointerDown={handlePiecePointerDown}
                         handlePieceTogglePromote={handlePieceTogglePromote}
@@ -461,6 +464,7 @@ export function ShogiMatchLayout({
                         analyzingState={analyzingState}
                         batchAnalysis={batchAnalysis}
                         handleAnalyzePly={handleAnalyzePly}
+                        handleAnalyzeHintPly={handleAnalyzeHintPly}
                         handleStartBatchAnalysis={handleStartBatchAnalysis}
                         handleCancelBatchAnalysis={handleCancelBatchAnalysis}
                         handleAnalyzeNode={handleAnalyzeNode}
@@ -491,6 +495,7 @@ export function ShogiMatchLayout({
                             handleSquareSelect={handleSquareSelect}
                             handlePromotionChoice={handlePromotionChoice}
                             handleHandSelect={handleHandSelect}
+                            applyUsiMove={applyUsiMove}
                             handleHandPiecePointerDown={handleHandPiecePointerDown}
                             handlePiecePointerDown={handlePiecePointerDown}
                             handlePieceTogglePromote={handlePieceTogglePromote}

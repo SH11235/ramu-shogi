@@ -22,9 +22,10 @@ import type {
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
 import { useLazyNnueLoader } from "../hooks/useLazyNnueLoader";
-import { useNnueContextOptional } from "../providers/NnueContext";
 import { NnueManagerDialog } from "./nnue/NnueManagerDialog";
 import type { RemoteNnueManager } from "./nnue/types";
+import { type AiHintMove, AiHintPanel } from "./shogi-match/components/AiHintPanel";
+import { TabHeader } from "./shogi-match/components/TabHeader";
 import { BottomSheet } from "./shogi-match/components/BottomSheet";
 import { KifuNavigationToolbar } from "./shogi-match/components/KifuNavigationToolbar";
 import { type HandInfo, MobileBoardSection } from "./shogi-match/components/MobileBoardSection";
@@ -337,6 +338,9 @@ export function OnlineGameView({
     const [uiState, dispatchUI] = useReducer(uiReducer, INITIAL_UI_STATE);
     const { selectedSquare, selectedHand, legalMoves, promoteDialog, navIndex, aiSheetOpen } =
         uiState;
+
+    // 右パネルのアクティブタブ
+    const [rightTab, setRightTab] = useState<"kifu" | "ai">(aiSupport ? "ai" : "kifu");
 
     // analysis prop から分解（undefined 時のデフォルト値）
     const isAnalyzing = analysis?.isAnalyzing ?? false;
@@ -1004,8 +1008,70 @@ export function OnlineGameView({
                 )}
             </div>
 
-            {/* サイドバー: AI 解析（PC のみ表示） */}
-            <div className="hidden md:flex w-64 flex-col gap-3">{aiPanelContent}</div>
+            {/* サイドバー: 棋譜 / AI 解析 タブ（PC のみ表示） */}
+            <div className="hidden md:flex w-64 flex-col">
+                <TabHeader
+                    tabs={[
+                        { id: "kifu" as const, label: "棋譜" },
+                        ...(aiSupport ? [{ id: "ai" as const, label: "AI解析" }] : []),
+                    ]}
+                    activeTab={rightTab}
+                    onChange={setRightTab}
+                />
+
+                {/* 棋譜タブ */}
+                {rightTab === "kifu" && (
+                    <div className="flex flex-col gap-1 overflow-y-auto max-h-[calc(100dvh-160px)]">
+                        {usiMoveLog.length === 0 ? (
+                            <p className="text-sm text-muted-foreground text-center py-4">
+                                まだ指し手がありません
+                            </p>
+                        ) : (
+                            usiMoveLog
+                                .map((entry, i) => ({
+                                    ply: i + 1,
+                                    usi: entry.usi,
+                                    pos: positionHistory[i],
+                                }))
+                                .map((item) => {
+                                    const moveText = item.pos
+                                        ? formatMoveSimple(item.usi, item.pos.turn, item.pos.board)
+                                        : item.usi;
+                                    const isCurrentPly = currentPly === item.ply;
+                                    return (
+                                        <button
+                                            key={item.ply}
+                                            type="button"
+                                            disabled={!gameResult}
+                                            onClick={() =>
+                                                dispatchUI({
+                                                    type: "set_nav_index",
+                                                    index:
+                                                        item.ply >= positionHistory.length - 1
+                                                            ? null
+                                                            : item.ply,
+                                                })
+                                            }
+                                            className={`flex gap-2 text-xs px-2 py-1 rounded text-left transition-colors ${
+                                                isCurrentPly
+                                                    ? "bg-wafuu-kincha/20 text-wafuu-kincha font-medium"
+                                                    : "hover:bg-muted disabled:cursor-default"
+                                            }`}
+                                        >
+                                            <span className="text-muted-foreground w-6 shrink-0 tabular-nums">
+                                                {item.ply}.
+                                            </span>
+                                            <span>{moveText}</span>
+                                        </button>
+                                    );
+                                })
+                        )}
+                    </div>
+                )}
+
+                {/* AI解析タブ */}
+                {rightTab === "ai" && aiPanelContent}
+            </div>
 
             {/* 対局結果ダイアログ */}
             {gameResult && (
@@ -1258,135 +1324,41 @@ function OnlineAiPanel({
     const isLimited = myMode === "limited";
     const hasNoRemaining = isLimited && myAnalysisRemaining !== null && myAnalysisRemaining <= 0;
 
-    // 形勢バー（0〜100%、50% = 互角、cp +2000 ≈ 100%）
     const evalCp = topMoves[0]?.cp ?? null;
     const evalPercent =
         evalCp !== null ? Math.min(100, Math.max(0, 50 + (evalCp / 2000) * 50)) : 50;
     const canClickAnalyze = canAnalyze && !isAnalyzing && !hasNoRemaining && seat !== "s";
-
-    // NNUE リスト
-    const nnueCtx = useNnueContextOptional();
-    const nnueList = nnueCtx?.nnueList ?? [];
+    const moves: AiHintMove[] = topMoves.slice(0, 3).map((mv) => ({
+        usi: mv.usi,
+        displayText: position
+            ? formatMoveSimple(mv.usi, turn === "b" ? "sente" : "gote", position.board)
+            : mv.usi,
+        scoreText: `${mv.cp > 0 ? "+" : ""}${mv.cp}`,
+        scoreTone: mv.cp > 0 ? "sente" : mv.cp < 0 ? "gote" : "neutral",
+    }));
 
     return (
-        <div className="flex flex-col rounded-lg border border-border bg-card overflow-hidden">
-            <div className="px-3 py-2 border-b border-border flex items-center justify-between">
-                <span className="text-sm font-semibold text-foreground">AI 解析</span>
-                {isLimited && (
-                    <span className="text-xs text-muted-foreground">
-                        残り {myAnalysisRemaining ?? 0} 回
-                    </span>
-                )}
-            </div>
-
-            <div className="px-3 py-2 flex flex-col gap-2">
-                {/* NNUE 選択 */}
-                <div className="flex items-center gap-1.5">
-                    <select
-                        value={nnueSelection.nnueId ?? ""}
-                        onChange={(e) =>
-                            onNnueSelectionChange({
-                                presetKey: null,
-                                nnueId: e.target.value || null,
-                            })
-                        }
-                        className="flex-1 rounded-md border border-input bg-transparent px-2 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    >
-                        <option value="">駒得（NNUE なし）</option>
-                        {nnueList.map((n) => (
-                            <option key={n.id} value={n.id}>
-                                {n.displayName}
-                            </option>
-                        ))}
-                    </select>
-                    <button
-                        type="button"
-                        onClick={onOpenNnueManager}
-                        className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
-                    >
-                        管理
-                    </button>
-                </div>
-
-                {/* 形勢バー */}
-                {topMoves.length > 0 && (
-                    <div className="flex flex-col gap-1">
-                        <div className="relative h-3 w-full rounded-full overflow-hidden bg-wafuu-ai">
-                            <div
-                                className="absolute inset-y-0 left-0 bg-wafuu-shu transition-all duration-300"
-                                style={{ width: `${evalPercent}%` }}
-                            />
-                        </div>
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                            <span className="text-wafuu-shu">
-                                ▲ {evalCp !== null && evalCp > 0 ? `+${evalCp}` : ""}
-                            </span>
-                            <span className="text-wafuu-ai">
-                                △ {evalCp !== null && evalCp < 0 ? `+${Math.abs(evalCp)}` : ""}
-                            </span>
-                        </div>
-                    </div>
-                )}
-
-                {/* 候補手（上位 3 手） */}
-                {topMoves.length > 0 && (
-                    <div className="flex flex-col gap-0.5">
-                        {topMoves.slice(0, 3).map((mv, i) => {
-                            const displayText = position
-                                ? formatMoveSimple(
-                                      mv.usi,
-                                      turn === "b" ? "sente" : "gote",
-                                      position.board,
-                                  )
-                                : mv.usi;
-                            return (
-                                <div key={mv.usi} className="flex items-center gap-2 text-xs">
-                                    <span className="text-muted-foreground w-4">{i + 1}.</span>
-                                    <span className="flex-1 text-foreground">{displayText}</span>
-                                    <span className="text-muted-foreground">
-                                        {mv.cp > 0 ? "+" : ""}
-                                        {mv.cp}
-                                    </span>
-                                    {i === 0 && onApplyMove && (
-                                        <button
-                                            type="button"
-                                            onClick={() => onApplyMove(mv.usi)}
-                                            className="rounded px-1.5 py-0.5 text-xs bg-wafuu-shu text-wafuu-shu-fg hover:bg-wafuu-shu-light"
-                                        >
-                                            指す
-                                        </button>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-
-                {isAnalyzing && topMoves.length === 0 && (
-                    <p className="text-xs text-muted-foreground">解析中...</p>
-                )}
-
-                {/* 解析前ヒント（未解析かつ待機中） */}
-                {!isAnalyzing && topMoves.length === 0 && (
-                    <p className="text-xs text-muted-foreground text-center py-1 leading-relaxed">
-                        {isLimited
-                            ? "「解析する」を押すと現在の局面をAIが分析します"
-                            : "自分の手番になると自動で解析します"}
-                    </p>
-                )}
-
-                {/* 制限モードのみ手動ボタン表示 */}
-                {isLimited && seat !== "s" && (
-                    <button
-                        type="button"
-                        onClick={onAnalyze}
-                        disabled={!canClickAnalyze}
-                        className="w-full rounded-md bg-primary py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
-                    >
-                        {hasNoRemaining ? "上限到達" : isAnalyzing ? "解析中..." : "解析する"}
-                    </button>
-                )}
-            </div>
-        </div>
+        <AiHintPanel
+            title="AI 解析"
+            remainingLabel={isLimited ? `残り ${myAnalysisRemaining ?? 0} 回` : null}
+            isAnalyzing={isAnalyzing}
+            moves={moves}
+            canAnalyze={canClickAnalyze}
+            analyzeHint={
+                isLimited
+                    ? "「解析する」を押すと現在の局面をAIが分析します"
+                    : "自分の手番になると自動で解析します"
+            }
+            summary={{
+                percent: evalPercent,
+                senteLabel: evalCp !== null && evalCp > 0 ? `▲ +${evalCp}` : "▲",
+                goteLabel: evalCp !== null && evalCp < 0 ? `△ +${Math.abs(evalCp)}` : "△",
+            }}
+            nnueSelection={nnueSelection}
+            onNnueSelectionChange={onNnueSelectionChange}
+            onOpenNnueManager={onOpenNnueManager}
+            onAnalyze={isLimited && seat !== "s" ? onAnalyze : undefined}
+            onApplyMove={onApplyMove}
+        />
     );
 }

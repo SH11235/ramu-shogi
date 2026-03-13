@@ -19,7 +19,7 @@ export default function GamesPage(): ReactElement {
     };
     const needsAuth = loaderData.needsAuth;
     const games = loaderData.games;
-    const authHref = "/auth?next=%2Fgames";
+    const loginHref = "/auth?next=%2Fgames";
 
     return (
         <>
@@ -27,7 +27,7 @@ export default function GamesPage(): ReactElement {
                 items={[{ label: "ラム将棋", to: "/" }, { label: "棋譜一覧" }]}
                 right={
                     <a
-                        href={authHref}
+                        href={loginHref}
                         className="rounded-md border border-border px-3 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
                     >
                         ログイン
