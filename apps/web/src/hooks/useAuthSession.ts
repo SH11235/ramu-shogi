@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useState } from "react";
 
-export const AUTH_SESSION_SYNC_EVENT = "ramu-auth-session-sync";
+const AUTH_SESSION_SYNC_EVENT = "ramu-auth-session-sync";
 
 export interface SessionUser {
     id: string;
@@ -11,7 +11,7 @@ export interface SessionUser {
     emailVerifiedAt: string | null;
 }
 
-export type AuthSessionResponse =
+type AuthSessionResponse =
     | {
           authenticated: false;
           user: null;

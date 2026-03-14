@@ -1,7 +1,7 @@
 // Web Audio API による合成音フック
 // 後から音声ファイルに差し替える場合は playSound の実装のみ変更する
 
-export type ShogiSoundType = "move_self" | "move_opponent" | "pass";
+type ShogiSoundType = "move_self" | "move_opponent" | "pass";
 
 // ─── 合成音の実装 ─────────────────────────────────────────────────────────────
 

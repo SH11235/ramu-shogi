@@ -1,6 +1,6 @@
 import type { GameRecordSummary } from "@shogi/api-contract";
 
-export const RESULT_REASON_LABELS: Record<string, string> = {
+const RESULT_REASON_LABELS: Record<string, string> = {
     resign: "投了",
     timeout: "時間切れ",
     sennichite: "千日手",
