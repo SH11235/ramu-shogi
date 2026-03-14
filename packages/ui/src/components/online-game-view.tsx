@@ -1020,7 +1020,7 @@ export function OnlineGameView({
                         onToStart={handleNavStart}
                         onToEnd={handleNavEnd}
                         isRewound={isRewound}
-                        disabled={!gameResult}
+                        disabled={!gameResult && !isSpectator}
                     />
                 )}
 
@@ -1156,7 +1156,7 @@ export function OnlineGameView({
                                         <button
                                             key={item.ply}
                                             type="button"
-                                            disabled={!gameResult}
+                                            disabled={!gameResult && !isSpectator}
                                             onClick={() =>
                                                 dispatchUI({
                                                     type: "set_nav_index",
