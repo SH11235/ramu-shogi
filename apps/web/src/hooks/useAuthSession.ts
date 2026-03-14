@@ -103,9 +103,7 @@ export function useAuthSession() {
         }
     }
 
-    const refreshSessionEvent = useEffectEvent(async (): Promise<void> => {
-        await refreshSession();
-    });
+    const refreshSessionEvent = useEffectEvent(refreshSession);
 
     useEffect(() => {
         void refreshSessionEvent();

@@ -184,7 +184,16 @@ export default function GameDetailPage(): ReactElement {
                         <h2 className="text-lg font-semibold text-foreground">KIF テキスト</h2>
                         <button
                             type="button"
-                            onClick={() => void navigator.clipboard.writeText(game.kifuText)}
+                            onClick={() => {
+                                navigator.clipboard
+                                    .writeText(game.kifuText)
+                                    .then(() => {
+                                        setStatus("棋譜をコピーしました。");
+                                    })
+                                    .catch(() => {
+                                        setError("棋譜のコピーに失敗しました。");
+                                    });
+                            }}
                             className="rounded-md border border-input px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
                         >
                             コピー

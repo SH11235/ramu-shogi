@@ -28,7 +28,7 @@ interface AiHintPanelProps {
     onNnueSelectionChange: (selection: NnueSelection) => void;
     onOpenNnueManager: () => void;
     onAnalyze?: () => void;
-    onApplyMove?: (usiMove: string) => void;
+    onApplyMove?: (usiMove: string) => void | Promise<void>;
 }
 
 function getScoreClassName(tone: AiHintMove["scoreTone"]): string {
@@ -119,7 +119,9 @@ export function AiHintPanel({
                                 {index === 0 && onApplyMove && (
                                     <button
                                         type="button"
-                                        onClick={() => onApplyMove(move.usi)}
+                                        onClick={() => {
+                                            void onApplyMove(move.usi);
+                                        }}
                                         className="rounded bg-wafuu-shu px-1.5 py-0.5 text-xs text-wafuu-shu-fg hover:bg-wafuu-shu-light"
                                     >
                                         指す

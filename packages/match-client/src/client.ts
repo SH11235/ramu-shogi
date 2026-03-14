@@ -82,6 +82,7 @@ export function createRoomClient(
         ws.addEventListener("open", () => {
             const isReconnect = status === "reconnecting";
             // 再接続の場合は resume を試みる
+            let didResume = false;
             if (isReconnect && roomId) {
                 const token = getStoredResumeToken(roomId);
                 if (token) {
@@ -89,6 +90,7 @@ export function createRoomClient(
                     reconnectManager.reset();
                     send("resume", { resumeToken: token, lastEventId: lastKnownEventId });
                     options.onReconnect?.();
+                    didResume = true;
                 } else {
                     status = "connected";
                     reconnectManager.reset();
@@ -97,7 +99,8 @@ export function createRoomClient(
                 status = "connected";
                 reconnectManager.reset();
             }
-            options.onOpen?.({ reconnect: isReconnect });
+            // resumeToken がない再接続は新規接続として扱う（reconnect: false）
+            options.onOpen?.({ reconnect: didResume });
             // 接続確立後、30秒ごとにpingを送ってサーバーのオフライン判定を防ぐ
             // サーバーは lastSeenTs が 60秒以上更新されないとオフライン判定するため
             if (pingIntervalId === null) {

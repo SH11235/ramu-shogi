@@ -28,6 +28,7 @@ type PassRightsState = NonNullable<SnapshotPayload["passRights"]>;
 interface MoveSnapshot {
     sfen: string;
     clock: ClockState;
+    passRights: PassRightsState | null;
 }
 
 interface GameState {
@@ -652,15 +653,6 @@ export class RoomDO implements DurableObject {
 
         // ゲーム状態更新
         game.moves.push(payload.usi);
-        game.moveSnapshots.push({
-            sfen: payload.sfen,
-            clock: {
-                b: { remainMs: clock.b.remainMs },
-                w: { remainMs: clock.w.remainMs },
-                running: clock.running,
-                lastTickTs: clock.lastTickTs,
-            },
-        });
         game.sfen = payload.sfen;
         game.turn = nextTurn;
         game.ply++;
@@ -669,6 +661,18 @@ export class RoomDO implements DurableObject {
         if (payload.usi === "pass" && game.passRights) {
             game.passRights[seat] = Math.max(0, game.passRights[seat] - 1);
         }
+
+        // スナップショット: passRights消費後の状態を保存（待った復元用）
+        game.moveSnapshots.push({
+            sfen: payload.sfen,
+            clock: {
+                b: { remainMs: clock.b.remainMs },
+                w: { remainMs: clock.w.remainMs },
+                running: clock.running,
+                lastTickTs: clock.lastTickTs,
+            },
+            passRights: game.passRights ? { ...game.passRights } : null,
+        });
 
         // lastSeenTs を更新
         const movingPlayer = room.players[seat];
@@ -1084,14 +1088,22 @@ export class RoomDO implements DurableObject {
                 running: pending.seat, // 申請者の手番に戻す
                 lastTickTs: now,
             };
+            // passRights を巻き戻し前の状態に復元
+            game.passRights = prevSnapshot.passRights ? { ...prevSnapshot.passRights } : null;
         } else {
-            // 最初の手を巻き戻す場合は初期クロックを復元
+            // 最初の手を巻き戻す場合は初期クロック・passRightsを復元
             game.clock = {
                 b: { remainMs: room.settings.timeControl.initialMs },
                 w: { remainMs: room.settings.timeControl.initialMs },
                 running: pending.seat,
                 lastTickTs: now,
             };
+            game.passRights = room.settings.passRights
+                ? {
+                      b: room.settings.passRights.initialCount,
+                      w: room.settings.passRights.initialCount,
+                  }
+                : null;
         }
         game.turn = pending.seat;
         game.ply = game.moves.length + 1;

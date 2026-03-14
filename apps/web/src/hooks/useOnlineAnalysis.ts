@@ -2,7 +2,7 @@ import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type { AnalysisMoveResult, OnlineAnalysis } from "@shogi/ui";
 import { useEffect, useRef, useState } from "react";
 
-function buildPassRightsForAnalysis(moves: string[]) {
+function buildPassRightsForAnalysis(moves: string[], initialCount: number) {
     const hasPass = moves.some((m) => m.toLowerCase() === "pass");
     if (!hasPass) return undefined;
     let senteCount = 0;
@@ -15,12 +15,18 @@ function buildPassRightsForAnalysis(moves: string[]) {
         }
         isSente = !isSente;
     }
-    return { passRights: { sente: senteCount + 1, gote: goteCount + 1 } };
+    return {
+        passRights: {
+            sente: Math.max(0, initialCount - senteCount),
+            gote: Math.max(0, initialCount - goteCount),
+        },
+    };
 }
 
 export function useOnlineAnalysis(
     searchDepth: number | null,
     searchTimeMs: number | null,
+    initialPassCount = 1,
 ): OnlineAnalysis {
     const engineRef = useRef<ReturnType<typeof createWasmEngineClient> | null>(null);
     const searchHandleRef = useRef<{ cancel(): Promise<void> } | null>(null);
@@ -86,7 +92,7 @@ export function useOnlineAnalysis(
 
         try {
             // パスを含む棋譜はpassRightsオプションが必要（ないとエンジンがpanic）
-            const passRightsOption = buildPassRightsForAnalysis(moves);
+            const passRightsOption = buildPassRightsForAnalysis(moves, initialPassCount);
             await engine.loadPosition(sfen, moves, passRightsOption);
             const limits: { maxDepth?: number; movetimeMs?: number } = {};
             if (searchDepth !== null) limits.maxDepth = searchDepth;
