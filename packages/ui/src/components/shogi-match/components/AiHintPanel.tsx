@@ -110,10 +110,7 @@ export function AiHintPanel({
                 {moves.length > 0 && (
                     <div className="flex flex-col gap-0.5">
                         {moves.map((move, index) => (
-                            <div
-                                key={`${move.usi}:${index}`}
-                                className="flex items-center gap-2 text-xs"
-                            >
+                            <div key={move.usi} className="flex items-center gap-2 text-xs">
                                 <span className="w-4 text-muted-foreground">{index + 1}.</span>
                                 <span className="flex-1 text-foreground">{move.displayText}</span>
                                 <span className={getScoreClassName(move.scoreTone)}>

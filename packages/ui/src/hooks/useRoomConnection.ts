@@ -12,7 +12,7 @@ import {
     getStoredSeat,
     storeSeat,
 } from "@shogi/match-client";
-import { useEffect, useReducer, useRef } from "react";
+import { useEffect, useEffectEvent, useReducer, useRef } from "react";
 
 function errorCodeToMessage(code: ErrorCode): string {
     switch (code) {
@@ -353,6 +353,8 @@ export function useRoomConnection({
 
     // ─── ページロード時 resume 自動接続 ─────────────────────────────────────
 
+    const connectClientEvent = useEffectEvent(connectClient);
+
     useEffect(() => {
         const token = getStoredResumeToken(roomId);
         const seat = getStoredSeat(roomId);
@@ -360,7 +362,7 @@ export function useRoomConnection({
 
         dispatchJoin({ type: "start_join", seat });
 
-        return connectClient({
+        return connectClientEvent({
             timeoutMessage: "接続タイムアウト。再度参加してください。",
             onOpen: (client) => {
                 client.resume({ resumeToken: token, lastEventId: 0 });
@@ -392,7 +394,7 @@ export function useRoomConnection({
                 }
             },
         });
-    }, [roomId, buildWsUrl]);
+    }, [roomId]);
 
     // ─── ヘルパー ─────────────────────────────────────────────────────────────
 

@@ -10,9 +10,9 @@ import { NnueFvScaleInputDialog } from "./NnueFvScaleInputDialog";
 import { NnueImportArea } from "./NnueImportArea";
 import { NnueListItem } from "./NnueListItem";
 import { NnueProgressOverlay } from "./NnueProgressOverlay";
-import { RemoteNnueListItem } from "./RemoteNnueListItem";
 import { NnueSupportInfo } from "./NnueSupportInfo";
 import { PresetListItem } from "./PresetListItem";
+import { RemoteNnueListItem } from "./RemoteNnueListItem";
 import type { RemoteNnueFile, RemoteNnueManager } from "./types";
 
 interface NnueManagerDialogProps {

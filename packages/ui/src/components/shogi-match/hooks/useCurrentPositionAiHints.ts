@@ -1,10 +1,10 @@
 import { getCurrentNode, type KifuEval } from "@shogi/app-core";
-import { formatEval, formatMoveSimple } from "../utils/kifFormat";
-import { normalizeEvalToSentePerspective } from "../utils/branchTreeUtils";
+import type { AiHintMove, AiHintSummary } from "../components/AiHintPanel";
 import { useAnalysis } from "../contexts/AnalysisContext";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
-import type { AiHintMove, AiHintSummary } from "../components/AiHintPanel";
+import { normalizeEvalToSentePerspective } from "../utils/branchTreeUtils";
+import { formatEval, formatMoveSimple } from "../utils/kifFormat";
 
 interface CurrentPositionAiHintsResult {
     moves: AiHintMove[];
@@ -44,15 +44,16 @@ export function useCurrentPositionAiHints(): CurrentPositionAiHintsResult {
 
     const currentNode = kifuTree ? getCurrentNode(kifuTree) : null;
     const hintEvals = currentNode ? pickHintEvals(currentNode) : [];
+    const ply = currentNode?.ply ?? 0;
     const hintMoves = hintEvals
         .slice(0, Math.max(1, analysisSettings.multiPv))
         .map((evalData) => {
-            const normalized = normalizeEvalToSentePerspective(evalData, currentNode!.ply);
+            const normalized = normalizeEvalToSentePerspective(evalData, ply);
             const usi = evalData.pv?.[0] ?? "";
             return {
                 usi,
                 displayText: usi ? formatMoveSimple(usi, position.turn, position.board) : "",
-                scoreText: formatEval(normalized.evalCp, normalized.evalMate, currentNode!.ply),
+                scoreText: formatEval(normalized.evalCp, normalized.evalMate, ply),
                 scoreTone: toScoreTone(normalized),
             };
         })

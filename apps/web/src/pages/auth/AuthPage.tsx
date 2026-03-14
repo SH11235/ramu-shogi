@@ -223,29 +223,27 @@ export default function AuthPage(): ReactElement {
                 )}
 
                 {!session?.authenticated && (
-                    <>
-                        <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                            <div className="flex flex-col gap-4">
-                                <div className="space-y-1">
-                                    <h2 className="text-lg font-semibold text-foreground">
-                                        Google でログイン
-                                    </h2>
-                                    <p className="text-sm text-muted-foreground">
-                                        {resolvedNextPath === "/auth"
-                                            ? "Google アカウントでログインすると、このページに戻ります。"
-                                            : "Google アカウントでログインすると、元のページに戻ります。"}
-                                    </p>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={handleGoogleLogin}
-                                    className="inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
-                                >
-                                    Google アカウントでログイン
-                                </button>
+                    <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
+                        <div className="flex flex-col gap-4">
+                            <div className="space-y-1">
+                                <h2 className="text-lg font-semibold text-foreground">
+                                    Google でログイン
+                                </h2>
+                                <p className="text-sm text-muted-foreground">
+                                    {resolvedNextPath === "/auth"
+                                        ? "Google アカウントでログインすると、このページに戻ります。"
+                                        : "Google アカウントでログインすると、元のページに戻ります。"}
+                                </p>
                             </div>
-                        </section>
-                    </>
+                            <button
+                                type="button"
+                                onClick={handleGoogleLogin}
+                                className="inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
+                            >
+                                Google アカウントでログイン
+                            </button>
+                        </div>
+                    </section>
                 )}
 
                 {isLoadingSession ? (

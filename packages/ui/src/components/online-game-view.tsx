@@ -27,11 +27,11 @@ import { useShogiSound } from "../hooks/useShogiSound";
 import { NnueManagerDialog } from "./nnue/NnueManagerDialog";
 import type { RemoteNnueManager } from "./nnue/types";
 import { type AiHintMove, AiHintPanel } from "./shogi-match/components/AiHintPanel";
-import { TabHeader } from "./shogi-match/components/TabHeader";
 import { BottomSheet } from "./shogi-match/components/BottomSheet";
 import { KifuNavigationToolbar } from "./shogi-match/components/KifuNavigationToolbar";
 import { type HandInfo, MobileBoardSection } from "./shogi-match/components/MobileBoardSection";
 import { PCBoardContent } from "./shogi-match/components/PCBoardContent";
+import { TabHeader } from "./shogi-match/components/TabHeader";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import type { PromotionSelection } from "./shogi-match/types";
 import { exportToKifString, formatMoveSimple } from "./shogi-match/utils/kifFormat";
@@ -458,11 +458,11 @@ export function OnlineGameView({
                     // e.turn は着手後の次の手番。自分の席が次手番 = 相手が指した
                     const isOpponentMove = seat !== "s" && e.turn === seat;
                     if (e.usi === "pass") {
-                        playSound("pass");
+                        playSoundEvent("pass");
                     } else if (isOpponentMove || seat === "s") {
-                        playSound("move_opponent");
+                        playSoundEvent("move_opponent");
                     } else {
-                        playSound("move_self");
+                        playSoundEvent("move_self");
                     }
                 } else if (
                     e.kind === "resign" ||
@@ -740,6 +740,7 @@ export function OnlineGameView({
     const { resolveNnue } = useLazyNnueLoader();
     const isMobile = useIsMobile();
     const { playSound } = useShogiSound();
+    const playSoundEvent = useEffectEvent(playSound);
 
     const loadNnueEvent = useEffectEvent((sel: NnueSelection) => {
         if (!analysis?.loadNnue) return;

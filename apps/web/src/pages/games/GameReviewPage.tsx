@@ -8,7 +8,7 @@ import type {
     JsonValue,
 } from "@shogi/api-contract";
 import { createWasmEngineClient } from "@shogi/engine-wasm";
-import type { AnalysisSnapshotDraft, EngineOption } from "@shogi/ui";
+import type { AnalysisSettings, AnalysisSnapshotDraft, EngineOption } from "@shogi/ui";
 import { ShogiMatch } from "@shogi/ui";
 import { getRouteApi, useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";
@@ -17,7 +17,6 @@ import { HeaderNav } from "../../components/HeaderNav";
 import { PageHeader } from "../../components/PageHeader";
 import { parseApiError } from "../../hooks/useAuthSession";
 import { useRemotePrivateNnueManager } from "../../hooks/useRemotePrivateNnueManager";
-import type { AnalysisSettings } from "@shogi/ui";
 
 const resolveWasmThreads = () => {
     const fallback = import.meta.env.DEV ? 4 : 1;

@@ -1,5 +1,5 @@
 import type { ListNnueFilesResponse, NnueFileSummary } from "@shogi/api-contract";
-import { useNnueStorage, type RemoteNnueFile, type RemoteNnueManager } from "@shogi/ui";
+import { type RemoteNnueFile, type RemoteNnueManager, useNnueStorage } from "@shogi/ui";
 import { useEffect, useEffectEvent, useState } from "react";
 import { parseApiError, useAuthSession } from "./useAuthSession";
 
@@ -49,13 +49,6 @@ export function useRemotePrivateNnueManager(
     const isAuthenticated = session?.authenticated === true;
 
     const refresh = useEffectEvent(async (): Promise<void> => {
-        if (!isAuthenticated) {
-            setFiles([]);
-            setIsLoading(false);
-            setError(null);
-            return;
-        }
-
         setIsLoading(true);
         setError(null);
         try {
@@ -73,6 +66,12 @@ export function useRemotePrivateNnueManager(
 
     useEffect(() => {
         if (isLoadingSession) return;
+        if (!isAuthenticated) {
+            setFiles([]);
+            setIsLoading(false);
+            setError(null);
+            return;
+        }
         void refresh();
     }, [isLoadingSession, isAuthenticated]);
 

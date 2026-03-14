@@ -46,11 +46,10 @@ export { boardToGrid } from "./components/shogi-match/utils/positionUtils";
 // progress
 // shogi-board
 
+export type { RemoteNnueFile, RemoteNnueManager } from "./components/nnue/types";
 export type { AnalysisMoveResult, OnlineAnalysis } from "./components/online-game-view";
-
 // online-game-view
 export { OnlineGameView } from "./components/online-game-view";
-export type { RemoteNnueFile, RemoteNnueManager } from "./components/nnue/types";
 // shogi-match
 export { ShogiMatch } from "./components/shogi-match";
 

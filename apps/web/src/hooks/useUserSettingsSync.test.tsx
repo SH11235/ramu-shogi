@@ -1,6 +1,6 @@
+import { LOCAL_STORAGE_SYNC_EVENT } from "@shogi/ui";
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LOCAL_STORAGE_SYNC_EVENT } from "@shogi/ui";
 import { useUserSettingsSync } from "./useUserSettingsSync";
 
 const mockUseAuthSession = vi.fn();

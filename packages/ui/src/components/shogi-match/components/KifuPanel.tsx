@@ -12,7 +12,6 @@ import type {
     PresetConfig,
 } from "@shogi/app-core";
 import { detectParallelism } from "@shogi/app-core";
-import { ANALYSIS_TIME_OPTIONS, PARALLEL_WORKER_OPTIONS } from "../utils/threadOptions";
 import type { ReactElement } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "../../popover";
@@ -35,6 +34,7 @@ import {
     toNnueSelectionValue,
     toOptionValue,
 } from "../utils/nnueSelectionUtils";
+import { ANALYSIS_TIME_OPTIONS, PARALLEL_WORKER_OPTIONS } from "../utils/threadOptions";
 import { KifuNavigationToolbar } from "./KifuNavigationToolbar";
 
 /** 表示モード */

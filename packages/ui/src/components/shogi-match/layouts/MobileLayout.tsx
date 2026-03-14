@@ -18,6 +18,7 @@ import {
     GLASS_SURFACE_OPACITY,
 } from "../components/BottomSheet";
 import { ClockDisplay } from "../components/ClockDisplay";
+import { CurrentPositionAiHintPanel } from "../components/CurrentPositionAiHintPanel";
 import { EvalGraph } from "../components/EvalGraph";
 import { PausedModeControls, PlayingModeControls } from "../components/GameModeControls";
 import { MobileBoardSection } from "../components/MobileBoardSection";
@@ -27,7 +28,6 @@ import { MobileNavigation } from "../components/MobileNavigation";
 import { MobileSettingsActions } from "../components/MobileSettingsActions";
 import { MobileSettingsSheet } from "../components/MobileSettingsSheet";
 import { MoveDetailBottomSheet } from "../components/MoveDetailBottomSheet";
-import { CurrentPositionAiHintPanel } from "../components/CurrentPositionAiHintPanel";
 import { PassButton } from "../components/PassButton";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";

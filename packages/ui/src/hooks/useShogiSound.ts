@@ -13,7 +13,7 @@ function playKnockSound(ctx: AudioContext, gainValue: number): void {
     const data = buffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) {
         // 指数減衰するホワイトノイズ
-        const decay = Math.pow(1 - i / bufferSize, 5);
+        const decay = (1 - i / bufferSize) ** 5;
         data[i] = (Math.random() * 2 - 1) * decay;
     }
 

@@ -1,8 +1,8 @@
 import type { ReactElement } from "react";
 import { useAnalysis } from "../contexts/AnalysisContext";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
-import { AiHintPanel } from "./AiHintPanel";
 import { useCurrentPositionAiHints } from "../hooks/useCurrentPositionAiHints";
+import { AiHintPanel } from "./AiHintPanel";
 
 interface CurrentPositionAiHintPanelProps {
     title?: string;
