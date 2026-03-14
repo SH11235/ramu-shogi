@@ -242,6 +242,7 @@ interface UIState {
     promoteDialog: { from: string; to: string; usi: string } | null;
     navIndex: number | null;
     aiSheetOpen: boolean;
+    kifuSheetOpen: boolean;
 }
 
 type UIAction =
@@ -253,7 +254,8 @@ type UIAction =
     | { type: "set_legal_moves"; moves: string[] }
     | { type: "set_promote_dialog"; dialog: { from: string; to: string; usi: string } | null }
     | { type: "set_nav_index"; index: number | null }
-    | { type: "set_ai_sheet_open"; open: boolean };
+    | { type: "set_ai_sheet_open"; open: boolean }
+    | { type: "set_kifu_sheet_open"; open: boolean };
 
 const INITIAL_UI_STATE: UIState = {
     selectedSquare: null,
@@ -262,6 +264,7 @@ const INITIAL_UI_STATE: UIState = {
     promoteDialog: null,
     navIndex: null,
     aiSheetOpen: false,
+    kifuSheetOpen: false,
 };
 
 function uiReducer(state: UIState, action: UIAction): UIState {
@@ -284,6 +287,8 @@ function uiReducer(state: UIState, action: UIAction): UIState {
             return { ...state, navIndex: action.index };
         case "set_ai_sheet_open":
             return { ...state, aiSheetOpen: action.open };
+        case "set_kifu_sheet_open":
+            return { ...state, kifuSheetOpen: action.open };
     }
 }
 
@@ -368,8 +373,15 @@ export function OnlineGameView({
 
     // ─── UI インタラクション状態（useReducer） ───────────────────────────────
     const [uiState, dispatchUI] = useReducer(uiReducer, INITIAL_UI_STATE);
-    const { selectedSquare, selectedHand, legalMoves, promoteDialog, navIndex, aiSheetOpen } =
-        uiState;
+    const {
+        selectedSquare,
+        selectedHand,
+        legalMoves,
+        promoteDialog,
+        navIndex,
+        aiSheetOpen,
+        kifuSheetOpen,
+    } = uiState;
 
     // 右パネルのアクティブタブ
     const [rightTab, setRightTab] = useState<"kifu" | "ai">(aiSupport || analysis ? "ai" : "kifu");
@@ -894,6 +906,56 @@ export function OnlineGameView({
             />
         ) : null;
 
+    // PC サイドバー・モバイル BottomSheet 共通: 棋譜リスト
+    const kifuPanelContent = (
+        <div className="flex flex-col gap-1 overflow-y-auto max-h-[50dvh] md:max-h-[calc(100dvh-160px)]">
+            {usiMoveLog.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                    まだ指し手がありません
+                </p>
+            ) : (
+                usiMoveLog
+                    .map((entry, i) => ({
+                        ply: i + 1,
+                        usi: entry.usi,
+                        pos: positionHistory[i],
+                    }))
+                    .map((item) => {
+                        const moveText = item.pos
+                            ? formatMoveSimple(item.usi, item.pos.turn, item.pos.board)
+                            : item.usi;
+                        const isCurrentPly = currentPly === item.ply;
+                        return (
+                            <button
+                                key={item.ply}
+                                type="button"
+                                disabled={!gameResult && !isSpectator}
+                                onClick={() =>
+                                    dispatchUI({
+                                        type: "set_nav_index",
+                                        index:
+                                            item.ply >= positionHistory.length - 1
+                                                ? null
+                                                : item.ply,
+                                    })
+                                }
+                                className={`flex gap-2 text-xs px-2 py-1 rounded text-left transition-colors ${
+                                    isCurrentPly
+                                        ? "bg-wafuu-kincha/20 text-wafuu-kincha font-medium"
+                                        : "hover:bg-muted disabled:cursor-default"
+                                }`}
+                            >
+                                <span className="text-muted-foreground w-6 shrink-0 tabular-nums">
+                                    {item.ply}.
+                                </span>
+                                <span>{moveText}</span>
+                            </button>
+                        );
+                    })
+            )}
+        </div>
+    );
+
     return (
         <div className="flex flex-col md:flex-row gap-4 p-4 max-w-[1100px] mx-auto">
             {/* 左サイドバー: 対局後検討・NNUE設定など（PC のみ表示） */}
@@ -1075,6 +1137,14 @@ export function OnlineGameView({
                             投了
                         </button>
                     )}
+                    <button
+                        type="button"
+                        onClick={() => dispatchUI({ type: "set_kifu_sheet_open", open: true })}
+                        className="md:hidden rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
+                        aria-label="棋譜"
+                    >
+                        棋譜
+                    </button>
                     {(aiSupport || analysis) && (
                         <button
                             type="button"
@@ -1134,54 +1204,7 @@ export function OnlineGameView({
                 />
 
                 {/* 棋譜タブ */}
-                {rightTab === "kifu" && (
-                    <div className="flex flex-col gap-1 overflow-y-auto max-h-[calc(100dvh-160px)]">
-                        {usiMoveLog.length === 0 ? (
-                            <p className="text-sm text-muted-foreground text-center py-4">
-                                まだ指し手がありません
-                            </p>
-                        ) : (
-                            usiMoveLog
-                                .map((entry, i) => ({
-                                    ply: i + 1,
-                                    usi: entry.usi,
-                                    pos: positionHistory[i],
-                                }))
-                                .map((item) => {
-                                    const moveText = item.pos
-                                        ? formatMoveSimple(item.usi, item.pos.turn, item.pos.board)
-                                        : item.usi;
-                                    const isCurrentPly = currentPly === item.ply;
-                                    return (
-                                        <button
-                                            key={item.ply}
-                                            type="button"
-                                            disabled={!gameResult && !isSpectator}
-                                            onClick={() =>
-                                                dispatchUI({
-                                                    type: "set_nav_index",
-                                                    index:
-                                                        item.ply >= positionHistory.length - 1
-                                                            ? null
-                                                            : item.ply,
-                                                })
-                                            }
-                                            className={`flex gap-2 text-xs px-2 py-1 rounded text-left transition-colors ${
-                                                isCurrentPly
-                                                    ? "bg-wafuu-kincha/20 text-wafuu-kincha font-medium"
-                                                    : "hover:bg-muted disabled:cursor-default"
-                                            }`}
-                                        >
-                                            <span className="text-muted-foreground w-6 shrink-0 tabular-nums">
-                                                {item.ply}.
-                                            </span>
-                                            <span>{moveText}</span>
-                                        </button>
-                                    );
-                                })
-                        )}
-                    </div>
-                )}
+                {rightTab === "kifu" && kifuPanelContent}
 
                 {/* AI解析タブ */}
                 {rightTab === "ai" && aiPanelContent}
@@ -1239,8 +1262,20 @@ export function OnlineGameView({
                 />
             )}
 
+            {/* 棋譜（モバイル） */}
+            {isMobile && (
+                <BottomSheet
+                    open={kifuSheetOpen}
+                    onOpenChange={(open) => dispatchUI({ type: "set_kifu_sheet_open", open })}
+                    title="棋譜"
+                    height="half"
+                >
+                    {kifuPanelContent}
+                </BottomSheet>
+            )}
+
             {/* AI 解析（モバイル） */}
-            {isMobile && aiSupport && (
+            {isMobile && (aiSupport || analysis) && (
                 <BottomSheet
                     open={aiSheetOpen}
                     onOpenChange={(open) => dispatchUI({ type: "set_ai_sheet_open", open })}
