@@ -83,6 +83,7 @@ interface GameState {
     myAnalysisRemaining: number | null;
     analysisLog: Array<{ seat: "b" | "w"; ply: number }>;
     usiMoveLog: Array<{ usi: string; elapsedMs: number }>;
+    pendingTakeback: { seat: "b" | "w"; ply: number } | null;
 }
 
 type GameAction =
@@ -111,7 +112,17 @@ type GameAction =
           turn: "b" | "w";
           clock: ClockState;
           passRights: PassRightsState | null;
-      };
+      }
+    | { type: "takeback_requested"; seat: "b" | "w"; ply: number }
+    | {
+          type: "takeback_accepted";
+          position: PositionState;
+          turn: "b" | "w";
+          clock: ClockState;
+          passRights: PassRightsState | null;
+      }
+    | { type: "takeback_rejected" }
+    | { type: "takeback_cancelled" };
 
 function makeInitialGameState(
     snapshot: SnapshotPayload,
@@ -129,6 +140,7 @@ function makeInitialGameState(
             myAiSettings?.mode === "limited" ? (myAiSettings.limitCount ?? 0) : null,
         analysisLog: [],
         usiMoveLog: [],
+        pendingTakeback: null,
     };
 }
 
@@ -201,6 +213,23 @@ function gameReducer(state: GameState, action: GameAction): GameState {
                 clockState: action.clock,
                 passRights: action.passRights,
             };
+        case "takeback_requested":
+            return { ...state, pendingTakeback: { seat: action.seat, ply: action.ply } };
+        case "takeback_accepted":
+            return {
+                ...state,
+                position: action.position,
+                positionHistory: [action.position],
+                turn: action.turn,
+                clockState: action.clock,
+                passRights: action.passRights,
+                usiMoveLog: state.usiMoveLog.slice(0, -1),
+                pendingTakeback: null,
+            };
+        case "takeback_rejected":
+            return { ...state, pendingTakeback: null };
+        case "takeback_cancelled":
+            return { ...state, pendingTakeback: null };
     }
 }
 
@@ -334,6 +363,7 @@ export function OnlineGameView({
         myAnalysisRemaining,
         analysisLog,
         usiMoveLog,
+        pendingTakeback,
     } = gameState;
 
     // ─── UI インタラクション状態（useReducer） ───────────────────────────────
@@ -445,6 +475,27 @@ export function OnlineGameView({
                         analysisRemaining: e.analysisRemaining,
                         ply: movesRef.current.length,
                     });
+                } else if (e.kind === "takeback_requested" && (e.seat === "b" || e.seat === "w")) {
+                    dispatch({ type: "takeback_requested", seat: e.seat, ply: e.ply });
+                } else if (e.kind === "takeback_accepted") {
+                    movesRef.current = movesRef.current.slice(0, -1);
+                    getPositionService()
+                        .parseSfen(e.sfen)
+                        .then((pos) => {
+                            dispatch({
+                                type: "takeback_accepted",
+                                position: pos,
+                                turn: e.turn,
+                                clock: e.clock,
+                                passRights: e.passRights,
+                            });
+                            dispatchUI({ type: "resync_received" });
+                        })
+                        .catch(console.error);
+                } else if (e.kind === "takeback_rejected") {
+                    dispatch({ type: "takeback_rejected" });
+                } else if (e.kind === "takeback_cancelled") {
+                    dispatch({ type: "takeback_cancelled" });
                 }
             } else if (msg.t === "snapshot") {
                 // 再接続後のスナップショット更新
@@ -635,6 +686,20 @@ export function OnlineGameView({
         client.resign({ eventId: latestEventIdRef.current });
     }
 
+    // ─── 待った ───────────────────────────────────────────────────────────────
+
+    function handleTakebackRequest(): void {
+        client.takebackRequest({ eventId: latestEventIdRef.current });
+    }
+
+    function handleTakebackResponse(accept: boolean): void {
+        client.takebackResponse({ eventId: latestEventIdRef.current, accept });
+    }
+
+    function handleTakebackCancel(): void {
+        client.takebackCancel({ eventId: latestEventIdRef.current });
+    }
+
     // ─── AI 解析トリガー ─────────────────────────────────────────────────────
 
     // 解析を開始した局面の board/turn を保存（formatMoveSimple に渡すため）
@@ -802,6 +867,11 @@ export function OnlineGameView({
             : "";
 
     // PC サイドバーとモバイル BottomSheet で共通利用するコンテンツ
+    const canAnalyzeNow = !gameResult && (isMyTurn || isSpectator);
+    const analyzeHintText =
+        !gameResult && !isMyTurn && !isSpectator
+            ? "相手の手番中は解析できません。自分の手番になってから使用してください。"
+            : "「解析する」を押すと現在の局面をAIが分析します";
     const aiPanelContent =
         aiSupport || analysis ? (
             <OnlineAiPanel
@@ -810,7 +880,8 @@ export function OnlineGameView({
                 myAnalysisRemaining={myAnalysisRemaining}
                 isAnalyzing={isAnalyzing}
                 topMoves={topMoves}
-                canAnalyze={!gameResult}
+                canAnalyze={canAnalyzeNow}
+                analyzeHint={analyzeHintText}
                 onAnalyze={() => void handleAnalyze()}
                 analysisBoard={analysisBoard}
                 analysisTurn={analysisTurn}
@@ -953,6 +1024,22 @@ export function OnlineGameView({
                     />
                 )}
 
+                {/* 待った: 申請中バナー（申請者向け） */}
+                {pendingTakeback && pendingTakeback.seat === seat && !isSpectator && (
+                    <div className="flex items-center justify-between rounded-lg border border-wafuu-kincha/40 bg-wafuu-kincha/10 px-3 py-2 text-sm">
+                        <span className="text-wafuu-kincha">
+                            待った申請中... 相手の応答を待っています
+                        </span>
+                        <button
+                            type="button"
+                            onClick={handleTakebackCancel}
+                            className="ml-3 text-xs text-muted-foreground underline hover:text-foreground"
+                        >
+                            取り消す
+                        </button>
+                    </div>
+                )}
+
                 {/* 操作ボタン */}
                 <div className="flex gap-2">
                     {passRights !== null && !isSpectator && !gameResult && (
@@ -965,6 +1052,20 @@ export function OnlineGameView({
                             パス
                         </button>
                     )}
+                    {!isSpectator &&
+                        !gameResult &&
+                        snapshot.settings.takeback &&
+                        !isMyTurn &&
+                        usiMoveLog.length > 0 &&
+                        !pendingTakeback && (
+                            <button
+                                type="button"
+                                onClick={handleTakebackRequest}
+                                className="rounded-md border border-wafuu-kincha/40 bg-wafuu-kincha/10 px-4 py-2 text-sm font-medium text-wafuu-kincha hover:bg-wafuu-kincha/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                                待った
+                            </button>
+                        )}
                     {!isSpectator && !gameResult && (
                         <button
                             type="button"
@@ -1085,6 +1186,36 @@ export function OnlineGameView({
                 {/* AI解析タブ */}
                 {rightTab === "ai" && aiPanelContent}
             </div>
+
+            {/* 待った: 承認ダイアログ（相手向け） */}
+            {pendingTakeback && pendingTakeback.seat !== seat && !isSpectator && !gameResult && (
+                <div className="fixed inset-0 z-40 flex items-end justify-center pb-8 md:items-center md:pb-0">
+                    <div className="rounded-xl border border-border bg-card p-5 shadow-xl w-[300px]">
+                        <p className="mb-1 text-center font-semibold text-foreground">
+                            待ったの申請
+                        </p>
+                        <p className="mb-4 text-center text-sm text-muted-foreground">
+                            相手が直前の手を取り消したいと申請しています
+                        </p>
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => handleTakebackResponse(true)}
+                                className="flex-1 rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                            >
+                                承認する
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleTakebackResponse(false)}
+                                className="flex-1 rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
+                            >
+                                拒否する
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* 対局結果ダイアログ */}
             {gameResult && (
@@ -1308,6 +1439,7 @@ interface OnlineAiPanelProps {
     isAnalyzing: boolean;
     topMoves: AnalysisMoveResult[];
     canAnalyze: boolean;
+    analyzeHint: string;
     onAnalyze: () => void;
     analysisBoard: BoardState | null;
     analysisTurn: "b" | "w";
@@ -1324,6 +1456,7 @@ function OnlineAiPanel({
     isAnalyzing,
     topMoves,
     canAnalyze,
+    analyzeHint,
     onAnalyze,
     analysisBoard,
     analysisTurn,
@@ -1357,7 +1490,7 @@ function OnlineAiPanel({
             isAnalyzing={isAnalyzing}
             moves={moves}
             canAnalyze={canClickAnalyze}
-            analyzeHint="「解析する」を押すと現在の局面をAIが分析します"
+            analyzeHint={analyzeHint}
             summary={{
                 percent: evalPercent,
                 senteLabel: evalCp !== null && evalCp > 0 ? `▲ +${evalCp}` : "▲",

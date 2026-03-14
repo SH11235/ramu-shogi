@@ -25,13 +25,20 @@ interface PlayerInfo {
 }
 type PassRightsState = NonNullable<SnapshotPayload["passRights"]>;
 
+interface MoveSnapshot {
+    sfen: string;
+    clock: ClockState;
+}
+
 interface GameState {
     sfen: string; // 現在の局面（SFEN）
     moves: string[]; // USI 形式の指し手履歴
+    moveSnapshots: MoveSnapshot[]; // moves[i] に対応するスナップショット（待った復元用）
     turn: "b" | "w";
     ply: number;
     clock: ClockState;
     passRights: PassRightsState | null;
+    pendingTakeback: { seat: "b" | "w"; ply: number; requestedAt: number } | null;
     analysisUsed: { b: number; w: number };
     status: "playing" | "finished";
     result: GameResult | null;
@@ -91,6 +98,16 @@ async function hashToken(token: string): Promise<string> {
     return Array.from(new Uint8Array(hashBuffer))
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
+}
+
+/**
+ * 最後の指し手をした側の座席を返す。
+ * moves.length が奇数なら先手が最後に指した（先手が奇数手目を指す）。
+ */
+function determineLastMoveSeat(game: GameState): "b" | "w" | null {
+    if (game.moves.length === 0) return null;
+    // ply は 1 から始まり、先手が奇数手目、後手が偶数手目を指す
+    return game.moves.length % 2 === 1 ? "b" : "w";
 }
 
 /** 千日手判定用: SFEN から手数部分を除いた正規化文字列を返す */
@@ -273,6 +290,23 @@ export class RoomDO implements DurableObject {
             case "ping":
                 await this.handlePing(ws, msg.payload as { ts: number });
                 break;
+            case "takeback_request":
+                await this.handleTakebackRequest(
+                    ws,
+                    msg.clientMsgId,
+                    msg.payload as { eventId: number },
+                );
+                break;
+            case "takeback_response":
+                await this.handleTakebackResponse(
+                    ws,
+                    msg.clientMsgId,
+                    msg.payload as { eventId: number; accept: boolean },
+                );
+                break;
+            case "takeback_cancel":
+                await this.handleTakebackCancel(ws, msg.clientMsgId);
+                break;
             default:
                 // 未知のメッセージは無視（前方互換）
                 break;
@@ -339,6 +373,7 @@ export class RoomDO implements DurableObject {
                 timeControl: room.settings.timeControl,
                 passRights: room.settings.passRights,
                 aiSupport: room.settings.aiSupport,
+                takeback: room.settings.takeback,
             },
         };
 
@@ -617,6 +652,15 @@ export class RoomDO implements DurableObject {
 
         // ゲーム状態更新
         game.moves.push(payload.usi);
+        game.moveSnapshots.push({
+            sfen: payload.sfen,
+            clock: {
+                b: { remainMs: clock.b.remainMs },
+                w: { remainMs: clock.w.remainMs },
+                running: clock.running,
+                lastTickTs: clock.lastTickTs,
+            },
+        });
         game.sfen = payload.sfen;
         game.turn = nextTurn;
         game.ply++;
@@ -891,6 +935,229 @@ export class RoomDO implements DurableObject {
         this.broadcastToAll({ v: 1, t: "event", payload: settingsUpdatedEvent });
     }
 
+    // ─── 待った ───────────────────────────────────────────────────────────
+
+    private async handleTakebackRequest(
+        ws: WebSocket,
+        clientMsgId: number,
+        _payload: { eventId: number },
+    ): Promise<void> {
+        const room = await this.doState.storage.get<RoomStorageState>("room");
+        if (!room) {
+            sendWsError(ws, "ROOM_NOT_FOUND", "Room not found", clientMsgId);
+            return;
+        }
+
+        const meta = ws.deserializeAttachment() as WsConnectionMeta | null;
+        if (!meta || meta.seat === "s") {
+            sendWsError(
+                ws,
+                "SPECTATOR_FORBIDDEN",
+                "Spectators cannot request takeback",
+                clientMsgId,
+            );
+            return;
+        }
+
+        const { seat } = meta;
+        const game = room.game;
+
+        if (!game || game.status !== "playing") {
+            sendWsError(ws, "ROOM_FINISHED", "Game is not playing", clientMsgId);
+            return;
+        }
+
+        if (!room.settings.takeback) {
+            sendWsError(
+                ws,
+                "TAKEBACK_DISABLED",
+                "Takeback is not enabled for this room",
+                clientMsgId,
+            );
+            return;
+        }
+
+        if (game.pendingTakeback) {
+            sendWsError(
+                ws,
+                "TAKEBACK_ALREADY_PENDING",
+                "A takeback request is already pending",
+                clientMsgId,
+            );
+            return;
+        }
+
+        const lastMoveSeat = determineLastMoveSeat(game);
+        if (lastMoveSeat !== seat) {
+            sendWsError(ws, "TAKEBACK_NO_MOVES", "You did not make the last move", clientMsgId);
+            return;
+        }
+
+        const now = Date.now();
+        game.pendingTakeback = { seat, ply: game.moves.length, requestedAt: now };
+
+        const eventId = ++room.latestEventId;
+        const event: RoomEvent = {
+            eventId,
+            kind: "takeback_requested",
+            seat,
+            ply: game.moves.length,
+            serverTs: now,
+        };
+        room.events.push(event);
+        await this.doState.storage.put("room", room);
+        this.broadcastToAll({ v: 1, t: "event", payload: event });
+        await this.setNextAlarm(room);
+    }
+
+    private async handleTakebackResponse(
+        ws: WebSocket,
+        clientMsgId: number,
+        payload: { eventId: number; accept: boolean },
+    ): Promise<void> {
+        const room = await this.doState.storage.get<RoomStorageState>("room");
+        if (!room) {
+            sendWsError(ws, "ROOM_NOT_FOUND", "Room not found", clientMsgId);
+            return;
+        }
+
+        const meta = ws.deserializeAttachment() as WsConnectionMeta | null;
+        if (!meta || meta.seat === "s") {
+            sendWsError(
+                ws,
+                "SPECTATOR_FORBIDDEN",
+                "Spectators cannot respond to takeback",
+                clientMsgId,
+            );
+            return;
+        }
+
+        const { seat } = meta;
+        const game = room.game;
+
+        if (!game || game.status !== "playing") {
+            sendWsError(ws, "ROOM_FINISHED", "Game is not playing", clientMsgId);
+            return;
+        }
+
+        if (!game.pendingTakeback) {
+            sendWsError(ws, "TAKEBACK_NOT_PENDING", "No takeback request is pending", clientMsgId);
+            return;
+        }
+
+        // 申請者本人は応答できない（相手のみ応答可）
+        if (game.pendingTakeback.seat === seat) {
+            sendWsError(
+                ws,
+                "TAKEBACK_NOT_PENDING",
+                "Cannot respond to your own takeback request",
+                clientMsgId,
+            );
+            return;
+        }
+
+        const now = Date.now();
+
+        if (!payload.accept) {
+            // 拒否
+            game.pendingTakeback = null;
+            const eventId = ++room.latestEventId;
+            const event: RoomEvent = { eventId, kind: "takeback_rejected", serverTs: now };
+            room.events.push(event);
+            await this.doState.storage.put("room", room);
+            this.broadcastToAll({ v: 1, t: "event", payload: event });
+            return;
+        }
+
+        // 承認: 1手巻き戻す
+        const pending = game.pendingTakeback;
+        const initialSfen = resolveSfen(room.settings.startSfen);
+
+        game.moves.pop();
+        game.moveSnapshots.pop();
+
+        const prevSnapshot = game.moveSnapshots.at(-1);
+        game.sfen = prevSnapshot?.sfen ?? initialSfen;
+        if (prevSnapshot) {
+            game.clock = {
+                ...prevSnapshot.clock,
+                running: pending.seat, // 申請者の手番に戻す
+                lastTickTs: now,
+            };
+        } else {
+            // 最初の手を巻き戻す場合は初期クロックを復元
+            game.clock = {
+                b: { remainMs: room.settings.timeControl.initialMs },
+                w: { remainMs: room.settings.timeControl.initialMs },
+                running: pending.seat,
+                lastTickTs: now,
+            };
+        }
+        game.turn = pending.seat;
+        game.ply = game.moves.length + 1;
+
+        // sfenCounts から巻き戻したSFENの出現回数を減算
+        const sfenKey = normalizeSfen(game.sfen);
+        if (game.sfenCounts[sfenKey] !== undefined && game.sfenCounts[sfenKey] > 0) {
+            game.sfenCounts[sfenKey]--;
+        }
+
+        game.pendingTakeback = null;
+
+        const eventId = ++room.latestEventId;
+        const event: RoomEvent = {
+            eventId,
+            kind: "takeback_accepted",
+            sfen: game.sfen,
+            turn: game.turn,
+            clock: game.clock,
+            passRights: game.passRights,
+            serverTs: now,
+        };
+        room.events.push(event);
+        await this.doState.storage.put("room", room);
+        this.broadcastToAll({ v: 1, t: "event", payload: event });
+        await this.setNextAlarm(room);
+    }
+
+    private async handleTakebackCancel(ws: WebSocket, clientMsgId: number): Promise<void> {
+        const room = await this.doState.storage.get<RoomStorageState>("room");
+        if (!room) {
+            sendWsError(ws, "ROOM_NOT_FOUND", "Room not found", clientMsgId);
+            return;
+        }
+
+        const meta = ws.deserializeAttachment() as WsConnectionMeta | null;
+        if (!meta || meta.seat === "s") {
+            sendWsError(
+                ws,
+                "SPECTATOR_FORBIDDEN",
+                "Spectators cannot cancel takeback",
+                clientMsgId,
+            );
+            return;
+        }
+
+        const { seat } = meta;
+        const game = room.game;
+
+        if (!game || game.status !== "playing") return;
+
+        if (!game.pendingTakeback || game.pendingTakeback.seat !== seat) {
+            sendWsError(ws, "TAKEBACK_NOT_PENDING", "No takeback request to cancel", clientMsgId);
+            return;
+        }
+
+        const now = Date.now();
+        game.pendingTakeback = null;
+
+        const eventId = ++room.latestEventId;
+        const event: RoomEvent = { eventId, kind: "takeback_cancelled", serverTs: now };
+        room.events.push(event);
+        await this.doState.storage.put("room", room);
+        this.broadcastToAll({ v: 1, t: "event", payload: event });
+    }
+
     // ─── ゲーム開始 ──────────────────────────────────────────────────────
 
     private async startGame(room: RoomStorageState): Promise<void> {
@@ -923,10 +1190,12 @@ export class RoomDO implements DurableObject {
         const game: GameState = {
             sfen,
             moves: [],
+            moveSnapshots: [],
             turn: firstTurn,
             ply: 1,
             clock,
             passRights,
+            pendingTakeback: null,
             analysisUsed: { b: 0, w: 0 },
             status: "playing",
             result: null,
@@ -1030,6 +1299,12 @@ export class RoomDO implements DurableObject {
             }
         }
 
+        // 待ったタイムアウト（20秒）
+        if (room.game?.pendingTakeback) {
+            const takebackTimeoutTs = room.game.pendingTakeback.requestedAt + 20_000;
+            nextAlarmTs = Math.min(nextAlarmTs, takebackTimeoutTs);
+        }
+
         // オフライン検知アラーム（対局中のプレイヤーのみ）
         if (room.status === "playing") {
             for (const seat of ["b", "w"] as const) {
@@ -1083,6 +1358,20 @@ export class RoomDO implements DurableObject {
 
         const game = room.game;
         let modified = false;
+
+        // 待った 20 秒タイムアウト → 自動キャンセル
+        if (game.pendingTakeback && now - game.pendingTakeback.requestedAt >= 20_000) {
+            game.pendingTakeback = null;
+            modified = true;
+            const eventId = ++room.latestEventId;
+            const cancelEvent: RoomEvent = {
+                eventId,
+                kind: "takeback_cancelled",
+                serverTs: now,
+            };
+            room.events.push(cancelEvent);
+            this.broadcastToAll({ v: 1, t: "event", payload: cancelEvent });
+        }
 
         // オフライン検知・切断不戦敗
         for (const seat of ["b", "w"] as const) {

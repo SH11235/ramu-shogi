@@ -53,6 +53,9 @@ function makeMockClient(overrides: Partial<RoomClient> = {}): RoomClient {
         ack: vi.fn(),
         sync: vi.fn(),
         ping: vi.fn(),
+        takebackRequest: vi.fn(),
+        takebackResponse: vi.fn(),
+        takebackCancel: vi.fn(),
         subscribe: vi.fn(() => () => {}),
         disconnect: vi.fn(),
         getStatus: vi.fn(() => "connected" as const),
@@ -84,6 +87,7 @@ function makeSnapshot(overrides: Partial<SnapshotPayload> = {}): SnapshotPayload
             timeControl: { type: "byoyomi", initialMs: 600_000, byoyomiMs: 30_000 },
             passRights: null,
             aiSupport: null,
+            takeback: false,
         },
         ...overrides,
     };
@@ -187,6 +191,7 @@ describe("OnlineGameView", () => {
                             searchDepth: null,
                             searchTimeMs: 1000,
                         },
+                        takeback: false,
                     },
                 })}
                 seat="b"

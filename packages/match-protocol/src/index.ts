@@ -38,6 +38,7 @@ export interface RoomSettings {
     timeControl: TimeControlSettings;
     passRights: PassRightsConfig | null;
     aiSupport: AiSupportSettings | null;
+    takeback: boolean;
 }
 
 // ─── 時計 ─────────────────────────────────────────────────────────────────
@@ -151,6 +152,29 @@ export interface SettingsUpdatedEvent extends RoomEventBase {
     settings: Pick<RoomSettings, "startSfen">;
 }
 
+// ─── 待った イベント ───────────────────────────────────────────────────────
+export interface TakebackRequestedEvent extends RoomEventBase {
+    kind: "takeback_requested";
+    seat: Seat;
+    ply: number;
+}
+
+export interface TakebackAcceptedEvent extends RoomEventBase {
+    kind: "takeback_accepted";
+    sfen: string;
+    turn: "b" | "w";
+    clock: ClockState;
+    passRights: PassRightsState | null;
+}
+
+export interface TakebackRejectedEvent extends RoomEventBase {
+    kind: "takeback_rejected";
+}
+
+export interface TakebackCancelledEvent extends RoomEventBase {
+    kind: "takeback_cancelled";
+}
+
 export type RoomEvent =
     | GameStartEvent
     | MoveEvent
@@ -164,7 +188,11 @@ export type RoomEvent =
     | PlayerOnlineEvent
     | PlayerOfflineEvent
     | AnalysisUsedEvent
-    | SettingsUpdatedEvent;
+    | SettingsUpdatedEvent
+    | TakebackRequestedEvent
+    | TakebackAcceptedEvent
+    | TakebackRejectedEvent
+    | TakebackCancelledEvent;
 
 // ─── SnapshotPayload ──────────────────────────────────────────────────────
 export interface SnapshotPayload {
@@ -197,6 +225,10 @@ export type ErrorCode =
     | "SPECTATOR_FORBIDDEN"
     | "ANALYSIS_LIMIT_EXCEEDED"
     | "AI_SUPPORT_DISABLED"
+    | "TAKEBACK_DISABLED"
+    | "TAKEBACK_NOT_PENDING"
+    | "TAKEBACK_ALREADY_PENDING"
+    | "TAKEBACK_NO_MOVES"
     | "UNKNOWN";
 
 // ─── サーバ → クライアント メッセージ ───────────────────────────────────────
@@ -260,7 +292,10 @@ export type ClientMessageType =
     | "update_settings"
     | "ack"
     | "sync"
-    | "ping";
+    | "ping"
+    | "takeback_request"
+    | "takeback_response"
+    | "takeback_cancel";
 
 export interface ClientMessage<T = unknown> {
     v: 1;

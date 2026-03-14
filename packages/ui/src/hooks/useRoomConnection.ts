@@ -322,10 +322,12 @@ export function useRoomConnection({
                         }
                         if (message.payload.kind === "game_start") {
                             stopListening();
+                            const pr = message.payload.settings.passRights;
                             dispatchRoom({
                                 type: "game_start",
                                 eventId: message.payload.eventId,
                                 players: message.payload.players,
+                                passRights: pr ? { b: pr.initialCount, w: pr.initialCount } : null,
                             });
                         }
                         break;

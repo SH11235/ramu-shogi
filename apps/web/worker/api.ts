@@ -109,6 +109,7 @@ function validateSettings(settings: unknown): RoomSettings | ValidationError {
         timeControl: s.timeControl as TimeControlSettings,
         passRights: (s.passRights as PassRightsConfig) ?? null,
         aiSupport: (s.aiSupport as AiSupportSettings) ?? null,
+        takeback: s.takeback === true,
     };
 }
 

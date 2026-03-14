@@ -15,6 +15,10 @@ export interface RoomClient {
     sync(params: { sinceEventId: number }): void;
     ping(): void;
 
+    takebackRequest(params: { eventId: number }): void;
+    takebackResponse(params: { eventId: number; accept: boolean }): void;
+    takebackCancel(params: { eventId: number }): void;
+
     subscribe(handler: (msg: ServerMessage) => void): () => void;
     disconnect(): void;
     getStatus(): "connecting" | "connected" | "reconnecting" | "disconnected";

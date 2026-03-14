@@ -181,6 +181,18 @@ export function createRoomClient(
             send("ping", { ts: Date.now() });
         },
 
+        takebackRequest(params) {
+            send("takeback_request", params);
+        },
+
+        takebackResponse(params) {
+            send("takeback_response", params);
+        },
+
+        takebackCancel(params) {
+            send("takeback_cancel", params);
+        },
+
         subscribe(handler) {
             handlers.add(handler);
             return () => handlers.delete(handler);

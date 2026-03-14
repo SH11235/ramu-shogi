@@ -18,6 +18,7 @@ interface RoomFormState {
     fischerIncrementSeconds: number;
     startSfen: string;
     passRightsCount: number | null;
+    takeback: boolean;
     aiSupportEnabled: boolean;
     aiBMode: "unlimited" | "limited";
     aiWMode: "unlimited" | "limited";
@@ -35,6 +36,7 @@ const DEFAULT_SETTINGS: RoomFormState = {
     fischerIncrementSeconds: 10,
     startSfen: "startpos",
     passRightsCount: null,
+    takeback: false,
     aiSupportEnabled: false,
     aiBMode: "unlimited",
     aiWMode: "unlimited",
@@ -66,6 +68,7 @@ function buildCreateRoomRequest(settings: RoomFormState): CreateRoomRequest {
                 settings.passRightsCount !== null
                     ? { initialCount: settings.passRightsCount }
                     : null,
+            takeback: settings.takeback,
             aiSupport: settings.aiSupportEnabled
                 ? {
                       b: {
@@ -325,6 +328,22 @@ export default function CreateRoomPage(): ReactElement {
                             </div>
                         )}
                     </div>
+                </div>
+
+                {/* 待った設定 */}
+                <div className="flex flex-col gap-2">
+                    <span className={labelClass}>待った</span>
+                    <label className="flex cursor-pointer items-center gap-2">
+                        <input
+                            type="checkbox"
+                            checked={settings.takeback}
+                            onChange={(e) => set("takeback", e.target.checked)}
+                            className="accent-primary"
+                        />
+                        <span className="text-sm text-foreground">
+                            有効にする（直前の手を取り消せます）
+                        </span>
+                    </label>
                 </div>
 
                 {/* AI サポート設定 */}

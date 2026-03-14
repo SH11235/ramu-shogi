@@ -7,14 +7,17 @@ main = "./worker/index.ts"
 # custom_domains = ["ramu-shogi.sh11235.com"]
 
 # backend 分離後に /api/* を proxy する場合に設定
+# BACKEND_ORIGIN は workers.dev 間の fetch が動かないため外す
 # [vars]
-# BACKEND_ORIGIN = "https://api.ramu-shogi.com"
+# BACKEND_ORIGIN = "https://ramu-shogi-backend.sh11235.workers.dev"
 
 [assets]
 directory = "./dist"
 binding = "ASSETS"
 # SPA用設定: 404時にindex.htmlを返す
 not_found_handling = "single-page-application"
+# /api/* など HTML ナビゲーションでも user worker を先に通す
+run_worker_first = true
 
 [[r2_buckets]]
 binding = "NNUE_BUCKET"
@@ -43,9 +46,15 @@ period = 60
 [env.stg]
 name = "ramu-shogi-stg"
 # custom_domains = ["ramu-shogi-stg.sh11235.workers.dev"]
+
+[env.stg.assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = true
+
 # staging用の環境変数/Binding/DB等を分ける
-# vars = { ... }
-# BACKEND_ORIGIN = "https://stg-api.ramu-shogi.com"
+# BACKEND_ORIGIN を外して frontend Worker の local DO を使う（proxy はprodのみ）
 
 [[env.stg.r2_buckets]]
 binding = "NNUE_BUCKET"
@@ -58,3 +67,12 @@ class_name = "RoomDO"
 [[env.stg.migrations]]
 tag = "v1"
 new_sqlite_classes = ["RoomDO"]
+
+[[env.stg.unsafe.bindings]]
+name = "ROOM_RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+
+[env.stg.unsafe.bindings.simple]
+limit = 10
+period = 60
