@@ -1,6 +1,7 @@
 import { useRouter } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useState } from "react";
+import { HeaderNav } from "../../components/HeaderNav";
 import { PageHeader } from "../../components/PageHeader";
 import {
     dispatchAuthSessionSyncEvent,
@@ -188,7 +189,10 @@ export default function AuthPage(): ReactElement {
 
     return (
         <>
-            <PageHeader items={[{ label: "ラム将棋", to: "/" }, { label: "認証" }]} />
+            <PageHeader
+                items={[{ label: "ラム将棋", to: "/" }, { label: "認証" }]}
+                right={<HeaderNav />}
+            />
             <main className="mx-auto flex max-w-[960px] flex-col gap-6 px-4 py-8">
                 <div className="flex flex-col gap-2">
                     <h1 className="text-2xl font-bold text-foreground">

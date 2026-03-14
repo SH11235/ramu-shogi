@@ -8,8 +8,10 @@ import { OnlineGameView, PositionPresetSelector, ShogiMatch, useRoomConnection }
 import { getRouteApi, useNavigate, useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useEffect, useRef, useState } from "react";
+import { HeaderNav } from "../../components/HeaderNav";
 import { PageHeader } from "../../components/PageHeader";
 import { syncProfileDisplayNameIfNeeded, useAuthSession } from "../../hooks/useAuthSession";
+import { getLocalPlayerName, saveLocalPlayerName } from "../../hooks/useLocalPlayerName";
 import { useOnlineAnalysis } from "../../hooks/useOnlineAnalysis";
 import { useRemotePrivateNnueManager } from "../../hooks/useRemotePrivateNnueManager";
 
@@ -64,63 +66,65 @@ function PlayersStatusSection({
     roomInfoPlayers: RoomInfo["players"];
     snapshotPlayers?: SnapshotPayload["players"] | null;
 }): ReactElement {
-    return (
-        <>
+    // スナップショットがあればリアルタイム情報を優先して表示
+    if (snapshotPlayers) {
+        return (
             <div className="rounded-lg border border-border bg-card p-4">
                 <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-wafuu-shu">
                             先手（▲）:{" "}
-                            {roomInfoPlayers.b?.name ?? (
+                            {snapshotPlayers.b?.name ?? (
                                 <span className="text-muted-foreground">待機中...</span>
                             )}
                         </span>
-                        {roomInfoPlayers.b && (
-                            <span className="text-xs text-muted-foreground">✓ 登録済み</span>
+                        {snapshotPlayers.b?.online && (
+                            <span className="text-xs text-status-online">● オンライン</span>
                         )}
                     </div>
                     <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-wafuu-ai">
                             後手（△）:{" "}
-                            {roomInfoPlayers.w?.name ?? (
+                            {snapshotPlayers.w?.name ?? (
                                 <span className="text-muted-foreground">待機中...</span>
                             )}
                         </span>
-                        {roomInfoPlayers.w && (
-                            <span className="text-xs text-muted-foreground">✓ 登録済み</span>
+                        {snapshotPlayers.w?.online && (
+                            <span className="text-xs text-status-online">● オンライン</span>
                         )}
                     </div>
                 </div>
             </div>
-            {snapshotPlayers && (
-                <div className="rounded-lg border border-border bg-card p-4">
-                    <div className="flex flex-col gap-2">
-                        <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-wafuu-shu">
-                                先手（▲）:{" "}
-                                {snapshotPlayers.b?.name ?? (
-                                    <span className="text-muted-foreground">待機中...</span>
-                                )}
-                            </span>
-                            {snapshotPlayers.b?.online && (
-                                <span className="text-xs text-status-online">● オンライン</span>
-                            )}
-                        </div>
-                        <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-wafuu-ai">
-                                後手（△）:{" "}
-                                {snapshotPlayers.w?.name ?? (
-                                    <span className="text-muted-foreground">待機中...</span>
-                                )}
-                            </span>
-                            {snapshotPlayers.w?.online && (
-                                <span className="text-xs text-status-online">● オンライン</span>
-                            )}
-                        </div>
-                    </div>
+        );
+    }
+
+    return (
+        <div className="rounded-lg border border-border bg-card p-4">
+            <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-wafuu-shu">
+                        先手（▲）:{" "}
+                        {roomInfoPlayers.b?.name ?? (
+                            <span className="text-muted-foreground">待機中...</span>
+                        )}
+                    </span>
+                    {roomInfoPlayers.b && (
+                        <span className="text-xs text-muted-foreground">✓ 登録済み</span>
+                    )}
                 </div>
-            )}
-        </>
+                <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-wafuu-ai">
+                        後手（△）:{" "}
+                        {roomInfoPlayers.w?.name ?? (
+                            <span className="text-muted-foreground">待機中...</span>
+                        )}
+                    </span>
+                    {roomInfoPlayers.w && (
+                        <span className="text-xs text-muted-foreground">✓ 登録済み</span>
+                    )}
+                </div>
+            </div>
+        </div>
     );
 }
 
@@ -269,11 +273,6 @@ export default function RoomPage(): ReactElement {
     const { session } = useAuthSession();
     const remoteNnueManager = useRemotePrivateNnueManager();
 
-    // URLクエリパラメータ（ルーム作成者から渡される名前）
-    const urlParams = new URLSearchParams(
-        typeof window !== "undefined" ? window.location.search : "",
-    );
-
     const navigate = useNavigate();
     const didAutofillNameRef = useRef(false);
     const [joinActionError, setJoinActionError] = useState<string | null>(null);
@@ -295,7 +294,7 @@ export default function RoomPage(): ReactElement {
         handleJoin,
         handleUpdateStartSfen,
         startReview,
-    } = useRoomConnection({ roomId, initialName: urlParams.get("name") ?? "" });
+    } = useRoomConnection({ roomId });
 
     const [copied, setCopied] = useState(false);
     useEffect(() => {
@@ -305,9 +304,14 @@ export default function RoomPage(): ReactElement {
     }, [copied]);
 
     useEffect(() => {
-        if (didAutofillNameRef.current || joined || !session?.authenticated) return;
-        if (!session.user.displayName.trim() || joinName.trim()) return;
-        setJoinName(session.user.displayName);
+        if (didAutofillNameRef.current || joined) return;
+
+        const autofillName = session?.authenticated
+            ? session.user.displayName
+            : getLocalPlayerName();
+
+        if (!autofillName.trim() || joinName.trim()) return;
+        setJoinName(autofillName);
         didAutofillNameRef.current = true;
     }, [joined, joinName, session, setJoinName]);
 
@@ -320,6 +324,7 @@ export default function RoomPage(): ReactElement {
         setPendingJoinSeat(seat);
 
         try {
+            if (!session?.authenticated) saveLocalPlayerName(trimmedName);
             await syncProfileDisplayNameIfNeeded(session, trimmedName);
             handleJoin(seat);
         } catch (nextError) {
@@ -389,7 +394,7 @@ export default function RoomPage(): ReactElement {
                 snapshot={snapshot}
                 seat={joinSeat as Seat}
                 roomId={roomId}
-                analysis={aiSupport ? analysis : undefined}
+                analysis={analysis}
                 manifestUrl={nnueManifestUrl}
                 remoteNnueManager={remoteNnueManager}
                 onStartReview={(data) => {
@@ -431,6 +436,7 @@ export default function RoomPage(): ReactElement {
                     { label: "オンライン対局", to: "/online" },
                     { label: "対局ルーム" },
                 ]}
+                right={<HeaderNav />}
             />
             <div className="mx-auto flex max-w-[480px] flex-col gap-5 px-4 py-8">
                 <h1 className="text-xl font-bold text-foreground">対局ルーム</h1>

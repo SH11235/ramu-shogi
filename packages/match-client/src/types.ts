@@ -8,6 +8,7 @@ export interface RoomClient {
     resume(params: { resumeToken: string; lastEventId: number }): void;
     move(params: { eventId: number; usi: string; sfen: string }): void;
     resign(params: { eventId: number }): void;
+    checkmate(params: { eventId: number }): void;
     consumeAnalysis(params: { eventId: number; ply: number }): void;
     updateSettings(params: { startSfen: string }): void;
     ack(params: { lastEventId: number }): void;

@@ -96,7 +96,7 @@ function validateSettings(settings: unknown): RoomSettings | ValidationError {
             if (
                 ps.mode === "limited" &&
                 (typeof ps.limitCount !== "number" ||
-                    ps.limitCount < 1 ||
+                    ps.limitCount < 0 ||
                     !Number.isInteger(ps.limitCount))
             ) {
                 return { error: `Invalid aiSupport.${seat}.limitCount` };

@@ -69,8 +69,7 @@ export function ShogiBoard({
     const { files, ranks } = getBoardLabels(flipBoard);
 
     return (
-        <div className="relative inline-block rounded-lg border border-[hsl(var(--shogi-outer-border))] bg-[radial-gradient(circle_at_30%_20%,#f9e7c9,#e1c08d)] shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
-            <div className="pointer-events-none absolute inset-0 rounded-lg border border-white/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]" />
+        <div className="relative inline-block rounded-lg border border-[hsl(var(--shogi-outer-border))] bg-[hsl(var(--shogi-cell-light))] shadow-[0_4px_12px_rgba(0,0,0,0.12)]">
             {/* 盤外ラベル: 筋（上） */}
             <div
                 className={cn(
@@ -158,15 +157,13 @@ export function ShogiBoard({
                                         }
                                         className={cn(
                                             "absolute inset-0 overflow-hidden text-base font-semibold transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[hsl(var(--wafuu-shu))]/70 focus-visible:ring-offset-transparent",
-                                            "shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] hover:ring-2 hover:ring-inset hover:ring-[hsl(var(--shogi-border))]",
+                                            "hover:ring-2 hover:ring-inset hover:ring-[hsl(var(--shogi-border))]",
                                             // タッチ選択・長押しメニュー防止
                                             "select-none [-webkit-touch-callout:none]",
                                             // ドラッグ可能時はスクロールも防止
                                             isDraggable ? "touch-none" : "touch-manipulation",
                                             // 背景色: ハイライト時は専用色、通常時はチェッカーパターン
                                             !isHighlighted && baseTone,
-                                            !isHighlighted &&
-                                                "bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.3),transparent_38%),radial-gradient(circle_at_80%_80%,rgba(255,255,255,0.18),transparent_40%)]",
                                             // 移動先ハイライト - 濃い金色
                                             isLastMoveTo &&
                                                 !isSelected &&

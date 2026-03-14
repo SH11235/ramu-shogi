@@ -255,6 +255,7 @@ export type ClientMessageType =
     | "resume"
     | "move"
     | "resign"
+    | "checkmate"
     | "use_analysis"
     | "update_settings"
     | "ack"

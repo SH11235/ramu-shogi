@@ -2,6 +2,22 @@ import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type { AnalysisMoveResult, OnlineAnalysis } from "@shogi/ui";
 import { useEffect, useRef, useState } from "react";
 
+function buildPassRightsForAnalysis(moves: string[]) {
+    const hasPass = moves.some((m) => m.toLowerCase() === "pass");
+    if (!hasPass) return undefined;
+    let senteCount = 0;
+    let goteCount = 0;
+    let isSente = true;
+    for (const m of moves) {
+        if (m.toLowerCase() === "pass") {
+            if (isSente) senteCount++;
+            else goteCount++;
+        }
+        isSente = !isSente;
+    }
+    return { passRights: { sente: senteCount + 1, gote: goteCount + 1 } };
+}
+
 export function useOnlineAnalysis(
     searchDepth: number | null,
     searchTimeMs: number | null,
@@ -61,6 +77,7 @@ export function useOnlineAnalysis(
                 setTopMoves(sorted);
             } else if (event.type === "bestmove") {
                 setIsAnalyzing(false);
+                searchHandleRef.current = null;
                 unsub();
                 unsubscribeRef.current = null;
             }
@@ -68,7 +85,9 @@ export function useOnlineAnalysis(
         unsubscribeRef.current = unsub;
 
         try {
-            await engine.loadPosition(sfen, moves);
+            // パスを含む棋譜はpassRightsオプションが必要（ないとエンジンがpanic）
+            const passRightsOption = buildPassRightsForAnalysis(moves);
+            await engine.loadPosition(sfen, moves, passRightsOption);
             const limits: { maxDepth?: number; movetimeMs?: number } = {};
             if (searchDepth !== null) limits.maxDepth = searchDepth;
             if (searchTimeMs !== null) limits.movetimeMs = searchTimeMs;

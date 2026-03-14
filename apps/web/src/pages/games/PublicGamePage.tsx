@@ -1,6 +1,7 @@
 import type { GameRecordDetail } from "@shogi/api-contract";
-import { getRouteApi, Link } from "@tanstack/react-router";
+import { getRouteApi } from "@tanstack/react-router";
 import type { ReactElement } from "react";
+import { HeaderNav } from "../../components/HeaderNav";
 import { PageHeader } from "../../components/PageHeader";
 import { formatGameResult } from "./gameResultUtils";
 
@@ -13,14 +14,7 @@ export default function PublicGamePage(): ReactElement {
         <>
             <PageHeader
                 items={[{ label: "ラム将棋", to: "/" }, { label: "公開棋譜" }]}
-                right={
-                    <Link
-                        to="/games"
-                        className="rounded-md border border-border px-3 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-                    >
-                        棋譜一覧
-                    </Link>
-                }
+                right={<HeaderNav />}
             />
             <main className="mx-auto flex max-w-[960px] flex-col gap-6 px-4 py-8">
                 <section className="rounded-xl border border-border bg-card p-5 shadow-sm">

@@ -1,6 +1,7 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useState } from "react";
+import { HeaderNav } from "../../components/HeaderNav";
 import { PageHeader } from "../../components/PageHeader";
 
 export default function OnlinePage(): ReactElement {
@@ -21,28 +22,7 @@ export default function OnlinePage(): ReactElement {
         <>
             <PageHeader
                 items={[{ label: "ラム将棋", to: "/" }, { label: "オンライン対局" }]}
-                right={
-                    <div className="flex items-center gap-2">
-                        <Link
-                            to="/nnue"
-                            className="rounded-md border border-border px-3 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-                        >
-                            NNUE
-                        </Link>
-                        <Link
-                            to="/games"
-                            className="rounded-md border border-border px-3 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-                        >
-                            棋譜一覧
-                        </Link>
-                        <Link
-                            to="/auth"
-                            className="rounded-md border border-border px-3 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-                        >
-                            ログイン
-                        </Link>
-                    </div>
-                }
+                right={<HeaderNav />}
             />
             <div className="mx-auto flex max-w-[480px] flex-col gap-6 px-4 py-10">
                 <h1 className="text-2xl font-bold text-foreground">オンライン対局</h1>

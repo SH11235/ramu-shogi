@@ -6,6 +6,7 @@ import type {
 import { getRouteApi, Link, useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useState } from "react";
+import { HeaderNav } from "../../components/HeaderNav";
 import { PageHeader } from "../../components/PageHeader";
 import { parseApiError } from "../../hooks/useAuthSession";
 import { formatGameResult } from "./gameResultUtils";
@@ -56,14 +57,7 @@ export default function GameDetailPage(): ReactElement {
                     { label: "棋譜一覧", to: "/games" },
                     { label: "棋譜詳細" },
                 ]}
-                right={
-                    <Link
-                        to="/auth"
-                        className="rounded-md border border-border px-3 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-                    >
-                        ログイン
-                    </Link>
-                }
+                right={<HeaderNav />}
             />
             <main className="mx-auto flex max-w-[960px] flex-col gap-6 px-4 py-8">
                 {status && (

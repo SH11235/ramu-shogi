@@ -3,8 +3,10 @@ import { PositionPresetSelector } from "@shogi/ui";
 import { useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useEffect, useRef, useState } from "react";
+import { HeaderNav } from "../../components/HeaderNav";
 import { PageHeader } from "../../components/PageHeader";
 import { syncProfileDisplayNameIfNeeded, useAuthSession } from "../../hooks/useAuthSession";
+import { getLocalPlayerName, saveLocalPlayerName } from "../../hooks/useLocalPlayerName";
 
 // ─── ルーム設定の型 ───────────────────────────────────────────────────────────
 
@@ -99,13 +101,18 @@ export default function CreateRoomPage(): ReactElement {
     }
 
     useEffect(() => {
-        if (didAutofillNameRef.current || !session?.authenticated) return;
-        if (!session.user.displayName.trim()) return;
+        if (didAutofillNameRef.current) return;
+
+        const autofillName = session?.authenticated
+            ? session.user.displayName
+            : getLocalPlayerName();
+
+        if (!autofillName.trim()) return;
 
         setSettings((prev) => {
             if (prev.name.trim()) return prev;
             didAutofillNameRef.current = true;
-            return { ...prev, name: session.user.displayName };
+            return { ...prev, name: autofillName };
         });
     }, [session]);
 
@@ -114,6 +121,7 @@ export default function CreateRoomPage(): ReactElement {
         if (!trimmedName) return;
         setIsCreating(true);
         setError(null);
+        if (!session?.authenticated) saveLocalPlayerName(trimmedName);
         const requestBody = buildCreateRoomRequest(settings);
 
         await syncProfileDisplayNameIfNeeded(session, trimmedName)
@@ -136,7 +144,7 @@ export default function CreateRoomPage(): ReactElement {
                 await navigate({
                     to: "/online/$roomId",
                     params: { roomId: data.roomId },
-                    search: { name: trimmedName, seat: undefined, mode: undefined },
+                    search: { name: undefined, seat: undefined, mode: undefined },
                 });
             })
             .catch((nextError: unknown) => {
@@ -161,6 +169,7 @@ export default function CreateRoomPage(): ReactElement {
                     { label: "オンライン対局", to: "/online" },
                     { label: "対局設定" },
                 ]}
+                right={<HeaderNav />}
             />
             <div className="mx-auto flex max-w-[480px] flex-col gap-6 px-4 py-10">
                 <h1 className="text-xl font-bold text-foreground">対局設定</h1>
@@ -364,13 +373,13 @@ export default function CreateRoomPage(): ReactElement {
                                             <div className="flex items-center gap-1">
                                                 <input
                                                     type="number"
-                                                    min={1}
+                                                    min={0}
                                                     max={20}
                                                     value={settings[countKey]}
                                                     onChange={(e) =>
                                                         set(
                                                             countKey,
-                                                            Math.max(1, Number(e.target.value)),
+                                                            Math.max(0, Number(e.target.value)),
                                                         )
                                                     }
                                                     className="w-14 rounded-md border border-input bg-transparent px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"

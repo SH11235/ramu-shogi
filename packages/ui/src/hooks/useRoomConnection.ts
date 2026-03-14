@@ -1,4 +1,11 @@
-import type { RoomClient, ServerMessage, SnapshotPayload } from "@shogi/match-client";
+import type {
+    ErrorCode,
+    PassRightsState,
+    PlayerPublicInfo,
+    RoomClient,
+    ServerMessage,
+    SnapshotPayload,
+} from "@shogi/match-client";
 import {
     createRoomClient,
     getStoredResumeToken,
@@ -6,6 +13,37 @@ import {
     storeSeat,
 } from "@shogi/match-client";
 import { useEffect, useReducer, useRef } from "react";
+
+function errorCodeToMessage(code: ErrorCode): string {
+    switch (code) {
+        case "ROOM_FULL":
+            return "この席はすでに埋まっています";
+        case "ROOM_NOT_FOUND":
+            return "ルームが見つかりません";
+        case "ROOM_FINISHED":
+            return "この対局はすでに終了しています";
+        case "ROOM_EXPIRED":
+            return "ルームの有効期限が切れました";
+        case "INVALID_TOKEN":
+            return "セッションが切れました。再度参加してください";
+        case "DESYNC":
+            return "同期エラーが発生しました。ページを再読み込みしてください";
+        case "ILLEGAL_MOVE":
+            return "不正な指し手です";
+        case "NOT_YOUR_TURN":
+            return "あなたの手番ではありません";
+        case "RATE_LIMITED":
+            return "操作が多すぎます。しばらく待ってからお試しください";
+        case "SPECTATOR_FORBIDDEN":
+            return "観戦者はこの操作を行えません";
+        case "ANALYSIS_LIMIT_EXCEEDED":
+            return "AI解析の使用回数が上限に達しました";
+        case "AI_SUPPORT_DISABLED":
+            return "このルームではAIサポートが無効です";
+        default:
+            return "エラーが発生しました";
+    }
+}
 
 // ─── 参加フォーム状態（内部専用） ────────────────────────────────────────────
 
@@ -54,7 +92,12 @@ type RoomAction =
     | { type: "joined" }
     | { type: "snapshot_received"; snapshot: SnapshotPayload }
     | { type: "settings_updated"; startSfen: string }
-    | { type: "game_start"; eventId: number }
+    | {
+          type: "game_start";
+          eventId: number;
+          players?: { b: PlayerPublicInfo; w: PlayerPublicInfo };
+          passRights?: PassRightsState | null;
+      }
     | { type: "client_set"; client: RoomClient }
     | { type: "client_cleared" }
     | { type: "start_review"; data: RoomState["reviewData"] };
@@ -81,7 +124,12 @@ function roomReducer(state: RoomState, action: RoomAction): RoomState {
                 ...state,
                 gamePhase: "playing",
                 snapshot: state.snapshot
-                    ? { ...state.snapshot, eventId: action.eventId }
+                    ? {
+                          ...state.snapshot,
+                          eventId: action.eventId,
+                          ...(action.players ? { players: action.players } : {}),
+                          ...("passRights" in action ? { passRights: action.passRights } : {}),
+                      }
                     : state.snapshot,
             };
         case "client_set":
@@ -274,12 +322,16 @@ export function useRoomConnection({
                         }
                         if (message.payload.kind === "game_start") {
                             stopListening();
-                            dispatchRoom({ type: "game_start", eventId: message.payload.eventId });
+                            dispatchRoom({
+                                type: "game_start",
+                                eventId: message.payload.eventId,
+                                players: message.payload.players,
+                            });
                         }
                         break;
                     }
                     case "error": {
-                        fail(message.payload.message ?? "参加に失敗しました");
+                        fail(errorCodeToMessage(message.payload.code));
                         break;
                     }
                     default:

@@ -10,9 +10,10 @@ import type {
 import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type { AnalysisSnapshotDraft, EngineOption } from "@shogi/ui";
 import { ShogiMatch } from "@shogi/ui";
-import { getRouteApi, Link, useParams } from "@tanstack/react-router";
+import { getRouteApi, useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useState } from "react";
+import { HeaderNav } from "../../components/HeaderNav";
 import { PageHeader } from "../../components/PageHeader";
 import { parseApiError } from "../../hooks/useAuthSession";
 import { useRemotePrivateNnueManager } from "../../hooks/useRemotePrivateNnueManager";
@@ -186,15 +187,7 @@ export default function GameReviewPage(): ReactElement {
                     { label: "棋譜一覧", to: "/games" },
                     { label: "検討" },
                 ]}
-                right={
-                    <Link
-                        to="/games/$gameId"
-                        params={{ gameId }}
-                        className="rounded-md border border-border px-3 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-                    >
-                        詳細へ戻る
-                    </Link>
-                }
+                right={<HeaderNav />}
             />
             <main className="mx-auto flex max-w-[1200px] flex-col gap-6 px-4 py-8">
                 {status && (

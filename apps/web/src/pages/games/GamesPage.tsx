@@ -2,6 +2,7 @@ import type { GameRecordSummary } from "@shogi/api-contract";
 import { getRouteApi, Link } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { AuthRequiredCard } from "../../components/AuthRequiredCard";
+import { HeaderNav } from "../../components/HeaderNav";
 import { PageHeader } from "../../components/PageHeader";
 import { formatGameResult } from "./gameResultUtils";
 
@@ -19,20 +20,11 @@ export default function GamesPage(): ReactElement {
     };
     const needsAuth = loaderData.needsAuth;
     const games = loaderData.games;
-    const loginHref = "/auth?next=%2Fgames";
-
     return (
         <>
             <PageHeader
                 items={[{ label: "ラム将棋", to: "/" }, { label: "棋譜一覧" }]}
-                right={
-                    <a
-                        href={loginHref}
-                        className="rounded-md border border-border px-3 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-                    >
-                        ログイン
-                    </a>
-                }
+                right={<HeaderNav />}
             />
             <main className="mx-auto flex max-w-[960px] flex-col gap-6 px-4 py-8">
                 <div className="flex flex-col gap-2">

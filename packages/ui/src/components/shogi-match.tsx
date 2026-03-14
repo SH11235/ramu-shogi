@@ -614,6 +614,49 @@ export function ShogiMatch({
         await endMatch(result);
     };
 
+    // 詰み検出: 人間の手番で合法手がない場合に自動終局
+    // エンジンの手番は engine-controller が "bestmove none" を検知して処理するためスキップ
+    useEffect(() => {
+        if (!isMatchRunning || !positionReady || matchEndedRef.current) return;
+        if (sides[position.turn].role === "engine") return;
+
+        let cancelled = false;
+        const passRightsOption = passRights.getPassRightsOption();
+        void (async () => {
+            try {
+                const resolver = fetchLegalMoves
+                    ? () => fetchLegalMoves(startSfen, moves, passRightsOption)
+                    : () => getPositionService().getLegalMoves(startSfen, moves, passRightsOption);
+                const legal = await legalCache.getOrResolve(moves.join(" "), resolver);
+                if (cancelled || matchEndedRef.current) return;
+                if (legal.size === 0) {
+                    const loser: Player = position.turn;
+                    const winner: Player = loser === "sente" ? "gote" : "sente";
+                    await endMatchRef.current?.({
+                        winner,
+                        reason: { kind: "checkmate", loser },
+                        totalMoves: moves.length,
+                    });
+                }
+            } catch {
+                // 合法手取得失敗時は無視
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        isMatchRunning,
+        positionReady,
+        moves,
+        startSfen,
+        position.turn,
+        fetchLegalMoves,
+        sides,
+        passRights,
+        legalCache,
+    ]);
+
     // 手の処理中フラグ（待った・パス等の連打・競合防止用）
     const moveProcessingRef = useRef(false);
 

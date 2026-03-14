@@ -157,6 +157,10 @@ export function createRoomClient(
             send("resign", params);
         },
 
+        checkmate(params) {
+            send("checkmate", params);
+        },
+
         consumeAnalysis(params) {
             send("use_analysis", params);
         },
