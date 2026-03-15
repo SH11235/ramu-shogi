@@ -79,12 +79,7 @@ interface RoomState {
     snapshot: SnapshotPayload | null;
     joined: boolean;
     localStartSfen: string | null;
-    gamePhase: "waiting" | "playing" | "reviewing";
-    reviewData: {
-        sfen: string;
-        moves: string[];
-        analysisMarkers: Array<{ seat: "b" | "w"; ply: number }>;
-    } | null;
+    gamePhase: "waiting" | "playing";
     client: RoomClient | null;
 }
 
@@ -99,15 +94,13 @@ type RoomAction =
           passRights?: PassRightsState | null;
       }
     | { type: "client_set"; client: RoomClient }
-    | { type: "client_cleared" }
-    | { type: "start_review"; data: RoomState["reviewData"] };
+    | { type: "client_cleared" };
 
 const INITIAL_ROOM_STATE: RoomState = {
     snapshot: null,
     joined: false,
     localStartSfen: null,
     gamePhase: "waiting",
-    reviewData: null,
     client: null,
 };
 
@@ -136,8 +129,6 @@ function roomReducer(state: RoomState, action: RoomAction): RoomState {
             return { ...state, client: action.client };
         case "client_cleared":
             return { ...state, client: null };
-        case "start_review":
-            return { ...state, reviewData: action.data, gamePhase: "reviewing" };
     }
 }
 
@@ -167,18 +158,12 @@ export interface UseRoomConnectionReturn {
     snapshot: SnapshotPayload | null;
     joined: boolean;
     localStartSfen: string | null;
-    gamePhase: "waiting" | "playing" | "reviewing";
-    reviewData: {
-        sfen: string;
-        moves: string[];
-        analysisMarkers: Array<{ seat: "b" | "w"; ply: number }>;
-    } | null;
+    gamePhase: "waiting" | "playing";
     client: RoomClient | null;
 
     // アクション
     handleJoin: (seatToJoin: "b" | "w" | "s") => void;
     handleUpdateStartSfen: (startSfen: string) => void;
-    startReview: (data: UseRoomConnectionReturn["reviewData"]) => void;
 }
 
 // ─── フック本体 ───────────────────────────────────────────────────────────────
@@ -403,10 +388,6 @@ export function useRoomConnection({
         clientRef.current?.updateSettings({ startSfen });
     };
 
-    const startReview = (data: UseRoomConnectionReturn["reviewData"]): void => {
-        dispatchRoom({ type: "start_review", data });
-    };
-
     return {
         joinName: joinForm.name,
         setJoinName: (name) => dispatchJoin({ type: "set_name", name }),
@@ -418,11 +399,9 @@ export function useRoomConnection({
         joined: roomState.joined,
         localStartSfen: roomState.localStartSfen,
         gamePhase: roomState.gamePhase,
-        reviewData: roomState.reviewData,
         client: roomState.client,
 
         handleJoin,
         handleUpdateStartSfen,
-        startReview,
     };
 }

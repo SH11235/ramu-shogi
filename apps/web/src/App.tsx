@@ -33,6 +33,17 @@ const panelEngine = createEngineClient();
 // NNUE プリセット manifest.json の URL（環境変数で設定、必須）
 const nnueManifestUrl = import.meta.env.VITE_NNUE_MANIFEST_URL as string;
 
+function readReviewKifuFromSessionStorage(): { sfen: string; moves: string[] } | undefined {
+    try {
+        const raw = sessionStorage.getItem("ramu_review_kifu");
+        if (!raw) return undefined;
+        sessionStorage.removeItem("ramu_review_kifu");
+        return JSON.parse(raw) as { sfen: string; moves: string[] };
+    } catch {
+        return undefined;
+    }
+}
+
 function App() {
     const isDevMode = useDevMode();
     const remoteNnueManager = useRemotePrivateNnueManager();
@@ -41,12 +52,16 @@ function App() {
         sfen: string;
         moves?: string[];
     }>({ label: "現在局面", sfen: "startpos", moves: [] });
+    const [initialReview] = useState<{ sfen: string; moves: string[] } | undefined>(
+        readReviewKifuFromSessionStorage,
+    );
 
     return (
         <>
             <PageHeader items={[{ label: "ラム将棋" }]} right={<HeaderNav />} />
             <main className="mx-auto flex max-w-[1100px] flex-col gap-3 pt-3 md:px-5">
                 <ShogiMatch
+                    key={initialReview ? "review" : "normal"}
                     engineOptions={engineOptions}
                     isDevMode={isDevMode}
                     manifestUrl={nnueManifestUrl}
@@ -55,6 +70,7 @@ function App() {
                     defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
                     aiIconUrl={`${import.meta.env.BASE_URL}ramu.jpeg`}
                     onPositionSnapshot={(snapshot) => setPanelPosition(snapshot)}
+                    initialReview={initialReview}
                 />
                 {isDevMode && <EngineControlPanel engine={panelEngine} position={panelPosition} />}
             </main>

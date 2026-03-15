@@ -1,15 +1,13 @@
 // 待機画面・対局ルームページ（/online/:roomId）
 
 import type { RoomInfo } from "@shogi/api-contract";
-import { createWasmEngineClient } from "@shogi/engine-wasm";
 import {
     type Seat,
     type SnapshotPayload,
     removeStoredResumeToken,
     removeStoredSeat,
 } from "@shogi/match-client";
-import type { EngineOption } from "@shogi/ui";
-import { OnlineGameView, PositionPresetSelector, ShogiMatch, useRoomConnection } from "@shogi/ui";
+import { OnlineGameView, PositionPresetSelector, useRoomConnection } from "@shogi/ui";
 import { getRouteApi, useNavigate, useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -294,11 +292,9 @@ export default function RoomPage(): ReactElement {
         joined,
         localStartSfen,
         gamePhase,
-        reviewData,
         client,
         handleJoin,
         handleUpdateStartSfen,
-        startReview,
     } = useRoomConnection({ roomId });
 
     const [copied, setCopied] = useState(false);
@@ -370,29 +366,6 @@ export default function RoomPage(): ReactElement {
 
     // ─── レンダリング ──────────────────────────────────────────────────────────
 
-    // 検討フェーズ: ShogiMatch で棋譜検討
-    const reviewEngineOptions: EngineOption[] = [
-        {
-            id: "wasm",
-            label: "内蔵エンジン",
-            createClient: () => createWasmEngineClient({ stopMode: "terminate" }),
-            kind: "internal",
-        },
-    ];
-
-    if (gamePhase === "reviewing" && reviewData) {
-        return (
-            <ShogiMatch
-                engineOptions={reviewEngineOptions}
-                defaultSides={{ sente: { role: "human" }, gote: { role: "human" } }}
-                initialReview={{ sfen: reviewData.sfen, moves: reviewData.moves }}
-                analysisMarkers={reviewData.analysisMarkers}
-                manifestUrl={nnueManifestUrl}
-                remoteNnueManager={remoteNnueManager}
-            />
-        );
-    }
-
     // 対局フェーズ: OnlineGameView にインプレース切り替え（WebSocket 維持）
     if (gamePhase === "playing" && snapshot && client) {
         return (
@@ -407,7 +380,15 @@ export default function RoomPage(): ReactElement {
                 onStartReview={(data) => {
                     removeStoredResumeToken(roomId);
                     removeStoredSeat(roomId);
-                    startReview(data);
+                    try {
+                        sessionStorage.setItem(
+                            "ramu_review_kifu",
+                            JSON.stringify({ sfen: data.sfen, moves: data.moves }),
+                        );
+                    } catch {
+                        // sessionStorage が使えない場合は無視
+                    }
+                    void navigate({ to: "/" });
                 }}
                 onExit={() => {
                     removeStoredResumeToken(roomId);
