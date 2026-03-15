@@ -28,7 +28,7 @@ interface AiHintPanelProps {
     onNnueSelectionChange: (selection: NnueSelection) => void;
     onOpenNnueManager: () => void;
     onAnalyze?: () => void;
-    onApplyMove?: (usiMove: string) => void | Promise<void>;
+    onApplyMove?: (usiMove: string) => void | Promise<unknown>;
 }
 
 function getScoreClassName(tone: AiHintMove["scoreTone"]): string {

@@ -114,7 +114,8 @@ export function useNnueStorage(): UseNnueStorageReturn {
         }
 
         // SHA-256 ハッシュを計算（data を直接渡してコピーを省略）
-        const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+        // data は Blob.arrayBuffer() 由来で常に ArrayBuffer を持つため as キャストで型制約を満たす
+        const hashBuffer = await crypto.subtle.digest("SHA-256", data as Uint8Array<ArrayBuffer>);
         const hashArray = Array.from(new Uint8Array(hashBuffer));
         const hash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 
