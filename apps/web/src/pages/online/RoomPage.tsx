@@ -2,7 +2,12 @@
 
 import type { RoomInfo } from "@shogi/api-contract";
 import { createWasmEngineClient } from "@shogi/engine-wasm";
-import type { Seat, SnapshotPayload } from "@shogi/match-client";
+import {
+    type Seat,
+    type SnapshotPayload,
+    removeStoredResumeToken,
+    removeStoredSeat,
+} from "@shogi/match-client";
 import type { EngineOption } from "@shogi/ui";
 import { OnlineGameView, PositionPresetSelector, ShogiMatch, useRoomConnection } from "@shogi/ui";
 import { getRouteApi, useNavigate, useParams } from "@tanstack/react-router";
@@ -399,9 +404,15 @@ export default function RoomPage(): ReactElement {
                 manifestUrl={nnueManifestUrl}
                 remoteNnueManager={remoteNnueManager}
                 onStartReview={(data) => {
+                    removeStoredResumeToken(roomId);
+                    removeStoredSeat(roomId);
                     startReview(data);
                 }}
-                onExit={() => void navigate({ to: "/" })}
+                onExit={() => {
+                    removeStoredResumeToken(roomId);
+                    removeStoredSeat(roomId);
+                    void navigate({ to: "/" });
+                }}
             />
         );
     }
