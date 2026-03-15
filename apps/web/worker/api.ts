@@ -252,5 +252,6 @@ export async function handleApiRequest(
         return handleGetRoom(roomGetMatch[1], request, env);
     }
 
-    return apiErrorResponse(404, "NOT_FOUND", "API endpoint not found");
+    // /api/rooms/* 以外は null を返してプロキシに委譲
+    return null;
 }

@@ -232,6 +232,7 @@ export function ShogiMatchLayout({
         onDisplaySettingsOpenChange,
         isPassRightsSettingsOpen,
         onPassRightsSettingsOpenChange,
+        reviewMode,
     } = pcSpecificProps;
 
     // グループ化されたpropsを展開: Mobile専用
@@ -583,6 +584,7 @@ export function ShogiMatchLayout({
                                     isPassRightsSettingsOpen={isPassRightsSettingsOpen}
                                     onPassRightsSettingsOpenChange={onPassRightsSettingsOpenChange}
                                     handlePassRightsSettingsChange={handlePassRightsSettingsChange}
+                                    reviewMode={reviewMode}
                                 />
                             </NavigationProvider>
                         </MatchStateProvider>

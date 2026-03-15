@@ -6,6 +6,7 @@ interface Env {
     ASSETS: Fetcher;
     NNUE_BUCKET: R2Bucket;
     ROOM: DurableObjectNamespace;
+    BACKEND?: Fetcher;
     BACKEND_ORIGIN?: string;
 }
 
@@ -76,13 +77,8 @@ function resolveBackendUrl(requestUrl: string, backendOrigin: string): URL | nul
 
 async function handleApiProxyRequest(request: Request, env: Env): Promise<Response | null> {
     const { pathname } = new URL(request.url);
-    if (!pathname.startsWith(API_PREFIX) || !env.BACKEND_ORIGIN) {
+    if (!pathname.startsWith(API_PREFIX)) {
         return null;
-    }
-
-    const targetUrl = resolveBackendUrl(request.url, env.BACKEND_ORIGIN);
-    if (!targetUrl) {
-        return new Response("Invalid BACKEND_ORIGIN", { status: 500 });
     }
 
     const sourceUrl = new URL(request.url);
@@ -90,22 +86,47 @@ async function handleApiProxyRequest(request: Request, env: Env): Promise<Respon
     headers.set("X-Forwarded-Host", sourceUrl.host);
     headers.set("X-Forwarded-Proto", sourceUrl.protocol.replace(":", ""));
 
-    const response = await fetch(targetUrl.toString(), {
-        method: request.method,
-        headers,
-        body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
-        redirect: "manual",
-    });
+    let backendResponse: Response;
 
-    if (request.headers.get("Upgrade") === "websocket" && response.status === 101) {
-        return response;
+    if (env.BACKEND) {
+        // Service Binding 経由（workers.dev 間 fetch の制約なし）
+        backendResponse = await env.BACKEND.fetch(request.url, {
+            method: request.method,
+            headers,
+            body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
+            redirect: "manual",
+        });
+    } else if (env.BACKEND_ORIGIN) {
+        // HTTP proxy fallback
+        const targetUrl = resolveBackendUrl(request.url, env.BACKEND_ORIGIN);
+        if (!targetUrl) {
+            return new Response(
+                JSON.stringify({ error: "INTERNAL_ERROR", message: "Invalid BACKEND_ORIGIN" }),
+                {
+                    status: 500,
+                    headers: { "Content-Type": "application/json" },
+                },
+            );
+        }
+        backendResponse = await fetch(targetUrl.toString(), {
+            method: request.method,
+            headers,
+            body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
+            redirect: "manual",
+        });
+    } else {
+        return null;
     }
 
-    const responseHeaders = new Headers(response.headers);
+    if (request.headers.get("Upgrade") === "websocket" && backendResponse.status === 101) {
+        return backendResponse;
+    }
+
+    const responseHeaders = new Headers(backendResponse.headers);
     responseHeaders.set("cache-control", "no-store");
-    return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
+    return new Response(backendResponse.body, {
+        status: backendResponse.status,
+        statusText: backendResponse.statusText,
         headers: responseHeaders,
     });
 }
@@ -189,20 +210,26 @@ async function handleNnueRequest(request: Request, env: Env): Promise<Response |
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
         const { pathname } = new URL(request.url);
-        const proxiedApiResponse = await handleApiProxyRequest(request, env);
-        if (proxiedApiResponse) return proxiedApiResponse;
 
-        // /api/* リクエストを API ハンドラにルーティング
+        // /api/rooms/* はローカルで処理（frontend の Durable Object を使用）
         const apiResponse = await handleApiRequest(request, env, ctx);
         if (apiResponse) return apiResponse;
 
+        // その他の /api/* はバックエンド Worker にプロキシ
+        const proxiedApiResponse = await handleApiProxyRequest(request, env);
+        if (proxiedApiResponse) return proxiedApiResponse;
+
         if (pathname.startsWith(API_PREFIX)) {
-            return new Response("Not Found", {
-                status: 404,
-                headers: {
-                    "cache-control": "no-store",
+            return new Response(
+                JSON.stringify({ error: "NOT_FOUND", message: "API endpoint not found" }),
+                {
+                    status: 404,
+                    headers: {
+                        "Content-Type": "application/json",
+                        "cache-control": "no-store",
+                    },
                 },
-            });
+            );
         }
 
         const nnueResponse = await handleNnueRequest(request, env);
@@ -210,6 +237,18 @@ export default {
 
         // 静的アセットを取得
         const response = await env.ASSETS.fetch(request);
+
+        // /assets/* への SPA fallback（text/html）は本来存在しないファイルへのリクエスト
+        // MIME type エラーを防ぐため 404 を返す
+        if (
+            pathname.startsWith("/assets/") &&
+            response.headers.get("content-type")?.includes("text/html")
+        ) {
+            return new Response("Not Found", {
+                status: 404,
+                headers: { "cache-control": "no-store" },
+            });
+        }
 
         // レスポンスヘッダーを追加（WASM SharedArrayBuffer対応）
         return withStandardHeaders(response);

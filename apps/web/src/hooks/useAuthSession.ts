@@ -90,6 +90,11 @@ export function useAuthSession() {
             const response = await fetch("/api/auth/session", {
                 credentials: "same-origin",
             });
+            // 404 はバックエンド未接続のため未認証として扱う
+            if (response.status === 404) {
+                setSession({ authenticated: false, user: null });
+                return;
+            }
             if (!response.ok) {
                 throw new Error(await parseApiError(response));
             }

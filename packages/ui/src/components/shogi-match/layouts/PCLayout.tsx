@@ -75,6 +75,8 @@ interface PCLayoutProps {
     isPassRightsSettingsOpen: boolean;
     onPassRightsSettingsOpenChange: (open: boolean) => void;
     handlePassRightsSettingsChange: (settings: PassRightsSettings) => void;
+    /** 棋譜検討モード: 対局設定サイドバーを非表示にする */
+    reviewMode?: boolean;
 }
 
 /**
@@ -100,6 +102,7 @@ export function PCLayout({
     isPassRightsSettingsOpen,
     onPassRightsSettingsOpenChange,
     handlePassRightsSettingsChange,
+    reviewMode,
 }: PCLayoutProps): ReactElement {
     // Context から状態を取得
     const matchSettings = useMatchSettings();
@@ -113,10 +116,12 @@ export function PCLayout({
     return (
         <section className={matchLayoutClasses}>
             <div className="relative min-h-[calc(100dvh-1rem)] min-w-[1400px] w-full overflow-x-auto">
-                {/* 左サイドバー（絶対配置） */}
-                <div className="absolute left-4 top-4">
-                    <LeftSidebar />
-                </div>
+                {/* 左サイドバー（絶対配置）: 検討モードでは非表示 */}
+                {!reviewMode && (
+                    <div className="absolute left-4 top-4">
+                        <LeftSidebar />
+                    </div>
+                )}
 
                 {/* 将棋盤エリア（画面中央に固定） */}
                 <div className="flex min-h-[calc(100dvh-1rem)] items-start justify-center p-4">

@@ -123,6 +123,8 @@ interface ShogiMatchProps {
     onAnalysisSnapshotChange?: (snapshot: AnalysisSnapshotDraft | null) => void;
     /** 初期表示時に適用する分析結果 */
     initialAnalysisEntries?: AnalysisSnapshotEntryDraft[] | null;
+    /** 棋譜検討モード: 対局設定サイドバーを非表示にする */
+    reviewMode?: boolean;
 }
 
 export function ShogiMatch({
@@ -147,6 +149,7 @@ export function ShogiMatch({
     onPositionSnapshot,
     onAnalysisSnapshotChange,
     initialAnalysisEntries = null,
+    reviewMode,
 }: ShogiMatchProps): ReactElement {
     // デフォルトの NNUE 選択（props のプリセットキーを使用、未指定時は DEFAULT_PRESET_KEY）
     const defaultNnueSelection = createDefaultNnueSelection(
@@ -1503,6 +1506,7 @@ export function ShogiMatch({
         onDisplaySettingsOpenChange: setIsDisplaySettingsOpen,
         isPassRightsSettingsOpen,
         onPassRightsSettingsOpenChange: setIsPassRightsSettingsOpen,
+        reviewMode,
     };
 
     // Props グループ化: Mobile専用

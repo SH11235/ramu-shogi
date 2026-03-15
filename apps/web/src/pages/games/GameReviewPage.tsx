@@ -246,12 +246,17 @@ export default function GameReviewPage(): ReactElement {
                             engineOptions={engineOptions}
                             manifestUrl={import.meta.env.VITE_NNUE_MANIFEST_URL as string}
                             remoteNnueManager={remoteNnueManager}
+                            defaultSides={{
+                                sente: { role: "human" },
+                                gote: { role: "human" },
+                            }}
                             initialReview={{
                                 sfen: game.initialSfen,
                                 moves: selectedSnapshot?.lineMoves ?? game.moves,
                             }}
                             initialAnalysisEntries={selectedSnapshotEntries}
                             onAnalysisSnapshotChange={setDraft}
+                            reviewMode={true}
                         />
                     </div>
 

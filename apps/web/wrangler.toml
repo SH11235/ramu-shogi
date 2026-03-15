@@ -6,10 +6,10 @@ compatibility_date = "2026-01-20"
 main = "./worker/index.ts"
 # custom_domains = ["ramu-shogi.sh11235.com"]
 
-# backend 分離後に /api/* を proxy する場合に設定
-# BACKEND_ORIGIN は workers.dev 間の fetch が動かないため外す
-# [vars]
-# BACKEND_ORIGIN = "https://ramu-shogi-backend.sh11235.workers.dev"
+# /api/* を backend Worker にプロキシ（Service Binding）
+[[services]]
+binding = "BACKEND"
+service = "ramu-shogi-backend"
 
 [assets]
 directory = "./dist"
@@ -53,8 +53,10 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = true
 
-# staging用の環境変数/Binding/DB等を分ける
-# BACKEND_ORIGIN を外して frontend Worker の local DO を使う（proxy はprodのみ）
+# staging用: backend stg Worker にプロキシ
+[[env.stg.services]]
+binding = "BACKEND"
+service = "ramu-shogi-backend-stg"
 
 [[env.stg.r2_buckets]]
 binding = "NNUE_BUCKET"

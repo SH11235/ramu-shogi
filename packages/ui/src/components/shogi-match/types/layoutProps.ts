@@ -272,6 +272,8 @@ export interface PCSpecificProps {
     onDisplaySettingsOpenChange: (open: boolean) => void;
     isPassRightsSettingsOpen: boolean;
     onPassRightsSettingsOpenChange: (open: boolean) => void;
+    /** 棋譜検討モード: 対局設定サイドバーを非表示にする */
+    reviewMode?: boolean;
 }
 
 /**

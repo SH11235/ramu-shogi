@@ -17,6 +17,7 @@ import GamesPage from "./pages/games/GamesPage";
 import PublicGamePage from "./pages/games/PublicGamePage";
 import NnueFilesPage from "./pages/nnue/NnueFilesPage";
 import CreateRoomPage from "./pages/online/CreateRoomPage";
+import PrivacyPage from "./pages/privacy/PrivacyPage";
 import OnlinePage from "./pages/online/OnlinePage";
 import RoomPage from "./pages/online/RoomPage";
 import { handleLoaderResponse } from "./router-loader-utils";
@@ -91,7 +92,7 @@ const gameDetailRoute = createRoute({
         handleLoaderResponse(response, {
             errorMessage: "棋譜の取得に失敗しました",
             notFoundMessage: "棋譜が見つかりません",
-            onUnauthorized: "throw",
+            onUnauthorized: "redirect_to_auth",
         });
 
         const payload = (await response.json()) as GetGameResponse;
@@ -116,11 +117,11 @@ const gameReviewRoute = createRoute({
         handleLoaderResponse(gameResponse, {
             errorMessage: "検討データの取得に失敗しました",
             notFoundMessage: "棋譜が見つかりません",
-            onUnauthorized: "throw",
+            onUnauthorized: "redirect_to_auth",
         });
         handleLoaderResponse(snapshotsResponse, {
             errorMessage: "検討データの取得に失敗しました",
-            onUnauthorized: "throw",
+            onUnauthorized: "redirect_to_auth",
         });
 
         const gamePayload = (await gameResponse.json()) as GetGameResponse;
@@ -180,6 +181,12 @@ const nnueFilesRoute = createRoute({
     },
 });
 
+const privacyRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/privacy",
+    component: PrivacyPage,
+});
+
 const createRoomRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/online/create",
@@ -235,6 +242,7 @@ const routeTree = rootRoute.addChildren([
     indexRoute,
     onlineRoute,
     authRoute,
+    privacyRoute,
     gamesRoute,
     gameDetailRoute,
     gameReviewRoute,

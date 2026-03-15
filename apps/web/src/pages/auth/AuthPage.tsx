@@ -1,4 +1,4 @@
-import { useRouter } from "@tanstack/react-router";
+import { Link, useRouter } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
@@ -242,6 +242,16 @@ export default function AuthPage(): ReactElement {
                             >
                                 Google アカウントでログイン
                             </button>
+                            <p className="text-xs text-muted-foreground">
+                                ログインすることで{" "}
+                                <Link
+                                    to="/privacy"
+                                    className="underline underline-offset-2 hover:text-foreground"
+                                >
+                                    プライバシーポリシー
+                                </Link>
+                                に同意したものとみなします。
+                            </p>
                         </div>
                     </section>
                 )}
