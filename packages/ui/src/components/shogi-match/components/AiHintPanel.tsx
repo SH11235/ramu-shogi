@@ -120,7 +120,7 @@ export function AiHintPanel({
                                 <span className={getScoreClassName(move.scoreTone)}>
                                     {move.scoreText}
                                 </span>
-                                {onPreviewPv && move.pv && move.pv.length > 0 && (
+                                {onPreviewPv && move.pv?.length && (
                                     <button
                                         type="button"
                                         onClick={() => onPreviewPv(move)}

@@ -914,7 +914,7 @@ export function OnlineGameView({
                         ? (usiMove) => Promise.resolve(handleApplyAiMove(usiMove))
                         : undefined
                 }
-                onPreviewPv={analysisPosition ? (move) => setPvPreviewMove(move) : undefined}
+                onPreviewPv={analysisPosition ? setPvPreviewMove : undefined}
             />
         ) : null;
 
