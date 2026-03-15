@@ -18,6 +18,7 @@ import type {
 interface PlayerInfo {
     seat: "b" | "w";
     name: string;
+    userId: string | null;
     resumeTokenHash: string; // SHA-256(resumeToken) のみ保存（平文禁止）
     joinedAt: number;
     lastSeenTs: number;
@@ -44,6 +45,8 @@ interface GameState {
     status: "playing" | "finished";
     result: GameResult | null;
     sfenCounts: Record<string, number>; // 千日手検知用: 正規化SFEN → 出現回数
+    startedAt: number | null;
+    finishedAt: number | null;
 }
 
 interface RoomStorageState {
@@ -63,6 +66,7 @@ interface RoomStorageState {
 interface WsConnectionMeta {
     seat: Seat;
     name: string;
+    userId: string | null;
 }
 
 // ─── ヘルパー ──────────────────────────────────────────────────────────────
@@ -195,11 +199,18 @@ function getConnectedMetas(doState: DurableObjectState): Map<WebSocket, WsConnec
  * DurableObject はクラス必須のため class を使用。
  * 内部ロジックは関数型で実装する。
  */
+interface RoomDOEnv {
+    BACKEND?: Fetcher;
+    ROOM_DO_SECRET?: string;
+}
+
 export class RoomDO implements DurableObject {
     private readonly doState: DurableObjectState;
+    private readonly env: RoomDOEnv;
 
-    constructor(state: DurableObjectState, _env: unknown) {
+    constructor(state: DurableObjectState, env: unknown) {
         this.doState = state;
+        this.env = (env ?? {}) as RoomDOEnv;
     }
 
     async fetch(request: Request): Promise<Response> {
@@ -214,7 +225,7 @@ export class RoomDO implements DurableObject {
 
         // WebSocket アップグレード
         if (request.headers.get("Upgrade") === "websocket") {
-            return this.handleWebSocketUpgrade();
+            return this.handleWebSocketUpgrade(request);
         }
 
         // GET: ルーム情報（REST API から転送される）
@@ -381,15 +392,36 @@ export class RoomDO implements DurableObject {
         return jsonResponse(responseBody);
     }
 
-    private handleWebSocketUpgrade(): Response {
+    private async handleWebSocketUpgrade(request: Request): Promise<Response> {
         const pair = new WebSocketPair();
         const [client, server] = Object.values(pair);
-        // attachment は join/resume 後に設定する
+        // Cookie からユーザーID を解決してサーバー側WebSocketに事前設定する
+        const userId = await this.resolveUserId(request);
+        // attachment は join/resume 後に設定するが、userId は接続メタとして先に保持
+        server.serializeAttachment({ seat: null, name: "", userId });
         this.doState.acceptWebSocket(server);
         return new Response(null, {
             status: 101,
             webSocket: client,
         });
+    }
+
+    /** Cookieからセッションを検証してユーザーIDを返す */
+    private async resolveUserId(request: Request): Promise<string | null> {
+        const backend = this.env.BACKEND;
+        if (!backend) return null;
+        const cookieHeader = request.headers.get("cookie");
+        if (!cookieHeader) return null;
+        try {
+            const resp = await backend.fetch("https://backend/api/auth/session", {
+                headers: { cookie: cookieHeader },
+            });
+            if (!resp.ok) return null;
+            const data = (await resp.json()) as { user?: { id?: string } | null };
+            return data?.user?.id ?? null;
+        } catch {
+            return null;
+        }
     }
 
     // ─── WebSocket メッセージハンドラ ────────────────────────────────────
@@ -429,6 +461,10 @@ export class RoomDO implements DurableObject {
         const now = Date.now();
         let resumeToken: string | undefined;
 
+        // 接続時にセットしたuserIdを引き継ぐ
+        const prevMeta = ws.deserializeAttachment() as { userId?: string | null } | null;
+        const userId = prevMeta?.userId ?? null;
+
         // プレイヤーの場合は PlayerInfo を登録し resumeToken を発行
         if (seat === "b" || seat === "w") {
             resumeToken = await generateResumeToken();
@@ -437,6 +473,7 @@ export class RoomDO implements DurableObject {
             room.players[seat] = {
                 seat,
                 name: trimmedName,
+                userId,
                 resumeTokenHash: tokenHash,
                 joinedAt: now,
                 lastSeenTs: now,
@@ -447,7 +484,7 @@ export class RoomDO implements DurableObject {
         }
 
         // WS attachment にメタデータを設定（hibernation 対応）
-        ws.serializeAttachment({ seat, name: trimmedName });
+        ws.serializeAttachment({ seat, name: trimmedName, userId });
 
         // joined メッセージを送信
         sendWsMessage(ws, {
@@ -725,12 +762,15 @@ export class RoomDO implements DurableObject {
 
             game.status = "finished";
             game.result = result;
+            game.finishedAt = now;
             game.clock.running = null;
             room.status = "finished";
             room.events.push(sennichiteEvent, gameEndEvent);
             // ゲーム終了後は直近2件のみ保持してストレージを節約
             room.events = room.events.slice(-2);
 
+            const gameRecordIdSennichite = await this.persistGameRecord(room);
+            if (gameRecordIdSennichite) gameEndEvent.gameRecordId = gameRecordIdSennichite;
             await this.doState.storage.put("room", room);
             this.broadcastToAll({ v: 1, t: "event", payload: moveEvent });
             this.broadcastToAll({ v: 1, t: "event", payload: sennichiteEvent });
@@ -797,12 +837,15 @@ export class RoomDO implements DurableObject {
 
         game.status = "finished";
         game.result = result;
+        game.finishedAt = now;
         game.clock.running = null;
         room.status = "finished";
         room.events.push(resignEvent, gameEndEvent);
         // ゲーム終了後は直近2件のみ保持してストレージを節約
         room.events = room.events.slice(-2);
 
+        const gameRecordId = await this.persistGameRecord(room);
+        if (gameRecordId) gameEndEvent.gameRecordId = gameRecordId;
         await this.doState.storage.put("room", room);
         this.broadcastToAll({ v: 1, t: "event", payload: resignEvent });
         this.broadcastToAll({ v: 1, t: "event", payload: gameEndEvent });
@@ -1212,6 +1255,8 @@ export class RoomDO implements DurableObject {
             status: "playing",
             result: null,
             sfenCounts: { [initialSfenKey]: 1 },
+            startedAt: now,
+            finishedAt: null,
         };
 
         room.game = game;
@@ -1279,6 +1324,66 @@ export class RoomDO implements DurableObject {
     private broadcastToAll(msg: ServerMessage): void {
         for (const ws of this.doState.getWebSockets()) {
             sendWsMessage(ws, msg);
+        }
+    }
+
+    /** ゲーム終了時にバックエンドAPIへゲームレコードを保存し、gameRecordIdを返す */
+    private async persistGameRecord(room: RoomStorageState): Promise<string | null> {
+        const backend = this.env.BACKEND;
+        const secret = this.env.ROOM_DO_SECRET;
+        if (!backend || !secret || !room.game || room.game.status !== "finished") {
+            return null;
+        }
+
+        const game = room.game;
+        const participants = (["b", "w"] as const)
+            .map((seat) => {
+                const player = room.players[seat];
+                if (!player) return null;
+                return {
+                    userId: player.userId ?? null,
+                    seat,
+                    displayNameSnapshot: player.name,
+                };
+            })
+            .filter((p): p is NonNullable<typeof p> => p !== null);
+
+        if (!participants.some((p) => p.userId !== null)) {
+            return null;
+        }
+
+        const gameRecordId = crypto.randomUUID();
+        const body = {
+            id: gameRecordId,
+            roomId: room.roomId,
+            initialSfen: resolveSfen(room.settings.startSfen),
+            resultJson: JSON.stringify(game.result),
+            metadataJson: JSON.stringify({ roomSettings: room.settings }),
+            movesJson: JSON.stringify(game.moves),
+            kifuText: buildKifu(room),
+            startedAt: game.startedAt,
+            finishedAt: game.finishedAt,
+            participants,
+        };
+
+        try {
+            const resp = await backend.fetch("https://backend/api/internal/game-records", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-room-do-secret": secret,
+                },
+                body: JSON.stringify(body),
+            });
+            if (!resp.ok) {
+                console.error("[room-do] failed to persist game record", { status: resp.status });
+                return null;
+            }
+            const data = (await resp.json()) as { gameRecordId: string | null };
+            return data.gameRecordId;
+        } catch (err) {
+            console.error("[room-do] failed to persist game record", err);
+            return null;
         }
     }
 
@@ -1431,12 +1536,15 @@ export class RoomDO implements DurableObject {
 
                 game.status = "finished";
                 game.result = result;
+                game.finishedAt = now;
                 game.clock.running = null;
                 room.status = "finished";
                 room.events.push(disconnectEvent, gameEndEvent);
                 // ゲーム終了後は直近2件のみ保持してストレージを節約
                 room.events = room.events.slice(-2);
 
+                const gameRecordIdDisconnect = await this.persistGameRecord(room);
+                if (gameRecordIdDisconnect) gameEndEvent.gameRecordId = gameRecordIdDisconnect;
                 await this.doState.storage.put("room", room);
                 this.broadcastToAll({ v: 1, t: "event", payload: disconnectEvent });
                 this.broadcastToAll({ v: 1, t: "event", payload: gameEndEvent });
@@ -1486,12 +1594,15 @@ export class RoomDO implements DurableObject {
 
                 game.status = "finished";
                 game.result = result;
+                game.finishedAt = now;
                 game.clock.running = null;
                 room.status = "finished";
                 room.events.push(timeoutEvent, gameEndEvent);
                 // ゲーム終了後は直近2件のみ保持してストレージを節約
                 room.events = room.events.slice(-2);
 
+                const gameRecordIdTimeout = await this.persistGameRecord(room);
+                if (gameRecordIdTimeout) gameEndEvent.gameRecordId = gameRecordIdTimeout;
                 await this.doState.storage.put("room", room);
                 this.broadcastToAll({ v: 1, t: "event", payload: timeoutEvent });
                 this.broadcastToAll({ v: 1, t: "event", payload: gameEndEvent });

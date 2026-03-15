@@ -380,15 +380,14 @@ export default function RoomPage(): ReactElement {
                 onStartReview={(data) => {
                     removeStoredResumeToken(roomId);
                     removeStoredSeat(roomId);
-                    try {
-                        sessionStorage.setItem(
-                            "ramu_review_kifu",
-                            JSON.stringify({ sfen: data.sfen, moves: data.moves }),
-                        );
-                    } catch {
-                        // sessionStorage が使えない場合は無視
+                    if (data.gameRecordId) {
+                        void navigate({
+                            to: "/games/$gameId/review",
+                            params: { gameId: data.gameRecordId },
+                        });
+                    } else {
+                        void navigate({ to: "/" });
                     }
-                    void navigate({ to: "/" });
                 }}
                 onExit={() => {
                     removeStoredResumeToken(roomId);

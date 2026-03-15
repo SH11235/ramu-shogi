@@ -335,6 +335,7 @@ interface OnlineGameViewProps {
         sfen: string;
         moves: string[];
         analysisMarkers: Array<{ seat: "b" | "w"; ply: number }>;
+        gameRecordId: string | null;
     }) => void;
     onExit?: () => void;
 }
@@ -398,6 +399,7 @@ export function OnlineGameView({
     // 現在の start SFEN と moves
     const startSfenRef = useRef(snapshot.settings.startSfen);
     const movesRef = useRef<string[]>([...snapshot.moves]);
+    const gameRecordIdRef = useRef<string | null>(null);
     // サーバーの latestEventId を追跡（move/resign/use_analysis 送信時に使用）
     // 指し手以外のイベント（chat/analysis_used/player_online 等）でも増加するため
     // snapshot.eventId + moves.length の計算式は使えない
@@ -475,6 +477,9 @@ export function OnlineGameView({
                 ) {
                     dispatch({ type: "result", result: e.result });
                 } else if (e.kind === "game_end") {
+                    if (e.gameRecordId) {
+                        gameRecordIdRef.current = e.gameRecordId;
+                    }
                     dispatch({ type: "game_end", result: e.result });
                 } else if (e.kind === "player_offline") {
                     dispatch({ type: "player_offline", seat: e.seat });
@@ -1267,6 +1272,7 @@ export function OnlineGameView({
                                       sfen: startSfenRef.current,
                                       moves: movesRef.current,
                                       analysisMarkers: analysisLog,
+                                      gameRecordId: gameRecordIdRef.current,
                                   })
                             : undefined
                     }

@@ -17,7 +17,7 @@ import type {
     EngineErrorDetails,
 } from "@shogi/app-controller";
 import type { Player } from "@shogi/app-core";
-import type { Dispatch, ReactElement, SetStateAction } from "react";
+import type { Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../dialog";
 import { Switch } from "../../switch";
 import { EngineLogsPanel } from "../components/EngineLogsPanel";
@@ -77,6 +77,8 @@ interface PCLayoutProps {
     handlePassRightsSettingsChange: (settings: PassRightsSettings) => void;
     /** 棋譜検討モード: 対局設定サイドバーを非表示にする */
     reviewMode?: boolean;
+    /** 棋譜検討モード時に左サイドバー位置に表示するコンテンツ */
+    reviewLeftContent?: ReactNode;
 }
 
 /**
@@ -103,6 +105,7 @@ export function PCLayout({
     onPassRightsSettingsOpenChange,
     handlePassRightsSettingsChange,
     reviewMode,
+    reviewLeftContent,
 }: PCLayoutProps): ReactElement {
     // Context から状態を取得
     const matchSettings = useMatchSettings();
@@ -121,6 +124,10 @@ export function PCLayout({
                     <div className="absolute left-4 top-4">
                         <LeftSidebar />
                     </div>
+                )}
+                {/* 検討モード時の左コンテンツ（スナップショットUI等） */}
+                {reviewMode && reviewLeftContent && (
+                    <div className="absolute left-4 top-4 w-[220px]">{reviewLeftContent}</div>
                 )}
 
                 {/* 将棋盤エリア（画面中央に固定） */}

@@ -178,6 +178,65 @@ export default function GameReviewPage(): ReactElement {
             });
     }
 
+    const snapshotPanel = (
+        <div className="flex flex-col gap-3">
+            <div className="text-sm font-semibold text-wafuu-sumi">
+                {game.participants.map((p) => p.displayNameSnapshot).join(" vs ")}
+            </div>
+            {status && (
+                <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700">
+                    {status}
+                </div>
+            )}
+            {error && (
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    {error}
+                </div>
+            )}
+            <div className="flex flex-col gap-2">
+                <input
+                    type="text"
+                    value={snapshotLabel}
+                    onChange={(event) => setSnapshotLabel(event.target.value)}
+                    placeholder="保存名（任意）"
+                    className="flex h-8 rounded-md border border-input bg-transparent px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
+                <button
+                    type="button"
+                    onClick={() => void handleSaveSnapshot()}
+                    disabled={isSaving || !effectiveDraft || effectiveDraft.entries.length === 0}
+                    className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+                >
+                    {isSaving ? "保存中..." : "解析結果を保存"}
+                </button>
+                <div className="text-xs text-muted-foreground">
+                    保存対象: {effectiveDraft?.entries.length ?? 0} 手
+                </div>
+            </div>
+            {snapshots.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                    <div className="text-xs font-semibold text-wafuu-sumi">保存済み</div>
+                    {snapshots.map((snapshot) => (
+                        <button
+                            key={snapshot.id}
+                            type="button"
+                            onClick={() => void handleSelectSnapshot(snapshot.id)}
+                            className="rounded-md border border-input px-2 py-2 text-left text-xs transition-colors hover:bg-muted/50"
+                        >
+                            <div className="font-medium text-foreground">
+                                {snapshot.label ?? "無題"}
+                            </div>
+                            <div className="text-muted-foreground">
+                                {new Date(snapshot.createdAt).toLocaleString("ja-JP")} /{" "}
+                                {snapshot.entryCount} 手
+                            </div>
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+
     return (
         <>
             <PageHeader
@@ -188,143 +247,26 @@ export default function GameReviewPage(): ReactElement {
                 ]}
                 right={<HeaderNav />}
             />
-            <main className="mx-auto flex max-w-[1200px] flex-col gap-6 px-4 py-8">
-                {status && (
-                    <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700">
-                        {status}
-                    </div>
-                )}
-                {error && (
-                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                        {error}
-                    </div>
-                )}
-
-                <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                        <div>
-                            <h1 className="text-2xl font-bold text-foreground">
-                                {game.participants
-                                    .map((participant) => participant.displayNameSnapshot)
-                                    .join(" vs ")}
-                            </h1>
-                            <p className="text-sm text-muted-foreground">
-                                この画面で解析した評価値を snapshot として保存できます。
-                            </p>
-                        </div>
-                        <div className="flex flex-col gap-2 sm:flex-row">
-                            <input
-                                type="text"
-                                value={snapshotLabel}
-                                onChange={(event) => setSnapshotLabel(event.target.value)}
-                                placeholder="保存名（任意）"
-                                className="flex h-10 rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => void handleSaveSnapshot()}
-                                disabled={
-                                    isSaving ||
-                                    !effectiveDraft ||
-                                    effectiveDraft.entries.length === 0
-                                }
-                                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
-                            >
-                                {isSaving ? "保存中..." : "解析結果を保存"}
-                            </button>
-                        </div>
-                    </div>
-                    <div className="mt-3 text-xs text-muted-foreground">
-                        現在の保存対象: {effectiveDraft?.entries.length ?? 0} 手
-                    </div>
-                </section>
-
-                <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-                    <div className="min-w-0">
-                        <ShogiMatch
-                            key={selectedSnapshot?.id ?? "live-analysis"}
-                            engineOptions={engineOptions}
-                            manifestUrl={import.meta.env.VITE_NNUE_MANIFEST_URL as string}
-                            remoteNnueManager={remoteNnueManager}
-                            defaultSides={{
-                                sente: { role: "human" },
-                                gote: { role: "human" },
-                            }}
-                            initialReview={{
-                                sfen: game.initialSfen,
-                                moves: selectedSnapshot?.lineMoves ?? game.moves,
-                            }}
-                            initialAnalysisEntries={selectedSnapshotEntries}
-                            onAnalysisSnapshotChange={setDraft}
-                            reviewMode={true}
-                        />
-                    </div>
-
-                    <div className="relative z-10 flex flex-col gap-4">
-                        <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                            <h2 className="mb-3 text-lg font-semibold text-foreground">
-                                保存済み snapshot
-                            </h2>
-                            {snapshots.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">
-                                    保存済み snapshot はありません。
-                                </p>
-                            ) : (
-                                <div className="grid gap-2">
-                                    {snapshots.map((snapshot) => (
-                                        <button
-                                            key={snapshot.id}
-                                            type="button"
-                                            onClick={() => void handleSelectSnapshot(snapshot.id)}
-                                            className="relative z-10 rounded-md border border-input px-3 py-3 text-left transition-colors hover:bg-muted/50"
-                                        >
-                                            <div className="text-sm font-medium text-foreground">
-                                                {snapshot.label ?? "無題の snapshot"}
-                                            </div>
-                                            <div className="text-xs text-muted-foreground">
-                                                {new Date(snapshot.createdAt).toLocaleString(
-                                                    "ja-JP",
-                                                )}
-                                            </div>
-                                            <div className="text-xs text-muted-foreground">
-                                                {snapshot.entryCount} 手
-                                            </div>
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </section>
-
-                        {selectedSnapshot && (
-                            <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                                <h2 className="mb-3 text-lg font-semibold text-foreground">
-                                    snapshot 詳細
-                                </h2>
-                                <div className="mb-3 text-sm text-muted-foreground">
-                                    {selectedSnapshot.label ?? "無題の snapshot"}
-                                </div>
-                                <ol className="grid gap-2 text-sm">
-                                    {selectedSnapshot.entries.map((entry) => (
-                                        <li
-                                            key={`${selectedSnapshot.id}:${entry.ply}`}
-                                            className="rounded-md border border-border px-3 py-2"
-                                        >
-                                            <div className="font-medium text-foreground">
-                                                {entry.ply} 手目
-                                            </div>
-                                            <div className="text-xs text-muted-foreground">
-                                                evalCp: {entry.evalCp ?? "-"} / evalMate:{" "}
-                                                {entry.evalMate ?? "-"} / depth:{" "}
-                                                {entry.depth ?? "-"}
-                                            </div>
-                                        </li>
-                                    ))}
-                                </ol>
-                            </section>
-                        )}
-                    </div>
-                </section>
-            </main>
+            <div>
+                <ShogiMatch
+                    key={selectedSnapshot?.id ?? "live-analysis"}
+                    engineOptions={engineOptions}
+                    manifestUrl={import.meta.env.VITE_NNUE_MANIFEST_URL as string}
+                    remoteNnueManager={remoteNnueManager}
+                    defaultSides={{
+                        sente: { role: "human" },
+                        gote: { role: "human" },
+                    }}
+                    initialReview={{
+                        sfen: game.initialSfen,
+                        moves: selectedSnapshot?.lineMoves ?? game.moves,
+                    }}
+                    initialAnalysisEntries={selectedSnapshotEntries}
+                    onAnalysisSnapshotChange={setDraft}
+                    reviewMode={true}
+                    reviewLeftContent={snapshotPanel}
+                />
+            </div>
         </>
     );
 }

@@ -129,6 +129,7 @@ export interface GameEndEvent extends RoomEventBase {
     kind: "game_end";
     result: GameResult;
     kifu: string;
+    gameRecordId?: string;
 }
 
 export interface PlayerOnlineEvent extends RoomEventBase {

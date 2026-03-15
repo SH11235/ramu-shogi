@@ -274,6 +274,8 @@ export interface PCSpecificProps {
     onPassRightsSettingsOpenChange: (open: boolean) => void;
     /** 棋譜検討モード: 対局設定サイドバーを非表示にする */
     reviewMode?: boolean;
+    /** 棋譜検討モード時に左サイドバー位置に表示するコンテンツ */
+    reviewLeftContent?: import("react").ReactNode;
 }
 
 /**
