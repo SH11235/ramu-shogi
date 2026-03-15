@@ -31,6 +31,7 @@ import { BottomSheet } from "./shogi-match/components/BottomSheet";
 import { KifuNavigationToolbar } from "./shogi-match/components/KifuNavigationToolbar";
 import { type HandInfo, MobileBoardSection } from "./shogi-match/components/MobileBoardSection";
 import { PCBoardContent } from "./shogi-match/components/PCBoardContent";
+import { PvPreviewDialog } from "./shogi-match/components/PvPreviewDialog";
 import { TabHeader } from "./shogi-match/components/TabHeader";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import type { PromotionSelection } from "./shogi-match/types";
@@ -717,6 +718,11 @@ export function OnlineGameView({
     // 解析を開始した局面の board/turn を保存（formatMoveSimple に渡すため）
     const [analysisBoard, setAnalysisBoard] = useState<BoardState | null>(null);
     const [analysisTurn, setAnalysisTurn] = useState<"b" | "w">("b");
+    // PVプレビュー用に局面と手数も保存
+    const [analysisPosition, setAnalysisPosition] = useState<PositionState | null>(null);
+    const [analysisPly, setAnalysisPly] = useState<number>(0);
+    // PVプレビューダイアログ
+    const [pvPreviewMove, setPvPreviewMove] = useState<AiHintMove | null>(null);
 
     const handleAnalyze = async () => {
         if (!position) return;
@@ -729,6 +735,8 @@ export function OnlineGameView({
         if (analysis) {
             setAnalysisBoard(position.board);
             setAnalysisTurn(turn);
+            setAnalysisPosition(position);
+            setAnalysisPly(movesRef.current.length);
             void analysis.startAnalysis(startSfenRef.current, movesRef.current);
         }
     };
@@ -906,6 +914,7 @@ export function OnlineGameView({
                         ? (usiMove) => Promise.resolve(handleApplyAiMove(usiMove))
                         : undefined
                 }
+                onPreviewPv={analysisPosition ? (move) => setPvPreviewMove(move) : undefined}
             />
         ) : null;
 
@@ -1289,6 +1298,19 @@ export function OnlineGameView({
                 </BottomSheet>
             )}
 
+            {/* PVプレビューダイアログ */}
+            {pvPreviewMove && analysisPosition && (
+                <PvPreviewDialog
+                    onClose={() => setPvPreviewMove(null)}
+                    pv={pvPreviewMove.pv ?? []}
+                    startPosition={analysisPosition}
+                    ply={analysisPly}
+                    evalCp={pvPreviewMove.evalCp}
+                    squareNotation={BOARD_DISPLAY_SETTINGS.squareNotation}
+                    showBoardLabels={BOARD_DISPLAY_SETTINGS.showBoardLabels}
+                />
+            )}
+
             {/* NNUE ファイル管理ダイアログ */}
             {manifestUrl && (
                 <NnueManagerDialog
@@ -1485,6 +1507,7 @@ interface OnlineAiPanelProps {
     onNnueSelectionChange: (sel: NnueSelection) => void;
     onOpenNnueManager: () => void;
     onApplyMove?: (usiMove: string) => Promise<unknown>;
+    onPreviewPv?: (move: AiHintMove) => void;
 }
 
 function OnlineAiPanel({
@@ -1502,6 +1525,7 @@ function OnlineAiPanel({
     onNnueSelectionChange,
     onOpenNnueManager,
     onApplyMove,
+    onPreviewPv,
 }: OnlineAiPanelProps): ReactElement {
     const mySeatKey = seat === "b" ? "b" : seat === "w" ? "w" : null;
     const myMode = mySeatKey && aiSupport ? aiSupport[mySeatKey].mode : null;
@@ -1519,6 +1543,8 @@ function OnlineAiPanel({
             : mv.usi,
         scoreText: `${mv.cp > 0 ? "+" : ""}${mv.cp}`,
         scoreTone: mv.cp > 0 ? "sente" : mv.cp < 0 ? "gote" : "neutral",
+        pv: mv.pv,
+        evalCp: mv.cp,
     }));
 
     return (
@@ -1539,6 +1565,7 @@ function OnlineAiPanel({
             onOpenNnueManager={onOpenNnueManager}
             onAnalyze={onAnalyze}
             onApplyMove={onApplyMove}
+            onPreviewPv={onPreviewPv}
         />
     );
 }

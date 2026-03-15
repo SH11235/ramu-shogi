@@ -12,14 +12,28 @@ export interface PositionPreset {
     /** API に送信する startSfen 値（"startpos" または "handicap:xxx" または SFEN 文字列） */
     value: string;
     label: string;
+    /** 選択時に表示する補助説明 */
+    description?: string;
 }
 
 /** v0.1 プリセット一覧（仕様書 §5.2 準拠） */
 export const POSITION_PRESETS: PositionPreset[] = [
     { value: "startpos", label: "平手" },
-    { value: "handicap:bishop", label: "角落ち" },
-    { value: "handicap:rook", label: "飛車落ち" },
-    { value: "handicap:rook-bishop", label: "飛車角落ち" },
+    {
+        value: "handicap:bishop",
+        label: "角落ち",
+        description: "後手（上手）の角行なし。先手（下手）が先に指します。",
+    },
+    {
+        value: "handicap:rook",
+        label: "飛車落ち",
+        description: "後手（上手）の飛車なし。先手（下手）が先に指します。",
+    },
+    {
+        value: "handicap:rook-bishop",
+        label: "飛車角落ち",
+        description: "後手（上手）の飛車・角なし。先手（下手）が先に指します。",
+    },
     { value: "custom", label: "SFEN 直接入力" },
 ];
 
@@ -47,6 +61,7 @@ export function PositionPresetSelector({
     const isPreset = POSITION_PRESETS.some((p) => p.value !== CUSTOM_VALUE && p.value === value);
     const selectValue = isPreset ? value : CUSTOM_VALUE;
     const [customSfen, setCustomSfen] = useState(isPreset ? "" : value);
+    const selectedPreset = POSITION_PRESETS.find((p) => p.value === selectValue);
 
     function handleSelectChange(selected: string): void {
         if (selected === CUSTOM_VALUE) {
@@ -76,6 +91,9 @@ export function PositionPresetSelector({
                     ))}
                 </SelectContent>
             </Select>
+            {selectedPreset?.description && (
+                <p className="text-xs text-muted-foreground">{selectedPreset.description}</p>
+            )}
             {selectValue === CUSTOM_VALUE && (
                 <Input
                     placeholder="SFEN 文字列を入力（例: startpos moves 7g7f）"

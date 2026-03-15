@@ -7,6 +7,8 @@ export interface AiHintMove {
     displayText: string;
     scoreText: string;
     scoreTone: "sente" | "gote" | "neutral";
+    pv?: string[];
+    evalCp?: number;
 }
 
 export interface AiHintSummary {
@@ -29,6 +31,7 @@ interface AiHintPanelProps {
     onOpenNnueManager: () => void;
     onAnalyze?: () => void;
     onApplyMove?: (usiMove: string) => Promise<unknown>;
+    onPreviewPv?: (move: AiHintMove) => void;
 }
 
 function getScoreClassName(tone: AiHintMove["scoreTone"]): string {
@@ -51,6 +54,7 @@ export function AiHintPanel({
     onOpenNnueManager,
     onAnalyze,
     onApplyMove,
+    onPreviewPv,
 }: AiHintPanelProps): ReactElement {
     const nnueCtx = useNnueContextOptional();
     const nnueList = nnueCtx?.nnueList ?? [];
@@ -116,6 +120,15 @@ export function AiHintPanel({
                                 <span className={getScoreClassName(move.scoreTone)}>
                                     {move.scoreText}
                                 </span>
+                                {onPreviewPv && move.pv && move.pv.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onPreviewPv(move)}
+                                        className="rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+                                    >
+                                        盤面
+                                    </button>
+                                )}
                                 {index === 0 && onApplyMove && (
                                     <button
                                         type="button"
