@@ -88,6 +88,17 @@ function validateSettings(settings: unknown): RoomSettings | ValidationError {
     // aiSupport（省略可）
     if (s.aiSupport !== null && s.aiSupport !== undefined) {
         const ai = s.aiSupport as Record<string, unknown>;
+        // searchTimeMs: 1000〜10000ms
+        if (
+            ai.searchTimeMs !== null &&
+            ai.searchTimeMs !== undefined &&
+            (typeof ai.searchTimeMs !== "number" ||
+                !Number.isInteger(ai.searchTimeMs) ||
+                ai.searchTimeMs < 1000 ||
+                ai.searchTimeMs > 10000)
+        ) {
+            return { error: "Invalid aiSupport.searchTimeMs: must be between 1000 and 10000" };
+        }
         for (const seat of ["b", "w"] as const) {
             const ps = ai[seat] as Record<string, unknown> | undefined;
             if (!ps || (ps.mode !== "unlimited" && ps.mode !== "limited")) {

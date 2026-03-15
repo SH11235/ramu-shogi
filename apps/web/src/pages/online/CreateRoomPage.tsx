@@ -422,12 +422,13 @@ export default function CreateRoomPage(): ReactElement {
                                     id="ai-search-time"
                                     type="number"
                                     min={1}
-                                    max={60}
+                                    max={10}
                                     value={Math.round((settings.aiSearchTimeMs ?? 5000) / 1000)}
                                     onChange={(e) =>
                                         set(
                                             "aiSearchTimeMs",
-                                            Math.max(1, Number(e.target.value)) * 1000,
+                                            Math.min(10, Math.max(1, Number(e.target.value))) *
+                                                1000,
                                         )
                                     }
                                     className="w-16 rounded-md border border-input bg-transparent px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
