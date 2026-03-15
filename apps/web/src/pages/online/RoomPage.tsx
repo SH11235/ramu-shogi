@@ -328,8 +328,9 @@ export default function RoomPage(): ReactElement {
         setIsPreparingJoin(true);
         setPendingJoinSeat(seat);
 
+        const isNotAuthenticated = !session?.authenticated;
         try {
-            if (!session?.authenticated) saveLocalPlayerName(trimmedName);
+            if (isNotAuthenticated) saveLocalPlayerName(trimmedName);
             await syncProfileDisplayNameIfNeeded(session, trimmedName);
             handleJoin(seat);
         } catch (nextError) {
