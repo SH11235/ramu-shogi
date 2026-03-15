@@ -902,7 +902,9 @@ export function OnlineGameView({
                 onNnueSelectionChange={setNnueSelection}
                 onOpenNnueManager={() => setNnueManagerOpen(true)}
                 onApplyMove={
-                    isMyTurn && !gameResult && !isSpectator ? handleApplyAiMove : undefined
+                    isMyTurn && !gameResult && !isSpectator
+                        ? (usiMove) => Promise.resolve(handleApplyAiMove(usiMove))
+                        : undefined
                 }
             />
         ) : null;
@@ -1482,7 +1484,7 @@ interface OnlineAiPanelProps {
     nnueSelection: NnueSelection;
     onNnueSelectionChange: (sel: NnueSelection) => void;
     onOpenNnueManager: () => void;
-    onApplyMove?: (usiMove: string) => void;
+    onApplyMove?: (usiMove: string) => Promise<unknown>;
 }
 
 function OnlineAiPanel({
