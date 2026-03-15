@@ -71,6 +71,9 @@ function App() {
                     aiIconUrl={`${import.meta.env.BASE_URL}ramu.jpeg`}
                     onPositionSnapshot={(snapshot) => setPanelPosition(snapshot)}
                     initialReview={initialReview}
+                    {...(initialReview
+                        ? { defaultSides: { sente: { role: "human" }, gote: { role: "human" } } }
+                        : {})}
                 />
                 {isDevMode && <EngineControlPanel engine={panelEngine} position={panelPosition} />}
             </main>
