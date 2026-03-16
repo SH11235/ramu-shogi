@@ -13,6 +13,7 @@ import { detectParallelism } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { useAnalysis } from "../contexts/AnalysisContext";
+import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import { ANALYSIS_TIME_OPTIONS, PARALLEL_WORKER_OPTIONS } from "../utils/threadOptions";
 import { CurrentPositionAiHintPanel } from "./CurrentPositionAiHintPanel";
@@ -21,7 +22,10 @@ import { KifuPanel } from "./KifuPanel";
 import { TabHeader } from "./TabHeader";
 
 export function PCKifuSection(): ReactElement {
-    const [activeTab, setActiveTab] = useState<"kifu" | "ai">("ai");
+    const { gameMode } = useMatchState();
+    const [activeTab, setActiveTab] = useState<"kifu" | "ai">(
+        gameMode === "reviewing" ? "kifu" : "ai",
+    );
 
     // 分析関連は Context から取得
     const {
