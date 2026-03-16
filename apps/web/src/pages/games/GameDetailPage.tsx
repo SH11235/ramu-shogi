@@ -11,6 +11,10 @@ import { PageHeader } from "../../components/PageHeader";
 import { parseApiError } from "../../hooks/useAuthSession";
 import { formatGameResult } from "./gameResultUtils";
 
+function buildPublicUrl(publicId: string): string {
+    return `${window.location.origin}/public/games/${publicId}`;
+}
+
 const routeApi = getRouteApi("/games/$gameId");
 
 export default function GameDetailPage(): ReactElement {
@@ -20,6 +24,9 @@ export default function GameDetailPage(): ReactElement {
     const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
     const [status, setStatus] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    const publicUrl =
+        game.publicId && game.visibility !== "private" ? buildPublicUrl(game.publicId) : null;
 
     async function handleUpdateVisibility(visibility: GameRecordVisibility): Promise<void> {
         if (isUpdatingVisibility) return;
@@ -81,15 +88,6 @@ export default function GameDetailPage(): ReactElement {
                             <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
                                 {game.source}
                             </span>
-                            {game.publicId && (
-                                <Link
-                                    to="/public/games/$publicId"
-                                    params={{ publicId: game.publicId }}
-                                    className="rounded-full bg-secondary px-2 py-1 text-secondary-foreground"
-                                >
-                                    公開ページ
-                                </Link>
-                            )}
                         </div>
 
                         <div className="flex flex-col gap-1">
@@ -121,28 +119,90 @@ export default function GameDetailPage(): ReactElement {
                 </section>
 
                 <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                        <div>
-                            <h2 className="text-lg font-semibold text-foreground">公開設定</h2>
-                            <p className="text-sm text-muted-foreground">
-                                public / unlisted はメール確認済みアカウントのみ変更できます。
-                            </p>
-                        </div>
+                    <div className="mb-4">
+                        <h2 className="text-lg font-semibold text-foreground">公開設定</h2>
+                        <p className="text-sm text-muted-foreground">
+                            限定公開・公開への変更はメール確認済みアカウントのみできます。
+                        </p>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                        {(["private", "unlisted", "public"] as const).map((visibility) => (
+                    <div className="flex flex-col gap-2">
+                        {(
+                            [
+                                {
+                                    value: "private",
+                                    label: "非公開",
+                                    description: "自分だけが閲覧できます。",
+                                },
+                                {
+                                    value: "unlisted",
+                                    label: "限定公開",
+                                    description:
+                                        "共有リンクを知っている人が閲覧できます。公開棋譜一覧には掲載されません。",
+                                },
+                                {
+                                    value: "public",
+                                    label: "公開",
+                                    description:
+                                        "共有リンクを知っている人が閲覧できます。将来的に公開棋譜一覧に掲載される予定です。",
+                                },
+                            ] as const
+                        ).map(({ value, label, description }) => (
                             <button
-                                key={visibility}
+                                key={value}
                                 type="button"
-                                onClick={() => void handleUpdateVisibility(visibility)}
-                                disabled={isUpdatingVisibility || game.visibility === visibility}
-                                className="rounded-md border border-input px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted/50 disabled:pointer-events-none disabled:opacity-50"
+                                onClick={() => void handleUpdateVisibility(value)}
+                                disabled={isUpdatingVisibility || game.visibility === value}
+                                className="flex items-start gap-3 rounded-md border border-input px-4 py-3 text-left transition-colors hover:bg-muted/50 disabled:pointer-events-none disabled:opacity-50"
                             >
-                                {visibility}
+                                <span className="mt-0.5 text-sm font-medium text-foreground">
+                                    {label}
+                                </span>
+                                <span className="text-sm text-muted-foreground">{description}</span>
                             </button>
                         ))}
                     </div>
                 </section>
+
+                {publicUrl && game.publicId && (
+                    <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
+                        <div className="mb-3">
+                            <h2 className="text-lg font-semibold text-foreground">共有リンク</h2>
+                            <p className="text-sm text-muted-foreground">
+                                このリンクを知っている人は棋譜を閲覧できます。
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="flex-1 truncate rounded-md bg-muted/40 px-3 py-2 text-sm text-foreground">
+                                {publicUrl}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    navigator.clipboard
+                                        .writeText(publicUrl)
+                                        .then(() => {
+                                            setStatus("共有リンクをコピーしました。");
+                                        })
+                                        .catch(() => {
+                                            setError("共有リンクのコピーに失敗しました。");
+                                        });
+                                }}
+                                className="shrink-0 rounded-md border border-input px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
+                            >
+                                コピー
+                            </button>
+                            <Link
+                                to="/public/games/$publicId"
+                                params={{ publicId: game.publicId }}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="shrink-0 rounded-md border border-input px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
+                            >
+                                開く
+                            </Link>
+                        </div>
+                    </section>
+                )}
 
                 <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
