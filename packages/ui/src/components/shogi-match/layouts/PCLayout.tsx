@@ -118,7 +118,7 @@ export function PCLayout({
     const { displaySettings: navDisplaySettings } = navigation;
     return (
         <section className={matchLayoutClasses}>
-            <div className="relative min-h-[calc(100dvh-1rem)] min-w-[1400px] w-full overflow-x-auto">
+            <div className="relative min-h-[calc(100dvh-1rem)] min-w-[1400px] overflow-x-auto">
                 {/* 左サイドバー（絶対配置）: 検討モードでは非表示 */}
                 {!reviewMode && (
                     <div className="absolute left-4 top-4">

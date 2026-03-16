@@ -500,7 +500,7 @@ export function ShogiMatch({
             owner,
             hand: owner === "sente" ? position.hands.sente : position.hands.gote,
             isActive: isActiveInReview || isActiveInMatch,
-            isAI: sides[owner].role === "engine",
+            isAI: !reviewMode && sides[owner].role === "engine",
         };
     };
 

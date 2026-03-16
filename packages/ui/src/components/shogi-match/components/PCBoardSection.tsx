@@ -108,7 +108,10 @@ export function PCBoardSection({ candidateNote }: PCBoardSectionProps): ReactEle
                             手番:{" "}
                             <PlayerIcon
                                 side={position.turn}
-                                isAI={sides[position.turn].role === "engine"}
+                                isAI={
+                                    gameMode !== "reviewing" &&
+                                    sides[position.turn].role === "engine"
+                                }
                                 size="lg"
                             />
                         </output>
