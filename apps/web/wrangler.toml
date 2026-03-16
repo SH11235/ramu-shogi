@@ -46,7 +46,6 @@ period = 60
 [env.stg]
 name = "ramu-shogi-stg"
 [env.stg.vars]
-ROOM_DO_SECRET = "stg-room-do-internal-secret"
 # custom_domains = ["ramu-shogi-stg.sh11235.workers.dev"]
 
 [env.stg.assets]
