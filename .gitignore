@@ -37,6 +37,7 @@ storybook-static
 playwright-report/
 playwright/.cache/
 test-results/
+.playwright-cli/
 
 # Coverage
 packages/web/coverage/
@@ -61,3 +62,4 @@ kif/*.kif
 apps/web/.env.production
 apps/web/.wrangler/state/
 apps/web/.wrangler/tmp/
+
