@@ -5,6 +5,7 @@ import type {
     GetPublicGameResponse,
     ListAnalysisSnapshotsResponse,
     ListGamesResponse,
+    ListPublicGamesResponse,
     RoomInfo,
 } from "@shogi/api-contract";
 import { createRootRoute, createRoute, createRouter, useNavigate } from "@tanstack/react-router";
@@ -15,6 +16,7 @@ import GameDetailPage from "./pages/games/GameDetailPage";
 import GameReviewPage from "./pages/games/GameReviewPage";
 import GamesPage from "./pages/games/GamesPage";
 import PublicGamePage from "./pages/games/PublicGamePage";
+import PublicGamesPage from "./pages/games/PublicGamesPage";
 import NnueFilesPage from "./pages/nnue/NnueFilesPage";
 import CreateRoomPage from "./pages/online/CreateRoomPage";
 import OnlinePage from "./pages/online/OnlinePage";
@@ -134,6 +136,25 @@ const gameReviewRoute = createRoute({
     },
 });
 
+const publicGamesRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/public/games",
+    component: PublicGamesPage,
+    loader: async () => {
+        const response = await fetch("/api/public/games");
+
+        handleLoaderResponse(response, {
+            errorMessage: "公開棋譜の取得に失敗しました",
+        });
+
+        const payload = (await response.json()) as ListPublicGamesResponse;
+        return {
+            games: payload.games,
+            nextCursor: payload.nextCursor,
+        };
+    },
+});
+
 const publicGameRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/public/games/$publicId",
@@ -246,6 +267,7 @@ const routeTree = rootRoute.addChildren([
     gamesRoute,
     gameDetailRoute,
     gameReviewRoute,
+    publicGamesRoute,
     publicGameRoute,
     nnueFilesRoute,
     createRoomRoute,

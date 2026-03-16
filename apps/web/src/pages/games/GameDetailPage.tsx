@@ -142,8 +142,7 @@ export default function GameDetailPage(): ReactElement {
                                 {
                                     value: "public",
                                     label: "公開",
-                                    description:
-                                        "共有リンクを知っている人が閲覧できます。将来的に公開棋譜一覧に掲載される予定です。",
+                                    description: "公開棋譜一覧に掲載され、誰でも閲覧できます。",
                                 },
                             ] as const
                         ).map(({ value, label, description }) => (

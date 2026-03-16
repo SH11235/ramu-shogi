@@ -123,6 +123,11 @@ export interface UpdateGameVisibilityResponse {
     game: GameRecordSummary;
 }
 
+export interface ListPublicGamesResponse {
+    games: GameRecordSummary[];
+    nextCursor: string | null;
+}
+
 export interface GetPublicGameResponse {
     game: GameRecordDetail;
 }
