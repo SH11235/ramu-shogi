@@ -32,6 +32,16 @@ export default function GamesPage(): ReactElement {
                     <p className="text-sm text-muted-foreground">
                         保存済みのオンライン対局を確認できます。
                     </p>
+                    {!needsAuth && (
+                        <p className="text-xs text-muted-foreground">
+                            {games.length} / 50件
+                            {games.length >= 45 && (
+                                <span className="ml-2 text-wafuu-shu">
+                                    ※ 50件を超えると古い棋譜から自動削除されます
+                                </span>
+                            )}
+                        </p>
+                    )}
                 </div>
 
                 {needsAuth && (
