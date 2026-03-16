@@ -2,10 +2,10 @@
 
 import type { RoomInfo } from "@shogi/api-contract";
 import {
-    type Seat,
-    type SnapshotPayload,
     removeStoredResumeToken,
     removeStoredSeat,
+    type Seat,
+    type SnapshotPayload,
 } from "@shogi/match-client";
 import { OnlineGameView, PositionPresetSelector, useRoomConnection } from "@shogi/ui";
 import { getRouteApi, useNavigate, useParams } from "@tanstack/react-router";

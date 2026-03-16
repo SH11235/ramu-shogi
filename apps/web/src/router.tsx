@@ -17,9 +17,9 @@ import GamesPage from "./pages/games/GamesPage";
 import PublicGamePage from "./pages/games/PublicGamePage";
 import NnueFilesPage from "./pages/nnue/NnueFilesPage";
 import CreateRoomPage from "./pages/online/CreateRoomPage";
-import PrivacyPage from "./pages/privacy/PrivacyPage";
 import OnlinePage from "./pages/online/OnlinePage";
 import RoomPage from "./pages/online/RoomPage";
+import PrivacyPage from "./pages/privacy/PrivacyPage";
 import { handleLoaderResponse } from "./router-loader-utils";
 
 const rootRoute = createRootRoute({
