@@ -10,6 +10,9 @@
         }
     },
     "ignoreDependencies": ["wasm-opt", "wrangler", "babel-plugin-react-compiler"],
+    "ignoreIssues": {
+        "packages/api-contract/src/generated/**": ["types"]
+    },
     "ignore": [
         "apps/desktop/src-tauri/target/**",
         "apps/web/worker/index.ts",
