@@ -165,10 +165,6 @@ importers:
         version: 4.68.1(@cloudflare/workers-types@4.20260122.0)
 
   packages/api-contract:
-    dependencies:
-      '@shogi/match-protocol':
-        specifier: workspace:*
-        version: link:../match-protocol
     devDependencies:
       typescript:
         specifier: ~5.9.3

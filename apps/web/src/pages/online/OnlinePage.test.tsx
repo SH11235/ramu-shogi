@@ -7,6 +7,7 @@ const mockNavigate = vi.fn();
 vi.mock("@tanstack/react-router", () => ({
     Link: ({ children }: { children: ReactNode }) => <a href="/">{children}</a>,
     useNavigate: () => mockNavigate,
+    useLocation: () => ({ pathname: "/online" }),
 }));
 
 // @shogi/ui のモック（PositionPresetSelector を使用）

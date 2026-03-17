@@ -13,9 +13,6 @@
         "typecheck": "tsc --noEmit",
         "test": "vitest"
     },
-    "dependencies": {
-        "@shogi/match-protocol": "workspace:*"
-    },
     "devDependencies": {
         "typescript": "~5.9.3",
         "vitest": "^4.0.15"

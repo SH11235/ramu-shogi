@@ -1,34 +1,18 @@
+import type {
+    ApiErrorResponse,
+    AuthSessionResponse,
+    AuthSessionUser,
+    UpdateProfileRequest,
+} from "@shogi/api-contract";
 import { useEffect, useEffectEvent, useState } from "react";
 
 const AUTH_SESSION_SYNC_EVENT = "ramu-auth-session-sync";
 
-export interface SessionUser {
-    id: string;
-    email: string;
-    displayName: string;
-    avatarUrl: string | null;
-    emailVerified: boolean;
-    emailVerifiedAt: string | null;
-}
-
-type AuthSessionResponse =
-    | {
-          authenticated: false;
-          user: null;
-      }
-    | {
-          authenticated: true;
-          user: SessionUser;
-      };
-
-interface ApiErrorPayload {
-    error?: string;
-    message?: string;
-}
+export type SessionUser = AuthSessionUser;
 
 export async function parseApiError(response: Response): Promise<string> {
     try {
-        const payload = (await response.json()) as ApiErrorPayload;
+        const payload = (await response.json()) as ApiErrorResponse;
         if (typeof payload.message === "string" && payload.message.trim() !== "") {
             return payload.message;
         }
@@ -59,15 +43,16 @@ export async function syncProfileDisplayNameIfNeeded(
         return;
     }
 
+    const requestBody: UpdateProfileRequest = {
+        displayName: normalizedDisplayName,
+    };
     const response = await fetch("/api/auth/profile", {
         method: "PATCH",
         headers: {
             "Content-Type": "application/json",
         },
         credentials: "same-origin",
-        body: JSON.stringify({
-            displayName: normalizedDisplayName,
-        }),
+        body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {

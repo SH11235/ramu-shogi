@@ -1,0 +1,2304 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ramu-shogi API",
+    "version": "1.0.0"
+  },
+  "components": {
+    "schemas": {
+      "AuthSessionResponse": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "authenticated": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ]
+              },
+              "user": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "authenticated",
+              "user"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "authenticated": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              },
+              "user": {
+                "$ref": "#/components/schemas/AuthSessionUser"
+              }
+            },
+            "required": [
+              "authenticated",
+              "user"
+            ]
+          }
+        ]
+      },
+      "AuthSessionUser": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "emailVerified": {
+            "type": "boolean"
+          },
+          "emailVerifiedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "displayName",
+          "avatarUrl",
+          "emailVerified",
+          "emailVerifiedAt"
+        ]
+      },
+      "UpdateProfileResponse": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/AuthSessionUser"
+          }
+        },
+        "required": [
+          "user"
+        ]
+      },
+      "ApiErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "UpdateProfileRequest": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          }
+        },
+        "required": [
+          "displayName"
+        ]
+      },
+      "OkResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "ok"
+        ]
+      },
+      "ListGamesResponse": {
+        "type": "object",
+        "properties": {
+          "games": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GameRecordSummary"
+            }
+          }
+        },
+        "required": [
+          "games"
+        ]
+      },
+      "GameRecordSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "roomId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/GameRecordSource"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/GameRecordVisibility"
+          },
+          "publicId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/GameRecordStatus"
+          },
+          "result": {
+            "$ref": "#/components/schemas/GameResultPayload"
+          },
+          "participants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GameRecordParticipant"
+            }
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "roomId",
+          "source",
+          "visibility",
+          "publicId",
+          "status",
+          "result",
+          "participants",
+          "createdAt",
+          "finishedAt"
+        ]
+      },
+      "GameRecordSource": {
+        "type": "string",
+        "enum": [
+          "online_room",
+          "local_app",
+          "import"
+        ]
+      },
+      "GameRecordVisibility": {
+        "type": "string",
+        "enum": [
+          "private",
+          "unlisted",
+          "public"
+        ]
+      },
+      "GameRecordStatus": {
+        "type": "string",
+        "enum": [
+          "finished",
+          "aborted"
+        ]
+      },
+      "GameResultPayload": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "winner": {
+            "$ref": "#/components/schemas/GameRecordSeat"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "winner",
+          "reason"
+        ]
+      },
+      "GameRecordSeat": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "b",
+          "w",
+          null
+        ]
+      },
+      "GameRecordParticipant": {
+        "type": "object",
+        "properties": {
+          "seat": {
+            "$ref": "#/components/schemas/GameRecordSeat"
+          },
+          "userId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "displayNameSnapshot": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "seat",
+          "userId",
+          "displayNameSnapshot"
+        ]
+      },
+      "GetGameResponse": {
+        "type": "object",
+        "properties": {
+          "game": {
+            "$ref": "#/components/schemas/GameRecordDetail"
+          }
+        },
+        "required": [
+          "game"
+        ]
+      },
+      "GameRecordDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/GameRecordSummary"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "initialSfen": {
+                "type": "string"
+              },
+              "metadata": {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              "moves": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "kifuText": {
+                "type": "string"
+              },
+              "startedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "initialSfen",
+              "metadata",
+              "moves",
+              "kifuText",
+              "startedAt"
+            ]
+          }
+        ]
+      },
+      "JsonValue": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          },
+          {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/JsonValue"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/JsonValue"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "UpdateGameVisibilityResponse": {
+        "type": "object",
+        "properties": {
+          "game": {
+            "$ref": "#/components/schemas/GameRecordSummary"
+          }
+        },
+        "required": [
+          "game"
+        ]
+      },
+      "UpdateGameVisibilityRequest": {
+        "type": "object",
+        "properties": {
+          "visibility": {
+            "$ref": "#/components/schemas/GameRecordVisibility"
+          }
+        },
+        "required": [
+          "visibility"
+        ]
+      },
+      "ListAnalysisSnapshotsResponse": {
+        "type": "object",
+        "properties": {
+          "snapshots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnalysisSnapshotSummary"
+            }
+          }
+        },
+        "required": [
+          "snapshots"
+        ]
+      },
+      "AnalysisSnapshotSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "gameId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "entryCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "gameId",
+          "label",
+          "createdAt",
+          "entryCount"
+        ]
+      },
+      "CreateAnalysisSnapshotResponse": {
+        "type": "object",
+        "properties": {
+          "snapshot": {
+            "$ref": "#/components/schemas/AnalysisSnapshotSummary"
+          }
+        },
+        "required": [
+          "snapshot"
+        ]
+      },
+      "CreateAnalysisSnapshotRequest": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 100
+          },
+          "lineMoves": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "analysisSettings": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnalysisSnapshotEntry"
+            }
+          }
+        },
+        "required": [
+          "lineMoves",
+          "analysisSettings",
+          "entries"
+        ]
+      },
+      "AnalysisSnapshotEntry": {
+        "type": "object",
+        "properties": {
+          "ply": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "evalCp": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "evalMate": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "depth": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "pv": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "multiPv": {
+            "$ref": "#/components/schemas/JsonValue"
+          }
+        },
+        "required": [
+          "ply",
+          "evalCp",
+          "evalMate",
+          "depth",
+          "pv",
+          "multiPv"
+        ]
+      },
+      "GetAnalysisSnapshotResponse": {
+        "type": "object",
+        "properties": {
+          "snapshot": {
+            "$ref": "#/components/schemas/AnalysisSnapshotDetail"
+          }
+        },
+        "required": [
+          "snapshot"
+        ]
+      },
+      "AnalysisSnapshotDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AnalysisSnapshotSummary"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "lineMoves": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "analysisSettings": {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              "metadata": {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              "entries": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AnalysisSnapshotEntry"
+                }
+              }
+            },
+            "required": [
+              "lineMoves",
+              "analysisSettings",
+              "metadata",
+              "entries"
+            ]
+          }
+        ]
+      },
+      "ListNnueFilesResponse": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NnueFileSummary"
+            }
+          }
+        },
+        "required": [
+          "files"
+        ]
+      },
+      "NnueFileSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "originalFilename": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "sha256Hex": {
+            "type": "string"
+          },
+          "uploadStatus": {
+            "$ref": "#/components/schemas/NnueUploadStatus"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "originalFilename",
+          "sizeBytes",
+          "sha256Hex",
+          "uploadStatus",
+          "createdAt",
+          "completedAt"
+        ]
+      },
+      "NnueUploadStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "completed",
+          "failed",
+          "deleted"
+        ]
+      },
+      "InitializeNnueUploadResponse": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/NnueFileSummary"
+          },
+          "uploadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "uploadId"
+        ]
+      },
+      "InitializeNnueUploadRequest": {
+        "type": "object",
+        "properties": {
+          "originalFilename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 314572800
+          },
+          "sha256Hex": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "originalFilename",
+          "sizeBytes",
+          "sha256Hex"
+        ]
+      },
+      "UploadNnuePartResponse": {
+        "type": "object",
+        "properties": {
+          "partNumber": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "etag": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "partNumber",
+          "etag"
+        ]
+      },
+      "CompleteNnueUploadResponse": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/NnueFileSummary"
+          }
+        },
+        "required": [
+          "file"
+        ]
+      },
+      "CompleteNnueUploadRequest": {
+        "type": "object",
+        "properties": {
+          "uploadId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "partNumber": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0
+                },
+                "etag": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "partNumber",
+                "etag"
+              ]
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "uploadId",
+          "parts"
+        ]
+      },
+      "ListPublicGamesResponse": {
+        "type": "object",
+        "properties": {
+          "games": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GameRecordSummary"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "games",
+          "nextCursor"
+        ]
+      },
+      "GetPublicGameResponse": {
+        "type": "object",
+        "properties": {
+          "game": {
+            "$ref": "#/components/schemas/GameRecordDetail"
+          }
+        },
+        "required": [
+          "game"
+        ]
+      },
+      "ListUserSettingsResponse": {
+        "type": "object",
+        "properties": {
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserSettingsDocument"
+            }
+          }
+        },
+        "required": [
+          "documents"
+        ]
+      },
+      "UserSettingsDocument": {
+        "type": "object",
+        "properties": {
+          "documentKey": {
+            "$ref": "#/components/schemas/UserSettingsDocumentKey"
+          },
+          "value": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "documentKey",
+          "value",
+          "version",
+          "updatedAt"
+        ]
+      },
+      "UserSettingsDocumentKey": {
+        "type": "string",
+        "enum": [
+          "match.time-settings",
+          "match.display-settings",
+          "match.analysis-settings",
+          "match.pass-rights-settings"
+        ]
+      },
+      "GetUserSettingsResponse": {
+        "type": "object",
+        "properties": {
+          "document": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UserSettingsDocument"
+              },
+              {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "document"
+        ]
+      },
+      "PutUserSettingsResponse": {
+        "type": "object",
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/UserSettingsDocument"
+          }
+        },
+        "required": [
+          "document"
+        ]
+      },
+      "PutUserSettingsRequest": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "expectedVersion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "value"
+        ]
+      },
+      "CreateRoomResponse": {
+        "type": "object",
+        "properties": {
+          "roomId": {
+            "type": "string"
+          },
+          "shareUrl": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "required": [
+          "roomId",
+          "shareUrl"
+        ]
+      },
+      "CreateRoomRequest": {
+        "type": "object",
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/RoomSettings"
+          }
+        },
+        "required": [
+          "settings"
+        ]
+      },
+      "RoomSettings": {
+        "type": "object",
+        "properties": {
+          "startSfen": {
+            "type": "string"
+          },
+          "timeControl": {
+            "$ref": "#/components/schemas/TimeControlSettings"
+          },
+          "passRights": {
+            "$ref": "#/components/schemas/PassRightsConfig"
+          },
+          "aiSupport": {
+            "$ref": "#/components/schemas/AiSupportSettings"
+          },
+          "takeback": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "startSfen",
+          "timeControl",
+          "passRights",
+          "aiSupport",
+          "takeback"
+        ]
+      },
+      "TimeControlSettings": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "byoyomi"
+                ]
+              },
+              "initialMs": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "byoyomiMs": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "type",
+              "initialMs"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "fischer"
+                ]
+              },
+              "initialMs": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "fischerIncrementMs": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "type",
+              "initialMs"
+            ]
+          }
+        ]
+      },
+      "PassRightsConfig": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "initialCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "initialCount"
+        ]
+      },
+      "AiSupportSettings": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "b": {
+            "$ref": "#/components/schemas/AiSupportPlayerSettings"
+          },
+          "w": {
+            "$ref": "#/components/schemas/AiSupportPlayerSettings"
+          },
+          "searchDepth": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "searchTimeMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          }
+        },
+        "required": [
+          "b",
+          "w",
+          "searchDepth",
+          "searchTimeMs"
+        ]
+      },
+      "AiSupportPlayerSettings": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "unlimited",
+              "limited"
+            ]
+          },
+          "limitCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          }
+        },
+        "required": [
+          "mode",
+          "limitCount"
+        ]
+      },
+      "RoomInfo": {
+        "type": "object",
+        "properties": {
+          "roomId": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RoomStatus"
+          },
+          "players": {
+            "type": "object",
+            "properties": {
+              "b": {
+                "$ref": "#/components/schemas/RoomInfoPlayer"
+              },
+              "w": {
+                "$ref": "#/components/schemas/RoomInfoPlayer"
+              }
+            },
+            "required": [
+              "b",
+              "w"
+            ]
+          },
+          "spectators": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "settings": {
+            "$ref": "#/components/schemas/RoomSettings"
+          }
+        },
+        "required": [
+          "roomId",
+          "status",
+          "players",
+          "spectators",
+          "settings"
+        ]
+      },
+      "RoomStatus": {
+        "type": "string",
+        "enum": [
+          "waiting",
+          "playing",
+          "finished"
+        ]
+      },
+      "RoomInfoPlayer": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "online"
+        ]
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/api/auth/session": {
+      "get": {
+        "operationId": "getAuthSession",
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "Get current auth session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSessionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/profile": {
+      "patch": {
+        "operationId": "updateAuthProfile",
+        "tags": [
+          "Auth"
+        ],
+        "requestBody": {
+          "description": "Update auth profile",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated auth profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateProfileResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "User account no longer exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "operationId": "logout",
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "Logged out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games": {
+      "get": {
+        "operationId": "listGames",
+        "tags": [
+          "Games"
+        ],
+        "responses": {
+          "200": {
+            "description": "List accessible games",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListGamesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{gameId}": {
+      "get": {
+        "operationId": "getGame",
+        "tags": [
+          "Games"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "gameId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Get game detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetGameResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Game record not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{gameId}/visibility": {
+      "patch": {
+        "operationId": "updateGameVisibility",
+        "tags": [
+          "Games"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "gameId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "description": "Update game visibility",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGameVisibilityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated game visibility",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateGameVisibilityResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Verified email is required to publish a game record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Game record not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{gameId}/analysis-snapshots": {
+      "get": {
+        "operationId": "listAnalysisSnapshots",
+        "tags": [
+          "AnalysisSnapshots"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "gameId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List analysis snapshots",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListAnalysisSnapshotsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Game record not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAnalysisSnapshot",
+        "tags": [
+          "AnalysisSnapshots"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "gameId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "description": "Create analysis snapshot",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAnalysisSnapshotRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created analysis snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateAnalysisSnapshotResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Game record not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to create analysis snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{gameId}/analysis-snapshots/{snapshotId}": {
+      "get": {
+        "operationId": "getAnalysisSnapshot",
+        "tags": [
+          "AnalysisSnapshots"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "gameId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "snapshotId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Get analysis snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetAnalysisSnapshotResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Analysis snapshot not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/nnue/files": {
+      "get": {
+        "operationId": "listNnueFiles",
+        "tags": [
+          "Nnue"
+        ],
+        "responses": {
+          "200": {
+            "description": "List NNUE files",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListNnueFilesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/nnue/uploads/init": {
+      "post": {
+        "operationId": "initializeNnueUpload",
+        "tags": [
+          "Nnue"
+        ],
+        "requestBody": {
+          "description": "Initialize NNUE upload",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InitializeNnueUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Initialized NNUE upload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InitializeNnueUploadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid NNUE upload request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Verified email is required for NNUE upload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "NNUE file already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "NNUE storage is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/nnue/uploads/{fileId}/parts/{partNumber}": {
+      "put": {
+        "operationId": "uploadNnuePart",
+        "tags": [
+          "Nnue"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "fileId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "partNumber",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "uploadId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Uploaded NNUE part",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadNnuePartResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Verified email is required for NNUE upload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NNUE file not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "NNUE storage is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/nnue/uploads/{fileId}/complete": {
+      "post": {
+        "operationId": "completeNnueUpload",
+        "tags": [
+          "Nnue"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "fileId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "description": "Complete NNUE upload",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteNnueUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Completed NNUE upload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompleteNnueUploadResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Verified email is required for NNUE upload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NNUE file not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "NNUE storage is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/nnue/uploads/{fileId}/abort": {
+      "post": {
+        "operationId": "abortNnueUpload",
+        "tags": [
+          "Nnue"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "fileId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "uploadId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Aborted NNUE upload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Verified email is required for NNUE upload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NNUE file not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "NNUE storage is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/nnue/files/{fileId}": {
+      "delete": {
+        "operationId": "deleteNnueFile",
+        "tags": [
+          "Nnue"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "fileId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted NNUE file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Verified email is required for NNUE upload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NNUE file not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "NNUE storage is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/public/games": {
+      "get": {
+        "operationId": "listPublicGames",
+        "tags": [
+          "PublicGames"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List public games",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListPublicGamesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/public/games/{publicId}": {
+      "get": {
+        "operationId": "getPublicGame",
+        "tags": [
+          "PublicGames"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 32
+            },
+            "required": true,
+            "name": "publicId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Get public game detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetPublicGameResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Game record not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/user/settings": {
+      "get": {
+        "operationId": "listUserSettings",
+        "tags": [
+          "UserSettings"
+        ],
+        "responses": {
+          "200": {
+            "description": "List user settings documents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListUserSettingsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/user/settings/{documentKey}": {
+      "get": {
+        "operationId": "getUserSettings",
+        "tags": [
+          "UserSettings"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "$ref": "#/components/schemas/UserSettingsDocumentKey"
+            },
+            "required": true,
+            "name": "documentKey",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Get a user settings document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetUserSettingsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "putUserSettings",
+        "tags": [
+          "UserSettings"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "$ref": "#/components/schemas/UserSettingsDocumentKey"
+            },
+            "required": true,
+            "name": "documentKey",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "description": "Update a user settings document",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutUserSettingsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated user settings document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PutUserSettingsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Settings version conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms": {
+      "post": {
+        "operationId": "createRoom",
+        "tags": [
+          "Rooms"
+        ],
+        "requestBody": {
+          "description": "Create a room",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRoomRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created room",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateRoomResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid room settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many room creation requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Room creation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{roomId}": {
+      "get": {
+        "operationId": "getRoom",
+        "tags": [
+          "Rooms"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "roomId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Get room information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomInfo"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Room not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Room binding is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "webhooks": {}
+}

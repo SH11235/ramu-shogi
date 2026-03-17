@@ -19,6 +19,7 @@ const mockNavigate = vi.fn();
 vi.mock("@tanstack/react-router", () => ({
     Link: ({ children }: { children: ReactNode }) => <a href="/">{children}</a>,
     useNavigate: () => mockNavigate,
+    useLocation: () => ({ pathname: "/online/test-room" }),
     useParams: () => ({ roomId: "test-room" }),
     // loader data は routeApi.useLoaderData() 経由で提供される
     getRouteApi: (_path: string) => ({
@@ -67,6 +68,7 @@ const ROOM_INFO = {
         timeControl: { type: "byoyomi", initialMs: 600_000, byoyomiMs: 30_000 },
         passRights: null,
         aiSupport: null,
+        takeback: false,
     },
 };
 

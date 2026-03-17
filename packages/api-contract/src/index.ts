@@ -1,36 +1,4 @@
-import type { RoomSettings, RoomStatus } from "@shogi/match-protocol";
-
-export interface ApiErrorResponse {
-    error: string;
-    message?: string;
-}
-
-export interface RoomInfoPlayer {
-    name: string;
-    online: boolean;
-}
-
-export interface RoomInfo {
-    roomId: string;
-    status: RoomStatus;
-    players: {
-        b: RoomInfoPlayer | null;
-        w: RoomInfoPlayer | null;
-    };
-    spectators: number;
-    settings: RoomSettings;
-}
-
-export interface CreateRoomRequest {
-    settings: RoomSettings;
-}
-
-export interface CreateRoomResponse {
-    roomId: string;
-    shareUrl: string;
-}
-
-export type GetRoomResponse = RoomInfo;
+import type { components, operations, paths } from "./generated/schema";
 
 export const USER_SETTINGS_DOCUMENT_KEYS = [
     "match.time-settings",
@@ -39,183 +7,67 @@ export const USER_SETTINGS_DOCUMENT_KEYS = [
     "match.pass-rights-settings",
 ] as const;
 
-export type UserSettingsDocumentKey = (typeof USER_SETTINGS_DOCUMENT_KEYS)[number];
+export type ApiPaths = paths;
+export type ApiOperations = operations;
 
-export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+export type ApiErrorResponse = components["schemas"]["ApiErrorResponse"];
+export type OkResponse = components["schemas"]["OkResponse"];
+export type JsonValue = components["schemas"]["JsonValue"];
 
-export interface UserSettingsDocument<
-    DocumentKey extends UserSettingsDocumentKey = UserSettingsDocumentKey,
-> {
-    documentKey: DocumentKey;
-    value: JsonValue;
-    version: number;
-    updatedAt: string;
-}
+export type RoomStatus = components["schemas"]["RoomStatus"];
+export type TimeControlSettings = components["schemas"]["TimeControlSettings"];
+export type PassRightsConfig = components["schemas"]["PassRightsConfig"];
+export type AiSupportPlayerSettings = components["schemas"]["AiSupportPlayerSettings"];
+export type AiSupportSettings = components["schemas"]["AiSupportSettings"];
+export type RoomInfoPlayer = components["schemas"]["RoomInfoPlayer"];
+export type RoomSettings = components["schemas"]["RoomSettings"];
+export type RoomInfo = components["schemas"]["RoomInfo"];
+export type CreateRoomRequest = components["schemas"]["CreateRoomRequest"];
+export type CreateRoomResponse = components["schemas"]["CreateRoomResponse"];
+export type GetRoomResponse =
+    operations["getRoom"]["responses"][200]["content"]["application/json"];
 
-export interface ListUserSettingsResponse {
-    documents: UserSettingsDocument[];
-}
+export type UserSettingsDocumentKey = components["schemas"]["UserSettingsDocumentKey"];
+export type UserSettingsDocument = components["schemas"]["UserSettingsDocument"];
+export type ListUserSettingsResponse = components["schemas"]["ListUserSettingsResponse"];
+export type GetUserSettingsResponse = components["schemas"]["GetUserSettingsResponse"];
+export type PutUserSettingsRequest = components["schemas"]["PutUserSettingsRequest"];
+export type PutUserSettingsResponse = components["schemas"]["PutUserSettingsResponse"];
 
-export interface GetUserSettingsResponse {
-    document: UserSettingsDocument | null;
-}
+export type GameRecordSource = components["schemas"]["GameRecordSource"];
+export type GameRecordVisibility = components["schemas"]["GameRecordVisibility"];
+export type GameRecordStatus = components["schemas"]["GameRecordStatus"];
+export type GameRecordSeat = components["schemas"]["GameRecordSeat"];
+export type GameResultPayload = components["schemas"]["GameResultPayload"];
+export type GameRecordParticipant = components["schemas"]["GameRecordParticipant"];
+export type GameRecordSummary = components["schemas"]["GameRecordSummary"];
+export type GameRecordDetail = components["schemas"]["GameRecordDetail"];
+export type ListGamesResponse = components["schemas"]["ListGamesResponse"];
+export type GetGameResponse = components["schemas"]["GetGameResponse"];
+export type UpdateGameVisibilityRequest = components["schemas"]["UpdateGameVisibilityRequest"];
+export type UpdateGameVisibilityResponse = components["schemas"]["UpdateGameVisibilityResponse"];
+export type ListPublicGamesResponse = components["schemas"]["ListPublicGamesResponse"];
+export type GetPublicGameResponse = components["schemas"]["GetPublicGameResponse"];
 
-export interface PutUserSettingsRequest {
-    value: JsonValue;
-    expectedVersion?: number | null;
-}
+export type AnalysisSnapshotEntry = components["schemas"]["AnalysisSnapshotEntry"];
+export type AnalysisSnapshotSummary = components["schemas"]["AnalysisSnapshotSummary"];
+export type AnalysisSnapshotDetail = components["schemas"]["AnalysisSnapshotDetail"];
+export type CreateAnalysisSnapshotRequest = components["schemas"]["CreateAnalysisSnapshotRequest"];
+export type CreateAnalysisSnapshotResponse =
+    components["schemas"]["CreateAnalysisSnapshotResponse"];
+export type ListAnalysisSnapshotsResponse = components["schemas"]["ListAnalysisSnapshotsResponse"];
+export type GetAnalysisSnapshotResponse = components["schemas"]["GetAnalysisSnapshotResponse"];
 
-export interface PutUserSettingsResponse {
-    document: UserSettingsDocument;
-}
+export type NnueUploadStatus = components["schemas"]["NnueUploadStatus"];
+export type NnueFileSummary = components["schemas"]["NnueFileSummary"];
+export type ListNnueFilesResponse = components["schemas"]["ListNnueFilesResponse"];
+export type InitializeNnueUploadRequest = components["schemas"]["InitializeNnueUploadRequest"];
+export type InitializeNnueUploadResponse = components["schemas"]["InitializeNnueUploadResponse"];
+export type UploadNnuePartResponse = components["schemas"]["UploadNnuePartResponse"];
+export type CompleteNnueUploadRequest = components["schemas"]["CompleteNnueUploadRequest"];
+export type CompleteNnueUploadResponse = components["schemas"]["CompleteNnueUploadResponse"];
 
-export type GameRecordSource = "online_room" | "local_app" | "import";
-export type GameRecordVisibility = "private" | "unlisted" | "public";
-export type GameRecordStatus = "finished" | "aborted";
-export type GameRecordSeat = "b" | "w";
-
-export interface GameResultPayload {
-    winner: GameRecordSeat | null;
-    reason: string;
-}
-
-export interface GameRecordParticipant {
-    seat: GameRecordSeat;
-    userId: string | null;
-    displayNameSnapshot: string;
-}
-
-export interface GameRecordSummary {
-    id: string;
-    roomId: string | null;
-    source: GameRecordSource;
-    visibility: GameRecordVisibility;
-    publicId: string | null;
-    status: GameRecordStatus;
-    result: GameResultPayload | null;
-    participants: GameRecordParticipant[];
-    createdAt: string;
-    finishedAt: string | null;
-}
-
-export interface GameRecordDetail extends GameRecordSummary {
-    initialSfen: string;
-    metadata: JsonValue;
-    moves: string[];
-    kifuText: string;
-    startedAt: string | null;
-}
-
-export interface ListGamesResponse {
-    games: GameRecordSummary[];
-}
-
-export interface GetGameResponse {
-    game: GameRecordDetail;
-}
-
-export interface UpdateGameVisibilityRequest {
-    visibility: GameRecordVisibility;
-}
-
-export interface UpdateGameVisibilityResponse {
-    game: GameRecordSummary;
-}
-
-export interface ListPublicGamesResponse {
-    games: GameRecordSummary[];
-    nextCursor: string | null;
-}
-
-export interface GetPublicGameResponse {
-    game: GameRecordDetail;
-}
-
-export interface AnalysisSnapshotEntry {
-    ply: number;
-    evalCp: number | null;
-    evalMate: number | null;
-    depth: number | null;
-    pv: string[] | null;
-    multiPv: JsonValue | null;
-}
-
-export interface AnalysisSnapshotSummary {
-    id: string;
-    gameId: string;
-    label: string | null;
-    createdAt: string;
-    entryCount: number;
-}
-
-export interface AnalysisSnapshotDetail extends AnalysisSnapshotSummary {
-    lineMoves: string[];
-    analysisSettings: JsonValue;
-    metadata: JsonValue;
-    entries: AnalysisSnapshotEntry[];
-}
-
-export interface CreateAnalysisSnapshotRequest {
-    label?: string | null;
-    lineMoves: string[];
-    analysisSettings: JsonValue;
-    metadata?: JsonValue;
-    entries: AnalysisSnapshotEntry[];
-}
-
-export interface CreateAnalysisSnapshotResponse {
-    snapshot: AnalysisSnapshotSummary;
-}
-
-export interface ListAnalysisSnapshotsResponse {
-    snapshots: AnalysisSnapshotSummary[];
-}
-
-export interface GetAnalysisSnapshotResponse {
-    snapshot: AnalysisSnapshotDetail;
-}
-
-export type NnueUploadStatus = "pending" | "completed" | "failed" | "deleted";
-
-export interface NnueFileSummary {
-    id: string;
-    originalFilename: string;
-    sizeBytes: number;
-    sha256Hex: string;
-    uploadStatus: NnueUploadStatus;
-    createdAt: string;
-    completedAt: string | null;
-}
-
-export interface ListNnueFilesResponse {
-    files: NnueFileSummary[];
-}
-
-export interface InitializeNnueUploadRequest {
-    originalFilename: string;
-    sizeBytes: number;
-    sha256Hex: string;
-}
-
-export interface InitializeNnueUploadResponse {
-    file: NnueFileSummary;
-    uploadId: string;
-}
-
-export interface UploadNnuePartResponse {
-    partNumber: number;
-    etag: string;
-}
-
-export interface CompleteNnueUploadRequest {
-    uploadId: string;
-    parts: Array<{
-        partNumber: number;
-        etag: string;
-    }>;
-}
-
-export interface CompleteNnueUploadResponse {
-    file: NnueFileSummary;
-}
+export type AuthSessionUser = components["schemas"]["AuthSessionUser"];
+export type AuthSessionResponse = components["schemas"]["AuthSessionResponse"];
+export type UpdateProfileRequest = components["schemas"]["UpdateProfileRequest"];
+export type UpdateProfileResponse = components["schemas"]["UpdateProfileResponse"];
