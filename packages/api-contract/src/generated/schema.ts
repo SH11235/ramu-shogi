@@ -3,7 +3,7 @@
  * Do not make direct changes to the file.
  */
 
-export type JsonValueValue =
+type JsonValueValue =
     | string
     | number
     | boolean
@@ -332,7 +332,7 @@ export interface paths {
         trace?: never;
     };
 }
-export type webhooks = Record<string, never>;
+type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         AuthSessionResponse:
@@ -595,7 +595,7 @@ export interface components {
     headers: never;
     pathItems: never;
 }
-export type $defs = Record<string, never>;
+type $defs = Record<string, never>;
 export interface operations {
     getAuthSession: {
         parameters: {
