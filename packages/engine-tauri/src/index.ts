@@ -16,6 +16,17 @@ import { listen as tauriListen } from "@tauri-apps/api/event";
 // NNUE ストレージ
 export { createTauriNnueStorage } from "./nnue-storage";
 
+// USI エンジン
+export { createUsiEngineClient } from "./usi-engine-client";
+export {
+    createEngineRegistryService,
+    type EngineRegistration,
+    type EngineRegistryService,
+    type OptionValue,
+    type ProbeResult,
+    type UsiOptionDef,
+} from "./engine-registry-service";
+
 type InvokeFn = typeof tauriInvoke;
 type ListenFn = typeof tauriListen;
 
