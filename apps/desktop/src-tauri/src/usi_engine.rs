@@ -1121,4 +1121,321 @@ mod tests {
         assert_eq!(json["type"], "error");
         assert_eq!(json["message"], "process died");
     }
+
+    // ── 追加テスト: option parsing edge cases ──────────────────────
+
+    #[test]
+    fn test_parse_option_check_default_true() {
+        let opt = parse_option("option name USI_Ponder type check default true").unwrap();
+        assert_eq!(
+            opt,
+            UsiOptionDef::Check {
+                name: "USI_Ponder".to_string(),
+                default: true,
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_option_spin_negative_min() {
+        let opt =
+            parse_option("option name Contempt type spin default 2 min -100 max 100").unwrap();
+        assert_eq!(
+            opt,
+            UsiOptionDef::Spin {
+                name: "Contempt".to_string(),
+                default: 2,
+                min: -100,
+                max: 100,
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_option_spin_large_values() {
+        let opt =
+            parse_option("option name USI_Hash type spin default 16 min 1 max 1048576").unwrap();
+        assert_eq!(
+            opt,
+            UsiOptionDef::Spin {
+                name: "USI_Hash".to_string(),
+                default: 16,
+                min: 1,
+                max: 1048576,
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_option_combo_single_var() {
+        let opt =
+            parse_option("option name BookDir type combo default standard var standard").unwrap();
+        assert_eq!(
+            opt,
+            UsiOptionDef::Combo {
+                name: "BookDir".to_string(),
+                default: "standard".to_string(),
+                vars: vec!["standard".to_string()],
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_option_string_with_path() {
+        let opt =
+            parse_option("option name EvalDir type string default /usr/local/share/eval").unwrap();
+        assert_eq!(
+            opt,
+            UsiOptionDef::String {
+                name: "EvalDir".to_string(),
+                default: "/usr/local/share/eval".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_option_filename_with_path() {
+        let opt =
+            parse_option("option name BookFile type filename default /home/user/book.db").unwrap();
+        assert_eq!(
+            opt,
+            UsiOptionDef::Filename {
+                name: "BookFile".to_string(),
+                default: "/home/user/book.db".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_option_invalid_type() {
+        assert!(parse_option("option name Foo type unknown default bar").is_none());
+    }
+
+    #[test]
+    fn test_parse_option_no_option_prefix() {
+        assert!(parse_option("id name something type check default true").is_none());
+    }
+
+    // ── 追加テスト: info parsing edge cases ────────────────────────
+
+    #[test]
+    fn test_parse_info_only_nodes() {
+        let event = parse_info("info nodes 12345678").unwrap();
+        assert_eq!(
+            event,
+            UsiEngineEvent::Info {
+                depth: None,
+                seldepth: None,
+                nodes: Some(12345678),
+                nps: None,
+                time_ms: None,
+                score_cp: None,
+                score_mate: None,
+                multipv: None,
+                pv: None,
+                hashfull: None,
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_info_multipv_with_score() {
+        let event = parse_info("info depth 10 multipv 2 score cp -50 pv 3c3d 7g7f").unwrap();
+        assert_eq!(
+            event,
+            UsiEngineEvent::Info {
+                depth: Some(10),
+                seldepth: None,
+                nodes: None,
+                nps: None,
+                time_ms: None,
+                score_cp: Some(-50),
+                score_mate: None,
+                multipv: Some(2),
+                pv: Some(vec!["3c3d".to_string(), "7g7f".to_string()]),
+                hashfull: None,
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_info_hashfull_only() {
+        let event = parse_info("info hashfull 999").unwrap();
+        assert_eq!(
+            event,
+            UsiEngineEvent::Info {
+                depth: None,
+                seldepth: None,
+                nodes: None,
+                nps: None,
+                time_ms: None,
+                score_cp: None,
+                score_mate: None,
+                multipv: None,
+                pv: None,
+                hashfull: Some(999),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_info_negative_score_cp() {
+        let event = parse_info("info depth 5 score cp -300").unwrap();
+        assert_eq!(
+            event,
+            UsiEngineEvent::Info {
+                depth: Some(5),
+                seldepth: None,
+                nodes: None,
+                nps: None,
+                time_ms: None,
+                score_cp: Some(-300),
+                score_mate: None,
+                multipv: None,
+                pv: None,
+                hashfull: None,
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_info_empty_pv() {
+        // "pv" with no moves after it
+        let event = parse_info("info depth 1 pv").unwrap();
+        assert_eq!(
+            event,
+            UsiEngineEvent::Info {
+                depth: Some(1),
+                seldepth: None,
+                nodes: None,
+                nps: None,
+                time_ms: None,
+                score_cp: None,
+                score_mate: None,
+                multipv: None,
+                pv: None,
+                hashfull: None,
+            }
+        );
+    }
+
+    // ── 追加テスト: bestmove edge cases ────────────────────────────
+
+    #[test]
+    fn test_parse_bestmove_promotion() {
+        let event = parse_bestmove("bestmove 7g7f+").unwrap();
+        assert_eq!(
+            event,
+            UsiEngineEvent::BestMove {
+                mv: "7g7f+".to_string(),
+                ponder: None,
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_bestmove_drop() {
+        let event = parse_bestmove("bestmove P*5e").unwrap();
+        assert_eq!(
+            event,
+            UsiEngineEvent::BestMove {
+                mv: "P*5e".to_string(),
+                ponder: None,
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_bestmove_with_ponder_promotion() {
+        let event = parse_bestmove("bestmove 2h2f ponder 8c8d").unwrap();
+        assert_eq!(
+            event,
+            UsiEngineEvent::BestMove {
+                mv: "2h2f".to_string(),
+                ponder: Some("8c8d".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_bestmove_empty() {
+        assert!(parse_bestmove("bestmove ").is_none());
+    }
+
+    // ── 追加テスト: EngineEvent JSON normalization ─────────────────
+
+    #[test]
+    fn test_info_event_all_null_json() {
+        let event = UsiEngineEvent::Info {
+            depth: None,
+            seldepth: None,
+            nodes: None,
+            nps: None,
+            time_ms: None,
+            score_cp: None,
+            score_mate: None,
+            multipv: None,
+            pv: None,
+            hashfull: None,
+        };
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["type"], "info");
+        assert!(json["depth"].is_null());
+        assert!(json["pv"].is_null());
+    }
+
+    #[test]
+    fn test_bestmove_resign_json() {
+        let event = UsiEngineEvent::BestMove {
+            mv: "resign".to_string(),
+            ponder: None,
+        };
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["type"], "bestmove");
+        assert_eq!(json["move"], "resign");
+        assert!(json["ponder"].is_null());
+    }
+
+    #[test]
+    fn test_option_def_serialization() {
+        let opt = UsiOptionDef::Spin {
+            name: "Threads".to_string(),
+            default: 4,
+            min: 1,
+            max: 128,
+        };
+        let json = serde_json::to_value(&opt).unwrap();
+        assert_eq!(json["type"], "spin");
+        assert_eq!(json["name"], "Threads");
+        assert_eq!(json["default"], 4);
+        assert_eq!(json["min"], 1);
+        assert_eq!(json["max"], 128);
+    }
+
+    #[test]
+    fn test_option_def_button_serialization() {
+        let opt = UsiOptionDef::Button {
+            name: "ClearHash".to_string(),
+        };
+        let json = serde_json::to_value(&opt).unwrap();
+        assert_eq!(json["type"], "button");
+        assert_eq!(json["name"], "ClearHash");
+    }
+
+    #[test]
+    fn test_option_def_deserialization() {
+        let json = serde_json::json!({
+            "type": "check",
+            "name": "USI_Ponder",
+            "default": false
+        });
+        let opt: UsiOptionDef = serde_json::from_value(json).unwrap();
+        assert_eq!(
+            opt,
+            UsiOptionDef::Check {
+                name: "USI_Ponder".to_string(),
+                default: false,
+            }
+        );
+    }
 }
