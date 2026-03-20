@@ -4,7 +4,8 @@ import type {
     AuthSessionUser,
     UpdateProfileRequest,
 } from "@shogi/api-contract";
-import { useEffect, useEffectEvent, useState } from "react";
+import { createContext, useContext, useEffect, useEffectEvent, useState } from "react";
+import type { ReactElement, ReactNode } from "react";
 
 const AUTH_SESSION_SYNC_EVENT = "ramu-auth-session-sync";
 
@@ -62,7 +63,16 @@ export async function syncProfileDisplayNameIfNeeded(
     dispatchAuthSessionSyncEvent();
 }
 
-export function useAuthSession() {
+interface AuthSessionContextValue {
+    session: AuthSessionResponse | null;
+    sessionError: string | null;
+    isLoadingSession: boolean;
+    refreshSession: () => Promise<void>;
+}
+
+const AuthSessionContext = createContext<AuthSessionContextValue | null>(null);
+
+export function AuthSessionProvider({ children }: { children: ReactNode }): ReactElement {
     const [session, setSession] = useState<AuthSessionResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -112,10 +122,20 @@ export function useAuthSession() {
         };
     }, []);
 
-    return {
+    const value: AuthSessionContextValue = {
         session,
         sessionError: error,
         isLoadingSession: isLoading,
         refreshSession,
     };
+
+    return <AuthSessionContext.Provider value={value}>{children}</AuthSessionContext.Provider>;
+}
+
+export function useAuthSession(): AuthSessionContextValue {
+    const context = useContext(AuthSessionContext);
+    if (context === null) {
+        throw new Error("useAuthSession must be used within an AuthSessionProvider");
+    }
+    return context;
 }

@@ -10,6 +10,15 @@ vi.mock("@tanstack/react-router", () => ({
     useLocation: () => ({ pathname: "/online" }),
 }));
 
+vi.mock("../../hooks/useAuthSession", () => ({
+    useAuthSession: () => ({
+        session: null,
+        sessionError: null,
+        isLoadingSession: false,
+        refreshSession: vi.fn(),
+    }),
+}));
+
 // @shogi/ui のモック（PositionPresetSelector を使用）
 vi.mock("@shogi/ui", () => ({
     PositionPresetSelector: ({
