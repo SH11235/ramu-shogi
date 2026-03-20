@@ -4,8 +4,8 @@ import type {
     AuthSessionUser,
     UpdateProfileRequest,
 } from "@shogi/api-contract";
-import { createContext, useContext, useEffect, useEffectEvent, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
+import { createContext, useContext, useEffect, useEffectEvent, useState } from "react";
 
 const AUTH_SESSION_SYNC_EVENT = "ramu-auth-session-sync";
 
