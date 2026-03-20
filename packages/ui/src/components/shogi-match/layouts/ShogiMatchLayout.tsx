@@ -96,6 +96,8 @@ export function ShogiMatchLayout({
         nnueList,
         presets,
         internalEngineId,
+        engineOptions,
+        onOpenEngineManager,
         setIsDisplaySettingsOpen,
         setIsPassRightsSettingsOpen,
     } = matchSettings;
@@ -343,6 +345,8 @@ export function ShogiMatchLayout({
                     nnueList={nnueList}
                     presets={presets}
                     internalEngineId={internalEngineId}
+                    engineOptions={engineOptions}
+                    onOpenEngineManager={onOpenEngineManager}
                     onOpenNnueManager={openNnueManager}
                     onOpenDisplaySettings={() => setIsDisplaySettingsOpen(true)}
                     onOpenPassRightsSettings={() => setIsPassRightsSettingsOpen(true)}
@@ -470,6 +474,8 @@ export function ShogiMatchLayout({
                     nnueList={nnueList}
                     presets={presets}
                     internalEngineId={internalEngineId}
+                    engineOptions={engineOptions}
+                    onOpenEngineManager={onOpenEngineManager}
                     onOpenNnueManager={openNnueManager}
                     onOpenDisplaySettings={() => setIsDisplaySettingsOpen(true)}
                     onOpenPassRightsSettings={() => setIsPassRightsSettingsOpen(true)}

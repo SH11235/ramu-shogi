@@ -16,6 +16,7 @@ import type { SelectionState } from "../contexts/MatchStateContext.types";
 import type { ClockSettings, TickState } from "../hooks/useClockManager";
 import type {
     DisplaySettings,
+    EngineOption,
     EngineThreadSettings,
     GameMode,
     Message,
@@ -49,6 +50,8 @@ export interface MatchSettingsProps {
     nnueList: NnueMeta[];
     presets: PresetWithStatus[];
     internalEngineId: string;
+    engineOptions?: EngineOption[];
+    onOpenEngineManager?: () => void;
     setIsDisplaySettingsOpen: (open: boolean) => void;
     setIsPassRightsSettingsOpen: (open: boolean) => void;
 }

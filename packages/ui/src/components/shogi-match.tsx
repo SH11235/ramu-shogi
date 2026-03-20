@@ -127,6 +127,8 @@ interface ShogiMatchProps {
     reviewMode?: boolean;
     /** 棋譜検討モード時に左サイドバー位置に表示するコンテンツ */
     reviewLeftContent?: React.ReactNode;
+    /** 外部エンジン管理パネルを開くコールバック（Desktop用） */
+    onOpenEngineManager?: () => void;
 }
 
 export function ShogiMatch({
@@ -153,6 +155,7 @@ export function ShogiMatch({
     initialAnalysisEntries = null,
     reviewMode,
     reviewLeftContent,
+    onOpenEngineManager,
 }: ShogiMatchProps): ReactElement {
     // デフォルトの NNUE 選択（props のプリセットキーを使用、未指定時は DEFAULT_PRESET_KEY）
     const defaultNnueSelection = createDefaultNnueSelection(
@@ -1355,6 +1358,8 @@ export function ShogiMatch({
         nnueList,
         presets,
         internalEngineId,
+        engineOptions,
+        onOpenEngineManager,
         setIsDisplaySettingsOpen,
         setIsPassRightsSettingsOpen,
     };
