@@ -1,8 +1,16 @@
-use serde::Serialize;
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use serde::{Deserialize, Serialize};
+use tauri::Emitter;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::process::Command;
+use tokio::sync::Mutex;
+use uuid::Uuid;
 
 // ── USI Option Definition ──────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum UsiOptionDef {
     Check {
@@ -263,6 +271,408 @@ pub fn parse_engine_line(line: &str) -> Option<UsiEngineEvent> {
         parse_bestmove(line)
     } else {
         None
+    }
+}
+
+// ── Session Management ─────────────────────────────────────────────
+
+const USI_TIMEOUT_SECS: u64 = 10;
+const READY_TIMEOUT_SECS: u64 = 30;
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum EngineStatus {
+    Idle,
+    WaitingUsiOk,
+    WaitingReadyOk,
+    Ready,
+    Searching,
+}
+
+struct UsiEngineSession {
+    registration_id: String,
+    stdin: Arc<Mutex<tokio::process::ChildStdin>>,
+    stdout_task: tauri::async_runtime::JoinHandle<()>,
+    status: EngineStatus,
+    child: tokio::process::Child,
+}
+
+pub struct UsiEngineManager {
+    sessions: Arc<Mutex<HashMap<String, UsiEngineSession>>>,
+}
+
+impl Default for UsiEngineManager {
+    fn default() -> Self {
+        Self {
+            sessions: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+}
+
+/// Input parameters for the go command.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchParamsInput {
+    pub max_depth: Option<u32>,
+    pub nodes: Option<u64>,
+    pub byoyomi_ms: Option<u64>,
+    pub movetime_ms: Option<u64>,
+    pub infinite: Option<bool>,
+}
+
+/// Saved option value for an engine.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OptionValue {
+    pub name: String,
+    pub value: serde_json::Value,
+}
+
+/// Engine registration stored in tauri-plugin-store.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EngineRegistration {
+    pub id: String,
+    pub path: String,
+    #[serde(rename = "displayName")]
+    pub display_name: String,
+    pub author: String,
+    pub options: Vec<UsiOptionDef>,
+}
+
+fn event_channel(session_id: &str) -> String {
+    format!("engine://usi/{session_id}")
+}
+
+/// Create a Command for spawning a USI engine process.
+/// On Windows, sets CREATE_NO_WINDOW to suppress console window.
+fn create_engine_command(path: &str) -> Command {
+    let mut cmd = Command::new(path);
+    cmd.stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null());
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    cmd
+}
+
+/// Send a line to the engine's stdin.
+async fn send_line(
+    stdin: &Arc<Mutex<tokio::process::ChildStdin>>,
+    line: &str,
+) -> Result<(), String> {
+    let mut guard = stdin.lock().await;
+    let data = format!("{line}\n");
+    guard
+        .write_all(data.as_bytes())
+        .await
+        .map_err(|e| format!("stdin write error: {e}"))?;
+    guard
+        .flush()
+        .await
+        .map_err(|e| format!("stdin flush error: {e}"))
+}
+
+impl UsiEngineManager {
+    /// Probe an engine binary: spawn, perform USI handshake, collect info, then quit.
+    pub async fn probe(&self, path: &str) -> Result<ProbeResult, String> {
+        let mut child = create_engine_command(path)
+            .spawn()
+            .map_err(|e| format!("プロセスの起動に失敗しました: {e}"))?;
+
+        let child_stdin = child.stdin.take().ok_or("stdin を取得できませんでした")?;
+        let child_stdout = child.stdout.take().ok_or("stdout を取得できませんでした")?;
+
+        let stdin = Arc::new(Mutex::new(child_stdin));
+        let mut reader = BufReader::new(child_stdout).lines();
+
+        // Send "usi"
+        send_line(&stdin, "usi").await?;
+
+        let mut name = String::new();
+        let mut author = String::new();
+        let mut options = Vec::new();
+
+        // Wait for usiok with timeout
+        let result =
+            tokio::time::timeout(std::time::Duration::from_secs(USI_TIMEOUT_SECS), async {
+                while let Some(line) = reader
+                    .next_line()
+                    .await
+                    .map_err(|e| format!("stdout read error: {e}"))?
+                {
+                    let trimmed = line.trim().to_string();
+                    if trimmed == "usiok" {
+                        return Ok(());
+                    }
+                    if let Some(n) = parse_id_name(&trimmed) {
+                        name = n;
+                    } else if let Some(a) = parse_id_author(&trimmed) {
+                        author = a;
+                    } else if let Some(opt) = parse_option(&trimmed) {
+                        options.push(opt);
+                    }
+                }
+                Err("プロセスが予期せず終了しました".to_string())
+            })
+            .await;
+
+        // Send quit regardless
+        let _ = send_line(&stdin, "quit").await;
+        let _ = child.kill().await;
+
+        match result {
+            Ok(Ok(())) => Ok(ProbeResult {
+                name,
+                author,
+                options,
+            }),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err("エンジンが応答しません（USIタイムアウト）".to_string()),
+        }
+    }
+
+    /// Start a new engine session. Returns the session ID.
+    pub async fn start<R: tauri::Runtime>(
+        &self,
+        registration_id: &str,
+        path: &str,
+        saved_options: &[OptionValue],
+        app_handle: &tauri::AppHandle<R>,
+    ) -> Result<String, String> {
+        let session_id = Uuid::new_v4().to_string();
+
+        let mut child = create_engine_command(path)
+            .spawn()
+            .map_err(|e| format!("プロセスの起動に失敗しました: {e}"))?;
+
+        let child_stdin = child.stdin.take().ok_or("stdin を取得できませんでした")?;
+        let child_stdout = child.stdout.take().ok_or("stdout を取得できませんでした")?;
+
+        let stdin = Arc::new(Mutex::new(child_stdin));
+
+        // Send "usi" and wait for "usiok"
+        send_line(&stdin, "usi").await?;
+
+        let mut reader = BufReader::new(child_stdout).lines();
+        let usi_result =
+            tokio::time::timeout(std::time::Duration::from_secs(USI_TIMEOUT_SECS), async {
+                while let Some(line) = reader
+                    .next_line()
+                    .await
+                    .map_err(|e| format!("stdout read error: {e}"))?
+                {
+                    if line.trim() == "usiok" {
+                        return Ok(());
+                    }
+                }
+                Err("プロセスが予期せず終了しました".to_string())
+            })
+            .await;
+
+        match usi_result {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                let _ = child.kill().await;
+                return Err(e);
+            }
+            Err(_) => {
+                let _ = child.kill().await;
+                return Err("エンジンが応答しません（USIタイムアウト）".to_string());
+            }
+        }
+
+        // Apply saved options before isready
+        for opt in saved_options {
+            let value_str = match &opt.value {
+                serde_json::Value::Bool(b) => b.to_string(),
+                serde_json::Value::Number(n) => n.to_string(),
+                serde_json::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            send_line(
+                &stdin,
+                &format!("setoption name {} value {}", opt.name, value_str),
+            )
+            .await?;
+        }
+
+        // Send "isready" and wait for "readyok"
+        send_line(&stdin, "isready").await?;
+
+        let ready_result =
+            tokio::time::timeout(std::time::Duration::from_secs(READY_TIMEOUT_SECS), async {
+                while let Some(line) = reader
+                    .next_line()
+                    .await
+                    .map_err(|e| format!("stdout read error: {e}"))?
+                {
+                    if line.trim() == "readyok" {
+                        return Ok(());
+                    }
+                }
+                Err("プロセスが予期せず終了しました".to_string())
+            })
+            .await;
+
+        match ready_result {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                let _ = child.kill().await;
+                return Err(e);
+            }
+            Err(_) => {
+                let _ = child.kill().await;
+                return Err(
+                    "エンジンの初期化に時間がかかっています（readyokタイムアウト）".to_string(),
+                );
+            }
+        }
+
+        // Start stdout reading task for events
+        let channel = event_channel(&session_id);
+        let app_handle_clone = app_handle.clone();
+        let sessions_clone = Arc::clone(&self.sessions);
+        let sid_clone = session_id.clone();
+
+        let stdout_task = tauri::async_runtime::spawn(async move {
+            while let Ok(Some(line)) = reader.next_line().await {
+                let trimmed = line.trim();
+                if let Some(event) = parse_engine_line(trimmed) {
+                    if let Err(e) = app_handle_clone.emit(&channel, &event) {
+                        eprintln!("Failed to emit event on {channel}: {e}");
+                    }
+                }
+            }
+            // stdout EOF — process died
+            let error_event = UsiEngineEvent::Error {
+                message: "エンジンプロセスが予期せず終了しました".to_string(),
+            };
+            let _ = app_handle_clone.emit(&channel, &error_event);
+            // Clean up session
+            let mut sessions = sessions_clone.lock().await;
+            sessions.remove(&sid_clone);
+        });
+
+        let session = UsiEngineSession {
+            registration_id: registration_id.to_string(),
+            stdin: Arc::clone(&stdin),
+            stdout_task,
+            status: EngineStatus::Ready,
+            child,
+        };
+
+        self.sessions
+            .lock()
+            .await
+            .insert(session_id.clone(), session);
+
+        Ok(session_id)
+    }
+
+    /// Send position command.
+    pub async fn position(
+        &self,
+        session_id: &str,
+        sfen: &str,
+        moves: &[String],
+    ) -> Result<(), String> {
+        let sessions = self.sessions.lock().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or("セッションが見つかりません")?;
+
+        let cmd = if moves.is_empty() {
+            format!("position sfen {sfen}")
+        } else {
+            format!("position sfen {sfen} moves {}", moves.join(" "))
+        };
+        send_line(&session.stdin, &cmd).await
+    }
+
+    /// Send go command.
+    pub async fn go(&self, session_id: &str, params: &SearchParamsInput) -> Result<(), String> {
+        let mut sessions = self.sessions.lock().await;
+        let session = sessions
+            .get_mut(session_id)
+            .ok_or("セッションが見つかりません")?;
+
+        let mut cmd = "go".to_string();
+        if params.infinite == Some(true) {
+            cmd.push_str(" infinite");
+        } else {
+            if let Some(depth) = params.max_depth {
+                cmd.push_str(&format!(" depth {depth}"));
+            }
+            if let Some(nodes) = params.nodes {
+                cmd.push_str(&format!(" nodes {nodes}"));
+            }
+            if let Some(byoyomi) = params.byoyomi_ms {
+                cmd.push_str(&format!(" byoyomi {byoyomi}"));
+            }
+            if let Some(movetime) = params.movetime_ms {
+                cmd.push_str(&format!(" movetime {movetime}"));
+            }
+        }
+
+        session.status = EngineStatus::Searching;
+        send_line(&session.stdin, &cmd).await
+    }
+
+    /// Send stop command.
+    pub async fn stop(&self, session_id: &str) -> Result<(), String> {
+        let sessions = self.sessions.lock().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or("セッションが見つかりません")?;
+        send_line(&session.stdin, "stop").await
+    }
+
+    /// Send setoption command (for check/spin/combo/string/filename types).
+    pub async fn setoption(&self, session_id: &str, name: &str, value: &str) -> Result<(), String> {
+        let sessions = self.sessions.lock().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or("セッションが見つかりません")?;
+        send_line(
+            &session.stdin,
+            &format!("setoption name {name} value {value}"),
+        )
+        .await
+    }
+
+    /// Send button-type setoption command (no value).
+    pub async fn send_button(&self, session_id: &str, name: &str) -> Result<(), String> {
+        let sessions = self.sessions.lock().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or("セッションが見つかりません")?;
+        send_line(&session.stdin, &format!("setoption name {name}")).await
+    }
+
+    /// Quit a session: send quit, kill process, remove from map.
+    pub async fn quit(&self, session_id: &str) -> Result<(), String> {
+        let mut sessions = self.sessions.lock().await;
+        if let Some(mut session) = sessions.remove(session_id) {
+            let _ = send_line(&session.stdin, "quit").await;
+            session.stdout_task.abort();
+            let _ = session.child.kill().await;
+        }
+        Ok(())
+    }
+
+    /// Clean up all sessions (for app shutdown).
+    pub async fn quit_all(&self) {
+        let mut sessions = self.sessions.lock().await;
+        for (_, mut session) in sessions.drain() {
+            let _ = send_line(&session.stdin, "quit").await;
+            session.stdout_task.abort();
+            let _ = session.child.kill().await;
+        }
     }
 }
 

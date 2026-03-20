@@ -17,6 +17,7 @@ use rshogi_core::types::{Color, Move, Value};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager, State, Window};
+use tauri_plugin_store::StoreExt;
 use tokio::io::AsyncReadExt;
 use uuid::Uuid;
 
@@ -1358,6 +1359,200 @@ fn engine_load_nnue(app: AppHandle, args: EngineLoadNnueArgs) -> Result<(), Stri
     init_nnue(&nnue_path).map_err(|e| format!("Failed to load NNUE: {e}"))
 }
 
+// ── USI Engine IPC Commands ──────────────────────────────────────
+
+#[tauri::command]
+async fn usi_engine_probe(
+    path: String,
+    manager: State<'_, usi_engine::UsiEngineManager>,
+) -> Result<usi_engine::ProbeResult, String> {
+    manager.probe(&path).await
+}
+
+#[tauri::command]
+async fn usi_engine_start(
+    app: AppHandle,
+    registration_id: String,
+    manager: State<'_, usi_engine::UsiEngineManager>,
+) -> Result<String, String> {
+    // Look up registration from store
+    let store = app
+        .store("store.json")
+        .map_err(|e| format!("store error: {e}"))?;
+    let registrations: Vec<usi_engine::EngineRegistration> = store
+        .get("engines")
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+
+    let reg = registrations
+        .iter()
+        .find(|r| r.id == registration_id)
+        .ok_or("エンジンが見つかりません")?;
+
+    // Load saved options
+    let options_key = format!("engine-options:{registration_id}");
+    let saved_options: Vec<usi_engine::OptionValue> = store
+        .get(&options_key)
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+
+    manager
+        .start(&registration_id, &reg.path, &saved_options, &app)
+        .await
+}
+
+#[tauri::command]
+async fn usi_engine_position(
+    session_id: String,
+    sfen: String,
+    moves: Vec<String>,
+    manager: State<'_, usi_engine::UsiEngineManager>,
+) -> Result<(), String> {
+    manager.position(&session_id, &sfen, &moves).await
+}
+
+#[tauri::command]
+async fn usi_engine_go(
+    session_id: String,
+    params: usi_engine::SearchParamsInput,
+    manager: State<'_, usi_engine::UsiEngineManager>,
+) -> Result<(), String> {
+    manager.go(&session_id, &params).await
+}
+
+#[tauri::command]
+async fn usi_engine_stop(
+    session_id: String,
+    manager: State<'_, usi_engine::UsiEngineManager>,
+) -> Result<(), String> {
+    manager.stop(&session_id).await
+}
+
+#[tauri::command]
+async fn usi_engine_setoption(
+    session_id: String,
+    name: String,
+    value: String,
+    manager: State<'_, usi_engine::UsiEngineManager>,
+) -> Result<(), String> {
+    manager.setoption(&session_id, &name, &value).await
+}
+
+#[tauri::command]
+async fn usi_engine_send_button(
+    session_id: String,
+    name: String,
+    manager: State<'_, usi_engine::UsiEngineManager>,
+) -> Result<(), String> {
+    manager.send_button(&session_id, &name).await
+}
+
+#[tauri::command]
+async fn usi_engine_quit(
+    session_id: String,
+    manager: State<'_, usi_engine::UsiEngineManager>,
+) -> Result<(), String> {
+    manager.quit(&session_id).await
+}
+
+// ── USI Engine Registration (Store) Commands ─────────────────────
+
+#[tauri::command]
+async fn usi_engine_save(
+    app: AppHandle,
+    registration: usi_engine::EngineRegistration,
+) -> Result<(), String> {
+    let store = app
+        .store("store.json")
+        .map_err(|e| format!("store error: {e}"))?;
+    let mut registrations: Vec<usi_engine::EngineRegistration> = store
+        .get("engines")
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+
+    // Upsert
+    if let Some(existing) = registrations.iter_mut().find(|r| r.id == registration.id) {
+        *existing = registration;
+    } else {
+        registrations.push(registration);
+    }
+
+    store.set(
+        "engines",
+        serde_json::to_value(&registrations).map_err(|e| format!("serialize error: {e}"))?,
+    );
+    Ok(())
+}
+
+#[tauri::command]
+async fn usi_engine_delete(app: AppHandle, registration_id: String) -> Result<(), String> {
+    let store = app
+        .store("store.json")
+        .map_err(|e| format!("store error: {e}"))?;
+    let mut registrations: Vec<usi_engine::EngineRegistration> = store
+        .get("engines")
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+
+    registrations.retain(|r| r.id != registration_id);
+
+    store.set(
+        "engines",
+        serde_json::to_value(&registrations).map_err(|e| format!("serialize error: {e}"))?,
+    );
+
+    // Also remove saved options
+    let options_key = format!("engine-options:{registration_id}");
+    store.delete(&options_key);
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn usi_engine_list(app: AppHandle) -> Result<Vec<usi_engine::EngineRegistration>, String> {
+    let store = app
+        .store("store.json")
+        .map_err(|e| format!("store error: {e}"))?;
+    let registrations: Vec<usi_engine::EngineRegistration> = store
+        .get("engines")
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+    Ok(registrations)
+}
+
+#[tauri::command]
+async fn usi_engine_save_options(
+    app: AppHandle,
+    registration_id: String,
+    options: Vec<usi_engine::OptionValue>,
+) -> Result<(), String> {
+    let store = app
+        .store("store.json")
+        .map_err(|e| format!("store error: {e}"))?;
+    let key = format!("engine-options:{registration_id}");
+    store.set(
+        &key,
+        serde_json::to_value(&options).map_err(|e| format!("serialize error: {e}"))?,
+    );
+    Ok(())
+}
+
+#[tauri::command]
+async fn usi_engine_load_options(
+    app: AppHandle,
+    registration_id: String,
+) -> Result<Vec<usi_engine::OptionValue>, String> {
+    let store = app
+        .store("store.json")
+        .map_err(|e| format!("store error: {e}"))?;
+    let key = format!("engine-options:{registration_id}");
+    let options: Vec<usi_engine::OptionValue> = store
+        .get(&key)
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+    Ok(options)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1365,6 +1560,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(EngineState::default())
+        .manage(usi_engine::UsiEngineManager::default())
         .invoke_handler(tauri::generate_handler![
             engine_init,
             engine_position,
@@ -1388,7 +1584,21 @@ pub fn run() {
             finalize_nnue_save,
             abort_nnue_save,
             detect_nnue_format_cmd,
-            is_nnue_compatible_cmd
+            is_nnue_compatible_cmd,
+            // USI エンジン管理
+            usi_engine_probe,
+            usi_engine_start,
+            usi_engine_position,
+            usi_engine_go,
+            usi_engine_stop,
+            usi_engine_setoption,
+            usi_engine_send_button,
+            usi_engine_quit,
+            usi_engine_save,
+            usi_engine_delete,
+            usi_engine_list,
+            usi_engine_save_options,
+            usi_engine_load_options,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
