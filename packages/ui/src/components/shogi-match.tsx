@@ -249,6 +249,10 @@ export function ShogiMatch({
         DEFAULT_ANALYSIS_SETTINGS,
     );
     const analysisSettings = { ...DEFAULT_ANALYSIS_SETTINGS, ...storedAnalysisSettings };
+    const [analysisEngineId, setAnalysisEngineId] = useLocalStorage<string>(
+        "shogi-analysis-engine",
+        engineOptions[0]?.id ?? "wasm",
+    );
     // パス権設定
     const [passRightsSettings, setPassRightsSettings] = useNormalizedSettings(
         "shogi-pass-rights-settings",
@@ -758,6 +762,7 @@ export function ShogiMatch({
         resolveNnue,
         allowAnalysisDuringMatch,
         engineThreads,
+        analysisEngineId,
     });
     stopAllEnginesRef.current = stopAllEngines;
     restartEngineForNnueRef.current = restartEngineForNnue;
@@ -774,13 +779,15 @@ export function ShogiMatch({
     };
 
     // 並列一括解析用のエンジンプール
-    const engineOpt = engineOptions[0]; // デフォルトのエンジンオプションを使用
+    const analysisEngineOption =
+        engineOptions.find((option) => option.id === analysisEngineId) ?? engineOptions[0];
     const enginePool = useEnginePool({
         createClient:
-            engineOpt?.createClient ??
+            analysisEngineOption?.createClient ??
             (() => {
                 throw new Error("No engine available");
             }),
+        clientKey: analysisEngineOption?.id,
         workerCount: resolveWorkerCount(analysisSettings.parallelWorkers),
         onProgress: (progress) => {
             setBatchAnalysis({
@@ -1352,10 +1359,19 @@ export function ShogiMatch({
     const isDraggingPiece = isEditMode && dndController.state.isDragging;
     const internalEngineId = engineOptions[0]?.id ?? "wasm";
 
+    useEffect(() => {
+        if (engineOptions.some((option) => option.id === analysisEngineId)) {
+            return;
+        }
+        setAnalysisEngineId(engineOptions[0]?.id ?? "wasm");
+    }, [analysisEngineId, engineOptions, setAnalysisEngineId]);
+
     // Props グループ化: 対局設定
     const matchSettings: MatchSettingsProps = {
         sides,
         handleSidesChange,
+        analysisEngineId,
+        setAnalysisEngineId,
         timeSettings,
         setTimeSettings,
         passRightsSettings,

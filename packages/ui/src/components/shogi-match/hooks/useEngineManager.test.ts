@@ -189,6 +189,9 @@ describe("useEngineManager", () => {
         onMatchEnd,
         sides,
         mockClient,
+        engineOptions,
+        analysisEngineId,
+        allowAnalysisDuringMatch,
         clocksRef = createMockClocksRef(),
     }: {
         positionTurn: Player;
@@ -200,12 +203,19 @@ describe("useEngineManager", () => {
             gote: { role: "human" | "engine"; engineId?: string };
         };
         mockClient: ReturnType<typeof createMockEngineClient>;
+        engineOptions?: {
+            id: string;
+            label: string;
+            createClient: () => typeof mockClient.client;
+        }[];
+        analysisEngineId?: string;
+        allowAnalysisDuringMatch?: boolean;
         clocksRef?: ReturnType<typeof createMockClocksRef>;
     }) => {
         return renderHook(() =>
             useEngineManager({
                 sides,
-                engineOptions: [
+                engineOptions: engineOptions ?? [
                     {
                         id: "engine1",
                         label: "Engine 1",
@@ -223,7 +233,9 @@ describe("useEngineManager", () => {
                 maxLogs: 10,
                 senteNnueSelection: createNnueSelection(null),
                 goteNnueSelection: createNnueSelection(null),
+                analysisEngineId,
                 resolveNnue: createMockResolveNnue(),
+                allowAnalysisDuringMatch,
             }),
         );
     };
@@ -257,6 +269,48 @@ describe("useEngineManager", () => {
         expect(mockClient.search).toHaveBeenCalledTimes(1);
         expect(result.current.engineStatus.sente).toBe("thinking");
         expect(result.current.engineReady.sente).toBe(true);
+    });
+
+    it("解析では analysisEngineId を優先して使用する", async () => {
+        const matchClient = createMockEngineClient();
+        const analysisClient = createMockEngineClient();
+        const onMoveFromEngine = vi.fn();
+        const onMatchEnd = vi.fn().mockResolvedValue(undefined);
+
+        const { result } = renderEngineHook({
+            positionTurn: "sente",
+            moves: [],
+            onMoveFromEngine,
+            onMatchEnd,
+            sides: { sente: { role: "human" }, gote: { role: "human" } },
+            mockClient: matchClient,
+            analysisEngineId: "analysis-engine",
+            allowAnalysisDuringMatch: true,
+            engineOptions: [
+                {
+                    id: "engine1",
+                    label: "Engine 1",
+                    createClient: () => matchClient.client,
+                },
+                {
+                    id: "analysis-engine",
+                    label: "Analysis Engine",
+                    createClient: () => analysisClient.client,
+                },
+            ],
+        });
+
+        await act(async () => {
+            await result.current.analyzePosition({
+                sfen: "startpos",
+                moves: [],
+                ply: 0,
+            });
+        });
+
+        expect(analysisClient.client.init).toHaveBeenCalledTimes(1);
+        expect(analysisClient.search).toHaveBeenCalledTimes(1);
+        expect(matchClient.client.init).not.toHaveBeenCalled();
     });
 
     it("bestmove の通常手を適用してコールバックを呼び出す", async () => {

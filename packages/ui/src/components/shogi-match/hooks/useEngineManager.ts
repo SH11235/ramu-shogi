@@ -56,6 +56,8 @@ interface UseEngineManagerProps {
     allowAnalysisDuringMatch?: boolean;
     /** 対局用スレッド数（0=自動） */
     engineThreads?: EngineThreadSettings;
+    /** 解析用エンジンID */
+    analysisEngineId?: string;
 }
 
 /** 解析リクエストパラメータ */
@@ -138,6 +140,7 @@ export function useEngineManager({
     resolveNnue,
     allowAnalysisDuringMatch,
     engineThreads,
+    analysisEngineId,
 }: UseEngineManagerProps): UseEngineManagerReturn {
     const engineOptionsRef = useRef(engineOptions);
     useEffect(() => {
@@ -269,18 +272,11 @@ export function useEngineManager({
         ]);
     };
 
-    const resolveAnalysisEngineId = () => {
-        if (resolvedSides.sente.role === "engine" && resolvedSides.sente.engineId) {
-            return resolvedSides.sente.engineId;
-        }
-        if (resolvedSides.gote.role === "engine" && resolvedSides.gote.engineId) {
-            return resolvedSides.gote.engineId;
-        }
-        return engineOptions[0]?.id;
-    };
-
     const analyzePosition = async (request: AnalysisRequest) => {
-        const engineId = resolveAnalysisEngineId();
+        const engineId = analysisEngineId ?? engineOptions[0]?.id;
+        if (!engineId) {
+            throw new Error("Analysis engine is not configured");
+        }
         await controller.command.startAnalysis({
             ...request,
             engineId,

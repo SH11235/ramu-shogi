@@ -29,6 +29,8 @@ interface BatchAnalysisProgress {
 interface UseEnginePoolOptions {
     /** エンジンクライアントを生成するファクトリ関数 */
     createClient: () => EngineClient;
+    /** エンジン切り替え検知用のキー */
+    clientKey?: string;
     /** ワーカー数 */
     workerCount: number;
     /** 進捗更新時のコールバック */
@@ -81,8 +83,16 @@ interface EngineWorker {
  * 複数のエンジンインスタンスを並列で使用して一括解析を行う
  */
 export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
-    const { createClient, workerCount, onProgress, onResult, onComplete, onError, nnueId } =
-        options;
+    const {
+        createClient,
+        clientKey,
+        workerCount,
+        onProgress,
+        onResult,
+        onComplete,
+        onError,
+        nnueId,
+    } = options;
 
     const [isRunning, setIsRunning] = useState(false);
     const [progress, setProgress] = useState<BatchAnalysisProgress | null>(null);
@@ -107,6 +117,8 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         overrideFvScale: number | undefined;
         /** 初期化済みワーカーが使用しているFV_SCALE */
         currentFvScale: number | undefined;
+        /** 初期化済みワーカーが使用しているエンジンキー */
+        currentClientKey: string | undefined;
     }>({
         workers: [],
         jobQueue: [],
@@ -119,6 +131,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         currentNnueId: undefined,
         overrideFvScale: undefined,
         currentFvScale: undefined,
+        currentClientKey: undefined,
     });
 
     // コールバックをrefで保持（依存配列の問題を回避）
@@ -301,6 +314,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         state.initialized = true;
         state.currentNnueId = effectiveNnueId;
         state.currentFvScale = effectiveFvScale;
+        state.currentClientKey = clientKey;
     };
 
     // 一括解析を開始する
@@ -323,10 +337,15 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         const nextFvScale = state.overrideFvScale;
         const currentNnueId = state.currentNnueId ?? null;
         const currentFvScale = state.currentFvScale;
+        const nextClientKey = clientKey;
+        const currentClientKey = state.currentClientKey;
 
         // NNUEまたはFV_SCALEが変わった場合は再初期化
         const shouldReinitialize =
-            state.initialized && (nextNnueId !== currentNnueId || nextFvScale !== currentFvScale);
+            state.initialized &&
+            (nextNnueId !== currentNnueId ||
+                nextFvScale !== currentFvScale ||
+                nextClientKey !== currentClientKey);
         if (shouldReinitialize) {
             state.initialized = false;
         }

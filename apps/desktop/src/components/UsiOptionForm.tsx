@@ -9,6 +9,7 @@ import {
     SelectValue,
 } from "@shogi/ui/components/select";
 import { Switch } from "@shogi/ui/components/switch";
+import { open } from "@tauri-apps/plugin-dialog";
 import type { ReactElement } from "react";
 
 interface UsiOptionFormProps {
@@ -172,12 +173,27 @@ function OptionRow({
             return (
                 <div className="flex items-center justify-between gap-2">
                     <span className={labelClass}>{opt.name}</span>
-                    <Input
-                        type="text"
-                        value={current}
-                        onChange={(e) => onOptionChange(opt.name, e.target.value)}
-                        className="w-40 text-xs border border-wafuu-border bg-wafuu-washi"
-                    />
+                    <div className="flex items-center gap-2">
+                        <Input
+                            type="text"
+                            value={current}
+                            onChange={(e) => onOptionChange(opt.name, e.target.value)}
+                            className="w-40 text-xs border border-wafuu-border bg-wafuu-washi"
+                        />
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                                void open({ multiple: false, directory: false }).then((result) => {
+                                    if (typeof result === "string") {
+                                        onOptionChange(opt.name, result);
+                                    }
+                                });
+                            }}
+                        >
+                            選択
+                        </Button>
+                    </div>
                 </div>
             );
         }

@@ -35,6 +35,8 @@ import type {
 export interface MatchSettingsProps {
     sides: { sente: SideSetting; gote: SideSetting };
     handleSidesChange: (sides: { sente: SideSetting; gote: SideSetting }) => void;
+    analysisEngineId: string;
+    setAnalysisEngineId: (engineId: string) => void;
     timeSettings: ClockSettings;
     setTimeSettings: (settings: ClockSettings) => void;
     passRightsSettings: PassRightsSettings;

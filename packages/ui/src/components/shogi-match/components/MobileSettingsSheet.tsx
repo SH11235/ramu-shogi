@@ -7,6 +7,7 @@ import { Switch } from "../../switch";
 import type { ClockSettings } from "../hooks/useClockManager";
 import type {
     DisplaySettings,
+    EngineOption,
     EngineThreadSettings,
     PassRightsSettings,
     SideSetting,
@@ -79,6 +80,8 @@ interface MobileSettingsSheetProps {
     // 対局設定
     sides: { sente: SideSetting; gote: SideSetting };
     onSidesChange: (sides: { sente: SideSetting; gote: SideSetting }) => void;
+    analysisEngineId?: string;
+    onAnalysisEngineIdChange?: (engineId: string) => void;
     timeSettings: ClockSettings;
     onTimeSettingsChange: (settings: ClockSettings) => void;
 
@@ -88,6 +91,7 @@ interface MobileSettingsSheetProps {
 
     // エンジン情報
     internalEngineId: string;
+    engineOptions?: EngineOption[];
     nnueList: NnueMeta[];
     presets: PresetWithStatus[];
     senteNnueSelection: NnueSelection;
@@ -106,6 +110,7 @@ interface MobileSettingsSheetProps {
     onStartMatch?: () => void;
     onStopMatch?: () => void;
     onResetToStartpos?: () => void;
+    onOpenEngineManager?: () => void;
 
     // 表示設定
     displaySettings: DisplaySettings;
@@ -270,11 +275,14 @@ const NOTATION_OPTIONS: { value: SquareNotation; label: string }[] = [
 export function MobileSettingsSheet({
     sides,
     onSidesChange,
+    analysisEngineId,
+    onAnalysisEngineIdChange,
     timeSettings,
     onTimeSettingsChange,
     passRightsSettings,
     onPassRightsSettingsChange,
     internalEngineId,
+    engineOptions,
     nnueList,
     presets,
     senteNnueSelection,
@@ -289,6 +297,7 @@ export function MobileSettingsSheet({
     onStartMatch,
     onStopMatch,
     onResetToStartpos,
+    onOpenEngineManager,
     displaySettings,
     onDisplaySettingsChange,
     onOpenAbout,
@@ -297,17 +306,25 @@ export function MobileSettingsSheet({
     positionReady = true,
 }: MobileSettingsSheetProps): ReactElement {
     const threadOptions = buildThreadOptions();
+    const externalEngines = engineOptions?.filter((engine) => engine.kind === "external") ?? [];
     // カスタム NNUE（プリセット以外）のフィルタリング
     const customNnueList = nnueList.filter((n) => n.source !== "preset");
 
-    // 選択肢の値を生成: "human", "preset:{presetKey}", "nnue:{nnueId}", "material"
+    // 選択肢の値を生成: "human", "preset:{presetKey}", "nnue:{nnueId}", "material", "ext:{engineId}"
     const getSelectorValue = (side: SideKey, setting: SideSetting): string => {
         if (setting.role === "human") return "human";
+        if (setting.engineId && externalEngines.some((engine) => engine.id === setting.engineId)) {
+            return `ext:${setting.engineId}`;
+        }
         const selection = side === "sente" ? senteNnueSelection : goteNnueSelection;
         if (selection.presetKey) return `preset:${selection.presetKey}`;
         if (selection.nnueId) return `nnue:${selection.nnueId}`;
         return "material";
     };
+    const resolvedAnalysisEngineId =
+        analysisEngineId && engineOptions?.some((engine) => engine.id === analysisEngineId)
+            ? analysisEngineId
+            : internalEngineId;
 
     const handleTimeEnabledChange = (side: SideKey, enabled: boolean) => {
         onTimeSettingsChange({
@@ -372,6 +389,17 @@ export function MobileSettingsSheet({
                     role: "engine",
                     engineId: internalEngineId,
                     skillLevel: currentSetting.skillLevel,
+                },
+            });
+        } else if (value.startsWith("ext:")) {
+            handleTimeEnabledChange(side, true);
+            const engineId = value.slice("ext:".length);
+            onSidesChange({
+                ...sides,
+                [side]: {
+                    role: "engine",
+                    engineId,
+                    skillLevel: undefined,
                 },
             });
         }
@@ -451,6 +479,11 @@ export function MobileSettingsSheet({
                                 </option>
                             ))}
                             <option value="material">簡易AI（駒得）</option>
+                            {externalEngines.map((engine) => (
+                                <option key={engine.id} value={`ext:${engine.id}`}>
+                                    {engine.label}
+                                </option>
+                            ))}
                         </select>
                     </label>
                     {/* レイアウトシフト防止のため固定高さを確保 */}
@@ -557,6 +590,11 @@ export function MobileSettingsSheet({
                                 </option>
                             ))}
                             <option value="material">簡易AI（駒得）</option>
+                            {externalEngines.map((engine) => (
+                                <option key={engine.id} value={`ext:${engine.id}`}>
+                                    {engine.label}
+                                </option>
+                            ))}
                         </select>
                     </label>
                     {/* レイアウトシフト防止のため固定高さを確保 */}
@@ -637,6 +675,39 @@ export function MobileSettingsSheet({
                     </label>
                 </div>
             </div>
+
+            {onAnalysisEngineIdChange && engineOptions && engineOptions.length > 0 && (
+                <div className="space-y-2 pt-3 border-t border-border">
+                    <div className="font-medium text-sm">解析エンジン</div>
+                    <label className={labelClassName}>
+                        <span className="text-xs text-muted-foreground">使用エンジン</span>
+                        <select
+                            value={resolvedAnalysisEngineId}
+                            disabled={settingsLocked}
+                            onChange={(e) => onAnalysisEngineIdChange(e.target.value)}
+                            className={selectClassName}
+                        >
+                            {engineOptions.map((engine) => (
+                                <option key={engine.id} value={engine.id}>
+                                    {engine.label}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                </div>
+            )}
+
+            {onOpenEngineManager && (
+                <div className="space-y-2 pt-3 border-t border-border">
+                    <button
+                        type="button"
+                        onClick={onOpenEngineManager}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-left text-sm text-wafuu-sumi"
+                    >
+                        外部エンジン管理...
+                    </button>
+                </div>
+            )}
 
             {/* パス権設定（オプション） */}
             {passRightsSettings && onPassRightsSettingsChange && (

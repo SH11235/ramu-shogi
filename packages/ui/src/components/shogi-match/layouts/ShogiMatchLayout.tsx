@@ -84,6 +84,8 @@ export function ShogiMatchLayout({
     const {
         sides,
         handleSidesChange,
+        analysisEngineId,
+        setAnalysisEngineId,
         timeSettings,
         setTimeSettings,
         passRightsSettings,
@@ -330,6 +332,8 @@ export function ShogiMatchLayout({
                 <MatchSettingsProvider
                     sides={sides}
                     onSidesChange={handleSidesChange}
+                    analysisEngineId={analysisEngineId}
+                    onAnalysisEngineIdChange={setAnalysisEngineId}
                     timeSettings={timeSettings}
                     onTimeSettingsChange={setTimeSettings}
                     passRightsSettings={passRightsSettings}
@@ -459,6 +463,8 @@ export function ShogiMatchLayout({
                 <MatchSettingsProvider
                     sides={sides}
                     onSidesChange={handleSidesChange}
+                    analysisEngineId={analysisEngineId}
+                    onAnalysisEngineIdChange={setAnalysisEngineId}
                     timeSettings={timeSettings}
                     onTimeSettingsChange={setTimeSettings}
                     passRightsSettings={passRightsSettings}

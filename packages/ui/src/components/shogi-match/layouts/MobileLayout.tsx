@@ -130,6 +130,8 @@ export function MobileLayout({
     // MatchSettingsContext から取得
     const {
         onSidesChange,
+        analysisEngineId,
+        onAnalysisEngineIdChange,
         timeSettings,
         onTimeSettingsChange,
         senteNnueSelection,
@@ -139,10 +141,12 @@ export function MobileLayout({
         nnueList,
         presets,
         internalEngineId,
+        engineOptions,
         isDevMode,
         engineThreads,
         onEngineThreadsChange,
         settingsLocked,
+        onOpenEngineManager,
         onOpenNnueManager,
         onPassRightsSettingsChange,
     } = matchSettings;
@@ -586,9 +590,12 @@ export function MobileLayout({
                 <MobileSettingsSheet
                     sides={sides}
                     onSidesChange={onSidesChange}
+                    analysisEngineId={analysisEngineId}
+                    onAnalysisEngineIdChange={onAnalysisEngineIdChange}
                     timeSettings={timeSettings}
                     onTimeSettingsChange={onTimeSettingsChange}
                     internalEngineId={internalEngineId}
+                    engineOptions={engineOptions}
                     nnueList={nnueList}
                     presets={presets}
                     senteNnueSelection={senteNnueSelection}
@@ -599,6 +606,7 @@ export function MobileLayout({
                     isDevMode={isDevMode}
                     engineThreads={engineThreads}
                     onEngineThreadsChange={onEngineThreadsChange}
+                    onOpenEngineManager={onOpenEngineManager}
                     passRightsSettings={passRightsSettings}
                     onPassRightsSettingsChange={onPassRightsSettingsChange}
                     isMatchRunning={isMatchRunning}

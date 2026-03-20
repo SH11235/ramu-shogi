@@ -13,6 +13,14 @@ interface EngineManagerPanelProps {
     onEnginesChange?: (engines: EngineRegistration[]) => void;
 }
 
+function deriveDisplayName(path: string, probedName: string): string {
+    if (probedName) {
+        return probedName;
+    }
+    const basename = path.split(/[/\\]/).pop();
+    return basename && basename.length > 0 ? basename : "Unknown";
+}
+
 export function EngineManagerPanel({
     registryService,
     onEnginesChange,
@@ -57,7 +65,7 @@ export function EngineManagerPanel({
         setState("probing");
         try {
             const probeResult = await registryService.probe(path);
-            const displayName = probeResult.name || path.split(/[/\\]/).pop() || "Unknown";
+            const displayName = deriveDisplayName(path, probeResult.name);
 
             setState("saving");
             const registration: EngineRegistration = {

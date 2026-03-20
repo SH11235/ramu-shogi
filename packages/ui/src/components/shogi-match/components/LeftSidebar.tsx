@@ -46,6 +46,8 @@ export function LeftSidebar(): ReactElement {
         onSenteNnueSelectionChange,
         goteNnueSelection,
         onGoteNnueSelectionChange,
+        analysisEngineId,
+        onAnalysisEngineIdChange,
         onOpenNnueManager,
         onOpenDisplaySettings,
         onOpenPassRightsSettings,
@@ -54,6 +56,7 @@ export function LeftSidebar(): ReactElement {
     } = useMatchSettings();
 
     const externalEngines = engineOptions?.filter((e) => e.kind === "external") ?? [];
+    const availableEngines = engineOptions ?? [];
 
     const threadOptions = buildThreadOptions();
 
@@ -401,6 +404,24 @@ export function LeftSidebar(): ReactElement {
                         )}
                     </span>
                 </button>
+
+                {onAnalysisEngineIdChange && availableEngines.length > 0 && (
+                    <div className={labelClassName}>
+                        <span>解析エンジン</span>
+                        <select
+                            value={analysisEngineId ?? internalEngineId}
+                            disabled={settingsLocked}
+                            onChange={(e) => onAnalysisEngineIdChange(e.target.value)}
+                            className={inputClassName}
+                        >
+                            {availableEngines.map((engine) => (
+                                <option key={engine.id} value={engine.id}>
+                                    {engine.label}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
             </div>
 
             {/* NNUE 管理 */}
