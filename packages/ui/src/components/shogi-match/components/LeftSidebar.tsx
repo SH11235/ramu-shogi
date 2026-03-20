@@ -49,16 +49,27 @@ export function LeftSidebar(): ReactElement {
         onOpenNnueManager,
         onOpenDisplaySettings,
         onOpenPassRightsSettings,
+        engineOptions,
+        onOpenEngineManager,
     } = useMatchSettings();
+
+    const externalEngines = engineOptions?.filter((e) => e.kind === "external") ?? [];
 
     const threadOptions = buildThreadOptions();
 
     // カスタム NNUE（プリセット以外）のフィルタリング
     const customNnueList = nnueList.filter((n) => n.source !== "preset");
 
-    // プレイヤー選択の値を生成: "human", "material", "preset:{presetKey}", "nnue:{nnueId}"
-    const getSelectorValue = (side: SideKey, setting: { role: string }): string => {
+    // プレイヤー選択の値を生成: "human", "material", "preset:{presetKey}", "nnue:{nnueId}", "ext:{engineId}"
+    const getSelectorValue = (
+        side: SideKey,
+        setting: { role: string; engineId?: string },
+    ): string => {
         if (setting.role === "human") return "human";
+        // 外部エンジンの場合
+        if (setting.engineId && externalEngines.some((e) => e.id === setting.engineId)) {
+            return `ext:${setting.engineId}`;
+        }
         const selection = side === "sente" ? senteNnueSelection : goteNnueSelection;
         if (selection.presetKey) return `preset:${selection.presetKey}`;
         if (selection.nnueId) return `nnue:${selection.nnueId}`;
@@ -121,6 +132,18 @@ export function LeftSidebar(): ReactElement {
                     role: "engine",
                     engineId: internalEngineId,
                     skillLevel: currentSetting.skillLevel,
+                },
+            });
+        } else if (value.startsWith("ext:")) {
+            // 外部エンジンに変更
+            handleTimeEnabledChange(side, true);
+            const engineId = value.slice("ext:".length);
+            onSidesChange({
+                ...sides,
+                [side]: {
+                    role: "engine",
+                    engineId,
+                    skillLevel: undefined,
                 },
             });
         }
@@ -214,6 +237,20 @@ export function LeftSidebar(): ReactElement {
                                     簡易AI（駒得）
                                 </span>
                             </SelectItem>
+                            {/* 外部エンジン */}
+                            {externalEngines.map((engine) => (
+                                <SelectItem key={engine.id} value={`ext:${engine.id}`}>
+                                    <span className="flex items-center gap-1.5">
+                                        <PlayerIcon
+                                            side="sente"
+                                            isAI
+                                            showBorder={false}
+                                            size="xs"
+                                        />
+                                        {engine.label}
+                                    </span>
+                                </SelectItem>
+                            ))}
                         </SelectContent>
                     </Select>
                 </div>
@@ -375,6 +412,18 @@ export function LeftSidebar(): ReactElement {
                 <span>📁</span>
                 <span>{EVAL_FILE_MANAGER_LABEL}...</span>
             </button>
+
+            {/* 外部エンジン管理（available な場合のみ） */}
+            {onOpenEngineManager && (
+                <button
+                    type="button"
+                    onClick={onOpenEngineManager}
+                    className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
+                >
+                    <span>⚙️</span>
+                    <span>外部エンジン管理...</span>
+                </button>
+            )}
 
             {/* 表示設定 */}
             <button

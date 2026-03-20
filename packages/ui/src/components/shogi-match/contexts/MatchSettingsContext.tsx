@@ -14,7 +14,7 @@ import type { NnueMeta, NnueSelection, PresetWithStatus } from "@shogi/app-core"
 import type { ReactNode } from "react";
 import { createContext, useContext } from "react";
 import type { ClockSettings } from "../hooks/useClockManager";
-import type { EngineThreadSettings, PassRightsSettings, SideSetting } from "../types";
+import type { EngineOption, EngineThreadSettings, PassRightsSettings, SideSetting } from "../types";
 import type { MatchSettingsContextValue } from "./types";
 
 const MatchSettingsContext = createContext<MatchSettingsContextValue | null>(null);
@@ -42,6 +42,16 @@ interface MatchSettingsProviderProps {
     nnueList: NnueMeta[];
     presets: PresetWithStatus[];
     internalEngineId: string;
+
+    // エンジン選択（複数エンジン対応、optional）
+    engineOptions?: EngineOption[];
+
+    // 解析エンジン選択（optional）
+    analysisEngineId?: string;
+    onAnalysisEngineIdChange?: (id: string) => void;
+
+    // エンジン管理パネル制御（optional）
+    onOpenEngineManager?: () => void;
 
     // ダイアログ制御
     onOpenNnueManager: () => void;
@@ -72,6 +82,10 @@ export function MatchSettingsProvider({
     nnueList,
     presets,
     internalEngineId,
+    engineOptions,
+    analysisEngineId,
+    onAnalysisEngineIdChange,
+    onOpenEngineManager,
     onOpenNnueManager,
     onOpenDisplaySettings,
     onOpenPassRightsSettings,
@@ -95,6 +109,10 @@ export function MatchSettingsProvider({
         nnueList,
         presets,
         internalEngineId,
+        engineOptions,
+        analysisEngineId,
+        onAnalysisEngineIdChange,
+        onOpenEngineManager,
         onOpenNnueManager,
         onOpenDisplaySettings,
         onOpenPassRightsSettings,
