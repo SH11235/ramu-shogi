@@ -1,9 +1,14 @@
 import {
     applyMoveWithState,
+    type BoardState,
+    deriveLastMove,
     getPositionService,
+    type NnueSelection,
+    NONE_NNUE_SELECTION,
     type PieceType,
     type Player,
     type PositionState,
+    type Square,
 } from "@shogi/app-core";
 import type {
     AiSupportPlayerSettings,
@@ -16,12 +21,23 @@ import type {
     SnapshotPayload,
 } from "@shogi/match-client";
 import type { ReactElement } from "react";
-import { useEffect, useReducer, useRef, useState } from "react";
-import { ShogiBoard } from "./shogi-board";
+import { useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
+import { useLazyNnueLoader } from "../hooks/useLazyNnueLoader";
+import { useShogiSound } from "../hooks/useShogiSound";
+import { NnueManagerDialog } from "./nnue/NnueManagerDialog";
+import type { RemoteNnueManager } from "./nnue/types";
+import { type AiHintMove, AiHintPanel } from "./shogi-match/components/AiHintPanel";
 import { BottomSheet } from "./shogi-match/components/BottomSheet";
-import { HandPiecesDisplay } from "./shogi-match/components/HandPiecesDisplay";
 import { KifuNavigationToolbar } from "./shogi-match/components/KifuNavigationToolbar";
+import { type HandInfo, MobileBoardSection } from "./shogi-match/components/MobileBoardSection";
+import { PCBoardContent } from "./shogi-match/components/PCBoardContent";
+import { PvPreviewDialog } from "./shogi-match/components/PvPreviewDialog";
+import { TabHeader } from "./shogi-match/components/TabHeader";
+import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
+import type { PromotionSelection } from "./shogi-match/types";
+import { exportToKifString, formatMoveSimple } from "./shogi-match/utils/kifFormat";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
+import { determinePromotion } from "./shogi-match/utils/promotionLogic";
 
 // ─── AI 解析インターフェース（export） ─────────────────────────────────────────
 
@@ -36,32 +52,16 @@ export interface OnlineAnalysis {
     topMoves: AnalysisMoveResult[];
     startAnalysis: (sfen: string, moves: string[]) => Promise<void>;
     cancelAnalysis: () => Promise<void>;
+    loadNnue?: (nnueId: string | null) => Promise<void>;
 }
 
 // ─── 型定義 ───────────────────────────────────────────────────────────────────
 
-// 成り判定：駒の種類と目的のランクから成れるか
-function canPromote(
-    pieceType: PieceType,
-    fromRank: string,
-    toRank: string,
-    player: Player,
-): boolean {
-    if (["K", "G"].includes(pieceType)) return false;
-    const promotionRanks = player === "sente" ? ["a", "b", "c"] : ["g", "h", "i"];
-    return promotionRanks.includes(fromRank) || promotionRanks.includes(toRank);
-}
-
-// 強制成り：成らないと動けない場合
-function mustPromote(pieceType: PieceType, toRank: string, player: Player): boolean {
-    if (pieceType === "P" || pieceType === "L") {
-        return player === "sente" ? toRank === "a" : toRank === "i";
-    }
-    if (pieceType === "N") {
-        return player === "sente" ? ["a", "b"].includes(toRank) : ["h", "i"].includes(toRank);
-    }
-    return false;
-}
+const BOARD_DISPLAY_SETTINGS = {
+    highlightLastMove: true,
+    squareNotation: "none" as const,
+    showBoardLabels: true,
+};
 
 // 時間フォーマット
 function formatMs(ms: number): string {
@@ -79,11 +79,12 @@ interface GameState {
     turn: "b" | "w";
     clockState: ClockState;
     gameResult: GameResult | null;
-    kifu: string;
     offlineSeats: Set<string>;
     passRights: PassRightsState | null;
     myAnalysisRemaining: number | null;
     analysisLog: Array<{ seat: "b" | "w"; ply: number }>;
+    usiMoveLog: Array<{ usi: string; elapsedMs: number }>;
+    pendingTakeback: { seat: "b" | "w"; ply: number } | null;
 }
 
 type GameAction =
@@ -96,14 +97,14 @@ type GameAction =
           passRights: PassRightsState | null;
       }
     | { type: "result"; result: GameResult }
-    | { type: "game_end"; result: GameResult; kifu: string }
+    | { type: "game_end"; result: GameResult }
     | { type: "player_offline"; seat: string }
     | { type: "player_online"; seat: string }
     | {
           type: "analysis_used";
           isMySeat: boolean;
           seat: "b" | "w";
-          analysisRemaining: number;
+          analysisRemaining: number | null;
           ply: number;
       }
     | {
@@ -112,7 +113,17 @@ type GameAction =
           turn: "b" | "w";
           clock: ClockState;
           passRights: PassRightsState | null;
-      };
+      }
+    | { type: "takeback_requested"; seat: "b" | "w"; ply: number }
+    | {
+          type: "takeback_accepted";
+          position: PositionState;
+          turn: "b" | "w";
+          clock: ClockState;
+          passRights: PassRightsState | null;
+      }
+    | { type: "takeback_rejected" }
+    | { type: "takeback_cancelled" };
 
 function makeInitialGameState(
     snapshot: SnapshotPayload,
@@ -124,12 +135,13 @@ function makeInitialGameState(
         turn: snapshot.turn,
         clockState: snapshot.clock,
         gameResult: null,
-        kifu: "",
         offlineSeats: new Set(),
         passRights: snapshot.passRights,
         myAnalysisRemaining:
             myAiSettings?.mode === "limited" ? (myAiSettings.limitCount ?? 0) : null,
         analysisLog: [],
+        usiMoveLog: [],
+        pendingTakeback: null,
     };
 }
 
@@ -143,6 +155,12 @@ function gameReducer(state: GameState, action: GameAction): GameState {
             };
         case "move": {
             if (!state.position) return state;
+            // 消費時間: 動いた側の残り時間の差分（手番交代前の turn が動いた側）
+            const movedSeat = state.turn;
+            const elapsedMs = Math.max(
+                0,
+                state.clockState[movedSeat].remainMs - action.clock[movedSeat].remainMs,
+            );
             // パス手は局面変化なし（手番のみ交代）。
             // PositionState に passRights が未設定のため applyMoveWithState は使わない
             const next =
@@ -159,15 +177,16 @@ function gameReducer(state: GameState, action: GameAction): GameState {
                 ...state,
                 position: next,
                 positionHistory: [...state.positionHistory, next],
-                turn: action.turn === "b" ? "w" : "b",
+                turn: action.turn,
                 clockState: action.clock,
                 passRights: action.passRights,
+                usiMoveLog: [...state.usiMoveLog, { usi: action.usi, elapsedMs }],
             };
         }
         case "result":
             return { ...state, gameResult: action.result };
         case "game_end":
-            return { ...state, gameResult: action.result, kifu: action.kifu };
+            return { ...state, gameResult: action.result };
         case "player_offline":
             return {
                 ...state,
@@ -195,6 +214,23 @@ function gameReducer(state: GameState, action: GameAction): GameState {
                 clockState: action.clock,
                 passRights: action.passRights,
             };
+        case "takeback_requested":
+            return { ...state, pendingTakeback: { seat: action.seat, ply: action.ply } };
+        case "takeback_accepted":
+            return {
+                ...state,
+                position: action.position,
+                positionHistory: [action.position],
+                turn: action.turn,
+                clockState: action.clock,
+                passRights: action.passRights,
+                usiMoveLog: state.usiMoveLog.slice(0, -1),
+                pendingTakeback: null,
+            };
+        case "takeback_rejected":
+            return { ...state, pendingTakeback: null };
+        case "takeback_cancelled":
+            return { ...state, pendingTakeback: null };
     }
 }
 
@@ -207,6 +243,7 @@ interface UIState {
     promoteDialog: { from: string; to: string; usi: string } | null;
     navIndex: number | null;
     aiSheetOpen: boolean;
+    kifuSheetOpen: boolean;
 }
 
 type UIAction =
@@ -218,7 +255,8 @@ type UIAction =
     | { type: "set_legal_moves"; moves: string[] }
     | { type: "set_promote_dialog"; dialog: { from: string; to: string; usi: string } | null }
     | { type: "set_nav_index"; index: number | null }
-    | { type: "set_ai_sheet_open"; open: boolean };
+    | { type: "set_ai_sheet_open"; open: boolean }
+    | { type: "set_kifu_sheet_open"; open: boolean };
 
 const INITIAL_UI_STATE: UIState = {
     selectedSquare: null,
@@ -227,6 +265,7 @@ const INITIAL_UI_STATE: UIState = {
     promoteDialog: null,
     navIndex: null,
     aiSheetOpen: false,
+    kifuSheetOpen: false,
 };
 
 function uiReducer(state: UIState, action: UIAction): UIState {
@@ -249,6 +288,8 @@ function uiReducer(state: UIState, action: UIAction): UIState {
             return { ...state, navIndex: action.index };
         case "set_ai_sheet_open":
             return { ...state, aiSheetOpen: action.open };
+        case "set_kifu_sheet_open":
+            return { ...state, kifuSheetOpen: action.open };
     }
 }
 
@@ -288,10 +329,13 @@ interface OnlineGameViewProps {
     seat: Seat;
     roomId: string;
     analysis?: OnlineAnalysis;
+    manifestUrl?: string;
+    remoteNnueManager?: RemoteNnueManager;
     onStartReview?: (data: {
         sfen: string;
         moves: string[];
         analysisMarkers: Array<{ seat: "b" | "w"; ply: number }>;
+        gameRecordId: string | null;
     }) => void;
     onExit?: () => void;
 }
@@ -302,6 +346,8 @@ export function OnlineGameView({
     seat,
     roomId,
     analysis,
+    manifestUrl,
+    remoteNnueManager,
     onStartReview,
     onExit,
 }: OnlineGameViewProps): ReactElement {
@@ -319,25 +365,41 @@ export function OnlineGameView({
         turn,
         clockState,
         gameResult,
-        kifu,
         offlineSeats,
         passRights,
         myAnalysisRemaining,
         analysisLog,
+        usiMoveLog,
+        pendingTakeback,
     } = gameState;
 
     // ─── UI インタラクション状態（useReducer） ───────────────────────────────
     const [uiState, dispatchUI] = useReducer(uiReducer, INITIAL_UI_STATE);
-    const { selectedSquare, selectedHand, legalMoves, promoteDialog, navIndex, aiSheetOpen } =
-        uiState;
+    const {
+        selectedSquare,
+        selectedHand,
+        legalMoves,
+        promoteDialog,
+        navIndex,
+        aiSheetOpen,
+        kifuSheetOpen,
+    } = uiState;
+
+    // 右パネルのアクティブタブ
+    const [rightTab, setRightTab] = useState<"kifu" | "ai">(aiSupport || analysis ? "ai" : "kifu");
 
     // analysis prop から分解（undefined 時のデフォルト値）
     const isAnalyzing = analysis?.isAnalyzing ?? false;
     const topMoves = analysis?.topMoves ?? [];
+    // ミニサマリバー用評価値（先手視点 cp）
+    const summaryEvalCp = topMoves[0]?.cp ?? null;
+    const summaryEvalPercent =
+        summaryEvalCp !== null ? Math.min(100, Math.max(0, 50 + (summaryEvalCp / 2000) * 50)) : 50;
 
     // 現在の start SFEN と moves
     const startSfenRef = useRef(snapshot.settings.startSfen);
     const movesRef = useRef<string[]>([...snapshot.moves]);
+    const gameRecordIdRef = useRef<string | null>(null);
     // サーバーの latestEventId を追跡（move/resign/use_analysis 送信時に使用）
     // 指し手以外のイベント（chat/analysis_used/player_online 等）でも増加するため
     // snapshot.eventId + moves.length の計算式は使えない
@@ -394,6 +456,17 @@ export function OnlineGameView({
                     });
                     movesRef.current = [...movesRef.current, e.usi];
                     dispatchUI({ type: "move_received" });
+
+                    // ─── 着手通知 ────────────────────────────────────────
+                    // e.turn は着手後の次の手番。自分の席が次手番 = 相手が指した
+                    const isOpponentMove = seat !== "s" && e.turn === seat;
+                    if (e.usi === "pass") {
+                        playSoundEvent("pass");
+                    } else if (isOpponentMove || seat === "s") {
+                        playSoundEvent("move_opponent");
+                    } else {
+                        playSoundEvent("move_self");
+                    }
                 } else if (
                     e.kind === "resign" ||
                     e.kind === "timeout" ||
@@ -404,7 +477,10 @@ export function OnlineGameView({
                 ) {
                     dispatch({ type: "result", result: e.result });
                 } else if (e.kind === "game_end") {
-                    dispatch({ type: "game_end", result: e.result, kifu: e.kifu });
+                    if (e.gameRecordId) {
+                        gameRecordIdRef.current = e.gameRecordId;
+                    }
+                    dispatch({ type: "game_end", result: e.result });
                 } else if (e.kind === "player_offline") {
                     dispatch({ type: "player_offline", seat: e.seat });
                 } else if (e.kind === "player_online") {
@@ -417,6 +493,27 @@ export function OnlineGameView({
                         analysisRemaining: e.analysisRemaining,
                         ply: movesRef.current.length,
                     });
+                } else if (e.kind === "takeback_requested" && (e.seat === "b" || e.seat === "w")) {
+                    dispatch({ type: "takeback_requested", seat: e.seat, ply: e.ply });
+                } else if (e.kind === "takeback_accepted") {
+                    movesRef.current = movesRef.current.slice(0, -1);
+                    getPositionService()
+                        .parseSfen(e.sfen)
+                        .then((pos) => {
+                            dispatch({
+                                type: "takeback_accepted",
+                                position: pos,
+                                turn: e.turn,
+                                clock: e.clock,
+                                passRights: e.passRights,
+                            });
+                            dispatchUI({ type: "resync_received" });
+                        })
+                        .catch(console.error);
+                } else if (e.kind === "takeback_rejected") {
+                    dispatch({ type: "takeback_rejected" });
+                } else if (e.kind === "takeback_cancelled") {
+                    dispatch({ type: "takeback_cancelled" });
                 }
             } else if (msg.t === "snapshot") {
                 // 再接続後のスナップショット更新
@@ -453,6 +550,7 @@ export function OnlineGameView({
         const passRightsOption = passRights
             ? { passRights: { sente: passRights.b, gote: passRights.w } }
             : {};
+        let cancelled = false;
         void (async () => {
             if (isMyTurn && !gameResult && !isRewound) {
                 try {
@@ -461,15 +559,25 @@ export function OnlineGameView({
                         movesRef.current,
                         passRightsOption,
                     );
+                    if (cancelled) return;
                     dispatchUI({ type: "set_legal_moves", moves });
+                    // 合法手が0 = 自分が詰まされている → サーバーに通知
+                    if (moves.length === 0) {
+                        client.checkmate({ eventId: latestEventIdRef.current });
+                    }
                 } catch {
-                    dispatchUI({ type: "set_legal_moves", moves: [] });
+                    if (!cancelled) {
+                        dispatchUI({ type: "set_legal_moves", moves: [] });
+                    }
                 }
             } else {
                 dispatchUI({ type: "set_legal_moves", moves: [] });
             }
         })();
-    }, [isMyTurn, gameResult, isRewound, passRights]);
+        return () => {
+            cancelled = true;
+        };
+    }, [isMyTurn, gameResult, isRewound, passRights, client]);
 
     // ─── 棋譜ナビゲーションハンドラ ───────────────────────────────────────────
 
@@ -515,7 +623,8 @@ export function OnlineGameView({
 
         // 持ち駒を選択中の場合 → ドロップ
         if (selectedHand !== null) {
-            const usi = `${selectedHand}*${squareId.toUpperCase()}`;
+            // 合法手は小文字 USI 形式（例: "P*7f"）。squareId は小文字
+            const usi = `${selectedHand}*${squareId}`;
             if (legalMoves.includes(usi)) {
                 void sendMove(usi, squareId);
             }
@@ -529,8 +638,10 @@ export function OnlineGameView({
                 dispatchUI({ type: "select_square", squareId: null });
                 return;
             }
-            const from = selectedSquare.toUpperCase();
-            const to = squareId.toUpperCase();
+            // 合法手は小文字 USI 形式（例: "7g7f", "7g7f+"）
+            // selectedSquare / squareId はマス ID（小文字）なのでそのまま使用
+            const from = selectedSquare;
+            const to = squareId;
             const usiBase = `${from}${to}`;
             const usiPromote = `${usiBase}+`;
 
@@ -550,21 +661,11 @@ export function OnlineGameView({
                 return;
             }
 
-            const fromRank = from.slice(1).toLowerCase();
-            const toRank = to.slice(1).toLowerCase();
-            const piece = position.board[selectedSquare as keyof typeof position.board];
-            const pieceType = piece?.type ?? null;
+            const promotion = determinePromotion(new Set(legalMoves), from, to);
 
-            const mustPro =
-                pieceType && myPlayer ? mustPromote(pieceType, toRank, myPlayer) : false;
-            const canPro =
-                pieceType && myPlayer && !piece?.promoted
-                    ? canPromote(pieceType, fromRank, toRank, myPlayer)
-                    : false;
-
-            if (mustPro) {
+            if (promotion === "forced") {
                 void sendMove(usiPromote, squareId);
-            } else if (canPro && legalMoves.includes(usiPromote)) {
+            } else if (promotion === "optional") {
                 dispatchUI({
                     type: "set_promote_dialog",
                     dialog: { from: selectedSquare, to: squareId, usi: usiBase },
@@ -603,51 +704,98 @@ export function OnlineGameView({
         client.resign({ eventId: latestEventIdRef.current });
     }
 
+    // ─── 待った ───────────────────────────────────────────────────────────────
+
+    function handleTakebackRequest(): void {
+        client.takebackRequest({ eventId: latestEventIdRef.current });
+    }
+
+    function handleTakebackResponse(accept: boolean): void {
+        client.takebackResponse({ eventId: latestEventIdRef.current, accept });
+    }
+
+    function handleTakebackCancel(): void {
+        client.takebackCancel({ eventId: latestEventIdRef.current });
+    }
+
     // ─── AI 解析トリガー ─────────────────────────────────────────────────────
 
+    // 解析を開始した局面の board/turn を保存（formatMoveSimple に渡すため）
+    const [analysisBoard, setAnalysisBoard] = useState<BoardState | null>(null);
+    const [analysisTurn, setAnalysisTurn] = useState<"b" | "w">("b");
+    // PVプレビュー用に局面と手数も保存
+    const [analysisPosition, setAnalysisPosition] = useState<PositionState | null>(null);
+    const [analysisPly, setAnalysisPly] = useState<number>(0);
+    // PVプレビューダイアログ
+    const [pvPreviewMove, setPvPreviewMove] = useState<AiHintMove | null>(null);
+
     const handleAnalyze = async () => {
-        if (!position || !aiSupport || seat === "s") return;
-        // 制限モードは use_analysis を先送信してからエンジン解析
-        if (myAiSettings?.mode === "limited") {
+        if (!position) return;
+        // 制限モードは use_analysis を先送信してからエンジン解析（観戦者はスキップ）
+        if (myAiSettings?.mode === "limited" && seat !== "s") {
             const ply = movesRef.current.length;
             client.consumeAnalysis({ eventId: latestEventIdRef.current, ply });
             // analysis_used 受信後に自動で残り回数が更新される
         }
         if (analysis) {
-            await getPositionService()
-                .boardToSfen(position)
-                .then((sfen) => analysis.startAnalysis(sfen, movesRef.current))
-                .catch(console.error);
+            setAnalysisBoard(position.board);
+            setAnalysisTurn(turn);
+            setAnalysisPosition(position);
+            setAnalysisPly(movesRef.current.length);
+            void analysis.startAnalysis(startSfenRef.current, movesRef.current);
         }
     };
 
-    // 無制限モード: 自分の手番になったら自動解析
-    const positionSfenRef = useRef<string>("");
-    useEffect(() => {
-        if (!aiSupport || !position || gameResult || !analysis) return;
-        if (myAiSettings?.mode !== "unlimited") return;
-        // 自分の手番（または観戦者）のとき自動解析
-        const isMyAnalysisTurn =
-            seat === "s" || (seat === "b" && turn === "b") || (seat === "w" && turn === "w");
-        if (!isMyAnalysisTurn) {
-            void analysis.cancelAnalysis();
-            return;
-        }
-        getPositionService()
-            .boardToSfen(position)
-            .then((sfen) => {
-                if (sfen === positionSfenRef.current) return;
-                positionSfenRef.current = sfen;
-                return analysis.startAnalysis(sfen, movesRef.current);
-            })
+    // ─── NNUE 管理 ───────────────────────────────────────────────────────────
+
+    const [nnueSelection, setNnueSelection] = useState<NnueSelection>(NONE_NNUE_SELECTION);
+    const [nnueManagerOpen, setNnueManagerOpen] = useState(false);
+    const { resolveNnue } = useLazyNnueLoader();
+    const isMobile = useIsMobile();
+    const { playSound } = useShogiSound();
+    const playSoundEvent = useEffectEvent(playSound);
+
+    const loadNnueEvent = useEffectEvent((sel: NnueSelection) => {
+        if (!analysis?.loadNnue) return;
+        resolveNnue(sel)
+            .then((resolved) => analysis.loadNnue?.(resolved?.nnueId ?? null))
             .catch(console.error);
-    }, [aiSupport, myAiSettings, position, turn, seat, gameResult, analysis]);
+    });
+    useEffect(() => {
+        loadNnueEvent(nnueSelection);
+    }, [nnueSelection]);
+
+    // ─── AI 手の盤面適用 ──────────────────────────────────────────────────────
+
+    function handleApplyAiMove(usiMove: string): void {
+        if (!position || !isMyTurn || gameResult) return;
+        void sendMove(usiMove);
+    }
+
+    // ─── 制限モード: 自分の手番になったらAIシートを自動で開く ────────────────────
+
+    const prevIsMyTurnRef = useRef(false);
+    useEffect(() => {
+        if (!isMobile) return;
+        if (!aiSupport || isSpectator || !myAiSettings || gameResult) return;
+        if (myAiSettings.mode !== "limited") return;
+        if (isMyTurn && !prevIsMyTurnRef.current && (myAnalysisRemaining ?? 1) > 0) {
+            dispatchUI({ type: "set_ai_sheet_open", open: true });
+        }
+        prevIsMyTurnRef.current = isMyTurn;
+    }, [isMyTurn, aiSupport, isMobile, isSpectator, myAiSettings, myAnalysisRemaining, gameResult]);
+
+    useEffect(() => {
+        if (isMobile) return;
+        if (!aiSheetOpen) return;
+        dispatchUI({ type: "set_ai_sheet_open", open: false });
+    }, [aiSheetOpen, isMobile]);
 
     // ─── KIF ダウンロード ─────────────────────────────────────────────────────
 
     function handleDownloadKifu(): void {
-        if (!kifu) return;
-        const blob = new Blob([kifu], { type: "text/plain;charset=utf-8" });
+        if (!generatedKif) return;
+        const blob = new Blob([generatedKif], { type: "text/plain;charset=utf-8" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
@@ -658,11 +806,58 @@ export function OnlineGameView({
 
     // ─── レンダリング ─────────────────────────────────────────────────────────
 
-    // 表示用盤面（巻き戻し中は履歴局面を使用）
-    const grid = displayPosition ? boardToGrid(displayPosition.board) : [];
+    const flipBoard = seat === "w";
+    // 表示用盤面（巻き戻し中は履歴局面を使用、後手視点は反転）
+    const grid = (() => {
+        if (!displayPosition) return [];
+        const g = boardToGrid(displayPosition.board);
+        return flipBoard ? [...g].reverse().map((row) => [...row].reverse()) : g;
+    })();
     const clockDisplay = useOnlineClock(clockState);
 
-    const flipBoard = seat === "w";
+    // 最後の指し手（ハイライト用）
+    const lastMoveUsi = isRewound
+        ? movesRef.current[(effectiveNavIndex ?? 0) - 1]
+        : movesRef.current.at(-1);
+    const lastMove = deriveLastMove(lastMoveUsi);
+
+    // モバイル用 ref（MobileBoardSection の必須 props のため）
+    const boardSectionRef = useRef<HTMLDivElement | null>(null);
+
+    // 成り選択状態（MobileBoardSection へ渡す用）
+    const promotionSelection: PromotionSelection | null = (() => {
+        if (!promoteDialog || !displayPosition) return null;
+        const piece =
+            displayPosition.board[promoteDialog.from as keyof typeof displayPosition.board];
+        if (!piece) return null;
+        return {
+            from: promoteDialog.from as Square,
+            to: promoteDialog.to as Square,
+            piece,
+        };
+    })();
+
+    // 上下の持ち駒情報（MobileBoardSection へ渡す用）
+    const topOwner: Player = flipBoard ? "sente" : "gote";
+    const bottomOwner: Player = flipBoard ? "gote" : "sente";
+    const topHand: HandInfo = {
+        owner: topOwner,
+        hand: displayPosition?.hands[topOwner] ?? ({} as PositionState["hands"]["sente"]),
+        isActive: !isRewound && isMyTurn && myPlayer === topOwner,
+        isAI: false,
+    };
+    const bottomHand: HandInfo = {
+        owner: bottomOwner,
+        hand: displayPosition?.hands[bottomOwner] ?? ({} as PositionState["hands"]["sente"]),
+        isActive: !isRewound && isMyTurn && myPlayer === bottomOwner,
+        isAI: false,
+    };
+    const onSquareSelect = !isRewound && isMyTurn && !isSpectator ? handleBoardSelect : () => {};
+    const onPromotionChoiceForMobile = (promote: boolean) => {
+        if (!promoteDialog) return;
+        void sendMove(promote ? `${promoteDialog.usi}+` : promoteDialog.usi, promoteDialog.to);
+        dispatchUI({ type: "set_promote_dialog", dialog: null });
+    };
 
     // ハイライト: 選択中マスの合法手先
     const legalTargets = new Set<string>();
@@ -681,21 +876,108 @@ export function OnlineGameView({
         w: snapshot.players.w?.name ?? "後手",
     };
 
+    // KIF テキスト（対局終了後のダウンロード・コピー用）
+    const generatedKif =
+        usiMoveLog.length > 0
+            ? exportToKifString(
+                  usiMoveLog.map((entry, i) => ({
+                      ply: i + 1,
+                      usiMove: entry.usi,
+                      elapsedMs: entry.elapsedMs,
+                      kifText: "",
+                      displayText: "",
+                  })),
+                  positionHistory.slice(0, usiMoveLog.length).map((p) => p.board),
+                  { senteName: playerNames.b, goteName: playerNames.w },
+              )
+            : "";
+
     // PC サイドバーとモバイル BottomSheet で共通利用するコンテンツ
-    const aiPanelContent = aiSupport ? (
-        <OnlineAiPanel
-            aiSupport={aiSupport}
-            seat={seat}
-            myAnalysisRemaining={myAnalysisRemaining}
-            isAnalyzing={isAnalyzing}
-            topMoves={topMoves}
-            canAnalyze={!gameResult && !isSpectator}
-            onAnalyze={() => void handleAnalyze()}
-        />
-    ) : null;
+    const canAnalyzeNow = !gameResult && (isMyTurn || isSpectator);
+    const analyzeHintText =
+        !gameResult && !isMyTurn && !isSpectator
+            ? "相手の手番中は解析できません。自分の手番になってから使用してください。"
+            : "「解析する」を押すと現在の局面をAIが分析します";
+    const aiPanelContent =
+        aiSupport || analysis ? (
+            <OnlineAiPanel
+                aiSupport={aiSupport ?? undefined}
+                seat={seat}
+                myAnalysisRemaining={myAnalysisRemaining}
+                isAnalyzing={isAnalyzing}
+                topMoves={topMoves}
+                canAnalyze={canAnalyzeNow}
+                analyzeHint={analyzeHintText}
+                onAnalyze={() => void handleAnalyze()}
+                analysisBoard={analysisBoard}
+                analysisTurn={analysisTurn}
+                nnueSelection={nnueSelection}
+                onNnueSelectionChange={setNnueSelection}
+                onOpenNnueManager={() => setNnueManagerOpen(true)}
+                onApplyMove={
+                    isMyTurn && !gameResult && !isSpectator
+                        ? (usiMove) => Promise.resolve(handleApplyAiMove(usiMove))
+                        : undefined
+                }
+                onPreviewPv={analysisPosition ? setPvPreviewMove : undefined}
+            />
+        ) : null;
+
+    // PC サイドバー・モバイル BottomSheet 共通: 棋譜リスト
+    const kifuPanelContent = (
+        <div className="flex flex-col gap-1 overflow-y-auto max-h-[50dvh] md:max-h-[calc(100dvh-160px)]">
+            {usiMoveLog.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                    まだ指し手がありません
+                </p>
+            ) : (
+                usiMoveLog
+                    .map((entry, i) => ({
+                        ply: i + 1,
+                        usi: entry.usi,
+                        pos: positionHistory[i],
+                    }))
+                    .map((item) => {
+                        const moveText = item.pos
+                            ? formatMoveSimple(item.usi, item.pos.turn, item.pos.board)
+                            : item.usi;
+                        const isCurrentPly = currentPly === item.ply;
+                        return (
+                            <button
+                                key={item.ply}
+                                type="button"
+                                disabled={!gameResult && !isSpectator}
+                                onClick={() =>
+                                    dispatchUI({
+                                        type: "set_nav_index",
+                                        index:
+                                            item.ply >= positionHistory.length - 1
+                                                ? null
+                                                : item.ply,
+                                    })
+                                }
+                                className={`flex gap-2 text-xs px-2 py-1 rounded text-left transition-colors ${
+                                    isCurrentPly
+                                        ? "bg-wafuu-kincha/20 text-wafuu-kincha font-medium"
+                                        : "hover:bg-muted disabled:cursor-default"
+                                }`}
+                            >
+                                <span className="text-muted-foreground w-6 shrink-0 tabular-nums">
+                                    {item.ply}.
+                                </span>
+                                <span>{moveText}</span>
+                            </button>
+                        );
+                    })
+            )}
+        </div>
+    );
 
     return (
-        <div className="flex flex-col md:flex-row gap-4 p-4 max-w-[900px] mx-auto">
+        <div className="flex flex-col md:flex-row gap-4 p-4 max-w-[1100px] mx-auto">
+            {/* 左サイドバー: 対局後検討・NNUE設定など（PC のみ表示） */}
+            <div className="hidden md:flex w-64 flex-col gap-3" />
+
             {/* 切断バナー */}
             {offlineSeats.size > 0 && (
                 <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-destructive px-4 py-2 text-sm text-destructive-foreground shadow-lg">
@@ -706,78 +988,105 @@ export function OnlineGameView({
             )}
 
             {/* メインコンテンツ */}
-            <div className="flex flex-col gap-3 flex-1">
-                {/* 後手情報（上） */}
+            <div className={`flex flex-col gap-3 ${isMobile ? "items-center" : "flex-1"}`}>
+                {/* 奥側プレイヤー情報（上）: 後手視点では先手が奥 */}
                 <PlayerHeader
-                    name={playerNames.w}
-                    seat="w"
-                    isMyTurn={turn === "w"}
-                    remainMs={clockDisplay.w}
-                    isOffline={offlineSeats.has("w")}
+                    name={flipBoard ? playerNames.b : playerNames.w}
+                    seat={flipBoard ? "b" : "w"}
+                    isMyTurn={flipBoard ? turn === "b" : turn === "w"}
+                    remainMs={flipBoard ? clockDisplay.b : clockDisplay.w}
+                    isOffline={flipBoard ? offlineSeats.has("b") : offlineSeats.has("w")}
                     isFlipped={flipBoard}
-                    passRightsCount={passRights != null ? passRights.w : undefined}
+                    passRightsCount={
+                        passRights != null ? (flipBoard ? passRights.b : passRights.w) : undefined
+                    }
                 />
 
-                {/* 後手持ち駒（上） */}
-                {displayPosition && (
-                    <div className={`flex justify-${flipBoard ? "start" : "end"}`}>
-                        <HandPiecesDisplay
-                            owner="gote"
-                            hand={displayPosition.hands.gote}
-                            selectedPiece={myPlayer === "gote" ? selectedHand : null}
-                            isActive={!isRewound && isMyTurn && myPlayer === "gote"}
-                            onHandSelect={handleHandSelect}
-                            hideEmptyPieces
-                            isMatchRunning
-                            size="medium"
+                {isMobile ? (
+                    // === モバイル: MobileBoardSection が持ち駒を含めて表示 ===
+                    displayPosition ? (
+                        <MobileBoardSection
+                            grid={grid}
+                            position={displayPosition}
                             flipBoard={flipBoard}
+                            lastMove={lastMove}
+                            selection={
+                                selectedSquare
+                                    ? { kind: "square", square: selectedSquare }
+                                    : selectedHand
+                                      ? { kind: "hand", piece: selectedHand }
+                                      : null
+                            }
+                            promotionSelection={promotionSelection}
+                            displaySettings={BOARD_DISPLAY_SETTINGS}
+                            isEditModeActive={false}
+                            isMatchRunning={!gameResult}
+                            hideEmptyHandPieces={true}
+                            editFromSquare={null}
+                            candidateNote={null}
+                            onSquareSelect={onSquareSelect}
+                            onPromotionChoice={onPromotionChoiceForMobile}
+                            onHandSelect={handleHandSelect}
+                            topHand={topHand}
+                            bottomHand={bottomHand}
+                            boardSectionRef={boardSectionRef}
+                            isDraggingPiece={false}
+                        />
+                    ) : (
+                        <div className="flex h-64 items-center justify-center">
+                            <p className="text-muted-foreground">局面を読み込み中...</p>
+                        </div>
+                    )
+                ) : // === PC: PCBoardContent（オフラインと共通） ===
+                displayPosition ? (
+                    // w-fit + items-center でオフライン PCBoardSection と同じ構造にする
+                    // （持ち駒の w-full が盤面幅に揃い、gap-2 でオフラインと間隔を統一）
+                    <div className="w-fit flex flex-col gap-2 items-center self-center">
+                        <PCBoardContent
+                            grid={grid}
+                            flipBoard={flipBoard}
+                            lastMove={lastMove}
+                            selection={
+                                selectedSquare
+                                    ? { kind: "square", square: selectedSquare }
+                                    : selectedHand
+                                      ? { kind: "hand", piece: selectedHand }
+                                      : null
+                            }
+                            promotionSelection={promotionSelection}
+                            displaySettings={BOARD_DISPLAY_SETTINGS}
+                            isEditModeActive={false}
+                            isMatchRunning={!gameResult}
+                            hideEmptyHandPieces={true}
+                            editFromSquare={null}
+                            candidateNote={null}
+                            onSquareSelect={onSquareSelect}
+                            onPromotionChoice={onPromotionChoiceForMobile}
+                            onHandSelect={handleHandSelect}
+                            topHand={topHand}
+                            bottomHand={bottomHand}
+                            passRights={
+                                passRights ? { sente: passRights.b, gote: passRights.w } : undefined
+                            }
                         />
                     </div>
-                )}
-
-                {/* 将棋盤 */}
-                {displayPosition ? (
-                    <ShogiBoard
-                        grid={grid}
-                        selectedSquare={selectedSquare}
-                        onSelect={
-                            !isRewound && isMyTurn && !isSpectator ? handleBoardSelect : undefined
-                        }
-                        flipBoard={flipBoard}
-                        showBoardLabels
-                    />
                 ) : (
                     <div className="flex h-64 items-center justify-center rounded-lg border border-border bg-card">
                         <p className="text-muted-foreground">局面を読み込み中...</p>
                     </div>
                 )}
 
-                {/* 先手持ち駒（下） */}
-                {displayPosition && (
-                    <div className={`flex justify-${flipBoard ? "end" : "start"}`}>
-                        <HandPiecesDisplay
-                            owner="sente"
-                            hand={displayPosition.hands.sente}
-                            selectedPiece={myPlayer === "sente" ? selectedHand : null}
-                            isActive={!isRewound && isMyTurn && myPlayer === "sente"}
-                            onHandSelect={handleHandSelect}
-                            hideEmptyPieces
-                            isMatchRunning
-                            size="medium"
-                            flipBoard={flipBoard}
-                        />
-                    </div>
-                )}
-
-                {/* 先手情報（下） */}
+                {/* 手前側プレイヤー情報（下）: 後手視点では後手が手前 */}
                 <PlayerHeader
-                    name={playerNames.b}
-                    seat="b"
-                    isMyTurn={turn === "b"}
-                    remainMs={clockDisplay.b}
-                    isOffline={offlineSeats.has("b")}
+                    name={flipBoard ? playerNames.w : playerNames.b}
+                    seat={flipBoard ? "w" : "b"}
+                    isMyTurn={flipBoard ? turn === "w" : turn === "b"}
+                    remainMs={flipBoard ? clockDisplay.w : clockDisplay.b}
+                    isOffline={flipBoard ? offlineSeats.has("w") : offlineSeats.has("b")}
                     isFlipped={flipBoard}
-                    passRightsCount={passRights != null ? passRights.b : undefined}
+                    passRightsCount={
+                        passRights != null ? (flipBoard ? passRights.w : passRights.b) : undefined
+                    }
                 />
 
                 {/* 棋譜ナビゲーション */}
@@ -790,7 +1099,24 @@ export function OnlineGameView({
                         onToStart={handleNavStart}
                         onToEnd={handleNavEnd}
                         isRewound={isRewound}
+                        disabled={!gameResult && !isSpectator}
                     />
+                )}
+
+                {/* 待った: 申請中バナー（申請者向け） */}
+                {pendingTakeback && pendingTakeback.seat === seat && !isSpectator && (
+                    <div className="flex items-center justify-between rounded-lg border border-wafuu-kincha/40 bg-wafuu-kincha/10 px-3 py-2 text-sm">
+                        <span className="text-wafuu-kincha">
+                            待った申請中... 相手の応答を待っています
+                        </span>
+                        <button
+                            type="button"
+                            onClick={handleTakebackCancel}
+                            className="ml-3 text-xs text-muted-foreground underline hover:text-foreground"
+                        >
+                            取り消す
+                        </button>
+                    </div>
                 )}
 
                 {/* 操作ボタン */}
@@ -805,6 +1131,20 @@ export function OnlineGameView({
                             パス
                         </button>
                     )}
+                    {!isSpectator &&
+                        !gameResult &&
+                        snapshot.settings.takeback &&
+                        !isMyTurn &&
+                        usiMoveLog.length > 0 &&
+                        !pendingTakeback && (
+                            <button
+                                type="button"
+                                onClick={handleTakebackRequest}
+                                className="rounded-md border border-wafuu-kincha/40 bg-wafuu-kincha/10 px-4 py-2 text-sm font-medium text-wafuu-kincha hover:bg-wafuu-kincha/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                                待った
+                            </button>
+                        )}
                     {!isSpectator && !gameResult && (
                         <button
                             type="button"
@@ -814,17 +1154,52 @@ export function OnlineGameView({
                             投了
                         </button>
                     )}
-                    {aiSupport && (
+                    <button
+                        type="button"
+                        onClick={() => dispatchUI({ type: "set_kifu_sheet_open", open: true })}
+                        className="md:hidden rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
+                        aria-label="棋譜"
+                    >
+                        棋譜
+                    </button>
+                    {(aiSupport || analysis) && (
                         <button
                             type="button"
                             onClick={() => dispatchUI({ type: "set_ai_sheet_open", open: true })}
-                            className="md:hidden rounded-md bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80"
+                            className="md:hidden rounded-md border border-wafuu-ai/40 bg-wafuu-ai/10 px-3 py-2 text-sm font-medium text-wafuu-ai hover:bg-wafuu-ai/20"
                             aria-label="AI解析"
                         >
-                            🤖
+                            🤖 AI解析
                         </button>
                     )}
                 </div>
+
+                {/* AI解析ミニサマリバー（モバイルのみ・シート閉じているとき） */}
+                {(aiSupport || analysis) && topMoves.length > 0 && (
+                    <button
+                        type="button"
+                        onClick={() => dispatchUI({ type: "set_ai_sheet_open", open: true })}
+                        className="md:hidden flex items-center gap-2 rounded-md border border-border bg-card/80 px-3 py-1.5 text-xs w-full"
+                    >
+                        <span className="text-muted-foreground shrink-0">🤖</span>
+                        <div className="flex-1 h-1.5 rounded-full bg-wafuu-ai overflow-hidden">
+                            <div
+                                className="h-full bg-wafuu-shu transition-all duration-300"
+                                style={{ width: `${summaryEvalPercent}%` }}
+                            />
+                        </div>
+                        <span
+                            className={`font-mono tabular-nums shrink-0 ${summaryEvalCp !== null && summaryEvalCp < 0 ? "text-wafuu-ai" : "text-wafuu-shu"}`}
+                        >
+                            {summaryEvalCp !== null
+                                ? summaryEvalCp > 0
+                                    ? `+${summaryEvalCp}`
+                                    : String(summaryEvalCp)
+                                : "---"}
+                        </span>
+                        <span className="text-muted-foreground shrink-0">詳細 ›</span>
+                    </button>
+                )}
 
                 {/* 観戦者数 */}
                 {snapshot.spectators > 0 && (
@@ -834,28 +1209,59 @@ export function OnlineGameView({
                 )}
             </div>
 
-            {/* サイドバー: AI 解析（PC のみ表示） */}
-            <div className="hidden md:flex w-64 flex-col gap-3">{aiPanelContent}</div>
-
-            {/* 成り判定ダイアログ */}
-            {promoteDialog && (
-                <PromoteDialog
-                    onPromote={() => {
-                        void sendMove(`${promoteDialog.usi}+`, promoteDialog.to);
-                        dispatchUI({ type: "set_promote_dialog", dialog: null });
-                    }}
-                    onNoPromote={() => {
-                        void sendMove(promoteDialog.usi, promoteDialog.to);
-                        dispatchUI({ type: "set_promote_dialog", dialog: null });
-                    }}
+            {/* サイドバー: 棋譜 / AI 解析 タブ（PC のみ表示） */}
+            <div className="hidden md:flex w-64 flex-col">
+                <TabHeader
+                    tabs={[
+                        { id: "kifu" as const, label: "棋譜" },
+                        ...(aiSupport || analysis ? [{ id: "ai" as const, label: "AI解析" }] : []),
+                    ]}
+                    activeTab={rightTab}
+                    onChange={setRightTab}
                 />
+
+                {/* 棋譜タブ */}
+                {rightTab === "kifu" && kifuPanelContent}
+
+                {/* AI解析タブ */}
+                {rightTab === "ai" && aiPanelContent}
+            </div>
+
+            {/* 待った: 承認ダイアログ（相手向け） */}
+            {pendingTakeback && pendingTakeback.seat !== seat && !isSpectator && !gameResult && (
+                <div className="fixed inset-0 z-40 flex items-end justify-center pb-8 md:items-center md:pb-0">
+                    <div className="rounded-xl border border-border bg-card p-5 shadow-xl w-[300px]">
+                        <p className="mb-1 text-center font-semibold text-foreground">
+                            待ったの申請
+                        </p>
+                        <p className="mb-4 text-center text-sm text-muted-foreground">
+                            相手が直前の手を取り消したいと申請しています
+                        </p>
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => handleTakebackResponse(true)}
+                                className="flex-1 rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                            >
+                                承認する
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleTakebackResponse(false)}
+                                className="flex-1 rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
+                            >
+                                拒否する
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
 
             {/* 対局結果ダイアログ */}
             {gameResult && (
                 <GameEndDialog
                     result={gameResult}
-                    kifu={kifu}
+                    kifu={generatedKif}
                     playerNames={playerNames}
                     onDownloadKifu={handleDownloadKifu}
                     analysisLog={analysisLog}
@@ -866,6 +1272,7 @@ export function OnlineGameView({
                                       sfen: startSfenRef.current,
                                       moves: movesRef.current,
                                       analysisMarkers: analysisLog,
+                                      gameRecordId: gameRecordIdRef.current,
                                   })
                             : undefined
                     }
@@ -873,8 +1280,20 @@ export function OnlineGameView({
                 />
             )}
 
+            {/* 棋譜（モバイル） */}
+            {isMobile && (
+                <BottomSheet
+                    open={kifuSheetOpen}
+                    onOpenChange={(open) => dispatchUI({ type: "set_kifu_sheet_open", open })}
+                    title="棋譜"
+                    height="half"
+                >
+                    {kifuPanelContent}
+                </BottomSheet>
+            )}
+
             {/* AI 解析（モバイル） */}
-            {aiSupport && (
+            {isMobile && (aiSupport || analysis) && (
                 <BottomSheet
                     open={aiSheetOpen}
                     onOpenChange={(open) => dispatchUI({ type: "set_ai_sheet_open", open })}
@@ -883,6 +1302,30 @@ export function OnlineGameView({
                 >
                     {aiPanelContent}
                 </BottomSheet>
+            )}
+
+            {/* PVプレビューダイアログ */}
+            {pvPreviewMove && analysisPosition && (
+                <PvPreviewDialog
+                    onClose={() => setPvPreviewMove(null)}
+                    pv={pvPreviewMove.pv ?? []}
+                    startPosition={analysisPosition}
+                    ply={analysisPly}
+                    evalCp={pvPreviewMove.evalCp}
+                    squareNotation={BOARD_DISPLAY_SETTINGS.squareNotation}
+                    showBoardLabels={BOARD_DISPLAY_SETTINGS.showBoardLabels}
+                />
+            )}
+
+            {/* NNUE ファイル管理ダイアログ */}
+            {manifestUrl && (
+                <NnueManagerDialog
+                    open={nnueManagerOpen}
+                    onOpenChange={setNnueManagerOpen}
+                    manifestUrl={manifestUrl}
+                    remoteNnueManager={remoteNnueManager}
+                    isMatchActive={!gameResult}
+                />
             )}
         </div>
     );
@@ -937,37 +1380,6 @@ function PlayerHeader({
     );
 }
 
-interface PromoteDialogProps {
-    onPromote: () => void;
-    onNoPromote: () => void;
-}
-
-function PromoteDialog({ onPromote, onNoPromote }: PromoteDialogProps): ReactElement {
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-            <div className="rounded-xl border border-border bg-card p-6 shadow-xl">
-                <p className="mb-4 text-center text-foreground font-semibold">成りますか？</p>
-                <div className="flex gap-3">
-                    <button
-                        type="button"
-                        onClick={onPromote}
-                        className="flex-1 rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-                    >
-                        成る
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onNoPromote}
-                        className="flex-1 rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
-                    >
-                        成らない
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-}
-
 const GAME_END_REASONS: Record<string, string> = {
     resign: "投了",
     checkmate: "詰み",
@@ -996,6 +1408,13 @@ function GameEndDialog({
     onStartReview,
     onExit,
 }: GameEndDialogProps): ReactElement {
+    const [kifuCopied, setKifuCopied] = useState(false);
+    useEffect(() => {
+        if (!kifuCopied) return;
+        const timerId = setTimeout(() => setKifuCopied(false), 2000);
+        return () => clearTimeout(timerId);
+    }, [kifuCopied]);
+
     const winnerName =
         result.winner === "b" ? playerNames.b : result.winner === "w" ? playerNames.w : null;
 
@@ -1047,10 +1466,11 @@ function GameEndDialog({
                                 type="button"
                                 onClick={async () => {
                                     await navigator.clipboard.writeText(kifu);
+                                    setKifuCopied(true);
                                 }}
                                 className="w-full rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
                             >
-                                棋譜をコピー
+                                {kifuCopied ? "コピーしました！" : "棋譜をコピー"}
                             </button>
                             <button
                                 type="button"
@@ -1079,13 +1499,21 @@ function GameEndDialog({
 // ─── OnlineAiPanel ───────────────────────────────────────────────────────────
 
 interface OnlineAiPanelProps {
-    aiSupport: AiSupportSettings;
+    aiSupport?: AiSupportSettings;
     seat: Seat;
     myAnalysisRemaining: number | null;
     isAnalyzing: boolean;
     topMoves: AnalysisMoveResult[];
     canAnalyze: boolean;
+    analyzeHint: string;
     onAnalyze: () => void;
+    analysisBoard: BoardState | null;
+    analysisTurn: "b" | "w";
+    nnueSelection: NnueSelection;
+    onNnueSelectionChange: (sel: NnueSelection) => void;
+    onOpenNnueManager: () => void;
+    onApplyMove?: (usiMove: string) => Promise<unknown>;
+    onPreviewPv?: (move: AiHintMove) => void;
 }
 
 function OnlineAiPanel({
@@ -1095,83 +1523,55 @@ function OnlineAiPanel({
     isAnalyzing,
     topMoves,
     canAnalyze,
+    analyzeHint,
     onAnalyze,
+    analysisBoard,
+    analysisTurn,
+    nnueSelection,
+    onNnueSelectionChange,
+    onOpenNnueManager,
+    onApplyMove,
+    onPreviewPv,
 }: OnlineAiPanelProps): ReactElement {
     const mySeatKey = seat === "b" ? "b" : seat === "w" ? "w" : null;
-    const myMode = mySeatKey ? aiSupport[mySeatKey].mode : null;
+    const myMode = mySeatKey && aiSupport ? aiSupport[mySeatKey].mode : null;
     const isLimited = myMode === "limited";
     const hasNoRemaining = isLimited && myAnalysisRemaining !== null && myAnalysisRemaining <= 0;
 
-    // 形勢バー（0〜100%、50% = 互角、cp +2000 ≈ 100%）
     const evalCp = topMoves[0]?.cp ?? null;
     const evalPercent =
         evalCp !== null ? Math.min(100, Math.max(0, 50 + (evalCp / 2000) * 50)) : 50;
-    const canClickAnalyze = canAnalyze && !isAnalyzing && !hasNoRemaining && seat !== "s";
+    const canClickAnalyze = canAnalyze && !isAnalyzing && !hasNoRemaining;
+    const moves: AiHintMove[] = topMoves.slice(0, 3).map((mv) => ({
+        usi: mv.usi,
+        displayText: analysisBoard
+            ? formatMoveSimple(mv.usi, analysisTurn === "b" ? "sente" : "gote", analysisBoard)
+            : mv.usi,
+        scoreText: `${mv.cp > 0 ? "+" : ""}${mv.cp}`,
+        scoreTone: mv.cp > 0 ? "sente" : mv.cp < 0 ? "gote" : "neutral",
+        pv: mv.pv,
+        evalCp: mv.cp,
+    }));
 
     return (
-        <div className="flex flex-col rounded-lg border border-border bg-card overflow-hidden">
-            <div className="px-3 py-2 border-b border-border flex items-center justify-between">
-                <span className="text-sm font-semibold text-foreground">AI 解析</span>
-                {isLimited && (
-                    <span className="text-xs text-muted-foreground">
-                        残り {myAnalysisRemaining ?? 0} 回
-                    </span>
-                )}
-            </div>
-
-            <div className="px-3 py-2 flex flex-col gap-2">
-                {/* 形勢バー */}
-                {topMoves.length > 0 && (
-                    <div className="flex flex-col gap-1">
-                        <div className="relative h-3 w-full rounded-full overflow-hidden bg-wafuu-ai">
-                            <div
-                                className="absolute inset-y-0 left-0 bg-wafuu-shu transition-all duration-300"
-                                style={{ width: `${evalPercent}%` }}
-                            />
-                        </div>
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                            <span className="text-wafuu-shu">
-                                ▲ {evalCp !== null && evalCp > 0 ? `+${evalCp}` : ""}
-                            </span>
-                            <span className="text-wafuu-ai">
-                                △ {evalCp !== null && evalCp < 0 ? `+${Math.abs(evalCp)}` : ""}
-                            </span>
-                        </div>
-                    </div>
-                )}
-
-                {/* 候補手（上位 3 手） */}
-                {topMoves.length > 0 && (
-                    <div className="flex flex-col gap-0.5">
-                        {topMoves.slice(0, 3).map((mv, i) => (
-                            <div key={mv.usi} className="flex items-center gap-2 text-xs">
-                                <span className="text-muted-foreground w-4">{i + 1}.</span>
-                                <span className="font-mono text-foreground">{mv.usi}</span>
-                                <span className="text-muted-foreground ml-auto">
-                                    {mv.cp > 0 ? "+" : ""}
-                                    {mv.cp}
-                                </span>
-                            </div>
-                        ))}
-                    </div>
-                )}
-
-                {isAnalyzing && topMoves.length === 0 && (
-                    <p className="text-xs text-muted-foreground">解析中...</p>
-                )}
-
-                {/* 制限モードのみ手動ボタン表示 */}
-                {isLimited && seat !== "s" && (
-                    <button
-                        type="button"
-                        onClick={onAnalyze}
-                        disabled={!canClickAnalyze}
-                        className="w-full rounded-md bg-primary py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
-                    >
-                        {hasNoRemaining ? "上限到達" : isAnalyzing ? "解析中..." : "解析する"}
-                    </button>
-                )}
-            </div>
-        </div>
+        <AiHintPanel
+            title="AI 解析"
+            remainingLabel={isLimited ? `残り ${myAnalysisRemaining ?? 0} 回` : null}
+            isAnalyzing={isAnalyzing}
+            moves={moves}
+            canAnalyze={canClickAnalyze}
+            analyzeHint={analyzeHint}
+            summary={{
+                percent: evalPercent,
+                senteLabel: evalCp !== null && evalCp > 0 ? `▲ +${evalCp}` : "▲",
+                goteLabel: evalCp !== null && evalCp < 0 ? `△ +${Math.abs(evalCp)}` : "△",
+            }}
+            nnueSelection={nnueSelection}
+            onNnueSelectionChange={onNnueSelectionChange}
+            onOpenNnueManager={onOpenNnueManager}
+            onAnalyze={onAnalyze}
+            onApplyMove={onApplyMove}
+            onPreviewPv={onPreviewPv}
+        />
     );
 }

@@ -1,4 +1,6 @@
-// 自動再接続ロジック（指数バックオフ）と resumeToken の sessionStorage 管理
+// 自動再接続ロジック（指数バックオフ）と resumeToken/seat の localStorage 管理
+
+import type { Seat } from "./types";
 
 /** バックオフ時間（ms）: 1s → 2s → 4s → 8s → 16s */
 const BACKOFF_DELAYS_MS = [1000, 2000, 4000, 8000, 16000] as const;
@@ -57,34 +59,69 @@ export function createReconnectManager(options: {
     };
 }
 
-/** sessionStorage のキー名 */
+/** localStorage のキー名 */
 function resumeTokenKey(roomId: string): string {
     return `ramu_resume_token_${roomId}`;
 }
 
-/** resumeToken を sessionStorage から取得する */
+/** resumeToken を localStorage から取得する */
 export function getStoredResumeToken(roomId: string): string | null {
     try {
-        return sessionStorage.getItem(resumeTokenKey(roomId));
+        return localStorage.getItem(resumeTokenKey(roomId));
     } catch {
-        // sessionStorage が利用できない環境では null を返す
+        // localStorage が利用できない環境では null を返す
         return null;
     }
 }
 
-/** resumeToken を sessionStorage に保存する */
+/** resumeToken を localStorage に保存する */
 export function storeResumeToken(roomId: string, token: string): void {
     try {
-        sessionStorage.setItem(resumeTokenKey(roomId), token);
+        localStorage.setItem(resumeTokenKey(roomId), token);
     } catch {
         // 保存できない場合は無視
     }
 }
 
-/** resumeToken を sessionStorage から削除する */
+/** resumeToken を localStorage から削除する */
 export function removeStoredResumeToken(roomId: string): void {
     try {
-        sessionStorage.removeItem(resumeTokenKey(roomId));
+        localStorage.removeItem(resumeTokenKey(roomId));
+    } catch {
+        // 無視
+    }
+}
+
+// ─── seat の localStorage 管理 ────────────────────────────────────────────────
+
+function seatKey(roomId: string): string {
+    return `ramu_seat_${roomId}`;
+}
+
+/** seat を localStorage から取得する */
+export function getStoredSeat(roomId: string): Seat | null {
+    try {
+        const s = localStorage.getItem(seatKey(roomId));
+        if (s === "b" || s === "w" || s === "s") return s;
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+/** seat を localStorage に保存する */
+export function storeSeat(roomId: string, seat: Seat): void {
+    try {
+        localStorage.setItem(seatKey(roomId), seat);
+    } catch {
+        // 保存できない場合は無視
+    }
+}
+
+/** seat を localStorage から削除する */
+export function removeStoredSeat(roomId: string): void {
+    try {
+        localStorage.removeItem(seatKey(roomId));
     } catch {
         // 無視
     }

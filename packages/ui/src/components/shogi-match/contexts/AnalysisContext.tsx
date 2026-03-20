@@ -37,6 +37,7 @@ interface AnalysisProviderProps {
 
     // 分析操作
     handleAnalyzePly: (ply: number) => void;
+    handleAnalyzeHintPly: (ply: number) => void;
     handleStartBatchAnalysis: () => void;
     handleCancelBatchAnalysis: () => void;
     handleAnalyzeNode: (nodeId: string) => void;
@@ -61,6 +62,7 @@ export function AnalysisProvider({
     analyzingState,
     batchAnalysis,
     handleAnalyzePly,
+    handleAnalyzeHintPly,
     handleStartBatchAnalysis,
     handleCancelBatchAnalysis,
     handleAnalyzeNode,
@@ -80,6 +82,7 @@ export function AnalysisProvider({
         analyzingState,
         batchAnalysis,
         handleAnalyzePly,
+        handleAnalyzeHintPly,
         handleStartBatchAnalysis,
         handleCancelBatchAnalysis,
         handleAnalyzeNode,

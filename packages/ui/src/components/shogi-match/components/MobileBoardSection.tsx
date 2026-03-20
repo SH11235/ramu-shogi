@@ -9,7 +9,7 @@ import { PassRightsDisplay } from "./PassRightsDisplay";
 
 type Selection = { kind: "square"; square: string } | { kind: "hand"; piece: PieceType };
 
-type HandInfo = {
+export type HandInfo = {
     owner: Player;
     hand: PositionState["hands"]["sente"] | PositionState["hands"]["gote"];
     isActive: boolean;

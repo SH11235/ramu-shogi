@@ -78,6 +78,28 @@ export const DEFAULT_ANALYSIS_SETTINGS: AnalysisSettings = {
     multiPv: 1,
 };
 
+export interface AnalysisSnapshotEntryDraft {
+    ply: number;
+    evalCp: number | null;
+    evalMate: number | null;
+    depth: number | null;
+    pv: string[] | null;
+    multiPv: Array<{
+        multipv: number;
+        evalCp?: number;
+        evalMate?: number;
+        depth?: number;
+        pv?: string[];
+    }> | null;
+}
+
+export interface AnalysisSnapshotDraft {
+    startSfen: string;
+    lineMoves: string[];
+    analysisSettings: AnalysisSettings;
+    entries: AnalysisSnapshotEntryDraft[];
+}
+
 /**
  * パス権設定
  */

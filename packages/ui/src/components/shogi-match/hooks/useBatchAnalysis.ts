@@ -50,6 +50,7 @@ interface UseBatchAnalysisProps {
         ply: number;
         timeMs: number;
         depth: number;
+        multiPv?: number;
     }) => Promise<void>;
     /** 解析中フラグ */
     isAnalyzing: boolean;
@@ -75,6 +76,8 @@ interface UseBatchAnalysisReturn {
     handleEvalUpdate: (ply: number, event: EngineInfoEvent) => void;
     /** 特定の手数の局面を解析する */
     handleAnalyzePly: (ply: number) => Promise<void>;
+    /** AIヒント用に現在局面を解析する（最大3候補を優先） */
+    handleAnalyzeHintPly: (ply: number) => Promise<void>;
     /** 分岐内のノードを解析する */
     handleAnalyzeNode: (nodeId: string) => Promise<void>;
     /** 一括解析を開始する（本譜のみ） */
@@ -131,8 +134,7 @@ export function useBatchAnalysis({
         }
     };
 
-    // 特定の手数の局面を解析するコールバック（オンデマンド解析用）
-    const handleAnalyzePly = async (ply: number) => {
+    const analyzePlyWithSettings = async (ply: number, options?: { multiPv?: number }) => {
         // NNUE の存在確認（未ダウンロードの場合はエラー）
         try {
             await resolveNnue(analysisNnueSelection);
@@ -158,13 +160,21 @@ export function useBatchAnalysis({
                 sfen: startSfen,
                 moves: movesForPly,
                 ply,
-                timeMs: 3000, // 3秒間解析
-                depth: 20, // 最大深さ20
+                timeMs: analysisSettings.batchAnalysisTimeMs,
+                depth: analysisSettings.batchAnalysisDepth,
+                multiPv: options?.multiPv ?? analysisSettings.multiPv,
             });
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             setAnalyzingState({ type: "error", ply, message: errorMessage });
         }
+    };
+
+    // 特定の手数の局面を解析するコールバック（オンデマンド解析用）
+    const handleAnalyzePly = analyzePlyWithSettings;
+
+    const handleAnalyzeHintPly = async (ply: number) => {
+        await analyzePlyWithSettings(ply, { multiPv: Math.max(3, analysisSettings.multiPv) });
     };
 
     // 分岐内のノードを解析するコールバック
@@ -202,8 +212,9 @@ export function useBatchAnalysis({
                 sfen: startSfen,
                 moves: movesForNode,
                 ply: node.ply,
-                timeMs: 3000,
-                depth: 20,
+                timeMs: analysisSettings.batchAnalysisTimeMs,
+                depth: analysisSettings.batchAnalysisDepth,
+                multiPv: analysisSettings.multiPv,
             });
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
@@ -354,6 +365,7 @@ export function useBatchAnalysis({
         analyzingState,
         handleEvalUpdate,
         handleAnalyzePly,
+        handleAnalyzeHintPly,
         handleAnalyzeNode,
         handleStartBatchAnalysis,
         handleStartTreeBatchAnalysis,

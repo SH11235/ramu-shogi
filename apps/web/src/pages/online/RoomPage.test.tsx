@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // @shogi/engine-wasm のモック（useOnlineAnalysis が利用するため）
@@ -16,7 +17,9 @@ vi.mock("@shogi/engine-wasm", () => ({
 // @tanstack/react-router のモック
 const mockNavigate = vi.fn();
 vi.mock("@tanstack/react-router", () => ({
+    Link: ({ children }: { children: ReactNode }) => <a href="/">{children}</a>,
     useNavigate: () => mockNavigate,
+    useLocation: () => ({ pathname: "/online/test-room" }),
     useParams: () => ({ roomId: "test-room" }),
     // loader data は routeApi.useLoaderData() 経由で提供される
     getRouteApi: (_path: string) => ({
@@ -48,6 +51,13 @@ vi.mock("@shogi/match-client", async () => {
     };
 });
 
+vi.mock("../../hooks/useAuthSession", () => ({
+    useAuthSession: () => ({
+        session: null,
+    }),
+    syncProfileDisplayNameIfNeeded: vi.fn().mockResolvedValue(undefined),
+}));
+
 const ROOM_INFO = {
     roomId: "test-room",
     status: "waiting",
@@ -58,6 +68,7 @@ const ROOM_INFO = {
         timeControl: { type: "byoyomi", initialMs: 600_000, byoyomiMs: 30_000 },
         passRights: null,
         aiSupport: null,
+        takeback: false,
     },
 };
 
@@ -77,8 +88,8 @@ describe("RoomPage", () => {
     it("ルーム情報の読み込み後、参加フォームを表示する", async () => {
         render(<RoomPage />);
         await waitFor(() => {
-            expect(screen.getByText("対局ルーム")).toBeTruthy();
-            expect(screen.getByText("参加する")).toBeTruthy();
+            expect(screen.getByRole("heading", { name: "対局ルーム" })).toBeTruthy();
+            expect(screen.getByRole("heading", { name: "参加する" })).toBeTruthy();
         });
     });
 

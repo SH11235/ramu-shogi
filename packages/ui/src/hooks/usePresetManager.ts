@@ -60,6 +60,7 @@ export function usePresetManager(options: UsePresetManagerOptions = {}): UsePres
     const [downloadProgress, setDownloadProgress] = useState<NnueDownloadProgress | null>(null);
     const [error, setError] = useState<NnueError | null>(null);
     const [hasFetchedPresets, setHasFetchedPresets] = useState(false);
+    const [manager, setManager] = useState<PresetManager | null>(null);
 
     const hasLoggedConfigRef = useRef(false);
     const hasLoggedErrorRef = useRef(false);
@@ -76,15 +77,14 @@ export function usePresetManager(options: UsePresetManagerOptions = {}): UsePres
         });
     }, [isConfigured, manifestUrl, storage]);
 
-    // PresetManager インスタンスを作成
-    const manager: PresetManager | null = (() => {
-        if (!manifestUrl || !storage) return null;
-        return createPresetManager({
-            manifestUrl,
-            storage,
-            onProgress: setDownloadProgress,
-        });
-    })();
+    useEffect(() => {
+        if (!manifestUrl || !storage) {
+            setManager(null);
+            return;
+        }
+
+        setManager(createPresetManager({ manifestUrl, storage, onProgress: setDownloadProgress }));
+    }, [manifestUrl, storage]);
 
     // プリセット一覧を取得
     const refresh = async () => {

@@ -7,6 +7,8 @@
         { "path": "./packages/engine-client" },
         { "path": "./packages/engine-wasm" },
         { "path": "./packages/engine-tauri" },
+        { "path": "./packages/match-protocol" },
+        { "path": "./packages/api-contract" },
         { "path": "./apps/web" },
         { "path": "./apps/desktop" }
     ]

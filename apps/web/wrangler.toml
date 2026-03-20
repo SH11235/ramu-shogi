@@ -6,11 +6,18 @@ compatibility_date = "2026-01-20"
 main = "./worker/index.ts"
 # custom_domains = ["ramu-shogi.sh11235.com"]
 
+# /api/* を backend Worker にプロキシ（Service Binding）
+[[services]]
+binding = "BACKEND"
+service = "ramu-shogi-backend"
+
 [assets]
 directory = "./dist"
 binding = "ASSETS"
 # SPA用設定: 404時にindex.htmlを返す
 not_found_handling = "single-page-application"
+# /api/* など HTML ナビゲーションでも user worker を先に通す
+run_worker_first = true
 
 [[r2_buckets]]
 binding = "NNUE_BUCKET"
@@ -38,9 +45,19 @@ period = 60
 
 [env.stg]
 name = "ramu-shogi-stg"
+[env.stg.vars]
 # custom_domains = ["ramu-shogi-stg.sh11235.workers.dev"]
-# staging用の環境変数/Binding/DB等を分ける
-# vars = { ... }
+
+[env.stg.assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = true
+
+# staging用: backend stg Worker にプロキシ
+[[env.stg.services]]
+binding = "BACKEND"
+service = "ramu-shogi-backend-stg"
 
 [[env.stg.r2_buckets]]
 binding = "NNUE_BUCKET"
@@ -53,3 +70,12 @@ class_name = "RoomDO"
 [[env.stg.migrations]]
 tag = "v1"
 new_sqlite_classes = ["RoomDO"]
+
+[[env.stg.unsafe.bindings]]
+name = "ROOM_RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+
+[env.stg.unsafe.bindings.simple]
+limit = 10
+period = 60

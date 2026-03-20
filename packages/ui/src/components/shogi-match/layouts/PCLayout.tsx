@@ -17,7 +17,7 @@ import type {
     EngineErrorDetails,
 } from "@shogi/app-controller";
 import type { Player } from "@shogi/app-core";
-import type { Dispatch, ReactElement, SetStateAction } from "react";
+import type { Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../dialog";
 import { Switch } from "../../switch";
 import { EngineLogsPanel } from "../components/EngineLogsPanel";
@@ -75,6 +75,10 @@ interface PCLayoutProps {
     isPassRightsSettingsOpen: boolean;
     onPassRightsSettingsOpenChange: (open: boolean) => void;
     handlePassRightsSettingsChange: (settings: PassRightsSettings) => void;
+    /** 棋譜検討モード: 対局設定サイドバーを非表示にする */
+    reviewMode?: boolean;
+    /** 棋譜検討モード時に左サイドバー位置に表示するコンテンツ */
+    reviewLeftContent?: ReactNode;
 }
 
 /**
@@ -100,6 +104,8 @@ export function PCLayout({
     isPassRightsSettingsOpen,
     onPassRightsSettingsOpenChange,
     handlePassRightsSettingsChange,
+    reviewMode,
+    reviewLeftContent,
 }: PCLayoutProps): ReactElement {
     // Context から状態を取得
     const matchSettings = useMatchSettings();
@@ -112,11 +118,17 @@ export function PCLayout({
     const { displaySettings: navDisplaySettings } = navigation;
     return (
         <section className={matchLayoutClasses}>
-            <div className="relative min-h-[calc(100dvh-1rem)] min-w-[1400px] w-full overflow-x-auto">
-                {/* 左サイドバー（絶対配置） */}
-                <div className="absolute left-4 top-4">
-                    <LeftSidebar />
-                </div>
+            <div className="relative min-h-[calc(100dvh-1rem)] min-w-[1400px] overflow-x-auto">
+                {/* 左サイドバー（絶対配置）: 検討モードでは非表示 */}
+                {!reviewMode && (
+                    <div className="absolute left-4 top-4">
+                        <LeftSidebar />
+                    </div>
+                )}
+                {/* 検討モード時の左コンテンツ（スナップショットUI等） */}
+                {reviewMode && reviewLeftContent && (
+                    <div className="absolute left-4 top-4 w-[220px]">{reviewLeftContent}</div>
+                )}
 
                 {/* 将棋盤エリア（画面中央に固定） */}
                 <div className="flex min-h-[calc(100dvh-1rem)] items-start justify-center p-4">

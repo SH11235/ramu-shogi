@@ -1,3 +1,6 @@
+import type { ApiErrorResponse, CreateRoomRequest, CreateRoomResponse } from "@shogi/api-contract";
+import type { RoomSettings } from "@shogi/match-protocol";
+
 // REST API: POST /api/rooms, GET /api/rooms/:roomId
 
 // Cloudflare Workers Rate Limiting API の型定義
@@ -13,37 +16,10 @@ export interface Env {
     ROOM_RATE_LIMITER?: RateLimiter;
 }
 
-// ─── バリデーション ──────────────────────────────────────────────────────
-
-interface TimeControlSettings {
-    type: "byoyomi" | "fischer";
-    initialMs: number;
-    byoyomiMs?: number;
-    fischerIncrementMs?: number;
-}
-
-interface PassRightsConfig {
-    initialCount: number;
-}
-
-interface AiSupportPlayerSettings {
-    mode: "unlimited" | "limited";
-    limitCount: number | null;
-}
-
-interface AiSupportSettings {
-    b: AiSupportPlayerSettings;
-    w: AiSupportPlayerSettings;
-    searchDepth: number | null;
-    searchTimeMs: number | null;
-}
-
-export interface RoomSettings {
-    startSfen: string;
-    timeControl: TimeControlSettings;
-    passRights: PassRightsConfig | null;
-    aiSupport: AiSupportSettings | null;
-}
+type ValidationError = { error: string };
+type TimeControlSettings = RoomSettings["timeControl"];
+type PassRightsConfig = NonNullable<RoomSettings["passRights"]>;
+type AiSupportSettings = NonNullable<RoomSettings["aiSupport"]>;
 
 const HANDICAP_SFENS = new Set(["handicap:bishop", "handicap:rook", "handicap:rook-bishop"]);
 
@@ -81,7 +57,7 @@ function validateTimeControl(tc: unknown): tc is TimeControlSettings {
     return true;
 }
 
-function validateSettings(settings: unknown): RoomSettings | { error: string } {
+function validateSettings(settings: unknown): RoomSettings | ValidationError {
     if (!settings || typeof settings !== "object") {
         return { error: "settings is required" };
     }
@@ -112,6 +88,17 @@ function validateSettings(settings: unknown): RoomSettings | { error: string } {
     // aiSupport（省略可）
     if (s.aiSupport !== null && s.aiSupport !== undefined) {
         const ai = s.aiSupport as Record<string, unknown>;
+        // searchTimeMs: 1000〜10000ms
+        if (
+            ai.searchTimeMs !== null &&
+            ai.searchTimeMs !== undefined &&
+            (typeof ai.searchTimeMs !== "number" ||
+                !Number.isInteger(ai.searchTimeMs) ||
+                ai.searchTimeMs < 1000 ||
+                ai.searchTimeMs > 10000)
+        ) {
+            return { error: "Invalid aiSupport.searchTimeMs: must be between 1000 and 10000" };
+        }
         for (const seat of ["b", "w"] as const) {
             const ps = ai[seat] as Record<string, unknown> | undefined;
             if (!ps || (ps.mode !== "unlimited" && ps.mode !== "limited")) {
@@ -120,7 +107,7 @@ function validateSettings(settings: unknown): RoomSettings | { error: string } {
             if (
                 ps.mode === "limited" &&
                 (typeof ps.limitCount !== "number" ||
-                    ps.limitCount < 1 ||
+                    ps.limitCount < 0 ||
                     !Number.isInteger(ps.limitCount))
             ) {
                 return { error: `Invalid aiSupport.${seat}.limitCount` };
@@ -133,6 +120,7 @@ function validateSettings(settings: unknown): RoomSettings | { error: string } {
         timeControl: s.timeControl as TimeControlSettings,
         passRights: (s.passRights as PassRightsConfig) ?? null,
         aiSupport: (s.aiSupport as AiSupportSettings) ?? null,
+        takeback: s.takeback === true,
     };
 }
 
@@ -150,7 +138,8 @@ function generateRoomId(): string {
 // ─── ヘルパー ────────────────────────────────────────────────────────────
 
 function apiErrorResponse(status: number, error: string, message?: string): Response {
-    return new Response(JSON.stringify({ error, ...(message ? { message } : {}) }), {
+    const body: ApiErrorResponse = { error, ...(message ? { message } : {}) };
+    return new Response(JSON.stringify(body), {
         status,
         headers: { "Content-Type": "application/json" },
     });
@@ -189,7 +178,8 @@ async function handleCreateRoom(request: Request, env: Env): Promise<Response> {
         return apiErrorResponse(400, "INVALID_REQUEST", "Invalid JSON body");
     }
 
-    const settingsResult = validateSettings((body as Record<string, unknown>)?.settings);
+    const requestBody = body as Partial<CreateRoomRequest>;
+    const settingsResult = validateSettings(requestBody.settings);
     if ("error" in settingsResult) {
         return apiErrorResponse(400, "INVALID_SETTINGS", settingsResult.error);
     }
@@ -211,8 +201,9 @@ async function handleCreateRoom(request: Request, env: Env): Promise<Response> {
 
     const origin = new URL(request.url).origin;
     const shareUrl = `${origin}/online/${roomId}`;
+    const responseBody: CreateRoomResponse = { roomId, shareUrl };
 
-    return jsonResponse({ roomId, shareUrl });
+    return jsonResponse(responseBody);
 }
 
 /**
@@ -261,5 +252,6 @@ export async function handleApiRequest(
         return handleGetRoom(roomGetMatch[1], request, env);
     }
 
-    return apiErrorResponse(404, "NOT_FOUND", "API endpoint not found");
+    // /api/rooms/* 以外は null を返してプロキシに委譲
+    return null;
 }

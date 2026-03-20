@@ -8,7 +8,14 @@
 // Hooks
 // ============================================================
 
+export {
+    dispatchLocalStorageSyncEvent,
+    LOCAL_STORAGE_SYNC_EVENT,
+} from "./components/shogi-match/hooks/useLocalStorage";
 export { useDevMode } from "./hooks/useDevMode";
+export { useNnueStorage } from "./hooks/useNnueStorage";
+export type { UseRoomConnectionOptions, UseRoomConnectionReturn } from "./hooks/useRoomConnection";
+export { useRoomConnection } from "./hooks/useRoomConnection";
 // ============================================================
 // Components
 // ============================================================
@@ -39,15 +46,19 @@ export { boardToGrid } from "./components/shogi-match/utils/positionUtils";
 // progress
 // shogi-board
 
+export type { RemoteNnueFile, RemoteNnueManager } from "./components/nnue/types";
 export type { AnalysisMoveResult, OnlineAnalysis } from "./components/online-game-view";
-
 // online-game-view
 export { OnlineGameView } from "./components/online-game-view";
 // shogi-match
 export { ShogiMatch } from "./components/shogi-match";
 
 // shogi-match/types
-export type { EngineOption } from "./components/shogi-match/types";
+export type {
+    AnalysisSettings,
+    AnalysisSnapshotDraft,
+    EngineOption,
+} from "./components/shogi-match/types";
 // spinner
 // tooltip
 

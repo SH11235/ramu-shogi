@@ -10,6 +10,7 @@ import type {
     PositionState,
     PresetWithStatus,
 } from "@shogi/app-core";
+import type { RemoteNnueManager } from "../../nnue/types";
 import type { ShogiBoardCell } from "../../shogi-board";
 import type { SelectionState } from "../contexts/MatchStateContext.types";
 import type { ClockSettings, TickState } from "../hooks/useClockManager";
@@ -113,6 +114,7 @@ export interface DialogStateProps {
     clearNnueManagerOpenReason: () => void;
     manifestUrl?: string;
     onRequestNnueFilePath?: () => Promise<string | null>;
+    remoteNnueManager?: RemoteNnueManager;
     selectedMoveDetail: {
         move: import("../utils/kifFormat").KifMove;
         position: PositionState;
@@ -140,6 +142,7 @@ export interface AnalysisProps {
     analyzingState: import("../types").AnalyzingState;
     batchAnalysis: import("../contexts/types").BatchAnalysisState | null;
     handleAnalyzePly: (ply: number) => void;
+    handleAnalyzeHintPly: (ply: number) => void;
     handleStartBatchAnalysis: () => void;
     handleCancelBatchAnalysis: () => void;
     handleAnalyzeNode: (nodeId: string) => void;
@@ -196,6 +199,7 @@ export interface BoardHandlersProps {
     handleSquareSelect: (sq: string, shiftKey?: boolean) => Promise<void>;
     handlePromotionChoice: (promote: boolean) => void;
     handleHandSelect: (piece: import("@shogi/app-core").PieceType) => void;
+    applyUsiMove: (usiMove: string) => Promise<boolean>;
     handleHandPiecePointerDown: (
         owner: import("@shogi/app-core").Player,
         pieceType: import("@shogi/app-core").PieceType,
@@ -268,6 +272,10 @@ export interface PCSpecificProps {
     onDisplaySettingsOpenChange: (open: boolean) => void;
     isPassRightsSettingsOpen: boolean;
     onPassRightsSettingsOpenChange: (open: boolean) => void;
+    /** 棋譜検討モード: 対局設定サイドバーを非表示にする */
+    reviewMode?: boolean;
+    /** 棋譜検討モード時に左サイドバー位置に表示するコンテンツ */
+    reviewLeftContent?: import("react").ReactNode;
 }
 
 /**

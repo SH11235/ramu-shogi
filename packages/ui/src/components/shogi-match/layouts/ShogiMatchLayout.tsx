@@ -131,6 +131,7 @@ export function ShogiMatchLayout({
         clearNnueManagerOpenReason,
         manifestUrl,
         onRequestNnueFilePath,
+        remoteNnueManager,
         selectedMoveDetail,
         setSelectedMoveDetailPly,
         isAboutOpen,
@@ -149,6 +150,7 @@ export function ShogiMatchLayout({
         analyzingState,
         batchAnalysis,
         handleAnalyzePly,
+        handleAnalyzeHintPly,
         handleStartBatchAnalysis,
         handleCancelBatchAnalysis,
         handleAnalyzeNode,
@@ -188,6 +190,7 @@ export function ShogiMatchLayout({
         handleSquareSelect,
         handlePromotionChoice,
         handleHandSelect,
+        applyUsiMove,
         handleHandPiecePointerDown,
         handlePiecePointerDown,
         handlePieceTogglePromote,
@@ -229,6 +232,8 @@ export function ShogiMatchLayout({
         onDisplaySettingsOpenChange,
         isPassRightsSettingsOpen,
         onPassRightsSettingsOpenChange,
+        reviewMode,
+        reviewLeftContent,
     } = pcSpecificProps;
 
     // グループ化されたpropsを展開: Mobile専用
@@ -279,6 +284,7 @@ export function ShogiMatchLayout({
                 }}
                 manifestUrl={manifestUrl}
                 onRequestFilePath={onRequestNnueFilePath}
+                remoteNnueManager={remoteNnueManager}
                 openReason={nnueManagerOpenReason ?? undefined}
                 onClearOpenReason={clearNnueManagerOpenReason}
                 isMatchActive={isMatchRunning || isPaused}
@@ -341,88 +347,109 @@ export function ShogiMatchLayout({
                     onOpenDisplaySettings={() => setIsDisplaySettingsOpen(true)}
                     onOpenPassRightsSettings={() => setIsPassRightsSettingsOpen(true)}
                 >
-                    <MatchStateProvider
-                        position={position}
-                        clocks={clocks}
-                        grid={grid}
-                        isMatchRunning={isMatchRunning}
-                        isPaused={isPaused}
-                        isEditMode={isEditMode}
-                        gameMode={gameMode}
-                        message={message}
-                        selection={selection}
-                        promotionSelection={promotionSelection}
-                        lastMove={lastMove}
-                        flipBoard={flipBoard}
-                        onFlipBoardChange={onFlipBoardChange}
-                        displaySettings={displaySettings}
-                        passRightsSettings={passRightsSettings}
-                        sides={sides}
-                        moves={moves}
-                        editFromSquare={editFromSquare}
-                        hideEmptyHandPieces={hideEmptyHandPieces}
-                        getHandInfo={getHandInfo}
-                        handleSquareSelect={handleSquareSelect}
-                        handlePromotionChoice={handlePromotionChoice}
-                        handleHandSelect={handleHandSelect}
-                        handleHandPiecePointerDown={handleHandPiecePointerDown}
-                        handlePiecePointerDown={handlePiecePointerDown}
-                        handlePieceTogglePromote={handlePieceTogglePromote}
-                        handleIncrementHand={handleIncrementHand}
-                        handleDecrementHand={handleDecrementHand}
-                        handleResetToStartpos={handleResetToStartpos}
-                        pauseAutoPlay={pauseAutoPlay}
-                        resumeAutoPlay={resumeAutoPlay}
-                        handleStartReview={handleStartReview}
-                        handleEnterEditMode={handleEnterEditMode}
-                        enterEditModeFromPaused={enterEditModeFromPaused}
-                        handleResign={handleResign}
-                        handleUndo={handleUndo}
-                        onOpenSettings={() => setIsSettingsModalOpen(true)}
-                        shouldRenderPassButton={shouldRenderPassButton}
-                        canMakePassMove={canMakePassMove}
-                        passButtonDisabledReason={passButtonDisabledReason}
-                        handlePassMove={handlePassMove}
-                        shouldShowPassConfirm={shouldShowPassConfirm}
-                        isDraggingPiece={isDraggingPiece}
-                        boardSectionRef={boardSectionRef}
+                    <AnalysisProvider
+                        analysisSettings={analysisSettings}
+                        onAnalysisSettingsChange={setAnalysisSettings}
+                        analysisNnueSelection={analysisNnueSelection}
+                        onAnalysisNnueSelectionChange={setAnalysisNnueSelection}
+                        nnueList={nnueList}
+                        isNnueListLoading={isNnueListLoading}
+                        presetConfigs={presetConfigs}
+                        isAnalyzing={isAnalyzing}
+                        analyzingState={analyzingState}
+                        batchAnalysis={batchAnalysis}
+                        handleAnalyzePly={handleAnalyzePly}
+                        handleAnalyzeHintPly={handleAnalyzeHintPly}
+                        handleStartBatchAnalysis={handleStartBatchAnalysis}
+                        handleCancelBatchAnalysis={handleCancelBatchAnalysis}
+                        handleAnalyzeNode={handleAnalyzeNode}
+                        handleAnalyzeBranch={handleAnalyzeBranch}
+                        handleStartTreeBatchAnalysis={handleStartTreeBatchAnalysis}
                     >
-                        <NavigationProvider
-                            navigationState={navigationState}
-                            navigationHandlers={navigationHandlers}
-                            kifMoves={kifMoves}
-                            evalHistory={evalHistory}
-                            displayEvalHistory={displayEvalHistory}
-                            positionHistory={positionHistory}
-                            kifuTree={kifuTree}
-                            selectedBranchNodeId={selectedBranchNodeId}
-                            onSelectedBranchChange={setSelectedBranchNodeId}
-                            branchMarkers={branchMarkers}
-                            analysisMarkers={analysisMarkers}
-                            lastAddedBranchInfo={lastAddedBranchInfo}
-                            onLastAddedBranchHandled={() => setLastAddedBranchInfo(null)}
-                            handleAddPvAsBranch={handleAddPvAsBranch}
-                            handlePreviewPv={handlePreviewPv}
-                            kifuViewMode={kifuViewMode}
-                            onViewModeChange={setKifuViewMode}
-                            displaySettings={displaySettings}
-                            onDisplaySettingsChange={setDisplaySettings}
-                            handlePlySelect={handlePlySelect}
-                            handleCopyKif={handleCopyKif}
-                            handleMoveDetailSelect={handleMoveDetailSelect}
+                        <MatchStateProvider
+                            position={position}
+                            clocks={clocks}
+                            grid={grid}
                             isMatchRunning={isMatchRunning}
+                            isPaused={isPaused}
+                            isEditMode={isEditMode}
+                            gameMode={gameMode}
+                            message={message}
+                            selection={selection}
+                            promotionSelection={promotionSelection}
+                            lastMove={lastMove}
+                            flipBoard={flipBoard}
+                            onFlipBoardChange={onFlipBoardChange}
+                            displaySettings={displaySettings}
+                            passRightsSettings={passRightsSettings}
+                            sides={sides}
+                            moves={moves}
+                            editFromSquare={editFromSquare}
+                            hideEmptyHandPieces={hideEmptyHandPieces}
+                            getHandInfo={getHandInfo}
+                            handleSquareSelect={handleSquareSelect}
+                            handlePromotionChoice={handlePromotionChoice}
+                            handleHandSelect={handleHandSelect}
+                            applyUsiMove={applyUsiMove}
+                            handleHandPiecePointerDown={handleHandPiecePointerDown}
+                            handlePiecePointerDown={handlePiecePointerDown}
+                            handlePieceTogglePromote={handlePieceTogglePromote}
+                            handleIncrementHand={handleIncrementHand}
+                            handleDecrementHand={handleDecrementHand}
+                            handleResetToStartpos={handleResetToStartpos}
+                            pauseAutoPlay={pauseAutoPlay}
+                            resumeAutoPlay={resumeAutoPlay}
+                            handleStartReview={handleStartReview}
+                            handleEnterEditMode={handleEnterEditMode}
+                            enterEditModeFromPaused={enterEditModeFromPaused}
+                            handleResign={handleResign}
+                            handleUndo={handleUndo}
+                            onOpenSettings={() => setIsSettingsModalOpen(true)}
+                            shouldRenderPassButton={shouldRenderPassButton}
+                            canMakePassMove={canMakePassMove}
+                            passButtonDisabledReason={passButtonDisabledReason}
+                            handlePassMove={handlePassMove}
+                            shouldShowPassConfirm={shouldShowPassConfirm}
+                            isDraggingPiece={isDraggingPiece}
+                            boardSectionRef={boardSectionRef}
                         >
-                            <MobileLayout
-                                candidateNote={candidateNote}
-                                isReviewMode={isReviewMode}
-                                onOpenAbout={onOpenAbout}
-                                onImportSfen={onImportSfen}
-                                onImportKif={onImportKif}
-                                positionReady={positionReady}
-                                onDisplaySettingsChange={onDisplaySettingsChange}
-                            />
-                        </NavigationProvider>
-                    </MatchStateProvider>
+                            <NavigationProvider
+                                navigationState={navigationState}
+                                navigationHandlers={navigationHandlers}
+                                kifMoves={kifMoves}
+                                evalHistory={evalHistory}
+                                displayEvalHistory={displayEvalHistory}
+                                positionHistory={positionHistory}
+                                kifuTree={kifuTree}
+                                selectedBranchNodeId={selectedBranchNodeId}
+                                onSelectedBranchChange={setSelectedBranchNodeId}
+                                branchMarkers={branchMarkers}
+                                analysisMarkers={analysisMarkers}
+                                lastAddedBranchInfo={lastAddedBranchInfo}
+                                onLastAddedBranchHandled={() => setLastAddedBranchInfo(null)}
+                                handleAddPvAsBranch={handleAddPvAsBranch}
+                                handlePreviewPv={handlePreviewPv}
+                                kifuViewMode={kifuViewMode}
+                                onViewModeChange={setKifuViewMode}
+                                displaySettings={displaySettings}
+                                onDisplaySettingsChange={setDisplaySettings}
+                                handlePlySelect={handlePlySelect}
+                                handleCopyKif={handleCopyKif}
+                                handleMoveDetailSelect={handleMoveDetailSelect}
+                                isMatchRunning={isMatchRunning}
+                            >
+                                <MobileLayout
+                                    candidateNote={candidateNote}
+                                    isReviewMode={isReviewMode}
+                                    onOpenAbout={onOpenAbout}
+                                    onImportSfen={onImportSfen}
+                                    onImportKif={onImportKif}
+                                    positionReady={positionReady}
+                                    onDisplaySettingsChange={onDisplaySettingsChange}
+                                />
+                            </NavigationProvider>
+                        </MatchStateProvider>
+                    </AnalysisProvider>
                 </MatchSettingsProvider>
             ) : (
                 <MatchSettingsProvider
@@ -459,6 +486,7 @@ export function ShogiMatchLayout({
                         analyzingState={analyzingState}
                         batchAnalysis={batchAnalysis}
                         handleAnalyzePly={handleAnalyzePly}
+                        handleAnalyzeHintPly={handleAnalyzeHintPly}
                         handleStartBatchAnalysis={handleStartBatchAnalysis}
                         handleCancelBatchAnalysis={handleCancelBatchAnalysis}
                         handleAnalyzeNode={handleAnalyzeNode}
@@ -489,6 +517,7 @@ export function ShogiMatchLayout({
                             handleSquareSelect={handleSquareSelect}
                             handlePromotionChoice={handlePromotionChoice}
                             handleHandSelect={handleHandSelect}
+                            applyUsiMove={applyUsiMove}
                             handleHandPiecePointerDown={handleHandPiecePointerDown}
                             handlePiecePointerDown={handlePiecePointerDown}
                             handlePieceTogglePromote={handlePieceTogglePromote}
@@ -556,6 +585,8 @@ export function ShogiMatchLayout({
                                     isPassRightsSettingsOpen={isPassRightsSettingsOpen}
                                     onPassRightsSettingsOpenChange={onPassRightsSettingsOpenChange}
                                     handlePassRightsSettingsChange={handlePassRightsSettingsChange}
+                                    reviewMode={reviewMode}
+                                    reviewLeftContent={reviewLeftContent}
                                 />
                             </NavigationProvider>
                         </MatchStateProvider>

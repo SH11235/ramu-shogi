@@ -24,6 +24,7 @@ export function createRoomClient(
     let ws: WebSocket | null = null;
     let msgId = 0;
     let lastKnownEventId = 0;
+    let pingIntervalId: ReturnType<typeof setInterval> | null = null;
     const handlers = new Set<(msg: ServerMessage) => void>();
 
     // wsUrl から roomId を抽出（sessionStorage のキー生成に使用）
@@ -79,19 +80,36 @@ export function createRoomClient(
         ws = wsFactory(options.wsUrl);
 
         ws.addEventListener("open", () => {
+            const isReconnect = status === "reconnecting";
             // 再接続の場合は resume を試みる
-            if (status === "reconnecting" && roomId) {
+            let didResume = false;
+            if (isReconnect && roomId) {
                 const token = getStoredResumeToken(roomId);
                 if (token) {
                     status = "connected";
                     reconnectManager.reset();
                     send("resume", { resumeToken: token, lastEventId: lastKnownEventId });
                     options.onReconnect?.();
-                    return;
+                    didResume = true;
+                } else {
+                    status = "connected";
+                    reconnectManager.reset();
                 }
+            } else {
+                status = "connected";
+                reconnectManager.reset();
             }
-            status = "connected";
-            reconnectManager.reset();
+            // resumeToken がない再接続は新規接続として扱う（reconnect: false）
+            options.onOpen?.({ reconnect: didResume });
+            // 接続確立後、30秒ごとにpingを送ってサーバーのオフライン判定を防ぐ
+            // サーバーは lastSeenTs が 60秒以上更新されないとオフライン判定するため
+            if (pingIntervalId === null) {
+                pingIntervalId = setInterval(() => {
+                    if (status === "connected") {
+                        send("ping", { ts: Date.now() });
+                    }
+                }, 30_000);
+            }
         });
 
         ws.addEventListener("message", (event: MessageEvent) => {
@@ -106,6 +124,10 @@ export function createRoomClient(
 
         ws.addEventListener("close", () => {
             ws = null;
+            if (pingIntervalId !== null) {
+                clearInterval(pingIntervalId);
+                pingIntervalId = null;
+            }
             if (status !== "disconnected" && options.autoReconnect !== false) {
                 reconnectManager.schedule(connect);
             } else {
@@ -138,6 +160,10 @@ export function createRoomClient(
             send("resign", params);
         },
 
+        checkmate(params) {
+            send("checkmate", params);
+        },
+
         consumeAnalysis(params) {
             send("use_analysis", params);
         },
@@ -158,6 +184,18 @@ export function createRoomClient(
             send("ping", { ts: Date.now() });
         },
 
+        takebackRequest(params) {
+            send("takeback_request", params);
+        },
+
+        takebackResponse(params) {
+            send("takeback_response", params);
+        },
+
+        takebackCancel(params) {
+            send("takeback_cancel", params);
+        },
+
         subscribe(handler) {
             handlers.add(handler);
             return () => handlers.delete(handler);
@@ -166,6 +204,10 @@ export function createRoomClient(
         disconnect() {
             reconnectManager.cancel();
             status = "disconnected";
+            if (pingIntervalId !== null) {
+                clearInterval(pingIntervalId);
+                pingIntervalId = null;
+            }
             ws?.close();
             ws = null;
             handlers.clear();

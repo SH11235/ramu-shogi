@@ -40,6 +40,7 @@ type EditFieldAction =
     | { type: "CHANGE"; value: string }
     | { type: "START_SAVE" }
     | { type: "DONE_SAVE" }
+    | { type: "SAVE_FAILED" }
     | { type: "CANCEL"; value: string };
 
 function editFieldReducer(state: EditFieldState, action: EditFieldAction): EditFieldState {
@@ -52,6 +53,8 @@ function editFieldReducer(state: EditFieldState, action: EditFieldAction): EditF
             return { ...state, isSaving: true };
         case "DONE_SAVE":
             return { isEditing: false, value: state.value, isSaving: false };
+        case "SAVE_FAILED":
+            return { ...state, isSaving: false };
         case "CANCEL":
             return { isEditing: false, value: action.value, isSaving: false };
     }
@@ -153,9 +156,8 @@ export function NnueListItem({
             await onDisplayNameChange(trimmed);
             dispatchDisplayName({ type: "DONE_SAVE" });
         } catch {
-            // エラーは親コンポーネントで処理される
-        } finally {
-            dispatchDisplayName({ type: "DONE_SAVE" });
+            // エラーは親コンポーネントで処理される（編集モードは継続）
+            dispatchDisplayName({ type: "SAVE_FAILED" });
         }
     };
 
@@ -204,9 +206,8 @@ export function NnueListItem({
             await onFvScaleChange(newValue);
             dispatchFvScale({ type: "DONE_SAVE" });
         } catch {
-            // エラーは親コンポーネントで処理される
-        } finally {
-            dispatchFvScale({ type: "DONE_SAVE" });
+            // エラーは親コンポーネントで処理される（編集モードは継続）
+            dispatchFvScale({ type: "SAVE_FAILED" });
         }
     };
 

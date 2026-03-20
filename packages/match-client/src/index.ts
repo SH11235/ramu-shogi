@@ -1,5 +1,3 @@
-export { createRoomClient } from "./client";
-export { getStoredResumeToken, removeStoredResumeToken, storeResumeToken } from "./reconnect";
 export type {
     AiSupportPlayerSettings,
     AiSupportSettings,
@@ -26,8 +24,6 @@ export type {
     PlayerPublicInfo,
     PongMessage,
     ResignEvent,
-    RoomClient,
-    RoomClientOptions,
     RoomEvent,
     RoomSettings,
     RoomStatus,
@@ -39,4 +35,18 @@ export type {
     SnapshotPayload,
     TimeControlSettings,
     TimeoutEvent,
+} from "@shogi/match-protocol";
+export { createRoomClient } from "./client";
+export {
+    getStoredResumeToken,
+    getStoredSeat,
+    removeStoredResumeToken,
+    removeStoredSeat,
+    storeResumeToken,
+    storeSeat,
+} from "./reconnect";
+export type {
+    RoomClient,
+    RoomClientOpenEvent,
+    RoomClientOptions,
 } from "./types";

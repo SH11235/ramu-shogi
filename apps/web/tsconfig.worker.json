@@ -1,19 +1,12 @@
 {
+    "extends": "../../tsconfig.base.json",
     "compilerOptions": {
         "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.worker.tsbuildinfo",
-        "target": "ES2022",
         "lib": ["ES2022"],
-        "module": "ESNext",
-        "moduleResolution": "bundler",
-        "verbatimModuleSyntax": true,
         "moduleDetection": "force",
         "types": ["@cloudflare/workers-types"],
         "noEmit": true,
-        "skipLibCheck": true,
-        "strict": true,
-        "noUnusedLocals": true,
-        "noUnusedParameters": true,
-        "noFallthroughCasesInSwitch": true
+        "jsx": "preserve"
     },
     "include": ["worker"],
     "exclude": ["worker/**/*.test.ts"]

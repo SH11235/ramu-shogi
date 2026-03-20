@@ -108,6 +108,45 @@ describe("createRoomClient", () => {
         client.disconnect();
     });
 
+    it("初回 open 時に onOpen を呼ぶ", () => {
+        const { factory, instances } = createMockWsFactory();
+        const onOpen = vi.fn();
+        const client = createRoomClient(
+            {
+                wsUrl: "ws://localhost/api/rooms/room1/ws",
+                onOpen,
+            },
+            factory as unknown as (url: string) => WebSocket,
+        );
+
+        instances[0].emitOpen();
+
+        expect(onOpen).toHaveBeenCalledWith({ reconnect: false });
+        client.disconnect();
+    });
+
+    it("再接続 open 時に onOpen を reconnect=true で呼ぶ", () => {
+        const { factory, instances } = createMockWsFactory();
+        const onOpen = vi.fn();
+        const client = createRoomClient(
+            {
+                wsUrl: "ws://localhost/api/rooms/room1/ws",
+                autoReconnect: true,
+                onOpen,
+            },
+            factory as unknown as (url: string) => WebSocket,
+        );
+
+        instances[0].emitOpen();
+        instances[0].close();
+        vi.advanceTimersByTime(1000);
+        instances[1].emitOpen();
+
+        expect(onOpen).toHaveBeenNthCalledWith(1, { reconnect: false });
+        expect(onOpen).toHaveBeenNthCalledWith(2, { reconnect: true });
+        client.disconnect();
+    });
+
     it("send は clientMsgId を自動インクリメントして送信する", () => {
         const { factory, instances } = createMockWsFactory();
         const client = createRoomClient(

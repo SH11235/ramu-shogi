@@ -8,6 +8,9 @@
     "exports": {
         ".": "./src/index.ts"
     },
+    "dependencies": {
+        "@shogi/match-protocol": "workspace:*"
+    },
     "scripts": {
         "build": "tsc -b tsconfig.build.json",
         "typecheck": "tsc --noEmit",

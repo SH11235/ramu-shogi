@@ -1,91 +1,52 @@
+import type { GetRoomResponse } from "@shogi/api-contract";
+import type {
+    ClockState,
+    ErrorCode,
+    GameResult,
+    RoomEvent,
+    RoomSettings,
+    RoomStatus,
+    Seat,
+    ServerMessage,
+    SnapshotPayload,
+} from "@shogi/match-protocol";
+
 // Durable Object: ルーム状態管理、WebSocket 接続管理
 
 // ─── 型定義 ──────────────────────────────────────────────────────────────
 
-type Seat = "b" | "w" | "s";
-type RoomStatus = "waiting" | "playing" | "finished";
-type GameEndReason =
-    | "resign"
-    | "checkmate"
-    | "timeout"
-    | "sennichite"
-    | "illegal_move"
-    | "disconnect";
-
 interface PlayerInfo {
     seat: "b" | "w";
     name: string;
+    userId: string | null;
     resumeTokenHash: string; // SHA-256(resumeToken) のみ保存（平文禁止）
     joinedAt: number;
     lastSeenTs: number;
     offlineSince: number | null; // null = オンライン, timestamp = オフライン開始時刻
 }
+type PassRightsState = NonNullable<SnapshotPayload["passRights"]>;
 
-interface TimeControlSettings {
-    type: "byoyomi" | "fischer";
-    initialMs: number;
-    byoyomiMs?: number;
-    fischerIncrementMs?: number;
-}
-
-interface PassRightsConfig {
-    initialCount: number;
-}
-
-interface AiSupportPlayerSettings {
-    mode: "unlimited" | "limited";
-    limitCount: number | null;
-}
-
-interface AiSupportSettings {
-    b: AiSupportPlayerSettings;
-    w: AiSupportPlayerSettings;
-    searchDepth: number | null;
-    searchTimeMs: number | null;
-}
-
-interface RoomSettings {
-    startSfen: string;
-    timeControl: TimeControlSettings;
-    passRights: PassRightsConfig | null;
-    aiSupport: AiSupportSettings | null;
-}
-
-interface ClockState {
-    b: { remainMs: number };
-    w: { remainMs: number };
-    running: "b" | "w" | null; // 現在時計が動いている側
-    lastTickTs: number; // 最後に時計を更新したサーバ時刻（ms）
-}
-
-interface PassRightsState {
-    b: number;
-    w: number;
-}
-
-interface GameResult {
-    winner: "b" | "w" | null;
-    reason: GameEndReason;
+interface MoveSnapshot {
+    sfen: string;
+    clock: ClockState;
+    passRights: PassRightsState | null;
 }
 
 interface GameState {
     sfen: string; // 現在の局面（SFEN）
     moves: string[]; // USI 形式の指し手履歴
+    moveSnapshots: MoveSnapshot[]; // moves[i] に対応するスナップショット（待った復元用）
     turn: "b" | "w";
     ply: number;
     clock: ClockState;
     passRights: PassRightsState | null;
+    pendingTakeback: { seat: "b" | "w"; ply: number; requestedAt: number } | null;
     analysisUsed: { b: number; w: number };
     status: "playing" | "finished";
     result: GameResult | null;
     sfenCounts: Record<string, number>; // 千日手検知用: 正規化SFEN → 出現回数
-}
-
-interface RoomEvent {
-    eventId: number;
-    kind: string;
-    serverTs: number;
-    [key: string]: unknown;
+    startedAt: number | null;
+    finishedAt: number | null;
 }
 
 interface RoomStorageState {
@@ -105,6 +66,7 @@ interface RoomStorageState {
 interface WsConnectionMeta {
     seat: Seat;
     name: string;
+    userId: string | null;
 }
 
 // ─── ヘルパー ──────────────────────────────────────────────────────────────
@@ -143,6 +105,16 @@ async function hashToken(token: string): Promise<string> {
         .join("");
 }
 
+/**
+ * 最後の指し手をした側の座席を返す。
+ * moves.length が奇数なら先手が最後に指した（先手が奇数手目を指す）。
+ */
+function determineLastMoveSeat(game: GameState): "b" | "w" | null {
+    if (game.moves.length === 0) return null;
+    // ply は 1 から始まり、先手が奇数手目、後手が偶数手目を指す
+    return game.moves.length % 2 === 1 ? "b" : "w";
+}
+
 /** 千日手判定用: SFEN から手数部分を除いた正規化文字列を返す */
 function normalizeSfen(sfen: string): string {
     // SFEN format: "<board> <turn> <hands> <movenum>"
@@ -174,7 +146,7 @@ function buildKifu(room: RoomStorageState): string {
     return lines.join("\n");
 }
 
-function sendWsMessage(ws: WebSocket, msg: unknown): void {
+function sendWsMessage(ws: WebSocket, msg: ServerMessage): void {
     try {
         ws.send(JSON.stringify(msg));
     } catch {
@@ -196,7 +168,7 @@ function jsonResponse(data: unknown, status = 200): Response {
     });
 }
 
-function sendWsError(ws: WebSocket, code: string, message: string, clientMsgId?: number): void {
+function sendWsError(ws: WebSocket, code: ErrorCode, message: string, clientMsgId?: number): void {
     sendWsMessage(ws, {
         v: 1,
         t: "error",
@@ -227,11 +199,18 @@ function getConnectedMetas(doState: DurableObjectState): Map<WebSocket, WsConnec
  * DurableObject はクラス必須のため class を使用。
  * 内部ロジックは関数型で実装する。
  */
+interface RoomDOEnv {
+    BACKEND?: Fetcher;
+    ROOM_DO_SECRET?: string;
+}
+
 export class RoomDO implements DurableObject {
     private readonly doState: DurableObjectState;
+    private readonly env: RoomDOEnv;
 
-    constructor(state: DurableObjectState, _env: unknown) {
+    constructor(state: DurableObjectState, env: unknown) {
         this.doState = state;
+        this.env = (env ?? {}) as RoomDOEnv;
     }
 
     async fetch(request: Request): Promise<Response> {
@@ -246,7 +225,7 @@ export class RoomDO implements DurableObject {
 
         // WebSocket アップグレード
         if (request.headers.get("Upgrade") === "websocket") {
-            return this.handleWebSocketUpgrade();
+            return this.handleWebSocketUpgrade(request);
         }
 
         // GET: ルーム情報（REST API から転送される）
@@ -323,6 +302,23 @@ export class RoomDO implements DurableObject {
             case "ping":
                 await this.handlePing(ws, msg.payload as { ts: number });
                 break;
+            case "takeback_request":
+                await this.handleTakebackRequest(
+                    ws,
+                    msg.clientMsgId,
+                    msg.payload as { eventId: number },
+                );
+                break;
+            case "takeback_response":
+                await this.handleTakebackResponse(
+                    ws,
+                    msg.clientMsgId,
+                    msg.payload as { eventId: number; accept: boolean },
+                );
+                break;
+            case "takeback_cancel":
+                await this.handleTakebackCancel(ws, msg.clientMsgId);
+                break;
             default:
                 // 未知のメッセージは無視（前方互換）
                 break;
@@ -372,7 +368,7 @@ export class RoomDO implements DurableObject {
             (m) => m.seat === "s",
         ).length;
 
-        return jsonResponse({
+        const responseBody: GetRoomResponse = {
             roomId: room.roomId,
             status: room.status,
             players: {
@@ -389,19 +385,43 @@ export class RoomDO implements DurableObject {
                 timeControl: room.settings.timeControl,
                 passRights: room.settings.passRights,
                 aiSupport: room.settings.aiSupport,
+                takeback: room.settings.takeback,
             },
-        });
+        };
+
+        return jsonResponse(responseBody);
     }
 
-    private handleWebSocketUpgrade(): Response {
+    private async handleWebSocketUpgrade(request: Request): Promise<Response> {
         const pair = new WebSocketPair();
         const [client, server] = Object.values(pair);
-        // attachment は join/resume 後に設定する
+        // Cookie からユーザーID を解決してサーバー側WebSocketに事前設定する
+        const userId = await this.resolveUserId(request);
+        // attachment は join/resume 後に設定するが、userId は接続メタとして先に保持
+        server.serializeAttachment({ seat: null, name: "", userId });
         this.doState.acceptWebSocket(server);
         return new Response(null, {
             status: 101,
             webSocket: client,
         });
+    }
+
+    /** Cookieからセッションを検証してユーザーIDを返す */
+    private async resolveUserId(request: Request): Promise<string | null> {
+        const backend = this.env.BACKEND;
+        if (!backend) return null;
+        const cookieHeader = request.headers.get("cookie");
+        if (!cookieHeader) return null;
+        try {
+            const resp = await backend.fetch("https://backend/api/auth/session", {
+                headers: { cookie: cookieHeader },
+            });
+            if (!resp.ok) return null;
+            const data = (await resp.json()) as { user?: { id?: string } | null };
+            return data?.user?.id ?? null;
+        } catch {
+            return null;
+        }
     }
 
     // ─── WebSocket メッセージハンドラ ────────────────────────────────────
@@ -441,6 +461,10 @@ export class RoomDO implements DurableObject {
         const now = Date.now();
         let resumeToken: string | undefined;
 
+        // 接続時にセットしたuserIdを引き継ぐ
+        const prevMeta = ws.deserializeAttachment() as { userId?: string | null } | null;
+        const userId = prevMeta?.userId ?? null;
+
         // プレイヤーの場合は PlayerInfo を登録し resumeToken を発行
         if (seat === "b" || seat === "w") {
             resumeToken = await generateResumeToken();
@@ -449,6 +473,7 @@ export class RoomDO implements DurableObject {
             room.players[seat] = {
                 seat,
                 name: trimmedName,
+                userId,
                 resumeTokenHash: tokenHash,
                 joinedAt: now,
                 lastSeenTs: now,
@@ -459,7 +484,7 @@ export class RoomDO implements DurableObject {
         }
 
         // WS attachment にメタデータを設定（hibernation 対応）
-        ws.serializeAttachment({ seat, name: trimmedName });
+        ws.serializeAttachment({ seat, name: trimmedName, userId });
 
         // joined メッセージを送信
         sendWsMessage(ws, {
@@ -530,9 +555,11 @@ export class RoomDO implements DurableObject {
         player.offlineSince = null;
         await this.doState.storage.put("room", room);
 
-        // 差分イベントを送信（件数が多い場合は snapshot）
+        // 差分イベントを送信（件数が多い場合・初回再接続(lastEventId=0)は snapshot）
+        // lastEventId=0 はページリロード等でクライアントが全状態を失った場合。
+        // この場合は個別イベントで再生するより snapshot を送るのが確実。
         const eventsToSend = room.events.filter((e) => e.eventId > lastEventId);
-        if (eventsToSend.length === 0 || eventsToSend.length > 20) {
+        if (lastEventId === 0 || eventsToSend.length === 0 || eventsToSend.length > 20) {
             await this.sendSnapshot(ws, room);
         } else {
             for (const event of eventsToSend) {
@@ -672,6 +699,18 @@ export class RoomDO implements DurableObject {
             game.passRights[seat] = Math.max(0, game.passRights[seat] - 1);
         }
 
+        // スナップショット: passRights消費後の状態を保存（待った復元用）
+        game.moveSnapshots.push({
+            sfen: payload.sfen,
+            clock: {
+                b: { remainMs: clock.b.remainMs },
+                w: { remainMs: clock.w.remainMs },
+                running: clock.running,
+                lastTickTs: clock.lastTickTs,
+            },
+            passRights: game.passRights ? { ...game.passRights } : null,
+        });
+
         // lastSeenTs を更新
         const movingPlayer = room.players[seat];
         if (movingPlayer) {
@@ -723,12 +762,15 @@ export class RoomDO implements DurableObject {
 
             game.status = "finished";
             game.result = result;
+            game.finishedAt = now;
             game.clock.running = null;
             room.status = "finished";
             room.events.push(sennichiteEvent, gameEndEvent);
             // ゲーム終了後は直近2件のみ保持してストレージを節約
             room.events = room.events.slice(-2);
 
+            const gameRecordIdSennichite = await this.persistGameRecord(room);
+            if (gameRecordIdSennichite) gameEndEvent.gameRecordId = gameRecordIdSennichite;
             await this.doState.storage.put("room", room);
             this.broadcastToAll({ v: 1, t: "event", payload: moveEvent });
             this.broadcastToAll({ v: 1, t: "event", payload: sennichiteEvent });
@@ -795,12 +837,15 @@ export class RoomDO implements DurableObject {
 
         game.status = "finished";
         game.result = result;
+        game.finishedAt = now;
         game.clock.running = null;
         room.status = "finished";
         room.events.push(resignEvent, gameEndEvent);
         // ゲーム終了後は直近2件のみ保持してストレージを節約
         room.events = room.events.slice(-2);
 
+        const gameRecordId = await this.persistGameRecord(room);
+        if (gameRecordId) gameEndEvent.gameRecordId = gameRecordId;
         await this.doState.storage.put("room", room);
         this.broadcastToAll({ v: 1, t: "event", payload: resignEvent });
         this.broadcastToAll({ v: 1, t: "event", payload: gameEndEvent });
@@ -937,6 +982,237 @@ export class RoomDO implements DurableObject {
         this.broadcastToAll({ v: 1, t: "event", payload: settingsUpdatedEvent });
     }
 
+    // ─── 待った ───────────────────────────────────────────────────────────
+
+    private async handleTakebackRequest(
+        ws: WebSocket,
+        clientMsgId: number,
+        _payload: { eventId: number },
+    ): Promise<void> {
+        const room = await this.doState.storage.get<RoomStorageState>("room");
+        if (!room) {
+            sendWsError(ws, "ROOM_NOT_FOUND", "Room not found", clientMsgId);
+            return;
+        }
+
+        const meta = ws.deserializeAttachment() as WsConnectionMeta | null;
+        if (!meta || meta.seat === "s") {
+            sendWsError(
+                ws,
+                "SPECTATOR_FORBIDDEN",
+                "Spectators cannot request takeback",
+                clientMsgId,
+            );
+            return;
+        }
+
+        const { seat } = meta;
+        const game = room.game;
+
+        if (!game || game.status !== "playing") {
+            sendWsError(ws, "ROOM_FINISHED", "Game is not playing", clientMsgId);
+            return;
+        }
+
+        if (!room.settings.takeback) {
+            sendWsError(
+                ws,
+                "TAKEBACK_DISABLED",
+                "Takeback is not enabled for this room",
+                clientMsgId,
+            );
+            return;
+        }
+
+        if (game.pendingTakeback) {
+            sendWsError(
+                ws,
+                "TAKEBACK_ALREADY_PENDING",
+                "A takeback request is already pending",
+                clientMsgId,
+            );
+            return;
+        }
+
+        const lastMoveSeat = determineLastMoveSeat(game);
+        if (lastMoveSeat !== seat) {
+            sendWsError(ws, "TAKEBACK_NO_MOVES", "You did not make the last move", clientMsgId);
+            return;
+        }
+
+        const now = Date.now();
+        game.pendingTakeback = { seat, ply: game.moves.length, requestedAt: now };
+
+        const eventId = ++room.latestEventId;
+        const event: RoomEvent = {
+            eventId,
+            kind: "takeback_requested",
+            seat,
+            ply: game.moves.length,
+            serverTs: now,
+        };
+        room.events.push(event);
+        await this.doState.storage.put("room", room);
+        this.broadcastToAll({ v: 1, t: "event", payload: event });
+        await this.setNextAlarm(room);
+    }
+
+    private async handleTakebackResponse(
+        ws: WebSocket,
+        clientMsgId: number,
+        payload: { eventId: number; accept: boolean },
+    ): Promise<void> {
+        const room = await this.doState.storage.get<RoomStorageState>("room");
+        if (!room) {
+            sendWsError(ws, "ROOM_NOT_FOUND", "Room not found", clientMsgId);
+            return;
+        }
+
+        const meta = ws.deserializeAttachment() as WsConnectionMeta | null;
+        if (!meta || meta.seat === "s") {
+            sendWsError(
+                ws,
+                "SPECTATOR_FORBIDDEN",
+                "Spectators cannot respond to takeback",
+                clientMsgId,
+            );
+            return;
+        }
+
+        const { seat } = meta;
+        const game = room.game;
+
+        if (!game || game.status !== "playing") {
+            sendWsError(ws, "ROOM_FINISHED", "Game is not playing", clientMsgId);
+            return;
+        }
+
+        if (!game.pendingTakeback) {
+            sendWsError(ws, "TAKEBACK_NOT_PENDING", "No takeback request is pending", clientMsgId);
+            return;
+        }
+
+        // 申請者本人は応答できない（相手のみ応答可）
+        if (game.pendingTakeback.seat === seat) {
+            sendWsError(
+                ws,
+                "TAKEBACK_NOT_PENDING",
+                "Cannot respond to your own takeback request",
+                clientMsgId,
+            );
+            return;
+        }
+
+        const now = Date.now();
+
+        if (!payload.accept) {
+            // 拒否
+            game.pendingTakeback = null;
+            const eventId = ++room.latestEventId;
+            const event: RoomEvent = { eventId, kind: "takeback_rejected", serverTs: now };
+            room.events.push(event);
+            await this.doState.storage.put("room", room);
+            this.broadcastToAll({ v: 1, t: "event", payload: event });
+            return;
+        }
+
+        // 承認: 1手巻き戻す
+        const pending = game.pendingTakeback;
+        const initialSfen = resolveSfen(room.settings.startSfen);
+
+        game.moves.pop();
+        game.moveSnapshots.pop();
+
+        const prevSnapshot = game.moveSnapshots.at(-1);
+        game.sfen = prevSnapshot?.sfen ?? initialSfen;
+        if (prevSnapshot) {
+            game.clock = {
+                ...prevSnapshot.clock,
+                running: pending.seat, // 申請者の手番に戻す
+                lastTickTs: now,
+            };
+            // passRights を巻き戻し前の状態に復元
+            game.passRights = prevSnapshot.passRights ? { ...prevSnapshot.passRights } : null;
+        } else {
+            // 最初の手を巻き戻す場合は初期クロック・passRightsを復元
+            game.clock = {
+                b: { remainMs: room.settings.timeControl.initialMs },
+                w: { remainMs: room.settings.timeControl.initialMs },
+                running: pending.seat,
+                lastTickTs: now,
+            };
+            game.passRights = room.settings.passRights
+                ? {
+                      b: room.settings.passRights.initialCount,
+                      w: room.settings.passRights.initialCount,
+                  }
+                : null;
+        }
+        game.turn = pending.seat;
+        game.ply = game.moves.length + 1;
+
+        // sfenCounts から巻き戻したSFENの出現回数を減算
+        const sfenKey = normalizeSfen(game.sfen);
+        if (game.sfenCounts[sfenKey] !== undefined && game.sfenCounts[sfenKey] > 0) {
+            game.sfenCounts[sfenKey]--;
+        }
+
+        game.pendingTakeback = null;
+
+        const eventId = ++room.latestEventId;
+        const event: RoomEvent = {
+            eventId,
+            kind: "takeback_accepted",
+            sfen: game.sfen,
+            turn: game.turn,
+            clock: game.clock,
+            passRights: game.passRights,
+            serverTs: now,
+        };
+        room.events.push(event);
+        await this.doState.storage.put("room", room);
+        this.broadcastToAll({ v: 1, t: "event", payload: event });
+        await this.setNextAlarm(room);
+    }
+
+    private async handleTakebackCancel(ws: WebSocket, clientMsgId: number): Promise<void> {
+        const room = await this.doState.storage.get<RoomStorageState>("room");
+        if (!room) {
+            sendWsError(ws, "ROOM_NOT_FOUND", "Room not found", clientMsgId);
+            return;
+        }
+
+        const meta = ws.deserializeAttachment() as WsConnectionMeta | null;
+        if (!meta || meta.seat === "s") {
+            sendWsError(
+                ws,
+                "SPECTATOR_FORBIDDEN",
+                "Spectators cannot cancel takeback",
+                clientMsgId,
+            );
+            return;
+        }
+
+        const { seat } = meta;
+        const game = room.game;
+
+        if (!game || game.status !== "playing") return;
+
+        if (!game.pendingTakeback || game.pendingTakeback.seat !== seat) {
+            sendWsError(ws, "TAKEBACK_NOT_PENDING", "No takeback request to cancel", clientMsgId);
+            return;
+        }
+
+        const now = Date.now();
+        game.pendingTakeback = null;
+
+        const eventId = ++room.latestEventId;
+        const event: RoomEvent = { eventId, kind: "takeback_cancelled", serverTs: now };
+        room.events.push(event);
+        await this.doState.storage.put("room", room);
+        this.broadcastToAll({ v: 1, t: "event", payload: event });
+    }
+
     // ─── ゲーム開始 ──────────────────────────────────────────────────────
 
     private async startGame(room: RoomStorageState): Promise<void> {
@@ -969,14 +1245,18 @@ export class RoomDO implements DurableObject {
         const game: GameState = {
             sfen,
             moves: [],
+            moveSnapshots: [],
             turn: firstTurn,
             ply: 1,
             clock,
             passRights,
+            pendingTakeback: null,
             analysisUsed: { b: 0, w: 0 },
             status: "playing",
             result: null,
             sfenCounts: { [initialSfenKey]: 1 },
+            startedAt: now,
+            finishedAt: null,
         };
 
         room.game = game;
@@ -1013,7 +1293,7 @@ export class RoomDO implements DurableObject {
             (m) => m.seat === "s",
         ).length;
 
-        const snapshot = {
+        const snapshot: SnapshotPayload = {
             eventId: room.latestEventId,
             status: room.status,
             sfen: room.game?.sfen ?? resolveSfen(room.settings.startSfen),
@@ -1041,9 +1321,69 @@ export class RoomDO implements DurableObject {
         sendWsMessage(ws, { v: 1, t: "snapshot", payload: snapshot });
     }
 
-    private broadcastToAll(msg: unknown): void {
+    private broadcastToAll(msg: ServerMessage): void {
         for (const ws of this.doState.getWebSockets()) {
             sendWsMessage(ws, msg);
+        }
+    }
+
+    /** ゲーム終了時にバックエンドAPIへゲームレコードを保存し、gameRecordIdを返す */
+    private async persistGameRecord(room: RoomStorageState): Promise<string | null> {
+        const backend = this.env.BACKEND;
+        const secret = this.env.ROOM_DO_SECRET;
+        if (!backend || !secret || !room.game || room.game.status !== "finished") {
+            return null;
+        }
+
+        const game = room.game;
+        const participants = (["b", "w"] as const)
+            .map((seat) => {
+                const player = room.players[seat];
+                if (!player) return null;
+                return {
+                    userId: player.userId ?? null,
+                    seat,
+                    displayNameSnapshot: player.name,
+                };
+            })
+            .filter((p): p is NonNullable<typeof p> => p !== null);
+
+        if (!participants.some((p) => p.userId !== null)) {
+            return null;
+        }
+
+        const gameRecordId = crypto.randomUUID();
+        const body = {
+            id: gameRecordId,
+            roomId: room.roomId,
+            initialSfen: resolveSfen(room.settings.startSfen),
+            resultJson: JSON.stringify(game.result),
+            metadataJson: JSON.stringify({ roomSettings: room.settings }),
+            movesJson: JSON.stringify(game.moves),
+            kifuText: buildKifu(room),
+            startedAt: game.startedAt,
+            finishedAt: game.finishedAt,
+            participants,
+        };
+
+        try {
+            const resp = await backend.fetch("https://backend/api/internal/game-records", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-room-do-secret": secret,
+                },
+                body: JSON.stringify(body),
+            });
+            if (!resp.ok) {
+                console.error("[room-do] failed to persist game record", { status: resp.status });
+                return null;
+            }
+            const data = (await resp.json()) as { gameRecordId: string | null };
+            return data.gameRecordId;
+        } catch (err) {
+            console.error("[room-do] failed to persist game record", err);
+            return null;
         }
     }
 
@@ -1074,6 +1414,12 @@ export class RoomDO implements DurableObject {
                     nextAlarmTs = Math.min(nextAlarmTs, timeoutTs);
                 }
             }
+        }
+
+        // 待ったタイムアウト（20秒）
+        if (room.game?.pendingTakeback) {
+            const takebackTimeoutTs = room.game.pendingTakeback.requestedAt + 20_000;
+            nextAlarmTs = Math.min(nextAlarmTs, takebackTimeoutTs);
         }
 
         // オフライン検知アラーム（対局中のプレイヤーのみ）
@@ -1130,6 +1476,20 @@ export class RoomDO implements DurableObject {
         const game = room.game;
         let modified = false;
 
+        // 待った 20 秒タイムアウト → 自動キャンセル
+        if (game.pendingTakeback && now - game.pendingTakeback.requestedAt >= 20_000) {
+            game.pendingTakeback = null;
+            modified = true;
+            const eventId = ++room.latestEventId;
+            const cancelEvent: RoomEvent = {
+                eventId,
+                kind: "takeback_cancelled",
+                serverTs: now,
+            };
+            room.events.push(cancelEvent);
+            this.broadcastToAll({ v: 1, t: "event", payload: cancelEvent });
+        }
+
         // オフライン検知・切断不戦敗
         for (const seat of ["b", "w"] as const) {
             const player = room.players[seat];
@@ -1176,12 +1536,15 @@ export class RoomDO implements DurableObject {
 
                 game.status = "finished";
                 game.result = result;
+                game.finishedAt = now;
                 game.clock.running = null;
                 room.status = "finished";
                 room.events.push(disconnectEvent, gameEndEvent);
                 // ゲーム終了後は直近2件のみ保持してストレージを節約
                 room.events = room.events.slice(-2);
 
+                const gameRecordIdDisconnect = await this.persistGameRecord(room);
+                if (gameRecordIdDisconnect) gameEndEvent.gameRecordId = gameRecordIdDisconnect;
                 await this.doState.storage.put("room", room);
                 this.broadcastToAll({ v: 1, t: "event", payload: disconnectEvent });
                 this.broadcastToAll({ v: 1, t: "event", payload: gameEndEvent });
@@ -1231,12 +1594,15 @@ export class RoomDO implements DurableObject {
 
                 game.status = "finished";
                 game.result = result;
+                game.finishedAt = now;
                 game.clock.running = null;
                 room.status = "finished";
                 room.events.push(timeoutEvent, gameEndEvent);
                 // ゲーム終了後は直近2件のみ保持してストレージを節約
                 room.events = room.events.slice(-2);
 
+                const gameRecordIdTimeout = await this.persistGameRecord(room);
+                if (gameRecordIdTimeout) gameEndEvent.gameRecordId = gameRecordIdTimeout;
                 await this.doState.storage.put("room", room);
                 this.broadcastToAll({ v: 1, t: "event", payload: timeoutEvent });
                 this.broadcastToAll({ v: 1, t: "event", payload: gameEndEvent });

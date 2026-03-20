@@ -1,8 +1,10 @@
 import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type { EngineOption } from "@shogi/ui";
 import { EngineControlPanel, ShogiMatch, useDevMode } from "@shogi/ui";
-import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { HeaderNav } from "./components/HeaderNav";
+import { PageHeader } from "./components/PageHeader";
+import { useRemotePrivateNnueManager } from "./hooks/useRemotePrivateNnueManager";
 
 const resolveWasmThreads = () => {
     const fallback = import.meta.env.DEV ? 4 : 1;
@@ -31,36 +33,51 @@ const panelEngine = createEngineClient();
 // NNUE プリセット manifest.json の URL（環境変数で設定、必須）
 const nnueManifestUrl = import.meta.env.VITE_NNUE_MANIFEST_URL as string;
 
+function readReviewKifuFromSessionStorage(): { sfen: string; moves: string[] } | undefined {
+    try {
+        const raw = sessionStorage.getItem("ramu_review_kifu");
+        if (!raw) return undefined;
+        sessionStorage.removeItem("ramu_review_kifu");
+        return JSON.parse(raw) as { sfen: string; moves: string[] };
+    } catch {
+        return undefined;
+    }
+}
+
 function App() {
     const isDevMode = useDevMode();
-    const navigate = useNavigate();
+    const remoteNnueManager = useRemotePrivateNnueManager();
     const [panelPosition, setPanelPosition] = useState<{
         label?: string;
         sfen: string;
         moves?: string[];
     }>({ label: "現在局面", sfen: "startpos", moves: [] });
+    const [initialReview] = useState<{ sfen: string; moves: string[] } | undefined>(
+        readReviewKifuFromSessionStorage,
+    );
 
     return (
-        <main className="mx-auto flex max-w-[1100px] flex-col gap-3 md:px-5">
-            <div className="flex items-center justify-end px-1 pt-2">
-                <button
-                    type="button"
-                    onClick={() => void navigate({ to: "/online" })}
-                    className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                >
-                    オンライン対局を始める
-                </button>
-            </div>
-            <ShogiMatch
-                engineOptions={engineOptions}
-                isDevMode={isDevMode}
-                manifestUrl={nnueManifestUrl}
-                defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
-                aiIconUrl={`${import.meta.env.BASE_URL}ramu.jpeg`}
-                onPositionSnapshot={(snapshot) => setPanelPosition(snapshot)}
-            />
-            {isDevMode && <EngineControlPanel engine={panelEngine} position={panelPosition} />}
-        </main>
+        <>
+            <PageHeader items={[{ label: "ラム将棋" }]} right={<HeaderNav />} />
+            <main className="mx-auto flex max-w-[1100px] flex-col gap-3 pt-3 md:px-5">
+                <ShogiMatch
+                    key={initialReview ? "review" : "normal"}
+                    engineOptions={engineOptions}
+                    isDevMode={isDevMode}
+                    manifestUrl={nnueManifestUrl}
+                    remoteNnueManager={remoteNnueManager}
+                    allowAnalysisDuringMatch={true}
+                    defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
+                    aiIconUrl={`${import.meta.env.BASE_URL}ramu.jpeg`}
+                    onPositionSnapshot={(snapshot) => setPanelPosition(snapshot)}
+                    initialReview={initialReview}
+                    {...(initialReview
+                        ? { defaultSides: { sente: { role: "human" }, gote: { role: "human" } } }
+                        : {})}
+                />
+                {isDevMode && <EngineControlPanel engine={panelEngine} position={panelPosition} />}
+            </main>
+        </>
     );
 }
 

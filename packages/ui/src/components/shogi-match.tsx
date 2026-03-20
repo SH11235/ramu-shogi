@@ -19,6 +19,7 @@ import {
 } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import type { RemoteNnueManager } from "./nnue/types";
 import {
     DEFAULT_BYOYOMI_MS,
     DEFAULT_MAX_LOGS,
@@ -51,6 +52,8 @@ import { ShogiMatchLayout } from "./shogi-match/layouts/ShogiMatchLayout";
 import { ShogiMatchProvider } from "./shogi-match/ShogiMatchContext";
 import type {
     AnalysisSettings,
+    AnalysisSnapshotDraft,
+    AnalysisSnapshotEntryDraft,
     DisplaySettings,
     EngineOption,
     EngineThreadSettings,
@@ -102,6 +105,8 @@ interface ShogiMatchProps {
     manifestUrl: string;
     /** Desktop 用: NNUE ファイル選択ダイアログを開いてパスを取得するコールバック */
     onRequestNnueFilePath?: () => Promise<string | null>;
+    /** Web 用: remote private NNUE の取り込み導線 */
+    remoteNnueManager?: RemoteNnueManager;
     /** デフォルトの NNUE プリセットキー（未指定時は DEFAULT_PRESET_KEY） */
     defaultNnuePresetKey?: string;
     /** AIアイコンのURL（GitHub Pages等でbase pathが必要な場合に指定） */
@@ -114,6 +119,14 @@ interface ShogiMatchProps {
     initialReview?: { sfen: string; moves: string[] };
     /** 現在局面のスナップショットを通知 */
     onPositionSnapshot?: (snapshot: { sfen: string; moves: string[]; label?: string }) => void;
+    /** 現在の解析結果スナップショットを通知 */
+    onAnalysisSnapshotChange?: (snapshot: AnalysisSnapshotDraft | null) => void;
+    /** 初期表示時に適用する分析結果 */
+    initialAnalysisEntries?: AnalysisSnapshotEntryDraft[] | null;
+    /** 棋譜検討モード: 対局設定サイドバーを非表示にする */
+    reviewMode?: boolean;
+    /** 棋譜検討モード時に左サイドバー位置に表示するコンテンツ */
+    reviewLeftContent?: React.ReactNode;
 }
 
 export function ShogiMatch({
@@ -129,12 +142,17 @@ export function ShogiMatch({
     isDevMode = false,
     manifestUrl,
     onRequestNnueFilePath,
+    remoteNnueManager,
     defaultNnuePresetKey,
     aiIconUrl,
     allowAnalysisDuringMatch,
     analysisMarkers = EMPTY_ANALYSIS_MARKERS,
     initialReview,
     onPositionSnapshot,
+    onAnalysisSnapshotChange,
+    initialAnalysisEntries = null,
+    reviewMode,
+    reviewLeftContent,
 }: ShogiMatchProps): ReactElement {
     // デフォルトの NNUE 選択（props のプリセットキーを使用、未指定時は DEFAULT_PRESET_KEY）
     const defaultNnueSelection = createDefaultNnueSelection(
@@ -409,6 +427,46 @@ export function ShogiMatch({
     // "main" モード時は本譜の評価値を表示
     // "branches" や "selectedBranch" モード時は現在の経路（分岐含む）の評価値を表示
     const displayEvalHistory = kifuViewMode === "main" ? mainLineEvalHistory : evalHistory;
+    const analysisSnapshotDraft = (() => {
+        const entries = kifMoves
+            .filter(
+                (move) =>
+                    move.evalCp !== undefined ||
+                    move.evalMate !== undefined ||
+                    move.depth !== undefined ||
+                    move.pv !== undefined ||
+                    move.multiPvEvals !== undefined,
+            )
+            .map((move) => ({
+                ply: move.ply,
+                evalCp: move.evalCp ?? null,
+                evalMate: move.evalMate ?? null,
+                depth: move.depth ?? null,
+                pv: move.pv ?? null,
+                multiPv: move.multiPvEvals ?? null,
+            }));
+
+        if (entries.length === 0) {
+            return null;
+        }
+
+        return {
+            startSfen,
+            lineMoves: kifMoves.map((move) => move.usiMove),
+            analysisSettings,
+            entries,
+        } satisfies AnalysisSnapshotDraft;
+    })();
+    const lastAnalysisSnapshotSignatureRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        const signature = analysisSnapshotDraft ? JSON.stringify(analysisSnapshotDraft) : null;
+        if (lastAnalysisSnapshotSignatureRef.current === signature) {
+            return;
+        }
+        lastAnalysisSnapshotSignatureRef.current = signature;
+        onAnalysisSnapshotChange?.(analysisSnapshotDraft);
+    }, [analysisSnapshotDraft, onAnalysisSnapshotChange]);
 
     // 選択中の手の詳細を最新のkifMovesから取得
     const selectedMoveDetail = (() => {
@@ -442,7 +500,7 @@ export function ShogiMatch({
             owner,
             hand: owner === "sente" ? position.hands.sente : position.hands.gote,
             isActive: isActiveInReview || isActiveInMatch,
-            isAI: sides[owner].role === "engine",
+            isAI: !reviewMode && sides[owner].role === "engine",
         };
     };
 
@@ -514,12 +572,6 @@ export function ShogiMatch({
         legalCache.clear();
         passRights.setCanPassLegal(false);
     };
-    const clearLegalCacheEvent = useEffectEvent(clearLegalCache);
-    // ナビゲーションで局面が変わったらキャッシュをクリア
-    // biome-ignore lint/correctness/useExhaustiveDependencies: movesKey はキャッシュクリアのトリガー用で意図的
-    useEffect(() => {
-        clearLegalCacheEvent();
-    }, [movesKey]);
     // パス権設定変更時にキャッシュもクリアするラッパー
     // （合法手にpassが含まれるかどうかが変わるため）
     const handlePassRightsSettingsChange = (newSettings: PassRightsSettings) => {
@@ -567,6 +619,49 @@ export function ShogiMatch({
         };
         await endMatch(result);
     };
+
+    // 詰み検出: 人間の手番で合法手がない場合に自動終局
+    // エンジンの手番は engine-controller が "bestmove none" を検知して処理するためスキップ
+    useEffect(() => {
+        if (!isMatchRunning || !positionReady || matchEndedRef.current) return;
+        if (sides[position.turn].role === "engine") return;
+
+        let cancelled = false;
+        const passRightsOption = passRights.getPassRightsOption();
+        void (async () => {
+            try {
+                const resolver = fetchLegalMoves
+                    ? () => fetchLegalMoves(startSfen, moves, passRightsOption)
+                    : () => getPositionService().getLegalMoves(startSfen, moves, passRightsOption);
+                const legal = await legalCache.getOrResolve(moves.join(" "), resolver);
+                if (cancelled || matchEndedRef.current) return;
+                if (legal.size === 0) {
+                    const loser: Player = position.turn;
+                    const winner: Player = loser === "sente" ? "gote" : "sente";
+                    await endMatchRef.current?.({
+                        winner,
+                        reason: { kind: "checkmate", loser },
+                        totalMoves: moves.length,
+                    });
+                }
+            } catch {
+                // 合法手取得失敗時は無視
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        isMatchRunning,
+        positionReady,
+        moves,
+        startSfen,
+        position.turn,
+        fetchLegalMoves,
+        sides,
+        passRights,
+        legalCache,
+    ]);
 
     // 手の処理中フラグ（待った・パス等の連打・競合防止用）
     const moveProcessingRef = useRef(false);
@@ -713,6 +808,7 @@ export function ShogiMatch({
         analyzingState,
         handleEvalUpdate,
         handleAnalyzePly,
+        handleAnalyzeHintPly,
         handleAnalyzeNode,
         handleStartBatchAnalysis,
         handleStartTreeBatchAnalysis,
@@ -828,12 +924,12 @@ export function ShogiMatch({
                 const resolver = fetchLegalMoves
                     ? () => fetchLegalMoves(startSfen, moves, passRightsOption)
                     : () => getPositionService().getLegalMoves(startSfen, moves, passRightsOption);
-                const ply = moves.length;
-                let legal = await legalCache.getOrResolve(ply, resolver);
+                const movesKey = moves.join(" ");
+                let legal = await legalCache.getOrResolve(movesKey, resolver);
                 if (!legal || !legal.has("pass")) {
                     // パス権ありでも合法手に含まれない場合はキャッシュをクリアして再取得（パス権オプション漏れ対策）
                     clearLegalCache();
-                    legal = await legalCache.getOrResolve(ply, resolver);
+                    legal = await legalCache.getOrResolve(movesKey, resolver);
                     if (!legal || !legal.has("pass")) {
                         setMessage({ text: "王手されているためパスできません", type: "error" });
                         return;
@@ -1095,39 +1191,40 @@ export function ShogiMatch({
     };
 
     // 指し手実行管理フック
-    const { handleSquareSelect, handlePromotionChoice, handleHandSelect } = useMoveExecution({
-        position,
-        navigation,
-        isEditMode,
-        isReviewMode,
-        isPaused,
-        positionReady,
-        fetchLegalMoves,
-        startSfen,
-        moves,
-        legalCache,
-        clearLegalCache,
-        setCanPassLegal: passRights.setCanPassLegal,
-        getPassRightsOption: passRights.getPassRightsOption,
-        updateClocksForNextTurn,
-        turnStartTimeRef,
-        isEngineTurn,
-        selection,
-        setSelection,
-        promotionSelection,
-        setPromotionSelection,
-        setLastMove,
-        setMessage,
-        setLastAddedBranchInfo,
-        editFromSquare,
-        setEditFromSquare,
-        editTool,
-        editPieceType,
-        editOwner,
-        editPromoted,
-        placePieceAt,
-        moveProcessingRef,
-    });
+    const { handleSquareSelect, handlePromotionChoice, handleHandSelect, applyUsiMove } =
+        useMoveExecution({
+            position,
+            navigation,
+            isEditMode,
+            isReviewMode,
+            isPaused,
+            positionReady,
+            fetchLegalMoves,
+            startSfen,
+            moves,
+            legalCache,
+            clearLegalCache,
+            setCanPassLegal: passRights.setCanPassLegal,
+            getPassRightsOption: passRights.getPassRightsOption,
+            updateClocksForNextTurn,
+            turnStartTimeRef,
+            isEngineTurn,
+            selection,
+            setSelection,
+            promotionSelection,
+            setPromotionSelection,
+            setLastMove,
+            setMessage,
+            setLastAddedBranchInfo,
+            editFromSquare,
+            setEditFromSquare,
+            editTool,
+            editPieceType,
+            editOwner,
+            editPromoted,
+            placePieceAt,
+            moveProcessingRef,
+        });
 
     // 棋譜インポート・エクスポート管理フック
     const { handleCopyKif, importSfen, importKif } = useKifuImportExport({
@@ -1153,12 +1250,41 @@ export function ShogiMatch({
 
     // マウント時に initialReview が指定されていれば棋譜を読み込む（一度だけ実行）
     const initialReviewHandledRef = useRef(false);
+    const initialAnalysisAppliedRef = useRef<string | null>(null);
     useEffect(() => {
+        if (!positionReady) {
+            return;
+        }
         if (initialReview && !initialReviewHandledRef.current) {
             initialReviewHandledRef.current = true;
             void importSfen(initialReview.sfen, initialReview.moves);
         }
-    }, [initialReview, importSfen]);
+    }, [importSfen, initialReview, positionReady]);
+
+    useEffect(() => {
+        if (!positionReady || !initialAnalysisEntries || initialAnalysisEntries.length === 0) {
+            return;
+        }
+
+        const signature = JSON.stringify(initialAnalysisEntries);
+        if (initialAnalysisAppliedRef.current === signature) {
+            return;
+        }
+
+        for (const entry of initialAnalysisEntries) {
+            clearEvalByPly(entry.ply);
+            recordEvalByPly(entry.ply, {
+                type: "info",
+                scoreCp: entry.evalCp ?? undefined,
+                scoreMate: entry.evalMate ?? undefined,
+                depth: entry.depth ?? undefined,
+                pv: entry.pv ?? undefined,
+                multipv: 1,
+            });
+        }
+
+        initialAnalysisAppliedRef.current = signature;
+    }, [clearEvalByPly, initialAnalysisEntries, positionReady, recordEvalByPly]);
 
     // 棋譜の手数選択コールバック（巻き戻し・リプレイ用）
     const handlePlySelect = (ply: number) => {
@@ -1264,6 +1390,7 @@ export function ShogiMatch({
         clearNnueManagerOpenReason,
         manifestUrl,
         onRequestNnueFilePath,
+        remoteNnueManager,
         selectedMoveDetail,
         setSelectedMoveDetailPly,
         isAboutOpen,
@@ -1282,6 +1409,7 @@ export function ShogiMatch({
         analyzingState,
         batchAnalysis,
         handleAnalyzePly,
+        handleAnalyzeHintPly,
         handleStartBatchAnalysis,
         handleCancelBatchAnalysis,
         handleAnalyzeNode,
@@ -1339,6 +1467,7 @@ export function ShogiMatch({
         handleSquareSelect,
         handlePromotionChoice,
         handleHandSelect,
+        applyUsiMove,
         handleHandPiecePointerDown,
         handlePiecePointerDown,
         handlePieceTogglePromote,
@@ -1380,6 +1509,8 @@ export function ShogiMatch({
         onDisplaySettingsOpenChange: setIsDisplaySettingsOpen,
         isPassRightsSettingsOpen,
         onPassRightsSettingsOpenChange: setIsPassRightsSettingsOpen,
+        reviewMode,
+        reviewLeftContent,
     };
 
     // Props グループ化: Mobile専用

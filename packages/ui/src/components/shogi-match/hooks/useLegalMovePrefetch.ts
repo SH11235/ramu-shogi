@@ -42,7 +42,8 @@ export function useLegalMovePrefetch({
         if (!isMatchRunning || !positionReady) return;
         if (sides[positionTurn].role !== "human") return;
         const ply = moves.length;
-        if (legalCache.isCached(ply)) return;
+        const movesKey = moves.join(" ");
+        if (legalCache.isCached(movesKey)) return;
 
         const passRightsOption = passRights.getPassRightsOption();
         const resolver = async () => {
@@ -54,7 +55,7 @@ export function useLegalMovePrefetch({
 
         // エラーはパスボタンクリック時の再解決に委ねる
         void legalCache
-            .getOrResolve(ply, resolver)
+            .getOrResolve(movesKey, resolver)
             .then((result) => {
                 if (moves.length === ply) {
                     passRights.setCanPassLegal(result.has("pass"));

@@ -20,10 +20,12 @@
         "test:e2e": "playwright test"
     },
     "dependencies": {
+        "@shogi/api-contract": "workspace:*",
         "@shogi/app-core": "workspace:*",
         "@shogi/design-system": "workspace:*",
         "@shogi/engine-wasm": "workspace:*",
         "@shogi/match-client": "workspace:*",
+        "@shogi/match-protocol": "workspace:*",
         "@shogi/ui": "workspace:*",
         "@tanstack/react-router": "^1.162.6",
         "react": "^19.2.3",
