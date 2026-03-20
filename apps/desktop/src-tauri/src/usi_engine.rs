@@ -279,9 +279,18 @@ pub fn parse_engine_line(line: &str) -> Option<UsiEngineEvent> {
 const USI_TIMEOUT_SECS: u64 = 10;
 const READY_TIMEOUT_SECS: u64 = 30;
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum EngineStatus {
+    Ready,
+    Searching,
+}
+
 struct UsiEngineSession {
+    registration_id: String,
     stdin: Arc<Mutex<tokio::process::ChildStdin>>,
     stdout_task: tauri::async_runtime::JoinHandle<()>,
+    status: Arc<std::sync::Mutex<EngineStatus>>,
     child: tokio::process::Child,
 }
 
@@ -427,7 +436,7 @@ impl UsiEngineManager {
     /// Start a new engine session. Returns the session ID.
     pub async fn start<R: tauri::Runtime>(
         &self,
-        _registration_id: &str,
+        registration_id: &str,
         path: &str,
         saved_options: &[OptionValue],
         app_handle: &tauri::AppHandle<R>,
@@ -526,14 +535,22 @@ impl UsiEngineManager {
         let app_handle_clone = app_handle.clone();
         let sessions_clone = Arc::clone(&self.sessions);
         let sid_clone = session_id.clone();
+        let status = Arc::new(std::sync::Mutex::new(EngineStatus::Ready));
+        let status_clone = Arc::clone(&status);
 
         let stdout_task = tauri::async_runtime::spawn(async move {
             while let Ok(Some(line)) = reader.next_line().await {
                 let trimmed = line.trim();
-                if let Some(event) = parse_engine_line(trimmed)
-                    && let Err(e) = app_handle_clone.emit(&channel, &event)
-                {
-                    eprintln!("Failed to emit event on {channel}: {e}");
+                if let Some(event) = parse_engine_line(trimmed) {
+                    // bestmove 受信時にステータスを Ready に戻す
+                    if matches!(event, UsiEngineEvent::BestMove { .. })
+                        && let Ok(mut s) = status_clone.lock()
+                    {
+                        *s = EngineStatus::Ready;
+                    }
+                    if let Err(e) = app_handle_clone.emit(&channel, &event) {
+                        eprintln!("Failed to emit event on {channel}: {e}");
+                    }
                 }
             }
             // stdout EOF — process died
@@ -547,8 +564,10 @@ impl UsiEngineManager {
         });
 
         let session = UsiEngineSession {
+            registration_id: registration_id.to_string(),
             stdin: Arc::clone(&stdin),
             stdout_task,
+            status,
             child,
         };
 
@@ -605,6 +624,9 @@ impl UsiEngineManager {
             }
         }
 
+        if let Ok(mut s) = session.status.lock() {
+            *s = EngineStatus::Searching;
+        }
         send_line(&session.stdin, &cmd).await
     }
 
@@ -639,6 +661,28 @@ impl UsiEngineManager {
         send_line(&session.stdin, &format!("setoption name {name}")).await
     }
 
+    /// Query session status.
+    pub async fn get_status(&self, session_id: &str) -> Result<EngineStatus, String> {
+        let sessions = self.sessions.lock().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or("セッションが見つかりません")?;
+        let status = session
+            .status
+            .lock()
+            .map_err(|e| format!("status lock error: {e}"))?;
+        Ok(*status)
+    }
+
+    /// Get the registration ID for a session.
+    pub async fn get_registration_id(&self, session_id: &str) -> Result<String, String> {
+        let sessions = self.sessions.lock().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or("セッションが見つかりません")?;
+        Ok(session.registration_id.clone())
+    }
+
     /// Quit a session: send quit, kill process, remove from map.
     pub async fn quit(&self, session_id: &str) -> Result<(), String> {
         let mut sessions = self.sessions.lock().await;
@@ -648,6 +692,16 @@ impl UsiEngineManager {
             let _ = session.child.kill().await;
         }
         Ok(())
+    }
+
+    /// Clean up all sessions (for app shutdown).
+    pub async fn quit_all(&self) {
+        let mut sessions = self.sessions.lock().await;
+        for (_, mut session) in sessions.drain() {
+            let _ = send_line(&session.stdin, "quit").await;
+            session.stdout_task.abort();
+            let _ = session.child.kill().await;
+        }
     }
 }
 

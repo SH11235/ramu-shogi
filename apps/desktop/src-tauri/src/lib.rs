@@ -1553,6 +1553,22 @@ async fn usi_engine_load_options(
     Ok(options)
 }
 
+#[tauri::command]
+async fn usi_engine_status(
+    session_id: String,
+    manager: State<'_, usi_engine::UsiEngineManager>,
+) -> Result<usi_engine::EngineStatus, String> {
+    manager.get_status(&session_id).await
+}
+
+#[tauri::command]
+async fn usi_engine_registration_id(
+    session_id: String,
+    manager: State<'_, usi_engine::UsiEngineManager>,
+) -> Result<String, String> {
+    manager.get_registration_id(&session_id).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1599,7 +1615,15 @@ pub fn run() {
             usi_engine_list,
             usi_engine_save_options,
             usi_engine_load_options,
+            usi_engine_status,
+            usi_engine_registration_id,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                let manager = app_handle.state::<usi_engine::UsiEngineManager>();
+                tauri::async_runtime::block_on(manager.quit_all());
+            }
+        });
 }
