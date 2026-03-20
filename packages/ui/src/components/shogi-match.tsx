@@ -42,6 +42,7 @@ import { useKifuKeyboardNavigation } from "./shogi-match/hooks/useKifuKeyboardNa
 import { useKifuNavigation } from "./shogi-match/hooks/useKifuNavigation";
 import { useLegalMovePrefetch } from "./shogi-match/hooks/useLegalMovePrefetch";
 import { useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
+import { useShogiSound } from "../hooks/useShogiSound";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import { useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
 import { useNnueManager } from "./shogi-match/hooks/useNnueManager";
@@ -241,6 +242,7 @@ export function ShogiMatch({
         "shogi-display-settings",
         DEFAULT_DISPLAY_SETTINGS,
     );
+    const { playSound } = useShogiSound();
     // 解析設定（古いlocalStorageデータとの互換性のためデフォルト値とマージ）
     const [storedAnalysisSettings, setAnalysisSettings] = useLocalStorage<AnalysisSettings>(
         "shogi-analysis-settings",
@@ -845,7 +847,18 @@ export function ShogiMatch({
         move: string,
         nextPosition: PositionState,
         lastMoveInfo: LastMove | undefined,
+        source?: "human" | "engine",
     ) => {
+        // サウンドフィードバック
+        if (displaySettings.enableSound) {
+            if (move === "pass") {
+                playSound("pass");
+            } else if (source === "engine") {
+                playSound("move_opponent");
+            } else {
+                playSound("move_self");
+            }
+        }
         // 消費時間を計算
         const elapsedMs = Date.now() - turnStartTimeRef.current;
         // 棋譜ナビゲーションに手を追加（局面更新はonPositionChangeで自動実行）
@@ -898,7 +911,7 @@ export function ShogiMatch({
             );
             return;
         }
-        applyMoveAndUpdateState(move, result.next, result.lastMove);
+        applyMoveAndUpdateState(move, result.next, result.lastMove, "engine");
     };
     handleMoveFromEngineRef.current = handleMoveFromEngine;
 

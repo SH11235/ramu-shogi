@@ -45,6 +45,8 @@ export interface DisplaySettings {
     showKifuEval: boolean;
     /** マウスホイールで棋譜をナビゲート */
     enableWheelNavigation: boolean;
+    /** サウンドフィードバック */
+    enableSound: boolean;
 }
 
 /** デフォルト表示設定 */
@@ -54,6 +56,7 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
     highlightLastMove: true,
     showKifuEval: false,
     enableWheelNavigation: true,
+    enableSound: true,
 };
 
 /**
