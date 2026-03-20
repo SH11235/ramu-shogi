@@ -147,29 +147,26 @@ export function EngineManagerPanel({
                     engines.map((engine) => (
                         <div
                             key={engine.id}
-                            className={`flex items-center justify-between gap-2 p-2 rounded text-sm cursor-pointer transition-colors ${
+                            className={`flex items-center justify-between gap-2 p-2 rounded text-sm transition-colors ${
                                 selectedEngine?.id === engine.id
                                     ? "bg-wafuu-kincha/10 border border-wafuu-kincha"
                                     : "hover:bg-wafuu-washi border border-transparent"
                             }`}
-                            onClick={() => handleSelectEngine(engine)}
-                            onKeyDown={(e) => {
-                                if (e.key === "Enter") handleSelectEngine(engine);
-                            }}
                         >
-                            <div className="flex flex-col min-w-0">
+                            <button
+                                type="button"
+                                onClick={() => handleSelectEngine(engine)}
+                                className="flex flex-col min-w-0 text-left cursor-pointer flex-1"
+                            >
                                 <span className="truncate font-medium">{engine.displayName}</span>
                                 <span className="text-xs text-muted-foreground truncate">
                                     {engine.author}
                                 </span>
-                            </div>
+                            </button>
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDelete(engine.id);
-                                }}
+                                onClick={() => handleDelete(engine.id)}
                                 className="text-destructive hover:text-destructive shrink-0"
                             >
                                 削除

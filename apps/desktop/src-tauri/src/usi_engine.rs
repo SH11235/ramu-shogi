@@ -279,21 +279,9 @@ pub fn parse_engine_line(line: &str) -> Option<UsiEngineEvent> {
 const USI_TIMEOUT_SECS: u64 = 10;
 const READY_TIMEOUT_SECS: u64 = 30;
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum EngineStatus {
-    Idle,
-    WaitingUsiOk,
-    WaitingReadyOk,
-    Ready,
-    Searching,
-}
-
 struct UsiEngineSession {
-    registration_id: String,
     stdin: Arc<Mutex<tokio::process::ChildStdin>>,
     stdout_task: tauri::async_runtime::JoinHandle<()>,
-    status: EngineStatus,
     child: tokio::process::Child,
 }
 
@@ -439,7 +427,7 @@ impl UsiEngineManager {
     /// Start a new engine session. Returns the session ID.
     pub async fn start<R: tauri::Runtime>(
         &self,
-        registration_id: &str,
+        _registration_id: &str,
         path: &str,
         saved_options: &[OptionValue],
         app_handle: &tauri::AppHandle<R>,
@@ -542,10 +530,10 @@ impl UsiEngineManager {
         let stdout_task = tauri::async_runtime::spawn(async move {
             while let Ok(Some(line)) = reader.next_line().await {
                 let trimmed = line.trim();
-                if let Some(event) = parse_engine_line(trimmed) {
-                    if let Err(e) = app_handle_clone.emit(&channel, &event) {
-                        eprintln!("Failed to emit event on {channel}: {e}");
-                    }
+                if let Some(event) = parse_engine_line(trimmed)
+                    && let Err(e) = app_handle_clone.emit(&channel, &event)
+                {
+                    eprintln!("Failed to emit event on {channel}: {e}");
                 }
             }
             // stdout EOF — process died
@@ -559,10 +547,8 @@ impl UsiEngineManager {
         });
 
         let session = UsiEngineSession {
-            registration_id: registration_id.to_string(),
             stdin: Arc::clone(&stdin),
             stdout_task,
-            status: EngineStatus::Ready,
             child,
         };
 
@@ -596,9 +582,9 @@ impl UsiEngineManager {
 
     /// Send go command.
     pub async fn go(&self, session_id: &str, params: &SearchParamsInput) -> Result<(), String> {
-        let mut sessions = self.sessions.lock().await;
+        let sessions = self.sessions.lock().await;
         let session = sessions
-            .get_mut(session_id)
+            .get(session_id)
             .ok_or("セッションが見つかりません")?;
 
         let mut cmd = "go".to_string();
@@ -619,7 +605,6 @@ impl UsiEngineManager {
             }
         }
 
-        session.status = EngineStatus::Searching;
         send_line(&session.stdin, &cmd).await
     }
 
@@ -663,16 +648,6 @@ impl UsiEngineManager {
             let _ = session.child.kill().await;
         }
         Ok(())
-    }
-
-    /// Clean up all sessions (for app shutdown).
-    pub async fn quit_all(&self) {
-        let mut sessions = self.sessions.lock().await;
-        for (_, mut session) in sessions.drain() {
-            let _ = send_line(&session.stdin, "quit").await;
-            session.stdout_task.abort();
-            let _ = session.child.kill().await;
-        }
     }
 }
 

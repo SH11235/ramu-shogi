@@ -19,6 +19,7 @@ import {
 } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useShogiSound } from "../hooks/useShogiSound";
 import type { RemoteNnueManager } from "./nnue/types";
 import {
     DEFAULT_BYOYOMI_MS,
@@ -42,7 +43,6 @@ import { useKifuKeyboardNavigation } from "./shogi-match/hooks/useKifuKeyboardNa
 import { useKifuNavigation } from "./shogi-match/hooks/useKifuNavigation";
 import { useLegalMovePrefetch } from "./shogi-match/hooks/useLegalMovePrefetch";
 import { useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
-import { useShogiSound } from "../hooks/useShogiSound";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import { useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
 import { useNnueManager } from "./shogi-match/hooks/useNnueManager";

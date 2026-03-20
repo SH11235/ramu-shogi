@@ -9,7 +9,12 @@
             ]
         }
     },
-    "ignoreDependencies": ["wasm-opt", "wrangler", "babel-plugin-react-compiler"],
+    "ignoreDependencies": [
+        "wasm-opt",
+        "wrangler",
+        "babel-plugin-react-compiler",
+        "@tauri-apps/plugin-store"
+    ],
     "ignoreIssues": {
         "packages/api-contract/src/generated/**": ["types"]
     },
