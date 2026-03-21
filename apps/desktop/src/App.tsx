@@ -2,6 +2,7 @@ import type { NnueFormat } from "@shogi/app-core";
 import type { EngineRegistration } from "@shogi/engine-tauri";
 import {
     createEngineRegistryService,
+    createEngineSessionService,
     createPreviewSessionService,
     createTauriEngineClient,
     createTauriNnueStorage,
@@ -14,7 +15,7 @@ import type { EngineOption } from "@shogi/ui";
 import { EngineControlPanel, NnueProvider, ShogiMatch } from "@shogi/ui";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
-import { ActiveEngineSettingsDrawer } from "./components/ActiveEngineSettingsDrawer";
+import { ActiveEngineSettingsPanel } from "./components/ActiveEngineSettingsPanel";
 import { EngineManagerPanel } from "./components/EngineManagerPanel";
 
 const createEngineClient = () =>
@@ -38,6 +39,7 @@ const nnueStorage = createTauriNnueStorage();
 
 const registryService = createEngineRegistryService();
 const previewSessionService = createPreviewSessionService();
+const engineSessionService = createEngineSessionService();
 
 // NNUE プリセット manifest.json の URL（環境変数で設定、必須）
 const nnueManifestUrl = import.meta.env.VITE_NNUE_MANIFEST_URL as string;
@@ -113,13 +115,20 @@ function App() {
         setEngineOptions(buildEngineOptions(engines));
     };
 
+    const [sessionNotReadyMessage, setSessionNotReadyMessage] = useState<string | null>(null);
+
     const handleOpenEngineSettings = (info: {
         side: "sente" | "gote" | "analysis";
         engineId: string;
         sessionId: string | null;
     }) => {
         const reg = registrations.find((r) => r.id === info.engineId);
-        if (!reg || !info.sessionId) return;
+        if (!reg) return;
+        if (!info.sessionId) {
+            setSessionNotReadyMessage("エンジン起動後に設定を変更できます");
+            setTimeout(() => setSessionNotReadyMessage(null), 3000);
+            return;
+        }
         const sideLabel =
             info.side === "sente" ? "☗ 先手" : info.side === "gote" ? "☖ 後手" : "🔍 解析";
         setEngineSettingsTarget({
@@ -151,6 +160,11 @@ function App() {
                         {storeError}
                     </div>
                 )}
+                {sessionNotReadyMessage && (
+                    <div className="text-xs text-wafuu-sumi bg-wafuu-kincha/20 p-2 rounded">
+                        {sessionNotReadyMessage}
+                    </div>
+                )}
                 <EngineControlPanel engine={panelEngine} position={panelPosition} />
 
                 {/* エンジン管理パネル（シンプルな折りたたみ表示） */}
@@ -178,13 +192,14 @@ function App() {
             </main>
 
             {/* 起動中エンジン設定drawer */}
-            <ActiveEngineSettingsDrawer
+            <ActiveEngineSettingsPanel
                 open={engineSettingsTarget !== null}
                 onOpenChange={(open) => {
                     if (!open) setEngineSettingsTarget(null);
                 }}
                 engine={engineSettingsTarget}
                 registryService={registryService}
+                sessionService={engineSessionService}
             />
         </NnueProvider>
     );

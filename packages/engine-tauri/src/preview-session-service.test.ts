@@ -43,6 +43,7 @@ describe("createPreviewSessionService", () => {
             expect(svc.getStatus()).toEqual({
                 state: "error",
                 registrationId: "reg-1",
+                sessionId: "",
                 error: "Engine not found",
             });
         });
@@ -175,6 +176,7 @@ describe("createPreviewSessionService", () => {
             expect(svc.getStatus()).toEqual({
                 state: "error",
                 registrationId: "reg-1",
+                sessionId: "session-1",
                 error: "Session disconnected",
             });
         });
@@ -190,6 +192,7 @@ describe("createPreviewSessionService", () => {
             expect(svc.getStatus()).toEqual({
                 state: "error",
                 registrationId: "reg-1",
+                sessionId: "session-1",
                 error: "Session disconnected",
             });
         });
@@ -215,6 +218,31 @@ describe("createPreviewSessionService", () => {
             const svc = createPreviewSessionService();
             await svc.dispose();
             expect(svc.getStatus()).toEqual({ state: "idle" });
+        });
+
+        it("error 状態で dispose すると sessionId を quit する", async () => {
+            mockInvoke
+                .mockResolvedValueOnce("session-1") // start
+                .mockRejectedValueOnce(new Error("disconnect")) // setoption fail
+                .mockResolvedValueOnce(undefined); // quit
+            const svc = createPreviewSessionService();
+            await svc.start("reg-1");
+            await svc.setOption("Threads", 4).catch(() => undefined);
+            expect(svc.getStatus().state).toBe("error");
+
+            await svc.dispose();
+
+            expect(svc.getStatus()).toEqual({ state: "idle" });
+            expect(mockInvoke).toHaveBeenCalledWith("usi_engine_quit", {
+                session_id: "session-1",
+            });
+        });
+    });
+
+    describe("sendButton idle エラー", () => {
+        it("idle 状態で sendButton を呼ぶとエラー", async () => {
+            const svc = createPreviewSessionService();
+            await expect(svc.sendButton("Clear Hash")).rejects.toThrow("not ready");
         });
     });
 });

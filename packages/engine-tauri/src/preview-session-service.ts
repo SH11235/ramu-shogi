@@ -4,7 +4,7 @@ export type PreviewSessionStatus =
     | { state: "idle" }
     | { state: "starting"; registrationId: string }
     | { state: "ready"; registrationId: string; sessionId: string }
-    | { state: "error"; registrationId: string; error: string };
+    | { state: "error"; registrationId: string; sessionId: string; error: string };
 
 export interface PreviewSessionService {
     /** preview sessionを起動。既存sessionがあれば先に終了 */
@@ -38,7 +38,7 @@ export function createPreviewSessionService(): PreviewSessionService {
     const quitCurrent = async (): Promise<void> => {
         // startRequestIdを進めて、進行中の起動結果を無効化する
         ++startRequestId;
-        if (status.state === "ready") {
+        if (status.state === "ready" || status.state === "error") {
             const sid = status.sessionId;
             status = { state: "idle" };
             await quitSession(sid);
@@ -69,7 +69,8 @@ export function createPreviewSessionService(): PreviewSessionService {
                 // requestIdが古い場合は状態を更新しない
                 if (requestId === startRequestId) {
                     const error = e instanceof Error ? e.message : String(e);
-                    status = { state: "error", registrationId, error };
+                    // start失敗時はsessionIdがないのでerror型にはsessionId=""で保持
+                    status = { state: "error", registrationId, sessionId: "", error };
                 }
                 throw e;
             }
@@ -84,10 +85,15 @@ export function createPreviewSessionService(): PreviewSessionService {
                     value: String(value),
                 });
             } catch (e) {
-                // セッション切断等の場合はerrorに遷移
+                // セッション切断等の場合はerrorに遷移（sessionIdを保持してdispose可能にする）
                 if (status.state === "ready" && status.sessionId === sessionId) {
                     const error = e instanceof Error ? e.message : String(e);
-                    status = { state: "error", registrationId: status.registrationId, error };
+                    status = {
+                        state: "error",
+                        registrationId: status.registrationId,
+                        sessionId,
+                        error,
+                    };
                 }
                 throw e;
             }
@@ -101,10 +107,15 @@ export function createPreviewSessionService(): PreviewSessionService {
                     name,
                 });
             } catch (e) {
-                // セッション切断等の場合はerrorに遷移
+                // セッション切断等の場合はerrorに遷移（sessionIdを保持してdispose可能にする）
                 if (status.state === "ready" && status.sessionId === sessionId) {
                     const error = e instanceof Error ? e.message : String(e);
-                    status = { state: "error", registrationId: status.registrationId, error };
+                    status = {
+                        state: "error",
+                        registrationId: status.registrationId,
+                        sessionId,
+                        error,
+                    };
                 }
                 throw e;
             }

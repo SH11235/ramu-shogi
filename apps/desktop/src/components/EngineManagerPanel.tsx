@@ -47,7 +47,7 @@ function PreviewStatusBadge({ status }: { status: PreviewSessionStatus }): React
                 <span className="text-xs text-wafuu-kincha animate-pulse">エンジン起動中...</span>
             );
         case "ready":
-            return <span className="text-xs text-green-600">接続済み</span>;
+            return <span className="text-xs text-status-online">接続済み</span>;
         case "error":
             return <span className="text-xs text-destructive">エラー: {status.error}</span>;
     }
@@ -69,12 +69,19 @@ export function EngineManagerPanel({
     const selectedEngineIdRef = useRef<string | null>(null);
     const [editName, setEditName] = useState("");
     const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+    // debounce用: option名ごとにタイマーを管理
+    const debounceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-    // Cleanup preview session on unmount
+    // Cleanup preview session and debounce timers on unmount
     useEffect(() => {
         const svc = serviceRef.current;
+        const timers = debounceTimers.current;
         return () => {
             void svc.dispose();
+            for (const timer of timers.values()) {
+                clearTimeout(timer);
+            }
+            timers.clear();
         };
     }, []);
 
@@ -171,7 +178,7 @@ export function EngineManagerPanel({
         }
     };
 
-    const handleOptionChange = async (name: string, value: string | number | boolean) => {
+    const handleOptionChange = (name: string, value: string | number | boolean) => {
         if (!selectedEngine) return;
         const newValues = [...optionValues];
         const idx = newValues.findIndex((v) => v.name === name);
@@ -182,16 +189,20 @@ export function EngineManagerPanel({
         }
         setOptionValues(newValues);
 
-        // Live apply to preview session (best-effort)
-        if (previewStatus.state === "ready") {
-            previewSessionService.setOption(name, value).catch(() => {
-                // Live apply failed - update status
-                setPreviewStatus(previewSessionService.getStatus());
-            });
-        }
-
-        // Always save to persistent store
-        await registryService.saveOptions(selectedEngine.id, newValues);
+        // Debounced live apply to preview session (best-effort)
+        const existing = debounceTimers.current.get(name);
+        if (existing) clearTimeout(existing);
+        const timer = setTimeout(() => {
+            debounceTimers.current.delete(name);
+            if (previewStatus.state === "ready") {
+                previewSessionService.setOption(name, value).catch(() => {
+                    setPreviewStatus(previewSessionService.getStatus());
+                });
+            }
+            // Save to persistent store
+            void registryService.saveOptions(selectedEngine.id, newValues);
+        }, 300);
+        debounceTimers.current.set(name, timer);
     };
 
     const handleButtonClick = async (name: string) => {
