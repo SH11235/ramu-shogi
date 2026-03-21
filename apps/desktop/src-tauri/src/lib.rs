@@ -1481,6 +1481,7 @@ async fn usi_engine_save(
         "engines",
         serde_json::to_value(&registrations).map_err(|e| format!("serialize error: {e}"))?,
     );
+    store.save().map_err(|e| format!("store save error: {e}"))?;
     Ok(())
 }
 
@@ -1505,6 +1506,7 @@ async fn usi_engine_delete(app: AppHandle, registration_id: String) -> Result<()
     let options_key = format!("engine-options:{registration_id}");
     store.delete(&options_key);
 
+    store.save().map_err(|e| format!("store save error: {e}"))?;
     Ok(())
 }
 
@@ -1534,6 +1536,7 @@ async fn usi_engine_save_options(
         &key,
         serde_json::to_value(&options).map_err(|e| format!("serialize error: {e}"))?,
     );
+    store.save().map_err(|e| format!("store save error: {e}"))?;
     Ok(())
 }
 

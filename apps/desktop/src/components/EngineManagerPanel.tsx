@@ -1,4 +1,14 @@
 import type { EngineRegistration, EngineRegistryService, OptionValue } from "@shogi/engine-tauri";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@shogi/ui/components/alert-dialog";
 import { Button } from "@shogi/ui/components/button";
 import { Input } from "@shogi/ui/components/input";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -30,6 +40,8 @@ export function EngineManagerPanel({
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [selectedEngine, setSelectedEngine] = useState<EngineRegistration | null>(null);
     const [optionValues, setOptionValues] = useState<OptionValue[]>([]);
+    const [editName, setEditName] = useState("");
+    const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
     // Load engines on mount
     useEffect(() => {
@@ -84,17 +96,19 @@ export function EngineManagerPanel({
         }
     };
 
-    const handleDelete = async (id: string) => {
+    const handleDeleteConfirmed = async (id: string) => {
         await registryService.delete(id);
         if (selectedEngine?.id === id) {
             setSelectedEngine(null);
             setOptionValues([]);
         }
+        setDeleteTarget(null);
         await refreshEngines();
     };
 
     const handleSelectEngine = async (engine: EngineRegistration) => {
         setSelectedEngine(engine);
+        setEditName(engine.displayName);
         const opts = await registryService.loadOptions(engine.id);
         setOptionValues(opts);
     };
@@ -174,7 +188,7 @@ export function EngineManagerPanel({
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleDelete(engine.id)}
+                                onClick={() => setDeleteTarget(engine.id)}
                                 className="text-destructive hover:text-destructive shrink-0"
                             >
                                 削除
@@ -190,8 +204,18 @@ export function EngineManagerPanel({
                     <div className="flex items-center gap-2">
                         <Input
                             type="text"
-                            value={selectedEngine.displayName}
-                            onChange={(e) => handleRename(selectedEngine, e.target.value)}
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            onBlur={() => {
+                                if (editName !== selectedEngine.displayName) {
+                                    handleRename(selectedEngine, editName);
+                                }
+                            }}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter" && editName !== selectedEngine.displayName) {
+                                    handleRename(selectedEngine, editName);
+                                }
+                            }}
                             className="text-sm font-semibold border border-wafuu-border bg-wafuu-washi"
                         />
                     </div>
@@ -202,9 +226,43 @@ export function EngineManagerPanel({
                         options={selectedEngine.options}
                         values={optionValues}
                         onOptionChange={handleOptionChange}
+                        onResetAll={async () => {
+                            const defaults: OptionValue[] = selectedEngine.options
+                                .filter((o) => o.type !== "button")
+                                .map((o) => ({ name: o.name, value: o.default }));
+                            setOptionValues(defaults);
+                            await registryService.saveOptions(selectedEngine.id, defaults);
+                        }}
                     />
                 </div>
             )}
+
+            {/* 削除確認ダイアログ */}
+            <AlertDialog
+                open={deleteTarget !== null}
+                onOpenChange={(open) => {
+                    if (!open) setDeleteTarget(null);
+                }}
+            >
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>エンジンを削除しますか？</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            このエンジンの登録情報とオプション設定が完全に削除されます。この操作は取り消せません。
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (deleteTarget) handleDeleteConfirmed(deleteTarget);
+                            }}
+                        >
+                            削除
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

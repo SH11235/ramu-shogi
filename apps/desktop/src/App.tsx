@@ -77,11 +77,21 @@ function App() {
     const [engineOptions, setEngineOptions] = useState<EngineOption[]>([INTERNAL_ENGINE_OPTION]);
     const [isEngineManagerOpen, setIsEngineManagerOpen] = useState(false);
 
+    const [storeError, setStoreError] = useState<string | null>(null);
+
     // Load registered engines on mount
     useEffect(() => {
-        registryService.list().then((list) => {
-            setEngineOptions(buildEngineOptions(list));
-        });
+        registryService
+            .list()
+            .then((list) => {
+                setEngineOptions(buildEngineOptions(list));
+            })
+            .catch((e) => {
+                console.error("Failed to load engine registrations:", e);
+                setStoreError(
+                    `外部エンジンの読み込みに失敗しました: ${e instanceof Error ? e.message : String(e)}`,
+                );
+            });
     }, []);
 
     const handleEnginesChange = (engines: EngineRegistration[]) => {
@@ -104,6 +114,11 @@ function App() {
                     onPositionSnapshot={(snapshot) => setPanelPosition(snapshot)}
                     onOpenEngineManager={() => setIsEngineManagerOpen(true)}
                 />
+                {storeError && (
+                    <div className="text-xs text-destructive bg-destructive/10 p-2 rounded">
+                        {storeError}
+                    </div>
+                )}
                 <EngineControlPanel engine={panelEngine} position={panelPosition} />
 
                 {/* エンジン管理パネル（シンプルな折りたたみ表示） */}

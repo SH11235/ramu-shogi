@@ -17,6 +17,8 @@ interface UsiOptionFormProps {
     values: OptionValue[];
     onOptionChange: (name: string, value: string | number | boolean) => void;
     onButtonClick?: (name: string) => void;
+    /** バッチリセット用コールバック。指定時はリセットボタンがこれを呼ぶ（1回のIPC） */
+    onResetAll?: () => void;
 }
 
 function getOptionValue(
@@ -48,8 +50,13 @@ export function UsiOptionForm({
     values,
     onOptionChange,
     onButtonClick,
+    onResetAll,
 }: UsiOptionFormProps): ReactElement {
     const handleReset = () => {
+        if (onResetAll) {
+            onResetAll();
+            return;
+        }
         for (const opt of options) {
             if (opt.type === "button") continue;
             onOptionChange(opt.name, opt.default);

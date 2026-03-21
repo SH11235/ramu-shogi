@@ -357,6 +357,14 @@ fn create_engine_command(path: &str) -> Command {
     cmd
 }
 
+/// Validate that a USI parameter does not contain newline characters.
+fn validate_usi_param(param: &str, label: &str) -> Result<(), String> {
+    if param.contains('\n') || param.contains('\r') {
+        return Err(format!("{label} に改行文字を含めることはできません"));
+    }
+    Ok(())
+}
+
 /// Send a line to the engine's stdin.
 async fn send_line(
     stdin: &Arc<Mutex<tokio::process::ChildStdin>>,
@@ -491,6 +499,14 @@ impl UsiEngineManager {
                 serde_json::Value::String(s) => s.clone(),
                 other => other.to_string(),
             };
+            // Sanitize: skip options with newline characters
+            if opt.name.contains('\n')
+                || opt.name.contains('\r')
+                || value_str.contains('\n')
+                || value_str.contains('\r')
+            {
+                continue;
+            }
             send_line(
                 &stdin,
                 &format!("setoption name {} value {}", opt.name, value_str),
@@ -558,9 +574,11 @@ impl UsiEngineManager {
                 message: "エンジンプロセスが予期せず終了しました".to_string(),
             };
             let _ = app_handle_clone.emit(&channel, &error_event);
-            // Clean up session
+            // Clean up session and kill process to prevent zombie
             let mut sessions = sessions_clone.lock().await;
-            sessions.remove(&sid_clone);
+            if let Some(mut session) = sessions.remove(&sid_clone) {
+                let _ = session.child.kill().await;
+            }
         });
 
         let session = UsiEngineSession {
@@ -641,6 +659,8 @@ impl UsiEngineManager {
 
     /// Send setoption command (for check/spin/combo/string/filename types).
     pub async fn setoption(&self, session_id: &str, name: &str, value: &str) -> Result<(), String> {
+        validate_usi_param(name, "オプション名")?;
+        validate_usi_param(value, "オプション値")?;
         let sessions = self.sessions.lock().await;
         let session = sessions
             .get(session_id)
@@ -654,6 +674,7 @@ impl UsiEngineManager {
 
     /// Send button-type setoption command (no value).
     pub async fn send_button(&self, session_id: &str, name: &str) -> Result<(), String> {
+        validate_usi_param(name, "オプション名")?;
         let sessions = self.sessions.lock().await;
         let session = sessions
             .get(session_id)
