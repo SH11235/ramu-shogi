@@ -45,10 +45,14 @@ export function ActiveEngineSettingsPanel({
 
     // Load saved options when engine changes
     useEffect(() => {
-        // engine変更時に即座にstateをリセット
+        // engine変更時に即座にstateをリセット＋stale timerをクリア
         setSavedValues([]);
         setCurrentValues([]);
         setApplyError(null);
+        for (const timer of debounceTimers.current.values()) {
+            clearTimeout(timer);
+        }
+        debounceTimers.current.clear();
 
         if (!engine) {
             setIsLoading(false);

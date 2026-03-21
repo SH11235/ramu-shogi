@@ -147,6 +147,11 @@ export function EngineManagerPanel({
     const handleSelectEngine = async (engine: EngineRegistration) => {
         const engineId = engine.id;
         selectedEngineIdRef.current = engineId;
+        // エンジン切替時に古い debounce timer をクリア
+        for (const timer of debounceTimers.current.values()) {
+            clearTimeout(timer);
+        }
+        debounceTimers.current.clear();
         setSelectedEngine(engine);
         setEditName(engine.displayName);
 

@@ -43,7 +43,6 @@ describe("createPreviewSessionService", () => {
             expect(svc.getStatus()).toEqual({
                 state: "error",
                 registrationId: "reg-1",
-                sessionId: "",
                 error: "Engine not found",
             });
         });

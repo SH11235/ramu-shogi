@@ -4,7 +4,7 @@ export type PreviewSessionStatus =
     | { state: "idle" }
     | { state: "starting"; registrationId: string }
     | { state: "ready"; registrationId: string; sessionId: string }
-    | { state: "error"; registrationId: string; sessionId: string; error: string };
+    | { state: "error"; registrationId: string; sessionId?: string; error: string };
 
 export interface PreviewSessionService {
     /** preview sessionを起動。既存sessionがあれば先に終了 */
@@ -38,8 +38,8 @@ export function createPreviewSessionService(): PreviewSessionService {
     const quitCurrent = async (): Promise<void> => {
         // startRequestIdを進めて、進行中の起動結果を無効化する
         ++startRequestId;
-        if (status.state === "ready" || status.state === "error") {
-            const sid = status.sessionId;
+        if (status.state === "ready" || (status.state === "error" && status.sessionId)) {
+            const sid = status.sessionId as string;
             status = { state: "idle" };
             await quitSession(sid);
         } else {
@@ -69,8 +69,7 @@ export function createPreviewSessionService(): PreviewSessionService {
                 // requestIdが古い場合は状態を更新しない
                 if (requestId === startRequestId) {
                     const error = e instanceof Error ? e.message : String(e);
-                    // start失敗時はsessionIdがないのでerror型にはsessionId=""で保持
-                    status = { state: "error", registrationId, sessionId: "", error };
+                    status = { state: "error", registrationId, error };
                 }
                 throw e;
             }
