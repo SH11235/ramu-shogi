@@ -118,6 +118,15 @@ function App() {
     const [sessionNotReadyMessage, setSessionNotReadyMessage] = useState<string | null>(null);
     const sessionNotReadyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    useEffect(() => {
+        const ref = sessionNotReadyTimerRef;
+        return () => {
+            if (ref.current) {
+                clearTimeout(ref.current);
+            }
+        };
+    }, []);
+
     const handleOpenEngineSettings = (info: {
         side: "sente" | "gote" | "analysis";
         engineId: string;
