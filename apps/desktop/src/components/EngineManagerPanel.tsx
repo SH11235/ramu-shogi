@@ -5,6 +5,16 @@ import type {
     PreviewSessionService,
     PreviewSessionStatus,
 } from "@shogi/engine-tauri";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@shogi/ui/components/alert-dialog";
 import { Button } from "@shogi/ui/components/button";
 import { Input } from "@shogi/ui/components/input";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -57,6 +67,8 @@ export function EngineManagerPanel({
     const serviceRef = useRef(previewSessionService);
     // 非同期結果のstaleness guard: 選択中のengine.idを追跡
     const selectedEngineIdRef = useRef<string | null>(null);
+    const [editName, setEditName] = useState("");
+    const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
     // Cleanup preview session on unmount
     useEffect(() => {
@@ -83,12 +95,6 @@ export function EngineManagerPanel({
     const handleRegister = async () => {
         setErrorMessage(null);
         const result = await open({
-            filters: [
-                {
-                    name: "実行ファイル",
-                    extensions: ["exe", ""],
-                },
-            ],
             multiple: false,
             directory: false,
         });
@@ -119,14 +125,15 @@ export function EngineManagerPanel({
         }
     };
 
-    const handleDelete = async (id: string) => {
+    const handleDeleteConfirmed = async (id: string) => {
+        await registryService.delete(id);
         if (selectedEngine?.id === id) {
             await previewSessionService.dispose();
             setPreviewStatus({ state: "idle" });
             setSelectedEngine(null);
             setOptionValues([]);
         }
-        await registryService.delete(id);
+        setDeleteTarget(null);
         await refreshEngines();
     };
 
@@ -134,6 +141,7 @@ export function EngineManagerPanel({
         const engineId = engine.id;
         selectedEngineIdRef.current = engineId;
         setSelectedEngine(engine);
+        setEditName(engine.displayName);
 
         const opts = await registryService.loadOptions(engineId);
         // Staleness check: 別エンジンが選択されていたら無視
@@ -259,7 +267,7 @@ export function EngineManagerPanel({
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleDelete(engine.id)}
+                                onClick={() => setDeleteTarget(engine.id)}
                                 className="text-destructive hover:text-destructive shrink-0"
                             >
                                 削除
@@ -275,8 +283,18 @@ export function EngineManagerPanel({
                     <div className="flex items-center gap-2">
                         <Input
                             type="text"
-                            value={selectedEngine.displayName}
-                            onChange={(e) => handleRename(selectedEngine, e.target.value)}
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            onBlur={() => {
+                                if (editName !== selectedEngine.displayName) {
+                                    handleRename(selectedEngine, editName);
+                                }
+                            }}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter" && editName !== selectedEngine.displayName) {
+                                    handleRename(selectedEngine, editName);
+                                }
+                            }}
                             className="text-sm font-semibold border border-wafuu-border bg-wafuu-washi"
                         />
                     </div>
@@ -298,9 +316,43 @@ export function EngineManagerPanel({
                         values={optionValues}
                         onOptionChange={handleOptionChange}
                         onButtonClick={isPreviewReady ? handleButtonClick : undefined}
+                        onResetAll={async () => {
+                            const defaults: OptionValue[] = selectedEngine.options
+                                .filter((o) => o.type !== "button")
+                                .map((o) => ({ name: o.name, value: o.default }));
+                            setOptionValues(defaults);
+                            await registryService.saveOptions(selectedEngine.id, defaults);
+                        }}
                     />
                 </div>
             )}
+
+            {/* 削除確認ダイアログ */}
+            <AlertDialog
+                open={deleteTarget !== null}
+                onOpenChange={(open) => {
+                    if (!open) setDeleteTarget(null);
+                }}
+            >
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>エンジンを削除しますか？</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            このエンジンの登録情報とオプション設定が完全に削除されます。この操作は取り消せません。
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (deleteTarget) handleDeleteConfirmed(deleteTarget);
+                            }}
+                        >
+                            削除
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

@@ -31,7 +31,7 @@ describe("createPreviewSessionService", () => {
                 sessionId: "session-1",
             });
             expect(mockInvoke).toHaveBeenCalledWith("usi_engine_start", {
-                registrationId: "reg-1",
+                registration_id: "reg-1",
             });
         });
 
@@ -58,7 +58,7 @@ describe("createPreviewSessionService", () => {
             await svc.start("reg-2");
 
             expect(mockInvoke).toHaveBeenCalledWith("usi_engine_quit", {
-                sessionId: "session-1",
+                session_id: "session-1",
             });
             expect(svc.getStatus()).toEqual({
                 state: "ready",
@@ -92,7 +92,7 @@ describe("createPreviewSessionService", () => {
             await expect(p1).rejects.toThrow("Start request superseded");
 
             expect(mockInvoke).toHaveBeenCalledWith("usi_engine_quit", {
-                sessionId: "session-orphan",
+                session_id: "session-orphan",
             });
         });
 
@@ -122,7 +122,7 @@ describe("createPreviewSessionService", () => {
             await expect(p).rejects.toThrow("Start request superseded");
 
             expect(mockInvoke).toHaveBeenCalledWith("usi_engine_quit", {
-                sessionId: "session-orphan",
+                session_id: "session-orphan",
             });
         });
     });
@@ -138,7 +138,7 @@ describe("createPreviewSessionService", () => {
             await svc.setOption("Threads", 4);
 
             expect(mockInvoke).toHaveBeenCalledWith("usi_engine_setoption", {
-                sessionId: "session-1",
+                session_id: "session-1",
                 name: "Threads",
                 value: "4",
             });
@@ -154,7 +154,7 @@ describe("createPreviewSessionService", () => {
             await svc.sendButton("Clear Hash");
 
             expect(mockInvoke).toHaveBeenCalledWith("usi_engine_send_button", {
-                sessionId: "session-1",
+                session_id: "session-1",
                 name: "Clear Hash",
             });
         });
@@ -207,7 +207,7 @@ describe("createPreviewSessionService", () => {
 
             expect(svc.getStatus()).toEqual({ state: "idle" });
             expect(mockInvoke).toHaveBeenCalledWith("usi_engine_quit", {
-                sessionId: "session-1",
+                session_id: "session-1",
             });
         });
 

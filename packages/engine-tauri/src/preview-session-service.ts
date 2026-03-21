@@ -32,7 +32,7 @@ export function createPreviewSessionService(): PreviewSessionService {
     };
 
     const quitSession = async (sessionId: string): Promise<void> => {
-        await tauriInvoke("usi_engine_quit", { sessionId }).catch(() => undefined);
+        await tauriInvoke("usi_engine_quit", { session_id: sessionId }).catch(() => undefined);
     };
 
     const quitCurrent = async (): Promise<void> => {
@@ -56,7 +56,7 @@ export function createPreviewSessionService(): PreviewSessionService {
             status = { state: "starting", registrationId };
             try {
                 const sessionId = await tauriInvoke<string>("usi_engine_start", {
-                    registrationId,
+                    registration_id: registrationId,
                 });
                 // 起動完了時にrequestIdが古い場合は孤児セッションをquitして無視
                 if (requestId !== startRequestId) {
@@ -79,7 +79,7 @@ export function createPreviewSessionService(): PreviewSessionService {
             const sessionId = assertReady();
             try {
                 await tauriInvoke("usi_engine_setoption", {
-                    sessionId,
+                    session_id: sessionId,
                     name,
                     value: String(value),
                 });
@@ -97,7 +97,7 @@ export function createPreviewSessionService(): PreviewSessionService {
             const sessionId = assertReady();
             try {
                 await tauriInvoke("usi_engine_send_button", {
-                    sessionId,
+                    session_id: sessionId,
                     name,
                 });
             } catch (e) {

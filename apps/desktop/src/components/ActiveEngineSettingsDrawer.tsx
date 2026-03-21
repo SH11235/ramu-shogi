@@ -66,7 +66,7 @@ export function ActiveEngineSettingsDrawer({
         // Live apply to active session
         try {
             await tauriInvoke("usi_engine_setoption", {
-                sessionId,
+                session_id: sessionId,
                 name,
                 value: String(value),
             });
@@ -79,7 +79,7 @@ export function ActiveEngineSettingsDrawer({
         setApplyError(null);
         try {
             await tauriInvoke("usi_engine_send_button", {
-                sessionId,
+                session_id: sessionId,
                 name,
             });
         } catch (e) {

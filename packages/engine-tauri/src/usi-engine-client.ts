@@ -42,7 +42,7 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
     return {
         async init(_opts?: EngineInitOptions): Promise<void> {
             sessionId = await tauriInvoke<string>("usi_engine_start", {
-                registrationId,
+                registration_id: registrationId,
             });
 
             // Subscribe to session-scoped event channel
@@ -59,7 +59,7 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
         ): Promise<void> {
             const sid = assertSession();
             await tauriInvoke("usi_engine_position", {
-                sessionId: sid,
+                session_id: sid,
                 sfen,
                 moves: moves ?? [],
             });
@@ -68,7 +68,7 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
         async search(params: SearchParams): Promise<SearchHandle> {
             const sid = assertSession();
             await tauriInvoke("usi_engine_go", {
-                sessionId: sid,
+                session_id: sid,
                 params: {
                     maxDepth: params.limits?.maxDepth,
                     nodes: params.limits?.nodes,
@@ -79,20 +79,22 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
             });
             return {
                 cancel: async () => {
-                    await tauriInvoke("usi_engine_stop", { sessionId: sid }).catch(() => undefined);
+                    await tauriInvoke("usi_engine_stop", { session_id: sid }).catch(
+                        () => undefined,
+                    );
                 },
             };
         },
 
         async stop(): Promise<void> {
             const sid = assertSession();
-            await tauriInvoke("usi_engine_stop", { sessionId: sid });
+            await tauriInvoke("usi_engine_stop", { session_id: sid });
         },
 
         async setOption(name: string, value: string | number | boolean): Promise<void> {
             const sid = assertSession();
             await tauriInvoke("usi_engine_setoption", {
-                sessionId: sid,
+                session_id: sid,
                 name,
                 value: String(value),
             });
@@ -101,7 +103,7 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
         async sendButton(name: string): Promise<void> {
             const sid = assertSession();
             await tauriInvoke("usi_engine_send_button", {
-                sessionId: sid,
+                session_id: sid,
                 name,
             });
         },
@@ -119,7 +121,9 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
 
         async dispose(): Promise<void> {
             if (sessionId) {
-                await tauriInvoke("usi_engine_quit", { sessionId }).catch(() => undefined);
+                await tauriInvoke("usi_engine_quit", { session_id: sessionId }).catch(
+                    () => undefined,
+                );
                 sessionId = null;
             }
             if (unlisten) {

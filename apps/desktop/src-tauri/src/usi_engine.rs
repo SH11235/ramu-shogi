@@ -357,6 +357,14 @@ fn create_engine_command(path: &str) -> Command {
     cmd
 }
 
+/// Validate that a USI parameter does not contain newline characters.
+fn validate_usi_param(param: &str, label: &str) -> Result<(), String> {
+    if param.contains('\n') || param.contains('\r') {
+        return Err(format!("{label} に改行文字を含めることはできません"));
+    }
+    Ok(())
+}
+
 /// Send a line to the engine's stdin.
 async fn send_line(
     stdin: &Arc<Mutex<tokio::process::ChildStdin>>,
@@ -491,6 +499,14 @@ impl UsiEngineManager {
                 serde_json::Value::String(s) => s.clone(),
                 other => other.to_string(),
             };
+            // Sanitize: skip options with newline characters
+            if opt.name.contains('\n')
+                || opt.name.contains('\r')
+                || value_str.contains('\n')
+                || value_str.contains('\r')
+            {
+                continue;
+            }
             send_line(
                 &stdin,
                 &format!("setoption name {} value {}", opt.name, value_str),
@@ -558,9 +574,11 @@ impl UsiEngineManager {
                 message: "エンジンプロセスが予期せず終了しました".to_string(),
             };
             let _ = app_handle_clone.emit(&channel, &error_event);
-            // Clean up session
+            // Clean up session and kill process to prevent zombie
             let mut sessions = sessions_clone.lock().await;
-            sessions.remove(&sid_clone);
+            if let Some(mut session) = sessions.remove(&sid_clone) {
+                let _ = session.child.kill().await;
+            }
         });
 
         let session = UsiEngineSession {
@@ -579,6 +597,17 @@ impl UsiEngineManager {
         Ok(session_id)
     }
 
+    /// Clone the stdin handle for a session, releasing the sessions lock before awaiting I/O.
+    fn get_stdin(
+        sessions: &HashMap<String, UsiEngineSession>,
+        session_id: &str,
+    ) -> Result<Arc<Mutex<tokio::process::ChildStdin>>, String> {
+        let session = sessions
+            .get(session_id)
+            .ok_or("セッションが見つかりません")?;
+        Ok(Arc::clone(&session.stdin))
+    }
+
     /// Send position command.
     pub async fn position(
         &self,
@@ -586,25 +615,27 @@ impl UsiEngineManager {
         sfen: &str,
         moves: &[String],
     ) -> Result<(), String> {
-        let sessions = self.sessions.lock().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or("セッションが見つかりません")?;
-
+        let stdin = {
+            let sessions = self.sessions.lock().await;
+            Self::get_stdin(&sessions, session_id)?
+        };
         let cmd = if moves.is_empty() {
             format!("position sfen {sfen}")
         } else {
             format!("position sfen {sfen} moves {}", moves.join(" "))
         };
-        send_line(&session.stdin, &cmd).await
+        send_line(&stdin, &cmd).await
     }
 
     /// Send go command.
     pub async fn go(&self, session_id: &str, params: &SearchParamsInput) -> Result<(), String> {
-        let sessions = self.sessions.lock().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or("セッションが見つかりません")?;
+        let (stdin, status) = {
+            let sessions = self.sessions.lock().await;
+            let session = sessions
+                .get(session_id)
+                .ok_or("セッションが見つかりません")?;
+            (Arc::clone(&session.stdin), Arc::clone(&session.status))
+        };
 
         let mut cmd = "go".to_string();
         if params.infinite == Some(true) {
@@ -624,41 +655,40 @@ impl UsiEngineManager {
             }
         }
 
-        if let Ok(mut s) = session.status.lock() {
+        if let Ok(mut s) = status.lock() {
             *s = EngineStatus::Searching;
         }
-        send_line(&session.stdin, &cmd).await
+        send_line(&stdin, &cmd).await
     }
 
     /// Send stop command.
     pub async fn stop(&self, session_id: &str) -> Result<(), String> {
-        let sessions = self.sessions.lock().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or("セッションが見つかりません")?;
-        send_line(&session.stdin, "stop").await
+        let stdin = {
+            let sessions = self.sessions.lock().await;
+            Self::get_stdin(&sessions, session_id)?
+        };
+        send_line(&stdin, "stop").await
     }
 
     /// Send setoption command (for check/spin/combo/string/filename types).
     pub async fn setoption(&self, session_id: &str, name: &str, value: &str) -> Result<(), String> {
-        let sessions = self.sessions.lock().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or("セッションが見つかりません")?;
-        send_line(
-            &session.stdin,
-            &format!("setoption name {name} value {value}"),
-        )
-        .await
+        validate_usi_param(name, "オプション名")?;
+        validate_usi_param(value, "オプション値")?;
+        let stdin = {
+            let sessions = self.sessions.lock().await;
+            Self::get_stdin(&sessions, session_id)?
+        };
+        send_line(&stdin, &format!("setoption name {name} value {value}")).await
     }
 
     /// Send button-type setoption command (no value).
     pub async fn send_button(&self, session_id: &str, name: &str) -> Result<(), String> {
-        let sessions = self.sessions.lock().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or("セッションが見つかりません")?;
-        send_line(&session.stdin, &format!("setoption name {name}")).await
+        validate_usi_param(name, "オプション名")?;
+        let stdin = {
+            let sessions = self.sessions.lock().await;
+            Self::get_stdin(&sessions, session_id)?
+        };
+        send_line(&stdin, &format!("setoption name {name}")).await
     }
 
     /// Query session status.
