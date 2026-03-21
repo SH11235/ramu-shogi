@@ -14,7 +14,7 @@ import {
 import type { EngineOption } from "@shogi/ui";
 import { EngineControlPanel, NnueProvider, ShogiMatch } from "@shogi/ui";
 import { open } from "@tauri-apps/plugin-dialog";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActiveEngineSettingsPanel } from "./components/ActiveEngineSettingsPanel";
 import { EngineManagerPanel } from "./components/EngineManagerPanel";
 
@@ -116,6 +116,7 @@ function App() {
     };
 
     const [sessionNotReadyMessage, setSessionNotReadyMessage] = useState<string | null>(null);
+    const sessionNotReadyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const handleOpenEngineSettings = (info: {
         side: "sente" | "gote" | "analysis";
@@ -125,8 +126,14 @@ function App() {
         const reg = registrations.find((r) => r.id === info.engineId);
         if (!reg) return;
         if (!info.sessionId) {
+            if (sessionNotReadyTimerRef.current) {
+                clearTimeout(sessionNotReadyTimerRef.current);
+            }
             setSessionNotReadyMessage("エンジン起動後に設定を変更できます");
-            setTimeout(() => setSessionNotReadyMessage(null), 3000);
+            sessionNotReadyTimerRef.current = setTimeout(() => {
+                setSessionNotReadyMessage(null);
+                sessionNotReadyTimerRef.current = null;
+            }, 3000);
             return;
         }
         const sideLabel =
