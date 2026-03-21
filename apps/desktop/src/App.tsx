@@ -2,6 +2,7 @@ import type { NnueFormat } from "@shogi/app-core";
 import type { EngineRegistration } from "@shogi/engine-tauri";
 import {
     createEngineRegistryService,
+    createPreviewSessionService,
     createTauriEngineClient,
     createTauriNnueStorage,
     createUsiEngineClient,
@@ -13,6 +14,7 @@ import type { EngineOption } from "@shogi/ui";
 import { EngineControlPanel, NnueProvider, ShogiMatch } from "@shogi/ui";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
+import { ActiveEngineSettingsDrawer } from "./components/ActiveEngineSettingsDrawer";
 import { EngineManagerPanel } from "./components/EngineManagerPanel";
 
 const createEngineClient = () =>
@@ -35,6 +37,7 @@ const panelEngine = createEngineClient();
 const nnueStorage = createTauriNnueStorage();
 
 const registryService = createEngineRegistryService();
+const previewSessionService = createPreviewSessionService();
 
 // NNUE プリセット manifest.json の URL（環境変数で設定、必須）
 const nnueManifestUrl = import.meta.env.VITE_NNUE_MANIFEST_URL as string;
@@ -67,6 +70,12 @@ function buildEngineOptions(registrations: EngineRegistration[]): EngineOption[]
     return [INTERNAL_ENGINE_OPTION, ...external];
 }
 
+interface EngineSettingsTarget {
+    registration: EngineRegistration;
+    sessionId: string;
+    label: string;
+}
+
 function App() {
     const [panelPosition, setPanelPosition] = useState<{
         label?: string;
@@ -75,17 +84,39 @@ function App() {
     }>({ label: "現在局面", sfen: "startpos", moves: [] });
 
     const [engineOptions, setEngineOptions] = useState<EngineOption[]>([INTERNAL_ENGINE_OPTION]);
+    const [registrations, setRegistrations] = useState<EngineRegistration[]>([]);
     const [isEngineManagerOpen, setIsEngineManagerOpen] = useState(false);
+    const [engineSettingsTarget, setEngineSettingsTarget] = useState<EngineSettingsTarget | null>(
+        null,
+    );
 
     // Load registered engines on mount
     useEffect(() => {
         registryService.list().then((list) => {
+            setRegistrations(list);
             setEngineOptions(buildEngineOptions(list));
         });
     }, []);
 
     const handleEnginesChange = (engines: EngineRegistration[]) => {
+        setRegistrations(engines);
         setEngineOptions(buildEngineOptions(engines));
+    };
+
+    const handleOpenEngineSettings = (info: {
+        side: "sente" | "gote" | "analysis";
+        engineId: string;
+        sessionId: string | null;
+    }) => {
+        const reg = registrations.find((r) => r.id === info.engineId);
+        if (!reg || !info.sessionId) return;
+        const sideLabel =
+            info.side === "sente" ? "☗ 先手" : info.side === "gote" ? "☖ 後手" : "🔍 解析";
+        setEngineSettingsTarget({
+            registration: reg,
+            sessionId: info.sessionId,
+            label: `${sideLabel} ${reg.displayName}`,
+        });
     };
 
     return (
@@ -103,6 +134,7 @@ function App() {
                     defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
                     onPositionSnapshot={(snapshot) => setPanelPosition(snapshot)}
                     onOpenEngineManager={() => setIsEngineManagerOpen(true)}
+                    onOpenEngineSettings={handleOpenEngineSettings}
                 />
                 <EngineControlPanel engine={panelEngine} position={panelPosition} />
 
@@ -123,11 +155,22 @@ function App() {
                         </div>
                         <EngineManagerPanel
                             registryService={registryService}
+                            previewSessionService={previewSessionService}
                             onEnginesChange={handleEnginesChange}
                         />
                     </div>
                 )}
             </main>
+
+            {/* 起動中エンジン設定drawer */}
+            <ActiveEngineSettingsDrawer
+                open={engineSettingsTarget !== null}
+                onOpenChange={(open) => {
+                    if (!open) setEngineSettingsTarget(null);
+                }}
+                engine={engineSettingsTarget}
+                registryService={registryService}
+            />
         </NnueProvider>
     );
 }

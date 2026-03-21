@@ -12,7 +12,7 @@ import type {
 } from "@shogi/app-controller";
 import { createEngineController } from "@shogi/app-controller";
 import type { GameResult, NnueSelection, Player, ResolvedNnue } from "@shogi/app-core";
-import type { EngineInfoEvent } from "@shogi/engine-client";
+import type { EngineClient, EngineInfoEvent } from "@shogi/engine-client";
 import { useEffect, useRef, useState } from "react";
 import type { EngineThreadSettings } from "../types";
 import type { TickState } from "./useClockManager";
@@ -118,6 +118,10 @@ interface UseEngineManagerReturn {
     disposeEngine: (side: Player) => Promise<void>;
     /** NNUE変更に伴いエンジンを再起動する */
     restartEngineForNnue: (side: Player, selection?: NnueSelection) => Promise<void>;
+    /** 指定サイドのアクティブなEngineClientを取得 */
+    getClientForSide: (side: Player) => EngineClient | null;
+    /** 解析用のアクティブなEngineClientを取得 */
+    getAnalysisClient: () => EngineClient | null;
 }
 
 export function useEngineManager({
@@ -301,5 +305,7 @@ export function useEngineManager({
         isEngineRestarting: controllerState.isEngineRestarting,
         disposeEngine: controller.command.dispose,
         restartEngineForNnue: controller.command.restartForNnue,
+        getClientForSide: controller.getClientForSide,
+        getAnalysisClient: controller.getAnalysisClient,
     };
 }

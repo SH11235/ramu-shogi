@@ -130,6 +130,12 @@ interface ShogiMatchProps {
     reviewLeftContent?: React.ReactNode;
     /** 外部エンジン管理パネルを開くコールバック（Desktop用） */
     onOpenEngineManager?: () => void;
+    /** 起動中外部エンジン設定パネルを開くコールバック（Desktop用） */
+    onOpenEngineSettings?: (info: {
+        side: "sente" | "gote" | "analysis";
+        engineId: string;
+        sessionId: string | null;
+    }) => void;
 }
 
 export function ShogiMatch({
@@ -157,6 +163,7 @@ export function ShogiMatch({
     reviewMode,
     reviewLeftContent,
     onOpenEngineManager,
+    onOpenEngineSettings,
 }: ShogiMatchProps): ReactElement {
     // デフォルトの NNUE 選択（props のプリセットキーを使用、未指定時は DEFAULT_PRESET_KEY）
     const defaultNnueSelection = createDefaultNnueSelection(
@@ -742,6 +749,8 @@ export function ShogiMatch({
         isEngineRestarting,
         disposeEngine,
         restartEngineForNnue,
+        getClientForSide,
+        getAnalysisClient,
     } = useEngineManager({
         sides,
         engineOptions,
@@ -1389,6 +1398,23 @@ export function ShogiMatch({
         internalEngineId,
         engineOptions,
         onOpenEngineManager,
+        onOpenEngineSettings: onOpenEngineSettings
+            ? (side: "sente" | "gote" | "analysis") => {
+                  let engineId: string | undefined;
+                  let client = null;
+                  if (side === "analysis") {
+                      engineId = analysisEngineId;
+                      client = getAnalysisClient();
+                  } else {
+                      const setting = sides[side];
+                      engineId = setting.role === "engine" ? setting.engineId : undefined;
+                      client = getClientForSide(side);
+                  }
+                  if (!engineId) return;
+                  const sessionId = client?.getSessionId?.() ?? null;
+                  onOpenEngineSettings({ side, engineId, sessionId });
+              }
+            : undefined,
         setIsDisplaySettingsOpen,
         setIsPassRightsSettingsOpen,
     };
