@@ -238,10 +238,12 @@ export function ShogiMatch({
     // 検討モード: 編集モードでも対局中でも一時停止中でもない状態
     // 自由に棋譜を閲覧し、分岐を作成できる
     const isReviewMode = !isEditMode && !isMatchRunning && !isPaused;
-    const [displaySettings, setDisplaySettings] = useLocalStorage<DisplaySettings>(
+    const [storedDisplaySettings, setDisplaySettings] = useLocalStorage<DisplaySettings>(
         "shogi-display-settings",
         DEFAULT_DISPLAY_SETTINGS,
     );
+    // 既存の localStorage データに新フィールド（enableSound 等）がない場合のマージ
+    const displaySettings = { ...DEFAULT_DISPLAY_SETTINGS, ...storedDisplaySettings };
     const { playSound } = useShogiSound();
     // 解析設定（古いlocalStorageデータとの互換性のためデフォルト値とマージ）
     const [storedAnalysisSettings, setAnalysisSettings] = useLocalStorage<AnalysisSettings>(

@@ -597,6 +597,17 @@ impl UsiEngineManager {
         Ok(session_id)
     }
 
+    /// Clone the stdin handle for a session, releasing the sessions lock before awaiting I/O.
+    fn get_stdin(
+        sessions: &HashMap<String, UsiEngineSession>,
+        session_id: &str,
+    ) -> Result<Arc<Mutex<tokio::process::ChildStdin>>, String> {
+        let session = sessions
+            .get(session_id)
+            .ok_or("セッションが見つかりません")?;
+        Ok(Arc::clone(&session.stdin))
+    }
+
     /// Send position command.
     pub async fn position(
         &self,
@@ -604,25 +615,27 @@ impl UsiEngineManager {
         sfen: &str,
         moves: &[String],
     ) -> Result<(), String> {
-        let sessions = self.sessions.lock().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or("セッションが見つかりません")?;
-
+        let stdin = {
+            let sessions = self.sessions.lock().await;
+            Self::get_stdin(&sessions, session_id)?
+        };
         let cmd = if moves.is_empty() {
             format!("position sfen {sfen}")
         } else {
             format!("position sfen {sfen} moves {}", moves.join(" "))
         };
-        send_line(&session.stdin, &cmd).await
+        send_line(&stdin, &cmd).await
     }
 
     /// Send go command.
     pub async fn go(&self, session_id: &str, params: &SearchParamsInput) -> Result<(), String> {
-        let sessions = self.sessions.lock().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or("セッションが見つかりません")?;
+        let (stdin, status) = {
+            let sessions = self.sessions.lock().await;
+            let session = sessions
+                .get(session_id)
+                .ok_or("セッションが見つかりません")?;
+            (Arc::clone(&session.stdin), Arc::clone(&session.status))
+        };
 
         let mut cmd = "go".to_string();
         if params.infinite == Some(true) {
@@ -642,44 +655,40 @@ impl UsiEngineManager {
             }
         }
 
-        if let Ok(mut s) = session.status.lock() {
+        if let Ok(mut s) = status.lock() {
             *s = EngineStatus::Searching;
         }
-        send_line(&session.stdin, &cmd).await
+        send_line(&stdin, &cmd).await
     }
 
     /// Send stop command.
     pub async fn stop(&self, session_id: &str) -> Result<(), String> {
-        let sessions = self.sessions.lock().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or("セッションが見つかりません")?;
-        send_line(&session.stdin, "stop").await
+        let stdin = {
+            let sessions = self.sessions.lock().await;
+            Self::get_stdin(&sessions, session_id)?
+        };
+        send_line(&stdin, "stop").await
     }
 
     /// Send setoption command (for check/spin/combo/string/filename types).
     pub async fn setoption(&self, session_id: &str, name: &str, value: &str) -> Result<(), String> {
         validate_usi_param(name, "オプション名")?;
         validate_usi_param(value, "オプション値")?;
-        let sessions = self.sessions.lock().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or("セッションが見つかりません")?;
-        send_line(
-            &session.stdin,
-            &format!("setoption name {name} value {value}"),
-        )
-        .await
+        let stdin = {
+            let sessions = self.sessions.lock().await;
+            Self::get_stdin(&sessions, session_id)?
+        };
+        send_line(&stdin, &format!("setoption name {name} value {value}")).await
     }
 
     /// Send button-type setoption command (no value).
     pub async fn send_button(&self, session_id: &str, name: &str) -> Result<(), String> {
         validate_usi_param(name, "オプション名")?;
-        let sessions = self.sessions.lock().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or("セッションが見つかりません")?;
-        send_line(&session.stdin, &format!("setoption name {name}")).await
+        let stdin = {
+            let sessions = self.sessions.lock().await;
+            Self::get_stdin(&sessions, session_id)?
+        };
+        send_line(&stdin, &format!("setoption name {name}")).await
     }
 
     /// Query session status.

@@ -60,12 +60,6 @@ export function EngineManagerPanel({
     const handleRegister = async () => {
         setErrorMessage(null);
         const result = await open({
-            filters: [
-                {
-                    name: "実行ファイル",
-                    extensions: ["exe", ""],
-                },
-            ],
             multiple: false,
             directory: false,
         });

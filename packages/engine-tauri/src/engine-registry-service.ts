@@ -51,7 +51,7 @@ export function createEngineRegistryService(): EngineRegistryService {
         },
 
         async delete(id: string): Promise<void> {
-            await tauriInvoke("usi_engine_delete", { registrationId: id });
+            await tauriInvoke("usi_engine_delete", { registration_id: id });
         },
 
         async list(): Promise<EngineRegistration[]> {
@@ -59,11 +59,16 @@ export function createEngineRegistryService(): EngineRegistryService {
         },
 
         async saveOptions(registrationId: string, options: OptionValue[]): Promise<void> {
-            await tauriInvoke("usi_engine_save_options", { registrationId, options });
+            await tauriInvoke("usi_engine_save_options", {
+                registration_id: registrationId,
+                options,
+            });
         },
 
         async loadOptions(registrationId: string): Promise<OptionValue[]> {
-            return tauriInvoke<OptionValue[]>("usi_engine_load_options", { registrationId });
+            return tauriInvoke<OptionValue[]>("usi_engine_load_options", {
+                registration_id: registrationId,
+            });
         },
     };
 }
