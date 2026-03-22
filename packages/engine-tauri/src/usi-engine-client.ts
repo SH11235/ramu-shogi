@@ -100,6 +100,18 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
             });
         },
 
+        async sendButton(name: string): Promise<void> {
+            const sid = assertSession();
+            await tauriInvoke("usi_engine_send_button", {
+                session_id: sid,
+                name,
+            });
+        },
+
+        getSessionId(): string | null {
+            return sessionId;
+        },
+
         subscribe(handler: EngineEventHandler): () => void {
             listeners.add(handler);
             return () => {

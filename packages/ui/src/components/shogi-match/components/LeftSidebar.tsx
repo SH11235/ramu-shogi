@@ -53,6 +53,7 @@ export function LeftSidebar(): ReactElement {
         onOpenPassRightsSettings,
         engineOptions,
         onOpenEngineManager,
+        onOpenEngineSettings,
     } = useMatchSettings();
 
     const externalEngines = engineOptions?.filter((e) => e.kind === "external") ?? [];
@@ -444,6 +445,47 @@ export function LeftSidebar(): ReactElement {
                     <span>⚙️</span>
                     <span>外部エンジン管理...</span>
                 </button>
+            )}
+
+            {/* 起動中外部エンジンの設定 */}
+            {onOpenEngineSettings && (
+                <>
+                    {(["sente", "gote"] as const).map((side) => {
+                        const setting = sides[side];
+                        if (setting.role !== "engine") return null;
+                        const engineId = setting.engineId;
+                        const engine = engineOptions?.find((e) => e.id === engineId);
+                        if (!engine || engine.kind !== "external") return null;
+                        const sideLabel = side === "sente" ? "先手" : "後手";
+                        return (
+                            <button
+                                key={`engine-settings-${side}`}
+                                type="button"
+                                onClick={() => onOpenEngineSettings(side)}
+                                className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
+                            >
+                                <span>{side === "sente" ? "☗" : "☖"}</span>
+                                <span>
+                                    {sideLabel} {engine.label} 設定...
+                                </span>
+                            </button>
+                        );
+                    })}
+                    {(() => {
+                        const aEngine = engineOptions?.find((e) => e.id === analysisEngineId);
+                        if (!aEngine || aEngine.kind !== "external") return null;
+                        return (
+                            <button
+                                type="button"
+                                onClick={() => onOpenEngineSettings("analysis")}
+                                className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
+                            >
+                                <span>🔍</span>
+                                <span>解析 {aEngine.label} 設定...</span>
+                            </button>
+                        );
+                    })()}
+                </>
             )}
 
             {/* 表示設定 */}

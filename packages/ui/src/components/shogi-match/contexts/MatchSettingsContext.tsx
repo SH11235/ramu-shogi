@@ -53,6 +53,9 @@ interface MatchSettingsProviderProps {
     // エンジン管理パネル制御（optional）
     onOpenEngineManager?: () => void;
 
+    // 起動中エンジン設定パネル制御（optional）
+    onOpenEngineSettings?: (side: "sente" | "gote" | "analysis") => void;
+
     // ダイアログ制御
     onOpenNnueManager: () => void;
     onOpenDisplaySettings: () => void;
@@ -86,6 +89,7 @@ export function MatchSettingsProvider({
     analysisEngineId,
     onAnalysisEngineIdChange,
     onOpenEngineManager,
+    onOpenEngineSettings,
     onOpenNnueManager,
     onOpenDisplaySettings,
     onOpenPassRightsSettings,
@@ -113,6 +117,7 @@ export function MatchSettingsProvider({
         analysisEngineId,
         onAnalysisEngineIdChange,
         onOpenEngineManager,
+        onOpenEngineSettings,
         onOpenNnueManager,
         onOpenDisplaySettings,
         onOpenPassRightsSettings,

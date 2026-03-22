@@ -2,6 +2,8 @@ import type { NnueFormat } from "@shogi/app-core";
 import type { EngineRegistration } from "@shogi/engine-tauri";
 import {
     createEngineRegistryService,
+    createEngineSessionService,
+    createPreviewSessionService,
     createTauriEngineClient,
     createTauriNnueStorage,
     createUsiEngineClient,
@@ -12,7 +14,8 @@ import {
 import type { EngineOption } from "@shogi/ui";
 import { EngineControlPanel, NnueProvider, ShogiMatch } from "@shogi/ui";
 import { open } from "@tauri-apps/plugin-dialog";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ActiveEngineSettingsPanel } from "./components/ActiveEngineSettingsPanel";
 import { EngineManagerPanel } from "./components/EngineManagerPanel";
 
 const createEngineClient = () =>
@@ -35,6 +38,8 @@ const panelEngine = createEngineClient();
 const nnueStorage = createTauriNnueStorage();
 
 const registryService = createEngineRegistryService();
+const previewSessionService = createPreviewSessionService();
+const engineSessionService = createEngineSessionService();
 
 // NNUE プリセット manifest.json の URL（環境変数で設定、必須）
 const nnueManifestUrl = import.meta.env.VITE_NNUE_MANIFEST_URL as string;
@@ -67,6 +72,12 @@ function buildEngineOptions(registrations: EngineRegistration[]): EngineOption[]
     return [INTERNAL_ENGINE_OPTION, ...external];
 }
 
+interface EngineSettingsTarget {
+    registration: EngineRegistration;
+    sessionId: string;
+    label: string;
+}
+
 function App() {
     const [panelPosition, setPanelPosition] = useState<{
         label?: string;
@@ -75,7 +86,11 @@ function App() {
     }>({ label: "現在局面", sfen: "startpos", moves: [] });
 
     const [engineOptions, setEngineOptions] = useState<EngineOption[]>([INTERNAL_ENGINE_OPTION]);
+    const [registrations, setRegistrations] = useState<EngineRegistration[]>([]);
     const [isEngineManagerOpen, setIsEngineManagerOpen] = useState(false);
+    const [engineSettingsTarget, setEngineSettingsTarget] = useState<EngineSettingsTarget | null>(
+        null,
+    );
 
     const [storeError, setStoreError] = useState<string | null>(null);
 
@@ -84,6 +99,7 @@ function App() {
         registryService
             .list()
             .then((list) => {
+                setRegistrations(list);
                 setEngineOptions(buildEngineOptions(list));
             })
             .catch((e) => {
@@ -95,7 +111,47 @@ function App() {
     }, []);
 
     const handleEnginesChange = (engines: EngineRegistration[]) => {
+        setRegistrations(engines);
         setEngineOptions(buildEngineOptions(engines));
+    };
+
+    const [sessionNotReadyMessage, setSessionNotReadyMessage] = useState<string | null>(null);
+    const sessionNotReadyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        const ref = sessionNotReadyTimerRef;
+        return () => {
+            if (ref.current) {
+                clearTimeout(ref.current);
+            }
+        };
+    }, []);
+
+    const handleOpenEngineSettings = (info: {
+        side: "sente" | "gote" | "analysis";
+        engineId: string;
+        sessionId: string | null;
+    }) => {
+        const reg = registrations.find((r) => r.id === info.engineId);
+        if (!reg) return;
+        if (!info.sessionId) {
+            if (sessionNotReadyTimerRef.current) {
+                clearTimeout(sessionNotReadyTimerRef.current);
+            }
+            setSessionNotReadyMessage("エンジン起動後に設定を変更できます");
+            sessionNotReadyTimerRef.current = setTimeout(() => {
+                setSessionNotReadyMessage(null);
+                sessionNotReadyTimerRef.current = null;
+            }, 3000);
+            return;
+        }
+        const sideLabel =
+            info.side === "sente" ? "☗ 先手" : info.side === "gote" ? "☖ 後手" : "🔍 解析";
+        setEngineSettingsTarget({
+            registration: reg,
+            sessionId: info.sessionId,
+            label: `${sideLabel} ${reg.displayName}`,
+        });
     };
 
     return (
@@ -113,10 +169,16 @@ function App() {
                     defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
                     onPositionSnapshot={(snapshot) => setPanelPosition(snapshot)}
                     onOpenEngineManager={() => setIsEngineManagerOpen(true)}
+                    onOpenEngineSettings={handleOpenEngineSettings}
                 />
                 {storeError && (
                     <div className="text-xs text-destructive bg-destructive/10 p-2 rounded">
                         {storeError}
+                    </div>
+                )}
+                {sessionNotReadyMessage && (
+                    <div className="text-xs text-wafuu-sumi bg-wafuu-kincha/20 p-2 rounded">
+                        {sessionNotReadyMessage}
                     </div>
                 )}
                 <EngineControlPanel engine={panelEngine} position={panelPosition} />
@@ -138,11 +200,23 @@ function App() {
                         </div>
                         <EngineManagerPanel
                             registryService={registryService}
+                            previewSessionService={previewSessionService}
                             onEnginesChange={handleEnginesChange}
                         />
                     </div>
                 )}
             </main>
+
+            {/* 起動中エンジン設定drawer */}
+            <ActiveEngineSettingsPanel
+                open={engineSettingsTarget !== null}
+                onOpenChange={(open) => {
+                    if (!open) setEngineSettingsTarget(null);
+                }}
+                engine={engineSettingsTarget}
+                registryService={registryService}
+                sessionService={engineSessionService}
+            />
         </NnueProvider>
     );
 }

@@ -133,6 +133,10 @@ export interface EngineController {
     getState: () => EngineControllerState;
     subscribe: (listener: (state: EngineControllerState) => void) => () => void;
     command: EngineControllerCommand;
+    /** 指定サイドのアクティブなEngineClientを取得（外部エンジンのsessionId取得等に使用） */
+    getClientForSide: (side: Player) => EngineClient | null;
+    /** 解析用のアクティブなEngineClientを取得 */
+    getAnalysisClient: () => EngineClient | null;
 }
 
 interface EngineControllerCallbacks {
@@ -1298,5 +1302,7 @@ export function createEngineController(
             };
         },
         command,
+        getClientForSide: (side: Player) => engineStates[side].client,
+        getAnalysisClient: () => analysisState.client,
     };
 }

@@ -54,6 +54,7 @@ export interface MatchSettingsProps {
     internalEngineId: string;
     engineOptions?: EngineOption[];
     onOpenEngineManager?: () => void;
+    onOpenEngineSettings?: (side: "sente" | "gote" | "analysis") => void;
     setIsDisplaySettingsOpen: (open: boolean) => void;
     setIsPassRightsSettingsOpen: (open: boolean) => void;
 }

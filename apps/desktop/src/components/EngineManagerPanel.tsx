@@ -1,4 +1,10 @@
-import type { EngineRegistration, EngineRegistryService, OptionValue } from "@shogi/engine-tauri";
+import type {
+    EngineRegistration,
+    EngineRegistryService,
+    OptionValue,
+    PreviewSessionService,
+    PreviewSessionStatus,
+} from "@shogi/engine-tauri";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -13,13 +19,14 @@ import { Button } from "@shogi/ui/components/button";
 import { Input } from "@shogi/ui/components/input";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { ReactElement } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { UsiOptionForm } from "./UsiOptionForm";
 
 type RegistrationState = "idle" | "probing" | "saving" | "error";
 
 interface EngineManagerPanelProps {
     registryService: EngineRegistryService;
+    previewSessionService: PreviewSessionService;
     onEnginesChange?: (engines: EngineRegistration[]) => void;
 }
 
@@ -31,8 +38,24 @@ function deriveDisplayName(path: string, probedName: string): string {
     return basename && basename.length > 0 ? basename : "Unknown";
 }
 
+function PreviewStatusBadge({ status }: { status: PreviewSessionStatus }): ReactElement | null {
+    switch (status.state) {
+        case "idle":
+            return null;
+        case "starting":
+            return (
+                <span className="text-xs text-wafuu-kincha animate-pulse">エンジン起動中...</span>
+            );
+        case "ready":
+            return <span className="text-xs text-status-online">接続済み</span>;
+        case "error":
+            return <span className="text-xs text-destructive">エラー: {status.error}</span>;
+    }
+}
+
 export function EngineManagerPanel({
     registryService,
+    previewSessionService,
     onEnginesChange,
 }: EngineManagerPanelProps): ReactElement {
     const [engines, setEngines] = useState<EngineRegistration[]>([]);
@@ -40,8 +63,27 @@ export function EngineManagerPanel({
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [selectedEngine, setSelectedEngine] = useState<EngineRegistration | null>(null);
     const [optionValues, setOptionValues] = useState<OptionValue[]>([]);
+    const [previewStatus, setPreviewStatus] = useState<PreviewSessionStatus>({ state: "idle" });
+    const serviceRef = useRef(previewSessionService);
+    // 非同期結果のstaleness guard: 選択中のengine.idを追跡
+    const selectedEngineIdRef = useRef<string | null>(null);
     const [editName, setEditName] = useState("");
     const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+    // debounce用: option名ごとにタイマーを管理
+    const debounceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+    // Cleanup preview session and debounce timers on unmount
+    useEffect(() => {
+        const svc = serviceRef.current;
+        const timers = debounceTimers.current;
+        return () => {
+            void svc.dispose();
+            for (const timer of timers.values()) {
+                clearTimeout(timer);
+            }
+            timers.clear();
+        };
+    }, []);
 
     // Load engines on mount
     useEffect(() => {
@@ -93,6 +135,8 @@ export function EngineManagerPanel({
     const handleDeleteConfirmed = async (id: string) => {
         await registryService.delete(id);
         if (selectedEngine?.id === id) {
+            await previewSessionService.dispose();
+            setPreviewStatus({ state: "idle" });
             setSelectedEngine(null);
             setOptionValues([]);
         }
@@ -101,13 +145,45 @@ export function EngineManagerPanel({
     };
 
     const handleSelectEngine = async (engine: EngineRegistration) => {
+        const engineId = engine.id;
+        selectedEngineIdRef.current = engineId;
+        // エンジン切替時に古い debounce timer をクリア
+        for (const timer of debounceTimers.current.values()) {
+            clearTimeout(timer);
+        }
+        debounceTimers.current.clear();
         setSelectedEngine(engine);
         setEditName(engine.displayName);
-        const opts = await registryService.loadOptions(engine.id);
+
+        const opts = await registryService.loadOptions(engineId);
+        // Staleness check: 別エンジンが選択されていたら無視
+        if (selectedEngineIdRef.current !== engineId) return;
         setOptionValues(opts);
+
+        // Start preview session
+        setPreviewStatus({ state: "starting", registrationId: engineId });
+        try {
+            await previewSessionService.start(engineId);
+            if (selectedEngineIdRef.current !== engineId) return;
+            setPreviewStatus(previewSessionService.getStatus());
+        } catch {
+            if (selectedEngineIdRef.current !== engineId) return;
+            setPreviewStatus(previewSessionService.getStatus());
+        }
     };
 
-    const handleOptionChange = async (name: string, value: string | number | boolean) => {
+    const handleRetryPreview = async () => {
+        if (!selectedEngine) return;
+        setPreviewStatus({ state: "starting", registrationId: selectedEngine.id });
+        try {
+            await previewSessionService.start(selectedEngine.id);
+            setPreviewStatus(previewSessionService.getStatus());
+        } catch {
+            setPreviewStatus(previewSessionService.getStatus());
+        }
+    };
+
+    const handleOptionChange = (name: string, value: string | number | boolean) => {
         if (!selectedEngine) return;
         const newValues = [...optionValues];
         const idx = newValues.findIndex((v) => v.name === name);
@@ -117,7 +193,30 @@ export function EngineManagerPanel({
             newValues.push({ name, value });
         }
         setOptionValues(newValues);
-        await registryService.saveOptions(selectedEngine.id, newValues);
+
+        // Debounced live apply to preview session (best-effort)
+        const existing = debounceTimers.current.get(name);
+        if (existing) clearTimeout(existing);
+        const timer = setTimeout(() => {
+            debounceTimers.current.delete(name);
+            if (previewStatus.state === "ready") {
+                previewSessionService.setOption(name, value).catch(() => {
+                    setPreviewStatus(previewSessionService.getStatus());
+                });
+            }
+            // Save to persistent store
+            void registryService.saveOptions(selectedEngine.id, newValues);
+        }, 300);
+        debounceTimers.current.set(name, timer);
+    };
+
+    const handleButtonClick = async (name: string) => {
+        if (previewStatus.state !== "ready") return;
+        try {
+            await previewSessionService.sendButton(name);
+        } catch {
+            setPreviewStatus(previewSessionService.getStatus());
+        }
     };
 
     const handleRename = async (engine: EngineRegistration, newName: string) => {
@@ -128,6 +227,8 @@ export function EngineManagerPanel({
             setSelectedEngine(updated);
         }
     };
+
+    const isPreviewReady = previewStatus.state === "ready";
 
     return (
         <div className="flex flex-col gap-3">
@@ -213,13 +314,24 @@ export function EngineManagerPanel({
                             className="text-sm font-semibold border border-wafuu-border bg-wafuu-washi"
                         />
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                        オプション（次回起動時に適用）
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">
+                            {isPreviewReady
+                                ? "オプション（即時反映 + 保存）"
+                                : "オプション（次回起動時に適用）"}
+                        </span>
+                        <PreviewStatusBadge status={previewStatus} />
+                        {previewStatus.state === "error" && (
+                            <Button variant="outline" size="sm" onClick={handleRetryPreview}>
+                                再起動
+                            </Button>
+                        )}
                     </div>
                     <UsiOptionForm
                         options={selectedEngine.options}
                         values={optionValues}
                         onOptionChange={handleOptionChange}
+                        onButtonClick={isPreviewReady ? handleButtonClick : undefined}
                         onResetAll={async () => {
                             const defaults: OptionValue[] = selectedEngine.options
                                 .filter((o) => o.type !== "button")

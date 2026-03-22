@@ -318,6 +318,16 @@ export interface EngineClient {
      */
     getThreadInfo?(): ThreadInfo;
     /**
+     * Send a button-type USI option (no value).
+     * Optional - only implemented by external USI backends.
+     */
+    sendButton?(name: string): Promise<void>;
+    /**
+     * Get the session ID for external USI engines.
+     * Optional - only implemented by external USI backends.
+     */
+    getSessionId?(): string | null;
+    /**
      * Reset the engine to allow retry after error.
      * - Clears error state and allows reinitialization
      * - Does NOT automatically call init() - caller must do so after reset

@@ -55,6 +55,9 @@ export interface MatchSettingsContextValue {
     // エンジン管理パネル制御
     onOpenEngineManager?: () => void;
 
+    // 起動中エンジン設定パネル制御
+    onOpenEngineSettings?: (side: "sente" | "gote" | "analysis") => void;
+
     // ダイアログ制御
     onOpenNnueManager: () => void;
     onOpenDisplaySettings: () => void;

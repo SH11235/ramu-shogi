@@ -21,8 +21,19 @@ export {
     type ProbeResult,
     type UsiOptionDef,
 } from "./engine-registry-service";
+// Engine session service
+export {
+    createEngineSessionService,
+    type EngineSessionService,
+} from "./engine-session-service";
 // NNUE ストレージ
 export { createTauriNnueStorage } from "./nnue-storage";
+// Preview session
+export {
+    createPreviewSessionService,
+    type PreviewSessionService,
+    type PreviewSessionStatus,
+} from "./preview-session-service";
 // USI エンジン
 export { createUsiEngineClient } from "./usi-engine-client";
 
