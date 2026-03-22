@@ -16,6 +16,7 @@ import type { SelectionState } from "../contexts/MatchStateContext.types";
 import type { ClockSettings, TickState } from "../hooks/useClockManager";
 import type {
     DisplaySettings,
+    EngineOption,
     EngineThreadSettings,
     GameMode,
     Message,
@@ -34,6 +35,8 @@ import type {
 export interface MatchSettingsProps {
     sides: { sente: SideSetting; gote: SideSetting };
     handleSidesChange: (sides: { sente: SideSetting; gote: SideSetting }) => void;
+    analysisEngineId: string;
+    setAnalysisEngineId: (engineId: string) => void;
     timeSettings: ClockSettings;
     setTimeSettings: (settings: ClockSettings) => void;
     passRightsSettings: PassRightsSettings;
@@ -49,6 +52,9 @@ export interface MatchSettingsProps {
     nnueList: NnueMeta[];
     presets: PresetWithStatus[];
     internalEngineId: string;
+    engineOptions?: EngineOption[];
+    onOpenEngineManager?: () => void;
+    onOpenEngineSettings?: (side: "sente" | "gote" | "analysis") => void;
     setIsDisplaySettingsOpen: (open: boolean) => void;
     setIsPassRightsSettingsOpen: (open: boolean) => void;
 }

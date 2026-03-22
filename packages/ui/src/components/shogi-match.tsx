@@ -19,6 +19,7 @@ import {
 } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useShogiSound } from "../hooks/useShogiSound";
 import type { RemoteNnueManager } from "./nnue/types";
 import {
     DEFAULT_BYOYOMI_MS,
@@ -127,6 +128,14 @@ interface ShogiMatchProps {
     reviewMode?: boolean;
     /** 棋譜検討モード時に左サイドバー位置に表示するコンテンツ */
     reviewLeftContent?: React.ReactNode;
+    /** 外部エンジン管理パネルを開くコールバック（Desktop用） */
+    onOpenEngineManager?: () => void;
+    /** 起動中外部エンジン設定パネルを開くコールバック（Desktop用） */
+    onOpenEngineSettings?: (info: {
+        side: "sente" | "gote" | "analysis";
+        engineId: string;
+        sessionId: string | null;
+    }) => void;
 }
 
 export function ShogiMatch({
@@ -153,6 +162,8 @@ export function ShogiMatch({
     initialAnalysisEntries = null,
     reviewMode,
     reviewLeftContent,
+    onOpenEngineManager,
+    onOpenEngineSettings,
 }: ShogiMatchProps): ReactElement {
     // デフォルトの NNUE 選択（props のプリセットキーを使用、未指定時は DEFAULT_PRESET_KEY）
     const defaultNnueSelection = createDefaultNnueSelection(
@@ -234,16 +245,23 @@ export function ShogiMatch({
     // 検討モード: 編集モードでも対局中でも一時停止中でもない状態
     // 自由に棋譜を閲覧し、分岐を作成できる
     const isReviewMode = !isEditMode && !isMatchRunning && !isPaused;
-    const [displaySettings, setDisplaySettings] = useLocalStorage<DisplaySettings>(
+    const [storedDisplaySettings, setDisplaySettings] = useLocalStorage<DisplaySettings>(
         "shogi-display-settings",
         DEFAULT_DISPLAY_SETTINGS,
     );
+    // 既存の localStorage データに新フィールド（enableSound 等）がない場合のマージ
+    const displaySettings = { ...DEFAULT_DISPLAY_SETTINGS, ...storedDisplaySettings };
+    const { playSound } = useShogiSound();
     // 解析設定（古いlocalStorageデータとの互換性のためデフォルト値とマージ）
     const [storedAnalysisSettings, setAnalysisSettings] = useLocalStorage<AnalysisSettings>(
         "shogi-analysis-settings",
         DEFAULT_ANALYSIS_SETTINGS,
     );
     const analysisSettings = { ...DEFAULT_ANALYSIS_SETTINGS, ...storedAnalysisSettings };
+    const [analysisEngineId, setAnalysisEngineId] = useLocalStorage<string>(
+        "shogi-analysis-engine",
+        engineOptions[0]?.id ?? "wasm",
+    );
     // パス権設定
     const [passRightsSettings, setPassRightsSettings] = useNormalizedSettings(
         "shogi-pass-rights-settings",
@@ -733,6 +751,8 @@ export function ShogiMatch({
         isEngineRestarting,
         disposeEngine,
         restartEngineForNnue,
+        getClientForSide,
+        getAnalysisClient,
     } = useEngineManager({
         sides,
         engineOptions,
@@ -753,6 +773,7 @@ export function ShogiMatch({
         resolveNnue,
         allowAnalysisDuringMatch,
         engineThreads,
+        analysisEngineId,
     });
     stopAllEnginesRef.current = stopAllEngines;
     restartEngineForNnueRef.current = restartEngineForNnue;
@@ -769,13 +790,15 @@ export function ShogiMatch({
     };
 
     // 並列一括解析用のエンジンプール
-    const engineOpt = engineOptions[0]; // デフォルトのエンジンオプションを使用
+    const analysisEngineOption =
+        engineOptions.find((option) => option.id === analysisEngineId) ?? engineOptions[0];
     const enginePool = useEnginePool({
         createClient:
-            engineOpt?.createClient ??
+            analysisEngineOption?.createClient ??
             (() => {
                 throw new Error("No engine available");
             }),
+        clientKey: analysisEngineOption?.id,
         workerCount: resolveWorkerCount(analysisSettings.parallelWorkers),
         onProgress: (progress) => {
             setBatchAnalysis({
@@ -842,7 +865,18 @@ export function ShogiMatch({
         move: string,
         nextPosition: PositionState,
         lastMoveInfo: LastMove | undefined,
+        source?: "human" | "engine",
     ) => {
+        // サウンドフィードバック
+        if (displaySettings.enableSound) {
+            if (move === "pass") {
+                playSound("pass");
+            } else if (source === "engine") {
+                playSound("move_opponent");
+            } else {
+                playSound("move_self");
+            }
+        }
         // 消費時間を計算
         const elapsedMs = Date.now() - turnStartTimeRef.current;
         // 棋譜ナビゲーションに手を追加（局面更新はonPositionChangeで自動実行）
@@ -895,7 +929,7 @@ export function ShogiMatch({
             );
             return;
         }
-        applyMoveAndUpdateState(move, result.next, result.lastMove);
+        applyMoveAndUpdateState(move, result.next, result.lastMove, "engine");
     };
     handleMoveFromEngineRef.current = handleMoveFromEngine;
 
@@ -1336,10 +1370,19 @@ export function ShogiMatch({
     const isDraggingPiece = isEditMode && dndController.state.isDragging;
     const internalEngineId = engineOptions[0]?.id ?? "wasm";
 
+    useEffect(() => {
+        if (engineOptions.some((option) => option.id === analysisEngineId)) {
+            return;
+        }
+        setAnalysisEngineId(engineOptions[0]?.id ?? "wasm");
+    }, [analysisEngineId, engineOptions, setAnalysisEngineId]);
+
     // Props グループ化: 対局設定
     const matchSettings: MatchSettingsProps = {
         sides,
         handleSidesChange,
+        analysisEngineId,
+        setAnalysisEngineId,
         timeSettings,
         setTimeSettings,
         passRightsSettings,
@@ -1355,6 +1398,25 @@ export function ShogiMatch({
         nnueList,
         presets,
         internalEngineId,
+        engineOptions,
+        onOpenEngineManager,
+        onOpenEngineSettings: onOpenEngineSettings
+            ? (side: "sente" | "gote" | "analysis") => {
+                  let engineId: string | undefined;
+                  let client = null;
+                  if (side === "analysis") {
+                      engineId = analysisEngineId;
+                      client = getAnalysisClient();
+                  } else {
+                      const setting = sides[side];
+                      engineId = setting.role === "engine" ? setting.engineId : undefined;
+                      client = getClientForSide(side);
+                  }
+                  if (!engineId) return;
+                  const sessionId = client?.getSessionId?.() ?? null;
+                  onOpenEngineSettings({ side, engineId, sessionId });
+              }
+            : undefined,
         setIsDisplaySettingsOpen,
         setIsPassRightsSettingsOpen,
     };

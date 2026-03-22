@@ -12,7 +12,7 @@ import type {
 } from "@shogi/app-controller";
 import { createEngineController } from "@shogi/app-controller";
 import type { GameResult, NnueSelection, Player, ResolvedNnue } from "@shogi/app-core";
-import type { EngineInfoEvent } from "@shogi/engine-client";
+import type { EngineClient, EngineInfoEvent } from "@shogi/engine-client";
 import { useEffect, useRef, useState } from "react";
 import type { EngineThreadSettings } from "../types";
 import type { TickState } from "./useClockManager";
@@ -56,6 +56,8 @@ interface UseEngineManagerProps {
     allowAnalysisDuringMatch?: boolean;
     /** 対局用スレッド数（0=自動） */
     engineThreads?: EngineThreadSettings;
+    /** 解析用エンジンID */
+    analysisEngineId?: string;
 }
 
 /** 解析リクエストパラメータ */
@@ -116,6 +118,10 @@ interface UseEngineManagerReturn {
     disposeEngine: (side: Player) => Promise<void>;
     /** NNUE変更に伴いエンジンを再起動する */
     restartEngineForNnue: (side: Player, selection?: NnueSelection) => Promise<void>;
+    /** 指定サイドのアクティブなEngineClientを取得 */
+    getClientForSide: (side: Player) => EngineClient | null;
+    /** 解析用のアクティブなEngineClientを取得 */
+    getAnalysisClient: () => EngineClient | null;
 }
 
 export function useEngineManager({
@@ -138,6 +144,7 @@ export function useEngineManager({
     resolveNnue,
     allowAnalysisDuringMatch,
     engineThreads,
+    analysisEngineId,
 }: UseEngineManagerProps): UseEngineManagerReturn {
     const engineOptionsRef = useRef(engineOptions);
     useEffect(() => {
@@ -269,18 +276,11 @@ export function useEngineManager({
         ]);
     };
 
-    const resolveAnalysisEngineId = () => {
-        if (resolvedSides.sente.role === "engine" && resolvedSides.sente.engineId) {
-            return resolvedSides.sente.engineId;
-        }
-        if (resolvedSides.gote.role === "engine" && resolvedSides.gote.engineId) {
-            return resolvedSides.gote.engineId;
-        }
-        return engineOptions[0]?.id;
-    };
-
     const analyzePosition = async (request: AnalysisRequest) => {
-        const engineId = resolveAnalysisEngineId();
+        const engineId = analysisEngineId ?? engineOptions[0]?.id;
+        if (!engineId) {
+            throw new Error("Analysis engine is not configured");
+        }
         await controller.command.startAnalysis({
             ...request,
             engineId,
@@ -305,5 +305,7 @@ export function useEngineManager({
         isEngineRestarting: controllerState.isEngineRestarting,
         disposeEngine: controller.command.dispose,
         restartEngineForNnue: controller.command.restartForNnue,
+        getClientForSide: controller.getClientForSide,
+        getAnalysisClient: controller.getAnalysisClient,
     };
 }

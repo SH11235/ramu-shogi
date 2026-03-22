@@ -6,7 +6,7 @@
 
 import type { NnueMeta, NnueSelection, PresetWithStatus } from "@shogi/app-core";
 import type { ClockSettings } from "../hooks/useClockManager";
-import type { EngineThreadSettings, PassRightsSettings, SideSetting } from "../types";
+import type { EngineOption, EngineThreadSettings, PassRightsSettings, SideSetting } from "../types";
 
 /**
  * 対局設定コンテキスト値
@@ -44,6 +44,19 @@ export interface MatchSettingsContextValue {
     nnueList: NnueMeta[];
     presets: PresetWithStatus[];
     internalEngineId: string;
+
+    // エンジン選択（複数エンジン対応）
+    engineOptions?: EngineOption[];
+
+    // 解析エンジン選択
+    analysisEngineId?: string;
+    onAnalysisEngineIdChange?: (id: string) => void;
+
+    // エンジン管理パネル制御
+    onOpenEngineManager?: () => void;
+
+    // 起動中エンジン設定パネル制御
+    onOpenEngineSettings?: (side: "sente" | "gote" | "analysis") => void;
 
     // ダイアログ制御
     onOpenNnueManager: () => void;
