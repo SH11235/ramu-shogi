@@ -6,7 +6,7 @@
 use std::cell::RefCell;
 use std::io::ErrorKind;
 
-use rshogi_core::eval::set_eval_hash_enabled;
+use rshogi_core::eval::{MaterialLevel, set_eval_hash_enabled, set_material_level};
 use rshogi_core::movegen::{MoveList, generate_legal_all_with_pass};
 use rshogi_core::nnue::{detect_format, init_nnue_from_bytes, set_fv_scale_override};
 use rshogi_core::position::{Position, SFEN_HIRATE};
@@ -897,6 +897,17 @@ pub fn set_option(name: &str, value: Option<JsValue>) -> Result<(), JsValue> {
             "MaxMovesToDraw" => {
                 if let Some(v) = as_i64(&value) {
                     engine.search.set_max_moves_to_draw(v as i32);
+                }
+            }
+            "MaterialLevel" => {
+                if let Some(v) = as_i64(&value) {
+                    if let Some(level) = MaterialLevel::from_value(v as u8) {
+                        set_material_level(level);
+                    } else {
+                        emit_event(EventPayload::Error {
+                            message: format!("Invalid MaterialLevel value {v}"),
+                        });
+                    }
                 }
             }
             "FV_SCALE" => {

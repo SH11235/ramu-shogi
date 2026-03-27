@@ -9,6 +9,7 @@ import initWasm, {
     load_position as loadPosition,
     search as runSearch,
     set_event_handler as setEventHandler,
+    set_option as setOption,
 } from "../pkg/engine_wasm.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -261,6 +262,8 @@ const runBenchmark = async (args) => {
     if (args.useNnue) {
         const nnueBytes = readBytes("NNUE file", nnuePath);
         loadModel(nnueBytes);
+    } else {
+        setOption("MaterialLevel", 9);
     }
 
     let lastInfo = null;
