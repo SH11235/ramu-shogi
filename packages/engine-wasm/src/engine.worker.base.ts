@@ -471,6 +471,12 @@ export function createEngineWorker(bindings: WasmWorkerBindings) {
         engineInitialized = true;
 
         await loadModelIfNeeded(opts);
+
+        // NNUE未ロード時はMaterial評価を明示的に有効化（rshogi-core 0.2.3で必須化）
+        const modelUri = opts?.modelUri ?? opts?.nnuePath;
+        if (!modelUri) {
+            await bindings.setOption("MaterialLevel", 9);
+        }
     }
 
     async function ensureEngineReady() {
