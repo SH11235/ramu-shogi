@@ -234,13 +234,12 @@ dependencies = [
 
 [[package]]
 name = "rshogi-core"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "anyhow",
  "getrandom",
  "libc",
  "log",
- "once_cell",
  "rand",
  "rand_xoshiro",
  "rayon",
