@@ -710,7 +710,6 @@ export function createEngineController(
 
             const threadCount = getThreadCountForSide(context.engineThreads, side);
             await client.init(threadCount ? { threads: threadCount } : undefined);
-            await applyThreadOption(client, threadCount);
 
             const selection =
                 options.nnueSelection ??
@@ -787,7 +786,6 @@ export function createEngineController(
             if (!engineState.ready) {
                 const threadCount = getThreadCountForSide(context.engineThreads, side);
                 await client.init(threadCount ? { threads: threadCount } : undefined);
-                await applyThreadOption(client, threadCount);
 
                 const selection =
                     side === "sente" ? context.nnueSelections.sente : context.nnueSelections.gote;
@@ -987,7 +985,6 @@ export function createEngineController(
                 analysisState.engineId = engineId;
                 const threadCount = getAnalysisThreadCount(context.engineThreads);
                 await client.init(threadCount ? { threads: threadCount } : undefined);
-                await applyThreadOption(client, threadCount);
 
                 const selection = context.nnueSelections.analysis;
                 if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
