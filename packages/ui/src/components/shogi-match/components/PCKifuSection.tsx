@@ -13,7 +13,6 @@ import { detectParallelism } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { useAnalysis } from "../contexts/AnalysisContext";
-import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import { ANALYSIS_TIME_OPTIONS, PARALLEL_WORKER_OPTIONS } from "../utils/threadOptions";
 import { CurrentPositionAiHintPanel } from "./CurrentPositionAiHintPanel";
@@ -22,10 +21,7 @@ import { KifuPanel } from "./KifuPanel";
 import { TabHeader } from "./TabHeader";
 
 export function PCKifuSection(): ReactElement {
-    const { gameMode } = useMatchState();
-    const [activeTab, setActiveTab] = useState<"kifu" | "ai">(
-        gameMode === "reviewing" ? "kifu" : "ai",
-    );
+    const [activeTab, setActiveTab] = useState<"kifu" | "ai">("kifu");
 
     // 分析関連は Context から取得
     const {
@@ -74,7 +70,7 @@ export function PCKifuSection(): ReactElement {
     const parallelismConfig = detectParallelism();
 
     return (
-        <div className="flex flex-col shrink-0 pt-16 w-[var(--panel-width)] [--kifu-panel-max-h:none] [--kifu-panel-branch-max-h:none]">
+        <div className="flex flex-col shrink-0 pt-16 w-[var(--panel-width)]">
             <TabHeader
                 tabs={[
                     { id: "kifu", label: "棋譜" },
