@@ -2,6 +2,11 @@
 /* 注意: このファイルは @import "tailwindcss" の後に読み込む必要がある */
 
 @layer base {
+    html {
+        /* スクロールバーの出入りによるレイアウトシフトを防止 */
+        scrollbar-gutter: stable;
+    }
+
     :root {
         color-scheme: light;
         --background: 0 0% 100%;

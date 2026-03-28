@@ -74,7 +74,7 @@ export function PCKifuSection(): ReactElement {
     const parallelismConfig = detectParallelism();
 
     return (
-        <div className="flex flex-col shrink-0 pt-16 w-[var(--panel-width)]">
+        <div className="flex flex-col shrink-0 pt-16 w-[var(--panel-width)] [--kifu-panel-max-h:none] [--kifu-panel-branch-max-h:none]">
             <TabHeader
                 tabs={[
                     { id: "kifu", label: "棋譜" },

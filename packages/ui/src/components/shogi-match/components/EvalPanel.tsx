@@ -74,19 +74,25 @@ export function EvalPanel({
                 </span>
             </button>
 
-            {isOpen && (
-                <div className="p-3">
-                    {/* 評価値グラフ（クリックで拡大モーダル表示、手数選択対応） */}
-                    <EvalGraph
-                        evalHistory={evalHistory}
-                        currentPly={currentPly}
-                        compact={true}
-                        height={80}
-                        onClick={handleGraphClick}
-                        onPlySelect={onPlySelect}
-                    />
+            <div
+                className={`overflow-hidden transition-[grid-template-rows] duration-200 grid ${
+                    isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                }`}
+            >
+                <div className="min-h-0">
+                    <div className="p-3">
+                        {/* 評価値グラフ（クリックで拡大モーダル表示、手数選択対応） */}
+                        <EvalGraph
+                            evalHistory={evalHistory}
+                            currentPly={currentPly}
+                            compact={true}
+                            height={80}
+                            onClick={handleGraphClick}
+                            onPlySelect={onPlySelect}
+                        />
+                    </div>
                 </div>
-            )}
+            </div>
 
             {/* 評価値グラフ拡大モーダル */}
             <EvalGraphModal
