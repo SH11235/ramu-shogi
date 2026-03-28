@@ -670,7 +670,9 @@ export function createEngineController(
 
         try {
             if (engineState.client) {
-                await engineState.client.stop();
+                // stop()は不要: dispose()内でWorkerをterminateするため。
+                // stop()を先に呼ぶとterminateAndRecoverが非同期で再初期化を開始し、
+                // 直後のdispose()と競合してWASM_THREADS_INIT_FAILEDを引き起こす。
                 if (typeof engineState.client.dispose === "function") {
                     await engineState.client.dispose();
                 }
@@ -942,7 +944,6 @@ export function createEngineController(
 
         if (analysisState.client) {
             try {
-                await analysisState.client.stop();
                 if (typeof analysisState.client.dispose === "function") {
                     await analysisState.client.dispose();
                 }
