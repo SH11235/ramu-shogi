@@ -783,6 +783,9 @@ pub fn search(params: Option<JsValue>) -> Result<(), JsValue> {
     let params = parse_search_params(params)?;
 
     with_engine_mut(|engine| {
+        // stop/ponderhitフラグをリセット（go()呼び出し前に必須）
+        engine.search.reset_flags();
+
         let mut limits = LimitsType::new();
         limits.set_start_time();
         limits.multi_pv = engine.default_multi_pv.max(1);
