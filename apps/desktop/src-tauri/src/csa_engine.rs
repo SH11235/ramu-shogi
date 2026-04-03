@@ -115,9 +115,11 @@ impl CsaEngine {
             CsaEngine::External { stdin, .. } => {
                 send_usi_line(stdin, "usinewgame").await?;
                 send_usi_line(stdin, "isready").await?;
-                // readyok は bestmove_rx ではなく stdout タスクが処理する
-                // （readyok を待つため info_rx を drain する方法もあるが、簡易実装では省略）
-                tokio::time::sleep(Duration::from_millis(100)).await;
+                // NOTE: readyok は stdout タスクが消費する（bestmove/info 以外はスキップ）。
+                // 本来は readyok 用の通知チャネルが必要だが、現時点では
+                // エンジンが isready に即応答する前提で固定待ちとする。
+                // TODO: readyok 通知チャネルを stdout タスクに追加する
+                tokio::time::sleep(Duration::from_secs(1)).await;
                 Ok(())
             }
             CsaEngine::Builtin { engine_state, .. } => {
@@ -297,16 +299,18 @@ impl CsaEngine {
                 active_thread,
                 ..
             } => {
-                // Search の stop_flag を立てて探索を停止
-                if let Ok(inner) = engine_state.inner.lock()
-                    && let Some(search) = inner.search.as_ref()
+                // Search の stop_flag を立てて探索を停止（poison 回復付き）
                 {
-                    search.stop_flag().store(true, Ordering::SeqCst);
+                    let inner = engine_state.inner.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Some(search) = inner.search.as_ref() {
+                        search.stop_flag().store(true, Ordering::SeqCst);
+                    }
                 }
-                if let Ok(mut guard) = active_thread.lock()
-                    && let Some(handle) = guard.take()
                 {
-                    let _ = handle.join();
+                    let mut guard = active_thread.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Some(handle) = guard.take() {
+                        let _ = handle.join();
+                    }
                 }
                 Ok(())
             }
@@ -384,7 +388,8 @@ async fn external_stdout_task(
                 } else if line.starts_with("info ")
                     && let Some(info) = parse_info_for_csa(line)
                 {
-                    let _ = info_tx.send(info).await;
+                    // try_send で満杯なら古い info を捨てる（ハング防止）
+                    let _ = info_tx.try_send(info);
                 }
                 // readyok, usiok 等はスキップ
             }
@@ -519,11 +524,12 @@ fn spawn_builtin_search(
     info_tx: mpsc::Sender<CsaSearchInfo>,
     active_thread: &StdMutex<Option<std::thread::JoinHandle<()>>>,
 ) -> Result<(), CsaError> {
-    // 前回のスレッドを回収
-    if let Ok(mut guard) = active_thread.lock()
-        && let Some(handle) = guard.take()
+    // 前回のスレッドを回収（poison 回復付き）
     {
-        let _ = handle.join();
+        let mut guard = active_thread.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(handle) = guard.take() {
+            let _ = handle.join();
+        }
     }
 
     let handle = std::thread::Builder::new()
@@ -534,7 +540,8 @@ fn spawn_builtin_search(
         })
         .map_err(|e| CsaError::EngineError(format!("探索スレッド起動失敗: {e}")))?;
 
-    if let Ok(mut guard) = active_thread.lock() {
+    {
+        let mut guard = active_thread.lock().unwrap_or_else(|e| e.into_inner());
         *guard = Some(handle);
     }
 
@@ -571,7 +578,8 @@ fn builtin_search_thread(
             pv: info.pv.iter().map(|m| m.to_usi()).collect(),
             nps: info.nps,
         };
-        let _ = info_tx_clone.blocking_send(csa_info);
+        // try_send で満杯なら古い info を捨てる（ハング防止）
+        let _ = info_tx_clone.try_send(csa_info);
     };
 
     let result = search.go(&mut position, limits, Some(info_callback));

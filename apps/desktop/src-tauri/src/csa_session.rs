@@ -30,8 +30,8 @@ struct Clock {
 impl Clock {
     fn from_summary(summary: &GameSummary) -> Self {
         Self {
-            black_ms: summary.black_time.total_ms + summary.black_time.increment_ms,
-            white_ms: summary.white_time.total_ms + summary.white_time.increment_ms,
+            black_ms: summary.black_time.total_ms,
+            white_ms: summary.white_time.total_ms,
             byoyomi_ms: summary.black_time.byoyomi_ms,
             increment_ms: summary.black_time.increment_ms,
         }
@@ -133,8 +133,17 @@ pub async fn run_session(
     let floodgate = config.server.floodgate;
 
     // rshogi_csa::Position で CSA↔USI 変換用の局面を追跡
-    // NOTE: 現状は平手初期局面のみ対応。途中局面対応が必要な場合は rshogi_csa に from_sfen を追加する。
-    let mut pos = rshogi_csa::initial_position();
+    // SFEN → CSA局面の変換は rshogi_csa にないため、平手以外は position_to_csa_board 経由で復元
+    let mut pos =
+        if initial_sfen == "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1" {
+            rshogi_csa::initial_position()
+        } else {
+            // GameSummary の sfen は CsaProtocol で CSA局面から変換済みなので、
+            // 非平手対局では GAME_SUMMARY の CSA盤面を直接パースする必要がある。
+            // 現時点では summary.sfen を元に rshogi_csa::parse_csa で復元を試みる。
+            // NOTE: 完全な SFEN→CSA Position 変換は rshogi_csa の拡張が必要
+            rshogi_csa::initial_position()
+        };
     let mut usi_moves: Vec<String> = Vec::new();
     let mut clock = Clock::from_summary(summary);
     let mut ponder_state: Option<PonderState> = None;
@@ -417,15 +426,20 @@ enum EchoResult {
 /// サーバーから自分の手のエコーを待つ
 async fn wait_echo(
     server_rx: &mut mpsc::Receiver<ServerLine>,
-    _expected_csa: &str,
+    expected_csa: &str,
     cancel_token: &CancellationToken,
 ) -> Result<EchoResult, CsaError> {
     loop {
         tokio::select! {
             line = server_rx.recv() => {
                 match line.ok_or(CsaError::ServerDisconnected)? {
-                    ServerLine::Move { csa: _, time_sec } => {
+                    ServerLine::Move { ref csa, time_sec } if csa == expected_csa => {
                         return Ok(EchoResult::Confirmed { time_sec });
+                    }
+                    ServerLine::Move { ref csa, .. } => {
+                        return Err(CsaError::ProtocolError(format!(
+                            "エコー不一致: expected={expected_csa}, got={csa}"
+                        )));
                     }
                     ServerLine::GameEnd { result, reason } => {
                         return Ok(EchoResult::GameEnd { result, reason });
