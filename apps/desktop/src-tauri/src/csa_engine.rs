@@ -298,15 +298,15 @@ impl CsaEngine {
                 ..
             } => {
                 // Search の stop_flag を立てて探索を停止
-                if let Ok(inner) = engine_state.inner.lock() {
-                    if let Some(search) = inner.search.as_ref() {
-                        search.stop_flag().store(true, Ordering::SeqCst);
-                    }
+                if let Ok(inner) = engine_state.inner.lock()
+                    && let Some(search) = inner.search.as_ref()
+                {
+                    search.stop_flag().store(true, Ordering::SeqCst);
                 }
-                if let Ok(mut guard) = active_thread.lock() {
-                    if let Some(handle) = guard.take() {
-                        let _ = handle.join();
-                    }
+                if let Ok(mut guard) = active_thread.lock()
+                    && let Some(handle) = guard.take()
+                {
+                    let _ = handle.join();
                 }
                 Ok(())
             }
@@ -381,10 +381,10 @@ async fn external_stdout_task(
                     if let Some(result) = parse_bestmove_for_csa(line) {
                         let _ = bestmove_tx.send(result).await;
                     }
-                } else if line.starts_with("info ") {
-                    if let Some(info) = parse_info_for_csa(line) {
-                        let _ = info_tx.send(info).await;
-                    }
+                } else if line.starts_with("info ")
+                    && let Some(info) = parse_info_for_csa(line)
+                {
+                    let _ = info_tx.send(info).await;
                 }
                 // readyok, usiok 等はスキップ
             }
@@ -520,10 +520,10 @@ fn spawn_builtin_search(
     active_thread: &StdMutex<Option<std::thread::JoinHandle<()>>>,
 ) -> Result<(), CsaError> {
     // 前回のスレッドを回収
-    if let Ok(mut guard) = active_thread.lock() {
-        if let Some(handle) = guard.take() {
-            let _ = handle.join();
-        }
+    if let Ok(mut guard) = active_thread.lock()
+        && let Some(handle) = guard.take()
+    {
+        let _ = handle.join();
     }
 
     let handle = std::thread::Builder::new()
