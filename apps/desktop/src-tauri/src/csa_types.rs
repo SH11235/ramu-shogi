@@ -1,11 +1,19 @@
 //! CSA対局の共通型定義
-#![allow(dead_code)] // 後続タスクで使用予定
+//!
+//! ## エラー処理方針
+//!
+//! `CsaError` は Serialize を実装しない。フロントエンドへのエラー通知は
+//! `CsaSessionEvent::Error { message: String }` 経由で行い、
+//! `Display` trait で文字列化する。
 
 use serde::{Deserialize, Serialize};
 
 // ─── CsaError ───
 
 /// CSA対局で発生するエラー
+///
+/// フロントエンドへの送信は `CsaSessionEvent::Error` 経由。
+/// `Display::to_string()` でメッセージを取得する。
 #[derive(Debug)]
 pub enum CsaError {
     ConnectionFailed(String),

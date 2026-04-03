@@ -2,11 +2,20 @@
 //!
 //! CSA対局中は使用エンジンを専有し、通常のエンジン操作を排他する。
 //! EngineLockGuard の RAII Drop により、パニック時もロックが自動解放される。
-#![allow(dead_code)] // acquire/EngineLockGuard は後続タスクで使用予定
+//!
+//! ## TOCTOU に関する設計判断
+//!
+//! `check_engine_available()` によるロックチェックと後続のエンジン操作は
+//! 原子的ではない（TOCTOU gap がある）。ただし以下の理由から実害はない:
+//! - CSA ロック取得はユーザーの手動操作（「接続」ボタン）でのみ発生する
+//! - エンジンコマンドも同様にユーザー操作起点であり、同時発生は想定外
+//! - 仮に競合しても最悪ケースは「エンジン操作が失敗する」のみで、
+//!   データ破損やクラッシュには至らない（EngineState 自体が Mutex で保護）
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 /// ロック対象のエンジン種別
+#[allow(dead_code)] // CSA対局実装タスクで使用予定
 #[derive(Clone, Debug)]
 pub enum EngineTarget {
     Builtin,
@@ -18,6 +27,12 @@ pub struct EngineLock {
     locked: Mutex<Option<EngineTarget>>,
 }
 
+/// Mutex の poison を回復してガードを返す。
+/// パニックしたスレッドが残した状態でも継続可能にする。
+fn recover_lock(mutex: &Mutex<Option<EngineTarget>>) -> MutexGuard<'_, Option<EngineTarget>> {
+    mutex.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 impl EngineLock {
     pub fn new() -> Self {
         Self {
@@ -26,11 +41,9 @@ impl EngineLock {
     }
 
     /// ロックを取得し、RAII ガードを返す。既にロック中ならエラー。
+    #[allow(dead_code)] // CSA対局実装タスクで使用予定
     pub fn acquire(self: &Arc<Self>, target: EngineTarget) -> Result<EngineLockGuard, String> {
-        let mut guard = self
-            .locked
-            .lock()
-            .map_err(|e| format!("EngineLock mutex poisoned: {e}"))?;
+        let mut guard = recover_lock(&self.locked);
         if guard.is_some() {
             return Err("CSA対局中のためエンジンは使用できません".to_string());
         }
@@ -42,12 +55,13 @@ impl EngineLock {
 
     /// 現在ロックされているかどうか
     pub fn is_locked(&self) -> bool {
-        self.locked.lock().map(|g| g.is_some()).unwrap_or(false)
+        recover_lock(&self.locked).is_some()
     }
 
     /// 現在のロック対象を返す（UIステータス表示用）
+    #[allow(dead_code)] // CSA対局実装タスクで使用予定
     pub fn locked_target(&self) -> Option<EngineTarget> {
-        self.locked.lock().ok().and_then(|g| g.clone())
+        recover_lock(&self.locked).clone()
     }
 }
 
@@ -58,14 +72,13 @@ impl Default for EngineLock {
 }
 
 /// RAII ガード — Drop 時に自動でロック解放
+#[allow(dead_code)] // CSA対局実装タスクで使用予定
 pub struct EngineLockGuard {
     lock: Arc<EngineLock>,
 }
 
 impl Drop for EngineLockGuard {
     fn drop(&mut self) {
-        if let Ok(mut guard) = self.lock.locked.lock() {
-            *guard = None;
-        }
+        *recover_lock(&self.lock.locked) = None;
     }
 }
