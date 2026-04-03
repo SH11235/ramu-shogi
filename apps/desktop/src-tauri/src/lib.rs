@@ -1,4 +1,8 @@
 #[allow(dead_code)] // CSA対局実装タスクで使用予定
+mod csa_engine;
+#[allow(dead_code)] // CSA対局実装タスクで使用予定
+mod csa_protocol;
+#[allow(dead_code)] // CSA対局実装タスクで使用予定
 mod csa_types;
 mod engine_lock;
 mod usi_engine;
