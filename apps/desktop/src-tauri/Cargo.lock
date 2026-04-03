@@ -676,6 +676,7 @@ dependencies = [
  "base64 0.22.1",
  "hex",
  "rshogi-core",
+ "rshogi-csa",
  "serde",
  "serde_json",
  "sha2",
@@ -3062,6 +3063,14 @@ dependencies = [
  "serde",
  "web-time",
  "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "rshogi-csa"
+version = "0.1.0"
+source = "git+https://github.com/SH11235/rshogi.git?branch=main#c7a21015f029c57bdf15b8fccd3c3c2a77203531"
+dependencies = [
+ "anyhow",
 ]
 
 [[package]]
