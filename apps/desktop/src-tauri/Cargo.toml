@@ -26,8 +26,12 @@ tauri-plugin-store = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rshogi-core = "0.2"
-# NNUE 管理用 + USI エンジンプロセス管理用
-tokio = { version = "1", features = ["fs", "io-util", "process"] }
+rshogi-csa = { path = "../../../../rshogi-oss/crates/rshogi-csa" }
+# NNUE 管理用 + USI エンジンプロセス管理用 + CSA対局用
+tokio = { version = "1", features = ["fs", "io-util", "process", "net", "macros", "sync"] }
+thiserror = "2"
+socket2 = "0.5"
+tokio-util = "0.7"
 sha2 = "0.10"
 hex = "0.4"
 base64 = "0.22"

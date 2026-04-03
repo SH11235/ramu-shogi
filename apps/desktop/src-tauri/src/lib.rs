@@ -560,7 +560,7 @@ fn apply_engine_option(
     Ok(())
 }
 
-fn stop_active_search(state: &State<EngineState>) -> Result<(), String> {
+fn stop_active_search(state: &State<'_, Arc<EngineState>>) -> Result<(), String> {
     let active = {
         let mut inner = state
             .inner
@@ -583,7 +583,10 @@ fn stop_active_search(state: &State<EngineState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn engine_init(state: State<EngineState>, opts: Option<serde_json::Value>) -> Result<(), String> {
+fn engine_init(
+    state: State<'_, Arc<EngineState>>,
+    opts: Option<serde_json::Value>,
+) -> Result<(), String> {
     stop_active_search(&state)?;
 
     let parsed_opts: Option<InitOptions> = if let Some(opts) = opts {
@@ -625,7 +628,7 @@ fn engine_init(state: State<EngineState>, opts: Option<serde_json::Value>) -> Re
 
 #[tauri::command]
 fn engine_position(
-    state: State<EngineState>,
+    state: State<'_, Arc<EngineState>>,
     sfen: String,
     moves: Option<Vec<String>>,
     pass_rights: Option<PassRightsInput>,
@@ -650,7 +653,7 @@ fn engine_position(
 
 #[tauri::command]
 fn engine_option(
-    state: State<EngineState>,
+    state: State<'_, Arc<EngineState>>,
     name: String,
     value: serde_json::Value,
 ) -> Result<(), String> {
@@ -667,7 +670,7 @@ fn engine_option(
 #[tauri::command]
 fn engine_search(
     window: Window,
-    state: State<'_, EngineState>,
+    state: State<'_, Arc<EngineState>>,
     params: serde_json::Value,
 ) -> Result<(), String> {
     stop_active_search(&state)?;
@@ -750,7 +753,7 @@ fn engine_search(
 }
 
 #[tauri::command]
-fn engine_stop(state: State<EngineState>) -> Result<(), String> {
+fn engine_stop(state: State<'_, Arc<EngineState>>) -> Result<(), String> {
     eprintln!("engine_stop: requested");
     stop_active_search(&state)
 }
@@ -783,7 +786,7 @@ struct ThreadInfoResponse {
 }
 
 #[tauri::command]
-fn engine_thread_info(state: State<EngineState>) -> Result<ThreadInfoResponse, String> {
+fn engine_thread_info(state: State<'_, Arc<EngineState>>) -> Result<ThreadInfoResponse, String> {
     let inner = state
         .inner
         .lock()
@@ -1578,7 +1581,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .manage(EngineState::default())
+        .manage(Arc::new(EngineState::default()))
         .manage(usi_engine::UsiEngineManager::default())
         .invoke_handler(tauri::generate_handler![
             engine_init,

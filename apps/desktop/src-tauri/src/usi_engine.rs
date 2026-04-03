@@ -341,7 +341,7 @@ fn event_channel(session_id: &str) -> String {
 
 /// Create a Command for spawning a USI engine process.
 /// On Windows, sets CREATE_NO_WINDOW to suppress console window.
-fn create_engine_command(path: &str) -> Command {
+pub(crate) fn create_engine_command(path: &str) -> Command {
     let mut cmd = Command::new(path);
     cmd.stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -366,7 +366,7 @@ fn validate_usi_param(param: &str, label: &str) -> Result<(), String> {
 }
 
 /// Send a line to the engine's stdin.
-async fn send_line(
+pub(crate) async fn send_line(
     stdin: &Arc<Mutex<tokio::process::ChildStdin>>,
     line: &str,
 ) -> Result<(), String> {
