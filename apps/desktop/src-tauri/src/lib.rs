@@ -1581,6 +1581,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+        // Arc 化: CSA 対局の tokio タスクから EngineState を共有するため
         .manage(Arc::new(EngineState::default()))
         .manage(usi_engine::UsiEngineManager::default())
         .invoke_handler(tauri::generate_handler![
