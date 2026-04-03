@@ -1,3 +1,5 @@
+mod csa_types;
+mod engine_lock;
 mod usi_engine;
 
 use std::path::{Path, PathBuf};
@@ -582,11 +584,26 @@ fn stop_active_search(state: &State<'_, Arc<EngineState>>) -> Result<(), String>
     Ok(())
 }
 
+/// CSA対局中でないことを確認するヘルパー
+fn check_engine_available(lock: &State<'_, Arc<engine_lock::EngineLock>>) -> Result<(), String> {
+    if lock.is_locked() {
+        return Err("CSA対局中のためエンジンは使用できません".to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn csa_engine_lock_status(lock: State<'_, Arc<engine_lock::EngineLock>>) -> Result<bool, String> {
+    Ok(lock.is_locked())
+}
+
 #[tauri::command]
 fn engine_init(
+    lock: State<'_, Arc<engine_lock::EngineLock>>,
     state: State<'_, Arc<EngineState>>,
     opts: Option<serde_json::Value>,
 ) -> Result<(), String> {
+    check_engine_available(&lock)?;
     stop_active_search(&state)?;
 
     let parsed_opts: Option<InitOptions> = if let Some(opts) = opts {
@@ -628,11 +645,13 @@ fn engine_init(
 
 #[tauri::command]
 fn engine_position(
+    lock: State<'_, Arc<engine_lock::EngineLock>>,
     state: State<'_, Arc<EngineState>>,
     sfen: String,
     moves: Option<Vec<String>>,
     pass_rights: Option<PassRightsInput>,
 ) -> Result<(), String> {
+    check_engine_available(&lock)?;
     eprintln!(
         "engine_position: sfen={}, moves={:?}, passRights={:?}",
         sfen, moves, pass_rights
@@ -653,10 +672,12 @@ fn engine_position(
 
 #[tauri::command]
 fn engine_option(
+    lock: State<'_, Arc<engine_lock::EngineLock>>,
     state: State<'_, Arc<EngineState>>,
     name: String,
     value: serde_json::Value,
 ) -> Result<(), String> {
+    check_engine_available(&lock)?;
     stop_active_search(&state)?;
 
     let mut inner = state
@@ -669,10 +690,12 @@ fn engine_option(
 
 #[tauri::command]
 fn engine_search(
+    lock: State<'_, Arc<engine_lock::EngineLock>>,
     window: Window,
     state: State<'_, Arc<EngineState>>,
     params: serde_json::Value,
 ) -> Result<(), String> {
+    check_engine_available(&lock)?;
     stop_active_search(&state)?;
 
     eprintln!("engine_search: received params = {}", params);
@@ -753,7 +776,11 @@ fn engine_search(
 }
 
 #[tauri::command]
-fn engine_stop(state: State<'_, Arc<EngineState>>) -> Result<(), String> {
+fn engine_stop(
+    lock: State<'_, Arc<engine_lock::EngineLock>>,
+    state: State<'_, Arc<EngineState>>,
+) -> Result<(), String> {
+    check_engine_available(&lock)?;
     eprintln!("engine_stop: requested");
     stop_active_search(&state)
 }
@@ -1583,6 +1610,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         // Arc 化: CSA 対局の tokio タスクから EngineState を共有するため
         .manage(Arc::new(EngineState::default()))
+        .manage(Arc::new(engine_lock::EngineLock::default()))
         .manage(usi_engine::UsiEngineManager::default())
         .invoke_handler(tauri::generate_handler![
             engine_init,
@@ -1608,6 +1636,8 @@ pub fn run() {
             abort_nnue_save,
             detect_nnue_format_cmd,
             is_nnue_compatible_cmd,
+            // CSA 対局
+            csa_engine_lock_status,
             // USI エンジン管理
             usi_engine_probe,
             usi_engine_start,
