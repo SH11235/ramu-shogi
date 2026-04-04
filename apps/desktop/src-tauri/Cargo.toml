@@ -25,8 +25,8 @@ tauri-plugin-dialog = "2"
 tauri-plugin-store = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rshogi-core = { git = "https://github.com/SH11235/rshogi.git", branch = "main" }
-rshogi-csa = { git = "https://github.com/SH11235/rshogi.git", branch = "main" }
+rshogi-core = { git = "https://github.com/SH11235/rshogi.git", rev = "3243867161fb6a0cb40520577fc35a93713186f4" }
+rshogi-csa = { git = "https://github.com/SH11235/rshogi.git", rev = "c7a21015f029c57bdf15b8fccd3c3c2a77203531" }
 # NNUE 管理用 + USI エンジンプロセス管理用 + CSA対局用
 tokio = { version = "1", features = ["fs", "io-util", "process", "sync", "net", "macros"] }
 tokio-util = "0.7"

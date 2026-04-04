@@ -119,6 +119,11 @@ async fn run_csa_session_inner(
             let registration_id = config.engine.registration_id.as_deref().unwrap_or_default();
             // Store から registration_id に対応するエンジンパスを解決
             let path = resolve_engine_path(app, registration_id)?;
+            if tokio::fs::metadata(&path).await.is_err() {
+                return Err(CsaError::EngineError(format!(
+                    "エンジンファイルが見つかりません: {path}"
+                )));
+            }
             let options: Vec<(String, String)> = config
                 .engine
                 .options
@@ -188,7 +193,14 @@ async fn run_csa_session_inner(
                     result = game_io.recv_next_game_summary(&mut server_rx) => {
                         match result {
                             Ok(s) => s,
-                            Err(_) => break, // サーバー切断等
+                            Err(e) => {
+                                let _ = event_tx
+                                    .send(CsaSessionEvent::Error {
+                                        message: e.to_string(),
+                                    })
+                                    .await;
+                                break;
+                            }
                         }
                     }
                     _ = cancel_token.cancelled() => break,
@@ -219,6 +231,7 @@ async fn run_csa_session_inner(
             .await?;
 
         // START を待つ
+        let mut game_accepted = false;
         loop {
             let line = tokio::select! {
                 line = server_rx.recv() => {
@@ -228,19 +241,20 @@ async fn run_csa_session_inner(
                     break;
                 }
             };
-            if let ServerLine::Other(ref text) = line {
-                let trimmed = text.trim();
-                if trimmed.starts_with("START:") {
+            match line {
+                ServerLine::Start => {
+                    game_accepted = true;
                     break;
                 }
-                if trimmed.starts_with("REJECT:") {
+                ServerLine::Reject => {
                     let _ = event_tx
                         .send(CsaSessionEvent::Error {
-                            message: format!("サーバーが対局を拒否: {trimmed}"),
+                            message: "サーバーが対局を拒否しました".to_string(),
                         })
                         .await;
                     break;
                 }
+                _ => {} // その他の行はスキップ
             }
         }
 
@@ -248,9 +262,10 @@ async fn run_csa_session_inner(
             break;
         }
 
-        // エンジン初期化
-        engine.new_game().await?;
-        engine.set_position(&summary.sfen, &[]).await?;
+        // REJECT された場合は次の GAME_SUMMARY 待ちに戻る
+        if !game_accepted {
+            continue;
+        }
 
         // GameStarted イベント
         let _ = event_tx.send(CsaSessionEvent::GameStarted).await;
@@ -296,9 +311,9 @@ async fn run_csa_session_inner(
             .await?;
     }
 
-    // ログアウト＋エンジンシャットダウン
+    // ログアウト＋エンジンシャットダウン（切断済みの場合のエラーは無視）
     game_io.logout().await.ok();
-    engine.shutdown().await?;
+    engine.shutdown().await.ok();
 
     Ok(())
 }
@@ -338,6 +353,14 @@ async fn write_game_record(
         now.format("%Y/%m/%d %H:%M:%S")
     ));
 
+    // 初期局面
+    if summary.csa_board_text.is_empty() {
+        content.push_str("PI\n+\n");
+    } else {
+        content.push_str(&summary.csa_board_text);
+        content.push('\n');
+    }
+
     // 指し手の書き出し
     for (csa_move, time_sec) in moves {
         content.push_str(&format!("{csa_move}\nT{time_sec}\n"));
@@ -367,9 +390,7 @@ fn resolve_engine_path(app: &AppHandle, registration_id: &str) -> Result<String,
         .iter()
         .find(|r| r.id == registration_id)
         .ok_or_else(|| {
-            CsaError::EngineError(format!(
-                "エンジンが見つかりません (id: {registration_id})"
-            ))
+            CsaError::EngineError(format!("エンジンが見つかりません (id: {registration_id})"))
         })?;
     Ok(reg.path.clone())
 }

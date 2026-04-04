@@ -3055,7 +3055,7 @@ dependencies = [
 [[package]]
 name = "rshogi-core"
 version = "0.2.4"
-source = "git+https://github.com/SH11235/rshogi.git?branch=main#3243867161fb6a0cb40520577fc35a93713186f4"
+source = "git+https://github.com/SH11235/rshogi.git?rev=3243867161fb6a0cb40520577fc35a93713186f4#3243867161fb6a0cb40520577fc35a93713186f4"
 dependencies = [
  "anyhow",
  "getrandom 0.3.4",
@@ -3071,7 +3071,7 @@ dependencies = [
 [[package]]
 name = "rshogi-csa"
 version = "0.1.0"
-source = "git+https://github.com/SH11235/rshogi.git?branch=main#c7a21015f029c57bdf15b8fccd3c3c2a77203531"
+source = "git+https://github.com/SH11235/rshogi.git?rev=c7a21015f029c57bdf15b8fccd3c3c2a77203531#c7a21015f029c57bdf15b8fccd3c3c2a77203531"
 dependencies = [
  "anyhow",
 ]

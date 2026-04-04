@@ -471,14 +471,20 @@ mod tests {
             let (mut stream, _) = listener.accept().await.unwrap();
             let mut buf = vec![0u8; 1024];
             // Read LOGIN command
-            let n = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await.unwrap();
+            let n = tokio::io::AsyncReadExt::read(&mut stream, &mut buf)
+                .await
+                .unwrap();
             let msg = String::from_utf8_lossy(&buf[..n]);
             assert!(msg.starts_with("LOGIN "));
             // Send OK
-            tokio::io::AsyncWriteExt::write_all(&mut stream, b"LOGIN:testuser OK\n").await.unwrap();
+            tokio::io::AsyncWriteExt::write_all(&mut stream, b"LOGIN:testuser OK\n")
+                .await
+                .unwrap();
         });
 
-        let mut protocol = CsaProtocol::connect("127.0.0.1", addr.port()).await.unwrap();
+        let mut protocol = CsaProtocol::connect("127.0.0.1", addr.port())
+            .await
+            .unwrap();
         protocol.login("testuser", "pass").await.unwrap();
 
         server.await.unwrap();
@@ -492,11 +498,17 @@ mod tests {
         let server = tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await.unwrap();
             let mut buf = vec![0u8; 1024];
-            let _ = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await.unwrap();
-            tokio::io::AsyncWriteExt::write_all(&mut stream, b"LOGIN:incorrect\n").await.unwrap();
+            let _ = tokio::io::AsyncReadExt::read(&mut stream, &mut buf)
+                .await
+                .unwrap();
+            tokio::io::AsyncWriteExt::write_all(&mut stream, b"LOGIN:incorrect\n")
+                .await
+                .unwrap();
         });
 
-        let mut protocol = CsaProtocol::connect("127.0.0.1", addr.port()).await.unwrap();
+        let mut protocol = CsaProtocol::connect("127.0.0.1", addr.port())
+            .await
+            .unwrap();
         let result = protocol.login("bad", "pass").await;
         assert!(result.is_err());
 
@@ -513,8 +525,12 @@ mod tests {
             let mut buf = vec![0u8; 1024];
 
             // Read LOGIN
-            let _ = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await.unwrap();
-            tokio::io::AsyncWriteExt::write_all(&mut stream, b"LOGIN:test OK\n").await.unwrap();
+            let _ = tokio::io::AsyncReadExt::read(&mut stream, &mut buf)
+                .await
+                .unwrap();
+            tokio::io::AsyncWriteExt::write_all(&mut stream, b"LOGIN:test OK\n")
+                .await
+                .unwrap();
 
             // Send GAME_SUMMARY
             let summary = "BEGIN Game_Summary\n\
@@ -526,11 +542,15 @@ mod tests {
                            Total_Time:900\n\
                            Byoyomi:0\n\
                            END Game_Summary\n";
-            tokio::io::AsyncWriteExt::write_all(&mut stream, summary.as_bytes()).await.unwrap();
+            tokio::io::AsyncWriteExt::write_all(&mut stream, summary.as_bytes())
+                .await
+                .unwrap();
 
             // Read AGREE
             buf = vec![0u8; 1024];
-            let n = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await.unwrap();
+            let n = tokio::io::AsyncReadExt::read(&mut stream, &mut buf)
+                .await
+                .unwrap();
             let msg = String::from_utf8_lossy(&buf[..n]);
             assert!(msg.starts_with("AGREE"));
 
@@ -540,7 +560,9 @@ mod tests {
                 .unwrap();
         });
 
-        let mut protocol = CsaProtocol::connect("127.0.0.1", addr.port()).await.unwrap();
+        let mut protocol = CsaProtocol::connect("127.0.0.1", addr.port())
+            .await
+            .unwrap();
         protocol.login("test", "pass").await.unwrap();
 
         let summary = protocol.recv_game_summary().await.unwrap();

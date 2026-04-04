@@ -195,12 +195,18 @@ pub async fn run_session(
                 BestMoveResult::Resign => {
                     game_io.send_special("%TORYO").await?;
                     let game_result = wait_game_end(server_rx, cancel_token).await?;
-                    return Ok(SessionResult { game_result, moves: record_moves });
+                    return Ok(SessionResult {
+                        game_result,
+                        moves: record_moves,
+                    });
                 }
                 BestMoveResult::Win => {
                     game_io.send_special("%KACHI").await?;
                     let game_result = wait_game_end(server_rx, cancel_token).await?;
-                    return Ok(SessionResult { game_result, moves: record_moves });
+                    return Ok(SessionResult {
+                        game_result,
+                        moves: record_moves,
+                    });
                 }
                 BestMoveResult::Move {
                     usi: ref usi_move,
@@ -242,7 +248,10 @@ pub async fn run_session(
                         }
                         EchoResult::GameEnd { result, reason: _ } => {
                             engine.gameover(gameover_str(&result)).await?;
-                            return Ok(SessionResult { game_result: result, moves: record_moves });
+                            return Ok(SessionResult {
+                                game_result: result,
+                                moves: record_moves,
+                            });
                         }
                     }
 
@@ -312,12 +321,18 @@ pub async fn run_session(
                             BestMoveResult::Resign => {
                                 game_io.send_special("%TORYO").await?;
                                 let game_result = wait_game_end(server_rx, cancel_token).await?;
-                                return Ok(SessionResult { game_result, moves: record_moves });
+                                return Ok(SessionResult {
+                                    game_result,
+                                    moves: record_moves,
+                                });
                             }
                             BestMoveResult::Win => {
                                 game_io.send_special("%KACHI").await?;
                                 let game_result = wait_game_end(server_rx, cancel_token).await?;
-                                return Ok(SessionResult { game_result, moves: record_moves });
+                                return Ok(SessionResult {
+                                    game_result,
+                                    moves: record_moves,
+                                });
                             }
                             BestMoveResult::Move {
                                 usi: ref usi_move,
@@ -357,7 +372,10 @@ pub async fn run_session(
                                     }
                                     EchoResult::GameEnd { result, reason: _ } => {
                                         engine.gameover(gameover_str(&result)).await?;
-                                        return Ok(SessionResult { game_result: result, moves: record_moves });
+                                        return Ok(SessionResult {
+                                            game_result: result,
+                                            moves: record_moves,
+                                        });
                                     }
                                 }
 
@@ -419,7 +437,10 @@ pub async fn run_session(
                     let _ = engine.recv_bestmove().await;
                 }
                 engine.gameover(gameover_str(&result)).await?;
-                return Ok(SessionResult { game_result: result, moves: record_moves });
+                return Ok(SessionResult {
+                    game_result: result,
+                    moves: record_moves,
+                });
             }
         }
     }

@@ -18,6 +18,9 @@ use crate::{EngineState, SEARCH_STACK_SIZE};
 use rshogi_core::search::{LimitsType, SearchInfo};
 
 const USI_HANDSHAKE_TIMEOUT_SECS: u64 = 10;
+/// 連続対局間の usinewgame → isready → readyok 待機タイムアウト（秒）
+/// ハンドシェイクより長めに設定（対局間のTT初期化等に時間がかかる場合がある）
+const NEW_GAME_READYOK_TIMEOUT_SECS: u64 = 30;
 
 /// CSA対局用エンジン。External（USI子プロセス）と Builtin（rshogi-core）を統一。
 pub enum CsaEngine {
@@ -78,11 +81,16 @@ impl CsaEngine {
         wait_for_line(&mut reader, "readyok", timeout).await?;
 
         // stdout 読み取りタスク起動
-        let (bestmove_tx, bestmove_rx) = mpsc::channel(4);
+        let (bestmove_tx, bestmove_rx) = mpsc::channel(1);
         let (info_tx, info_rx) = mpsc::channel(64);
-        let (readyok_tx, readyok_rx) = mpsc::channel(4);
+        let (readyok_tx, readyok_rx) = mpsc::channel(1);
 
-        tokio::spawn(external_stdout_task(reader, bestmove_tx, info_tx, readyok_tx));
+        tokio::spawn(external_stdout_task(
+            reader,
+            bestmove_tx,
+            info_tx,
+            readyok_tx,
+        ));
 
         Ok(CsaEngine::External {
             stdin,
@@ -121,7 +129,12 @@ impl CsaEngine {
                 send_usi_line(stdin, "usinewgame").await?;
                 send_usi_line(stdin, "isready").await?;
                 // readyok を stdout タスクから受信（タイムアウト付き）
-                match tokio::time::timeout(Duration::from_secs(30), readyok_rx.recv()).await {
+                match tokio::time::timeout(
+                    Duration::from_secs(NEW_GAME_READYOK_TIMEOUT_SECS),
+                    readyok_rx.recv(),
+                )
+                .await
+                {
                     Ok(Some(())) => Ok(()),
                     Ok(None) => Err(CsaError::EngineCrashed),
                     Err(_) => Err(CsaError::EngineTimeout),
