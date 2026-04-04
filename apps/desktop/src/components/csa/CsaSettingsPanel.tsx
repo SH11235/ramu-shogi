@@ -23,14 +23,31 @@ import type { CsaConfig } from "./useCsaGame";
 
 // ─── Types ───
 
+type UsiOptionDef =
+    | { name: string; type: "check"; default: boolean }
+    | { name: string; type: "spin"; default: number; min: number; max: number }
+    | { name: string; type: "combo"; default: string; vars: string[] }
+    | { name: string; type: "string"; default: string }
+    | { name: string; type: "filename"; default: string }
+    | { name: string; type: "button" };
+
 interface ExternalEngine {
     id: string;
     displayName: string;
+    options: UsiOptionDef[];
 }
 
 interface CsaSettingsPanelProps {
     onStart: (config: CsaConfig) => void;
 }
+
+// ─── Builtin Engine Options ───
+
+/** 内蔵エンジンで設定可能なオプション（USIオプション互換） */
+const BUILTIN_ENGINE_OPTIONS: UsiOptionDef[] = [
+    { name: "Hash", type: "spin", default: 256, min: 1, max: 33554432 },
+    { name: "Threads", type: "spin", default: 1, min: 1, max: 512 },
+];
 
 // ─── Default Config ───
 
@@ -96,6 +113,16 @@ export function CsaSettingsPanel({ onStart }: CsaSettingsPanelProps): ReactEleme
         setConfig((prev) => ({ ...prev, engine: { ...prev.engine, ...patch } }));
     };
 
+    const updateOption = (name: string, value: string | number | boolean) => {
+        setConfig((prev) => ({
+            ...prev,
+            engine: {
+                ...prev.engine,
+                options: { ...prev.engine.options, [name]: value },
+            },
+        }));
+    };
+
     const updateTime = (patch: Partial<CsaConfig["time"]>) => {
         setConfig((prev) => ({ ...prev, time: { ...prev.time, ...patch } }));
     };
@@ -107,6 +134,12 @@ export function CsaSettingsPanel({ onStart }: CsaSettingsPanelProps): ReactEleme
     const updateRecord = (patch: Partial<CsaConfig["record"]>) => {
         setConfig((prev) => ({ ...prev, record: { ...prev.record, ...patch } }));
     };
+
+    // 選択中エンジンのオプション定義を取得
+    const currentOptionDefs: UsiOptionDef[] =
+        config.engine.type === "external"
+            ? (externalEngines.find((e) => e.id === config.engine.registration_id)?.options ?? [])
+            : BUILTIN_ENGINE_OPTIONS;
 
     const applyFloodgatePreset = () => {
         updateServer({
@@ -250,6 +283,23 @@ export function CsaSettingsPanel({ onStart }: CsaSettingsPanelProps): ReactEleme
                     />
                     Ponder（先読み）
                 </span>
+                {currentOptionDefs.length > 0 && (
+                    <div className="space-y-2 pt-1">
+                        <span className="text-xs font-medium text-muted-foreground">
+                            エンジンオプション
+                        </span>
+                        <div className="grid grid-cols-2 gap-2">
+                            {currentOptionDefs.map((opt) => (
+                                <OptionField
+                                    key={opt.name}
+                                    def={opt}
+                                    value={config.engine.options[opt.name]}
+                                    onChange={(v) => updateOption(opt.name, v)}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                )}
             </section>
 
             {/* 時間設定 */}
@@ -317,6 +367,76 @@ function FieldRow({ label, children }: { label: string; children: ReactElement }
             {children}
         </div>
     );
+}
+
+// ─── OptionField ───
+
+function OptionField({
+    def,
+    value,
+    onChange,
+}: {
+    def: UsiOptionDef;
+    value: unknown;
+    onChange: (v: string | number | boolean) => void;
+}): ReactElement | null {
+    switch (def.type) {
+        case "check":
+            return (
+                <FieldRow label={def.name}>
+                    <Switch
+                        checked={typeof value === "boolean" ? value : def.default}
+                        onCheckedChange={(checked: boolean) => onChange(checked)}
+                    />
+                </FieldRow>
+            );
+        case "spin":
+            return (
+                <FieldRow label={`${def.name} (${def.min}〜${def.max})`}>
+                    <Input
+                        type="number"
+                        value={typeof value === "number" ? value : def.default}
+                        min={def.min}
+                        max={def.max}
+                        onChange={(e) => onChange(Number(e.target.value))}
+                        className="h-8 text-xs"
+                    />
+                </FieldRow>
+            );
+        case "combo":
+            return (
+                <FieldRow label={def.name}>
+                    <Select
+                        value={typeof value === "string" ? value : def.default}
+                        onValueChange={(v: string) => onChange(v)}
+                    >
+                        <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {def.vars.map((v) => (
+                                <SelectItem key={v} value={v}>
+                                    {v}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </FieldRow>
+            );
+        case "string":
+        case "filename":
+            return (
+                <FieldRow label={def.name}>
+                    <Input
+                        value={typeof value === "string" ? value : def.default}
+                        onChange={(e) => onChange(e.target.value)}
+                        className="h-8 text-xs"
+                    />
+                </FieldRow>
+            );
+        case "button":
+            return null;
+    }
 }
 
 // ─── Helpers ───
