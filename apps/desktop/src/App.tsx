@@ -13,9 +13,12 @@ import {
 } from "@shogi/engine-tauri";
 import type { EngineOption } from "@shogi/ui";
 import { EngineControlPanel, NnueProvider, ShogiMatch } from "@shogi/ui";
+import { Button } from "@shogi/ui/components/button";
+import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useRef, useState } from "react";
 import { ActiveEngineSettingsPanel } from "./components/ActiveEngineSettingsPanel";
+import { CsaGameView } from "./components/csa/CsaGameView";
 import { EngineManagerPanel } from "./components/EngineManagerPanel";
 
 const createEngineClient = () =>
@@ -78,7 +81,24 @@ interface EngineSettingsTarget {
     label: string;
 }
 
+type AppMode = "local" | "csa";
+
 function App() {
+    const [appMode, setAppMode] = useState<AppMode>("local");
+
+    const handleSwitchToCsa = async () => {
+        try {
+            const locked = await invoke<boolean>("csa_engine_lock_status");
+            if (locked) {
+                console.error("エンジンが使用中のため、CSA対局モードに切り替えられません。");
+                return;
+            }
+        } catch {
+            // ロック状態確認失敗時はそのまま切り替えを許可
+        }
+        setAppMode("csa");
+    };
+
     const [panelPosition, setPanelPosition] = useState<{
         label?: string;
         sfen: string;
@@ -154,9 +174,24 @@ function App() {
         });
     };
 
+    if (appMode === "csa") {
+        return (
+            <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
+                <main className="mx-auto flex max-w-[1100px] flex-col gap-3 p-4 md:px-5">
+                    <CsaGameView onBackToLocal={() => setAppMode("local")} />
+                </main>
+            </NnueProvider>
+        );
+    }
+
     return (
         <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
             <main className="mx-auto flex max-w-[1100px] flex-col gap-3 md:px-5">
+                <div className="flex justify-end pt-2 px-1">
+                    <Button variant="outline" size="sm" onClick={handleSwitchToCsa}>
+                        CSA対局
+                    </Button>
+                </div>
                 <ShogiMatch
                     engineOptions={engineOptions}
                     fetchLegalMoves={(sfen, moves, options) =>

@@ -203,7 +203,7 @@ pub enum CsaSessionEvent {
     },
     GameSummary {
         game_id: String,
-        my_color: String,
+        my_color: CsaColor,
         sente_name: String,
         gote_name: String,
         sfen: String,
@@ -211,7 +211,7 @@ pub enum CsaSessionEvent {
     },
     GameStarted,
     Move {
-        side: String,
+        side: CsaColor,
         usi: String,
         sfen: String,
         clock: ClockUpdate,
@@ -224,7 +224,7 @@ pub enum CsaSessionEvent {
         nps: u64,
     },
     GameEnded {
-        result: String,
+        result: GameResult,
         reason: Option<String>,
         games_played: u32,
         record_path: Option<String>,

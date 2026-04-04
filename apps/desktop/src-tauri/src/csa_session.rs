@@ -221,7 +221,7 @@ pub async fn run_session(
                             // Move イベント送信
                             let _ = event_tx
                                 .send(CsaSessionEvent::Move {
-                                    side: my_color.as_str().to_string(),
+                                    side: my_color,
                                     usi: usi_move.clone(),
                                     sfen: pos.to_sfen(),
                                     clock: clock.to_clock_update(),
@@ -271,7 +271,7 @@ pub async fn run_session(
 
                         let _ = event_tx
                             .send(CsaSessionEvent::Move {
-                                side: opponent_color.as_str().to_string(),
+                                side: opponent_color,
                                 usi: opponent_usi,
                                 sfen: pos.to_sfen(),
                                 clock: clock.to_clock_update(),
@@ -336,7 +336,7 @@ pub async fn run_session(
                                         clock.update(my_color, time_sec);
                                         let _ = event_tx
                                             .send(CsaSessionEvent::Move {
-                                                side: my_color.as_str().to_string(),
+                                                side: my_color,
                                                 usi: usi_move.clone(),
                                                 sfen: pos.to_sfen(),
                                                 clock: clock.to_clock_update(),
@@ -374,7 +374,7 @@ pub async fn run_session(
 
                         let _ = event_tx
                             .send(CsaSessionEvent::Move {
-                                side: opponent_color.as_str().to_string(),
+                                side: opponent_color,
                                 usi: opponent_usi,
                                 sfen: pos.to_sfen(),
                                 clock: clock.to_clock_update(),
@@ -390,7 +390,7 @@ pub async fn run_session(
 
                     let _ = event_tx
                         .send(CsaSessionEvent::Move {
-                            side: opponent_color.as_str().to_string(),
+                            side: opponent_color,
                             usi: opponent_usi,
                             sfen: pos.to_sfen(),
                             clock: clock.to_clock_update(),
@@ -496,13 +496,16 @@ async fn wait_opponent_move(
     }
 }
 
+/// 終局結果待ちのタイムアウト（秒）
+const GAME_END_TIMEOUT_SECS: u64 = 30;
+
 /// サーバーからの終局結果を待つ
 async fn wait_game_end(
     server_rx: &mut mpsc::Receiver<ServerLine>,
     cancel_token: &CancellationToken,
 ) -> Result<GameResult, CsaError> {
     // %TORYO や %KACHI 後、サーバーから #WIN / #LOSE 等を受信するまで待つ
-    let timeout = tokio::time::sleep(std::time::Duration::from_secs(30));
+    let timeout = tokio::time::sleep(std::time::Duration::from_secs(GAME_END_TIMEOUT_SECS));
     tokio::pin!(timeout);
 
     loop {

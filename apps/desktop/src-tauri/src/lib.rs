@@ -788,6 +788,7 @@ fn engine_stop(
     lock: State<'_, Arc<engine_lock::EngineLock>>,
     state: State<'_, Arc<EngineState>>,
 ) -> Result<(), String> {
+    // フロントエンドからの直接停止を禁止。CSA セッション内部は stop_active_search() を直接呼ぶ。
     check_engine_available(&lock)?;
     eprintln!("engine_stop: requested");
     stop_active_search(&state)

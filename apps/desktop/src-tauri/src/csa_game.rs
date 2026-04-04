@@ -119,6 +119,11 @@ async fn run_csa_session_inner(
             // TODO: registration_id からエンジンパスを解決する（tauri-plugin-store 連携）
             // 現時点では registration_id をそのままパスとして使用
             let path = registration_id;
+            if tokio::fs::metadata(path).await.is_err() {
+                return Err(CsaError::EngineError(format!(
+                    "エンジンファイルが見つかりません: {path}"
+                )));
+            }
             let options: Vec<(String, String)> = config
                 .engine
                 .options
@@ -171,7 +176,7 @@ async fn run_csa_session_inner(
         let _ = event_tx
             .send(CsaSessionEvent::GameSummary {
                 game_id: summary.game_id.clone(),
-                my_color: summary.my_color.as_str().to_string(),
+                my_color: summary.my_color,
                 sente_name: summary.sente_name.clone(),
                 gote_name: summary.gote_name.clone(),
                 sfen: summary.sfen.clone(),
@@ -225,7 +230,7 @@ async fn run_csa_session_inner(
         // GameEnded イベント
         let _ = event_tx
             .send(CsaSessionEvent::GameEnded {
-                result: gameover_to_result_str(&game_result).to_string(),
+                result: game_result.clone(),
                 reason: None,
                 games_played,
                 record_path,
