@@ -240,13 +240,17 @@ export function useCsaGame(): UseCsaGameReturn {
             if (!cancelled) {
                 dispatch({ type: "session_event", event: event.payload });
             }
-        }).then((unlisten) => {
-            if (cancelled) {
-                unlisten();
-            } else {
-                unlistenRef.current = unlisten;
-            }
-        });
+        })
+            .then((unlisten) => {
+                if (cancelled) {
+                    unlisten();
+                } else {
+                    unlistenRef.current = unlisten;
+                }
+            })
+            .catch((e) => {
+                console.error("CSA session listener setup failed:", e);
+            });
 
         return () => {
             cancelled = true;
@@ -259,7 +263,17 @@ export function useCsaGame(): UseCsaGameReturn {
 
     const start = async (config: CsaConfig): Promise<void> => {
         dispatch({ type: "reset" });
-        await invoke("csa_start", { config });
+        try {
+            await invoke("csa_start", { config });
+        } catch (e) {
+            dispatch({
+                type: "session_event",
+                event: {
+                    type: "error",
+                    message: e instanceof Error ? e.message : String(e),
+                },
+            });
+        }
     };
 
     const stop = async (): Promise<void> => {

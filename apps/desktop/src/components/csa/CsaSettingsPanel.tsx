@@ -131,7 +131,12 @@ export function CsaSettingsPanel({ onStart }: CsaSettingsPanelProps): ReactEleme
     };
 
     const isValid =
-        config.server.host.length > 0 && config.server.port > 0 && config.server.user_id.length > 0;
+        config.server.host.trim().length > 0 &&
+        config.server.port >= 1 &&
+        config.server.port <= 65535 &&
+        config.server.user_id.length > 0 &&
+        config.server.password.length > 0 &&
+        (config.engine.type !== "external" || (config.engine.registration_id ?? "").length > 0);
 
     return (
         <div className="space-y-5">
