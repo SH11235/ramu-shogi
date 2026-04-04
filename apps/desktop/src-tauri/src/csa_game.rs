@@ -14,9 +14,10 @@ use tokio_util::sync::CancellationToken;
 use crate::EngineState;
 use crate::csa_engine::CsaEngine;
 use crate::csa_protocol::CsaProtocol;
-use crate::csa_session::run_session;
+use crate::csa_session::{SessionResult, run_session};
 use crate::csa_types::{
     ClockInfo, CsaConfig, CsaEngineType, CsaError, CsaSessionEvent, GameResult, GameSummary,
+    ServerLine,
 };
 use crate::engine_lock::{EngineLock, EngineTarget};
 
@@ -94,7 +95,7 @@ async fn run_csa_session_task(
 /// セッション本体。エラーを返すことで呼び出し元でまとめて処理する。
 async fn run_csa_session_inner(
     config: &CsaConfig,
-    _app: &AppHandle,
+    app: &AppHandle,
     engine_lock: &Arc<EngineLock>,
     engine_state: &Arc<EngineState>,
     cancel_token: &CancellationToken,
@@ -116,14 +117,8 @@ async fn run_csa_session_inner(
         CsaEngineType::Builtin => CsaEngine::init_builtin(Arc::clone(engine_state)),
         CsaEngineType::External => {
             let registration_id = config.engine.registration_id.as_deref().unwrap_or_default();
-            // TODO: registration_id からエンジンパスを解決する（tauri-plugin-store 連携）
-            // 現時点では registration_id をそのままパスとして使用
-            let path = registration_id;
-            if tokio::fs::metadata(path).await.is_err() {
-                return Err(CsaError::EngineError(format!(
-                    "エンジンファイルが見つかりません: {path}"
-                )));
-            }
+            // Store から registration_id に対応するエンジンパスを解決
+            let path = resolve_engine_path(app, registration_id)?;
             let options: Vec<(String, String)> = config
                 .engine
                 .options
@@ -137,7 +132,7 @@ async fn run_csa_session_inner(
                 })
                 .collect();
             let timeout = Duration::from_secs(config.engine.startup_timeout_sec);
-            CsaEngine::spawn_external(path, &options, timeout).await?
+            CsaEngine::spawn_external(&path, &options, timeout).await?
         }
     };
 
@@ -156,20 +151,49 @@ async fn run_csa_session_inner(
         })
         .await;
 
-    let _max_games = config.game.max_games; // 連続対局は後続タスクで実装
+    let max_games = config.game.max_games; // 0 = 無制限
     let mut games_played = 0u32;
 
-    // 対局実行（現時点では1局のみ。連続対局は後続タスクで実装）
-    'game_loop: {
+    // 最初の GAME_SUMMARY を受信
+    let summary = tokio::select! {
+        result = protocol.recv_game_summary() => result?,
+        _ = cancel_token.cancelled() => {
+            engine.shutdown().await?;
+            return Ok(());
+        }
+    };
+
+    // 対局 IO モードに遷移（protocol を consume）
+    let (mut game_io, mut server_rx) = protocol.start_game_io();
+
+    // 最初の対局を開始するために summary を保持
+    let mut current_summary = Some(summary);
+
+    loop {
         // キャンセルチェック
         if cancel_token.is_cancelled() {
-            break 'game_loop;
+            break;
         }
 
-        // GAME_SUMMARY 受信
-        let summary = tokio::select! {
-            result = protocol.recv_game_summary() => result?,
-            _ = cancel_token.cancelled() => break 'game_loop,
+        // max_games チェック（0 = 無制限）
+        if max_games > 0 && games_played >= max_games {
+            break;
+        }
+
+        let summary = match current_summary.take() {
+            Some(s) => s,
+            None => {
+                // 連続対局: 次の GAME_SUMMARY を待つ
+                tokio::select! {
+                    result = game_io.recv_next_game_summary(&mut server_rx) => {
+                        match result {
+                            Ok(s) => s,
+                            Err(_) => break, // サーバー切断等
+                        }
+                    }
+                    _ = cancel_token.cancelled() => break,
+                }
+            }
         };
 
         // GameSummary イベント
@@ -189,8 +213,40 @@ async fn run_csa_session_inner(
             })
             .await;
 
-        // AGREE
-        protocol.agree(&summary.game_id).await?;
+        // AGREE（game_io 経由で送信）
+        game_io
+            .send_special(&format!("AGREE {}", summary.game_id))
+            .await?;
+
+        // START を待つ
+        loop {
+            let line = tokio::select! {
+                line = server_rx.recv() => {
+                    line.ok_or(CsaError::ServerDisconnected)?
+                }
+                _ = cancel_token.cancelled() => {
+                    break;
+                }
+            };
+            if let ServerLine::Other(ref text) = line {
+                let trimmed = text.trim();
+                if trimmed.starts_with("START:") {
+                    break;
+                }
+                if trimmed.starts_with("REJECT:") {
+                    let _ = event_tx
+                        .send(CsaSessionEvent::Error {
+                            message: format!("サーバーが対局を拒否: {trimmed}"),
+                        })
+                        .await;
+                    break;
+                }
+            }
+        }
+
+        if cancel_token.is_cancelled() {
+            break;
+        }
 
         // エンジン初期化
         engine.new_game().await?;
@@ -199,11 +255,8 @@ async fn run_csa_session_inner(
         // GameStarted イベント
         let _ = event_tx.send(CsaSessionEvent::GameStarted).await;
 
-        // 対局 IO モードに遷移
-        let (mut game_io, mut server_rx) = protocol.start_game_io();
-
         // 対局実行
-        let game_result = run_session(
+        let SessionResult { game_result, moves } = run_session(
             &mut game_io,
             &mut server_rx,
             &mut engine,
@@ -216,10 +269,10 @@ async fn run_csa_session_inner(
 
         games_played += 1;
 
-        // 棋譜書き出し（スタブ）
+        // 棋譜書き出し
         let record_path = write_game_record(
             &summary,
-            &[], // 指し手トラッキングは後続タスクで実装
+            &moves,
             gameover_to_result_str(&game_result),
             &config.record.save_dir,
         )
@@ -241,13 +294,10 @@ async fn run_csa_session_inner(
         engine
             .gameover(gameover_to_result_str(&game_result))
             .await?;
-
-        // ログアウト
-        // NOTE: 連続対局（max_games > 1）は後続タスクで実装
-        game_io.logout().await?;
     }
 
-    // エンジンシャットダウン
+    // ログアウト＋エンジンシャットダウン
+    game_io.logout().await.ok();
     engine.shutdown().await?;
 
     Ok(())
@@ -255,13 +305,10 @@ async fn run_csa_session_inner(
 
 // ─── RecordWriter ───
 
-/// CSA V2.2 形式の棋譜ファイルを書き出す（スタブ実装）。
-///
-/// 指し手トラッキングは後続タスクで実装予定。
-/// 現時点ではヘッダーのみのファイルを作成する。
+/// CSA V2.2 形式の棋譜ファイルを書き出す。
 async fn write_game_record(
     summary: &GameSummary,
-    _moves: &[(String, u32)],
+    moves: &[(String, u32)],
     result_str: &str,
     save_dir: &str,
 ) -> Result<Option<String>, CsaError> {
@@ -291,7 +338,10 @@ async fn write_game_record(
         now.format("%Y/%m/%d %H:%M:%S")
     ));
 
-    // TODO: 指し手の書き出し（後続タスクで実装）
+    // 指し手の書き出し
+    for (csa_move, time_sec) in moves {
+        content.push_str(&format!("{csa_move}\nT{time_sec}\n"));
+    }
 
     // 結果
     content.push_str(&format!("'result:{result_str}\n"));
@@ -300,6 +350,28 @@ async fn write_game_record(
     tokio::fs::write(&path, content).await?;
 
     Ok(Some(path_str))
+}
+
+/// Store の "engines" キーから registration_id に対応するエンジンパスを解決する。
+fn resolve_engine_path(app: &AppHandle, registration_id: &str) -> Result<String, CsaError> {
+    use crate::usi_engine::EngineRegistration;
+
+    let store = app
+        .store("store.json")
+        .map_err(|e| CsaError::EngineError(format!("ストア初期化エラー: {e}")))?;
+    let registrations: Vec<EngineRegistration> = store
+        .get("engines")
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+    let reg = registrations
+        .iter()
+        .find(|r| r.id == registration_id)
+        .ok_or_else(|| {
+            CsaError::EngineError(format!(
+                "エンジンが見つかりません (id: {registration_id})"
+            ))
+        })?;
+    Ok(reg.path.clone())
 }
 
 /// ファイル名に使えない文字を置換する

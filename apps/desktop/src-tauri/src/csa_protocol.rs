@@ -350,6 +350,7 @@ fn parse_game_summary_lines(lines: &[String]) -> Result<GameSummary, CsaError> {
         sente_name,
         gote_name,
         sfen,
+        csa_board_text: position_text,
         black_time: time_config.clone(),
         white_time: time_config,
     })
@@ -434,5 +435,123 @@ mod tests {
             s.sfen,
             "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1"
         );
+        assert!(s.csa_board_text.is_empty());
+    }
+
+    #[test]
+    fn test_parse_game_summary_lines_with_position() {
+        let lines = vec![
+            "Game_ID:test-002".into(),
+            "Your_Turn:-".into(),
+            "Name+:Sente".into(),
+            "Name-:Gote".into(),
+            "PI".into(),
+            "+".into(),
+            "Time_Unit:sec".into(),
+            "Total_Time:300".into(),
+            "Increment:5".into(),
+        ];
+        let s = parse_game_summary_lines(&lines).unwrap();
+        assert_eq!(s.game_id, "test-002");
+        assert_eq!(s.my_color, CsaColor::Gote);
+        assert_eq!(s.black_time.total_ms, 300_000);
+        assert_eq!(s.black_time.increment_ms, 5_000);
+        assert!(!s.csa_board_text.is_empty());
+    }
+
+    // ─── Integration Tests (Mock TCP) ───
+
+    #[tokio::test]
+    async fn test_protocol_login_success() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        // Mock server
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 1024];
+            // Read LOGIN command
+            let n = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await.unwrap();
+            let msg = String::from_utf8_lossy(&buf[..n]);
+            assert!(msg.starts_with("LOGIN "));
+            // Send OK
+            tokio::io::AsyncWriteExt::write_all(&mut stream, b"LOGIN:testuser OK\n").await.unwrap();
+        });
+
+        let mut protocol = CsaProtocol::connect("127.0.0.1", addr.port()).await.unwrap();
+        protocol.login("testuser", "pass").await.unwrap();
+
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_protocol_login_failure() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 1024];
+            let _ = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await.unwrap();
+            tokio::io::AsyncWriteExt::write_all(&mut stream, b"LOGIN:incorrect\n").await.unwrap();
+        });
+
+        let mut protocol = CsaProtocol::connect("127.0.0.1", addr.port()).await.unwrap();
+        let result = protocol.login("bad", "pass").await;
+        assert!(result.is_err());
+
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_protocol_game_summary_and_agree() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 1024];
+
+            // Read LOGIN
+            let _ = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await.unwrap();
+            tokio::io::AsyncWriteExt::write_all(&mut stream, b"LOGIN:test OK\n").await.unwrap();
+
+            // Send GAME_SUMMARY
+            let summary = "BEGIN Game_Summary\n\
+                           Game_ID:floodgate-900-0+test+opp\n\
+                           Your_Turn:+\n\
+                           Name+:test\n\
+                           Name-:opp\n\
+                           Time_Unit:sec\n\
+                           Total_Time:900\n\
+                           Byoyomi:0\n\
+                           END Game_Summary\n";
+            tokio::io::AsyncWriteExt::write_all(&mut stream, summary.as_bytes()).await.unwrap();
+
+            // Read AGREE
+            buf = vec![0u8; 1024];
+            let n = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await.unwrap();
+            let msg = String::from_utf8_lossy(&buf[..n]);
+            assert!(msg.starts_with("AGREE"));
+
+            // Send START
+            tokio::io::AsyncWriteExt::write_all(&mut stream, b"START:floodgate-900-0+test+opp\n")
+                .await
+                .unwrap();
+        });
+
+        let mut protocol = CsaProtocol::connect("127.0.0.1", addr.port()).await.unwrap();
+        protocol.login("test", "pass").await.unwrap();
+
+        let summary = protocol.recv_game_summary().await.unwrap();
+        assert_eq!(summary.game_id, "floodgate-900-0+test+opp");
+        assert_eq!(summary.my_color, CsaColor::Sente);
+        assert_eq!(summary.sente_name, "test");
+        assert_eq!(summary.gote_name, "opp");
+        assert_eq!(summary.black_time.total_ms, 900_000);
+
+        protocol.agree(&summary.game_id).await.unwrap();
+
+        server.await.unwrap();
     }
 }

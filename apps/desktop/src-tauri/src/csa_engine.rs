@@ -25,6 +25,7 @@ pub enum CsaEngine {
         stdin: Arc<TokioMutex<tokio::process::ChildStdin>>,
         bestmove_rx: mpsc::Receiver<BestMoveResult>,
         info_rx: mpsc::Receiver<CsaSearchInfo>,
+        readyok_rx: mpsc::Receiver<()>,
         child: tokio::process::Child,
     },
     Builtin {
@@ -79,13 +80,15 @@ impl CsaEngine {
         // stdout 読み取りタスク起動
         let (bestmove_tx, bestmove_rx) = mpsc::channel(4);
         let (info_tx, info_rx) = mpsc::channel(64);
+        let (readyok_tx, readyok_rx) = mpsc::channel(4);
 
-        tokio::spawn(external_stdout_task(reader, bestmove_tx, info_tx));
+        tokio::spawn(external_stdout_task(reader, bestmove_tx, info_tx, readyok_tx));
 
         Ok(CsaEngine::External {
             stdin,
             bestmove_rx,
             info_rx,
+            readyok_rx,
             child,
         })
     }
@@ -112,15 +115,17 @@ impl CsaEngine {
     /// usinewgame を送信する。
     pub async fn new_game(&mut self) -> Result<(), CsaError> {
         match self {
-            CsaEngine::External { stdin, .. } => {
+            CsaEngine::External {
+                stdin, readyok_rx, ..
+            } => {
                 send_usi_line(stdin, "usinewgame").await?;
                 send_usi_line(stdin, "isready").await?;
-                // NOTE: readyok は stdout タスクが消費する（bestmove/info 以外はスキップ）。
-                // 本来は readyok 用の通知チャネルが必要だが、現時点では
-                // エンジンが isready に即応答する前提で固定待ちとする。
-                // TODO: readyok 通知チャネルを stdout タスクに追加する
-                tokio::time::sleep(Duration::from_secs(1)).await;
-                Ok(())
+                // readyok を stdout タスクから受信（タイムアウト付き）
+                match tokio::time::timeout(Duration::from_secs(30), readyok_rx.recv()).await {
+                    Ok(Some(())) => Ok(()),
+                    Ok(None) => Err(CsaError::EngineCrashed),
+                    Err(_) => Err(CsaError::EngineTimeout),
+                }
             }
             CsaEngine::Builtin { engine_state, .. } => {
                 let mut inner = engine_state
@@ -371,6 +376,7 @@ async fn external_stdout_task(
     reader: BufReader<tokio::process::ChildStdout>,
     bestmove_tx: mpsc::Sender<BestMoveResult>,
     info_tx: mpsc::Sender<CsaSearchInfo>,
+    readyok_tx: mpsc::Sender<()>,
 ) {
     let mut reader = reader;
     let mut buf = String::new();
@@ -385,13 +391,14 @@ async fn external_stdout_task(
                     if let Some(result) = parse_bestmove_for_csa(line) {
                         let _ = bestmove_tx.send(result).await;
                     }
+                } else if line == "readyok" {
+                    let _ = readyok_tx.send(()).await;
                 } else if line.starts_with("info ")
                     && let Some(info) = parse_info_for_csa(line)
                 {
                     // try_send で満杯なら古い info を捨てる（ハング防止）
                     let _ = info_tx.try_send(info);
                 }
-                // readyok, usiok 等はスキップ
             }
             Err(_) => break,
         }

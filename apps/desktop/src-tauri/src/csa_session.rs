@@ -111,11 +111,20 @@ fn gameover_str(result: &GameResult) -> &'static str {
     }
 }
 
+// ─── Session Result ───
+
+/// 対局の結果と棋譜データ
+pub struct SessionResult {
+    pub game_result: GameResult,
+    /// CSA形式の指し手と消費時間（秒）のペア
+    pub moves: Vec<(String, u32)>,
+}
+
 // ─── run_session ───
 
 /// CSA対局のメインループを実行する。
 ///
-/// 対局開始から終局までを管理し、`GameResult` を返す。
+/// 対局開始から終局までを管理し、`SessionResult` を返す。
 /// キャンセルトークンでの中断にも対応する。
 pub async fn run_session(
     game_io: &mut CsaGameIo,
@@ -125,7 +134,7 @@ pub async fn run_session(
     config: &CsaConfig,
     cancel_token: &CancellationToken,
     event_tx: &mpsc::Sender<CsaSessionEvent>,
-) -> Result<GameResult, CsaError> {
+) -> Result<SessionResult, CsaError> {
     let my_color = summary.my_color;
     let initial_sfen = summary.sfen.clone();
     let margin_ms = config.time.margin_ms;
@@ -133,18 +142,17 @@ pub async fn run_session(
     let floodgate = config.server.floodgate;
 
     // rshogi_csa::Position で CSA↔USI 変換用の局面を追跡
-    // SFEN → CSA局面の変換は rshogi_csa にないため、平手以外は position_to_csa_board 経由で復元
-    let mut pos =
-        if initial_sfen == "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1" {
-            rshogi_csa::initial_position()
-        } else {
-            // GameSummary の sfen は CsaProtocol で CSA局面から変換済みなので、
-            // 非平手対局では GAME_SUMMARY の CSA盤面を直接パースする必要がある。
-            // 現時点では summary.sfen を元に rshogi_csa::parse_csa で復元を試みる。
-            // NOTE: 完全な SFEN→CSA Position 変換は rshogi_csa の拡張が必要
-            rshogi_csa::initial_position()
-        };
+    let mut pos = if summary.csa_board_text.is_empty() {
+        // CSA 盤面テキストがなければ平手
+        rshogi_csa::initial_position()
+    } else {
+        // CSA 盤面テキストから Position を復元（非平手対局に対応）
+        let (parsed_pos, _, _) = rshogi_csa::parse_csa(&summary.csa_board_text)
+            .map_err(|e| CsaError::ProtocolError(format!("CSA局面パースエラー: {e}")))?;
+        parsed_pos
+    };
     let mut usi_moves: Vec<String> = Vec::new();
+    let mut record_moves: Vec<(String, u32)> = Vec::new(); // (CSA指し手, 消費時間秒)
     let mut clock = Clock::from_summary(summary);
     let mut ponder_state: Option<PonderState> = None;
 
@@ -175,7 +183,8 @@ pub async fn run_session(
                     engine.stop().await?;
                     let _ = engine.recv_bestmove().await;
                     game_io.send_special("%TORYO").await?;
-                    return wait_game_end(server_rx, cancel_token).await;
+                    let game_result = wait_game_end(server_rx, cancel_token).await?;
+                    return Ok(SessionResult { game_result, moves: record_moves });
                 }
             };
 
@@ -185,11 +194,13 @@ pub async fn run_session(
             match bestmove {
                 BestMoveResult::Resign => {
                     game_io.send_special("%TORYO").await?;
-                    return wait_game_end(server_rx, cancel_token).await;
+                    let game_result = wait_game_end(server_rx, cancel_token).await?;
+                    return Ok(SessionResult { game_result, moves: record_moves });
                 }
                 BestMoveResult::Win => {
                     game_io.send_special("%KACHI").await?;
-                    return wait_game_end(server_rx, cancel_token).await;
+                    let game_result = wait_game_end(server_rx, cancel_token).await?;
+                    return Ok(SessionResult { game_result, moves: record_moves });
                 }
                 BestMoveResult::Move {
                     usi: ref usi_move,
@@ -218,6 +229,7 @@ pub async fn run_session(
                     match echo_result {
                         EchoResult::Confirmed { time_sec } => {
                             clock.update(my_color, time_sec);
+                            record_moves.push((csa_move.clone(), time_sec));
                             // Move イベント送信
                             let _ = event_tx
                                 .send(CsaSessionEvent::Move {
@@ -230,7 +242,7 @@ pub async fn run_session(
                         }
                         EchoResult::GameEnd { result, reason: _ } => {
                             engine.gameover(gameover_str(&result)).await?;
-                            return Ok(result);
+                            return Ok(SessionResult { game_result: result, moves: record_moves });
                         }
                     }
 
@@ -268,6 +280,7 @@ pub async fn run_session(
                             .map_err(|e| CsaError::ProtocolError(format!("局面更新失敗: {e}")))?;
                         usi_moves.push(opponent_usi.clone());
                         clock.update(opponent_color, time_sec);
+                        record_moves.push((csa.clone(), time_sec));
 
                         let _ = event_tx
                             .send(CsaSessionEvent::Move {
@@ -280,11 +293,6 @@ pub async fn run_session(
 
                         engine.ponderhit().await?;
 
-                        // ponderhit 後の bestmove を待つ（→自手番の処理へ）
-                        // bestmove は次のループ冒頭で自手番として処理される
-                        // ただし ponderhit の場合、エンジンはすでに思考中なので
-                        // 次ループの自手番で go を呼ぶ前に bestmove を受信する必要がある
-
                         // ponderhit 後の bestmove 待ち
                         let ph_bestmove = tokio::select! {
                             result = engine.recv_bestmove() => result?,
@@ -292,7 +300,8 @@ pub async fn run_session(
                                 engine.stop().await?;
                                 let _ = engine.recv_bestmove().await;
                                 game_io.send_special("%TORYO").await?;
-                                return wait_game_end(server_rx, cancel_token).await;
+                                let game_result = wait_game_end(server_rx, cancel_token).await?;
+                                return Ok(SessionResult { game_result, moves: record_moves });
                             }
                         };
 
@@ -302,11 +311,13 @@ pub async fn run_session(
                         match ph_bestmove {
                             BestMoveResult::Resign => {
                                 game_io.send_special("%TORYO").await?;
-                                return wait_game_end(server_rx, cancel_token).await;
+                                let game_result = wait_game_end(server_rx, cancel_token).await?;
+                                return Ok(SessionResult { game_result, moves: record_moves });
                             }
                             BestMoveResult::Win => {
                                 game_io.send_special("%KACHI").await?;
-                                return wait_game_end(server_rx, cancel_token).await;
+                                let game_result = wait_game_end(server_rx, cancel_token).await?;
+                                return Ok(SessionResult { game_result, moves: record_moves });
                             }
                             BestMoveResult::Move {
                                 usi: ref usi_move,
@@ -334,6 +345,7 @@ pub async fn run_session(
                                 match echo_result {
                                     EchoResult::Confirmed { time_sec } => {
                                         clock.update(my_color, time_sec);
+                                        record_moves.push((csa_move.clone(), time_sec));
                                         let _ = event_tx
                                             .send(CsaSessionEvent::Move {
                                                 side: my_color,
@@ -345,7 +357,7 @@ pub async fn run_session(
                                     }
                                     EchoResult::GameEnd { result, reason: _ } => {
                                         engine.gameover(gameover_str(&result)).await?;
-                                        return Ok(result);
+                                        return Ok(SessionResult { game_result: result, moves: record_moves });
                                     }
                                 }
 
@@ -371,6 +383,7 @@ pub async fn run_session(
                             .map_err(|e| CsaError::ProtocolError(format!("局面更新失敗: {e}")))?;
                         usi_moves.push(opponent_usi.clone());
                         clock.update(opponent_color, time_sec);
+                        record_moves.push((csa.clone(), time_sec));
 
                         let _ = event_tx
                             .send(CsaSessionEvent::Move {
@@ -387,6 +400,7 @@ pub async fn run_session(
                         .map_err(|e| CsaError::ProtocolError(format!("局面更新失敗: {e}")))?;
                     usi_moves.push(opponent_usi.clone());
                     clock.update(opponent_color, time_sec);
+                    record_moves.push((csa.clone(), time_sec));
 
                     let _ = event_tx
                         .send(CsaSessionEvent::Move {
@@ -405,7 +419,7 @@ pub async fn run_session(
                     let _ = engine.recv_bestmove().await;
                 }
                 engine.gameover(gameover_str(&result)).await?;
-                return Ok(result);
+                return Ok(SessionResult { game_result: result, moves: record_moves });
             }
         }
     }
@@ -603,6 +617,7 @@ mod tests {
             sente_name: "A".into(),
             gote_name: "B".into(),
             sfen: "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1".into(),
+            csa_board_text: String::new(),
             black_time: crate::csa_types::TimeConfig {
                 total_ms: 600_000,
                 byoyomi_ms: 10_000,

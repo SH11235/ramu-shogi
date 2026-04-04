@@ -3054,15 +3054,13 @@ dependencies = [
 
 [[package]]
 name = "rshogi-core"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a62ee2bf453cb739afb677044889987ba373784853f14d7d0d19c8c1a0c7f113"
+version = "0.2.4"
+source = "git+https://github.com/SH11235/rshogi.git?branch=main#3243867161fb6a0cb40520577fc35a93713186f4"
 dependencies = [
  "anyhow",
  "getrandom 0.3.4",
  "libc",
  "log",
- "once_cell",
  "rand 0.9.2",
  "rand_xoshiro",
  "serde",

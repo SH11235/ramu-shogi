@@ -136,6 +136,8 @@ pub struct GameSummary {
     pub sente_name: String,
     pub gote_name: String,
     pub sfen: String,
+    /// GAME_SUMMARY 内の CSA 盤面テキスト（非平手局面の Position 復元に使用）
+    pub csa_board_text: String,
     pub black_time: TimeConfig,
     pub white_time: TimeConfig,
 }
