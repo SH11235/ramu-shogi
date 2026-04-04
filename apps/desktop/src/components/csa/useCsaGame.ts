@@ -38,7 +38,7 @@ export interface CsaConfig {
     };
 }
 
-export type CsaGameStatus = "idle" | "connecting" | "waiting" | "playing" | "finished" | "error";
+type CsaGameStatus = "idle" | "connecting" | "waiting" | "playing" | "finished" | "error";
 
 export interface CsaClocks {
     sente_ms: number;
