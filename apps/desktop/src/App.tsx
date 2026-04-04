@@ -90,7 +90,7 @@ function App() {
         try {
             const locked = await invoke<boolean>("csa_engine_lock_status");
             if (locked) {
-                alert("エンジンが使用中のため、CSA対局モードに切り替えられません。");
+                console.error("エンジンが使用中のため、CSA対局モードに切り替えられません。");
                 return;
             }
         } catch {

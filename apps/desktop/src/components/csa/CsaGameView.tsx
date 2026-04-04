@@ -84,7 +84,6 @@ function ConnectingView({ onStop }: { onStop: () => Promise<void> }): ReactEleme
     return (
         <div className="flex flex-col items-center gap-4 py-12">
             <Spinner size="lg" label="サーバーに接続中..." />
-            <p className="text-sm text-muted-foreground">サーバーに接続中...</p>
             <Button variant="outline" onClick={() => onStop()}>
                 中断
             </Button>
@@ -103,7 +102,6 @@ function WaitingView({
         <div className="space-y-4 py-6">
             <div className="flex flex-col items-center gap-3">
                 <Spinner size="md" label="対局待ち中" />
-                <p className="text-sm font-medium text-wafuu-sumi">対局待ち中</p>
             </div>
             {state.gameId && (
                 <div className="bg-muted/30 rounded-lg p-4 text-xs space-y-1">

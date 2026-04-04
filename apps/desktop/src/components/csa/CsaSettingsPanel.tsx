@@ -122,7 +122,7 @@ export function CsaSettingsPanel({ onStart }: CsaSettingsPanelProps): ReactEleme
             setSaveMessage("保存しました");
             setTimeout(() => setSaveMessage(null), 2000);
         } catch (e) {
-            setSaveMessage(`保存失敗: ${e}`);
+            setSaveMessage(`保存失敗: ${e instanceof Error ? e.message : String(e)}`);
         }
     };
 

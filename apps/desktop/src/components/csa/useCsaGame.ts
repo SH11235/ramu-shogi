@@ -277,7 +277,17 @@ export function useCsaGame(): UseCsaGameReturn {
     };
 
     const stop = async (): Promise<void> => {
-        await invoke("csa_stop");
+        try {
+            await invoke("csa_stop");
+        } catch (e) {
+            dispatch({
+                type: "session_event",
+                event: {
+                    type: "error",
+                    message: e instanceof Error ? e.message : String(e),
+                },
+            });
+        }
     };
 
     const reset = (): void => {

@@ -203,7 +203,7 @@ pub enum CsaSessionEvent {
     },
     GameSummary {
         game_id: String,
-        my_color: String,
+        my_color: CsaColor,
         sente_name: String,
         gote_name: String,
         sfen: String,
@@ -211,7 +211,7 @@ pub enum CsaSessionEvent {
     },
     GameStarted,
     Move {
-        side: String,
+        side: CsaColor,
         usi: String,
         sfen: String,
         clock: ClockUpdate,
@@ -224,7 +224,7 @@ pub enum CsaSessionEvent {
         nps: u64,
     },
     GameEnded {
-        result: String,
+        result: GameResult,
         reason: Option<String>,
         games_played: u32,
         record_path: Option<String>,
@@ -247,13 +247,25 @@ pub struct CsaConfig {
     pub record: CsaRecordConfig,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CsaServerConfig {
     pub host: String,
     pub port: u16,
     pub user_id: String,
     pub password: String,
     pub floodgate: bool,
+}
+
+impl std::fmt::Debug for CsaServerConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CsaServerConfig")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("user_id", &self.user_id)
+            .field("password", &"[REDACTED]")
+            .field("floodgate", &self.floodgate)
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

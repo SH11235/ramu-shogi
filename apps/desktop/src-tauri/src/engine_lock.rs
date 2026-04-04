@@ -82,3 +82,25 @@ impl Drop for EngineLockGuard {
         *recover_lock(&self.lock.locked) = None;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn acquire_and_release() {
+        let lock = Arc::new(EngineLock::new());
+        assert!(!lock.is_locked());
+        let guard = lock.acquire(EngineTarget::Builtin).unwrap();
+        assert!(lock.is_locked());
+        drop(guard);
+        assert!(!lock.is_locked());
+    }
+
+    #[test]
+    fn double_acquire_fails() {
+        let lock = Arc::new(EngineLock::new());
+        let _guard = lock.acquire(EngineTarget::Builtin).unwrap();
+        assert!(lock.acquire(EngineTarget::Builtin).is_err());
+    }
+}
