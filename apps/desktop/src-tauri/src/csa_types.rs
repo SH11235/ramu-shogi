@@ -238,7 +238,7 @@ pub enum CsaSessionEvent {
 // ─── Config (received from frontend) ───
 
 /// フロントエンドから受信する CSA 接続設定
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CsaConfig {
     pub server: CsaServerConfig,
     pub engine: CsaEngineConfig,
@@ -247,7 +247,7 @@ pub struct CsaConfig {
     pub record: CsaRecordConfig,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CsaServerConfig {
     pub host: String,
     pub port: u16,
@@ -256,7 +256,19 @@ pub struct CsaServerConfig {
     pub floodgate: bool,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+impl std::fmt::Debug for CsaServerConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CsaServerConfig")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("user_id", &self.user_id)
+            .field("password", &"[REDACTED]")
+            .field("floodgate", &self.floodgate)
+            .finish()
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CsaEngineConfig {
     #[serde(rename = "type")]
     pub engine_type: CsaEngineType,
@@ -271,20 +283,20 @@ fn default_startup_timeout_sec() -> u64 {
     30
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CsaEngineType {
     Builtin,
     External,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CsaTimeConfig {
     #[serde(default)]
     pub margin_ms: i64,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CsaGameConfig {
     #[serde(default = "default_max_games")]
     pub max_games: u32,
@@ -294,7 +306,7 @@ fn default_max_games() -> u32 {
     1
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CsaRecordConfig {
     pub save_dir: String,
 }

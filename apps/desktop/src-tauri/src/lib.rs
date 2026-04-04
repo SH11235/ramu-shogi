@@ -1,4 +1,11 @@
 #[allow(dead_code)] // CSA対局実装タスクで使用予定
+mod csa_engine;
+mod csa_game;
+#[allow(dead_code)] // CSA対局実装タスクで使用予定
+mod csa_protocol;
+#[allow(dead_code)] // CSA対局実装タスクで使用予定
+mod csa_session;
+#[allow(dead_code)] // CSA対局実装タスクで使用予定
 mod csa_types;
 mod engine_lock;
 mod usi_engine;
@@ -1612,6 +1619,7 @@ pub fn run() {
         // Arc 化: CSA 対局の tokio タスクから EngineState を共有するため
         .manage(Arc::new(EngineState::default()))
         .manage(Arc::new(engine_lock::EngineLock::default()))
+        .manage(Arc::new(csa_game::CsaGameManager::default()))
         .manage(usi_engine::UsiEngineManager::default())
         .invoke_handler(tauri::generate_handler![
             engine_init,
@@ -1639,6 +1647,10 @@ pub fn run() {
             is_nnue_compatible_cmd,
             // CSA 対局
             csa_engine_lock_status,
+            csa_game::csa_start,
+            csa_game::csa_stop,
+            csa_game::csa_save_config,
+            csa_game::csa_load_config,
             // USI エンジン管理
             usi_engine_probe,
             usi_engine_start,
