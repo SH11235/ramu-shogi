@@ -20,6 +20,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActiveEngineSettingsPanel } from "./components/ActiveEngineSettingsPanel";
 import { CsaGameView } from "./components/csa/CsaGameView";
 import { EngineManagerPanel } from "./components/EngineManagerPanel";
+import { RshogiViewerListView } from "./components/rshogi-viewer/RshogiViewerListView";
 import { RshogiViewerView } from "./components/rshogi-viewer/RshogiViewerView";
 
 const createEngineClient = () =>
@@ -82,10 +83,11 @@ interface EngineSettingsTarget {
     label: string;
 }
 
-type AppMode = "local" | "csa" | "rshogi-viewer";
+type AppMode = "local" | "csa" | "rshogi-viewer-list" | "rshogi-viewer-detail";
 
 function App() {
     const [appMode, setAppMode] = useState<AppMode>("local");
+    const [rshogiViewerGameId, setRshogiViewerGameId] = useState<string | null>(null);
 
     const handleSwitchToCsa = async () => {
         try {
@@ -101,7 +103,18 @@ function App() {
     };
 
     const handleSwitchToRshogiViewer = () => {
-        setAppMode("rshogi-viewer");
+        setRshogiViewerGameId(null);
+        setAppMode("rshogi-viewer-list");
+    };
+
+    const handleSelectRshogiGame = (gameId: string) => {
+        setRshogiViewerGameId(gameId);
+        setAppMode("rshogi-viewer-detail");
+    };
+
+    const handleBackToRshogiList = () => {
+        setRshogiViewerGameId(null);
+        setAppMode("rshogi-viewer-list");
     };
 
     const [panelPosition, setPanelPosition] = useState<{
@@ -189,11 +202,28 @@ function App() {
         );
     }
 
-    if (appMode === "rshogi-viewer") {
+    if (appMode === "rshogi-viewer-list") {
         return (
             <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
                 <main className="mx-auto flex max-w-[1100px] flex-col gap-3 p-4 md:px-5">
-                    <RshogiViewerView onBackToLocal={() => setAppMode("local")} />
+                    <RshogiViewerListView
+                        onBackToLocal={() => setAppMode("local")}
+                        onSelectGame={handleSelectRshogiGame}
+                    />
+                </main>
+            </NnueProvider>
+        );
+    }
+
+    if (appMode === "rshogi-viewer-detail" && rshogiViewerGameId) {
+        return (
+            <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
+                <main className="mx-auto flex max-w-[1100px] flex-col gap-3 p-4 md:px-5">
+                    <RshogiViewerView
+                        gameId={rshogiViewerGameId}
+                        onBackToList={handleBackToRshogiList}
+                        onBackToLocal={() => setAppMode("local")}
+                    />
                 </main>
             </NnueProvider>
         );

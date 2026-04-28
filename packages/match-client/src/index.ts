@@ -46,15 +46,22 @@ export {
     storeSeat,
 } from "./reconnect";
 export type {
+    FetchRshogiGameListOptions,
     FetchRshogiGameOptions,
+    RshogiClockKind,
+    RshogiEndReason,
     RshogiGame,
+    RshogiGameListPage,
     RshogiGameMeta,
     RshogiGameResult,
     RshogiGameResultKind,
+    RshogiGameSource,
+    RshogiGameSummary,
     RshogiTimeControl,
 } from "./rshogi-csa/client";
 export {
     fetchRshogiGame,
+    fetchRshogiGameList,
     listMockRshogiGameIds,
     RshogiGameFetchError,
     RshogiGameNotFoundError,

@@ -1,12 +1,34 @@
 /**
  * rshogi CSA viewer 用の組み込みモック棋譜。
  *
- * NOTE: 本実装に差し替える際はこのファイルではなく `client.ts` の
- * `fetchRshogiGame` を fetch ベースに置き換える。
- * fixture 自体は MVP 動作確認・テスト用としてそのまま残す想定。
+ * baseUrl 未指定時の MVP 動作 / テストの既定値として使う。
+ * decode 層が呼ばれないため、ここでは「decode 後」の TS 型 (camelCase + epoch_ms) で直接定義する。
  */
 
-import type { RshogiGame } from "./client";
+import type { RshogiGame, RshogiGameSummary } from "./client";
+
+/** 一覧 API の `result_kind` (wire) リテラル。 */
+export type RshogiResultKindWire = "WIN_BLACK" | "WIN_WHITE" | "DRAW" | "ABORT";
+
+/**
+ * 一覧 API の `end_reason` (wire) リテラル。サーバ実装
+ * (rshogi-csa-server-workers games_index.rs::classify_result) と一致させる。
+ */
+export type RshogiEndReasonWire =
+    | "RESIGN"
+    | "TIME_UP"
+    | "ILLEGAL"
+    | "JISHOGI"
+    | "OUTE_SENNICHITE"
+    | "SENNICHITE"
+    | "MAX_MOVES"
+    | "ABNORMAL";
+
+/** 一覧 API の `clock.kind` (wire) リテラル。 */
+export type RshogiClockKindWire = "fischer" | "countdown" | "countdown_msec" | "stopwatch";
+
+/** 一覧 API の `source` (wire) リテラル。 */
+export type RshogiGameSourceWire = "kifu" | "floodgate";
 
 const SAMPLE_1_CSA = [
     "V2.2",
@@ -52,17 +74,33 @@ const SAMPLE_2_CSA = [
     "%TORYO",
 ].join("\n");
 
+const SAMPLE_1_STARTED_AT_MS = Date.UTC(2026, 3, 29, 10, 0, 0);
+const SAMPLE_1_ENDED_AT_MS = Date.UTC(2026, 3, 29, 10, 18, 42);
+const SAMPLE_2_STARTED_AT_MS = Date.UTC(2026, 3, 30, 12, 0, 0);
+const SAMPLE_2_ENDED_AT_MS = Date.UTC(2026, 3, 30, 12, 9, 11);
+const SAMPLE_3_STARTED_AT_MS = Date.UTC(2026, 3, 28, 11, 30, 0);
+const SAMPLE_3_ENDED_AT_MS = Date.UTC(2026, 3, 28, 11, 47, 52);
+const SAMPLE_4_STARTED_AT_MS = Date.UTC(2026, 3, 27, 13, 0, 0);
+const SAMPLE_4_ENDED_AT_MS = Date.UTC(2026, 3, 27, 13, 12, 3);
+
 export const MOCK_RSHOGI_GAMES: Record<string, RshogiGame> = {
     "sample-1": {
         meta: {
             gameId: "sample-1",
             senteName: "RAMU_TP",
             goteName: "FFF-70k",
-            startedAt: "2026-04-29T10:00:00.000Z",
-            endedAt: "2026-04-29T10:18:42.000Z",
+            startedAtMs: SAMPLE_1_STARTED_AT_MS,
+            endedAtMs: SAMPLE_1_ENDED_AT_MS,
             event: "rshogi viewer mock sample",
-            timeControl: { mainSeconds: 600, byoyomiSeconds: 30 },
-            result: { kind: "resignation", winner: "sente" },
+            timeControl: {
+                kind: "fischer",
+                mainSeconds: 600,
+                byoyomiSeconds: 30,
+                incrementSeconds: 5,
+            },
+            result: { kind: "resignation", winner: "sente", endReason: "RESIGN" },
+            source: "kifu",
+            movesCount: 9,
         },
         csa: SAMPLE_1_CSA,
     },
@@ -71,12 +109,77 @@ export const MOCK_RSHOGI_GAMES: Record<string, RshogiGame> = {
             gameId: "sample-2",
             senteName: "PC1_save012",
             goteName: "RAMU_TP",
-            startedAt: "2026-04-30T12:00:00.000Z",
-            endedAt: "2026-04-30T12:09:11.000Z",
+            startedAtMs: SAMPLE_2_STARTED_AT_MS,
+            endedAtMs: SAMPLE_2_ENDED_AT_MS,
             event: "rshogi viewer mock sample 2",
-            timeControl: { mainSeconds: 300, byoyomiSeconds: 15 },
-            result: { kind: "resignation", winner: "sente" },
+            timeControl: {
+                kind: "countdown",
+                mainSeconds: 300,
+                byoyomiSeconds: 15,
+            },
+            result: { kind: "resignation", winner: "sente", endReason: "RESIGN" },
+            source: "kifu",
+            movesCount: 7,
         },
         csa: SAMPLE_2_CSA,
     },
 };
+
+const summaryFromMock = (gameId: string): RshogiGameSummary => {
+    const mock = MOCK_RSHOGI_GAMES[gameId];
+    if (!mock) {
+        throw new Error(`unknown mock rshogi game id: ${gameId}`);
+    }
+    const { meta } = mock;
+    return {
+        gameId: meta.gameId,
+        senteName: meta.senteName,
+        goteName: meta.goteName,
+        startedAtMs: meta.startedAtMs,
+        endedAtMs: meta.endedAtMs,
+        timeControl: meta.timeControl,
+        result: meta.result,
+        movesCount: meta.movesCount,
+        source: meta.source,
+    };
+};
+
+/**
+ * モック一覧 API の応答セット。新着順 (新→旧) に並べる。
+ * 単局 fixture (sample-1, sample-2) を含めつつ、リスト UI を試せるよう数件追加する。
+ */
+export const MOCK_RSHOGI_GAME_LIST: RshogiGameSummary[] = [
+    summaryFromMock("sample-2"),
+    summaryFromMock("sample-1"),
+    {
+        gameId: "sample-3",
+        senteName: "GreatBlue",
+        goteName: "RAMU_TP",
+        startedAtMs: SAMPLE_3_STARTED_AT_MS,
+        endedAtMs: SAMPLE_3_ENDED_AT_MS,
+        timeControl: {
+            kind: "fischer",
+            mainSeconds: 300,
+            byoyomiSeconds: 0,
+            incrementSeconds: 10,
+        },
+        result: { kind: "time_expired", winner: "gote", endReason: "TIME_UP" },
+        movesCount: 84,
+        source: "floodgate",
+    },
+    {
+        gameId: "sample-4",
+        senteName: "RAMU_TP",
+        goteName: "Tester99",
+        startedAtMs: SAMPLE_4_STARTED_AT_MS,
+        endedAtMs: SAMPLE_4_ENDED_AT_MS,
+        timeControl: {
+            kind: "stopwatch",
+            mainSeconds: 0,
+            byoyomiSeconds: 60,
+        },
+        result: { kind: "draw", endReason: "SENNICHITE" },
+        movesCount: 124,
+        source: "kifu",
+    },
+];

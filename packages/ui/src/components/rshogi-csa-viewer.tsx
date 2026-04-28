@@ -5,8 +5,8 @@
  * フェッチ・パース・読み込み中表示までをここで集約し、本体の盤面/棋譜は
  * 既存の `<ShogiMatch>` の `initialReview + reviewMode` に委譲する。
  *
- * 配信 API は別タスク (rshogi#542) で設計中のため、`fetchRshogiGame` は
- * モックを返す stub。本実装に差し替える際はこのコンポーネントは触らずに済む。
+ * API contract は match-client 側の decode 層で snake_case → camelCase / epoch_ms 保持に
+ * 変換される。本コンポーネントは decode 後の TS 型のみを扱う。
  */
 
 import { parseCsaMoves } from "@shogi/app-core";
@@ -39,10 +39,10 @@ interface LoadState {
     errorMessage?: string;
 }
 
-const formatTimestamp = (value: string | undefined): string => {
-    if (!value) return "不明";
+const formatTimestampMs = (value: number | undefined): string => {
+    if (value === undefined) return "不明";
     const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
+    if (Number.isNaN(date.getTime())) return "不明";
     return date.toLocaleString("ja-JP");
 };
 
@@ -57,6 +57,18 @@ const formatTimeControl = (value: RshogiGame["meta"]["timeControl"]): string => 
     return `持ち時間: ${main}${byoyomi}${inc}`;
 };
 
+const RESULT_KIND_LABEL: Record<NonNullable<RshogiGame["meta"]["result"]>["kind"], string> = {
+    resignation: "投了",
+    checkmate: "詰み",
+    time_expired: "時間切れ",
+    draw: "千日手",
+    jishogi: "入玉勝ち",
+    oute_sennichite: "連続王手千日手",
+    abort: "中断",
+    max_moves: "最大手数",
+    abnormal: "異常終了",
+};
+
 const formatResult = (meta: RshogiGame["meta"]): string => {
     const result = meta.result;
     if (!result) return "結果: 不明";
@@ -66,14 +78,8 @@ const formatResult = (meta: RshogiGame["meta"]): string => {
             : result.winner === "gote"
               ? `後手 (${meta.goteName}) 勝ち`
               : "引き分け";
-    const reason: Record<typeof result.kind, string> = {
-        resignation: "投了",
-        checkmate: "詰み",
-        time_expired: "時間切れ",
-        draw: "引き分け",
-        abort: "中断",
-    };
-    return `結果: ${winnerLabel} (${reason[result.kind]})`;
+    const reason = RESULT_KIND_LABEL[result.kind] ?? "終局";
+    return `結果: ${winnerLabel} (${reason})`;
 };
 
 function RshogiGameMetaPanel({ game }: { game: RshogiGame }): ReactElement {
@@ -100,8 +106,8 @@ function RshogiGameMetaPanel({ game }: { game: RshogiGame }): ReactElement {
                 </div>
             )}
             <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-                <span>開始: {formatTimestamp(meta.startedAt)}</span>
-                <span>終了: {formatTimestamp(meta.endedAt)}</span>
+                <span>開始: {formatTimestampMs(meta.startedAtMs)}</span>
+                <span>終了: {formatTimestampMs(meta.endedAtMs)}</span>
             </div>
             <div className="text-xs text-muted-foreground">
                 {formatTimeControl(meta.timeControl)}
