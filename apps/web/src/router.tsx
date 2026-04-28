@@ -22,6 +22,7 @@ import CreateRoomPage from "./pages/online/CreateRoomPage";
 import OnlinePage from "./pages/online/OnlinePage";
 import RoomPage from "./pages/online/RoomPage";
 import PrivacyPage from "./pages/privacy/PrivacyPage";
+import RshogiViewerListPage from "./pages/rshogi-viewer/RshogiViewerListPage";
 import RshogiViewerPage from "./pages/rshogi-viewer/RshogiViewerPage";
 import { handleLoaderResponse } from "./router-loader-utils";
 
@@ -209,6 +210,12 @@ const privacyRoute = createRoute({
     component: PrivacyPage,
 });
 
+const rshogiViewerListRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/rshogi-viewer",
+    component: RshogiViewerListPage,
+});
+
 const rshogiViewerRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/rshogi-viewer/$gameId",
@@ -279,6 +286,7 @@ const routeTree = rootRoute.addChildren([
     nnueFilesRoute,
     createRoomRoute,
     roomRoute,
+    rshogiViewerListRoute,
     rshogiViewerRoute,
 ]);
 

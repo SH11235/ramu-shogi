@@ -43,7 +43,7 @@ export default function RshogiViewerPage(): ReactElement {
             <PageHeader
                 items={[
                     { label: "ラム将棋", to: "/" },
-                    { label: "rshogi viewer" },
+                    { label: "rshogi viewer", to: "/rshogi-viewer" },
                     { label: gameId },
                 ]}
                 right={<HeaderNav />}
