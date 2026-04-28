@@ -13,7 +13,9 @@
             "@shogi/engine-client": ["packages/engine-client/src"],
             "@shogi/engine-client/*": ["packages/engine-client/src/*"],
             "@shogi/engine-tauri": ["packages/engine-tauri/src"],
-            "@shogi/engine-tauri/*": ["packages/engine-tauri/src/*"]
+            "@shogi/engine-tauri/*": ["packages/engine-tauri/src/*"],
+            "@shogi/match-client": ["packages/match-client/src"],
+            "@shogi/match-client/*": ["packages/match-client/src/*"]
         }
     },
     "include": ["src"],

@@ -20,6 +20,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActiveEngineSettingsPanel } from "./components/ActiveEngineSettingsPanel";
 import { CsaGameView } from "./components/csa/CsaGameView";
 import { EngineManagerPanel } from "./components/EngineManagerPanel";
+import { RshogiViewerView } from "./components/rshogi-viewer/RshogiViewerView";
 
 const createEngineClient = () =>
     createTauriEngineClient({
@@ -81,7 +82,7 @@ interface EngineSettingsTarget {
     label: string;
 }
 
-type AppMode = "local" | "csa";
+type AppMode = "local" | "csa" | "rshogi-viewer";
 
 function App() {
     const [appMode, setAppMode] = useState<AppMode>("local");
@@ -97,6 +98,10 @@ function App() {
             // ロック状態確認失敗時はそのまま切り替えを許可
         }
         setAppMode("csa");
+    };
+
+    const handleSwitchToRshogiViewer = () => {
+        setAppMode("rshogi-viewer");
     };
 
     const [panelPosition, setPanelPosition] = useState<{
@@ -184,10 +189,23 @@ function App() {
         );
     }
 
+    if (appMode === "rshogi-viewer") {
+        return (
+            <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
+                <main className="mx-auto flex max-w-[1100px] flex-col gap-3 p-4 md:px-5">
+                    <RshogiViewerView onBackToLocal={() => setAppMode("local")} />
+                </main>
+            </NnueProvider>
+        );
+    }
+
     return (
         <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
             <main className="mx-auto flex max-w-[1100px] flex-col gap-3 md:px-5">
-                <div className="flex justify-end pt-2 px-1">
+                <div className="flex justify-end gap-2 pt-2 px-1">
+                    <Button variant="outline" size="sm" onClick={handleSwitchToRshogiViewer}>
+                        rshogi viewer
+                    </Button>
                     <Button variant="outline" size="sm" onClick={handleSwitchToCsa}>
                         CSA対局
                     </Button>

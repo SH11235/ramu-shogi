@@ -46,6 +46,20 @@ export {
     storeSeat,
 } from "./reconnect";
 export type {
+    FetchRshogiGameOptions,
+    RshogiGame,
+    RshogiGameMeta,
+    RshogiGameResult,
+    RshogiGameResultKind,
+    RshogiTimeControl,
+} from "./rshogi-csa/client";
+export {
+    fetchRshogiGame,
+    listMockRshogiGameIds,
+    RshogiGameFetchError,
+    RshogiGameNotFoundError,
+} from "./rshogi-csa/client";
+export type {
     RoomClient,
     RoomClientOpenEvent,
     RoomClientOptions,
