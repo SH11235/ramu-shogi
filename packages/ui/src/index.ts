@@ -46,10 +46,14 @@ export { boardToGrid } from "./components/shogi-match/utils/positionUtils";
 // progress
 // shogi-board
 
+export { listMockRshogiGameIds } from "@shogi/match-client";
 export type { RemoteNnueFile, RemoteNnueManager } from "./components/nnue/types";
 export type { AnalysisMoveResult, OnlineAnalysis } from "./components/online-game-view";
 // online-game-view
 export { OnlineGameView } from "./components/online-game-view";
+export type { RshogiCsaViewerProps } from "./components/rshogi-csa-viewer";
+// rshogi-csa-viewer
+export { RshogiCsaViewer } from "./components/rshogi-csa-viewer";
 // shogi-match
 export { ShogiMatch } from "./components/shogi-match";
 

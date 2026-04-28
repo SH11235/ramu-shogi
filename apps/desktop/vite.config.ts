@@ -36,6 +36,10 @@ export default defineConfig(async () => ({
                 find: "@shogi/engine-tauri",
                 replacement: path.resolve(rootDir, "../../packages/engine-tauri/src"),
             },
+            {
+                find: "@shogi/match-client",
+                replacement: path.resolve(rootDir, "../../packages/match-client/src"),
+            },
         ],
         // React の重複インスタンスを防ぐ保険として dedupe を設定
         // バージョンが統一されていれば影響はないが、将来の安全性のため明示的に指定
