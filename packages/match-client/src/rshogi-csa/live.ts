@@ -684,7 +684,7 @@ export function subscribeRshogiLiveGame(
             emitError(new Error("WebSocket error"));
         };
 
-        socket.onclose = (event: CloseEvent) => {
+        socket.onclose = () => {
             if (ws !== socket) return;
             ws = null;
             recvBuffer = "";
@@ -694,14 +694,16 @@ export function subscribeRshogiLiveGame(
                 emitConnectionState("closed");
                 return;
             }
-            const isNormal = event.code === 1000;
-            if (isNormal && endFired) {
-                // 終局済 DO の意図的 close。reconnect しない。
+            // `onEnd` 発火済の場合、close code に関わらず reconnect しない。
+            // (終局済 DO へ再接続しても snapshot を再受信して onEnd を再発火する
+            // だけで意味がなく、abnormal close 1006 等で reconnect ループに陥る
+            // のを防ぐ。)
+            if (endFired) {
                 disposed = true;
                 emitConnectionState("closed");
                 return;
             }
-            // それ以外 (abnormal close / network error / 終局未確定の normal close)
+            // 終局未確定な close (abnormal close / network error / 保守的 1000)
             // は backoff で reconnect。
             scheduleReconnect();
         };

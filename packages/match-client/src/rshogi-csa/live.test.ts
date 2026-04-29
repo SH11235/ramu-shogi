@@ -297,6 +297,24 @@ describe("subscribeRshogiLiveGame: 再接続", () => {
         expect(wsInstances.length).toBe(1);
     });
 
+    it("onEnd 発火後は abnormal close (1006) でも reconnect しない", () => {
+        const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+        subscribeRshogiLiveGame(
+            "game-1",
+            { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+            callbacks,
+        );
+        const ws1 = wsInstances[0];
+        ws1.fireOpen();
+        ws1.fireLines(buildSnapshotLines([], "#RESIGN"));
+        expect(events.ends.length).toBe(1);
+        // 終局後の予期せぬ abnormal close (= 1006 等) でも reconnect ループに陥らない
+        ws1.fireClose(1006, "abnormal after end");
+        vi.advanceTimersByTime(60000);
+        expect(wsInstances.length).toBe(1);
+        expect(events.states).toContain("closed");
+    });
+
     it("disconnect() で MONITOR2OFF を送り close、reconnect を停止", () => {
         const { wsInstances, wsFactory, events, callbacks } = makeMocks();
         const session = subscribeRshogiLiveGame(

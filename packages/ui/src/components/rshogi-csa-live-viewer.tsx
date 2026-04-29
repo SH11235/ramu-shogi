@@ -293,8 +293,10 @@ export function RshogiCsaLiveViewer({
 
     if (!state.snapshot) {
         // 初回 snapshot 受信前のローディング表示。
+        // `packages/ui/AGENTS.md` の規約に従い、コンポーネント自身は margin
+        // (`mx-auto` 等) を持たず、配置は親側に任せる。
         return (
-            <div className="mx-auto flex max-w-[480px] flex-col gap-2 px-4 py-10 text-sm text-muted-foreground">
+            <div className="flex max-w-[480px] flex-col gap-2 px-4 py-10 text-sm text-muted-foreground">
                 {header}
                 <div className="flex items-center gap-2">
                     <span
