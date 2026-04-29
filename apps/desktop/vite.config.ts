@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
@@ -7,8 +8,17 @@ import { defineConfig } from "vite";
 const host = process.env.TAURI_DEV_HOST;
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
+// build 時に package.json::version を読み、`import.meta.env.VITE_APP_VERSION` として
+// literal 置換する。viewer API への X-Client ヘッダ (rshogi#564) でクライアント version を識別するために使う。
+const pkg = JSON.parse(readFileSync(path.join(rootDir, "package.json"), "utf-8")) as {
+    version: string;
+};
+
 // https://vite.dev/config/
 export default defineConfig(async () => ({
+    define: {
+        "import.meta.env.VITE_APP_VERSION": JSON.stringify(pkg.version),
+    },
     plugins: [
         tailwindcss(),
         react({

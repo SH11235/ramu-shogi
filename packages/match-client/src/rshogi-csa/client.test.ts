@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     fetchRshogiGame,
     fetchRshogiGameList,
@@ -6,6 +6,17 @@ import {
     RshogiGameFetchError,
     RshogiGameNotFoundError,
 } from "./client";
+
+// production code 側は `import.meta.env` → `process.env` の順で読むため、テストでは
+// `vi.stubEnv` で両方を上書きする (Vitest 4 では `vi.stubEnv` が `import.meta.env` と
+// `process.env` の両方に反映される)。
+const setEnv = (key: string, value: string | undefined) => {
+    if (value === undefined) {
+        vi.stubEnv(key, "");
+    } else {
+        vi.stubEnv(key, value);
+    }
+};
 
 describe("fetchRshogiGame (mock fallback)", () => {
     it("returns the embedded fixture when no baseUrl is provided", async () => {
@@ -419,5 +430,73 @@ describe("fetchRshogiGameList (real baseUrl)", () => {
                 fetchImpl,
             }),
         ).rejects.toBeInstanceOf(RshogiGameFetchError);
+    });
+});
+
+describe("fetchRshogiGame* X-Client header (rshogi#564)", () => {
+    beforeEach(() => {
+        setEnv("VITE_CLIENT_KIND", undefined);
+        setEnv("VITE_APP_VERSION", undefined);
+    });
+    afterEach(() => {
+        vi.unstubAllEnvs();
+    });
+
+    const okPayload = {
+        game_id: "x1",
+        black_handle: "B",
+        white_handle: "W",
+        csa: "V2.2\n",
+    };
+
+    it("does not attach X-Client header when VITE_CLIENT_KIND is unset", async () => {
+        const fetchImpl = vi.fn(
+            async () => new Response(JSON.stringify(okPayload), { status: 200 }),
+        ) as unknown as typeof fetch;
+        await fetchRshogiGame("x1", { baseUrl: "https://rshogi.example.com", fetchImpl });
+        const init = (fetchImpl as unknown as { mock: { calls: [string, RequestInit][] } }).mock
+            .calls[0][1];
+        expect(init).toEqual({ signal: undefined });
+        expect((init as { headers?: unknown }).headers).toBeUndefined();
+    });
+
+    it("attaches X-Client: <kind>/<version> when both env are set", async () => {
+        setEnv("VITE_CLIENT_KIND", "ramu-shogi-web");
+        setEnv("VITE_APP_VERSION", "1.2.3");
+        const fetchImpl = vi.fn(
+            async () => new Response(JSON.stringify(okPayload), { status: 200 }),
+        ) as unknown as typeof fetch;
+        await fetchRshogiGame("x1", { baseUrl: "https://rshogi.example.com", fetchImpl });
+        const init = (fetchImpl as unknown as { mock: { calls: [string, RequestInit][] } }).mock
+            .calls[0][1];
+        expect((init as { headers?: Record<string, string> }).headers).toEqual({
+            "X-Client": "ramu-shogi-web/1.2.3",
+        });
+    });
+
+    it("attaches X-Client: <kind> when only VITE_CLIENT_KIND is set", async () => {
+        setEnv("VITE_CLIENT_KIND", "ramu-shogi-desktop");
+        const fetchImpl = vi.fn(
+            async () =>
+                new Response(JSON.stringify({ games: [], next_cursor: null }), { status: 200 }),
+        ) as unknown as typeof fetch;
+        await fetchRshogiGameList({ baseUrl: "https://rshogi.example.com", fetchImpl });
+        const init = (fetchImpl as unknown as { mock: { calls: [string, RequestInit][] } }).mock
+            .calls[0][1];
+        expect((init as { headers?: Record<string, string> }).headers).toEqual({
+            "X-Client": "ramu-shogi-desktop",
+        });
+    });
+
+    it("does not attach header when VITE_CLIENT_KIND is empty/whitespace", async () => {
+        setEnv("VITE_CLIENT_KIND", "   ");
+        setEnv("VITE_APP_VERSION", "1.0.0");
+        const fetchImpl = vi.fn(
+            async () => new Response(JSON.stringify(okPayload), { status: 200 }),
+        ) as unknown as typeof fetch;
+        await fetchRshogiGame("x1", { baseUrl: "https://rshogi.example.com", fetchImpl });
+        const init = (fetchImpl as unknown as { mock: { calls: [string, RequestInit][] } }).mock
+            .calls[0][1];
+        expect((init as { headers?: unknown }).headers).toBeUndefined();
     });
 });

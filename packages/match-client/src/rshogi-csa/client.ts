@@ -165,6 +165,57 @@ export class RshogiGameFetchError extends Error {
 
 const trimTrailingSlash = (value: string): string => value.replace(/\/+$/, "");
 
+/**
+ * `VITE_*` env を読む。
+ *
+ * - 本番 (Vite build): `vite.config.ts::define` 経由で `import.meta.env.VITE_APP_VERSION` が
+ *   literal 置換され、`VITE_CLIENT_KIND` は `.env*` / shell export 経由で `import.meta.env` に乗る
+ * - Vitest 上: `import.meta.env` は提供されるが `vi.stubEnv` の反映タイミングに依存するため、
+ *   Node 環境にある `process.env` も fallback として読む
+ *
+ * 値が undefined または空文字なら次のソースを試す。最終的にどこにも無ければ undefined を返す。
+ */
+const readViteEnv = (key: "VITE_CLIENT_KIND" | "VITE_APP_VERSION"): string | undefined => {
+    const importMetaEnv = (import.meta as unknown as { env?: Record<string, string | undefined> })
+        .env;
+    const fromImport = importMetaEnv?.[key];
+    if (fromImport !== undefined && fromImport !== "") return fromImport;
+    const proc = (
+        globalThis as unknown as { process?: { env?: Record<string, string | undefined> } }
+    ).process;
+    return proc?.env?.[key];
+};
+
+/**
+ * `X-Client` header を組み立てる。
+ *
+ * - `VITE_CLIENT_KIND` と `VITE_APP_VERSION` の両方が set なら `X-Client: <kind>/<version>`
+ * - `VITE_CLIENT_KIND` のみ set なら `X-Client: <kind>`
+ * - kind が未設定 (空文字含む) ならヘッダ自体を付与しない (= 既存挙動互換、サーバログでは `unknown` 扱い)
+ */
+const buildClientHeaders = (): Record<string, string> => {
+    const kind = readViteEnv("VITE_CLIENT_KIND")?.trim();
+    if (!kind) return {};
+    const version = readViteEnv("VITE_APP_VERSION")?.trim();
+    return {
+        "X-Client": version ? `${kind}/${version}` : kind,
+    };
+};
+
+/**
+ * `RequestInit` を組み立てるヘルパ。
+ *
+ * 既存テストは fetch を `(url, { signal })` の固定形で検証するため、`X-Client` を
+ * 付与する必要がない場合は `headers` を含めない (= 既存挙動完全互換)。
+ */
+const buildRequestInit = (signal: AbortSignal | undefined): RequestInit => {
+    const headers = buildClientHeaders();
+    if (Object.keys(headers).length === 0) {
+        return { signal };
+    }
+    return { signal, headers };
+};
+
 // ===== wire format (snake_case) =====
 // サーバが返す JSON 1 件分。decode 層の入力でしか使わないため module 内部に閉じる。
 
@@ -394,7 +445,7 @@ export async function fetchRshogiGame(
     }
 
     const url = `${trimTrailingSlash(baseUrl)}/games/${encodeURIComponent(gameId)}`;
-    const response = await fetchImpl(url, { signal: options.signal });
+    const response = await fetchImpl(url, buildRequestInit(options.signal));
     if (response.status === 404) {
         throw new RshogiGameNotFoundError(gameId);
     }
@@ -439,7 +490,7 @@ export async function fetchRshogiGameList(
     const query = params.toString();
     const url = `${trimTrailingSlash(baseUrl)}/games${query.length > 0 ? `?${query}` : ""}`;
 
-    const response = await fetchImpl(url, { signal: options.signal });
+    const response = await fetchImpl(url, buildRequestInit(options.signal));
     if (!response.ok) {
         throw new RshogiGameFetchError(
             "",

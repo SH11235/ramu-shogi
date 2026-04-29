@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
@@ -10,11 +11,20 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 // ANALYZE=true でバンドル分析レポートを生成
 const isAnalyze = process.env.ANALYZE === "true";
 
+// build 時に package.json::version を読み、`import.meta.env.VITE_APP_VERSION` として
+// literal 置換する。viewer API への X-Client ヘッダ (rshogi#564) でクライアント version を識別するために使う。
+const pkg = JSON.parse(readFileSync(path.join(rootDir, "package.json"), "utf-8")) as {
+    version: string;
+};
+
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
     const env = loadEnv(mode, rootDir, "");
 
     return {
+        define: {
+            "import.meta.env.VITE_APP_VERSION": JSON.stringify(pkg.version),
+        },
         // Cloudflare Workers 配信では "/" を使う。過去の GitHub Pages 向け fallback は維持するが、
         // 実際の値は .env.production などから loadEnv で解決する。
         base: env.VITE_BASE_PATH || (command === "build" ? "/ramu-shogi/" : "/"),
