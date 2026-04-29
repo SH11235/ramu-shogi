@@ -238,6 +238,24 @@ describe("parseSingleCsaMove", () => {
         expect(r1?.nextState.turn).toBe("gote");
     });
 
+    it("既に成っている駒 (RY/UM 等) の通常移動は `+` を付与しない", () => {
+        // 5e に成り角 (UM) を配置した state を作る (黒の馬の単純移動)。
+        const state = createInitialPositionState();
+        // 元 5e は空マスなのでそのまま成り駒を置ける。
+        state.board["5e"] = { owner: "sente", type: "B", promoted: true };
+        // CSA `+5544UM` (5e → 4d、馬の通常移動、駒コードは UM のまま)。
+        const result = parseSingleCsaMove("+5544UM", state);
+        expect(result).not.toBeNull();
+        // promote=false (既に成り済み) なので USI は `5e4d` のみ。
+        expect(result?.move).toBe("5e4d");
+        expect(result?.nextState.board["4d"]).toEqual({
+            owner: "sente",
+            type: "B",
+            promoted: true,
+        });
+        expect(result?.nextState.board["5e"]).toBeNull();
+    });
+
     it("駒打ち手 (+0055FU 等) を `<piece>*<square>` の USI に変換し、hands を減算する", () => {
         const state = createInitialPositionState();
         // 観戦 client では hands を server から再構築するため、ここでは手動で歩を 1 枚追加

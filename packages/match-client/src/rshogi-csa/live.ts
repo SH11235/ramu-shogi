@@ -23,6 +23,16 @@
  * server #548 (rshogi-csa-server-workers) は `extract_room_id_for_spectate` で
  * `<gameId>` 末尾の epoch suffix を剥がすため、URL に game_id をそのまま渡せば
  * room_id 形式に変換される。
+ *
+ * 注: 本モジュールは `@shogi/app-core` の CSA decode helper (`parseSingleCsaMove`
+ * / `parseCsaMovesWithState`) に依存する。設計コメント v5 §6.4 に基づき、
+ * 「snapshot block 内の moves をフル再パース」「broadcast move を 1 行ずつ
+ * apply」を `subscribeRshogiLiveGame` 内に閉じ込めるための判断。一般的な WS
+ * クライアント実装 (`createRoomClient` 等) は app-core に依存しないが、live
+ * 観戦は本質的に CSA wire の解釈を含むため、`live.ts` に限り例外的に
+ * `@shogi/app-core` を依存リストに加える。新たな CSA wire 解釈ロジックを
+ * `match-client` 配下に増やす場合は、ドメインロジック専用パッケージ (例:
+ * `@shogi/csa-parser`) への切り出しを検討すること。
  */
 
 import {

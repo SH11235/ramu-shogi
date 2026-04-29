@@ -73,14 +73,21 @@ const DROP_PIECE_FROM_CODE: Record<string, PieceType | undefined> = {
  * 1 行の CSA `move` 行から USI move 文字列を解釈する純粋関数。
  *
  * 受け付ける書式:
- * - 通常移動: `+7776FU` / `-3334FU` / `+8822UM` (成り駒コードの場合は promote=true)
+ * - 通常移動: `+7776FU` / `-3334FU` / `+8822UM` (成り駒コード時は移動元駒の状態で
+ *   「成り (UM=馬を新規生成)」か「既成り駒の通常移動 (馬→馬の単純移動)」かを判別)
  * - 駒打ち: `+0099FU` 等 (from = `"00"`、駒コードは非成り駒のみ)
  *
  * 戻り値が `null` のときは move 行ではない (時間行 `T8` / コメント `'...` /
  * 終局コード `%TORYO` / `#RESIGN` 等)。本関数では state 検証や合法手チェックは
  * 行わず、wire 上で構文として解釈可能な行だけを USI 文字列化する。
+ *
+ * `fromPiecePromoted` が `true`/`false` で渡されたときは、移動元の駒が既に成り駒
+ * かどうかで `+` 付与を抑止する。`undefined` の場合は board 文脈不明として
+ * 「駒コードが成り駒コードならすべて promote=true」とする後方互換 fallback
+ * (この場合、既成り駒の通常移動でも `+` が付与され不正な USI になる場合があるが、
+ * 後段の `applyMoveWithState` で弾かれる)。
  */
-function parseCsaMoveLine(line: string): { usi: string } | null {
+function parseCsaMoveLine(line: string, fromPiecePromoted?: boolean): { usi: string } | null {
     if (!(line.startsWith("+") || line.startsWith("-"))) {
         return null;
     }
@@ -106,7 +113,11 @@ function parseCsaMoveLine(line: string): { usi: string } | null {
     if (!fromSquare) {
         return null;
     }
-    const promotes = PROMOTED_FROM_CODE[pieceCode] !== undefined;
+    // 駒コードが成り駒 (TO/NY/NK/NG/UM/RY) でかつ「移動元が未成りの駒」のときに
+    // のみ promote = true。移動元が既に成り駒の場合は「成り駒の通常移動」なので
+    // `+` を付けない (例: 龍が 5e→4e 移動 → `+5e4eRY` → USI `5e4e`)。
+    const isPromotedCode = PROMOTED_FROM_CODE[pieceCode] !== undefined;
+    const promotes = isPromotedCode && fromPiecePromoted === false;
     return { usi: `${fromSquare}${toSquare}${promotes ? "+" : ""}` };
 }
 
@@ -135,7 +146,19 @@ export function parseSingleCsaMove(
 ): { move: string; nextState: PositionState } | null {
     const trimmed = line.trim();
     if (trimmed.length === 0) return null;
-    const parsed = parseCsaMoveLine(trimmed);
+    if (trimmed.length < 7) return null;
+    const fromRaw = trimmed.slice(1, 3);
+    // 駒打ちは fromPiecePromoted が無関係。通常移動の場合のみ移動元駒の成り
+    // フラグを参照して、`parseCsaMoveLine` の `+` 付与制御を行う。
+    let fromPiecePromoted: boolean | undefined;
+    if (fromRaw !== "00" && (trimmed.startsWith("+") || trimmed.startsWith("-"))) {
+        const fromSquare = fromCsaSquare(fromRaw);
+        if (fromSquare) {
+            const piece = state.board[fromSquare];
+            fromPiecePromoted = piece ? piece.promoted === true : undefined;
+        }
+    }
+    const parsed = parseCsaMoveLine(trimmed, fromPiecePromoted);
     if (!parsed) return null;
     const result = applyMoveWithState(state, parsed.usi, {
         validateTurn: false,
@@ -247,7 +270,10 @@ export function parseCsaMoves(contents: string, initialBoard?: BoardState): stri
         if (!targetPiece) {
             continue;
         }
-        const promotes = PROMOTED_FROM_CODE[pieceCode] !== undefined;
+        // 「駒コードが成り駒コード」かつ「移動元の駒が未成り」の場合のみ promote。
+        // 既成り駒の通常移動 (例: 龍 RY が移動) では `+` を付与しない。
+        const isPromotedCode = PROMOTED_FROM_CODE[pieceCode] !== undefined;
+        const promotes = isPromotedCode && targetPiece.promoted !== true;
         const move = `${fromSquare}${toSquare}${promotes ? "+" : ""}`;
         moves.push(move);
         board = applyMove(board, move);

@@ -56,7 +56,7 @@ export function RshogiViewerLiveView({ gameId, onBackToList, onBackToLocal }: Pr
                 fetchLegalMoves={(sfen, moves, options) =>
                     getLegalMoves({ sfen, moves, passRights: options?.passRights })
                 }
-                isDevMode={true}
+                isDevMode={import.meta.env.DEV}
             />
         </div>
     );
