@@ -10,6 +10,9 @@ fi
 
 # Vite 共通 env
 export VITE_BASE_PATH="/"
+# X-Client header 用のクライアント種識別子 (rshogi#564)。stg / prod で同値。
+# 未設定でも build 自体は通るが、viewer API のログで client_kind=unknown 扱いになるため明示しておく。
+export VITE_CLIENT_KIND="ramu-shogi-web"
 
 # stg / prod で分岐: NNUE manifest URL も viewer API base URL も環境別に設定する。
 if [[ "$MODE" == "stg" ]]; then
