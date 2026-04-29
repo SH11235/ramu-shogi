@@ -290,6 +290,9 @@ importers:
 
   packages/match-client:
     dependencies:
+      '@shogi/app-core':
+        specifier: workspace:*
+        version: link:../app-core
       '@shogi/match-protocol':
         specifier: workspace:*
         version: link:../match-protocol

@@ -21,6 +21,7 @@ import { ActiveEngineSettingsPanel } from "./components/ActiveEngineSettingsPane
 import { CsaGameView } from "./components/csa/CsaGameView";
 import { EngineManagerPanel } from "./components/EngineManagerPanel";
 import { RshogiViewerListView } from "./components/rshogi-viewer/RshogiViewerListView";
+import { RshogiViewerLiveView } from "./components/rshogi-viewer/RshogiViewerLiveView";
 import { RshogiViewerView } from "./components/rshogi-viewer/RshogiViewerView";
 
 const createEngineClient = () =>
@@ -83,7 +84,12 @@ interface EngineSettingsTarget {
     label: string;
 }
 
-type AppMode = "local" | "csa" | "rshogi-viewer-list" | "rshogi-viewer-detail";
+type AppMode =
+    | "local"
+    | "csa"
+    | "rshogi-viewer-list"
+    | "rshogi-viewer-detail"
+    | "rshogi-viewer-live";
 
 function App() {
     const [appMode, setAppMode] = useState<AppMode>("local");
@@ -220,6 +226,20 @@ function App() {
             <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
                 <main className="mx-auto flex max-w-[1100px] flex-col gap-3 p-4 md:px-5">
                     <RshogiViewerView
+                        gameId={rshogiViewerGameId}
+                        onBackToList={handleBackToRshogiList}
+                        onBackToLocal={() => setAppMode("local")}
+                    />
+                </main>
+            </NnueProvider>
+        );
+    }
+
+    if (appMode === "rshogi-viewer-live" && rshogiViewerGameId) {
+        return (
+            <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
+                <main className="mx-auto flex max-w-[1100px] flex-col gap-3 p-4 md:px-5">
+                    <RshogiViewerLiveView
                         gameId={rshogiViewerGameId}
                         onBackToList={handleBackToRshogiList}
                         onBackToLocal={() => setAppMode("local")}

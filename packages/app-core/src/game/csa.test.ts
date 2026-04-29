@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createInitialBoard, createInitialPositionState } from "./board";
-import { buildBoardFromCsa, movesToCsa, parseCsaMoves } from "./csa";
+import {
+    buildBoardFromCsa,
+    movesToCsa,
+    parseCsaMoves,
+    parseCsaMovesWithState,
+    parseSingleCsaMove,
+} from "./csa";
 import type { PositionService } from "./position-service";
 import { setPositionServiceFactory } from "./position-service-registry";
 
@@ -202,5 +208,93 @@ describe("往復変換", () => {
 
         // 最初の2手は正確に一致するはず
         expect(parsedMoves.slice(0, 2)).toEqual(originalMoves.slice(0, 2));
+    });
+});
+
+describe("parseSingleCsaMove", () => {
+    it("通常の移動を 1 手だけ解釈し、PositionState を進める", () => {
+        const initial = createInitialPositionState();
+        const result = parseSingleCsaMove("+7776FU", initial);
+        expect(result).not.toBeNull();
+        expect(result?.move).toBe("7g7f");
+        expect(result?.nextState.turn).toBe("gote");
+        expect(result?.nextState.board["7g"]).toBeNull();
+        expect(result?.nextState.board["7f"]).toEqual({ owner: "sente", type: "P" });
+    });
+
+    it("成り手 (UM 等) を promote=true で解釈する", () => {
+        // 角成りを発生させるため、最初に 8h→2b+ を経由した状態を作る
+        const initial = createInitialPositionState();
+        initial.board["2b"] = null; // 後手角を退かして 8h2b+ を可能に
+        const r1 = parseSingleCsaMove("+8822UM", initial);
+        expect(r1).not.toBeNull();
+        expect(r1?.move).toBe("8h2b+");
+        // 成り駒が配置され、手番が gote へ
+        expect(r1?.nextState.board["2b"]).toEqual({
+            owner: "sente",
+            type: "B",
+            promoted: true,
+        });
+        expect(r1?.nextState.turn).toBe("gote");
+    });
+
+    it("既に成っている駒 (RY/UM 等) の通常移動は `+` を付与しない", () => {
+        // 5e に成り角 (UM) を配置した state を作る (黒の馬の単純移動)。
+        const state = createInitialPositionState();
+        // 元 5e は空マスなのでそのまま成り駒を置ける。
+        state.board["5e"] = { owner: "sente", type: "B", promoted: true };
+        // CSA `+5544UM` (5e → 4d、馬の通常移動、駒コードは UM のまま)。
+        const result = parseSingleCsaMove("+5544UM", state);
+        expect(result).not.toBeNull();
+        // promote=false (既に成り済み) なので USI は `5e4d` のみ。
+        expect(result?.move).toBe("5e4d");
+        expect(result?.nextState.board["4d"]).toEqual({
+            owner: "sente",
+            type: "B",
+            promoted: true,
+        });
+        expect(result?.nextState.board["5e"]).toBeNull();
+    });
+
+    it("駒打ち手 (+0055FU 等) を `<piece>*<square>` の USI に変換し、hands を減算する", () => {
+        const state = createInitialPositionState();
+        // 観戦 client では hands を server から再構築するため、ここでは手動で歩を 1 枚追加
+        state.hands.sente = { P: 1 };
+        // 中央 5e は初期局面で空マス。駒打ちで配置できる。
+        const result = parseSingleCsaMove("+0055FU", state);
+        expect(result).not.toBeNull();
+        expect(result?.move).toBe("P*5e");
+        expect(result?.nextState.board["5e"]).toEqual({ owner: "sente", type: "P" });
+        // 駒打ちは hands を 1 つ減らす
+        expect(result?.nextState.hands.sente.P ?? 0).toBe(0);
+    });
+
+    it("move 行でない (時間行 / 終局コード / コメント) は null を返す", () => {
+        const state = createInitialPositionState();
+        expect(parseSingleCsaMove("T8", state)).toBeNull();
+        expect(parseSingleCsaMove("%TORYO", state)).toBeNull();
+        expect(parseSingleCsaMove("#RESIGN", state)).toBeNull();
+        expect(parseSingleCsaMove("'comment", state)).toBeNull();
+        expect(parseSingleCsaMove("", state)).toBeNull();
+    });
+});
+
+describe("parseCsaMovesWithState", () => {
+    it("複数行の CSA から moves[] と最終 PositionState を一括取得する", () => {
+        const initial = createInitialPositionState();
+        // 時間行 (T8) と move 行が混ざった wire を入力する。
+        const csa = ["+7776FU", "T8", "-3334FU", "T7"].join("\n");
+        const result = parseCsaMovesWithState(csa, initial);
+        expect(result.moves).toEqual(["7g7f", "3c3d"]);
+        // 2 手目時点で手番は sente に戻る
+        expect(result.state.turn).toBe("sente");
+        expect(result.state.ply).toBe(3); // 初期 ply=1 + 2 手 → 3
+    });
+
+    it("空文字列を渡すと初期状態を返す", () => {
+        const initial = createInitialPositionState();
+        const result = parseCsaMovesWithState("", initial);
+        expect(result.moves).toEqual([]);
+        expect(result.state).toBe(initial);
     });
 });
