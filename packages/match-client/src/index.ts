@@ -67,6 +67,16 @@ export {
     RshogiGameNotFoundError,
 } from "./rshogi-csa/client";
 export type {
+    RshogiLiveCallbacks,
+    RshogiLiveClockEvent,
+    RshogiLiveConnectionState,
+    RshogiLiveMoveEvent,
+    RshogiLiveSession,
+    RshogiLiveSnapshot,
+    RshogiLiveSubscribeOptions,
+} from "./rshogi-csa/live";
+export { subscribeRshogiLiveGame } from "./rshogi-csa/live";
+export type {
     RoomClient,
     RoomClientOpenEvent,
     RoomClientOptions,

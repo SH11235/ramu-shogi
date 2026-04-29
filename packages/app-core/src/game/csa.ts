@@ -1,5 +1,6 @@
 import {
     applyMove,
+    applyMoveWithState,
     BOARD_FILES,
     BOARD_RANKS,
     type BoardState,
@@ -9,6 +10,7 @@ import {
     createInitialBoard,
     type Piece,
     type PieceType,
+    type PositionState,
     type Square,
 } from "./board";
 
@@ -50,6 +52,128 @@ const PROMOTED_FROM_CODE: Record<string, PieceType | undefined> = {
     UM: "B",
     RY: "R",
 };
+
+/**
+ * 駒打ち時の CSA 駒コード (`FU`/`KY`/`KE`/`GI`/`KI`/`KA`/`HI`) → `PieceType` の逆引き。
+ *
+ * 駒打ちは成り駒では行わないため、成りコード (`TO`/`NY`/...) は対応外。
+ * `OU` は王なので駒打ちに現れない。
+ */
+const DROP_PIECE_FROM_CODE: Record<string, PieceType | undefined> = {
+    FU: "P",
+    KY: "L",
+    KE: "N",
+    GI: "S",
+    KI: "G",
+    KA: "B",
+    HI: "R",
+};
+
+/**
+ * 1 行の CSA `move` 行から USI move 文字列を解釈する純粋関数。
+ *
+ * 受け付ける書式:
+ * - 通常移動: `+7776FU` / `-3334FU` / `+8822UM` (成り駒コードの場合は promote=true)
+ * - 駒打ち: `+0099FU` 等 (from = `"00"`、駒コードは非成り駒のみ)
+ *
+ * 戻り値が `null` のときは move 行ではない (時間行 `T8` / コメント `'...` /
+ * 終局コード `%TORYO` / `#RESIGN` 等)。本関数では state 検証や合法手チェックは
+ * 行わず、wire 上で構文として解釈可能な行だけを USI 文字列化する。
+ */
+function parseCsaMoveLine(line: string): { usi: string } | null {
+    if (!(line.startsWith("+") || line.startsWith("-"))) {
+        return null;
+    }
+    if (line.length < 7) {
+        return null;
+    }
+    const fromRaw = line.slice(1, 3);
+    const toRaw = line.slice(3, 5);
+    const pieceCode = line.slice(5, 7).toUpperCase();
+    const toSquare = fromCsaSquare(toRaw);
+    if (!toSquare) {
+        return null;
+    }
+    if (fromRaw === "00") {
+        const piece = DROP_PIECE_FROM_CODE[pieceCode];
+        if (!piece) {
+            return null;
+        }
+        // USI の駒打ち書式は `P*5e` (大文字駒コード + `*` + マス)。
+        return { usi: `${piece}*${toSquare}` };
+    }
+    const fromSquare = fromCsaSquare(fromRaw);
+    if (!fromSquare) {
+        return null;
+    }
+    const promotes = PROMOTED_FROM_CODE[pieceCode] !== undefined;
+    return { usi: `${fromSquare}${toSquare}${promotes ? "+" : ""}` };
+}
+
+/**
+ * 1 行の CSA move 行 (`+7776FU` / `+0099FU` 等) を解釈し、適用後の `PositionState`
+ * と USI 表現を返す。
+ *
+ * 戻り値が `null` のときは行が move ではない (時間行 / コメント / 終局コード等)。
+ * `applyMoveWithState` の戻り値が `ok: false` のときも `null` を返す (= 不正手は
+ * 呼び出し側で検出させる)。
+ *
+ * `state` には board + hands + turn + ply を含む `PositionState` を渡す契約。
+ * 駒打ち手 (`+0099FU` 等) は `hands` を参照しないと適用できないため、`BoardState`
+ * 単体ではなく `PositionState` 全体を取る。
+ *
+ * 内部では既存 `applyMoveWithState` を `validateTurn: false` で呼び、wire 由来の
+ * 手を idempotent に適用する (= サーバが手番・合法性・在駒を保証している前提)。
+ * `ignoreHandLimits` は既定 (`false`) のままにしておくことで、駒打ち時に hands
+ * が自然に減算され、観戦 UI で持ち駒表示が壊れない。サーバ側で hands と
+ * boardState の整合が崩れたケース (= 何らかのバグ) では `applyMoveWithState`
+ * が `ok: false` を返すため本関数は `null` を返す。
+ */
+export function parseSingleCsaMove(
+    line: string,
+    state: PositionState,
+): { move: string; nextState: PositionState } | null {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) return null;
+    const parsed = parseCsaMoveLine(trimmed);
+    if (!parsed) return null;
+    const result = applyMoveWithState(state, parsed.usi, {
+        validateTurn: false,
+    });
+    if (!result.ok) return null;
+    return { move: parsed.usi, nextState: result.next };
+}
+
+/**
+ * 複数行の CSA テキストから `parseSingleCsaMove` をループ適用する。
+ *
+ * snapshot 受信時に moves[] と最新 `PositionState` の両方が必要な観戦 client
+ * から使う。`parseCsaMoves` (board-only) と異なり hands / turn / ply も追跡
+ * するため、`parseSingleCsaMove` で broadcast move を逐次適用する経路と
+ * 整合する。
+ *
+ * 戻り値の `state` は最後に適用された手の直後の `PositionState`。move 行が 0 件の
+ * 場合は `initialState` を deep clone せずそのまま返す (呼び出し側で必要なら
+ * clone する契約)。
+ */
+export function parseCsaMovesWithState(
+    contents: string,
+    initialState: PositionState,
+): { moves: string[]; state: PositionState } {
+    const lines = contents
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+    const moves: string[] = [];
+    let state = initialState;
+    for (const line of lines) {
+        const applied = parseSingleCsaMove(line, state);
+        if (!applied) continue;
+        moves.push(applied.move);
+        state = applied.nextState;
+    }
+    return { moves, state };
+}
 
 interface CsaMetadata {
     senteName?: string;
