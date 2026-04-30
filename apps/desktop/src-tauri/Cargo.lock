@@ -718,7 +718,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "hex",
- "rshogi-core 0.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rshogi-core",
  "rshogi-csa-client",
  "rustls",
  "serde",
@@ -3111,23 +3111,6 @@ dependencies = [
 [[package]]
 name = "rshogi-core"
 version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1e86c1b671b17e6b8c20a58fd728db8a5188ef3dbfcc0330fb2bf44ddaf75fa"
-dependencies = [
- "anyhow",
- "getrandom 0.3.4",
- "libc",
- "log",
- "rand 0.9.4",
- "rand_xoshiro",
- "serde",
- "web-time",
- "windows-sys 0.60.2",
-]
-
-[[package]]
-name = "rshogi-core"
-version = "0.2.4"
 source = "git+https://github.com/SH11235/rshogi.git?rev=afd941abfb60488df89ac6abbe060aba170ef09c#afd941abfb60488df89ac6abbe060aba170ef09c"
 dependencies = [
  "anyhow",
@@ -3158,7 +3141,7 @@ dependencies = [
  "chrono",
  "libc",
  "log",
- "rshogi-core 0.2.4 (git+https://github.com/SH11235/rshogi.git?rev=afd941abfb60488df89ac6abbe060aba170ef09c)",
+ "rshogi-core",
  "rshogi-csa",
  "rshogi-csa-server",
  "rustls",
@@ -3177,7 +3160,7 @@ dependencies = [
  "chrono",
  "rand 0.9.4",
  "rand_xoshiro",
- "rshogi-core 0.2.4 (git+https://github.com/SH11235/rshogi.git?rev=afd941abfb60488df89ac6abbe060aba170ef09c)",
+ "rshogi-core",
  "rshogi-csa",
  "serde",
  "serde_json",
