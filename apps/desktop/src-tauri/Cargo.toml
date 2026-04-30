@@ -33,6 +33,7 @@ rshogi-csa-client = { git = "https://github.com/SH11235/rshogi.git", rev = "afd9
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 toml = "0.8"
 anyhow = "1"
+log = "0.4"
 # NNUE 管理用 + USI エンジンプロセス管理用 + CSA対局用
 tokio = { version = "1", features = ["fs", "io-util", "process", "sync", "net", "macros"] }
 tokio-util = "0.7"

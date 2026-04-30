@@ -45,7 +45,8 @@ function createDefaultConfig(): CsaConfig {
             tcp_keepalive: true,
         },
         engine: {
-            // PR-A 段階では Builtin 経路は backend で early error。default は External。
+            // 内蔵エンジン (rshogi-core 直駆動) と外部 USI エンジンの両方が利用可能。
+            // default は外部エンジン (既存 UX を維持)。
             type: "external",
             registration_id: null,
             options: {},
@@ -215,13 +216,7 @@ export function CsaSettingsPanel({ onStart }: CsaSettingsPanelProps): ReactEleme
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem
-                                    value="builtin"
-                                    disabled
-                                    title="移行作業中、近日中に利用可能"
-                                >
-                                    内蔵エンジン（移行作業中）
-                                </SelectItem>
+                                <SelectItem value="builtin">内蔵エンジン</SelectItem>
                                 <SelectItem value="external">外部エンジン</SelectItem>
                             </SelectContent>
                         </Select>

@@ -1,3 +1,4 @@
+mod csa_builtin_engine;
 mod csa_engine;
 mod csa_game;
 mod csa_session;
@@ -10,7 +11,9 @@ mod usi_engine;
 /// API を呼ぶための再エクスポート。production code から直接利用しない。
 #[doc(hidden)]
 pub mod test_support {
-    pub use crate::csa_session::run_external_session;
+    pub use crate::EngineState;
+    pub use crate::csa_builtin_engine::BuiltinEngineDriver;
+    pub use crate::csa_session::run_csa_session;
     pub use crate::csa_sink::TauriEventSink;
     pub use crate::csa_types::{
         CsaConfig, CsaEngineConfig, CsaEngineType, CsaGameConfig, CsaReconnectConfig,
@@ -161,14 +164,21 @@ struct ActiveSearch {
     _ponderhit_flag: Arc<AtomicBool>,
 }
 
-struct EngineState {
-    inner: Mutex<EngineStateInner>,
+/// CSA Builtin engine driver から共有する内蔵 search instance のラッパー。
+///
+/// 本 struct は Tauri の `State` 経由で `Arc<EngineState>` として注入され、
+/// UI 経路 (`engine_search` 等) と CSA Builtin engine driver
+/// (`csa_builtin_engine`) の双方が同じ instance を共有する。
+#[doc(hidden)]
+pub struct EngineState {
+    pub(crate) inner: Mutex<EngineStateInner>,
 }
 
-struct EngineStateInner {
+#[doc(hidden)]
+pub struct EngineStateInner {
     options: EngineOptions,
-    position: Position,
-    search: Option<Search>,
+    pub(crate) position: Position,
+    pub(crate) search: Option<Search>,
     active_search: Option<ActiveSearch>,
 }
 
@@ -186,7 +196,7 @@ impl EngineStateInner {
         }
     }
 
-    fn create_search(&self) -> Search {
+    pub(crate) fn create_search(&self) -> Search {
         let mut search = Search::new(self.options.tt_size_mb);
         self.options.apply_to_search(&mut search);
         search
