@@ -161,7 +161,6 @@ struct SearchTaskResult {
 struct ActiveSearch {
     handle: thread::JoinHandle<SearchTaskResult>,
     stop_flag: Arc<AtomicBool>,
-    _ponderhit_flag: Arc<AtomicBool>,
 }
 
 /// CSA Builtin engine driver から共有する内蔵 search instance のラッパー。
@@ -341,7 +340,6 @@ fn spawn_search(
     }
 
     let stop_flag = search.stop_flag();
-    let ponderhit_flag = search.ponderhit_flag();
 
     let handle = thread::Builder::new()
         .name("engine-search".into())
@@ -378,11 +376,7 @@ fn spawn_search(
         })
         .map_err(|e| format!("Failed to spawn search thread: {e}"))?;
 
-    Ok(ActiveSearch {
-        handle,
-        stop_flag,
-        _ponderhit_flag: ponderhit_flag,
-    })
+    Ok(ActiveSearch { handle, stop_flag })
 }
 
 /// パス権設定

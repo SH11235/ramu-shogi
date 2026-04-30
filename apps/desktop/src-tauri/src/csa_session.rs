@@ -8,13 +8,13 @@
 //! shutdown 信号 ([`Arc<AtomicBool>`]) は `CsaGameManager` から受け取り、
 //! `csa_stop` から立てられる。
 //!
-//! # Builtin engine の ponder 強制無効化
+//! # Builtin / External 共通の ponder 設定伝搬
 //!
-//! Builtin engine は rshogi-core API 制約 (`Search::request_ponderhit` が探索中
-//! instance への参照を要求) により driver から ponderhit を発火できない。本
-//! module は `engine_type == Builtin` のとき `csa_config.game.ponder = false`
-//! を強制し、OSS session が `go_ponder` / `ponderhit_with_info` を呼ばない経路に
-//! 閉じる。詳細は `csa_builtin_engine.rs` の module doc を参照。
+//! Builtin / External どちらの engine_type でも `CsaConfig.engine.ponder` を
+//! そのまま `CsaClientConfig.game.ponder` に伝搬する。Builtin engine は
+//! `Search::ponderhit_handle()` (rshogi-core 2693dd45+) で取得した
+//! `PonderhitHandle` 経由で真の ponder 探索を駆動する。詳細は
+//! `csa_builtin_engine.rs` の module doc を参照。
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -153,13 +153,11 @@ fn build_oss_config(config: &CsaConfig, engine_path: &Path) -> Result<CsaClientC
         margin_msec: config.time.margin_ms,
     };
 
-    // Builtin engine では rshogi-core API 制約上 ponder を真に実装できないため、
-    // OSS session が `go_ponder` / `ponderhit_with_info` を呼ばない経路に閉じる。
-    // 詳細は module-level doc と `csa_builtin_engine.rs` を参照。
-    let ponder = match config.engine.engine_type {
-        CsaEngineType::External => config.engine.ponder,
-        CsaEngineType::Builtin => false,
-    };
+    // External / Builtin 共通: UI 設定の ponder 値をそのまま OSS session に伝搬する。
+    // Builtin engine は USI_Ponder setoption を持たないが、OssGameConfig.ponder=true で
+    // OSS session が go_ponder / ponderhit_with_info を呼び出し、Builtin driver 側で
+    // 真の ponder 探索を駆動する (rshogi#583 / ramu-shogi#44)。
+    let ponder = config.engine.ponder;
 
     let game = OssGameConfig {
         max_games: config.game.max_games,
@@ -311,19 +309,6 @@ mod tests {
         }
     }
 
-    /// Builtin engine の場合、Tauri 側 `CsaConfig.engine.ponder = true` を渡しても
-    /// `build_oss_config` の戻り値で `oss_config.game.ponder = false` 強制される
-    /// ことを verify する (本 PR の本体 contract)。
-    #[test]
-    fn build_oss_config_forces_ponder_off_for_builtin() {
-        let config = make_csa_config(CsaEngineType::Builtin, /* ponder= */ true);
-        let oss = build_oss_config(&config, Path::new("<builtin>")).unwrap();
-        assert!(
-            !oss.game.ponder,
-            "Builtin engine では oss_config.game.ponder=false 強制が必須"
-        );
-    }
-
     /// External engine の場合は Tauri 側 `CsaConfig.engine.ponder` がそのまま
     /// `oss_config.game.ponder` に伝搬されることを verify する。
     #[test]
@@ -343,6 +328,29 @@ mod tests {
         assert!(
             !oss.game.ponder,
             "External engine では UI 設定の ponder=false もそのまま伝搬する"
+        );
+    }
+
+    /// Builtin engine の場合も Tauri 側 `CsaConfig.engine.ponder` がそのまま
+    /// `oss_config.game.ponder` に伝搬されることを verify する (rshogi#583 /
+    /// ramu-shogi#44 で真の ponder 対応した結果、強制無効化が外れた)。
+    #[test]
+    fn build_oss_config_preserves_ponder_for_builtin_true() {
+        let config = make_csa_config(CsaEngineType::Builtin, /* ponder= */ true);
+        let oss = build_oss_config(&config, Path::new("<builtin>")).unwrap();
+        assert!(
+            oss.game.ponder,
+            "Builtin engine でも UI 設定の ponder=true がそのまま伝搬する"
+        );
+    }
+
+    #[test]
+    fn build_oss_config_preserves_ponder_for_builtin_false() {
+        let config = make_csa_config(CsaEngineType::Builtin, /* ponder= */ false);
+        let oss = build_oss_config(&config, Path::new("<builtin>")).unwrap();
+        assert!(
+            !oss.game.ponder,
+            "Builtin engine でも UI 設定の ponder=false がそのまま伝搬する"
         );
     }
 }
