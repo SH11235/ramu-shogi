@@ -27,6 +27,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # rshogi-csa-client (git only, crates.io 未公開) と同一ソースに統一して
 # Cargo.lock 上の rshogi-core 重複 (registry 版 vs git 版) を解消する。
+# rev を更新する場合は必ず rshogi-csa-client の rev と同じ値に揃えること。
 rshogi-core = { git = "https://github.com/SH11235/rshogi.git", rev = "afd941abfb60488df89ac6abbe060aba170ef09c" }
 rshogi-csa-client = { git = "https://github.com/SH11235/rshogi.git", rev = "afd941abfb60488df89ac6abbe060aba170ef09c", default-features = false, features = ["tcp", "websocket"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
