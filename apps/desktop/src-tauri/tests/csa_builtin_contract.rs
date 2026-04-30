@@ -9,9 +9,10 @@
 //! - resume 経路: `Resumed` event が emit され、last_sfen から盤面継続
 //! - shutdown 中断: shutdown フラグで対局が中断され `Disconnected` event で
 //!   セッションが閉じる
-//! - ponder 抑止: Builtin engine + `engine.ponder = true` 設定でも
-//!   `go_ponder` / `ponderhit_with_info` が呼ばれない (`csa_session` 内で
-//!   `csa_config.game.ponder = false` 強制が効いている)
+//! - ponder 真対応: Builtin engine + `engine.ponder = true` 設定で
+//!   `go_ponder` が呼ばれ、driver が `Search::ponderhit_handle()` 経由で真の
+//!   ponder 探索を駆動する (`ponderhit_with_info` で `PonderhitHandle::signal()`
+//!   を発火して bestmove を取り出す)
 //! - active_search 競合: UI 検索 active 中でも `csa_start` 相当経路で UI 検索
 //!   が停止 + Builtin が探索開始できる
 
@@ -21,15 +22,13 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::mpsc::Receiver;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
-use anyhow::Result;
 use rshogi_core::eval::{MaterialLevel, set_material_level};
 use rshogi_csa_client::engine::InfoCallback;
-use rshogi_csa_client::{Event, SearchOutcome, UsiEngineDriver};
+use rshogi_csa_client::{Event, UsiEngineDriver};
 
 /// 全 test 共通の事前初期化。NNUE が読み込まれていない test 環境でも探索が
 /// 走るよう、最小レベルの Material 評価を有効化する (process global)。
@@ -159,181 +158,6 @@ fn label_event(event: &CsaSessionEvent) -> &'static str {
         CsaSessionEvent::Disconnected { .. } => "Disconnected",
         CsaSessionEvent::Error { .. } => "Error",
     }
-}
-
-// ────────────────────────────────────────────
-// CountingDriver: BuiltinEngineDriver の go_ponder / ponderhit_with_info 呼び出し回数を計測
-// ────────────────────────────────────────────
-
-struct CountingDriver {
-    inner: BuiltinEngineDriver,
-    new_game_called: Arc<AtomicUsize>,
-    go_with_info_called: Arc<AtomicUsize>,
-    go_ponder_called: Arc<AtomicUsize>,
-    ponderhit_called: Arc<AtomicUsize>,
-    stop_called: Arc<AtomicUsize>,
-    gameover_called: Arc<AtomicUsize>,
-}
-
-#[derive(Clone, Default)]
-struct CountingHandle {
-    new_game: Arc<AtomicUsize>,
-    go_with_info: Arc<AtomicUsize>,
-    go_ponder: Arc<AtomicUsize>,
-    ponderhit: Arc<AtomicUsize>,
-    stop: Arc<AtomicUsize>,
-    gameover: Arc<AtomicUsize>,
-}
-
-impl CountingDriver {
-    fn new(inner: BuiltinEngineDriver) -> (Self, CountingHandle) {
-        let handle = CountingHandle::default();
-        let driver = Self {
-            inner,
-            new_game_called: Arc::clone(&handle.new_game),
-            go_with_info_called: Arc::clone(&handle.go_with_info),
-            go_ponder_called: Arc::clone(&handle.go_ponder),
-            ponderhit_called: Arc::clone(&handle.ponderhit),
-            stop_called: Arc::clone(&handle.stop),
-            gameover_called: Arc::clone(&handle.gameover),
-        };
-        (driver, handle)
-    }
-}
-
-impl UsiEngineDriver for CountingDriver {
-    fn new_game(&mut self) -> Result<()> {
-        self.new_game_called.fetch_add(1, Ordering::SeqCst);
-        self.inner.new_game()
-    }
-
-    fn go_with_info(
-        &mut self,
-        position_cmd: &str,
-        go_cmd: &str,
-        shutdown: &AtomicBool,
-        server_rx: &Receiver<Event>,
-        info_callback: &mut InfoCallback<'_>,
-    ) -> Result<SearchOutcome> {
-        self.go_with_info_called.fetch_add(1, Ordering::SeqCst);
-        self.inner
-            .go_with_info(position_cmd, go_cmd, shutdown, server_rx, info_callback)
-    }
-
-    fn go_ponder(&mut self, position_cmd: &str, go_cmd: &str) -> Result<()> {
-        self.go_ponder_called.fetch_add(1, Ordering::SeqCst);
-        self.inner.go_ponder(position_cmd, go_cmd)
-    }
-
-    fn ponderhit_with_info(
-        &mut self,
-        shutdown: &AtomicBool,
-        server_rx: &Receiver<Event>,
-        info_callback: &mut InfoCallback<'_>,
-    ) -> Result<SearchOutcome> {
-        self.ponderhit_called.fetch_add(1, Ordering::SeqCst);
-        self.inner
-            .ponderhit_with_info(shutdown, server_rx, info_callback)
-    }
-
-    fn stop_and_wait(&mut self) -> Result<()> {
-        self.stop_called.fetch_add(1, Ordering::SeqCst);
-        self.inner.stop_and_wait()
-    }
-
-    fn gameover(&mut self, result: &str) -> Result<()> {
-        self.gameover_called.fetch_add(1, Ordering::SeqCst);
-        self.inner.gameover(result)
-    }
-}
-
-// ────────────────────────────────────────────
-// run_game_session_with_events を直接呼んで CountingDriver を観測する。
-//
-// 本 helper は OSS session の挙動 (config.game.ponder の値に応じた go_ponder/
-// ponderhit_with_info の呼び出し有無) を verify するためのもの。
-// ramu-shogi 側 `csa_session::build_oss_config` が Builtin engine で ponder=false
-// を強制する本体 contract は `csa_session.rs` の unit test
-// (`build_oss_config_forces_ponder_off_for_builtin`) で別途 verify している。
-// ────────────────────────────────────────────
-
-fn run_session_with_counting(
-    port: u16,
-    engine_state: Arc<EngineState>,
-    ponder: bool,
-) -> CountingHandle {
-    use rshogi_csa_client::config::{
-        CsaClientConfig, EngineConfig as OssEngineConfig, GameConfig as OssGameConfig,
-        KeepaliveConfig as OssKeepaliveConfig, RecordConfig as OssRecordConfig,
-        ServerConfig as OssServerConfig, TimeConfig as OssTimeConfig,
-    };
-    use rshogi_csa_client::events::{NoopSessionEventSink, SearchInfoEmitPolicy};
-    use rshogi_csa_client::protocol::CsaConnection;
-    use rshogi_csa_client::session::run_game_session_with_events;
-
-    let oss_config = CsaClientConfig {
-        server: OssServerConfig {
-            host: "127.0.0.1".into(),
-            port,
-            id: "alice".into(),
-            password: "pw".into(),
-            floodgate: false,
-            keepalive: OssKeepaliveConfig {
-                tcp: false,
-                ..OssKeepaliveConfig::default()
-            },
-            ws_origin: None,
-        },
-        engine: OssEngineConfig {
-            path: PathBuf::from("<builtin>"),
-            options: Default::default(),
-            ..OssEngineConfig::default()
-        },
-        time: OssTimeConfig { margin_msec: 0 },
-        game: OssGameConfig {
-            max_games: 1,
-            restart_engine_every_game: false,
-            // 引数で渡された ponder 値をそのまま OSS config に伝搬する。
-            // OSS session 自体は config.game.ponder=false の場合に go_ponder/
-            // ponderhit_with_info を呼ばない仕様で、CountingDriver で観測することで
-            // この OSS 側 contract を verify する。
-            ponder,
-            search_info_emit: SearchInfoEmitPolicy::default(),
-        },
-        record: OssRecordConfig {
-            enabled: false,
-            ..OssRecordConfig::default()
-        },
-        ..CsaClientConfig::default()
-    };
-
-    oss_config.validate().expect("validate config");
-
-    let mut conn = CsaConnection::connect(
-        &oss_config.server.host,
-        oss_config.server.port,
-        oss_config.server.keepalive.tcp,
-    )
-    .expect("connect");
-    conn.login(&oss_config.server.id, &oss_config.server.password)
-        .expect("login");
-
-    let inner = BuiltinEngineDriver::new(engine_state);
-    let (mut driver, handle) = CountingDriver::new(inner);
-
-    let shutdown = Arc::new(AtomicBool::new(false));
-    let mut sink = NoopSessionEventSink;
-
-    // session の戻り値は test 用途では検査不要 (CountingDriver の counter を後段で
-    // assert することで verify する)。Result は drop で破棄されるが、Err 時は
-    // test harness のログに残るため debug 可能。
-    if let Err(err) =
-        run_game_session_with_events(&oss_config, &mut conn, &mut driver, shutdown, &mut sink)
-    {
-        eprintln!("counting session ended with err (expected for some tests): {err}");
-    }
-
-    handle
 }
 
 // ────────────────────────────────────────────
@@ -575,62 +399,79 @@ async fn builtin_shutdown_aborts_session_and_emits_disconnected() {
 }
 
 // ────────────────────────────────────────────
-// Test 4: ponder 抑止 (CountingDriver で go_ponder / ponderhit_with_info の
-// 呼び出し回数が 0 であること)
+// Test 4: BuiltinEngineDriver の ponder lifecycle (driver 単体)
+//
+// rshogi-core の `PonderhitHandle` 経由で go_ponder → ponderhit_with_info / stop_and_wait
+// が安全に走り抜けることを driver 単体で verify する。CSA mock server を介さず、
+// 直接 driver method を叩くことで最短経路で driver の真 ponder API を検査する。
 // ────────────────────────────────────────────
 
+/// `go_ponder` と `stop_and_wait` のペアで探索 thread が正常に立ち上がり / 終了
+/// することを verify する。本 test は ponder miss 経路の最小再現でもある
+/// (相手手が ponder hint と一致しなければ session は `stop_and_wait` を呼ぶ)。
 #[test]
-fn builtin_engine_does_not_use_ponder() {
+fn builtin_driver_go_ponder_then_stop_and_wait() {
     init_eval_for_test();
-    let port = spawn_mock_tcp_server(|reader, writer| {
-        read_line(reader);
-        write_lines(writer, &["LOGIN:alice OK"]);
-        let lines = game_summary_lines("g-noponder");
-        let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
-        write_lines(writer, &refs);
-        let agree = read_line(reader);
-        assert!(agree.starts_with("AGREE"), "AGREE expected, got {agree}");
-        write_lines(writer, &["START:g-noponder"]);
-        // engine が探索を始めた直後に server から最終結果を送って interrupt させる
-        std::thread::sleep(Duration::from_millis(200));
-        write_lines(writer, &["#WIN"]);
-        reader
-            .get_mut()
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .ok();
-        let mut buf = String::new();
-        reader.read_line(&mut buf).ok();
-    });
-
     let engine_state = Arc::new(EngineState::default());
-    // OSS session 自体の挙動を verify: config.game.ponder=false の場合、
-    // `run_game_session_with_events` は `go_ponder` / `ponderhit_with_info` を
-    // 呼ばない。ramu-shogi 側 `csa_session::build_oss_config` が Builtin engine の
-    // ときに ponder=false を強制する本体 contract は、`csa_session.rs` の
-    // unit test (`build_oss_config_forces_ponder_off_for_builtin`) で別途 verify。
-    let handle = run_session_with_counting(port, engine_state, /* ponder= */ false);
+    let mut driver = BuiltinEngineDriver::new(Arc::clone(&engine_state));
 
-    assert_eq!(
-        handle.go_ponder.load(Ordering::SeqCst),
-        0,
-        "Builtin engine では go_ponder が呼ばれてはいけない"
-    );
-    assert_eq!(
-        handle.ponderhit.load(Ordering::SeqCst),
-        0,
-        "Builtin engine では ponderhit_with_info が呼ばれてはいけない"
-    );
-    // sanity: 対局自体は走っている (go_with_info が 1 回以上呼ばれている)
+    // 通常の対局フローと同じく new_game を先に呼ぶ。
+    driver.new_game().expect("new_game");
+
+    // ponder 開始: position は初手 7g7f を仮定し、ponder hint も適当に積む。
+    // 短い byoyomi で thread spawn のみ走らせ、bestmove が出る前に stop する経路を
+    // 検査する (= ponder miss 相当)。
+    driver
+        .go_ponder(
+            "position startpos moves 7g7f 3c3d",
+            "go ponder btime 60000 wtime 60000 byoyomi 1000",
+        )
+        .expect("go_ponder");
+
+    // stop_and_wait で thread を確実に join させる (idempotent)。
+    driver.stop_and_wait().expect("stop_and_wait");
+
+    // 二度目の stop_and_wait も safe (idempotent / no-op)。
+    driver.stop_and_wait().expect("stop_and_wait twice");
+
+    drop(driver);
+}
+
+/// `go_ponder` 経由でなければ `ponderhit_with_info` は誤呼出と判定し Err を
+/// 返すことを verify する。
+#[test]
+fn builtin_driver_ponderhit_without_go_ponder_returns_error() {
+    init_eval_for_test();
+    let engine_state = Arc::new(EngineState::default());
+    let mut driver = BuiltinEngineDriver::new(Arc::clone(&engine_state));
+
+    let shutdown = AtomicBool::new(false);
+    // ponderhit_handle が None で即 bail するため server_rx は実際には観測されない。
+    // sender は anonymous discard (`_`) で即 drop し、`_var` 接頭辞警告抑止を回避する。
+    let (_, server_rx) = std::sync::mpsc::channel::<Event>();
+    let mut cb: Box<InfoCallback<'_>> = Box::new(|_, _| {});
+
+    // ponderhit_handle が None の状態で呼ぶと anyhow::Error で返る。
+    let result = driver.ponderhit_with_info(&shutdown, &server_rx, &mut *cb);
     assert!(
-        handle.go_with_info.load(Ordering::SeqCst) >= 1,
-        "go_with_info が 1 回以上呼ばれること"
-    );
-    assert_eq!(
-        handle.new_game.load(Ordering::SeqCst),
-        1,
-        "new_game は 1 回呼ばれること"
+        result.is_err(),
+        "go_ponder 経由でない ponderhit_with_info は Err を返すべき"
     );
 }
+
+// 注: 本 PR では以下の 4 軸で driver 層の ponder 真対応を網羅検証している。
+//   - go_ponder で thread spawn + handle field commit (`builtin_driver_go_ponder_then_stop_and_wait`)
+//   - ponderhit_with_info で handle が None なら bail (`builtin_driver_ponderhit_without_go_ponder_returns_error`)
+//   - lifecycle 全体の idempotency (`builtin_driver_lifecycle_methods_are_idempotent`)
+//   - config.game.ponder の伝搬 (Builtin/External 双方) は `csa_session.rs::tests::build_oss_config_preserves_ponder_for_builtin_*`
+//     と `_for_external_*` の 4 件で deterministic に verify
+//
+// `go_ponder` → `ponderhit_with_info` の経路で `PonderhitHandle::signal()` 後に
+// 探索が fresh limits に切替わり bestmove を返すこと自体は rshogi-core 層の責務であり、
+// rshogi-core の unit test (`ponderhit_handle_signals_search` ほか、PR SH11235/rshogi#589)
+// で signal が flag に伝搬すること、`reset_flags` で clear されること等を network 不要で
+// 検証している。実際の対局完走 (NNUE network 必須) は手動 UI 検証 (Builtin engine +
+// ponder=ON で対局成立、ponderhit log 出力) に委ねる。
 
 // ────────────────────────────────────────────
 // Test 5: BuiltinEngineDriver の new_game / stop_and_wait / Drop が

@@ -9,10 +9,11 @@
 //!   実行し、driver 側は `mpsc` channel で bestmove / info を受信する。
 //! - `Search` インスタンスは探索中 thread に move されるため、driver から stop
 //!   する手段として `start_search` で `search.stop_flag()` を clone して保持する。
-//! - rshogi-core の `Search::request_ponderhit()` は探索中 instance への参照を
-//!   要求するため driver からは呼べない。Builtin engine では `csa_session` 側で
-//!   `csa_config.game.ponder = false` を強制し、`go_ponder` / `ponderhit_with_info`
-//!   が呼ばれない経路に閉じる。
+//! - ponderhit signal は `Search::ponderhit_handle()` (rshogi-core 2693dd45+) で取得した
+//!   `PonderhitHandle` を driver field に保持し、`ponderhit_with_info` で `signal()` を
+//!   呼ぶことで探索ループの ponderhit flag を立てる。`go_ponder` は thread spawn のみで
+//!   poll せず即 return し、bestmove は後続の `ponderhit_with_info` か `stop_and_wait`
+//!   で受け取る。
 //!
 //! # 中断行の扱い
 //!
@@ -34,7 +35,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow, bail};
 
 use rshogi_core::position::{Position, SFEN_HIRATE};
-use rshogi_core::search::{LimitsType, SearchInfo as CoreSearchInfo};
+use rshogi_core::search::{LimitsType, PonderhitHandle, SearchInfo as CoreSearchInfo};
 use rshogi_core::types::{Color, Move};
 
 use rshogi_csa_client::{
@@ -75,9 +76,17 @@ pub struct BuiltinEngineDriver {
     search_thread: StdMutex<Option<JoinHandle<()>>>,
     /// 探索 thread からの bestmove / info 受信側。
     result_rx: StdMutex<Option<Receiver<BuiltinSearchEvent>>>,
-    /// ponder 状態フラグ。`go_ponder` で立てるが、Builtin では実際の探索は
-    /// 走らせない (no-op)。詳細は module doc を参照。
-    ponder_in_flight: AtomicBool,
+    /// ponder 探索中の `PonderhitHandle`。
+    ///
+    /// - `start_search(ponder = true)` 直前に `Search::ponderhit_handle()` で取得し
+    ///   driver field に commit する。`Search` を thread に move した後でも
+    ///   `PonderhitHandle` は内部 `Arc<AtomicBool>` を保持しているため、driver から
+    ///   `signal()` を呼んで探索ループ内の ponderhit flag を立てられる。
+    /// - `ponderhit_with_info` 内で `take()` で抽出して `signal()` を呼び、handle は
+    ///   その場で drop する (二重 signal を防ぐ)。
+    /// - `drain_and_join` で None に戻し、次の探索へ持ち越さない。
+    /// - `start_search(ponder = false)` では None のまま。
+    ponderhit_handle: StdMutex<Option<PonderhitHandle>>,
 }
 
 impl BuiltinEngineDriver {
@@ -88,7 +97,7 @@ impl BuiltinEngineDriver {
             stop_flag: StdMutex::new(None),
             search_thread: StdMutex::new(None),
             result_rx: StdMutex::new(None),
-            ponder_in_flight: AtomicBool::new(false),
+            ponderhit_handle: StdMutex::new(None),
         }
     }
 
@@ -126,11 +135,18 @@ impl BuiltinEngineDriver {
         // stop_flag handle も破棄
         let mut flag_guard = self.stop_flag.lock().unwrap_or_else(|e| e.into_inner());
         *flag_guard = None;
+
+        // ponderhit_handle も破棄して次の探索に持ち越さない
+        let mut handle_guard = self
+            .ponderhit_handle
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        *handle_guard = None;
     }
 
     /// 既存探索を確実に停止し、新規探索を開始する。
     fn start_search(&self, position_cmd: &str, go_cmd: &str, ponder: bool) -> Result<()> {
-        // 1. 既存探索を確実に停止 (idempotent)
+        // 1. 既存探索を確実に停止 (drain_and_join 内で stop_flag/ponderhit_handle が None に戻る)
         self.signal_stop();
         self.drain_and_join();
 
@@ -138,8 +154,8 @@ impl BuiltinEngineDriver {
         apply_position_cmd(&self.engine_state, position_cmd)?;
         let limits = parse_go_cmd(go_cmd, ponder)?;
 
-        // 3. Search を thread に move する直前に stop_flag を clone
-        let stop_flag = {
+        // 3. Search を thread に move する直前に必要な handle/flag を全て clone
+        let (stop_flag, ponderhit_handle_opt) = {
             let inner = self
                 .engine_state
                 .inner
@@ -149,10 +165,19 @@ impl BuiltinEngineDriver {
                 .search
                 .as_ref()
                 .ok_or_else(|| anyhow!("Search instance unavailable"))?;
-            let flag = search.stop_flag();
-            flag.store(false, Ordering::SeqCst);
-            flag
+            // stop / ponderhit 双方の flag を thread spawn 前に明示クリアする。
+            // 前回 ponder 探索で立った flag が新しい探索に漏れ込むのを防ぐ。
+            search.reset_flags();
+            let stop_flag = search.stop_flag();
+            let handle = if ponder {
+                Some(search.ponderhit_handle())
+            } else {
+                None
+            };
+            (stop_flag, handle)
         };
+
+        // 4. driver field に commit (thread spawn の前)
         {
             let mut guard = self
                 .stop_flag
@@ -160,8 +185,15 @@ impl BuiltinEngineDriver {
                 .map_err(|e| anyhow!("stop_flag mutex poisoned: {e}"))?;
             *guard = Some(Arc::clone(&stop_flag));
         }
+        {
+            let mut guard = self
+                .ponderhit_handle
+                .lock()
+                .map_err(|e| anyhow!("ponderhit_handle mutex poisoned: {e}"))?;
+            *guard = ponderhit_handle_opt;
+        }
 
-        // 4. result channel を作成
+        // 5. result channel を作成
         let (tx, rx) = mpsc::channel::<BuiltinSearchEvent>();
         {
             let mut guard = self
@@ -171,7 +203,7 @@ impl BuiltinEngineDriver {
             *guard = Some(rx);
         }
 
-        // 5. 探索 thread を spawn
+        // 6. 探索 thread を spawn (Search::go 起動)
         let engine_state = Arc::clone(&self.engine_state);
         let handle = std::thread::Builder::new()
             .name("csa-builtin-search".into())
@@ -343,15 +375,9 @@ impl UsiEngineDriver for BuiltinEngineDriver {
     }
 
     fn go_ponder(&mut self, position_cmd: &str, go_cmd: &str) -> Result<()> {
-        // Builtin engine では rshogi-core API 制約上 ponder を真に実装できない。
-        // `csa_session` 側で `csa_config.game.ponder = false` を強制するため、
-        // 通常経路では本 method は呼ばれない。フラグだけ立てて即 return する。
-        // 引数は監査用に log に残す (sanity for diagnosing unexpected calls)。
-        log::trace!(
-            "BuiltinEngineDriver::go_ponder is no-op (position={position_cmd}, go={go_cmd})"
-        );
-        self.ponder_in_flight.store(true, Ordering::SeqCst);
-        Ok(())
+        // 探索 thread を spawn するだけで poll せずに return する。
+        // OSS session は後続の ponderhit_with_info / stop_and_wait のいずれかで結果を受け取る。
+        self.start_search(position_cmd, go_cmd, /* ponder= */ true)
     }
 
     fn ponderhit_with_info(
@@ -360,30 +386,25 @@ impl UsiEngineDriver for BuiltinEngineDriver {
         server_rx: &Receiver<Event>,
         info_callback: &mut InfoCallback<'_>,
     ) -> Result<SearchOutcome> {
-        // ponder は強制無効化されているため通常経路では呼ばれない。万一呼ばれた
-        // 場合は引数を log に残し、info_callback に sanity 通知を 1 回出してから
-        // error で返す。`info_callback` を 1 回呼ぶことで「reference を drop する
-        // だけ」では消費できない引数を実際に touch し、bail 直前に consumer 側で
-        // 異常を観測できるようにする。
-        log::error!(
-            "ponderhit_with_info called on BuiltinEngineDriver (ponder is disabled). \
-             shutdown_requested={}, server_rx_pending={}",
-            shutdown.load(Ordering::SeqCst),
-            server_rx.try_iter().count(),
-        );
-        let sanity_info = OssSearchInfo::default();
-        let sanity_line =
-            "info string BuiltinEngineDriver: ponderhit_with_info called unexpectedly";
-        info_callback(&sanity_info, sanity_line);
-        bail!(
-            "ponderhit_with_info should not be called for BuiltinEngineDriver (ponder is disabled)"
-        );
+        // ponderhit_handle を take() で抽出 (二重 signal 防止)。
+        // handle が None なら go_ponder 経由でない誤呼出。
+        let handle = {
+            let mut guard = self
+                .ponderhit_handle
+                .lock()
+                .map_err(|e| anyhow!("ponderhit_handle mutex poisoned: {e}"))?;
+            guard
+                .take()
+                .ok_or_else(|| anyhow!("ponderhit_with_info called without active ponder search"))?
+        };
+        handle.signal();
+        // 探索 thread はそのまま走り続ける。fresh limits に切替後 bestmove を待つ。
+        self.poll_until_outcome(shutdown, server_rx, info_callback)
     }
 
     fn stop_and_wait(&mut self) -> Result<()> {
         self.signal_stop();
         self.drain_and_join();
-        self.ponder_in_flight.store(false, Ordering::SeqCst);
         Ok(())
     }
 
@@ -778,29 +799,5 @@ mod tests {
                 "{non_final} should not be final"
             );
         }
-    }
-
-    #[test]
-    fn go_ponder_is_no_op_and_sets_flag() {
-        let state = fresh_engine_state();
-        let mut driver = BuiltinEngineDriver::new(state);
-        driver
-            .go_ponder("position startpos", "go ponder btime 1000 wtime 1000")
-            .unwrap();
-        assert!(driver.ponder_in_flight.load(Ordering::SeqCst));
-        // 探索 thread は起動されていないことを stop_and_wait の即時終了で確認
-        driver.stop_and_wait().unwrap();
-        assert!(!driver.ponder_in_flight.load(Ordering::SeqCst));
-    }
-
-    #[test]
-    fn ponderhit_with_info_bails() {
-        let state = fresh_engine_state();
-        let mut driver = BuiltinEngineDriver::new(state);
-        let shutdown = AtomicBool::new(false);
-        let (_tx, server_rx) = mpsc::channel();
-        let mut cb: Box<InfoCallback<'_>> = Box::new(|_, _| {});
-        let result = driver.ponderhit_with_info(&shutdown, &server_rx, &mut *cb);
-        assert!(result.is_err());
     }
 }
