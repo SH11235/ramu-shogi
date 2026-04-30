@@ -1,386 +1,157 @@
-//! CSA対局マネージャーとTauriコマンド
+//! CSA 対局マネージャと Tauri コマンド。
 //!
-//! セッションライフサイクル管理、棋譜書き出し、フロントエンド向けコマンドを提供する。
+//! - `csa_start`: 設定を受け取り CSA 対局セッションを開始する
+//! - `csa_stop`: shutdown フラグを立て対局を中断する
+//! - `csa_save_config` / `csa_load_config`: tauri-plugin-store への永続化
+//!
+//! セッション本体は [`crate::csa_session::run_external_session`] が `tokio::task::spawn_blocking`
+//! 経由で `rshogi_csa_client` の同期 API を駆動する。`SessionEventSink` から流れる
+//! `CsaSessionEvent` は mpsc を介して `csa://session` チャネルに emit される。
 
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
-use std::time::Duration;
 
-use chrono::Local;
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::mpsc;
-use tokio_util::sync::CancellationToken;
 
-use crate::EngineState;
-use crate::csa_engine::CsaEngine;
-use crate::csa_protocol::CsaProtocol;
-use crate::csa_session::run_session;
-use crate::csa_types::{
-    ClockInfo, CsaConfig, CsaEngineType, CsaError, CsaSessionEvent, GameResult, GameSummary,
-};
+use crate::csa_engine::resolve_engine_path;
+use crate::csa_session::run_external_session;
+use crate::csa_sink::TauriEventSink;
+use crate::csa_types::{CsaConfig, CsaEngineType, CsaSessionEvent};
 use crate::engine_lock::{EngineLock, EngineTarget};
 
-/// CSAセッションイベントのチャネル名
+/// CSA セッションイベントの Tauri チャネル名
 const CSA_SESSION_EVENT: &str = "csa://session";
 
 // ─── CsaGameManager ───
 
-/// CSA対局セッションを管理する。同時に1セッションのみ実行可能。
+/// CSA 対局セッションを管理する。同時に 1 セッションのみ実行可能。
 pub struct CsaGameManager {
     session_handle: StdMutex<Option<tokio::task::JoinHandle<()>>>,
-    cancel_token: StdMutex<CancellationToken>,
+    shutdown: Arc<AtomicBool>,
 }
 
 impl Default for CsaGameManager {
     fn default() -> Self {
         Self {
             session_handle: StdMutex::new(None),
-            cancel_token: StdMutex::new(CancellationToken::new()),
+            shutdown: Arc::new(AtomicBool::new(false)),
         }
     }
 }
 
-// ─── Session Task ───
+// ─── Session task ───
 
-/// CSAセッションのメインタスク。
-/// エンジン起動→サーバー接続→ログイン→対局ループ→ログアウト→シャットダウン。
 async fn run_csa_session_task(
     config: CsaConfig,
+    engine_path: PathBuf,
     app: AppHandle,
     engine_lock: Arc<EngineLock>,
-    engine_state: Arc<EngineState>,
-    cancel_token: CancellationToken,
+    shutdown: Arc<AtomicBool>,
 ) {
-    let emit = |event: CsaSessionEvent| {
-        let _ = app.emit(CSA_SESSION_EVENT, &event);
+    let target = EngineTarget::External {
+        registration_id: config.engine.registration_id.clone().unwrap_or_default(),
+    };
+    let lock_guard = match engine_lock.acquire(target) {
+        Ok(guard) => guard,
+        Err(message) => {
+            let _ = app.emit(
+                CSA_SESSION_EVENT,
+                &CsaSessionEvent::Error {
+                    kind: "engine_lock",
+                    message,
+                },
+            );
+            return;
+        }
     };
 
-    // イベント送信用 mpsc（run_session 内部で使用）
-    let (event_tx, mut event_rx) = mpsc::channel::<CsaSessionEvent>(64);
+    let (tx, mut rx) = mpsc::unbounded_channel::<CsaSessionEvent>();
 
-    // イベント中継タスク: event_rx → app.emit
     let app_clone = app.clone();
     let relay_handle = tokio::spawn(async move {
-        while let Some(ev) = event_rx.recv().await {
-            let _ = app_clone.emit(CSA_SESSION_EVENT, &ev);
+        while let Some(event) = rx.recv().await {
+            let _ = app_clone.emit(CSA_SESSION_EVENT, &event);
         }
     });
 
-    let result = run_csa_session_inner(
-        &config,
-        &app,
-        &engine_lock,
-        &engine_state,
-        &cancel_token,
-        &event_tx,
-    )
-    .await;
+    let sink = TauriEventSink::new(tx.clone());
+    let result = run_external_session(config, engine_path, Arc::clone(&shutdown), sink).await;
 
-    // エラー時はイベント送信
-    if let Err(e) = result {
-        emit(CsaSessionEvent::Error {
-            message: e.to_string(),
+    if let Err(err) = result {
+        let _ = tx.send(CsaSessionEvent::Error {
+            kind: "session",
+            message: err.to_string(),
         });
     }
 
-    // 常に Disconnected を送信
-    emit(CsaSessionEvent::Disconnected);
-
-    // relay タスクを終了
-    drop(event_tx);
+    drop(tx);
     let _ = relay_handle.await;
+    drop(lock_guard);
 }
 
-/// セッション本体。エラーを返すことで呼び出し元でまとめて処理する。
-async fn run_csa_session_inner(
-    config: &CsaConfig,
-    _app: &AppHandle,
-    engine_lock: &Arc<EngineLock>,
-    engine_state: &Arc<EngineState>,
-    cancel_token: &CancellationToken,
-    event_tx: &mpsc::Sender<CsaSessionEvent>,
-) -> Result<(), CsaError> {
-    // エンジンロック取得
-    let engine_target = match config.engine.engine_type {
-        CsaEngineType::Builtin => EngineTarget::Builtin,
-        CsaEngineType::External => EngineTarget::External {
-            registration_id: config.engine.registration_id.clone().unwrap_or_default(),
-        },
-    };
-    let _lock_guard = engine_lock
-        .acquire(engine_target)
-        .map_err(CsaError::EngineError)?;
+// ─── Tauri commands ───
 
-    // エンジン起動
-    let mut engine = match config.engine.engine_type {
-        CsaEngineType::Builtin => CsaEngine::init_builtin(Arc::clone(engine_state)),
-        CsaEngineType::External => {
-            let registration_id = config.engine.registration_id.as_deref().unwrap_or_default();
-            // TODO: registration_id からエンジンパスを解決する（tauri-plugin-store 連携）
-            // 現時点では registration_id をそのままパスとして使用
-            let path = registration_id;
-            if tokio::fs::metadata(path).await.is_err() {
-                return Err(CsaError::EngineError(format!(
-                    "エンジンファイルが見つかりません: {path}"
-                )));
-            }
-            let options: Vec<(String, String)> = config
-                .engine
-                .options
-                .iter()
-                .map(|(k, v)| {
-                    let val = match v {
-                        serde_json::Value::String(s) => s.clone(),
-                        other => other.to_string(),
-                    };
-                    (k.clone(), val)
-                })
-                .collect();
-            let timeout = Duration::from_secs(config.engine.startup_timeout_sec);
-            CsaEngine::spawn_external(path, &options, timeout).await?
-        }
-    };
-
-    // サーバー接続
-    let mut protocol = CsaProtocol::connect(&config.server.host, config.server.port).await?;
-
-    // ログイン
-    protocol
-        .login(&config.server.user_id, &config.server.password)
-        .await?;
-
-    // Connected イベント
-    let _ = event_tx
-        .send(CsaSessionEvent::Connected {
-            host: format!("{}:{}", config.server.host, config.server.port),
-        })
-        .await;
-
-    let _max_games = config.game.max_games; // 連続対局は後続タスクで実装
-    let mut games_played = 0u32;
-
-    // 対局実行（現時点では1局のみ。連続対局は後続タスクで実装）
-    'game_loop: {
-        // キャンセルチェック
-        if cancel_token.is_cancelled() {
-            break 'game_loop;
-        }
-
-        // GAME_SUMMARY 受信
-        let summary = tokio::select! {
-            result = protocol.recv_game_summary() => result?,
-            _ = cancel_token.cancelled() => break 'game_loop,
-        };
-
-        // GameSummary イベント
-        let _ = event_tx
-            .send(CsaSessionEvent::GameSummary {
-                game_id: summary.game_id.clone(),
-                my_color: summary.my_color,
-                sente_name: summary.sente_name.clone(),
-                gote_name: summary.gote_name.clone(),
-                sfen: summary.sfen.clone(),
-                clocks: ClockInfo {
-                    black_time_ms: summary.black_time.total_ms,
-                    white_time_ms: summary.white_time.total_ms,
-                    byoyomi_ms: summary.black_time.byoyomi_ms,
-                    increment_ms: summary.black_time.increment_ms,
-                },
-            })
-            .await;
-
-        // AGREE
-        protocol.agree(&summary.game_id).await?;
-
-        // エンジン初期化
-        engine.new_game().await?;
-        engine.set_position(&summary.sfen, &[]).await?;
-
-        // GameStarted イベント
-        let _ = event_tx.send(CsaSessionEvent::GameStarted).await;
-
-        // 対局 IO モードに遷移
-        let (mut game_io, mut server_rx) = protocol.start_game_io();
-
-        // 対局実行
-        let game_result = run_session(
-            &mut game_io,
-            &mut server_rx,
-            &mut engine,
-            &summary,
-            config,
-            cancel_token,
-            event_tx,
-        )
-        .await?;
-
-        games_played += 1;
-
-        // 棋譜書き出し（スタブ）
-        let record_path = write_game_record(
-            &summary,
-            &[], // 指し手トラッキングは後続タスクで実装
-            gameover_to_result_str(&game_result),
-            &config.record.save_dir,
-        )
-        .await
-        .ok()
-        .flatten();
-
-        // GameEnded イベント
-        let _ = event_tx
-            .send(CsaSessionEvent::GameEnded {
-                result: game_result.clone(),
-                reason: None,
-                games_played,
-                record_path,
-            })
-            .await;
-
-        // gameover 送信
-        engine
-            .gameover(gameover_to_result_str(&game_result))
-            .await?;
-
-        // ログアウト
-        // NOTE: 連続対局（max_games > 1）は後続タスクで実装
-        game_io.logout().await?;
-    }
-
-    // エンジンシャットダウン
-    engine.shutdown().await?;
-
-    Ok(())
-}
-
-// ─── RecordWriter ───
-
-/// CSA V2.2 形式の棋譜ファイルを書き出す（スタブ実装）。
-///
-/// 指し手トラッキングは後続タスクで実装予定。
-/// 現時点ではヘッダーのみのファイルを作成する。
-async fn write_game_record(
-    summary: &GameSummary,
-    _moves: &[(String, u32)],
-    result_str: &str,
-    save_dir: &str,
-) -> Result<Option<String>, CsaError> {
-    if save_dir.is_empty() {
-        return Ok(None);
-    }
-
-    // ディレクトリ作成
-    tokio::fs::create_dir_all(save_dir).await?;
-
-    // ファイル名生成
-    let now = Local::now();
-    let timestamp = now.format("%Y%m%d_%H%M%S").to_string();
-    let sente = sanitize_filename(&summary.sente_name);
-    let gote = sanitize_filename(&summary.gote_name);
-    let filename = format!("{timestamp}_{sente}_vs_{gote}.csa");
-    let path = std::path::Path::new(save_dir).join(&filename);
-
-    // CSA V2.2 ヘッダー
-    let mut content = String::new();
-    content.push_str("V2.2\n");
-    content.push_str(&format!("N+{}\n", summary.sente_name));
-    content.push_str(&format!("N-{}\n", summary.gote_name));
-    content.push_str(&format!("$EVENT:{}\n", summary.game_id));
-    content.push_str(&format!(
-        "$START_TIME:{}\n",
-        now.format("%Y/%m/%d %H:%M:%S")
-    ));
-
-    // TODO: 指し手の書き出し（後続タスクで実装）
-
-    // 結果
-    content.push_str(&format!("'result:{result_str}\n"));
-
-    let path_str = path.to_string_lossy().to_string();
-    tokio::fs::write(&path, content).await?;
-
-    Ok(Some(path_str))
-}
-
-/// ファイル名に使えない文字を置換する
-fn sanitize_filename(name: &str) -> String {
-    name.chars()
-        .map(|c| match c {
-            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0' => '_',
-            _ => c,
-        })
-        .collect()
-}
-
-/// GameResult を文字列に変換する
-fn gameover_to_result_str(result: &GameResult) -> &'static str {
-    match result {
-        GameResult::Win => "win",
-        GameResult::Lose => "lose",
-        GameResult::Draw => "draw",
-        GameResult::Censored => "censored",
-        GameResult::Interrupted => "interrupted",
-    }
-}
-
-// ─── Tauri Commands ───
-
-/// CSA対局を開始する
 #[tauri::command]
 pub async fn csa_start(
     config: CsaConfig,
     app: AppHandle,
     manager: State<'_, Arc<CsaGameManager>>,
     engine_lock: State<'_, Arc<EngineLock>>,
-    engine_state: State<'_, Arc<EngineState>>,
 ) -> Result<(), String> {
-    // バリデーション
+    // 入力バリデーション
+    if config.server.host.trim().is_empty() {
+        return Err("ホスト名が空です".to_string());
+    }
     if config.server.port == 0 {
         return Err("ポート番号が不正です（1-65535）".to_string());
     }
-    if config.server.user_id.is_empty() {
+    if config.server.user_id.trim().is_empty() {
         return Err("ユーザーIDが空です".to_string());
     }
-    if config.server.host.is_empty() {
-        return Err("ホスト名が空です".to_string());
+
+    if config.engine.engine_type == CsaEngineType::Builtin {
+        return Err(
+            "Builtin engine 経路は移行作業中のため一時的に利用できません。External engine を選択してください。"
+                .to_string(),
+        );
     }
 
-    // 既存セッションのチェック
+    let registration_id = config
+        .engine
+        .registration_id
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "外部エンジン未選択です".to_string())?;
+    let engine_path = resolve_engine_path(&app, registration_id)?;
+    let engine_path_buf = PathBuf::from(engine_path);
+
     {
         let handle_guard = manager
             .session_handle
             .lock()
             .map_err(|e| format!("内部エラー: {e}"))?;
         if handle_guard.is_some() {
-            return Err("CSA対局セッションが既に実行中です".to_string());
+            return Err("CSA 対局セッションが既に実行中です".to_string());
         }
     }
 
-    // キャンセルトークンをリセット
-    let cancel_token = CancellationToken::new();
-    {
-        let mut token_guard = manager
-            .cancel_token
-            .lock()
-            .map_err(|e| format!("内部エラー: {e}"))?;
-        *token_guard = cancel_token.clone();
-    }
+    // shutdown フラグを reset (前回 run の残留値を消す)
+    manager.shutdown.store(false, Ordering::SeqCst);
+    let shutdown = Arc::clone(&manager.shutdown);
 
-    let engine_lock = Arc::clone(&engine_lock);
-    let engine_state = Arc::clone(&engine_state);
-
-    // セッションタスクを起動
+    let engine_lock_clone = Arc::clone(&engine_lock);
     let manager_clone = Arc::clone(&manager);
-    let handle = tokio::spawn(async move {
-        run_csa_session_task(config, app, engine_lock, engine_state, cancel_token).await;
 
-        // タスク完了時に session_handle をクリア
+    let handle = tokio::spawn(async move {
+        run_csa_session_task(config, engine_path_buf, app, engine_lock_clone, shutdown).await;
         if let Ok(mut guard) = manager_clone.session_handle.lock() {
             *guard = None;
         }
     });
 
-    // JoinHandle を保存
     {
         let mut handle_guard = manager
             .session_handle
@@ -392,21 +163,12 @@ pub async fn csa_start(
     Ok(())
 }
 
-/// CSA対局を停止する
 #[tauri::command]
 pub async fn csa_stop(manager: State<'_, Arc<CsaGameManager>>) -> Result<(), String> {
-    let token = {
-        manager
-            .cancel_token
-            .lock()
-            .map_err(|e| format!("内部エラー: {e}"))?
-            .clone()
-    };
-    token.cancel();
+    manager.shutdown.store(true, Ordering::SeqCst);
     Ok(())
 }
 
-/// CSA設定を保存する
 #[tauri::command]
 pub async fn csa_save_config(app: AppHandle, config: CsaConfig) -> Result<(), String> {
     let store = app
@@ -418,7 +180,6 @@ pub async fn csa_save_config(app: AppHandle, config: CsaConfig) -> Result<(), St
     Ok(())
 }
 
-/// CSA設定を読み込む
 #[tauri::command]
 pub async fn csa_load_config(app: AppHandle) -> Result<Option<serde_json::Value>, String> {
     let store = app

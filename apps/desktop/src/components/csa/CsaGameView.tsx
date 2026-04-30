@@ -3,7 +3,9 @@
  *
  * useCsaGame フックを使用し、対局ステータスに応じた UI を表示する。
  * idle: 設定パネル / connecting: スピナー / waiting: 対局情報 /
- * playing: 盤面+時計+探索情報 / finished: 結果 / error: エラー表示
+ * playing: 盤面+探索情報 / finished: 結果 / error: エラー表示
+ *
+ * resume 経路では `resumeState.lastSfen` を盤面表示の起点として使用する。
  */
 
 import { Button } from "@shogi/ui/components/button";
@@ -11,7 +13,7 @@ import { Spinner } from "@shogi/ui/components/spinner";
 import type { ReactElement } from "react";
 
 import { CsaSettingsPanel } from "./CsaSettingsPanel";
-import type { CsaClocks, CsaGameState, CsaSearchInfo, UseCsaGameReturn } from "./useCsaGame";
+import type { CsaGameState, CsaResumeState, CsaSearchInfo, UseCsaGameReturn } from "./useCsaGame";
 import { useCsaGame } from "./useCsaGame";
 
 // ─── Props ───
@@ -101,17 +103,20 @@ function WaitingView({
     return (
         <div className="space-y-4 py-6">
             <div className="flex flex-col items-center gap-3">
-                <Spinner size="md" label="対局待ち中" />
+                <Spinner size="md" label={state.resumeState ? "再開中" : "対局待ち中"} />
             </div>
             {state.gameId && (
                 <div className="bg-muted/30 rounded-lg p-4 text-xs space-y-1">
                     <InfoRow label="対局ID" value={state.gameId} />
-                    <InfoRow
-                        label="自分の手番"
-                        value={state.myColor === "sente" ? "先手" : "後手"}
-                    />
+                    {state.myColor && (
+                        <InfoRow
+                            label="自分の手番"
+                            value={state.myColor === "black" ? "先手" : "後手"}
+                        />
+                    )}
                     <InfoRow label="先手" value={state.senteName ?? "-"} />
                     <InfoRow label="後手" value={state.goteName ?? "-"} />
+                    {state.resumeState && <ResumeInfo resume={state.resumeState} />}
                 </div>
             )}
             <div className="flex justify-center">
@@ -120,6 +125,25 @@ function WaitingView({
                 </Button>
             </div>
         </div>
+    );
+}
+
+function ResumeInfo({ resume }: { resume: CsaResumeState }): ReactElement {
+    return (
+        <>
+            <InfoRow label="再開: 手数" value={`${resume.lastPly} 手目から`} />
+            <InfoRow
+                label="再開: 手番"
+                value={resume.sideToMove === "black" ? "先手番" : "後手番"}
+            />
+            {resume.remainingTimeSelf !== null && (
+                <InfoRow label="残時間（自分）" value={`${resume.remainingTimeSelf} 秒`} />
+            )}
+            {resume.remainingTimeOpp !== null && (
+                <InfoRow label="残時間（相手）" value={`${resume.remainingTimeOpp} 秒`} />
+            )}
+            <InfoRow label="再開時 SFEN" value={resume.lastSfen} />
+        </>
     );
 }
 
@@ -135,20 +159,25 @@ function PlayingView({
             {/* 対局者情報 */}
             <div className="flex justify-between items-center text-xs">
                 <span className="text-wafuu-sumi font-medium">
-                    {state.myColor === "sente" ? "* " : ""}
+                    {state.myColor === "black" ? "* " : ""}
                     {state.senteName ?? "先手"}
                 </span>
                 <span className="text-muted-foreground">vs</span>
                 <span className="text-wafuu-sumi font-medium">
-                    {state.myColor === "gote" ? "* " : ""}
+                    {state.myColor === "white" ? "* " : ""}
                     {state.goteName ?? "後手"}
                 </span>
             </div>
 
-            {/* 時計 */}
-            {state.clocks && <ClockDisplay clocks={state.clocks} />}
+            {/* resume 表示 (resumeState non-null 時) */}
+            {state.resumeState && (
+                <div className="bg-muted/20 rounded-lg p-3 text-xs space-y-1">
+                    <p className="text-muted-foreground font-medium">再開対局</p>
+                    <ResumeInfo resume={state.resumeState} />
+                </div>
+            )}
 
-            {/* 盤面（テキスト表示） */}
+            {/* 盤面（テキスト表示）— resume 時は last_sfen が起点 */}
             <div className="bg-muted/20 rounded-lg p-3">
                 <p className="text-xs text-muted-foreground mb-1">
                     局面 (手数: {state.moves.length})
@@ -203,9 +232,7 @@ function FinishedView({
         <div className="space-y-4 py-6">
             <div className="flex flex-col items-center gap-2">
                 <p className="text-lg font-bold text-wafuu-sumi">{resultLabel}</p>
-                <p className="text-xs text-muted-foreground">
-                    対局数: {state.gamesPlayed} / 手数: {state.moves.length}
-                </p>
+                <p className="text-xs text-muted-foreground">手数: {state.moves.length}</p>
             </div>
 
             {/* 対局情報 */}
@@ -213,7 +240,6 @@ function FinishedView({
                 <InfoRow label="対局ID" value={state.gameId ?? "-"} />
                 <InfoRow label="先手" value={state.senteName ?? "-"} />
                 <InfoRow label="後手" value={state.goteName ?? "-"} />
-                {state.recordPath && <InfoRow label="棋譜保存先" value={state.recordPath} />}
             </div>
 
             <div className="flex justify-center gap-3">
@@ -255,41 +281,6 @@ function ErrorView({
 
 // ─── Display Components ───
 
-function ClockDisplay({ clocks }: { clocks: CsaClocks }): ReactElement {
-    return (
-        <div className="flex justify-between items-center bg-muted/30 rounded-lg px-4 py-2">
-            <div className="text-center">
-                <p className="text-[10px] text-muted-foreground">先手</p>
-                <p className="text-sm font-mono font-semibold text-wafuu-sumi">
-                    {formatTimeMs(clocks.sente_ms)}
-                </p>
-            </div>
-            {clocks.byoyomi_ms > 0 && (
-                <div className="text-center">
-                    <p className="text-[10px] text-muted-foreground">秒読み</p>
-                    <p className="text-xs font-mono text-muted-foreground">
-                        {Math.floor(clocks.byoyomi_ms / 1000)}秒
-                    </p>
-                </div>
-            )}
-            {clocks.increment_ms > 0 && (
-                <div className="text-center">
-                    <p className="text-[10px] text-muted-foreground">加算</p>
-                    <p className="text-xs font-mono text-muted-foreground">
-                        {Math.floor(clocks.increment_ms / 1000)}秒
-                    </p>
-                </div>
-            )}
-            <div className="text-center">
-                <p className="text-[10px] text-muted-foreground">後手</p>
-                <p className="text-sm font-mono font-semibold text-wafuu-sumi">
-                    {formatTimeMs(clocks.gote_ms)}
-                </p>
-            </div>
-        </div>
-    );
-}
-
 function SearchInfoDisplay({ info }: { info: CsaSearchInfo }): ReactElement {
     const score =
         info.score_mate != null
@@ -303,7 +294,7 @@ function SearchInfoDisplay({ info }: { info: CsaSearchInfo }): ReactElement {
             <p className="text-muted-foreground font-medium">探索情報</p>
             <div className="grid grid-cols-3 gap-2">
                 <span>
-                    深さ: <strong>{info.depth}</strong>
+                    深さ: <strong>{info.depth ?? "-"}</strong>
                 </span>
                 <span>
                     評価値: <strong>{score}</strong>
@@ -334,14 +325,8 @@ function InfoRow({ label, value }: { label: string; value: string }): ReactEleme
 
 // ─── Formatters ───
 
-function formatTimeMs(ms: number): string {
-    const totalSec = Math.max(0, Math.floor(ms / 1000));
-    const min = Math.floor(totalSec / 60);
-    const sec = totalSec % 60;
-    return `${min}:${sec.toString().padStart(2, "0")}`;
-}
-
-function formatNps(nps: number): string {
+function formatNps(nps: number | null): string {
+    if (nps == null) return "-";
     if (nps >= 1_000_000) return `${(nps / 1_000_000).toFixed(1)}M`;
     if (nps >= 1_000) return `${(nps / 1_000).toFixed(1)}K`;
     return String(nps);
