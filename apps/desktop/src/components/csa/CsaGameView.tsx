@@ -3,7 +3,7 @@
  *
  * useCsaGame フックを使用し、対局ステータスに応じた UI を表示する。
  * idle: 設定パネル / connecting: スピナー / waiting: 対局情報 /
- * playing: 盤面+探索情報 / finished: 結果 / error: エラー表示
+ * playing: visual 盤面 + 探索情報 / finished: 結果 / error: エラー表示
  *
  * resume 経路では `resumeState.lastSfen` を盤面表示の起点として使用する。
  */
@@ -12,6 +12,7 @@ import { Button } from "@shogi/ui/components/button";
 import { Spinner } from "@shogi/ui/components/spinner";
 import type { ReactElement } from "react";
 
+import { CsaBoardDisplay } from "./CsaBoardDisplay";
 import { CsaSettingsPanel } from "./CsaSettingsPanel";
 import type { CsaGameState, CsaResumeState, CsaSearchInfo, UseCsaGameReturn } from "./useCsaGame";
 import { useCsaGame } from "./useCsaGame";
@@ -177,14 +178,16 @@ function PlayingView({
                 </div>
             )}
 
-            {/* 盤面（テキスト表示）— resume 時は last_sfen が起点 */}
+            {/* 盤面（visual 表示）— resume 時は last_sfen が起点 */}
             <div className="bg-muted/20 rounded-lg p-3">
                 <p className="text-xs text-muted-foreground mb-1">
                     局面 (手数: {state.moves.length})
                 </p>
-                <pre className="text-xs font-mono text-wafuu-sumi break-all whitespace-pre-wrap">
-                    {state.sfen ?? "（初期局面）"}
-                </pre>
+                <CsaBoardDisplay
+                    sfen={state.sfen}
+                    lastMoveUsi={state.moves.at(-1) ?? null}
+                    myColor={state.myColor}
+                />
             </div>
 
             {/* 指し手履歴（直近5手） */}
