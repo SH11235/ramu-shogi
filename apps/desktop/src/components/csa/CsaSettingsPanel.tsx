@@ -42,9 +42,11 @@ function createDefaultConfig(): CsaConfig {
             user_id: "",
             password: "",
             floodgate: false,
+            tcp_keepalive: true,
         },
         engine: {
-            type: "builtin",
+            // PR-A 段階では Builtin 経路は backend で early error。default は External。
+            type: "external",
             registration_id: null,
             options: {},
             ponder: false,
@@ -55,10 +57,12 @@ function createDefaultConfig(): CsaConfig {
         },
         game: {
             max_games: 1,
+            restart_engine_every_game: false,
         },
         record: {
             save_dir: "",
         },
+        reconnect: null,
     };
 }
 
@@ -211,7 +215,13 @@ export function CsaSettingsPanel({ onStart }: CsaSettingsPanelProps): ReactEleme
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="builtin">内蔵エンジン</SelectItem>
+                                <SelectItem
+                                    value="builtin"
+                                    disabled
+                                    title="移行作業中、近日中に利用可能"
+                                >
+                                    内蔵エンジン（移行作業中）
+                                </SelectItem>
                                 <SelectItem value="external">外部エンジン</SelectItem>
                             </SelectContent>
                         </Select>

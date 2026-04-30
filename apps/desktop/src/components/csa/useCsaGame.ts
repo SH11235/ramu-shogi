@@ -19,6 +19,7 @@ export interface CsaConfig {
         user_id: string;
         password: string;
         floodgate: boolean;
+        tcp_keepalive: boolean;
     };
     engine: {
         type: "builtin" | "external";
@@ -32,88 +33,124 @@ export interface CsaConfig {
     };
     game: {
         max_games: number;
+        restart_engine_every_game: boolean;
     };
     record: {
         save_dir: string;
     };
+    reconnect: {
+        game_id: string;
+        token: string;
+    } | null;
 }
 
 type CsaGameStatus = "idle" | "connecting" | "waiting" | "playing" | "finished" | "error";
 
-export interface CsaClocks {
-    sente_ms: number;
-    gote_ms: number;
-    byoyomi_ms: number;
-    increment_ms: number;
-}
-
 export interface CsaSearchInfo {
-    depth: number;
+    depth: number | null;
+    seldepth: number | null;
     score_cp: number | null;
     score_mate: number | null;
+    nodes: number | null;
+    nps: number | null;
+    time_ms: number | null;
     pv: string[];
-    nps: number;
+}
+
+export interface CsaResumeState {
+    gameId: string;
+    senteName: string;
+    goteName: string;
+    lastSfen: string;
+    lastPly: number;
+    sideToMove: "black" | "white";
+    remainingTimeSelf: number | null;
+    remainingTimeOpp: number | null;
 }
 
 export interface CsaGameState {
     status: CsaGameStatus;
     gameId: string | null;
-    myColor: "sente" | "gote" | null;
+    myColor: "black" | "white" | null;
     senteName: string | null;
     goteName: string | null;
     sfen: string | null;
     moves: string[];
-    clocks: CsaClocks | null;
     searchInfo: CsaSearchInfo | null;
     result: string | null;
     error: string | null;
-    gamesPlayed: number;
-    recordPath: string | null;
+    resumeState: CsaResumeState | null;
 }
 
 // ─── Session Events (from Rust backend) ───
 
+type Side = "black" | "white";
+
 type CsaSessionEvent =
-    | { type: "connected"; host: string }
+    | { type: "connected" }
     | {
           type: "game_summary";
           game_id: string;
-          my_color: string;
+          my_color: Side;
           sente_name: string;
           gote_name: string;
-          sfen: string;
-          clocks: {
-              black_time_ms: number;
-              white_time_ms: number;
-              byoyomi_ms: number;
-              increment_ms: number;
-          };
+      }
+    | {
+          type: "resumed";
+          game_id: string;
+          sente_name: string;
+          gote_name: string;
+          last_sfen: string;
+          last_ply: number;
+          side_to_move: Side;
+          remaining_time_sec_self: number | null;
+          remaining_time_sec_opp: number | null;
       }
     | { type: "game_started" }
     | {
+          type: "best_move_selected";
+          usi_move: string;
+          csa_move: string | null;
+          ponder: string | null;
+          side: Side;
+          ply: number;
+      }
+    | {
+          type: "move_sent";
+          player: "self" | "opponent";
+          usi_move: string;
+          csa_move: string;
+          side: Side;
+          ply: number;
+          sfen_before: string;
+          sfen_after: string;
+      }
+    | {
           type: "move";
-          side: string;
-          usi: string;
-          sfen: string;
-          clock: { sente_ms: number; gote_ms: number };
+          player: "self" | "opponent";
+          usi_move: string;
+          csa_move: string;
+          side: Side;
+          ply: number;
+          time_sec: number | null;
+          sfen_before: string;
+          sfen_after: string;
+          search: CsaSearchInfo | null;
       }
     | {
           type: "search_info";
-          depth: number;
-          score_cp: number | null;
-          score_mate: number | null;
-          pv: string[];
-          nps: number;
+          info: CsaSearchInfo;
       }
     | {
           type: "game_ended";
           result: string;
-          reason: string | null;
-          games_played: number;
-          record_path: string | null;
+          reason: string;
+          winner: Side | null;
+          raw_result_line: string | null;
+          raw_reason_line: string | null;
       }
-    | { type: "disconnected" }
-    | { type: "error"; message: string };
+    | { type: "disconnected"; reason: string }
+    | { type: "error"; kind: string; message: string };
 
 // ─── Reducer ───
 
@@ -127,12 +164,10 @@ const INITIAL_STATE: CsaGameState = {
     goteName: null,
     sfen: null,
     moves: [],
-    clocks: null,
     searchInfo: null,
     result: null,
     error: null,
-    gamesPlayed: 0,
-    recordPath: null,
+    resumeState: null,
 };
 
 function csaGameReducer(state: CsaGameState, action: CsaAction): CsaGameState {
@@ -151,20 +186,37 @@ function csaGameReducer(state: CsaGameState, action: CsaAction): CsaGameState {
                 ...state,
                 status: "waiting",
                 gameId: event.game_id,
-                myColor: event.my_color === "gote" ? "gote" : "sente",
+                myColor: event.my_color,
                 senteName: event.sente_name,
                 goteName: event.gote_name,
-                sfen: event.sfen,
+                sfen: null,
                 moves: [],
-                clocks: {
-                    sente_ms: event.clocks.black_time_ms,
-                    gote_ms: event.clocks.white_time_ms,
-                    byoyomi_ms: event.clocks.byoyomi_ms,
-                    increment_ms: event.clocks.increment_ms,
-                },
                 searchInfo: null,
                 result: null,
-                recordPath: null,
+                resumeState: null,
+            };
+
+        case "resumed":
+            return {
+                ...state,
+                status: "waiting",
+                gameId: event.game_id,
+                senteName: event.sente_name,
+                goteName: event.gote_name,
+                sfen: event.last_sfen,
+                moves: [],
+                searchInfo: null,
+                result: null,
+                resumeState: {
+                    gameId: event.game_id,
+                    senteName: event.sente_name,
+                    goteName: event.gote_name,
+                    lastSfen: event.last_sfen,
+                    lastPly: event.last_ply,
+                    sideToMove: event.side_to_move,
+                    remainingTimeSelf: event.remaining_time_sec_self,
+                    remainingTimeOpp: event.remaining_time_sec_opp,
+                },
             };
 
         case "game_started":
@@ -173,47 +225,40 @@ function csaGameReducer(state: CsaGameState, action: CsaAction): CsaGameState {
         case "move":
             return {
                 ...state,
-                sfen: event.sfen,
-                moves: [...state.moves, event.usi],
-                clocks: state.clocks
-                    ? {
-                          ...state.clocks,
-                          sente_ms: event.clock.sente_ms,
-                          gote_ms: event.clock.gote_ms,
-                      }
-                    : null,
+                sfen: event.sfen_after,
+                moves: [...state.moves, event.usi_move],
+                searchInfo: event.search ?? state.searchInfo,
             };
 
         case "search_info":
             return {
                 ...state,
-                searchInfo: {
-                    depth: event.depth,
-                    score_cp: event.score_cp,
-                    score_mate: event.score_mate,
-                    pv: event.pv,
-                    nps: event.nps,
-                },
+                searchInfo: event.info,
             };
+
+        case "best_move_selected":
+        case "move_sent":
+            return state;
 
         case "game_ended":
             return {
                 ...state,
                 status: "finished",
                 result: event.result,
-                gamesPlayed: event.games_played,
-                recordPath: event.record_path,
             };
 
         case "disconnected":
-            // disconnected が来たら、finished/error 以外なら idle に戻す
             if (state.status === "finished" || state.status === "error") {
                 return state;
             }
             return { ...state, status: "idle" };
 
         case "error":
-            return { ...state, status: "error", error: event.message };
+            return {
+                ...state,
+                status: "error",
+                error: `${event.kind}: ${event.message}`,
+            };
 
         default:
             return state;
@@ -270,6 +315,7 @@ export function useCsaGame(): UseCsaGameReturn {
                 type: "session_event",
                 event: {
                     type: "error",
+                    kind: "start",
                     message: e instanceof Error ? e.message : String(e),
                 },
             });
@@ -284,6 +330,7 @@ export function useCsaGame(): UseCsaGameReturn {
                 type: "session_event",
                 event: {
                     type: "error",
+                    kind: "stop",
                     message: e instanceof Error ? e.message : String(e),
                 },
             });

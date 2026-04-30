@@ -1,14 +1,22 @@
-#[allow(dead_code)] // CSA対局実装タスクで使用予定
 mod csa_engine;
 mod csa_game;
-#[allow(dead_code)] // CSA対局実装タスクで使用予定
-mod csa_protocol;
-#[allow(dead_code)] // CSA対局実装タスクで使用予定
 mod csa_session;
-#[allow(dead_code)] // CSA対局実装タスクで使用予定
+mod csa_sink;
 mod csa_types;
 mod engine_lock;
 mod usi_engine;
+
+/// integration test (`tests/csa_session_contract.rs`) から CSA 関連の internal
+/// API を呼ぶための再エクスポート。production code から直接利用しない。
+#[doc(hidden)]
+pub mod test_support {
+    pub use crate::csa_session::run_external_session;
+    pub use crate::csa_sink::TauriEventSink;
+    pub use crate::csa_types::{
+        CsaConfig, CsaEngineConfig, CsaEngineType, CsaGameConfig, CsaReconnectConfig,
+        CsaRecordConfig, CsaServerConfig, CsaSessionEvent, CsaSide, CsaTimeConfig,
+    };
+}
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -1613,6 +1621,10 @@ async fn usi_engine_registration_id(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // rshogi-csa-client が wss:// 経路で必要とする rustls CryptoProvider を install。
+    // 既に他経路で install 済みの場合は no-op (二重 install panic を避けるため expect ではなく let _)。
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
