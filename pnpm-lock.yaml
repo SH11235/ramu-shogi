@@ -66,6 +66,9 @@ importers:
       '@tauri-apps/cli':
         specifier: ^2
         version: 2.9.4
+      '@testing-library/react':
+        specifier: ^16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@types/react':
         specifier: ^19.2.7
         version: 19.2.7
@@ -78,6 +81,9 @@ importers:
       babel-plugin-react-compiler:
         specifier: ^1.0.0
         version: 1.0.0
+      happy-dom:
+        specifier: ^20.0.11
+        version: 20.7.0
       tailwindcss:
         specifier: ^4.1.18
         version: 4.1.18
@@ -87,6 +93,9 @@ importers:
       vite:
         specifier: ^7.3.0
         version: 7.3.0(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
+      vitest:
+        specifier: ^4.0.15
+        version: 4.0.15(@types/node@24.10.1)(happy-dom@20.7.0)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
   apps/web:
     dependencies:
@@ -4773,7 +4782,7 @@ snapshots:
 
   '@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
-      '@babel/runtime': 7.28.4
+      '@babel/runtime': 7.28.6
       '@testing-library/dom': 10.4.1
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
