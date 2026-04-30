@@ -62,13 +62,7 @@ fn run_csa_session_blocking(
     shutdown: Arc<AtomicBool>,
     mut sink: TauriEventSink,
 ) -> Result<(), CsaError> {
-    let mut oss_config = build_oss_config(&config, &engine_path)?;
-
-    // Builtin engine では rshogi-core API 制約上 ponder を真に実装できないため、
-    // OSS session が `go_ponder` / `ponderhit_with_info` を呼ばない経路に閉じる。
-    if config.engine.engine_type == CsaEngineType::Builtin {
-        oss_config.game.ponder = false;
-    }
+    let oss_config = build_oss_config(&config, &engine_path)?;
 
     oss_config
         .validate()
@@ -159,10 +153,18 @@ fn build_oss_config(config: &CsaConfig, engine_path: &Path) -> Result<CsaClientC
         margin_msec: config.time.margin_ms,
     };
 
+    // Builtin engine では rshogi-core API 制約上 ponder を真に実装できないため、
+    // OSS session が `go_ponder` / `ponderhit_with_info` を呼ばない経路に閉じる。
+    // 詳細は module-level doc と `csa_builtin_engine.rs` を参照。
+    let ponder = match config.engine.engine_type {
+        CsaEngineType::External => config.engine.ponder,
+        CsaEngineType::Builtin => false,
+    };
+
     let game = OssGameConfig {
         max_games: config.game.max_games,
         restart_engine_every_game: config.game.restart_engine_every_game,
-        ponder: config.engine.ponder,
+        ponder,
         search_info_emit: SearchInfoEmitPolicy::default(),
     };
 
@@ -274,6 +276,73 @@ mod tests {
         assert_eq!(
             dst.get("Big").unwrap(),
             &toml::Value::Integer((i64::MAX) - 1)
+        );
+    }
+
+    fn make_csa_config(engine_type: CsaEngineType, ponder: bool) -> CsaConfig {
+        use crate::csa_types::{
+            CsaEngineConfig, CsaGameConfig, CsaRecordConfig, CsaServerConfig, CsaTimeConfig,
+        };
+        CsaConfig {
+            server: CsaServerConfig {
+                host: "127.0.0.1".into(),
+                port: 4081,
+                user_id: "tester".into(),
+                password: "pw".into(),
+                floodgate: false,
+                tcp_keepalive: false,
+            },
+            engine: CsaEngineConfig {
+                engine_type,
+                registration_id: None,
+                options: HashMap::new(),
+                ponder,
+                startup_timeout_sec: 30,
+            },
+            time: CsaTimeConfig { margin_ms: 0 },
+            game: CsaGameConfig {
+                max_games: 1,
+                restart_engine_every_game: false,
+            },
+            record: CsaRecordConfig {
+                save_dir: String::new(),
+            },
+            reconnect: None,
+        }
+    }
+
+    /// Builtin engine の場合、Tauri 側 `CsaConfig.engine.ponder = true` を渡しても
+    /// `build_oss_config` の戻り値で `oss_config.game.ponder = false` 強制される
+    /// ことを verify する (本 PR の本体 contract)。
+    #[test]
+    fn build_oss_config_forces_ponder_off_for_builtin() {
+        let config = make_csa_config(CsaEngineType::Builtin, /* ponder= */ true);
+        let oss = build_oss_config(&config, Path::new("<builtin>")).unwrap();
+        assert!(
+            !oss.game.ponder,
+            "Builtin engine では oss_config.game.ponder=false 強制が必須"
+        );
+    }
+
+    /// External engine の場合は Tauri 側 `CsaConfig.engine.ponder` がそのまま
+    /// `oss_config.game.ponder` に伝搬されることを verify する。
+    #[test]
+    fn build_oss_config_preserves_ponder_for_external_true() {
+        let config = make_csa_config(CsaEngineType::External, /* ponder= */ true);
+        let oss = build_oss_config(&config, Path::new("/tmp/engine")).unwrap();
+        assert!(
+            oss.game.ponder,
+            "External engine では UI 設定の ponder=true がそのまま伝搬する"
+        );
+    }
+
+    #[test]
+    fn build_oss_config_preserves_ponder_for_external_false() {
+        let config = make_csa_config(CsaEngineType::External, /* ponder= */ false);
+        let oss = build_oss_config(&config, Path::new("/tmp/engine")).unwrap();
+        assert!(
+            !oss.game.ponder,
+            "External engine では UI 設定の ponder=false もそのまま伝搬する"
         );
     }
 }

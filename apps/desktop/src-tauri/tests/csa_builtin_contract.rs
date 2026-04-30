@@ -248,9 +248,13 @@ impl UsiEngineDriver for CountingDriver {
 }
 
 // ────────────────────────────────────────────
-// run_game_session_with_events を直接呼んで CountingDriver を観測する
-// (run_csa_session は dyn dispatch で BuiltinEngineDriver を作るが、CountingDriver
-//  を使うには `run_game_session_with_events` 経由で session を走らせる必要がある)
+// run_game_session_with_events を直接呼んで CountingDriver を観測する。
+//
+// 本 helper は OSS session の挙動 (config.game.ponder の値に応じた go_ponder/
+// ponderhit_with_info の呼び出し有無) を verify するためのもの。
+// ramu-shogi 側 `csa_session::build_oss_config` が Builtin engine で ponder=false
+// を強制する本体 contract は `csa_session.rs` の unit test
+// (`build_oss_config_forces_ponder_off_for_builtin`) で別途 verify している。
 // ────────────────────────────────────────────
 
 fn run_session_with_counting(
@@ -289,11 +293,11 @@ fn run_session_with_counting(
         game: OssGameConfig {
             max_games: 1,
             restart_engine_every_game: false,
-            // ponder=true で起動して、内部で正しく false 強制されることは
-            // `run_csa_session` 側で行うが、本 helper は OSS API を直接叩いて
-            // CountingDriver を渡すため、ここでも本物の `run_csa_session` と
-            // 同じ強制を再現する。
-            ponder: false,
+            // 引数で渡された ponder 値をそのまま OSS config に伝搬する。
+            // OSS session 自体は config.game.ponder=false の場合に go_ponder/
+            // ponderhit_with_info を呼ばない仕様で、CountingDriver で観測することで
+            // この OSS 側 contract を verify する。
+            ponder,
             search_info_emit: SearchInfoEmitPolicy::default(),
         },
         record: OssRecordConfig {
@@ -302,9 +306,6 @@ fn run_session_with_counting(
         },
         ..CsaClientConfig::default()
     };
-    // 本来 ponder を外部から渡したい。CountingDriver は ponder=true を要求する場合
-    // でも、実際には csa_session 側で false 強制されるため、test も同様に false で固定。
-    let _ = ponder;
 
     oss_config.validate().expect("validate config");
 
@@ -323,7 +324,14 @@ fn run_session_with_counting(
     let shutdown = Arc::new(AtomicBool::new(false));
     let mut sink = NoopSessionEventSink;
 
-    let _ = run_game_session_with_events(&oss_config, &mut conn, &mut driver, shutdown, &mut sink);
+    // session の戻り値は test 用途では検査不要 (CountingDriver の counter を後段で
+    // assert することで verify する)。Result は drop で破棄されるが、Err 時は
+    // test harness のログに残るため debug 可能。
+    if let Err(err) =
+        run_game_session_with_events(&oss_config, &mut conn, &mut driver, shutdown, &mut sink)
+    {
+        eprintln!("counting session ended with err (expected for some tests): {err}");
+    }
 
     handle
 }
@@ -341,7 +349,7 @@ async fn builtin_fresh_session_completes_with_terminal_reason() {
     // ことを verify する。Builtin engine の探索完了を待たずに interrupt 経路で
     // 終局するため、test 実行時間も短い。
     let port = spawn_mock_tcp_server(|reader, writer| {
-        let _ = read_line(reader);
+        read_line(reader);
         write_lines(writer, &["LOGIN:alice OK"]);
         let lines = game_summary_lines("g-1");
         let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
@@ -354,11 +362,12 @@ async fn builtin_fresh_session_completes_with_terminal_reason() {
         std::thread::sleep(Duration::from_millis(200));
         write_lines(writer, &["#TIME_UP", "#LOSE"]);
         // 後続 LOGOUT 等を読む (best-effort)
-        let _ = reader
+        reader
             .get_mut()
-            .set_read_timeout(Some(Duration::from_secs(5)));
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .ok();
         let mut buf = String::new();
-        let _ = reader.read_line(&mut buf);
+        reader.read_line(&mut buf).ok();
     });
 
     let engine_path = PathBuf::from("<builtin>");
@@ -371,7 +380,8 @@ async fn builtin_fresh_session_completes_with_terminal_reason() {
 
     let outcome = run_csa_session(config, engine_path, engine_state, shutdown, sink).await;
     // server interrupt 経路では Ok か Err (GameEnd 後に Disconnected) のいずれも有り得る。
-    let _ = outcome;
+    // どちらも assert はしないが、test harness ログには記録する。
+    eprintln!("[test 1] run_csa_session outcome: {outcome:?}");
 
     let mut received_labels = Vec::new();
     let mut last_game_end_reason: Option<String> = None;
@@ -418,7 +428,7 @@ async fn builtin_resume_session_emits_resumed_event() {
     // させ、test 時間を短く保つ。Resumed event の last_sfen が反映されることが
     // 主な検証対象。
     let port = spawn_mock_tcp_server(|reader, writer| {
-        let _ = read_line(reader);
+        read_line(reader);
         write_lines(writer, &["LOGIN:alice OK"]);
         let lines = game_summary_lines("g-resume");
         let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
@@ -436,11 +446,12 @@ async fn builtin_resume_session_emits_resumed_event() {
         // engine bestmove 待たずに #WIN を即送信
         std::thread::sleep(Duration::from_millis(200));
         write_lines(writer, &["#WIN"]);
-        let _ = reader
+        reader
             .get_mut()
-            .set_read_timeout(Some(Duration::from_secs(5)));
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .ok();
         let mut buf = String::new();
-        let _ = reader.read_line(&mut buf);
+        reader.read_line(&mut buf).ok();
     });
 
     let engine_path = PathBuf::from("<builtin>");
@@ -452,7 +463,7 @@ async fn builtin_resume_session_emits_resumed_event() {
     let sink = desktop_lib::test_support::TauriEventSink::new(tx);
 
     let outcome = run_csa_session(config, engine_path, engine_state, shutdown, sink).await;
-    let _ = outcome;
+    eprintln!("[test 2] run_csa_session outcome: {outcome:?}");
 
     let mut received_labels = Vec::new();
     let mut resumed_last_sfen: Option<String> = None;
@@ -496,7 +507,7 @@ async fn builtin_shutdown_aborts_session_and_emits_disconnected() {
     let server_done_clone = Arc::clone(&server_done);
     let port = spawn_mock_tcp_server(move |reader, writer| {
         // LOGIN
-        let _ = read_line(reader);
+        read_line(reader);
         write_lines(writer, &["LOGIN:alice OK"]);
         // Game_Summary
         let lines = game_summary_lines("g-abort");
@@ -514,12 +525,13 @@ async fn builtin_shutdown_aborts_session_and_emits_disconnected() {
         // server 側は shutdown 観測後、CHUDAN を送り、LOGOUT を読んで終了する想定。
         let mut buf = String::new();
         // 2 秒以内に何か来れば OK、来なくても server を継続。
-        let _ = reader
+        reader
             .get_mut()
-            .set_read_timeout(Some(Duration::from_secs(3)));
-        let _ = reader.read_line(&mut buf);
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .ok();
+        reader.read_line(&mut buf).ok();
         // LOGOUT を読みに行く (best-effort)
-        let _ = reader.read_line(&mut buf);
+        reader.read_line(&mut buf).ok();
         server_done_clone.store(true, Ordering::SeqCst);
     });
 
@@ -541,7 +553,7 @@ async fn builtin_shutdown_aborts_session_and_emits_disconnected() {
     let outcome = run_csa_session(config, engine_path, engine_state, shutdown, sink).await;
     // shutdown 経路では Err でも Ok でも良い (best-effort closure 経由で
     // SessionError::Shutdown が返る場合と Ok(SessionOutcome::Stopped) の場合がある)
-    let _ = outcome;
+    eprintln!("[test 3 shutdown] run_csa_session outcome: {outcome:?}");
 
     // events を全て drain
     let mut events = Vec::new();
@@ -571,7 +583,7 @@ async fn builtin_shutdown_aborts_session_and_emits_disconnected() {
 fn builtin_engine_does_not_use_ponder() {
     init_eval_for_test();
     let port = spawn_mock_tcp_server(|reader, writer| {
-        let _ = read_line(reader);
+        read_line(reader);
         write_lines(writer, &["LOGIN:alice OK"]);
         let lines = game_summary_lines("g-noponder");
         let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
@@ -582,17 +594,21 @@ fn builtin_engine_does_not_use_ponder() {
         // engine が探索を始めた直後に server から最終結果を送って interrupt させる
         std::thread::sleep(Duration::from_millis(200));
         write_lines(writer, &["#WIN"]);
-        let _ = reader
+        reader
             .get_mut()
-            .set_read_timeout(Some(Duration::from_secs(5)));
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .ok();
         let mut buf = String::new();
-        let _ = reader.read_line(&mut buf);
+        reader.read_line(&mut buf).ok();
     });
 
     let engine_state = Arc::new(EngineState::default());
-    // ponder=true を指定しても、`run_session_with_counting` (本 helper) は
-    // `csa_session` と同じく ponder=false 強制を再現する。
-    let handle = run_session_with_counting(port, engine_state, true);
+    // OSS session 自体の挙動を verify: config.game.ponder=false の場合、
+    // `run_game_session_with_events` は `go_ponder` / `ponderhit_with_info` を
+    // 呼ばない。ramu-shogi 側 `csa_session::build_oss_config` が Builtin engine の
+    // ときに ponder=false を強制する本体 contract は、`csa_session.rs` の
+    // unit test (`build_oss_config_forces_ponder_off_for_builtin`) で別途 verify。
+    let handle = run_session_with_counting(port, engine_state, /* ponder= */ false);
 
     assert_eq!(
         handle.go_ponder.load(Ordering::SeqCst),

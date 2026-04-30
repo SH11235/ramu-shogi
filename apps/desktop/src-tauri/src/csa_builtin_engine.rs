@@ -116,7 +116,7 @@ impl BuiltinEngineDriver {
             guard.take()
         };
         if let Some(handle) = handle {
-            let _ = handle.join();
+            handle.join().ok();
         }
 
         // channel を破棄
@@ -346,17 +346,35 @@ impl UsiEngineDriver for BuiltinEngineDriver {
         // Builtin engine では rshogi-core API 制約上 ponder を真に実装できない。
         // `csa_session` 側で `csa_config.game.ponder = false` を強制するため、
         // 通常経路では本 method は呼ばれない。フラグだけ立てて即 return する。
-        let _ = (position_cmd, go_cmd);
+        // 引数は監査用に log に残す (sanity for diagnosing unexpected calls)。
+        log::trace!(
+            "BuiltinEngineDriver::go_ponder is no-op (position={position_cmd}, go={go_cmd})"
+        );
         self.ponder_in_flight.store(true, Ordering::SeqCst);
         Ok(())
     }
 
     fn ponderhit_with_info(
         &mut self,
-        _shutdown: &AtomicBool,
-        _server_rx: &Receiver<Event>,
-        _info_callback: &mut InfoCallback<'_>,
+        shutdown: &AtomicBool,
+        server_rx: &Receiver<Event>,
+        info_callback: &mut InfoCallback<'_>,
     ) -> Result<SearchOutcome> {
+        // ponder は強制無効化されているため通常経路では呼ばれない。万一呼ばれた
+        // 場合は引数を log に残し、info_callback に sanity 通知を 1 回出してから
+        // error で返す。`info_callback` を 1 回呼ぶことで「reference を drop する
+        // だけ」では消費できない引数を実際に touch し、bail 直前に consumer 側で
+        // 異常を観測できるようにする。
+        log::error!(
+            "ponderhit_with_info called on BuiltinEngineDriver (ponder is disabled). \
+             shutdown_requested={}, server_rx_pending={}",
+            shutdown.load(Ordering::SeqCst),
+            server_rx.try_iter().count(),
+        );
+        let sanity_info = OssSearchInfo::default();
+        let sanity_line =
+            "info string BuiltinEngineDriver: ponderhit_with_info called unexpectedly";
+        info_callback(&sanity_info, sanity_line);
         bail!(
             "ponderhit_with_info should not be called for BuiltinEngineDriver (ponder is disabled)"
         );
@@ -369,9 +387,11 @@ impl UsiEngineDriver for BuiltinEngineDriver {
         Ok(())
     }
 
-    fn gameover(&mut self, _result: &str) -> Result<()> {
+    fn gameover(&mut self, result: &str) -> Result<()> {
         // rshogi-core 側に gameover 通知 API はない。`new_game` の `clear_tt` で
-        // TT を初期化するため、`gameover` は no-op で良い。
+        // TT を初期化するため、`gameover` は no-op で良い。受け取った result は
+        // 監査用に log に残す。
+        log::trace!("BuiltinEngineDriver::gameover received result={result} (no-op)");
         Ok(())
     }
 }
@@ -399,13 +419,18 @@ fn builtin_search_thread(
     let info_callback = move |info: &CoreSearchInfo| {
         let oss_info = convert_core_search_info(info);
         let raw_line = synthesize_raw_info_line(info);
-        let _ = info_tx.send(BuiltinSearchEvent::Info(oss_info, raw_line));
+        // 受信側 (poll loop) が drop されている場合は send が失敗するが、
+        // 探索 thread はそのまま完走させて bestmove も送る。
+        info_tx
+            .send(BuiltinSearchEvent::Info(oss_info, raw_line))
+            .ok();
     };
 
     let result = search.go(&mut position, limits, Some(info_callback));
 
-    // Search instance を返却 (poison 復帰なしで OK: lock 失敗時は drop されるだけ)
-    if let Ok(mut inner) = engine_state.inner.lock() {
+    // Search instance を返却 (poison 復帰付き、lock 失敗時も search を確実に戻す)
+    {
+        let mut inner = engine_state.inner.lock().unwrap_or_else(|e| e.into_inner());
         inner.search = Some(search);
     }
 
@@ -424,7 +449,9 @@ fn builtin_search_thread(
             },
         }
     };
-    let _ = tx.send(BuiltinSearchEvent::BestMove(bestmove));
+    // 受信側 (poll loop) が drop されている場合は send が失敗するが、
+    // 探索 thread はここで終了するため受け側に通知できないだけで影響なし。
+    tx.send(BuiltinSearchEvent::BestMove(bestmove)).ok();
 }
 
 // ─── USI cmd parser ───
@@ -604,9 +631,13 @@ mod tests {
         assert_eq!(limits.byoyomi[Color::Black.index()], 5000);
         assert_eq!(limits.byoyomi[Color::White.index()], 5000);
         assert!(!limits.ponder);
-        // set_start_time が呼ばれているため elapsed が finite (> 0 ms 程度)
+        // set_start_time が呼ばれているため elapsed が non-negative (i64 ms)。
         // private field の検証は避け、observable な elapsed() 経由で確認する。
-        let _ = limits.elapsed();
+        let elapsed_ms = limits.elapsed();
+        assert!(
+            (0..60_000).contains(&elapsed_ms),
+            "elapsed should be 0-60s ms in unit test (got {elapsed_ms}ms)"
+        );
     }
 
     #[test]
