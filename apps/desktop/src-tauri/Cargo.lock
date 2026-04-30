@@ -685,7 +685,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "hex",
- "rshogi-core 0.2.0",
+ "rshogi-core 0.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "rshogi-csa-client",
  "rustls",
  "serde",
@@ -2550,7 +2550,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d5285893bb5eb82e6aaf5d59ee909a06a16737a8970984dd7746ba9283498d6"
 dependencies = [
  "phf_shared 0.10.0",
- "rand 0.8.5",
+ "rand 0.8.6",
 ]
 
 [[package]]
@@ -2560,7 +2560,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c80231409c20246a13fddb31776fb942c38553c51e871f8cbd687a4cfb5843d"
 dependencies = [
  "phf_shared 0.11.3",
- "rand 0.8.5",
+ "rand 0.8.6",
 ]
 
 [[package]]
@@ -2824,9 +2824,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.8.5"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
+checksum = "5ca0ecfa931c29007047d1bc58e623ab12e5590e8c7cc53200d5202b69266d8a"
 dependencies = [
  "libc",
  "rand_chacha 0.3.1",
@@ -3077,15 +3077,14 @@ dependencies = [
 
 [[package]]
 name = "rshogi-core"
-version = "0.2.0"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a62ee2bf453cb739afb677044889987ba373784853f14d7d0d19c8c1a0c7f113"
+checksum = "e1e86c1b671b17e6b8c20a58fd728db8a5188ef3dbfcc0330fb2bf44ddaf75fa"
 dependencies = [
  "anyhow",
  "getrandom 0.3.4",
  "libc",
  "log",
- "once_cell",
  "rand 0.9.4",
  "rand_xoshiro",
  "serde",
@@ -3126,7 +3125,7 @@ dependencies = [
  "chrono",
  "libc",
  "log",
- "rshogi-core 0.2.4",
+ "rshogi-core 0.2.4 (git+https://github.com/SH11235/rshogi.git?rev=afd941abfb60488df89ac6abbe060aba170ef09c)",
  "rshogi-csa",
  "rshogi-csa-server",
  "rustls",
@@ -3145,7 +3144,7 @@ dependencies = [
  "chrono",
  "rand 0.9.4",
  "rand_xoshiro",
- "rshogi-core 0.2.4",
+ "rshogi-core 0.2.4 (git+https://github.com/SH11235/rshogi.git?rev=afd941abfb60488df89ac6abbe060aba170ef09c)",
  "rshogi-csa",
  "serde",
  "serde_json",
