@@ -339,5 +339,6 @@ function mergeConfig(base: CsaConfig, loaded: Partial<CsaConfig>): CsaConfig {
         time: { ...base.time, ...(loaded.time ?? {}) },
         game: { ...base.game, ...(loaded.game ?? {}) },
         record: { ...base.record, ...(loaded.record ?? {}) },
+        reconnect: loaded.reconnect ?? base.reconnect,
     };
 }
