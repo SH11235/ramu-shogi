@@ -13,7 +13,7 @@ import { type ReactElement, useEffect, useState } from "react";
 
 const STARTPOS_SFEN = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
 
-export interface CsaBoardDisplayProps {
+interface CsaBoardDisplayProps {
     /** 表示対象 SFEN (null/未到着時は初期局面でフォールバック) */
     sfen: string | null;
     /** 直近の指し手 USI (lastMove ハイライト用) */
