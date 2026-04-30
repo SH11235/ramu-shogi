@@ -1,9 +1,10 @@
-//! Tauri 側の `run_external_session` wrapper contract test。
+//! Tauri 側の `run_csa_session` wrapper (External engine 経路) contract test。
 //!
-//! mock TCP CSA サーバ + bash 製 mock USI エンジンで `run_external_session`
-//! を駆動し、`TauriEventSink` 経由で `CsaSessionEvent` が想定順序で配信される
-//! ことを確認する。OSS 側 (`rshogi_csa_client`) の詳細 unit test は OSS に
-//! 委ね、本 test は Tauri wrapper の event 変換 + mpsc 配信のみを対象とする。
+//! mock TCP CSA サーバ + bash 製 mock USI エンジンで `run_csa_session` を駆動し、
+//! `TauriEventSink` 経由で `CsaSessionEvent` が想定順序で配信されることを確認する。
+//! Builtin engine 経路は `tests/csa_builtin_contract.rs` を参照。OSS 側
+//! (`rshogi_csa_client`) の詳細 unit test は OSS に委ね、本 test は Tauri wrapper の
+//! event 変換 + mpsc 配信のみを対象とする。
 
 #![cfg(unix)]
 
@@ -21,7 +22,7 @@ use rshogi_csa_client::events::{SessionEventSink, SessionProgress, SinkError};
 // `desktop_lib` の internal API を `pub use` 経由で参照する。
 use desktop_lib::test_support::{
     CsaConfig, CsaEngineConfig, CsaEngineType, CsaGameConfig, CsaRecordConfig, CsaServerConfig,
-    CsaSessionEvent, CsaTimeConfig, run_external_session,
+    CsaSessionEvent, CsaTimeConfig, EngineState, run_csa_session,
 };
 
 // ────────────────────────────────────────────
@@ -210,11 +211,11 @@ fn label_for(event: &SessionProgress) -> &'static str {
 }
 
 // ────────────────────────────────────────────
-// `run_external_session` 経由で TauriEventSink が CsaSessionEvent を流す test
+// `run_csa_session` 経由で TauriEventSink が CsaSessionEvent を流す test
 // ────────────────────────────────────────────
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn fresh_session_via_run_external_session() {
+async fn fresh_session_via_run_csa_session() {
     let port = spawn_mock_tcp_server(|reader, writer| {
         let _ = read_line(reader);
         write_lines(writer, &["LOGIN:alice OK"]);
@@ -234,14 +235,15 @@ async fn fresh_session_via_run_external_session() {
     let engine_path = mock_usi_engine_script();
     let config = build_config(port, false);
     let shutdown = Arc::new(AtomicBool::new(false));
+    let engine_state = Arc::new(EngineState::default());
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<CsaSessionEvent>();
     let sink = desktop_lib::test_support::TauriEventSink::new(tx);
 
-    let outcome = run_external_session(config, engine_path, shutdown, sink).await;
+    let outcome = run_csa_session(config, engine_path, engine_state, shutdown, sink).await;
     assert!(
         outcome.is_ok(),
-        "run_external_session should succeed: {outcome:?}"
+        "run_csa_session should succeed: {outcome:?}"
     );
 
     let mut received = Vec::new();
@@ -266,7 +268,7 @@ async fn fresh_session_via_run_external_session() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn resume_session_via_run_external_session() {
+async fn resume_session_via_run_csa_session() {
     let port = spawn_mock_tcp_server(|reader, writer| {
         let _ = read_line(reader);
         write_lines(writer, &["LOGIN:alice OK"]);
@@ -293,11 +295,12 @@ async fn resume_session_via_run_external_session() {
     let engine_path = mock_usi_engine_script();
     let config = build_config(port, true);
     let shutdown = Arc::new(AtomicBool::new(false));
+    let engine_state = Arc::new(EngineState::default());
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<CsaSessionEvent>();
     let sink = desktop_lib::test_support::TauriEventSink::new(tx);
 
-    let outcome = run_external_session(config, engine_path, shutdown, sink).await;
+    let outcome = run_csa_session(config, engine_path, engine_state, shutdown, sink).await;
     assert!(outcome.is_ok(), "resume should succeed: {outcome:?}");
 
     let mut received = Vec::new();

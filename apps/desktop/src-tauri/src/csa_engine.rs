@@ -1,13 +1,13 @@
 //! CSA 対局用エンジンの補助ロジック。
 //!
-//! PR-A スコープでは外部 USI エンジンの起動 / プロトコル制御は
-//! `rshogi_csa_client` 側に寄せたため、本モジュールに残るのは UI 側の
-//! `registration_id` から実行ファイルパスを解決する helper のみ。
+//! 外部 USI エンジンの起動 / プロトコル制御は `rshogi_csa_client` 側に寄せて
+//! いるため、本モジュールに残るのは UI 側の `registration_id` から実行
+//! ファイルパスを解決する helper のみ。Builtin engine 経路は
+//! [`crate::csa_builtin_engine`] が `UsiEngineDriver` 実装として担当する。
 //!
 //! `tauri-plugin-store` の `store.json` (key `engines`) に保存された
 //! `EngineRegistration` 配列を引き、引数の id にマッチするエンジンの `path`
-//! を返す。Builtin engine 経路は PR-A では一時退避中 (UI disabled + backend
-//! early return) のため本モジュールでは扱わない。
+//! を返す。
 
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;

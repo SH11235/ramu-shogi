@@ -2,11 +2,19 @@
 //!
 //! `tokio::task::spawn_blocking` で sync な OSS API を呼ぶラッパー。
 //! - `CsaConnection::connect` → `login` または `login_reconnect`
-//! - `UsiEngine::spawn`
+//! - `UsiEngine::spawn` (External) / `BuiltinEngineDriver::new` (Builtin)
 //! - `run_game_session_with_events` / `run_resumed_session_with_events`
 //!
 //! shutdown 信号 ([`Arc<AtomicBool>`]) は `CsaGameManager` から受け取り、
 //! `csa_stop` から立てられる。
+//!
+//! # Builtin engine の ponder 強制無効化
+//!
+//! Builtin engine は rshogi-core API 制約 (`Search::request_ponderhit` が探索中
+//! instance への参照を要求) により driver から ponderhit を発火できない。本
+//! module は `engine_type == Builtin` のとき `csa_config.game.ponder = false`
+//! を強制し、OSS session が `go_ponder` / `ponderhit_with_info` を呼ばない経路に
+//! 閉じる。詳細は `csa_builtin_engine.rs` の module doc を参照。
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -19,37 +27,49 @@ use rshogi_csa_client::config::{
     KeepaliveConfig as OssKeepaliveConfig, RecordConfig as OssRecordConfig,
     ServerConfig as OssServerConfig, TimeConfig as OssTimeConfig,
 };
-use rshogi_csa_client::engine::UsiEngine;
+use rshogi_csa_client::engine::{UsiEngine, UsiEngineDriver};
 use rshogi_csa_client::events::SearchInfoEmitPolicy;
 use rshogi_csa_client::protocol::CsaConnection;
 use rshogi_csa_client::session::{run_game_session_with_events, run_resumed_session_with_events};
 
+use crate::EngineState;
+use crate::csa_builtin_engine::BuiltinEngineDriver;
 use crate::csa_sink::TauriEventSink;
-use crate::csa_types::{CsaConfig, CsaError};
+use crate::csa_types::{CsaConfig, CsaEngineType, CsaError};
 
-/// PR-A スコープ: External engine 経由で 1 局を実行する。
+/// CSA 対局を 1 局実行する。`engine_type` で External / Builtin を切り替える。
 ///
-/// `tokio::task::spawn_blocking` で同期 OSS API を駆動する。
-pub async fn run_external_session(
+/// `tokio::task::spawn_blocking` で同期 OSS API を駆動する。Builtin engine は
+/// `engine_state` 経由で in-process `Search` を共有する。
+pub async fn run_csa_session(
     config: CsaConfig,
     engine_path: PathBuf,
+    engine_state: Arc<EngineState>,
     shutdown: Arc<AtomicBool>,
     sink: TauriEventSink,
 ) -> Result<(), CsaError> {
     tokio::task::spawn_blocking(move || {
-        run_external_session_blocking(config, engine_path, shutdown, sink)
+        run_csa_session_blocking(config, engine_path, engine_state, shutdown, sink)
     })
     .await
     .map_err(|e| CsaError::Session(format!("spawn_blocking join error: {e}")))?
 }
 
-fn run_external_session_blocking(
+fn run_csa_session_blocking(
     config: CsaConfig,
     engine_path: PathBuf,
+    engine_state: Arc<EngineState>,
     shutdown: Arc<AtomicBool>,
     mut sink: TauriEventSink,
 ) -> Result<(), CsaError> {
-    let oss_config = build_oss_config(&config, &engine_path)?;
+    let mut oss_config = build_oss_config(&config, &engine_path)?;
+
+    // Builtin engine では rshogi-core API 制約上 ponder を真に実装できないため、
+    // OSS session が `go_ponder` / `ponderhit_with_info` を呼ばない経路に閉じる。
+    if config.engine.engine_type == CsaEngineType::Builtin {
+        oss_config.game.ponder = false;
+    }
+
     oss_config
         .validate()
         .map_err(|e| CsaError::ConfigInvalid(format!("CsaClientConfig 検証失敗: {e}")))?;
@@ -76,27 +96,33 @@ fn run_external_session_blocking(
             .map_err(|e| CsaError::Session(format!("ログイン失敗: {e}")))?;
     }
 
-    // 外部 USI エンジン起動
-    let timeout = Duration::from_secs(oss_config.engine.startup_timeout_sec);
-    let mut usi_engine = UsiEngine::spawn(
-        &oss_config.engine.path,
-        &oss_config.engine.options,
-        oss_config.game.ponder,
-        timeout,
-    )
-    .map_err(|e| CsaError::EngineError(format!("外部エンジン起動失敗: {e}")))?;
+    // engine 構築 (Builtin / External で分岐、共通に Box<dyn UsiEngineDriver>)
+    let mut engine: Box<dyn UsiEngineDriver> = match config.engine.engine_type {
+        CsaEngineType::External => {
+            let timeout = Duration::from_secs(oss_config.engine.startup_timeout_sec);
+            let usi_engine = UsiEngine::spawn(
+                &oss_config.engine.path,
+                &oss_config.engine.options,
+                oss_config.game.ponder,
+                timeout,
+            )
+            .map_err(|e| CsaError::EngineError(format!("外部エンジン起動失敗: {e}")))?;
+            Box::new(usi_engine)
+        }
+        CsaEngineType::Builtin => Box::new(BuiltinEngineDriver::new(Arc::clone(&engine_state))),
+    };
 
     // 対局ループを駆動
     let outcome = if config.reconnect.is_some() {
         run_resumed_session_with_events(
             &oss_config,
             &mut conn,
-            &mut usi_engine,
+            engine.as_mut(),
             shutdown,
             &mut sink,
         )
     } else {
-        run_game_session_with_events(&oss_config, &mut conn, &mut usi_engine, shutdown, &mut sink)
+        run_game_session_with_events(&oss_config, &mut conn, engine.as_mut(), shutdown, &mut sink)
     };
 
     match outcome {

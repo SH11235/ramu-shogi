@@ -427,7 +427,7 @@ fn default_max_games() -> u32 {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CsaRecordConfig {
-    /// 棋譜保存先ディレクトリ。空文字の場合は保存しない (PR-A は OSS 側 record.enabled=false 固定)。
+    /// 棋譜保存先ディレクトリ。空文字の場合は保存しない (OSS 側 record.enabled=false 固定)。
     #[serde(default)]
     pub save_dir: String,
 }
