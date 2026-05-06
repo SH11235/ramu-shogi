@@ -128,7 +128,9 @@
                 "properties": {
                     "id": {
                         "type": "string",
-                        "format": "uuid"
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[A-Za-z0-9_-]+$"
                     },
                     "roomId": {
                         "type": ["string", "null"]
@@ -176,7 +178,7 @@
             },
             "GameRecordSource": {
                 "type": "string",
-                "enum": ["online_room", "local_app", "import"]
+                "enum": ["online_room", "local_app", "import", "csa_relay"]
             },
             "GameRecordVisibility": {
                 "type": "string",
@@ -338,7 +340,9 @@
                     },
                     "gameId": {
                         "type": "string",
-                        "format": "uuid"
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[A-Za-z0-9_-]+$"
                     },
                     "label": {
                         "type": ["string", "null"]
@@ -993,7 +997,9 @@
                     {
                         "schema": {
                             "type": "string",
-                            "format": "uuid"
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[A-Za-z0-9_-]+$"
                         },
                         "required": true,
                         "name": "gameId",
@@ -1042,7 +1048,9 @@
                     {
                         "schema": {
                             "type": "string",
-                            "format": "uuid"
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[A-Za-z0-9_-]+$"
                         },
                         "required": true,
                         "name": "gameId",
@@ -1111,7 +1119,9 @@
                     {
                         "schema": {
                             "type": "string",
-                            "format": "uuid"
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[A-Za-z0-9_-]+$"
                         },
                         "required": true,
                         "name": "gameId",
@@ -1158,7 +1168,9 @@
                     {
                         "schema": {
                             "type": "string",
-                            "format": "uuid"
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[A-Za-z0-9_-]+$"
                         },
                         "required": true,
                         "name": "gameId",
@@ -1227,7 +1239,9 @@
                     {
                         "schema": {
                             "type": "string",
-                            "format": "uuid"
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[A-Za-z0-9_-]+$"
                         },
                         "required": true,
                         "name": "gameId",
@@ -1742,8 +1756,9 @@
                     {
                         "schema": {
                             "type": "string",
-                            "minLength": 8,
-                            "maxLength": 32
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[A-Za-z0-9_-]+$"
                         },
                         "required": true,
                         "name": "publicId",

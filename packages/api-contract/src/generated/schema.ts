@@ -374,7 +374,6 @@ export interface components {
             games: components["schemas"]["GameRecordSummary"][];
         };
         GameRecordSummary: {
-            /** Format: uuid */
             id: string;
             roomId: string | null;
             source: components["schemas"]["GameRecordSource"];
@@ -387,7 +386,7 @@ export interface components {
             finishedAt: string | null;
         };
         /** @enum {string} */
-        GameRecordSource: "online_room" | "local_app" | "import";
+        GameRecordSource: "online_room" | "local_app" | "import" | "csa_relay";
         /** @enum {string} */
         GameRecordVisibility: "private" | "unlisted" | "public";
         /** @enum {string} */
@@ -426,7 +425,6 @@ export interface components {
         AnalysisSnapshotSummary: {
             /** Format: uuid */
             id: string;
-            /** Format: uuid */
             gameId: string;
             label: string | null;
             createdAt: string;

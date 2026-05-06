@@ -1,4 +1,5 @@
 import type { GameRecordDetail } from "@shogi/api-contract";
+import { parseCsaMoves } from "@shogi/app-core";
 import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type { EngineOption } from "@shogi/ui";
 import { ShogiMatch } from "@shogi/ui";
@@ -56,8 +57,22 @@ function GameInfoPanel({ game }: { game: GameRecordDetail }): ReactElement {
     );
 }
 
+// CSA Worker (`source: 'csa_relay'`) 由来の棋譜は backend が USI moves を持たない
+// ため `moves: []` を返す (issue #613)。viewer 側で `kifuText` (CSA V2 本文) を
+// パースして USI moves を再構築する。
+function resolveMoves(game: GameRecordDetail): string[] {
+    if (game.moves.length > 0) return game.moves;
+    if (game.source !== "csa_relay" || !game.kifuText) return game.moves;
+    try {
+        return parseCsaMoves(game.kifuText);
+    } catch {
+        return [];
+    }
+}
+
 export default function PublicGamePage(): ReactElement {
     const game = routeApi.useLoaderData() as GameRecordDetail;
+    const moves = resolveMoves(game);
 
     return (
         <>
@@ -75,7 +90,7 @@ export default function PublicGamePage(): ReactElement {
                     }}
                     initialReview={{
                         sfen: game.initialSfen,
-                        moves: game.moves,
+                        moves,
                     }}
                     reviewMode={true}
                     reviewLeftContent={<GameInfoPanel game={game} />}

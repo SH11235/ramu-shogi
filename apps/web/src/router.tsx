@@ -8,7 +8,13 @@ import type {
     ListPublicGamesResponse,
     RoomInfo,
 } from "@shogi/api-contract";
-import { createRootRoute, createRoute, createRouter, useNavigate } from "@tanstack/react-router";
+import {
+    createRootRoute,
+    createRoute,
+    createRouter,
+    redirect,
+    useNavigate,
+} from "@tanstack/react-router";
 import App from "./App";
 import { AppProviders } from "./AppProviders";
 import AuthPage from "./pages/auth/AuthPage";
@@ -82,11 +88,22 @@ const gamesRoute = createRoute({
     loader: fetchGamesLoaderData,
 });
 
+// CSA Worker (rshogi-csa-server-workers) が出力する game_id (`<room_id>-<unix_ms>`)
+// は UUID ではないため、auth 必須の `/api/games/<id>` ではなく公開ルート
+// `/public/games/<id>` 経由で取得する (issue #613)。
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const gameDetailRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/games/$gameId",
     component: GameDetailPage,
     loader: async ({ params: { gameId } }) => {
+        if (!UUID_RE.test(gameId)) {
+            throw redirect({
+                to: "/public/games/$publicId",
+                params: { publicId: gameId },
+            });
+        }
         const response = await fetch(`/api/games/${gameId}`, {
             credentials: "same-origin",
         });
