@@ -425,6 +425,7 @@ export interface components {
         AnalysisSnapshotSummary: {
             /** Format: uuid */
             id: string;
+            /** Format: uuid */
             gameId: string;
             label: string | null;
             createdAt: string;
