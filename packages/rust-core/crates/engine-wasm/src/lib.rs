@@ -6,7 +6,9 @@
 use std::cell::RefCell;
 use std::io::ErrorKind;
 
-use rshogi_core::eval::{MaterialLevel, set_eval_hash_enabled, set_material_level};
+use rshogi_core::eval::{
+    MaterialLevel, disable_material, set_eval_hash_enabled, set_material_level,
+};
 use rshogi_core::movegen::{MoveList, generate_legal_all_with_pass};
 use rshogi_core::nnue::{detect_format, init_nnue_from_bytes, set_fv_scale_override};
 use rshogi_core::position::{Position, SFEN_HIRATE};
@@ -544,6 +546,8 @@ pub fn load_model(bytes: &[u8]) -> Result<(), JsValue> {
             }
         })
         .map_err(|err| JsValue::from_str(&err.to_string()))?;
+    // NNUEロード成功時はMaterial評価を無効化（NNUE評価を優先）
+    disable_material();
     Ok(())
 }
 
@@ -655,6 +659,8 @@ pub fn load_model_from_ptr(ptr: *mut u8, len: usize) -> Result<(), JsValue> {
             }
         })
         .map_err(|err| JsValue::from_str(&err.to_string()))?;
+    // NNUEロード成功時はMaterial評価を無効化（NNUE評価を優先）
+    disable_material();
     Ok(())
 }
 
@@ -777,6 +783,9 @@ pub fn search(params: Option<JsValue>) -> Result<(), JsValue> {
     let params = parse_search_params(params)?;
 
     with_engine_mut(|engine| {
+        // stop/ponderhitフラグをリセット（go()呼び出し前に必須）
+        engine.search.reset_flags();
+
         let mut limits = LimitsType::new();
         limits.set_start_time();
         limits.multi_pv = engine.default_multi_pv.max(1);

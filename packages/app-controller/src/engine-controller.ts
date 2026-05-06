@@ -670,7 +670,9 @@ export function createEngineController(
 
         try {
             if (engineState.client) {
-                await engineState.client.stop();
+                // stop()は不要: dispose()内でWorkerをterminateするため。
+                // stop()を先に呼ぶとterminateAndRecoverが非同期で再初期化を開始し、
+                // 直後のdispose()と競合してWASM_THREADS_INIT_FAILEDを引き起こす。
                 if (typeof engineState.client.dispose === "function") {
                     await engineState.client.dispose();
                 }
@@ -710,7 +712,6 @@ export function createEngineController(
 
             const threadCount = getThreadCountForSide(context.engineThreads, side);
             await client.init(threadCount ? { threads: threadCount } : undefined);
-            await applyThreadOption(client, threadCount);
 
             const selection =
                 options.nnueSelection ??
@@ -787,7 +788,6 @@ export function createEngineController(
             if (!engineState.ready) {
                 const threadCount = getThreadCountForSide(context.engineThreads, side);
                 await client.init(threadCount ? { threads: threadCount } : undefined);
-                await applyThreadOption(client, threadCount);
 
                 const selection =
                     side === "sente" ? context.nnueSelections.sente : context.nnueSelections.gote;
@@ -944,7 +944,6 @@ export function createEngineController(
 
         if (analysisState.client) {
             try {
-                await analysisState.client.stop();
                 if (typeof analysisState.client.dispose === "function") {
                     await analysisState.client.dispose();
                 }
@@ -987,7 +986,6 @@ export function createEngineController(
                 analysisState.engineId = engineId;
                 const threadCount = getAnalysisThreadCount(context.engineThreads);
                 await client.init(threadCount ? { threads: threadCount } : undefined);
-                await applyThreadOption(client, threadCount);
 
                 const selection = context.nnueSelections.analysis;
                 if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {

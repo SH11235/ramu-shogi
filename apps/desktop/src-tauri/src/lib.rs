@@ -1,4 +1,25 @@
+mod csa_builtin_engine;
+mod csa_engine;
+mod csa_game;
+mod csa_session;
+mod csa_sink;
+mod csa_types;
+mod engine_lock;
 mod usi_engine;
+
+/// integration test (`tests/csa_session_contract.rs`) から CSA 関連の internal
+/// API を呼ぶための再エクスポート。production code から直接利用しない。
+#[doc(hidden)]
+pub mod test_support {
+    pub use crate::EngineState;
+    pub use crate::csa_builtin_engine::BuiltinEngineDriver;
+    pub use crate::csa_session::run_csa_session;
+    pub use crate::csa_sink::TauriEventSink;
+    pub use crate::csa_types::{
+        CsaConfig, CsaEngineConfig, CsaEngineType, CsaGameConfig, CsaReconnectConfig,
+        CsaRecordConfig, CsaServerConfig, CsaSessionEvent, CsaSide, CsaTimeConfig,
+    };
+}
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -140,17 +161,23 @@ struct SearchTaskResult {
 struct ActiveSearch {
     handle: thread::JoinHandle<SearchTaskResult>,
     stop_flag: Arc<AtomicBool>,
-    _ponderhit_flag: Arc<AtomicBool>,
 }
 
-struct EngineState {
-    inner: Mutex<EngineStateInner>,
+/// CSA Builtin engine driver から共有する内蔵 search instance のラッパー。
+///
+/// 本 struct は Tauri の `State` 経由で `Arc<EngineState>` として注入され、
+/// UI 経路 (`engine_search` 等) と CSA Builtin engine driver
+/// (`csa_builtin_engine`) の双方が同じ instance を共有する。
+#[doc(hidden)]
+pub struct EngineState {
+    pub(crate) inner: Mutex<EngineStateInner>,
 }
 
-struct EngineStateInner {
+#[doc(hidden)]
+pub struct EngineStateInner {
     options: EngineOptions,
-    position: Position,
-    search: Option<Search>,
+    pub(crate) position: Position,
+    pub(crate) search: Option<Search>,
     active_search: Option<ActiveSearch>,
 }
 
@@ -168,7 +195,7 @@ impl EngineStateInner {
         }
     }
 
-    fn create_search(&self) -> Search {
+    pub(crate) fn create_search(&self) -> Search {
         let mut search = Search::new(self.options.tt_size_mb);
         self.options.apply_to_search(&mut search);
         search
@@ -313,7 +340,6 @@ fn spawn_search(
     }
 
     let stop_flag = search.stop_flag();
-    let ponderhit_flag = search.ponderhit_flag();
 
     let handle = thread::Builder::new()
         .name("engine-search".into())
@@ -350,11 +376,7 @@ fn spawn_search(
         })
         .map_err(|e| format!("Failed to spawn search thread: {e}"))?;
 
-    Ok(ActiveSearch {
-        handle,
-        stop_flag,
-        _ponderhit_flag: ponderhit_flag,
-    })
+    Ok(ActiveSearch { handle, stop_flag })
 }
 
 /// パス権設定
@@ -560,7 +582,7 @@ fn apply_engine_option(
     Ok(())
 }
 
-fn stop_active_search(state: &State<EngineState>) -> Result<(), String> {
+fn stop_active_search(state: &State<'_, Arc<EngineState>>) -> Result<(), String> {
     let active = {
         let mut inner = state
             .inner
@@ -582,8 +604,26 @@ fn stop_active_search(state: &State<EngineState>) -> Result<(), String> {
     Ok(())
 }
 
+/// CSA対局中でないことを確認するヘルパー
+fn check_engine_available(lock: &State<'_, Arc<engine_lock::EngineLock>>) -> Result<(), String> {
+    if lock.is_locked() {
+        return Err("CSA対局中のためエンジンは使用できません".to_string());
+    }
+    Ok(())
+}
+
 #[tauri::command]
-fn engine_init(state: State<EngineState>, opts: Option<serde_json::Value>) -> Result<(), String> {
+fn csa_engine_lock_status(lock: State<'_, Arc<engine_lock::EngineLock>>) -> Result<bool, String> {
+    Ok(lock.is_locked())
+}
+
+#[tauri::command]
+fn engine_init(
+    lock: State<'_, Arc<engine_lock::EngineLock>>,
+    state: State<'_, Arc<EngineState>>,
+    opts: Option<serde_json::Value>,
+) -> Result<(), String> {
+    check_engine_available(&lock)?;
     stop_active_search(&state)?;
 
     let parsed_opts: Option<InitOptions> = if let Some(opts) = opts {
@@ -625,11 +665,13 @@ fn engine_init(state: State<EngineState>, opts: Option<serde_json::Value>) -> Re
 
 #[tauri::command]
 fn engine_position(
-    state: State<EngineState>,
+    lock: State<'_, Arc<engine_lock::EngineLock>>,
+    state: State<'_, Arc<EngineState>>,
     sfen: String,
     moves: Option<Vec<String>>,
     pass_rights: Option<PassRightsInput>,
 ) -> Result<(), String> {
+    check_engine_available(&lock)?;
     eprintln!(
         "engine_position: sfen={}, moves={:?}, passRights={:?}",
         sfen, moves, pass_rights
@@ -650,10 +692,12 @@ fn engine_position(
 
 #[tauri::command]
 fn engine_option(
-    state: State<EngineState>,
+    lock: State<'_, Arc<engine_lock::EngineLock>>,
+    state: State<'_, Arc<EngineState>>,
     name: String,
     value: serde_json::Value,
 ) -> Result<(), String> {
+    check_engine_available(&lock)?;
     stop_active_search(&state)?;
 
     let mut inner = state
@@ -666,10 +710,12 @@ fn engine_option(
 
 #[tauri::command]
 fn engine_search(
+    lock: State<'_, Arc<engine_lock::EngineLock>>,
     window: Window,
-    state: State<'_, EngineState>,
+    state: State<'_, Arc<EngineState>>,
     params: serde_json::Value,
 ) -> Result<(), String> {
+    check_engine_available(&lock)?;
     stop_active_search(&state)?;
 
     eprintln!("engine_search: received params = {}", params);
@@ -750,7 +796,12 @@ fn engine_search(
 }
 
 #[tauri::command]
-fn engine_stop(state: State<EngineState>) -> Result<(), String> {
+fn engine_stop(
+    lock: State<'_, Arc<engine_lock::EngineLock>>,
+    state: State<'_, Arc<EngineState>>,
+) -> Result<(), String> {
+    // フロントエンドからの直接停止を禁止。CSA セッション内部は stop_active_search() を直接呼ぶ。
+    check_engine_available(&lock)?;
     eprintln!("engine_stop: requested");
     stop_active_search(&state)
 }
@@ -783,7 +834,7 @@ struct ThreadInfoResponse {
 }
 
 #[tauri::command]
-fn engine_thread_info(state: State<EngineState>) -> Result<ThreadInfoResponse, String> {
+fn engine_thread_info(state: State<'_, Arc<EngineState>>) -> Result<ThreadInfoResponse, String> {
     let inner = state
         .inner
         .lock()
@@ -1574,11 +1625,18 @@ async fn usi_engine_registration_id(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // rshogi-csa-client が wss:// 経路で必要とする rustls CryptoProvider を install。
+    // 既に他経路で install 済みの場合は no-op (二重 install panic を避けるため expect ではなく let _)。
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .manage(EngineState::default())
+        // Arc 化: CSA 対局の tokio タスクから EngineState を共有するため
+        .manage(Arc::new(EngineState::default()))
+        .manage(Arc::new(engine_lock::EngineLock::default()))
+        .manage(Arc::new(csa_game::CsaGameManager::default()))
         .manage(usi_engine::UsiEngineManager::default())
         .invoke_handler(tauri::generate_handler![
             engine_init,
@@ -1604,6 +1662,12 @@ pub fn run() {
             abort_nnue_save,
             detect_nnue_format_cmd,
             is_nnue_compatible_cmd,
+            // CSA 対局
+            csa_engine_lock_status,
+            csa_game::csa_start,
+            csa_game::csa_stop,
+            csa_game::csa_save_config,
+            csa_game::csa_load_config,
             // USI エンジン管理
             usi_engine_probe,
             usi_engine_start,

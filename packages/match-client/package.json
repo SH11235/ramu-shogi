@@ -9,6 +9,7 @@
         ".": "./src/index.ts"
     },
     "dependencies": {
+        "@shogi/app-core": "workspace:*",
         "@shogi/match-protocol": "workspace:*"
     },
     "scripts": {

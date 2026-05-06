@@ -28,6 +28,9 @@ import CreateRoomPage from "./pages/online/CreateRoomPage";
 import OnlinePage from "./pages/online/OnlinePage";
 import RoomPage from "./pages/online/RoomPage";
 import PrivacyPage from "./pages/privacy/PrivacyPage";
+import RshogiViewerListPage from "./pages/rshogi-viewer/RshogiViewerListPage";
+import RshogiViewerLivePage from "./pages/rshogi-viewer/RshogiViewerLivePage";
+import RshogiViewerPage from "./pages/rshogi-viewer/RshogiViewerPage";
 import { handleLoaderResponse } from "./router-loader-utils";
 
 const rootRoute = createRootRoute({
@@ -226,6 +229,26 @@ const privacyRoute = createRoute({
     component: PrivacyPage,
 });
 
+const rshogiViewerListRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/rshogi-viewer",
+    component: RshogiViewerListPage,
+});
+
+// `/rshogi-viewer/live/$gameId` は単局 `/rshogi-viewer/$gameId` よりも前に
+// 登録する必要がある (TanStack Router は登録順で path 解決する)。
+const rshogiViewerLiveRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/rshogi-viewer/live/$gameId",
+    component: RshogiViewerLivePage,
+});
+
+const rshogiViewerRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/rshogi-viewer/$gameId",
+    component: RshogiViewerPage,
+});
+
 const createRoomRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/online/create",
@@ -290,6 +313,9 @@ const routeTree = rootRoute.addChildren([
     nnueFilesRoute,
     createRoomRoute,
     roomRoute,
+    rshogiViewerListRoute,
+    rshogiViewerLiveRoute,
+    rshogiViewerRoute,
 ]);
 
 export const router = createRouter({ routeTree });

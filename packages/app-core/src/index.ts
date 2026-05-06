@@ -47,6 +47,8 @@ export {
     buildBoardFromCsa,
     movesToCsa,
     parseCsaMoves,
+    parseCsaMovesWithState,
+    parseSingleCsaMove,
 } from "./game/csa";
 // game/kifu-tree
 export type {

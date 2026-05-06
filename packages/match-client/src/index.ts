@@ -46,6 +46,37 @@ export {
     storeSeat,
 } from "./reconnect";
 export type {
+    FetchRshogiGameListOptions,
+    FetchRshogiGameOptions,
+    RshogiClockKind,
+    RshogiEndReason,
+    RshogiGame,
+    RshogiGameListPage,
+    RshogiGameMeta,
+    RshogiGameResult,
+    RshogiGameResultKind,
+    RshogiGameSource,
+    RshogiGameSummary,
+    RshogiTimeControl,
+} from "./rshogi-csa/client";
+export {
+    fetchRshogiGame,
+    fetchRshogiGameList,
+    listMockRshogiGameIds,
+    RshogiGameFetchError,
+    RshogiGameNotFoundError,
+} from "./rshogi-csa/client";
+export type {
+    RshogiLiveCallbacks,
+    RshogiLiveClockEvent,
+    RshogiLiveConnectionState,
+    RshogiLiveMoveEvent,
+    RshogiLiveSession,
+    RshogiLiveSnapshot,
+    RshogiLiveSubscribeOptions,
+} from "./rshogi-csa/live";
+export { subscribeRshogiLiveGame } from "./rshogi-csa/live";
+export type {
     RoomClient,
     RoomClientOpenEvent,
     RoomClientOptions,

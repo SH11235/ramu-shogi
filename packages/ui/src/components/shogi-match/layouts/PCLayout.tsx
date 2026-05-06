@@ -135,8 +135,8 @@ export function PCLayout({
                     <PCBoardSection candidateNote={candidateNote} />
                 </div>
 
-                {/* 棋譜セクション（絶対配置） */}
-                <div className="absolute right-4 top-4">
+                {/* 棋譜セクション（絶対配置、viewport内に収める） */}
+                <div className="absolute right-4 top-4 bottom-4 overflow-hidden">
                     <PCKifuSection />
                 </div>
 

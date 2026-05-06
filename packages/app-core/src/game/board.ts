@@ -119,7 +119,7 @@ export function cloneBoard(board: BoardState): BoardState {
     return clone;
 }
 
-const STARTPOS_BOARD_SFEN = "lnsgkgsnl/1r5b1/p1ppppppp/9/9/9/P1PPPPPPP/1B5R1/LNSGKGSNL";
+const STARTPOS_BOARD_SFEN = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL";
 
 function getFallbackInitialPosition(): PositionState {
     if (fallbackInitialPosition) return fallbackInitialPosition;

@@ -25,10 +25,24 @@ tauri-plugin-dialog = "2"
 tauri-plugin-store = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rshogi-core = "0.2"
-# NNUE 管理用 + USI エンジンプロセス管理用
-tokio = { version = "1", features = ["fs", "io-util", "process"] }
+# rshogi-csa-client (git only, crates.io 未公開) と同一ソースに統一して
+# Cargo.lock 上の rshogi-core 重複 (registry 版 vs git 版) を解消する。
+# rev を更新する場合は必ず rshogi-csa-client の rev と同じ値に揃えること。
+rshogi-core = { git = "https://github.com/SH11235/rshogi.git", rev = "2693dd45de65ccb883e317da4bbac0b7d7307388" }
+rshogi-csa-client = { git = "https://github.com/SH11235/rshogi.git", rev = "2693dd45de65ccb883e317da4bbac0b7d7307388", default-features = false, features = ["tcp", "websocket"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+toml = "0.8"
+anyhow = "1"
+log = "0.4"
+# NNUE 管理用 + USI エンジンプロセス管理用 + CSA対局用
+tokio = { version = "1", features = ["fs", "io-util", "process", "sync", "net", "macros"] }
+tokio-util = "0.7"
+thiserror = "2"
+chrono = "0.4"
 sha2 = "0.10"
 hex = "0.4"
 base64 = "0.22"
 uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "test-util", "time"] }
