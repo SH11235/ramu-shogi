@@ -51,6 +51,17 @@ const PROMOTED_FROM_CODE: Record<string, PieceType | undefined> = {
     RY: "R",
 };
 
+// CSA piece code → USI 駒打ち文字。駒打ち (`+0077FU` 等) を `P*7g` に変換する際に使う。
+const DROP_PIECE_FROM_CODE: Record<string, string | undefined> = {
+    FU: "P",
+    KY: "L",
+    KE: "N",
+    GI: "S",
+    KI: "G",
+    KA: "B",
+    HI: "R",
+};
+
 interface CsaMetadata {
     senteName?: string;
     goteName?: string;
@@ -113,12 +124,25 @@ export function parseCsaMoves(contents: string, initialBoard?: BoardState): stri
         if (line.length < 7) {
             continue;
         }
-        const fromSquare = fromCsaSquare(line.slice(1, 3));
+        const fromRaw = line.slice(1, 3);
         const toSquare = fromCsaSquare(line.slice(3, 5));
-        if (!fromSquare || !toSquare) {
+        if (!toSquare) {
             continue;
         }
         const pieceCode = line.slice(5, 7).toUpperCase();
+        // 駒打ち: CSA は from = "00"。USI `P*7g` 形式に変換し applyMove に渡す。
+        if (fromRaw === "00") {
+            const dropPiece = DROP_PIECE_FROM_CODE[pieceCode];
+            if (!dropPiece) continue;
+            const move = `${dropPiece}*${toSquare}`;
+            moves.push(move);
+            board = applyMove(board, move);
+            continue;
+        }
+        const fromSquare = fromCsaSquare(fromRaw);
+        if (!fromSquare) {
+            continue;
+        }
         const targetPiece = board[fromSquare];
         if (!targetPiece) {
             continue;

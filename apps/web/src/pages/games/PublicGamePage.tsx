@@ -60,12 +60,15 @@ function GameInfoPanel({ game }: { game: GameRecordDetail }): ReactElement {
 // CSA Worker (`source: 'csa_relay'`) 由来の棋譜は backend が USI moves を持たない
 // ため `moves: []` を返す (issue #613)。viewer 側で `kifuText` (CSA V2 本文) を
 // パースして USI moves を再構築する。
-function resolveMoves(game: GameRecordDetail): string[] {
+export function resolveMoves(game: GameRecordDetail): string[] {
     if (game.moves.length > 0) return game.moves;
     if (game.source !== "csa_relay" || !game.kifuText) return game.moves;
     try {
         return parseCsaMoves(game.kifuText);
-    } catch {
+    } catch (err) {
+        // CSA パース失敗は viewer 表示を空盤面で起動させる仕様だが、原因追跡のため
+        // 本番でも console に出力する。
+        console.error("[PublicGamePage] CSA moves parse failed:", err);
         return [];
     }
 }

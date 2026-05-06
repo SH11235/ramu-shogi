@@ -88,9 +88,10 @@ const gamesRoute = createRoute({
     loader: fetchGamesLoaderData,
 });
 
-// CSA Worker (rshogi-csa-server-workers) が出力する game_id (`<room_id>-<unix_ms>`)
-// は UUID ではないため、auth 必須の `/api/games/<id>` ではなく公開ルート
-// `/public/games/<id>` 経由で取得する (issue #613)。
+// UUID 形式 = auth 必須の `/api/games/<id>` (online_room / local_app / import)。
+// 非 UUID 形式 = auth 不要の `/public/games/<id>` (csa_relay: `<room_id>-<unix_ms>`)。
+// この対応関係が変わる場合 (非 UUID の auth 必須 ID が増える / UUID の public ID が
+// 出る等) はルーティング戦略の見直しが必要 (issue #613)。
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const gameDetailRoute = createRoute({

@@ -995,7 +995,7 @@
                     {
                         "schema": {
                             "type": "string",
-                            "minLength": 1,
+                            "minLength": 8,
                             "maxLength": 128,
                             "pattern": "^[A-Za-z0-9_-]+$"
                         },
@@ -1046,7 +1046,7 @@
                     {
                         "schema": {
                             "type": "string",
-                            "minLength": 1,
+                            "minLength": 8,
                             "maxLength": 128,
                             "pattern": "^[A-Za-z0-9_-]+$"
                         },
@@ -1117,7 +1117,7 @@
                     {
                         "schema": {
                             "type": "string",
-                            "minLength": 1,
+                            "minLength": 8,
                             "maxLength": 128,
                             "pattern": "^[A-Za-z0-9_-]+$"
                         },
@@ -1166,7 +1166,7 @@
                     {
                         "schema": {
                             "type": "string",
-                            "minLength": 1,
+                            "minLength": 8,
                             "maxLength": 128,
                             "pattern": "^[A-Za-z0-9_-]+$"
                         },
@@ -1237,7 +1237,7 @@
                     {
                         "schema": {
                             "type": "string",
-                            "minLength": 1,
+                            "minLength": 8,
                             "maxLength": 128,
                             "pattern": "^[A-Za-z0-9_-]+$"
                         },
@@ -1754,7 +1754,7 @@
                     {
                         "schema": {
                             "type": "string",
-                            "minLength": 1,
+                            "minLength": 8,
                             "maxLength": 128,
                             "pattern": "^[A-Za-z0-9_-]+$"
                         },
