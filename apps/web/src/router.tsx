@@ -8,7 +8,13 @@ import type {
     ListPublicGamesResponse,
     RoomInfo,
 } from "@shogi/api-contract";
-import { createRootRoute, createRoute, createRouter, useNavigate } from "@tanstack/react-router";
+import {
+    createRootRoute,
+    createRoute,
+    createRouter,
+    redirect,
+    useNavigate,
+} from "@tanstack/react-router";
 import App from "./App";
 import { AppProviders } from "./AppProviders";
 import AuthPage from "./pages/auth/AuthPage";
@@ -85,11 +91,23 @@ const gamesRoute = createRoute({
     loader: fetchGamesLoaderData,
 });
 
+// UUID 形式 = auth 必須の `/api/games/<id>` (online_room / local_app / import)。
+// 非 UUID 形式 = auth 不要の `/public/games/<id>` (csa_relay: `<room_id>-<unix_ms>`)。
+// この対応関係が変わる場合 (非 UUID の auth 必須 ID が増える / UUID の public ID が
+// 出る等) はルーティング戦略の見直しが必要 (issue #613)。
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const gameDetailRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/games/$gameId",
     component: GameDetailPage,
     loader: async ({ params: { gameId } }) => {
+        if (!UUID_RE.test(gameId)) {
+            throw redirect({
+                to: "/public/games/$publicId",
+                params: { publicId: gameId },
+            });
+        }
         const response = await fetch(`/api/games/${gameId}`, {
             credentials: "same-origin",
         });

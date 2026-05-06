@@ -260,12 +260,27 @@ export function parseCsaMoves(contents: string, initialBoard?: BoardState): stri
         if (line.length < 7) {
             continue;
         }
-        const fromSquare = fromCsaSquare(line.slice(1, 3));
+        const fromRaw = line.slice(1, 3);
         const toSquare = fromCsaSquare(line.slice(3, 5));
-        if (!fromSquare || !toSquare) {
+        if (!toSquare) {
             continue;
         }
         const pieceCode = line.slice(5, 7).toUpperCase();
+        // 駒打ち (CSA `from === "00"`) を USI `P*5e` 形式に変換する。
+        // BoardState のみで hands を扱えないため、`applyMove` の `ignoreHandLimits`
+        // 既定 (= true) に依存して board だけを進める (issue #613)。
+        if (fromRaw === "00") {
+            const dropPiece = DROP_PIECE_FROM_CODE[pieceCode];
+            if (!dropPiece) continue;
+            const move = `${dropPiece}*${toSquare}`;
+            moves.push(move);
+            board = applyMove(board, move);
+            continue;
+        }
+        const fromSquare = fromCsaSquare(fromRaw);
+        if (!fromSquare) {
+            continue;
+        }
         const targetPiece = board[fromSquare];
         if (!targetPiece) {
             continue;

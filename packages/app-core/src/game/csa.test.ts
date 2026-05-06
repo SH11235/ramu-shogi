@@ -111,6 +111,26 @@ PI
         expect(moves[1]).toBe("3c3d");
     });
 
+    it("駒打ち (from=00) を USI drop 形式に変換する", () => {
+        const initialBoard = createInitialBoard();
+        // 持ち駒として歩を sente に持たせるため 7g の歩を取り除く前提のシナリオは
+        // 単純化のため省略し、空マスへの drop が parse されることだけを検証する。
+        initialBoard["5e"] = null;
+
+        const csa = `V2.2
+N+Sente
+N-Gote
+PI
++
++0055FU
+-0044KA`;
+
+        const moves = parseCsaMoves(csa, initialBoard);
+
+        expect(moves).toContain("P*5e");
+        expect(moves).toContain("B*4d");
+    });
+
     it("成りの手を正しく解析する", () => {
         const initialBoard = createInitialBoard();
         // 歩を1cに配置
