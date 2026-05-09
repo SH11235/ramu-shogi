@@ -1,0 +1,4 @@
+config:
+  cloudflare:apiToken:
+    secure: AAABAPus2ROoJQoke6RNMOcj5mo6/FhS9F2A+eIIwd9Ht/U9/BbWT8mmVXcj/KIfnn7dCBaWgcYMPhtSz3ReB+cbqByYWN4lEB6z363YvcuF6W14Kg==
+  ramu-shogi:accountId: d5d9818649d8722f73cd798c3b1ffb70

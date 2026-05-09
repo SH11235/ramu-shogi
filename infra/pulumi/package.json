@@ -1,0 +1,14 @@
+{
+  "name": "ramu-shogi-iac",
+  "private": true,
+  "main": "index.ts",
+  "dependencies": {
+    "@pulumi/cloudflare": "6.15.0",
+    "@pulumi/pulumi": "3.237.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.18",
+    "typescript": "5.9.3"
+  },
+  "packageManager": "pnpm@10.24.0"
+}

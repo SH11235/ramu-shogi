@@ -1,0 +1,8 @@
+# Pulumi project は ramu-shogi 本体 (apps/* / packages/*) の workspace から
+# 独立させる。Pulumi の deps (@pulumi/cloudflare 等) は IaC 用途で
+# アプリ runtime に持ち込みたくないため、独自 lockfile を持つ別 install
+# 境界として扱う。
+#
+# pnpm はこのファイルを見て「ここが workspace ルート」と判断するため、
+# 親ディレクトリ (リポジトリルート) の pnpm-workspace.yaml には到達しない。
+packages: []
