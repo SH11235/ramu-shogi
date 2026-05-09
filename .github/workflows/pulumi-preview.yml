@@ -1,0 +1,161 @@
+# Pulumi (infra/pulumi/) の検証 / preview workflow。
+#
+# Phase 1.5 (issue #50) では preview のみ。`pulumi up` (実 deploy) は CI からは
+# 走らせない (現行 wrangler-based deploy が稼働中に Pulumi 経由 deploy 経路も
+# 自動化すると競合 / 想定外 deploy のリスクがあるため)。
+# `pulumi up` 自動化は Phase 2 以降で慎重に統合する。
+#
+# ## 重要: PR では secrets を一切使わない設計
+#
+# `pull_request` trigger で `PULUMI_ACCESS_TOKEN` を扱うと、PR で変更された
+# Pulumi program (任意の TypeScript) が `process.env.PULUMI_ACCESS_TOKEN` 経由
+# で外部送信できてしまう。Pulumi token は Pulumi Cloud 上の stack config に
+# encrypted で stored された Cloudflare API token の復号権限にも繋がるため、
+# 内部ブランチ PR (内部 contributor からのものでも) で実行すれば secrets exfiltration
+# 経路となる。
+#
+# 対策として本 workflow は 2 job 構成:
+#   - validate-pr (pull_request)        : secrets を一切使わない静的検証 (TypeScript 型 check)
+#   - preview-production (workflow_dispatch のみ) : secrets を使う実 preview
+#                                                   信頼済み運用者が手動実行する
+#
+# secret 配線:
+#   - PULUMI_ACCESS_TOKEN : Pulumi Cloud token。Pulumi Cloud Console
+#                           https://app.pulumi.com/account/tokens で発行
+# token 未設定時は preview-production job は warning + skip で抜ける (job 自体は green、
+# secrets 設定後の最初の dispatch で実 preview が走る)。
+#
+# ramu-shogi は **single stack (`production`) のみ**。R2 bucket (`shogi-nnue`) が
+# wrangler.toml の default + env.stg で共有されている (= staging 専用 R2 が無い) ため、
+# stack を分割しても resource 集合が変わらない。stack 分離は別 issue で検討する。
+
+name: Pulumi Preview
+
+on:
+  pull_request:
+    paths:
+      - "infra/pulumi/**"
+      - ".github/workflows/pulumi-preview.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pulumi-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------- validate-pr ----------------------------------------------------
+  # PR 時にのみ走る secret-free な静的検証。
+  # `tsc --noEmit` で TypeScript 型 check と pnpm install dry を行う。
+  # secrets を job context に渡さないため、PR の Pulumi code が悪意ある場合
+  # でも (内部 PR でも) Pulumi / Cloudflare token は漏洩しない。
+  # 実 preview (Cloudflare API 叩く / Pulumi Cloud と通信する) は別 job で
+  # workflow_dispatch のみ。
+  validate-pr:
+    name: Validate Pulumi project (no secrets)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PULUMI_DIR: infra/pulumi
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788 # v6.0.6
+        with:
+          package_json_file: ${{ env.PULUMI_DIR }}/package.json
+          run_install: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: ${{ env.PULUMI_DIR }}/.node-version
+          cache: "pnpm"
+          cache-dependency-path: ${{ env.PULUMI_DIR }}/pnpm-lock.yaml
+      - name: Install Pulumi project deps
+        working-directory: ${{ env.PULUMI_DIR }}
+        run: pnpm install --frozen-lockfile
+      - name: TypeScript type-check
+        working-directory: ${{ env.PULUMI_DIR }}
+        run: pnpm exec tsc --noEmit
+
+  # ---------- preview-production --------------------------------------------
+  # workflow_dispatch のみ起動。信頼済み運用者が手動で production stack の
+  # `pulumi preview` を実行する経路。`PULUMI_ACCESS_TOKEN` を secret として
+  # 渡し、Pulumi Cloud 経由で Cloudflare API に到達して実差分を取得する。
+  #
+  # ramu-shogi には独立 staging stack が無く、stack は production のみ。
+  # preview を慎重に確認してから手動で `pulumi up` を CLI で実行する運用。
+  #
+  # ## 二重ガード: ref を main に強制 + Environment protection
+  #
+  # `if: github.ref == 'refs/heads/main'` で **main 以外の ref からの dispatch は
+  # job 自体を skip** する (workflow 側で強制)。これにより `workflow_dispatch` で
+  # PR branch 等の任意 ref を指定して secret 付きで実行する経路が塞がれる。
+  # repo Settings → Environments の Deployment branches でも同等のガードを
+  # かけられるが、リポジトリ設定依存にせず workflow 側でも強制することで
+  # 二重ガードとする (GitHub Environment 未設定環境でも安全)。
+  #
+  # `environment: production` により GitHub Environment protection
+  # (Required reviewers / Deployment branches 等) を gate として利用できる。
+  # repo Settings → Environments で `production` を作成し protection rules を
+  # 設定すれば、本 workflow は自動的にそれを利用する。environment が未作成でも
+  # GitHub が初回実行時に protection なしで自動生成するため、上記 ref ガードが
+  # 唯一の防御層になる。
+  #
+  # PR トリガーでないため、PR 側に書かれた任意 Pulumi code を secret 環境で
+  # 実行することはない。
+  preview-production:
+    name: pulumi preview (production)
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      PULUMI_DIR: infra/pulumi
+    steps:
+      - name: Check Pulumi access token
+        id: check
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        run: |
+          if [ -n "$PULUMI_ACCESS_TOKEN" ]; then
+            echo "can_preview=true" >> "$GITHUB_OUTPUT"
+            echo "PULUMI_ACCESS_TOKEN configured; preview will proceed."
+          else
+            echo "can_preview=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Pulumi preview skipped"
+              echo
+              echo "secret \`PULUMI_ACCESS_TOKEN\` が未設定です。"
+              echo "https://app.pulumi.com/account/tokens で Personal Access Token を発行し、"
+              echo "リポジトリ Settings → Secrets and variables → Actions に登録してください。"
+              echo
+              echo "See \`docs/iac.md\` §6 for setup."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Pulumi preview skipped (PULUMI_ACCESS_TOKEN not configured)."
+          fi
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        if: steps.check.outputs.can_preview == 'true'
+      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788 # v6.0.6
+        if: steps.check.outputs.can_preview == 'true'
+        with:
+          package_json_file: ${{ env.PULUMI_DIR }}/package.json
+          run_install: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        if: steps.check.outputs.can_preview == 'true'
+        with:
+          node-version-file: ${{ env.PULUMI_DIR }}/.node-version
+          cache: "pnpm"
+          cache-dependency-path: ${{ env.PULUMI_DIR }}/pnpm-lock.yaml
+      - name: Install Pulumi project deps
+        if: steps.check.outputs.can_preview == 'true'
+        working-directory: ${{ env.PULUMI_DIR }}
+        run: pnpm install --frozen-lockfile
+      - uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+        if: steps.check.outputs.can_preview == 'true'
+        with:
+          command: preview
+          stack-name: SH11235/ramu-shogi/production
+          work-dir: ${{ env.PULUMI_DIR }}
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
