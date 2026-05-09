@@ -24,6 +24,7 @@
         "apps/web/worker/api.ts",
         "apps/web/worker/room-do.ts",
         "packages/rust-core/target/**",
-        "packages/rust-core/pkg/**"
+        "packages/rust-core/pkg/**",
+        "infra/pulumi/**"
     ]
 }
