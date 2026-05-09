@@ -30,8 +30,8 @@ jobs:
       rust_code: ${{ steps.filter.outputs.rust_code }}
       tauri_code: ${{ steps.filter.outputs.tauri_code }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
         id: filter
         with:
           filters: |
@@ -63,7 +63,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust_code == 'true'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -79,7 +79,7 @@ jobs:
       run:
         working-directory: apps/desktop/src-tauri
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -92,15 +92,15 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust_code == 'true'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
       - name: Enable sccache
         run: echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: "packages/rust-core -> target"
           cache-on-failure: true
@@ -119,7 +119,7 @@ jobs:
       run:
         working-directory: apps/desktop/src-tauri
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Install system deps (GTK/WebKit for Tauri)
         run: |
           sudo apt-get update
@@ -140,10 +140,10 @@ jobs:
         with:
           components: clippy
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
       - name: Enable sccache
         run: echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: "apps/desktop/src-tauri -> target"
           cache-on-failure: true
@@ -162,13 +162,13 @@ jobs:
     if: needs.changes.outputs.rust_code == 'true'
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: dtolnay/rust-toolchain@stable
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
       - name: Enable sccache
         run: echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: "packages/rust-core -> target"
           cache-on-failure: true
@@ -187,7 +187,7 @@ jobs:
       run:
         working-directory: apps/desktop/src-tauri
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Install system deps (GTK/WebKit for Tauri)
         run: |
           sudo apt-get update
@@ -206,10 +206,10 @@ jobs:
             file
       - uses: dtolnay/rust-toolchain@stable
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
       - name: Enable sccache
         run: echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: "apps/desktop/src-tauri -> target"
           cache-on-failure: true
@@ -225,7 +225,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust_code == 'true'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-audit
       - name: Run security audit
@@ -237,7 +237,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust_code == 'true'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
@@ -255,7 +255,7 @@ jobs:
           echo "wasm-bindgen version: $WASM_BINDGEN_VERSION"
       - name: Install wasm-bindgen-cli
         run: cargo install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION"
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: "packages/rust-core -> target"
           cache-on-failure: true
