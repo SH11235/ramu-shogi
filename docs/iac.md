@@ -232,8 +232,9 @@ Worker (`ramu-shogi-stg`) も同じ `shogi-nnue` バケットを読み書きす�
 
 ### 4.3 secret 値の追加 / rotation
 
-Phase 1.5 時点では Worker secret (将来の `ADMIN_API_TOKEN` 等) は
-**wrangler 経由のみ**で管理する:
+**`ROOM_DO_SECRET` のみ Pulumi ESC 管理 (Phase 2-D 補完 / issue #52)**。
+それ以外の Worker secret (将来の `ADMIN_API_TOKEN` 等) は **wrangler 経由のみ**で
+管理する:
 
 ```bash
 cd apps/web
@@ -243,7 +244,8 @@ pnpm exec wrangler secret put <SECRET_NAME>
 pnpm exec wrangler secret put <SECRET_NAME> --env stg
 ```
 
-Phase 2 で Pulumi config / Pulumi ESC への移行を検討する。
+`ROOM_DO_SECRET` の追加 / rotation 手順は §8 を参照。新規 secret も Pulumi ESC
+管理に乗せる場合は §8.1 を踏襲して `secret-sync.yml` の `required_keys` を更新する。
 
 ### 4.4 bootstrap (新規 stack / 別環境 / state 復旧)
 
@@ -380,7 +382,176 @@ Self-managed backend (R2 / S3 等) を使う場合は `PULUMI_CONFIG_PASSPHRASE`
 依存になり commit 可否が変わるので、Phase 2 で backend 移行する場合は
 本セクションを更新する。
 
-## 8. 参考
+## 8. Pulumi ESC + secret-sync workflow (Phase 2-D 補完 / issue #52)
+
+`ROOM_DO_SECRET` を Pulumi ESC で一元管理し、`.github/workflows/secret-sync.yml`
+が `wrangler secret bulk` で Cloudflare Worker secret に反映する仕組み。
+兄弟 repo (rshogi #690 / nnue-lab #7 / ramu-shogi-backend #7) と統一した
+Phase 2-D pattern を frontend Worker にも展開した実装。
+
+### 8.0 経緯 (2026-05-10 postmortem)
+
+Phase 2-D 初版は ramu-shogi-backend / nnue-lab / rshogi の 3 リポを対象とし、
+ramu-shogi (frontend Worker) は対象外としていた。Playwright での対局完走検証で
+backend D1 に game record が永続化されない事象が判明し、原因は **frontend Worker
+側の `RoomDO.persistGameRecord` で `ROOM_DO_SECRET` が `undefined` のまま
+`x-room-do-secret` ヘッダを生成 → backend `/internal/game-records` 401 silent
+fail** だった (DO console error は `wrangler tail` に出ず、UI 上も対局終了 UX は
+正常に進行する設計のため検出が遅れた)。
+
+frontend Worker と backend Worker は別リポ・別 wrangler だが、
+`ROOM_DO_SECRET` は **同じ値を共有**する HMAC ヘッダ (Service Binding 越し
+internal API 認証) なので、両側を ESC で一元管理する判断とした。
+
+| 項目                 | frontend (本リポ)                     | backend (兄弟 repo)                                |
+| -------------------- | ------------------------------------- | -------------------------------------------------- |
+| ESC env (staging)    | `sh11235/ramu-shogi-staging`          | `sh11235/ramu-shogi-backend-staging`               |
+| ESC env (production) | `sh11235/ramu-shogi-production`       | `sh11235/ramu-shogi-backend-production`            |
+| 管理 secret          | `ROOM_DO_SECRET`                      | `ROOM_DO_SECRET` + 他 3 件 (Google OAuth / cookie) |
+| 値の制約             | backend と一致 (Service Binding HMAC) | frontend と一致                                    |
+
+**運用契約**: `ROOM_DO_SECRET` を rotation する場合は両 ESC env (`ramu-shogi-*` /
+`ramu-shogi-backend-*`) を **同じ値で同時更新** → 各 repo で `secret-sync.yml`
+を即座に連続 dispatch する (推奨順は backend → frontend、低トラフィック時間帯)。
+どちらの順でも短時間 401 window が発生する現状制約と、`back-to-back dispatch` で
+window を最小化する根拠は §8.1 を参照。
+
+### 8.1 ROOM_DO_SECRET の追加 / rotation 手順
+
+1. **新値を生成** (`openssl rand -base64 48` 等)
+2. **両 ESC env を同時更新**
+   ```bash
+   # backend (兄弟 repo) と frontend (本リポ) の両方を更新
+   esc env set sh11235/ramu-shogi-backend-staging \
+     values.workerSecrets.ROOM_DO_SECRET '<new>' --secret
+   esc env set sh11235/ramu-shogi-backend-production \
+     values.workerSecrets.ROOM_DO_SECRET '<new>' --secret
+   esc env set sh11235/ramu-shogi-staging \
+     values.workerSecrets.ROOM_DO_SECRET '<new>' --secret
+   esc env set sh11235/ramu-shogi-production \
+     values.workerSecrets.ROOM_DO_SECRET '<new>' --secret
+   ```
+3. **secret-sync を即座に連続 dispatch** (backend → frontend、staging → production の順):
+   - ramu-shogi-backend `Secret Sync (ESC -> wrangler)` workflow を staging で dispatch
+   - **キックしたら待たずに** ramu-shogi (本リポ) `Secret Sync (ESC -> wrangler)` workflow を staging で dispatch
+   - 同 production も同順
+4. **動作確認**: staging で対局 1 局完走 → backend D1 `game_records` に新 row が
+   作られたら成功 (401 silent fail が無いことを確認)。
+
+> **rotation 中は短時間 401 window が発生する (現状制約)**: backend / frontend
+> どちらの順で更新しても、両側が同じ新 secret を持つまでの間は HMAC mismatch で
+> `/internal/game-records` が 401 を返す。`persistGameRecord` は silent fail
+> 設計のため UI には影響しないが、その window 中に終局した対局は backend D1 に
+> 永続化されない (KV / R2 に game_records 復旧経路が無いため復元不可)。
+> back-to-back dispatch (typically 1〜2 分以内に両 workflow 完了) で window を
+> 最小化するのが運用上のベストプラクティス。低トラフィック時間帯 (深夜等) を
+> 選んで rotation する。
+>
+> backend → frontend の順を推奨する理由は **検証側を先に更新** すると、frontend
+> 旧 secret 経由のリクエストは 401 になり問題顕在化が早い (=サイレントに古い
+> 値を使い続ける状態を避けられる) こと。逆順 (frontend 先) は frontend 新 →
+> backend 旧で同じく 401 だが、frontend deploy 直後の新 secret が backend に
+> 認識されるまでの間にバッチで失敗 row が増える可能性がある。
+>
+> **完全な zero-downtime rotation が必要な場合**: backend を dual-secret 対応
+> (新旧 2 つの secret を allowlist して比較) に改修する必要がある (本 PR スコープ外。
+> 別 issue で議論)。現状は短時間 window を許容する運用契約とする。
+
+### 8.2 ESC CLI と Pulumi CLI の違い
+
+`pulumi/esc-action@v1.5.0` は **standalone ESC CLI のみ** を install する。
+コマンド形式は `esc env open` / `esc env set` を使う (代替 CLI 形式は
+`pulumi env open` / `pulumi env set`、これは full Pulumi CLI 同梱時のみ)。
+
+ローカル運用で `pulumi` バイナリしか持たない環境では `pulumi env ...` を、
+CI runner や `pulumi/esc-action` install 環境では `esc env ...` を使う。両者は
+等価 (back-end は同じ Pulumi Cloud ESC API)。
+
+### 8.3 ESC environment YAML 構造
+
+```yaml
+values:
+  workerSecrets:
+    ROOM_DO_SECRET:
+      fn::secret:
+        ciphertext: <encrypted>
+```
+
+`workerSecrets` は flat object (ネスト無し)。`fn::secret` で暗号化された
+ciphertext を保持する。`esc env open --format json` 実行時に decrypt 済 plain
+JSON が出力され、workflow が `jq '.workerSecrets'` で抜き出して
+`wrangler secret bulk` の入力 (`{"KEY": "value", ...}`) として渡す。
+
+### 8.4 必要な repo secret (GitHub Actions)
+
+`secret-sync.yml` 実行に必要な repo secret:
+
+| Secret 名               | 用途                                                                                                              |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `PULUMI_ACCESS_TOKEN`   | ESC env decrypt 用 Pulumi Cloud token (pulumi-preview.yml で設定済)                                               |
+| `CLOUDFLARE_API_TOKEN`  | wrangler が secret put に使う token (Workers Scripts: Edit + Account Settings: Read、Pulumi 用 R2 token とは独立) |
+| `CLOUDFLARE_ACCOUNT_ID` | wrangler 4.x が `/memberships` API call を skip するために必要 (`d5d9818649d8722f73cd798c3b1ffb70`)               |
+
+`CLOUDFLARE_ACCOUNT_ID` は **secret として登録** することを兄弟 repo と揃える
+(env var として読まれる。public 値だが env var inject の便宜上 secret 扱い)。
+
+### 8.5 wrangler env 命名マッピング
+
+`apps/web/wrangler.toml` の env 構造:
+
+| input `environment` | wrangler --env フラグ | Worker 名        |
+| ------------------- | --------------------- | ---------------- |
+| `production`        | (フラグなし)          | `ramu-shogi`     |
+| `staging`           | `--env stg`           | `ramu-shogi-stg` |
+
+workflow 内 `Resolve wrangler --env flag` step で input → flag をマッピング。
+
+### 8.6 トラブルシューティング
+
+**`ESC environment 'sh11235/ramu-shogi-...' に必須 key 不足: ROOM_DO_SECRET`**
+ESC env の `workerSecrets` から key が抜けている。`esc env set` で再投入する
+(§8.1 の値設定コマンド参照)。
+
+**`wrangler secret bulk` が `Authentication error code: 10000`**
+`CLOUDFLARE_API_TOKEN` の scope に `Workers Scripts: Edit` (+ `Account Settings:
+Read`) が含まれていない、または expire している。Cloudflare Dashboard で再発行
+→ repo secret 更新。
+
+**`Binding name 'ROOM_DO_SECRET' already in use [code: 10053]`**
+Worker 上で同名 vars binding が既に存在する状態で secret に切り替えようとして
+発生する (本リポでは Phase 2-D 補完時点で `ROOM_DO_SECRET` は既に secret 化
+済みのため通常発生しないが、ESC 経由で新規 secret を追加するときは注意)。
+発生時は wrangler.toml から該当 vars 宣言を削除 → `wrangler deploy` →
+`secret-sync.yml` の順で対処。
+
+**Worker secret に反映されたか確認したい**
+
+```bash
+cd apps/web
+pnpm exec wrangler secret list --env stg     # staging
+pnpm exec wrangler secret list                # production
+```
+
+key 名のみ表示される (値は表示されない、Cloudflare 側でも復元不可)。
+
+### 8.7 ローカルから手動で secret を流し込みたい場合
+
+CI を経由せずローカルから ESC → wrangler に流す場合 (緊急 rotation 等):
+
+```bash
+cd apps/web
+# ESC から JSON 取得
+esc env open sh11235/ramu-shogi-staging --format json | jq '.workerSecrets' > /tmp/secrets.json
+chmod 600 /tmp/secrets.json
+# wrangler secret bulk
+pnpm exec wrangler secret bulk /tmp/secrets.json --env stg
+rm -f /tmp/secrets.json
+```
+
+通常運用は GitHub Actions workflow を dispatch する (audit log と secret 漏洩
+リスクを CI runner に閉じ込めるため)。
+
+## 9. 参考
 
 - 設計判断 / 背景: [issue #50](https://github.com/SH11235/ramu-shogi/issues/50)
 - 同 pattern の rshogi 実装: [rshogi PR #677](https://github.com/SH11235/rshogi/pull/677) / [docs/csa-server/iac.md](https://github.com/SH11235/rshogi/blob/main/docs/csa-server/iac.md)
