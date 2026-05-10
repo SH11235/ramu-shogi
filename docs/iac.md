@@ -423,13 +423,13 @@ window を最小化する根拠は §8.1 を参照。
    ```bash
    # backend (兄弟 repo) と frontend (本リポ) の両方を更新
    esc env set sh11235/ramu-shogi-backend-staging \
-     values.workerSecrets.ROOM_DO_SECRET '<new>' --secret
+     workerSecrets.ROOM_DO_SECRET '<new>' --secret
    esc env set sh11235/ramu-shogi-backend-production \
-     values.workerSecrets.ROOM_DO_SECRET '<new>' --secret
+     workerSecrets.ROOM_DO_SECRET '<new>' --secret
    esc env set sh11235/ramu-shogi-staging \
-     values.workerSecrets.ROOM_DO_SECRET '<new>' --secret
+     workerSecrets.ROOM_DO_SECRET '<new>' --secret
    esc env set sh11235/ramu-shogi-production \
-     values.workerSecrets.ROOM_DO_SECRET '<new>' --secret
+     workerSecrets.ROOM_DO_SECRET '<new>' --secret
    ```
 3. **secret-sync を即座に連続 dispatch** (backend → frontend、staging → production の順):
    - ramu-shogi-backend `Secret Sync (ESC -> wrangler)` workflow を staging で dispatch
