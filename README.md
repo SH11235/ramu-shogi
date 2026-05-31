@@ -138,6 +138,6 @@ graph LR
 
 ## 📄 ライセンス
 
-GPL-3.0 License
+GPL-3.0-or-later License
 
-エンジンコア ([rshogi](https://github.com/SH11235/rshogi)) も GPL-3.0 でライセンスされています。
+エンジンコア ([rshogi](https://github.com/SH11235/rshogi)) も GPL-3.0-or-later でライセンスされています。
