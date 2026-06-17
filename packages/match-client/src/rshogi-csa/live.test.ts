@@ -168,6 +168,19 @@ describe("subscribeRshogiLiveGame: snapshot → broadcast → end → close", ()
         expect(events.clocks[0].sideToMove).toBe("sente");
     });
 
+    it("apiBaseUrl に path (/api/v1) を含んでも観戦 WS は origin 直下 /ws/<id>/spectate に張る", () => {
+        const { wsInstances, wsFactory, callbacks } = makeMocks();
+        subscribeRshogiLiveGame(
+            "game-1",
+            { apiBaseUrl: "https://example.com/api/v1", webSocketFactory: wsFactory },
+            callbacks,
+        );
+
+        expect(wsInstances.length).toBe(1);
+        // REST 共用ベースの `/api/v1` を引きずらず origin だけ使う (path 混入で 404 になる回帰防止)
+        expect(wsInstances[0].url).toBe("wss://example.com/ws/game-1/spectate");
+    });
+
     it("snapshot 後の broadcast move 行を onMove に流す", () => {
         const { wsInstances, wsFactory, events, callbacks } = makeMocks();
         subscribeRshogiLiveGame(

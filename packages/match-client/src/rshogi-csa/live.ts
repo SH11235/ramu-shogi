@@ -636,11 +636,13 @@ export function subscribeRshogiLiveGame(
             emitConnectionState("closed");
             return;
         }
-        const base = options.apiBaseUrl.replace(/\/+$/, "");
-        // `apiBaseUrl` は HTTPS スキーム (例: `https://csa.example.com`) で渡される
-        // 想定。WebSocket スキームに揃える。
-        const wsBase = base.replace(/^http(s?):\/\//i, (_m, s) => `ws${s ?? ""}://`);
-        const url = `${wsBase}/ws/${encodeURIComponent(gameId)}/spectate`;
+        // `apiBaseUrl` は REST と共用で path (`/api/v1` 等) を含みうるが、観戦 WS は
+        // ルート直下 (`/ws/<id>/spectate`) にあるため origin だけ使い path は捨てる。
+        // scheme は https/wss→wss、http/ws→ws に揃える。
+        const apiUrl = new URL(options.apiBaseUrl);
+        const wsScheme =
+            apiUrl.protocol === "https:" || apiUrl.protocol === "wss:" ? "wss:" : "ws:";
+        const url = `${wsScheme}//${apiUrl.host}/ws/${encodeURIComponent(gameId)}/spectate`;
         emitConnectionState(reconnectAttempt > 0 ? "reconnecting" : "connecting");
 
         let socket: WebSocket;
