@@ -1326,7 +1326,9 @@ export function ShogiMatch({
         loadedReviewRef.current = { sfen: reviewSfen, movesKey: reviewMovesKey };
         void importSfenRef.current(reviewSfen, reviewMoves, {
             gotoPly: wasFollowingTip ? undefined : restorePly,
-            isStale: () => loadedReviewRef.current?.movesKey !== reviewMovesKey,
+            isStale: () =>
+                loadedReviewRef.current?.sfen !== reviewSfen ||
+                loadedReviewRef.current?.movesKey !== reviewMovesKey,
         });
     }, [positionReady, reviewSfen, reviewMoves, reviewMovesKey]);
 
