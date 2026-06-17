@@ -1285,13 +1285,14 @@ export function ShogiMatch({
         setIsMatchRunning,
     });
 
-    // initialReview を取り込む。live 観戦では moves が逐次伸びるため、同一 sfen で
-    // moves が伸びるたびに importSfen で末尾まで再構築する。`<ShogiMatch>` を
-    // remount せず DOM を据え置いたまま再構築するので、盤・棋譜が白く飛ばない。
-    // importSfen / navigation は毎レンダー再生成されるため ref 経由で参照し、
-    // effect の発火は positionReady と initialReview の sfen/moves 参照変化に限定する
-    // (clock tick 等の無関係な再 render で再ロードしない)。
-    const loadedReviewRef = useRef<{ sfen: string; moves: string[] } | null>(null);
+    // initialReview を取り込む。live 観戦では moves が逐次伸びるため、moves が伸びる
+    // たびに importSfen で末尾まで再構築する。`<ShogiMatch>` を remount せず DOM を
+    // 据え置いたまま再構築するので、盤・棋譜が白く飛ばない。
+    // 取込判定は参照ではなく内容 (sfen + moves の連結文字列) で行う。`initialReview`
+    // や moves 配列は呼び出し側で毎レンダー再生成され得るが、内容が同じなら再 import
+    // しない (clock tick 等の無関係な再 render や、同内容を再生成する親に強い)。
+    // importSfen / navigation は毎レンダー再生成されるため ref 経由で参照する。
+    const loadedReviewRef = useRef<{ sfen: string; movesKey: string } | null>(null);
     const importSfenRef = useRef(importSfen);
     importSfenRef.current = importSfen;
     const navigationRef = useRef(navigation);
@@ -1299,12 +1300,18 @@ export function ShogiMatch({
     const initialAnalysisAppliedRef = useRef<string | null>(null);
     const reviewSfen = initialReview?.sfen;
     const reviewMoves = initialReview?.moves;
+    const reviewMovesKey = reviewMoves?.join(" ");
     useEffect(() => {
-        if (!positionReady || reviewSfen === undefined || reviewMoves === undefined) {
+        if (
+            !positionReady ||
+            reviewSfen === undefined ||
+            reviewMoves === undefined ||
+            reviewMovesKey === undefined
+        ) {
             return;
         }
         const loaded = loadedReviewRef.current;
-        if (loaded && loaded.sfen === reviewSfen && loaded.moves === reviewMoves) {
+        if (loaded && loaded.sfen === reviewSfen && loaded.movesKey === reviewMovesKey) {
             return;
         }
 
@@ -1314,12 +1321,14 @@ export function ShogiMatch({
         const wasFollowingTip = navState.currentPly === navState.totalPly;
         const restorePly = navState.currentPly;
 
-        // await 前に確定して StrictMode の二重実行 / 連続着手の競合を冪等化する。
-        loadedReviewRef.current = { sfen: reviewSfen, moves: reviewMoves };
+        // await 前に確定して StrictMode の二重実行を冪等化する。連続着手で先行 import が
+        // 後着 import に追い越されたら、isStale で古い import の state 適用を中止する。
+        loadedReviewRef.current = { sfen: reviewSfen, movesKey: reviewMovesKey };
         void importSfenRef.current(reviewSfen, reviewMoves, {
             gotoPly: wasFollowingTip ? undefined : restorePly,
+            isStale: () => loadedReviewRef.current?.movesKey !== reviewMovesKey,
         });
-    }, [positionReady, reviewSfen, reviewMoves]);
+    }, [positionReady, reviewSfen, reviewMoves, reviewMovesKey]);
 
     useEffect(() => {
         if (!positionReady || !initialAnalysisEntries || initialAnalysisEntries.length === 0) {

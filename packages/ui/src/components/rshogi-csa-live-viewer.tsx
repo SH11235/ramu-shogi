@@ -156,7 +156,7 @@ function ScoreboardSide({
             <span
                 className={cn(
                     "flex h-9 w-9 flex-none items-center justify-center rounded-full border border-wafuu-sumi text-lg leading-none",
-                    isSente ? "bg-wafuu-sumi text-white" : "bg-wafuu-washi text-wafuu-sumi",
+                    isSente ? "bg-wafuu-sumi text-background" : "bg-wafuu-washi text-wafuu-sumi",
                 )}
                 aria-hidden="true"
             >

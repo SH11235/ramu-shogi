@@ -126,7 +126,14 @@ export function PCLayout({
                 // 1080px 未満では盤→棋譜→情報の順に縦積みする。
                 <div className="flex w-full max-w-[1240px] flex-col gap-4 px-4 py-2">
                     {reviewTopContent}
-                    <div className="grid grid-cols-1 gap-4 min-[1080px]:grid-cols-[minmax(210px,240px)_minmax(0,1fr)_minmax(300px,360px)] min-[1080px]:items-start">
+                    {/* 左コンテンツ有無で列数を切り替え、無いときに盤を狭い列へ押し込まない */}
+                    <div
+                        className={`grid grid-cols-1 gap-4 min-[1080px]:items-start ${
+                            reviewLeftContent
+                                ? "min-[1080px]:grid-cols-[minmax(210px,240px)_minmax(0,1fr)_minmax(300px,360px)]"
+                                : "min-[1080px]:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]"
+                        }`}
+                    >
                         {reviewLeftContent && (
                             <div className="order-3 min-w-0 min-[1080px]:order-none">
                                 {reviewLeftContent}
