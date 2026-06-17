@@ -128,6 +128,8 @@ interface ShogiMatchProps {
     reviewMode?: boolean;
     /** 棋譜検討モード時に左サイドバー位置に表示するコンテンツ */
     reviewLeftContent?: React.ReactNode;
+    /** 棋譜検討モード時に 3 カラムの上部へ全幅で表示するコンテンツ（観戦スコアボード等） */
+    reviewTopContent?: React.ReactNode;
     /** 外部エンジン管理パネルを開くコールバック（Desktop用） */
     onOpenEngineManager?: () => void;
     /** 起動中外部エンジン設定パネルを開くコールバック（Desktop用） */
@@ -162,6 +164,7 @@ export function ShogiMatch({
     initialAnalysisEntries = null,
     reviewMode,
     reviewLeftContent,
+    reviewTopContent,
     onOpenEngineManager,
     onOpenEngineSettings,
 }: ShogiMatchProps): ReactElement {
@@ -1282,18 +1285,41 @@ export function ShogiMatch({
         setIsMatchRunning,
     });
 
-    // マウント時に initialReview が指定されていれば棋譜を読み込む（一度だけ実行）
-    const initialReviewHandledRef = useRef(false);
+    // initialReview を取り込む。live 観戦では moves が逐次伸びるため、同一 sfen で
+    // moves が伸びるたびに importSfen で末尾まで再構築する。`<ShogiMatch>` を
+    // remount せず DOM を据え置いたまま再構築するので、盤・棋譜が白く飛ばない。
+    // importSfen / navigation は毎レンダー再生成されるため ref 経由で参照し、
+    // effect の発火は positionReady と initialReview の sfen/moves 参照変化に限定する
+    // (clock tick 等の無関係な再 render で再ロードしない)。
+    const loadedReviewRef = useRef<{ sfen: string; moves: string[] } | null>(null);
+    const importSfenRef = useRef(importSfen);
+    importSfenRef.current = importSfen;
+    const navigationRef = useRef(navigation);
+    navigationRef.current = navigation;
     const initialAnalysisAppliedRef = useRef<string | null>(null);
+    const reviewSfen = initialReview?.sfen;
+    const reviewMoves = initialReview?.moves;
     useEffect(() => {
-        if (!positionReady) {
+        if (!positionReady || reviewSfen === undefined || reviewMoves === undefined) {
             return;
         }
-        if (initialReview && !initialReviewHandledRef.current) {
-            initialReviewHandledRef.current = true;
-            void importSfen(initialReview.sfen, initialReview.moves);
+        const loaded = loadedReviewRef.current;
+        if (loaded && loaded.sfen === reviewSfen && loaded.moves === reviewMoves) {
+            return;
         }
-    }, [importSfen, initialReview, positionReady]);
+
+        // 再構築前のカーソルを捕捉する。末尾追従中 (currentPly === totalPly) なら
+        // 最新手まで進め、途中検討中ならその ply を維持する。
+        const navState = navigationRef.current.state;
+        const wasFollowingTip = navState.currentPly === navState.totalPly;
+        const restorePly = navState.currentPly;
+
+        // await 前に確定して StrictMode の二重実行 / 連続着手の競合を冪等化する。
+        loadedReviewRef.current = { sfen: reviewSfen, moves: reviewMoves };
+        void importSfenRef.current(reviewSfen, reviewMoves, {
+            gotoPly: wasFollowingTip ? undefined : restorePly,
+        });
+    }, [positionReady, reviewSfen, reviewMoves]);
 
     useEffect(() => {
         if (!positionReady || !initialAnalysisEntries || initialAnalysisEntries.length === 0) {
@@ -1573,6 +1599,7 @@ export function ShogiMatch({
         onPassRightsSettingsOpenChange: setIsPassRightsSettingsOpen,
         reviewMode,
         reviewLeftContent,
+        reviewTopContent,
     };
 
     // Props グループ化: Mobile専用

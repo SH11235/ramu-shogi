@@ -69,7 +69,11 @@ interface UseKifuImportExportReturn {
     /** KIF形式でコピー */
     handleCopyKif: () => string;
     /** SFENと指し手をインポート */
-    importSfen: (sfen: string, movesToLoad: string[]) => Promise<void>;
+    importSfen: (
+        sfen: string,
+        movesToLoad: string[],
+        options?: { gotoPly?: number },
+    ) => Promise<void>;
     /** KIF形式をインポート */
     importKif: (
         movesToLoad: string[],
@@ -181,7 +185,11 @@ export function useKifuImportExport({
      * SFENインポート（局面 + 指し手）
      * インポート後は自動的に検討モードに入る
      */
-    const importSfen = async (sfen: string, movesToLoad: string[]) => {
+    const importSfen = async (
+        sfen: string,
+        movesToLoad: string[],
+        options?: { gotoPly?: number },
+    ) => {
         const service = getPositionService();
         try {
             // 新しい開始局面を設定
@@ -211,6 +219,13 @@ export function useKifuImportExport({
                     }
                 }
                 setLastMove(deriveLastMove(appliedMoves.at(-1)));
+                // 末尾以外の局面を検討中だった観戦者のカーソルを維持する。
+                // addMove 群と同じ同期ブロックで goToPly することで 1 レンダーに
+                // まとまり、末尾局面が一瞬見える描画を防ぐ。
+                const { gotoPly } = options ?? {};
+                if (gotoPly !== undefined && gotoPly >= 0 && gotoPly < appliedMoves.length) {
+                    navigation.goToPly(gotoPly);
+                }
             } else {
                 setLastMove(undefined);
             }

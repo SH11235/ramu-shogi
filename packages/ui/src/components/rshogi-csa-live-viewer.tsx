@@ -4,15 +4,15 @@
  * 静的単局 viewer (`RshogiCsaViewer`) と異なり、`subscribeRshogiLiveGame` を介して
  * WebSocket で server から snapshot + broadcast move を受信し、画面を逐次更新する。
  *
- * MVP では以下に絞る:
- * - 接続状態バナー (connecting / connected / reconnecting / closed) を画面上部に表示
- * - snapshot 受信時は state 全置換、`<ShogiMatch>` の `key` を bump して remount
- * - broadcast move 受信時も累計 moves を拡張して remount し UI を再生
- * - clock countdown は `Black/White_Time_Remaining_Ms:` を anchor に local timer
- *   で減算 (1Hz 程度、`requestAnimationFrame` ではなく `setInterval` で十分)
- * - 終局時に最終結果を表示
+ * - snapshot 受信時のみ state を全置換し `<ShogiMatch>` を remount (key=snapshotEpoch)。
+ *   broadcast move では key を変えず initialReview.moves を伸ばし、prop 更新で反映する
+ *   (毎手 remount しないので盤・棋譜がちらつかない)。
+ * - 対局者・時計・手数・接続状態は上部のブロードキャスト・スコアボードに集約表示する。
+ * - clock countdown は server の残時間を anchor に local timer で 1Hz 減算する。
+ * - 終局時に最終結果を表示する。
  */
 
+import { cn } from "@shogi/design-system";
 import {
     type RshogiGameMeta,
     type RshogiGameResult,
@@ -47,10 +47,12 @@ interface LiveState {
     moves: string[];
     /** 表示中の対局結果 (終局後)。 */
     result?: RshogiGameResult;
-    /** snapshot 適用ごとに増えるカウンタ。`<ShogiMatch>` の key bump に使う。 */
+    /**
+     * snapshot 適用ごとに増えるカウンタ。`<ShogiMatch>` の key に使う。
+     * snapshot は全置換 (接続/再接続時のみ) なので remount してよいが、broadcast
+     * move では key を変えず prop 更新で反映する (毎手 remount を避けてちらつきを防ぐ)。
+     */
     snapshotEpoch: number;
-    /** broadcast move 適用ごとに増えるカウンタ (snapshot epoch と組合せて key 生成)。 */
-    moveEpoch: number;
     /** 最後に server から受け取った clock 残時間 (ms)。 */
     clocks: { sente: number; gote: number; sideToMove: "sente" | "gote" } | null;
     /** clock を local timer で減算するための anchor (ms epoch)。 */
@@ -64,7 +66,6 @@ const initialLiveState: LiveState = {
     snapshot: null,
     moves: [],
     snapshotEpoch: 0,
-    moveEpoch: 0,
     clocks: null,
     clockAnchorAtMs: null,
     connectionState: "connecting",
@@ -115,64 +116,166 @@ const formatResultText = (meta: RshogiGameMeta | undefined, result: RshogiGameRe
     return `${winnerLabel} (${reason})`;
 };
 
-function RshogiLiveMetaPanel({
+/** 手番側だけ countdown した先手・後手の残時間 (ms)。 */
+export function computeRemaining(
+    clocks: LiveState["clocks"],
+    elapsedSinceAnchor: number,
+): { sente: number; gote: number } {
+    return {
+        sente:
+            clocks && clocks.sideToMove === "sente"
+                ? Math.max(0, clocks.sente - elapsedSinceAnchor)
+                : (clocks?.sente ?? 0),
+        gote:
+            clocks && clocks.sideToMove === "gote"
+                ? Math.max(0, clocks.gote - elapsedSinceAnchor)
+                : (clocks?.gote ?? 0),
+    };
+}
+
+/** スコアボードの片側 (対局者名 + 残時間)。手番側は朱で点灯する。 */
+function ScoreboardSide({
+    side,
+    name,
+    remainingMs,
+    active,
+}: {
+    side: "sente" | "gote";
+    name: string;
+    remainingMs: number;
+    active: boolean;
+}): ReactElement {
+    const isSente = side === "sente";
+    return (
+        <div
+            className={cn(
+                "flex min-w-0 items-center gap-3 px-4 py-3",
+                isSente ? "flex-row" : "flex-row-reverse text-right",
+            )}
+        >
+            <span
+                className={cn(
+                    "flex h-9 w-9 flex-none items-center justify-center rounded-full border border-wafuu-sumi text-lg leading-none",
+                    isSente ? "bg-wafuu-sumi text-white" : "bg-wafuu-washi text-wafuu-sumi",
+                )}
+                aria-hidden="true"
+            >
+                {isSente ? "☗" : "☖"}
+            </span>
+            <div className="min-w-0">
+                <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                    {isSente ? "先手" : "後手"}
+                </div>
+                <div className="truncate text-base font-bold text-wafuu-sumi">
+                    {name || (isSente ? "先手" : "後手")}
+                </div>
+            </div>
+            <div
+                className={cn(
+                    "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-2xl font-bold leading-none tabular-nums transition-colors",
+                    isSente ? "ml-auto" : "mr-auto",
+                    active ? "bg-wafuu-shu/10 text-wafuu-shu" : "text-wafuu-sumi-light",
+                )}
+            >
+                {active && (
+                    <span
+                        className="h-1.5 w-1.5 flex-none rounded-full bg-wafuu-shu animate-pulse motion-reduce:animate-none"
+                        aria-hidden="true"
+                    />
+                )}
+                {formatMs(remainingMs)}
+            </div>
+        </div>
+    );
+}
+
+/** 対局者・時計・手数・接続状態を対面表示するブロードキャスト・スコアボード。 */
+function RshogiLiveScoreboard({
     meta,
-    moves,
+    moveCount,
     clocks,
     elapsedSinceAnchor,
+    connectionState,
     result,
 }: {
     meta: RshogiGameMeta;
-    moves: string[];
+    moveCount: number;
     clocks: LiveState["clocks"];
     elapsedSinceAnchor: number;
+    connectionState: RshogiLiveConnectionState;
     result?: RshogiGameResult;
 }): ReactElement {
-    // 手番側だけ countdown する (相手側は anchor 値を据え置き表示)。
-    const senteRemainingMs =
-        clocks && clocks.sideToMove === "sente"
-            ? Math.max(0, clocks.sente - elapsedSinceAnchor)
-            : (clocks?.sente ?? 0);
-    const goteRemainingMs =
-        clocks && clocks.sideToMove === "gote"
-            ? Math.max(0, clocks.gote - elapsedSinceAnchor)
-            : (clocks?.gote ?? 0);
+    const remaining = computeRemaining(clocks, elapsedSinceAnchor);
+    const isConnected = connectionState === "connected";
+    const turnLabel = result
+        ? "終局"
+        : clocks?.sideToMove === "sente"
+          ? "☗ 先手番"
+          : clocks?.sideToMove === "gote"
+            ? "☖ 後手番"
+            : "";
+    return (
+        <section
+            aria-label="対局スコアボード"
+            className="grid grid-cols-1 overflow-hidden rounded-xl border border-wafuu-border bg-wafuu-washi-warm shadow-sm sm:grid-cols-[1fr_auto_1fr]"
+        >
+            <ScoreboardSide
+                side="sente"
+                name={meta.senteName}
+                remainingMs={remaining.sente}
+                active={!result && clocks?.sideToMove === "sente"}
+            />
+            <div className="flex flex-row items-center justify-between gap-3 border-y border-wafuu-border bg-wafuu-washi px-4 py-2 sm:flex-col sm:justify-center sm:gap-1 sm:border-x sm:border-y-0">
+                <span className="text-xl font-bold tabular-nums leading-none text-wafuu-sumi">
+                    {moveCount}
+                    <span className="ml-0.5 text-xs font-semibold text-muted-foreground">手</span>
+                </span>
+                {isConnected && !result ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-wafuu-shu/10 px-2.5 py-0.5 text-[11px] font-bold tracking-wider text-wafuu-shu">
+                        <span
+                            className="h-1.5 w-1.5 rounded-full bg-wafuu-shu animate-pulse motion-reduce:animate-none"
+                            aria-hidden="true"
+                        />
+                        LIVE
+                    </span>
+                ) : (
+                    <span className="rounded-full bg-wafuu-sumi/5 px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                        {result ? "対局終了" : CONNECTION_LABEL[connectionState]}
+                    </span>
+                )}
+                <span className="text-xs text-muted-foreground">{turnLabel}</span>
+            </div>
+            <ScoreboardSide
+                side="gote"
+                name={meta.goteName}
+                remainingMs={remaining.gote}
+                active={!result && clocks?.sideToMove === "gote"}
+            />
+        </section>
+    );
+}
+
+/** 対局 ID と最終結果のみを表示する補助パネル (名前/時計はスコアボードに集約)。 */
+function RshogiLiveMetaPanel({
+    meta,
+    result,
+}: {
+    meta: RshogiGameMeta;
+    result?: RshogiGameResult;
+}): ReactElement {
     return (
         <section
             aria-label="観戦情報"
-            className="flex flex-col gap-2 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-3 text-sm text-wafuu-sumi"
+            className="flex flex-col gap-3 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-3 text-sm text-wafuu-sumi"
         >
             <div className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground">対局 ID</span>
-                <span className="font-mono text-xs text-wafuu-sumi">{meta.gameId}</span>
-            </div>
-            <div className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground">対局者</span>
-                <span className="text-sm font-semibold">
-                    ☗ {meta.senteName || "先手"} vs ☖ {meta.goteName || "後手"}
+                <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                    対局 ID
                 </span>
+                <span className="break-all font-mono text-xs text-wafuu-sumi">{meta.gameId}</span>
             </div>
-            {clocks && (
-                <div className="flex flex-col gap-0.5 text-sm">
-                    <span
-                        className={
-                            clocks.sideToMove === "sente" ? "font-semibold text-wafuu-shu" : ""
-                        }
-                    >
-                        ☗ 残り {formatMs(senteRemainingMs)}
-                    </span>
-                    <span
-                        className={
-                            clocks.sideToMove === "gote" ? "font-semibold text-wafuu-shu" : ""
-                        }
-                    >
-                        ☖ 残り {formatMs(goteRemainingMs)}
-                    </span>
-                </div>
-            )}
-            <div className="text-xs text-muted-foreground">手数: {moves.length}</div>
             {result && (
-                <div className="rounded border border-wafuu-shu/40 bg-wafuu-shu/10 px-2 py-1 text-sm font-semibold text-wafuu-shu">
+                <div className="rounded-md border border-wafuu-shu/40 bg-wafuu-shu/10 px-2.5 py-1.5 text-sm font-semibold text-wafuu-shu">
                     {formatResultText(meta, result)}
                 </div>
             )}
@@ -207,7 +310,6 @@ export function RshogiCsaLiveViewer({
                     moves: snapshot.moves,
                     result: snapshot.finalResult ?? prev.result,
                     snapshotEpoch: prev.snapshotEpoch + 1,
-                    moveEpoch: 0,
                     clocks: snapshot.clocks,
                     clockAnchorAtMs: Date.now(),
                     lastError: undefined,
@@ -217,7 +319,6 @@ export function RshogiCsaLiveViewer({
                 setState((prev) => ({
                     ...prev,
                     moves: [...prev.moves, csaMove],
-                    moveEpoch: prev.moveEpoch + 1,
                     // broadcast move 到着時に手番側を切り替える (= clock の anchor も
                     // 更新してロジックを単純化する。サーバから次 snapshot が来たら
                     // 上書きされる)。
@@ -313,21 +414,16 @@ export function RshogiCsaLiveViewer({
     }
 
     const meta = state.snapshot.meta;
-    // snapshot ごとに `<ShogiMatch>` を remount し、broadcast move 到着時にも
-    // 累計手で再 import するため moveEpoch も key に含める。
-    const matchKey = `${state.snapshotEpoch}-${state.moveEpoch}`;
+    // key は snapshotEpoch のみ。broadcast move では key を変えず初期 review prop の
+    // 更新で反映するため、`<ShogiMatch>` を毎手 remount せずちらつきが起きない。
+    const matchKey = String(state.snapshotEpoch);
 
     return (
         <div className="flex flex-col gap-2">
             {header}
-            <div className="flex flex-wrap items-center gap-2 px-4 pt-2 text-xs">
-                <span
-                    className={`rounded px-2 py-0.5 ${CONNECTION_BADGE_CLASS[state.connectionState]}`}
-                >
-                    {CONNECTION_LABEL[state.connectionState]}
-                </span>
-                {state.lastError && <span className="text-destructive">{state.lastError}</span>}
-            </div>
+            {state.lastError && (
+                <div className="px-4 pt-2 text-xs text-destructive">{state.lastError}</div>
+            )}
             <ShogiMatch
                 key={matchKey}
                 engineOptions={engineOptions}
@@ -342,15 +438,17 @@ export function RshogiCsaLiveViewer({
                 }}
                 initialReview={{ sfen: "startpos", moves: state.moves }}
                 reviewMode={true}
-                reviewLeftContent={
-                    <RshogiLiveMetaPanel
+                reviewTopContent={
+                    <RshogiLiveScoreboard
                         meta={meta}
-                        moves={state.moves}
+                        moveCount={state.moves.length}
                         clocks={state.clocks}
                         elapsedSinceAnchor={elapsedSinceAnchor}
+                        connectionState={state.connectionState}
                         result={state.result}
                     />
                 }
+                reviewLeftContent={<RshogiLiveMetaPanel meta={meta} result={state.result} />}
             />
         </div>
     );

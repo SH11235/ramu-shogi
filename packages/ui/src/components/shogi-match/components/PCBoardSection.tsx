@@ -24,9 +24,11 @@ const TEXT_CLASSES = {
  */
 interface PCBoardSectionProps {
     candidateNote: string | null;
+    /** 盤上部の対局時計を隠す（観戦/検討モードでは時計をスコアボードに集約するため） */
+    hideClock?: boolean;
 }
 
-export function PCBoardSection({ candidateNote }: PCBoardSectionProps): ReactElement {
+export function PCBoardSection({ candidateNote, hideClock }: PCBoardSectionProps): ReactElement {
     // 対局設定を取得
     const { timeSettings } = useMatchSettings();
 
@@ -87,12 +89,14 @@ export function PCBoardSection({ candidateNote }: PCBoardSectionProps): ReactEle
                 <div
                     className={`flex flex-col gap-2 items-center ${isDraggingPiece ? "touch-none" : ""}`}
                 >
-                    {/* 時間管理（将棋盤の上） */}
-                    <ClockDisplay
-                        clocks={clocks}
-                        timeSettings={timeSettings}
-                        isRunning={isMatchRunning}
-                    />
+                    {/* 時間管理（将棋盤の上）。観戦/検討モードでは非表示 */}
+                    {!hideClock && (
+                        <ClockDisplay
+                            clocks={clocks}
+                            timeSettings={timeSettings}
+                            isRunning={isMatchRunning}
+                        />
+                    )}
 
                     {/* ステータス行: [手数] [手番] [反転ボタン] */}
                     <div className="flex items-center justify-end w-full gap-4">

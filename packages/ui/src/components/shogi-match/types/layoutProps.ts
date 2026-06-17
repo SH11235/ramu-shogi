@@ -282,6 +282,8 @@ export interface PCSpecificProps {
     reviewMode?: boolean;
     /** 棋譜検討モード時に左サイドバー位置に表示するコンテンツ */
     reviewLeftContent?: import("react").ReactNode;
+    /** 棋譜検討モード時に 3 カラムの上部へ全幅で表示するコンテンツ（観戦スコアボード等） */
+    reviewTopContent?: import("react").ReactNode;
 }
 
 /**
