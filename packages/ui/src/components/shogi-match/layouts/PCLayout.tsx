@@ -120,40 +120,47 @@ export function PCLayout({
     // NavigationContext から取得（ダイアログで使用）
     const { displaySettings: navDisplaySettings } = navigation;
 
-    // 全モード共通の中央 3 カラム Grid。左カラムは観戦=情報パネル / 対局=設定サイド
-    // バーで内容も幅も異なるため、要素と列幅を reviewMode で出し分ける。観戦の情報
-    // パネルは無い場合もあるので、そのときは盤を狭い列へ押し込まないよう 2 列にする。
-    const leftColumn = reviewMode ? (
-        reviewLeftContent ? (
-            <div className="order-3 min-w-0 min-[1080px]:order-none">{reviewLeftContent}</div>
-        ) : null
-    ) : (
-        <div className="order-3 min-[1080px]:order-none">
-            <LeftSidebar />
-        </div>
-    );
-    const gridColsClass = reviewMode
-        ? reviewLeftContent
-            ? "min-[1080px]:grid-cols-[minmax(210px,240px)_minmax(0,1fr)_minmax(300px,360px)]"
-            : "min-[1080px]:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]"
-        : "min-[1080px]:grid-cols-[auto_minmax(0,1fr)_minmax(300px,360px)]";
-
     return (
         <section className={matchLayoutClasses}>
-            {/* 中央 max-width の 1 ユニットを CSS Grid で 3 カラム化。1080px 未満では
-                盤→棋譜→左カラム(情報/設定)の順に縦積みする。 */}
-            <div className="flex w-full max-w-[1240px] flex-col gap-4 px-4 py-2">
-                {reviewMode && reviewTopContent}
-                <div className={`grid grid-cols-1 gap-4 min-[1080px]:items-start ${gridColsClass}`}>
-                    {leftColumn}
-                    <div className="order-1 flex min-w-0 justify-center min-[1080px]:order-none">
-                        <PCBoardSection candidateNote={candidateNote} hideClock={reviewMode} />
+            {reviewMode ? (
+                // 観戦/検討モード: 中央 max-width の Grid 3 カラム。1080px 未満では
+                // 盤→棋譜→情報の順に縦積み。情報パネルが無いときは盤を狭い列へ
+                // 押し込まないよう 2 列にする。
+                <div className="flex w-full max-w-[1240px] flex-col gap-4 px-4 py-2">
+                    {reviewTopContent}
+                    <div
+                        className={`grid grid-cols-1 gap-4 min-[1080px]:items-start ${
+                            reviewLeftContent
+                                ? "min-[1080px]:grid-cols-[minmax(210px,240px)_minmax(0,1fr)_minmax(300px,360px)]"
+                                : "min-[1080px]:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]"
+                        }`}
+                    >
+                        {reviewLeftContent && (
+                            <div className="order-3 min-w-0 min-[1080px]:order-none">
+                                {reviewLeftContent}
+                            </div>
+                        )}
+                        <div className="order-1 flex min-w-0 justify-center min-[1080px]:order-none">
+                            <PCBoardSection candidateNote={candidateNote} hideClock />
+                        </div>
+                        <div className="order-2 min-w-0 min-[1080px]:order-none">
+                            <PCKifuSection />
+                        </div>
                     </div>
-                    <div className="order-2 min-w-0 min-[1080px]:order-none">
+                </div>
+            ) : (
+                // 対局モード: 設定サイドバー・盤・棋譜はいずれも固定幅のため Grid で
+                // 潰すと盤がはみ出す。中央寄せの flex 行にし、収まる幅では mx-auto で
+                // 中央寄せ、収まらない幅では mx-auto が 0 に畳まれて左寄せ + 横スク
+                // ロールに退避する (列を潰さず盤の重なりを防ぐ)。
+                <div className="w-full overflow-x-auto">
+                    <div className="mx-auto flex w-fit items-start gap-4 px-4 py-2">
+                        <LeftSidebar />
+                        <PCBoardSection candidateNote={candidateNote} />
                         <PCKifuSection />
                     </div>
                 </div>
-            </div>
+            )}
 
             {/* 設定モーダル（棋譜インポート等） */}
             <SettingsModal open={isSettingsModalOpen} onOpenChange={onSettingsModalOpenChange}>
