@@ -358,6 +358,30 @@ describe("subscribeRshogiLiveGame: 再接続", () => {
         expect(events.errors.some((e) => e.message.includes("上限"))).toBe(true);
     });
 
+    it("安定接続 (STABLE_CONNECTION_MS 継続) 後は attempt がリセットされ、散発的な切断では上限に達しない", () => {
+        const { wsInstances, wsFactory, callbacks } = makeMocks();
+        subscribeRshogiLiveGame(
+            "game-1",
+            { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+            callbacks,
+        );
+        // 上限 (=backoff 段数 6) を超える回数、安定接続→切断→再接続 を繰り返す。
+        const cycles = 9;
+        let ws = wsInstances[0];
+        for (let i = 0; i < cycles; i++) {
+            ws.fireOpen();
+            ws.fireLines(buildSnapshotLines([]));
+            // 30s 継続 = 安定接続とみなされ reconnectAttempt がリセットされる。
+            vi.advanceTimersByTime(30000);
+            ws.fireClose(1006, "blip");
+            // attempt はリセット済みなので毎回 backoff[0]=1000 で reconnect する。
+            vi.advanceTimersByTime(1000);
+            ws = wsInstances[wsInstances.length - 1];
+        }
+        // 上限超の回数を切断・再接続しても closed で止まらず新 WS を張り続ける。
+        expect(wsInstances.length).toBe(cycles + 1);
+    });
+
     it("disconnect() で MONITOR2OFF を送り close、reconnect を停止", () => {
         const { wsInstances, wsFactory, events, callbacks } = makeMocks();
         const session = subscribeRshogiLiveGame(

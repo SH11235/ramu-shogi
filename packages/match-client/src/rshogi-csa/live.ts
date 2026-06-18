@@ -130,10 +130,18 @@ const RECONNECT_BACKOFF_MS = [1000, 2000, 4000, 8000, 16000, 30000] as const;
 
 /**
  * reconnect 試行回数の上限。超えたら確定 closed にして再接続ループを止める。
- * `onopen` で attempt をリセットしないため、終局済 DO の「接続成功→即 close」flap も
- * この回数で必ず収束する (= 無限に reconnecting/connected を往復しない)。
+ * attempt は `onopen` 即時ではなく「安定接続が継続した」ときだけリセットするため、
+ * 終局済 DO の「接続成功→即 close」flap はこの回数で必ず収束する (= 無限に
+ * reconnecting/connected を往復しない) 一方、安定観戦中の散発的な切断では累積上限に
+ * 達しない。
  */
 const MAX_RECONNECT_ATTEMPTS = RECONNECT_BACKOFF_MS.length;
+
+/**
+ * open がこの時間継続したら「安定接続」とみなして reconnectAttempt をリセットする。
+ * これ未満で閉じる接続 (flap) はリセット対象にせず、backoff を単調増加させる。
+ */
+const STABLE_CONNECTION_MS = 30_000;
 
 /**
  * `Game_Summary` block の `Total_Time:` `Byoyomi:` `Increment:` 等を
@@ -492,6 +500,15 @@ export function subscribeRshogiLiveGame(
         }
     };
 
+    /** 安定接続判定タイマー。open 継続が STABLE_CONNECTION_MS に達したら attempt をリセット。 */
+    let stableTimer: ReturnType<typeof setTimeout> | null = null;
+    const clearStableTimer = () => {
+        if (stableTimer !== null) {
+            clearTimeoutImpl(stableTimer);
+            stableTimer = null;
+        }
+    };
+
     const scheduleReconnect = () => {
         if (disposed) return;
         // 上限到達: これ以上は再接続せず確定 closed にする (無限 flap を断ち切る)。
@@ -679,9 +696,15 @@ export function subscribeRshogiLiveGame(
 
         socket.onopen = () => {
             if (disposed || ws !== socket) return;
-            // ここで reconnectAttempt をリセットしない。終局済 DO は「接続成功→即
-            // close」を繰り返すため、リセットすると backoff が 1s に戻り無限 flap に
-            // なる。attempt は close 時に積み増し、MAX_RECONNECT_ATTEMPTS で収束させる。
+            // open 即時に reconnectAttempt をリセットしない。終局済 DO は「接続成功→
+            // 即 close」を繰り返すため、即リセットすると backoff が 1s に戻り無限 flap
+            // になる。代わりに STABLE_CONNECTION_MS だけ open が継続したら安定接続と
+            // みなしてリセットし、安定観戦中の散発切断では累積上限に達しないようにする。
+            clearStableTimer();
+            stableTimer = setTimeoutImpl(() => {
+                stableTimer = null;
+                reconnectAttempt = 0;
+            }, STABLE_CONNECTION_MS);
             emitConnectionState("connected");
             try {
                 socket.send(`%%MONITOR2ON ${gameId}\n`);
@@ -716,6 +739,8 @@ export function subscribeRshogiLiveGame(
         socket.onclose = () => {
             if (ws !== socket) return;
             ws = null;
+            // 接続が閉じたので安定判定タイマーは無効化する (close から先は flap 扱い)。
+            clearStableTimer();
             recvBuffer = "";
             snapshotLines = [];
             inSnapshot = false;
@@ -751,6 +776,7 @@ export function subscribeRshogiLiveGame(
                 if (disposed) return;
                 disposed = true;
                 cancelReconnect();
+                clearStableTimer();
                 if (ws) {
                     try {
                         ws.send("%%MONITOR2OFF\n");
@@ -776,6 +802,7 @@ export function subscribeRshogiLiveGame(
             if (disposed) return;
             disposed = true;
             cancelReconnect();
+            clearStableTimer();
             const socket = ws;
             ws = null;
             if (socket) {
