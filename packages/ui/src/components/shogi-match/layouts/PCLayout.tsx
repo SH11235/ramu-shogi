@@ -153,9 +153,14 @@ export function PCLayout({
                 // 潰すと盤がはみ出す。中央寄せの flex 行にし、収まる幅では mx-auto で
                 // 中央寄せ、収まらない幅では mx-auto が 0 に畳まれて左寄せ + 横スク
                 // ロールに退避する (列を潰さず盤の重なりを防ぐ)。
+                // 行は w-max (max-content) で常に内容幅を確保し、available 幅へ
+                // クランプされて子が縮むのを防ぐ。LeftSidebar は shrink-0 が無いので
+                // ラッパーで縮小を止める (盤・棋譜は各 root が shrink-0)。
                 <div className="w-full overflow-x-auto">
-                    <div className="mx-auto flex w-fit items-start gap-4 px-4 py-2">
-                        <LeftSidebar />
+                    <div className="mx-auto flex w-max items-start gap-4 px-4 py-2">
+                        <div className="shrink-0">
+                            <LeftSidebar />
+                        </div>
                         <PCBoardSection candidateNote={candidateNote} />
                         <PCKifuSection />
                     </div>
