@@ -22,7 +22,7 @@ import {
     type RshogiLiveSnapshot,
     subscribeRshogiLiveGame,
 } from "@shogi/match-client";
-import { type ReactElement, type ReactNode, useEffect, useState } from "react";
+import { type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
 import { ShogiMatch } from "./shogi-match";
 import type { EngineOption } from "./shogi-match/types";
 
@@ -225,7 +225,7 @@ function RshogiLiveScoreboard({
                 remainingMs={remaining.sente}
                 active={!result && clocks?.sideToMove === "sente"}
             />
-            <div className="flex flex-row items-center justify-between gap-3 border-y border-wafuu-border bg-wafuu-washi px-4 py-2 sm:flex-col sm:justify-center sm:gap-1 sm:border-x sm:border-y-0">
+            <div className="flex flex-row items-center justify-between gap-3 border-y border-wafuu-border bg-wafuu-washi px-4 py-2 sm:min-w-[7.5rem] sm:flex-col sm:justify-center sm:gap-1 sm:border-x sm:border-y-0">
                 <span className="text-xl font-bold tabular-nums leading-none text-wafuu-sumi">
                     {moveCount}
                     <span className="ml-0.5 text-xs font-semibold text-muted-foreground">手</span>
@@ -295,6 +295,8 @@ export function RshogiCsaLiveViewer({
     isDevMode,
 }: RshogiCsaLiveViewerProps): ReactElement {
     const [state, setState] = useState<LiveState>(initialLiveState);
+    /** 現在の購読セッション。終局時に明示 disconnect して再接続を止めるために保持する。 */
+    const sessionRef = useRef<RshogiLiveSession | null>(null);
     /** clock countdown 用の現在時刻 (1Hz 更新)。 */
     const [tickMs, setTickMs] = useState<number>(() => Date.now());
 
@@ -373,10 +375,20 @@ export function RshogiCsaLiveViewer({
                 connectionState: "closed",
             }));
         }
+        sessionRef.current = session;
         return () => {
             session?.disconnect();
+            sessionRef.current = null;
         };
     }, [gameId, apiBaseUrl]);
+
+    // 終局が確定したら購読を明示的に閉じる。終局済 DO は「接続成功→即 close」を
+    // 繰り返すことがあり、これを止めないと connected↔reconnecting を往復し続ける。
+    useEffect(() => {
+        if (state.result) {
+            sessionRef.current?.disconnect();
+        }
+    }, [state.result]);
 
     // clock countdown 用の 1Hz tick。終局後・clock 未取得時は止めて無駄な再描画を抑える。
     useEffect(() => {
@@ -421,7 +433,9 @@ export function RshogiCsaLiveViewer({
     return (
         <div className="flex flex-col gap-2">
             {header}
-            {state.lastError && (
+            {/* エラーは終局前の確定 closed 時のみ表示する。reconnect 中に出し入れすると
+                行の出現でレイアウトシフトが連発するため、振動する状態では出さない。 */}
+            {!state.result && state.connectionState === "closed" && state.lastError && (
                 <div className="px-4 pt-2 text-xs text-destructive">{state.lastError}</div>
             )}
             <ShogiMatch

@@ -129,6 +129,13 @@ export interface RshogiLiveSession {
 const RECONNECT_BACKOFF_MS = [1000, 2000, 4000, 8000, 16000, 30000] as const;
 
 /**
+ * reconnect 試行回数の上限。超えたら確定 closed にして再接続ループを止める。
+ * `onopen` で attempt をリセットしないため、終局済 DO の「接続成功→即 close」flap も
+ * この回数で必ず収束する (= 無限に reconnecting/connected を往復しない)。
+ */
+const MAX_RECONNECT_ATTEMPTS = RECONNECT_BACKOFF_MS.length;
+
+/**
  * `Game_Summary` block の `Total_Time:` `Byoyomi:` `Increment:` 等を
  * `RshogiTimeControl` 風の構造体に decode する。
  */
@@ -487,6 +494,14 @@ export function subscribeRshogiLiveGame(
 
     const scheduleReconnect = () => {
         if (disposed) return;
+        // 上限到達: これ以上は再接続せず確定 closed にする (無限 flap を断ち切る)。
+        // emitError は disposed 中は無視される契約なので、disposed を立てる前に通知する。
+        if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+            emitError(new Error("再接続の上限に達したため観戦を終了しました"));
+            disposed = true;
+            emitConnectionState("closed");
+            return;
+        }
         const delayIdx = Math.min(reconnectAttempt, RECONNECT_BACKOFF_MS.length - 1);
         const delay = RECONNECT_BACKOFF_MS[delayIdx];
         reconnectAttempt += 1;
@@ -664,7 +679,9 @@ export function subscribeRshogiLiveGame(
 
         socket.onopen = () => {
             if (disposed || ws !== socket) return;
-            reconnectAttempt = 0;
+            // ここで reconnectAttempt をリセットしない。終局済 DO は「接続成功→即
+            // close」を繰り返すため、リセットすると backoff が 1s に戻り無限 flap に
+            // なる。attempt は close 時に積み増し、MAX_RECONNECT_ATTEMPTS で収束させる。
             emitConnectionState("connected");
             try {
                 socket.send(`%%MONITOR2ON ${gameId}\n`);
