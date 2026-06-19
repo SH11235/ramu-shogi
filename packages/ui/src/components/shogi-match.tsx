@@ -1324,12 +1324,25 @@ export function ShogiMatch({
         // await 前に確定して StrictMode の二重実行を冪等化する。連続着手で先行 import が
         // 後着 import に追い越されたら、isStale で古い import の state 適用を中止する。
         loadedReviewRef.current = { sfen: reviewSfen, movesKey: reviewMovesKey };
-        void importSfenRef.current(reviewSfen, reviewMoves, {
-            gotoPly: wasFollowingTip ? undefined : restorePly,
-            isStale: () =>
-                loadedReviewRef.current?.sfen !== reviewSfen ||
-                loadedReviewRef.current?.movesKey !== reviewMovesKey,
-        });
+        void importSfenRef
+            .current(reviewSfen, reviewMoves, {
+                gotoPly: wasFollowingTip ? undefined : restorePly,
+                isStale: () =>
+                    loadedReviewRef.current?.sfen !== reviewSfen ||
+                    loadedReviewRef.current?.movesKey !== reviewMovesKey,
+            })
+            .catch((err) => {
+                // SFEN 解析失敗などで取り込みが reject したら loaded マークを巻き戻し、
+                // 同一内容の再取り込み (再 snapshot 等) を可能にする。より新しい取り込みが
+                // 先行していれば (参照不一致) リセットしない。
+                if (
+                    loadedReviewRef.current?.sfen === reviewSfen &&
+                    loadedReviewRef.current?.movesKey === reviewMovesKey
+                ) {
+                    loadedReviewRef.current = null;
+                }
+                console.error("[rshogi] initialReview の取り込みに失敗しました", err);
+            });
     }, [positionReady, reviewSfen, reviewMoves, reviewMovesKey]);
 
     useEffect(() => {

@@ -125,7 +125,9 @@ describe("createRoomClient", () => {
         client.disconnect();
     });
 
-    it("再接続 open 時に onOpen を reconnect=true で呼ぶ", () => {
+    it("再接続でも resumeToken が無ければ onOpen を reconnect=false (新規接続扱い) で呼ぶ", () => {
+        // onOpen の `reconnect` は「resume に成功したか」を表す。resumeToken を保存して
+        // いない (joined 未受信) 再接続は新規接続として扱われ reconnect=false になる。
         const { factory, instances } = createMockWsFactory();
         const onOpen = vi.fn();
         const client = createRoomClient(
@@ -143,7 +145,7 @@ describe("createRoomClient", () => {
         instances[1].emitOpen();
 
         expect(onOpen).toHaveBeenNthCalledWith(1, { reconnect: false });
-        expect(onOpen).toHaveBeenNthCalledWith(2, { reconnect: true });
+        expect(onOpen).toHaveBeenNthCalledWith(2, { reconnect: false });
         client.disconnect();
     });
 
