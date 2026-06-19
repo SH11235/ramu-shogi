@@ -24,6 +24,8 @@ export const createWasmPositionService = (): PositionService => {
             ready = ensureWasmModule().catch((error: unknown) => {
                 // 旧 hash の wasm が消えて 404 → compile 失敗のときは新バンドルを取りに reload する。
                 // reload しない (stale でない / クールダウン中) ときは呼び出し元のエラー表示へ流す。
+                // 失敗 Promise はそのままキャッシュされ retry されない。wasm ロード失敗は実質
+                // terminal で、回復手段は reload (自動 or ユーザ手動) のみのため意図どおり。
                 reloadOnStaleAsset(error);
                 throw error;
             });

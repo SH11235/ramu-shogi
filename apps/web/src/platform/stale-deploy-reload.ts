@@ -75,12 +75,16 @@ export const reloadOnStaleAsset = (error: unknown): boolean => {
     return reloadForStaleDeploy();
 };
 
+let handlersInstalled = false;
+
 /**
  * dynamic import / 未捕捉の stale エラーに対する保険ハンドラを window へ登録する。
  * 個別 catch で拾えない経路 (route chunk の preload 失敗など) を回復させる。main.tsx から1回だけ呼ぶ。
+ * 二重呼び出し (StrictMode / HMR / 呼び出しミス) でリスナーが重複登録されないよう冪等にする。
  */
 export const installStaleDeployReloadHandlers = (): void => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || handlersInstalled) return;
+    handlersInstalled = true;
 
     // Vite が dispatch する chunk preload 失敗イベント。発火時点で stale 確定なので署名チェック不要。
     window.addEventListener("vite:preloadError", (event) => {
@@ -91,6 +95,7 @@ export const installStaleDeployReloadHandlers = (): void => {
         if (reloadOnStaleAsset(event.reason)) event.preventDefault();
     });
 
+    // ErrorEvent 以外 (リソース読込エラー等) では error/message が無く空文字 → 署名不一致で no-op。
     window.addEventListener("error", (event) => {
         if (reloadOnStaleAsset(event.error ?? event.message)) event.preventDefault();
     });
