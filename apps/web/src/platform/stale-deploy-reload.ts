@@ -83,10 +83,9 @@ export const reloadOnStaleAsset = (error: unknown): boolean => {
  * 消えているかを直接確認する browser 非依存の stale 判定に使う。
  * HEAD なのは存在時 (200) に本体 (wasm 1.5MB) を無駄に取得しないため。worker は
  * 欠損 /assets/* を 404 に変換するので HEAD でも 404 が返る。
- * fetch 自体が失敗 (オフライン等) したときは stale と断定せず false を返す。
+ * fetch 自体が失敗 (オフライン / fetch 不在) したときは stale と断定せず false を返す。
  */
 export const assetReturnsNotOk = async (url: string | URL): Promise<boolean> => {
-    if (typeof fetch === "undefined") return false;
     try {
         const response = await fetch(url, { method: "HEAD", cache: "no-store" });
         return !response.ok;

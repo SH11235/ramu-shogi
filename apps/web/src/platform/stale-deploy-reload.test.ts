@@ -187,4 +187,9 @@ describe("assetReturnsNotOk", () => {
         );
         await expect(assetReturnsNotOk("/assets/x.wasm")).resolves.toBe(false);
     });
+
+    it("fetch 不在の環境では stale 断定せず false", async () => {
+        vi.stubGlobal("fetch", undefined);
+        await expect(assetReturnsNotOk("/assets/x.wasm")).resolves.toBe(false);
+    });
 });
