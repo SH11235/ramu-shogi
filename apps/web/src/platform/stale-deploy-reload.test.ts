@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+    assetReturnsNotOk,
     installStaleDeployReloadHandlers,
     isStaleAssetError,
     reloadForStaleDeploy,
@@ -152,5 +153,43 @@ describe("installStaleDeployReloadHandlers", () => {
         window.dispatchEvent(event);
         expect(reloadSpy).not.toHaveBeenCalled();
         expect(event.defaultPrevented).toBe(false);
+    });
+});
+
+describe("assetReturnsNotOk", () => {
+    afterEach(() => {
+        // restoreAllMocks は stubGlobal を巻き戻さないため fetch stub をリークさせる
+        vi.unstubAllGlobals();
+    });
+
+    it("non-ok (404) を返すアセットは true", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => ({ ok: false, status: 404 }) as Response),
+        );
+        await expect(assetReturnsNotOk("/assets/x.wasm")).resolves.toBe(true);
+    });
+
+    it("ok (200) のアセットは false", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => ({ ok: true, status: 200 }) as Response),
+        );
+        await expect(assetReturnsNotOk("/assets/x.wasm")).resolves.toBe(false);
+    });
+
+    it("fetch 自体が失敗 (オフライン等) したら stale 断定せず false", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => {
+                throw new TypeError("Failed to fetch");
+            }),
+        );
+        await expect(assetReturnsNotOk("/assets/x.wasm")).resolves.toBe(false);
+    });
+
+    it("fetch 不在の環境では stale 断定せず false", async () => {
+        vi.stubGlobal("fetch", undefined);
+        await expect(assetReturnsNotOk("/assets/x.wasm")).resolves.toBe(false);
     });
 });

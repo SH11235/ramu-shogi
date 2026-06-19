@@ -75,6 +75,25 @@ export const reloadOnStaleAsset = (error: unknown): boolean => {
     return reloadForStaleDeploy();
 };
 
+/**
+ * `url` が non-ok (404 等) を返すなら true。
+ *
+ * wasm compile 失敗時のエラー文言はブラウザ依存 (V8 は "HTTP status code is not ok"、
+ * Firefox / Safari は別表現) で署名一致が不安定なため、文言に頼らずアセット自体が
+ * 消えているかを直接確認する browser 非依存の stale 判定に使う。
+ * HEAD なのは存在時 (200) に本体 (wasm 1.5MB) を無駄に取得しないため。worker は
+ * 欠損 /assets/* を 404 に変換するので HEAD でも 404 が返る。
+ * fetch 自体が失敗 (オフライン / fetch 不在) したときは stale と断定せず false を返す。
+ */
+export const assetReturnsNotOk = async (url: string | URL): Promise<boolean> => {
+    try {
+        const response = await fetch(url, { method: "HEAD", cache: "no-store" });
+        return !response.ok;
+    } catch {
+        return false;
+    }
+};
+
 let handlersInstalled = false;
 
 /**
