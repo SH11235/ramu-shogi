@@ -199,9 +199,16 @@ function rememberInitOpts(opts?: WasmEngineInitOptions): WasmEngineInitOptions |
 
 let wasmModuleReady: Promise<void> | null = null;
 
+/**
+ * メインスレッドで `ensureWasmModule` が fetch する wasm アセットの URL。
+ * Vite が content-hash 付きの実 URL に書き換える。stale デプロイ検知で「この
+ * アセットが 404 か」を直接確認するため app 層へ公開する。
+ */
+export const defaultWasmModuleUrl: URL = new URL("../pkg/engine_wasm_bg.wasm", import.meta.url);
+
 export const ensureWasmModule = (wasmModule?: WasmModuleSource): Promise<void> => {
     if (!wasmModuleReady) {
-        const moduleOrPath = wasmModule ?? new URL("../pkg/engine_wasm_bg.wasm", import.meta.url);
+        const moduleOrPath = wasmModule ?? defaultWasmModuleUrl;
         wasmModuleReady = initWasmModule({ module_or_path: moduleOrPath }).then(() => undefined);
     }
     return wasmModuleReady;
