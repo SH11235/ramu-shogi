@@ -141,7 +141,13 @@ export function PCLayout({
                             </div>
                         )}
                         <div className="order-1 flex min-w-0 justify-center min-[1080px]:order-none">
-                            <PCBoardSection candidateNote={candidateNote} hideClock />
+                            {/* 盤上の時計はスコアボード(reviewTopContent)が時計を表示する
+                                ときだけ隠す。スコアボードが無い静的 viewer 等では従来どおり
+                                盤上時計を残す。 */}
+                            <PCBoardSection
+                                candidateNote={candidateNote}
+                                hideClock={Boolean(reviewTopContent)}
+                            />
                         </div>
                         <div className="order-2 min-w-0 min-[1080px]:order-none">
                             <PCKifuSection />
