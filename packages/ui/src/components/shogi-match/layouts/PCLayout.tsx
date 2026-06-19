@@ -123,24 +123,29 @@ export function PCLayout({
     return (
         <section className={matchLayoutClasses}>
             {reviewMode ? (
-                // 観戦/検討モード: 中央 max-width の Grid 3 カラム。1080px 未満では
-                // 盤→棋譜→情報の順に縦積み。情報パネルが無いときは盤を狭い列へ
-                // 押し込まないよう 2 列にする。
+                // 観戦/検討モード: 中央 max-width の Grid 3 カラム。盤(~537px)+棋譜
+                // (var(--panel-width)=400px)+情報(最大240px)+gap が収まる 1280px 以上で
+                // 横並びにし、それ未満は盤→棋譜→情報の順に縦積みする。狭い幅で 3 列を
+                // 維持すると固定幅の棋譜パネルが列をはみ出し横スクロールが出るため。
+                // 盤列は auto で盤幅に密着させ(1fr だと盤が浮く)、棋譜列は panel 幅に
+                // 一致させてはみ出しを防ぐ。情報列の minmax は盤幅の変動を吸収する。
+                // 情報パネルが無いときは盤を狭い列へ押し込まないよう 2 列にし、
+                // justify-center で盤+棋譜の対を中央へ寄せる。
                 <div className="flex w-full max-w-[1240px] flex-col gap-4 px-4 py-2">
                     {reviewTopContent}
                     <div
-                        className={`grid grid-cols-1 gap-4 min-[1080px]:items-start ${
+                        className={`grid grid-cols-1 gap-4 min-[1280px]:items-start min-[1280px]:justify-center ${
                             reviewLeftContent
-                                ? "min-[1080px]:grid-cols-[minmax(210px,240px)_minmax(0,1fr)_minmax(300px,360px)]"
-                                : "min-[1080px]:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]"
+                                ? "min-[1280px]:grid-cols-[minmax(210px,240px)_auto_var(--panel-width)]"
+                                : "min-[1280px]:grid-cols-[auto_var(--panel-width)]"
                         }`}
                     >
                         {reviewLeftContent && (
-                            <div className="order-3 min-w-0 min-[1080px]:order-none">
+                            <div className="order-3 min-w-0 min-[1280px]:order-none">
                                 {reviewLeftContent}
                             </div>
                         )}
-                        <div className="order-1 flex min-w-0 justify-center min-[1080px]:order-none">
+                        <div className="order-1 flex min-w-0 justify-center min-[1280px]:order-none">
                             {/* 盤上の時計はスコアボード(reviewTopContent)が時計を表示する
                                 ときだけ隠す。スコアボードが無い静的 viewer 等では従来どおり
                                 盤上時計を残す。 */}
@@ -149,8 +154,10 @@ export function PCLayout({
                                 hideClock={Boolean(reviewTopContent)}
                             />
                         </div>
-                        <div className="order-2 min-w-0 min-[1080px]:order-none">
-                            <PCKifuSection />
+                        {/* 縦積み時は固定幅の棋譜パネルを中央へ。横並び時は列幅に一致する
+                            ので justify-self は既定へ戻す。 */}
+                        <div className="order-2 min-w-0 justify-self-center min-[1280px]:order-none min-[1280px]:justify-self-auto">
+                            <PCKifuSection reviewMode />
                         </div>
                     </div>
                 </div>
