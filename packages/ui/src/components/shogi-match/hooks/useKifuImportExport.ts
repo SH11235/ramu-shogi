@@ -69,7 +69,11 @@ interface UseKifuImportExportReturn {
     /** KIF形式でコピー */
     handleCopyKif: () => string;
     /** SFENと指し手をインポート */
-    importSfen: (sfen: string, movesToLoad: string[]) => Promise<void>;
+    importSfen: (
+        sfen: string,
+        movesToLoad: string[],
+        options?: { gotoPly?: number; isStale?: () => boolean },
+    ) => Promise<void>;
     /** KIF形式をインポート */
     importKif: (
         movesToLoad: string[],
@@ -181,11 +185,20 @@ export function useKifuImportExport({
      * SFENインポート（局面 + 指し手）
      * インポート後は自動的に検討モードに入る
      */
-    const importSfen = async (sfen: string, movesToLoad: string[]) => {
+    const importSfen = async (
+        sfen: string,
+        movesToLoad: string[],
+        options?: { gotoPly?: number; isStale?: () => boolean },
+    ) => {
         const service = getPositionService();
         try {
             // 新しい開始局面を設定
             const newPosition = await service.parseSfen(sfen);
+            // live 観戦の連続着手で先行 import が後着 import に追い越された場合、
+            // 古い moves で navigation を上書きしないよう適用前に最新性を確認して中止する。
+            if (options?.isStale?.()) {
+                return;
+            }
             setBasePosition(newPosition);
             setStartSfen(sfen);
             setInitialBoard(newPosition.board);
@@ -211,6 +224,14 @@ export function useKifuImportExport({
                     }
                 }
                 setLastMove(deriveLastMove(appliedMoves.at(-1)));
+                // 末尾以外の局面を検討中だった観戦者のカーソルを維持する。
+                // addMove 群と同じ同期ブロックで goToPly することで 1 レンダーに
+                // まとまり、末尾局面が一瞬見える描画を防ぐ。適用手数を上限にクランプ
+                // して、不正手などで適用手が短縮された場合も範囲外へ飛ばさない。
+                const { gotoPly } = options ?? {};
+                if (gotoPly !== undefined) {
+                    navigation.goToPly(Math.max(0, Math.min(gotoPly, appliedMoves.length)));
+                }
             } else {
                 setLastMove(undefined);
             }
