@@ -15,12 +15,20 @@ import {
     wasm_parse_sfen_to_board,
     wasm_replay_moves_strict,
 } from "@shogi/engine-wasm";
+import { reloadOnStaleAsset } from "./stale-deploy-reload";
 
 export const createWasmPositionService = (): PositionService => {
     let ready: Promise<void> | null = null;
     const ensureReady = () => {
         if (!ready) {
-            ready = ensureWasmModule();
+            ready = ensureWasmModule().catch((error: unknown) => {
+                // 旧 hash の wasm が消えて 404 → compile 失敗のときは新バンドルを取りに reload する。
+                // reload しない (stale でない / クールダウン中) ときは呼び出し元のエラー表示へ流す。
+                // 失敗 Promise はそのままキャッシュされ retry されない。wasm ロード失敗は実質
+                // terminal で、回復手段は reload (自動 or ユーザ手動) のみのため意図どおり。
+                reloadOnStaleAsset(error);
+                throw error;
+            });
         }
         return ready;
     };
