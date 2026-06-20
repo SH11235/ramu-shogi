@@ -4,7 +4,10 @@ import { RshogiCsaGameList } from "@shogi/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { type ReactElement, useEffect, useState } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
+import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
+import { PageHeading } from "../../components/PageHeading";
+import { StatusBanner } from "../../components/StatusBanner";
 
 const PAGE_LIMIT = 50;
 
@@ -87,20 +90,13 @@ export default function RshogiViewerListPage(): ReactElement {
                 items={[{ label: "ラム将棋", to: "/" }, { label: "rshogi viewer" }]}
                 right={<HeaderNav />}
             />
-            <main className="mx-auto flex w-full max-w-[960px] flex-col gap-4 px-4 py-6">
-                <div className="flex flex-col gap-1">
-                    <h1 className="text-lg font-semibold text-wafuu-sumi">rshogi 棋譜一覧</h1>
-                    <p className="text-xs text-muted-foreground">
-                        rshogi CSA サーバで終局した棋譜を新着順で表示します。クリックすると個別の
-                        viewer に遷移します。
-                    </p>
-                </div>
+            <PageContainer>
+                <PageHeading
+                    title="rshogi 棋譜一覧"
+                    description="rshogi CSA サーバで終局した棋譜を新着順で表示します。クリックすると個別の viewer に遷移します。"
+                />
 
-                {errorMessage && (
-                    <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-                        {errorMessage}
-                    </div>
-                )}
+                {errorMessage && <StatusBanner variant="error">{errorMessage}</StatusBanner>}
 
                 <RshogiCsaGameList
                     games={games}
@@ -109,7 +105,7 @@ export default function RshogiViewerListPage(): ReactElement {
                     isLoading={isLoading}
                     hasMore={nextCursor !== undefined}
                 />
-            </main>
+            </PageContainer>
         </>
     );
 }

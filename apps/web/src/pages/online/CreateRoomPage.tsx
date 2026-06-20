@@ -4,7 +4,9 @@ import { useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useEffect, useRef, useState } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
+import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
+import { PageHeading } from "../../components/PageHeading";
 import { syncProfileDisplayNameIfNeeded, useAuthSession } from "../../hooks/useAuthSession";
 import { getLocalPlayerName, saveLocalPlayerName } from "../../hooks/useLocalPlayerName";
 
@@ -174,8 +176,8 @@ export default function CreateRoomPage(): ReactElement {
                 ]}
                 right={<HeaderNav />}
             />
-            <div className="mx-auto flex max-w-[480px] flex-col gap-6 px-4 py-10">
-                <h1 className="text-xl font-bold text-foreground">対局設定</h1>
+            <PageContainer width="form">
+                <PageHeading title="対局設定" />
 
                 {/* 名前入力 */}
                 <div className="flex flex-col gap-2">
@@ -449,7 +451,7 @@ export default function CreateRoomPage(): ReactElement {
                 >
                     {isCreating ? "作成中..." : "部屋を作成する"}
                 </button>
-            </div>
+            </PageContainer>
         </>
     );
 }

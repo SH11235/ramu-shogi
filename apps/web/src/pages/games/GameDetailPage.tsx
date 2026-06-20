@@ -7,7 +7,10 @@ import { getRouteApi, Link, useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
+import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
+import { Section } from "../../components/Section";
+import { StatusBanner } from "../../components/StatusBanner";
 import { parseApiError } from "../../hooks/useAuthSession";
 import { formatGameResult } from "./gameResultUtils";
 
@@ -66,20 +69,12 @@ export default function GameDetailPage(): ReactElement {
                 ]}
                 right={<HeaderNav />}
             />
-            <main className="mx-auto flex max-w-[960px] flex-col gap-6 px-4 py-8">
-                {status && (
-                    <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700">
-                        {status}
-                    </div>
-                )}
+            <PageContainer>
+                {status && <StatusBanner variant="success">{status}</StatusBanner>}
 
-                {error && (
-                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                        {error}
-                    </div>
-                )}
+                {error && <StatusBanner variant="error">{error}</StatusBanner>}
 
-                <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
+                <Section>
                     <div className="flex flex-col gap-3">
                         <div className="flex flex-wrap items-center gap-2 text-xs">
                             <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
@@ -116,10 +111,10 @@ export default function GameDetailPage(): ReactElement {
                             </span>
                         </div>
                     </div>
-                </section>
+                </Section>
 
-                <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                    <div className="mb-4">
+                <Section>
+                    <div>
                         <h2 className="text-lg font-semibold text-foreground">公開設定</h2>
                         <p className="text-sm text-muted-foreground">
                             限定公開・公開への変更はメール確認済みアカウントのみできます。
@@ -160,11 +155,11 @@ export default function GameDetailPage(): ReactElement {
                             </button>
                         ))}
                     </div>
-                </section>
+                </Section>
 
                 {publicUrl && game.publicId && (
-                    <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                        <div className="mb-3">
+                    <Section>
+                        <div>
                             <h2 className="text-lg font-semibold text-foreground">共有リンク</h2>
                             <p className="text-sm text-muted-foreground">
                                 このリンクを知っている人は棋譜を閲覧できます。
@@ -200,10 +195,10 @@ export default function GameDetailPage(): ReactElement {
                                 開く
                             </Link>
                         </div>
-                    </section>
+                    </Section>
                 )}
 
-                <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
+                <Section>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <h2 className="text-lg font-semibold text-foreground">検討</h2>
@@ -219,10 +214,10 @@ export default function GameDetailPage(): ReactElement {
                             棋譜を検討する
                         </Link>
                     </div>
-                </section>
+                </Section>
 
-                <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                    <h2 className="mb-3 text-lg font-semibold text-foreground">指し手</h2>
+                <Section>
+                    <h2 className="text-lg font-semibold text-foreground">指し手</h2>
                     <ol className="grid gap-2 text-sm text-foreground">
                         {game.moves.map((move, index) => {
                             const ply = index + 1;
@@ -236,10 +231,10 @@ export default function GameDetailPage(): ReactElement {
                             );
                         })}
                     </ol>
-                </section>
+                </Section>
 
-                <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                    <div className="mb-3 flex items-center justify-between gap-3">
+                <Section>
+                    <div className="flex items-center justify-between gap-3">
                         <h2 className="text-lg font-semibold text-foreground">KIF テキスト</h2>
                         <button
                             type="button"
@@ -261,8 +256,8 @@ export default function GameDetailPage(): ReactElement {
                     <pre className="overflow-x-auto rounded-md bg-muted/40 p-4 text-xs text-foreground">
                         {game.kifuText}
                     </pre>
-                </section>
-            </main>
+                </Section>
+            </PageContainer>
         </>
     );
 }

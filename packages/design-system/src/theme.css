@@ -63,6 +63,10 @@
         --status-online-fg: 140 40% 95%; /* オンライン前景 */
         --status-online-bg: 140 45% 93%; /* オンライン背景 */
         --status-online-border: 140 35% 78%; /* オンラインボーダー */
+        --status-success: 140 50% 38%; /* 成功 - 落ち着いた緑 */
+        --status-success-fg: 140 40% 95%; /* 成功前景 */
+        --status-success-bg: 140 45% 93%; /* 成功背景 */
+        --status-success-border: 140 35% 78%; /* 成功ボーダー */
 
         /* レイアウト */
         --panel-width: 400px; /* 右サイドパネルの幅 */
@@ -110,6 +114,10 @@
         --status-online-fg: 140 40% 98%; /* オンライン前景 */
         --status-online-bg: 140 30% 12%; /* オンライン背景 */
         --status-online-border: 140 25% 22%; /* オンラインボーダー */
+        --status-success: 140 45% 45%; /* 成功 */
+        --status-success-fg: 140 40% 98%; /* 成功前景 */
+        --status-success-bg: 140 30% 12%; /* 成功背景 */
+        --status-success-border: 140 25% 22%; /* 成功ボーダー */
     }
 
     *,

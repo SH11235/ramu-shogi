@@ -3,7 +3,10 @@ import { getRouteApi, Link } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { AuthRequiredCard } from "../../components/AuthRequiredCard";
 import { HeaderNav } from "../../components/HeaderNav";
+import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
+import { PageHeading } from "../../components/PageHeading";
+import { Section } from "../../components/Section";
 import { formatGameResult } from "./gameResultUtils";
 
 const routeApi = getRouteApi("/games");
@@ -26,12 +29,11 @@ export default function GamesPage(): ReactElement {
                 items={[{ label: "ラム将棋", to: "/" }, { label: "棋譜一覧" }]}
                 right={<HeaderNav />}
             />
-            <main className="mx-auto flex max-w-[960px] flex-col gap-6 px-4 py-8">
-                <div className="flex flex-col gap-2">
-                    <h1 className="text-2xl font-bold text-foreground">棋譜一覧</h1>
-                    <p className="text-sm text-muted-foreground">
-                        保存済みのオンライン対局を確認できます。
-                    </p>
+            <PageContainer>
+                <PageHeading
+                    title="棋譜一覧"
+                    description="保存済みのオンライン対局を確認できます。"
+                >
                     {!needsAuth && (
                         <p className="text-xs text-muted-foreground">
                             {games.length} / 50件
@@ -42,7 +44,7 @@ export default function GamesPage(): ReactElement {
                             )}
                         </p>
                     )}
-                </div>
+                </PageHeading>
 
                 {needsAuth && (
                     <AuthRequiredCard
@@ -58,11 +60,11 @@ export default function GamesPage(): ReactElement {
                 )}
 
                 {!needsAuth && games.length === 0 && (
-                    <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+                    <Section>
                         <p className="text-sm text-muted-foreground">
                             まだ保存済みの棋譜はありません。
                         </p>
-                    </div>
+                    </Section>
                 )}
 
                 {!needsAuth && games.length > 0 && (
@@ -109,7 +111,7 @@ export default function GamesPage(): ReactElement {
                         ))}
                     </div>
                 )}
-            </main>
+            </PageContainer>
         </>
     );
 }
