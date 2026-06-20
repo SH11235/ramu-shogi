@@ -2,7 +2,9 @@ import { useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
+import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
+import { PageHeading } from "../../components/PageHeading";
 
 export default function OnlinePage(): ReactElement {
     const navigate = useNavigate();
@@ -24,8 +26,8 @@ export default function OnlinePage(): ReactElement {
                 items={[{ label: "ラム将棋", to: "/" }, { label: "オンライン対局" }]}
                 right={<HeaderNav />}
             />
-            <div className="mx-auto flex max-w-[480px] flex-col gap-6 px-4 py-10">
-                <h1 className="text-2xl font-bold text-foreground">オンライン対局</h1>
+            <PageContainer width="form">
+                <PageHeading title="オンライン対局" />
 
                 <button
                     type="button"
@@ -67,7 +69,7 @@ export default function OnlinePage(): ReactElement {
                         </button>
                     </div>
                 </div>
-            </div>
+            </PageContainer>
         </>
     );
 }

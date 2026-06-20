@@ -3,7 +3,10 @@ import { getRouteApi, Link } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
+import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
+import { PageHeading } from "../../components/PageHeading";
+import { Section } from "../../components/Section";
 import { formatGameResult } from "./gameResultUtils";
 
 const routeApi = getRouteApi("/public/games");
@@ -42,20 +45,18 @@ export default function PublicGamesPage(): ReactElement {
                 items={[{ label: "ラム将棋", to: "/" }, { label: "公開棋譜" }]}
                 right={<HeaderNav />}
             />
-            <main className="mx-auto flex max-w-[960px] flex-col gap-6 px-4 py-8">
-                <div className="flex flex-col gap-2">
-                    <h1 className="text-2xl font-bold text-foreground">公開棋譜</h1>
-                    <p className="text-sm text-muted-foreground">
-                        ユーザーが公開設定にした棋譜の一覧です。
-                    </p>
-                </div>
+            <PageContainer>
+                <PageHeading
+                    title="公開棋譜"
+                    description="ユーザーが公開設定にした棋譜の一覧です。"
+                />
 
                 {games.length === 0 && (
-                    <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+                    <Section>
                         <p className="text-sm text-muted-foreground">
                             公開されている棋譜はまだありません。
                         </p>
-                    </div>
+                    </Section>
                 )}
 
                 {games.length > 0 && (
@@ -103,7 +104,7 @@ export default function PublicGamesPage(): ReactElement {
                         </button>
                     </div>
                 )}
-            </main>
+            </PageContainer>
         </>
     );
 }

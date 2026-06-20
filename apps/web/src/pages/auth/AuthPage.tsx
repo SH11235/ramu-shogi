@@ -2,7 +2,11 @@ import { Link, useRouter } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
+import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
+import { PageHeading } from "../../components/PageHeading";
+import { Section } from "../../components/Section";
+import { StatusBanner } from "../../components/StatusBanner";
 import {
     dispatchAuthSessionSyncEvent,
     parseApiError,
@@ -28,8 +32,8 @@ function AuthenticatedProfileSection({
     const [profileDisplayName, setProfileDisplayName] = useState(sessionUser.displayName);
 
     return (
-        <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-            <div className="mb-3 flex items-center justify-between gap-3">
+        <Section>
+            <div className="flex items-center justify-between gap-3">
                 <div>
                     <h2 className="text-lg font-semibold text-foreground">ユーザー名設定</h2>
                     <p className="text-sm text-muted-foreground">
@@ -83,7 +87,7 @@ function AuthenticatedProfileSection({
                     </button>
                 </div>
             </form>
-        </section>
+        </Section>
     );
 }
 
@@ -193,73 +197,63 @@ export default function AuthPage(): ReactElement {
                 items={[{ label: "ラム将棋", to: "/" }, { label: "認証" }]}
                 right={<HeaderNav />}
             />
-            <main className="mx-auto flex max-w-[960px] flex-col gap-6 px-4 py-8">
-                <div className="flex flex-col gap-2">
-                    <h1 className="text-2xl font-bold text-foreground">
-                        {session?.authenticated
+            <PageContainer>
+                <PageHeading
+                    title={
+                        session?.authenticated
                             ? requiresUsernameSetup && !session.user.displayName.trim()
                                 ? "ユーザー名設定"
                                 : "アカウント設定"
-                            : "ログイン"}
-                    </h1>
-                    <p className="text-sm text-muted-foreground">
-                        {session?.authenticated
+                            : "ログイン"
+                    }
+                    description={
+                        session?.authenticated
                             ? requiresUsernameSetup && !session.user.displayName.trim()
                                 ? "オンライン対局で使うユーザー名を設定してください。"
                                 : "オンライン対局で使うユーザー名を設定できます。"
-                            : "Google アカウントで認証できます。"}
-                    </p>
-                </div>
+                            : "Google アカウントで認証できます。"
+                    }
+                />
 
-                {status && (
-                    <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700">
-                        {status}
-                    </div>
-                )}
-                {displayedError && (
-                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                        {displayedError}
-                    </div>
-                )}
+                {status && <StatusBanner variant="success">{status}</StatusBanner>}
+                {displayedError && <StatusBanner variant="error">{displayedError}</StatusBanner>}
 
                 {!session?.authenticated && (
-                    <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                        <div className="flex flex-col gap-4">
-                            <div className="space-y-1">
-                                <h2 className="text-lg font-semibold text-foreground">
-                                    Google でログイン
-                                </h2>
-                                <p className="text-sm text-muted-foreground">
-                                    {resolvedNextPath === "/auth"
-                                        ? "Google アカウントでログインすると、このページに戻ります。"
-                                        : "Google アカウントでログインすると、元のページに戻ります。"}
-                                </p>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={handleGoogleLogin}
-                                className="inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
-                            >
-                                Google アカウントでログイン
-                            </button>
-                            <p className="text-xs text-muted-foreground">
-                                ログインすることで{" "}
-                                <Link
-                                    to="/privacy"
-                                    className="underline underline-offset-2 hover:text-foreground"
-                                >
-                                    プライバシーポリシー
-                                </Link>
-                                に同意したものとみなします。
+                    <Section className="gap-4">
+                        <div className="space-y-1">
+                            <h2 className="text-lg font-semibold text-foreground">
+                                Google でログイン
+                            </h2>
+                            <p className="text-sm text-muted-foreground">
+                                {resolvedNextPath === "/auth"
+                                    ? "Google アカウントでログインすると、このページに戻ります。"
+                                    : "Google アカウントでログインすると、元のページに戻ります。"}
                             </p>
                         </div>
-                    </section>
+                        <button
+                            type="button"
+                            onClick={handleGoogleLogin}
+                            className="inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
+                        >
+                            Google アカウントでログイン
+                        </button>
+                        <p className="text-xs text-muted-foreground">
+                            ログインすることで{" "}
+                            <Link
+                                to="/privacy"
+                                className="underline underline-offset-2 hover:text-foreground"
+                            >
+                                プライバシーポリシー
+                            </Link>
+                            に同意したものとみなします。
+                        </p>
+                    </Section>
                 )}
 
                 {isLoadingSession ? (
-                    <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
+                    <Section>
                         <p className="text-sm text-muted-foreground">読み込み中...</p>
-                    </section>
+                    </Section>
                 ) : session?.authenticated ? (
                     <AuthenticatedProfileSection
                         key={`${session.user.id}:${session.user.displayName}`}
@@ -271,11 +265,11 @@ export default function AuthPage(): ReactElement {
                         onLogout={handleLogout}
                     />
                 ) : (
-                    <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
+                    <Section>
                         <p className="text-sm text-muted-foreground">未ログインです。</p>
-                    </section>
+                    </Section>
                 )}
-            </main>
+            </PageContainer>
         </>
     );
 }

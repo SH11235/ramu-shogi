@@ -8,7 +8,11 @@ import type { ChangeEvent, ReactElement } from "react";
 import { useState } from "react";
 import { AuthRequiredCard } from "../../components/AuthRequiredCard";
 import { HeaderNav } from "../../components/HeaderNav";
+import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
+import { PageHeading } from "../../components/PageHeading";
+import { Section } from "../../components/Section";
+import { StatusBanner } from "../../components/StatusBanner";
 import { parseApiError } from "../../hooks/useAuthSession";
 
 const routeApi = getRouteApi("/nnue");
@@ -217,25 +221,15 @@ export default function NnueFilesPage(): ReactElement {
                 items={[{ label: "ラム将棋", to: "/" }, { label: "NNUE ファイル" }]}
                 right={<HeaderNav />}
             />
-            <main className="mx-auto flex max-w-[960px] flex-col gap-6 px-4 py-8">
-                <div className="flex flex-col gap-2">
-                    <h1 className="text-2xl font-bold text-foreground">NNUE ファイル</h1>
-                    <p className="text-sm text-muted-foreground">
-                        アカウントに紐づく private NNUE を upload / download / delete できます。
-                    </p>
-                </div>
+            <PageContainer>
+                <PageHeading
+                    title="NNUE ファイル"
+                    description="アカウントに紐づく private NNUE を upload / download / delete できます。"
+                />
 
-                {status && (
-                    <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700">
-                        {status}
-                    </div>
-                )}
+                {status && <StatusBanner variant="success">{status}</StatusBanner>}
 
-                {error && (
-                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                        {error}
-                    </div>
-                )}
+                {error && <StatusBanner variant="error">{error}</StatusBanner>}
 
                 {loaderData.needsAuth ? (
                     <AuthRequiredCard
@@ -250,45 +244,37 @@ export default function NnueFilesPage(): ReactElement {
                     />
                 ) : (
                     <>
-                        <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                            <div className="flex flex-col gap-3">
-                                <h2 className="text-lg font-semibold text-foreground">
-                                    アップロード
-                                </h2>
-                                <input
-                                    type="file"
-                                    accept=".bin"
-                                    onChange={handleFileChange}
-                                    className="text-sm text-foreground file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium file:text-secondary-foreground"
-                                />
-                                {selectedFile && (
-                                    <div className="text-sm text-muted-foreground">
-                                        {selectedFile.name} / {formatBytes(selectedFile.size)}
-                                    </div>
-                                )}
-                                {isUploading && (
-                                    <div className="text-sm text-muted-foreground">
-                                        アップロード中... {uploadProgress}%
-                                    </div>
-                                )}
-                                <div className="text-xs text-muted-foreground">
-                                    50MB ごとの chunk に分割して upload します。
+                        <Section title="アップロード">
+                            <input
+                                type="file"
+                                accept=".bin"
+                                onChange={handleFileChange}
+                                className="text-sm text-foreground file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium file:text-secondary-foreground"
+                            />
+                            {selectedFile && (
+                                <div className="text-sm text-muted-foreground">
+                                    {selectedFile.name} / {formatBytes(selectedFile.size)}
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={() => void handleUpload()}
-                                    disabled={!selectedFile || isUploading}
-                                    className="w-fit rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
-                                >
-                                    {isUploading ? "アップロード中..." : "アップロード"}
-                                </button>
+                            )}
+                            {isUploading && (
+                                <div className="text-sm text-muted-foreground">
+                                    アップロード中... {uploadProgress}%
+                                </div>
+                            )}
+                            <div className="text-xs text-muted-foreground">
+                                50MB ごとの chunk に分割して upload します。
                             </div>
-                        </section>
+                            <button
+                                type="button"
+                                onClick={() => void handleUpload()}
+                                disabled={!selectedFile || isUploading}
+                                className="w-fit rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+                            >
+                                {isUploading ? "アップロード中..." : "アップロード"}
+                            </button>
+                        </Section>
 
-                        <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                            <h2 className="mb-3 text-lg font-semibold text-foreground">
-                                アカウント NNUE 一覧
-                            </h2>
+                        <Section title="アカウント NNUE 一覧">
                             {files.length === 0 ? (
                                 <p className="text-sm text-muted-foreground">
                                     保存済みの NNUE はありません。
@@ -331,10 +317,10 @@ export default function NnueFilesPage(): ReactElement {
                                     ))}
                                 </div>
                             )}
-                        </section>
+                        </Section>
                     </>
                 )}
-            </main>
+            </PageContainer>
         </>
     );
 }

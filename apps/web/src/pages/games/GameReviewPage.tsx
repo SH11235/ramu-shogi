@@ -184,7 +184,7 @@ export default function GameReviewPage(): ReactElement {
                 {game.participants.map((p) => p.displayNameSnapshot).join(" vs ")}
             </div>
             {status && (
-                <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700">
+                <div className="rounded-md border border-status-success-border bg-status-success-bg px-3 py-2 text-xs text-status-success">
                     {status}
                 </div>
             )}

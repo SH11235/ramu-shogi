@@ -69,6 +69,10 @@ const preset: Omit<Config, "content"> = {
                     "online-fg": "hsl(var(--status-online-fg))",
                     "online-bg": "hsl(var(--status-online-bg))",
                     "online-border": "hsl(var(--status-online-border))",
+                    success: "hsl(var(--status-success))",
+                    "success-fg": "hsl(var(--status-success-fg))",
+                    "success-bg": "hsl(var(--status-success-bg))",
+                    "success-border": "hsl(var(--status-success-border))",
                 },
                 // 将棋盤配色
                 shogi: {
