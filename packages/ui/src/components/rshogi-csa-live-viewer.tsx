@@ -129,13 +129,11 @@ export function applyMoveComment(
 export function summarizeMoveDetails(moveDetails: RshogiLiveMove[]): LiveEvalState & {
     lastMoveElapsedSec?: number;
 } {
-    let evalState: LiveEvalState = {};
-    for (let i = 0; i < moveDetails.length; i++) {
-        const comment = moveDetails[i].comment;
-        if (!comment) continue;
-        // ply = i + 1。奇数 = 先手の指し手、偶数 = 後手の指し手。
-        evalState = applyMoveComment(evalState, i + 1, comment);
-    }
+    // ply = i + 1。奇数 = 先手の指し手、偶数 = 後手の指し手。
+    const evalState = moveDetails.reduce<LiveEvalState>(
+        (acc, detail, i) => (detail.comment ? applyMoveComment(acc, i + 1, detail.comment) : acc),
+        {},
+    );
     const last = moveDetails[moveDetails.length - 1];
     return { ...evalState, lastMoveElapsedSec: last?.elapsedSec };
 }
@@ -369,8 +367,10 @@ export function RshogiLiveMetaPanel({
     /** 最新コメントの読み筋 (CSA トークン列)。無ければ非表示。 */
     latestPv?: string[];
 }): ReactElement {
+    // 表示は MAX_PV_TOKENS で省略し、title (ツールチップ) には全文を渡す。
+    const pvFullText = latestPv && latestPv.length > 0 ? latestPv.join(" ") : undefined;
     const pvText =
-        latestPv && latestPv.length > 0
+        latestPv && pvFullText
             ? latestPv.slice(0, MAX_PV_TOKENS).join(" ") +
               (latestPv.length > MAX_PV_TOKENS ? " …" : "")
             : undefined;
@@ -392,7 +392,7 @@ export function RshogiLiveMetaPanel({
                     </span>
                     <span
                         className="truncate font-mono text-xs text-muted-foreground"
-                        title={pvText}
+                        title={pvFullText}
                     >
                         {pvText}
                     </span>

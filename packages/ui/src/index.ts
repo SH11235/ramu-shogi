@@ -16,6 +16,8 @@ export { useDevMode } from "./hooks/useDevMode";
 export { useNnueStorage } from "./hooks/useNnueStorage";
 export type { UseRoomConnectionOptions, UseRoomConnectionReturn } from "./hooks/useRoomConnection";
 export { useRoomConnection } from "./hooks/useRoomConnection";
+export type { UseRshogiLiveGameListReturn } from "./hooks/useRshogiLiveGameList";
+export { useRshogiLiveGameList } from "./hooks/useRshogiLiveGameList";
 // ============================================================
 // Components
 // ============================================================

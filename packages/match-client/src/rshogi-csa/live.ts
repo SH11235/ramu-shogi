@@ -24,8 +24,8 @@
  * `<gameId>` 末尾の epoch suffix を剥がすため、URL に game_id をそのまま渡せば
  * room_id 形式に変換される。
  *
- * 注: 本モジュールは `@shogi/app-core` の CSA decode helper (`parseSingleCsaMove`
- * / `parseCsaMovesWithState`) に依存する。設計コメント v5 §6.4 に基づき、
+ * 注: 本モジュールは `@shogi/app-core` の CSA decode helper (`parseSingleCsaMove`)
+ * に依存する。設計コメント v5 §6.4 に基づき、
  * 「snapshot block 内の moves をフル再パース」「broadcast move を 1 行ずつ
  * apply」を `subscribeRshogiLiveGame` 内に閉じ込めるための判断。一般的な WS
  * クライアント実装 (`createRoomClient` 等) は app-core に依存しないが、live
@@ -38,7 +38,6 @@
 import {
     createInitialPositionState,
     type PositionState,
-    parseCsaMovesWithState,
     parseSingleCsaMove,
 } from "@shogi/app-core";
 import type { RshogiGameMeta, RshogiGameResult, RshogiGameResultKind } from "./client";
@@ -124,15 +123,6 @@ export interface RshogiLiveMoveEvent {
     csaMove: string;
     /** 消費秒数 (`,T<elapsed_sec>` の値)。秒数行が無ければ 0。 */
     elapsedSec: number;
-    /**
-     * 指した側のコメント (eval / PV)。
-     *
-     * live stream ではコメントは move 行の *後* に別行で届くため、`onMove` 発火時点
-     * では確定しておらず本フィールドは常に undefined になる (コメントは後続の
-     * `onMoveComment` で ply 紐付きで届く)。型の対称性と将来利用のための予約。
-     * snapshot 由来の手のコメントは {@link RshogiLiveSnapshot.moveDetails} で届く。
-     */
-    comment?: RshogiLiveComment;
 }
 
 /**
@@ -347,16 +337,25 @@ const decodeSnapshotBlock = (
 
     const summary = parseGameSummaryLines(summaryLines);
 
-    const movesText = moveEntries.map((e) => e.token).join("\n");
-    const initial = createInitialPositionState();
-    const { moves, state } = parseCsaMovesWithState(movesText, initial);
-    // `moves` (USI) と同順・同長でメタ情報を並べる。parse で token が脱落しても
-    // index 対応が崩れないよう moves 側を基準に index する。
-    const moveDetails: RshogiLiveMove[] = moves.map((usi, i) => ({
-        csaMove: usi,
-        elapsedSec: moveEntries[i]?.elapsedSec ?? 0,
-        comment: moveEntries[i]?.comment,
-    }));
+    // moves (USI) と moveDetails を同じループで対にして構築する。
+    // `parseCsaMovesWithState` は解析不能な手を skip して続行するため、moves 配列
+    // だけ後から index 対応させると skip 以降の消費秒/コメントが 1 手ずれる。
+    // entry 単位で parse し、失敗した entry は elapsedSec/comment ごと落とすことで
+    // 両配列の index 対応を構造的に保証する (skip の挙動自体は従来と同じ)。
+    let state = createInitialPositionState();
+    const moves: string[] = [];
+    const moveDetails: RshogiLiveMove[] = [];
+    for (const entry of moveEntries) {
+        const applied = parseSingleCsaMove(entry.token, state);
+        if (!applied) continue;
+        state = applied.nextState;
+        moves.push(applied.move);
+        moveDetails.push({
+            csaMove: applied.move,
+            elapsedSec: entry.elapsedSec,
+            comment: entry.comment,
+        });
+    }
 
     const meta: RshogiGameMeta = {
         gameId: summary.gameId ?? gameId,

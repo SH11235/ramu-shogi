@@ -153,10 +153,13 @@ describe("RshogiLiveMetaPanel: 読み筋の表示", () => {
         expect(screen.getByText("読み筋")).toBeDefined();
         expect(screen.getByText("+7776FU -3334FU")).toBeDefined();
     });
-    it("長い PV は末尾を省略する", () => {
+    it("長い PV は表示を末尾省略しつつ title には全文を渡す", () => {
         const pv = Array.from({ length: 20 }, (_, i) => `+m${i}`);
         render(<RshogiLiveMetaPanel meta={META} latestPv={pv} />);
-        expect(screen.getByText(/…$/)).toBeDefined();
+        const truncated = screen.getByText(/…$/);
+        expect(truncated).toBeDefined();
+        // ツールチップ (title) は省略前の全文。
+        expect(truncated.getAttribute("title")).toBe(pv.join(" "));
     });
     it("PV が無いときは読み筋を表示しない", () => {
         render(<RshogiLiveMetaPanel meta={META} />);

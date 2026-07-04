@@ -1,12 +1,11 @@
-import type { RshogiLiveGameSummary } from "@shogi/match-client";
-import { fetchRshogiLiveGameList } from "@shogi/match-client";
-import { RshogiCsaLiveGameList } from "@shogi/ui";
+import { RshogiCsaLiveGameList, useRshogiLiveGameList } from "@shogi/ui";
 import { Button } from "@shogi/ui/components/button";
-import { type ReactElement, useEffect, useState } from "react";
+import type { ReactElement } from "react";
 
-const PAGE_LIMIT = 50;
-// サーバの edge cache TTL (60 秒) に合わせて自動再取得する。
-const AUTO_REFRESH_MS = 60_000;
+// web 側 (`RshogiLiveGamesPage`) と同じくモジュールスコープで解決する
+// (import.meta.env はビルド時定数のためコンポーネント外で確定できる)。
+const apiBaseUrl =
+    (import.meta.env.VITE_RSHOGI_API_BASE as string | undefined)?.trim() || undefined;
 
 interface Props {
     onBackToLocal: () => void;
@@ -16,83 +15,13 @@ interface Props {
 /**
  * Desktop 用の rshogi 進行中対局一覧ビュー。
  *
- * Web 側 `RshogiLiveGamesPage` と同じ挙動 (初回ロード + 60 秒自動更新 + 手動更新 +
- * ページング) を持つ。行クリックで `onSelectGame` を呼び、呼出側 (`App.tsx`) が
- * live 観戦ビューへ遷移する。
+ * 取得・60 秒自動更新・手動更新・ページングは web 側 `RshogiLiveGamesPage` と
+ * 共有のフック (`useRshogiLiveGameList`) に委譲する。行クリックで `onSelectGame`
+ * を呼び、呼出側 (`App.tsx`) が live 観戦ビューへ遷移する。
  */
 export function RshogiLiveGamesView({ onBackToLocal, onSelectGame }: Props): ReactElement {
-    const apiBaseUrl =
-        (import.meta.env.VITE_RSHOGI_API_BASE as string | undefined)?.trim() || undefined;
-
-    const [games, setGames] = useState<RshogiLiveGameSummary[]>([]);
-    const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
-    const [isLoading, setIsLoading] = useState<boolean>(true);
-    const [errorMessage, setErrorMessage] = useState<string | null>(null);
-    const [refreshNonce, setRefreshNonce] = useState<number>(0);
-
-    // 初回ロード + 60 秒ごとの自動更新。手動更新 (refreshNonce 変化) でも再実行する。
-    // biome-ignore lint/correctness/useExhaustiveDependencies: refreshNonce は手動更新の再取得トリガー。effect 本体では読まないが、依存に含めることで再実行させる。
-    useEffect(() => {
-        const controller = new AbortController();
-        const loadFirstPage = async (): Promise<void> => {
-            setIsLoading(true);
-            setErrorMessage(null);
-            try {
-                const page = await fetchRshogiLiveGameList({
-                    baseUrl: apiBaseUrl,
-                    limit: PAGE_LIMIT,
-                    signal: controller.signal,
-                });
-                if (controller.signal.aborted) return;
-                setGames(page.liveGames);
-                setNextCursor(page.nextCursor);
-            } catch (error) {
-                if (controller.signal.aborted) return;
-                setErrorMessage(
-                    error instanceof Error
-                        ? error.message
-                        : `進行中対局一覧の取得に失敗しました: ${String(error)}`,
-                );
-            } finally {
-                if (!controller.signal.aborted) setIsLoading(false);
-            }
-        };
-        void loadFirstPage();
-        const intervalId = setInterval(() => {
-            void loadFirstPage();
-        }, AUTO_REFRESH_MS);
-        return () => {
-            controller.abort();
-            clearInterval(intervalId);
-        };
-    }, [apiBaseUrl, refreshNonce]);
-
-    const handleLoadMore = async (): Promise<void> => {
-        if (!nextCursor || isLoading) return;
-        setIsLoading(true);
-        setErrorMessage(null);
-        try {
-            const page = await fetchRshogiLiveGameList({
-                baseUrl: apiBaseUrl,
-                cursor: nextCursor,
-                limit: PAGE_LIMIT,
-            });
-            setGames((prev) => [...prev, ...page.liveGames]);
-            setNextCursor(page.nextCursor);
-        } catch (error) {
-            setErrorMessage(
-                error instanceof Error
-                    ? error.message
-                    : `進行中対局一覧の取得に失敗しました: ${String(error)}`,
-            );
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const handleRefresh = (): void => {
-        setRefreshNonce((n) => n + 1);
-    };
+    const { games, isLoading, errorMessage, hasMore, refresh, loadMore } =
+        useRshogiLiveGameList(apiBaseUrl);
 
     return (
         <div className="flex flex-col gap-3">
@@ -100,7 +29,7 @@ export function RshogiLiveGamesView({ onBackToLocal, onSelectGame }: Props): Rea
                 <Button variant="outline" size="sm" onClick={onBackToLocal}>
                     ← ローカル対局へ戻る
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isLoading}>
+                <Button variant="outline" size="sm" onClick={refresh} disabled={isLoading}>
                     {isLoading ? "更新中..." : "更新"}
                 </Button>
                 <span className="text-sm font-semibold text-wafuu-sumi">rshogi viewer (live)</span>
@@ -118,9 +47,9 @@ export function RshogiLiveGamesView({ onBackToLocal, onSelectGame }: Props): Rea
             <RshogiCsaLiveGameList
                 games={games}
                 onSelectGame={onSelectGame}
-                onLoadMore={() => void handleLoadMore()}
+                onLoadMore={() => void loadMore()}
                 isLoading={isLoading}
-                hasMore={nextCursor !== undefined}
+                hasMore={hasMore}
                 emptyMessage="現在進行中の対局はありません。"
             />
         </div>
