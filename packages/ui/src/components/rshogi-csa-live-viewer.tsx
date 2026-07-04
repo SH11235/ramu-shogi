@@ -14,6 +14,7 @@
 
 import { cn } from "@shogi/design-system";
 import {
+    type RshogiClockKind,
     type RshogiGameMeta,
     type RshogiGameResult,
     type RshogiLiveCallbacks,
@@ -21,6 +22,7 @@ import {
     type RshogiLiveMove,
     type RshogiLiveSession,
     type RshogiLiveSnapshot,
+    type RshogiTimeControl,
     subscribeRshogiLiveGame,
 } from "@shogi/match-client";
 import { type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
@@ -40,6 +42,28 @@ export interface RshogiCsaLiveViewerProps {
     fetchLegalMoves?: React.ComponentProps<typeof ShogiMatch>["fetchLegalMoves"];
     onRequestNnueFilePath?: React.ComponentProps<typeof ShogiMatch>["onRequestNnueFilePath"];
     isDevMode?: boolean;
+}
+
+/**
+ * client 側で保持する時計状態。
+ *
+ * `sente` / `gote` は **本体残時間 (ms)**。server の `remaining_main_ms` と同義で、
+ * 秒読みは含まない (server は秒読み残量を persist しない)。秒読みフェーズに入った
+ * かどうかは per-side の `*InByoyomi` フラグで表す。秒読みは毎手 full リセットされ
+ * 持続量の概念が無いため、残量ではなくフラグだけを保持し、表示時に full から
+ * anchor 補間する ({@link computeRemaining})。
+ */
+export interface LiveClocks {
+    /** 先手の本体残時間 (ms、秒読み中は 0)。 */
+    sente: number;
+    /** 後手の本体残時間 (ms、秒読み中は 0)。 */
+    gote: number;
+    /** wire 上の手番 (= server `current_turn()`)。 */
+    sideToMove: "sente" | "gote";
+    /** 先手が秒読みフェーズに入っているか。 */
+    senteInByoyomi: boolean;
+    /** 後手が秒読みフェーズに入っているか。 */
+    goteInByoyomi: boolean;
 }
 
 interface LiveState {
@@ -62,8 +86,8 @@ interface LiveState {
      * move では key を変えず prop 更新で反映する (毎手 remount を避けてちらつきを防ぐ)。
      */
     snapshotEpoch: number;
-    /** 最後に server から受け取った clock 残時間 (ms)。 */
-    clocks: { sente: number; gote: number; sideToMove: "sente" | "gote" } | null;
+    /** 最後に server から受け取った clock 状態 (本体残時間 + 秒読みフラグ)。 */
+    clocks: LiveClocks | null;
     /** clock を local timer で減算するための anchor (ms epoch)。 */
     clockAnchorAtMs: number | null;
     connectionState: RshogiLiveConnectionState;
@@ -222,6 +246,114 @@ const formatMs = (ms: number): string => {
     return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 };
 
+/**
+ * 秒読み残時間 (ms) を `m:ss` に整形する。
+ *
+ * 本体時計 (`formatMs`) は floor だが、秒読みは「あと N 秒」という残数表示のため
+ * ceil にする (full 10 秒の秒読み開始直後に 9 と出さない)。実際の time-up 判定は
+ * server 側で行われ end 行として届くので、client 表示は 0 でクランプするだけ。
+ */
+const formatByoyomiClock = (ms: number): string => {
+    const totalSec = Number.isFinite(ms) ? Math.max(0, Math.ceil(ms / 1000)) : 0;
+    const min = Math.floor(totalSec / 60);
+    const sec = totalSec % 60;
+    return `${min}:${String(sec).padStart(2, "0")}`;
+};
+
+/** timeControl から秒読みの full 量 (ms) を取り出す (ms 粒度優先、無ければ秒→ms)。 */
+function byoyomiFullMs(timeControl: RshogiTimeControl | undefined): number {
+    if (!timeControl) return 0;
+    return timeControl.byoyomiMilliseconds ?? (timeControl.byoyomiSeconds ?? 0) * 1000;
+}
+
+/** countdown 系 (秒読みを持ちうる方式) かどうか。stopwatch / fischer は含めない。 */
+function isCountdownFamily(kind: RshogiClockKind | undefined): boolean {
+    return kind === "countdown" || kind === "countdown_msec";
+}
+
+/**
+ * ある側の本体残時間 + timeControl から「秒読みフェーズに入っているか」を導出する。
+ *
+ * 本体 0 かつ countdown 系かつ byoyomi>0 のときだけ true。snapshot / onClock の
+ * resync 経路で使い、遅れて参加した観戦者が秒読み中の局面を即座に秒読み表示できる
+ * ようにする。fischer / stopwatch / sudden-death (byoyomi 0) は常に false。
+ */
+export function deriveInByoyomi(
+    mainMs: number,
+    timeControl: RshogiTimeControl | undefined,
+): boolean {
+    return mainMs <= 0 && isCountdownFamily(timeControl?.kind) && byoyomiFullMs(timeControl) > 0;
+}
+
+/**
+ * broadcast move 1 手を時計状態に適用する純関数 (kind ごとのルールを server
+ * `game/clock.rs` に合わせる)。`onMove` から呼び、unit テスト可能にするため純関数化。
+ *
+ * `elapsedSec` は wire の `,T<sec>` (server 計算・秒切り捨て済みの権威ある経過秒) を
+ * 渡す。従来の実装は local wall-clock 経過を引いていたため、時間切れで 00:00 に
+ * 張り付いたり fischer 増分が反映されなかった。ここで authoritative elapsed を
+ * 使うのが本 fix の要点。秒切り捨て由来の最大 1 秒のドリフトは許容し、snapshot
+ * resync (`onClock`) が上書き補正する。
+ *
+ * - fischer:  mover.main = max(0, main - elapsedSec*1000) + increment*1000
+ *             (`FischerClock::consume` の post-increment のミラー。なお inc>0 の
+ *              fischer で broadcast される手は必ず elapsed <= main なので、
+ *              max(0, …) の clamp が効く「本体 0 からの回復」はサーバ上は到達
+ *              しない防御的ケース)。
+ * - countdown / countdown_msec:
+ *             本体内なら減算。超過したら本体 0 で秒読みへ移行 (byoyomi>0 のときだけ
+ *             `inByoyomi` を立てる)。秒読みは毎手 full リセットのため持続量は保持しない。
+ *             既知の制約: countdown_msec は wire の `,T<sec>` が秒切り捨てのため、
+ *             ms 粒度の秒読み移行判定に最大 1 秒未満の誤差が出る (snapshot resync
+ *             でのみ補正)。
+ * - stopwatch: floor(elapsedSec/60)*60000 を減算 (分単位切り捨て。elapsed 59s → 消費 0)。
+ *             既知の制約: stopwatch の秒読み (分単位) フェーズ表示は未対応
+ *             (本番プリセットは fischer / countdown のみで stopwatch 配信が無いため)。
+ *             本体 0 到達後は 00:00 のまま。対応する場合は countdown 系と同様に
+ *             `inByoyomi` を分粒度で扱うこと。
+ * - sudden-death (byoyomi 0 / increment 無し) / kind 不明: 0 でクランプするだけ
+ *   (`inByoyomi` は立てない)。
+ */
+export function applyMoveToClocks(
+    clocks: LiveClocks,
+    kind: RshogiClockKind | undefined,
+    timeControl: RshogiTimeControl | undefined,
+    moverSide: "sente" | "gote",
+    elapsedSec: number,
+): LiveClocks {
+    const elapsedMs = Math.max(0, elapsedSec) * 1000;
+    const main = moverSide === "sente" ? clocks.sente : clocks.gote;
+    const alreadyInByoyomi = moverSide === "sente" ? clocks.senteInByoyomi : clocks.goteInByoyomi;
+
+    let nextMain: number;
+    let nextInByoyomi: boolean;
+    if (kind === "fischer") {
+        const incMs = (timeControl?.incrementSeconds ?? 0) * 1000;
+        nextMain = Math.max(0, main - elapsedMs) + incMs;
+        nextInByoyomi = false;
+    } else if (kind === "stopwatch") {
+        const consumedMs = Math.floor(Math.max(0, elapsedSec) / 60) * 60_000;
+        nextMain = Math.max(0, main - consumedMs);
+        nextInByoyomi = false;
+    } else {
+        // countdown / countdown_msec / sudden-death / kind 不明。
+        // 既に秒読みなら本体は 0 のまま (秒読みは毎手 full リセットで持続量を保持しない)、
+        // そうでなければ本体から減算する。本体が 0 に達したら (ちょうど使い切りも含め)
+        // byoyomi>0 のときだけ秒読みフェーズへ移行する ({@link deriveInByoyomi} と同義)。
+        nextMain = alreadyInByoyomi ? 0 : Math.max(0, main - elapsedMs);
+        nextInByoyomi = nextMain <= 0 && byoyomiFullMs(timeControl) > 0;
+    }
+
+    const nextSide: "sente" | "gote" = moverSide === "sente" ? "gote" : "sente";
+    return {
+        sente: moverSide === "sente" ? nextMain : clocks.sente,
+        gote: moverSide === "gote" ? nextMain : clocks.gote,
+        sideToMove: nextSide,
+        senteInByoyomi: moverSide === "sente" ? nextInByoyomi : clocks.senteInByoyomi,
+        goteInByoyomi: moverSide === "gote" ? nextInByoyomi : clocks.goteInByoyomi,
+    };
+}
+
 const CONNECTION_LABEL: Record<RshogiLiveConnectionState, string> = {
     connecting: "接続中...",
     connected: "観戦中",
@@ -259,20 +391,68 @@ const formatResultText = (meta: RshogiGameMeta | undefined, result: RshogiGameRe
     return `${winnerLabel} (${reason})`;
 };
 
-/** 手番側だけ countdown した先手・後手の残時間 (ms)。 */
-export function computeRemaining(
-    clocks: LiveState["clocks"],
+/** スコアボード片側分の表示用残時間 (本体 or 秒読み)。 */
+interface SideRemaining {
+    /** 本体残時間 (ms、秒読み中は 0)。 */
+    mainMs: number;
+    /** 秒読み残 (ms)。秒読みフェーズのときだけ設定する (非秒読み時は undefined)。 */
+    byoyomiMs?: number;
+    /** 秒読みフェーズか (true のとき byoyomiMs を表示する)。 */
+    inByoyomi: boolean;
+}
+
+/** 1 側分の表示残時間を求める (手番側のみ anchor 補間で減算する)。 */
+function sideRemaining(
+    main: number,
+    inByoyomi: boolean,
+    isActive: boolean,
     elapsedSinceAnchor: number,
-): { sente: number; gote: number } {
+    byoyomiFull: number,
+): SideRemaining {
+    if (inByoyomi) {
+        // 秒読み: 本体は 0。手番側は full から anchor 補間で減算、相手側は full 表示。
+        // 実際の time-up は server が判定し end 行で届くため、client は 0 でクランプする。
+        const byoyomiMs = isActive ? Math.max(0, byoyomiFull - elapsedSinceAnchor) : byoyomiFull;
+        return { mainMs: 0, byoyomiMs, inByoyomi: true };
+    }
+    const mainMs = isActive ? Math.max(0, main - elapsedSinceAnchor) : main;
+    return { mainMs, inByoyomi: false };
+}
+
+/**
+ * 手番側だけ 1Hz 補間で減算した先手・後手の表示残時間を求める。
+ *
+ * 秒読みフェーズ (`*InByoyomi`) の側は本体 0 の代わりに秒読み残 (`byoyomiMs`) を返す。
+ * 補間はあくまで手 (move) 間の見た目のためで、権威ある値は次の move / snapshot で
+ * 上書きされる。`timeControl` は秒読みの full 量を知るために渡す。
+ */
+export function computeRemaining(
+    clocks: LiveClocks | null,
+    elapsedSinceAnchor: number,
+    timeControl?: RshogiTimeControl,
+): { sente: SideRemaining; gote: SideRemaining } {
+    if (!clocks) {
+        return {
+            sente: { mainMs: 0, inByoyomi: false },
+            gote: { mainMs: 0, inByoyomi: false },
+        };
+    }
+    const byoyomiFull = byoyomiFullMs(timeControl);
     return {
-        sente:
-            clocks && clocks.sideToMove === "sente"
-                ? Math.max(0, clocks.sente - elapsedSinceAnchor)
-                : (clocks?.sente ?? 0),
-        gote:
-            clocks && clocks.sideToMove === "gote"
-                ? Math.max(0, clocks.gote - elapsedSinceAnchor)
-                : (clocks?.gote ?? 0),
+        sente: sideRemaining(
+            clocks.sente,
+            clocks.senteInByoyomi,
+            clocks.sideToMove === "sente",
+            elapsedSinceAnchor,
+            byoyomiFull,
+        ),
+        gote: sideRemaining(
+            clocks.gote,
+            clocks.goteInByoyomi,
+            clocks.sideToMove === "gote",
+            elapsedSinceAnchor,
+            byoyomiFull,
+        ),
     };
 }
 
@@ -280,18 +460,20 @@ export function computeRemaining(
 function ScoreboardSide({
     side,
     name,
-    remainingMs,
+    remaining,
     active,
     ownEvalCp,
 }: {
     side: "sente" | "gote";
     name: string;
-    remainingMs: number;
+    /** 表示用残時間 (本体 or 秒読み)。 */
+    remaining: SideRemaining;
     active: boolean;
     /** その手番自身の視点に直した最新評価値 (`+` = その手番が有利)。無ければ非表示。 */
     ownEvalCp?: number;
 }): ReactElement {
     const isSente = side === "sente";
+    const showByoyomi = remaining.inByoyomi && remaining.byoyomiMs !== undefined;
     return (
         <div
             className={cn(
@@ -321,6 +503,8 @@ function ScoreboardSide({
                     </div>
                 )}
             </div>
+            {/* 時計スロット: 本体表示と秒読み表示で高さを変えない (PR #56 の CLS 回帰防止)。
+                秒読み中は同じ text-2xl の数字スロットに「秒読み」ラベル + 残秒を差し替える。 */}
             <div
                 className={cn(
                     "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-2xl font-bold leading-none tabular-nums transition-colors",
@@ -334,7 +518,14 @@ function ScoreboardSide({
                         aria-hidden="true"
                     />
                 )}
-                {formatMs(remainingMs)}
+                {showByoyomi ? (
+                    <>
+                        <span className="text-xs font-semibold">秒読み</span>
+                        <span>{formatByoyomiClock(remaining.byoyomiMs ?? 0)}</span>
+                    </>
+                ) : (
+                    formatMs(remaining.mainMs)
+                )}
             </div>
         </div>
     );
@@ -372,7 +563,7 @@ export function RshogiLiveScoreboard({
     /** 直近手の消費秒数。無ければ非表示。 */
     lastMoveElapsedSec?: number;
 }): ReactElement {
-    const remaining = computeRemaining(clocks, elapsedSinceAnchor);
+    const remaining = computeRemaining(clocks, elapsedSinceAnchor, meta.timeControl);
     const isConnected = connectionState === "connected";
     const turnLabel = result
         ? "終局"
@@ -389,7 +580,7 @@ export function RshogiLiveScoreboard({
             <ScoreboardSide
                 side="sente"
                 name={meta.senteName}
-                remainingMs={remaining.sente}
+                remaining={remaining.sente}
                 active={!result && clocks?.sideToMove === "sente"}
                 ownEvalCp={toOwnEval("sente", senteEvalCp)}
             />
@@ -421,7 +612,7 @@ export function RshogiLiveScoreboard({
             <ScoreboardSide
                 side="gote"
                 name={meta.goteName}
-                remainingMs={remaining.gote}
+                remaining={remaining.gote}
                 active={!result && clocks?.sideToMove === "gote"}
                 ownEvalCp={toOwnEval("gote", goteEvalCp)}
             />
@@ -507,6 +698,7 @@ export function RshogiCsaLiveViewer({
         const callbacks: RshogiLiveCallbacks = {
             onSnapshot(snapshot) {
                 const summary = summarizeMoveDetails(snapshot.moveDetails);
+                const timeControl = snapshot.meta.timeControl;
                 setState((prev) => ({
                     ...prev,
                     snapshot,
@@ -515,7 +707,15 @@ export function RshogiCsaLiveViewer({
                     moveEvals: moveDetailsToEvals(snapshot.moveDetails),
                     result: snapshot.finalResult ?? prev.result,
                     snapshotEpoch: prev.snapshotEpoch + 1,
-                    clocks: snapshot.clocks,
+                    // 本体残 0 かつ countdown 系秒読み局面なら、遅れて参加した観戦者にも
+                    // 秒読み表示を即座に出せるよう inByoyomi を派生する。
+                    clocks: {
+                        sente: snapshot.clocks.sente,
+                        gote: snapshot.clocks.gote,
+                        sideToMove: snapshot.clocks.sideToMove,
+                        senteInByoyomi: deriveInByoyomi(snapshot.clocks.sente, timeControl),
+                        goteInByoyomi: deriveInByoyomi(snapshot.clocks.gote, timeControl),
+                    },
                     clockAnchorAtMs: Date.now(),
                     lastError: undefined,
                     // snapshot は全置換なので eval/PV/消費秒も moveDetails から再導出する。
@@ -526,38 +726,30 @@ export function RshogiCsaLiveViewer({
                 }));
             },
             onMove({ csaMove, elapsedSec }) {
-                setState((prev) => ({
-                    ...prev,
-                    moves: [...prev.moves, csaMove],
-                    // 新規手を付随情報配列にも追加 (この時点では消費秒のみ、eval は後追い)。
-                    moveEvals: appendMoveEval(prev.moveEvals, elapsedSec),
-                    // broadcast move 到着時に手番側を切り替える (= clock の anchor も
-                    // 更新してロジックを単純化する。サーバから次 snapshot が来たら
-                    // 上書きされる)。
-                    clocks: prev.clocks
-                        ? {
-                              sente:
-                                  prev.clocks.sideToMove === "sente"
-                                      ? Math.max(
-                                            0,
-                                            prev.clocks.sente -
-                                                (Date.now() - (prev.clockAnchorAtMs ?? Date.now())),
-                                        )
-                                      : prev.clocks.sente,
-                              gote:
-                                  prev.clocks.sideToMove === "gote"
-                                      ? Math.max(
-                                            0,
-                                            prev.clocks.gote -
-                                                (Date.now() - (prev.clockAnchorAtMs ?? Date.now())),
-                                        )
-                                      : prev.clocks.gote,
-                              sideToMove: prev.clocks.sideToMove === "sente" ? "gote" : "sente",
-                          }
-                        : prev.clocks,
-                    clockAnchorAtMs: Date.now(),
-                    lastMoveElapsedSec: elapsedSec,
-                }));
+                setState((prev) => {
+                    const timeControl = prev.snapshot?.meta.timeControl;
+                    return {
+                        ...prev,
+                        moves: [...prev.moves, csaMove],
+                        // 新規手を付随情報配列にも追加 (この時点では消費秒のみ、eval は後追い)。
+                        moveEvals: appendMoveEval(prev.moveEvals, elapsedSec),
+                        // broadcast move 到着時に手番側 (= mover) の時計を kind ごとの
+                        // ルールで更新し、手番を相手側へ切り替える。local wall-clock では
+                        // なく wire の権威ある elapsedSec を使う (本 fix の要点)。
+                        // 秒切り捨て由来の最大 1 秒のドリフトは snapshot resync で補正される。
+                        clocks: prev.clocks
+                            ? applyMoveToClocks(
+                                  prev.clocks,
+                                  timeControl?.kind,
+                                  timeControl,
+                                  prev.clocks.sideToMove,
+                                  elapsedSec,
+                              )
+                            : prev.clocks,
+                        clockAnchorAtMs: Date.now(),
+                        lastMoveElapsedSec: elapsedSec,
+                    };
+                });
             },
             onMoveComment({ ply, comment }) {
                 setState((prev) => ({
@@ -568,11 +760,23 @@ export function RshogiCsaLiveViewer({
                 }));
             },
             onClock({ remainingMs, sideToMove }) {
-                setState((prev) => ({
-                    ...prev,
-                    clocks: { sente: remainingMs.sente, gote: remainingMs.gote, sideToMove },
-                    clockAnchorAtMs: Date.now(),
-                }));
+                setState((prev) => {
+                    // onClock は snapshot 完了直後 (onSnapshot の後) にのみ発火するため、
+                    // prev.snapshot は既に最新へ更新済み。そこから timeControl を引き、
+                    // 本体残 0 の countdown 系秒読み局面を即座に秒読み表示へ乗せる。
+                    const timeControl = prev.snapshot?.meta.timeControl;
+                    return {
+                        ...prev,
+                        clocks: {
+                            sente: remainingMs.sente,
+                            gote: remainingMs.gote,
+                            sideToMove,
+                            senteInByoyomi: deriveInByoyomi(remainingMs.sente, timeControl),
+                            goteInByoyomi: deriveInByoyomi(remainingMs.gote, timeControl),
+                        },
+                        clockAnchorAtMs: Date.now(),
+                    };
+                });
             },
             onEnd(result) {
                 setState((prev) => ({ ...prev, result }));
