@@ -2,11 +2,14 @@ import type { RshogiGameMeta, RshogiLiveMove } from "@shogi/match-client";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
+    appendMoveEval,
     applyMoveComment,
     computeRemaining,
     formatOwnEval,
+    moveDetailsToEvals,
     RshogiLiveMetaPanel,
     RshogiLiveScoreboard,
+    setMoveEvalAtPly,
     summarizeMoveDetails,
 } from "./rshogi-csa-live-viewer";
 
@@ -107,6 +110,98 @@ describe("summarizeMoveDetails", () => {
             latestPv: undefined,
             lastMoveElapsedSec: undefined,
         });
+    });
+});
+
+describe("moveEvals accumulation (initialReview.moveData の材料)", () => {
+    const move = (
+        csaMove: string,
+        elapsedSec: number,
+        comment?: RshogiLiveMove["comment"],
+    ): RshogiLiveMove => ({ csaMove, elapsedSec, comment });
+
+    it("moveDetailsToEvals: snapshot を moves と同順・同長の付随情報に変換する", () => {
+        const details = [
+            // 先手 (奇数 ply): 先手視点 +30
+            move("7g7f", 3, { raw: "* 30 -3334FU", evalCp: 30, pv: ["-3334FU"] }),
+            // 後手 (偶数 ply): 先手視点 -20 (符号そのまま = 反転しない)
+            move("3c3d", 5, { raw: "* -20", evalCp: -20 }),
+            // 消費秒のみ (コメント無し)
+            move("2g2f", 4),
+            // eval も T も無い (旧サーバ) → undefined
+            move("8c8d", 0),
+        ];
+        expect(moveDetailsToEvals(details)).toEqual([
+            { elapsedMs: 3000, evalCp: 30 },
+            { elapsedMs: 5000, evalCp: -20 },
+            { elapsedMs: 4000, evalCp: undefined },
+            undefined,
+        ]);
+    });
+
+    it("moveDetailsToEvals: 詰みセンチネル ±100000 は ±2000 に丸める (evalMate 化しない・グラフ autoscale を潰さない)", () => {
+        // ±100000 を素通しすると EvalGraph の autoscale が引き伸ばされ通常評価値が
+        // 中央線に潰れるため、表示用に ±2000 へ丸める。evalMate は捏造しない。
+        const details = [
+            move("3f3e", 3, { raw: "* 100000", evalCp: 100000 }),
+            move("5a4b", 2, { raw: "* -100000", evalCp: -100000 }),
+        ];
+        expect(moveDetailsToEvals(details)).toEqual([
+            { elapsedMs: 3000, evalCp: 2000 },
+            { elapsedMs: 2000, evalCp: -2000 },
+        ]);
+    });
+
+    it("setMoveEvalAtPly: 後追いコメントの詰みセンチネルも ±2000 に丸める", () => {
+        const prev = [{ elapsedMs: 3000, evalCp: 30 }, { elapsedMs: 6000 }];
+        expect(setMoveEvalAtPly(prev, 2, { evalCp: -100000 })).toEqual([
+            { elapsedMs: 3000, evalCp: 30 },
+            { elapsedMs: 6000, evalCp: -2000 },
+        ]);
+    });
+
+    it("appendMoveEval: broadcast move は消費秒のみで追加し eval は後追い", () => {
+        const prev = [{ elapsedMs: 3000, evalCp: 30 }];
+        // T 付きの新規手 → elapsedMs のみ (eval 未確定)
+        expect(appendMoveEval(prev, 6)).toEqual([
+            { elapsedMs: 3000, evalCp: 30 },
+            { elapsedMs: 6000 },
+        ]);
+        // T 無し (旧サーバ) → undefined を追加
+        expect(appendMoveEval(prev, 0)).toEqual([{ elapsedMs: 3000, evalCp: 30 }, undefined]);
+    });
+
+    it("setMoveEvalAtPly: 該当 ply に eval を後追いし、消費秒は保持する", () => {
+        // onMove で消費秒だけ入った状態に、onMoveComment で ply2 の eval を書き込む
+        const prev = [{ elapsedMs: 3000, evalCp: 30 }, { elapsedMs: 6000 }];
+        const next = setMoveEvalAtPly(prev, 2, { evalCp: -45 });
+        expect(next).toEqual([
+            { elapsedMs: 3000, evalCp: 30 },
+            { elapsedMs: 6000, evalCp: -45 },
+        ]);
+        // 元配列は不変
+        expect(prev[1]).toEqual({ elapsedMs: 6000 });
+    });
+
+    it("setMoveEvalAtPly: eval 無しコメント・範囲外 ply は配列を据え置く", () => {
+        const prev = [{ elapsedMs: 3000, evalCp: 30 }];
+        expect(setMoveEvalAtPly(prev, 1, {})).toBe(prev); // eval 無し
+        expect(setMoveEvalAtPly(prev, 5, { evalCp: 10 })).toBe(prev); // 範囲外
+    });
+
+    it("snapshot → 増分 move → 増分 comment の一連で moves と整合する", () => {
+        // snapshot: 1 手 (eval 付き)
+        let evals = moveDetailsToEvals([move("7g7f", 3, { raw: "* 30", evalCp: 30 })]);
+        expect(evals).toEqual([{ elapsedMs: 3000, evalCp: 30 }]);
+        // broadcast move (ply2): 消費秒のみ
+        evals = appendMoveEval(evals, 5);
+        expect(evals).toEqual([{ elapsedMs: 3000, evalCp: 30 }, { elapsedMs: 5000 }]);
+        // move comment (ply2): 後手視点でも先手視点 -20 のまま
+        evals = setMoveEvalAtPly(evals, 2, { evalCp: -20 });
+        expect(evals).toEqual([
+            { elapsedMs: 3000, evalCp: 30 },
+            { elapsedMs: 5000, evalCp: -20 },
+        ]);
     });
 });
 

@@ -14,6 +14,27 @@ import { buildPassRightsOptionForLegalMoves } from "../utils/passRightsSettings"
 import type { UseKifuNavigationResult } from "./useKifuNavigation";
 
 /**
+ * `initialReview.moveData` の 1 手分の評価値・消費時間。
+ *
+ * `initialReview.moves` と同じ index で対応する (undefined = その手の付随情報なし)。
+ * 評価値は **先手視点** (`+` = 先手有利) 前提で、`importSfen` 内で
+ * `navigation.addMove(..., { eval: { normalized: true } })` としてそのまま格納する
+ * (KIF インポート経路と同じ扱い。符号反転しない)。
+ */
+export interface ReviewMoveEval {
+    /** 消費時間 (ミリ秒)。 */
+    elapsedMs?: number;
+    /** 評価値 (センチポーン、先手視点。`+` = 先手有利)。 */
+    evalCp?: number;
+    /**
+     * 詰み手数 (先手視点、`+` = 先手勝ち)。
+     * ライブ観戦の wire は詰み手数を持たない (詰みは大きな evalCp センチネルで表現)
+     * ため通常は未設定。KIF インポート等の経路で詰み手数が判る場合のみ使う。
+     */
+    evalMate?: number;
+}
+
+/**
  * useKifuImportExport の props
  */
 interface UseKifuImportExportProps {
@@ -72,7 +93,12 @@ interface UseKifuImportExportReturn {
     importSfen: (
         sfen: string,
         movesToLoad: string[],
-        options?: { gotoPly?: number; isStale?: () => boolean },
+        options?: {
+            gotoPly?: number;
+            isStale?: () => boolean;
+            /** `movesToLoad` と同じ index で対応する評価値・消費時間 (先手視点)。 */
+            moveData?: (ReviewMoveEval | undefined)[];
+        },
     ) => Promise<void>;
     /** KIF形式をインポート */
     importKif: (
@@ -188,7 +214,11 @@ export function useKifuImportExport({
     const importSfen = async (
         sfen: string,
         movesToLoad: string[],
-        options?: { gotoPly?: number; isStale?: () => boolean },
+        options?: {
+            gotoPly?: number;
+            isStale?: () => boolean;
+            moveData?: (ReviewMoveEval | undefined)[];
+        },
     ) => {
         const service = getPositionService();
         try {
@@ -211,12 +241,25 @@ export function useKifuImportExport({
             if (movesToLoad.length > 0) {
                 let currentPos = newPosition;
                 const appliedMoves: string[] = [];
-                for (const move of movesToLoad) {
+                for (let i = 0; i < movesToLoad.length; i++) {
+                    const move = movesToLoad[i];
                     const applyResult = applyMoveWithState(currentPos, move, {
                         validateTurn: false,
                     });
                     if (applyResult.ok) {
-                        navigation.addMove(move, applyResult.next);
+                        // moveData は先手視点なので loadMoves (KIF) と同じく normalized: true。
+                        const data = options?.moveData?.[i];
+                        navigation.addMove(move, applyResult.next, {
+                            elapsedMs: data?.elapsedMs,
+                            eval:
+                                data?.evalCp !== undefined || data?.evalMate !== undefined
+                                    ? {
+                                          scoreCp: data.evalCp,
+                                          scoreMate: data.evalMate,
+                                          normalized: true,
+                                      }
+                                    : undefined,
+                        });
                         currentPos = applyResult.next;
                         appliedMoves.push(move);
                     } else {

@@ -25,6 +25,7 @@ import {
 } from "@shogi/match-client";
 import { type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
 import { ShogiMatch } from "./shogi-match";
+import type { ReviewMoveEval } from "./shogi-match/hooks/useKifuImportExport";
 import type { EngineOption } from "./shogi-match/types";
 
 export interface RshogiCsaLiveViewerProps {
@@ -46,6 +47,13 @@ interface LiveState {
     snapshot: RshogiLiveSnapshot | null;
     /** snapshot 後に到着した broadcast move を含む累計 moves。 */
     moves: string[];
+    /**
+     * `moves` と同順・同長の各手付随情報 (先手視点 eval / 消費秒)。
+     * `initialReview.moveData` としてそのまま `<ShogiMatch>` に渡し、棋譜評価値
+     * カラム・評価値グラフを点灯させる。scoreboard 用の latest-only 値 (senteEvalCp
+     * 等) とは独立に、全手分を保持する。
+     */
+    moveEvals: (ReviewMoveEval | undefined)[];
     /** 表示中の対局結果 (終局後)。 */
     result?: RshogiGameResult;
     /**
@@ -77,6 +85,7 @@ interface LiveState {
 const initialLiveState: LiveState = {
     snapshot: null,
     moves: [],
+    moveEvals: [],
     snapshotEpoch: 0,
     clocks: null,
     clockAnchorAtMs: null,
@@ -136,6 +145,73 @@ export function summarizeMoveDetails(moveDetails: RshogiLiveMove[]): LiveEvalSta
     );
     const last = moveDetails[moveDetails.length - 1];
     return { ...evalState, lastMoveElapsedSec: last?.elapsedSec };
+}
+
+/**
+ * 詰みセンチネルを moveData (棋譜評価値カラム / 評価値グラフ) 用に丸める値 (cp)。
+ *
+ * ## 詰みセンチネルの扱い (設計判断)
+ * wire は詰みを `±100000` センチネルで符号化するだけで **詰み手数を持たない**
+ * (rshogi は mate-in-N を潰す)。これを `evalMate=±1` として渡すと `formatEval` /
+ * `getEvalTooltipInfo` が「+詰1」「1手詰み」と **存在しない手数を偽って** 表示して
+ * しまうため、`evalMate` は設定しない (手数を捏造しない)。
+ * かつ `evalCp=±100000` を素通しすると EvalGraph の autoscale が ±100000 級に
+ * 引き伸ばされ、通常の評価値 (数百 cp) が全て中央線に潰れてグラフが死ぬ。
+ * そこでセンチネルは ±2000 (グラフの見やすい決定的優勢域) に丸めて `evalCp` に
+ * 格納する。詰みに近い決定的優勢を、捏造した手数なしに・グラフを潰さずに伝える。
+ */
+const MATE_DISPLAY_EVAL_CP = 2000;
+
+/** wire eval (先手視点) の詰みセンチネル ±100000 を表示用 ±2000 に丸める。 */
+function clampWireEvalForDisplay(evalCp: number | undefined): number | undefined {
+    if (evalCp === undefined) return undefined;
+    if (evalCp >= MATE_EVAL_SENTINEL) return MATE_DISPLAY_EVAL_CP;
+    if (evalCp <= -MATE_EVAL_SENTINEL) return -MATE_DISPLAY_EVAL_CP;
+    return evalCp;
+}
+
+/**
+ * elapsedSec と wire eval (先手視点) から `initialReview.moveData` の 1 手分を作る
+ * (両方無ければ undefined)。moves と同じ index で対応する。
+ * 詰みセンチネルの丸めは {@link MATE_DISPLAY_EVAL_CP} を参照。
+ */
+function toMoveEval(elapsedSec: number, evalCp: number | undefined): ReviewMoveEval | undefined {
+    const elapsedMs = elapsedSec > 0 ? elapsedSec * 1000 : undefined;
+    if (elapsedMs === undefined && evalCp === undefined) return undefined;
+    return { elapsedMs, evalCp: clampWireEvalForDisplay(evalCp) };
+}
+
+/** snapshot の moveDetails を moves と同順・同長の付随情報配列 (moveData) に変換する。 */
+export function moveDetailsToEvals(details: RshogiLiveMove[]): (ReviewMoveEval | undefined)[] {
+    return details.map((d) => toMoveEval(d.elapsedSec, d.comment?.evalCp));
+}
+
+/**
+ * broadcast move 到着時に付随情報配列へ 1 手を追加する。
+ * この時点では消費秒のみ確定し、eval は直後の onMoveComment で後追いで書き込む。
+ */
+export function appendMoveEval(
+    prev: (ReviewMoveEval | undefined)[],
+    elapsedSec: number,
+): (ReviewMoveEval | undefined)[] {
+    return [...prev, toMoveEval(elapsedSec, undefined)];
+}
+
+/**
+ * onMoveComment 到着時に該当 ply の付随情報へ eval (先手視点) を後追いで書き込む。
+ * ply は 1 始まり。範囲外・eval 無しコメントは配列を据え置く (消費秒は保持)。
+ * 詰みセンチネルは snapshot 経路と同じく ±{@link MATE_DISPLAY_EVAL_CP} に丸める。
+ */
+export function setMoveEvalAtPly(
+    prev: (ReviewMoveEval | undefined)[],
+    ply: number,
+    comment: { evalCp?: number },
+): (ReviewMoveEval | undefined)[] {
+    const idx = ply - 1;
+    if (comment.evalCp === undefined || idx < 0 || idx >= prev.length) return prev;
+    const next = prev.slice();
+    next[idx] = { ...next[idx], evalCp: clampWireEvalForDisplay(comment.evalCp) };
+    return next;
 }
 
 const formatMs = (ms: number): string => {
@@ -435,6 +511,8 @@ export function RshogiCsaLiveViewer({
                     ...prev,
                     snapshot,
                     moves: snapshot.moves,
+                    // snapshot は全置換。全手分の付随情報 (moveData) も moveDetails から再導出。
+                    moveEvals: moveDetailsToEvals(snapshot.moveDetails),
                     result: snapshot.finalResult ?? prev.result,
                     snapshotEpoch: prev.snapshotEpoch + 1,
                     clocks: snapshot.clocks,
@@ -451,6 +529,8 @@ export function RshogiCsaLiveViewer({
                 setState((prev) => ({
                     ...prev,
                     moves: [...prev.moves, csaMove],
+                    // 新規手を付随情報配列にも追加 (この時点では消費秒のみ、eval は後追い)。
+                    moveEvals: appendMoveEval(prev.moveEvals, elapsedSec),
                     // broadcast move 到着時に手番側を切り替える (= clock の anchor も
                     // 更新してロジックを単純化する。サーバから次 snapshot が来たら
                     // 上書きされる)。
@@ -480,7 +560,12 @@ export function RshogiCsaLiveViewer({
                 }));
             },
             onMoveComment({ ply, comment }) {
-                setState((prev) => ({ ...prev, ...applyMoveComment(prev, ply, comment) }));
+                setState((prev) => ({
+                    ...prev,
+                    ...applyMoveComment(prev, ply, comment),
+                    // 該当 ply の付随情報へ eval を後追いで書き込む (scoreboard とは独立)。
+                    moveEvals: setMoveEvalAtPly(prev.moveEvals, ply, comment),
+                }));
             },
             onClock({ remainingMs, sideToMove }) {
                 setState((prev) => ({
@@ -584,8 +669,15 @@ export function RshogiCsaLiveViewer({
                     sente: { role: "human" },
                     gote: { role: "human" },
                 }}
-                initialReview={{ sfen: "startpos", moves: state.moves }}
+                initialReview={{
+                    sfen: "startpos",
+                    moves: state.moves,
+                    // 各手の評価値・消費秒。棋譜評価値カラム・評価値グラフを点灯させる。
+                    moveData: state.moveEvals,
+                }}
                 reviewMode={true}
+                // 観戦は表示設定を別名前空間で扱い、棋譜評価値カラムを既定 ON にする。
+                spectateMode={true}
                 reviewTopContent={
                     <RshogiLiveScoreboard
                         meta={meta}

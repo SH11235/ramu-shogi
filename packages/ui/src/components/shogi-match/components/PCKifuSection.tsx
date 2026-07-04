@@ -24,9 +24,17 @@ interface PCKifuSectionProps {
     /** 観戦/検討モード。対局モードは盤上に時計があり pt-16 でその分を空けて
      *  棋譜パネルの頭を盤面と揃えるが、検討モードは時計が無いので頭詰めにする。 */
     reviewMode?: boolean;
+    /**
+     * 評価値グラフパネルを初期展開するか (ライブ観戦専用、ShogiMatch の
+     * spectateMode 由来)。検討/静的 viewer/対局は未指定 (= 既定閉) のまま。
+     */
+    evalPanelInitialOpen?: boolean;
 }
 
-export function PCKifuSection({ reviewMode }: PCKifuSectionProps): ReactElement {
+export function PCKifuSection({
+    reviewMode,
+    evalPanelInitialOpen,
+}: PCKifuSectionProps): ReactElement {
     const [activeTab, setActiveTab] = useState<"kifu" | "ai">("kifu");
 
     // 分析関連は Context から取得
@@ -90,12 +98,16 @@ export function PCKifuSection({ reviewMode }: PCKifuSectionProps): ReactElement 
 
             {/* 棋譜タブ */}
             <div className={`flex flex-col gap-2 ${activeTab !== "kifu" ? "hidden" : ""}`}>
-                {/* 評価値グラフパネル（折りたたみ） */}
+                {/* 評価値グラフパネル（折りたたみ）。
+                    既定は閉 (対局はチート防止、検討/静的 viewer は従来挙動維持)。
+                    ライブ観戦のみ evalPanelInitialOpen=true で初期展開し、評価値
+                    グラフを一目で見せる。展開状態はユーザーが自由に切り替えられる
+                    (EvalPanel 内 state)。 */}
                 <EvalPanel
                     evalHistory={displayEvalHistory}
                     currentPly={navigationState.currentPly}
                     onPlySelect={handlePlySelect}
-                    initialOpen={false}
+                    initialOpen={evalPanelInitialOpen ?? false}
                 />
 
                 {/* 棋譜パネル + ドロワー（横並び） */}
