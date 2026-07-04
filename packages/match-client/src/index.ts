@@ -73,7 +73,10 @@ export {
 export type {
     RshogiLiveCallbacks,
     RshogiLiveClockEvent,
+    RshogiLiveComment,
     RshogiLiveConnectionState,
+    RshogiLiveMove,
+    RshogiLiveMoveCommentEvent,
     RshogiLiveMoveEvent,
     RshogiLiveSession,
     RshogiLiveSnapshot,

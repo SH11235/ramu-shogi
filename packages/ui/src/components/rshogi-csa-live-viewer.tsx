@@ -18,6 +18,7 @@ import {
     type RshogiGameResult,
     type RshogiLiveCallbacks,
     type RshogiLiveConnectionState,
+    type RshogiLiveMove,
     type RshogiLiveSession,
     type RshogiLiveSnapshot,
     subscribeRshogiLiveGame,
@@ -60,6 +61,17 @@ interface LiveState {
     connectionState: RshogiLiveConnectionState;
     /** 直近の (致命的でない) エラー文言。 */
     lastError?: string;
+    /**
+     * 各手番エンジンが自コメントで報告した最新評価値 (wire 値 = **先手視点**、
+     * `+` が先手有利)。表示時に後手側のみ符号反転して「その手番自身の視点」に直す。
+     * コメントの無い対局 (旧サーバ) では undefined のまま。
+     */
+    senteEvalCp?: number;
+    goteEvalCp?: number;
+    /** 最新コメントの読み筋 (CSA トークン列)。無ければ undefined。 */
+    latestPv?: string[];
+    /** 直近手の消費秒数 (`,T` 由来)。旧サーバや未着手時は undefined。 */
+    lastMoveElapsedSec?: number;
 }
 
 const initialLiveState: LiveState = {
@@ -70,6 +82,63 @@ const initialLiveState: LiveState = {
     clockAnchorAtMs: null,
     connectionState: "connecting",
 };
+
+/** 詰みを表すセンチネル (サーバ `build_floodgate_comment` は詰みを ±100000 で符号化)。 */
+const MATE_EVAL_SENTINEL = 100_000;
+
+/**
+ * 評価値 (その手番自身の視点に直した値。`+` = その手番が有利) を表示文字列にする。
+ * ±100000 の詰みセンチネルは数値でなく詰み表記にする。
+ */
+export function formatOwnEval(ownCp: number): string {
+    if (ownCp >= MATE_EVAL_SENTINEL) return "詰み";
+    if (ownCp <= -MATE_EVAL_SENTINEL) return "詰まされ";
+    return ownCp >= 0 ? `+${ownCp}` : String(ownCp);
+}
+
+/** 各手番エンジンの最新自己 eval (wire=先手視点) と最新 PV を保持する部分状態。 */
+export interface LiveEvalState {
+    senteEvalCp?: number;
+    goteEvalCp?: number;
+    latestPv?: string[];
+}
+
+/**
+ * 1 件の move コメント (ply + eval/pv) を eval 部分状態に畳み込む。
+ * ply 奇数 = 先手の指し手・偶数 = 後手の指し手。コメントは指した側のエンジンが
+ * 付けるので、その手番側の eval として保持する。eval/pv が無ければ据え置く。
+ */
+export function applyMoveComment(
+    prev: LiveEvalState,
+    ply: number,
+    comment: { evalCp?: number; pv?: string[] },
+): LiveEvalState {
+    const isSenteMove = ply % 2 !== 0;
+    return {
+        senteEvalCp:
+            isSenteMove && comment.evalCp !== undefined ? comment.evalCp : prev.senteEvalCp,
+        goteEvalCp: !isSenteMove && comment.evalCp !== undefined ? comment.evalCp : prev.goteEvalCp,
+        latestPv: comment.pv && comment.pv.length > 0 ? comment.pv : prev.latestPv,
+    };
+}
+
+/**
+ * snapshot の `moveDetails` を畳み込み、各手番の最新 eval・最新 PV・直近消費秒を求める。
+ * eval は wire 値 (先手視点) のまま保持し、表示側で後手のみ符号反転する。
+ */
+export function summarizeMoveDetails(moveDetails: RshogiLiveMove[]): LiveEvalState & {
+    lastMoveElapsedSec?: number;
+} {
+    let evalState: LiveEvalState = {};
+    for (let i = 0; i < moveDetails.length; i++) {
+        const comment = moveDetails[i].comment;
+        if (!comment) continue;
+        // ply = i + 1。奇数 = 先手の指し手、偶数 = 後手の指し手。
+        evalState = applyMoveComment(evalState, i + 1, comment);
+    }
+    const last = moveDetails[moveDetails.length - 1];
+    return { ...evalState, lastMoveElapsedSec: last?.elapsedSec };
+}
 
 const formatMs = (ms: number): string => {
     if (!Number.isFinite(ms) || ms <= 0) return "00:00";
@@ -133,17 +202,20 @@ export function computeRemaining(
     };
 }
 
-/** スコアボードの片側 (対局者名 + 残時間)。手番側は朱で点灯する。 */
+/** スコアボードの片側 (対局者名 + 残時間 + 評価値)。手番側は朱で点灯する。 */
 function ScoreboardSide({
     side,
     name,
     remainingMs,
     active,
+    ownEvalCp,
 }: {
     side: "sente" | "gote";
     name: string;
     remainingMs: number;
     active: boolean;
+    /** その手番自身の視点に直した最新評価値 (`+` = その手番が有利)。無ければ非表示。 */
+    ownEvalCp?: number;
 }): ReactElement {
     const isSente = side === "sente";
     return (
@@ -169,6 +241,11 @@ function ScoreboardSide({
                 <div className="truncate text-base font-bold text-wafuu-sumi">
                     {name || (isSente ? "先手" : "後手")}
                 </div>
+                {ownEvalCp !== undefined && (
+                    <div className="text-[11px] font-semibold tabular-nums text-muted-foreground">
+                        評価値 {formatOwnEval(ownEvalCp)}
+                    </div>
+                )}
             </div>
             <div
                 className={cn(
@@ -189,14 +266,25 @@ function ScoreboardSide({
     );
 }
 
-/** 対局者・時計・手数・接続状態を対面表示するブロードキャスト・スコアボード。 */
-function RshogiLiveScoreboard({
+/** 各手番の wire 評価値 (先手視点) を「その手番自身の視点」に直す。 */
+function toOwnEval(side: "sente" | "gote", wireEvalCp?: number): number | undefined {
+    if (wireEvalCp === undefined) return undefined;
+    // wire は常に先手視点 (+ = 先手有利)。先手側はそのまま、後手側は符号反転して
+    // 「+ = その手番が有利」に揃える。
+    return side === "sente" ? wireEvalCp : -wireEvalCp;
+}
+
+/** 対局者・時計・手数・接続状態・評価値を対面表示するブロードキャスト・スコアボード。 */
+export function RshogiLiveScoreboard({
     meta,
     moveCount,
     clocks,
     elapsedSinceAnchor,
     connectionState,
     result,
+    senteEvalCp,
+    goteEvalCp,
+    lastMoveElapsedSec,
 }: {
     meta: RshogiGameMeta;
     moveCount: number;
@@ -204,6 +292,11 @@ function RshogiLiveScoreboard({
     elapsedSinceAnchor: number;
     connectionState: RshogiLiveConnectionState;
     result?: RshogiGameResult;
+    /** wire 評価値 (先手視点)。各手番エンジンの自己申告。無ければ非表示。 */
+    senteEvalCp?: number;
+    goteEvalCp?: number;
+    /** 直近手の消費秒数。無ければ非表示。 */
+    lastMoveElapsedSec?: number;
 }): ReactElement {
     const remaining = computeRemaining(clocks, elapsedSinceAnchor);
     const isConnected = connectionState === "connected";
@@ -224,6 +317,7 @@ function RshogiLiveScoreboard({
                 name={meta.senteName}
                 remainingMs={remaining.sente}
                 active={!result && clocks?.sideToMove === "sente"}
+                ownEvalCp={toOwnEval("sente", senteEvalCp)}
             />
             <div className="flex flex-row items-center justify-between gap-3 border-y border-wafuu-border bg-wafuu-washi px-4 py-2 sm:min-w-[7.5rem] sm:flex-col sm:justify-center sm:gap-1 sm:border-x sm:border-y-0">
                 <span className="text-xl font-bold tabular-nums leading-none text-wafuu-sumi">
@@ -244,25 +338,42 @@ function RshogiLiveScoreboard({
                     </span>
                 )}
                 <span className="text-xs text-muted-foreground">{turnLabel}</span>
+                {lastMoveElapsedSec !== undefined && (
+                    <span className="text-[11px] tabular-nums text-muted-foreground">
+                        直前手 {lastMoveElapsedSec}秒
+                    </span>
+                )}
             </div>
             <ScoreboardSide
                 side="gote"
                 name={meta.goteName}
                 remainingMs={remaining.gote}
                 active={!result && clocks?.sideToMove === "gote"}
+                ownEvalCp={toOwnEval("gote", goteEvalCp)}
             />
         </section>
     );
 }
 
-/** 対局 ID と最終結果のみを表示する補助パネル (名前/時計はスコアボードに集約)。 */
-function RshogiLiveMetaPanel({
+/** PV 表示の最大トークン数 (これを超えたら末尾を省略する)。 */
+const MAX_PV_TOKENS = 12;
+
+/** 対局 ID・最終結果・最新読み筋を表示する補助パネル (名前/時計はスコアボードに集約)。 */
+export function RshogiLiveMetaPanel({
     meta,
     result,
+    latestPv,
 }: {
     meta: RshogiGameMeta;
     result?: RshogiGameResult;
+    /** 最新コメントの読み筋 (CSA トークン列)。無ければ非表示。 */
+    latestPv?: string[];
 }): ReactElement {
+    const pvText =
+        latestPv && latestPv.length > 0
+            ? latestPv.slice(0, MAX_PV_TOKENS).join(" ") +
+              (latestPv.length > MAX_PV_TOKENS ? " …" : "")
+            : undefined;
     return (
         <section
             aria-label="観戦情報"
@@ -274,6 +385,19 @@ function RshogiLiveMetaPanel({
                 </span>
                 <span className="break-all font-mono text-xs text-wafuu-sumi">{meta.gameId}</span>
             </div>
+            {pvText && (
+                <div className="flex flex-col gap-1">
+                    <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                        読み筋
+                    </span>
+                    <span
+                        className="truncate font-mono text-xs text-muted-foreground"
+                        title={pvText}
+                    >
+                        {pvText}
+                    </span>
+                </div>
+            )}
             {result && (
                 <div className="rounded-md border border-wafuu-shu/40 bg-wafuu-shu/10 px-2.5 py-1.5 text-sm font-semibold text-wafuu-shu">
                     {formatResultText(meta, result)}
@@ -306,6 +430,7 @@ export function RshogiCsaLiveViewer({
         setTickMs(Date.now());
         const callbacks: RshogiLiveCallbacks = {
             onSnapshot(snapshot) {
+                const summary = summarizeMoveDetails(snapshot.moveDetails);
                 setState((prev) => ({
                     ...prev,
                     snapshot,
@@ -315,9 +440,14 @@ export function RshogiCsaLiveViewer({
                     clocks: snapshot.clocks,
                     clockAnchorAtMs: Date.now(),
                     lastError: undefined,
+                    // snapshot は全置換なので eval/PV/消費秒も moveDetails から再導出する。
+                    senteEvalCp: summary.senteEvalCp,
+                    goteEvalCp: summary.goteEvalCp,
+                    latestPv: summary.latestPv,
+                    lastMoveElapsedSec: summary.lastMoveElapsedSec,
                 }));
             },
-            onMove({ csaMove }) {
+            onMove({ csaMove, elapsedSec }) {
                 setState((prev) => ({
                     ...prev,
                     moves: [...prev.moves, csaMove],
@@ -346,7 +476,11 @@ export function RshogiCsaLiveViewer({
                           }
                         : prev.clocks,
                     clockAnchorAtMs: Date.now(),
+                    lastMoveElapsedSec: elapsedSec,
                 }));
+            },
+            onMoveComment({ ply, comment }) {
+                setState((prev) => ({ ...prev, ...applyMoveComment(prev, ply, comment) }));
             },
             onClock({ remainingMs, sideToMove }) {
                 setState((prev) => ({
@@ -460,9 +594,18 @@ export function RshogiCsaLiveViewer({
                         elapsedSinceAnchor={elapsedSinceAnchor}
                         connectionState={state.connectionState}
                         result={state.result}
+                        senteEvalCp={state.senteEvalCp}
+                        goteEvalCp={state.goteEvalCp}
+                        lastMoveElapsedSec={state.lastMoveElapsedSec}
                     />
                 }
-                reviewLeftContent={<RshogiLiveMetaPanel meta={meta} result={state.result} />}
+                reviewLeftContent={
+                    <RshogiLiveMetaPanel
+                        meta={meta}
+                        result={state.result}
+                        latestPv={state.latestPv}
+                    />
+                }
             />
         </div>
     );
