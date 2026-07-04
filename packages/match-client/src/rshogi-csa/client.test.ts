@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     fetchRshogiGame,
     fetchRshogiGameList,
+    fetchRshogiLiveGameList,
     listMockRshogiGameIds,
     RshogiGameFetchError,
     RshogiGameNotFoundError,
@@ -426,6 +427,136 @@ describe("fetchRshogiGameList (real baseUrl)", () => {
         ) as unknown as typeof fetch;
         await expect(
             fetchRshogiGameList({
+                baseUrl: "https://rshogi.example.com",
+                fetchImpl,
+            }),
+        ).rejects.toBeInstanceOf(RshogiGameFetchError);
+    });
+});
+
+describe("fetchRshogiLiveGameList (mock fallback)", () => {
+    it("returns the mock live list when no baseUrl is provided", async () => {
+        const page = await fetchRshogiLiveGameList();
+        expect(page.liveGames.length).toBeGreaterThan(0);
+        expect(page.liveGames[0].gameId).toBeTruthy();
+        for (const game of page.liveGames) {
+            expect(typeof game.senteName).toBe("string");
+            expect(typeof game.goteName).toBe("string");
+            // 進行中対局には result / endedAtMs / movesCount が無い。
+            expect(game).not.toHaveProperty("result");
+            expect(game).not.toHaveProperty("endedAtMs");
+            expect(game).not.toHaveProperty("movesCount");
+        }
+    });
+
+    it("respects limit and exposes nextCursor when more results exist", async () => {
+        const first = await fetchRshogiLiveGameList({ limit: 1 });
+        expect(first.liveGames).toHaveLength(1);
+        expect(first.nextCursor).toBe("1");
+        const second = await fetchRshogiLiveGameList({ limit: 1, cursor: first.nextCursor });
+        expect(second.liveGames.length).toBeGreaterThan(0);
+        expect(second.liveGames[0].gameId).not.toBe(first.liveGames[0].gameId);
+    });
+});
+
+describe("fetchRshogiLiveGameList (real baseUrl)", () => {
+    it("calls baseUrl/games/live with cursor & limit query and decodes wire into RshogiLiveGameListPage", async () => {
+        const wirePayload = {
+            live_games: [
+                {
+                    game_id: "lobby-cross-fischer-1777391025209",
+                    started_at_ms: 1777391025209,
+                    black_handle: "alice",
+                    white_handle: "bob",
+                    clock: {
+                        kind: "fischer",
+                        total_sec: 300,
+                        byoyomi_sec: 10,
+                        byoyomi_ms: null,
+                        increment_sec: 5,
+                    },
+                    source: "kifu",
+                },
+            ],
+            next_cursor: "opaque-cursor",
+        };
+        const fetchImpl = vi.fn(
+            async () =>
+                new Response(JSON.stringify(wirePayload), {
+                    status: 200,
+                    headers: { "content-type": "application/json" },
+                }),
+        ) as unknown as typeof fetch;
+
+        const page = await fetchRshogiLiveGameList({
+            baseUrl: "https://rshogi.example.com/api/v1/",
+            cursor: "prev-cursor",
+            limit: 25,
+            fetchImpl,
+        });
+
+        const calledUrl = (fetchImpl as unknown as { mock: { calls: [string][] } }).mock
+            .calls[0][0];
+        expect(calledUrl).toBe(
+            "https://rshogi.example.com/api/v1/games/live?cursor=prev-cursor&limit=25",
+        );
+        expect(page.nextCursor).toBe("opaque-cursor");
+        expect(page.liveGames).toHaveLength(1);
+        expect(page.liveGames[0]).toEqual({
+            gameId: "lobby-cross-fischer-1777391025209",
+            // black=sente, white=gote
+            senteName: "alice",
+            goteName: "bob",
+            startedAtMs: 1777391025209,
+            source: "kifu",
+            timeControl: {
+                kind: "fischer",
+                mainSeconds: 300,
+                byoyomiSeconds: 10,
+                byoyomiMilliseconds: undefined,
+                incrementSeconds: 5,
+            },
+        });
+        // live summary は result 系フィールドを持たない。
+        expect(page.liveGames[0]).not.toHaveProperty("result");
+        expect(page.liveGames[0]).not.toHaveProperty("endedAtMs");
+        expect(page.liveGames[0]).not.toHaveProperty("movesCount");
+    });
+
+    it("omits null next_cursor", async () => {
+        const wirePayload = { live_games: [], next_cursor: null };
+        const fetchImpl = vi.fn(
+            async () => new Response(JSON.stringify(wirePayload), { status: 200 }),
+        ) as unknown as typeof fetch;
+        const page = await fetchRshogiLiveGameList({
+            baseUrl: "https://rshogi.example.com",
+            fetchImpl,
+        });
+        expect(page.liveGames).toEqual([]);
+        expect(page.nextCursor).toBeUndefined();
+    });
+
+    it("throws RshogiGameFetchError on non-2xx", async () => {
+        const fetchImpl = vi.fn(
+            async () => new Response("boom", { status: 500, statusText: "Server Error" }),
+        ) as unknown as typeof fetch;
+        await expect(
+            fetchRshogiLiveGameList({
+                baseUrl: "https://rshogi.example.com",
+                fetchImpl,
+            }),
+        ).rejects.toBeInstanceOf(RshogiGameFetchError);
+    });
+
+    it("throws RshogiGameFetchError when payload has no live_games array", async () => {
+        const fetchImpl = vi.fn(
+            async () =>
+                new Response(JSON.stringify({ games: [] }), {
+                    status: 200,
+                }),
+        ) as unknown as typeof fetch;
+        await expect(
+            fetchRshogiLiveGameList({
                 baseUrl: "https://rshogi.example.com",
                 fetchImpl,
             }),

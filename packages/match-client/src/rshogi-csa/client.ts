@@ -21,7 +21,7 @@ import type {
     RshogiGameSourceWire,
     RshogiResultKindWire,
 } from "./fixtures";
-import { MOCK_RSHOGI_GAME_LIST, MOCK_RSHOGI_GAMES } from "./fixtures";
+import { MOCK_RSHOGI_GAME_LIST, MOCK_RSHOGI_GAMES, MOCK_RSHOGI_LIVE_GAME_LIST } from "./fixtures";
 
 /**
  * 終局理由 (wire の `end_reason` をそのまま保持したいケース向け)。
@@ -124,6 +124,33 @@ export interface RshogiGameListPage {
     nextCursor?: string;
 }
 
+/**
+ * 進行中対局一覧 API (`GET /api/v1/games/live`) の 1 件分。
+ *
+ * 終局済一覧 (`RshogiGameSummary`) と同じ camelCase 規約で揃えるが、進行中対局
+ * には `result` / `endedAtMs` / `movesCount` が存在しない (サーバ側
+ * `LiveGamesIndexEntry` の wire にこれらのフィールドが無い契約)。live entry は
+ * あくまで **発見手段** であり、実状態は行クリック時の WS spectate で確認する。
+ */
+export interface RshogiLiveGameSummary {
+    gameId: string;
+    /** 黒 (= 先手 / sente) のハンドル。 */
+    senteName: string;
+    /** 白 (= 後手 / gote) のハンドル。 */
+    goteName: string;
+    /** 開始時刻 (epoch ms)。Date 化は UI 側で行う (タイムゾーン事故防止)。 */
+    startedAtMs?: number;
+    timeControl?: RshogiTimeControl;
+    /** 対局のソース (`kifu` / `floodgate`)。 */
+    source?: RshogiGameSource;
+}
+
+export interface RshogiLiveGameListPage {
+    liveGames: RshogiLiveGameSummary[];
+    /** 次ページ取得用カーソル。null/undefined の場合は末尾。 */
+    nextCursor?: string;
+}
+
 export interface FetchRshogiGameOptions {
     /**
      * rshogi 配信 API のベース URL。
@@ -137,6 +164,13 @@ export interface FetchRshogiGameOptions {
 }
 
 export interface FetchRshogiGameListOptions extends FetchRshogiGameOptions {
+    /** 次ページ取得用カーソル。サーバが発行した opaque string をそのまま渡す。 */
+    cursor?: string;
+    /** 1 ページあたり件数 (1〜100、サーバ既定 50)。 */
+    limit?: number;
+}
+
+export interface FetchRshogiLiveGameListOptions extends FetchRshogiGameOptions {
     /** 次ページ取得用カーソル。サーバが発行した opaque string をそのまま渡す。 */
     cursor?: string;
     /** 1 ページあたり件数 (1〜100、サーバ既定 50)。 */
@@ -253,6 +287,26 @@ interface GameDetailWire extends GameWireBase {
 
 interface GameListResponseWire {
     games?: GameWireBase[];
+    next_cursor?: string | null;
+}
+
+/**
+ * 進行中対局一覧 (`/api/v1/games/live`) の 1 件分 (wire, snake_case)。
+ *
+ * サーバ側 `LiveGamesIndexEntry` に一致させる。終局済 (`GameWireBase`) と異なり
+ * `ended_at_ms` / `result_kind` / `end_reason` / `moves_count` は存在しない。
+ */
+interface LiveGameWireBase {
+    game_id: string;
+    started_at_ms?: number | null;
+    black_handle: string;
+    white_handle: string;
+    clock?: ClockWire | null;
+    source?: RshogiGameSourceWire | string | null;
+}
+
+interface LiveGameListResponseWire {
+    live_games?: LiveGameWireBase[];
     next_cursor?: string | null;
 }
 
@@ -416,6 +470,26 @@ const decodeGameListResponse = (wire: GameListResponseWire): RshogiGameListPage 
     };
 };
 
+const decodeLiveGameSummary = (wire: LiveGameWireBase): RshogiLiveGameSummary => ({
+    gameId: wire.game_id,
+    // black=sente, white=gote のマッピング (終局済 decode と対称)。
+    senteName: wire.black_handle,
+    goteName: wire.white_handle,
+    startedAtMs: decodeNumberOrUndefined(wire.started_at_ms),
+    timeControl: decodeClock(wire.clock),
+    source: decodeStringOrUndefined(wire.source ?? undefined),
+});
+
+const decodeLiveGameListResponse = (wire: LiveGameListResponseWire): RshogiLiveGameListPage => {
+    const liveGames = Array.isArray(wire.live_games)
+        ? wire.live_games.map(decodeLiveGameSummary)
+        : [];
+    return {
+        liveGames,
+        nextCursor: decodeStringOrUndefined(wire.next_cursor ?? undefined),
+    };
+};
+
 /**
  * rshogi の対局 ID から CSA 棋譜とメタを取得する。
  *
@@ -506,6 +580,52 @@ export async function fetchRshogiGameList(
     return decodeGameListResponse(payload);
 }
 
+/**
+ * rshogi の進行中対局一覧 (`GET /api/v1/games/live`) を取得する。
+ *
+ * 終局済一覧 (`fetchRshogiGameList`) と pagination semantics は同じだが、
+ * レスポンスの配列キーが `live_games`、要素に `result` 系フィールドが無い点が
+ * 異なる。サーバは edge で 60 秒キャッシュしており、best-effort eventual
+ * consistency (既に終局済の対局が一時的に含まれることがある) を前提とする。
+ *
+ * @param options ページング・baseUrl の指定。`baseUrl` 未指定時はモック fixture を返す。
+ */
+export async function fetchRshogiLiveGameList(
+    options: FetchRshogiLiveGameListOptions = {},
+): Promise<RshogiLiveGameListPage> {
+    const baseUrl = options.baseUrl?.trim();
+    if (!baseUrl) {
+        // モック動作: cursor/limit に応じてスライス (MVP 用)。
+        return mockLiveGameListPage(options.cursor, options.limit);
+    }
+
+    const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+    if (!fetchImpl) {
+        throw new RshogiGameFetchError("", "fetch is not available in this environment");
+    }
+
+    const params = new URLSearchParams();
+    if (options.cursor) params.set("cursor", options.cursor);
+    if (options.limit !== undefined) params.set("limit", String(options.limit));
+    const query = params.toString();
+    const url = `${trimTrailingSlash(baseUrl)}/games/live${query.length > 0 ? `?${query}` : ""}`;
+
+    const response = await fetchImpl(url, buildRequestInit(options.signal));
+    if (!response.ok) {
+        throw new RshogiGameFetchError(
+            "",
+            `rshogi API returned ${response.status} ${response.statusText}`,
+            response.status,
+        );
+    }
+
+    const payload = (await response.json()) as LiveGameListResponseWire | null;
+    if (!payload || !Array.isArray(payload.live_games)) {
+        throw new RshogiGameFetchError("", "rshogi API response missing live_games array");
+    }
+    return decodeLiveGameListResponse(payload);
+}
+
 const DEFAULT_MOCK_LIMIT = 50;
 const MAX_MOCK_LIMIT = 100;
 
@@ -521,6 +641,22 @@ const mockGameListPage = (
     const next = startIndex + clamped;
     return {
         games: slice,
+        nextCursor: next < list.length ? String(next) : undefined,
+    };
+};
+
+const mockLiveGameListPage = (
+    cursor: string | undefined,
+    limit: number | undefined,
+): RshogiLiveGameListPage => {
+    const list = MOCK_RSHOGI_LIVE_GAME_LIST;
+    const startIndex = cursor ? Math.max(0, Number.parseInt(cursor, 10) || 0) : 0;
+    const requested = limit ?? DEFAULT_MOCK_LIMIT;
+    const clamped = Math.min(Math.max(1, requested), MAX_MOCK_LIMIT);
+    const slice = list.slice(startIndex, startIndex + clamped);
+    const next = startIndex + clamped;
+    return {
+        liveGames: slice,
         nextCursor: next < list.length ? String(next) : undefined,
     };
 };

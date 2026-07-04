@@ -48,6 +48,7 @@ export {
 export type {
     FetchRshogiGameListOptions,
     FetchRshogiGameOptions,
+    FetchRshogiLiveGameListOptions,
     RshogiClockKind,
     RshogiEndReason,
     RshogiGame,
@@ -57,11 +58,14 @@ export type {
     RshogiGameResultKind,
     RshogiGameSource,
     RshogiGameSummary,
+    RshogiLiveGameListPage,
+    RshogiLiveGameSummary,
     RshogiTimeControl,
 } from "./rshogi-csa/client";
 export {
     fetchRshogiGame,
     fetchRshogiGameList,
+    fetchRshogiLiveGameList,
     listMockRshogiGameIds,
     RshogiGameFetchError,
     RshogiGameNotFoundError,

@@ -20,6 +20,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActiveEngineSettingsPanel } from "./components/ActiveEngineSettingsPanel";
 import { CsaGameView } from "./components/csa/CsaGameView";
 import { EngineManagerPanel } from "./components/EngineManagerPanel";
+import { RshogiLiveGamesView } from "./components/rshogi-viewer/RshogiLiveGamesView";
 import { RshogiViewerListView } from "./components/rshogi-viewer/RshogiViewerListView";
 import { RshogiViewerLiveView } from "./components/rshogi-viewer/RshogiViewerLiveView";
 import { RshogiViewerView } from "./components/rshogi-viewer/RshogiViewerView";
@@ -88,6 +89,7 @@ type AppMode =
     | "local"
     | "csa"
     | "rshogi-viewer-list"
+    | "rshogi-viewer-live-list"
     | "rshogi-viewer-detail"
     | "rshogi-viewer-live";
 
@@ -113,14 +115,31 @@ function App() {
         setAppMode("rshogi-viewer-list");
     };
 
+    const handleSwitchToRshogiLiveList = () => {
+        setRshogiViewerGameId(null);
+        setAppMode("rshogi-viewer-live-list");
+    };
+
     const handleSelectRshogiGame = (gameId: string) => {
         setRshogiViewerGameId(gameId);
         setAppMode("rshogi-viewer-detail");
     };
 
+    // 進行中対局一覧から live 観戦へ。ここで gameId を set することで、これまで
+    // 到達不能だった "rshogi-viewer-live" 分岐 (gameId 必須) が初めて描画される。
+    const handleSelectRshogiLiveGame = (gameId: string) => {
+        setRshogiViewerGameId(gameId);
+        setAppMode("rshogi-viewer-live");
+    };
+
     const handleBackToRshogiList = () => {
         setRshogiViewerGameId(null);
         setAppMode("rshogi-viewer-list");
+    };
+
+    const handleBackToRshogiLiveList = () => {
+        setRshogiViewerGameId(null);
+        setAppMode("rshogi-viewer-live-list");
     };
 
     const [panelPosition, setPanelPosition] = useState<{
@@ -221,6 +240,19 @@ function App() {
         );
     }
 
+    if (appMode === "rshogi-viewer-live-list") {
+        return (
+            <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
+                <main className="mx-auto flex max-w-[1100px] flex-col gap-3 p-4 md:px-5">
+                    <RshogiLiveGamesView
+                        onBackToLocal={() => setAppMode("local")}
+                        onSelectGame={handleSelectRshogiLiveGame}
+                    />
+                </main>
+            </NnueProvider>
+        );
+    }
+
     if (appMode === "rshogi-viewer-detail" && rshogiViewerGameId) {
         return (
             <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
@@ -241,7 +273,7 @@ function App() {
                 <main className="mx-auto flex max-w-[1100px] flex-col gap-3 p-4 md:px-5">
                     <RshogiViewerLiveView
                         gameId={rshogiViewerGameId}
-                        onBackToList={handleBackToRshogiList}
+                        onBackToList={handleBackToRshogiLiveList}
                         onBackToLocal={() => setAppMode("local")}
                     />
                 </main>
@@ -255,6 +287,9 @@ function App() {
                 <div className="flex justify-end gap-2 pt-2 px-1">
                     <Button variant="outline" size="sm" onClick={handleSwitchToRshogiViewer}>
                         rshogi viewer
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleSwitchToRshogiLiveList}>
+                        進行中対局
                     </Button>
                     <Button variant="outline" size="sm" onClick={handleSwitchToCsa}>
                         CSA対局
