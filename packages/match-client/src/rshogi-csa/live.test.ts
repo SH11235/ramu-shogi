@@ -104,8 +104,23 @@ const makeMocks = () => {
         return ws as unknown as WebSocket;
     };
     const events = {
-        snapshot: [] as Array<unknown>,
-        moves: [] as Array<{ csaMove: string; elapsedSec: number }>,
+        snapshot: [] as Array<{
+            moves: string[];
+            moveDetails: Array<{
+                csaMove: string;
+                elapsedSec: number;
+                comment?: { raw: string; evalCp?: number; pv?: string[] };
+            }>;
+        }>,
+        moves: [] as Array<{
+            csaMove: string;
+            elapsedSec: number;
+            comment?: { raw: string; evalCp?: number; pv?: string[] };
+        }>,
+        moveComments: [] as Array<{
+            ply: number;
+            comment: { raw: string; evalCp?: number; pv?: string[] };
+        }>,
         clocks: [] as Array<{ remainingMs: { sente: number; gote: number }; sideToMove: string }>,
         ends: [] as Array<unknown>,
         states: [] as RshogiLiveConnectionState[],
@@ -117,6 +132,9 @@ const makeMocks = () => {
         },
         onMove: (e) => {
             events.moves.push(e);
+        },
+        onMoveComment: (e) => {
+            events.moveComments.push(e);
         },
         onClock: (e) => {
             events.clocks.push(e);
@@ -235,6 +253,141 @@ describe("subscribeRshogiLiveGame: snapshot → broadcast → end → close", ()
         ws.fireLines(buildSnapshotLines(["+7776FU,T8", "-3334FU,T7"], "#RESIGN"));
         expect(events.snapshot.length).toBe(1);
         expect(events.ends.length).toBe(1);
+    });
+});
+
+describe("subscribeRshogiLiveGame: Floodgate コメント (eval / PV)", () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    const openWithSnapshot = () => {
+        const mocks = makeMocks();
+        subscribeRshogiLiveGame(
+            "game-1",
+            { apiBaseUrl: "https://example.com", webSocketFactory: mocks.wsFactory },
+            mocks.callbacks,
+        );
+        const ws = mocks.wsInstances[0];
+        ws.fireOpen();
+        ws.fireLines(buildSnapshotLines([]));
+        return { ...mocks, ws };
+    };
+
+    it("live: move 行の直後の `'` コメント行を直前 ply に紐付けて onMoveComment を呼ぶ", () => {
+        const { ws, events } = openWithSnapshot();
+        // 1 手目 (先手, ply=1) とそのコメント
+        ws.fireLines(["+7776FU,T8", "'* 123 +7776FU -3334FU"]);
+        expect(events.moves).toEqual([{ csaMove: "7g7f", elapsedSec: 8 }]);
+        expect(events.moveComments).toEqual([
+            {
+                ply: 1,
+                comment: { raw: "* 123 +7776FU -3334FU", evalCp: 123, pv: ["+7776FU", "-3334FU"] },
+            },
+        ]);
+        // 2 手目 (後手, ply=2) とそのコメント。eval は先手視点固定なので負値も来うる。
+        ws.fireLines(["-3334FU,T7", "'* -45 -3334FU"]);
+        expect(events.moveComments[1]).toEqual({
+            ply: 2,
+            comment: { raw: "* -45 -3334FU", evalCp: -45, pv: ["-3334FU"] },
+        });
+    });
+
+    it("live: onMove は即時発火し、RshogiLiveMoveEvent.comment は付かない (コメントは後追い)", () => {
+        const { ws, events } = openWithSnapshot();
+        ws.fireLines(["+7776FU,T8", "'* 100"]);
+        expect(events.moves[0].comment).toBeUndefined();
+        expect(events.moveComments[0]).toEqual({ ply: 1, comment: { raw: "* 100", evalCp: 100 } });
+    });
+
+    it("live: 解析不能なコメントは raw のみ保持し evalCp/pv は undefined", () => {
+        const { ws, events } = openWithSnapshot();
+        ws.fireLines(["+7776FU,T8", "'なにか自由なコメント"]);
+        expect(events.moveComments[0]).toEqual({
+            ply: 1,
+            comment: { raw: "なにか自由なコメント" },
+        });
+        expect(events.moveComments[0].comment.evalCp).toBeUndefined();
+        expect(events.moveComments[0].comment.pv).toBeUndefined();
+    });
+
+    it("live: `'` 行は move としても終局としても扱われない (誤検知しない)", () => {
+        const { ws, events } = openWithSnapshot();
+        // move の前に届いた `'`, `%TORYO` に見えかねない `'` を送っても move/onEnd に流れない
+        ws.fireLines(["'* 999 先頭コメントは紐付け先なし"]);
+        ws.fireLines(["+7776FU,T8"]);
+        ws.fireLines(["'%TORYO っぽいがコメント"]);
+        expect(events.moves).toEqual([{ csaMove: "7g7f", elapsedSec: 8 }]);
+        expect(events.ends.length).toBe(0);
+        // 先頭 (move 未適用時) の `'` は握り潰され、move 後の 1 件だけ ply=1 に付く
+        expect(events.moveComments).toEqual([
+            { ply: 1, comment: { raw: "%TORYO っぽいがコメント" } },
+        ]);
+    });
+
+    it("snapshot: move 行の直後の `'` を moveDetails に inline で載せる", () => {
+        const { events } = (() => {
+            const mocks = makeMocks();
+            subscribeRshogiLiveGame(
+                "game-1",
+                { apiBaseUrl: "https://example.com", webSocketFactory: mocks.wsFactory },
+                mocks.callbacks,
+            );
+            const ws = mocks.wsInstances[0];
+            ws.fireOpen();
+            ws.fireLines(
+                buildSnapshotLines(["+7776FU,T8", "'* 30 -3334FU", "-3334FU,T7", "'* -20 +2726FU"]),
+            );
+            return mocks;
+        })();
+        const snap = events.snapshot[0];
+        expect(snap.moves).toEqual(["7g7f", "3c3d"]);
+        expect(snap.moveDetails).toEqual([
+            {
+                csaMove: "7g7f",
+                elapsedSec: 8,
+                comment: { raw: "* 30 -3334FU", evalCp: 30, pv: ["-3334FU"] },
+            },
+            {
+                csaMove: "3c3d",
+                elapsedSec: 7,
+                comment: { raw: "* -20 +2726FU", evalCp: -20, pv: ["+2726FU"] },
+            },
+        ]);
+    });
+
+    it("snapshot: コメントも T も無い旧サーバ形式は moveDetails が elapsedSec=0/comment 無しで揃う", () => {
+        const { events } = (() => {
+            const mocks = makeMocks();
+            subscribeRshogiLiveGame(
+                "game-1",
+                { apiBaseUrl: "https://example.com", webSocketFactory: mocks.wsFactory },
+                mocks.callbacks,
+            );
+            const ws = mocks.wsInstances[0];
+            ws.fireOpen();
+            // T サフィックスもコメント行も無い (production 旧サーバ)
+            ws.fireLines(buildSnapshotLines(["+7776FU", "-3334FU"]));
+            return mocks;
+        })();
+        const snap = events.snapshot[0];
+        expect(snap.moveDetails).toEqual([
+            { csaMove: "7g7f", elapsedSec: 0, comment: undefined },
+            { csaMove: "3c3d", elapsedSec: 0, comment: undefined },
+        ]);
+    });
+
+    it("no-comment な live stream は従来と同一 (onMoveComment は呼ばれない)", () => {
+        const { ws, events } = openWithSnapshot();
+        ws.fireLines(["+7776FU,T8", "-3334FU,T7"]);
+        expect(events.moves).toEqual([
+            { csaMove: "7g7f", elapsedSec: 8 },
+            { csaMove: "3c3d", elapsedSec: 7 },
+        ]);
+        expect(events.moveComments.length).toBe(0);
     });
 });
 
@@ -449,6 +602,31 @@ describe("__test_internals", () => {
     it("extractElapsedSec: ,T<n> を抽出。無ければ 0", () => {
         expect(__test_internals.extractElapsedSec("+7776FU,T8")).toBe(8);
         expect(__test_internals.extractElapsedSec("+7776FU")).toBe(0);
+    });
+    it("parseLiveComment: Floodgate 形 `'* <eval> <pv...>` を eval/pv に分解 (eval は先手視点)", () => {
+        expect(__test_internals.parseLiveComment("'* 123 +7776FU -3334FU")).toEqual({
+            raw: "* 123 +7776FU -3334FU",
+            evalCp: 123,
+            pv: ["+7776FU", "-3334FU"],
+        });
+        // 負値 (後手有利) も先手視点固定でそのまま
+        expect(__test_internals.parseLiveComment("'* -250")).toEqual({
+            raw: "* -250",
+            evalCp: -250,
+        });
+    });
+    it("parseLiveComment: eval のみ (PV 無し) は pv undefined", () => {
+        const c = __test_internals.parseLiveComment("'* 0");
+        expect(c.evalCp).toBe(0);
+        expect(c.pv).toBeUndefined();
+    });
+    it("parseLiveComment: Floodgate 形でない/整数でないコメントは raw のみ", () => {
+        expect(__test_internals.parseLiveComment("'ただのコメント")).toEqual({
+            raw: "ただのコメント",
+        });
+        expect(__test_internals.parseLiveComment("'* abc +7776FU")).toEqual({
+            raw: "* abc +7776FU",
+        });
     });
     it("parseGameSummaryLines: 必要 field を decode", () => {
         const r = __test_internals.parseGameSummaryLines([

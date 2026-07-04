@@ -44,6 +44,48 @@ import {
 import type { RshogiGameMeta, RshogiGameResult, RshogiGameResultKind } from "./client";
 
 /**
+ * Floodgate コメント (`'* <eval> <pv...>`) を解析した結果。
+ *
+ * spectator へは move 行 (`<token>,T<sec>`) の直後に、指した側のエンジンが付けた
+ * コメントが独立した 1 行 (`'` で始まる) として届く。
+ *
+ * ## eval 符号規約 (rshogi `build_floodgate_comment` で確認済み)
+ * サーバ (`crates/rshogi-csa-client/src/session.rs` `build_floodgate_comment`) は
+ * エンジン自身の探索スコア `score_cp` (手番側視点 = 指した側から見て正が有利) を
+ * `Black => cp, White => -cp` で **常に先手 (Black) 視点** に正規化してから
+ * `* {score}` を書き出す。したがって wire 上の `evalCp` は「指した側がどちらでも」
+ * 先手視点に固定された値であり、`+` が先手有利・`-` が後手有利を意味する。
+ * (詰みは `±100000` のセンチネルとして符号化される。)
+ */
+export interface RshogiLiveComment {
+    /** `'` を剥がしたコメント本文 (例: `* 123 +7776FU -3334FU`)。常に保持する。 */
+    raw: string;
+    /**
+     * Floodgate 形 `* <整数>` から抽出した評価値 (先手視点、センチポーン)。
+     * `+` = 先手有利、`-` = 後手有利。Floodgate 形でない/整数でないコメントは undefined。
+     */
+    evalCp?: number;
+    /**
+     * 読み筋 (PV) の CSA トークン列 (例: `["+7776FU", "-3334FU"]`)。
+     * eval のみで PV が無いコメントや解析不能コメントでは undefined。
+     */
+    pv?: string[];
+}
+
+/**
+ * snapshot 内の 1 手のメタ情報付きエントリ。
+ * `moves` (USI 文字列配列) と同じ順序・同じ長さで並ぶ。
+ */
+export interface RshogiLiveMove {
+    /** 手の USI 文字列 (`7g7f` / `P*5e` 等)。 */
+    csaMove: string;
+    /** 消費秒数 (`,T<sec>` 由来)。旧サーバは snapshot に T を載せないため 0。 */
+    elapsedSec: number;
+    /** 指した側のエンジンが付けた Floodgate コメント (無ければ undefined)。 */
+    comment?: RshogiLiveComment;
+}
+
+/**
  * 観戦 snapshot (= snapshot block 完了時に client が保持する初期状態)。
  *
  * `RshogiGame` (静的 viewer の単局取得結果) と異なり、`csa` 全文ではなく
@@ -55,6 +97,12 @@ export interface RshogiLiveSnapshot {
     meta: RshogiGameMeta;
     /** これまでの手 (USI 文字列、`parseCsaMoves` 由来)。 */
     moves: string[];
+    /**
+     * `moves` と同順・同長の手ごとメタ情報 (消費秒 + コメント)。
+     * 旧サーバでコメント/T が無くても要素は生成され、その場合 elapsedSec=0・
+     * comment=undefined になる (= graceful degrade)。
+     */
+    moveDetails: RshogiLiveMove[];
     /** snapshot 末尾時点の `PositionState` (board + hands + turn + ply)。 */
     state: PositionState;
     /** snapshot 取得時点の残時間と手番。 */
@@ -76,6 +124,29 @@ export interface RshogiLiveMoveEvent {
     csaMove: string;
     /** 消費秒数 (`,T<elapsed_sec>` の値)。秒数行が無ければ 0。 */
     elapsedSec: number;
+    /**
+     * 指した側のコメント (eval / PV)。
+     *
+     * live stream ではコメントは move 行の *後* に別行で届くため、`onMove` 発火時点
+     * では確定しておらず本フィールドは常に undefined になる (コメントは後続の
+     * `onMoveComment` で ply 紐付きで届く)。型の対称性と将来利用のための予約。
+     * snapshot 由来の手のコメントは {@link RshogiLiveSnapshot.moveDetails} で届く。
+     */
+    comment?: RshogiLiveComment;
+}
+
+/**
+ * move コメント (`'* <eval> <pv...>`) の到着イベント。
+ *
+ * live stream ではコメント行が対応する move 行の直後に別行で届くため、`onMove` を
+ * 即時発火する既存タイミングを崩さず、コメントは本コールバックで ply 紐付きで
+ * 後追い配信する (設計案 (b))。`ply` は 1 始まりで、奇数=先手手番・偶数=後手手番。
+ */
+export interface RshogiLiveMoveCommentEvent {
+    /** コメントが属する手の ply (1 始まり)。奇数=先手・偶数=後手の指し手。 */
+    ply: number;
+    /** 解析済みコメント (raw + eval + pv)。 */
+    comment: RshogiLiveComment;
 }
 
 /** snapshot 受信時の clock 同期イベント。 */
@@ -91,6 +162,11 @@ export interface RshogiLiveCallbacks {
     onSnapshot(snapshot: RshogiLiveSnapshot): void;
     /** 1 手 broadcast の到着。残り時間は本 callback には載せない (client 側 timer で計算)。 */
     onMove(event: RshogiLiveMoveEvent): void;
+    /**
+     * move コメント (eval / PV) の到着。live stream では move 行の直後に別行で届く。
+     * 任意 callback (旧 consumer との後方互換のため optional)。
+     */
+    onMoveComment?(event: RshogiLiveMoveCommentEvent): void;
     /** clock countdown を再同期する任意 callback。snapshot 受信時のみ呼ばれる。 */
     onClock(event: RshogiLiveClockEvent): void;
     /** 終局検知。`onEnd` 発火後は reconnect 経路を停止する。 */
@@ -232,7 +308,8 @@ const decodeSnapshotBlock = (
     snapshotLines: string[],
 ): { snapshot: RshogiLiveSnapshot; finalResultLine?: string } => {
     const summaryLines: string[] = [];
-    const moveLines: string[] = [];
+    /** move 行を順に蓄積する (token + 消費秒 + 直後に来たコメント)。 */
+    const moveEntries: { token: string; elapsedSec: number; comment?: RshogiLiveComment }[] = [];
     let resultCodeLine: string | undefined;
     let inSummary = false;
     for (const raw of snapshotLines) {
@@ -251,7 +328,14 @@ const decodeSnapshotBlock = (
             continue;
         }
         if (line.startsWith("+") || line.startsWith("-")) {
-            moveLines.push(line);
+            // moves 行は `<token>,T<elapsed_sec>` 形式。USI 変換は `<token>` のみで行う。
+            moveEntries.push({ token: line.split(",")[0], elapsedSec: extractElapsedSec(line) });
+            continue;
+        }
+        if (line.startsWith("'")) {
+            // `'` コメント行は直前の move 行に属する。move が未出現なら握り潰す。
+            const last = moveEntries[moveEntries.length - 1];
+            if (last) last.comment = parseLiveComment(line);
             continue;
         }
         if (line.startsWith("#")) {
@@ -263,10 +347,16 @@ const decodeSnapshotBlock = (
 
     const summary = parseGameSummaryLines(summaryLines);
 
-    // moves 行は `<token>,T<elapsed_sec>` 形式。USI 変換は `<token>` のみで行う。
-    const movesText = moveLines.map((l) => l.split(",")[0]).join("\n");
+    const movesText = moveEntries.map((e) => e.token).join("\n");
     const initial = createInitialPositionState();
     const { moves, state } = parseCsaMovesWithState(movesText, initial);
+    // `moves` (USI) と同順・同長でメタ情報を並べる。parse で token が脱落しても
+    // index 対応が崩れないよう moves 側を基準に index する。
+    const moveDetails: RshogiLiveMove[] = moves.map((usi, i) => ({
+        csaMove: usi,
+        elapsedSec: moveEntries[i]?.elapsedSec ?? 0,
+        comment: moveEntries[i]?.comment,
+    }));
 
     const meta: RshogiGameMeta = {
         gameId: summary.gameId ?? gameId,
@@ -295,6 +385,7 @@ const decodeSnapshotBlock = (
     const snapshot: RshogiLiveSnapshot = {
         meta,
         moves,
+        moveDetails,
         state,
         clocks: {
             sente: summary.blackRemainingMs ?? 0,
@@ -433,6 +524,33 @@ const extractElapsedSec = (line: string): number => {
 };
 
 /**
+ * spectator へ配信される Floodgate コメント行 (`'* <eval> <pv...>`) を解析する。
+ *
+ * - 先頭の CSA コメントマーカ `'` を剥がした本文を `raw` に保持する。
+ * - Floodgate 標準形 `* <整数 eval> <pv の CSA トークン...>` を eval / pv に分解する。
+ * - Floodgate 形でない・eval が整数でない等、解析不能なコメントは `raw` のみを
+ *   残し `evalCp` / `pv` を undefined にする (任意コメントを握り潰さない)。
+ *
+ * eval の符号規約は {@link RshogiLiveComment} を参照 (常に先手視点、+ が先手有利)。
+ */
+const parseLiveComment = (line: string): RshogiLiveComment => {
+    const withoutQuote = line.startsWith("'") ? line.slice(1) : line;
+    const raw = withoutQuote.trim();
+    if (raw.startsWith("*")) {
+        const rest = raw.slice(1).trim();
+        if (rest.length > 0) {
+            const parts = rest.split(/\s+/);
+            const evalNum = Number(parts[0]);
+            if (Number.isInteger(evalNum)) {
+                const pv = parts.slice(1);
+                return { raw, evalCp: evalNum, pv: pv.length > 0 ? pv : undefined };
+            }
+        }
+    }
+    return { raw };
+};
+
+/**
  * 進行中対局の WebSocket 観戦を開始する。
  *
  * `apiBaseUrl` 未指定時はサーバ接続を行わず、固定 snapshot を即時配信する MVP
@@ -464,6 +582,12 @@ export function subscribeRshogiLiveGame(
     let liveState: PositionState = createInitialPositionState();
     /** 受信直後に手番側を判定するための補助 (snapshot 完了時に確定)。 */
     let liveTurn: "sente" | "gote" = "sente";
+    /**
+     * これまでに適用済みの手数 (= 直近手の ply、1 始まり)。snapshot で
+     * `snapshot.moves.length` に確定し、broadcast move ごとに +1 する。
+     * `'` コメント行を「直前 move」に紐付けるための ply として使う。
+     */
+    let liveMoveCount = 0;
     /** `onEnd` 発火済みフラグ (= reconnect 抑止)。 */
     let endFired = false;
     /** 指数 backoff の現在 attempt index。 */
@@ -547,6 +671,9 @@ export function subscribeRshogiLiveGame(
             const { snapshot, finalResultLine } = decodeSnapshotBlock(gameId, lines);
             liveState = snapshot.state;
             liveTurn = snapshot.clocks.sideToMove;
+            // ply カウンタを snapshot 手数に同期。以降の broadcast move で +1 され、
+            // その値が後続 `'` コメント行の紐付け先 ply になる。
+            liveMoveCount = snapshot.moves.length;
             try {
                 callbacks.onSnapshot(snapshot);
             } catch (err) {
@@ -580,6 +707,25 @@ export function subscribeRshogiLiveGame(
     const handleLiveLine = (line: string) => {
         const trimmed = line.trim();
         if (trimmed.length === 0) return;
+        // `'` コメント行は直前 move に属する。move / 終局判定より前に処理して、
+        // 絶対に move 行・終局行として扱われないようにする (detectEndLine は `'`
+        // に一致しないが、順序で確実に防御する)。
+        if (trimmed.startsWith("'")) {
+            // まだ 1 手も適用していない場合は紐付け先が無いので握り潰す。
+            if (liveMoveCount >= 1 && callbacks.onMoveComment) {
+                const comment = parseLiveComment(trimmed);
+                try {
+                    callbacks.onMoveComment({ ply: liveMoveCount, comment });
+                } catch (err) {
+                    emitError(
+                        err instanceof Error
+                            ? err
+                            : new Error(`onMoveComment handler threw: ${String(err)}`),
+                    );
+                }
+            }
+            return;
+        }
         // 終局検知 (move 行ではない場合)。
         const endResult = detectEndLine(trimmed, liveTurn);
         if (endResult) {
@@ -601,6 +747,7 @@ export function subscribeRshogiLiveGame(
         }
         liveState = applied.nextState;
         liveTurn = applied.nextState.turn;
+        liveMoveCount += 1;
         try {
             callbacks.onMove({ csaMove: applied.move, elapsedSec });
         } catch (err) {
@@ -831,4 +978,5 @@ export const __test_internals = {
     detectEndLine,
     extractElapsedSec,
     parseGameSummaryLines,
+    parseLiveComment,
 };
