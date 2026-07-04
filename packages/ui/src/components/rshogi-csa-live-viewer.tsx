@@ -97,7 +97,7 @@ export function formatOwnEval(ownCp: number): string {
 }
 
 /** 各手番エンジンの最新自己 eval (wire=先手視点) と最新 PV を保持する部分状態。 */
-export interface LiveEvalState {
+interface LiveEvalState {
     senteEvalCp?: number;
     goteEvalCp?: number;
     latestPv?: string[];
