@@ -550,10 +550,184 @@ const parseLiveComment = (line: string): RshogiLiveComment => {
 };
 
 /**
+ * モック観戦 (apiBaseUrl 未指定かつ gameId が `mock-` で始まる場合) が配信する
+ * 固定 snapshot の wire 行群。
+ *
+ * `##[MONITOR2] BEGIN/END` を含まない「snapshot block 本文」形式で、
+ * {@link decodeSnapshotBlock} にそのまま渡せる。各 move 行の直後に Floodgate 形
+ * コメント (`'* <cp> <pv...>`) を並べ、消費秒 (`,T<sec>`) も付与している。
+ * eval は先手視点 (+ = 先手有利) で、序盤 (ply1-5) は先手有利 → ply6-10 で
+ * 後手有利の連続下げ → ply11 以降で先手が挽回 → 最終手 (ply15) で詰み
+ * センチネル `100000` に至る、という現実味のある評価値の振れを持たせている。
+ * これによりサーバ無しでも評価値グラフ・棋譜評価値カラムをローカルで確認できる。
+ *
+ * `Game_ID` / `To_Move` はあえて省き、`meta.gameId` は購読時の gameId に、
+ * `sideToMove` は全手 replay 後の手番 (= 後手) にフォールバックさせている。
+ */
+const MOCK_SNAPSHOT_LINES: string[] = [
+    "BEGIN Game_Summary",
+    "Protocol_Version:1.2",
+    "Protocol_Mode:Server",
+    "Format:Shogi 1.0",
+    "Name+:先手デモエンジン",
+    "Name-:後手デモエンジン",
+    "Rematch_On_Draw:NO",
+    "BEGIN Time",
+    "Time_Unit:1sec",
+    "Total_Time:600",
+    "Byoyomi:10",
+    "Least_Time_Per_Move:0",
+    "END Time",
+    "BEGIN Position",
+    "P1-KY-KE-GI-KI-OU-KI-GI-KE-KY",
+    "P2 * -HI *  *  *  *  * -KA * ",
+    "P3-FU-FU-FU-FU-FU-FU-FU-FU-FU",
+    "P4 *  *  *  *  *  *  *  *  * ",
+    "P5 *  *  *  *  *  *  *  *  * ",
+    "P6 *  *  *  *  *  *  *  *  * ",
+    "P7+FU+FU+FU+FU+FU+FU+FU+FU+FU",
+    "P8 * +KA *  *  *  *  * +HI * ",
+    "P9+KY+KE+GI+KI+OU+KI+GI+KE+KY",
+    "+",
+    "END Position",
+    "Black_Time_Remaining_Ms:540000",
+    "White_Time_Remaining_Ms:552000",
+    "END Game_Summary",
+    // ply1-5: 先手やや有利で推移
+    "+7776FU,T3",
+    "'* 30 -3334FU +2726FU",
+    "-3334FU,T5",
+    "'* 20 +2726FU -8384FU",
+    "+2726FU,T2",
+    "'* 45 -8384FU +2625FU",
+    "-8384FU,T4",
+    "'* 15 +2625FU -8485FU",
+    "+2625FU,T3",
+    "'* 60 -8485FU +6978KI",
+    // ply6-10: 後手有利の連続下げ (先手視点で負値が続く)
+    "-8485FU,T6",
+    "'* -25 +6978KI -7162GI",
+    "+6978KI,T8",
+    "'* -40 -7162GI +8877KA",
+    "-7162GI,T7",
+    "'* -70 +8877KA -2233KA",
+    "+8877KA,T9",
+    "'* -55 -2233KA +7968GI",
+    "-2233KA,T6",
+    "'* -90 +7968GI -3132GI",
+    // ply11-14: 先手が挽回
+    "+7968GI,T10",
+    "'* 35 -3132GI +3736FU",
+    "-3132GI,T7",
+    "'* 10 +3736FU -3435FU",
+    "+3736FU,T4",
+    "'* 80 -3435FU +3635FU",
+    "-3435FU,T5",
+    "'* 120 +3635FU",
+    // ply15: 詰みセンチネル (先手が詰みを発見)
+    "+3635FU,T3",
+    "'* 100000",
+];
+
+/**
+ * モック観戦セッションを開始する (apiBaseUrl 未指定かつ gameId が `mock-` で始まる場合のみ)。
+ *
+ * サーバへは接続せず、{@link MOCK_SNAPSHOT_LINES} を decode した固定 snapshot を
+ * 1 回だけ配信する (broadcast move は流さない)。server 無しの開発・デモで live
+ * viewer の評価値グラフ / 棋譜評価値カラムを表示するための経路。
+ *
+ * `disconnect()` / `signal` abort で保留中のタイマーを止め、`closed` を通知する。
+ */
+function startMockLiveGame(
+    gameId: string,
+    callbacks: RshogiLiveCallbacks,
+    deps: {
+        setTimeoutImpl: typeof setTimeout;
+        clearTimeoutImpl: typeof clearTimeout;
+        signal?: AbortSignal;
+    },
+): RshogiLiveSession {
+    // 注意: `deps.setTimeoutImpl(...)` のようにオブジェクトのメソッドとして呼ぶと、
+    // ブラウザ実装の window.setTimeout/clearTimeout は this が deps に束縛され
+    // "Illegal invocation" を throw する (Node/happy-dom は this を見ないため
+    // テストでは顕在化しない)。必ずローカル変数へ剥がして裸で呼ぶこと。
+    const { setTimeoutImpl, clearTimeoutImpl } = deps;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const emit = (fn: () => void) => {
+        try {
+            fn();
+        } catch (err) {
+            try {
+                callbacks.onError(
+                    err instanceof Error ? err : new Error(`mock handler threw: ${String(err)}`),
+                );
+            } catch (handlerErr) {
+                console.error("[rshogi live mock] onError handler threw", handlerErr);
+            }
+        }
+    };
+
+    const dispose = () => {
+        if (disposed) return;
+        disposed = true;
+        if (timer !== null) {
+            clearTimeoutImpl(timer);
+            timer = null;
+        }
+        emit(() => callbacks.onConnectionState("closed"));
+    };
+
+    if (deps.signal) {
+        if (deps.signal.aborted) {
+            dispose();
+            return { disconnect: () => {} };
+        }
+        deps.signal.addEventListener("abort", dispose, { once: true });
+    }
+
+    emit(() => callbacks.onConnectionState("connecting"));
+
+    timer = setTimeoutImpl(() => {
+        timer = null;
+        if (disposed) return;
+        emit(() => callbacks.onConnectionState("connected"));
+        try {
+            const { snapshot } = decodeSnapshotBlock(gameId, MOCK_SNAPSHOT_LINES);
+            emit(() => callbacks.onSnapshot(snapshot));
+            emit(() =>
+                callbacks.onClock({
+                    remainingMs: { sente: snapshot.clocks.sente, gote: snapshot.clocks.gote },
+                    sideToMove: snapshot.clocks.sideToMove,
+                }),
+            );
+        } catch (err) {
+            emit(() =>
+                callbacks.onError(
+                    err instanceof Error
+                        ? err
+                        : new Error(`mock snapshot decode failed: ${String(err)}`),
+                ),
+            );
+        }
+    }, 0);
+
+    return { disconnect: dispose };
+}
+
+/** モック観戦を有効にする gameId の prefix (apiBaseUrl 未指定時のみ有効)。 */
+const MOCK_GAME_ID_PREFIX = "mock-";
+
+/**
  * 進行中対局の WebSocket 観戦を開始する。
  *
- * `apiBaseUrl` 未指定時はサーバ接続を行わず、固定 snapshot を即時配信する MVP
- * 動作。`apiBaseUrl` 指定時は `wss://<host>/ws/<gameId>/spectate` に open する。
+ * `apiBaseUrl` 指定時は `wss://<host>/ws/<gameId>/spectate` に open する。
+ * `apiBaseUrl` 未指定時は:
+ * - gameId が `mock-` で始まる場合のみ、固定 snapshot を配信するモックで動く
+ *   (サーバ無しの開発・デモ用の明示 opt-in 規約)。
+ * - それ以外はエラー (`onError` + `closed`)。設定漏れ (VITE_RSHOGI_API_BASE 未設定
+ *   等) の production ビルドが偽の対局を本物のように表示しないための防御。
  *
  * 戻り値の `disconnect()` で reconnect 経路を含めて完全停止する。`signal` を
  * 渡した場合は abort で同様に停止する。
@@ -565,6 +739,32 @@ export function subscribeRshogiLiveGame(
 ): RshogiLiveSession {
     const setTimeoutImpl = options.setTimeoutImpl ?? setTimeout;
     const clearTimeoutImpl = options.clearTimeoutImpl ?? clearTimeout;
+    if (!options.apiBaseUrl) {
+        // モックは gameId の `mock-` prefix による明示 opt-in のみ。apiBaseUrl の
+        // 設定漏れで実 gameId が来た場合は従来どおりエラーで閉じる (偽対局の防止)。
+        if (gameId.startsWith(MOCK_GAME_ID_PREFIX)) {
+            return startMockLiveGame(gameId, callbacks, {
+                setTimeoutImpl,
+                clearTimeoutImpl,
+                signal: options.signal,
+            });
+        }
+        try {
+            callbacks.onError(
+                new Error(
+                    `subscribeRshogiLiveGame: apiBaseUrl is required for live spectate (mock mode is only for gameId with "${MOCK_GAME_ID_PREFIX}" prefix)`,
+                ),
+            );
+        } catch (handlerErr) {
+            console.error("[rshogi live] onError handler threw", handlerErr);
+        }
+        try {
+            callbacks.onConnectionState("closed");
+        } catch (handlerErr) {
+            console.error("[rshogi live] onConnectionState handler threw", handlerErr);
+        }
+        return { disconnect: () => {} };
+    }
     const wsFactory =
         options.webSocketFactory ??
         ((url: string) => new (globalThis.WebSocket as typeof WebSocket)(url));
@@ -803,21 +1003,14 @@ export function subscribeRshogiLiveGame(
 
     const openSocket = () => {
         if (disposed) return;
-        if (!options.apiBaseUrl) {
-            // モック動作: 接続を張らずに固定 snapshot を擬似配信する。
-            emitError(
-                new Error(
-                    "subscribeRshogiLiveGame: apiBaseUrl is required for live spectate (no mock implementation in MVP)",
-                ),
-            );
-            disposed = true;
-            emitConnectionState("closed");
-            return;
-        }
+        // apiBaseUrl 未指定は関数冒頭でモック経路に分岐済みのため、ここには到達しない。
+        // 型の絞り込み (URL に string を渡す) のための防御ガード。
+        const apiBaseUrl = options.apiBaseUrl;
+        if (!apiBaseUrl) return;
         // `apiBaseUrl` は REST と共用で path (`/api/v1` 等) を含みうるが、観戦 WS は
         // ルート直下 (`/ws/<id>/spectate`) にあるため origin だけ使い path は捨てる。
         // scheme は https/wss→wss、http/ws→ws に揃える。
-        const apiUrl = new URL(options.apiBaseUrl);
+        const apiUrl = new URL(apiBaseUrl);
         const wsScheme =
             apiUrl.protocol === "https:" || apiUrl.protocol === "wss:" ? "wss:" : "ws:";
         const url = `${wsScheme}//${apiUrl.host}/ws/${encodeURIComponent(gameId)}/spectate`;

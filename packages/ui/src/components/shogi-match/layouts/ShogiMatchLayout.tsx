@@ -240,6 +240,7 @@ export function ShogiMatchLayout({
         reviewMode,
         reviewLeftContent,
         reviewTopContent,
+        evalPanelInitialOpen,
     } = pcSpecificProps;
 
     // グループ化されたpropsを展開: Mobile専用
@@ -604,6 +605,7 @@ export function ShogiMatchLayout({
                                     reviewMode={reviewMode}
                                     reviewLeftContent={reviewLeftContent}
                                     reviewTopContent={reviewTopContent}
+                                    evalPanelInitialOpen={evalPanelInitialOpen}
                                 />
                             </NavigationProvider>
                         </MatchStateProvider>

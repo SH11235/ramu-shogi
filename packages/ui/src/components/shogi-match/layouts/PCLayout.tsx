@@ -81,6 +81,8 @@ interface PCLayoutProps {
     reviewLeftContent?: ReactNode;
     /** 棋譜検討モード時に 3 カラムの上部へ全幅で表示するコンテンツ（観戦スコアボード等） */
     reviewTopContent?: ReactNode;
+    /** 評価値グラフパネルを初期展開するか (ライブ観戦専用)。未指定は既定閉。 */
+    evalPanelInitialOpen?: boolean;
 }
 
 /**
@@ -109,6 +111,7 @@ export function PCLayout({
     reviewMode,
     reviewLeftContent,
     reviewTopContent,
+    evalPanelInitialOpen,
 }: PCLayoutProps): ReactElement {
     // Context から状態を取得
     const matchSettings = useMatchSettings();
@@ -157,7 +160,7 @@ export function PCLayout({
                         {/* 縦積み時は固定幅の棋譜パネルを中央へ。横並び時は列幅に一致する
                             ので justify-self は既定へ戻す。 */}
                         <div className="order-2 min-w-0 justify-self-center min-[1280px]:order-none min-[1280px]:justify-self-auto">
-                            <PCKifuSection reviewMode />
+                            <PCKifuSection reviewMode evalPanelInitialOpen={evalPanelInitialOpen} />
                         </div>
                     </div>
                 </div>

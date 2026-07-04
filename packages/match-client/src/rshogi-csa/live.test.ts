@@ -3,6 +3,7 @@ import {
     __test_internals,
     type RshogiLiveCallbacks,
     type RshogiLiveConnectionState,
+    type RshogiLiveSnapshot,
     subscribeRshogiLiveGame,
 } from "./live";
 
@@ -104,14 +105,7 @@ const makeMocks = () => {
         return ws as unknown as WebSocket;
     };
     const events = {
-        snapshot: [] as Array<{
-            moves: string[];
-            moveDetails: Array<{
-                csaMove: string;
-                elapsedSec: number;
-                comment?: { raw: string; evalCp?: number; pv?: string[] };
-            }>;
-        }>,
+        snapshot: [] as RshogiLiveSnapshot[],
         moves: [] as Array<{
             csaMove: string;
             elapsedSec: number;
@@ -613,6 +607,107 @@ describe("subscribeRshogiLiveGame: NOT_FOUND", () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+});
+
+describe("subscribeRshogiLiveGame: モック (apiBaseUrl 未指定 + gameId が mock- prefix)", () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it("固定 snapshot を配信し、eval コメント付き moveDetails を載せる", () => {
+        const { events, callbacks } = makeMocks();
+        // apiBaseUrl 未指定 + `mock-` prefix → WS を張らずモックが動く
+        subscribeRshogiLiveGame("mock-demo-game", {}, callbacks);
+        // connecting は同期で通知される
+        expect(events.states).toContain("connecting");
+        expect(events.snapshot.length).toBe(0);
+
+        // タイマー tick で snapshot / clock が届く
+        vi.advanceTimersByTime(0);
+        expect(events.states).toContain("connected");
+        expect(events.snapshot.length).toBe(1);
+        expect(events.clocks.length).toBe(1);
+
+        const snap = events.snapshot[0];
+        // 15 手すべてが decode され moveDetails と同順・同長で並ぶ
+        expect(snap.moves.length).toBe(15);
+        expect(snap.moveDetails.length).toBe(15);
+
+        // 1 手目: 消費秒と先手視点 eval / PV が載る
+        expect(snap.moveDetails[0]).toEqual({
+            csaMove: "7g7f",
+            elapsedSec: 3,
+            comment: { raw: "* 30 -3334FU +2726FU", evalCp: 30, pv: ["-3334FU", "+2726FU"] },
+        });
+        // ply6 は後手有利 (先手視点で負値) の連続下げの起点
+        expect(snap.moveDetails[5].comment?.evalCp).toBe(-25);
+        expect(snap.moveDetails[6].comment?.evalCp).toBe(-40);
+        expect(snap.moveDetails[9].comment?.evalCp).toBe(-90);
+        // 最終手は詰みセンチネル ±100000 (先手が詰みを発見)。wire レベルでは生値の
+        // まま届き、表示用の丸め (±2000) は viewer 側 (rshogi-csa-live-viewer) で行う。
+        const last = snap.moveDetails[snap.moveDetails.length - 1];
+        expect(last.comment?.evalCp).toBe(100000);
+
+        // Game_ID を省いているので meta.gameId は購読 gameId にフォールバックする
+        expect(snap.meta.gameId).toBe("mock-demo-game");
+        // 15 手 (奇数) 適用後の手番は後手
+        expect(snap.clocks.sideToMove).toBe("gote");
+        expect(events.clocks[0].remainingMs).toEqual({ sente: 540000, gote: 552000 });
+    });
+
+    it("disconnect() で保留中の配信を止め closed を通知する", () => {
+        const { events, callbacks } = makeMocks();
+        const session = subscribeRshogiLiveGame("mock-demo-game", {}, callbacks);
+        // snapshot 配信前に切断すると snapshot は届かない
+        session.disconnect();
+        vi.advanceTimersByTime(0);
+        expect(events.snapshot.length).toBe(0);
+        expect(events.states.at(-1)).toBe("closed");
+    });
+
+    it("timer impl を this 非束縛で呼ぶ (browser window.setTimeout の Illegal invocation 回帰防止)", () => {
+        // ブラウザの window.setTimeout/clearTimeout は this が window 以外に束縛される
+        // と TypeError: Illegal invocation を throw する。`deps.setTimeoutImpl(...)` の
+        // ようなメソッド呼びだと this=deps になり実ブラウザで落ちる (Node/happy-dom は
+        // this を見ないため素通りする)。その挙動を再現する shim で回帰を固定する。
+        const strictThis = <T extends (...args: never[]) => unknown>(fn: T): T =>
+            function (this: unknown, ...args: never[]) {
+                if (this !== undefined && this !== globalThis) {
+                    throw new TypeError("Illegal invocation");
+                }
+                return fn(...args);
+            } as T;
+        const strictImpls = {
+            setTimeoutImpl: strictThis(setTimeout) as typeof setTimeout,
+            clearTimeoutImpl: strictThis(clearTimeout) as typeof clearTimeout,
+        };
+        // setTimeoutImpl 経由の snapshot 配信が throw せず届く
+        const delivered = makeMocks();
+        subscribeRshogiLiveGame("mock-demo-game", strictImpls, delivered.callbacks);
+        vi.advanceTimersByTime(0);
+        expect(delivered.events.errors).toEqual([]);
+        expect(delivered.events.snapshot.length).toBe(1);
+        // clearTimeoutImpl 経路 (timer 保留中の disconnect) も throw しない
+        const cancelled = makeMocks();
+        const session = subscribeRshogiLiveGame("mock-demo-game", strictImpls, cancelled.callbacks);
+        session.disconnect();
+        expect(cancelled.events.errors).toEqual([]);
+        expect(cancelled.events.states.at(-1)).toBe("closed");
+    });
+
+    it("mock- prefix でない gameId は apiBaseUrl 未指定だとエラーで閉じる (偽対局を配信しない)", () => {
+        const { events, callbacks } = makeMocks();
+        // 設定漏れ (VITE_RSHOGI_API_BASE 未設定) の実 gameId → PR 前と同じエラー経路
+        subscribeRshogiLiveGame("real-game-123", {}, callbacks);
+        vi.advanceTimersByTime(60000);
+        expect(events.snapshot.length).toBe(0);
+        expect(events.errors.length).toBe(1);
+        expect(events.errors[0].message).toContain("apiBaseUrl is required");
+        expect(events.states).toEqual(["closed"]);
     });
 });
 

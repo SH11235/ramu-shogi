@@ -38,7 +38,7 @@ import { useEditModeActions } from "./shogi-match/hooks/useEditModeActions";
 import { useEngineManager } from "./shogi-match/hooks/useEngineManager";
 import { useEnginePool } from "./shogi-match/hooks/useEnginePool";
 import { useGameControls } from "./shogi-match/hooks/useGameControls";
-import { useKifuImportExport } from "./shogi-match/hooks/useKifuImportExport";
+import { type ReviewMoveEval, useKifuImportExport } from "./shogi-match/hooks/useKifuImportExport";
 import { useKifuKeyboardNavigation } from "./shogi-match/hooks/useKifuKeyboardNavigation";
 import { useKifuNavigation } from "./shogi-match/hooks/useKifuNavigation";
 import { useLegalMovePrefetch } from "./shogi-match/hooks/useLegalMovePrefetch";
@@ -89,6 +89,16 @@ import { TooltipProvider } from "./tooltip";
 
 const EMPTY_ANALYSIS_MARKERS: Array<{ seat: "b" | "w"; ply: number }> = [];
 
+/** 対局用の表示設定 localStorage キー。 */
+const DISPLAY_SETTINGS_KEY = "shogi-display-settings";
+/** ライブ観戦用の表示設定 localStorage キー (対局用と分離してチート防止既定を汚さない)。 */
+const SPECTATE_DISPLAY_SETTINGS_KEY = "rshogi-live-display-settings";
+/** ライブ観戦の既定表示設定。棋譜評価値カラムを既定 ON にする。 */
+const SPECTATE_DISPLAY_SETTINGS: DisplaySettings = {
+    ...DEFAULT_DISPLAY_SETTINGS,
+    showKifuEval: true,
+};
+
 interface ShogiMatchProps {
     engineOptions: EngineOption[];
     defaultSides?: { sente: SideSetting; gote: SideSetting };
@@ -116,8 +126,16 @@ interface ShogiMatchProps {
     allowAnalysisDuringMatch?: boolean;
     /** 棋譜パネルに表示する AI 解析使用マーカー */
     analysisMarkers?: Array<{ seat: "b" | "w"; ply: number }>;
-    /** マウント時に読み込む棋譜（指定時は検討室モードで開始） */
-    initialReview?: { sfen: string; moves: string[] };
+    /**
+     * マウント時に読み込む棋譜（指定時は検討室モードで開始）。
+     * `moveData` は `moves` と同じ index で対応する各手の評価値・消費時間
+     * (先手視点)。ライブ観戦の評価値グラフ / 棋譜評価値カラム用。省略可 (後方互換)。
+     */
+    initialReview?: {
+        sfen: string;
+        moves: string[];
+        moveData?: (ReviewMoveEval | undefined)[];
+    };
     /** 現在局面のスナップショットを通知 */
     onPositionSnapshot?: (snapshot: { sfen: string; moves: string[]; label?: string }) => void;
     /** 現在の解析結果スナップショットを通知 */
@@ -126,6 +144,13 @@ interface ShogiMatchProps {
     initialAnalysisEntries?: AnalysisSnapshotEntryDraft[] | null;
     /** 棋譜検討モード: 対局設定サイドバーを非表示にする */
     reviewMode?: boolean;
+    /**
+     * ライブ観戦モード。表示設定を対局用とは別 localStorage 名前空間で扱い、
+     * 棋譜評価値カラム (`showKifuEval`) を既定 ON にする。対局モードのチート防止
+     * 既定 (OFF) や、ユーザーが対局用に設定した表示設定を汚さない。観戦側で
+     * 明示的にトグルした値は観戦用名前空間に永続化され尊重される。
+     */
+    spectateMode?: boolean;
     /** 棋譜検討モード時に左サイドバー位置に表示するコンテンツ */
     reviewLeftContent?: React.ReactNode;
     /** 棋譜検討モード時に 3 カラムの上部へ全幅で表示するコンテンツ（観戦スコアボード等） */
@@ -163,6 +188,7 @@ export function ShogiMatch({
     onAnalysisSnapshotChange,
     initialAnalysisEntries = null,
     reviewMode,
+    spectateMode,
     reviewLeftContent,
     reviewTopContent,
     onOpenEngineManager,
@@ -248,12 +274,19 @@ export function ShogiMatch({
     // 検討モード: 編集モードでも対局中でも一時停止中でもない状態
     // 自由に棋譜を閲覧し、分岐を作成できる
     const isReviewMode = !isEditMode && !isMatchRunning && !isPaused;
+    // ライブ観戦は表示設定を別名前空間で扱い、棋譜評価値カラムを既定 ON にする。
+    // 対局用の設定 (チート防止で showKifuEval=OFF 既定) を汚さず、観戦側で明示
+    // トグルした値は観戦用キーに永続化されて尊重される。
+    const displaySettingsKey = spectateMode ? SPECTATE_DISPLAY_SETTINGS_KEY : DISPLAY_SETTINGS_KEY;
+    const displaySettingsDefaults = spectateMode
+        ? SPECTATE_DISPLAY_SETTINGS
+        : DEFAULT_DISPLAY_SETTINGS;
     const [storedDisplaySettings, setDisplaySettings] = useLocalStorage<DisplaySettings>(
-        "shogi-display-settings",
-        DEFAULT_DISPLAY_SETTINGS,
+        displaySettingsKey,
+        displaySettingsDefaults,
     );
     // 既存の localStorage データに新フィールド（enableSound 等）がない場合のマージ
-    const displaySettings = { ...DEFAULT_DISPLAY_SETTINGS, ...storedDisplaySettings };
+    const displaySettings = { ...displaySettingsDefaults, ...storedDisplaySettings };
     const { playSound } = useShogiSound();
     // 解析設定（古いlocalStorageデータとの互換性のためデフォルト値とマージ）
     const [storedAnalysisSettings, setAnalysisSettings] = useLocalStorage<AnalysisSettings>(
@@ -1292,7 +1325,11 @@ export function ShogiMatch({
     // や moves 配列は呼び出し側で毎レンダー再生成され得るが、内容が同じなら再 import
     // しない (clock tick 等の無関係な再 render や、同内容を再生成する親に強い)。
     // importSfen / navigation は毎レンダー再生成されるため ref 経由で参照する。
-    const loadedReviewRef = useRef<{ sfen: string; movesKey: string } | null>(null);
+    const loadedReviewRef = useRef<{
+        sfen: string;
+        movesKey: string;
+        moveDataKey: string;
+    } | null>(null);
     const importSfenRef = useRef(importSfen);
     importSfenRef.current = importSfen;
     const navigationRef = useRef(navigation);
@@ -1300,7 +1337,13 @@ export function ShogiMatch({
     const initialAnalysisAppliedRef = useRef<string | null>(null);
     const reviewSfen = initialReview?.sfen;
     const reviewMoves = initialReview?.moves;
+    const reviewMoveData = initialReview?.moveData;
     const reviewMovesKey = reviewMoves?.join(" ");
+    // moveData (評価値・消費時間) だけが変わった場合 (= 指し手の後にコメントが遅れて
+    // 届くライブ観戦) も再取込を発火させるため、内容シグネチャを取込判定に含める。
+    // コメント到着で 1 回だけ安価な再取込が走るが、下の restorePly 復元でカーソルは
+    // 維持され、盤・棋譜も据え置き再構築なのでちらつかない。
+    const reviewMoveDataKey = reviewMoveData ? JSON.stringify(reviewMoveData) : "";
     useEffect(() => {
         if (
             !positionReady ||
@@ -1311,7 +1354,12 @@ export function ShogiMatch({
             return;
         }
         const loaded = loadedReviewRef.current;
-        if (loaded && loaded.sfen === reviewSfen && loaded.movesKey === reviewMovesKey) {
+        if (
+            loaded &&
+            loaded.sfen === reviewSfen &&
+            loaded.movesKey === reviewMovesKey &&
+            loaded.moveDataKey === reviewMoveDataKey
+        ) {
             return;
         }
 
@@ -1323,13 +1371,19 @@ export function ShogiMatch({
 
         // await 前に確定して StrictMode の二重実行を冪等化する。連続着手で先行 import が
         // 後着 import に追い越されたら、isStale で古い import の state 適用を中止する。
-        loadedReviewRef.current = { sfen: reviewSfen, movesKey: reviewMovesKey };
+        loadedReviewRef.current = {
+            sfen: reviewSfen,
+            movesKey: reviewMovesKey,
+            moveDataKey: reviewMoveDataKey,
+        };
         void importSfenRef
             .current(reviewSfen, reviewMoves, {
                 gotoPly: wasFollowingTip ? undefined : restorePly,
+                moveData: reviewMoveData,
                 isStale: () =>
                     loadedReviewRef.current?.sfen !== reviewSfen ||
-                    loadedReviewRef.current?.movesKey !== reviewMovesKey,
+                    loadedReviewRef.current?.movesKey !== reviewMovesKey ||
+                    loadedReviewRef.current?.moveDataKey !== reviewMoveDataKey,
             })
             .catch((err) => {
                 // SFEN 解析失敗などで取り込みが reject したら loaded マークを巻き戻し、
@@ -1337,13 +1391,14 @@ export function ShogiMatch({
                 // 先行していれば (参照不一致) リセットしない。
                 if (
                     loadedReviewRef.current?.sfen === reviewSfen &&
-                    loadedReviewRef.current?.movesKey === reviewMovesKey
+                    loadedReviewRef.current?.movesKey === reviewMovesKey &&
+                    loadedReviewRef.current?.moveDataKey === reviewMoveDataKey
                 ) {
                     loadedReviewRef.current = null;
                 }
                 console.error("[rshogi] initialReview の取り込みに失敗しました", err);
             });
-    }, [positionReady, reviewSfen, reviewMoves, reviewMovesKey]);
+    }, [positionReady, reviewSfen, reviewMoves, reviewMovesKey, reviewMoveData, reviewMoveDataKey]);
 
     useEffect(() => {
         if (!positionReady || !initialAnalysisEntries || initialAnalysisEntries.length === 0) {
@@ -1624,6 +1679,8 @@ export function ShogiMatch({
         reviewMode,
         reviewLeftContent,
         reviewTopContent,
+        // 評価値グラフの初期展開はライブ観戦のみ。検討/静的 viewer/対局は既定閉のまま。
+        evalPanelInitialOpen: spectateMode === true,
     };
 
     // Props グループ化: Mobile専用
