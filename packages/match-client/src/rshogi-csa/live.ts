@@ -40,7 +40,13 @@ import {
     type PositionState,
     parseSingleCsaMove,
 } from "@shogi/app-core";
-import type { RshogiGameMeta, RshogiGameResult, RshogiGameResultKind } from "./client";
+import type {
+    RshogiClockKind,
+    RshogiGameMeta,
+    RshogiGameResult,
+    RshogiGameResultKind,
+    RshogiTimeControl,
+} from "./client";
 
 /**
  * Floodgate コメント (`'* <eval> <pv...>`) を解析した結果。
@@ -217,7 +223,13 @@ interface ParsedSummary {
     gameId?: string;
     senteName?: string;
     goteName?: string;
-    timeUnit?: "1sec" | "1msec";
+    /**
+     * 持ち時間の単位。`Total_Time` / `Byoyomi` の解釈が単位ごとに変わる:
+     * - `1sec`:  秒 (Countdown / Fischer)
+     * - `1msec`: ミリ秒 (CountdownMsec)
+     * - `1min`:  分 (StopWatch)
+     */
+    timeUnit?: "1sec" | "1msec" | "1min";
     totalTime?: number;
     byoyomi?: number;
     increment?: number;
@@ -245,7 +257,7 @@ const parseGameSummaryLines = (summaryLines: string[]): ParsedSummary => {
                 out.goteName = value;
                 break;
             case "Time_Unit":
-                if (value === "1sec" || value === "1msec") out.timeUnit = value;
+                if (value === "1sec" || value === "1msec" || value === "1min") out.timeUnit = value;
                 break;
             case "Total_Time": {
                 const n = Number(value);
@@ -281,6 +293,57 @@ const parseGameSummaryLines = (summaryLines: string[]): ParsedSummary => {
         }
     }
     return out;
+};
+
+/**
+ * `parseGameSummaryLines` の結果を `RshogiTimeControl` に変換する。
+ *
+ * ## kind 判定 (REST `decodeClock` の語彙に合わせる)
+ * サーバの clock 方式は `BEGIN Time` セクションの `Time_Unit` + `Increment` /
+ * `Byoyomi` の有無で一意に決まる (server `ClockSpec::format_time_section`)。
+ * - `Increment` 行あり → `fischer` (Time_Unit は常に 1sec)
+ * - `Time_Unit:1min`  → `stopwatch` (Total_Time / Byoyomi は分単位)
+ * - `Time_Unit:1msec` → `countdown_msec` (Total_Time / Byoyomi は ms 単位)
+ * - それ以外 (`Time_Unit:1sec` / 未指定) → `countdown`。`Byoyomi` が無い/0 の
+ *   場合は sudden-death (byoyomiSeconds=0) として扱う。
+ *
+ * ## 単位換算
+ * `mainSeconds` / `byoyomiSeconds` は Time_Unit に応じて秒へ正規化する:
+ * - `1sec`:  秒そのまま
+ * - `1msec`: ms → `round(/1000)`
+ * - `1min`:  分 → `*60`
+ * `byoyomiMilliseconds` は `1msec` のときだけ生 ms を保持する (ms 粒度の秒読み表示用)。
+ */
+const deriveTimeControl = (summary: ParsedSummary): RshogiTimeControl | undefined => {
+    if (
+        summary.totalTime === undefined &&
+        summary.byoyomi === undefined &&
+        summary.increment === undefined
+    ) {
+        return undefined;
+    }
+    const unit = summary.timeUnit;
+    const toSeconds = (value: number | undefined): number => {
+        if (value === undefined) return 0;
+        if (unit === "1msec") return Math.round(value / 1000);
+        if (unit === "1min") return value * 60;
+        return value;
+    };
+    const kind: RshogiClockKind =
+        summary.increment !== undefined
+            ? "fischer"
+            : unit === "1min"
+              ? "stopwatch"
+              : unit === "1msec"
+                ? "countdown_msec"
+                : "countdown";
+    return {
+        kind,
+        mainSeconds: toSeconds(summary.totalTime),
+        byoyomiSeconds: toSeconds(summary.byoyomi),
+        byoyomiMilliseconds: unit === "1msec" ? summary.byoyomi : undefined,
+        incrementSeconds: summary.increment,
+    };
 };
 
 /**
@@ -361,22 +424,7 @@ const decodeSnapshotBlock = (
         gameId: summary.gameId ?? gameId,
         senteName: summary.senteName ?? "",
         goteName: summary.goteName ?? "",
-        timeControl:
-            summary.totalTime !== undefined || summary.byoyomi !== undefined
-                ? {
-                      mainSeconds:
-                          summary.timeUnit === "1msec"
-                              ? Math.round((summary.totalTime ?? 0) / 1000)
-                              : (summary.totalTime ?? 0),
-                      byoyomiSeconds:
-                          summary.timeUnit === "1msec"
-                              ? Math.round((summary.byoyomi ?? 0) / 1000)
-                              : (summary.byoyomi ?? 0),
-                      byoyomiMilliseconds:
-                          summary.timeUnit === "1msec" ? summary.byoyomi : undefined,
-                      incrementSeconds: summary.increment,
-                  }
-                : undefined,
+        timeControl: deriveTimeControl(summary),
     };
 
     const sideToMove: "sente" | "gote" = summary.toMove ?? state.turn;
@@ -572,10 +620,12 @@ const MOCK_SNAPSHOT_LINES: string[] = [
     "Name+:先手デモエンジン",
     "Name-:後手デモエンジン",
     "Rematch_On_Draw:NO",
+    // Fischer 方式 (Increment) にして、dev screenshot でも kind 判定 + 増分加算の
+    // 新パス (viewer `applyMoveToClocks`) を素通しで確認できるようにする。
     "BEGIN Time",
     "Time_Unit:1sec",
     "Total_Time:600",
-    "Byoyomi:10",
+    "Increment:10",
     "Least_Time_Per_Move:0",
     "END Time",
     "BEGIN Position",
@@ -1167,6 +1217,7 @@ export function subscribeRshogiLiveGame(
 // (テスト外では使わない契約)
 export const __test_internals = {
     decodeSnapshotBlock,
+    deriveTimeControl,
     detectEndLine,
     extractElapsedSec,
     parseGameSummaryLines,

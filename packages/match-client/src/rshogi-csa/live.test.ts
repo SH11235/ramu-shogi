@@ -783,4 +783,102 @@ describe("__test_internals", () => {
             toMove: "sente",
         });
     });
+    it("parseGameSummaryLines: Time_Unit:1min (StopWatch) を分単位のまま受理する", () => {
+        const r = __test_internals.parseGameSummaryLines([
+            "Time_Unit:1min",
+            "Total_Time:15",
+            "Byoyomi:1",
+        ]);
+        expect(r.timeUnit).toBe("1min");
+        expect(r.totalTime).toBe(15);
+        expect(r.byoyomi).toBe(1);
+    });
+});
+
+describe("deriveTimeControl: kind 判定と単位換算 (REST decodeClock 語彙に合わせる)", () => {
+    it("Increment 行あり → fischer (Time_Unit:1sec、増分は秒)", () => {
+        expect(
+            __test_internals.deriveTimeControl({
+                timeUnit: "1sec",
+                totalTime: 600,
+                increment: 10,
+            }),
+        ).toEqual({
+            kind: "fischer",
+            mainSeconds: 600,
+            byoyomiSeconds: 0,
+            byoyomiMilliseconds: undefined,
+            incrementSeconds: 10,
+        });
+    });
+    it("Byoyomi 行あり Time_Unit:1sec → countdown", () => {
+        const tc = __test_internals.deriveTimeControl({
+            timeUnit: "1sec",
+            totalTime: 600,
+            byoyomi: 10,
+        });
+        expect(tc?.kind).toBe("countdown");
+        expect(tc?.mainSeconds).toBe(600);
+        expect(tc?.byoyomiSeconds).toBe(10);
+        expect(tc?.byoyomiMilliseconds).toBeUndefined();
+        expect(tc?.incrementSeconds).toBeUndefined();
+    });
+    it("Time_Unit:1msec → countdown_msec (ms→秒換算 + byoyomiMilliseconds 保持)", () => {
+        const tc = __test_internals.deriveTimeControl({
+            timeUnit: "1msec",
+            totalTime: 10_000,
+            byoyomi: 100,
+        });
+        expect(tc?.kind).toBe("countdown_msec");
+        expect(tc?.mainSeconds).toBe(10);
+        // round(100 / 1000) = 0 秒だが、生 ms は byoyomiMilliseconds に残す
+        expect(tc?.byoyomiSeconds).toBe(0);
+        expect(tc?.byoyomiMilliseconds).toBe(100);
+    });
+    it("Time_Unit:1min → stopwatch (分→秒換算)", () => {
+        const tc = __test_internals.deriveTimeControl({
+            timeUnit: "1min",
+            totalTime: 15,
+            byoyomi: 1,
+        });
+        expect(tc?.kind).toBe("stopwatch");
+        expect(tc?.mainSeconds).toBe(900);
+        expect(tc?.byoyomiSeconds).toBe(60);
+        expect(tc?.byoyomiMilliseconds).toBeUndefined();
+    });
+    it("Byoyomi も Increment も無い → sudden-death countdown (byoyomiSeconds 0)", () => {
+        const tc = __test_internals.deriveTimeControl({ timeUnit: "1sec", totalTime: 300 });
+        expect(tc?.kind).toBe("countdown");
+        expect(tc?.mainSeconds).toBe(300);
+        expect(tc?.byoyomiSeconds).toBe(0);
+    });
+    it("時間フィールドが皆無なら timeControl ごと undefined", () => {
+        expect(__test_internals.deriveTimeControl({})).toBeUndefined();
+        expect(__test_internals.deriveTimeControl({ timeUnit: "1sec" })).toBeUndefined();
+    });
+    it("snapshot 経由でも meta.timeControl.kind が付く (fischer / countdown)", () => {
+        const fischer = __test_internals.decodeSnapshotBlock("g", [
+            "BEGIN Game_Summary",
+            "BEGIN Time",
+            "Time_Unit:1sec",
+            "Total_Time:600",
+            "Increment:10",
+            "END Time",
+            "END Game_Summary",
+        ]);
+        expect(fischer.snapshot.meta.timeControl?.kind).toBe("fischer");
+        expect(fischer.snapshot.meta.timeControl?.incrementSeconds).toBe(10);
+
+        const countdown = __test_internals.decodeSnapshotBlock("g", [
+            "BEGIN Game_Summary",
+            "BEGIN Time",
+            "Time_Unit:1sec",
+            "Total_Time:600",
+            "Byoyomi:10",
+            "END Time",
+            "END Game_Summary",
+        ]);
+        expect(countdown.snapshot.meta.timeControl?.kind).toBe("countdown");
+        expect(countdown.snapshot.meta.timeControl?.byoyomiSeconds).toBe(10);
+    });
 });
