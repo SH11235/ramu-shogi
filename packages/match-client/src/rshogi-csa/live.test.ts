@@ -296,10 +296,10 @@ describe("subscribeRshogiLiveGame: Floodgate コメント (eval / PV)", () => {
         });
     });
 
-    it("live: onMove は即時発火し、RshogiLiveMoveEvent.comment は付かない (コメントは後追い)", () => {
+    it("live: onMove は即時発火し、コメントは onMoveComment で後追い配信される", () => {
         const { ws, events } = openWithSnapshot();
         ws.fireLines(["+7776FU,T8", "'* 100"]);
-        expect(events.moves[0].comment).toBeUndefined();
+        expect(events.moves[0]).toEqual({ csaMove: "7g7f", elapsedSec: 8 });
         expect(events.moveComments[0]).toEqual({ ply: 1, comment: { raw: "* 100", evalCp: 100 } });
     });
 
@@ -351,6 +351,42 @@ describe("subscribeRshogiLiveGame: Floodgate コメント (eval / PV)", () => {
                 elapsedSec: 8,
                 comment: { raw: "* 30 -3334FU", evalCp: 30, pv: ["-3334FU"] },
             },
+            {
+                csaMove: "3c3d",
+                elapsedSec: 7,
+                comment: { raw: "* -20 +2726FU", evalCp: -20, pv: ["+2726FU"] },
+            },
+        ]);
+    });
+
+    it("snapshot: 解析不能な手が混ざっても以降の elapsedSec/comment が 1 手ずれない", () => {
+        const { events } = (() => {
+            const mocks = makeMocks();
+            subscribeRshogiLiveGame(
+                "game-1",
+                { apiBaseUrl: "https://example.com", webSocketFactory: mocks.wsFactory },
+                mocks.callbacks,
+            );
+            const ws = mocks.wsInstances[0];
+            ws.fireOpen();
+            // 2 行目は違法手 (7776FU の重複) で parse に落ちる。skip した entry の
+            // elapsedSec/comment ごと落とし、3 行目のメタ情報が 2 行目のものに
+            // ずれないことを固定する。
+            ws.fireLines(
+                buildSnapshotLines([
+                    "+7776FU,T8",
+                    "+7776FU,T99",
+                    "'* 999 ずれ検出用",
+                    "-3334FU,T7",
+                    "'* -20 +2726FU",
+                ]),
+            );
+            return mocks;
+        })();
+        const snap = events.snapshot[0];
+        expect(snap.moves).toEqual(["7g7f", "3c3d"]);
+        expect(snap.moveDetails).toEqual([
+            { csaMove: "7g7f", elapsedSec: 8, comment: undefined },
             {
                 csaMove: "3c3d",
                 elapsedSec: 7,
