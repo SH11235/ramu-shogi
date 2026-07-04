@@ -28,6 +28,7 @@ import CreateRoomPage from "./pages/online/CreateRoomPage";
 import OnlinePage from "./pages/online/OnlinePage";
 import RoomPage from "./pages/online/RoomPage";
 import PrivacyPage from "./pages/privacy/PrivacyPage";
+import RshogiLiveGamesPage from "./pages/rshogi-viewer/RshogiLiveGamesPage";
 import RshogiViewerListPage from "./pages/rshogi-viewer/RshogiViewerListPage";
 import RshogiViewerLivePage from "./pages/rshogi-viewer/RshogiViewerLivePage";
 import RshogiViewerPage from "./pages/rshogi-viewer/RshogiViewerPage";
@@ -235,6 +236,15 @@ const rshogiViewerListRoute = createRoute({
     component: RshogiViewerListPage,
 });
 
+// 進行中対局一覧 (静的 path)。単局 `/rshogi-viewer/live/$gameId` とはセグメント数が
+// 異なるため衝突しない。単局 `/rshogi-viewer/$gameId` より前に登録して、`live` を
+// gameId として誤解決しないようにする。
+const rshogiViewerLiveListRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/rshogi-viewer/live",
+    component: RshogiLiveGamesPage,
+});
+
 // `/rshogi-viewer/live/$gameId` は単局 `/rshogi-viewer/$gameId` よりも前に
 // 登録する必要がある (TanStack Router は登録順で path 解決する)。
 const rshogiViewerLiveRoute = createRoute({
@@ -314,6 +324,7 @@ const routeTree = rootRoute.addChildren([
     createRoomRoute,
     roomRoute,
     rshogiViewerListRoute,
+    rshogiViewerLiveListRoute,
     rshogiViewerLiveRoute,
     rshogiViewerRoute,
 ]);

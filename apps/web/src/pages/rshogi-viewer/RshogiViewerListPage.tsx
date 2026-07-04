@@ -1,7 +1,7 @@
 import type { RshogiGameSummary } from "@shogi/match-client";
 import { fetchRshogiGameList } from "@shogi/match-client";
 import { RshogiCsaGameList } from "@shogi/ui";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { type ReactElement, useEffect, useState } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
 import { PageContainer } from "../../components/PageContainer";
@@ -94,7 +94,14 @@ export default function RshogiViewerListPage(): ReactElement {
                 <PageHeading
                     title="rshogi 棋譜一覧"
                     description="rshogi CSA サーバで終局した棋譜を新着順で表示します。クリックすると個別の viewer に遷移します。"
-                />
+                >
+                    <Link
+                        to="/rshogi-viewer/live"
+                        className="text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                    >
+                        進行中の対局一覧へ →
+                    </Link>
+                </PageHeading>
 
                 {errorMessage && <StatusBanner variant="error">{errorMessage}</StatusBanner>}
 

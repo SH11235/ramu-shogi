@@ -54,6 +54,9 @@ export { OnlineGameView } from "./components/online-game-view";
 export type { RshogiCsaGameListProps } from "./components/rshogi-csa-game-list";
 // rshogi-csa-game-list
 export { RshogiCsaGameList } from "./components/rshogi-csa-game-list";
+export type { RshogiCsaLiveGameListProps } from "./components/rshogi-csa-live-game-list";
+// rshogi-csa-live-game-list
+export { RshogiCsaLiveGameList } from "./components/rshogi-csa-live-game-list";
 export type { RshogiCsaLiveViewerProps } from "./components/rshogi-csa-live-viewer";
 // rshogi-csa-live-viewer
 export { RshogiCsaLiveViewer } from "./components/rshogi-csa-live-viewer";
