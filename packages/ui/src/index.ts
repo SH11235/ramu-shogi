@@ -37,6 +37,7 @@ export type {
 // popover
 // position-preset-selector
 export { POSITION_PRESETS, PositionPresetSelector } from "./components/PositionPresetSelector";
+export { Popover, PopoverContent, PopoverTrigger } from "./components/popover";
 export type { ShogiBoardCell, ShogiBoardPiece } from "./components/shogi-board";
 // shogi-board (online game 用)
 export { ShogiBoard } from "./components/shogi-board";

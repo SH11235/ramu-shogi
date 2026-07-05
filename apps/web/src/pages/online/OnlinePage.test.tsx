@@ -19,7 +19,7 @@ vi.mock("../../hooks/useAuthSession", () => ({
     }),
 }));
 
-// @shogi/ui のモック（PositionPresetSelector を使用）
+// @shogi/ui のモック（PositionPresetSelector と、HeaderNav が使う Popover 系）
 vi.mock("@shogi/ui", () => ({
     PositionPresetSelector: ({
         value,
@@ -36,6 +36,9 @@ vi.mock("@shogi/ui", () => ({
             <option value="startpos">平手</option>
         </select>
     ),
+    Popover: ({ children }: { children: ReactNode }) => <>{children}</>,
+    PopoverTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
+    PopoverContent: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
 // import はモック設定後
