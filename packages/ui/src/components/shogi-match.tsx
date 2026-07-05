@@ -102,16 +102,94 @@ const SPECTATE_DISPLAY_SETTINGS: DisplaySettings = {
     showKifuEval: true,
 };
 
-const stringifyReviewMoveData = (moveData: (ReviewMoveEval | undefined)[] | undefined): string =>
-    moveData
-        ? JSON.stringify(moveData, (_key, value: unknown) =>
-              typeof value === "number" && !Number.isFinite(value)
-                  ? value > 0
-                      ? "Infinity"
-                      : "-Infinity"
-                  : value,
-          )
-        : "";
+const reviewMoveDataKeyCache = new WeakMap<(ReviewMoveEval | undefined)[], string>();
+
+export const stringifyReviewMoveData = (
+    moveData: (ReviewMoveEval | undefined)[] | undefined,
+): string => {
+    if (!moveData) return "";
+    const cached = reviewMoveDataKeyCache.get(moveData);
+    if (cached !== undefined) return cached;
+
+    const key = JSON.stringify(moveData, (_key, value: unknown) =>
+        typeof value === "number" && !Number.isNaN(value) && !Number.isFinite(value)
+            ? value > 0
+                ? "Infinity"
+                : "-Infinity"
+            : value,
+    );
+    reviewMoveDataKeyCache.set(moveData, key);
+    return key;
+};
+
+interface LoadedReviewSignature {
+    sfen: string;
+    movesKey: string;
+    moveDataKey: string;
+}
+
+interface InitialReviewInput {
+    sfen: string;
+    moves: string[];
+    moveData?: (ReviewMoveEval | undefined)[];
+}
+
+type InitialReviewSyncMode = "skip" | "import" | "diff";
+
+interface ReviewMoveDataDiffResult {
+    changed: number;
+    applied: number;
+    skipped: number;
+}
+
+export const getInitialReviewSyncMode = (
+    loaded: LoadedReviewSignature | null,
+    next: LoadedReviewSignature,
+): InitialReviewSyncMode => {
+    if (!loaded) return "import";
+    if (loaded.sfen !== next.sfen || loaded.movesKey !== next.movesKey) return "import";
+    if (loaded.moveDataKey !== next.moveDataKey) return "diff";
+    return "skip";
+};
+
+const isSameReviewMoveEval = (
+    a: ReviewMoveEval | undefined,
+    b: ReviewMoveEval | undefined,
+): boolean =>
+    a?.elapsedMs === b?.elapsedMs && a?.evalCp === b?.evalCp && a?.evalMate === b?.evalMate;
+
+export const applyReviewMoveDataDiff = (
+    navigation: Pick<ReturnType<typeof useKifuNavigation>, "updateMoveEvalAtPly">,
+    moves: string[],
+    previousMoveData: (ReviewMoveEval | undefined)[] | undefined,
+    nextMoveData: (ReviewMoveEval | undefined)[] | undefined,
+): ReviewMoveDataDiffResult => {
+    const result: ReviewMoveDataDiffResult = { changed: 0, applied: 0, skipped: 0 };
+    for (let index = 0; index < moves.length; index++) {
+        const data = nextMoveData?.[index];
+        if (isSameReviewMoveEval(previousMoveData?.[index], data)) continue;
+
+        result.changed++;
+        if (!data) continue;
+        const updateResult = navigation.updateMoveEvalAtPly(
+            index + 1,
+            {
+                elapsedMs: data.elapsedMs,
+                scoreCp: data.evalCp,
+                scoreMate: data.evalMate,
+            },
+            {
+                usiMove: moves[index],
+            },
+        );
+        if (updateResult === "missing") {
+            result.skipped++;
+        } else {
+            result.applied++;
+        }
+    }
+    return result;
+};
 
 export const analysisSnapshotEntryToRecordedEvalInfoEvent = (
     entry: AnalysisSnapshotEntryDraft,
@@ -124,6 +202,114 @@ export const analysisSnapshotEntryToRecordedEvalInfoEvent = (
     multipv: 1,
     normalized: true,
 });
+
+export function useInitialReviewSync({
+    positionReady,
+    initialReview,
+    navigation,
+    importSfen,
+}: {
+    positionReady: boolean;
+    initialReview: InitialReviewInput | undefined;
+    navigation: ReturnType<typeof useKifuNavigation>;
+    importSfen: (
+        sfen: string,
+        moves: string[],
+        options?: {
+            gotoPly?: number;
+            isStale?: () => boolean;
+            moveData?: (ReviewMoveEval | undefined)[];
+        },
+    ) => Promise<void>;
+}): void {
+    const loadedReviewRef = useRef<LoadedReviewSignature | null>(null);
+    const loadedReviewMoveDataRef = useRef<(ReviewMoveEval | undefined)[] | undefined>(undefined);
+    const importSfenRef = useRef(importSfen);
+    importSfenRef.current = importSfen;
+    const navigationRef = useRef(navigation);
+    navigationRef.current = navigation;
+    const reviewSfen = initialReview?.sfen;
+    const reviewMoves = initialReview?.moves;
+    const reviewMoveData = initialReview?.moveData;
+    const reviewMovesKey = reviewMoves?.join(" ");
+    const reviewMoveDataKey = stringifyReviewMoveData(reviewMoveData);
+    const getLatestReviewMoveData = useEffectEvent(() => initialReview?.moveData);
+    const applyLatestReviewMoveDataDiff = useEffectEvent((moves: string[]) => {
+        const nextMoveData = getLatestReviewMoveData();
+        const result = applyReviewMoveDataDiff(
+            navigationRef.current,
+            moves,
+            loadedReviewMoveDataRef.current,
+            nextMoveData,
+        );
+        if (result.skipped === 0) {
+            loadedReviewMoveDataRef.current = nextMoveData;
+        }
+        return result;
+    });
+
+    useEffect(() => {
+        if (
+            !positionReady ||
+            reviewSfen === undefined ||
+            reviewMoves === undefined ||
+            reviewMovesKey === undefined
+        ) {
+            return;
+        }
+        const loaded = loadedReviewRef.current;
+        const nextSignature = {
+            sfen: reviewSfen,
+            movesKey: reviewMovesKey,
+            moveDataKey: reviewMoveDataKey,
+        };
+        const syncMode = getInitialReviewSyncMode(loaded, nextSignature);
+        if (syncMode === "skip") {
+            return;
+        }
+        if (syncMode === "diff") {
+            const result = applyLatestReviewMoveDataDiff(reviewMoves);
+            if (result.skipped === 0) {
+                loadedReviewRef.current = nextSignature;
+            }
+            return;
+        }
+
+        // 再構築前のカーソルを捕捉する。末尾追従中 (currentPly === totalPly) なら
+        // 最新手まで進め、途中検討中ならその ply を維持する。
+        const navState = navigationRef.current.state;
+        const wasFollowingTip = navState.currentPly === navState.totalPly;
+        const restorePly = navState.currentPly;
+
+        // await 前に確定して StrictMode の二重実行を冪等化する。連続着手で先行 import が
+        // 後着 import に追い越されたら、isStale で古い import の state 適用を中止する。
+        loadedReviewRef.current = nextSignature;
+        loadedReviewMoveDataRef.current = getLatestReviewMoveData();
+        void importSfenRef
+            .current(reviewSfen, reviewMoves, {
+                gotoPly: wasFollowingTip ? undefined : restorePly,
+                moveData: getLatestReviewMoveData(),
+                isStale: () =>
+                    loadedReviewRef.current?.sfen !== reviewSfen ||
+                    loadedReviewRef.current?.movesKey !== reviewMovesKey ||
+                    loadedReviewRef.current?.moveDataKey !== reviewMoveDataKey,
+            })
+            .catch((err) => {
+                // SFEN 解析失敗などで取り込みが reject したら loaded マークを巻き戻し、
+                // 同一内容の再取り込み (再 snapshot 等) を可能にする。より新しい取り込みが
+                // 先行していれば (参照不一致) リセットしない。
+                if (
+                    loadedReviewRef.current?.sfen === reviewSfen &&
+                    loadedReviewRef.current?.movesKey === reviewMovesKey &&
+                    loadedReviewRef.current?.moveDataKey === reviewMoveDataKey
+                ) {
+                    loadedReviewRef.current = null;
+                    loadedReviewMoveDataRef.current = undefined;
+                }
+                console.error("[rshogi] initialReview の取り込みに失敗しました", err);
+            });
+    }, [positionReady, reviewSfen, reviewMoves, reviewMovesKey, reviewMoveDataKey]);
+}
 
 interface ShogiMatchProps {
     engineOptions: EngineOption[];
@@ -157,11 +343,7 @@ interface ShogiMatchProps {
      * `moveData` は `moves` と同じ index で対応する各手の評価値・消費時間
      * (先手視点)。ライブ観戦の評価値グラフ / 棋譜評価値カラム用。省略可 (後方互換)。
      */
-    initialReview?: {
-        sfen: string;
-        moves: string[];
-        moveData?: (ReviewMoveEval | undefined)[];
-    };
+    initialReview?: InitialReviewInput;
     /** 現在局面のスナップショットを通知 */
     onPositionSnapshot?: (snapshot: { sfen: string; moves: string[]; label?: string }) => void;
     /** 現在の解析結果スナップショットを通知 */
@@ -540,8 +722,9 @@ export function ShogiMatch({
     const lastAnalysisSnapshotSignatureRef = useRef<string | null>(null);
 
     useEffect(() => {
-        // JSON.stringify は Infinity を null にする。live 由来の手数なし詰み
-        // (evalMate=±Infinity) を流す場合は stringifyReviewMoveData 相当の変換が必要。
+        // analysisSnapshotDraft はサーバーへ POST するデータ由来で、POST 時点で
+        // Infinity は null に変換済み。ここに ±Infinity は含まれないため、
+        // JSON.stringify による signature 比較は安全。
         const signature = analysisSnapshotDraft ? JSON.stringify(analysisSnapshotDraft) : null;
         if (lastAnalysisSnapshotSignatureRef.current === signature) {
             return;
@@ -1346,87 +1529,16 @@ export function ShogiMatch({
         setIsMatchRunning,
     });
 
-    // initialReview を取り込む。live 観戦では moves が逐次伸びるため、moves が伸びる
-    // たびに importSfen で末尾まで再構築する。`<ShogiMatch>` を remount せず DOM を
-    // 据え置いたまま再構築するので、盤・棋譜が白く飛ばない。
-    // 取込判定は参照ではなく内容 (sfen + moves の連結文字列) で行う。`initialReview`
-    // や moves 配列は呼び出し側で毎レンダー再生成され得るが、内容が同じなら再 import
-    // しない (clock tick 等の無関係な再 render や、同内容を再生成する親に強い)。
-    // importSfen / navigation は毎レンダー再生成されるため ref 経由で参照する。
-    const loadedReviewRef = useRef<{
-        sfen: string;
-        movesKey: string;
-        moveDataKey: string;
-    } | null>(null);
-    const importSfenRef = useRef(importSfen);
-    importSfenRef.current = importSfen;
-    const navigationRef = useRef(navigation);
-    navigationRef.current = navigation;
     const initialAnalysisAppliedRef = useRef<string | null>(null);
-    const reviewSfen = initialReview?.sfen;
-    const reviewMoves = initialReview?.moves;
-    const reviewMoveData = initialReview?.moveData;
-    const reviewMovesKey = reviewMoves?.join(" ");
-    // moveData (評価値・消費時間) だけが変わった場合 (= 指し手の後にコメントが遅れて
-    // 届くライブ観戦) も再取込を発火させるため、内容シグネチャを取込判定に含める。
-    // コメント到着で 1 回だけ安価な再取込が走るが、下の restorePly 復元でカーソルは
-    // 維持され、盤・棋譜も据え置き再構築なのでちらつかない。
-    const reviewMoveDataKey = stringifyReviewMoveData(reviewMoveData);
-    useEffect(() => {
-        if (
-            !positionReady ||
-            reviewSfen === undefined ||
-            reviewMoves === undefined ||
-            reviewMovesKey === undefined
-        ) {
-            return;
-        }
-        const loaded = loadedReviewRef.current;
-        if (
-            loaded &&
-            loaded.sfen === reviewSfen &&
-            loaded.movesKey === reviewMovesKey &&
-            loaded.moveDataKey === reviewMoveDataKey
-        ) {
-            return;
-        }
 
-        // 再構築前のカーソルを捕捉する。末尾追従中 (currentPly === totalPly) なら
-        // 最新手まで進め、途中検討中ならその ply を維持する。
-        const navState = navigationRef.current.state;
-        const wasFollowingTip = navState.currentPly === navState.totalPly;
-        const restorePly = navState.currentPly;
-
-        // await 前に確定して StrictMode の二重実行を冪等化する。連続着手で先行 import が
-        // 後着 import に追い越されたら、isStale で古い import の state 適用を中止する。
-        loadedReviewRef.current = {
-            sfen: reviewSfen,
-            movesKey: reviewMovesKey,
-            moveDataKey: reviewMoveDataKey,
-        };
-        void importSfenRef
-            .current(reviewSfen, reviewMoves, {
-                gotoPly: wasFollowingTip ? undefined : restorePly,
-                moveData: reviewMoveData,
-                isStale: () =>
-                    loadedReviewRef.current?.sfen !== reviewSfen ||
-                    loadedReviewRef.current?.movesKey !== reviewMovesKey ||
-                    loadedReviewRef.current?.moveDataKey !== reviewMoveDataKey,
-            })
-            .catch((err) => {
-                // SFEN 解析失敗などで取り込みが reject したら loaded マークを巻き戻し、
-                // 同一内容の再取り込み (再 snapshot 等) を可能にする。より新しい取り込みが
-                // 先行していれば (参照不一致) リセットしない。
-                if (
-                    loadedReviewRef.current?.sfen === reviewSfen &&
-                    loadedReviewRef.current?.movesKey === reviewMovesKey &&
-                    loadedReviewRef.current?.moveDataKey === reviewMoveDataKey
-                ) {
-                    loadedReviewRef.current = null;
-                }
-                console.error("[rshogi] initialReview の取り込みに失敗しました", err);
-            });
-    }, [positionReady, reviewSfen, reviewMoves, reviewMovesKey, reviewMoveData, reviewMoveDataKey]);
+    // initialReview を取り込む。live 観戦では moves が逐次伸びた場合だけ importSfen で
+    // 末尾まで再構築し、コメントだけが遅れて届いた場合は既存ノードへ差分適用する。
+    useInitialReviewSync({
+        positionReady,
+        initialReview,
+        navigation,
+        importSfen,
+    });
 
     useEffect(() => {
         if (!positionReady || !initialAnalysisEntries || initialAnalysisEntries.length === 0) {

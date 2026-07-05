@@ -33,8 +33,18 @@ import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import type { DisplaySettings } from "../types";
-import type { KifMove as FullKifMove } from "../utils/kifFormat";
+import { type KifMove as FullKifMove, formatEval } from "../utils/kifFormat";
 import type { KifMoveData } from "../utils/kifParser";
+
+export function formatMobileCompactEval(evalCp?: number, evalMate?: number): string {
+    const formatted = formatEval(evalCp, evalMate);
+    if (formatted === "") return "-";
+    if (formatted === "+詰") return "詰み";
+    if (formatted === "-詰") return "詰まされ";
+    if (formatted.startsWith("+詰")) return `詰み${formatted.slice("+詰".length)}手`;
+    if (formatted.startsWith("-詰")) return `詰まされ${formatted.slice("-詰".length)}手`;
+    return formatted;
+}
 
 /**
  * MobileLayout 固有の Props
@@ -490,13 +500,7 @@ export function MobileLayout({
                         <div className="flex items-center justify-center gap-2 text-sm">
                             <span className="text-muted-foreground">評価:</span>
                             <span className="font-mono tabular-nums">
-                                {evalMate !== undefined
-                                    ? evalMate > 0
-                                        ? `詰み${evalMate}手`
-                                        : `詰まされ${Math.abs(evalMate)}手`
-                                    : evalCp !== undefined
-                                      ? `${evalCp > 0 ? "+" : ""}${(evalCp / 100).toFixed(1)}`
-                                      : "-"}
+                                {formatMobileCompactEval(evalCp, evalMate)}
                             </span>
                             {/* 詳細ボタン */}
                             <button

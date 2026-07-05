@@ -42,6 +42,19 @@ import { convertMovesToKif } from "../utils/kifFormat";
 
 export type RecordedEvalInfoEvent = EngineInfoEvent & Pick<KifuEval, "normalized">;
 
+interface MoveEvalUpdate {
+    /** 消費時間（ミリ秒）。undefined の場合は既存値を維持する。 */
+    elapsedMs?: number;
+    /** 評価値（センチポーン、先手視点）。 */
+    scoreCp?: number;
+    /** 詰み手数（先手視点）。手数不明の詰みは ±Infinity。 */
+    scoreMate?: number;
+    /** 探索深さ。 */
+    depth?: number;
+    /** 読み筋（USI形式の指し手配列）。 */
+    pv?: string[];
+}
+
 /** USI形式の指し手からlastMove情報を導出 */
 function deriveLastMoveFromUsi(usiMove: string | null): { from?: string; to: string } | undefined {
     if (!usiMove) return undefined;
@@ -117,6 +130,12 @@ export interface UseKifuNavigationResult {
     truncate: () => void;
     /** 指し手を追加（分岐生成含む） */
     addMove: (usiMove: string, positionAfter: PositionState, options?: AddMoveOptions) => void;
+    /** 本譜の既存ノードへ評価値・消費時間を差分適用（評価値は先手視点で normalized:true） */
+    updateMoveEvalAtPly: (
+        ply: number,
+        update: MoveEvalUpdate | undefined,
+        options?: { usiMove?: string },
+    ) => "applied" | "preserved" | "missing";
     /** 評価値を記録（手数で指定） */
     recordEvalByPly: (ply: number, event: RecordedEvalInfoEvent) => void;
     /** 評価値を記録（ノードIDで指定、分岐内のノード用） */
@@ -342,6 +361,88 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
             onPositionChange?.(positionAfter, lastMove);
             return newTree;
         });
+    };
+
+    /**
+     * live 観戦など、指し手列は同じでコメント（評価値・消費時間）だけが遅れて届く場合に、
+     * 本譜の既存ノードを差分更新する。
+     */
+    const updateMoveEvalAtPly = (
+        ply: number,
+        update: MoveEvalUpdate | undefined,
+        options?: { usiMove?: string },
+    ): "applied" | "preserved" | "missing" => {
+        if (!update) return "preserved";
+
+        const hasEval = update.scoreCp !== undefined || update.scoreMate !== undefined;
+        const hasElapsed = update.elapsedMs !== undefined;
+        if (!hasEval && !hasElapsed) return "preserved";
+
+        const nodeId = findNodeByPlyInMainLine(tree, ply);
+        if (!nodeId) return "missing";
+
+        const currentNode = tree.nodes.get(nodeId);
+        if (!currentNode) return "missing";
+        if (options?.usiMove !== undefined && currentNode.usiMove !== options.usiMove) {
+            return "missing";
+        }
+
+        const existing = currentNode.eval;
+        const existingPvMissing = !existing?.pv || existing.pv.length === 0;
+        const newPvAvailable = !!(update.pv && update.pv.length > 0);
+        const shouldUpdateEval =
+            hasEval &&
+            (!existing ||
+                (update.depth !== undefined && (existing.depth ?? 0) < update.depth) ||
+                (existingPvMissing && newPvAvailable) ||
+                (existing.depth === undefined && update.depth === undefined && existingPvMissing));
+
+        if (!hasElapsed && !shouldUpdateEval) {
+            return "preserved";
+        }
+
+        setTree((prev) => {
+            const nextNodeId = findNodeByPlyInMainLine(prev, ply);
+            if (!nextNodeId) return prev;
+
+            const node = prev.nodes.get(nextNodeId);
+            if (!node) return prev;
+            if (options?.usiMove !== undefined && node.usiMove !== options.usiMove) {
+                return prev;
+            }
+
+            const prevEval = node.eval;
+            const prevEvalPvMissing = !prevEval?.pv || prevEval.pv.length === 0;
+            const nextPvAvailable = !!(update.pv && update.pv.length > 0);
+            const shouldSetEval =
+                hasEval &&
+                (!prevEval ||
+                    (update.depth !== undefined && (prevEval.depth ?? 0) < update.depth) ||
+                    (prevEvalPvMissing && nextPvAvailable) ||
+                    (prevEval.depth === undefined &&
+                        update.depth === undefined &&
+                        prevEvalPvMissing));
+
+            const updatedNode: KifuNode = {
+                ...node,
+                elapsedMs: hasElapsed ? update.elapsedMs : node.elapsedMs,
+                eval: shouldSetEval
+                    ? {
+                          scoreCp: update.scoreCp,
+                          scoreMate: update.scoreMate,
+                          depth: update.depth,
+                          pv: update.pv,
+                          normalized: true,
+                      }
+                    : node.eval,
+            };
+
+            const newNodes = new Map(prev.nodes);
+            newNodes.set(nextNodeId, updatedNode);
+            return { ...prev, nodes: newNodes };
+        });
+
+        return shouldUpdateEval || hasElapsed ? "applied" : "preserved";
     };
 
     /**
@@ -851,6 +952,7 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
         promoteCurrentLine,
         truncate,
         addMove,
+        updateMoveEvalAtPly,
         recordEvalByPly,
         recordEvalByNodeId,
         clearEvalByPly,

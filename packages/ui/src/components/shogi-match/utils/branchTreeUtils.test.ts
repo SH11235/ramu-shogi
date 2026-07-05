@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeEvalToSentePerspective } from "./branchTreeUtils";
+import { MATE_WITHOUT_PLY } from "./kifFormat";
 
 describe("normalizeEvalToSentePerspective", () => {
     it("保存済みの先手視点 eval は normalized:true で奇数/偶数 ply とも bit 一致で往復する", () => {
@@ -8,6 +9,8 @@ describe("normalizeEvalToSentePerspective", () => {
             { ply: 2, evalCp: -456, evalMate: undefined },
             { ply: 3, evalCp: undefined, evalMate: 7 },
             { ply: 4, evalCp: undefined, evalMate: -9 },
+            { ply: 1, evalCp: undefined, evalMate: MATE_WITHOUT_PLY },
+            { ply: 2, evalCp: undefined, evalMate: -MATE_WITHOUT_PLY },
         ];
 
         for (const { ply, evalCp, evalMate } of cases) {
