@@ -3,7 +3,9 @@ import {
     __test_internals,
     type RshogiLiveCallbacks,
     type RshogiLiveConnectionState,
+    RshogiLiveRoomFullError,
     type RshogiLiveSnapshot,
+    type RshogiLiveStaticFallbackReason,
     subscribeRshogiLiveGame,
 } from "./live";
 
@@ -119,6 +121,7 @@ const makeMocks = () => {
         ends: [] as Array<unknown>,
         states: [] as RshogiLiveConnectionState[],
         errors: [] as Error[],
+        staticFallbacks: [] as RshogiLiveStaticFallbackReason[],
     };
     const callbacks: RshogiLiveCallbacks = {
         onSnapshot: (s) => {
@@ -141,6 +144,9 @@ const makeMocks = () => {
         },
         onError: (e) => {
             events.errors.push(e);
+        },
+        onStaticFallbackRequested: (reason) => {
+            events.staticFallbacks.push(reason);
         },
     };
     return { wsInstances, wsFactory, events, callbacks };
@@ -247,6 +253,7 @@ describe("subscribeRshogiLiveGame: snapshot → broadcast → end → close", ()
         ws.fireLines(buildSnapshotLines(["+7776FU,T8", "-3334FU,T7"], "#RESIGN"));
         expect(events.snapshot.length).toBe(1);
         expect(events.ends.length).toBe(1);
+        expect(events.staticFallbacks).toEqual(["terminal-snapshot"]);
     });
 });
 
@@ -539,6 +546,7 @@ describe("subscribeRshogiLiveGame: 再接続", () => {
         expect(wsInstances.length).toBe(backoff.length + 1);
         expect(events.states.at(-1)).toBe("closed");
         expect(events.errors.some((e) => e.message.includes("上限"))).toBe(true);
+        expect(events.staticFallbacks).toEqual(["reconnect-limit-reached"]);
     });
 
     it("安定接続 (STABLE_CONNECTION_MS 継続) 後は attempt がリセットされ、散発的な切断では上限に達しない", () => {
@@ -600,10 +608,83 @@ describe("subscribeRshogiLiveGame: NOT_FOUND", () => {
             ws.fireOpen();
             ws.fireLines(["##[MONITOR2] NOT_FOUND game-x", "##[MONITOR2] END"]);
             expect(events.errors.length).toBeGreaterThanOrEqual(1);
+            expect(events.staticFallbacks).toEqual(["not-found"]);
             expect(ws.closeArgs?.code).toBe(1000);
             ws.fireClose(1000, "not found");
             vi.advanceTimersByTime(60000);
             expect(wsInstances.length).toBe(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});
+
+describe("subscribeRshogiLiveGame: room full", () => {
+    it("close code 1013 + reason room full なら満席エラーとして閉じ、reconnect しない", () => {
+        vi.useFakeTimers();
+        try {
+            const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+            subscribeRshogiLiveGame(
+                "game-1",
+                { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+                callbacks,
+            );
+            const ws = wsInstances[0];
+            ws.fireOpen();
+            ws.fireClose(1013, "room full");
+
+            vi.advanceTimersByTime(60000);
+            expect(events.states.at(-1)).toBe("closed");
+            expect(events.errors[0]).toBeInstanceOf(RshogiLiveRoomFullError);
+            expect(events.errors[0].message).toContain("観戦者数が上限");
+            expect(wsInstances.length).toBe(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("MONITOR2 の room full エラー行も満席として扱う", () => {
+        vi.useFakeTimers();
+        try {
+            const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+            subscribeRshogiLiveGame(
+                "game-1",
+                { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+                callbacks,
+            );
+            const ws = wsInstances[0];
+            ws.fireOpen();
+            ws.fireLines(["##[MONITOR2] ERROR 503 room full"]);
+
+            expect(ws.closeArgs?.reason).toBe("room full");
+            expect(events.states.at(-1)).toBe("closed");
+            expect(events.errors[0]).toBeInstanceOf(RshogiLiveRoomFullError);
+            ws.fireClose(1000, "room full");
+            vi.advanceTimersByTime(60000);
+            expect(wsInstances.length).toBe(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("room full ではない MONITOR2 ERROR 行は接続を維持する", () => {
+        vi.useFakeTimers();
+        try {
+            const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+            subscribeRshogiLiveGame(
+                "game-1",
+                { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+                callbacks,
+            );
+            const ws = wsInstances[0];
+            ws.fireOpen();
+            ws.fireLines(["##[MONITOR2] ERROR temporary backend warning"]);
+
+            expect(ws.closeArgs).toBeUndefined();
+            expect(events.errors).toEqual([]);
+            expect(events.states.at(-1)).toBe("connected");
+            ws.fireLines(buildSnapshotLines(["+7776FU,T8"]));
+            expect(events.snapshot.length).toBe(1);
         } finally {
             vi.useRealTimers();
         }

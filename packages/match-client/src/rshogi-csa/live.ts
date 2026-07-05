@@ -153,6 +153,18 @@ export interface RshogiLiveClockEvent {
 
 export type RshogiLiveConnectionState = "connecting" | "connected" | "reconnecting" | "closed";
 
+export type RshogiLiveStaticFallbackReason =
+    | "terminal-snapshot"
+    | "reconnect-limit-reached"
+    | "not-found";
+
+export class RshogiLiveRoomFullError extends Error {
+    constructor(message = "観戦者数が上限に達しているため、この対局を観戦できません") {
+        super(message);
+        this.name = "RshogiLiveRoomFullError";
+    }
+}
+
 export interface RshogiLiveCallbacks {
     /** 初回 + 再接続時に毎回呼ばれる (state を全置換)。 */
     onSnapshot(snapshot: RshogiLiveSnapshot): void;
@@ -171,6 +183,11 @@ export interface RshogiLiveCallbacks {
     onConnectionState(state: RshogiLiveConnectionState): void;
     /** 解析・WS エラー通知 (致命的でないものも含む)。 */
     onError(err: Error): void;
+    /**
+     * live 接続では進行中表示を続けられないが、終局済棋譜として表示できる可能性が
+     * 高いときに呼ばれる。consumer は `GET /api/v1/games/<id>` に切り替える。
+     */
+    onStaticFallbackRequested?(reason: RshogiLiveStaticFallbackReason): void;
 }
 
 export interface RshogiLiveSubscribeOptions {
@@ -597,6 +614,23 @@ const parseLiveComment = (line: string): RshogiLiveComment => {
     return { raw };
 };
 
+const isRoomFullText = (value: string): boolean => {
+    const normalized = value.toLowerCase();
+    return (
+        normalized.includes("room full") ||
+        (normalized.includes("spectator") && normalized.includes("full")) ||
+        normalized.includes("too many spectators") ||
+        (normalized.includes("観戦") && normalized.includes("上限")) ||
+        normalized.includes("満席")
+    );
+};
+
+const maybeRoomFullLineError = (line: string): RshogiLiveRoomFullError | null =>
+    isRoomFullText(line) ? new RshogiLiveRoomFullError() : null;
+
+const maybeRoomFullCloseError = (event: CloseEvent): RshogiLiveRoomFullError | null =>
+    event.code === 1013 && isRoomFullText(event.reason) ? new RshogiLiveRoomFullError() : null;
+
 /**
  * モック観戦 (apiBaseUrl 未指定かつ gameId が `mock-` で始まる場合) が配信する
  * 固定 snapshot の wire 行群。
@@ -866,6 +900,34 @@ export function subscribeRshogiLiveGame(
         }
     };
 
+    const requestStaticFallback = (reason: RshogiLiveStaticFallbackReason) => {
+        if (disposed) return;
+        try {
+            callbacks.onStaticFallbackRequested?.(reason);
+        } catch (err) {
+            emitError(
+                err instanceof Error
+                    ? err
+                    : new Error(`onStaticFallbackRequested handler threw: ${String(err)}`),
+            );
+        }
+    };
+
+    const closeAsRoomFull = (err: RshogiLiveRoomFullError) => {
+        emitError(err);
+        disposed = true;
+        cancelReconnect();
+        clearStableTimer();
+        const currentWs = ws;
+        ws = null;
+        try {
+            currentWs?.close(1000, "room full");
+        } catch {
+            // 失敗は無視
+        }
+        emitConnectionState("closed");
+    };
+
     const cancelReconnect = () => {
         if (reconnectTimer !== null) {
             clearTimeoutImpl(reconnectTimer);
@@ -887,6 +949,7 @@ export function subscribeRshogiLiveGame(
         // 上限到達: これ以上は再接続せず確定 closed にする (無限 flap を断ち切る)。
         // emitError は disposed 中は無視される契約なので、disposed を立てる前に通知する。
         if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+            requestStaticFallback("reconnect-limit-reached");
             emitError(new Error("再接続の上限に達したため観戦を終了しました"));
             disposed = true;
             emitConnectionState("closed");
@@ -944,6 +1007,7 @@ export function subscribeRshogiLiveGame(
             }
             // 終局済 DO に接続したケース: snapshot 内に result_code 行がある。
             if (finalResultLine && snapshot.finalResult) {
+                requestStaticFallback("terminal-snapshot");
                 handleEndDetected(snapshot.finalResult);
             }
         } catch (err) {
@@ -1023,6 +1087,7 @@ export function subscribeRshogiLiveGame(
         if (trimmed.startsWith("##[MONITOR2] NOT_FOUND")) {
             // server 側で active/finished のいずれにも一致しなかった。
             // reconnect しても結果は変わらないので close する。
+            requestStaticFallback("not-found");
             emitError(new Error(`spectate target not found: ${trimmed}`));
             disposed = true;
             cancelReconnect();
@@ -1032,6 +1097,13 @@ export function subscribeRshogiLiveGame(
                 // 失敗は無視
             }
             emitConnectionState("closed");
+            return;
+        }
+        if (trimmed.startsWith("##[MONITOR2] ERROR")) {
+            const roomFullError = maybeRoomFullLineError(trimmed);
+            if (roomFullError) {
+                closeAsRoomFull(roomFullError);
+            }
             return;
         }
         if (inSnapshot) {
@@ -1125,7 +1197,7 @@ export function subscribeRshogiLiveGame(
             emitError(new Error("WebSocket error"));
         };
 
-        socket.onclose = () => {
+        socket.onclose = (event: CloseEvent) => {
             if (ws !== socket) return;
             ws = null;
             // 接続が閉じたので安定判定タイマーは無効化する (close から先は flap 扱い)。
@@ -1135,6 +1207,11 @@ export function subscribeRshogiLiveGame(
             inSnapshot = false;
             if (disposed) {
                 emitConnectionState("closed");
+                return;
+            }
+            const roomFullError = maybeRoomFullCloseError(event);
+            if (roomFullError) {
+                closeAsRoomFull(roomFullError);
                 return;
             }
             // `onEnd` 発火済の場合、close code に関わらず reconnect しない。
