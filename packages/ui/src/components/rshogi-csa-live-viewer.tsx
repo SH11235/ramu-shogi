@@ -272,6 +272,8 @@ export const formatByoyomiClock = (ms: number): string => {
     const clampedMs = Number.isFinite(ms) ? Math.max(0, ms) : 0;
     const min = Math.floor(clampedMs / 60_000);
     const secWithinMinute = Math.ceil((clampedMs - min * 60_000) / 1000);
+    // 分は実ミリ秒の境界でだけ繰り上げるため、59.999 秒の ceil が 60 になっても
+    // 1:00 とは表示せず 0:59 に留める。
     const sec = Math.min(59, secWithinMinute);
     return `${min}:${String(sec).padStart(2, "0")}`;
 };
@@ -738,13 +740,14 @@ export function RshogiCsaLiveViewer({
                     } catch (parseError) {
                         setState((prev) => ({
                             ...prev,
-                            staticFallback: prev.snapshot
-                                ? undefined
-                                : {
-                                      status: "error",
-                                      reason,
-                                      errorMessage: `終局済み棋譜の解析に失敗しました: ${String(parseError)}`,
-                                  },
+                            staticFallback:
+                                prev.snapshot && reason === "terminal-snapshot"
+                                    ? undefined
+                                    : {
+                                          status: "error",
+                                          reason,
+                                          errorMessage: `終局済み棋譜の解析に失敗しました: ${String(parseError)}`,
+                                      },
                         }));
                         return;
                     }
@@ -757,24 +760,26 @@ export function RshogiCsaLiveViewer({
                     if (error instanceof RshogiGameNotFoundError) {
                         setState((prev) => ({
                             ...prev,
-                            staticFallback: prev.snapshot
-                                ? undefined
-                                : { status: "not-found", reason },
+                            staticFallback:
+                                prev.snapshot && reason === "terminal-snapshot"
+                                    ? undefined
+                                    : { status: "not-found", reason },
                         }));
                         return;
                     }
                     setState((prev) => ({
                         ...prev,
-                        staticFallback: prev.snapshot
-                            ? undefined
-                            : {
-                                  status: "error",
-                                  reason,
-                                  errorMessage:
-                                      error instanceof Error
-                                          ? error.message
-                                          : `終局済み棋譜の読み込みに失敗しました: ${String(error)}`,
-                              },
+                        staticFallback:
+                            prev.snapshot && reason === "terminal-snapshot"
+                                ? undefined
+                                : {
+                                      status: "error",
+                                      reason,
+                                      errorMessage:
+                                          error instanceof Error
+                                              ? error.message
+                                              : `終局済み棋譜の読み込みに失敗しました: ${String(error)}`,
+                                  },
                     }));
                 }
             })();
@@ -872,7 +877,8 @@ export function RshogiCsaLiveViewer({
             onError(err) {
                 setState((prev) => ({
                     ...prev,
-                    ...(prev.staticFallback?.status === "loading"
+                    ...(prev.staticFallback?.status === "loading" &&
+                    prev.staticFallback.reason === "terminal-snapshot"
                         ? {}
                         : {
                               lastError:

@@ -145,6 +145,30 @@ const createStaticGameFetch = () =>
             ),
     ) as unknown as typeof fetch;
 
+const createStaticGameNotFoundFetch = () =>
+    vi.fn(async () => new Response("not found", { status: 404 })) as unknown as typeof fetch;
+
+const createStaticGameFailureFetch = (message = "fallback exploded") =>
+    vi.fn(async () => {
+        throw new Error(message);
+    }) as unknown as typeof fetch;
+
+const createInvalidStaticGameFetch = () =>
+    vi.fn(
+        async () =>
+            new Response(
+                JSON.stringify({
+                    game_id: "game-1",
+                    black_handle: "alice",
+                    white_handle: "bob",
+                    result_kind: "WIN_WHITE",
+                    end_reason: "RESIGN",
+                    csa: "not csa",
+                }),
+                { status: 200, headers: { "content-type": "application/json" } },
+            ),
+    ) as unknown as typeof fetch;
+
 describe("RshogiCsaLiveViewer: static fallback", () => {
     beforeEach(() => {
         MockWebSocket.instances = [];
@@ -189,6 +213,75 @@ describe("RshogiCsaLiveViewer: static fallback", () => {
         expect(screen.getByText("後手 (bob) 勝ち (投了)")).toBeTruthy();
     });
 
+    it("静的 fallback が RshogiGameNotFoundError になったら not-found 表示にする", async () => {
+        const fetchOverride = createStaticGameNotFoundFetch();
+
+        render(
+            <RshogiCsaLiveViewer
+                gameId="game-1"
+                engineOptions={[]}
+                manifestUrl="/nnue/manifest.json"
+                apiBaseUrl="https://example.com/api/v1"
+                fetchOverride={fetchOverride}
+            />,
+        );
+
+        act(() => {
+            MockWebSocket.instances[0].fireOpen();
+            MockWebSocket.instances[0].fireLines(["##[MONITOR2] NOT_FOUND game-1"]);
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText(/終局済み棋譜がまだ見つかりませんでした/)).toBeTruthy();
+        });
+    });
+
+    it("静的 fallback が汎用エラーになったら errorMessage を表示する", async () => {
+        const fetchOverride = createStaticGameFailureFetch("fallback exploded");
+
+        render(
+            <RshogiCsaLiveViewer
+                gameId="game-1"
+                engineOptions={[]}
+                manifestUrl="/nnue/manifest.json"
+                apiBaseUrl="https://example.com/api/v1"
+                fetchOverride={fetchOverride}
+            />,
+        );
+
+        act(() => {
+            MockWebSocket.instances[0].fireOpen();
+            MockWebSocket.instances[0].fireLines(["##[MONITOR2] NOT_FOUND game-1"]);
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText("fallback exploded")).toBeTruthy();
+        });
+    });
+
+    it("terminal snapshot 後の parseCsaMoves 例外は snapshot を保持して抑制する", async () => {
+        const fetchOverride = createInvalidStaticGameFetch();
+
+        render(
+            <RshogiCsaLiveViewer
+                gameId="game-1"
+                engineOptions={[]}
+                manifestUrl="/nnue/manifest.json"
+                apiBaseUrl="https://example.com/api/v1"
+                fetchOverride={fetchOverride}
+            />,
+        );
+
+        act(() => {
+            MockWebSocket.instances[0].fireOpen();
+            MockWebSocket.instances[0].fireLines(buildLiveSnapshot(["+7776FU,T8"], "#RESIGN"));
+        });
+
+        await waitFor(() => expect(fetchOverride).toHaveBeenCalled());
+        expect(screen.queryByText(/終局済み棋譜の解析に失敗しました/)).toBeNull();
+        expect(screen.getByTestId("shogi-match")).toBeTruthy();
+    });
+
     it("reconnect 上限到達時に静的終局表示へ切り替え、上限エラーを二重表示しない", async () => {
         vi.useFakeTimers();
         try {
@@ -225,6 +318,45 @@ describe("RshogiCsaLiveViewer: static fallback", () => {
                 screen.getByText("ライブ接続は終了済みのため、保存済み棋譜を表示しています。"),
             ).toBeTruthy();
             expect(screen.queryByText(/再接続の上限/)).toBeNull();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("snapshot 保持中でも reconnect 上限の fallback 失敗は理由と errorMessage を表示する", async () => {
+        vi.useFakeTimers();
+        try {
+            const fetchOverride = createStaticGameFailureFetch("fallback exploded");
+            render(
+                <RshogiCsaLiveViewer
+                    gameId="game-1"
+                    engineOptions={[]}
+                    manifestUrl="/nnue/manifest.json"
+                    apiBaseUrl="https://example.com/api/v1"
+                    fetchOverride={fetchOverride}
+                />,
+            );
+
+            const backoff = [1000, 2000, 4000, 8000, 16000, 30000];
+            act(() => {
+                MockWebSocket.instances[0].fireOpen();
+                MockWebSocket.instances[0].fireLines(buildLiveSnapshot(["+7776FU,T8"]));
+                MockWebSocket.instances[0].fireClose(1006, "flap");
+            });
+            for (let i = 0; i < backoff.length; i++) {
+                await act(async () => {
+                    vi.advanceTimersByTime(backoff[i]);
+                });
+                act(() => {
+                    MockWebSocket.instances[i + 1].fireOpen();
+                    MockWebSocket.instances[i + 1].fireClose(1006, "flap");
+                });
+            }
+
+            await act(async () => {});
+            await act(async () => {});
+            expect(screen.getByText(/再接続の上限/)).toBeTruthy();
+            expect(screen.getByText("fallback exploded")).toBeTruthy();
         } finally {
             vi.useRealTimers();
         }
@@ -331,6 +463,8 @@ describe("formatByoyomiClock", () => {
         expect(formatByoyomiClock(1)).toBe("0:01");
         expect(formatByoyomiClock(59_999)).toBe("0:59");
         expect(formatByoyomiClock(60_000)).toBe("1:00");
+        expect(formatByoyomiClock(119_999)).toBe("1:59");
+        expect(formatByoyomiClock(120_000)).toBe("2:00");
         expect(formatByoyomiClock(0)).toBe("0:00");
     });
 });

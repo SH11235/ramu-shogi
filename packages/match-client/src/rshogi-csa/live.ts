@@ -616,13 +616,9 @@ const parseLiveComment = (line: string): RshogiLiveComment => {
 
 const isRoomFullText = (value: string): boolean => {
     const normalized = value.toLowerCase();
-    return (
-        normalized.includes("room full") ||
-        (normalized.includes("spectator") && normalized.includes("full")) ||
-        normalized.includes("too many spectators") ||
-        (normalized.includes("観戦") && normalized.includes("上限")) ||
-        normalized.includes("満席")
-    );
+    // サーバ契約は close(1013, "room full") と MONITOR2 ERROR の "room full" のみ。
+    // 将来マッチ範囲を広げる場合は、誤検知を避けるため根拠をコメントで明記する。
+    return normalized.includes("room full");
 };
 
 const maybeRoomFullLineError = (line: string): RshogiLiveRoomFullError | null =>
@@ -1109,6 +1105,8 @@ export function subscribeRshogiLiveGame(
             if (roomFullError) {
                 closeAsRoomFull(roomFullError);
             }
+            // room full 以外の MONITOR2 ERROR は一時的な警告として扱う。
+            // snapshot / live line は継続して届く可能性があるため、ここでは接続を維持する。
             return;
         }
         if (inSnapshot) {
