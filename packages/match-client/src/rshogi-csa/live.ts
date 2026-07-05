@@ -456,7 +456,9 @@ const decodeSnapshotBlock = (
             gote: summary.whiteRemainingMs ?? 0,
             sideToMove,
         },
-        finalResult: resultCodeLine ? decodeResultCode(resultCodeLine, state.turn) : undefined,
+        finalResult: resultCodeLine
+            ? decodeSnapshotResultCode(resultCodeLine, state.turn)
+            : undefined,
     };
 
     return { snapshot, finalResultLine: resultCodeLine };
@@ -464,6 +466,10 @@ const decodeSnapshotBlock = (
 
 /**
  * `#RESIGN` / `#TIME_UP` 等の result_code 行から `RshogiGameResult` を導出する。
+ *
+ * サーバーの result_code は rshogi の primary_result_code と一致し、
+ * `#RESIGN` / `#TIME_UP` / `#ILLEGAL_MOVE` / `#JISHOGI` /
+ * `#OUTE_SENNICHITE` / `#SENNICHITE` / `#MAX_MOVES` / `#ABNORMAL` の集合。
  *
  * snapshot 末尾の result_code は「敗者視点」の理由として届く。
  * - `#RESIGN`: 手番側が投了 → 敗者 = `currentTurn`、勝者 = 反対側
@@ -521,6 +527,11 @@ const decodeResultCode = (
             endReason = "ILLEGAL";
             winnerSide = "draw";
             break;
+        case "#ABNORMAL":
+            kind = "abnormal";
+            endReason = "ABNORMAL";
+            winnerSide = "draw";
+            break;
         default:
             return undefined;
     }
@@ -533,6 +544,17 @@ const decodeResultCode = (
         winner = currentTurn;
     }
     return { kind, winner, endReason };
+};
+
+const decodeSnapshotResultCode = (
+    line: string,
+    currentTurn: "sente" | "gote",
+): RshogiGameResult | undefined => {
+    const result = decodeResultCode(line, currentTurn);
+    if (result) return result;
+    const code = line.trim();
+    if (!code.startsWith("#")) return undefined;
+    return { kind: "abort", endReason: code.slice(1) || "UNKNOWN_RESULT_CODE" };
 };
 
 /**

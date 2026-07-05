@@ -399,14 +399,29 @@ const RESULT_KIND_LABEL: Record<RshogiGameResult["kind"], string> = {
 };
 
 const formatResultText = (meta: RshogiGameMeta | undefined, result: RshogiGameResult): string => {
+    const isDrawishResult = result.kind === "draw" || result.kind === "max_moves";
     const winnerLabel =
         result.winner === "sente"
             ? `先手${meta?.senteName ? ` (${meta.senteName})` : ""} 勝ち`
             : result.winner === "gote"
               ? `後手${meta?.goteName ? ` (${meta.goteName})` : ""} 勝ち`
-              : "引き分け";
+              : isDrawishResult
+                ? "引き分け"
+                : "終局";
     const reason = RESULT_KIND_LABEL[result.kind] ?? "終局";
     return `${winnerLabel} (${reason})`;
+};
+
+const formatTerminalSnapshotNotFoundText = (
+    reason: RshogiLiveStaticFallbackReason,
+    snapshot: RshogiLiveSnapshot | null,
+    result: RshogiGameResult | undefined,
+): string => {
+    if (reason !== "terminal-snapshot" || !snapshot || snapshot.moves.length > 0) {
+        return "終局済み棋譜がまだ見つかりませんでした。少し時間をおいて再読み込みしてください。";
+    }
+    const resultText = result ? formatResultText(snapshot.meta, result) : "終局";
+    return `この対局は${resultText}として終了済みです。この対局の棋譜データは保存されていません。`;
 };
 
 /** スコアボード片側分の表示用残時間 (本体 or 秒読み)。 */
@@ -762,7 +777,9 @@ export function RshogiCsaLiveViewer({
                             ...prev,
                             staticFallback:
                                 prev.snapshot && reason === "terminal-snapshot"
-                                    ? undefined
+                                    ? prev.snapshot.moves.length > 0
+                                        ? undefined
+                                        : { status: "not-found", reason }
                                     : { status: "not-found", reason },
                         }));
                         return;
@@ -982,7 +999,11 @@ export function RshogiCsaLiveViewer({
                 {state.staticFallback?.status === "loading" && <p>終局済み棋譜を読み込み中...</p>}
                 {state.staticFallback?.status === "not-found" && (
                     <p className="text-destructive">
-                        終局済み棋譜がまだ見つかりませんでした。少し時間をおいて再読み込みしてください。
+                        {formatTerminalSnapshotNotFoundText(
+                            state.staticFallback.reason,
+                            state.snapshot,
+                            state.result,
+                        )}
                     </p>
                 )}
                 {state.staticFallback?.status === "error" && (
@@ -1013,7 +1034,11 @@ export function RshogiCsaLiveViewer({
             )}
             {state.staticFallback?.status === "not-found" && (
                 <div className="px-4 pt-2 text-xs text-destructive">
-                    終局済み棋譜がまだ見つかりませんでした。少し時間をおいて再読み込みしてください。
+                    {formatTerminalSnapshotNotFoundText(
+                        state.staticFallback.reason,
+                        state.snapshot,
+                        state.result,
+                    )}
                 </div>
             )}
             {state.staticFallback?.status === "error" && (

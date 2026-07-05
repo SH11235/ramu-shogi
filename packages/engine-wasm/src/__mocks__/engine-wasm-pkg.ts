@@ -17,3 +17,13 @@ export const wasm_replay_moves_strict = vi.fn().mockReturnValue({
     last_ply: 0,
     board: {},
 });
+export const initThreadPool = vi.fn().mockResolvedValue(undefined);
+export const init = vi.fn();
+export const dispose = vi.fn();
+export const load_model = vi.fn();
+export const load_position = vi.fn();
+export const apply_moves = vi.fn();
+export const search = vi.fn();
+export const stop = vi.fn();
+export const set_event_handler = vi.fn();
+export const set_option = vi.fn();

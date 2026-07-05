@@ -38,6 +38,20 @@ export default defineConfig({
                 replacement: path.resolve(rootDir, "../../packages/engine-wasm/src"),
             },
             {
+                find: "../pkg/engine_wasm.js",
+                replacement: path.resolve(
+                    rootDir,
+                    "../../packages/engine-wasm/src/__mocks__/engine-wasm-pkg.ts",
+                ),
+            },
+            {
+                find: "../pkg-threaded/engine_wasm.js",
+                replacement: path.resolve(
+                    rootDir,
+                    "../../packages/engine-wasm/src/__mocks__/engine-wasm-pkg.ts",
+                ),
+            },
+            {
                 find: /^@shogi\/match-client$/,
                 replacement: path.resolve(rootDir, "../../packages/match-client/src"),
             },

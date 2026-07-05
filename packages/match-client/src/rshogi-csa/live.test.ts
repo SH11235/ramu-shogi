@@ -255,6 +255,47 @@ describe("subscribeRshogiLiveGame: snapshot → broadcast → end → close", ()
         expect(events.ends.length).toBe(1);
         expect(events.staticFallbacks).toEqual(["terminal-snapshot"]);
     });
+
+    it("snapshot 末尾に #ABNORMAL があると abnormal/ABNORMAL で終局扱いにして reconnect しない", () => {
+        const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+        subscribeRshogiLiveGame(
+            "game-1",
+            { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+            callbacks,
+        );
+        const ws = wsInstances[0];
+        ws.fireOpen();
+        ws.fireLines(buildSnapshotLines([], "#ABNORMAL"));
+        expect(events.ends).toEqual([{ kind: "abnormal", endReason: "ABNORMAL" }]);
+        expect(events.snapshot[0].finalResult).toEqual({
+            kind: "abnormal",
+            endReason: "ABNORMAL",
+        });
+        expect(events.staticFallbacks).toEqual(["terminal-snapshot"]);
+
+        ws.fireClose(1000, "spectate finished");
+        vi.advanceTimersByTime(60000);
+        expect(wsInstances.length).toBe(1);
+        expect(events.states).toContain("closed");
+    });
+
+    it("未知の snapshot result_code でも終局扱いにして reconnect しない", () => {
+        const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+        subscribeRshogiLiveGame(
+            "game-1",
+            { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+            callbacks,
+        );
+        const ws = wsInstances[0];
+        ws.fireOpen();
+        ws.fireLines(buildSnapshotLines([], "#FUTURE_CODE"));
+        expect(events.ends).toEqual([{ kind: "abort", endReason: "FUTURE_CODE" }]);
+        expect(events.staticFallbacks).toEqual(["terminal-snapshot"]);
+
+        ws.fireClose(1000, "spectate finished");
+        vi.advanceTimersByTime(60000);
+        expect(wsInstances.length).toBe(1);
+    });
 });
 
 describe("subscribeRshogiLiveGame: Floodgate コメント (eval / PV)", () => {
