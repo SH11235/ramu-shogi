@@ -546,6 +546,9 @@ const decodeResultCode = (
     return { kind, winner, endReason };
 };
 
+// snapshot 限定の防御: 既知コード以外でも `#` 行なら terminal 扱いにして
+// 再接続ループを防ぐ (将来サーバーに結果コードが増えた場合の再発防止)。
+// broadcast 行は decodeResultCode を直接通るため、この緩い判定は適用されない。
 const decodeSnapshotResultCode = (
     line: string,
     currentTurn: "sente" | "gote",
