@@ -297,6 +297,8 @@ export function useInitialReviewSync({
                 // macrotask (setTimeout 0) に後退させ、commit 後の navigationRef
                 // (updateMoveEvalAtPly の missing 判定が参照するツリー) に対して
                 // import 中に届いたコメント評価値の diff を再適用する。
+                // (.then() 時点では既に非同期コンテキストのため flushSync による
+                // 同期 commit の強制は使えない)
                 setTimeout(() => {
                     if (
                         loadedReviewRef.current?.sfen !== reviewSfen ||

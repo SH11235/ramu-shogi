@@ -775,11 +775,14 @@ export function RshogiCsaLiveViewer({
                     if (error instanceof RshogiGameNotFoundError) {
                         setState((prev) => ({
                             ...prev,
+                            // 棋譜つき terminal snapshot を表示中の一時的 404 のみ非表示
+                            // (snapshot 表示を維持)。0手 snapshot や reconnect 上限起因の
+                            // 404 は not-found を表示する。
                             staticFallback:
-                                prev.snapshot && reason === "terminal-snapshot"
-                                    ? prev.snapshot.moves.length > 0
-                                        ? undefined
-                                        : { status: "not-found", reason }
+                                prev.snapshot &&
+                                reason === "terminal-snapshot" &&
+                                prev.snapshot.moves.length > 0
+                                    ? undefined
                                     : { status: "not-found", reason },
                         }));
                         return;
@@ -980,6 +983,17 @@ export function RshogiCsaLiveViewer({
         );
     }
 
+    // not-found 文言は「初期 snapshot 待機中」と「snapshot 取得済み」の両ブランチで
+    // 表示するため、一度だけ組み立てて使い回す。
+    const staticFallbackNotFoundText =
+        state.staticFallback?.status === "not-found"
+            ? formatTerminalSnapshotNotFoundText(
+                  state.staticFallback.reason,
+                  state.snapshot,
+                  state.result,
+              )
+            : undefined;
+
     if (!state.snapshot) {
         // 初回 snapshot 受信前のローディング表示。
         // `packages/ui/AGENTS.md` の規約に従い、コンポーネント自身は margin
@@ -997,14 +1011,8 @@ export function RshogiCsaLiveViewer({
                 </div>
                 <p>初期 snapshot を待機中...</p>
                 {state.staticFallback?.status === "loading" && <p>終局済み棋譜を読み込み中...</p>}
-                {state.staticFallback?.status === "not-found" && (
-                    <p className="text-destructive">
-                        {formatTerminalSnapshotNotFoundText(
-                            state.staticFallback.reason,
-                            state.snapshot,
-                            state.result,
-                        )}
-                    </p>
+                {staticFallbackNotFoundText !== undefined && (
+                    <p className="text-destructive">{staticFallbackNotFoundText}</p>
                 )}
                 {state.staticFallback?.status === "error" && (
                     <p className="text-destructive">{state.staticFallback.errorMessage}</p>
@@ -1032,13 +1040,9 @@ export function RshogiCsaLiveViewer({
                     終局済み棋譜を読み込み中...
                 </div>
             )}
-            {state.staticFallback?.status === "not-found" && (
+            {staticFallbackNotFoundText !== undefined && (
                 <div className="px-4 pt-2 text-xs text-destructive">
-                    {formatTerminalSnapshotNotFoundText(
-                        state.staticFallback.reason,
-                        state.snapshot,
-                        state.result,
-                    )}
+                    {staticFallbackNotFoundText}
                 </div>
             )}
             {state.staticFallback?.status === "error" && (
