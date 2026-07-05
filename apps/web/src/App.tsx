@@ -59,7 +59,11 @@ function App() {
     return (
         <>
             <PageHeader items={[{ label: "ラム将棋" }]} right={<HeaderNav />} />
-            <main className="mx-auto flex max-w-[1100px] flex-col gap-3 pt-3 md:px-5">
+            {/* 対局レイアウトは 3 カラム (サイドバー+盤+棋譜 ≈ 1260px) で幅が広い。
+                中央寄せ・横スクロールの管理は PCLayout 側 (overflow-x-auto + mx-auto
+                w-max) が担うため、ここでは max-width を課さず全幅で渡す。max-width で
+                挟むと中央寄せが効かず常時横スクロールになる。 */}
+            <main className="flex w-full flex-col gap-3 pt-3">
                 <ShogiMatch
                     key={initialReview ? "review" : "normal"}
                     engineOptions={engineOptions}
