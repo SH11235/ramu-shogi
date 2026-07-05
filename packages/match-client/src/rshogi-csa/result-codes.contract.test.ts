@@ -60,6 +60,9 @@ describe("result-codes contract", () => {
             // decodeResultCode は未知コードで undefined を返す(fallback 無し)ので、
             // defined であること = switch がその csa_code を直接扱っていること。
             expect(decoded, `${variant.variant} (${variant.csa_code})`).toBeDefined();
+            // 契約が保証するのは csa_code ⇄ end_reason 対応まで。decoded.kind
+            // ("resignation" 等)は client 内部表現でサーバマニフェストに無いため
+            // 契約テストの対象外(kind のマッピング健全性は live.test.ts が担当)。
             expect(decoded?.endReason, variant.csa_code).toBe(variant.end_reason);
         }
     });
@@ -74,7 +77,15 @@ describe("result-codes contract", () => {
         expect(new Set(contract.result_kinds)).toEqual(new Set(EXPECTED_RESULT_KINDS));
     });
 
-    it("wire union の網羅性(コンパイル時ガード)が保たれている", () => {
+    // NOTE: マニフェストの `csa_outcome_codes` (#WIN/#LOSE/#DRAW/#CENSORED) は終局
+    // 結果に付随する outcome 行で、client の decodeResultCode は reason コード
+    // (#RESIGN 等)のみを解釈し outcome 行は消費しない。よって本契約テストでは
+    // 検証しない(将来 live.ts で使い始めたら同様の網羅チェックを追加すること)。
+    // リポジトリ間のコピー乖離自体は drift 検知 workflow が担保する。
+
+    it("wire union の網羅性(コンパイル時ガード: このテストが実行される時点で型検査済み)", () => {
+        // 型エラーなくここに到達している = コンパイル時に exhaustive が成立している。
+        // ランタイムでは常に true だが、ガードが存在することを明示的に文書化する。
         expect(endReasonExhaustive).toBe(true);
         expect(resultKindExhaustive).toBe(true);
     });

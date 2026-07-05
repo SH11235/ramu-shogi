@@ -45,7 +45,9 @@ jobs:
           echo "::error::result-codes.json が rshogi canonical と乖離しています。"
           cat /tmp/contract.diff
           title="result-codes.json が rshogi と乖離"
-          body="$(printf 'rshogi の canonical manifest と本リポジトリのコピーに乖離を検知しました。rshogi を単一ソースとして本リポジトリの `%s` を更新してください。\n\n```diff\n%s\n```\n' "${local_path}" "$(cat /tmp/contract.diff)")"
+          # GitHub issue body の上限(65535 文字)対策で diff を切り詰める
+          # (result-codes.json は小さいので通常は全文だが、防御的に truncate)。
+          body="$(printf 'rshogi の canonical manifest と本リポジトリのコピーに乖離を検知しました。rshogi を単一ソースとして本リポジトリの `%s` を更新してください。\n\n```diff\n%s\n```\n' "${local_path}" "$(head -c 50000 /tmp/contract.diff)")"
           existing="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --search "in:title ${title}" --json number --jq '.[0].number // empty')"
           if [ -n "${existing}" ]; then
             gh issue comment "${existing}" --repo "${GITHUB_REPOSITORY}" --body "${body}"
