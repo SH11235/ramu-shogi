@@ -12,16 +12,23 @@
  * - 終局時に最終結果を表示する。
  */
 
+import { parseCsaMoves } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import {
+    type FetchRshogiGameOptions,
+    fetchRshogiGame,
     type RshogiClockKind,
+    type RshogiGame,
     type RshogiGameMeta,
+    RshogiGameNotFoundError,
     type RshogiGameResult,
     type RshogiLiveCallbacks,
     type RshogiLiveConnectionState,
     type RshogiLiveMove,
+    RshogiLiveRoomFullError,
     type RshogiLiveSession,
     type RshogiLiveSnapshot,
+    type RshogiLiveStaticFallbackReason,
     type RshogiTimeControl,
     subscribeRshogiLiveGame,
 } from "@shogi/match-client";
@@ -37,6 +44,8 @@ export interface RshogiCsaLiveViewerProps {
     manifestUrl: string;
     /** rshogi 観戦 WS のベース URL (例: `wss://csa.example.com`)。空のときは MVP のフォールバックモード。 */
     apiBaseUrl?: string;
+    /** 主にテスト・SSR で静的 fallback の fetch を差し替えるためのフック */
+    fetchOverride?: FetchRshogiGameOptions["fetchImpl"];
     /** ヘッダ等の追加レイアウト要素 */
     header?: ReactNode;
     aiIconUrl?: string;
@@ -105,7 +114,20 @@ interface LiveState {
     latestPv?: string[];
     /** 直近手の消費秒数 (`,T` 由来)。旧サーバや未着手時は undefined。 */
     lastMoveElapsedSec?: number;
+    /** live 観戦から静的終局表示へ切り替える fallback の状態。 */
+    staticFallback?: StaticFallbackState;
 }
+
+type StaticFallbackState =
+    | { status: "loading"; reason: RshogiLiveStaticFallbackReason }
+    | {
+          status: "ready";
+          reason: RshogiLiveStaticFallbackReason;
+          game: RshogiGame;
+          moves: string[];
+      }
+    | { status: "not-found"; reason: RshogiLiveStaticFallbackReason }
+    | { status: "error"; reason: RshogiLiveStaticFallbackReason; errorMessage: string };
 
 const initialLiveState: LiveState = {
     snapshot: null,
@@ -668,6 +690,7 @@ export function RshogiCsaLiveViewer({
     engineOptions,
     manifestUrl,
     apiBaseUrl,
+    fetchOverride,
     header,
     aiIconUrl,
     fetchLegalMoves,
@@ -684,6 +707,73 @@ export function RshogiCsaLiveViewer({
         // gameId / apiBaseUrl が変わったら state をリセットして再購読。
         setState(initialLiveState);
         setTickMs(Date.now());
+        let staticFallbackController: AbortController | null = null;
+        const loadStaticFallback = (reason: RshogiLiveStaticFallbackReason) => {
+            if (staticFallbackController) return;
+            staticFallbackController = new AbortController();
+            setState((prev) => ({
+                ...prev,
+                connectionState: "closed",
+                staticFallback: { status: "loading", reason },
+                lastError: undefined,
+            }));
+            void (async () => {
+                const controller = staticFallbackController;
+                if (!controller) return;
+                try {
+                    const game = await fetchRshogiGame(gameId, {
+                        baseUrl: apiBaseUrl,
+                        fetchImpl: fetchOverride,
+                        signal: controller.signal,
+                    });
+                    if (controller.signal.aborted) return;
+                    let moves: string[];
+                    try {
+                        moves = parseCsaMoves(game.csa);
+                    } catch (parseError) {
+                        setState((prev) => ({
+                            ...prev,
+                            staticFallback: prev.snapshot
+                                ? undefined
+                                : {
+                                      status: "error",
+                                      reason,
+                                      errorMessage: `終局済み棋譜の解析に失敗しました: ${String(parseError)}`,
+                                  },
+                        }));
+                        return;
+                    }
+                    setState((prev) => ({
+                        ...prev,
+                        staticFallback: { status: "ready", reason, game, moves },
+                    }));
+                } catch (error) {
+                    if (controller.signal.aborted) return;
+                    if (error instanceof RshogiGameNotFoundError) {
+                        setState((prev) => ({
+                            ...prev,
+                            staticFallback: prev.snapshot
+                                ? undefined
+                                : { status: "not-found", reason },
+                        }));
+                        return;
+                    }
+                    setState((prev) => ({
+                        ...prev,
+                        staticFallback: prev.snapshot
+                            ? undefined
+                            : {
+                                  status: "error",
+                                  reason,
+                                  errorMessage:
+                                      error instanceof Error
+                                          ? error.message
+                                          : `終局済み棋譜の読み込みに失敗しました: ${String(error)}`,
+                              },
+                    }));
+                }
+            })();
+        };
         const callbacks: RshogiLiveCallbacks = {
             onSnapshot(snapshot) {
                 const summary = summarizeMoveDetails(snapshot.moveDetails);
@@ -774,7 +864,20 @@ export function RshogiCsaLiveViewer({
                 setState((prev) => ({ ...prev, connectionState: connState }));
             },
             onError(err) {
-                setState((prev) => ({ ...prev, lastError: err.message }));
+                setState((prev) => ({
+                    ...prev,
+                    ...(prev.staticFallback?.status === "loading"
+                        ? {}
+                        : {
+                              lastError:
+                                  err instanceof RshogiLiveRoomFullError
+                                      ? err.message
+                                      : `ライブ観戦エラー: ${err.message}`,
+                          }),
+                }));
+            },
+            onStaticFallbackRequested(reason) {
+                loadStaticFallback(reason);
             },
         };
         let session: RshogiLiveSession | null = null;
@@ -789,10 +892,11 @@ export function RshogiCsaLiveViewer({
         }
         sessionRef.current = session;
         return () => {
+            staticFallbackController?.abort();
             session?.disconnect();
             sessionRef.current = null;
         };
-    }, [gameId, apiBaseUrl]);
+    }, [gameId, apiBaseUrl, fetchOverride]);
 
     // 終局が確定したら購読を明示的に閉じる。終局済 DO は「接続成功→即 close」を
     // 繰り返すことがあり、これを止めないと connected↔reconnecting を往復し続ける。
@@ -816,6 +920,37 @@ export function RshogiCsaLiveViewer({
     const elapsedSinceAnchor =
         state.clockAnchorAtMs !== null ? Math.max(0, tickMs - state.clockAnchorAtMs) : 0;
 
+    if (state.staticFallback?.status === "ready") {
+        const { game, moves } = state.staticFallback;
+        return (
+            <div className="flex flex-col gap-2">
+                {header}
+                <div className="px-4 pt-2 text-xs text-muted-foreground">
+                    ライブ接続は終了済みのため、保存済み棋譜を表示しています。
+                </div>
+                <ShogiMatch
+                    key={`static-${game.meta.gameId}`}
+                    engineOptions={engineOptions}
+                    manifestUrl={manifestUrl}
+                    aiIconUrl={aiIconUrl}
+                    fetchLegalMoves={fetchLegalMoves}
+                    onRequestNnueFilePath={onRequestNnueFilePath}
+                    isDevMode={isDevMode}
+                    defaultSides={{
+                        sente: { role: "human" },
+                        gote: { role: "human" },
+                    }}
+                    initialReview={{ sfen: "startpos", moves }}
+                    reviewMode={true}
+                    spectateMode={true}
+                    reviewLeftContent={
+                        <RshogiLiveMetaPanel meta={game.meta} result={game.meta.result} />
+                    }
+                />
+            </div>
+        );
+    }
+
     if (!state.snapshot) {
         // 初回 snapshot 受信前のローディング表示。
         // `packages/ui/AGENTS.md` の規約に従い、コンポーネント自身は margin
@@ -832,6 +967,15 @@ export function RshogiCsaLiveViewer({
                     <span>対局 ID: {gameId}</span>
                 </div>
                 <p>初期 snapshot を待機中...</p>
+                {state.staticFallback?.status === "loading" && <p>終局済み棋譜を読み込み中...</p>}
+                {state.staticFallback?.status === "not-found" && (
+                    <p className="text-destructive">
+                        終局済み棋譜がまだ見つかりませんでした。少し時間をおいて再読み込みしてください。
+                    </p>
+                )}
+                {state.staticFallback?.status === "error" && (
+                    <p className="text-destructive">{state.staticFallback.errorMessage}</p>
+                )}
                 {state.lastError && <p className="text-destructive">エラー: {state.lastError}</p>}
             </div>
         );
@@ -849,6 +993,21 @@ export function RshogiCsaLiveViewer({
                 行の出現でレイアウトシフトが連発するため、振動する状態では出さない。 */}
             {!state.result && state.connectionState === "closed" && state.lastError && (
                 <div className="px-4 pt-2 text-xs text-destructive">{state.lastError}</div>
+            )}
+            {state.staticFallback?.status === "loading" && (
+                <div className="px-4 pt-2 text-xs text-muted-foreground">
+                    終局済み棋譜を読み込み中...
+                </div>
+            )}
+            {state.staticFallback?.status === "not-found" && (
+                <div className="px-4 pt-2 text-xs text-destructive">
+                    終局済み棋譜がまだ見つかりませんでした。少し時間をおいて再読み込みしてください。
+                </div>
+            )}
+            {state.staticFallback?.status === "error" && (
+                <div className="px-4 pt-2 text-xs text-destructive">
+                    {state.staticFallback.errorMessage}
+                </div>
             )}
             <ShogiMatch
                 key={matchKey}

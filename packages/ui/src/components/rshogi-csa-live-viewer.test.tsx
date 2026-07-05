@@ -1,6 +1,7 @@
 import type { RshogiGameMeta, RshogiLiveMove, RshogiTimeControl } from "@shogi/match-client";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     appendMoveEval,
     applyMoveComment,
@@ -10,12 +11,27 @@ import {
     formatOwnEval,
     type LiveClocks,
     moveDetailsToEvals,
+    RshogiCsaLiveViewer,
     RshogiLiveMetaPanel,
     RshogiLiveScoreboard,
     setMoveEvalAtPly,
     summarizeMoveDetails,
 } from "./rshogi-csa-live-viewer";
 import { formatEval, MATE_WITHOUT_PLY } from "./shogi-match/utils/kifFormat";
+
+vi.mock("./shogi-match", () => ({
+    ShogiMatch: ({
+        initialReview,
+        reviewLeftContent,
+    }: {
+        initialReview?: { moves?: string[] };
+        reviewLeftContent?: ReactNode;
+    }) => (
+        <div data-testid="shogi-match" data-move-count={initialReview?.moves?.length ?? 0}>
+            {reviewLeftContent}
+        </div>
+    ),
+}));
 
 const META: RshogiGameMeta = { gameId: "game-1", senteName: "alice", goteName: "bob" };
 
@@ -55,6 +71,189 @@ const SUDDEN_DEATH: RshogiTimeControl = {
     mainSeconds: 300,
     byoyomiSeconds: 0,
 };
+
+class MockWebSocket {
+    static instances: MockWebSocket[] = [];
+    readyState = 0;
+    sent: string[] = [];
+    closeArgs?: { code: number; reason: string };
+    onopen: (() => void) | null = null;
+    onmessage: ((ev: { data: string }) => void) | null = null;
+    onclose: ((ev: { code: number; reason: string; wasClean: boolean }) => void) | null = null;
+    onerror: ((ev: Event) => void) | null = null;
+
+    constructor(public readonly url: string) {
+        MockWebSocket.instances.push(this);
+    }
+
+    send(data: string): void {
+        this.sent.push(data);
+    }
+
+    close(code?: number, reason?: string): void {
+        this.closeArgs = { code: code ?? 1000, reason: reason ?? "" };
+    }
+
+    fireOpen(): void {
+        this.readyState = 1;
+        this.onopen?.();
+    }
+
+    fireLines(lines: string[]): void {
+        this.onmessage?.({ data: `${lines.join("\n")}\n` });
+    }
+
+    fireClose(code: number, reason = ""): void {
+        this.readyState = 3;
+        this.onclose?.({ code, reason, wasClean: code === 1000 });
+    }
+}
+
+const LIVE_SNAPSHOT_LINES = [
+    "##[MONITOR2] BEGIN game-1",
+    "BEGIN Game_Summary",
+    "Game_ID:game-1",
+    "Name+:alice",
+    "Name-:bob",
+    "To_Move:+",
+    "Black_Time_Remaining_Ms:600000",
+    "White_Time_Remaining_Ms:600000",
+    "END Game_Summary",
+];
+
+const buildLiveSnapshot = (moves: string[] = [], finalCode?: string): string[] => {
+    const lines = [...LIVE_SNAPSHOT_LINES, ...moves];
+    if (finalCode) lines.push(finalCode);
+    lines.push("##[MONITOR2] END");
+    return lines;
+};
+
+const createStaticGameFetch = () =>
+    vi.fn(
+        async () =>
+            new Response(
+                JSON.stringify({
+                    game_id: "game-1",
+                    black_handle: "alice",
+                    white_handle: "bob",
+                    result_kind: "WIN_WHITE",
+                    end_reason: "RESIGN",
+                    csa: "V2.2\nN+alice\nN-bob\nPI\n+\n+7776FU\n%TORYO\n",
+                }),
+                { status: 200, headers: { "content-type": "application/json" } },
+            ),
+    ) as unknown as typeof fetch;
+
+describe("RshogiCsaLiveViewer: static fallback", () => {
+    beforeEach(() => {
+        MockWebSocket.instances = [];
+        vi.stubGlobal("WebSocket", MockWebSocket);
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it("terminal snapshot を受けたら GET /games/<id> の静的終局表示へ切り替える", async () => {
+        const fetchOverride = createStaticGameFetch();
+
+        render(
+            <RshogiCsaLiveViewer
+                gameId="game-1"
+                engineOptions={[]}
+                manifestUrl="/nnue/manifest.json"
+                apiBaseUrl="https://example.com/api/v1"
+                fetchOverride={fetchOverride}
+            />,
+        );
+
+        const ws = MockWebSocket.instances[0];
+        act(() => {
+            ws.fireOpen();
+            ws.fireLines(buildLiveSnapshot(["+7776FU,T8"], "#RESIGN"));
+        });
+
+        await waitFor(() => {
+            expect(fetchOverride).toHaveBeenCalledWith(
+                "https://example.com/api/v1/games/game-1",
+                expect.objectContaining({ signal: expect.any(AbortSignal) }),
+            );
+        });
+        await waitFor(() => {
+            expect(
+                screen.getByText("ライブ接続は終了済みのため、保存済み棋譜を表示しています。"),
+            ).toBeTruthy();
+        });
+        expect(screen.getByTestId("shogi-match").getAttribute("data-move-count")).toBe("1");
+        expect(screen.getByText("後手 (bob) 勝ち (投了)")).toBeTruthy();
+    });
+
+    it("reconnect 上限到達時に静的終局表示へ切り替え、上限エラーを二重表示しない", async () => {
+        vi.useFakeTimers();
+        try {
+            const fetchOverride = createStaticGameFetch();
+            render(
+                <RshogiCsaLiveViewer
+                    gameId="game-1"
+                    engineOptions={[]}
+                    manifestUrl="/nnue/manifest.json"
+                    apiBaseUrl="https://example.com/api/v1"
+                    fetchOverride={fetchOverride}
+                />,
+            );
+
+            const backoff = [1000, 2000, 4000, 8000, 16000, 30000];
+            act(() => {
+                MockWebSocket.instances[0].fireOpen();
+                MockWebSocket.instances[0].fireClose(1006, "flap");
+            });
+            for (let i = 0; i < backoff.length; i++) {
+                await act(async () => {
+                    vi.advanceTimersByTime(backoff[i]);
+                });
+                act(() => {
+                    MockWebSocket.instances[i + 1].fireOpen();
+                    MockWebSocket.instances[i + 1].fireClose(1006, "flap");
+                });
+            }
+
+            await act(async () => {});
+            await act(async () => {});
+            expect(fetchOverride).toHaveBeenCalled();
+            expect(
+                screen.getByText("ライブ接続は終了済みのため、保存済み棋譜を表示しています。"),
+            ).toBeTruthy();
+            expect(screen.queryByText(/再接続の上限/)).toBeNull();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("満席 close は専用メッセージを表示し、reconnect しない", async () => {
+        vi.useFakeTimers();
+        try {
+            render(
+                <RshogiCsaLiveViewer
+                    gameId="game-1"
+                    engineOptions={[]}
+                    manifestUrl="/nnue/manifest.json"
+                    apiBaseUrl="https://example.com/api/v1"
+                />,
+            );
+
+            act(() => {
+                MockWebSocket.instances[0].fireOpen();
+                MockWebSocket.instances[0].fireClose(1013, "room full");
+                vi.advanceTimersByTime(60000);
+            });
+
+            expect(screen.getByText(/観戦者数が上限/)).toBeTruthy();
+            expect(MockWebSocket.instances.length).toBe(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});
 
 describe("computeRemaining", () => {
     it("手番側 (sideToMove) のみ経過分を減算し、相手側は据え置く", () => {

@@ -80,9 +80,10 @@ export type {
     RshogiLiveMoveEvent,
     RshogiLiveSession,
     RshogiLiveSnapshot,
+    RshogiLiveStaticFallbackReason,
     RshogiLiveSubscribeOptions,
 } from "./rshogi-csa/live";
-export { subscribeRshogiLiveGame } from "./rshogi-csa/live";
+export { RshogiLiveRoomFullError, subscribeRshogiLiveGame } from "./rshogi-csa/live";
 export type {
     RoomClient,
     RoomClientOpenEvent,
