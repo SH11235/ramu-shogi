@@ -667,6 +667,31 @@ describe("subscribeRshogiLiveGame: room full", () => {
         }
     });
 
+    it("room full 以外の満席らしい文言は契約外として扱わない", () => {
+        vi.useFakeTimers();
+        try {
+            const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+            subscribeRshogiLiveGame(
+                "game-1",
+                { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+                callbacks,
+            );
+            const ws = wsInstances[0];
+            ws.fireOpen();
+            ws.fireLines([
+                "##[MONITOR2] ERROR too many spectators",
+                "##[MONITOR2] ERROR spectator full",
+                "##[MONITOR2] ERROR 満席",
+            ]);
+
+            expect(ws.closeArgs).toBeUndefined();
+            expect(events.errors).toEqual([]);
+            expect(events.states.at(-1)).toBe("connected");
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it("room full ではない MONITOR2 ERROR 行は接続を維持する", () => {
         vi.useFakeTimers();
         try {

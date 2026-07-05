@@ -111,11 +111,14 @@ describe("initialReview sync", () => {
     });
 });
 
-const setupInitialReviewSyncHarness = (initialReview: {
-    sfen: string;
-    moves: string[];
-    moveData?: (ReviewMoveEval | undefined)[];
-}) => {
+const setupInitialReviewSyncHarness = (
+    initialReview: {
+        sfen: string;
+        moves: string[];
+        moveData?: (ReviewMoveEval | undefined)[];
+    },
+    harnessOptions?: { beforeImportApply?: () => Promise<void> },
+) => {
     const importCalls: Array<{
         sfen: string;
         moves: string[];
@@ -139,6 +142,7 @@ const setupInitialReviewSyncHarness = (initialReview: {
                 },
             ) => {
                 importCalls.push({ sfen, moves: [...moves], moveData: options?.moveData });
+                await harnessOptions?.beforeImportApply?.();
                 if (options?.isStale?.()) return;
 
                 navigation.reset(createInitialPositionState(), sfen);
@@ -180,6 +184,42 @@ const setupInitialReviewSyncHarness = (initialReview: {
 };
 
 describe("useInitialReviewSync", () => {
+    it("import 未完了中に到着したコメント評価値を import 完了後に再適用する", async () => {
+        let resolveImport: (() => void) | undefined;
+        const importGate = new Promise<void>((resolve) => {
+            resolveImport = resolve;
+        });
+        const { result, rerender, importCalls } = setupInitialReviewSyncHarness(
+            {
+                sfen: "startpos",
+                moves: ["7g7f"],
+            },
+            { beforeImportApply: () => importGate },
+        );
+
+        await waitFor(() => expect(importCalls).toHaveLength(1));
+
+        await act(async () => {
+            rerender({
+                review: {
+                    sfen: "startpos",
+                    moves: ["7g7f"],
+                    moveData: [{ evalCp: 321, elapsedMs: 1500 }],
+                },
+            });
+        });
+
+        expect(result.current.kifMoves).toHaveLength(0);
+        await act(async () => {
+            resolveImport?.();
+            await importGate;
+        });
+
+        await waitFor(() => expect(result.current.kifMoves[0]?.evalCp).toBe(321));
+        expect(result.current.kifMoves[0]?.elapsedMs).toBe(1500);
+        expect(importCalls).toHaveLength(1);
+    });
+
     it("コメントのみが到着した場合は import せず diff 経路で実ナビゲーションへ反映する", async () => {
         const { result, rerender, importCalls } = setupInitialReviewSyncHarness({
             sfen: "startpos",

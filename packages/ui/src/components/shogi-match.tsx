@@ -170,6 +170,8 @@ export const applyReviewMoveDataDiff = (
         if (isSameReviewMoveEval(previousMoveData?.[index], data)) continue;
 
         result.changed++;
+        // 評価値のクリアは diff 経路では非対応。moves 変化時の import 経路で
+        // 棋譜ツリーを再構築し、その際に古い評価値もリセットされる。
         if (!data) continue;
         const updateResult = navigation.updateMoveEvalAtPly(
             index + 1,
@@ -231,11 +233,10 @@ export function useInitialReviewSync({
     const reviewSfen = initialReview?.sfen;
     const reviewMoves = initialReview?.moves;
     const reviewMoveData = initialReview?.moveData;
-    const reviewMovesKey = reviewMoves?.join(" ");
     const reviewMoveDataKey = stringifyReviewMoveData(reviewMoveData);
-    const getLatestReviewMoveData = useEffectEvent(() => initialReview?.moveData);
+    const getLatestReview = useEffectEvent(() => initialReview);
     const applyLatestReviewMoveDataDiff = useEffectEvent((moves: string[]) => {
-        const nextMoveData = getLatestReviewMoveData();
+        const nextMoveData = getLatestReview()?.moveData;
         const result = applyReviewMoveDataDiff(
             navigationRef.current,
             moves,
@@ -249,18 +250,14 @@ export function useInitialReviewSync({
     });
 
     useEffect(() => {
-        if (
-            !positionReady ||
-            reviewSfen === undefined ||
-            reviewMoves === undefined ||
-            reviewMovesKey === undefined
-        ) {
+        if (!positionReady || reviewSfen === undefined || reviewMoves === undefined) {
             return;
         }
+        const movesKey = reviewMoves.join(" ");
         const loaded = loadedReviewRef.current;
         const nextSignature = {
             sfen: reviewSfen,
-            movesKey: reviewMovesKey,
+            movesKey,
             moveDataKey: reviewMoveDataKey,
         };
         const syncMode = getInitialReviewSyncMode(loaded, nextSignature);
@@ -284,15 +281,48 @@ export function useInitialReviewSync({
         // await 前に確定して StrictMode の二重実行を冪等化する。連続着手で先行 import が
         // 後着 import に追い越されたら、isStale で古い import の state 適用を中止する。
         loadedReviewRef.current = nextSignature;
-        loadedReviewMoveDataRef.current = getLatestReviewMoveData();
+        const importMoveData = getLatestReview()?.moveData;
+        loadedReviewMoveDataRef.current = importMoveData;
         void importSfenRef
             .current(reviewSfen, reviewMoves, {
                 gotoPly: wasFollowingTip ? undefined : restorePly,
-                moveData: getLatestReviewMoveData(),
+                moveData: importMoveData,
                 isStale: () =>
                     loadedReviewRef.current?.sfen !== reviewSfen ||
-                    loadedReviewRef.current?.movesKey !== reviewMovesKey ||
+                    loadedReviewRef.current?.movesKey !== movesKey ||
                     loadedReviewRef.current?.moveDataKey !== reviewMoveDataKey,
+            })
+            .then(() => {
+                setTimeout(() => {
+                    if (
+                        loadedReviewRef.current?.sfen !== reviewSfen ||
+                        loadedReviewRef.current?.movesKey !== movesKey
+                    ) {
+                        return;
+                    }
+                    const latestReview = getLatestReview();
+                    if (
+                        latestReview?.sfen !== reviewSfen ||
+                        latestReview.moves.join(" ") !== movesKey
+                    ) {
+                        return;
+                    }
+                    const latestMoveData = latestReview.moveData;
+                    const result = applyReviewMoveDataDiff(
+                        navigationRef.current,
+                        reviewMoves,
+                        loadedReviewMoveDataRef.current,
+                        latestMoveData,
+                    );
+                    if (result.skipped === 0) {
+                        loadedReviewMoveDataRef.current = latestMoveData;
+                        loadedReviewRef.current = {
+                            sfen: reviewSfen,
+                            movesKey,
+                            moveDataKey: stringifyReviewMoveData(latestMoveData),
+                        };
+                    }
+                }, 0);
             })
             .catch((err) => {
                 // SFEN 解析失敗などで取り込みが reject したら loaded マークを巻き戻し、
@@ -300,7 +330,7 @@ export function useInitialReviewSync({
                 // 先行していれば (参照不一致) リセットしない。
                 if (
                     loadedReviewRef.current?.sfen === reviewSfen &&
-                    loadedReviewRef.current?.movesKey === reviewMovesKey &&
+                    loadedReviewRef.current?.movesKey === movesKey &&
                     loadedReviewRef.current?.moveDataKey === reviewMoveDataKey
                 ) {
                     loadedReviewRef.current = null;
@@ -308,7 +338,7 @@ export function useInitialReviewSync({
                 }
                 console.error("[rshogi] initialReview の取り込みに失敗しました", err);
             });
-    }, [positionReady, reviewSfen, reviewMoves, reviewMovesKey, reviewMoveDataKey]);
+    }, [positionReady, reviewSfen, reviewMoves, reviewMoveDataKey]);
 }
 
 interface ShogiMatchProps {

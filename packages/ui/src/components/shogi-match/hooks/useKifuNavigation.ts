@@ -402,6 +402,9 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
         }
 
         setTree((prev) => {
+            // Concurrent Mode ではこの関数が "applied" を返したあとに state 更新が
+            // 古い render 由来として破棄される可能性がある。呼び出し側の applied 数は
+            // UI 反映の厳密な件数ではなく、適用を試みた件数として扱う。
             const nextNodeId = findNodeByPlyInMainLine(prev, ply);
             if (!nextNodeId) return prev;
 
