@@ -393,7 +393,7 @@ describe("createEngineController", () => {
         expect(controller.getState().isAnalyzing).toBe(false);
     });
 
-    it("dispose で停止と破棄が呼ばれる", async () => {
+    it("dispose で破棄が呼ばれ stop は呼ばれない", async () => {
         const mockClient = createMockEngineClient();
         const controller = createEngineController({
             createClient: (_engineId) => mockClient.client,
@@ -422,7 +422,9 @@ describe("createEngineController", () => {
 
         await controller.command.dispose("sente");
 
-        expect(mockClient.stop).toHaveBeenCalled();
+        // dispose は Worker を terminate するため stop() を呼ばない設計
+        // (理由は engine-controller.ts の disposeEngineForSide 実装コメント参照)
+        expect(mockClient.stop).not.toHaveBeenCalled();
         expect(mockClient.dispose).toHaveBeenCalled();
         expect(controller.getState().engineReady.sente).toBe(false);
     });

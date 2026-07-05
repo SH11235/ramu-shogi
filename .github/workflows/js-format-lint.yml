@@ -152,9 +152,9 @@ jobs:
       # engine-wasm は Wasm ビルド成果物 (pkg/) を参照するため、ビルド後に typecheck を実行
       - run: pnpm turbo typecheck --filter="@shogi/engine-wasm"
       # ユニットテスト (vitest): build 済みの dist / wasm pkg を再利用するため build job 内に配置。
-      # 除外パッケージの内訳と app-controller の既存失敗については #84 参照。
+      # tauri/wasm 前提や test 無しのパッケージは対象外。
       - name: Test (unit)
-        run: pnpm turbo test --filter=web --filter=@shogi/match-client --filter=@shogi/app-core --filter=@shogi/design-system --filter=@shogi/engine-client --filter=@shogi/ui -- --run
+        run: pnpm turbo test --filter=web --filter=@shogi/match-client --filter=@shogi/app-core --filter=@shogi/app-controller --filter=@shogi/design-system --filter=@shogi/engine-client --filter=@shogi/ui -- --run
       - name: sccache stats
         if: always()
         run: sccache --show-stats || true
