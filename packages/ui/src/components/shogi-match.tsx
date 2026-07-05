@@ -293,6 +293,10 @@ export function useInitialReviewSync({
                     loadedReviewRef.current?.moveDataKey !== reviewMoveDataKey,
             })
             .then(() => {
+                // importSfen の resolve 時点では React の commit が未完了のことがあるため、
+                // macrotask (setTimeout 0) に後退させ、commit 後の navigationRef
+                // (updateMoveEvalAtPly の missing 判定が参照するツリー) に対して
+                // import 中に届いたコメント評価値の diff を再適用する。
                 setTimeout(() => {
                     if (
                         loadedReviewRef.current?.sfen !== reviewSfen ||
@@ -314,6 +318,9 @@ export function useInitialReviewSync({
                         loadedReviewMoveDataRef.current,
                         latestMoveData,
                     );
+                    // skipped > 0 (ply 未登録等) の場合は ref を確定せず、
+                    // 次の reviewMoveData 変化時に同じ差分の再適用を試みる (リトライ)。
+                    // 差分適用は冪等なので重複適用の害はない。
                     if (result.skipped === 0) {
                         loadedReviewMoveDataRef.current = latestMoveData;
                         loadedReviewRef.current = {
