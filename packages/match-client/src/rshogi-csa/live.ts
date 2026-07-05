@@ -318,7 +318,7 @@ const parseGameSummaryLines = (summaryLines: string[]): ParsedSummary => {
  * ## kind 判定 (REST `decodeClock` の語彙に合わせる)
  * サーバの clock 方式は `BEGIN Time` セクションの `Time_Unit` + `Increment` /
  * `Byoyomi` の有無で一意に決まる (server `ClockSpec::format_time_section`)。
- * - `Increment` 行あり → `fischer` (Time_Unit は常に 1sec)
+ * - `Increment` 行ありかつ 0 より大きい → `fischer` (Time_Unit は常に 1sec)
  * - `Time_Unit:1min`  → `stopwatch` (Total_Time / Byoyomi は分単位)
  * - `Time_Unit:1msec` → `countdown_msec` (Total_Time / Byoyomi は ms 単位)
  * - それ以外 (`Time_Unit:1sec` / 未指定) → `countdown`。`Byoyomi` が無い/0 の
@@ -346,20 +346,20 @@ const deriveTimeControl = (summary: ParsedSummary): RshogiTimeControl | undefine
         if (unit === "1min") return value * 60;
         return value;
     };
-    const kind: RshogiClockKind =
-        summary.increment !== undefined
-            ? "fischer"
-            : unit === "1min"
-              ? "stopwatch"
-              : unit === "1msec"
-                ? "countdown_msec"
-                : "countdown";
+    const hasPositiveIncrement = summary.increment != null && summary.increment > 0;
+    const kind: RshogiClockKind = hasPositiveIncrement
+        ? "fischer"
+        : unit === "1min"
+          ? "stopwatch"
+          : unit === "1msec"
+            ? "countdown_msec"
+            : "countdown";
     return {
         kind,
         mainSeconds: toSeconds(summary.totalTime),
         byoyomiSeconds: toSeconds(summary.byoyomi),
         byoyomiMilliseconds: unit === "1msec" ? summary.byoyomi : undefined,
-        incrementSeconds: summary.increment,
+        incrementSeconds: hasPositiveIncrement ? summary.increment : undefined,
     };
 };
 
@@ -832,6 +832,11 @@ export function subscribeRshogiLiveGame(
                 clearTimeoutImpl,
                 signal: options.signal,
             });
+        }
+        try {
+            callbacks.onConnectionState("connecting");
+        } catch (handlerErr) {
+            console.error("[rshogi live] onConnectionState handler threw", handlerErr);
         }
         try {
             callbacks.onError(
