@@ -480,8 +480,11 @@ const decodeSnapshotBlock = (
  *
  * `currentTurn` は「次に指す側 = 全手 replay 直後の `PositionState.turn`」を
  * 渡す契約 (snapshot 経路) または「`detectEndLine` 検知時点の手番」(live 経路)。
+ *
+ * @internal contract test 用に export しているだけで、パッケージ外の公開 API
+ * ではない(index.ts から re-export しないこと)。
  */
-const decodeResultCode = (
+export const decodeResultCode = (
     line: string,
     currentTurn: "sente" | "gote",
 ): RshogiGameResult | undefined => {

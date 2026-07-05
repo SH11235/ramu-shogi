@@ -10,7 +10,7 @@
             "persistent": true
         },
         "test": {
-            "inputs": ["src/**/*.{ts,tsx,js,jsx}", "**/*.test.{ts,tsx,js,jsx}"]
+            "inputs": ["src/**/*.{ts,tsx,js,jsx}", "**/*.test.{ts,tsx,js,jsx}", "src/**/*.json"]
         },
         "test:unit": {
             "inputs": ["src/**/*.{ts,tsx,js,jsx}", "src/**/*.test.{ts,tsx,js,jsx}"]
