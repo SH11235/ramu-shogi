@@ -233,6 +233,8 @@ export function appendMoveEval(
 
 /**
  * onMoveComment 到着時に該当 ply の付随情報へ eval (先手視点) を後追いで書き込む。
+ * live stream の `'` コメント行は直前 move に属し、match-client は onMove 後にだけ
+ * onMoveComment を発火する契約。したがって該当 index は通常 onMove で作成済み。
  * ply は 1 始まり。範囲外・eval 無しコメントは配列を据え置く (消費秒は保持)。
  * 詰みセンチネルは snapshot 経路と同じく手数不明の mate として扱う。
  */
@@ -261,13 +263,16 @@ const formatMs = (ms: number): string => {
  * 秒読み残時間 (ms) を `m:ss` に整形する。
  *
  * 本体時計 (`formatMs`) は floor だが、秒読みは「あと N 秒」という残数表示のため
- * ceil にする (full 10 秒の秒読み開始直後に 9 と出さない)。実際の time-up 判定は
- * server 側で行われ end 行として届くので、client 表示は 0 でクランプするだけ。
+ * 秒部分を ceil にする (full 10 秒の秒読み開始直後に 9 と出さない)。ただし
+ * 59.999 秒を 1:00 とは表示せず、分境界は実ミリ秒が到達したときだけ繰り上げる。
+ * 実際の time-up 判定は server 側で行われ end 行として届くので、client 表示は
+ * 0 でクランプするだけ。
  */
-const formatByoyomiClock = (ms: number): string => {
-    const totalSec = Number.isFinite(ms) ? Math.max(0, Math.ceil(ms / 1000)) : 0;
-    const min = Math.floor(totalSec / 60);
-    const sec = totalSec % 60;
+export const formatByoyomiClock = (ms: number): string => {
+    const clampedMs = Number.isFinite(ms) ? Math.max(0, ms) : 0;
+    const min = Math.floor(clampedMs / 60_000);
+    const secWithinMinute = Math.ceil((clampedMs - min * 60_000) / 1000);
+    const sec = Math.min(59, secWithinMinute);
     return `${min}:${String(sec).padStart(2, "0")}`;
 };
 
@@ -277,23 +282,24 @@ function byoyomiFullMs(timeControl: RshogiTimeControl | undefined): number {
     return timeControl.byoyomiMilliseconds ?? (timeControl.byoyomiSeconds ?? 0) * 1000;
 }
 
-/** countdown 系 (秒読みを持ちうる方式) かどうか。stopwatch / fischer は含めない。 */
-function isCountdownFamily(kind: RshogiClockKind | undefined): boolean {
-    return kind === "countdown" || kind === "countdown_msec";
+/** 秒読みを持ちうる方式かどうか。fischer は含めない。 */
+function supportsByoyomiPhase(kind: RshogiClockKind | undefined): boolean {
+    return kind === "countdown" || kind === "countdown_msec" || kind === "stopwatch";
 }
 
 /**
  * ある側の本体残時間 + timeControl から「秒読みフェーズに入っているか」を導出する。
  *
- * 本体 0 かつ countdown 系かつ byoyomi>0 のときだけ true。snapshot / onClock の
+ * 本体 0 かつ秒読みを持ちうる方式かつ byoyomi>0 のときだけ true。snapshot / onClock の
  * resync 経路で使い、遅れて参加した観戦者が秒読み中の局面を即座に秒読み表示できる
- * ようにする。fischer / stopwatch / sudden-death (byoyomi 0) は常に false。
+ * ようにする。stopwatch はサーバの分単位秒読みを秒へ正規化した値で扱う。
+ * fischer / sudden-death (byoyomi 0) は常に false。
  */
 export function deriveInByoyomi(
     mainMs: number,
     timeControl: RshogiTimeControl | undefined,
 ): boolean {
-    return mainMs <= 0 && isCountdownFamily(timeControl?.kind) && byoyomiFullMs(timeControl) > 0;
+    return mainMs <= 0 && supportsByoyomiPhase(timeControl?.kind) && byoyomiFullMs(timeControl) > 0;
 }
 
 /**
@@ -318,20 +324,19 @@ export function deriveInByoyomi(
  *             ms 粒度の秒読み移行判定に最大 1 秒未満の誤差が出る (snapshot resync
  *             でのみ補正)。
  * - stopwatch: floor(elapsedSec/60)*60000 を減算 (分単位切り捨て。elapsed 59s → 消費 0)。
- *             既知の制約: stopwatch の秒読み (分単位) フェーズ表示は未対応
- *             (本番プリセットは fischer / countdown のみで stopwatch 配信が無いため)。
- *             本体 0 到達後は 00:00 のまま。対応する場合は countdown 系と同様に
- *             `inByoyomi` を分粒度で扱うこと。
+ *             本体を使い切ったら byoyomi>0 のときだけ秒読みフェーズへ移行する。
+ *             サーバの StopWatchClock は byoyomi_minutes を持つため、client 側では
+ *             timeControl.byoyomiSeconds (分→秒へ正規化済み) を full 量として扱う。
  * - sudden-death (byoyomi 0 / increment 無し) / kind 不明: 0 でクランプするだけ
  *   (`inByoyomi` は立てない)。
  */
 export function applyMoveToClocks(
     clocks: LiveClocks,
-    kind: RshogiClockKind | undefined,
     timeControl: RshogiTimeControl | undefined,
     moverSide: "sente" | "gote",
     elapsedSec: number,
 ): LiveClocks {
+    const kind = timeControl?.kind;
     const elapsedMs = Math.max(0, elapsedSec) * 1000;
     const main = moverSide === "sente" ? clocks.sente : clocks.gote;
     const alreadyInByoyomi = moverSide === "sente" ? clocks.senteInByoyomi : clocks.goteInByoyomi;
@@ -344,8 +349,8 @@ export function applyMoveToClocks(
         nextInByoyomi = false;
     } else if (kind === "stopwatch") {
         const consumedMs = Math.floor(Math.max(0, elapsedSec) / 60) * 60_000;
-        nextMain = Math.max(0, main - consumedMs);
-        nextInByoyomi = false;
+        nextMain = alreadyInByoyomi ? 0 : Math.max(0, main - consumedMs);
+        nextInByoyomi = nextMain <= 0 && byoyomiFullMs(timeControl) > 0;
     } else {
         // countdown / countdown_msec / sudden-death / kind 不明。
         // 既に秒読みなら本体は 0 のまま (秒読みは毎手 full リセットで持続量を保持しない)、
@@ -786,7 +791,7 @@ export function RshogiCsaLiveViewer({
                     moveEvals: moveDetailsToEvals(snapshot.moveDetails),
                     result: snapshot.finalResult ?? prev.result,
                     snapshotEpoch: prev.snapshotEpoch + 1,
-                    // 本体残 0 かつ countdown 系秒読み局面なら、遅れて参加した観戦者にも
+                    // 本体残 0 かつ秒読み方式なら、遅れて参加した観戦者にも
                     // 秒読み表示を即座に出せるよう inByoyomi を派生する。
                     clocks: {
                         sente: snapshot.clocks.sente,
@@ -819,7 +824,6 @@ export function RshogiCsaLiveViewer({
                         clocks: prev.clocks
                             ? applyMoveToClocks(
                                   prev.clocks,
-                                  timeControl?.kind,
                                   timeControl,
                                   prev.clocks.sideToMove,
                                   elapsedSec,
@@ -842,7 +846,9 @@ export function RshogiCsaLiveViewer({
                 setState((prev) => {
                     // onClock は snapshot 完了直後 (onSnapshot の後) にのみ発火するため、
                     // prev.snapshot は既に最新へ更新済み。そこから timeControl を引き、
-                    // 本体残 0 の countdown 系秒読み局面を即座に秒読み表示へ乗せる。
+                    // 本体残 0 の秒読み局面を即座に秒読み表示へ乗せる。
+                    // もし契約外に snapshot なしで届いた場合は timeControl undefined とし、
+                    // 秒読み判定をスキップする (安全側で本体時計表示に寄せる)。
                     const timeControl = prev.snapshot?.meta.timeControl;
                     return {
                         ...prev,

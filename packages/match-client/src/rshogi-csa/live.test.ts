@@ -788,7 +788,7 @@ describe("subscribeRshogiLiveGame: モック (apiBaseUrl 未指定 + gameId が 
         expect(events.snapshot.length).toBe(0);
         expect(events.errors.length).toBe(1);
         expect(events.errors[0].message).toContain("apiBaseUrl is required");
-        expect(events.states).toEqual(["closed"]);
+        expect(events.states).toEqual(["connecting", "closed"]);
     });
 });
 
@@ -890,6 +890,22 @@ describe("deriveTimeControl: kind 判定と単位換算 (REST decodeClock 語彙
             byoyomiSeconds: 0,
             byoyomiMilliseconds: undefined,
             incrementSeconds: 10,
+        });
+    });
+    it("Increment:0 は fischer 扱いせず countdown として扱う", () => {
+        expect(
+            __test_internals.deriveTimeControl({
+                timeUnit: "1sec",
+                totalTime: 600,
+                byoyomi: 10,
+                increment: 0,
+            }),
+        ).toEqual({
+            kind: "countdown",
+            mainSeconds: 600,
+            byoyomiSeconds: 10,
+            byoyomiMilliseconds: undefined,
+            incrementSeconds: undefined,
         });
     });
     it("Byoyomi 行あり Time_Unit:1sec → countdown", () => {

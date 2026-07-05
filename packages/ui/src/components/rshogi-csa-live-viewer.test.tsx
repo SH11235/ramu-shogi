@@ -8,6 +8,7 @@ import {
     applyMoveToClocks,
     computeRemaining,
     deriveInByoyomi,
+    formatByoyomiClock,
     formatOwnEval,
     type LiveClocks,
     moveDetailsToEvals,
@@ -325,12 +326,20 @@ describe("formatOwnEval", () => {
     });
 });
 
+describe("formatByoyomiClock", () => {
+    it("秒読み残時間は ceil で m:ss 表示にする", () => {
+        expect(formatByoyomiClock(1)).toBe("0:01");
+        expect(formatByoyomiClock(59_999)).toBe("0:59");
+        expect(formatByoyomiClock(60_000)).toBe("1:00");
+        expect(formatByoyomiClock(0)).toBe("0:00");
+    });
+});
+
 describe("applyMoveToClocks: kind ごとの 1 手適用 (server clock.rs ミラー)", () => {
     it("fischer: mover.main = max(0, main - elapsed) + increment (post-increment)", () => {
         // 先手 65s (=60+5)、10s 消費 → max(0, 65000-10000)+5000 = 60000
         const next = applyMoveToClocks(
             mkClocks({ sente: 65_000, gote: 65_000, sideToMove: "sente" }),
-            "fischer",
             FISCHER,
             "sente",
             10,
@@ -347,7 +356,6 @@ describe("applyMoveToClocks: kind ごとの 1 手適用 (server clock.rs ミラ�
         // (client がドリフトで main を小さく見積もった場合の安全側挙動の確認)。
         const next = applyMoveToClocks(
             mkClocks({ sente: 0, gote: 60_000, sideToMove: "sente" }),
-            "fischer",
             FISCHER,
             "sente",
             3,
@@ -359,7 +367,6 @@ describe("applyMoveToClocks: kind ごとの 1 手適用 (server clock.rs ミラ�
         // 本体 8s の側が 8s 消費 → 本体 0、秒読み (byoyomi 10s>0) へ
         const next = applyMoveToClocks(
             mkClocks({ sente: 8_000, gote: 60_000, sideToMove: "sente" }),
-            "countdown",
             COUNTDOWN,
             "sente",
             8,
@@ -371,7 +378,6 @@ describe("applyMoveToClocks: kind ごとの 1 手適用 (server clock.rs ミラ�
     it("countdown: 本体超過で即秒読みへ (elapsed > main)", () => {
         const next = applyMoveToClocks(
             mkClocks({ sente: 3_000, gote: 60_000, sideToMove: "sente" }),
-            "countdown",
             COUNTDOWN,
             "sente",
             9,
@@ -388,7 +394,7 @@ describe("applyMoveToClocks: kind ごとの 1 手適用 (server clock.rs ミラ�
             sideToMove: "sente",
             senteInByoyomi: true,
         });
-        const next = applyMoveToClocks(inByoyomi, "countdown", COUNTDOWN, "sente", 7);
+        const next = applyMoveToClocks(inByoyomi, COUNTDOWN, "sente", 7);
         expect(next.sente).toBe(0);
         expect(next.senteInByoyomi).toBe(true);
     });
@@ -396,7 +402,6 @@ describe("applyMoveToClocks: kind ごとの 1 手適用 (server clock.rs ミラ�
     it("countdown_msec: byoyomiMilliseconds>0 でも本体使い切りで秒読みへ移行する", () => {
         const next = applyMoveToClocks(
             mkClocks({ sente: 500, gote: 10_000, sideToMove: "sente" }),
-            "countdown_msec",
             COUNTDOWN_MSEC,
             "sente",
             1,
@@ -408,7 +413,6 @@ describe("applyMoveToClocks: kind ごとの 1 手適用 (server clock.rs ミラ�
     it("stopwatch: 分単位切り捨て (elapsed 59s → 消費 0)", () => {
         const next = applyMoveToClocks(
             mkClocks({ sente: 900_000, gote: 900_000, sideToMove: "sente" }),
-            "stopwatch",
             STOPWATCH,
             "sente",
             59,
@@ -419,7 +423,6 @@ describe("applyMoveToClocks: kind ごとの 1 手適用 (server clock.rs ミラ�
         // 60 秒ちょうどで 1 分消費
         const after60 = applyMoveToClocks(
             mkClocks({ sente: 900_000, gote: 900_000, sideToMove: "sente" }),
-            "stopwatch",
             STOPWATCH,
             "sente",
             60,
@@ -427,10 +430,34 @@ describe("applyMoveToClocks: kind ごとの 1 手適用 (server clock.rs ミラ�
         expect(after60.sente).toBe(840_000);
     });
 
+    it("stopwatch: 本体 0 到達後は分単位 byoyomi を秒読みフェーズとして表示対象にする", () => {
+        const next = applyMoveToClocks(
+            mkClocks({ sente: 60_000, gote: 900_000, sideToMove: "sente" }),
+            STOPWATCH,
+            "sente",
+            60,
+        );
+        expect(next.sente).toBe(0);
+        expect(next.senteInByoyomi).toBe(true);
+
+        const alreadyInByoyomi = applyMoveToClocks(
+            mkClocks({
+                sente: 0,
+                gote: 900_000,
+                sideToMove: "sente",
+                senteInByoyomi: true,
+            }),
+            STOPWATCH,
+            "sente",
+            120,
+        );
+        expect(alreadyInByoyomi.sente).toBe(0);
+        expect(alreadyInByoyomi.senteInByoyomi).toBe(true);
+    });
+
     it("sudden-death (byoyomi 0): 0 でクランプし秒読みには入らない", () => {
         const next = applyMoveToClocks(
             mkClocks({ sente: 3_000, gote: 300_000, sideToMove: "sente" }),
-            "countdown",
             SUDDEN_DEATH,
             "sente",
             9,
@@ -442,7 +469,6 @@ describe("applyMoveToClocks: kind ごとの 1 手適用 (server clock.rs ミラ�
     it("後手番の move は後手側だけを更新し先手を据え置く", () => {
         const next = applyMoveToClocks(
             mkClocks({ sente: 60_000, gote: 40_000, sideToMove: "gote" }),
-            "countdown",
             COUNTDOWN,
             "gote",
             5,
@@ -466,9 +492,11 @@ describe("deriveInByoyomi: snapshot / onClock resync の秒読み派生", () => 
     it("sudden-death (byoyomi 0) → false", () => {
         expect(deriveInByoyomi(0, SUDDEN_DEATH)).toBe(false);
     });
-    it("fischer / stopwatch は countdown 系でないため false", () => {
+    it("fischer は秒読み方式でないため false", () => {
         expect(deriveInByoyomi(0, FISCHER)).toBe(false);
-        expect(deriveInByoyomi(0, STOPWATCH)).toBe(false);
+    });
+    it("stopwatch は byoyomi>0 なら本体 0 で秒読み扱い", () => {
+        expect(deriveInByoyomi(0, STOPWATCH)).toBe(true);
     });
     it("timeControl 未取得なら false", () => {
         expect(deriveInByoyomi(0, undefined)).toBe(false);
