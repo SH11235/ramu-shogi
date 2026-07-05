@@ -40,7 +40,10 @@ import { useEnginePool } from "./shogi-match/hooks/useEnginePool";
 import { useGameControls } from "./shogi-match/hooks/useGameControls";
 import { type ReviewMoveEval, useKifuImportExport } from "./shogi-match/hooks/useKifuImportExport";
 import { useKifuKeyboardNavigation } from "./shogi-match/hooks/useKifuKeyboardNavigation";
-import { useKifuNavigation } from "./shogi-match/hooks/useKifuNavigation";
+import {
+    type RecordedEvalInfoEvent,
+    useKifuNavigation,
+} from "./shogi-match/hooks/useKifuNavigation";
 import { useLegalMovePrefetch } from "./shogi-match/hooks/useLegalMovePrefetch";
 import { useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
@@ -98,6 +101,29 @@ const SPECTATE_DISPLAY_SETTINGS: DisplaySettings = {
     ...DEFAULT_DISPLAY_SETTINGS,
     showKifuEval: true,
 };
+
+const stringifyReviewMoveData = (moveData: (ReviewMoveEval | undefined)[] | undefined): string =>
+    moveData
+        ? JSON.stringify(moveData, (_key, value: unknown) =>
+              typeof value === "number" && !Number.isFinite(value)
+                  ? value > 0
+                      ? "Infinity"
+                      : "-Infinity"
+                  : value,
+          )
+        : "";
+
+export const analysisSnapshotEntryToRecordedEvalInfoEvent = (
+    entry: AnalysisSnapshotEntryDraft,
+): RecordedEvalInfoEvent => ({
+    type: "info",
+    scoreCp: entry.evalCp ?? undefined,
+    scoreMate: entry.evalMate ?? undefined,
+    depth: entry.depth ?? undefined,
+    pv: entry.pv ?? undefined,
+    multipv: 1,
+    normalized: true,
+});
 
 interface ShogiMatchProps {
     engineOptions: EngineOption[];
@@ -514,6 +540,8 @@ export function ShogiMatch({
     const lastAnalysisSnapshotSignatureRef = useRef<string | null>(null);
 
     useEffect(() => {
+        // JSON.stringify は Infinity を null にする。live 由来の手数なし詰み
+        // (evalMate=±Infinity) を流す場合は stringifyReviewMoveData 相当の変換が必要。
         const signature = analysisSnapshotDraft ? JSON.stringify(analysisSnapshotDraft) : null;
         if (lastAnalysisSnapshotSignatureRef.current === signature) {
             return;
@@ -1343,7 +1371,7 @@ export function ShogiMatch({
     // 届くライブ観戦) も再取込を発火させるため、内容シグネチャを取込判定に含める。
     // コメント到着で 1 回だけ安価な再取込が走るが、下の restorePly 復元でカーソルは
     // 維持され、盤・棋譜も据え置き再構築なのでちらつかない。
-    const reviewMoveDataKey = reviewMoveData ? JSON.stringify(reviewMoveData) : "";
+    const reviewMoveDataKey = stringifyReviewMoveData(reviewMoveData);
     useEffect(() => {
         if (
             !positionReady ||
@@ -1412,14 +1440,7 @@ export function ShogiMatch({
 
         for (const entry of initialAnalysisEntries) {
             clearEvalByPly(entry.ply);
-            recordEvalByPly(entry.ply, {
-                type: "info",
-                scoreCp: entry.evalCp ?? undefined,
-                scoreMate: entry.evalMate ?? undefined,
-                depth: entry.depth ?? undefined,
-                pv: entry.pv ?? undefined,
-                multipv: 1,
-            });
+            recordEvalByPly(entry.ply, analysisSnapshotEntryToRecordedEvalInfoEvent(entry));
         }
 
         initialAnalysisAppliedRef.current = signature;

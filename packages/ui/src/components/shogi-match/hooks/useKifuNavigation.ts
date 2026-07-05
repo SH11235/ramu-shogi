@@ -40,6 +40,8 @@ import { normalizeEvalToSentePerspective } from "../utils/branchTreeUtils";
 import type { EvalHistory, KifMove, MultiPvNodeData, NodeData } from "../utils/kifFormat";
 import { convertMovesToKif } from "../utils/kifFormat";
 
+export type RecordedEvalInfoEvent = EngineInfoEvent & Pick<KifuEval, "normalized">;
+
 /** USI形式の指し手からlastMove情報を導出 */
 function deriveLastMoveFromUsi(usiMove: string | null): { from?: string; to: string } | undefined {
     if (!usiMove) return undefined;
@@ -116,9 +118,9 @@ export interface UseKifuNavigationResult {
     /** 指し手を追加（分岐生成含む） */
     addMove: (usiMove: string, positionAfter: PositionState, options?: AddMoveOptions) => void;
     /** 評価値を記録（手数で指定） */
-    recordEvalByPly: (ply: number, event: EngineInfoEvent) => void;
+    recordEvalByPly: (ply: number, event: RecordedEvalInfoEvent) => void;
     /** 評価値を記録（ノードIDで指定、分岐内のノード用） */
-    recordEvalByNodeId: (nodeId: string, event: EngineInfoEvent) => void;
+    recordEvalByNodeId: (nodeId: string, event: RecordedEvalInfoEvent) => void;
     /** 評価値をクリア（手数で指定、再解析用） */
     clearEvalByPly: (ply: number) => void;
     /** 評価値をクリア（ノードIDで指定、再解析用） */
@@ -346,7 +348,7 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
      * 評価値を記録（手数で指定）
      * findNodeByPlyInCurrentPathを使用し、見つからなければfindNodeByPlyInMainLineで検索
      */
-    const recordEvalByPly = (ply: number, event: EngineInfoEvent) => {
+    const recordEvalByPly = (ply: number, event: RecordedEvalInfoEvent) => {
         setTree((prev) => {
             // 最適化: 現在位置からルートまで遡りながらplyに一致するノードを探す
             let nodeId = findNodeByPlyInCurrentPath(prev, ply);
@@ -365,6 +367,7 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
                 scoreMate: event.scoreMate,
                 depth: event.depth,
                 pv: event.pv,
+                normalized: event.normalized,
             };
 
             const multipv = event.multipv ?? 1;
@@ -402,7 +405,7 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
      * ノードIDを指定して評価値を記録
      * 分岐内のノードなど、plyだけでは特定できないノードに評価値を保存する場合に使用
      */
-    const recordEvalByNodeId = (nodeId: string, event: EngineInfoEvent) => {
+    const recordEvalByNodeId = (nodeId: string, event: RecordedEvalInfoEvent) => {
         setTree((prev) => {
             const node = prev.nodes.get(nodeId);
             if (!node) return prev;
@@ -412,6 +415,7 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
                 scoreMate: event.scoreMate,
                 depth: event.depth,
                 pv: event.pv,
+                normalized: event.normalized,
             };
 
             const multipv = event.multipv ?? 1;

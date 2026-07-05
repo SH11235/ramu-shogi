@@ -15,6 +15,7 @@ import {
     setMoveEvalAtPly,
     summarizeMoveDetails,
 } from "./rshogi-csa-live-viewer";
+import { formatEval, MATE_WITHOUT_PLY } from "./shogi-match/utils/kifFormat";
 
 const META: RshogiGameMeta = { gameId: "game-1", senteName: "alice", goteName: "bob" };
 
@@ -357,25 +358,27 @@ describe("moveEvals accumulation (initialReview.moveData の材料)", () => {
         ]);
     });
 
-    it("moveDetailsToEvals: 詰みセンチネル ±100000 は ±2000 に丸める (evalMate 化しない・グラフ autoscale を潰さない)", () => {
-        // ±100000 を素通しすると EvalGraph の autoscale が引き伸ばされ通常評価値が
-        // 中央線に潰れるため、表示用に ±2000 へ丸める。evalMate は捏造しない。
+    it("moveDetailsToEvals: 詰みセンチネル ±100000 は手数不明の詰みとして表示できる形にする", () => {
         const details = [
             move("3f3e", 3, { raw: "* 100000", evalCp: 100000 }),
             move("5a4b", 2, { raw: "* -100000", evalCp: -100000 }),
         ];
         expect(moveDetailsToEvals(details)).toEqual([
-            { elapsedMs: 3000, evalCp: 2000 },
-            { elapsedMs: 2000, evalCp: -2000 },
+            { elapsedMs: 3000, evalMate: MATE_WITHOUT_PLY },
+            { elapsedMs: 2000, evalMate: -MATE_WITHOUT_PLY },
         ]);
+        expect(formatEval(undefined, moveDetailsToEvals(details)[0]?.evalMate)).toBe("+詰");
+        expect(formatEval(undefined, moveDetailsToEvals(details)[1]?.evalMate)).toBe("-詰");
     });
 
-    it("setMoveEvalAtPly: 後追いコメントの詰みセンチネルも ±2000 に丸める", () => {
+    it("setMoveEvalAtPly: 後追いコメントの詰みセンチネルも手数不明の詰みとして表示できる形にする", () => {
         const prev = [{ elapsedMs: 3000, evalCp: 30 }, { elapsedMs: 6000 }];
-        expect(setMoveEvalAtPly(prev, 2, { evalCp: -100000 })).toEqual([
+        const next = setMoveEvalAtPly(prev, 2, { evalCp: -100000 });
+        expect(next).toEqual([
             { elapsedMs: 3000, evalCp: 30 },
-            { elapsedMs: 6000, evalCp: -2000 },
+            { elapsedMs: 6000, evalCp: undefined, evalMate: -MATE_WITHOUT_PLY },
         ]);
+        expect(formatEval(next[1]?.evalCp, next[1]?.evalMate)).toBe("-詰");
     });
 
     it("appendMoveEval: broadcast move は消費秒のみで追加し eval は後追い", () => {

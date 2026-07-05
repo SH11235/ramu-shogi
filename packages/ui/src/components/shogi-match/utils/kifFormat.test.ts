@@ -7,7 +7,9 @@ import {
     formatEval,
     formatMoveSimple,
     formatMoveToKif,
+    getEvalTooltipInfo,
     getPieceName,
+    MATE_WITHOUT_PLY,
     parseToSquare,
     squareToKanji,
 } from "./kifFormat";
@@ -234,9 +236,39 @@ describe("formatEval", () => {
         expect(formatEval(undefined, -3, 2)).toBe("-詰3");
     });
 
+    it("手数不明の詰みは手数を捏造せずにフォーマットする", () => {
+        expect(formatEval(undefined, MATE_WITHOUT_PLY)).toBe("+詰");
+        expect(formatEval(undefined, -MATE_WITHOUT_PLY)).toBe("-詰");
+        expect(getEvalTooltipInfo(undefined, MATE_WITHOUT_PLY)).toMatchObject({
+            description: "☗先手の勝ち",
+            detail: "手数不明の詰み",
+            advantage: "sente",
+        });
+        expect(getEvalTooltipInfo(undefined, -MATE_WITHOUT_PLY)).toMatchObject({
+            description: "☖後手の勝ち",
+            detail: "手数不明の詰み",
+            advantage: "gote",
+        });
+    });
+
     it("詰みが評価値より優先される", () => {
         expect(formatEval(100, 5)).toBe("+詰5");
         expect(formatEval(-100, -3)).toBe("-詰3");
+    });
+
+    it("実 mate は従来どおり手数付きで表示する", () => {
+        expect(formatEval(undefined, 7)).toBe("+詰7");
+        expect(formatEval(undefined, -11)).toBe("-詰11");
+        expect(getEvalTooltipInfo(undefined, 7)).toMatchObject({
+            description: "☗先手の勝ち",
+            detail: "7手詰み",
+            advantage: "sente",
+        });
+        expect(getEvalTooltipInfo(undefined, -11)).toMatchObject({
+            description: "☖後手の勝ち",
+            detail: "11手詰み",
+            advantage: "gote",
+        });
     });
 
     it("undefined の場合は空文字を返す", () => {
