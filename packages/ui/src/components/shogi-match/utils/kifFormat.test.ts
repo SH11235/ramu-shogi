@@ -583,4 +583,35 @@ describe("exportToKifString", () => {
             "開始局面：lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPP1/1B5R1/LNSGKGSNL b - 1",
         );
     });
+
+    it("手数不明の詰みコメントは手数を出力しない", () => {
+        const board = placePiece(createEmptyBoard(), "7g", "sente", "P");
+        const result = exportToKifString(
+            [
+                {
+                    ply: 1,
+                    kifText: "dummy",
+                    displayText: "dummy",
+                    usiMove: "7g7f",
+                    elapsedMs: 0,
+                    evalMate: MATE_WITHOUT_PLY,
+                },
+                {
+                    ply: 2,
+                    kifText: "dummy",
+                    displayText: "dummy",
+                    usiMove: "3c3d",
+                    elapsedMs: 0,
+                    evalMate: -MATE_WITHOUT_PLY,
+                },
+            ],
+            [board, board],
+            { includeEval: true, startSfen: "startpos" },
+        );
+
+        expect(result).toContain("*評価値=詰み");
+        expect(result).toContain("*評価値=被詰み");
+        expect(result).not.toContain("詰Infinity手");
+        expect(result).not.toContain("被詰Infinity手");
+    });
 });
