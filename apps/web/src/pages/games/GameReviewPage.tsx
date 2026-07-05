@@ -55,6 +55,8 @@ async function createAnalysisSnapshot(
             "Content-Type": "application/json",
         },
         credentials: "same-origin",
+        // JSON.stringify は Infinity を null にする。live 由来の手数なし詰み
+        // (evalMate=±Infinity) を流す場合は stringifyReviewMoveData 相当の変換が必要。
         body: JSON.stringify(requestBody),
     });
 

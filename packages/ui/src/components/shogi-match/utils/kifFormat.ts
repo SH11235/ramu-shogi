@@ -8,6 +8,11 @@ import type { BoardState, Piece, PieceType, Player, PositionState, Square } from
 import { applyMoveWithState } from "@shogi/app-core";
 import { parseSfen } from "./kifParser";
 
+/** 手数不明の詰みを表す evalMate センチネル。符号は勝つ側を先手視点で表す。 */
+export const MATE_WITHOUT_PLY = Number.POSITIVE_INFINITY;
+
+const isMateWithoutPly = (evalMate: number): boolean => !Number.isFinite(evalMate);
+
 /** 単一PVの評価値情報 */
 export interface PvEvalInfo {
     /** PV番号（1-indexed） */
@@ -330,12 +335,16 @@ function squareToSimple(sq: string): string {
  * @param evalCp 評価値（センチポーン、先手視点）
  * @param evalMate 詰み手数（先手視点）
  * @param _ply 手数（後方互換性のため残すが使用しない）
- * @returns フォーマットされた文字列（例: "+5.0", "+詰3", "-詰5"）
+ * @returns フォーマットされた文字列（例: "+5.0", "+詰3", "-詰5", "+詰", "-詰"）
  */
 export function formatEval(evalCp?: number, evalMate?: number, _ply?: number): string {
     if (evalMate !== undefined && evalMate !== null) {
         // 先手視点に正規化済みなので、符号だけで判定
         // 符号式: +詰N（先手勝ち）、-詰N（後手勝ち）
+        // 手数不明の詰みは N を表示しない。
+        if (isMateWithoutPly(evalMate)) {
+            return evalMate > 0 ? "+詰" : "-詰";
+        }
         if (evalMate > 0) {
             return `+詰${evalMate}`;
         }
@@ -390,10 +399,13 @@ export function getEvalTooltipInfo(
         const winningSide = evalMate > 0 ? "sente" : "gote";
         const winnerMark = winningSide === "sente" ? "☗" : "☖";
         const winnerName = winningSide === "sente" ? "先手" : "後手";
+        const detail = isMateWithoutPly(evalMate)
+            ? "手数不明の詰み"
+            : `${Math.abs(evalMate)}手詰み`;
 
         return {
             description: `${winnerMark}${winnerName}の勝ち`,
-            detail: `${Math.abs(evalMate)}手詰み`,
+            detail,
             depthText: depth !== undefined ? `深さ${depth}` : null,
             advantage: winningSide,
         };
@@ -697,7 +709,9 @@ function formatEvalComment(evalCp?: number, evalMate?: number, depth?: number): 
 
     let evalStr: string;
     if (evalMate !== undefined && evalMate !== null) {
-        if (evalMate > 0) {
+        if (isMateWithoutPly(evalMate)) {
+            evalStr = evalMate > 0 ? "詰み" : "被詰み";
+        } else if (evalMate > 0) {
             evalStr = `詰${evalMate}手`;
         } else {
             evalStr = `被詰${Math.abs(evalMate)}手`;

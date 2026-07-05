@@ -3,6 +3,7 @@ import { createInitialPositionState, setPositionServiceFactory } from "@shogi/ap
 import { beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_PASS_RIGHTS_SETTINGS } from "../types";
 import { normalizeEvalToSentePerspective } from "../utils/branchTreeUtils";
+import { formatEval, MATE_WITHOUT_PLY } from "../utils/kifFormat";
 import { useKifuImportExport } from "./useKifuImportExport";
 import type { UseKifuNavigationResult } from "./useKifuNavigation";
 
@@ -12,7 +13,7 @@ import type { UseKifuNavigationResult } from "./useKifuNavigation";
  *
  * ここで固定したいのは「wire (先手視点) の評価値が符号そのままで `normalized: true`
  * として addMove に渡り、奇数 ply でも偶数 ply でも符号反転しない」ことと、
- * 「詰みセンチネル ±100000 が evalCp のまま流れる」「elapsedMs が保持される」こと。
+ * 「手数不明の詰みが evalMate のまま流れる」「elapsedMs が保持される」こと。
  */
 
 // startpos を返すだけの最小 PositionService。importSfen は parseSfen のみ使う。
@@ -107,24 +108,40 @@ describe("importSfen: initialReview.moveData スレッディング", () => {
         });
     });
 
-    it("詰みセンチネル (viewer 側で ±2000 に丸め済み) は evalCp のまま流し、詰み手数 (scoreMate) を捏造しない", async () => {
-        // live viewer は wire の ±100000 センチネルを moveData 生成時に ±2000 へ丸める
-        // (rshogi-csa-live-viewer.tsx の MATE_DISPLAY_EVAL_CP。EvalGraph の autoscale を
-        // 潰さないため)。importSfen は受け取った値を符号・大きさとも変えずに素通しする。
+    it("手数不明の詰みは evalMate のまま流し、詰み手数を捏造しない", async () => {
         const { importSfen, addMoveCalls } = makeHarness();
         await importSfen("startpos", ["7g7f", "3c3d"], {
-            moveData: [{ evalCp: 2000 }, { evalCp: -2000 }],
+            moveData: [{ evalMate: MATE_WITHOUT_PLY }, { evalMate: -MATE_WITHOUT_PLY }],
         });
         expect(addMoveCalls[0].options?.eval).toEqual({
-            scoreCp: 2000,
-            scoreMate: undefined,
+            scoreCp: undefined,
+            scoreMate: MATE_WITHOUT_PLY,
             normalized: true,
         });
         expect(addMoveCalls[1].options?.eval).toEqual({
-            scoreCp: -2000,
-            scoreMate: undefined,
+            scoreCp: undefined,
+            scoreMate: -MATE_WITHOUT_PLY,
             normalized: true,
         });
+        expect(formatEval(undefined, addMoveCalls[0].options?.eval?.scoreMate)).toBe("+詰");
+        expect(formatEval(undefined, addMoveCalls[1].options?.eval?.scoreMate)).toBe("-詰");
+    });
+
+    it("実 mate は手数付きのまま analysis/kifu 表示まで維持される", async () => {
+        const { importSfen, addMoveCalls } = makeHarness();
+        await importSfen("startpos", ["7g7f", "3c3d"], {
+            moveData: [{ evalMate: 5 }, { evalMate: -7 }],
+        });
+        expect(normalizeEvalToSentePerspective(addMoveCalls[0].options?.eval, 1)).toEqual({
+            evalCp: undefined,
+            evalMate: 5,
+        });
+        expect(normalizeEvalToSentePerspective(addMoveCalls[1].options?.eval, 2)).toEqual({
+            evalCp: undefined,
+            evalMate: -7,
+        });
+        expect(formatEval(undefined, addMoveCalls[0].options?.eval?.scoreMate)).toBe("+詰5");
+        expect(formatEval(undefined, addMoveCalls[1].options?.eval?.scoreMate)).toBe("-詰7");
     });
 
     it("moveData が undefined の手は eval なしで addMove する (後方互換)", async () => {

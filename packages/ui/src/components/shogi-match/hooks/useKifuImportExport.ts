@@ -28,8 +28,8 @@ export interface ReviewMoveEval {
     evalCp?: number;
     /**
      * 詰み手数 (先手視点、`+` = 先手勝ち)。
-     * ライブ観戦の wire は詰み手数を持たない (詰みは大きな evalCp センチネルで表現)
-     * ため通常は未設定。KIF インポート等の経路で詰み手数が判る場合のみ使う。
+     * 手数不明の詰みは ±Infinity で表す。KIF インポート等の経路で詰み手数が判る場合は
+     * 有限値を使う。
      */
     evalMate?: number;
 }

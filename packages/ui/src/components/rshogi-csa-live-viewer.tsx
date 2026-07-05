@@ -29,6 +29,7 @@ import { type ReactElement, type ReactNode, useEffect, useRef, useState } from "
 import { ShogiMatch } from "./shogi-match";
 import type { ReviewMoveEval } from "./shogi-match/hooks/useKifuImportExport";
 import type { EngineOption } from "./shogi-match/types";
+import { MATE_WITHOUT_PLY } from "./shogi-match/utils/kifFormat";
 
 export interface RshogiCsaLiveViewerProps {
     gameId: string;
@@ -171,38 +172,25 @@ export function summarizeMoveDetails(moveDetails: RshogiLiveMove[]): LiveEvalSta
     return { ...evalState, lastMoveElapsedSec: last?.elapsedSec };
 }
 
-/**
- * 詰みセンチネルを moveData (棋譜評価値カラム / 評価値グラフ) 用に丸める値 (cp)。
- *
- * ## 詰みセンチネルの扱い (設計判断)
- * wire は詰みを `±100000` センチネルで符号化するだけで **詰み手数を持たない**
- * (rshogi は mate-in-N を潰す)。これを `evalMate=±1` として渡すと `formatEval` /
- * `getEvalTooltipInfo` が「+詰1」「1手詰み」と **存在しない手数を偽って** 表示して
- * しまうため、`evalMate` は設定しない (手数を捏造しない)。
- * かつ `evalCp=±100000` を素通しすると EvalGraph の autoscale が ±100000 級に
- * 引き伸ばされ、通常の評価値 (数百 cp) が全て中央線に潰れてグラフが死ぬ。
- * そこでセンチネルは ±2000 (グラフの見やすい決定的優勢域) に丸めて `evalCp` に
- * 格納する。詰みに近い決定的優勢を、捏造した手数なしに・グラフを潰さずに伝える。
- */
-const MATE_DISPLAY_EVAL_CP = 2000;
-
-/** wire eval (先手視点) の詰みセンチネル ±100000 を表示用 ±2000 に丸める。 */
-function clampWireEvalForDisplay(evalCp: number | undefined): number | undefined {
-    if (evalCp === undefined) return undefined;
-    if (evalCp >= MATE_EVAL_SENTINEL) return MATE_DISPLAY_EVAL_CP;
-    if (evalCp <= -MATE_EVAL_SENTINEL) return -MATE_DISPLAY_EVAL_CP;
-    return evalCp;
+/** wire eval (先手視点) の詰みセンチネル ±100000 を手数不明の mate に変換する。 */
+function wireEvalToReviewEval(
+    evalCp: number | undefined,
+): Pick<ReviewMoveEval, "evalCp" | "evalMate"> {
+    if (evalCp === undefined) return {};
+    if (evalCp >= MATE_EVAL_SENTINEL) return { evalMate: MATE_WITHOUT_PLY };
+    if (evalCp <= -MATE_EVAL_SENTINEL) return { evalMate: -MATE_WITHOUT_PLY };
+    return { evalCp };
 }
 
 /**
  * elapsedSec と wire eval (先手視点) から `initialReview.moveData` の 1 手分を作る
  * (両方無ければ undefined)。moves と同じ index で対応する。
- * 詰みセンチネルの丸めは {@link MATE_DISPLAY_EVAL_CP} を参照。
+ * 詰みセンチネルは手数不明の mate として扱い、手数を捏造しない。
  */
 function toMoveEval(elapsedSec: number, evalCp: number | undefined): ReviewMoveEval | undefined {
     const elapsedMs = elapsedSec > 0 ? elapsedSec * 1000 : undefined;
     if (elapsedMs === undefined && evalCp === undefined) return undefined;
-    return { elapsedMs, evalCp: clampWireEvalForDisplay(evalCp) };
+    return { elapsedMs, ...wireEvalToReviewEval(evalCp) };
 }
 
 /** snapshot の moveDetails を moves と同順・同長の付随情報配列 (moveData) に変換する。 */
@@ -224,7 +212,7 @@ export function appendMoveEval(
 /**
  * onMoveComment 到着時に該当 ply の付随情報へ eval (先手視点) を後追いで書き込む。
  * ply は 1 始まり。範囲外・eval 無しコメントは配列を据え置く (消費秒は保持)。
- * 詰みセンチネルは snapshot 経路と同じく ±{@link MATE_DISPLAY_EVAL_CP} に丸める。
+ * 詰みセンチネルは snapshot 経路と同じく手数不明の mate として扱う。
  */
 export function setMoveEvalAtPly(
     prev: (ReviewMoveEval | undefined)[],
@@ -233,8 +221,9 @@ export function setMoveEvalAtPly(
 ): (ReviewMoveEval | undefined)[] {
     const idx = ply - 1;
     if (comment.evalCp === undefined || idx < 0 || idx >= prev.length) return prev;
+    const evalData = wireEvalToReviewEval(comment.evalCp);
     const next = prev.slice();
-    next[idx] = { ...next[idx], evalCp: clampWireEvalForDisplay(comment.evalCp) };
+    next[idx] = { ...next[idx], evalCp: evalData.evalCp, evalMate: evalData.evalMate };
     return next;
 }
 
