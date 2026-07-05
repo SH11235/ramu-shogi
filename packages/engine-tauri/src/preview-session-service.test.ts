@@ -70,7 +70,7 @@ describe("createPreviewSessionService", () => {
 
     describe("孤児セッション防止", () => {
         it("起動中に再 start すると古い結果を孤児として quit する", async () => {
-            let resolveFirst: (v: string) => void;
+            let resolveFirst: ((v: string) => void) | undefined;
             const firstStart = new Promise<string>((r) => {
                 resolveFirst = r;
             });
@@ -88,7 +88,8 @@ describe("createPreviewSessionService", () => {
             expect(sid2).toBe("session-2");
 
             // 最初の起動が完了 → 孤児としてquitされるはず
-            resolveFirst!("session-orphan");
+            if (!resolveFirst) throw new Error("first start resolver was not initialized");
+            resolveFirst("session-orphan");
             await expect(p1).rejects.toThrow("Start request superseded");
 
             expect(mockInvoke).toHaveBeenCalledWith("usi_engine_quit", {
@@ -97,7 +98,7 @@ describe("createPreviewSessionService", () => {
         });
 
         it("起動中に dispose すると完了後の結果を孤児として quit する", async () => {
-            let resolveStart: (v: string) => void;
+            let resolveStart: ((v: string) => void) | undefined;
             const startPromise = new Promise<string>((r) => {
                 resolveStart = r;
             });
@@ -118,7 +119,8 @@ describe("createPreviewSessionService", () => {
             expect(svc.getStatus()).toEqual({ state: "idle" });
 
             // 起動が完了 → 孤児としてquitされるはず
-            resolveStart!("session-orphan");
+            if (!resolveStart) throw new Error("start resolver was not initialized");
+            resolveStart("session-orphan");
             await expect(p).rejects.toThrow("Start request superseded");
 
             expect(mockInvoke).toHaveBeenCalledWith("usi_engine_quit", {

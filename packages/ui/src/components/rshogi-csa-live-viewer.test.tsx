@@ -236,6 +236,33 @@ describe("RshogiCsaLiveViewer: static fallback", () => {
         });
     });
 
+    it("terminal snapshot 0手後の fallback 404 は再読み込み誘導ではなく未保存表示にする", async () => {
+        const fetchOverride = createStaticGameNotFoundFetch();
+
+        render(
+            <RshogiCsaLiveViewer
+                gameId="game-1"
+                engineOptions={[]}
+                manifestUrl="/nnue/manifest.json"
+                apiBaseUrl="https://example.com/api/v1"
+                fetchOverride={fetchOverride}
+            />,
+        );
+
+        act(() => {
+            MockWebSocket.instances[0].fireOpen();
+            MockWebSocket.instances[0].fireLines(buildLiveSnapshot([], "#ABNORMAL"));
+        });
+
+        await waitFor(() => expect(fetchOverride).toHaveBeenCalled());
+        await waitFor(() => {
+            expect(screen.getByText(/この対局の棋譜データは保存されていません/)).toBeTruthy();
+        });
+        expect(screen.queryByText(/少し時間をおいて再読み込みしてください/)).toBeNull();
+        expect(screen.getByText(/この対局は終局 \(異常終了\)として終了済みです/)).toBeTruthy();
+        expect(screen.getByTestId("shogi-match").getAttribute("data-move-count")).toBe("0");
+    });
+
     it("静的 fallback が汎用エラーになったら errorMessage を表示する", async () => {
         const fetchOverride = createStaticGameFailureFetch("fallback exploded");
 
@@ -863,5 +890,15 @@ describe("RshogiLiveMetaPanel: 読み筋の表示", () => {
     it("PV が無いときは読み筋を表示しない", () => {
         render(<RshogiLiveMetaPanel meta={META} />);
         expect(screen.queryByText("読み筋")).toBeNull();
+    });
+
+    it("#MAX_MOVES は勝者不明でも引き分けとして表示する", () => {
+        render(
+            <RshogiLiveMetaPanel
+                meta={META}
+                result={{ kind: "max_moves", endReason: "MAX_MOVES" }}
+            />,
+        );
+        expect(screen.getByText("引き分け (最大手数)")).toBeDefined();
     });
 });
