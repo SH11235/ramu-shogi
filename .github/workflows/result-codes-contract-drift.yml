@@ -1,0 +1,55 @@
+# rshogi(サーバ)の canonical な result-codes.json と、本リポジトリが持つ
+# byte-identical コピー(packages/match-client/src/rshogi-csa/result-codes.json)の
+# 乖離を定期検知する。rshogi 側で語彙を変えたのにこちらへコピーし忘れる、という
+# 2 リポジトリ跨ぎの唯一の同期漏れ経路を監視するのが目的。
+#
+# rshogi は private repo のため、読み取りには repo read 権限を持つ PAT を
+# secret `RSHOGI_CONTRACT_READ_TOKEN` に設定する必要がある。未設定なら何もせず
+# 成功終了する(best-effort)。乖離検知時は issue を起票し job を失敗させる。
+name: result-codes contract drift
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Compare with rshogi canonical manifest
+        env:
+          RSHOGI_READ_TOKEN: ${{ secrets.RSHOGI_CONTRACT_READ_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RSHOGI_READ_TOKEN}" ]; then
+            echo "::notice::secret RSHOGI_CONTRACT_READ_TOKEN が未設定のため drift check をスキップします。"
+            exit 0
+          fi
+          local_path="packages/match-client/src/rshogi-csa/result-codes.json"
+          upstream_path="crates/rshogi-csa-server-workers/contracts/result-codes.json"
+          GH_TOKEN="${RSHOGI_READ_TOKEN}" gh api \
+            "repos/SH11235/rshogi/contents/${upstream_path}?ref=main" \
+            -H "Accept: application/vnd.github.raw" > /tmp/upstream.json
+          if diff -u "${local_path}" /tmp/upstream.json > /tmp/contract.diff; then
+            echo "result-codes.json は rshogi canonical と一致しています。"
+            exit 0
+          fi
+          echo "::error::result-codes.json が rshogi canonical と乖離しています。"
+          cat /tmp/contract.diff
+          title="result-codes.json が rshogi と乖離"
+          body="$(printf 'rshogi の canonical manifest と本リポジトリのコピーに乖離を検知しました。rshogi を単一ソースとして本リポジトリの `%s` を更新してください。\n\n```diff\n%s\n```\n' "${local_path}" "$(cat /tmp/contract.diff)")"
+          existing="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --search "in:title ${title}" --json number --jq '.[0].number // empty')"
+          if [ -n "${existing}" ]; then
+            gh issue comment "${existing}" --repo "${GITHUB_REPOSITORY}" --body "${body}"
+          else
+            gh issue create --repo "${GITHUB_REPOSITORY}" --title "${title}" --body "${body}"
+          fi
+          exit 1

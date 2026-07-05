@@ -6,7 +6,13 @@
         "useIgnoreFile": true
     },
     "files": {
-        "includes": ["**", "!**/packages/rust-core", "!**/src-tauri", "!**/infra/pulumi"],
+        "includes": [
+            "**",
+            "!**/packages/rust-core",
+            "!**/src-tauri",
+            "!**/infra/pulumi",
+            "!**/packages/match-client/src/rshogi-csa/result-codes.json"
+        ],
         "ignoreUnknown": true
     },
     "css": {
