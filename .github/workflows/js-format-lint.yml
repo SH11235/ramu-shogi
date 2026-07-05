@@ -151,16 +151,8 @@ jobs:
         run: pnpm build
       # engine-wasm は Wasm ビルド成果物 (pkg/) を参照するため、ビルド後に typecheck を実行
       - run: pnpm turbo typecheck --filter="@shogi/engine-wasm"
-      # ユニットテスト (vitest) を CI で実行する。build 済みの dist / wasm pkg を
-      # そのまま利用するため build job 内に配置する (別 job にすると tsc/wasm の
-      # 再ビルドが重複するため)。RoomPage 等が必要とする VITE_ 変数は
-      # apps/web/vitest.config.ts の test.env で stub 済み。
-      # 対象外 (本 PR のスコープ外・要フォローアップ):
-      #   - @shogi/app-controller: 既存の失敗テスト
-      #     (src/engine-controller.test.ts「dispose で停止と破棄が呼ばれる」)。無関係の退行のため別途修正。
-      #   - desktop / @shogi/engine-tauri: Tauri(native)前提でこの JS CI では実行しない。
-      #   - @shogi/engine-wasm: wasm ビルド成果物前提。
-      #   - @shogi/api-contract / @shogi/match-protocol: テストファイルが無く vitest が exit 1。
+      # ユニットテスト (vitest): build 済みの dist / wasm pkg を再利用するため build job 内に配置。
+      # 除外パッケージの内訳と app-controller の既存失敗については #84 参照。
       - name: Test (unit)
         run: pnpm turbo test --filter=web --filter=@shogi/match-client --filter=@shogi/app-core --filter=@shogi/design-system --filter=@shogi/engine-client --filter=@shogi/ui -- --run
       - name: sccache stats
