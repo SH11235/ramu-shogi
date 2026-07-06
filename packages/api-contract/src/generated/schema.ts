@@ -444,6 +444,7 @@ export interface components {
         AnalysisSnapshotEntry: {
             ply: number;
             evalCp: number | null;
+            /** @description 詰み手数 (先手視点、+ が先手勝ち)。手数不明の詰みは予約センチネル ±100000 で表す。 */
             evalMate: number | null;
             depth: number | null;
             pv: string[] | null;
