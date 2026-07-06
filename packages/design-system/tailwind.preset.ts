@@ -93,6 +93,10 @@ const preset: Omit<Config, "content"> = {
             },
             fontFamily: {
                 sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+                // 見出し・和の顔（明朝系）
+                display: ["var(--font-display)", "serif"],
+                // 評価値・秒読み・手数など桁を揃える数値
+                mono: ["var(--font-mono)", "ui-monospace", "monospace"],
             },
             boxShadow: {
                 card: "0 20px 25px -5px rgba(15, 23, 42, 0.08), 0 10px 10px -5px rgba(15, 23, 42, 0.04)",

@@ -23,6 +23,7 @@ import GameReviewPage from "./pages/games/GameReviewPage";
 import GamesPage from "./pages/games/GamesPage";
 import PublicGamePage from "./pages/games/PublicGamePage";
 import PublicGamesPage from "./pages/games/PublicGamesPage";
+import LandingPage from "./pages/LandingPage";
 import NnueFilesPage from "./pages/nnue/NnueFilesPage";
 import CreateRoomPage from "./pages/online/CreateRoomPage";
 import OnlinePage from "./pages/online/OnlinePage";
@@ -41,6 +42,16 @@ const rootRoute = createRootRoute({
 const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/",
+    component: LandingPage,
+});
+
+// 対局盤。以前は `/` に置いていたが、トップは迎える面(LandingPage)に譲り、
+// 盤そのものは `/play` へ移設した。App は起動時に sessionStorage `ramu_review_kifu`
+// を読んで検討を復元する処理を持つ(書き込み側は現状 repo 内に無く、外部/将来の導線用)
+// ため、その読み取りごと App が /play へ移動している。
+const playRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/play",
     component: App,
 });
 
@@ -312,6 +323,7 @@ const roomRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
     indexRoute,
+    playRoute,
     onlineRoute,
     authRoute,
     privacyRoute,

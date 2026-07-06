@@ -386,7 +386,7 @@ export default function RoomPage(): ReactElement {
                             params: { gameId: data.gameRecordId },
                         });
                     } else {
-                        void navigate({ to: "/" });
+                        void navigate({ to: "/play" });
                     }
                 }}
                 onExit={() => {
