@@ -134,7 +134,10 @@ export function PCLayout({
                 // 一致させてはみ出しを防ぐ。情報列の minmax は盤幅の変動を吸収する。
                 // 情報パネルが無いときは盤を狭い列へ押し込まないよう 2 列にし、
                 // justify-center で盤+棋譜の対を中央へ寄せる。
-                <div className="flex w-full max-w-[1240px] flex-col gap-4 px-4 py-2">
+                // `dark` クラスで theme.css の .dark 変数スコープを局所適用し、
+                // 検討/観戦だけを涼しい墨地の「検討室」にする(密度勾配モデル T2)。
+                // 対局モード(下の分岐)とトップは暖かい和紙のまま。
+                <div className="dark flex w-full max-w-[1240px] flex-col gap-4 rounded-xl bg-background p-4 text-foreground shadow-card">
                     {reviewTopContent}
                     <div
                         className={`grid grid-cols-1 gap-4 min-[1280px]:items-start min-[1280px]:justify-center ${

@@ -66,6 +66,10 @@
         --shogi-piece-bg: 39 22% 92%; /* 駒背景 - マット象牙 */
         --shogi-piece-bg-dark: 33 18% 77%; /* 駒背景（暗） */
         --shogi-coord-text: 37 18% 42%; /* 座標文字 */
+        --shogi-last-move-to: 45 85% 62%; /* 移動先ハイライト - 濃い金 */
+        --shogi-last-move-to-ring: 45 90% 40%; /* 移動先リング */
+        --shogi-last-move-from: 45 60% 78%; /* 移動元ハイライト - 薄い金（痕跡） */
+        --shogi-last-move-from-ring: 45 50% 55%; /* 移動元リング */
 
         /* 接続状態・成功状態 */
         --status-online: 140 50% 38%; /* オンライン - 落ち着いた緑 */
@@ -122,12 +126,16 @@
            駒だけを浮かせる。駒背景は象牙のまま彩度を落とし、駒文字は濃色を維持。 */
         --shogi-border: 32 14% 34%; /* 枠線 */
         --shogi-outer-border: 30 16% 26%; /* 外枠 */
-        --shogi-cell-light: 33 12% 40%; /* マス目（明） */
-        --shogi-cell-dark: 33 12% 34%; /* マス目（暗） */
+        --shogi-cell-light: 33 12% 38%; /* マス目（明）。暗地では市松が目立つため明度差を抑える */
+        --shogi-cell-dark: 33 12% 35%; /* マス目（暗） */
         --shogi-piece-text: 34 26% 16%; /* 駒文字 - 濃色維持 */
         --shogi-piece-bg: 38 20% 82%; /* 駒背景 - 沈めた象牙 */
         --shogi-piece-bg-dark: 33 14% 68%; /* 駒背景（暗） */
         --shogi-coord-text: 37 12% 62%; /* 座標文字 - 暗地で明るく */
+        --shogi-last-move-to: 45 60% 46%; /* 移動先ハイライト - 沈めた金 */
+        --shogi-last-move-to-ring: 45 80% 60%; /* 移動先リング - 暗地では明るい縁で示す */
+        --shogi-last-move-from: 45 25% 42%; /* 移動元ハイライト - 控えめな痕跡 */
+        --shogi-last-move-from-ring: 45 35% 52%; /* 移動元リング */
 
         /* 接続状態・成功状態（ダークモード） */
         --status-online: 140 45% 45%; /* オンライン */

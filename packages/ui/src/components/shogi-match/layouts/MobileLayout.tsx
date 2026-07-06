@@ -55,8 +55,11 @@ interface MobileLayoutProps {
     /** 候補手の注釈（盤面表示用） */
     candidateNote: string | null;
 
-    /** 検討モードか（対局中でも棋譜がある状態でもない） */
+    /** 検討モードか（対局中でも棋譜がある状態でもない）。対局準備中も true になる導出値 */
     isReviewMode: boolean;
+
+    /** ページレベルの検討/観戦モード(外部 prop)。墨地サーフェスの判定に使う */
+    reviewMode?: boolean;
 
     /** Aboutダイアログを開く */
     onOpenAbout?: () => void;
@@ -83,6 +86,7 @@ interface MobileLayoutProps {
 export function MobileLayout({
     candidateNote,
     isReviewMode,
+    reviewMode = false,
     onOpenAbout,
     onImportSfen,
     onImportKif,
@@ -298,7 +302,17 @@ export function MobileLayout({
     const shouldShowFloatingSettings = !(isReviewMode && totalPly > 0) && !isEditModeActive;
 
     return (
-        <div className="fixed inset-0 flex flex-col gap-1 w-full h-dvh overflow-hidden px-2 bg-background">
+        <div
+            // 検討/観戦ページ(外部 prop reviewMode)では `dark` で .dark 変数スコープを
+            // 局所適用し涼しい墨地にする (密度勾配モデル T2)。導出値 isReviewMode は
+            // 対局準備中も true になるため判定に使わない。対局時は暖かい和紙のまま。
+            // text-foreground はスコープ内で継承色を明転させるために必須(欠くと body の
+            // 濃色が継承されて墨地に沈む)。シート/オーバーレイ類はポータル未使用で
+            // このツリー配下に出るため一括追従。
+            className={`fixed inset-0 flex flex-col gap-1 w-full h-dvh overflow-hidden px-2 bg-background text-foreground${
+                reviewMode ? " dark" : ""
+            }`}
+        >
             {/* === ヘッダー: クロック + 手数 + 反転ボタンを1行に統合 === */}
             <header className="flex-shrink-0 pt-1">
                 <ClockDisplay

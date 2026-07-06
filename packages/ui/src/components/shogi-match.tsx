@@ -1858,6 +1858,7 @@ export function ShogiMatch({
     // Props グループ化: Mobile専用
     const mobileSpecificProps: MobileSpecificProps = {
         isReviewMode,
+        reviewMode,
         onOpenAbout: () => setIsAboutOpen(true),
         onImportSfen: importSfen,
         onImportKif: importKif,

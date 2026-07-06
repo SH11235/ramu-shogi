@@ -84,6 +84,10 @@ const preset: Omit<Config, "content"> = {
                     "piece-bg": "hsl(var(--shogi-piece-bg))",
                     "piece-bg-dark": "hsl(var(--shogi-piece-bg-dark))",
                     "coord-text": "hsl(var(--shogi-coord-text))",
+                    "last-move-to": "hsl(var(--shogi-last-move-to))",
+                    "last-move-to-ring": "hsl(var(--shogi-last-move-to-ring))",
+                    "last-move-from": "hsl(var(--shogi-last-move-from))",
+                    "last-move-from-ring": "hsl(var(--shogi-last-move-from-ring))",
                 },
             },
             borderRadius: {
