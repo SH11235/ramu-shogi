@@ -11,6 +11,7 @@ import type { ReactElement } from "react";
 import { AboutDialog } from "../../AboutDialog";
 import { EngineRestartingOverlay } from "../../nnue/EngineRestartingOverlay";
 import { NnueManagerDialog } from "../../nnue/NnueManagerDialog";
+import { SurfaceThemeProvider } from "../../surface-theme";
 import { GameResultDialog } from "../components/GameResultDialog";
 import { MoveDetailWindow } from "../components/MoveDetailWindow";
 import { PvPreviewDialog } from "../components/PvPreviewDialog";
@@ -254,7 +255,12 @@ export function ShogiMatchLayout({
     } = mobileSpecificProps;
 
     return (
-        <>
+        // 検討/観戦では、Radix Portal で body 直下へ脱出する Dialog/Popover(この階層の
+        // PvPreviewDialog 等も含む)へ墨地テーマを context で配る。dark クラスの DOM
+        // スコープは Portal に届かないため、Portal 先で付け直す仕組み(surface-theme)。
+        // reviewMode は pc 用グループの値だが、mobileReviewMode と同一の外部 prop 由来
+        // (shogi-match.tsx で同じ reviewMode から両グループへ配られる)ため両デバイスで有効。
+        <SurfaceThemeProvider theme={reviewMode ? "dark" : undefined}>
             {/* DnD ゴースト */}
             <DragGhost
                 ref={dndController.ghostRef as React.RefObject<HTMLDivElement>}
@@ -634,6 +640,6 @@ export function ShogiMatchLayout({
             )}
 
             <AboutDialog open={isAboutOpen} onOpenChange={setIsAboutOpen} />
-        </>
+        </SurfaceThemeProvider>
     );
 }

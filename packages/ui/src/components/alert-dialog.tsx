@@ -3,6 +3,7 @@ import { cn } from "@shogi/design-system";
 import type { ComponentPropsWithoutRef, ComponentRef, ReactElement } from "react";
 import { forwardRef } from "react";
 import { buttonVariants } from "./button";
+import { useSurfaceTheme } from "./surface-theme";
 
 export const AlertDialog = AlertDialogPrimitive.Root;
 export const AlertDialogTrigger = AlertDialogPrimitive.Trigger;
@@ -28,11 +29,14 @@ export const AlertDialogContent = forwardRef<
     ComponentRef<typeof AlertDialogPrimitive.Content>,
     ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content>
 >(function AlertDialogContent({ className, children, ...props }, ref): ReactElement {
+    // Portal で body 直下へ出るため、開いた場所の局所テーマを引き継ぐ
+    const surfaceTheme = useSurfaceTheme();
     return (
         <AlertDialogPortal>
             <AlertDialogOverlay />
             <AlertDialogPrimitive.Content
                 className={cn(
+                    surfaceTheme,
                     "fixed left-1/2 top-1/2 z-[51] grid w-[min(420px,calc(100%-32px))] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-border bg-card p-6 text-foreground shadow-[0_24px_70px_rgba(0,0,0,0.35)] duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
                     className,
                 )}

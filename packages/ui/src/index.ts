@@ -49,6 +49,9 @@ export {
     encodeSnapshotEvalMateReplacer,
 } from "./components/shogi-match/utils/kifFormat";
 export { boardToGrid } from "./components/shogi-match/utils/positionUtils";
+export type { SurfaceTheme } from "./components/surface-theme";
+// surface-theme (Portal 脱出 UI への局所テーマ伝搬)
+export { SurfaceThemeProvider, useSurfaceTheme } from "./components/surface-theme";
 
 // progress
 // shogi-board
