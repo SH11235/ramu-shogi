@@ -255,7 +255,7 @@ const createRoomRoute = createRoute({
 
 function DefaultPendingComponent() {
     return (
-        <div className="mx-auto flex max-w-[480px] flex-col gap-4 px-4 py-10">
+        <div aria-live="polite" className="mx-auto flex max-w-[480px] flex-col gap-4 px-4 py-10">
             <p className="text-muted-foreground">読み込み中...</p>
         </div>
     );
@@ -264,13 +264,16 @@ function DefaultPendingComponent() {
 // lazy route の chunk fetch が恒久的に失敗した場合 (stale deploy の reload を
 // 消化し切った後など) の共通フォールバック。未スタイルの既定 error 画面を出さず、
 // 再読み込み導線を持つ最小 UI を出す。
-function DefaultErrorComponent({ error }: { error: Error }) {
+function DefaultErrorComponent({ error }: { error: unknown }) {
+    // TanStack Router の error は Error インスタンスとは限らない (throw "string" や
+    // 非 Error の Promise rejection もありうる) ため、安全に文字列化する。
+    const message = error instanceof Error ? error.message : String(error);
     return (
         <div className="mx-auto flex max-w-[480px] flex-col gap-4 px-4 py-10">
             <p className="text-destructive">
                 ページの読み込みに失敗しました。ネットワークを確認して再読み込みしてください。
             </p>
-            <p className="text-xs text-muted-foreground">{error.message}</p>
+            <p className="text-xs text-muted-foreground">{message}</p>
             <button
                 type="button"
                 onClick={() => window.location.reload()}

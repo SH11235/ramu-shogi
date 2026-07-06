@@ -29,6 +29,9 @@ function manualChunks(id: string): string | undefined {
             return "vendor-react";
         }
 
+        // 現状 @tanstack は react-router のみ。将来 @tanstack/query 等を足すと
+        // この chunk に同梱され肥大化しうるので、その際は router 系に限定するか
+        // chunk を分けること。
         if (normalizedId.includes("/node_modules/@tanstack/")) {
             return "vendor-router";
         }
