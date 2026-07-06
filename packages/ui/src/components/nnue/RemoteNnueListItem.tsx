@@ -33,7 +33,7 @@ export function RemoteNnueListItem({
                         <span
                             className={`rounded px-1.5 py-0.5 text-[11px] ${
                                 isImported
-                                    ? "bg-[hsl(var(--success,142_76%_36%)/0.1)] text-[hsl(var(--success,142_76%_36%))]"
+                                    ? "bg-status-success/10 text-status-success"
                                     : "bg-muted text-muted-foreground"
                             }`}
                         >

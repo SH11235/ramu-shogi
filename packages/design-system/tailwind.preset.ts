@@ -73,6 +73,10 @@ const preset: Omit<Config, "content"> = {
                     "success-fg": "hsl(var(--status-success-fg))",
                     "success-bg": "hsl(var(--status-success-bg))",
                     "success-border": "hsl(var(--status-success-border))",
+                    warning: "hsl(var(--status-warning))",
+                    "warning-fg": "hsl(var(--status-warning-fg))",
+                    "warning-bg": "hsl(var(--status-warning-bg))",
+                    "warning-border": "hsl(var(--status-warning-border))",
                 },
                 // 将棋盤配色
                 shogi: {

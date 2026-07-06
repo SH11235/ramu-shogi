@@ -97,14 +97,14 @@ export function PresetListItem({
     const renderStatusBadge = () => {
         if (status === "latest") {
             return (
-                <span className="rounded bg-[hsl(var(--success,142_76%_36%)/0.1)] px-1.5 py-0.5 text-[11px] text-[hsl(var(--success,142_76%_36%))]">
+                <span className="rounded bg-status-success/10 px-1.5 py-0.5 text-[11px] text-status-success">
                     最新
                 </span>
             );
         }
         if (status === "update-available") {
             return (
-                <span className="rounded bg-[hsl(var(--warning,38_92%_50%)/0.1)] px-1.5 py-0.5 text-[11px] text-[hsl(var(--warning,38_92%_50%))]">
+                <span className="rounded bg-status-warning/10 px-1.5 py-0.5 text-[11px] text-status-warning">
                     更新あり
                 </span>
             );
@@ -145,7 +145,7 @@ export function PresetListItem({
     const downloadSection = (status === "not-downloaded" || status === "update-available") && (
         <div className="flex flex-col items-end gap-1">
             {isLargeFile && !isDownloading && (
-                <span className="whitespace-nowrap rounded bg-[hsl(var(--warning,38_92%_50%)/0.1)] px-1.5 py-0.5 text-[11px] font-medium text-[hsl(var(--warning,38_92%_50%))]">
+                <span className="whitespace-nowrap rounded bg-status-warning/10 px-1.5 py-0.5 text-[11px] font-medium text-status-warning">
                     ⚠ Wi-Fi推奨
                 </span>
             )}
@@ -201,7 +201,7 @@ export function PresetListItem({
                     checked={isSelected}
                     onChange={handleChange}
                     disabled={disabled || isDownloading}
-                    className="m-0 h-5 w-5 shrink-0 accent-[hsl(var(--primary,220_90%_56%))]"
+                    className="m-0 h-5 w-5 shrink-0 accent-primary"
                 />
                 {contentSection}
                 {downloadSection}

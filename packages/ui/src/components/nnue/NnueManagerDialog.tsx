@@ -243,7 +243,7 @@ export function NnueManagerDialog({
                 <div className="relative flex min-h-[200px] flex-1 flex-col gap-4 overflow-auto">
                     {/* 開いた理由（対局開始時にNNUE未ダウンロードだった場合など） */}
                     {reasonMessage && (
-                        <div className="flex items-start gap-2 rounded-md border border-[hsl(var(--warning,38_92%_50%)/0.3)] bg-[hsl(var(--warning,38_92%_50%)/0.1)] p-3">
+                        <div className="flex items-start gap-2 rounded-md border border-status-warning/30 bg-status-warning/10 p-3">
                             <span className="text-base leading-none">⚠️</span>
                             <div className="flex-1">
                                 <p className="m-0 text-[13px] text-foreground">{reasonMessage}</p>

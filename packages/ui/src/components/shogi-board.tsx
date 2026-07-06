@@ -69,11 +69,11 @@ export function ShogiBoard({
     const { files, ranks } = getBoardLabels(flipBoard);
 
     return (
-        <div className="relative inline-block rounded-lg border border-[hsl(var(--shogi-outer-border))] bg-[hsl(var(--shogi-cell-light))] shadow-[0_4px_12px_rgba(0,0,0,0.12)]">
+        <div className="relative inline-block rounded-lg border border-shogi-outer-border bg-shogi-cell-light shadow-[0_4px_12px_rgba(0,0,0,0.12)]">
             {/* 盤外ラベル: 筋（上） */}
             <div
                 className={cn(
-                    "grid grid-cols-9 py-0.5 text-center text-[11px] font-semibold text-[hsl(var(--wafuu-sumi)/0.7)] [text-shadow:0_1px_0_rgba(255,255,255,0.5)] ml-[1.25em] mr-[1.25em]",
+                    "grid grid-cols-9 py-0.5 text-center text-[11px] font-semibold text-wafuu-sumi/70 [text-shadow:0_1px_0_rgba(255,255,255,0.5)] ml-[1.25em] mr-[1.25em]",
                     showBoardLabels ? "visible" : "invisible",
                 )}
             >
@@ -103,8 +103,8 @@ export function ShogiBoard({
                             const isHighlighted = isLastMoveTo || isLastMoveFrom || isSelected;
                             const baseTone =
                                 (rowIndex + columnIndex) % 2 === 0
-                                    ? "bg-[hsl(var(--shogi-cell-light))]"
-                                    : "bg-[hsl(var(--shogi-cell-dark))]";
+                                    ? "bg-shogi-cell-light"
+                                    : "bg-shogi-cell-dark";
 
                             return (
                                 <div
@@ -156,7 +156,7 @@ export function ShogiBoard({
                                                 : `${cell.id} 空マス`
                                         }
                                         className={cn(
-                                            "absolute inset-0 overflow-hidden text-base font-semibold transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[hsl(var(--wafuu-shu))]/70 focus-visible:ring-offset-transparent",
+                                            "absolute inset-0 overflow-hidden text-base font-semibold transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-wafuu-shu/70 focus-visible:ring-offset-transparent",
                                             "hover:ring-2 hover:ring-inset hover:ring-shogi-border",
                                             // タッチ選択・長押しメニュー防止
                                             "select-none [-webkit-touch-callout:none]",
@@ -233,7 +233,7 @@ export function ShogiBoard({
                                                     }
                                                 }}
                                                 aria-label="成る"
-                                                className="flex-1 rounded-t-md bg-gradient-to-b from-[hsl(var(--wafuu-shu))] to-[hsl(var(--wafuu-shu)/0.8)] text-[14px] font-bold text-white shadow-lg transition-all hover:scale-105 hover:shadow-xl active:scale-95 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"
+                                                className="flex-1 rounded-t-md bg-gradient-to-b from-wafuu-shu to-wafuu-shu/80 text-[14px] font-bold text-white shadow-lg transition-all hover:scale-105 hover:shadow-xl active:scale-95 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"
                                             >
                                                 成
                                             </button>
@@ -269,7 +269,7 @@ export function ShogiBoard({
                 {/* 盤外ラベル: 段（右） */}
                 <div
                     className={cn(
-                        "flex flex-col justify-around px-0.5 text-[11px] font-semibold text-[hsl(var(--wafuu-sumi)/0.7)] [text-shadow:0_1px_0_rgba(255,255,255,0.5)]",
+                        "flex flex-col justify-around px-0.5 text-[11px] font-semibold text-wafuu-sumi/70 [text-shadow:0_1px_0_rgba(255,255,255,0.5)]",
                         showBoardLabels ? "visible" : "invisible",
                     )}
                 >
