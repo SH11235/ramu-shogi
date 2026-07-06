@@ -28,6 +28,7 @@ type NavVariant = keyof typeof variantClass;
 // params/search を要求しない静的パスなので、その literal union に限定する。
 type NavTo =
     | "/"
+    | "/play"
     | "/online"
     | "/games"
     | "/nnue"
@@ -82,7 +83,7 @@ export function HeaderNav(): ReactElement {
         pathname === "/rshogi-viewer/live" || pathname.startsWith("/rshogi-viewer/live/");
 
     const appItems: NavItem[] = [
-        { to: "/", label: "対局", active: pathname === "/", variant: "primary" },
+        { to: "/play", label: "対局", active: pathname.startsWith("/play"), variant: "primary" },
         {
             to: "/online",
             label: "オンライン",

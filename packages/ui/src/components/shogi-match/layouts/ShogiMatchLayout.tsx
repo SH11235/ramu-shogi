@@ -244,8 +244,14 @@ export function ShogiMatchLayout({
     } = pcSpecificProps;
 
     // グループ化されたpropsを展開: Mobile専用
-    const { isReviewMode, onOpenAbout, onImportSfen, onImportKif, onDisplaySettingsChange } =
-        mobileSpecificProps;
+    const {
+        isReviewMode,
+        reviewMode: mobileReviewMode,
+        onOpenAbout,
+        onImportSfen,
+        onImportKif,
+        onDisplaySettingsChange,
+    } = mobileSpecificProps;
 
     return (
         <>
@@ -453,6 +459,7 @@ export function ShogiMatchLayout({
                                 <MobileLayout
                                     candidateNote={candidateNote}
                                     isReviewMode={isReviewMode}
+                                    reviewMode={mobileReviewMode}
                                     onOpenAbout={onOpenAbout}
                                     onImportSfen={onImportSfen}
                                     onImportKif={onImportKif}

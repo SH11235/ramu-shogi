@@ -133,7 +133,7 @@ function PvCandidateItem({
         <div
             className="
                 border border-border rounded-lg p-2
-                bg-[hsl(var(--wafuu-washi)/0.3)] dark:bg-[hsl(var(--muted)/0.3)]
+                bg-wafuu-washi/30 dark:bg-[hsl(var(--muted)/0.3)]
             "
         >
             {/* ヘッダー: 候補番号 + 評価値 */}
@@ -142,11 +142,11 @@ function PvCandidateItem({
                     候補{pv.multipv}
                 </span>
                 <span
-                    className={`font-medium text-[13px] ${
+                    className={`font-medium font-mono tabular-nums text-[13px] ${
                         evalInfo.advantage === "sente"
                             ? "text-wafuu-shu"
                             : evalInfo.advantage === "gote"
-                              ? "text-[hsl(210_70%_45%)]"
+                              ? "text-wafuu-ai"
                               : ""
                     }`}
                 >
@@ -159,13 +159,11 @@ function PvCandidateItem({
 
             {/* 読み筋 */}
             {hasPv && (
-                <div className="flex flex-wrap gap-1 text-[12px] font-mono mb-2">
+                <div className="flex flex-wrap gap-1 text-[12px] font-mono tabular-nums mb-2">
                     {pvDisplay.map((m, index) => (
                         <span
                             key={m.usiMove}
-                            className={
-                                m.turn === "sente" ? "text-wafuu-shu" : "text-[hsl(210_70%_45%)]"
-                            }
+                            className={m.turn === "sente" ? "text-wafuu-shu" : "text-wafuu-ai"}
                         >
                             {m.displayText}
                             {index < pvDisplay.length - 1 && (
@@ -245,9 +243,9 @@ function PvCandidateItem({
                                             }}
                                             className="
                                                 flex-1 px-2 py-1 text-[11px]
-                                                bg-[hsl(var(--wafuu-kin)/0.1)] hover:bg-[hsl(var(--wafuu-kin)/0.2)]
-                                                text-[hsl(var(--wafuu-sumi))]
-                                                rounded border border-[hsl(var(--wafuu-kin)/0.3)]
+                                                bg-wafuu-kin/10 hover:bg-wafuu-kin/20
+                                                text-wafuu-sumi
+                                                rounded border border-wafuu-kin/30
                                                 transition-colors cursor-pointer
                                             "
                                         >
@@ -429,13 +427,13 @@ export function MoveDetailWindow({
             {/* コンテンツ */}
             <div className="flex-1 overflow-auto p-3">
                 {/* 評価値サマリー */}
-                <div className="flex items-center gap-2 mb-3 p-2 bg-[hsl(var(--wafuu-washi))] dark:bg-[hsl(var(--muted)/0.5)] rounded-lg">
+                <div className="flex items-center gap-2 mb-3 p-2 bg-wafuu-washi dark:bg-[hsl(var(--muted)/0.5)] rounded-lg">
                     <span
                         className={`font-medium text-[14px] ${
                             evalInfo.advantage === "sente"
                                 ? "text-wafuu-shu"
                                 : evalInfo.advantage === "gote"
-                                  ? "text-[hsl(210_70%_45%)]"
+                                  ? "text-wafuu-ai"
                                   : ""
                         }`}
                     >

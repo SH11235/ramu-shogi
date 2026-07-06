@@ -108,6 +108,7 @@ export function PCKifuSection({
                     currentPly={navigationState.currentPly}
                     onPlySelect={handlePlySelect}
                     initialOpen={evalPanelInitialOpen ?? false}
+                    reviewMode={reviewMode}
                 />
 
                 {/* 棋譜パネル + ドロワー（横並び） */}

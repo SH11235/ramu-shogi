@@ -157,7 +157,7 @@ export function ShogiBoard({
                                         }
                                         className={cn(
                                             "absolute inset-0 overflow-hidden text-base font-semibold transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[hsl(var(--wafuu-shu))]/70 focus-visible:ring-offset-transparent",
-                                            "hover:ring-2 hover:ring-inset hover:ring-[hsl(var(--shogi-border))]",
+                                            "hover:ring-2 hover:ring-inset hover:ring-shogi-border",
                                             // タッチ選択・長押しメニュー防止
                                             "select-none [-webkit-touch-callout:none]",
                                             // ドラッグ可能時はスクロールも防止
@@ -167,14 +167,14 @@ export function ShogiBoard({
                                             // 移動先ハイライト - 濃い金色
                                             isLastMoveTo &&
                                                 !isSelected &&
-                                                "bg-[hsl(45_85%_62%)] ring-2 ring-inset ring-[hsl(45_90%_40%)]",
+                                                "bg-shogi-last-move-to ring-2 ring-inset ring-shogi-last-move-to-ring",
                                             // 移動元ハイライト - 薄い金色（痕跡）
                                             isLastMoveFrom &&
                                                 !isSelected &&
-                                                "bg-[hsl(45_60%_78%)] ring-1 ring-inset ring-[hsl(45_50%_55%)]",
+                                                "bg-shogi-last-move-from ring-1 ring-inset ring-shogi-last-move-from-ring",
                                             // 選択中 - リング + 薄い金色背景
                                             isSelected &&
-                                                "bg-[hsl(var(--wafuu-kin))] ring-[3px] ring-inset ring-[hsl(var(--wafuu-shu))]",
+                                                "bg-wafuu-kin ring-[3px] ring-inset ring-wafuu-shu",
                                         )}
                                     >
                                         {cell.piece ? (

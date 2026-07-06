@@ -26,9 +26,19 @@ const rootRoute = createRootRoute({
 const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/",
-    // ホーム (`/`) は ShogiMatch を使うため唯一 shogi-match chunk を必要とするページ。
-    // eager にすると entry の静的グラフに shogi-match(~420KB) が入り全ルートで
-    // modulepreload されるため、ここも lazy 化して観戦等の critical path から外す。
+    // ホーム (`/`) は迎える面 (LandingPage)。全ルート lazy の方針に合わせて
+    // lazy 化し、観戦等へ直行するセッションの critical path から外す。
+    component: lazyRouteComponent(() => import("./pages/LandingPage")),
+});
+
+// 対局盤。以前は `/` に置いていたが、トップは迎える面(LandingPage)に譲り、
+// 盤そのものは `/play` へ移設した。App は起動時に sessionStorage `ramu_review_kifu`
+// を読んで検討を復元する処理を持つ(書き込み側は現状 repo 内に無く、外部/将来の導線用)
+// ため、その読み取りごと App が /play へ移動している。shogi-match chunk(~420KB) を
+// 必要とする唯一の非観戦ページなので lazy のまま。
+const playRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/play",
     component: lazyRouteComponent(() => import("./App")),
 });
 
@@ -324,6 +334,7 @@ const roomRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
     indexRoute,
+    playRoute,
     onlineRoute,
     authRoute,
     privacyRoute,

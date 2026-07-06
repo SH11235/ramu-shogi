@@ -241,7 +241,7 @@ export function EvalGraph({
                         y1={label.position}
                         x2="100%"
                         y2={label.position}
-                        stroke="hsl(var(--border, 0 0% 86%))"
+                        stroke="hsl(var(--border))"
                         strokeWidth={label.value === "0" ? "1" : "0.5"}
                         vectorEffect="non-scaling-stroke"
                         strokeDasharray={label.value === "0" ? "none" : "2,2"}
@@ -254,7 +254,7 @@ export function EvalGraph({
                         key={`sente-${segment[0]}`}
                         points={segment.join(" ")}
                         fill="none"
-                        stroke="hsl(var(--wafuu-shu, 10 75% 50%))"
+                        stroke="hsl(var(--wafuu-shu))"
                         strokeWidth="2"
                         vectorEffect="non-scaling-stroke"
                     />
@@ -266,23 +266,35 @@ export function EvalGraph({
                         key={`gote-${segment[0]}`}
                         points={segment.join(" ")}
                         fill="none"
-                        stroke="hsl(var(--wafuu-ai, 210 55% 45%))"
+                        stroke="hsl(var(--wafuu-ai))"
                         strokeWidth="2"
                         vectorEffect="non-scaling-stroke"
                     />
                 ))}
 
-                {/* 現在位置マーカー（縦線） */}
+                {/* 現在位置マーカー（縦線）。金は明地でコントラストが弱いため、
+                    下層に墨のアウトラインを敷いて両テーマで視認性を確保する */}
                 {currentMarker && (
-                    <line
-                        x1={currentMarker.x}
-                        y1={padding.top}
-                        x2={currentMarker.x}
-                        y2={padding.top + graphHeight}
-                        stroke="hsl(var(--primary, 210 100% 50%))"
-                        strokeWidth="2"
-                        vectorEffect="non-scaling-stroke"
-                    />
+                    <g>
+                        <line
+                            x1={currentMarker.x}
+                            y1={padding.top}
+                            x2={currentMarker.x}
+                            y2={padding.top + graphHeight}
+                            stroke="hsl(var(--wafuu-sumi))"
+                            strokeWidth="4"
+                            vectorEffect="non-scaling-stroke"
+                        />
+                        <line
+                            x1={currentMarker.x}
+                            y1={padding.top}
+                            x2={currentMarker.x}
+                            y2={padding.top + graphHeight}
+                            stroke="hsl(var(--wafuu-kin))"
+                            strokeWidth="2"
+                            vectorEffect="non-scaling-stroke"
+                        />
+                    </g>
                 )}
             </svg>
         );
@@ -296,7 +308,7 @@ export function EvalGraph({
                     .map((label) => (
                         <span
                             key={label.value}
-                            className="absolute left-0 text-[10px] text-muted-foreground -translate-y-1/2 w-7 text-right pr-1"
+                            className="absolute left-0 font-mono text-[10px] text-muted-foreground tabular-nums -translate-y-1/2 w-7 text-right pr-1"
                             style={{ top: label.position }}
                         >
                             {label.value}
@@ -352,7 +364,7 @@ export function EvalGraph({
                 )}
 
                 {/* X軸ラベル（手数） */}
-                <div className="flex justify-between ml-8 mt-0.5 text-[10px] text-muted-foreground">
+                <div className="flex justify-between ml-8 mt-0.5 font-mono text-[10px] text-muted-foreground tabular-nums">
                     {xAxisLabels.map((ply) => (
                         <span key={ply}>{ply}手</span>
                     ))}
@@ -435,17 +447,29 @@ export function EvalGraph({
                 />
             ))}
 
-            {/* 現在位置マーカー（縦線） */}
+            {/* 現在位置マーカー（縦線）。金は明地でコントラストが弱いため、
+                下層に墨のアウトラインを敷いて両テーマで視認性を確保する */}
             {currentMarker && (
-                <line
-                    x1={currentMarker.x}
-                    y1={padding.top}
-                    x2={currentMarker.x}
-                    y2={padding.top + graphHeight}
-                    stroke="hsl(var(--primary))"
-                    strokeWidth="2"
-                    vectorEffect="non-scaling-stroke"
-                />
+                <g>
+                    <line
+                        x1={currentMarker.x}
+                        y1={padding.top}
+                        x2={currentMarker.x}
+                        y2={padding.top + graphHeight}
+                        stroke="hsl(var(--wafuu-sumi))"
+                        strokeWidth="4"
+                        vectorEffect="non-scaling-stroke"
+                    />
+                    <line
+                        x1={currentMarker.x}
+                        y1={padding.top}
+                        x2={currentMarker.x}
+                        y2={padding.top + graphHeight}
+                        stroke="hsl(var(--wafuu-kin))"
+                        strokeWidth="2"
+                        vectorEffect="non-scaling-stroke"
+                    />
+                </g>
             )}
         </svg>
     );
@@ -483,19 +507,19 @@ export function EvalGraph({
             <div className="relative w-full" style={{ height }}>
                 {/* 左側ラベル */}
                 <span
-                    className="absolute text-[10px] text-muted-foreground left-0 -translate-y-1/2"
+                    className="absolute font-mono text-[10px] text-muted-foreground tabular-nums left-0 -translate-y-1/2"
                     style={{ top: padding.top }}
                 >
                     +{displayMax}
                 </span>
                 <span
-                    className="absolute text-[10px] text-muted-foreground left-0 -translate-y-1/2"
+                    className="absolute font-mono text-[10px] text-muted-foreground tabular-nums left-0 -translate-y-1/2"
                     style={{ top: padding.top + graphHeight / 2 }}
                 >
                     0
                 </span>
                 <span
-                    className="absolute text-[10px] text-muted-foreground left-0 translate-y-1/2"
+                    className="absolute font-mono text-[10px] text-muted-foreground tabular-nums left-0 translate-y-1/2"
                     style={{ bottom: padding.bottom }}
                 >
                     -{displayMax}
@@ -534,8 +558,8 @@ export function EvalGraph({
 
             {/* 手数表示 */}
             <div className="flex justify-between mt-1 ml-5">
-                <span className="text-[10px] text-muted-foreground">0</span>
-                <span className="text-[10px] text-muted-foreground">
+                <span className="font-mono text-[10px] text-muted-foreground tabular-nums">0</span>
+                <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
                     {Math.max(evalHistory.length - 1, 0)}手
                 </span>
             </div>
