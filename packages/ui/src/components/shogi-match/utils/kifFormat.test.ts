@@ -634,6 +634,18 @@ describe("evalMate wire encode/decode", () => {
         expect(encodeEvalMateForWire(null)).toBeNull();
     });
 
+    it("予約センチネルと同値の有限入力は 1 手内側へ丸め復元時に詰みと誤認されない", () => {
+        expect(encodeEvalMateForWire(MATE_WITHOUT_PLY_WIRE)).toBe(MATE_WITHOUT_PLY_WIRE - 1);
+        expect(encodeEvalMateForWire(-MATE_WITHOUT_PLY_WIRE)).toBe(-(MATE_WITHOUT_PLY_WIRE - 1));
+        // 丸めた値は有限のまま復元され ±Infinity にならない
+        expect(decodeEvalMateFromWire(encodeEvalMateForWire(MATE_WITHOUT_PLY_WIRE))).toBe(
+            MATE_WITHOUT_PLY_WIRE - 1,
+        );
+        expect(
+            Number.isFinite(decodeEvalMateFromWire(encodeEvalMateForWire(MATE_WITHOUT_PLY_WIRE))),
+        ).toBe(true);
+    });
+
     it("ワイヤのセンチネルを ±Infinity に復元する", () => {
         expect(decodeEvalMateFromWire(MATE_WITHOUT_PLY_WIRE)).toBe(MATE_WITHOUT_PLY);
         expect(decodeEvalMateFromWire(-MATE_WITHOUT_PLY_WIRE)).toBe(-MATE_WITHOUT_PLY);

@@ -26,6 +26,10 @@ const isMateWithoutPly = (evalMate: number): boolean => !Number.isFinite(evalMat
 export const encodeEvalMateForWire = (evalMate: number | null): number | null => {
     if (evalMate === MATE_WITHOUT_PLY) return MATE_WITHOUT_PLY_WIRE;
     if (evalMate === -MATE_WITHOUT_PLY) return -MATE_WITHOUT_PLY_WIRE;
+    // 予約センチネルと同値の有限詰み手数 (KIF import の「詰100000手」等の異常入力) は
+    // 1 手内側へ丸め、復元時に mate-without-ply と誤認されないようにする。
+    if (evalMate === MATE_WITHOUT_PLY_WIRE) return MATE_WITHOUT_PLY_WIRE - 1;
+    if (evalMate === -MATE_WITHOUT_PLY_WIRE) return -(MATE_WITHOUT_PLY_WIRE - 1);
     return evalMate;
 };
 
