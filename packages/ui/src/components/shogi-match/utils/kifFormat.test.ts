@@ -709,4 +709,9 @@ describe("snapshot evalMate wire replacer/reviver", () => {
             MATE_WITHOUT_PLY_WIRE,
         );
     });
+
+    it("evalMate が null のときは typeof ガードでそのままパススルーする", () => {
+        expect(encodeSnapshotEvalMateReplacer("evalMate", null)).toBeNull();
+        expect(decodeSnapshotEvalMateReviver("evalMate", null)).toBeNull();
+    });
 });

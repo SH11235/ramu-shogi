@@ -1591,7 +1591,10 @@ export function ShogiMatch({
             return;
         }
 
-        const signature = JSON.stringify(initialAnalysisEntries);
+        // 復元済み snapshot は evalMate=±Infinity (手数なし詰み) を含みうる。素の
+        // JSON.stringify は ±Infinity をどちらも null に潰し符号違いの snapshot 切替を
+        // 取りこぼすため、符号を保持する infinitySafeReplacer で署名する。
+        const signature = JSON.stringify(initialAnalysisEntries, infinitySafeReplacer);
         if (initialAnalysisAppliedRef.current === signature) {
             return;
         }
