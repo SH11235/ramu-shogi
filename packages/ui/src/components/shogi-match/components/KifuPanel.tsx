@@ -189,15 +189,15 @@ function EvalHintBanner({
         <div
             className="
                 relative overflow-hidden
-                bg-gradient-to-r from-[hsl(var(--wafuu-washi-warm))] to-[hsl(var(--wafuu-washi))]
-                border border-[hsl(var(--wafuu-kin)/0.4)]
+                bg-gradient-to-r from-wafuu-washi-warm to-wafuu-washi
+                border border-wafuu-kin/40
                 rounded-lg px-3 py-2 mb-2
                 animate-[slideDown_0.3s_ease-out,fadeIn_0.3s_ease-out]
             shadow-[0_2px_8px_hsl(var(--wafuu-kin)/0.15)]
             "
         >
             {/* 金色のアクセントライン */}
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-[hsl(var(--wafuu-kin))] to-transparent opacity-60" />
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-wafuu-kin to-transparent opacity-60" />
 
             <div className="flex items-center justify-between gap-2">
                 <button
@@ -205,8 +205,8 @@ function EvalHintBanner({
                     onClick={onEnable}
                     className="
                         flex items-center gap-2 text-[12px] font-medium
-                        text-[hsl(var(--wafuu-sumi))] dark:text-[hsl(var(--foreground))]
-                        hover:text-[hsl(var(--wafuu-shu))] transition-colors
+                        text-wafuu-sumi dark:text-[hsl(var(--foreground))]
+                        hover:text-wafuu-shu transition-colors
                         bg-transparent border-none cursor-pointer p-0
                     "
                 >
@@ -214,8 +214,8 @@ function EvalHintBanner({
                         className="
                             inline-flex items-center justify-center
                             w-5 h-5 rounded-full
-                            bg-[hsl(var(--wafuu-kin)/0.2)]
-                            text-[hsl(var(--wafuu-kin))]
+                            bg-wafuu-kin/20
+                            text-wafuu-kin
                             animate-[pulse_2s_ease-in-out_infinite]
                         "
                     >
@@ -258,7 +258,7 @@ function InlineBranchList({
     onAnalyzeBranch?: (branchNodeId: string) => void;
 }): ReactElement {
     return (
-        <div className="ml-6 pl-2 border-l-2 border-[hsl(var(--wafuu-shu)/0.3)] my-0.5">
+        <div className="ml-6 pl-2 border-l-2 border-wafuu-shu/30 my-0.5">
             {branches.map((branch, index) => {
                 const isLast = index === branches.length - 1;
                 return (
@@ -278,14 +278,12 @@ function InlineBranchList({
                                 flex items-center gap-1.5
                                 text-[12px] text-left
                                 px-1.5 py-0.5 rounded
-                                hover:bg-[hsl(var(--wafuu-washi))]
+                                hover:bg-wafuu-washi
                                 transition-colors cursor-pointer
                                 bg-transparent border-none
                             "
                         >
-                            <span className="font-medium text-[hsl(var(--wafuu-shu))]">
-                                {branch.displayText}
-                            </span>
+                            <span className="font-medium text-wafuu-shu">{branch.displayText}</span>
                             <span className="text-[10px] text-muted-foreground">
                                 ({branch.branchLength}手)
                             </span>
@@ -334,7 +332,7 @@ function EvalTooltipContent({
                     info.advantage === "sente"
                         ? "text-wafuu-shu"
                         : info.advantage === "gote"
-                          ? "text-[hsl(210_70%_45%)]"
+                          ? "text-wafuu-ai"
                           : ""
                 }`}
             >
@@ -433,7 +431,7 @@ function ExpandedMoveDetails({
         <section
             className="
                 mt-1 mx-1 p-3 rounded-lg
-                bg-[hsl(var(--wafuu-washi))] dark:bg-[hsl(var(--card))]
+                bg-wafuu-washi dark:bg-[hsl(var(--card))]
                 border border-[hsl(var(--border))]
                 shadow-sm
                 animate-[slideDown_0.15s_ease-out]
@@ -449,7 +447,7 @@ function ExpandedMoveDetails({
                             evalInfo.advantage === "sente"
                                 ? "text-wafuu-shu"
                                 : evalInfo.advantage === "gote"
-                                  ? "text-[hsl(210_70%_45%)]"
+                                  ? "text-wafuu-ai"
                                   : ""
                         }`}
                     >
@@ -636,7 +634,7 @@ function PvCandidateItem({
         <div
             className="
                 border border-border rounded-lg p-2
-                bg-[hsl(var(--wafuu-washi)/0.3)] dark:bg-[hsl(var(--muted)/0.3)]
+                bg-wafuu-washi/30 dark:bg-[hsl(var(--muted)/0.3)]
             "
         >
             {/* ヘッダー: 候補番号 + 評価値 */}
@@ -645,11 +643,11 @@ function PvCandidateItem({
                     候補{pv.multipv}
                 </span>
                 <span
-                    className={`font-medium text-[13px] ${
+                    className={`font-medium font-mono tabular-nums text-[13px] ${
                         evalInfo.advantage === "sente"
                             ? "text-wafuu-shu"
                             : evalInfo.advantage === "gote"
-                              ? "text-[hsl(210_70%_45%)]"
+                              ? "text-wafuu-ai"
                               : ""
                     }`}
                 >
@@ -662,13 +660,11 @@ function PvCandidateItem({
 
             {/* 読み筋 */}
             {hasPv && (
-                <div className="flex flex-wrap gap-1 text-[12px] font-mono mb-2">
+                <div className="flex flex-wrap gap-1 text-[12px] font-mono tabular-nums mb-2">
                     {pvDisplay.map((m, index) => (
                         <span
                             key={m.usiMove}
-                            className={
-                                m.turn === "sente" ? "text-wafuu-shu" : "text-[hsl(210_70%_45%)]"
-                            }
+                            className={m.turn === "sente" ? "text-wafuu-shu" : "text-wafuu-ai"}
                         >
                             {m.displayText}
                             {index < pvDisplay.length - 1 && (
@@ -749,9 +745,9 @@ function PvCandidateItem({
                                             }}
                                             className="
                                                 flex-1 px-2 py-1 text-[11px]
-                                                bg-[hsl(var(--wafuu-kin)/0.1)] hover:bg-[hsl(var(--wafuu-kin)/0.2)]
-                                                text-[hsl(var(--wafuu-sumi))]
-                                                rounded border border-[hsl(var(--wafuu-kin)/0.3)]
+                                                bg-wafuu-kin/10 hover:bg-wafuu-kin/20
+                                                text-wafuu-sumi
+                                                rounded border border-wafuu-kin/30
                                                 transition-colors cursor-pointer
                                             "
                                         >
@@ -811,14 +807,12 @@ function PvCandidateItem({
  * 評価値のスタイルクラスを決定
  */
 function getEvalClassName(evalCp?: number, evalMate?: number): string {
-    const baseClass = "text-[11px] text-right min-w-12";
+    const baseClass = "text-[11px] text-right min-w-12 font-mono tabular-nums";
     if (evalMate !== undefined && evalMate !== null) {
-        return evalMate > 0
-            ? `${baseClass} text-wafuu-shu`
-            : `${baseClass} text-[hsl(210_70%_45%)]`;
+        return evalMate > 0 ? `${baseClass} text-wafuu-shu` : `${baseClass} text-wafuu-ai`;
     }
     if (evalCp !== undefined && evalCp !== null) {
-        return evalCp >= 0 ? `${baseClass} text-wafuu-shu` : `${baseClass} text-[hsl(210_70%_45%)]`;
+        return evalCp >= 0 ? `${baseClass} text-wafuu-shu` : `${baseClass} text-wafuu-ai`;
     }
     return `${baseClass} text-muted-foreground`;
 }
@@ -1363,7 +1357,7 @@ export function KifuPanel({
                                 px-2 py-1 rounded-md transition-all duration-200
                                 ${
                                     evalDataExists && !showEval
-                                        ? "bg-[hsl(var(--wafuu-kin)/0.1)] hover:bg-[hsl(var(--wafuu-kin)/0.2)]"
+                                        ? "bg-wafuu-kin/10 hover:bg-wafuu-kin/20"
                                         : "hover:bg-muted/50"
                                 }
                             `}
@@ -1374,7 +1368,7 @@ export function KifuPanel({
                                         className="
                                         absolute -top-1 -right-1
                                         w-2.5 h-2.5 rounded-full
-                                        bg-[hsl(var(--wafuu-kin))]
+                                        bg-wafuu-kin
                                         animate-[pulse_2s_ease-in-out_infinite]
                                         shadow-[0_0_6px_hsl(var(--wafuu-kin)/0.6)]
                                     "
@@ -1386,7 +1380,7 @@ export function KifuPanel({
                                     text-[12px] font-medium transition-colors
                                     ${
                                         evalDataExists && !showEval
-                                            ? "text-[hsl(var(--wafuu-kin))]"
+                                            ? "text-wafuu-kin"
                                             : showEval
                                               ? "text-foreground"
                                               : "text-muted-foreground"
@@ -1431,9 +1425,7 @@ export function KifuPanel({
                                                     </span>
                                                 </div>
                                                 <div>
-                                                    <span className="text-[hsl(210_70%_45%)]">
-                                                        -値
-                                                    </span>
+                                                    <span className="text-wafuu-ai">-値</span>
                                                     <span className="text-muted-foreground ml-1">
                                                         ☖後手有利
                                                     </span>
@@ -1525,14 +1517,14 @@ export function KifuPanel({
                                 relative
                                 ${
                                     viewMode === "main"
-                                        ? "text-[hsl(var(--wafuu-shu))] font-medium"
-                                        : "text-muted-foreground hover:text-foreground hover:bg-[hsl(var(--wafuu-washi))]"
+                                        ? "text-wafuu-shu font-medium"
+                                        : "text-muted-foreground hover:text-foreground hover:bg-wafuu-washi"
                                 }
                             `}
                         >
                             本譜
                             {viewMode === "main" && (
-                                <span className="absolute bottom-[-1px] left-[20%] right-[20%] h-0.5 bg-[hsl(var(--wafuu-shu))] rounded-t" />
+                                <span className="absolute bottom-[-1px] left-[20%] right-[20%] h-0.5 bg-wafuu-shu rounded-t" />
                             )}
                         </button>
                         {/* 分岐一覧タブ */}
@@ -1544,8 +1536,8 @@ export function KifuPanel({
                                 relative
                                 ${
                                     viewMode === "branches"
-                                        ? "text-[hsl(var(--wafuu-shu))] font-medium"
-                                        : "text-muted-foreground hover:text-foreground hover:bg-[hsl(var(--wafuu-washi))]"
+                                        ? "text-wafuu-shu font-medium"
+                                        : "text-muted-foreground hover:text-foreground hover:bg-wafuu-washi"
                                 }
                             `}
                         >
@@ -1554,7 +1546,7 @@ export function KifuPanel({
                                 ({branches.length})
                             </span>
                             {viewMode === "branches" && (
-                                <span className="absolute bottom-[-1px] left-[20%] right-[20%] h-0.5 bg-[hsl(var(--wafuu-shu))] rounded-t" />
+                                <span className="absolute bottom-[-1px] left-[20%] right-[20%] h-0.5 bg-wafuu-shu rounded-t" />
                             )}
                         </button>
                         {/* 選択した分岐タブ（分岐が選択されている場合のみ表示） */}
@@ -1567,15 +1559,15 @@ export function KifuPanel({
                                     relative max-w-[40%] truncate
                                     ${
                                         viewMode === "selectedBranch"
-                                            ? "text-[hsl(var(--wafuu-shu))] font-medium"
-                                            : "text-muted-foreground hover:text-foreground hover:bg-[hsl(var(--wafuu-washi))]"
+                                            ? "text-wafuu-shu font-medium"
+                                            : "text-muted-foreground hover:text-foreground hover:bg-wafuu-washi"
                                     }
                                 `}
                                 title={selectedBranch.tabLabel}
                             >
                                 {selectedBranch.tabLabel}
                                 {viewMode === "selectedBranch" && (
-                                    <span className="absolute bottom-[-1px] left-[20%] right-[20%] h-0.5 bg-[hsl(var(--wafuu-shu))] rounded-t" />
+                                    <span className="absolute bottom-[-1px] left-[20%] right-[20%] h-0.5 bg-wafuu-shu rounded-t" />
                                 )}
                             </button>
                         )}
@@ -1661,8 +1653,8 @@ export function KifuPanel({
                                             w-full text-left px-3 py-2 rounded-lg
                                             border border-border
                                             transition-all duration-150
-                                            hover:bg-[hsl(var(--wafuu-washi))] hover:border-[hsl(var(--wafuu-shu)/0.3)]
-                                            ${selectedBranch?.nodeId === branch.nodeId ? "bg-[hsl(var(--wafuu-kin)/0.1)] border-[hsl(var(--wafuu-kin)/0.3)]" : "bg-card"}
+                                            hover:bg-wafuu-washi hover:border-wafuu-shu/30
+                                            ${selectedBranch?.nodeId === branch.nodeId ? "bg-wafuu-kin/10 border-wafuu-kin/30" : "bg-card"}
                                         `}
                                         style={{
                                             marginLeft: branch.nestLevel * NEST_INDENT_PX,
@@ -1705,7 +1697,7 @@ export function KifuPanel({
                             ).length;
                             if (!onAnalyzeBranch || branchMoveCount === 0) return null;
                             return (
-                                <div className="flex items-center justify-between gap-2 px-2 py-1.5 mb-1 bg-[hsl(var(--wafuu-washi))] rounded-lg border border-[hsl(var(--border))]">
+                                <div className="flex items-center justify-between gap-2 px-2 py-1.5 mb-1 bg-wafuu-washi rounded-lg border border-[hsl(var(--border))]">
                                     <span className="text-[11px] text-muted-foreground">
                                         {branchMoveCount}手の分岐
                                     </span>
@@ -1747,14 +1739,14 @@ export function KifuPanel({
                                             {/* 分岐開始の区切り線 */}
                                             {isBranchStart && (
                                                 <div className="flex items-center gap-2 my-1.5 px-1">
-                                                    <div className="flex-1 h-px bg-[hsl(var(--wafuu-shu)/0.3)]" />
-                                                    <span className="text-[10px] text-[hsl(var(--wafuu-shu))]">
+                                                    <div className="flex-1 h-px bg-wafuu-shu/30" />
+                                                    <span className="text-[10px] text-wafuu-shu">
                                                         {node.ply}手目から分岐
                                                     </span>
                                                     {onAnalyzeBranch && (
                                                         <button
                                                             type="button"
-                                                            className="text-[10px] px-1.5 py-0.5 rounded bg-[hsl(var(--wafuu-shu)/0.15)] hover:bg-[hsl(var(--wafuu-shu)/0.3)] text-[hsl(var(--wafuu-shu))] transition-colors"
+                                                            className="text-[10px] px-1.5 py-0.5 rounded bg-wafuu-shu/15 hover:bg-wafuu-shu/30 text-wafuu-shu transition-colors"
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 onAnalyzeBranch(node.nodeId);
@@ -1764,17 +1756,17 @@ export function KifuPanel({
                                                             分岐を解析
                                                         </button>
                                                     )}
-                                                    <div className="flex-1 h-px bg-[hsl(var(--wafuu-shu)/0.3)]" />
+                                                    <div className="flex-1 h-px bg-wafuu-shu/30" />
                                                 </div>
                                             )}
                                             <div
                                                 role="option"
                                                 aria-selected={isCurrent}
                                                 className={`
-                                                grid grid-cols-[32px_1fr_auto_auto] gap-1 items-center px-1 py-0.5 text-[13px] font-mono rounded
+                                                grid grid-cols-[32px_1fr_auto_auto] gap-1 items-center px-1 py-0.5 text-[13px] font-mono tabular-nums rounded
                                                 cursor-pointer hover:bg-accent/50
                                                 ${isCurrent ? "bg-accent" : ""}
-                                                ${isBranchPart ? "border-l-2 border-[hsl(var(--wafuu-shu)/0.5)] ml-1" : ""}
+                                                ${isBranchPart ? "border-l-2 border-wafuu-shu/50 ml-1" : ""}
                                             `}
                                                 onClick={() => onNodeClick?.(node.nodeId)}
                                                 onKeyDown={(e) => {
@@ -1980,7 +1972,7 @@ export function KifuPanel({
                                     </>
                                 );
 
-                                const rowClassName = `grid grid-cols-[32px_1fr_auto_auto] gap-1 items-center px-1 py-0.5 text-[13px] font-mono rounded ${
+                                const rowClassName = `grid grid-cols-[32px_1fr_auto_auto] gap-1 items-center px-1 py-0.5 text-[13px] font-mono tabular-nums rounded ${
                                     isCurrent ? "bg-accent" : ""
                                 } ${isDetailExpanded ? "bg-accent/70" : ""}`;
 

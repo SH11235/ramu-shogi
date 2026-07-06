@@ -287,7 +287,7 @@ export function PvPreviewDialog({
                     </div>
 
                     {/* 読み筋リスト */}
-                    <div className="flex flex-wrap gap-0.5 text-[11px] font-mono justify-center">
+                    <div className="flex flex-wrap gap-0.5 text-[11px] font-mono tabular-nums justify-center">
                         {pvDisplay.map((move, index) => {
                             const moveNumber = index + 1;
                             return (
@@ -298,9 +298,7 @@ export function PvPreviewDialog({
                                     className={`px-1 py-0.5 rounded cursor-pointer ${
                                         index + 1 === previewIndex ? "bg-accent" : "hover:bg-muted"
                                     } ${
-                                        move.turn === "sente"
-                                            ? "text-wafuu-shu"
-                                            : "text-[hsl(210_70%_45%)]"
+                                        move.turn === "sente" ? "text-wafuu-shu" : "text-wafuu-ai"
                                     }`}
                                 >
                                     {move.displayText}

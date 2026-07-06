@@ -71,11 +71,11 @@ function MobilePvCandidateItem({
                         候補{pv.multipv}
                     </span>
                     <span
-                        className={`font-semibold text-base ${
+                        className={`font-semibold font-mono tabular-nums text-base ${
                             evalInfo.advantage === "sente"
                                 ? "text-wafuu-shu"
                                 : evalInfo.advantage === "gote"
-                                  ? "text-[hsl(210_70%_45%)]"
+                                  ? "text-wafuu-ai"
                                   : ""
                         }`}
                     >
@@ -87,13 +87,11 @@ function MobilePvCandidateItem({
 
             {/* 読み筋 */}
             {hasPv && (
-                <div className="flex flex-wrap gap-1 text-sm font-mono mb-3">
+                <div className="flex flex-wrap gap-1 text-sm font-mono tabular-nums mb-3">
                     {pvDisplay.map((m, index) => (
                         <span
                             key={m.usiMove}
-                            className={
-                                m.turn === "sente" ? "text-wafuu-shu" : "text-[hsl(210_70%_45%)]"
-                            }
+                            className={m.turn === "sente" ? "text-wafuu-shu" : "text-wafuu-ai"}
                         >
                             {m.displayText}
                             {index < pvDisplay.length - 1 && (
@@ -218,7 +216,7 @@ export function MoveDetailBottomSheet({
                                     evalInfo.advantage === "sente"
                                         ? "text-wafuu-shu"
                                         : evalInfo.advantage === "gote"
-                                          ? "text-[hsl(210_70%_45%)]"
+                                          ? "text-wafuu-ai"
                                           : "text-muted-foreground"
                                 }`}
                             >
