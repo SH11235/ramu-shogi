@@ -80,6 +80,10 @@
         --status-success-fg: 140 40% 95%; /* 成功前景 */
         --status-success-bg: 140 45% 93%; /* 成功背景 */
         --status-success-border: 140 35% 78%; /* 成功ボーダー */
+        --status-warning: 36 80% 38%; /* 警告 - 落ち着いた琥珀。小さい文字でも読める明度 */
+        --status-warning-fg: 40 80% 96%; /* 警告前景 */
+        --status-warning-bg: 40 85% 92%; /* 警告背景 */
+        --status-warning-border: 40 55% 75%; /* 警告ボーダー */
 
         /* レイアウト */
         --panel-width: 400px; /* 右サイドパネルの幅 */
@@ -146,6 +150,10 @@
         --status-success-fg: 140 40% 98%; /* 成功前景 */
         --status-success-bg: 140 30% 12%; /* 成功背景 */
         --status-success-border: 140 25% 22%; /* 成功ボーダー */
+        --status-warning: 38 75% 55%; /* 警告 - 暗地で明るく */
+        --status-warning-fg: 40 80% 97%; /* 警告前景 */
+        --status-warning-bg: 38 40% 12%; /* 警告背景 */
+        --status-warning-border: 38 35% 24%; /* 警告ボーダー */
     }
 
     *,

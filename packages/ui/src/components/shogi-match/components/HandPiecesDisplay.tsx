@@ -77,9 +77,7 @@ function PieceToken({
                     "absolute text-center font-bold leading-none",
                     config.badgeSize,
                     shouldRotate ? config.badgePosRotated : config.badgePos,
-                    count > 0
-                        ? "text-[hsl(var(--wafuu-sumi))]"
-                        : "text-[hsl(var(--muted-foreground))]",
+                    count > 0 ? "text-wafuu-sumi" : "text-muted-foreground",
                 )}
             >
                 {count}
@@ -279,11 +277,11 @@ export function HandPiecesDisplay({
                                         canDrag ? "touch-none" : "touch-manipulation",
                                         containerConfig.buttonPadding,
                                         selected
-                                            ? "border-[hsl(var(--wafuu-shu))] bg-[hsl(var(--wafuu-kin)/0.2)]"
+                                            ? "border-wafuu-shu bg-wafuu-kin/20"
                                             : "border-transparent",
                                         count > 0 || isEditMode ? "opacity-100" : "opacity-40",
                                         (canDrag || canSelect) &&
-                                            "cursor-pointer hover:bg-[hsl(var(--wafuu-kin)/0.1)]",
+                                            "cursor-pointer hover:bg-wafuu-kin/10",
                                     )}
                                 >
                                     <PieceToken
@@ -309,11 +307,11 @@ export function HandPiecesDisplay({
                                             disabled={!isEditMode || count >= maxCount}
                                             aria-label={`${PIECE_LABELS[piece]}を増やす`}
                                             className={cn(
-                                                "flex items-center justify-center rounded-t border border-b-0 border-[hsl(var(--border))] text-xs font-bold leading-none",
+                                                "flex items-center justify-center rounded-t border border-b-0 border-border text-xs font-bold leading-none",
                                                 containerConfig.adjusterButton,
                                                 count < maxCount
-                                                    ? "cursor-pointer bg-[hsl(var(--wafuu-washi))] text-[hsl(var(--wafuu-sumi))] opacity-100"
-                                                    : "cursor-not-allowed bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] opacity-40",
+                                                    ? "cursor-pointer bg-wafuu-washi text-wafuu-sumi opacity-100"
+                                                    : "cursor-not-allowed bg-muted text-muted-foreground opacity-40",
                                             )}
                                         >
                                             +
@@ -324,11 +322,11 @@ export function HandPiecesDisplay({
                                             disabled={!isEditMode || count <= 0}
                                             aria-label={`${PIECE_LABELS[piece]}を減らす`}
                                             className={cn(
-                                                "flex items-center justify-center rounded-b border border-[hsl(var(--border))] text-xs font-bold leading-none",
+                                                "flex items-center justify-center rounded-b border border-border text-xs font-bold leading-none",
                                                 containerConfig.adjusterButton,
                                                 count > 0
-                                                    ? "cursor-pointer bg-[hsl(var(--wafuu-washi))] text-[hsl(var(--wafuu-sumi))] opacity-100"
-                                                    : "cursor-not-allowed bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] opacity-40",
+                                                    ? "cursor-pointer bg-wafuu-washi text-wafuu-sumi opacity-100"
+                                                    : "cursor-not-allowed bg-muted text-muted-foreground opacity-40",
                                             )}
                                         >
                                             −

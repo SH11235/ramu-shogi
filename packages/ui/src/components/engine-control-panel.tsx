@@ -677,7 +677,7 @@ export function EngineControlPanel({
                                             className={cn(
                                                 "text-base font-semibold",
                                                 threadInfo && threadInfo.activeThreads > 1
-                                                    ? "text-[hsl(var(--success,142_76%_36%))]"
+                                                    ? "text-status-success"
                                                     : "text-foreground",
                                             )}
                                         >
@@ -702,8 +702,8 @@ export function EngineControlPanel({
                                             className={cn(
                                                 "text-sm font-semibold",
                                                 threadInfo?.threadedAvailable
-                                                    ? "text-[hsl(var(--success,142_76%_36%))]"
-                                                    : "text-[hsl(0_72%_51%)]",
+                                                    ? "text-status-success"
+                                                    : "text-destructive",
                                             )}
                                         >
                                             {threadInfo?.threadedAvailable ? "Yes" : "No"}
@@ -722,8 +722,8 @@ export function EngineControlPanel({
                                                 "text-sm font-semibold",
                                                 typeof self.crossOriginIsolated !== "undefined" &&
                                                     self.crossOriginIsolated
-                                                    ? "text-[hsl(var(--success,142_76%_36%))]"
-                                                    : "text-[hsl(0_72%_51%)]",
+                                                    ? "text-status-success"
+                                                    : "text-destructive",
                                             )}
                                         >
                                             {typeof self.crossOriginIsolated !== "undefined"

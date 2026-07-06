@@ -77,12 +77,12 @@ function getValidationStatus(meta: NnueMeta): { label: string; className: string
     if (meta.format) {
         return {
             label: "形式確認済み",
-            className: "text-[hsl(var(--success,142_76%_36%))]",
+            className: "text-status-success",
         };
     }
     return {
         label: "未確認（動作保証なし）",
-        className: "text-[hsl(var(--warning,38_92%_50%))]",
+        className: "text-status-warning",
     };
 }
 
@@ -256,7 +256,7 @@ export function NnueListItem({
                             className={cn(
                                 "h-5 w-5 shrink-0 rounded-full",
                                 isSelected
-                                    ? "border-[6px] border-[hsl(var(--primary,220_90%_56%))]"
+                                    ? "border-[6px] border-primary"
                                     : "border-2 border-muted-foreground",
                             )}
                         />
