@@ -1,4 +1,5 @@
-import { RshogiCsaLiveGameList, useRshogiLiveGameList } from "@shogi/ui";
+import { RshogiCsaLiveGameList } from "@shogi/ui/components/rshogi-csa-live-game-list";
+import { useRshogiLiveGameList } from "@shogi/ui/hooks/useRshogiLiveGameList";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { HeaderNav } from "../../components/HeaderNav";

@@ -17,6 +17,75 @@ const pkg = JSON.parse(readFileSync(path.join(rootDir, "package.json"), "utf-8")
     version: string;
 };
 
+function manualChunks(id: string): string | undefined {
+    const normalizedId = id.split(path.sep).join("/");
+
+    if (normalizedId.includes("/node_modules/")) {
+        if (
+            normalizedId.includes("/node_modules/react/") ||
+            normalizedId.includes("/node_modules/react-dom/") ||
+            normalizedId.includes("/node_modules/scheduler/")
+        ) {
+            return "vendor-react";
+        }
+
+        if (normalizedId.includes("/node_modules/@tanstack/")) {
+            return "vendor-router";
+        }
+
+        return "vendor";
+    }
+
+    // useLocalStorage は cross-tab 同期 util(react のみ依存の leaf)で、物理的には
+    // shogi-match/hooks 配下にあるが app-shell の useUserSettingsSync(eager)からも
+    // 使われる。shogi-match chunk に含めると eager path が重い shogi-match を丸ごと
+    // 引くため、小さな専用 chunk に切り出す(shogi-match ルールより前に判定する)。
+    if (normalizedId.endsWith("/packages/ui/src/components/shogi-match/hooks/useLocalStorage.ts")) {
+        return "ui-storage";
+    }
+
+    // ShogiMatch は本体ファイル `shogi-match.tsx` と `shogi-match/` 配下(hooks/utils
+    // 等)の両方から成る。trailing slash だけだと本体ファイルを取りこぼし entry 等へ
+    // 落ちるため、ファイル本体も同 chunk に含める。
+    if (
+        normalizedId.includes("/packages/ui/src/components/shogi-match/") ||
+        normalizedId.endsWith("/packages/ui/src/components/shogi-match.tsx")
+    ) {
+        return "shogi-match";
+    }
+
+    if (normalizedId.includes("/packages/app-core/src/")) {
+        return "app-core";
+    }
+
+    if (normalizedId.includes("/packages/match-client/src/")) {
+        return "match-client";
+    }
+
+    // NnueProvider(providers/) と engine-wasm の軽量 nnue glue は、アプリ全体を
+    // 包む AppProviders(eager)が使うため eager path に載る。放置すると rollup 既定が
+    // これらを重い shogi-match chunk に同梱し、全ルートで shogi-match(~440KB) が
+    // modulepreload されてしまう。小さな専用 chunk に分離して eager path を軽く保つ。
+    // (重い wasm/worker は `new Worker(new URL())` で別アセット化され static には載らない)
+    if (normalizedId.includes("/packages/ui/src/providers/")) {
+        return "ui-providers";
+    }
+
+    if (normalizedId.includes("/packages/engine-wasm/src/")) {
+        return "engine-wasm-glue";
+    }
+
+    if (
+        normalizedId.endsWith("/apps/web/src/components/HeaderNav.tsx") ||
+        normalizedId.endsWith("/apps/web/src/components/PageHeader.tsx") ||
+        normalizedId.endsWith("/apps/web/src/hooks/useAuthSession.tsx")
+    ) {
+        return "app-shell";
+    }
+
+    return undefined;
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
     const env = loadEnv(mode, rootDir, "");
@@ -61,6 +130,13 @@ export default defineConfig(({ command, mode }) => {
                 "Cross-Origin-Embedder-Policy": "require-corp",
             },
         },
+        build: {
+            rollupOptions: {
+                output: {
+                    manualChunks,
+                },
+            },
+        },
         plugins: [
             tailwindcss(),
             react({
@@ -92,6 +168,10 @@ export default defineConfig(({ command, mode }) => {
                 {
                     find: /^@shogi\/ui$/,
                     replacement: path.resolve(rootDir, "../../packages/ui/src"),
+                },
+                {
+                    find: /^@shogi\/ui\/(.+)$/,
+                    replacement: path.resolve(rootDir, "../../packages/ui/src/$1"),
                 },
                 {
                     find: /^@shogi\/engine-client$/,
