@@ -24,6 +24,8 @@ function manualChunks(id: string): string | undefined {
         // react / react-dom / scheduler を専用 chunk に分離してはいけない。vendor 側の
         // react 依存 CJS interop と chunk 初期化順の循環が生じ、本番ビルドのみ
         // `Cannot set properties of undefined (setting 'Activity')` で起動不能になる。
+        // (resolve.dedupe の react 指定は複数インスタンス重複を防ぐ別の保護で、
+        //  この chunk 分割の制約とは独立)
 
         // 現状 @tanstack は react-router のみ。将来 @tanstack/query 等を足すと
         // この chunk に同梱され肥大化しうるので、その際は router 系に限定するか
