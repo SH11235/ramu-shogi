@@ -17,19 +17,6 @@ import {
     useNavigate,
 } from "@tanstack/react-router";
 import { AppProviders } from "./AppProviders";
-import AuthPage from "./pages/auth/AuthPage";
-import GameDetailPage from "./pages/games/GameDetailPage";
-import GamesPage from "./pages/games/GamesPage";
-import PublicGamesPage from "./pages/games/PublicGamesPage";
-import LandingPage from "./pages/LandingPage";
-import NnueFilesPage from "./pages/nnue/NnueFilesPage";
-import CreateRoomPage from "./pages/online/CreateRoomPage";
-import OnlinePage from "./pages/online/OnlinePage";
-import PrivacyPage from "./pages/privacy/PrivacyPage";
-import RshogiLiveGamesPage from "./pages/rshogi-viewer/RshogiLiveGamesPage";
-import RshogiViewerListPage from "./pages/rshogi-viewer/RshogiViewerListPage";
-import RshogiViewerLivePage from "./pages/rshogi-viewer/RshogiViewerLivePage";
-import RshogiViewerPage from "./pages/rshogi-viewer/RshogiViewerPage";
 import { handleLoaderResponse } from "./router-loader-utils";
 
 const rootRoute = createRootRoute({
@@ -39,52 +26,32 @@ const rootRoute = createRootRoute({
 const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/",
-    component: LandingPage,
+    // ホーム (`/`) は迎える面 (LandingPage)。全ルート lazy の方針に合わせて
+    // lazy 化し、観戦等へ直行するセッションの critical path から外す。
+    component: lazyRouteComponent(() => import("./pages/LandingPage")),
 });
-
-function PlayPendingComponent() {
-    return (
-        <div className="mx-auto flex max-w-[480px] flex-col gap-4 px-4 py-10">
-            <p className="text-muted-foreground">対局盤を読み込み中...</p>
-        </div>
-    );
-}
-
-// 遅延ロードするページ共通の pending 表示。ShogiMatch / engine-wasm を含む重量級
-// ページ (対局・検討・オンライン対局・公開棋譜閲覧) はチャンク分割し、エントリ
-// (トップや一覧ページ) の初期ロードに載せない。
-function PagePendingComponent() {
-    return (
-        <div className="mx-auto flex max-w-[480px] flex-col gap-4 px-4 py-10">
-            <p className="text-muted-foreground">読み込み中...</p>
-        </div>
-    );
-}
 
 // 対局盤。以前は `/` に置いていたが、トップは迎える面(LandingPage)に譲り、
 // 盤そのものは `/play` へ移設した。App は起動時に sessionStorage `ramu_review_kifu`
 // を読んで検討を復元する処理を持つ(書き込み側は現状 repo 内に無く、外部/将来の導線用)
-// ため、その読み取りごと App が /play へ移動している。
-// App のモジュールグラフは engine-wasm(モジュールレベルで panelEngine を生成) と
-// ShogiMatch 一式を含み重いので、lazyRouteComponent で /play チャンクに分離し、
-// トップ(/)の初期ロードに載せない。
+// ため、その読み取りごと App が /play へ移動している。shogi-match chunk(~420KB) を
+// 必要とする唯一の非観戦ページなので lazy のまま。
 const playRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/play",
     component: lazyRouteComponent(() => import("./App")),
-    pendingComponent: PlayPendingComponent,
 });
 
 const onlineRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/online",
-    component: OnlinePage,
+    component: lazyRouteComponent(() => import("./pages/online/OnlinePage")),
 });
 
 const authRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/auth",
-    component: AuthPage,
+    component: lazyRouteComponent(() => import("./pages/auth/AuthPage")),
 });
 
 interface GamesRouteLoaderData {
@@ -119,7 +86,7 @@ async function fetchGamesLoaderData(): Promise<GamesRouteLoaderData> {
 const gamesRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/games",
-    component: GamesPage,
+    component: lazyRouteComponent(() => import("./pages/games/GamesPage")),
     loader: fetchGamesLoaderData,
 });
 
@@ -132,7 +99,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const gameDetailRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/games/$gameId",
-    component: GameDetailPage,
+    component: lazyRouteComponent(() => import("./pages/games/GameDetailPage")),
     loader: async ({ params: { gameId } }) => {
         if (!UUID_RE.test(gameId)) {
             throw redirect({
@@ -159,7 +126,6 @@ const gameReviewRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/games/$gameId/review",
     component: lazyRouteComponent(() => import("./pages/games/GameReviewPage")),
-    pendingComponent: PagePendingComponent,
     loader: async ({ params: { gameId } }) => {
         const [gameResponse, snapshotsResponse] = await Promise.all([
             fetch(`/api/games/${gameId}`, {
@@ -193,7 +159,7 @@ const gameReviewRoute = createRoute({
 const publicGamesRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/public/games",
-    component: PublicGamesPage,
+    component: lazyRouteComponent(() => import("./pages/games/PublicGamesPage")),
     loader: async () => {
         const response = await fetch("/api/public/games");
 
@@ -213,7 +179,6 @@ const publicGameRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/public/games/$publicId",
     component: lazyRouteComponent(() => import("./pages/games/PublicGamePage")),
-    pendingComponent: PagePendingComponent,
     loader: async ({ params: { publicId } }) => {
         const response = await fetch(`/api/public/games/${publicId}`, {
             credentials: "same-origin",
@@ -232,7 +197,7 @@ const publicGameRoute = createRoute({
 const nnueFilesRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/nnue",
-    component: NnueFilesPage,
+    component: lazyRouteComponent(() => import("./pages/nnue/NnueFilesPage")),
     loader: async () => {
         const response = await fetch("/api/nnue/files", {
             credentials: "same-origin",
@@ -260,13 +225,13 @@ const nnueFilesRoute = createRoute({
 const privacyRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/privacy",
-    component: PrivacyPage,
+    component: lazyRouteComponent(() => import("./pages/privacy/PrivacyPage")),
 });
 
 const rshogiViewerListRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/rshogi-viewer",
-    component: RshogiViewerListPage,
+    component: lazyRouteComponent(() => import("./pages/rshogi-viewer/RshogiViewerListPage")),
 });
 
 // 進行中対局一覧 (静的 path)。単局 `/rshogi-viewer/live/$gameId` とはセグメント数が
@@ -275,7 +240,7 @@ const rshogiViewerListRoute = createRoute({
 const rshogiViewerLiveListRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/rshogi-viewer/live",
-    component: RshogiLiveGamesPage,
+    component: lazyRouteComponent(() => import("./pages/rshogi-viewer/RshogiLiveGamesPage")),
 });
 
 // `/rshogi-viewer/live/$gameId` は単局 `/rshogi-viewer/$gameId` よりも前に
@@ -283,20 +248,52 @@ const rshogiViewerLiveListRoute = createRoute({
 const rshogiViewerLiveRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/rshogi-viewer/live/$gameId",
-    component: RshogiViewerLivePage,
+    component: lazyRouteComponent(() => import("./pages/rshogi-viewer/RshogiViewerLivePage")),
 });
 
 const rshogiViewerRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/rshogi-viewer/$gameId",
-    component: RshogiViewerPage,
+    component: lazyRouteComponent(() => import("./pages/rshogi-viewer/RshogiViewerPage")),
 });
 
 const createRoomRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/online/create",
-    component: CreateRoomPage,
+    component: lazyRouteComponent(() => import("./pages/online/CreateRoomPage")),
 });
+
+function DefaultPendingComponent() {
+    return (
+        <div aria-live="polite" className="mx-auto flex max-w-[480px] flex-col gap-4 px-4 py-10">
+            <p className="text-muted-foreground">読み込み中...</p>
+        </div>
+    );
+}
+
+// lazy route の chunk fetch が恒久的に失敗した場合 (stale deploy の reload を
+// 消化し切った後など) の共通フォールバック。未スタイルの既定 error 画面を出さず、
+// 再読み込み導線を持つ最小 UI を出す。
+function DefaultErrorComponent({ error }: { error: unknown }) {
+    // TanStack Router の error は Error インスタンスとは限らない (throw "string" や
+    // 非 Error の Promise rejection もありうる) ため、安全に文字列化する。
+    const message = error instanceof Error ? error.message : String(error);
+    return (
+        <div className="mx-auto flex max-w-[480px] flex-col gap-4 px-4 py-10">
+            <p className="text-destructive">
+                ページの読み込みに失敗しました。ネットワークを確認して再読み込みしてください。
+            </p>
+            <p className="text-xs text-muted-foreground">{message}</p>
+            <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="self-start text-sm text-muted-foreground hover:text-foreground"
+            >
+                再読み込み
+            </button>
+        </div>
+    );
+}
 
 function RoomErrorComponent({ error }: { error: Error }) {
     const navigate = useNavigate();
@@ -326,7 +323,7 @@ const roomRoute = createRoute({
         });
         return res.json() as Promise<RoomInfo>;
     },
-    pendingComponent: PagePendingComponent,
+    pendingComponent: DefaultPendingComponent,
     errorComponent: RoomErrorComponent,
     validateSearch: (search: Record<string, unknown>) => ({
         name: typeof search.name === "string" ? search.name : undefined,
@@ -355,7 +352,11 @@ const routeTree = rootRoute.addChildren([
     rshogiViewerRoute,
 ]);
 
-export const router = createRouter({ routeTree });
+export const router = createRouter({
+    routeTree,
+    defaultPendingComponent: DefaultPendingComponent,
+    defaultErrorComponent: DefaultErrorComponent,
+});
 
 declare module "@tanstack/react-router" {
     interface Register {
