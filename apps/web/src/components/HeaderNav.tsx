@@ -1,5 +1,5 @@
 import { cn } from "@shogi/design-system";
-import { Popover, PopoverContent, PopoverTrigger } from "@shogi/ui";
+import { Popover, PopoverContent, PopoverTrigger } from "@shogi/ui/components/popover";
 import { Link, useLocation } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useState } from "react";

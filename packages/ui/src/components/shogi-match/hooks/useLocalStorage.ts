@@ -1,3 +1,8 @@
+// ⚠️ このファイルのパスは apps/web/vite.config.ts の manualChunks で
+// "ui-storage" chunk へ振り分けるためにハードコードされている。移動・リネームする
+// 場合は vite.config.ts の該当ルールも必ず更新すること。放置すると本 util が
+// shogi-match chunk に取り込まれ、eager path 全体が ~440KB の shogi-match を
+// 引き込む回帰になる (ビルドエラーにはならずサイレントに劣化する)。
 import { useEffect, useRef, useState } from "react";
 
 export const LOCAL_STORAGE_SYNC_EVENT = "shogi-local-storage-sync";

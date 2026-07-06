@@ -1,6 +1,6 @@
 import type { RshogiGameSummary } from "@shogi/match-client";
 import { fetchRshogiGameList } from "@shogi/match-client";
-import { RshogiCsaGameList } from "@shogi/ui";
+import { RshogiCsaGameList } from "@shogi/ui/components/rshogi-csa-game-list";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { type ReactElement, useEffect, useState } from "react";
 import { HeaderNav } from "../../components/HeaderNav";

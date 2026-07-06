@@ -4,7 +4,7 @@ import {
     detect_nnue_format,
     is_nnue_compatible,
 } from "@shogi/engine-wasm";
-import { NnueProvider } from "@shogi/ui";
+import { NnueProvider } from "@shogi/ui/providers/NnueContext";
 import { Outlet } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { AuthSessionProvider } from "./hooks/useAuthSession";
