@@ -56,6 +56,12 @@ describe("analysisSnapshotMultiPvToRecordedEvalInfoEvent", () => {
             normalized: true,
         });
     });
+
+    it("省略された evalCp / evalMate は undefined へフォールバックする", () => {
+        const event = analysisSnapshotMultiPvToRecordedEvalInfoEvent({ multipv: 1, depth: 5 });
+        expect(event.scoreCp).toBeUndefined();
+        expect(event.scoreMate).toBeUndefined();
+    });
 });
 
 describe("applyAnalysisSnapshotEntryEvals", () => {
@@ -112,6 +118,23 @@ describe("applyAnalysisSnapshotEntryEvals", () => {
         expect(recordEvalByPly).toHaveBeenCalledWith(
             1,
             expect.objectContaining({ multipv: 1, scoreCp: 10 }),
+        );
+    });
+
+    it("multiPv が空配列のときも主評価のみ再適用する", () => {
+        const clearEvalByPly = vi.fn();
+        const recordEvalByPly = vi.fn();
+
+        applyAnalysisSnapshotEntryEvals(
+            { ply: 2, evalCp: 50, evalMate: null, depth: 10, pv: ["3g3f"], multiPv: [] },
+            { clearEvalByPly, recordEvalByPly },
+        );
+
+        expect(clearEvalByPly).toHaveBeenCalledExactlyOnceWith(2);
+        expect(recordEvalByPly).toHaveBeenCalledTimes(1);
+        expect(recordEvalByPly).toHaveBeenCalledWith(
+            2,
+            expect.objectContaining({ multipv: 1, scoreCp: 50 }),
         );
     });
 });
