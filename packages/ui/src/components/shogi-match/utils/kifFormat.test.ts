@@ -2,6 +2,10 @@ import type { BoardState, Piece, PieceType, Square } from "@shogi/app-core";
 import { describe, expect, it } from "vitest";
 import {
     convertMovesToKif,
+    decodeEvalMateFromWire,
+    decodeSnapshotEvalMateReviver,
+    encodeEvalMateForWire,
+    encodeSnapshotEvalMateReplacer,
     evalToY,
     exportToKifString,
     formatEval,
@@ -10,6 +14,7 @@ import {
     getEvalTooltipInfo,
     getPieceName,
     MATE_WITHOUT_PLY,
+    MATE_WITHOUT_PLY_WIRE,
     parseToSquare,
     squareToKanji,
 } from "./kifFormat";
@@ -613,5 +618,100 @@ describe("exportToKifString", () => {
         expect(result).toContain("*評価値=被詰み");
         expect(result).not.toContain("詰Infinity手");
         expect(result).not.toContain("被詰Infinity手");
+    });
+});
+
+describe("evalMate wire encode/decode", () => {
+    it("手数なし詰み ±Infinity を有限センチネル ±MATE_WITHOUT_PLY_WIRE に符号化する", () => {
+        expect(encodeEvalMateForWire(MATE_WITHOUT_PLY)).toBe(MATE_WITHOUT_PLY_WIRE);
+        expect(encodeEvalMateForWire(-MATE_WITHOUT_PLY)).toBe(-MATE_WITHOUT_PLY_WIRE);
+    });
+
+    it("有限の詰み手数と null はそのまま通す", () => {
+        expect(encodeEvalMateForWire(3)).toBe(3);
+        expect(encodeEvalMateForWire(-5)).toBe(-5);
+        expect(encodeEvalMateForWire(0)).toBe(0);
+        expect(encodeEvalMateForWire(null)).toBeNull();
+    });
+
+    it("予約センチネルと同値の有限入力は 1 手内側へ丸め復元時に詰みと誤認されない", () => {
+        expect(encodeEvalMateForWire(MATE_WITHOUT_PLY_WIRE)).toBe(MATE_WITHOUT_PLY_WIRE - 1);
+        expect(encodeEvalMateForWire(-MATE_WITHOUT_PLY_WIRE)).toBe(-(MATE_WITHOUT_PLY_WIRE - 1));
+        // 丸めた値は有限のまま復元され ±Infinity にならない
+        expect(decodeEvalMateFromWire(encodeEvalMateForWire(MATE_WITHOUT_PLY_WIRE))).toBe(
+            MATE_WITHOUT_PLY_WIRE - 1,
+        );
+        expect(
+            Number.isFinite(decodeEvalMateFromWire(encodeEvalMateForWire(MATE_WITHOUT_PLY_WIRE))),
+        ).toBe(true);
+    });
+
+    it("ワイヤのセンチネルを ±Infinity に復元する", () => {
+        expect(decodeEvalMateFromWire(MATE_WITHOUT_PLY_WIRE)).toBe(MATE_WITHOUT_PLY);
+        expect(decodeEvalMateFromWire(-MATE_WITHOUT_PLY_WIRE)).toBe(-MATE_WITHOUT_PLY);
+    });
+
+    it("センチネル以外の有限値と null はそのまま復元する", () => {
+        expect(decodeEvalMateFromWire(3)).toBe(3);
+        expect(decodeEvalMateFromWire(-5)).toBe(-5);
+        expect(decodeEvalMateFromWire(null)).toBeNull();
+    });
+
+    it("符号を保ったまま往復する (encode → decode)", () => {
+        for (const value of [MATE_WITHOUT_PLY, -MATE_WITHOUT_PLY, 7, -7, 0, null]) {
+            expect(decodeEvalMateFromWire(encodeEvalMateForWire(value))).toBe(value);
+        }
+    });
+});
+
+describe("snapshot evalMate wire replacer/reviver", () => {
+    // entry 直下と multiPv 配下の両方に手数なし詰みを含む payload
+    const draft = {
+        entries: [
+            {
+                ply: 1,
+                evalCp: null,
+                evalMate: MATE_WITHOUT_PLY,
+                multiPv: [
+                    { multipv: 1, evalMate: MATE_WITHOUT_PLY },
+                    { multipv: 2, evalMate: -MATE_WITHOUT_PLY },
+                    { multipv: 3, evalCp: 120 },
+                ],
+            },
+            { ply: 2, evalCp: 50, evalMate: 3, multiPv: null },
+        ],
+    };
+
+    it("符号化した payload には Infinity ではなくセンチネルが載る", () => {
+        const wire = JSON.parse(JSON.stringify(draft, encodeSnapshotEvalMateReplacer));
+        expect(wire.entries[0].evalMate).toBe(MATE_WITHOUT_PLY_WIRE);
+        expect(wire.entries[0].multiPv[0].evalMate).toBe(MATE_WITHOUT_PLY_WIRE);
+        expect(wire.entries[0].multiPv[1].evalMate).toBe(-MATE_WITHOUT_PLY_WIRE);
+        // 有限の evalMate と evalCp はそのまま
+        expect(wire.entries[1].evalMate).toBe(3);
+        expect(wire.entries[0].multiPv[2].evalCp).toBe(120);
+    });
+
+    it("entry / multiPv の全 evalMate が符号を保って往復する", () => {
+        const encoded = JSON.stringify(draft, encodeSnapshotEvalMateReplacer);
+        const decoded = JSON.parse(encoded, decodeSnapshotEvalMateReviver);
+        expect(decoded.entries[0].evalMate).toBe(MATE_WITHOUT_PLY);
+        expect(decoded.entries[0].multiPv[0].evalMate).toBe(MATE_WITHOUT_PLY);
+        expect(decoded.entries[0].multiPv[1].evalMate).toBe(-MATE_WITHOUT_PLY);
+        expect(decoded.entries[1].evalMate).toBe(3);
+    });
+
+    it("evalCp など evalMate 以外のフィールドには触れない", () => {
+        expect(encodeSnapshotEvalMateReplacer("evalCp", MATE_WITHOUT_PLY_WIRE)).toBe(
+            MATE_WITHOUT_PLY_WIRE,
+        );
+        expect(decodeSnapshotEvalMateReviver("evalCp", MATE_WITHOUT_PLY_WIRE)).toBe(
+            MATE_WITHOUT_PLY_WIRE,
+        );
+    });
+
+    it("evalMate が null のときは typeof ガードでそのままパススルーする", () => {
+        expect(encodeSnapshotEvalMateReplacer("evalMate", null)).toBeNull();
+        expect(decodeSnapshotEvalMateReviver("evalMate", null)).toBeNull();
     });
 });

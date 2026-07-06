@@ -403,7 +403,8 @@
                         "type": ["integer", "null"]
                     },
                     "evalMate": {
-                        "type": ["integer", "null"]
+                        "type": ["integer", "null"],
+                        "description": "詰み手数 (先手視点、+ が先手勝ち)。手数不明の詰みは予約センチネル ±100000 で表す。"
                     },
                     "depth": {
                         "type": ["integer", "null"],
