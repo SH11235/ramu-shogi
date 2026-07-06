@@ -32,9 +32,7 @@ export function SkillLevelSelector({
         <label className={labelClassName}>
             <span className="flex justify-between">
                 <span>エンジンの強さ</span>
-                <span className="font-mono text-[hsl(var(--wafuu-kincha))]">
-                    レベル {currentLevel}
-                </span>
+                <span className="font-mono text-wafuu-kincha">レベル {currentLevel}</span>
             </span>
             <input
                 type="range"
@@ -43,9 +41,9 @@ export function SkillLevelSelector({
                 value={currentLevel}
                 onChange={(e) => handleLevelChange(Number(e.target.value))}
                 disabled={disabled}
-                className="w-full accent-[hsl(var(--wafuu-shu))]"
+                className="w-full accent-wafuu-shu"
             />
-            <span className="flex justify-between text-[11px] text-[hsl(var(--muted-foreground))]">
+            <span className="flex justify-between text-[11px] text-muted-foreground">
                 <span>弱い</span>
                 <span>強い</span>
             </span>

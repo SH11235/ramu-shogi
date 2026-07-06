@@ -37,9 +37,7 @@ export function GameResultDialog({
                 </DialogHeader>
 
                 <div className="flex flex-col items-center gap-4 py-4">
-                    <div className="text-2xl font-bold text-[hsl(var(--wafuu-kin,42_85%_50%))]">
-                        {winnerLabel}
-                    </div>
+                    <div className="text-2xl font-bold text-wafuu-kin">{winnerLabel}</div>
 
                     <div className="h-px w-full bg-border" />
 

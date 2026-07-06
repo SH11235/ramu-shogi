@@ -135,7 +135,7 @@ function PvCandidateItem({
         <div
             className="
                 border border-border rounded-lg p-2
-                bg-wafuu-washi/30 dark:bg-[hsl(var(--muted)/0.3)]
+                bg-wafuu-washi/30 dark:bg-muted/30
             "
         >
             {/* ヘッダー: 候補番号 + 評価値 */}
@@ -435,7 +435,7 @@ export function MoveDetailWindow({
             {/* コンテンツ */}
             <div className="flex-1 overflow-auto p-3">
                 {/* 評価値サマリー */}
-                <div className="flex items-center gap-2 mb-3 p-2 bg-wafuu-washi dark:bg-[hsl(var(--muted)/0.5)] rounded-lg">
+                <div className="flex items-center gap-2 mb-3 p-2 bg-wafuu-washi dark:bg-muted/50 rounded-lg">
                     <span
                         className={`font-medium text-[14px] ${
                             evalInfo.advantage === "sente"
