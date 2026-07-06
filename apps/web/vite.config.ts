@@ -21,13 +21,10 @@ function manualChunks(id: string): string | undefined {
     const normalizedId = id.split(path.sep).join("/");
 
     if (normalizedId.includes("/node_modules/")) {
-        if (
-            normalizedId.includes("/node_modules/react/") ||
-            normalizedId.includes("/node_modules/react-dom/") ||
-            normalizedId.includes("/node_modules/scheduler/")
-        ) {
-            return "vendor-react";
-        }
+        // 注意: react / react-dom / scheduler を専用 chunk (vendor-react) に分離すると
+        // vendor 側の react 依存 CJS interop と初期化順の循環が生じ、本番ビルドが
+        // `Cannot set properties of undefined (setting 'Activity')` で起動不能になる
+        // (#86 のリグレッション)。react 系は vendor に同梱したままにすること。
 
         // 現状 @tanstack は react-router のみ。将来 @tanstack/query 等を足すと
         // この chunk に同梱され肥大化しうるので、その際は router 系に限定するか
