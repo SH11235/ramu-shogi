@@ -90,7 +90,7 @@ export function ShogiBoard({
                         </span>
                     ))}
                 </div>
-                <div className="grid flex-1 grid-cols-9 overflow-hidden rounded-xl border-l border-t border-[hsl(var(--shogi-border))]">
+                <div className="grid flex-1 grid-cols-9 overflow-hidden rounded-xl border-l border-t border-shogi-border">
                     {grid.map((row, rowIndex) =>
                         row.map((cell, columnIndex) => {
                             const isSelected = selectedSquare === cell.id;
@@ -109,7 +109,7 @@ export function ShogiBoard({
                             return (
                                 <div
                                     key={cell.id}
-                                    className="relative aspect-square w-[var(--shogi-cell-size,48px)] border-b border-r border-[hsl(var(--shogi-border))]"
+                                    className="relative aspect-square w-[var(--shogi-cell-size,48px)] border-b border-r border-shogi-border"
                                 >
                                     <button
                                         type="button"
