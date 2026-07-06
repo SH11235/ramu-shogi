@@ -210,6 +210,42 @@ export const analysisSnapshotEntryToRecordedEvalInfoEvent = (
     normalized: true,
 });
 
+/** 保存済み snapshot の multiPv 候補 1 件を再適用用イベントへ変換する (multipv 番号を保持)。 */
+export const analysisSnapshotMultiPvToRecordedEvalInfoEvent = (
+    multiPv: NonNullable<AnalysisSnapshotEntryDraft["multiPv"]>[number],
+): RecordedEvalInfoEvent => ({
+    type: "info",
+    scoreCp: multiPv.evalCp ?? undefined,
+    scoreMate: multiPv.evalMate ?? undefined,
+    depth: multiPv.depth ?? undefined,
+    pv: multiPv.pv ?? undefined,
+    multipv: multiPv.multipv,
+    normalized: true,
+});
+
+/**
+ * 保存済み snapshot の 1 entry を棋譜ツリーへ再適用する。ply の評価を一旦クリアし、
+ * 主評価 (multipv:1) と各 multiPv 候補を multipv スロットごとに記録する。
+ * multiPv に multipv:1 が含まれても、主評価との二重記録は setNodeMultiPvEval の
+ * 深さ比較で吸収されるため無害 (multiPv が空/なしの経路のため主評価記録は残す)。
+ */
+export const applyAnalysisSnapshotEntryEvals = (
+    entry: AnalysisSnapshotEntryDraft,
+    handlers: {
+        clearEvalByPly: (ply: number) => void;
+        recordEvalByPly: (ply: number, event: RecordedEvalInfoEvent) => void;
+    },
+): void => {
+    handlers.clearEvalByPly(entry.ply);
+    handlers.recordEvalByPly(entry.ply, analysisSnapshotEntryToRecordedEvalInfoEvent(entry));
+    for (const multiPv of entry.multiPv ?? []) {
+        handlers.recordEvalByPly(
+            entry.ply,
+            analysisSnapshotMultiPvToRecordedEvalInfoEvent(multiPv),
+        );
+    }
+};
+
 export function useInitialReviewSync({
     positionReady,
     initialReview,
@@ -1600,8 +1636,7 @@ export function ShogiMatch({
         }
 
         for (const entry of initialAnalysisEntries) {
-            clearEvalByPly(entry.ply);
-            recordEvalByPly(entry.ply, analysisSnapshotEntryToRecordedEvalInfoEvent(entry));
+            applyAnalysisSnapshotEntryEvals(entry, { clearEvalByPly, recordEvalByPly });
         }
 
         initialAnalysisAppliedRef.current = signature;
