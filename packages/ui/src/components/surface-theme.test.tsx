@@ -32,6 +32,17 @@ describe("SurfaceThemeProvider / useSurfaceTheme", () => {
         );
         expect(screen.getByTestId("probe").textContent).toBe("(none)");
     });
+
+    it("theme=undefined をネストしても親の dark を消さない", () => {
+        render(
+            <SurfaceThemeProvider theme="dark">
+                <SurfaceThemeProvider theme={undefined}>
+                    <ThemeProbe />
+                </SurfaceThemeProvider>
+            </SurfaceThemeProvider>,
+        );
+        expect(screen.getByTestId("probe").textContent).toBe("dark");
+    });
 });
 
 describe("Portal 系 Content へのテーマ伝搬", () => {

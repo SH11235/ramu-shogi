@@ -17,6 +17,11 @@ interface SurfaceThemeProviderProps {
 }
 
 export function SurfaceThemeProvider({ theme, children }: SurfaceThemeProviderProps): ReactElement {
+    // undefined は「何も上書きしない」契約なので Provider を挟まない。
+    // 挟むと value=undefined がネストした親の値を消してしまう。
+    if (theme === undefined) {
+        return <>{children}</>;
+    }
     return <SurfaceThemeContext.Provider value={theme}>{children}</SurfaceThemeContext.Provider>;
 }
 
