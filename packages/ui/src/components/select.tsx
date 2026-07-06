@@ -8,6 +8,7 @@ import * as SelectPrimitive from "@radix-ui/react-select";
 import { cn } from "@shogi/design-system";
 import type { ComponentPropsWithoutRef, ComponentRef, ReactElement } from "react";
 import { forwardRef } from "react";
+import { useSurfaceTheme } from "./surface-theme";
 
 const Select = SelectPrimitive.Root;
 const SelectValue = SelectPrimitive.Value;
@@ -56,10 +57,13 @@ const SelectContent = forwardRef<
     { className, children, position = "popper", ...props },
     ref,
 ): ReactElement {
+    // Portal で body 直下へ出るため、開いた場所の局所テーマを引き継ぐ
+    const surfaceTheme = useSurfaceTheme();
     return (
         <SelectPrimitive.Portal>
             <SelectPrimitive.Content
                 className={cn(
+                    surfaceTheme,
                     "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-lg border border-wafuu-border bg-wafuu-washi shadow-md",
                     "data-[state=open]:animate-in data-[state=closed]:animate-out",
                     "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
