@@ -11,7 +11,42 @@ import { parseSfen } from "./kifParser";
 /** 手数不明の詰みを表す evalMate センチネル。符号は勝つ側を先手視点で表す。 */
 export const MATE_WITHOUT_PLY = Number.POSITIVE_INFINITY;
 
+/**
+ * 手数不明の詰みのワイヤ表現。JSON は Infinity を送れないため、解析 snapshot の
+ * POST / GET では内部表現の ±Infinity をこの有限センチネルに符号化する。
+ * バックエンド (ramu-shogi-backend) の MATE_WITHOUT_PLY_SENTINEL と一致させること。
+ * この値は evalMate 空間の予約値であり、現実の詰み手数 (高々数百) とは衝突しない。
+ * (rshogi-csa-live-viewer.tsx の MATE_EVAL_SENTINEL は evalCp 空間の別物で偶然同値)
+ */
+export const MATE_WITHOUT_PLY_WIRE = 100_000;
+
 const isMateWithoutPly = (evalMate: number): boolean => !Number.isFinite(evalMate);
+
+/** 内部表現の evalMate (±Infinity=手数不明の詰み) をワイヤ用の有限センチネルへ符号化する。 */
+export const encodeEvalMateForWire = (evalMate: number | null): number | null => {
+    if (evalMate === MATE_WITHOUT_PLY) return MATE_WITHOUT_PLY_WIRE;
+    if (evalMate === -MATE_WITHOUT_PLY) return -MATE_WITHOUT_PLY_WIRE;
+    return evalMate;
+};
+
+/** ワイヤのセンチネルを内部表現 (±Infinity) へ復元する。 */
+export const decodeEvalMateFromWire = (evalMate: number | null): number | null => {
+    if (evalMate === MATE_WITHOUT_PLY_WIRE) return MATE_WITHOUT_PLY;
+    if (evalMate === -MATE_WITHOUT_PLY_WIRE) return -MATE_WITHOUT_PLY;
+    return evalMate;
+};
+
+/**
+ * JSON.stringify 用 replacer。snapshot payload 内の全 `evalMate` フィールド (entry 直下と
+ * multiPv 配下の両方) の ±Infinity を有限センチネルへ符号化する。フィールド追加時の
+ * 符号化漏れを構造的に防ぐため、個別マッピングではなく境界の replacer で一括処理する。
+ */
+export const encodeSnapshotEvalMateReplacer = (key: string, value: unknown): unknown =>
+    key === "evalMate" && typeof value === "number" ? encodeEvalMateForWire(value) : value;
+
+/** JSON.parse 用 reviver。全 `evalMate` フィールドのセンチネルを ±Infinity へ復元する。 */
+export const decodeSnapshotEvalMateReviver = (key: string, value: unknown): unknown =>
+    key === "evalMate" && typeof value === "number" ? decodeEvalMateFromWire(value) : value;
 
 /** 単一PVの評価値情報 */
 export interface PvEvalInfo {

@@ -104,6 +104,17 @@ const SPECTATE_DISPLAY_SETTINGS: DisplaySettings = {
 
 const reviewMoveDataKeyCache = new WeakMap<(ReviewMoveEval | undefined)[], string>();
 
+/**
+ * JSON.stringify 用 replacer。素の stringify は ±Infinity をどちらも null に潰して符号を失うため、
+ * signature/cache key では手数なし詰み (evalMate=±Infinity) を符号付き文字列として残す。
+ */
+const infinitySafeReplacer = (_key: string, value: unknown): unknown =>
+    typeof value === "number" && !Number.isNaN(value) && !Number.isFinite(value)
+        ? value > 0
+            ? "Infinity"
+            : "-Infinity"
+        : value;
+
 export const stringifyReviewMoveData = (
     moveData: (ReviewMoveEval | undefined)[] | undefined,
 ): string => {
@@ -111,13 +122,7 @@ export const stringifyReviewMoveData = (
     const cached = reviewMoveDataKeyCache.get(moveData);
     if (cached !== undefined) return cached;
 
-    const key = JSON.stringify(moveData, (_key, value: unknown) =>
-        typeof value === "number" && !Number.isNaN(value) && !Number.isFinite(value)
-            ? value > 0
-                ? "Infinity"
-                : "-Infinity"
-            : value,
-    );
+    const key = JSON.stringify(moveData, infinitySafeReplacer);
     reviewMoveDataKeyCache.set(moveData, key);
     return key;
 };
@@ -761,10 +766,12 @@ export function ShogiMatch({
     const lastAnalysisSnapshotSignatureRef = useRef<string | null>(null);
 
     useEffect(() => {
-        // analysisSnapshotDraft はサーバーへ POST するデータ由来で、POST 時点で
-        // Infinity は null に変換済み。ここに ±Infinity は含まれないため、
-        // JSON.stringify による signature 比較は安全。
-        const signature = analysisSnapshotDraft ? JSON.stringify(analysisSnapshotDraft) : null;
+        // analysisSnapshotDraft は live 由来の手数なし詰み (evalMate=±Infinity) を含みうる。
+        // 素の JSON.stringify は ±Infinity をどちらも null にして符号を潰すため、
+        // signature 比較では符号を保持する infinitySafeReplacer を使う。
+        const signature = analysisSnapshotDraft
+            ? JSON.stringify(analysisSnapshotDraft, infinitySafeReplacer)
+            : null;
         if (lastAnalysisSnapshotSignatureRef.current === signature) {
             return;
         }

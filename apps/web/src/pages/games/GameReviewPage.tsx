@@ -9,7 +9,11 @@ import type {
 } from "@shogi/api-contract";
 import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type { AnalysisSettings, AnalysisSnapshotDraft, EngineOption } from "@shogi/ui";
-import { ShogiMatch } from "@shogi/ui";
+import {
+    decodeSnapshotEvalMateReviver,
+    encodeSnapshotEvalMateReplacer,
+    ShogiMatch,
+} from "@shogi/ui";
 import { getRouteApi, useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useState } from "react";
@@ -55,9 +59,9 @@ async function createAnalysisSnapshot(
             "Content-Type": "application/json",
         },
         credentials: "same-origin",
-        // JSON.stringify は Infinity を null にする。live 由来の手数なし詰み
-        // (evalMate=±Infinity) を流す場合は stringifyReviewMoveData 相当の変換が必要。
-        body: JSON.stringify(requestBody),
+        // 素の JSON.stringify は Infinity を null に落とし手数なし詰み (evalMate=±Infinity) を
+        // 無言で失う。replacer で entry / multiPv の全 evalMate を有限センチネルへ符号化する。
+        body: JSON.stringify(requestBody, encodeSnapshotEvalMateReplacer),
     });
 
     if (!response.ok) {
@@ -78,7 +82,11 @@ async function getAnalysisSnapshot(
         throw new Error(await parseApiError(response));
     }
 
-    return (await response.json()) as GetAnalysisSnapshotResponse;
+    // reviver で entry / multiPv の全 evalMate センチネルを内部表現 (±Infinity) へ復元する。
+    return JSON.parse(
+        await response.text(),
+        decodeSnapshotEvalMateReviver,
+    ) as GetAnalysisSnapshotResponse;
 }
 
 export default function GameReviewPage(): ReactElement {

@@ -44,6 +44,10 @@ export { ShogiBoard } from "./components/shogi-board";
 export { BottomSheet } from "./components/shogi-match/components/BottomSheet";
 export { HandPiecesDisplay } from "./components/shogi-match/components/HandPiecesDisplay";
 export { KifuNavigationToolbar } from "./components/shogi-match/components/KifuNavigationToolbar";
+export {
+    decodeSnapshotEvalMateReviver,
+    encodeSnapshotEvalMateReplacer,
+} from "./components/shogi-match/utils/kifFormat";
 export { boardToGrid } from "./components/shogi-match/utils/positionUtils";
 
 // progress
