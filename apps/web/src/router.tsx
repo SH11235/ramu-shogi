@@ -12,22 +12,19 @@ import {
     createRootRoute,
     createRoute,
     createRouter,
+    lazyRouteComponent,
     redirect,
     useNavigate,
 } from "@tanstack/react-router";
-import App from "./App";
 import { AppProviders } from "./AppProviders";
 import AuthPage from "./pages/auth/AuthPage";
 import GameDetailPage from "./pages/games/GameDetailPage";
-import GameReviewPage from "./pages/games/GameReviewPage";
 import GamesPage from "./pages/games/GamesPage";
-import PublicGamePage from "./pages/games/PublicGamePage";
 import PublicGamesPage from "./pages/games/PublicGamesPage";
 import LandingPage from "./pages/LandingPage";
 import NnueFilesPage from "./pages/nnue/NnueFilesPage";
 import CreateRoomPage from "./pages/online/CreateRoomPage";
 import OnlinePage from "./pages/online/OnlinePage";
-import RoomPage from "./pages/online/RoomPage";
 import PrivacyPage from "./pages/privacy/PrivacyPage";
 import RshogiLiveGamesPage from "./pages/rshogi-viewer/RshogiLiveGamesPage";
 import RshogiViewerListPage from "./pages/rshogi-viewer/RshogiViewerListPage";
@@ -45,14 +42,37 @@ const indexRoute = createRoute({
     component: LandingPage,
 });
 
+function PlayPendingComponent() {
+    return (
+        <div className="mx-auto flex max-w-[480px] flex-col gap-4 px-4 py-10">
+            <p className="text-muted-foreground">対局盤を読み込み中...</p>
+        </div>
+    );
+}
+
+// 遅延ロードするページ共通の pending 表示。ShogiMatch / engine-wasm を含む重量級
+// ページ (対局・検討・オンライン対局・公開棋譜閲覧) はチャンク分割し、エントリ
+// (トップや一覧ページ) の初期ロードに載せない。
+function PagePendingComponent() {
+    return (
+        <div className="mx-auto flex max-w-[480px] flex-col gap-4 px-4 py-10">
+            <p className="text-muted-foreground">読み込み中...</p>
+        </div>
+    );
+}
+
 // 対局盤。以前は `/` に置いていたが、トップは迎える面(LandingPage)に譲り、
 // 盤そのものは `/play` へ移設した。App は起動時に sessionStorage `ramu_review_kifu`
 // を読んで検討を復元する処理を持つ(書き込み側は現状 repo 内に無く、外部/将来の導線用)
 // ため、その読み取りごと App が /play へ移動している。
+// App のモジュールグラフは engine-wasm(モジュールレベルで panelEngine を生成) と
+// ShogiMatch 一式を含み重いので、lazyRouteComponent で /play チャンクに分離し、
+// トップ(/)の初期ロードに載せない。
 const playRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/play",
-    component: App,
+    component: lazyRouteComponent(() => import("./App")),
+    pendingComponent: PlayPendingComponent,
 });
 
 const onlineRoute = createRoute({
@@ -138,7 +158,8 @@ const gameDetailRoute = createRoute({
 const gameReviewRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/games/$gameId/review",
-    component: GameReviewPage,
+    component: lazyRouteComponent(() => import("./pages/games/GameReviewPage")),
+    pendingComponent: PagePendingComponent,
     loader: async ({ params: { gameId } }) => {
         const [gameResponse, snapshotsResponse] = await Promise.all([
             fetch(`/api/games/${gameId}`, {
@@ -191,7 +212,8 @@ const publicGamesRoute = createRoute({
 const publicGameRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/public/games/$publicId",
-    component: PublicGamePage,
+    component: lazyRouteComponent(() => import("./pages/games/PublicGamePage")),
+    pendingComponent: PagePendingComponent,
     loader: async ({ params: { publicId } }) => {
         const response = await fetch(`/api/public/games/${publicId}`, {
             credentials: "same-origin",
@@ -276,14 +298,6 @@ const createRoomRoute = createRoute({
     component: CreateRoomPage,
 });
 
-function RoomPendingComponent() {
-    return (
-        <div className="mx-auto flex max-w-[480px] flex-col gap-4 px-4 py-10">
-            <p className="text-muted-foreground">読み込み中...</p>
-        </div>
-    );
-}
-
 function RoomErrorComponent({ error }: { error: Error }) {
     const navigate = useNavigate();
     return (
@@ -303,7 +317,7 @@ function RoomErrorComponent({ error }: { error: Error }) {
 const roomRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/online/$roomId",
-    component: RoomPage,
+    component: lazyRouteComponent(() => import("./pages/online/RoomPage")),
     loader: async ({ params: { roomId } }) => {
         const res = await fetch(`/api/rooms/${roomId}`);
         handleLoaderResponse(res, {
@@ -312,7 +326,7 @@ const roomRoute = createRoute({
         });
         return res.json() as Promise<RoomInfo>;
     },
-    pendingComponent: RoomPendingComponent,
+    pendingComponent: PagePendingComponent,
     errorComponent: RoomErrorComponent,
     validateSearch: (search: Record<string, unknown>) => ({
         name: typeof search.name === "string" ? search.name : undefined,
