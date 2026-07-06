@@ -205,7 +205,7 @@ function EvalHintBanner({
                     onClick={onEnable}
                     className="
                         flex items-center gap-2 text-[12px] font-medium
-                        text-wafuu-sumi dark:text-[hsl(var(--foreground))]
+                        text-wafuu-sumi dark:text-foreground
                         hover:text-wafuu-shu transition-colors
                         bg-transparent border-none cursor-pointer p-0
                     "
@@ -230,9 +230,9 @@ function EvalHintBanner({
                     className="
                         flex items-center justify-center
                         w-5 h-5 rounded-full
-                        text-[hsl(var(--muted-foreground))]
-                        hover:text-[hsl(var(--foreground))]
-                        hover:bg-[hsl(var(--muted))]
+                        text-muted-foreground
+                        hover:text-foreground
+                        hover:bg-muted
                         bg-transparent border-none cursor-pointer
                         transition-colors
                     "
@@ -431,8 +431,8 @@ function ExpandedMoveDetails({
         <section
             className="
                 mt-1 mx-1 p-3 rounded-lg
-                bg-wafuu-washi dark:bg-[hsl(var(--card))]
-                border border-[hsl(var(--border))]
+                bg-wafuu-washi dark:bg-card
+                border border-border
                 shadow-sm
                 animate-[slideDown_0.15s_ease-out]
             "
@@ -634,7 +634,7 @@ function PvCandidateItem({
         <div
             className="
                 border border-border rounded-lg p-2
-                bg-wafuu-washi/30 dark:bg-[hsl(var(--muted)/0.3)]
+                bg-wafuu-washi/30 dark:bg-muted/30
             "
         >
             {/* ヘッダー: 候補番号 + 評価値 */}
@@ -1697,7 +1697,7 @@ export function KifuPanel({
                             ).length;
                             if (!onAnalyzeBranch || branchMoveCount === 0) return null;
                             return (
-                                <div className="flex items-center justify-between gap-2 px-2 py-1.5 mb-1 bg-wafuu-washi rounded-lg border border-[hsl(var(--border))]">
+                                <div className="flex items-center justify-between gap-2 px-2 py-1.5 mb-1 bg-wafuu-washi rounded-lg border border-border">
                                     <span className="text-[11px] text-muted-foreground">
                                         {branchMoveCount}手の分岐
                                     </span>
