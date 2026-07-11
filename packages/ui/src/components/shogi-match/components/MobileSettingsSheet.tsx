@@ -913,13 +913,18 @@ export function MobileSettingsSheet({
             )}
 
             {onExportJsonl && (
-                <button
-                    type="button"
-                    onClick={() => void onExportJsonl()}
-                    className="w-full rounded-lg border border-border bg-background p-2 text-sm text-foreground"
-                >
-                    JSONL エクスポート
-                </button>
+                <div className="space-y-1">
+                    <button
+                        type="button"
+                        onClick={() => void onExportJsonl()}
+                        className="w-full rounded-lg border border-border bg-background p-2 text-sm text-foreground"
+                    >
+                        JSONL エクスポート
+                    </button>
+                    <p className="text-xs text-muted-foreground">
+                        rshogi ツール互換の対局ログ (探索統計・消費時間つき)
+                    </p>
+                </div>
             )}
 
             {/* 表示設定 */}

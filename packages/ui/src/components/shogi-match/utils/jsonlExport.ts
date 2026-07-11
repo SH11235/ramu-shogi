@@ -26,6 +26,14 @@ interface JsonlExportMeta {
     };
 }
 
+// rshogi selfplay/tournament の result 行 reason 語彙に合わせる
+// (checkmate は rshogi 側に対応する語が無いためそのまま出力する)
+const RSHOGI_REASONS: Record<string, string> = {
+    resignation: "resign",
+    time_expired: "timeout",
+    win_declaration: "win",
+};
+
 const compactEval = (stats: MoveSearchStats | undefined): Record<string, unknown> | undefined => {
     if (!stats) return undefined;
     const values = {
@@ -94,7 +102,7 @@ export function exportToRshogiJsonl(nodes: JsonlMoveNode[], meta: JsonlExportMet
             type: "result",
             game_id: 1,
             outcome: meta.result.outcome,
-            reason: meta.result.reason,
+            reason: RSHOGI_REASONS[meta.result.reason] ?? meta.result.reason,
             plies: nodes.length,
             ...(meta.result.winner ? { winner: meta.labels[meta.result.winner] } : {}),
         });

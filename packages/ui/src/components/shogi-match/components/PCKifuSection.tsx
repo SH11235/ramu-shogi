@@ -114,6 +114,7 @@ export function PCKifuSection({
                 <button
                     type="button"
                     onClick={() => void handleExportJsonl()}
+                    title="rshogi のトーナメントツール互換の対局ログ (meta/move/result 各行、探索統計・消費時間つき) をダウンロードします"
                     className="rounded border border-border bg-background px-2 py-1 text-xs text-foreground hover:bg-muted"
                 >
                     JSONL エクスポート

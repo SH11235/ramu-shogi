@@ -585,11 +585,8 @@ export function ShogiMatch({
     useEffect(() => {
         if (isMatchRunning) return;
         pendingSearchStatsRef.current.clear();
-        liveInfoTrailingRef.current = null;
-        if (liveInfoTimerRef.current) clearTimeout(liveInfoTimerRef.current);
-        liveInfoTimerRef.current = null;
-        setLiveSearchInfo(null);
-    }, [isMatchRunning]);
+        clearLiveSearchInfo();
+    }, [isMatchRunning, clearLiveSearchInfo]);
     // モバイル判定
     const isMobile = useIsMobile();
     // 検討モード: 編集モードでも対局中でも一時停止中でもない状態
@@ -1174,11 +1171,8 @@ export function ShogiMatch({
     // error 状態を直接監視してライブ探索表示を消す
     useEffect(() => {
         if (engineStatus.sente !== "error" && engineStatus.gote !== "error") return;
-        liveInfoTrailingRef.current = null;
-        if (liveInfoTimerRef.current) clearTimeout(liveInfoTimerRef.current);
-        liveInfoTimerRef.current = null;
-        setLiveSearchInfo(null);
-    }, [engineStatus.sente, engineStatus.gote]);
+        clearLiveSearchInfo();
+    }, [engineStatus.sente, engineStatus.gote, clearLiveSearchInfo]);
     restartEngineForNnueRef.current = restartEngineForNnue;
 
     // role変更時にエンジンを破棄するラッパー
@@ -1691,6 +1685,17 @@ export function ShogiMatch({
     });
 
     const handleExportJsonl = async (): Promise<void> => {
+        try {
+            await exportJsonlInner();
+        } catch (error) {
+            setMessage({
+                text: `JSONL エクスポートに失敗しました: ${String(error)}`,
+                type: "error",
+            });
+        }
+    };
+
+    const exportJsonlInner = async (): Promise<void> => {
         if (!navigation.tree) return;
         // 現在のナビゲーション位置に依存しないよう、ツリーの主分岐を親子ペアで辿る
         // (sfen_before と手番は親ノードの positionAfter から導出する)
