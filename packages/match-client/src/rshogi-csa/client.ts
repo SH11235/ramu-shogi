@@ -499,7 +499,7 @@ const decodeGameListResponse = (wire: GameListResponseWire): RshogiGameListPage 
 const decodeGameSearchResponse = (wire: GameSearchResponseWire): RshogiGameSearchPage => ({
     games: Array.isArray(wire.games) ? wire.games.map(decodeGameSummary) : [],
     page: wire.page ?? 1,
-    pageSize: wire.page_size ?? 20,
+    pageSize: wire.page_size ?? 20, // server default
     totalCount: wire.total_count ?? 0,
 });
 

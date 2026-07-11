@@ -2,6 +2,7 @@ import type {
     FetchRshogiGameSearchOptions,
     RshogiGameResultKind,
     RshogiGameSearchPage,
+    RshogiGameSource,
     RshogiGameSummary,
 } from "@shogi/match-client";
 import { fetchRshogiGameList, fetchRshogiGameSearch } from "@shogi/match-client";
@@ -23,7 +24,7 @@ interface SearchFormValues {
     result: "" | RshogiGameResultKind;
     from: string;
     to: string;
-    source: string;
+    source: RshogiGameSource | "";
 }
 
 const EMPTY_SEARCH_FORM: SearchFormValues = {
@@ -64,7 +65,7 @@ const dateEndMs = (value: string): number | undefined => {
 const toSearchOptions = (values: SearchFormValues): FetchRshogiGameSearchOptions => ({
     name: values.name.trim() || undefined,
     result: values.result || undefined,
-    source: values.source.trim() || undefined,
+    source: values.source || undefined,
     from: dateStartMs(values.from),
     to: dateEndMs(values.to),
 });
@@ -311,7 +312,10 @@ export default function RshogiViewerListPage(): ReactElement {
                                 id="rshogi-search-source"
                                 value={searchForm.source}
                                 onChange={(event) =>
-                                    setSearchForm({ ...searchForm, source: event.target.value })
+                                    setSearchForm({
+                                        ...searchForm,
+                                        source: event.target.value as SearchFormValues["source"],
+                                    })
                                 }
                                 className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground"
                             >
@@ -356,7 +360,7 @@ export default function RshogiViewerListPage(): ReactElement {
                         className="mt-4 flex flex-wrap items-center justify-between gap-3"
                         aria-label="検索結果のページネーション"
                     >
-                        <span className="text-sm text-muted-foreground">
+                        <span className="text-sm text-muted-foreground" aria-live="polite">
                             {searchPage.totalCount}件中 {rangeStart}-{rangeEnd}件
                         </span>
                         <div className="flex gap-2">

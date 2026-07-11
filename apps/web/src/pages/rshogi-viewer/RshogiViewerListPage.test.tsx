@@ -84,6 +84,18 @@ describe("RshogiViewerListPage search", () => {
         expect(screen.getByRole("button", { name: "次へ" })).toBeTruthy();
     });
 
+    it("検索リクエストが失敗した場合にエラーバナーを表示する", async () => {
+        fetchRshogiGameSearch.mockRejectedValueOnce(new Error("ネットワークエラー"));
+
+        render(<RshogiViewerListPage />);
+        await screen.findByText("もっと読み込む");
+
+        fireEvent.change(screen.getByLabelText("選手名"), { target: { value: "RAMU" } });
+        fireEvent.click(screen.getByRole("button", { name: "検索" }));
+
+        expect(await screen.findByText("ネットワークエラー")).toBeTruthy();
+    });
+
     it("入力中の条件と実行済み条件を分離して次ページと前ページを取得する", async () => {
         fetchRshogiGameSearch
             .mockResolvedValueOnce({
