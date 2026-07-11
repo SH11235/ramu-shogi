@@ -416,13 +416,17 @@ const decodeSnapshotBlock = (
     }
 
     const summary = parseGameSummaryLines(summaryLines);
+    const positionTurnMarker = summaryLines.find((line) => line === "+" || line === "-");
+    const initialTurn =
+        positionTurnMarker === "+"
+            ? "sente"
+            : positionTurnMarker === "-"
+              ? "gote"
+              : (summary.toMove ?? "sente");
 
-    // moves (USI) と moveDetails を同じループで対にして構築する。
-    // `parseCsaMovesWithState` は解析不能な手を skip して続行するため、moves 配列
-    // だけ後から index 対応させると skip 以降の消費秒/コメントが 1 手ずれる。
-    // entry 単位で parse し、失敗した entry は elapsedSec/comment ごと落とすことで
-    // 両配列の index 対応を構造的に保証する (skip の挙動自体は従来と同じ)。
-    let state = createInitialPositionState();
+    // 消費秒とコメントの対応を保つため、moves と moveDetails を同じ entry から構築する。
+    // 不整合な部分局面を公開しないため、適用不能な手は snapshot 全体の失敗にする。
+    let state: PositionState = { ...createInitialPositionState(), turn: initialTurn };
     const moves: string[] = [];
     const moveDetails: RshogiLiveMove[] = [];
     for (const entry of moveEntries) {
@@ -444,7 +448,8 @@ const decodeSnapshotBlock = (
         timeControl: deriveTimeControl(summary),
     };
 
-    const sideToMove: "sente" | "gote" = summary.toMove ?? state.turn;
+    // To_Move は初期局面手番であり現在手番ではないため、replay 後の手番を表示する。
+    const sideToMove: "sente" | "gote" = state.turn;
 
     const snapshot: RshogiLiveSnapshot = {
         meta,
@@ -1080,10 +1085,19 @@ export function subscribeRshogiLiveGame(
         }
         const token = trimmed.split(",")[0];
         const elapsedSec = extractElapsedSec(trimmed);
-        const applied = parseSingleCsaMove(token, liveState);
+        let applied: ReturnType<typeof parseSingleCsaMove>;
+        try {
+            applied = parseSingleCsaMove(token, liveState);
+        } catch (err) {
+            emitError(
+                err instanceof Error
+                    ? err
+                    : new Error(`failed to apply broadcast move: ${String(err)}`),
+            );
+            return;
+        }
         if (!applied) {
-            // wire 由来の move を decode できないのは内部不整合。エラー通知だけ
-            // 出して以降の処理は続行する (= snapshot 再受信で復旧する想定)。
+            // 後続 snapshot で状態を再同期できるよう、解釈不能な signed line でも接続を維持する。
             emitError(new Error(`failed to apply broadcast move: ${trimmed}`));
             return;
         }

@@ -1,10 +1,8 @@
 import {
-    applyMove,
     applyMoveWithState,
     BOARD_FILES,
     BOARD_RANKS,
     type BoardState,
-    boardFromMoves,
     cloneBoard,
     createEmptyHands,
     createInitialBoard,
@@ -126,19 +124,16 @@ function parseCsaMoveLine(line: string, fromPiecePromoted?: boolean): { usi: str
  * と USI 表現を返す。
  *
  * 戻り値が `null` のときは行が move ではない (時間行 / コメント / 終局コード等)。
- * `applyMoveWithState` の戻り値が `ok: false` のときも `null` を返す (= 不正手は
- * 呼び出し側で検出させる)。
+ * move 行を盤面へ適用できない場合は例外を投げる。
  *
  * `state` には board + hands + turn + ply を含む `PositionState` を渡す契約。
  * 駒打ち手 (`+0099FU` 等) は `hands` を参照しないと適用できないため、`BoardState`
  * 単体ではなく `PositionState` 全体を取る。
  *
- * 内部では既存 `applyMoveWithState` を `validateTurn: false` で呼び、wire 由来の
- * 手を idempotent に適用する (= サーバが手番・合法性・在駒を保証している前提)。
+ * CSA の符号と移動駒の所有者が一致しない局面を後続手へ渡さないため、手番を検証する。
  * `ignoreHandLimits` は既定 (`false`) のままにしておくことで、駒打ち時に hands
  * が自然に減算され、観戦 UI で持ち駒表示が壊れない。サーバ側で hands と
- * boardState の整合が崩れたケース (= 何らかのバグ) では `applyMoveWithState`
- * が `ok: false` を返すため本関数は `null` を返す。
+ * boardState の整合が崩れたケースでは例外を投げ、後続手を不整合な盤面へ適用しない。
  */
 export function parseSingleCsaMove(
     line: string,
@@ -160,10 +155,20 @@ export function parseSingleCsaMove(
     }
     const parsed = parseCsaMoveLine(trimmed, fromPiecePromoted);
     if (!parsed) return null;
+    const lineTurn = trimmed.startsWith("+") ? "sente" : "gote";
+    if (lineTurn !== state.turn) {
+        throw new Error(
+            `CSA move rejected: ${trimmed} (unexpected turn: expected ${state.turn}, got ${lineTurn})`,
+        );
+    }
     const result = applyMoveWithState(state, parsed.usi, {
-        validateTurn: false,
+        validateTurn: true,
     });
-    if (!result.ok) return null;
+    if (!result.ok) {
+        throw new Error(
+            `CSA move could not be applied: ${trimmed} (${result.error ?? "unknown error"})`,
+        );
+    }
     return { move: parsed.usi, nextState: result.next };
 }
 
@@ -189,9 +194,15 @@ export function parseCsaMovesWithState(
         .filter(Boolean);
     const moves: string[] = [];
     let state = initialState;
+    let hasMove = false;
     for (const line of lines) {
+        if (!hasMove && (line === "+" || line === "-")) {
+            state = { ...state, turn: line === "+" ? "sente" : "gote" };
+            continue;
+        }
         const applied = parseSingleCsaMove(line, state);
         if (!applied) continue;
+        hasMove = true;
         moves.push(applied.move);
         state = applied.nextState;
     }
@@ -226,34 +237,67 @@ export function movesToCsa(
         "PI",
         "+",
     ];
-    let board = resolveInitialBoard(initialBoard);
+    let state: PositionState = {
+        board: resolveInitialBoard(initialBoard),
+        hands: createEmptyHands(),
+        turn: "sente",
+    };
     moves.forEach((move, index) => {
         const parsed = parseUsiMove(move);
         if (!parsed) {
-            console.warn(`Failed to parse USI move at index ${index}: ${move}`);
-            return;
-        }
-        const piece = board[parsed.from];
-        if (!piece) {
-            return;
+            throw new Error(`USI move could not be parsed at index ${index}: ${move}`);
         }
         const sign = index % 2 === 0 ? "+" : "-";
-        const pieceCode = determinePieceCode(piece, move.endsWith("+"));
-        lines.push(`${sign}${toCsaSquare(parsed.from)}${toCsaSquare(parsed.to)}${pieceCode}`);
-        board = applyMove(board, move);
+        const turn = index % 2 === 0 ? "sente" : "gote";
+        let csaMove: string;
+        if (parsed.kind === "drop") {
+            csaMove = `${sign}00${toCsaSquare(parsed.to)}${PIECE_CODES[parsed.piece]}`;
+        } else {
+            const piece = state.board[parsed.from];
+            if (!piece) {
+                throw new Error(
+                    `USI move could not be converted at index ${index}: ${move} (no piece at source square)`,
+                );
+            }
+            const pieceCode = determinePieceCode(piece, piece.promoted === true || parsed.promote);
+            csaMove = `${sign}${toCsaSquare(parsed.from)}${toCsaSquare(parsed.to)}${pieceCode}`;
+        }
+        const result = applyMoveWithState({ ...state, turn }, move, {
+            validateTurn: true,
+            ignoreHandLimits: true,
+        });
+        if (!result.ok) {
+            throw new Error(
+                `USI move could not be applied at index ${index}: ${move} (${result.error ?? "unknown error"})`,
+            );
+        }
+        lines.push(csaMove);
+        state = result.next;
     });
 
     return lines.join("\n");
 }
 
-export function parseCsaMoves(contents: string, initialBoard?: BoardState): string[] {
+function parseCsaMovesWithBoard(
+    contents: string,
+    initialBoard?: BoardState,
+): { moves: string[]; board: BoardState } {
     const lines = contents
         .split(/\r?\n/)
         .map((line) => line.trim())
         .filter(Boolean);
     const moves: string[] = [];
-    let board = resolveInitialBoard(initialBoard);
+    let state: PositionState = {
+        board: resolveInitialBoard(initialBoard),
+        hands: createEmptyHands(),
+        turn: "sente",
+    };
+    let hasMove = false;
     for (const line of lines) {
+        if (!hasMove && (line === "+" || line === "-")) {
+            state = { ...state, turn: line === "+" ? "sente" : "gote" };
+            continue;
+        }
         if (!(line.startsWith("+") || line.startsWith("-"))) {
             continue;
         }
@@ -261,45 +305,79 @@ export function parseCsaMoves(contents: string, initialBoard?: BoardState): stri
             continue;
         }
         const fromRaw = line.slice(1, 3);
-        const toSquare = fromCsaSquare(line.slice(3, 5));
+        const toRaw = line.slice(3, 5);
+        const toSquare = fromCsaSquare(toRaw);
         if (!toSquare) {
-            continue;
+            throw new Error(`CSA move could not be applied: ${line} (invalid to-square: ${toRaw})`);
         }
+        const lineTurn = line.startsWith("+") ? "sente" : "gote";
+        if (lineTurn !== state.turn) {
+            throw new Error(
+                `CSA move rejected: ${line} (unexpected turn: expected ${state.turn}, got ${lineTurn})`,
+            );
+        }
+        hasMove = true;
         const pieceCode = line.slice(5, 7).toUpperCase();
-        // 駒打ち (CSA `from === "00"`) を USI `P*5e` 形式に変換する。
-        // BoardState のみで hands を扱えないため、`applyMove` の `ignoreHandLimits`
-        // 既定 (= true) に依存して board だけを進める (issue #613)。
+        // 駒打ち (CSA `from === "00"`) を USI `P*5e` 形式に変換する。呼び出し元は
+        // 初期 hands を持たない (盤面のみ渡される) 契約のため、`ignoreHandLimits`
+        // で持ち駒の在庫検証を免除して board だけを進める。
         if (fromRaw === "00") {
             const dropPiece = DROP_PIECE_FROM_CODE[pieceCode];
-            if (!dropPiece) continue;
+            if (!dropPiece) {
+                throw new Error(
+                    `CSA move could not be applied: ${line} (unknown piece code: ${pieceCode})`,
+                );
+            }
             const move = `${dropPiece}*${toSquare}`;
+            const result = applyMoveWithState(state, move, {
+                validateTurn: true,
+                ignoreHandLimits: true,
+            });
+            if (!result.ok) {
+                throw new Error(
+                    `CSA move could not be applied: ${line} (${result.error ?? "unknown error"})`,
+                );
+            }
             moves.push(move);
-            board = applyMove(board, move);
+            state = result.next;
             continue;
         }
         const fromSquare = fromCsaSquare(fromRaw);
         if (!fromSquare) {
-            continue;
+            throw new Error(
+                `CSA move could not be applied: ${line} (invalid from-square: ${fromRaw})`,
+            );
         }
-        const targetPiece = board[fromSquare];
+        const targetPiece = state.board[fromSquare];
         if (!targetPiece) {
-            continue;
+            throw new Error(`CSA move could not be applied: ${line} (no piece at source square)`);
         }
         // 「駒コードが成り駒コード」かつ「移動元の駒が未成り」の場合のみ promote。
         // 既成り駒の通常移動 (例: 龍 RY が移動) では `+` を付与しない。
         const isPromotedCode = PROMOTED_FROM_CODE[pieceCode] !== undefined;
         const promotes = isPromotedCode && targetPiece.promoted !== true;
         const move = `${fromSquare}${toSquare}${promotes ? "+" : ""}`;
+        const result = applyMoveWithState(state, move, {
+            validateTurn: true,
+            ignoreHandLimits: true,
+        });
+        if (!result.ok) {
+            throw new Error(
+                `CSA move could not be applied: ${line} (${result.error ?? "unknown error"})`,
+            );
+        }
         moves.push(move);
-        board = applyMove(board, move);
+        state = result.next;
     }
-    return moves;
+    return { moves, board: state.board };
+}
+
+export function parseCsaMoves(contents: string, initialBoard?: BoardState): string[] {
+    return parseCsaMovesWithBoard(contents, initialBoard).moves;
 }
 
 export function buildBoardFromCsa(contents: string, initialBoard?: BoardState): BoardState {
-    const moves = parseCsaMoves(contents, initialBoard);
-    const start = resolveInitialBoard(initialBoard);
-    return boardFromMoves(moves, { board: start, hands: createEmptyHands(), turn: "sente" });
+    return parseCsaMovesWithBoard(contents, initialBoard).board;
 }
 
 function toCsaSquare(square: Square): string {
@@ -323,14 +401,26 @@ function fromCsaSquare(value: string): Square | null {
     return `${file}${mappedRank}` as Square;
 }
 
-function parseUsiMove(move: string): { from: Square; to: Square } | null {
-    const cleaned = move.replace("+", "");
-    if (cleaned.length < 4) {
-        return null;
+function parseUsiMove(
+    move: string,
+):
+    | { kind: "move"; from: Square; to: Square; promote: boolean }
+    | { kind: "drop"; piece: Exclude<PieceType, "K">; to: Square }
+    | null {
+    const dropMatch = move.match(/^([PLNSGBR])\*([1-9][a-i])$/);
+    if (dropMatch) {
+        const piece = dropMatch[1].toUpperCase() as Exclude<PieceType, "K">;
+        const to = dropMatch[2] as Square;
+        return { kind: "drop", piece, to };
     }
-    const from = cleaned.slice(0, 2) as Square;
-    const to = cleaned.slice(2, 4) as Square;
-    return { from, to };
+    const moveMatch = move.match(/^([1-9][a-i])([1-9][a-i])(\+)?$/);
+    if (!moveMatch) return null;
+    return {
+        kind: "move",
+        from: moveMatch[1] as Square,
+        to: moveMatch[2] as Square,
+        promote: moveMatch[3] === "+",
+    };
 }
 
 function determinePieceCode(piece: Piece, promoted: boolean): string {

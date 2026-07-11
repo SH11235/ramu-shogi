@@ -13,6 +13,7 @@ import { parseCsaMoves } from "@shogi/app-core";
 import type { FetchRshogiGameOptions, RshogiGame } from "@shogi/match-client";
 import { fetchRshogiGame, RshogiGameNotFoundError } from "@shogi/match-client";
 import { type ReactElement, type ReactNode, useEffect, useState } from "react";
+import { Button } from "./button";
 import { ShogiMatch } from "./shogi-match";
 import type { EngineOption } from "./shogi-match/types";
 
@@ -207,6 +208,18 @@ export function RshogiCsaViewer({
         return <div className="mx-auto flex max-w-[480px] flex-col gap-2 px-4 py-10 text-sm" />;
     }
 
+    const handleDownloadCsa = (): void => {
+        const blob = new Blob([game.csa], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `${gameId}.csa`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
+    };
+
     return (
         <div>
             {header}
@@ -223,7 +236,19 @@ export function RshogiCsaViewer({
                 }}
                 initialReview={{ sfen: "startpos", moves }}
                 reviewMode={true}
-                reviewLeftContent={<RshogiGameMetaPanel game={game} />}
+                reviewLeftContent={
+                    <div className="flex flex-col gap-2">
+                        <RshogiGameMetaPanel game={game} />
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleDownloadCsa}
+                        >
+                            CSA ダウンロード
+                        </Button>
+                    </div>
+                }
             />
         </div>
     );
