@@ -1149,8 +1149,8 @@ export function ShogiMatch({
             clearLiveSearchInfo();
         },
         onLiveInfo: (side, event) => {
-            // 対局停止後に flush された info が残留表示を再セットしないようにする
-            if (!isMatchRunning) return;
+            // 対局停止後や fatal エラー後に flush された info が残留表示を再セットしないようにする
+            if (!isMatchRunning || engineStatus[side] === "error") return;
             liveInfoTrailingRef.current = { side, event };
             if (liveInfoTimerRef.current) return;
             liveInfoTimerRef.current = setTimeout(() => {
@@ -2074,13 +2074,16 @@ export function ShogiMatch({
                     isMatchRunning={isMatchRunning}
                     isPaused={isPaused}
                 />
-                {displaySettings.showSearchInfo && isMatchRunning && liveSearchInfo && (
-                    <SearchInfoPanel
-                        side={liveSearchInfo.side}
-                        info={liveSearchInfo.event}
-                        isMobile={isMobile}
-                    />
-                )}
+                {displaySettings.showSearchInfo &&
+                    isMatchRunning &&
+                    liveSearchInfo &&
+                    engineStatus[liveSearchInfo.side] !== "error" && (
+                        <SearchInfoPanel
+                            side={liveSearchInfo.side}
+                            info={liveSearchInfo.event}
+                            isMobile={isMobile}
+                        />
+                    )}
             </TooltipProvider>
         </ShogiMatchProvider>
     );
