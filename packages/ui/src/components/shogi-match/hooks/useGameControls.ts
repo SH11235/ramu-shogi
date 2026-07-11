@@ -66,8 +66,8 @@ interface UseGameControlsProps {
     resetClocks: (startTicking: boolean) => void;
     /** 全エンジンを停止する */
     stopAllEngines: () => Promise<void>;
-    /** 両サイドのエンジンを初期化して探索可能な状態にする */
-    prepareEngines: () => Promise<void>;
+    /** 両サイドのエンジンを初期化して探索可能な状態にする。全サイド成功で true */
+    prepareEngines: () => Promise<boolean>;
     /** NNUEを解決する */
     resolveNnue: (selection: NnueSelection) => Promise<ResolvedNnue | null>;
     /** 合法手キャッシュをクリアする */
@@ -243,7 +243,10 @@ export function useGameControls({
             if (isPaused) {
                 // 一時停止時にエンジンは破棄されているため、時計を動かす前に再初期化する
                 // （初期化時間が秒読みから差し引かれるのを防ぐ）
-                await prepareEngines();
+                if (!(await prepareEngines())) {
+                    setMessage({ text: "エンジンの初期化に失敗しました。", type: "error" });
+                    return;
+                }
                 setIsPaused(false);
                 setIsMatchRunning(true);
                 turnStartTimeRef.current = Date.now();
@@ -293,7 +296,10 @@ export function useGameControls({
 
             // 時計を動かす前にエンジンを初期化しておく
             // （WASM init / NNUE ロードの時間が初手番の秒読みから差し引かれるのを防ぐ）
-            await prepareEngines();
+            if (!(await prepareEngines())) {
+                setMessage({ text: "エンジンの初期化に失敗しました。", type: "error" });
+                return;
+            }
 
             setIsMatchRunning(true);
             turnStartTimeRef.current = Date.now();

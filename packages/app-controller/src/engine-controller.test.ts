@@ -259,8 +259,9 @@ describe("createEngineController", () => {
     });
 
     const flushPromises = async () => {
-        await Promise.resolve();
-        await Promise.resolve();
+        for (let i = 0; i < 10; i++) {
+            await Promise.resolve();
+        }
     };
 
     it("エンジンを初期化し探索を開始する", async () => {
@@ -358,8 +359,8 @@ describe("createEngineController", () => {
             matchRunning: false,
         });
 
-        await controller.command.prepare("sente");
-        await controller.command.prepare("gote");
+        await expect(controller.command.prepare("sente")).resolves.toBe(true);
+        await expect(controller.command.prepare("gote")).resolves.toBe(true);
 
         expect(mockClient.init).toHaveBeenCalledTimes(1);
         expect(mockClient.search).not.toHaveBeenCalled();
@@ -397,10 +398,53 @@ describe("createEngineController", () => {
             matchRunning: false,
         });
 
-        await expect(controller.command.prepare("sente")).resolves.toBeUndefined();
+        await expect(controller.command.prepare("sente")).resolves.toBe(false);
 
         expect(controller.getState().engineStatus.sente).toBe("error");
         expect(controller.getState().errorLogs[0]?.message).toContain("engine error");
+    });
+
+    it("prepare 中にターン開始が発火しても初期化を共有し探索が始まる", async () => {
+        const mockClient = createMockEngineClient();
+        let resolveInit: (() => void) | undefined;
+        mockClient.init.mockImplementation(
+            () =>
+                new Promise<void>((resolve) => {
+                    resolveInit = resolve;
+                }),
+        );
+        const controller = createEngineController({
+            createClient: (_engineId) => mockClient.client,
+            getClockState: createClockState,
+            now: () => Date.now(),
+            resolveNnue: async () => null,
+            callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
+        });
+
+        controller.command.syncContext({
+            sides: {
+                sente: { role: "engine", engineId: "engine1" },
+                gote: { role: "human" },
+            },
+            position: {
+                startSfen: "startpos",
+                moves: [],
+                turn: "sente",
+                ready: true,
+            },
+            matchRunning: false,
+        });
+
+        const preparing = controller.command.prepare("sente");
+        // init 未完了のうちに対局開始 → maybeStartTurn が発火
+        controller.command.syncContext({ matchRunning: true });
+        resolveInit?.();
+
+        await expect(preparing).resolves.toBe(true);
+        await flushPromises();
+
+        expect(mockClient.init).toHaveBeenCalledTimes(1);
+        expect(mockClient.search).toHaveBeenCalledTimes(1);
     });
 
     it("init 失敗時に error 状態とエラーログを残す", async () => {

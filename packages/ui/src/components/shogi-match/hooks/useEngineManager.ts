@@ -94,8 +94,8 @@ interface UseEngineManagerReturn {
     errorLogs: EngineControllerErrorLog[];
     /** 全エンジンを停止する */
     stopAllEngines: () => Promise<void>;
-    /** 両サイドのエンジンを初期化して探索可能な状態にする（時計始動前に呼ぶ） */
-    prepareEngines: () => Promise<void>;
+    /** 両サイドのエンジンを初期化して探索可能な状態にする（時計始動前に呼ぶ）。全サイド成功で true */
+    prepareEngines: () => Promise<boolean>;
     /** 指定サイドのエンジンオプションを取得 */
     getEngineForSide: (side: Player) => EngineOption | undefined;
     /** 指定手番がエンジンかどうか */
@@ -279,10 +279,11 @@ export function useEngineManager({
     };
 
     const prepareEngines = async () => {
-        await Promise.all([
+        const results = await Promise.all([
             controller.command.prepare("sente"),
             controller.command.prepare("gote"),
         ]);
+        return results.every(Boolean);
     };
 
     const analyzePosition = async (request: AnalysisRequest) => {
