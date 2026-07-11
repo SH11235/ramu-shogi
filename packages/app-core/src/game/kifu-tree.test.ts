@@ -34,6 +34,16 @@ function createTestPosition(ply: number = 0): PositionState {
 }
 
 describe("kifu-tree", () => {
+    it("searchStats をノードと JSON スナップショットで保持する", () => {
+        const position = createTestPosition(0);
+        const stats = { depth: 20, nodes: 1234, pv: ["7g7f"], engineId: "test" };
+        const tree = addMove(createKifuTree(position, "startpos"), "7g7f", createTestPosition(1), {
+            searchStats: stats,
+        });
+        const node = tree.nodes.get(tree.currentNodeId);
+        expect(node?.searchStats).toEqual(stats);
+        expect(JSON.parse(JSON.stringify(node)).searchStats).toEqual(stats);
+    });
     describe("createKifuTree", () => {
         it("開始局面でツリーを作成できる", () => {
             const startPosition = createTestPosition(0);

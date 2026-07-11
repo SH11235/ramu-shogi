@@ -1,11 +1,39 @@
 import type { EngineEvent } from "@shogi/engine-client";
 import { describe, expect, it, vi } from "vitest";
 import {
+    accumulateSearchStats,
     createEngineController,
     determineBestmoveAction,
     handleBestmove,
     handleInfoEvent,
 } from "./engine-controller";
+
+describe("accumulateSearchStats", () => {
+    it("multipv 1 の各フィールドを last-wins で累積する", () => {
+        const first = accumulateSearchStats(
+            {},
+            {
+                type: "info",
+                depth: 10,
+                nodes: 100,
+                scoreCp: 20,
+            },
+        );
+        expect(accumulateSearchStats(first, { type: "info", depth: 12, nps: 5000 })).toEqual({
+            depth: 12,
+            nodes: 100,
+            scoreCp: 20,
+            nps: 5000,
+        });
+    });
+
+    it("multipv 2 以上を無視する", () => {
+        const current = { depth: 10, scoreCp: 20 };
+        expect(accumulateSearchStats(current, { type: "info", multipv: 2, depth: 99 })).toBe(
+            current,
+        );
+    });
+});
 
 describe("determineBestmoveAction", () => {
     it("通常の手の場合、apply_moveアクションを返す", () => {

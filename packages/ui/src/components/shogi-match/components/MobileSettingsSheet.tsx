@@ -126,6 +126,8 @@ interface MobileSettingsSheetProps {
     onImportKif?: (moves: string[], moveData: KifMoveData[], startSfen?: string) => Promise<void>;
     /** 局面が準備完了しているか */
     positionReady?: boolean;
+    /** rshogi 互換 JSONL をダウンロード */
+    onExportJsonl?: () => Promise<void>;
 }
 
 // iOS Safari は16px未満のinput/selectにフォーカスすると自動ズームするため、text-base(16px)を使用
@@ -304,6 +306,7 @@ export function MobileSettingsSheet({
     onImportSfen,
     onImportKif,
     positionReady = true,
+    onExportJsonl,
 }: MobileSettingsSheetProps): ReactElement {
     const threadOptions = buildThreadOptions();
     const externalEngines = engineOptions?.filter((engine) => engine.kind === "external") ?? [];
@@ -909,6 +912,16 @@ export function MobileSettingsSheet({
                 />
             )}
 
+            {onExportJsonl && (
+                <button
+                    type="button"
+                    onClick={() => void onExportJsonl()}
+                    className="w-full rounded-lg border border-border bg-background p-2 text-sm text-foreground"
+                >
+                    JSONL エクスポート
+                </button>
+            )}
+
             {/* 表示設定 */}
             <div className="space-y-3 pt-3 border-t border-border">
                 <div className="font-medium text-sm">表示設定</div>
@@ -964,6 +977,20 @@ export function MobileSettingsSheet({
                             className="w-4 h-4"
                         />
                         <span>最終手を強調表示</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm">
+                        <input
+                            type="checkbox"
+                            checked={displaySettings.showSearchInfo}
+                            onChange={(e) =>
+                                onDisplaySettingsChange({
+                                    ...displaySettings,
+                                    showSearchInfo: e.target.checked,
+                                })
+                            }
+                            className="w-4 h-4"
+                        />
+                        <span>探索情報 (NPS/深さ) を表示</span>
                     </label>
                     <label className="flex items-center gap-2 text-sm">
                         <input

@@ -229,6 +229,7 @@ export function movesToCsa(
     moves: string[],
     metadata: CsaMetadata = {},
     initialBoard?: BoardState,
+    elapsedSeconds?: Array<number | undefined>,
 ): string {
     const lines: string[] = [
         "V2.2",
@@ -272,6 +273,10 @@ export function movesToCsa(
             );
         }
         lines.push(csaMove);
+        const elapsed = elapsedSeconds?.[index];
+        if (elapsed !== undefined) {
+            lines.push(`T${Math.max(0, Math.round(elapsed))}`);
+        }
         state = result.next;
     });
 

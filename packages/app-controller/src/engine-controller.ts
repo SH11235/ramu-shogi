@@ -1,4 +1,10 @@
-import type { GameResult, NnueSelection, Player, ResolvedNnue } from "@shogi/app-core";
+import type {
+    GameResult,
+    MoveSearchStats,
+    NnueSelection,
+    Player,
+    ResolvedNnue,
+} from "@shogi/app-core";
 import type {
     EngineClient,
     EngineErrorCode,
@@ -148,6 +154,8 @@ interface EngineControllerCallbacks {
     onMoveFromEngine: (move: string) => void;
     onMatchEnd: (result: GameResult) => Promise<void>;
     onEvalUpdate?: (ply: number, event: EngineInfoEvent) => void;
+    onSearchComplete?: (ply: number, stats: MoveSearchStats) => void;
+    onLiveInfo?: (side: Player, event: EngineInfoEvent) => void;
 }
 
 interface EngineControllerDependencies {
@@ -451,6 +459,31 @@ export function handleInfoEvent(
     }
 }
 
+export function accumulateSearchStats(
+    current: MoveSearchStats,
+    event: EngineInfoEvent,
+): MoveSearchStats {
+    if (event.multipv !== undefined && event.multipv !== 1) return current;
+    const next = { ...current };
+    const fields = [
+        "depth",
+        "seldepth",
+        "scoreCp",
+        "scoreMate",
+        "nodes",
+        "nps",
+        "timeMs",
+        "hashfull",
+        "multipv",
+        "pv",
+    ] as const;
+    for (const field of fields) {
+        const value = event[field];
+        if (value !== undefined) Object.assign(next, { [field]: value });
+    }
+    return next;
+}
+
 export function createEngineController(
     dependencies: EngineControllerDependencies,
 ): EngineController {
@@ -460,6 +493,11 @@ export function createEngineController(
     const engineStates = createInitialEngineStates();
     const searchStates = createInitialSearchStates();
     const analysisState = createInitialAnalysisState();
+    const liveSearchStats = { sente: {}, gote: {} } as Record<Player, MoveSearchStats>;
+    const liveThinkLimitMs = { sente: undefined, gote: undefined } as Record<
+        Player,
+        number | undefined
+    >;
     // 側ごとの in-flight 初期化。並行呼び出しは同じ Promise を共有して二重初期化を防ぐ
     const initializing = { sente: null, gote: null } as Record<
         Player,
@@ -603,6 +641,11 @@ export function createEngineController(
                 }
 
                 if (result.action === "apply_move" && result.move) {
+                    callbacks.onSearchComplete?.(movesCount, {
+                        ...liveSearchStats[side],
+                        thinkLimitMs: liveThinkLimitMs[side],
+                        engineId,
+                    });
                     callbacks.onMoveFromEngine(result.move);
                 }
 
@@ -614,6 +657,8 @@ export function createEngineController(
             }
 
             if (event.type === "info") {
+                callbacks.onLiveInfo?.(side, event);
+                liveSearchStats[side] = accumulateSearchStats(liveSearchStats[side], event);
                 if (
                     callbacks.onEvalUpdate &&
                     (event.scoreCp !== undefined || event.scoreMate !== undefined)
@@ -926,6 +971,9 @@ export function createEngineController(
             }
 
             const effectiveByoyomiMs = Math.max(100, remainingByoyomiMs);
+
+            liveSearchStats[side] = {};
+            liveThinkLimitMs[side] = effectiveByoyomiMs;
 
             const handle = await client.search({
                 limits: { byoyomiMs: effectiveByoyomiMs },

@@ -64,6 +64,8 @@ interface MoveDetailWindowProps {
     onClose: () => void;
     /** 現在位置がメインライン上にあるか */
     isOnMainLine?: boolean;
+    /** 保存済み探索統計を表示するか */
+    showSearchInfo?: boolean;
 }
 
 const DEFAULT_WIDTH = 320;
@@ -323,6 +325,7 @@ export function MoveDetailWindow({
     kifuTree,
     onClose,
     isOnMainLine = true,
+    showSearchInfo = false,
 }: MoveDetailWindowProps): ReactElement {
     const surfaceTheme = useSurfaceTheme();
     const { geometry, handlers } = useDraggableWindow(
@@ -386,6 +389,24 @@ export function MoveDetailWindow({
 
     const hasPv = pvList.length > 0;
     const hasMultiplePv = pvList.length > 1;
+    // 別分岐に同 ply・同指し手のノードがあり得るため、まず現在の経路 (currentNodeId の祖先) で解決する
+    const searchStats = (() => {
+        if (!kifuTree) return undefined;
+        let id: string | null = kifuTree.currentNodeId;
+        while (id) {
+            const node = kifuTree.nodes.get(id);
+            if (!node) break;
+            if (node.ply === move.ply) {
+                if (node.usiMove === move.usiMove) return node.searchStats;
+                break;
+            }
+            if (node.ply < move.ply) break;
+            id = node.parentId;
+        }
+        return [...kifuTree.nodes.values()].find(
+            (node) => node.ply === move.ply && node.usiMove === move.usiMove,
+        )?.searchStats;
+    })();
 
     // NNUE選択肢を構築（プリセット + カスタムNNUE）
     const nnueOptions = buildNnueOptions({ presets, nnueList, isNnueListLoading });
@@ -422,6 +443,16 @@ export function MoveDetailWindow({
                     <span className="text-[11px] text-muted-foreground">{move.ply}手目</span>
                     <span className="text-[13px] font-medium">{move.displayText}</span>
                 </div>
+
+                {showSearchInfo && searchStats && (
+                    <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted/40 p-2 text-[11px] text-foreground">
+                        <span>選択深さ: {searchStats.seldepth ?? "-"}</span>
+                        <span>nodes: {searchStats.nodes?.toLocaleString() ?? "-"}</span>
+                        <span>NPS: {searchStats.nps?.toLocaleString() ?? "-"}</span>
+                        <span>探索時間: {searchStats.timeMs ?? "-"} ms</span>
+                        <span>思考上限: {searchStats.thinkLimitMs ?? "-"} ms</span>
+                    </div>
+                )}
                 <button
                     type="button"
                     className="bg-transparent border-none cursor-pointer px-2 py-1 rounded text-base leading-none text-muted-foreground hover:bg-accent"

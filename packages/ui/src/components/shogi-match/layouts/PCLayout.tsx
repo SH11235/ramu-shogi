@@ -296,6 +296,20 @@ export function PCLayout({
                         <label className="flex items-center gap-3 text-sm cursor-pointer">
                             <input
                                 type="checkbox"
+                                checked={navDisplaySettings.showSearchInfo}
+                                onChange={(e) =>
+                                    setDisplaySettings({
+                                        ...navDisplaySettings,
+                                        showSearchInfo: e.target.checked,
+                                    })
+                                }
+                                className="w-4 h-4"
+                            />
+                            <span>探索情報 (NPS/深さ) を表示</span>
+                        </label>
+                        <label className="flex items-center gap-3 text-sm cursor-pointer">
+                            <input
+                                type="checkbox"
                                 checked={navDisplaySettings.enableWheelNavigation}
                                 onChange={(e) =>
                                     setDisplaySettings({

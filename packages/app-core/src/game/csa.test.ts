@@ -47,6 +47,15 @@ beforeEach(() => {
 });
 
 describe("movesToCsa", () => {
+    it("指定された各手の消費秒を指し手直後の T 行に出力する", () => {
+        expect(movesToCsa(["7g7f", "3c3d"], {}, undefined, [1.6, 0])).toContain(
+            "+7776FU\nT2\n-3334FU\nT0",
+        );
+    });
+
+    it("消費秒を省略した場合は T 行を出力しない", () => {
+        expect(movesToCsa(["7g7f"])).not.toContain("\nT");
+    });
     it("USI手順をCSA形式に変換する", () => {
         const moves = ["7g7f", "3c3d"];
         const result = movesToCsa(moves);

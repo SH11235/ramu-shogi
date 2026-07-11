@@ -11,7 +11,13 @@ import type {
     SideSetting,
 } from "@shogi/app-controller";
 import { createEngineController } from "@shogi/app-controller";
-import type { GameResult, NnueSelection, Player, ResolvedNnue } from "@shogi/app-core";
+import type {
+    GameResult,
+    MoveSearchStats,
+    NnueSelection,
+    Player,
+    ResolvedNnue,
+} from "@shogi/app-core";
 import type { EngineClient, EngineInfoEvent } from "@shogi/engine-client";
 import { useEffect, useRef, useState } from "react";
 import type { EngineThreadSettings } from "../types";
@@ -42,6 +48,8 @@ interface UseEngineManagerProps {
     onMatchEnd: (result: GameResult) => Promise<void>;
     /** 評価値更新時のコールバック */
     onEvalUpdate?: (ply: number, event: EngineInfoEvent) => void;
+    onSearchComplete?: (ply: number, stats: MoveSearchStats) => void;
+    onLiveInfo?: (side: Player, event: EngineInfoEvent) => void;
     /** ログの最大件数 */
     maxLogs?: number;
     /** 対局用 NNUE 選択（先手） */
@@ -139,6 +147,8 @@ export function useEngineManager({
     onMoveFromEngine,
     onMatchEnd,
     onEvalUpdate,
+    onSearchComplete,
+    onLiveInfo,
     maxLogs = 80,
     senteNnueSelection,
     goteNnueSelection,
@@ -153,10 +163,22 @@ export function useEngineManager({
         engineOptionsRef.current = engineOptions;
     }, [engineOptions]);
 
-    const callbacksRef = useRef({ onMoveFromEngine, onMatchEnd, onEvalUpdate });
+    const callbacksRef = useRef({
+        onMoveFromEngine,
+        onMatchEnd,
+        onEvalUpdate,
+        onSearchComplete,
+        onLiveInfo,
+    });
     useEffect(() => {
-        callbacksRef.current = { onMoveFromEngine, onMatchEnd, onEvalUpdate };
-    }, [onMoveFromEngine, onMatchEnd, onEvalUpdate]);
+        callbacksRef.current = {
+            onMoveFromEngine,
+            onMatchEnd,
+            onEvalUpdate,
+            onSearchComplete,
+            onLiveInfo,
+        };
+    }, [onMoveFromEngine, onMatchEnd, onEvalUpdate, onSearchComplete, onLiveInfo]);
 
     const resolveNnueRef = useRef(resolveNnue);
     useEffect(() => {
@@ -184,6 +206,9 @@ export function useEngineManager({
                 onMoveFromEngine: (move) => callbacksRef.current.onMoveFromEngine(move),
                 onMatchEnd: (result) => callbacksRef.current.onMatchEnd(result),
                 onEvalUpdate: (ply, event) => callbacksRef.current.onEvalUpdate?.(ply, event),
+                onSearchComplete: (ply, stats) =>
+                    callbacksRef.current.onSearchComplete?.(ply, stats),
+                onLiveInfo: (side, event) => callbacksRef.current.onLiveInfo?.(side, event),
             },
         });
     }

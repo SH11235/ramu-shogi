@@ -77,6 +77,7 @@ export function PCKifuSection({
         onDisplaySettingsChange,
         handlePlySelect,
         handleCopyKif,
+        handleExportJsonl,
         handleMoveDetailSelect,
         isMatchRunning,
     } = useNavigation();
@@ -110,6 +111,13 @@ export function PCKifuSection({
                     initialOpen={evalPanelInitialOpen ?? false}
                     reviewMode={reviewMode}
                 />
+                <button
+                    type="button"
+                    onClick={() => void handleExportJsonl()}
+                    className="rounded border border-border bg-background px-2 py-1 text-xs text-foreground hover:bg-muted"
+                >
+                    JSONL エクスポート
+                </button>
 
                 {/* 棋譜パネル + ドロワー（横並び） */}
                 <div className="relative flex items-start">

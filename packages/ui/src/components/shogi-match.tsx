@@ -1,7 +1,9 @@
 import type {
     BoardState,
     GameResult,
+    KifuNode,
     LastMove,
+    MoveSearchStats,
     NnueSelection,
     PieceType,
     Player,
@@ -17,10 +19,12 @@ import {
     getPositionService,
     resolveWorkerCount,
 } from "@shogi/app-core";
+import type { EngineInfoEvent } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useShogiSound } from "../hooks/useShogiSound";
 import type { RemoteNnueManager } from "./nnue/types";
+import { SearchInfoPanel } from "./shogi-match/components/SearchInfoPanel";
 import {
     DEFAULT_BYOYOMI_MS,
     DEFAULT_MAX_LOGS,
@@ -80,6 +84,7 @@ import type {
     NavigationProps,
     PCSpecificProps,
 } from "./shogi-match/types/layoutProps";
+import { exportToRshogiJsonl } from "./shogi-match/utils/jsonlExport";
 import type { KifMove } from "./shogi-match/utils/kifFormat";
 import { LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
 import {
@@ -557,6 +562,34 @@ export function ShogiMatch({
     const [isMatchRunning, setIsMatchRunning] = useState(false);
     const [isEditMode, setIsEditMode] = useState(true);
     const [isPaused, setIsPaused] = useState(false);
+    const pendingSearchStatsRef = useRef(new Map<number, MoveSearchStats>());
+    const [liveSearchInfo, setLiveSearchInfo] = useState<{
+        side: Player;
+        event: EngineInfoEvent;
+    } | null>(null);
+    const liveInfoTrailingRef = useRef<{ side: Player; event: EngineInfoEvent } | null>(null);
+    const liveInfoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const clearLiveSearchInfo = () => {
+        liveInfoTrailingRef.current = null;
+        if (liveInfoTimerRef.current) clearTimeout(liveInfoTimerRef.current);
+        liveInfoTimerRef.current = null;
+        setLiveSearchInfo(null);
+    };
+    useEffect(
+        () => () => {
+            if (liveInfoTimerRef.current) clearTimeout(liveInfoTimerRef.current);
+        },
+        [],
+    );
+    // 終局・一時停止・エラーで対局が止まったとき「思考中」の残留表示と未消費の統計を消す
+    useEffect(() => {
+        if (isMatchRunning) return;
+        pendingSearchStatsRef.current.clear();
+        liveInfoTrailingRef.current = null;
+        if (liveInfoTimerRef.current) clearTimeout(liveInfoTimerRef.current);
+        liveInfoTimerRef.current = null;
+        setLiveSearchInfo(null);
+    }, [isMatchRunning]);
     // モバイル判定
     const isMobile = useIsMobile();
     // 検討モード: 編集モードでも対局中でも一時停止中でもない状態
@@ -1083,6 +1116,7 @@ export function ShogiMatch({
     const {
         eventLogs,
         errorLogs,
+        engineStatus,
         stopAllEngines,
         prepareEngines,
         isEngineTurn,
@@ -1110,6 +1144,20 @@ export function ShogiMatch({
         onMoveFromEngine: (move) => handleMoveFromEngineRef.current(move),
         onMatchEnd: endMatch,
         onEvalUpdate: (ply, event) => handleEvalUpdateRef.current(ply, event),
+        onSearchComplete: (ply, stats) => {
+            pendingSearchStatsRef.current.set(ply, stats);
+            clearLiveSearchInfo();
+        },
+        onLiveInfo: (side, event) => {
+            // 対局停止後や fatal エラー後に flush された info が残留表示を再セットしないようにする
+            if (!isMatchRunning || engineStatus[side] === "error") return;
+            liveInfoTrailingRef.current = { side, event };
+            if (liveInfoTimerRef.current) return;
+            liveInfoTimerRef.current = setTimeout(() => {
+                if (liveInfoTrailingRef.current) setLiveSearchInfo(liveInfoTrailingRef.current);
+                liveInfoTimerRef.current = null;
+            }, 250);
+        },
         maxLogs,
         senteNnueSelection,
         goteNnueSelection,
@@ -1121,6 +1169,16 @@ export function ShogiMatch({
     });
     stopAllEnginesRef.current = stopAllEngines;
     prepareEnginesRef.current = prepareEngines;
+
+    // fatal なエンジンエラーは対局停止 (isMatchRunning=false) に遷移しないため、
+    // error 状態を直接監視してライブ探索表示を消す
+    useEffect(() => {
+        if (engineStatus.sente !== "error" && engineStatus.gote !== "error") return;
+        liveInfoTrailingRef.current = null;
+        if (liveInfoTimerRef.current) clearTimeout(liveInfoTimerRef.current);
+        liveInfoTimerRef.current = null;
+        setLiveSearchInfo(null);
+    }, [engineStatus.sente, engineStatus.gote]);
     restartEngineForNnueRef.current = restartEngineForNnue;
 
     // role変更時にエンジンを破棄するラッパー
@@ -1225,7 +1283,11 @@ export function ShogiMatch({
         // 消費時間を計算
         const elapsedMs = Date.now() - turnStartTimeRef.current;
         // 棋譜ナビゲーションに手を追加（局面更新はonPositionChangeで自動実行）
-        navigation.addMove(move, nextPosition, { elapsedMs });
+        const ply = moves.length;
+        const searchStats =
+            source === "engine" ? pendingSearchStatsRef.current.get(ply) : undefined;
+        navigation.addMove(move, nextPosition, { elapsedMs, searchStats });
+        if (source === "engine") pendingSearchStatsRef.current.delete(ply);
         setLastMove(lastMoveInfo);
         setSelection(null);
         setMessage(null);
@@ -1628,6 +1690,69 @@ export function ShogiMatch({
         setIsMatchRunning,
     });
 
+    const handleExportJsonl = async (): Promise<void> => {
+        if (!navigation.tree) return;
+        // 現在のナビゲーション位置に依存しないよう、ツリーの主分岐を親子ペアで辿る
+        // (sfen_before と手番は親ノードの positionAfter から導出する)
+        const mainMoves: { node: KifuNode; parent: KifuNode }[] = [];
+        let node = navigation.tree.nodes.get(navigation.tree.rootId);
+        while (node?.children[0]) {
+            const child = navigation.tree.nodes.get(node.children[0]);
+            if (!child || !child.usiMove) break;
+            mainMoves.push({ node: child, parent: node });
+            node = child;
+        }
+        const service = getPositionService();
+        const jsonlNodes = await Promise.all(
+            mainMoves.map(async ({ node: mainNode, parent }) => ({
+                moveUsi: mainNode.usiMove as string,
+                sfenBefore: await service.boardToSfen(parent.positionAfter),
+                sideToMove: parent.positionAfter.turn,
+                elapsedMs: mainNode.elapsedMs,
+                searchStats: mainNode.searchStats,
+            })),
+        );
+        const now = new Date();
+        const filename = `${now.toISOString().replace(/[:.]/g, "-")}.jsonl`;
+        const labelFor = (side: Player) => {
+            const setting = sides[side];
+            if (setting.role === "human") return "human";
+            return (
+                engineOptions.find((option) => option.id === setting.engineId)?.label ??
+                setting.engineId ??
+                "engine"
+            );
+        };
+        const result = gameResult
+            ? {
+                  outcome:
+                      gameResult.winner === "sente"
+                          ? ("black_win" as const)
+                          : ("white_win" as const),
+                  reason: gameResult.reason.kind,
+                  winner: gameResult.winner,
+              }
+            : undefined;
+        const contents = exportToRshogiJsonl(jsonlNodes, {
+            timestamp: now,
+            output: filename,
+            startSfen,
+            maxMoves: Math.max(1, mainMoves.length),
+            byoyomiMs: Math.max(timeSettings.sente.byoyomiMs, timeSettings.gote.byoyomiMs),
+            mainTimeMs: Math.max(timeSettings.sente.mainMs, timeSettings.gote.mainMs),
+            threads: Math.max(1, engineThreads.sente, engineThreads.gote),
+            hashMb: 0,
+            labels: { sente: labelFor("sente"), gote: labelFor("gote") },
+            result,
+        });
+        const url = URL.createObjectURL(new Blob([contents], { type: "application/x-ndjson" }));
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = filename;
+        anchor.click();
+        URL.revokeObjectURL(url);
+    };
+
     const initialAnalysisAppliedRef = useRef<string | null>(null);
 
     // initialReview を取り込む。live 観戦では moves が逐次伸びた場合だけ importSfen で
@@ -1858,6 +1983,7 @@ export function ShogiMatch({
         setDisplaySettings,
         handlePlySelect,
         handleCopyKif,
+        handleExportJsonl,
         handleMoveDetailSelect,
     };
 
@@ -1948,6 +2074,16 @@ export function ShogiMatch({
                     isMatchRunning={isMatchRunning}
                     isPaused={isPaused}
                 />
+                {displaySettings.showSearchInfo &&
+                    isMatchRunning &&
+                    liveSearchInfo &&
+                    engineStatus[liveSearchInfo.side] !== "error" && (
+                        <SearchInfoPanel
+                            side={liveSearchInfo.side}
+                            info={liveSearchInfo.event}
+                            isMobile={isMobile}
+                        />
+                    )}
             </TooltipProvider>
         </ShogiMatchProvider>
     );
