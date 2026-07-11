@@ -869,6 +869,7 @@ export function ShogiMatch({
     };
 
     const stopAllEnginesRef = useRef<() => Promise<void>>(async () => {});
+    const prepareEnginesRef = useRef<() => Promise<boolean>>(async () => true);
 
     // 時計管理フックを使用
     const { clocks, clocksRef, resetClocks, updateClocksForNextTurn, stopTicking, startTicking } =
@@ -1049,6 +1050,10 @@ export function ShogiMatch({
                 navigation.goBack();
             }
 
+            // 停止で破棄したエンジンを時計再開前に初期化し直す
+            // （初期化時間が秒読みから差し引かれるのを防ぐ）
+            await prepareEnginesRef.current();
+
             // 待った後の思考時間計測を新しく開始
             turnStartTimeRef.current = Date.now();
             // 秒読みをリセット（計算した手番で時計を更新・開始）
@@ -1106,6 +1111,7 @@ export function ShogiMatch({
         analysisEngineId,
     });
     stopAllEnginesRef.current = stopAllEngines;
+    prepareEnginesRef.current = prepareEngines;
     restartEngineForNnueRef.current = restartEngineForNnue;
 
     // role変更時にエンジンを破棄するラッパー

@@ -274,7 +274,9 @@ export function useEngineManager({
     const stopAllEngines = async () => {
         // React の isMatchRunning=false が effect 経由で controller に届くのを
         // 待たずに dispose すると、controller 側はまだ対局中扱いのままエンジンが
-        // 破棄され、進行中のターン開始と競合する。先に同期的に停止を伝える
+        // 破棄され、進行中のターン開始と競合する。先に同期的に停止を伝える。
+        // 対局継続中に呼ぶ場合は、直後に moves/turn を変化させて syncContext を
+        // 再実行させないと controller が停止扱いのままになる
         controller.command.setMatchRunning(false);
         await Promise.all([
             controller.command.dispose("sente"),
