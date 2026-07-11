@@ -62,7 +62,9 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
 
     // bestEffort=false では quit の失敗を伝播し、sessionId を保持したまま中断する
     // (識別子を失うと旧プロセスを回収できなくなるため)。Rust 側の quit は
-    // 存在しない session_id にも Ok を返す冪等実装なので、失敗 = IPC 異常
+    // 存在しない session_id にも Ok を返す冪等実装なので、失敗 = IPC 異常。
+    // bestEffort=true (dispose 用) は終端操作として quit 失敗を無視し sessionId も
+    // 消去する — dispose 後のクライアント再利用は想定せず、回収不能を許容する
     const closeSession = async (bestEffort: boolean): Promise<void> => {
         // quit に伴う旧チャネルの EOF エラーイベントを購読者へ流さないよう、
         // 購読解除を先に行う

@@ -125,6 +125,7 @@ describe("createUsiEngineClient", () => {
     it("購読失敗後の quit も失敗したら識別子を保持し dispose で回収できる", async () => {
         listenMock.mockRejectedValueOnce(new Error("listen failed"));
         const client = createUsiEngineClient({ registrationId: "reg-1" });
+        // listen 失敗に加えて quit も失敗させる (init 実行前なので beforeEach の実装を上書きしてよい)
         invokeMock.mockImplementation(async (command: string) => {
             if (command === "usi_engine_start") return "session-1";
             if (command === "usi_engine_quit") throw new Error("ipc down");
