@@ -719,7 +719,16 @@ export function createEngineController(
         setEngineStatus(side, "idle");
     };
 
-    const reinitializeEngineCore = async (
+    const reinitializeEngineCore = (
+        side: Player,
+        options: {
+            loadPosition: boolean;
+            errorLogPrefix: string;
+            nnueSelection?: NnueSelection;
+        },
+    ): Promise<boolean> => withSideOp(side, () => reinitializeEngineCoreInner(side, options));
+
+    const reinitializeEngineCoreInner = async (
         side: Player,
         options: {
             loadPosition: boolean;

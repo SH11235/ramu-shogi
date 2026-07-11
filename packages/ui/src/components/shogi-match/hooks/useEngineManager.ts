@@ -272,6 +272,10 @@ export function useEngineManager({
     };
 
     const stopAllEngines = async () => {
+        // React の isMatchRunning=false が effect 経由で controller に届くのを
+        // 待たずに dispose すると、controller 側はまだ対局中扱いのままエンジンが
+        // 破棄され、進行中のターン開始と競合する。先に同期的に停止を伝える
+        controller.command.setMatchRunning(false);
         await Promise.all([
             controller.command.dispose("sente"),
             controller.command.dispose("gote"),
