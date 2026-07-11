@@ -1052,7 +1052,13 @@ export function ShogiMatch({
 
             // 停止で破棄したエンジンを時計再開前に初期化し直す
             // （初期化時間が秒読みから差し引かれるのを防ぐ）
-            await prepareEnginesRef.current();
+            if (!(await prepareEnginesRef.current())) {
+                // 時計は再開せず一時停止扱いにして、再開操作からやり直せるようにする
+                setIsMatchRunning(false);
+                setIsPaused(true);
+                setMessage({ text: "エンジンの初期化に失敗しました。", type: "error" });
+                return;
+            }
 
             // 待った後の思考時間計測を新しく開始
             turnStartTimeRef.current = Date.now();
