@@ -39,19 +39,41 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
         }
     };
 
-    const closeSession = async (): Promise<void> => {
+    // init / dispose の並行呼び出しでセッションが取りこぼされないよう直列化する
+    let opChain: Promise<unknown> = Promise.resolve();
+    const runExclusive = <T>(fn: () => Promise<T>): Promise<T> => {
+        const run = opChain.then(fn);
+        opChain = run.then(
+            () => undefined,
+            () => undefined,
+        );
+        return run;
+    };
+
+    const dropListener = (): void => {
+        if (!unlisten) return;
+        try {
+            unlisten();
+        } catch {
+            // ignore
+        }
+        unlisten = null;
+    };
+
+    // bestEffort=false では quit の失敗を伝播し、sessionId を保持したまま中断する
+    // (識別子を失うと旧プロセスを回収できなくなるため)。Rust 側の quit は
+    // 存在しない session_id にも Ok を返す冪等実装なので、失敗 = IPC 異常
+    const closeSession = async (bestEffort: boolean): Promise<void> => {
         if (sessionId) {
-            await tauriInvoke("usi_engine_quit", { session_id: sessionId }).catch(() => undefined);
+            const quit = tauriInvoke("usi_engine_quit", { session_id: sessionId });
+            if (bestEffort) {
+                await quit.catch(() => undefined);
+            } else {
+                await quit;
+            }
             sessionId = null;
         }
-        if (unlisten) {
-            try {
-                unlisten();
-            } catch {
-                // ignore
-            }
-            unlisten = null;
-        }
+        dropListener();
     };
 
     return {
@@ -60,18 +82,30 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
         // を優先し、UI の自動解決値で無条件に上書きしない。厳格な USI エンジンは
         // isready 後の setoption を反映しないため、起動後に送っても保証がない
         async init(_opts?: EngineInitOptions): Promise<void> {
-            // 再初期化 (retry / restartForNnue 等) で呼ばれたとき、旧セッションを
-            // quit せずに sessionId を上書きすると外部プロセスがリークする
-            await closeSession();
+            await runExclusive(async () => {
+                // 再初期化 (retry / restartForNnue 等) で呼ばれたとき、旧セッションを
+                // quit せずに sessionId を上書きすると外部プロセスがリークする
+                await closeSession(false);
 
-            sessionId = await tauriInvoke<string>("usi_engine_start", {
-                registration_id: registrationId,
-            });
+                const newSessionId = await tauriInvoke<string>("usi_engine_start", {
+                    registration_id: registrationId,
+                });
 
-            // Subscribe to session-scoped event channel
-            const channel = `engine://usi/${sessionId}`;
-            unlisten = await tauriListen<EngineEvent>(channel, (evt) => {
-                emit(evt.payload);
+                try {
+                    // Subscribe to session-scoped event channel
+                    const channel = `engine://usi/${newSessionId}`;
+                    unlisten = await tauriListen<EngineEvent>(channel, (evt) => {
+                        emit(evt.payload);
+                    });
+                } catch (error) {
+                    // 購読に失敗したまま session を持つと誰もイベントを受け取れない。
+                    // 起動済みプロセスを残さないよう片付けてから失敗させる
+                    await tauriInvoke("usi_engine_quit", { session_id: newSessionId }).catch(
+                        () => undefined,
+                    );
+                    throw error;
+                }
+                sessionId = newSessionId;
             });
         },
 
@@ -143,8 +177,10 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
         },
 
         async dispose(): Promise<void> {
-            await closeSession();
-            listeners.clear();
+            await runExclusive(async () => {
+                await closeSession(true);
+                listeners.clear();
+            });
         },
     };
 }

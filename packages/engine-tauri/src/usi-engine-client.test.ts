@@ -67,6 +67,51 @@ describe("createUsiEngineClient", () => {
         });
     });
 
+    it("再 init で旧セッションの quit が失敗したら新 start を中止し、後で回収できる", async () => {
+        const client = createUsiEngineClient({ registrationId: "reg-1" });
+        await client.init();
+
+        invokeMock.mockImplementationOnce(async (command: string) => {
+            if (command === "usi_engine_quit") throw new Error("ipc down");
+            return undefined;
+        });
+        await expect(client.init()).rejects.toThrow("ipc down");
+        // 新セッションを張っていない (start は初回の 1 回のみ)
+        expect(invokeMock.mock.calls.filter(([cmd]) => cmd === "usi_engine_start")).toHaveLength(1);
+
+        // sessionId は保持されているため dispose で旧セッションを回収できる
+        await client.dispose();
+        expect(invokeMock).toHaveBeenCalledWith("usi_engine_quit", {
+            session_id: "session-1",
+        });
+    });
+
+    it("並行 init は直列化され、片方のセッションがリークしない", async () => {
+        const client = createUsiEngineClient({ registrationId: "reg-1" });
+        await Promise.all([client.init(), client.init()]);
+
+        // 2 回 start され、先行分 (session-1) は quit 済み
+        expect(invokeMock.mock.calls.filter(([cmd]) => cmd === "usi_engine_start")).toHaveLength(2);
+        expect(invokeMock).toHaveBeenCalledWith("usi_engine_quit", {
+            session_id: "session-1",
+        });
+
+        await client.stop();
+        expect(invokeMock).toHaveBeenCalledWith("usi_engine_stop", {
+            session_id: "session-2",
+        });
+    });
+
+    it("購読登録に失敗したら起動済みセッションを quit してから失敗する", async () => {
+        listenMock.mockRejectedValueOnce(new Error("listen failed"));
+        const client = createUsiEngineClient({ registrationId: "reg-1" });
+
+        await expect(client.init()).rejects.toThrow("listen failed");
+        expect(invokeMock).toHaveBeenCalledWith("usi_engine_quit", {
+            session_id: "session-1",
+        });
+    });
+
     it("dispose はセッションを quit し購読を解除する", async () => {
         const client = createUsiEngineClient({ registrationId: "reg-1" });
         await client.init();
