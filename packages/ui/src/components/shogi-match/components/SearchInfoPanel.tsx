@@ -5,6 +5,8 @@ import type { ReactElement } from "react";
 interface SearchInfoPanelProps {
     side: Player;
     info: EngineInfoEvent;
+    /** モバイルでは右下 FAB (設定ボタン) と重ならないよう上にオフセットする */
+    isMobile?: boolean;
 }
 
 const formatCount = (value: number | undefined): string => {
@@ -20,15 +22,22 @@ const formatScore = (info: EngineInfoEvent): string => {
     return "-";
 };
 
-export function SearchInfoPanel({ side, info }: SearchInfoPanelProps): ReactElement {
+export function SearchInfoPanel({
+    side,
+    info,
+    isMobile = false,
+}: SearchInfoPanelProps): ReactElement {
     const depth =
         info.depth === undefined
             ? "-"
             : info.seldepth === undefined
               ? String(info.depth)
               : `${info.depth}/${info.seldepth}`;
+    const bottomClass = isMobile ? "bottom-[calc(4.5rem+env(safe-area-inset-bottom))]" : "bottom-3";
     return (
-        <aside className="fixed bottom-3 left-1/2 z-40 w-[min(44rem,calc(100%-1.5rem))] -translate-x-1/2 rounded-lg border border-border bg-card/95 p-2 text-xs text-foreground shadow-lg">
+        <aside
+            className={`fixed ${bottomClass} left-1/2 z-40 w-[min(44rem,calc(100%-1.5rem))] -translate-x-1/2 rounded-lg border border-border bg-card/95 p-2 text-xs text-foreground shadow-lg`}
+        >
             <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono tabular-nums">
                 <span>{side === "sente" ? "▲" : "△"} 思考中</span>
                 <span>深さ {depth}</span>

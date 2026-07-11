@@ -2,7 +2,6 @@ import {
     applyMoveWithState,
     getPositionService,
     type LastMove,
-    type MoveSearchStats,
     type PieceType,
     type Player,
     type PositionState,
@@ -167,16 +166,11 @@ export function useMoveExecution({
     };
 
     // 対局モードで手を適用する
-    const applyMoveCommon = (
-        nextPosition: PositionState,
-        mv: string,
-        last?: LastMove,
-        searchStats?: MoveSearchStats,
-    ) => {
+    const applyMoveCommon = (nextPosition: PositionState, mv: string, last?: LastMove) => {
         // 消費時間を計算
         const elapsedMs = Date.now() - turnStartTimeRef.current;
         // 棋譜ナビゲーションに手を追加（局面更新はonPositionChangeで自動実行）
-        navigation.addMove(mv, nextPosition, { elapsedMs, searchStats });
+        navigation.addMove(mv, nextPosition, { elapsedMs });
         setLastMove(last);
         setSelection(null);
         setMessage(null);

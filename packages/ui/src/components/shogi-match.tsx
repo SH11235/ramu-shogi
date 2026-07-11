@@ -569,12 +569,27 @@ export function ShogiMatch({
     } | null>(null);
     const liveInfoTrailingRef = useRef<{ side: Player; event: EngineInfoEvent } | null>(null);
     const liveInfoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const clearLiveSearchInfo = () => {
+        liveInfoTrailingRef.current = null;
+        if (liveInfoTimerRef.current) clearTimeout(liveInfoTimerRef.current);
+        liveInfoTimerRef.current = null;
+        setLiveSearchInfo(null);
+    };
     useEffect(
         () => () => {
             if (liveInfoTimerRef.current) clearTimeout(liveInfoTimerRef.current);
         },
         [],
     );
+    // 終局・一時停止・エラーで対局が止まったとき「思考中」の残留表示と未消費の統計を消す
+    useEffect(() => {
+        if (isMatchRunning) return;
+        pendingSearchStatsRef.current.clear();
+        liveInfoTrailingRef.current = null;
+        if (liveInfoTimerRef.current) clearTimeout(liveInfoTimerRef.current);
+        liveInfoTimerRef.current = null;
+        setLiveSearchInfo(null);
+    }, [isMatchRunning]);
     // モバイル判定
     const isMobile = useIsMobile();
     // 検討モード: 編集モードでも対局中でも一時停止中でもない状態
@@ -1130,12 +1145,11 @@ export function ShogiMatch({
         onEvalUpdate: (ply, event) => handleEvalUpdateRef.current(ply, event),
         onSearchComplete: (ply, stats) => {
             pendingSearchStatsRef.current.set(ply, stats);
-            liveInfoTrailingRef.current = null;
-            if (liveInfoTimerRef.current) clearTimeout(liveInfoTimerRef.current);
-            liveInfoTimerRef.current = null;
-            setLiveSearchInfo(null);
+            clearLiveSearchInfo();
         },
         onLiveInfo: (side, event) => {
+            // 対局停止後に flush された info が残留表示を再セットしないようにする
+            if (!isMatchRunning) return;
             liveInfoTrailingRef.current = { side, event };
             if (liveInfoTimerRef.current) return;
             liveInfoTimerRef.current = setTimeout(() => {
@@ -2049,8 +2063,12 @@ export function ShogiMatch({
                     isMatchRunning={isMatchRunning}
                     isPaused={isPaused}
                 />
-                {displaySettings.showSearchInfo && liveSearchInfo && (
-                    <SearchInfoPanel side={liveSearchInfo.side} info={liveSearchInfo.event} />
+                {displaySettings.showSearchInfo && isMatchRunning && liveSearchInfo && (
+                    <SearchInfoPanel
+                        side={liveSearchInfo.side}
+                        info={liveSearchInfo.event}
+                        isMobile={isMobile}
+                    />
                 )}
             </TooltipProvider>
         </ShogiMatchProvider>

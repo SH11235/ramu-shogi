@@ -389,11 +389,24 @@ export function MoveDetailWindow({
 
     const hasPv = pvList.length > 0;
     const hasMultiplePv = pvList.length > 1;
-    const searchStats = kifuTree
-        ? [...kifuTree.nodes.values()].find(
-              (node) => node.ply === move.ply && node.usiMove === move.usiMove,
-          )?.searchStats
-        : undefined;
+    // 別分岐に同 ply・同指し手のノードがあり得るため、まず現在の経路 (currentNodeId の祖先) で解決する
+    const searchStats = (() => {
+        if (!kifuTree) return undefined;
+        let id: string | null = kifuTree.currentNodeId;
+        while (id) {
+            const node = kifuTree.nodes.get(id);
+            if (!node) break;
+            if (node.ply === move.ply) {
+                if (node.usiMove === move.usiMove) return node.searchStats;
+                break;
+            }
+            if (node.ply < move.ply) break;
+            id = node.parentId;
+        }
+        return [...kifuTree.nodes.values()].find(
+            (node) => node.ply === move.ply && node.usiMove === move.usiMove,
+        )?.searchStats;
+    })();
 
     // NNUE選択肢を構築（プリセット + カスタムNNUE）
     const nnueOptions = buildNnueOptions({ presets, nnueList, isNnueListLoading });

@@ -81,7 +81,7 @@ export function exportToRshogiJsonl(nodes: JsonlMoveNode[], meta: JsonlExportMet
                 side_to_move: node.sideToMove === "sente" ? "b" : "w",
                 sfen_before: node.sfenBefore,
                 move_usi: node.moveUsi,
-                engine: stats?.engineId ?? meta.labels[node.sideToMove],
+                engine: meta.labels[node.sideToMove],
                 elapsed_ms: node.elapsedMs ?? 0,
                 think_limit_ms: stats?.thinkLimitMs ?? 0,
                 timed_out: false,
