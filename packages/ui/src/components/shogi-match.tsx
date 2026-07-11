@@ -869,6 +869,7 @@ export function ShogiMatch({
     };
 
     const stopAllEnginesRef = useRef<() => Promise<void>>(async () => {});
+    const prepareEnginesRef = useRef<() => Promise<boolean>>(async () => true);
 
     // 時計管理フックを使用
     const { clocks, clocksRef, resetClocks, updateClocksForNextTurn, stopTicking, startTicking } =
@@ -1049,6 +1050,19 @@ export function ShogiMatch({
                 navigation.goBack();
             }
 
+            // 停止で破棄したエンジンを時計再開前に初期化し直す
+            // （初期化時間が秒読みから差し引かれるのを防ぐ）
+            if (!(await prepareEnginesRef.current())) {
+                // 一時停止扱いにして再開操作からやり直せるようにする。
+                // 秒読みは undo 後の手番用にリセットするが、isMatchRunning=false の
+                // 間は時計の interval が動かないため実時間は消費されない
+                setIsMatchRunning(false);
+                setIsPaused(true);
+                updateClocksForNextTurn(turnAfterUndo);
+                setMessage({ text: "エンジンの初期化に失敗しました。", type: "error" });
+                return;
+            }
+
             // 待った後の思考時間計測を新しく開始
             turnStartTimeRef.current = Date.now();
             // 秒読みをリセット（計算した手番で時計を更新・開始）
@@ -1070,6 +1084,7 @@ export function ShogiMatch({
         eventLogs,
         errorLogs,
         stopAllEngines,
+        prepareEngines,
         isEngineTurn,
         logEngineError,
         isAnalyzing,
@@ -1105,6 +1120,7 @@ export function ShogiMatch({
         analysisEngineId,
     });
     stopAllEnginesRef.current = stopAllEngines;
+    prepareEnginesRef.current = prepareEngines;
     restartEngineForNnueRef.current = restartEngineForNnue;
 
     // role変更時にエンジンを破棄するラッパー
@@ -1409,6 +1425,7 @@ export function ShogiMatch({
         startTicking,
         resetClocks,
         stopAllEngines,
+        prepareEngines,
         resolveNnue,
         clearLegalCache,
         refreshStartSfen,

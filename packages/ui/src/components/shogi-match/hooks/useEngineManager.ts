@@ -94,6 +94,8 @@ interface UseEngineManagerReturn {
     errorLogs: EngineControllerErrorLog[];
     /** 全エンジンを停止する */
     stopAllEngines: () => Promise<void>;
+    /** 両サイドのエンジンを初期化して探索可能な状態にする（時計始動前に呼ぶ）。全サイド成功で true */
+    prepareEngines: () => Promise<boolean>;
     /** 指定サイドのエンジンオプションを取得 */
     getEngineForSide: (side: Player) => EngineOption | undefined;
     /** 指定手番がエンジンかどうか */
@@ -270,10 +272,24 @@ export function useEngineManager({
     };
 
     const stopAllEngines = async () => {
+        // React の isMatchRunning=false が effect 経由で controller に届くのを
+        // 待たずに dispose すると、controller 側はまだ対局中扱いのままエンジンが
+        // 破棄され、進行中のターン開始と競合する。先に同期的に停止を伝える。
+        // 対局継続中に呼ぶ場合は、直後に moves/turn を変化させて syncContext を
+        // 再実行させないと controller が停止扱いのままになる
+        controller.command.setMatchRunning(false);
         await Promise.all([
             controller.command.dispose("sente"),
             controller.command.dispose("gote"),
         ]);
+    };
+
+    const prepareEngines = async () => {
+        const results = await Promise.all([
+            controller.command.prepare("sente"),
+            controller.command.prepare("gote"),
+        ]);
+        return results.every(Boolean);
     };
 
     const analyzePosition = async (request: AnalysisRequest) => {
@@ -293,6 +309,7 @@ export function useEngineManager({
         eventLogs: controllerState.eventLogs,
         errorLogs: controllerState.errorLogs,
         stopAllEngines,
+        prepareEngines,
         getEngineForSide,
         isEngineTurn,
         logEngineError: (message: string) => controller.command.logError(message),
