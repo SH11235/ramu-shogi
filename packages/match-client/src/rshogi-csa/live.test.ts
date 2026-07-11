@@ -186,6 +186,28 @@ describe("subscribeRshogiLiveGame: snapshot → broadcast → end → close", ()
         expect(events.clocks[0].sideToMove).toBe("sente");
     });
 
+    it("To_Move が後手の snapshot を後手の move 行から復元する", () => {
+        const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+        subscribeRshogiLiveGame(
+            "game-1",
+            { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+            callbacks,
+        );
+        const ws = wsInstances[0];
+        ws.fireOpen();
+        const snapshotLines = buildSnapshotLines(["-3334FU,T7"]).map((line) =>
+            line === "To_Move:+" ? "To_Move:-" : line,
+        );
+
+        ws.fireLines(snapshotLines);
+
+        expect(events.errors).toEqual([]);
+        expect(events.snapshot).toHaveLength(1);
+        expect(events.snapshot[0].moves).toEqual(["3c3d"]);
+        expect(events.snapshot[0].state.board["3d"]).toEqual({ owner: "gote", type: "P" });
+        expect(events.snapshot[0].state.turn).toBe("sente");
+    });
+
     it("apiBaseUrl に path (/api/v1) を含んでも観戦 WS は origin 直下 /ws/<id>/spectate に張る", () => {
         const { wsInstances, wsFactory, callbacks } = makeMocks();
         subscribeRshogiLiveGame(
@@ -214,6 +236,27 @@ describe("subscribeRshogiLiveGame: snapshot → broadcast → end → close", ()
         expect(events.moves).toEqual([{ csaMove: "7g7f", elapsedSec: 8 }]);
         // 2 手目: 後手 3c3d
         ws.fireLines(["-3334FU,T7"]);
+        expect(events.moves).toEqual([
+            { csaMove: "7g7f", elapsedSec: 8 },
+            { csaMove: "3c3d", elapsedSec: 7 },
+        ]);
+    });
+
+    it("broadcast move の適用失敗を通知し、後続 move の購読を継続する", () => {
+        const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+        subscribeRshogiLiveGame(
+            "game-1",
+            { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+            callbacks,
+        );
+        const ws = wsInstances[0];
+        ws.fireOpen();
+        ws.fireLines(buildSnapshotLines([]));
+
+        ws.fireLines(["+7776FU,T8", "+7776FU,T99", "-3334FU,T7"]);
+
+        expect(events.errors).toHaveLength(1);
+        expect(events.errors[0].message).toMatch(/CSA move could not be applied/);
         expect(events.moves).toEqual([
             { csaMove: "7g7f", elapsedSec: 8 },
             { csaMove: "3c3d", elapsedSec: 7 },
@@ -401,7 +444,7 @@ describe("subscribeRshogiLiveGame: Floodgate コメント (eval / PV)", () => {
         ]);
     });
 
-    it("snapshot: 解析不能な手が混ざっても以降の elapsedSec/comment が 1 手ずれない", () => {
+    it("snapshot: 適用不能な手が混ざる snapshot 全体を棄却する", () => {
         const { events } = (() => {
             const mocks = makeMocks();
             subscribeRshogiLiveGame(
@@ -411,9 +454,6 @@ describe("subscribeRshogiLiveGame: Floodgate コメント (eval / PV)", () => {
             );
             const ws = mocks.wsInstances[0];
             ws.fireOpen();
-            // 2 行目は違法手 (7776FU の重複) で parse に落ちる。skip した entry の
-            // elapsedSec/comment ごと落とし、3 行目のメタ情報が 2 行目のものに
-            // ずれないことを固定する。
             ws.fireLines(
                 buildSnapshotLines([
                     "+7776FU,T8",
@@ -425,16 +465,9 @@ describe("subscribeRshogiLiveGame: Floodgate コメント (eval / PV)", () => {
             );
             return mocks;
         })();
-        const snap = events.snapshot[0];
-        expect(snap.moves).toEqual(["7g7f", "3c3d"]);
-        expect(snap.moveDetails).toEqual([
-            { csaMove: "7g7f", elapsedSec: 8, comment: undefined },
-            {
-                csaMove: "3c3d",
-                elapsedSec: 7,
-                comment: { raw: "* -20 +2726FU", evalCp: -20, pv: ["+2726FU"] },
-            },
-        ]);
+        expect(events.snapshot).toHaveLength(0);
+        expect(events.errors).toHaveLength(1);
+        expect(events.errors[0].message).toMatch(/CSA move could not be applied/);
     });
 
     it("snapshot: コメントも T も無い旧サーバ形式は moveDetails が elapsedSec=0/comment 無しで揃う", () => {
