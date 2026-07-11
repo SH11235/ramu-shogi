@@ -105,11 +105,12 @@ function classifyErrorCode(error: unknown): EngineErrorCode {
  * Rust の panic は wasm では `unreachable` トラップになり、以降その wasm
  * インスタンスは全操作が失敗する不可逆状態になる。JS 側にはメッセージ経由で
  * `RuntimeError: unreachable` として届くため、これを検知して worker ごと
- * 作り直す判定に使う。
+ * 作り直す判定に使う。単語単体では「到達不能」を語るカスタムメッセージや
+ * wasm 無関係の RuntimeError と衝突するため、両方を含む場合のみ panic 扱い。
  */
 function isWasmPanic(message: string): boolean {
     const lower = message.toLowerCase();
-    return lower.includes("unreachable") || lower.includes("runtimeerror");
+    return lower.includes("runtimeerror") && lower.includes("unreachable");
 }
 
 /**
@@ -555,6 +556,10 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
                 if (!pending) return;
                 pendingAcks.delete(data.requestId);
                 if (data.error) {
+                    // 待機中コマンド内で panic した場合は ack(error) が error イベント
+                    // より先に届く。reject を受けた呼び出し側 (batch 解析等) が次の
+                    // ジョブを壊れた worker へ投げる前に再生成を始めておく。
+                    if (isWasmPanic(data.error)) recoverFromPanic();
                     pending.reject(new Error(data.error));
                 } else {
                     pending.resolve();
@@ -756,9 +761,21 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         if (recoveringFromPanic) return;
         recoveringFromPanic = true;
         lastPosition = null;
-        replaceWorker("engine worker recovered after panic");
+        // 進行中の init を先に破棄してから worker を落とす。逆順だと replaceWorker
+        // の rejectAllPending で失敗した init が initInFlight に残ったまま
+        // ensureReady に await され得る。
         initInFlight = null;
+        replaceWorker("engine worker recovered after panic");
         void ensureReady()
+            .then(() => {
+                emit({
+                    type: "error",
+                    severity: "warning",
+                    code: "WASM_WORKER_FAILED",
+                    message:
+                        "エンジンを再起動しました。局面はリセットされたため、再度局面を読み込んでください。",
+                });
+            })
             .catch((error) => {
                 const code = classifyErrorCode(error);
                 enterErrorState("Wasm engine recovery after panic failed", code);

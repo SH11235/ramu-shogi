@@ -74,6 +74,7 @@ function isInPromotionZone(square: Square, owner: Player): boolean {
     const rank = square[1] as Rank;
     return owner === "sente" ? SENTE_PROMOTION_RANKS.has(rank) : GOTE_PROMOTION_RANKS.has(rank);
 }
+
 const PROMOTED_FROM: Record<PieceType, PieceType> = {
     P: "P",
     L: "L",

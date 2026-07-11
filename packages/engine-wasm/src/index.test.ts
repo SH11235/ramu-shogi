@@ -906,6 +906,76 @@ describe("createWasmEngineClient", () => {
             ack(workers[1], restoredNnue);
         });
 
+        it("待機中コマンドの ack エラーが panic を示す場合も worker を作り直す", async () => {
+            const { workers, workerFactory } = setupWorkers();
+            const client = createWasmEngineClient({ workerFactory });
+
+            const initPromise = client.init();
+            ack(workers[0], workers[0].postMessage.mock.calls[0][0]);
+            await initPromise;
+
+            const loadPromise = client.loadPosition("startpos", ["7c8c+"]);
+            await tick();
+            const loadCall = lastCallOfType(workers[0], "loadPosition");
+            workers[0].onmessage?.({
+                data: {
+                    type: "ack",
+                    requestId: loadCall.requestId,
+                    error: "RuntimeError: unreachable",
+                },
+            } as MessageEvent);
+
+            await expect(loadPromise).rejects.toThrow("unreachable");
+            await tick();
+
+            expect(workers[0].terminate).toHaveBeenCalled();
+            expect(workerFactory).toHaveBeenCalledTimes(2);
+
+            const reinitCall = lastCallOfType(workers[1], "init");
+            expect(reinitCall).toBeDefined();
+            ack(workers[1], reinitCall);
+            await tick();
+
+            const nextLoadPromise = client.loadPosition("startpos", ["7g7f"]);
+            await tick();
+            const nextLoadCall = lastCallOfType(workers[1], "loadPosition");
+            expect(nextLoadCall).toBeDefined();
+            ack(workers[1], nextLoadCall);
+            await nextLoadPromise;
+        });
+
+        it("panic 復旧の完了時に警告イベントで局面リセットを通知する", async () => {
+            const { workers, workerFactory } = setupWorkers();
+            const client = createWasmEngineClient({ workerFactory });
+
+            const initPromise = client.init();
+            ack(workers[0], workers[0].postMessage.mock.calls[0][0]);
+            await initPromise;
+
+            const events: unknown[] = [];
+            client.subscribe((event) => events.push(event));
+
+            workers[0].onmessage?.({
+                data: {
+                    type: "event",
+                    payload: { type: "error", message: "RuntimeError: unreachable" },
+                },
+            } as MessageEvent);
+            await tick();
+
+            const reinitCall = lastCallOfType(workers[1], "init");
+            ack(workers[1], reinitCall);
+            await tick();
+
+            expect(events).toContainEqual(
+                expect.objectContaining({
+                    type: "error",
+                    severity: "warning",
+                    code: "WASM_WORKER_FAILED",
+                }),
+            );
+        });
+
         it("通常のエラー (panic でない) では worker を作り直さない", async () => {
             const { workers, workerFactory } = setupWorkers();
             const client = createWasmEngineClient({ workerFactory });
