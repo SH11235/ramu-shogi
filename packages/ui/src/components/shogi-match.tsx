@@ -1116,6 +1116,7 @@ export function ShogiMatch({
     const {
         eventLogs,
         errorLogs,
+        engineStatus,
         stopAllEngines,
         prepareEngines,
         isEngineTurn,
@@ -1168,6 +1169,16 @@ export function ShogiMatch({
     });
     stopAllEnginesRef.current = stopAllEngines;
     prepareEnginesRef.current = prepareEngines;
+
+    // fatal なエンジンエラーは対局停止 (isMatchRunning=false) に遷移しないため、
+    // error 状態を直接監視してライブ探索表示を消す
+    useEffect(() => {
+        if (engineStatus.sente !== "error" && engineStatus.gote !== "error") return;
+        liveInfoTrailingRef.current = null;
+        if (liveInfoTimerRef.current) clearTimeout(liveInfoTimerRef.current);
+        liveInfoTimerRef.current = null;
+        setLiveSearchInfo(null);
+    }, [engineStatus.sente, engineStatus.gote]);
     restartEngineForNnueRef.current = restartEngineForNnue;
 
     // role変更時にエンジンを破棄するラッパー
