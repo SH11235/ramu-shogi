@@ -217,6 +217,85 @@ describe("applyMoveWithState", () => {
             expect(result.ok).toBe(true);
             expect(result.next.board["5d"]?.promoted).toBe(true);
         });
+
+        it("成れない駒種（金）への成りフラグはエラーを返す", () => {
+            const board = createInitialBoard();
+            const hands = createEmptyHands();
+
+            board["5c"] = { owner: "sente", type: "G" };
+
+            const state: PositionState = { board, hands, turn: "sente" };
+            const result = applyMoveWithState(state, "5c5b+", { validateTurn: false });
+
+            expect(result.ok).toBe(false);
+            expect(result.error).toBe("piece cannot promote");
+        });
+
+        it("玉への成りフラグはエラーを返す", () => {
+            const board = createInitialBoard();
+            const hands = createEmptyHands();
+
+            board["5c"] = { owner: "sente", type: "K" };
+
+            const state: PositionState = { board, hands, turn: "sente" };
+            const result = applyMoveWithState(state, "5c5b+", { validateTurn: false });
+
+            expect(result.ok).toBe(false);
+            expect(result.error).toBe("piece cannot promote");
+        });
+
+        it("既に成っている駒への再度の成りフラグはエラーを返す", () => {
+            const board = createInitialBoard();
+            const hands = createEmptyHands();
+
+            board["5c"] = { owner: "sente", type: "R", promoted: true };
+
+            const state: PositionState = { board, hands, turn: "sente" };
+            const result = applyMoveWithState(state, "5c5b+", { validateTurn: false });
+
+            expect(result.ok).toBe(false);
+            expect(result.error).toBe("piece is already promoted");
+        });
+
+        it("敵陣に出入りしない成りフラグはエラーを返す", () => {
+            const board = createInitialBoard();
+            const hands = createEmptyHands();
+
+            // 先手の歩を中段に配置（移動元 5e も移動先 5d も敵陣外）
+            board["5e"] = { owner: "sente", type: "P" };
+
+            const state: PositionState = { board, hands, turn: "sente" };
+            const result = applyMoveWithState(state, "5e5d+", { validateTurn: false });
+
+            expect(result.ok).toBe(false);
+            expect(result.error).toBe("move does not enter promotion zone");
+        });
+
+        it("敵陣から出る成りも許可される（移動元が敵陣）", () => {
+            const board = createInitialBoard();
+            const hands = createEmptyHands();
+
+            board["5c"] = { owner: "sente", type: "S" };
+
+            const state: PositionState = { board, hands, turn: "sente" };
+            const result = applyMoveWithState(state, "5c5d+", { validateTurn: false });
+
+            expect(result.ok).toBe(true);
+            expect(result.next.board["5d"]?.promoted).toBe(true);
+        });
+
+        it("後手の駒は下段（g,h,i）が敵陣として扱われる", () => {
+            const board = createInitialBoard();
+            const hands = createEmptyHands();
+
+            board["5g"] = { owner: "gote", type: "P" };
+
+            const state: PositionState = { board, hands, turn: "gote" };
+            const result = applyMoveWithState(state, "5g5h+", { validateTurn: false });
+
+            expect(result.ok).toBe(true);
+            expect(result.next.board["5h"]?.promoted).toBe(true);
+        });
     });
 
     describe("持ち駒の管理", () => {

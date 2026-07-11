@@ -102,6 +102,18 @@ function classifyErrorCode(error: unknown): EngineErrorCode {
 }
 
 /**
+ * Rust の panic は wasm では `unreachable` トラップになり、以降その wasm
+ * インスタンスは全操作が失敗する不可逆状態になる。JS 側にはメッセージ経由で
+ * `RuntimeError: unreachable` として届くため、これを検知して worker ごと
+ * 作り直す判定に使う。単語単体では「到達不能」を語るカスタムメッセージや
+ * wasm 無関係の RuntimeError と衝突するため、両方を含む場合のみ panic 扱い。
+ */
+function isWasmPanic(message: string): boolean {
+    const lower = message.toLowerCase();
+    return lower.includes("runtimeerror") && lower.includes("unreachable");
+}
+
+/**
  * NNUE ロード元の種別
  */
 type NnueLoadSource =
@@ -284,6 +296,8 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         moves: string[];
         passRights?: { sente: number; gote: number };
     } | null = null;
+    // panic 後の worker 再生成時に NNUE を再ロードするため、最後に読んだ源を保持する。
+    let lastNnueSource: NnueLoadSource | null = null;
     let threadedDisabled = false;
     let activeThreads: number | null = null;
 
@@ -311,6 +325,9 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             handler(event);
         }
     };
+
+    const isPanicEvent = (event: EngineEvent): boolean =>
+        event.type === "error" && event.severity !== "warning" && isWasmPanic(event.message);
 
     const emitWarn = (code: EngineErrorCode, message: string) => {
         if (warnedReasons.has(code)) return;
@@ -539,6 +556,10 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
                 if (!pending) return;
                 pendingAcks.delete(data.requestId);
                 if (data.error) {
+                    // 待機中コマンド内で panic した場合は ack(error) が error イベント
+                    // より先に届く。reject を受けた呼び出し側 (batch 解析等) が次の
+                    // ジョブを壊れた worker へ投げる前に再生成を始めておく。
+                    if (isWasmPanic(data.error)) recoverFromPanic();
                     pending.reject(new Error(data.error));
                 } else {
                     pending.resolve();
@@ -546,10 +567,13 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
                 return;
             }
             if (data?.type === "event" && data.payload) {
+                // 再初期化を先に走らせ、後続ジョブの loadPosition が新 worker を待てるようにする。
+                if (isPanicEvent(data.payload)) recoverFromPanic();
                 emit(data.payload);
                 return;
             }
             if (data?.type === "events" && Array.isArray(data.payload)) {
+                if (data.payload.some(isPanicEvent)) recoverFromPanic();
                 for (const event of data.payload) {
                     emit(event);
                 }
@@ -615,6 +639,11 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         });
     };
 
+    const restoreNnue = async () => {
+        if (!worker || !lastNnueSource) return;
+        await postToWorkerAwait({ type: "loadNnue", source: lastNnueSource });
+    };
+
     const initWorkerWithKind = async (
         kind: WorkerKind,
         opts: WasmEngineInitOptions,
@@ -628,6 +657,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         await postToWorkerAwait({ type: "init", opts, wasmModule });
         initialized = true;
         await applyPendingOptions();
+        await restoreNnue();
         await restoreLastPosition();
         activeThreads = opts.threads ?? 1;
     };
@@ -719,6 +749,40 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             const code = classifyErrorCode(error);
             enterErrorState("Wasm engine initialization failed", code);
         });
+    };
+
+    let recoveringFromPanic = false;
+
+    // panic 後の wasm インスタンスは復旧不能なので worker ごと作り直す。
+    // lastPosition は panic を招いた手を含む可能性があるため復元せず捨てる
+    // （再ロードすると再び panic して復旧が空回りする）。
+    const recoverFromPanic = () => {
+        if (backend === "mock" || backend === "error") return;
+        if (recoveringFromPanic) return;
+        recoveringFromPanic = true;
+        lastPosition = null;
+        // 進行中の init を先に破棄してから worker を落とす。逆順だと replaceWorker
+        // の rejectAllPending で失敗した init が initInFlight に残ったまま
+        // ensureReady に await され得る。
+        initInFlight = null;
+        replaceWorker("engine worker recovered after panic");
+        void ensureReady()
+            .then(() => {
+                emit({
+                    type: "error",
+                    severity: "warning",
+                    code: "WASM_WORKER_FAILED",
+                    message:
+                        "エンジンを再起動しました。局面はリセットされたため、再度局面を読み込んでください。",
+                });
+            })
+            .catch((error) => {
+                const code = classifyErrorCode(error);
+                enterErrorState("Wasm engine recovery after panic failed", code);
+            })
+            .finally(() => {
+                recoveringFromPanic = false;
+            });
     };
 
     return {
@@ -906,6 +970,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             listeners.clear();
             nnueLoadListeners.clear();
             lastPosition = null;
+            lastNnueSource = null;
             lastInitOpts = undefined;
             pendingOptions.clear();
             warnedReasons.clear();
@@ -990,10 +1055,9 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
                 // モックフォールバック時は no-op
                 return;
             }
-            await postToWorkerAwait({
-                type: "loadNnue",
-                source: { type: "idb", id: nnueId },
-            });
+            const source: NnueLoadSource = { type: "idb", id: nnueId };
+            await postToWorkerAwait({ type: "loadNnue", source });
+            lastNnueSource = source;
         },
     };
 }
