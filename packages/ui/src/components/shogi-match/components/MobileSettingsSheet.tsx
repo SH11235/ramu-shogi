@@ -16,6 +16,7 @@ import type {
 import type { KifMoveData } from "../utils/kifParser";
 import { parseKif, parseSfen } from "../utils/kifParser";
 import { buildThreadOptions } from "../utils/threadOptions";
+import { JsonlExportHelp } from "./JsonlExportHelp";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 
 type SideKey = "sente" | "gote";
@@ -921,9 +922,7 @@ export function MobileSettingsSheet({
                     >
                         JSONL エクスポート
                     </button>
-                    <p className="text-xs text-muted-foreground">
-                        rshogi ツール互換の対局ログ (探索統計・消費時間つき)
-                    </p>
+                    <JsonlExportHelp />
                 </div>
             )}
 

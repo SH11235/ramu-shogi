@@ -17,6 +17,7 @@ import { useNavigation } from "../contexts/NavigationContext";
 import { ANALYSIS_TIME_OPTIONS, PARALLEL_WORKER_OPTIONS } from "../utils/threadOptions";
 import { CurrentPositionAiHintPanel } from "./CurrentPositionAiHintPanel";
 import { EvalPanel } from "./EvalPanel";
+import { JsonlExportHelp } from "./JsonlExportHelp";
 import { KifuPanel } from "./KifuPanel";
 import { TabHeader } from "./TabHeader";
 
@@ -111,14 +112,16 @@ export function PCKifuSection({
                     initialOpen={evalPanelInitialOpen ?? false}
                     reviewMode={reviewMode}
                 />
-                <button
-                    type="button"
-                    onClick={() => void handleExportJsonl()}
-                    title="rshogi のトーナメントツール互換の対局ログ (meta/move/result 各行、探索統計・消費時間つき) をダウンロードします"
-                    className="rounded border border-border bg-background px-2 py-1 text-xs text-foreground hover:bg-muted"
-                >
-                    JSONL エクスポート
-                </button>
+                <div className="space-y-1">
+                    <button
+                        type="button"
+                        onClick={() => void handleExportJsonl()}
+                        className="rounded border border-border bg-background px-2 py-1 text-xs text-foreground hover:bg-muted"
+                    >
+                        JSONL エクスポート
+                    </button>
+                    <JsonlExportHelp />
+                </div>
 
                 {/* 棋譜パネル + ドロワー（横並び） */}
                 <div className="relative flex items-start">
