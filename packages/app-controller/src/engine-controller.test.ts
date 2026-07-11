@@ -537,6 +537,44 @@ describe("createEngineController", () => {
         }
     });
 
+    it("reset を持たないクライアントでは自動→推奨値と同値の明示変更でも setOption が届く", async () => {
+        vi.stubGlobal("navigator", { hardwareConcurrency: 8 });
+        try {
+            const mockClient = createMockEngineClient();
+            const controller = createEngineController({
+                createClient: (_engineId) => mockClient.client,
+                getClockState: createClockState,
+                now: () => Date.now(),
+                resolveNnue: async () => null,
+                callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
+            });
+
+            controller.command.syncContext({
+                sides: {
+                    sente: { role: "engine", engineId: "engine1" },
+                    gote: { role: "human" },
+                },
+                position: {
+                    startSfen: "startpos",
+                    moves: [],
+                    turn: "sente",
+                    ready: true,
+                },
+                matchRunning: false,
+                engineThreads: { sente: 0, gote: 0 },
+            });
+            await controller.command.prepare("sente");
+
+            // 外部 USI 相当では自動 = 登録時設定 (推奨値とは限らない) のため、
+            // 推奨値 4 と同値の明示 4 への変更も no-op にせず setoption を送る
+            controller.command.syncContext({ engineThreads: { sente: 4, gote: 4 } });
+            await flushPromises();
+            expect(mockClient.client.setOption).toHaveBeenCalledWith("Threads", 4);
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
     it("初期化中のスレッド変更は init 完了後に setOption で適用される", async () => {
         vi.stubGlobal("navigator", { hardwareConcurrency: 8 });
         try {

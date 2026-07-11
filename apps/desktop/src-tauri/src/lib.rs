@@ -128,7 +128,8 @@ impl EngineOptions {
             self.stop_mode = stop_mode;
         }
         if let Some(threads) = opts.threads {
-            self.num_threads = threads.max(1);
+            // TS 側でも 32 に clamp しているが、IPC 経由の極端な値に対する防御として上限を設ける
+            self.num_threads = threads.clamp(1, 128);
         }
     }
 }

@@ -33,8 +33,9 @@ export function detectParallelism(): ParallelismConfig {
     const recommended = Math.max(1, Math.min(32, Math.floor(hardwareConcurrency / 2)));
 
     return {
-        // 各ワーカーが NNUE と置換表を持つ独立エンジンのため、スレッド数上限 (32) とは
-        // 別に小さく抑える。UI の選択肢 (1〜4) と揃える
+        // 各ワーカーが NNUE と置換表を持つ独立エンジンのため、メモリ消費を抑える
+        // リソース上限としてスレッド数上限 (32) とは独立に定める。
+        // UI の並列ワーカー選択肢はこの値を上限に合わせること
         maxWorkers: 4,
         detectedConcurrency: hardwareConcurrency,
         recommendedWorkers: recommended,

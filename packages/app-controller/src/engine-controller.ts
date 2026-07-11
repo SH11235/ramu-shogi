@@ -1229,26 +1229,43 @@ export function createEngineController(
     ) => {
         let changed = false;
         for (const side of ["sente", "gote"] as const) {
-            const prevNormalized = getThreadCountForSide(prevThreads, side);
-            const nextNormalized = getThreadCountForSide(nextThreads, side);
-            if (prevNormalized === nextNormalized) continue;
-            changed = true;
+            const resolvedPrev = getThreadCountForSide(prevThreads, side);
+            const resolvedNext = getThreadCountForSide(nextThreads, side);
+            if (resolvedPrev !== resolvedNext) changed = true;
             const engineState = engineStates[side];
-            if (!engineState.client) continue;
+            const client = engineState.client;
+            if (!client) continue;
+            // init の threads を適用しないクライアント (reset を持たない外部 USI) では
+            // 自動 = 登録時設定であり推奨値と同一視できない。推奨値に畳んで比較すると
+            // 「登録時 Threads=1 のエンジンに明示 4 (=推奨値) を選んでも no-op 判定で
+            // 届かない」ため、生の設定値 (自動は undefined) で比較する
+            const appliesInitThreads = "reset" in client && typeof client.reset === "function";
+            const prevValue = appliesInitThreads
+                ? resolvedPrev
+                : normalizeThreadCount(prevThreads[side]);
+            const nextValue = appliesInitThreads
+                ? resolvedNext
+                : normalizeThreadCount(nextThreads[side]);
+            if (prevValue === nextValue) continue;
+            if (nextValue === undefined) {
+                // 外部 USI の明示 → 自動は「登録時設定に戻す」だが、セッションを
+                // 維持したままでは戻せない。次回のエンジン起動時に登録時設定が適用される
+                continue;
+            }
             if (!engineState.ready) {
-                void applyThreadOptionQueued(side, engineState.client, nextNormalized);
+                void applyThreadOptionQueued(side, client, nextValue);
                 continue;
             }
             // reset を持つクライアント (WASM 等) は init でスレッドプールを再構築する。
             // reset を持たない外部 USI は init するとセッションが張り直され登録時
             // オプションで上書きされるため、セッション維持のまま setoption で反映する
-            if ("reset" in engineState.client && typeof engineState.client.reset === "function") {
+            if (appliesInitThreads) {
                 void reinitializeEngineCore(side, {
                     loadPosition: true,
                     errorLogPrefix: "スレッド数変更の再初期化に失敗",
                 });
             } else {
-                void applyThreadOptionQueued(side, engineState.client, nextNormalized);
+                void applyThreadOptionQueued(side, client, nextValue);
             }
         }
 
@@ -1282,12 +1299,10 @@ export function createEngineController(
                 void disposeAnalysisEngine();
             }
 
-            if (
-                getThreadCountForSide(prevThreads, "sente") !==
-                    getThreadCountForSide(nextThreads, "sente") ||
-                getThreadCountForSide(prevThreads, "gote") !==
-                    getThreadCountForSide(nextThreads, "gote")
-            ) {
+            // 推奨値に解決してから比較すると「自動 → 同値の明示」の変化を見落とす。
+            // 外部 USI では自動 = 登録時設定のためこの変化にも意味がある (クライアント
+            // 種別ごとの判定は applyThreadChange 側で行う)
+            if (prevThreads.sente !== nextThreads.sente || prevThreads.gote !== nextThreads.gote) {
                 applyThreadChange(nextThreads, prevThreads);
             }
 
