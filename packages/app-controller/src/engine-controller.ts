@@ -5,6 +5,7 @@ import type {
     Player,
     ResolvedNnue,
 } from "@shogi/app-core";
+import { detectParallelism } from "@shogi/app-core";
 import type {
     EngineClient,
     EngineErrorCode,
@@ -230,15 +231,14 @@ const normalizeThreadCount = (value?: number): number | undefined => {
     return Math.trunc(value);
 };
 
-const getThreadCountForSide = (threads: Record<Player, number>, side: Player) =>
-    normalizeThreadCount(threads[side]);
+// 0 (自動) は UI が「自動（推奨: N）」と表示する検出値に解決する。
+// undefined のまま init に渡すとクライアントの既定値 (Web 本番は 1) に落ち、
+// ラベルと実際のスレッド数が食い違う
+const getThreadCountForSide = (threads: Record<Player, number>, side: Player): number =>
+    normalizeThreadCount(threads[side]) ?? detectParallelism().recommendedWorkers;
 
-const getAnalysisThreadCount = (threads: Record<Player, number>) => {
-    const sente = normalizeThreadCount(threads.sente);
-    const gote = normalizeThreadCount(threads.gote);
-    if (sente === undefined && gote === undefined) return undefined;
-    return Math.max(sente ?? 0, gote ?? 0) || undefined;
-};
+const getAnalysisThreadCount = (threads: Record<Player, number>) =>
+    Math.max(getThreadCountForSide(threads, "sente"), getThreadCountForSide(threads, "gote"));
 
 const applyThreadOption = async (client: EngineClient, threadCount?: number) => {
     if (threadCount === undefined) return;

@@ -416,6 +416,41 @@ describe("createEngineController", () => {
         expect(mockClient.search).toHaveBeenCalledTimes(1);
     });
 
+    it("スレッド設定 0 (自動) は推奨値で init する", async () => {
+        vi.stubGlobal("navigator", { hardwareConcurrency: 8 });
+        try {
+            const mockClient = createMockEngineClient();
+            const controller = createEngineController({
+                createClient: (_engineId) => mockClient.client,
+                getClockState: createClockState,
+                now: () => Date.now(),
+                resolveNnue: async () => null,
+                callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
+            });
+
+            controller.command.syncContext({
+                sides: {
+                    sente: { role: "engine", engineId: "engine1" },
+                    gote: { role: "human" },
+                },
+                position: {
+                    startSfen: "startpos",
+                    moves: [],
+                    turn: "sente",
+                    ready: true,
+                },
+                matchRunning: false,
+                engineThreads: { sente: 0, gote: 0 },
+            });
+
+            await controller.command.prepare("sente");
+
+            expect(mockClient.init).toHaveBeenCalledWith({ threads: 4 });
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
     it("prepare の init 失敗は error 状態とエラーログに記録され throw しない", async () => {
         const mockClient = createMockEngineClient({ initError: new Error("init failed") });
         const controller = createEngineController({

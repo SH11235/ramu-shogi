@@ -28,8 +28,5 @@ export function buildThreadOptions(): ThreadSelectOption[] {
     for (let i = 1; i <= maxSelectable; i += 1) {
         options.push({ value: i, label: String(i) });
     }
-    if (detectedConcurrency > maxSelectable) {
-        options.push({ value: detectedConcurrency, label: `最大: ${detectedConcurrency}` });
-    }
     return options;
 }
