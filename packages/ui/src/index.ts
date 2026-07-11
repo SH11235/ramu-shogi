@@ -18,14 +18,10 @@ export type { UseRoomConnectionOptions, UseRoomConnectionReturn } from "./hooks/
 export { useRoomConnection } from "./hooks/useRoomConnection";
 export type { UseRshogiLiveGameListReturn } from "./hooks/useRshogiLiveGameList";
 export { useRshogiLiveGameList } from "./hooks/useRshogiLiveGameList";
+
 // ============================================================
 // Components
 // ============================================================
-
-// AboutDialog
-// alert-dialog
-// button
-// dialog
 
 // engine-control-panel
 export { EngineControlPanel } from "./components/engine-control-panel";
@@ -38,6 +34,20 @@ export type {
 // position-preset-selector
 export { POSITION_PRESETS, PositionPresetSelector } from "./components/PositionPresetSelector";
 export { Popover, PopoverContent, PopoverTrigger } from "./components/popover";
+// AboutDialog
+// alert-dialog
+// button
+// dialog
+export {
+    Sheet,
+    SheetClose,
+    SheetContent,
+    SheetDescription,
+    SheetFooter,
+    SheetHeader,
+    SheetTitle,
+    SheetTrigger,
+} from "./components/sheet";
 export type { ShogiBoardCell, ShogiBoardPiece } from "./components/shogi-board";
 // shogi-board (online game 用)
 export { ShogiBoard } from "./components/shogi-board";
