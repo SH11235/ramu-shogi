@@ -16,6 +16,15 @@ describe("detectParallelism", () => {
         expect(detectParallelism().detectedConcurrency).toBe(128);
         expect(detectParallelism().recommendedWorkers).toBe(32);
     });
+
+    it("非有限値は 1 にフォールバックする", () => {
+        vi.stubGlobal("navigator", { hardwareConcurrency: Number.NaN });
+        expect(detectParallelism().detectedConcurrency).toBe(1);
+        expect(detectParallelism().recommendedWorkers).toBe(1);
+
+        vi.stubGlobal("navigator", { hardwareConcurrency: Number.POSITIVE_INFINITY });
+        expect(detectParallelism().recommendedWorkers).toBe(1);
+    });
 });
 
 describe("resolveWorkerCount", () => {

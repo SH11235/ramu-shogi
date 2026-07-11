@@ -127,6 +127,9 @@ impl EngineOptions {
         if let Some(stop_mode) = opts.stop_mode {
             self.stop_mode = stop_mode;
         }
+        if let Some(threads) = opts.threads {
+            self.num_threads = threads.max(1);
+        }
     }
 }
 
@@ -136,6 +139,7 @@ struct InitOptions {
     stop_mode: Option<EngineStopMode>,
     tt_size_mb: Option<usize>,
     multi_pv: Option<usize>,
+    threads: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]

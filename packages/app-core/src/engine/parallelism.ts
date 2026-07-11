@@ -21,7 +21,9 @@ export function detectParallelism(): ParallelismConfig {
     // navigator.hardwareConcurrency の値を検証し、異常値を防ぐ
     // （カスタムブラウザや開発者ツールで不正な値が設定される可能性があるため）
     const rawConcurrency =
-        typeof navigator !== "undefined" && typeof navigator.hardwareConcurrency === "number"
+        typeof navigator !== "undefined" &&
+        typeof navigator.hardwareConcurrency === "number" &&
+        Number.isFinite(navigator.hardwareConcurrency)
             ? navigator.hardwareConcurrency
             : 1;
     const hardwareConcurrency = Math.max(1, Math.min(rawConcurrency, 128));
