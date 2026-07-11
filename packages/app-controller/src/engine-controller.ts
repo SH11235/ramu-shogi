@@ -5,6 +5,7 @@ import type {
     Player,
     ResolvedNnue,
 } from "@shogi/app-core";
+import { detectParallelism } from "@shogi/app-core";
 import type {
     EngineClient,
     EngineErrorCode,
@@ -230,24 +231,14 @@ const normalizeThreadCount = (value?: number): number | undefined => {
     return Math.trunc(value);
 };
 
-const getThreadCountForSide = (threads: Record<Player, number>, side: Player) =>
-    normalizeThreadCount(threads[side]);
+// 0 (自動) は UI が「自動（推奨: N）」と表示する検出値に解決する。
+// undefined のまま init に渡すとクライアントの既定値 (Web 本番は 1) に落ち、
+// ラベルと実際のスレッド数が食い違う
+const getThreadCountForSide = (threads: Record<Player, number>, side: Player): number =>
+    normalizeThreadCount(threads[side]) ?? detectParallelism().recommendedWorkers;
 
-const getAnalysisThreadCount = (threads: Record<Player, number>) => {
-    const sente = normalizeThreadCount(threads.sente);
-    const gote = normalizeThreadCount(threads.gote);
-    if (sente === undefined && gote === undefined) return undefined;
-    return Math.max(sente ?? 0, gote ?? 0) || undefined;
-};
-
-const applyThreadOption = async (client: EngineClient, threadCount?: number) => {
-    if (threadCount === undefined) return;
-    try {
-        await client.setOption("Threads", threadCount);
-    } catch {
-        // ignore unsupported Threads option
-    }
-};
+const getAnalysisThreadCount = (threads: Record<Player, number>) =>
+    Math.max(getThreadCountForSide(threads, "sente"), getThreadCountForSide(threads, "gote"));
 
 const createInitialState = (): EngineControllerState => ({
     engineReady: { sente: false, gote: false },
@@ -801,7 +792,7 @@ export function createEngineController(
             engineState.ready = false;
 
             const threadCount = getThreadCountForSide(context.engineThreads, side);
-            await client.init(threadCount ? { threads: threadCount } : undefined);
+            await client.init({ threads: threadCount });
 
             const selection =
                 options.nnueSelection ??
@@ -888,7 +879,7 @@ export function createEngineController(
 
         if (!engineState.ready) {
             const threadCount = getThreadCountForSide(context.engineThreads, side);
-            await client.init(threadCount ? { threads: threadCount } : undefined);
+            await client.init({ threads: threadCount });
 
             const selection =
                 side === "sente" ? context.nnueSelections.sente : context.nnueSelections.gote;
@@ -1088,7 +1079,7 @@ export function createEngineController(
                 analysisState.client = client;
                 analysisState.engineId = engineId;
                 const threadCount = getAnalysisThreadCount(context.engineThreads);
-                await client.init(threadCount ? { threads: threadCount } : undefined);
+                await client.init({ threads: threadCount });
 
                 const selection = context.nnueSelections.analysis;
                 if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
@@ -1220,26 +1211,62 @@ export function createEngineController(
         }
     };
 
+    // sideOps キューに載せることで、初期化 in-flight 中の変更も init 完了後に適用される。
+    // 失敗は握りつぶさずエラーログへ記録する
+    const applyThreadOptionQueued = (side: Player, client: EngineClient, threadCount: number) =>
+        withSideOp(side, async () => {
+            if (engineStates[side].client !== client) return;
+            try {
+                await client.setOption("Threads", threadCount);
+            } catch (error) {
+                addErrorLog(`スレッド数の適用に失敗 (${side}): ${String(error)}`, { side });
+            }
+        });
+
     const applyThreadChange = (
         nextThreads: Record<Player, number>,
         prevThreads: Record<Player, number>,
     ) => {
         let changed = false;
         for (const side of ["sente", "gote"] as const) {
-            const prevNormalized = getThreadCountForSide(prevThreads, side);
-            const nextNormalized = getThreadCountForSide(nextThreads, side);
-            if (prevNormalized === nextNormalized) continue;
-            changed = true;
+            const resolvedPrev = getThreadCountForSide(prevThreads, side);
+            const resolvedNext = getThreadCountForSide(nextThreads, side);
+            if (resolvedPrev !== resolvedNext) changed = true;
             const engineState = engineStates[side];
-            if (!engineState.client) continue;
-            if (!engineState.ready) {
-                void applyThreadOption(engineState.client, nextNormalized);
+            const client = engineState.client;
+            if (!client) continue;
+            // init の threads を適用しないクライアント (reset を持たない外部 USI) では
+            // 自動 = 登録時設定であり推奨値と同一視できない。推奨値に畳んで比較すると
+            // 「登録時 Threads=1 のエンジンに明示 4 (=推奨値) を選んでも no-op 判定で
+            // 届かない」ため、生の設定値 (自動は undefined) で比較する
+            const appliesInitThreads = "reset" in client && typeof client.reset === "function";
+            const prevValue = appliesInitThreads
+                ? resolvedPrev
+                : normalizeThreadCount(prevThreads[side]);
+            const nextValue = appliesInitThreads
+                ? resolvedNext
+                : normalizeThreadCount(nextThreads[side]);
+            if (prevValue === nextValue) continue;
+            if (nextValue === undefined) {
+                // 外部 USI の明示 → 自動は「登録時設定に戻す」だが、セッションを
+                // 維持したままでは戻せない。次回のエンジン起動時に登録時設定が適用される
                 continue;
             }
-            void reinitializeEngineCore(side, {
-                loadPosition: true,
-                errorLogPrefix: "スレッド数変更の再初期化に失敗",
-            });
+            if (!engineState.ready) {
+                void applyThreadOptionQueued(side, client, nextValue);
+                continue;
+            }
+            // reset を持つクライアント (WASM 等) は init でスレッドプールを再構築する。
+            // reset を持たない外部 USI は init するとセッションが張り直され登録時
+            // オプションで上書きされるため、セッション維持のまま setoption で反映する
+            if (appliesInitThreads) {
+                void reinitializeEngineCore(side, {
+                    loadPosition: true,
+                    errorLogPrefix: "スレッド数変更の再初期化に失敗",
+                });
+            } else {
+                void applyThreadOptionQueued(side, client, nextValue);
+            }
         }
 
         if (changed && analysisState.client) {
@@ -1272,12 +1299,10 @@ export function createEngineController(
                 void disposeAnalysisEngine();
             }
 
-            if (
-                getThreadCountForSide(prevThreads, "sente") !==
-                    getThreadCountForSide(nextThreads, "sente") ||
-                getThreadCountForSide(prevThreads, "gote") !==
-                    getThreadCountForSide(nextThreads, "gote")
-            ) {
+            // 推奨値に解決してから比較すると「自動 → 同値の明示」の変化を見落とす。
+            // 外部 USI では自動 = 登録時設定のためこの変化にも意味がある (クライアント
+            // 種別ごとの判定は applyThreadChange 側で行う)
+            if (prevThreads.sente !== nextThreads.sente || prevThreads.gote !== nextThreads.gote) {
                 applyThreadChange(nextThreads, prevThreads);
             }
 

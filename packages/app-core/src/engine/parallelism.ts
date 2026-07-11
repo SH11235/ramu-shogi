@@ -6,11 +6,11 @@
  * 並列処理の設定情報
  */
 interface ParallelismConfig {
-    /** 絶対上限（Wasm制約: 4） */
+    /** 解析エンジンプールのワーカー数上限。1 ワーカー = 1 WASM エンジンインスタンス */
     maxWorkers: number;
     /** 検出されたハードウェア並列数 */
     detectedConcurrency: number;
-    /** 推奨ワーカー数 */
+    /** 推奨並列数（エンジンのスレッド数にも解析ワーカー数にも使う基準値） */
     recommendedWorkers: number;
 }
 
@@ -21,7 +21,9 @@ export function detectParallelism(): ParallelismConfig {
     // navigator.hardwareConcurrency の値を検証し、異常値を防ぐ
     // （カスタムブラウザや開発者ツールで不正な値が設定される可能性があるため）
     const rawConcurrency =
-        typeof navigator !== "undefined" && typeof navigator.hardwareConcurrency === "number"
+        typeof navigator !== "undefined" &&
+        typeof navigator.hardwareConcurrency === "number" &&
+        Number.isFinite(navigator.hardwareConcurrency)
             ? navigator.hardwareConcurrency
             : 1;
     const hardwareConcurrency = Math.max(1, Math.min(rawConcurrency, 128));
@@ -31,7 +33,10 @@ export function detectParallelism(): ParallelismConfig {
     const recommended = Math.max(1, Math.min(32, Math.floor(hardwareConcurrency / 2)));
 
     return {
-        maxWorkers: 32, // Wasm MAX_WASM_THREADS 制限
+        // 各ワーカーが NNUE と置換表を持つ独立エンジンのため、メモリ消費を抑える
+        // リソース上限としてスレッド数上限 (32) とは独立に定める。
+        // UI の並列ワーカー選択肢はこの値を上限に合わせること
+        maxWorkers: 4,
         detectedConcurrency: hardwareConcurrency,
         recommendedWorkers: recommended,
     };
@@ -45,7 +50,7 @@ export function detectParallelism(): ParallelismConfig {
 export function resolveWorkerCount(userSetting: number): number {
     const config = detectParallelism();
     if (userSetting === 0) {
-        return config.recommendedWorkers;
+        return Math.min(config.recommendedWorkers, config.maxWorkers);
     }
-    return Math.min(userSetting, config.maxWorkers);
+    return Math.max(1, Math.min(userSetting, config.maxWorkers));
 }

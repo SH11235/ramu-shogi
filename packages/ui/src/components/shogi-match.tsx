@@ -15,6 +15,7 @@ import {
     createDefaultNnueSelection,
     createEmptyHands,
     DEFAULT_PRESET_KEY,
+    detectParallelism,
     getAllSquares,
     getPositionService,
     resolveWorkerCount,
@@ -161,6 +162,10 @@ export const getInitialReviewSyncMode = (
     if (loaded.moveDataKey !== next.moveDataKey) return "diff";
     return "skip";
 };
+
+// 0 (自動) を controller と同じ推奨値に解決する (JSONL メタ等の表示用)
+const resolveAutoThreads = (value: number): number =>
+    value > 0 ? value : detectParallelism().recommendedWorkers;
 
 // ライブ探索表示のクリアは複数の effect / callback から呼ばれる。コンポーネント内
 // 関数だと毎レンダー再生成され hook 依存に使えない (biome) ため、ref と setState を
@@ -635,17 +640,19 @@ export function ShogiMatch({
         EngineThreadSettings | number
     >("shogi-match-engine-threads", { sente: 0, gote: 0 });
     const engineThreads = (() => {
+        // 0 は自動。旧 UI で選べた 32 超の値が localStorage に残っていると
+        // 現在の選択肢 (1〜32) に一致せず表示が壊れるため clamp する
+        const normalize = (value: number | undefined) =>
+            typeof value === "number" && Number.isFinite(value)
+                ? Math.min(32, Math.max(0, Math.trunc(value)))
+                : 0;
         if (typeof storedEngineThreads === "number") {
-            const normalized = Math.max(0, Math.trunc(storedEngineThreads));
+            const normalized = normalize(storedEngineThreads);
             return { sente: normalized, gote: normalized };
         }
         if (!storedEngineThreads || typeof storedEngineThreads !== "object") {
             return { sente: 0, gote: 0 };
         }
-        const normalize = (value: number | undefined) =>
-            typeof value === "number" && Number.isFinite(value)
-                ? Math.max(0, Math.trunc(value))
-                : 0;
         return {
             sente: normalize(storedEngineThreads.sente),
             gote: normalize(storedEngineThreads.gote),
@@ -1753,7 +1760,11 @@ export function ShogiMatch({
             maxMoves: Math.max(1, mainMoves.length),
             byoyomiMs: Math.max(timeSettings.sente.byoyomiMs, timeSettings.gote.byoyomiMs),
             mainTimeMs: Math.max(timeSettings.sente.mainMs, timeSettings.gote.mainMs),
-            threads: Math.max(1, engineThreads.sente, engineThreads.gote),
+            threads: Math.max(
+                1,
+                resolveAutoThreads(engineThreads.sente),
+                resolveAutoThreads(engineThreads.gote),
+            ),
             hashMb: 0,
             labels: { sente: labelFor("sente"), gote: labelFor("gote") },
             result,

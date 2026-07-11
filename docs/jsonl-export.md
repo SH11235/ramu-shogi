@@ -35,6 +35,9 @@
 ## rshogi 側との差分 (既知の制限)
 
 - `settings.hash_mb` は UI に設定が無いため常に `0`
+- `settings.threads` は UI 設定の解決値 (自動は推奨値) であり、エンジンに実際に
+  適用された値を保証しない。特に外部 USI エンジンは登録時に保存したオプションが
+  優先され、対局中の明示変更も setoption が失敗すれば反映されないため乖離し得る
 - `settings.byoyomi` / `btime` は先後で異なる設定の場合、大きい方の値を出力する
 - `move` 行の `timed_out` は常に `false` (UI 側は時間切れ時に対局を終了するため move 行が生成されない)
 - `move` 行の `eval.score_cp` / `score_mate` は排他 (最後に観測された評価種別のみ)

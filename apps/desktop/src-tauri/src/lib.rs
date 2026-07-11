@@ -127,6 +127,10 @@ impl EngineOptions {
         if let Some(stop_mode) = opts.stop_mode {
             self.stop_mode = stop_mode;
         }
+        if let Some(threads) = opts.threads {
+            // TS 側でも 32 に clamp しているが、IPC 経由の極端な値に対する防御として上限を設ける
+            self.num_threads = threads.clamp(1, 128);
+        }
     }
 }
 
@@ -136,6 +140,7 @@ struct InitOptions {
     stop_mode: Option<EngineStopMode>,
     tt_size_mb: Option<usize>,
     multi_pv: Option<usize>,
+    threads: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]

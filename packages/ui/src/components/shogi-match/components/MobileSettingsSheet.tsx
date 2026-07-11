@@ -533,7 +533,9 @@ export function MobileSettingsSheet({
                                     </option>
                                 ))}
                             </select>
-                            <span className="text-[11px] text-muted-foreground">0 = 自動</span>
+                            <span className="text-[11px] text-muted-foreground">
+                                0 = 自動。外部エンジンの自動は登録時の設定に従います
+                            </span>
                         </label>
                     )}
                     <label htmlFor="mobile-sente-main" className={labelClassName}>
@@ -644,7 +646,9 @@ export function MobileSettingsSheet({
                                     </option>
                                 ))}
                             </select>
-                            <span className="text-[11px] text-muted-foreground">0 = 自動</span>
+                            <span className="text-[11px] text-muted-foreground">
+                                0 = 自動。外部エンジンの自動は登録時の設定に従います
+                            </span>
                         </label>
                     )}
                     <label htmlFor="mobile-gote-main" className={labelClassName}>

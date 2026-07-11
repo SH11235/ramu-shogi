@@ -9,7 +9,7 @@
  * 分析関連は AnalysisContext から取得
  */
 
-import { detectParallelism } from "@shogi/app-core";
+import { resolveWorkerCount } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { useAnalysis } from "../contexts/AnalysisContext";
@@ -82,8 +82,6 @@ export function PCKifuSection({
         handleMoveDetailSelect,
         isMatchRunning,
     } = useNavigation();
-
-    const parallelismConfig = detectParallelism();
 
     return (
         <div
@@ -243,9 +241,7 @@ export function PCKifuSection({
                                             : "bg-wafuu-washi text-wafuu-sumi hover:bg-wafuu-border"
                                     }`}
                                 >
-                                    {opt.value === 0
-                                        ? `自動(${parallelismConfig.recommendedWorkers})`
-                                        : opt.label}
+                                    {opt.value === 0 ? `自動(${resolveWorkerCount(0)})` : opt.label}
                                 </button>
                             ))}
                         </div>
