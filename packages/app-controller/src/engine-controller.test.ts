@@ -334,6 +334,75 @@ describe("createEngineController", () => {
         expect(controller.getState().engineStatus.sente).toBe("idle");
     });
 
+    it("prepare でエンジンを初期化するが探索は開始しない", async () => {
+        const mockClient = createMockEngineClient();
+        const controller = createEngineController({
+            createClient: (_engineId) => mockClient.client,
+            getClockState: createClockState,
+            now: () => Date.now(),
+            resolveNnue: async () => null,
+            callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
+        });
+
+        controller.command.syncContext({
+            sides: {
+                sente: { role: "engine", engineId: "engine1" },
+                gote: { role: "human" },
+            },
+            position: {
+                startSfen: "startpos",
+                moves: [],
+                turn: "sente",
+                ready: true,
+            },
+            matchRunning: false,
+        });
+
+        await controller.command.prepare("sente");
+        await controller.command.prepare("gote");
+
+        expect(mockClient.init).toHaveBeenCalledTimes(1);
+        expect(mockClient.search).not.toHaveBeenCalled();
+        expect(controller.getState().engineReady.sente).toBe(true);
+
+        // 準備済みなら対局開始時のターン開始で再初期化されない
+        controller.command.syncContext({ matchRunning: true });
+        await flushPromises();
+
+        expect(mockClient.init).toHaveBeenCalledTimes(1);
+        expect(mockClient.search).toHaveBeenCalledTimes(1);
+    });
+
+    it("prepare の init 失敗は error 状態とエラーログに記録され throw しない", async () => {
+        const mockClient = createMockEngineClient({ initError: new Error("init failed") });
+        const controller = createEngineController({
+            createClient: (_engineId) => mockClient.client,
+            getClockState: createClockState,
+            now: () => Date.now(),
+            resolveNnue: async () => null,
+            callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
+        });
+
+        controller.command.syncContext({
+            sides: {
+                sente: { role: "engine", engineId: "engine1" },
+                gote: { role: "human" },
+            },
+            position: {
+                startSfen: "startpos",
+                moves: [],
+                turn: "sente",
+                ready: true,
+            },
+            matchRunning: false,
+        });
+
+        await expect(controller.command.prepare("sente")).resolves.toBeUndefined();
+
+        expect(controller.getState().engineStatus.sente).toBe("error");
+        expect(controller.getState().errorLogs[0]?.message).toContain("engine error");
+    });
+
     it("init 失敗時に error 状態とエラーログを残す", async () => {
         const mockClient = createMockEngineClient({ initError: new Error("init failed") });
         const controller = createEngineController({

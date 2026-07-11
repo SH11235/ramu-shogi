@@ -66,6 +66,8 @@ interface UseGameControlsProps {
     resetClocks: (startTicking: boolean) => void;
     /** 全エンジンを停止する */
     stopAllEngines: () => Promise<void>;
+    /** 両サイドのエンジンを初期化して探索可能な状態にする */
+    prepareEngines: () => Promise<void>;
     /** NNUEを解決する */
     resolveNnue: (selection: NnueSelection) => Promise<ResolvedNnue | null>;
     /** 合法手キャッシュをクリアする */
@@ -158,6 +160,7 @@ export function useGameControls({
     startTicking,
     resetClocks,
     stopAllEngines,
+    prepareEngines,
     resolveNnue,
     clearLegalCache,
     refreshStartSfen,
@@ -238,6 +241,9 @@ export function useGameControls({
 
             // 一時停止からの再開：棋譜を保持したまま再開
             if (isPaused) {
+                // 一時停止時にエンジンは破棄されているため、時計を動かす前に再初期化する
+                // （初期化時間が秒読みから差し引かれるのを防ぐ）
+                await prepareEngines();
                 setIsPaused(false);
                 setIsMatchRunning(true);
                 turnStartTimeRef.current = Date.now();
@@ -285,7 +291,10 @@ export function useGameControls({
                 return;
             }
 
-            // エンジン管理は useEngineManager フックが自動的に処理する
+            // 時計を動かす前にエンジンを初期化しておく
+            // （WASM init / NNUE ロードの時間が初手番の秒読みから差し引かれるのを防ぐ）
+            await prepareEngines();
+
             setIsMatchRunning(true);
             turnStartTimeRef.current = Date.now();
             startTicking(position.turn);

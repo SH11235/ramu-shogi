@@ -121,6 +121,8 @@ interface EngineControllerCommand {
         message: string,
         options?: { side?: Player; engineId?: string; code?: EngineErrorCode },
     ) => void;
+    /** エンジンを初期化して探索可能な状態にする（探索は開始しない） */
+    prepare: (side: Player) => Promise<void>;
     startTurn: (side: Player) => Promise<void>;
     dispose: (side: Player) => Promise<void>;
     retry: (side: Player) => Promise<void>;
@@ -1226,6 +1228,19 @@ export function createEngineController(
         },
         logError: (message, options) => {
             addErrorLog(message, options);
+        },
+        prepare: async (side) => {
+            const setting = context.sides[side];
+            if (setting.role !== "engine" || !setting.engineId) return;
+            try {
+                await ensureEngineReady(side);
+            } catch (error) {
+                setEngineStatus(side, "error");
+                addErrorLog(`engine error: ${String(error)}`, {
+                    side,
+                    engineId: setting.engineId,
+                });
+            }
         },
         startTurn: async (side) => {
             await startEngineTurn(side);
