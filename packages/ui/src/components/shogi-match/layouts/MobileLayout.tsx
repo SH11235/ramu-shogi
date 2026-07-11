@@ -643,6 +643,7 @@ export function MobileLayout({
                     onImportSfen={onImportSfen}
                     onImportKif={onImportKif}
                     positionReady={positionReady}
+                    onExportJsonl={navigation.handleExportJsonl}
                 />
             </BottomSheet>
 

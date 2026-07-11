@@ -22,6 +22,22 @@ export interface KifuEval {
     pv?: string[];
 }
 
+/** 対局エンジンが1手を決定するまでに得られた探索統計 */
+export interface MoveSearchStats {
+    depth?: number;
+    seldepth?: number;
+    scoreCp?: number;
+    scoreMate?: number;
+    nodes?: number;
+    nps?: number;
+    timeMs?: number;
+    hashfull?: number;
+    multipv?: number;
+    pv?: string[];
+    thinkLimitMs?: number;
+    engineId?: string;
+}
+
 /** 棋譜ノード */
 export interface KifuNode {
     /** ノードID（UUID） */
@@ -51,6 +67,8 @@ export interface KifuNode {
     comment?: string;
     /** 消費時間（ミリ秒） */
     elapsedMs?: number;
+    /** この指し手を決定した探索の統計 */
+    searchStats?: MoveSearchStats;
 }
 
 /** 棋譜ツリー */
@@ -129,6 +147,8 @@ export interface AddMoveOptions {
     elapsedMs?: number;
     /** 評価値情報 */
     eval?: KifuEval;
+    /** この指し手を決定した探索の統計 */
+    searchStats?: MoveSearchStats;
 }
 
 export function addMove(
@@ -164,6 +184,7 @@ export function addMove(
         boardBefore: cloneBoard(currentNode.positionAfter.board),
         elapsedMs: options?.elapsedMs,
         eval: options?.eval,
+        searchStats: options?.searchStats,
     };
 
     // ノードマップを更新

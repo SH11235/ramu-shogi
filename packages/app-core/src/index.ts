@@ -56,6 +56,7 @@ export type {
     KifuEval,
     KifuNode,
     KifuTree,
+    MoveSearchStats,
     PreferredPathCache,
 } from "./game/kifu-tree";
 export {

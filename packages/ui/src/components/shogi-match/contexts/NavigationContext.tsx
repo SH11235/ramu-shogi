@@ -57,6 +57,7 @@ interface NavigationProviderProps {
     // 手の選択
     handlePlySelect: (ply: number) => void;
     handleCopyKif: () => string;
+    handleExportJsonl: () => Promise<void>;
     handleMoveDetailSelect: (move: KifMove | null, position: PositionState | null) => void;
 
     // 対局状態（ナビゲーション無効化用）
@@ -90,6 +91,7 @@ export function NavigationProvider({
     onDisplaySettingsChange,
     handlePlySelect,
     handleCopyKif,
+    handleExportJsonl,
     handleMoveDetailSelect,
     isMatchRunning,
     children,
@@ -116,6 +118,7 @@ export function NavigationProvider({
         onDisplaySettingsChange,
         handlePlySelect,
         handleCopyKif,
+        handleExportJsonl,
         handleMoveDetailSelect,
         isMatchRunning,
     };
