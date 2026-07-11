@@ -157,7 +157,9 @@ export function parseSingleCsaMove(
     if (!parsed) return null;
     const lineTurn = trimmed.startsWith("+") ? "sente" : "gote";
     if (lineTurn !== state.turn) {
-        throw new Error(`CSA move could not be applied: ${trimmed} (unexpected turn: ${lineTurn})`);
+        throw new Error(
+            `CSA move rejected: ${trimmed} (unexpected turn: expected ${state.turn}, got ${lineTurn})`,
+        );
     }
     const result = applyMoveWithState(state, parsed.usi, {
         validateTurn: true,
@@ -303,14 +305,15 @@ function parseCsaMovesWithBoard(
             continue;
         }
         const fromRaw = line.slice(1, 3);
-        const toSquare = fromCsaSquare(line.slice(3, 5));
+        const toRaw = line.slice(3, 5);
+        const toSquare = fromCsaSquare(toRaw);
         if (!toSquare) {
-            continue;
+            throw new Error(`CSA move could not be applied: ${line} (invalid to-square: ${toRaw})`);
         }
         const lineTurn = line.startsWith("+") ? "sente" : "gote";
         if (lineTurn !== state.turn) {
             throw new Error(
-                `CSA move could not be applied: ${line} (unexpected turn: ${lineTurn})`,
+                `CSA move rejected: ${line} (unexpected turn: expected ${state.turn}, got ${lineTurn})`,
             );
         }
         hasMove = true;
@@ -320,7 +323,11 @@ function parseCsaMovesWithBoard(
         // で持ち駒の在庫検証を免除して board だけを進める。
         if (fromRaw === "00") {
             const dropPiece = DROP_PIECE_FROM_CODE[pieceCode];
-            if (!dropPiece) continue;
+            if (!dropPiece) {
+                throw new Error(
+                    `CSA move could not be applied: ${line} (unknown piece code: ${pieceCode})`,
+                );
+            }
             const move = `${dropPiece}*${toSquare}`;
             const result = applyMoveWithState(state, move, {
                 validateTurn: true,
@@ -337,7 +344,9 @@ function parseCsaMovesWithBoard(
         }
         const fromSquare = fromCsaSquare(fromRaw);
         if (!fromSquare) {
-            continue;
+            throw new Error(
+                `CSA move could not be applied: ${line} (invalid from-square: ${fromRaw})`,
+            );
         }
         const targetPiece = state.board[fromSquare];
         if (!targetPiece) {

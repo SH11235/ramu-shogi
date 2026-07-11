@@ -237,12 +237,20 @@ Another Invalid
         );
     });
 
+    it("move 行の未知駒コードと不正な升を拒否する", () => {
+        expect(() => parseCsaMoves("+0055ZZ")).toThrow(/unknown piece code: ZZ/);
+        expect(() => parseCsaMoves("+0A55FU")).toThrow(/invalid from-square: 0A/);
+        expect(() => parseCsaMoves("+770AFU")).toThrow(/invalid to-square: 0A/);
+    });
+
     it("CSA の符号と移動駒の所有者が一致しない手を拒否する", () => {
         expect(() => parseCsaMoves("-\n-7776FU")).toThrow(/not your turn/);
     });
 
     it("同じ手番の move 行が連続する CSA を拒否する", () => {
-        expect(() => parseCsaMoves(["+7776FU", "+2726FU"].join("\n"))).toThrow(/unexpected turn/);
+        expect(() => parseCsaMoves(["+7776FU", "+2726FU"].join("\n"))).toThrow(
+            "CSA move rejected: +2726FU (unexpected turn: expected gote, got sente)",
+        );
     });
 
     it("開始手番マーカーが後手なら後手の move 行からパースする", () => {
@@ -349,7 +357,9 @@ describe("parseSingleCsaMove", () => {
     it("現在手番と同じ符号の手を適用した後は同符号の次手を拒否する", () => {
         const first = parseSingleCsaMove("+7776FU", createInitialPositionState());
         if (!first) throw new Error("first move should be applied");
-        expect(() => parseSingleCsaMove("+2726FU", first.nextState)).toThrow(/unexpected turn/);
+        expect(() => parseSingleCsaMove("+2726FU", first.nextState)).toThrow(
+            "CSA move rejected: +2726FU (unexpected turn: expected gote, got sente)",
+        );
     });
 
     it("成り手 (UM 等) を promote=true で解釈する", () => {

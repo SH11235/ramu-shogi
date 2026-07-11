@@ -195,9 +195,9 @@ describe("subscribeRshogiLiveGame: snapshot → broadcast → end → close", ()
         );
         const ws = wsInstances[0];
         ws.fireOpen();
-        const snapshotLines = buildSnapshotLines(["-3334FU,T7"]).map((line) =>
-            line === "To_Move:+" ? "To_Move:-" : line,
-        );
+        const snapshotLines = buildSnapshotLines(["-3334FU,T7"])
+            .filter((line) => line !== "+")
+            .map((line) => (line === "To_Move:+" ? "To_Move:-" : line));
 
         ws.fireLines(snapshotLines);
 
@@ -206,6 +206,43 @@ describe("subscribeRshogiLiveGame: snapshot → broadcast → end → close", ()
         expect(events.snapshot[0].moves).toEqual(["3c3d"]);
         expect(events.snapshot[0].state.board["3d"]).toEqual({ owner: "gote", type: "P" });
         expect(events.snapshot[0].state.turn).toBe("sente");
+        expect(events.snapshot[0].clocks.sideToMove).toBe("sente");
+    });
+
+    it("position 開始手番マーカーを To_Move より優先する", () => {
+        const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+        subscribeRshogiLiveGame(
+            "game-1",
+            { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+            callbacks,
+        );
+        const ws = wsInstances[0];
+        ws.fireOpen();
+        const snapshotLines = buildSnapshotLines(["-3334FU,T7"]).map((line) =>
+            line === "+" ? "-" : line,
+        );
+
+        ws.fireLines(snapshotLines);
+
+        expect(events.errors).toEqual([]);
+        expect(events.snapshot[0].moves).toEqual(["3c3d"]);
+        expect(events.snapshot[0].state.turn).toBe("sente");
+    });
+
+    it("奇数手 snapshot の時計表示に replay 後の現在手番を使う", () => {
+        const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+        subscribeRshogiLiveGame(
+            "game-1",
+            { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+            callbacks,
+        );
+        const ws = wsInstances[0];
+        ws.fireOpen();
+
+        ws.fireLines(buildSnapshotLines(["+7776FU,T8"]));
+
+        expect(events.snapshot[0].clocks.sideToMove).toBe("gote");
+        expect(events.clocks[0].sideToMove).toBe("gote");
     });
 
     it("apiBaseUrl に path (/api/v1) を含んでも観戦 WS は origin 直下 /ws/<id>/spectate に張る", () => {
@@ -256,7 +293,7 @@ describe("subscribeRshogiLiveGame: snapshot → broadcast → end → close", ()
         ws.fireLines(["+7776FU,T8", "+7776FU,T99", "-3334FU,T7"]);
 
         expect(events.errors).toHaveLength(1);
-        expect(events.errors[0].message).toMatch(/CSA move could not be applied/);
+        expect(events.errors[0].message).toMatch(/CSA move rejected:.*unexpected turn/);
         expect(events.moves).toEqual([
             { csaMove: "7g7f", elapsedSec: 8 },
             { csaMove: "3c3d", elapsedSec: 7 },
@@ -467,7 +504,7 @@ describe("subscribeRshogiLiveGame: Floodgate コメント (eval / PV)", () => {
         })();
         expect(events.snapshot).toHaveLength(0);
         expect(events.errors).toHaveLength(1);
-        expect(events.errors[0].message).toMatch(/CSA move could not be applied/);
+        expect(events.errors[0].message).toMatch(/CSA move rejected:.*unexpected turn/);
     });
 
     it("snapshot: コメントも T も無い旧サーバ形式は moveDetails が elapsedSec=0/comment 無しで揃う", () => {

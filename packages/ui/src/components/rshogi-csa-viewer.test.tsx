@@ -49,7 +49,17 @@ describe("RshogiCsaViewer", () => {
         vi.mocked(fetchRshogiGame).mockResolvedValue(GAME);
         const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:csa");
         const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-        const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+        const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+            this: HTMLAnchorElement,
+        ) {
+            expect(document.body.contains(this)).toBe(true);
+        });
+        const originalRemove = HTMLAnchorElement.prototype.remove;
+        const remove = vi.spyOn(HTMLAnchorElement.prototype, "remove").mockImplementation(function (
+            this: HTMLAnchorElement,
+        ) {
+            originalRemove.call(this);
+        });
         renderViewer();
 
         const button = await screen.findByRole("button", { name: "CSA ダウンロード" });
@@ -60,7 +70,14 @@ describe("RshogiCsaViewer", () => {
         expect(blob.type).toBe("text/plain;charset=utf-8");
         await expect(blob.text()).resolves.toBe(CSA_TEXT);
         await waitFor(() => expect(click).toHaveBeenCalledOnce());
-        expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe(`${GAME_ID}.csa`);
+        const anchor = click.mock.contexts[0] as HTMLAnchorElement;
+        expect(anchor.download).toBe(`${GAME_ID}.csa`);
+        expect(remove).toHaveBeenCalledOnce();
+        expect(document.body.contains(anchor)).toBe(false);
+        expect(click.mock.invocationCallOrder[0]).toBeLessThan(remove.mock.invocationCallOrder[0]);
+        expect(remove.mock.invocationCallOrder[0]).toBeLessThan(
+            revokeObjectUrl.mock.invocationCallOrder[0],
+        );
         expect(revokeObjectUrl).toHaveBeenCalledWith("blob:csa");
     });
 });

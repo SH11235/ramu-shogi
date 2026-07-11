@@ -416,11 +416,17 @@ const decodeSnapshotBlock = (
     }
 
     const summary = parseGameSummaryLines(summaryLines);
+    const positionTurnMarker = summaryLines.find((line) => line === "+" || line === "-");
+    const initialTurn =
+        positionTurnMarker === "+"
+            ? "sente"
+            : positionTurnMarker === "-"
+              ? "gote"
+              : (summary.toMove ?? "sente");
 
     // 消費秒とコメントの対応を保つため、moves と moveDetails を同じ entry から構築する。
     // 不整合な部分局面を公開しないため、適用不能な手は snapshot 全体の失敗にする。
-    let state = createInitialPositionState();
-    state.turn = summary.toMove ?? "sente";
+    let state: PositionState = { ...createInitialPositionState(), turn: initialTurn };
     const moves: string[] = [];
     const moveDetails: RshogiLiveMove[] = [];
     for (const entry of moveEntries) {
@@ -442,7 +448,8 @@ const decodeSnapshotBlock = (
         timeControl: deriveTimeControl(summary),
     };
 
-    const sideToMove: "sente" | "gote" = summary.toMove ?? state.turn;
+    // To_Move は初期局面手番であり現在手番ではないため、replay 後の手番を表示する。
+    const sideToMove: "sente" | "gote" = state.turn;
 
     const snapshot: RshogiLiveSnapshot = {
         meta,

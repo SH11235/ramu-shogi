@@ -214,7 +214,9 @@ export function RshogiCsaViewer({
         const anchor = document.createElement("a");
         anchor.href = url;
         anchor.download = `${gameId}.csa`;
+        document.body.appendChild(anchor);
         anchor.click();
+        anchor.remove();
         URL.revokeObjectURL(url);
     };
 
