@@ -238,6 +238,18 @@ function parseStartSfenLine(line: string): string | null {
 }
 
 /**
+ * 指し手文字列が「成り」を表すか判定する
+ *
+ * 「成香」「成銀」等の成り駒名は駒名の先頭に「成」が付き、成りの指し手は
+ * 駒名の直後（移動元座標の直前）に「成」が付くため、移動元座標を除いた
+ * 末尾で判定する。「不成」も末尾が「成」になるので明示的に除外する。
+ */
+function detectsPromotion(moveStr: string): boolean {
+    const core = moveStr.replace(/\(\d{2}\)$/, "");
+    return core.endsWith("成") && !core.endsWith("不成");
+}
+
+/**
  * 1行のKIF指し手をパースしてUSI形式に変換
  *
  * 対応フォーマット:
@@ -248,6 +260,7 @@ function parseStartSfenLine(line: string): string | null {
  * - "同　歩(66)" - 「同」表記
  * - "５五角打" - 駒打ち
  * - "２二角成(88)" - 成り
+ * - "２三銀不成(34)" - 不成
  * - "   1 ７六歩(77)   ( 0:05/00:00:05)" - 消費時間付き
  *
  * @param line KIF形式の1行
@@ -329,14 +342,10 @@ function parseKifLine(line: string, prevTo: string | null): ParsedMoveLine | nul
     // 「同」表記のパース: "同　歩(66)" or "同歩(66)"
     // 駒名部分は検証不要（後続の PIECE_NAME_TO_USI で検証）、移動元座標のみ抽出
     // ============================================================
-    const sameMatch = moveStr.match(/^同[　\s]*(?:.+?)(?:成)?(?:\((\d{2})\))?$/);
+    const sameMatch = moveStr.match(/^同[　\s]*(?:.+?)(?:不成|成)?(?:\((\d{2})\))?$/);
     if (sameMatch && prevTo) {
         const [, fromDigits] = sameMatch;
-        const promotes =
-            moveStr.includes("成") &&
-            !moveStr.includes("成香") &&
-            !moveStr.includes("成桂") &&
-            !moveStr.includes("成銀");
+        const promotes = detectsPromotion(moveStr);
 
         if (!fromDigits) {
             // 移動元がない場合はパースできない
@@ -354,15 +363,11 @@ function parseKifLine(line: string, prevTo: string | null): ParsedMoveLine | nul
     // 通常移動のパース: "７六歩(77)" or "２二角成(88)"
     // ============================================================
     const normalMatch = moveStr.match(
-        /^([１２３４５６７８９1-9])([一二三四五六七八九])(.+?)(?:成)?(?:\((\d{2})\))?$/,
+        /^([１２３４５６７８９1-9])([一二三四五六七八九])(.+?)(?:不成|成)?(?:\((\d{2})\))?$/,
     );
     if (normalMatch) {
         const [, fileChar, rankChar, , fromDigits] = normalMatch;
-        const promotes =
-            moveStr.includes("成") &&
-            !moveStr.includes("成香") &&
-            !moveStr.includes("成桂") &&
-            !moveStr.includes("成銀");
+        const promotes = detectsPromotion(moveStr);
 
         const to = kanjiToUsi(fileChar, rankChar);
         if (!to) return null;
