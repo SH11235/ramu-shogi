@@ -2,11 +2,88 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     fetchRshogiGame,
     fetchRshogiGameList,
+    fetchRshogiGameSearch,
     fetchRshogiLiveGameList,
     listMockRshogiGameIds,
     RshogiGameFetchError,
     RshogiGameNotFoundError,
 } from "./client";
+
+describe("fetchRshogiGameSearch (mock fallback)", () => {
+    it("filters by name and paginates the embedded fixtures", async () => {
+        const first = await fetchRshogiGameSearch({ name: "ramu", page: 1, pageSize: 2 });
+        expect(first.games).toHaveLength(2);
+        expect(first.totalCount).toBeGreaterThan(2);
+        expect(first.page).toBe(1);
+        expect(first.pageSize).toBe(2);
+
+        const second = await fetchRshogiGameSearch({ name: "ramu", page: 2, pageSize: 2 });
+        expect(second.games[0].gameId).not.toBe(first.games[0].gameId);
+    });
+});
+
+describe("fetchRshogiGameSearch (real baseUrl)", () => {
+    it("builds all query parameters and decodes the search page", async () => {
+        const fetchImpl = vi.fn(
+            async () =>
+                new Response(
+                    JSON.stringify({
+                        games: [
+                            {
+                                game_id: "searched-1",
+                                black_handle: "Alice",
+                                white_handle: "Bob",
+                                ended_at_ms: 1777392877244,
+                                result_kind: "WIN_BLACK",
+                                end_reason: "RESIGN",
+                                source: "floodgate",
+                            },
+                        ],
+                        page: 2,
+                        page_size: 20,
+                        total_count: 35,
+                    }),
+                    { status: 200 },
+                ),
+        ) as unknown as typeof fetch;
+
+        const result = await fetchRshogiGameSearch({
+            baseUrl: "https://rshogi.example.com/api/v1/",
+            fetchImpl,
+            name: "Alice Bob",
+            result: "resignation",
+            source: "floodgate",
+            from: 1000,
+            to: 2000,
+            page: 2,
+            pageSize: 20,
+        });
+
+        expect(fetchImpl).toHaveBeenCalledWith(
+            "https://rshogi.example.com/api/v1/games/search?name=Alice+Bob&result=resignation&source=floodgate&from=1000&to=2000&page=2&pageSize=20",
+            { signal: undefined },
+        );
+        expect(result).toEqual({
+            games: [
+                expect.objectContaining({
+                    gameId: "searched-1",
+                    senteName: "Alice",
+                    goteName: "Bob",
+                    endedAtMs: 1777392877244,
+                    source: "floodgate",
+                    result: {
+                        kind: "resignation",
+                        winner: "sente",
+                        endReason: "RESIGN",
+                    },
+                }),
+            ],
+            page: 2,
+            pageSize: 20,
+            totalCount: 35,
+        });
+    });
+});
 
 // production code 側は `import.meta.env` → `process.env` の順で読むため、テストでは
 // `vi.stubEnv` で両方を上書きする (Vitest 4 では `vi.stubEnv` が `import.meta.env` と
