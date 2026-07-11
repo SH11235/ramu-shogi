@@ -403,9 +403,12 @@ export function MoveDetailWindow({
             if (node.ply < move.ply) break;
             id = node.parentId;
         }
-        return [...kifuTree.nodes.values()].find(
-            (node) => node.ply === move.ply && node.usiMove === move.usiMove,
-        )?.searchStats;
+        for (const node of kifuTree.nodes.values()) {
+            if (node.ply === move.ply && node.usiMove === move.usiMove) {
+                return node.searchStats;
+            }
+        }
+        return undefined;
     })();
 
     // NNUE選択肢を構築（プリセット + カスタムNNUE）

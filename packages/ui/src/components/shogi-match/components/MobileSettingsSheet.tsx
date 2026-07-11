@@ -16,6 +16,7 @@ import type {
 import type { KifMoveData } from "../utils/kifParser";
 import { parseKif, parseSfen } from "../utils/kifParser";
 import { buildThreadOptions } from "../utils/threadOptions";
+import { JsonlExportHelp } from "./JsonlExportHelp";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 
 type SideKey = "sente" | "gote";
@@ -913,13 +914,16 @@ export function MobileSettingsSheet({
             )}
 
             {onExportJsonl && (
-                <button
-                    type="button"
-                    onClick={() => void onExportJsonl()}
-                    className="w-full rounded-lg border border-border bg-background p-2 text-sm text-foreground"
-                >
-                    JSONL エクスポート
-                </button>
+                <div className="space-y-1">
+                    <button
+                        type="button"
+                        onClick={() => void onExportJsonl()}
+                        className="w-full rounded-lg border border-border bg-background p-2 text-sm text-foreground"
+                    >
+                        JSONL エクスポート
+                    </button>
+                    <JsonlExportHelp />
+                </div>
             )}
 
             {/* 表示設定 */}

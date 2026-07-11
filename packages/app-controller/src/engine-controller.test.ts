@@ -27,6 +27,20 @@ describe("accumulateSearchStats", () => {
         });
     });
 
+    it("通常評価と詰み評価は排他で保持する", () => {
+        const cpThenMate = accumulateSearchStats(
+            accumulateSearchStats({}, { type: "info", depth: 10, scoreCp: 50 }),
+            { type: "info", depth: 15, scoreMate: 5 },
+        );
+        expect(cpThenMate).toEqual({ depth: 15, scoreMate: 5 });
+
+        const mateThenCp = accumulateSearchStats(
+            accumulateSearchStats({}, { type: "info", scoreMate: -3 }),
+            { type: "info", scoreCp: -120 },
+        );
+        expect(mateThenCp).toEqual({ scoreCp: -120 });
+    });
+
     it("multipv 2 以上を無視する", () => {
         const current = { depth: 10, scoreCp: 20 };
         expect(accumulateSearchStats(current, { type: "info", multipv: 2, depth: 99 })).toBe(

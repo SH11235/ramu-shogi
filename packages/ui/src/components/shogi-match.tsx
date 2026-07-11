@@ -162,6 +162,20 @@ export const getInitialReviewSyncMode = (
     return "skip";
 };
 
+// ライブ探索表示のクリアは複数の effect / callback から呼ばれる。コンポーネント内
+// 関数だと毎レンダー再生成され hook 依存に使えない (biome) ため、ref と setState を
+// 引数に取るモジュール関数にする
+const clearLiveSearchDisplay = (
+    trailingRef: { current: unknown },
+    timerRef: { current: ReturnType<typeof setTimeout> | null },
+    setLiveSearchInfo: (value: null) => void,
+): void => {
+    trailingRef.current = null;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
+    setLiveSearchInfo(null);
+};
+
 const isSameReviewMoveEval = (
     a: ReviewMoveEval | undefined,
     b: ReviewMoveEval | undefined,
@@ -569,12 +583,6 @@ export function ShogiMatch({
     } | null>(null);
     const liveInfoTrailingRef = useRef<{ side: Player; event: EngineInfoEvent } | null>(null);
     const liveInfoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const clearLiveSearchInfo = () => {
-        liveInfoTrailingRef.current = null;
-        if (liveInfoTimerRef.current) clearTimeout(liveInfoTimerRef.current);
-        liveInfoTimerRef.current = null;
-        setLiveSearchInfo(null);
-    };
     useEffect(
         () => () => {
             if (liveInfoTimerRef.current) clearTimeout(liveInfoTimerRef.current);
@@ -585,10 +593,7 @@ export function ShogiMatch({
     useEffect(() => {
         if (isMatchRunning) return;
         pendingSearchStatsRef.current.clear();
-        liveInfoTrailingRef.current = null;
-        if (liveInfoTimerRef.current) clearTimeout(liveInfoTimerRef.current);
-        liveInfoTimerRef.current = null;
-        setLiveSearchInfo(null);
+        clearLiveSearchDisplay(liveInfoTrailingRef, liveInfoTimerRef, setLiveSearchInfo);
     }, [isMatchRunning]);
     // モバイル判定
     const isMobile = useIsMobile();
@@ -1146,7 +1151,7 @@ export function ShogiMatch({
         onEvalUpdate: (ply, event) => handleEvalUpdateRef.current(ply, event),
         onSearchComplete: (ply, stats) => {
             pendingSearchStatsRef.current.set(ply, stats);
-            clearLiveSearchInfo();
+            clearLiveSearchDisplay(liveInfoTrailingRef, liveInfoTimerRef, setLiveSearchInfo);
         },
         onLiveInfo: (side, event) => {
             // 対局停止後や fatal エラー後に flush された info が残留表示を再セットしないようにする
@@ -1174,10 +1179,7 @@ export function ShogiMatch({
     // error 状態を直接監視してライブ探索表示を消す
     useEffect(() => {
         if (engineStatus.sente !== "error" && engineStatus.gote !== "error") return;
-        liveInfoTrailingRef.current = null;
-        if (liveInfoTimerRef.current) clearTimeout(liveInfoTimerRef.current);
-        liveInfoTimerRef.current = null;
-        setLiveSearchInfo(null);
+        clearLiveSearchDisplay(liveInfoTrailingRef, liveInfoTimerRef, setLiveSearchInfo);
     }, [engineStatus.sente, engineStatus.gote]);
     restartEngineForNnueRef.current = restartEngineForNnue;
 
@@ -1691,6 +1693,17 @@ export function ShogiMatch({
     });
 
     const handleExportJsonl = async (): Promise<void> => {
+        try {
+            await exportJsonlInner();
+        } catch (error) {
+            setMessage({
+                text: `JSONL エクスポートに失敗しました: ${String(error)}`,
+                type: "error",
+            });
+        }
+    };
+
+    const exportJsonlInner = async (): Promise<void> => {
         if (!navigation.tree) return;
         // 現在のナビゲーション位置に依存しないよう、ツリーの主分岐を親子ペアで辿る
         // (sfen_before と手番は親ノードの positionAfter から導出する)

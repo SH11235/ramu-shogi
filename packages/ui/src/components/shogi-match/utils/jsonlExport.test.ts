@@ -43,7 +43,12 @@ describe("exportToRshogiJsonl", () => {
             side_to_move: "b",
             eval: { score_cp: 30, depth: 12 },
         });
-        expect(lines[2]).toMatchObject({ outcome: "black_win", plies: 1, winner: "engine" });
+        expect(lines[2]).toMatchObject({
+            outcome: "black_win",
+            reason: "resign",
+            plies: 1,
+            winner: "engine",
+        });
     });
 
     it("探索値のない人間の手では eval キーを省略する", () => {

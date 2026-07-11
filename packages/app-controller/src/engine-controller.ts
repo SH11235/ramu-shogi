@@ -468,8 +468,6 @@ export function accumulateSearchStats(
     const fields = [
         "depth",
         "seldepth",
-        "scoreCp",
-        "scoreMate",
         "nodes",
         "nps",
         "timeMs",
@@ -479,7 +477,15 @@ export function accumulateSearchStats(
     ] as const;
     for (const field of fields) {
         const value = event[field];
-        if (value !== undefined) Object.assign(next, { [field]: value });
+        if (value !== undefined) (next as Record<string, unknown>)[field] = value;
+    }
+    // 同一探索内で通常評価と詰み評価が入れ替わることがあるため、評価種別は排他で保持する
+    if (event.scoreCp !== undefined) {
+        next.scoreCp = event.scoreCp;
+        delete next.scoreMate;
+    } else if (event.scoreMate !== undefined) {
+        next.scoreMate = event.scoreMate;
+        delete next.scoreCp;
     }
     return next;
 }
