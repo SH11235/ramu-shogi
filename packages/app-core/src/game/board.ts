@@ -64,6 +64,16 @@ const ALL_SQUARES: Square[] = BOARD_RANKS.flatMap((rank) =>
 );
 
 const PIECE_POOL: PieceType[] = ["P", "L", "N", "S", "G", "B", "R", "K"];
+
+// 金・玉は成れず、既に成った駒も再度成れない。
+const PROMOTABLE_TYPES: ReadonlySet<PieceType> = new Set(["P", "L", "N", "S", "B", "R"]);
+const SENTE_PROMOTION_RANKS: ReadonlySet<Rank> = new Set(["a", "b", "c"]);
+const GOTE_PROMOTION_RANKS: ReadonlySet<Rank> = new Set(["g", "h", "i"]);
+
+function isInPromotionZone(square: Square, owner: Player): boolean {
+    const rank = square[1] as Rank;
+    return owner === "sente" ? SENTE_PROMOTION_RANKS.has(rank) : GOTE_PROMOTION_RANKS.has(rank);
+}
 const PROMOTED_FROM: Record<PieceType, PieceType> = {
     P: "P",
     L: "L",
@@ -308,6 +318,21 @@ export function applyMoveWithState(
     const targetPiece = board[parsed.to];
     if (targetPiece && targetPiece.owner === fromPiece.owner) {
         return { ok: false, next: state, error: "cannot capture own piece" };
+    }
+
+    if (parsed.promote) {
+        if (!PROMOTABLE_TYPES.has(fromPiece.type)) {
+            return { ok: false, next: state, error: "piece cannot promote" };
+        }
+        if (fromPiece.promoted) {
+            return { ok: false, next: state, error: "piece is already promoted" };
+        }
+        if (
+            !isInPromotionZone(parsed.from, fromPiece.owner) &&
+            !isInPromotionZone(parsed.to, fromPiece.owner)
+        ) {
+            return { ok: false, next: state, error: "move does not enter promotion zone" };
+        }
     }
 
     let updatedHands = hands;
