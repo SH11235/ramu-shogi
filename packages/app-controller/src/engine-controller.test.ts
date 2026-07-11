@@ -342,6 +342,64 @@ describe("createEngineController", () => {
         expect(controller.getState().engineReady.sente).toBe(true);
     });
 
+    it("後手の探索に両者の残り持ち時間を渡す", async () => {
+        const mockClient = createMockEngineClient();
+        const controller = createEngineController({
+            createClient: () => mockClient.client,
+            getClockState: () => ({
+                sente: { mainMs: 12_000, byoyomiMs: 1_000 },
+                gote: { mainMs: 8_000, byoyomiMs: 1_000 },
+                lastUpdatedAt: 1_000,
+                ticking: "gote",
+            }),
+            now: () => 2_500,
+            resolveNnue: async () => null,
+            callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
+        });
+        controller.command.syncContext({
+            sides: { sente: { role: "human" }, gote: { role: "engine", engineId: "engine1" } },
+            position: { startSfen: "startpos", moves: [], turn: "gote", ready: true },
+            matchRunning: true,
+        });
+
+        await controller.command.startTurn("gote");
+        await flushPromises();
+
+        expect(mockClient.search).toHaveBeenCalledWith({
+            limits: { btimeMs: 12_000, wtimeMs: 6_500, byoyomiMs: 1_000 },
+            ponder: false,
+        });
+    });
+
+    it("純秒読みでは btime/wtime を渡さない", async () => {
+        const mockClient = createMockEngineClient();
+        const controller = createEngineController({
+            createClient: () => mockClient.client,
+            getClockState: () => ({
+                sente: { mainMs: 0, byoyomiMs: 1_000 },
+                gote: { mainMs: 0, byoyomiMs: 1_000 },
+                lastUpdatedAt: 1_000,
+                ticking: "sente",
+            }),
+            now: () => 1_200,
+            resolveNnue: async () => null,
+            callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
+        });
+        controller.command.syncContext({
+            sides: { sente: { role: "engine", engineId: "engine1" }, gote: { role: "human" } },
+            position: { startSfen: "startpos", moves: [], turn: "sente", ready: true },
+            matchRunning: true,
+        });
+
+        await controller.command.startTurn("sente");
+        await flushPromises();
+
+        expect(mockClient.search).toHaveBeenCalledWith({
+            limits: { byoyomiMs: 800 },
+            ponder: false,
+        });
+    });
+
     it("bestmove の通常手でコールバックを呼ぶ", async () => {
         const mockClient = createMockEngineClient();
         const onMoveFromEngine = vi.fn();

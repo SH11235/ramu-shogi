@@ -136,6 +136,8 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
                 params: {
                     maxDepth: params.limits?.maxDepth,
                     nodes: params.limits?.nodes,
+                    btimeMs: params.limits?.btimeMs,
+                    wtimeMs: params.limits?.wtimeMs,
                     byoyomiMs: params.limits?.byoyomiMs,
                     movetimeMs: params.limits?.movetimeMs,
                     infinite: !params.limits,

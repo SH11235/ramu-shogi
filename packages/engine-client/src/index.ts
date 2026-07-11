@@ -98,6 +98,10 @@ export interface SearchLimits {
     nodes?: number;
     /** 秒読み (ms) */
     byoyomiMs?: number;
+    /** 先手の残り持ち時間 (ms) */
+    btimeMs?: number;
+    /** 後手の残り持ち時間 (ms) */
+    wtimeMs?: number;
     /** 固定消費時間 (ms) */
     movetimeMs?: number;
 }

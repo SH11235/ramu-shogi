@@ -148,6 +148,8 @@ struct InitOptions {
 struct SearchLimitsInput {
     max_depth: Option<i32>,
     nodes: Option<u64>,
+    btime_ms: Option<i64>,
+    wtime_ms: Option<i64>,
     byoyomi_ms: Option<i64>,
     movetime_ms: Option<i64>,
 }
@@ -439,6 +441,12 @@ fn build_limits(params: &SearchParamsInput, options: &EngineOptions) -> LimitsTy
         if let Some(nodes) = limits_input.nodes {
             eprintln!("build_limits: setting nodes = {}", nodes);
             limits.nodes = nodes;
+        }
+        if let Some(btime) = limits_input.btime_ms {
+            limits.time[Color::Black.index()] = btime;
+        }
+        if let Some(wtime) = limits_input.wtime_ms {
+            limits.time[Color::White.index()] = wtime;
         }
         if let Some(byoyomi) = limits_input.byoyomi_ms {
             eprintln!("build_limits: setting byoyomi = {}", byoyomi);
@@ -956,7 +964,10 @@ fn ensure_path_within_dir(dir: &Path, path: &Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ensure_path_within_dir, validate_nnue_id};
+    use super::{
+        Color, EngineOptions, SearchLimitsInput, SearchParamsInput, build_limits,
+        ensure_path_within_dir, validate_nnue_id,
+    };
     use std::fs;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -970,6 +981,27 @@ mod tests {
             .expect("system time before unix epoch")
             .as_nanos();
         std::env::temp_dir().join(format!("{prefix}-{nanos}-{n}"))
+    }
+
+    #[test]
+    fn build_limits_maps_sente_and_gote_time() {
+        let params = SearchParamsInput {
+            limits: Some(SearchLimitsInput {
+                max_depth: None,
+                nodes: None,
+                btime_ms: Some(12_000),
+                wtime_ms: Some(6_500),
+                byoyomi_ms: Some(1_000),
+                movetime_ms: None,
+            }),
+            ponder: Some(false),
+        };
+
+        let limits = build_limits(&params, &EngineOptions::default());
+
+        assert_eq!(limits.time[Color::Black.index()], 12_000);
+        assert_eq!(limits.time[Color::White.index()], 6_500);
+        assert_eq!(limits.byoyomi, [1_000; Color::NUM]);
     }
 
     #[test]

@@ -968,12 +968,18 @@ export function createEngineController(
             }
 
             const effectiveByoyomiMs = Math.max(100, remainingByoyomiMs);
+            const hasMainTime = clocks.sente.mainMs > 0 || clocks.gote.mainMs > 0;
+            const btimeMs = side === "sente" ? remainingMainMs : clocks.sente.mainMs;
+            const wtimeMs = side === "gote" ? remainingMainMs : clocks.gote.mainMs;
 
             liveSearchStats[side] = {};
             liveThinkLimitMs[side] = effectiveByoyomiMs;
 
             const handle = await client.search({
-                limits: { byoyomiMs: effectiveByoyomiMs },
+                limits: {
+                    byoyomiMs: effectiveByoyomiMs,
+                    ...(hasMainTime ? { btimeMs, wtimeMs } : {}),
+                },
                 ponder: false,
             });
 
