@@ -438,6 +438,8 @@ describe("createEngineController", () => {
         const preparing = controller.command.prepare("sente");
         // init 未完了のうちに対局開始 → maybeStartTurn が発火
         controller.command.syncContext({ matchRunning: true });
+        await flushPromises();
+        expect(mockClient.search).not.toHaveBeenCalled();
         resolveInit?.();
 
         await expect(preparing).resolves.toBe(true);
@@ -445,6 +447,54 @@ describe("createEngineController", () => {
 
         expect(mockClient.init).toHaveBeenCalledTimes(1);
         expect(mockClient.search).toHaveBeenCalledTimes(1);
+    });
+
+    it("初期化中の dispose は初期化完了後に直列実行される", async () => {
+        const mockClient = createMockEngineClient();
+        let resolveInit: (() => void) | undefined;
+        mockClient.init.mockImplementation(
+            () =>
+                new Promise<void>((resolve) => {
+                    resolveInit = resolve;
+                }),
+        );
+        const controller = createEngineController({
+            createClient: (_engineId) => mockClient.client,
+            getClockState: createClockState,
+            now: () => Date.now(),
+            resolveNnue: async () => null,
+            callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
+        });
+
+        controller.command.syncContext({
+            sides: {
+                sente: { role: "engine", engineId: "engine1" },
+                gote: { role: "human" },
+            },
+            position: {
+                startSfen: "startpos",
+                moves: [],
+                turn: "sente",
+                ready: true,
+            },
+            matchRunning: false,
+        });
+
+        const preparing = controller.command.prepare("sente");
+        const disposing = controller.command.dispose("sente");
+        await flushPromises();
+        expect(mockClient.dispose).not.toHaveBeenCalled();
+        resolveInit?.();
+
+        await expect(preparing).resolves.toBe(true);
+        await disposing;
+
+        expect(mockClient.dispose).toHaveBeenCalledTimes(1);
+        // dispose は in-flight init (loadPosition まで) の完了を待ってから実行される
+        expect(mockClient.dispose.mock.invocationCallOrder[0]).toBeGreaterThan(
+            mockClient.loadPosition.mock.invocationCallOrder[0] ?? 0,
+        );
+        expect(controller.getState().engineReady.sente).toBe(false);
     });
 
     it("init 失敗時に error 状態とエラーログを残す", async () => {

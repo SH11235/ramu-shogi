@@ -653,7 +653,25 @@ export function createEngineController(
         engineState.subscription = unsub;
     };
 
-    const disposeEngineForSide = async (side: Player) => {
+    // 側ごとの初期化/破棄を直列化するロック。init 中に dispose が割り込むと
+    // 破棄済み client への load や ready=true の誤設定が起きるため、両者を同一キューで実行する
+    const sideOps = { sente: Promise.resolve(), gote: Promise.resolve() } as Record<
+        Player,
+        Promise<unknown>
+    >;
+    const withSideOp = <T>(side: Player, fn: () => Promise<T>): Promise<T> => {
+        const run = sideOps[side].then(fn);
+        sideOps[side] = run.then(
+            () => undefined,
+            () => undefined,
+        );
+        return run;
+    };
+
+    const disposeEngineForSide = (side: Player): Promise<void> =>
+        withSideOp(side, () => disposeEngineForSideInner(side));
+
+    const disposeEngineForSideInner = async (side: Player) => {
         const engineState = engineStates[side];
         const searchState = searchStates[side];
 
@@ -775,7 +793,7 @@ export function createEngineController(
         const inflight = initializing[side];
         if (inflight) return inflight;
 
-        const promise = ensureEngineReadyInner(side).finally(() => {
+        const promise = withSideOp(side, () => ensureEngineReadyInner(side)).finally(() => {
             initializing[side] = null;
         });
         initializing[side] = promise;
@@ -793,7 +811,9 @@ export function createEngineController(
         const engineState = engineStates[side];
 
         if (engineState.selectedId && engineState.selectedId !== selectedId) {
-            await disposeEngineForSide(side);
+            // ensureEngineReadyInner は sideOps ロック内で実行されるため、
+            // ロックを取る disposeEngineForSide を呼ぶとデッドロックする
+            await disposeEngineForSideInner(side);
         }
 
         let client = engineState.client;
