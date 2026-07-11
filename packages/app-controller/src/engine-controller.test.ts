@@ -537,6 +537,98 @@ describe("createEngineController", () => {
         }
     });
 
+    it("初期化中のスレッド変更は init 完了後に setOption で適用される", async () => {
+        vi.stubGlobal("navigator", { hardwareConcurrency: 8 });
+        try {
+            const mockClient = createMockEngineClient();
+            let resolveInit: (() => void) | undefined;
+            mockClient.init.mockImplementation(
+                () =>
+                    new Promise<void>((resolve) => {
+                        resolveInit = resolve;
+                    }),
+            );
+            const controller = createEngineController({
+                createClient: (_engineId) => mockClient.client,
+                getClockState: createClockState,
+                now: () => Date.now(),
+                resolveNnue: async () => null,
+                callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
+            });
+
+            controller.command.syncContext({
+                sides: {
+                    sente: { role: "engine", engineId: "engine1" },
+                    gote: { role: "human" },
+                },
+                position: {
+                    startSfen: "startpos",
+                    moves: [],
+                    turn: "sente",
+                    ready: true,
+                },
+                matchRunning: false,
+                engineThreads: { sente: 0, gote: 0 },
+            });
+            const preparing = controller.command.prepare("sente");
+            await flushPromises();
+
+            // init in-flight のままスレッド設定を変更
+            controller.command.syncContext({ engineThreads: { sente: 2, gote: 2 } });
+            expect(mockClient.client.setOption).not.toHaveBeenCalledWith("Threads", 2);
+
+            resolveInit?.();
+            await preparing;
+            await flushPromises();
+
+            expect(mockClient.client.setOption).toHaveBeenCalledWith("Threads", 2);
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
+    it("スレッド変更の setOption 失敗はエラーログに記録される", async () => {
+        vi.stubGlobal("navigator", { hardwareConcurrency: 8 });
+        try {
+            const mockClient = createMockEngineClient();
+            const controller = createEngineController({
+                createClient: (_engineId) => mockClient.client,
+                getClockState: createClockState,
+                now: () => Date.now(),
+                resolveNnue: async () => null,
+                callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
+            });
+
+            controller.command.syncContext({
+                sides: {
+                    sente: { role: "engine", engineId: "engine1" },
+                    gote: { role: "human" },
+                },
+                position: {
+                    startSfen: "startpos",
+                    moves: [],
+                    turn: "sente",
+                    ready: true,
+                },
+                matchRunning: false,
+                engineThreads: { sente: 0, gote: 0 },
+            });
+            await controller.command.prepare("sente");
+
+            mockClient.client.setOption.mockRejectedValueOnce(new Error("no session"));
+            controller.command.syncContext({ engineThreads: { sente: 2, gote: 2 } });
+            await flushPromises();
+
+            expect(
+                controller
+                    .getState()
+                    .errorLogs.some((log) => log.message.includes("スレッド数の適用に失敗")),
+            ).toBe(true);
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
     it("prepare の init 失敗は error 状態とエラーログに記録され throw しない", async () => {
         const mockClient = createMockEngineClient({ initError: new Error("init failed") });
         const controller = createEngineController({

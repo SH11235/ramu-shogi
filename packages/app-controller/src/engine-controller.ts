@@ -240,14 +240,6 @@ const getThreadCountForSide = (threads: Record<Player, number>, side: Player): n
 const getAnalysisThreadCount = (threads: Record<Player, number>) =>
     Math.max(getThreadCountForSide(threads, "sente"), getThreadCountForSide(threads, "gote"));
 
-const applyThreadOption = async (client: EngineClient, threadCount: number) => {
-    try {
-        await client.setOption("Threads", threadCount);
-    } catch {
-        // ignore unsupported Threads option
-    }
-};
-
 const createInitialState = (): EngineControllerState => ({
     engineReady: { sente: false, gote: false },
     engineStatus: { sente: "idle", gote: "idle" },
@@ -1219,6 +1211,18 @@ export function createEngineController(
         }
     };
 
+    // sideOps キューに載せることで、初期化 in-flight 中の変更も init 完了後に適用される。
+    // 失敗は握りつぶさずエラーログへ記録する
+    const applyThreadOptionQueued = (side: Player, client: EngineClient, threadCount: number) =>
+        withSideOp(side, async () => {
+            if (engineStates[side].client !== client) return;
+            try {
+                await client.setOption("Threads", threadCount);
+            } catch (error) {
+                addErrorLog(`スレッド数の適用に失敗 (${side}): ${String(error)}`, { side });
+            }
+        });
+
     const applyThreadChange = (
         nextThreads: Record<Player, number>,
         prevThreads: Record<Player, number>,
@@ -1232,7 +1236,7 @@ export function createEngineController(
             const engineState = engineStates[side];
             if (!engineState.client) continue;
             if (!engineState.ready) {
-                void applyThreadOption(engineState.client, nextNormalized);
+                void applyThreadOptionQueued(side, engineState.client, nextNormalized);
                 continue;
             }
             // reset を持つクライアント (WASM 等) は init でスレッドプールを再構築する。
@@ -1244,7 +1248,7 @@ export function createEngineController(
                     errorLogPrefix: "スレッド数変更の再初期化に失敗",
                 });
             } else {
-                void applyThreadOption(engineState.client, nextNormalized);
+                void applyThreadOptionQueued(side, engineState.client, nextNormalized);
             }
         }
 
