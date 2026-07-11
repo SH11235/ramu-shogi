@@ -39,12 +39,31 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
         }
     };
 
+    const closeSession = async (): Promise<void> => {
+        if (sessionId) {
+            await tauriInvoke("usi_engine_quit", { session_id: sessionId }).catch(() => undefined);
+            sessionId = null;
+        }
+        if (unlisten) {
+            try {
+                unlisten();
+            } catch {
+                // ignore
+            }
+            unlisten = null;
+        }
+    };
+
     return {
         // opts.threads は意図的に無視する。外部 USI エンジンのスレッド数は
         // エンジン登録時に保存したオプション (usi_engine_start が isready 前に適用)
         // を優先し、UI の自動解決値で無条件に上書きしない。厳格な USI エンジンは
         // isready 後の setoption を反映しないため、起動後に送っても保証がない
         async init(_opts?: EngineInitOptions): Promise<void> {
+            // 再初期化 (retry / restartForNnue 等) で呼ばれたとき、旧セッションを
+            // quit せずに sessionId を上書きすると外部プロセスがリークする
+            await closeSession();
+
             sessionId = await tauriInvoke<string>("usi_engine_start", {
                 registration_id: registrationId,
             });
@@ -124,20 +143,7 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
         },
 
         async dispose(): Promise<void> {
-            if (sessionId) {
-                await tauriInvoke("usi_engine_quit", { session_id: sessionId }).catch(
-                    () => undefined,
-                );
-                sessionId = null;
-            }
-            if (unlisten) {
-                try {
-                    unlisten();
-                } catch {
-                    // ignore
-                }
-                unlisten = null;
-            }
+            await closeSession();
             listeners.clear();
         },
     };
