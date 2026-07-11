@@ -1235,10 +1235,17 @@ export function createEngineController(
                 void applyThreadOption(engineState.client, nextNormalized);
                 continue;
             }
-            void reinitializeEngineCore(side, {
-                loadPosition: true,
-                errorLogPrefix: "スレッド数変更の再初期化に失敗",
-            });
+            // reset を持つクライアント (WASM 等) は init でスレッドプールを再構築する。
+            // reset を持たない外部 USI は init するとセッションが張り直され登録時
+            // オプションで上書きされるため、セッション維持のまま setoption で反映する
+            if ("reset" in engineState.client && typeof engineState.client.reset === "function") {
+                void reinitializeEngineCore(side, {
+                    loadPosition: true,
+                    errorLogPrefix: "スレッド数変更の再初期化に失敗",
+                });
+            } else {
+                void applyThreadOption(engineState.client, nextNormalized);
+            }
         }
 
         if (changed && analysisState.client) {

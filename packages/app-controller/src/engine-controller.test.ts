@@ -497,6 +497,46 @@ describe("createEngineController", () => {
         }
     });
 
+    it("reset を持たないクライアントのスレッド変更は再初期化せず setOption で反映する", async () => {
+        vi.stubGlobal("navigator", { hardwareConcurrency: 8 });
+        try {
+            const mockClient = createMockEngineClient();
+            const controller = createEngineController({
+                createClient: (_engineId) => mockClient.client,
+                getClockState: createClockState,
+                now: () => Date.now(),
+                resolveNnue: async () => null,
+                callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
+            });
+
+            controller.command.syncContext({
+                sides: {
+                    sente: { role: "engine", engineId: "engine1" },
+                    gote: { role: "human" },
+                },
+                position: {
+                    startSfen: "startpos",
+                    moves: [],
+                    turn: "sente",
+                    ready: true,
+                },
+                matchRunning: false,
+                engineThreads: { sente: 0, gote: 0 },
+            });
+            await controller.command.prepare("sente");
+            expect(mockClient.init).toHaveBeenCalledTimes(1);
+
+            controller.command.syncContext({ engineThreads: { sente: 2, gote: 2 } });
+            await flushPromises();
+
+            // 外部 USI 相当: init し直すとセッションが張り直されるため setoption で反映
+            expect(mockClient.init).toHaveBeenCalledTimes(1);
+            expect(mockClient.client.setOption).toHaveBeenCalledWith("Threads", 2);
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
     it("prepare の init 失敗は error 状態とエラーログに記録され throw しない", async () => {
         const mockClient = createMockEngineClient({ initError: new Error("init failed") });
         const controller = createEngineController({
