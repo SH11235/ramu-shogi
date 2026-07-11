@@ -79,11 +79,12 @@ describe("createUsiEngineClient", () => {
         // 新セッションを張っていない (start は初回の 1 回のみ)
         expect(invokeMock.mock.calls.filter(([cmd]) => cmd === "usi_engine_start")).toHaveLength(1);
 
-        // sessionId は保持されているため dispose で旧セッションを回収できる
+        // 失敗した quit は 1 回記録済み。dispose が改めて quit することを回数で検証する
+        expect(invokeMock.mock.calls.filter(([cmd]) => cmd === "usi_engine_quit")).toHaveLength(1);
         await client.dispose();
-        expect(invokeMock).toHaveBeenCalledWith("usi_engine_quit", {
-            session_id: "session-1",
-        });
+        const quitCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === "usi_engine_quit");
+        expect(quitCalls).toHaveLength(2);
+        expect(quitCalls[1]?.[1]).toEqual({ session_id: "session-1" });
     });
 
     it("並行 init は直列化され、片方のセッションがリークしない", async () => {
@@ -95,6 +96,15 @@ describe("createUsiEngineClient", () => {
         expect(invokeMock).toHaveBeenCalledWith("usi_engine_quit", {
             session_id: "session-1",
         });
+
+        // quit は 2 回目の start より先に実行される (直列化の検証)
+        const quitIndex = invokeMock.mock.calls.findIndex(([cmd]) => cmd === "usi_engine_quit");
+        const secondStartIndex = invokeMock.mock.calls.findIndex(
+            ([cmd], index) => cmd === "usi_engine_start" && index > 0,
+        );
+        expect(invokeMock.mock.invocationCallOrder[quitIndex] as number).toBeLessThan(
+            invokeMock.mock.invocationCallOrder[secondStartIndex] as number,
+        );
 
         await client.stop();
         expect(invokeMock).toHaveBeenCalledWith("usi_engine_stop", {
@@ -110,6 +120,25 @@ describe("createUsiEngineClient", () => {
         expect(invokeMock).toHaveBeenCalledWith("usi_engine_quit", {
             session_id: "session-1",
         });
+    });
+
+    it("購読失敗後の quit も失敗したら識別子を保持し dispose で回収できる", async () => {
+        listenMock.mockRejectedValueOnce(new Error("listen failed"));
+        const client = createUsiEngineClient({ registrationId: "reg-1" });
+        invokeMock.mockImplementation(async (command: string) => {
+            if (command === "usi_engine_start") return "session-1";
+            if (command === "usi_engine_quit") throw new Error("ipc down");
+            return undefined;
+        });
+
+        await expect(client.init()).rejects.toThrow("listen failed");
+
+        // quit の失敗を解消した後、dispose で回収できる
+        invokeMock.mockImplementation(async () => undefined);
+        await client.dispose();
+        const quitCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === "usi_engine_quit");
+        expect(quitCalls[quitCalls.length - 1]?.[1]).toEqual({ session_id: "session-1" });
+        expect(quitCalls).toHaveLength(2);
     });
 
     it("dispose はセッションを quit し購読を解除する", async () => {

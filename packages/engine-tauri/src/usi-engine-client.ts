@@ -64,6 +64,9 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
     // (識別子を失うと旧プロセスを回収できなくなるため)。Rust 側の quit は
     // 存在しない session_id にも Ok を返す冪等実装なので、失敗 = IPC 異常
     const closeSession = async (bestEffort: boolean): Promise<void> => {
+        // quit に伴う旧チャネルの EOF エラーイベントを購読者へ流さないよう、
+        // 購読解除を先に行う
+        dropListener();
         if (sessionId) {
             const quit = tauriInvoke("usi_engine_quit", { session_id: sessionId });
             if (bestEffort) {
@@ -73,7 +76,6 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
             }
             sessionId = null;
         }
-        dropListener();
     };
 
     return {
@@ -100,9 +102,12 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
                 } catch (error) {
                     // 購読に失敗したまま session を持つと誰もイベントを受け取れない。
                     // 起動済みプロセスを残さないよう片付けてから失敗させる
-                    await tauriInvoke("usi_engine_quit", { session_id: newSessionId }).catch(
-                        () => undefined,
-                    );
+                    try {
+                        await tauriInvoke("usi_engine_quit", { session_id: newSessionId });
+                    } catch {
+                        // quit まで失敗したら識別子を保持し、後続の dispose / 再 init で回収する
+                        sessionId = newSessionId;
+                    }
                     throw error;
                 }
                 sessionId = newSessionId;
