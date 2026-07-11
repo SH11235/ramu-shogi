@@ -40,7 +40,12 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
     };
 
     return {
-        async init(opts?: EngineInitOptions): Promise<void> {
+        // opts.threads は意図的に無視する。外部 USI エンジンのスレッド数は
+        // エンジン登録時に保存したオプション (usi_engine_start が isready 前に適用)
+        // を優先し、UI の自動解決値で無条件に上書きしない。厳格な USI エンジンは
+        // isready 後の setoption を反映しないため、起動後に送っても保証がない。
+        // ユーザーがスレッド設定を明示変更したときのみ setOption("Threads") が届く
+        async init(_opts?: EngineInitOptions): Promise<void> {
             sessionId = await tauriInvoke<string>("usi_engine_start", {
                 registration_id: registrationId,
             });
@@ -50,16 +55,6 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
             unlisten = await tauriListen<EngineEvent>(channel, (evt) => {
                 emit(evt.payload);
             });
-
-            // 外部 USI エンジンのスレッド数は setoption でしか設定できないため、
-            // init で受けた値をここで送る (送らないとエンジン既定値のまま)
-            if (opts?.threads !== undefined && Number.isFinite(opts.threads)) {
-                await tauriInvoke("usi_engine_setoption", {
-                    session_id: sessionId,
-                    name: "Threads",
-                    value: String(Math.max(1, Math.trunc(opts.threads))),
-                });
-            }
         },
 
         async loadPosition(

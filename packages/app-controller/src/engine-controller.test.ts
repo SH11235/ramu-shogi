@@ -451,6 +451,52 @@ describe("createEngineController", () => {
         }
     });
 
+    it("自動と同値の明示指定への変更では再初期化せず、異なる値では再初期化する", async () => {
+        vi.stubGlobal("navigator", { hardwareConcurrency: 8 });
+        try {
+            const mockClient = createMockEngineClient({ withReset: true });
+            const controller = createEngineController({
+                createClient: (_engineId) => mockClient.client,
+                getClockState: createClockState,
+                now: () => Date.now(),
+                resolveNnue: async () => null,
+                callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
+            });
+
+            controller.command.syncContext({
+                sides: {
+                    sente: { role: "engine", engineId: "engine1" },
+                    gote: { role: "human" },
+                },
+                position: {
+                    startSfen: "startpos",
+                    moves: [],
+                    turn: "sente",
+                    ready: true,
+                },
+                matchRunning: false,
+                engineThreads: { sente: 0, gote: 0 },
+            });
+            await controller.command.prepare("sente");
+            expect(mockClient.init).toHaveBeenCalledTimes(1);
+
+            // 自動 (推奨 4) → 明示 4: 実効値が同じなので再初期化しない
+            controller.command.syncContext({ engineThreads: { sente: 4, gote: 4 } });
+            await flushPromises();
+            expect(mockClient.init).toHaveBeenCalledTimes(1);
+            expect(mockClient.reset).not.toHaveBeenCalled();
+
+            // 明示 4 → 明示 2: 実効値が変わるので再初期化する
+            controller.command.syncContext({ engineThreads: { sente: 2, gote: 2 } });
+            await flushPromises();
+            expect(mockClient.reset).toHaveBeenCalledTimes(1);
+            expect(mockClient.init).toHaveBeenCalledTimes(2);
+            expect(mockClient.init).toHaveBeenLastCalledWith({ threads: 2 });
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
     it("prepare の init 失敗は error 状態とエラーログに記録され throw しない", async () => {
         const mockClient = createMockEngineClient({ initError: new Error("init failed") });
         const controller = createEngineController({

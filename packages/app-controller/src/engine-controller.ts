@@ -240,8 +240,7 @@ const getThreadCountForSide = (threads: Record<Player, number>, side: Player): n
 const getAnalysisThreadCount = (threads: Record<Player, number>) =>
     Math.max(getThreadCountForSide(threads, "sente"), getThreadCountForSide(threads, "gote"));
 
-const applyThreadOption = async (client: EngineClient, threadCount?: number) => {
-    if (threadCount === undefined) return;
+const applyThreadOption = async (client: EngineClient, threadCount: number) => {
     try {
         await client.setOption("Threads", threadCount);
     } catch {
@@ -801,7 +800,7 @@ export function createEngineController(
             engineState.ready = false;
 
             const threadCount = getThreadCountForSide(context.engineThreads, side);
-            await client.init(threadCount ? { threads: threadCount } : undefined);
+            await client.init({ threads: threadCount });
 
             const selection =
                 options.nnueSelection ??
@@ -888,7 +887,7 @@ export function createEngineController(
 
         if (!engineState.ready) {
             const threadCount = getThreadCountForSide(context.engineThreads, side);
-            await client.init(threadCount ? { threads: threadCount } : undefined);
+            await client.init({ threads: threadCount });
 
             const selection =
                 side === "sente" ? context.nnueSelections.sente : context.nnueSelections.gote;
@@ -1088,7 +1087,7 @@ export function createEngineController(
                 analysisState.client = client;
                 analysisState.engineId = engineId;
                 const threadCount = getAnalysisThreadCount(context.engineThreads);
-                await client.init(threadCount ? { threads: threadCount } : undefined);
+                await client.init({ threads: threadCount });
 
                 const selection = context.nnueSelections.analysis;
                 if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {

@@ -11,7 +11,7 @@ import type {
     PositionState,
     PresetConfig,
 } from "@shogi/app-core";
-import { detectParallelism } from "@shogi/app-core";
+import { detectParallelism, resolveWorkerCount } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "../../popover";
@@ -983,9 +983,7 @@ function BatchAnalysisDropdown({
                                             : "bg-muted text-muted-foreground hover:bg-muted/80"
                                     }`}
                                 >
-                                    {opt.value === 0
-                                        ? `自動(${parallelismConfig.recommendedWorkers})`
-                                        : opt.label}
+                                    {opt.value === 0 ? `自動(${resolveWorkerCount(0)})` : opt.label}
                                 </button>
                             ))}
                         </div>

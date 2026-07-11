@@ -1,3 +1,4 @@
+import { detectParallelism } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type {
     EngineClient,
@@ -372,12 +373,14 @@ export function EngineControlPanel({
         if (force && engine.reset) {
             await engine.reset();
         }
-        const initThreads = threadSetting > 0 ? threadSetting : undefined;
-        await engine.init(initThreads ? { threads: initThreads } : undefined);
+        // 0 (自動) は「自動（推奨: N）」ラベルどおり推奨値で初期化する
+        const initThreads =
+            threadSetting > 0 ? threadSetting : detectParallelism().recommendedWorkers;
+        await engine.init({ threads: initThreads });
         const resolvedSfen = positionSfen.trim() || "startpos";
         await engine.loadPosition(resolvedSfen, parseMovesText(positionMoves));
         dispatch({ type: "INIT_DONE" });
-        lastAppliedThreadsRef.current = initThreads ?? null;
+        lastAppliedThreadsRef.current = initThreads;
         // Update thread info after init
         updateThreadInfo();
     };
@@ -437,7 +440,8 @@ export function EngineControlPanel({
         if (busy || status === "searching") return;
         dispatch({ type: "SET_BUSY", busy: true });
         try {
-            const requestedThreads = threadSetting > 0 ? threadSetting : null;
+            const requestedThreads =
+                threadSetting > 0 ? threadSetting : detectParallelism().recommendedWorkers;
             if (initialized && lastAppliedThreadsRef.current !== requestedThreads) {
                 const handle = handleRef.current;
                 if (handle) {
