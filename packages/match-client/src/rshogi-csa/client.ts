@@ -124,6 +124,13 @@ export interface RshogiGameListPage {
     nextCursor?: string;
 }
 
+export interface RshogiGameSearchPage {
+    games: RshogiGameSummary[];
+    page: number;
+    pageSize: number;
+    totalCount: number;
+}
+
 /**
  * 進行中対局一覧 API (`GET /api/v1/games/live`) の 1 件分。
  *
@@ -168,6 +175,18 @@ export interface FetchRshogiGameListOptions extends FetchRshogiGameOptions {
     cursor?: string;
     /** 1 ページあたり件数 (1〜100、サーバ既定 50)。 */
     limit?: number;
+}
+
+export interface FetchRshogiGameSearchOptions extends FetchRshogiGameOptions {
+    name?: string;
+    result?: RshogiGameResultKind;
+    source?: RshogiGameSource;
+    from?: number;
+    to?: number;
+    /** 1 始まり (サーバ既定 1)。 */
+    page?: number;
+    /** 1 ページあたり件数 (1〜100、サーバ既定 20)。 */
+    pageSize?: number;
 }
 
 export interface FetchRshogiLiveGameListOptions extends FetchRshogiGameOptions {
@@ -288,6 +307,13 @@ interface GameDetailWire extends GameWireBase {
 interface GameListResponseWire {
     games?: GameWireBase[];
     next_cursor?: string | null;
+}
+
+interface GameSearchResponseWire {
+    games?: GameWireBase[];
+    page?: number;
+    page_size?: number;
+    total_count?: number;
 }
 
 /**
@@ -470,6 +496,13 @@ const decodeGameListResponse = (wire: GameListResponseWire): RshogiGameListPage 
     };
 };
 
+const decodeGameSearchResponse = (wire: GameSearchResponseWire): RshogiGameSearchPage => ({
+    games: Array.isArray(wire.games) ? wire.games.map(decodeGameSummary) : [],
+    page: wire.page ?? 1,
+    pageSize: wire.page_size ?? 20, // server default
+    totalCount: wire.total_count ?? 0,
+});
+
 const decodeLiveGameSummary = (wire: LiveGameWireBase): RshogiLiveGameSummary => ({
     gameId: wire.game_id,
     // black=sente, white=gote のマッピング (終局済 decode と対称)。
@@ -580,6 +613,48 @@ export async function fetchRshogiGameList(
     return decodeGameListResponse(payload);
 }
 
+/** rshogi の終局済棋譜を条件検索する (`GET /api/v1/games/search`)。 */
+export async function fetchRshogiGameSearch(
+    options: FetchRshogiGameSearchOptions = {},
+): Promise<RshogiGameSearchPage> {
+    const baseUrl = options.baseUrl?.trim();
+    if (!baseUrl) {
+        return mockGameSearchPage(options);
+    }
+
+    const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+    if (!fetchImpl) {
+        throw new RshogiGameFetchError("", "fetch is not available in this environment");
+    }
+
+    const params = new URLSearchParams();
+    const name = options.name?.trim();
+    if (name) params.set("name", name);
+    if (options.result) params.set("result", options.result);
+    if (options.source) params.set("source", options.source);
+    if (options.from !== undefined) params.set("from", String(options.from));
+    if (options.to !== undefined) params.set("to", String(options.to));
+    if (options.page !== undefined) params.set("page", String(options.page));
+    if (options.pageSize !== undefined) params.set("pageSize", String(options.pageSize));
+    const query = params.toString();
+    const url = `${trimTrailingSlash(baseUrl)}/games/search${query ? `?${query}` : ""}`;
+
+    const response = await fetchImpl(url, buildRequestInit(options.signal));
+    if (!response.ok) {
+        throw new RshogiGameFetchError(
+            "",
+            `rshogi API returned ${response.status} ${response.statusText}`,
+            response.status,
+        );
+    }
+
+    const payload = (await response.json()) as GameSearchResponseWire | null;
+    if (!payload || !Array.isArray(payload.games)) {
+        throw new RshogiGameFetchError("", "rshogi API response missing games array");
+    }
+    return decodeGameSearchResponse(payload);
+}
+
 /**
  * rshogi の進行中対局一覧 (`GET /api/v1/games/live`) を取得する。
  *
@@ -628,6 +703,7 @@ export async function fetchRshogiLiveGameList(
 
 const DEFAULT_MOCK_LIMIT = 50;
 const MAX_MOCK_LIMIT = 100;
+const DEFAULT_MOCK_SEARCH_PAGE_SIZE = 20;
 
 const mockGameListPage = (
     cursor: string | undefined,
@@ -658,6 +734,37 @@ const mockLiveGameListPage = (
     return {
         liveGames: slice,
         nextCursor: next < list.length ? String(next) : undefined,
+    };
+};
+
+const mockGameSearchPage = (options: FetchRshogiGameSearchOptions): RshogiGameSearchPage => {
+    const name = options.name?.trim().toLocaleLowerCase();
+    const filtered = MOCK_RSHOGI_GAME_LIST.filter((game) => {
+        if (
+            name &&
+            !game.senteName.toLocaleLowerCase().includes(name) &&
+            !game.goteName.toLocaleLowerCase().includes(name)
+        ) {
+            return false;
+        }
+        if (options.result && game.result?.kind !== options.result) return false;
+        if (options.source && game.source !== options.source) return false;
+        if (options.from !== undefined && (game.endedAtMs ?? -Infinity) < options.from)
+            return false;
+        if (options.to !== undefined && (game.endedAtMs ?? Infinity) > options.to) return false;
+        return true;
+    });
+    const page = Math.max(1, options.page ?? 1);
+    const pageSize = Math.min(
+        Math.max(1, options.pageSize ?? DEFAULT_MOCK_SEARCH_PAGE_SIZE),
+        MAX_MOCK_LIMIT,
+    );
+    const start = (page - 1) * pageSize;
+    return {
+        games: filtered.slice(start, start + pageSize),
+        page,
+        pageSize,
+        totalCount: filtered.length,
     };
 };
 

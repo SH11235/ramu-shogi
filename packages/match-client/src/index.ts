@@ -48,6 +48,7 @@ export {
 export type {
     FetchRshogiGameListOptions,
     FetchRshogiGameOptions,
+    FetchRshogiGameSearchOptions,
     FetchRshogiLiveGameListOptions,
     RshogiClockKind,
     RshogiEndReason,
@@ -56,6 +57,7 @@ export type {
     RshogiGameMeta,
     RshogiGameResult,
     RshogiGameResultKind,
+    RshogiGameSearchPage,
     RshogiGameSource,
     RshogiGameSummary,
     RshogiLiveGameListPage,
@@ -65,6 +67,7 @@ export type {
 export {
     fetchRshogiGame,
     fetchRshogiGameList,
+    fetchRshogiGameSearch,
     fetchRshogiLiveGameList,
     listMockRshogiGameIds,
     RshogiGameFetchError,
