@@ -1053,9 +1053,12 @@ export function ShogiMatch({
             // 停止で破棄したエンジンを時計再開前に初期化し直す
             // （初期化時間が秒読みから差し引かれるのを防ぐ）
             if (!(await prepareEnginesRef.current())) {
-                // 時計は再開せず一時停止扱いにして、再開操作からやり直せるようにする
+                // 一時停止扱いにして再開操作からやり直せるようにする。
+                // 秒読みは undo 後の手番用にリセットするが、isMatchRunning=false の
+                // 間は時計の interval が動かないため実時間は消費されない
                 setIsMatchRunning(false);
                 setIsPaused(true);
+                updateClocksForNextTurn(turnAfterUndo);
                 setMessage({ text: "エンジンの初期化に失敗しました。", type: "error" });
                 return;
             }
