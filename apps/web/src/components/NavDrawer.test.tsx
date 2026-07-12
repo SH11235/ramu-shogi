@@ -51,11 +51,12 @@ describe("NavDrawer", () => {
         for (const link of [
             "対局",
             "オンライン対局",
-            "マイ棋譜",
+            // 要ログイン導線はバッジ「要ログイン」がアクセシブルネームに続く
+            "マイ棋譜 要ログイン",
             "公開棋譜",
             "ライブ観戦",
             "CSA 棋譜ビューア",
-            "NNUE モデル",
+            "NNUE モデル 要ログイン",
             "ログイン",
         ]) {
             expect(screen.getByRole("link", { name: link })).toBeTruthy();

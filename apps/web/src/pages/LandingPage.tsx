@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactElement, ReactNode } from "react";
+import { AuthBadge } from "../components/AuthBadge";
 import { HeaderNav } from "../components/HeaderNav";
 import { HeroBoard } from "../components/HeroBoard";
 import { PageHeader } from "../components/PageHeader";
@@ -9,27 +10,31 @@ import { PageHeader } from "../components/PageHeader";
 // 色はすべて design-system の wafuu-*/shogi-* トークン経由（ハードコード禁止）。
 
 interface EntryCardProps {
-    to: "/play" | "/rshogi-viewer/live";
+    to: "/play" | "/online" | "/rshogi-viewer/live" | "/games";
     heading: string;
     tone: "shu" | "ai";
+    requiresAuth?: boolean;
     children: ReactNode;
 }
 
-function EntryCard({ to, heading, tone, children }: EntryCardProps): ReactElement {
+function EntryCard({ to, heading, tone, requiresAuth, children }: EntryCardProps): ReactElement {
     return (
         <Link
             to={to}
             className="group flex flex-col gap-2 rounded-xl border border-wafuu-border bg-wafuu-washi-warm p-4 transition-colors hover:border-wafuu-shu/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
-            <h2
-                className={
-                    tone === "shu"
-                        ? "font-display text-xl font-semibold text-wafuu-shu"
-                        : "font-display text-xl font-semibold text-wafuu-ai"
-                }
-            >
-                {heading}
-            </h2>
+            <span className="flex items-center gap-2">
+                <h2
+                    className={
+                        tone === "shu"
+                            ? "font-display text-xl font-semibold text-wafuu-shu"
+                            : "font-display text-xl font-semibold text-wafuu-ai"
+                    }
+                >
+                    {heading}
+                </h2>
+                {requiresAuth && <AuthBadge />}
+            </span>
             <span className="text-[13px] leading-relaxed text-wafuu-sumi-light">{children}</span>
         </Link>
     );
@@ -66,12 +71,6 @@ export default function LandingPage(): ReactElement {
                                 <span aria-hidden>▲</span>
                                 対局をはじめる
                             </Link>
-                            <Link
-                                to="/games"
-                                className="inline-flex items-center gap-2 rounded-lg border border-wafuu-border px-5 py-3 text-sm font-semibold text-wafuu-sumi transition-colors hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                            >
-                                棋譜を開く
-                            </Link>
                         </div>
                     </div>
                     <div className="relative mx-auto w-full max-w-[380px]">
@@ -83,15 +82,18 @@ export default function LandingPage(): ReactElement {
                     </div>
                 </section>
 
-                <section aria-label="はじめ方" className="grid gap-4 sm:grid-cols-3">
-                    <EntryCard to="/play" heading="対局" tone="shu">
-                        先手・後手を選んで人と指す。
+                <section aria-label="はじめ方" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <EntryCard to="/play" heading="対局・検討" tone="shu">
+                        内蔵 NNUE エンジンと指す。検討モードに切り替えられる。ログイン不要。
                     </EntryCard>
-                    <EntryCard to="/play" heading="検討" tone="ai">
-                        内蔵 NNUE エンジンと指す。検討モードに切り替えられる。
+                    <EntryCard to="/online" heading="オンライン対局" tone="shu">
+                        部屋を作り、招待リンクで人と指す。名前を入れるだけで参加できる。
                     </EntryCard>
-                    <EntryCard to="/rshogi-viewer/live" heading="観戦" tone="shu">
+                    <EntryCard to="/rshogi-viewer/live" heading="観戦" tone="ai">
                         進行中のエンジン対局をリアルタイムで見る。
+                    </EntryCard>
+                    <EntryCard to="/games" heading="マイ棋譜" tone="ai" requiresAuth>
+                        指した対局を保存して振り返る。
                     </EntryCard>
                 </section>
             </main>
