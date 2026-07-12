@@ -4,6 +4,7 @@ import { Link, useLocation } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { useAuthSession } from "../hooks/useAuthSession";
+import { AuthBadge } from "./AuthBadge";
 
 type NavTo =
     | "/play"
@@ -19,6 +20,7 @@ interface NavItem {
     to: NavTo;
     label: string;
     active: boolean;
+    requiresAuth?: boolean;
 }
 
 interface NavSection {
@@ -51,7 +53,12 @@ function buildNavSections(pathname: string): NavSection[] {
         {
             label: "棋譜",
             items: [
-                { to: "/games", label: "マイ棋譜", active: pathname.startsWith("/games") },
+                {
+                    to: "/games",
+                    label: "マイ棋譜",
+                    active: pathname.startsWith("/games"),
+                    requiresAuth: true,
+                },
                 {
                     to: "/public/games",
                     label: "公開棋譜",
@@ -72,7 +79,14 @@ function buildNavSections(pathname: string): NavSection[] {
         },
         {
             label: "管理",
-            items: [{ to: "/nnue", label: "NNUE モデル", active: pathname === "/nnue" }],
+            items: [
+                {
+                    to: "/nnue",
+                    label: "NNUE モデル",
+                    active: pathname === "/nnue",
+                    requiresAuth: true,
+                },
+            ],
         },
     ];
 }
@@ -84,11 +98,12 @@ function DrawerLink({ item, onNavigate }: { item: NavItem; onNavigate: () => voi
             aria-current={item.active ? "page" : undefined}
             onClick={onNavigate}
             className={cn(
-                "block rounded-md border px-3 py-2 text-sm font-medium transition-colors",
+                "flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors",
                 item.active ? activeClass : inactiveClass,
             )}
         >
             {item.label}
+            {item.requiresAuth && <AuthBadge />}
         </Link>
     );
 }
