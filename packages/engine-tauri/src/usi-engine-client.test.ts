@@ -152,4 +152,25 @@ describe("createUsiEngineClient", () => {
         });
         expect(unlistenMock).toHaveBeenCalledTimes(1);
     });
+
+    it("探索時間を USI go 用パラメーターに変換する", async () => {
+        const client = createUsiEngineClient({ registrationId: "reg-1" });
+        await client.init();
+        await client.search({
+            limits: { btimeMs: 12_000, wtimeMs: 6_500, byoyomiMs: 1_000 },
+        });
+
+        expect(invokeMock).toHaveBeenCalledWith("usi_engine_go", {
+            session_id: "session-1",
+            params: {
+                maxDepth: undefined,
+                nodes: undefined,
+                btimeMs: 12_000,
+                wtimeMs: 6_500,
+                byoyomiMs: 1_000,
+                movetimeMs: undefined,
+                infinite: false,
+            },
+        });
+    });
 });

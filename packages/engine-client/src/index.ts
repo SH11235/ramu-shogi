@@ -96,6 +96,10 @@ export interface SearchLimits {
     maxDepth?: number;
     /** ノード数上限 */
     nodes?: number;
+    /** 先手の残り持ち時間 (ms) */
+    btimeMs?: number;
+    /** 後手の残り持ち時間 (ms) */
+    wtimeMs?: number;
     /** 秒読み (ms) */
     byoyomiMs?: number;
     /** 固定消費時間 (ms) */

@@ -312,9 +312,38 @@ impl Default for UsiEngineManager {
 pub struct SearchParamsInput {
     pub max_depth: Option<u32>,
     pub nodes: Option<u64>,
+    pub btime_ms: Option<u64>,
+    pub wtime_ms: Option<u64>,
     pub byoyomi_ms: Option<u64>,
     pub movetime_ms: Option<u64>,
     pub infinite: Option<bool>,
+}
+
+fn build_go_command(params: &SearchParamsInput) -> String {
+    let mut cmd = "go".to_string();
+    if params.infinite == Some(true) {
+        cmd.push_str(" infinite");
+        return cmd;
+    }
+    if let Some(depth) = params.max_depth {
+        cmd.push_str(&format!(" depth {depth}"));
+    }
+    if let Some(nodes) = params.nodes {
+        cmd.push_str(&format!(" nodes {nodes}"));
+    }
+    if let Some(btime) = params.btime_ms {
+        cmd.push_str(&format!(" btime {btime}"));
+    }
+    if let Some(wtime) = params.wtime_ms {
+        cmd.push_str(&format!(" wtime {wtime}"));
+    }
+    if let Some(byoyomi) = params.byoyomi_ms {
+        cmd.push_str(&format!(" byoyomi {byoyomi}"));
+    }
+    if let Some(movetime) = params.movetime_ms {
+        cmd.push_str(&format!(" movetime {movetime}"));
+    }
+    cmd
 }
 
 /// Saved option value for an engine.
@@ -637,24 +666,7 @@ impl UsiEngineManager {
             (Arc::clone(&session.stdin), Arc::clone(&session.status))
         };
 
-        let mut cmd = "go".to_string();
-        if params.infinite == Some(true) {
-            cmd.push_str(" infinite");
-        } else {
-            if let Some(depth) = params.max_depth {
-                cmd.push_str(&format!(" depth {depth}"));
-            }
-            if let Some(nodes) = params.nodes {
-                cmd.push_str(&format!(" nodes {nodes}"));
-            }
-            if let Some(byoyomi) = params.byoyomi_ms {
-                cmd.push_str(&format!(" byoyomi {byoyomi}"));
-            }
-            if let Some(movetime) = params.movetime_ms {
-                cmd.push_str(&format!(" movetime {movetime}"));
-            }
-        }
-
+        let cmd = build_go_command(params);
         if let Ok(mut s) = status.lock() {
             *s = EngineStatus::Searching;
         }
@@ -798,6 +810,39 @@ fn parse_combo_vars(s: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_go_command_orders_clock_limits_before_byoyomi() {
+        let params = SearchParamsInput {
+            max_depth: None,
+            nodes: None,
+            btime_ms: Some(12_000),
+            wtime_ms: Some(6_500),
+            byoyomi_ms: Some(1_000),
+            movetime_ms: None,
+            infinite: Some(false),
+        };
+
+        assert_eq!(
+            build_go_command(&params),
+            "go btime 12000 wtime 6500 byoyomi 1000"
+        );
+    }
+
+    #[test]
+    fn build_go_command_keeps_byoyomi_only_compatible() {
+        let params = SearchParamsInput {
+            max_depth: None,
+            nodes: None,
+            btime_ms: None,
+            wtime_ms: None,
+            byoyomi_ms: Some(1_000),
+            movetime_ms: None,
+            infinite: Some(false),
+        };
+
+        assert_eq!(build_go_command(&params), "go byoyomi 1000");
+    }
 
     // ── id name / id author ────────────────────────────────────────
 

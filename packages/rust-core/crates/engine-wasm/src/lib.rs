@@ -14,7 +14,7 @@ use rshogi_core::nnue::{detect_format, init_nnue_from_bytes, set_fv_scale_overri
 use rshogi_core::position::{Position, SFEN_HIRATE};
 use rshogi_core::search::{LimitsType, Search, SearchInfo, SearchResult, SkillOptions};
 use rshogi_core::types::json::BoardStateJson;
-use rshogi_core::types::{Move, Value};
+use rshogi_core::types::{Color, Move, Value};
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen as swb;
 use wasm_bindgen::JsCast;
@@ -49,6 +49,8 @@ struct InitOptions {
 struct JsLimits {
     max_depth: Option<i32>,
     nodes: Option<u64>,
+    btime_ms: Option<i64>,
+    wtime_ms: Option<i64>,
     byoyomi_ms: Option<i64>,
     movetime_ms: Option<i64>,
 }
@@ -217,6 +219,8 @@ fn parse_limits(value: JsValue) -> Result<JsLimits, JsValue> {
     Ok(JsLimits {
         max_depth: get_optional_i32(&value, "maxDepth")?,
         nodes: get_optional_u64(&value, "nodes")?,
+        btime_ms: get_optional_i64(&value, "btimeMs")?,
+        wtime_ms: get_optional_i64(&value, "wtimeMs")?,
         byoyomi_ms: get_optional_i64(&value, "byoyomiMs")?,
         movetime_ms: get_optional_i64(&value, "movetimeMs")?,
     })
@@ -797,6 +801,12 @@ pub fn search(params: Option<JsValue>) -> Result<(), JsValue> {
             }
             if let Some(nodes) = lim.nodes {
                 limits.nodes = nodes;
+            }
+            if let Some(btime) = lim.btime_ms {
+                limits.time[Color::Black.index()] = btime;
+            }
+            if let Some(wtime) = lim.wtime_ms {
+                limits.time[Color::White.index()] = wtime;
             }
             if let Some(byo) = lim.byoyomi_ms {
                 limits.byoyomi = [byo, byo];
