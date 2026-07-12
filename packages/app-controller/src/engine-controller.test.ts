@@ -371,6 +371,35 @@ describe("createEngineController", () => {
         });
     });
 
+    it("手番側の持ち時間切れ後も btime 0 を渡す", async () => {
+        const mockClient = createMockEngineClient();
+        const controller = createEngineController({
+            createClient: () => mockClient.client,
+            getClockState: () => ({
+                sente: { mainMs: 0, byoyomiMs: 1_000 },
+                gote: { mainMs: 8_000, byoyomiMs: 1_000 },
+                lastUpdatedAt: 1_000,
+                ticking: "sente",
+            }),
+            now: () => 1_200,
+            resolveNnue: async () => null,
+            callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
+        });
+        controller.command.syncContext({
+            sides: { sente: { role: "engine", engineId: "engine1" }, gote: { role: "human" } },
+            position: { startSfen: "startpos", moves: [], turn: "sente", ready: true },
+            matchRunning: true,
+        });
+
+        await controller.command.startTurn("sente");
+        await flushPromises();
+
+        expect(mockClient.search).toHaveBeenCalledWith({
+            limits: { btimeMs: 0, wtimeMs: 8_000, byoyomiMs: 800 },
+            ponder: false,
+        });
+    });
+
     it("純秒読みでは btime/wtime を渡さない", async () => {
         const mockClient = createMockEngineClient();
         const controller = createEngineController({
