@@ -50,6 +50,8 @@ export type {
     FetchRshogiGameOptions,
     FetchRshogiGameSearchOptions,
     FetchRshogiLiveGameListOptions,
+    FetchRshogiPlayerDetailOptions,
+    FetchRshogiPlayerListOptions,
     RshogiClockKind,
     RshogiEndReason,
     RshogiGame,
@@ -62,6 +64,9 @@ export type {
     RshogiGameSummary,
     RshogiLiveGameListPage,
     RshogiLiveGameSummary,
+    RshogiPlayerDetail,
+    RshogiPlayerList,
+    RshogiPlayerSummary,
     RshogiTimeControl,
 } from "./rshogi-csa/client";
 export {
@@ -69,9 +74,12 @@ export {
     fetchRshogiGameList,
     fetchRshogiGameSearch,
     fetchRshogiLiveGameList,
+    fetchRshogiPlayerDetail,
+    fetchRshogiPlayerList,
     listMockRshogiGameIds,
     RshogiGameFetchError,
     RshogiGameNotFoundError,
+    RshogiPlayerNotFoundError,
 } from "./rshogi-csa/client";
 export type {
     RshogiLiveCallbacks,

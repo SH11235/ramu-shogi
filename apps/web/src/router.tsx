@@ -234,6 +234,18 @@ const rshogiViewerListRoute = createRoute({
     component: lazyRouteComponent(() => import("./pages/rshogi-viewer/RshogiViewerListPage")),
 });
 
+const rshogiPlayerRankingRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/rshogi-viewer/players",
+    component: lazyRouteComponent(() => import("./pages/rshogi-viewer/RshogiPlayerRankingPage")),
+});
+
+const rshogiPlayerDetailRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/rshogi-viewer/players/$playerId",
+    component: lazyRouteComponent(() => import("./pages/rshogi-viewer/RshogiPlayerDetailPage")),
+});
+
 // 進行中対局一覧 (静的 path)。単局 `/rshogi-viewer/live/$gameId` とはセグメント数が
 // 異なるため衝突しない。単局 `/rshogi-viewer/$gameId` より前に登録して、`live` を
 // gameId として誤解決しないようにする。
@@ -347,6 +359,8 @@ const routeTree = rootRoute.addChildren([
     createRoomRoute,
     roomRoute,
     rshogiViewerListRoute,
+    rshogiPlayerRankingRoute,
+    rshogiPlayerDetailRoute,
     rshogiViewerLiveListRoute,
     rshogiViewerLiveRoute,
     rshogiViewerRoute,

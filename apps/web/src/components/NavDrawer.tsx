@@ -12,6 +12,7 @@ type NavTo =
     | "/games"
     | "/public/games"
     | "/rshogi-viewer/live"
+    | "/rshogi-viewer/players"
     | "/rshogi-viewer"
     | "/nnue"
     | "/auth";
@@ -37,6 +38,8 @@ function isLiveViewerPath(pathname: string): boolean {
 
 function buildNavSections(pathname: string): NavSection[] {
     const isLive = isLiveViewerPath(pathname);
+    const isPlayers =
+        pathname === "/rshogi-viewer/players" || pathname.startsWith("/rshogi-viewer/players/");
 
     return [
         {
@@ -70,10 +73,11 @@ function buildNavSections(pathname: string): NavSection[] {
             label: "観戦",
             items: [
                 { to: "/rshogi-viewer/live", label: "ライブ観戦", active: isLive },
+                { to: "/rshogi-viewer/players", label: "選手番付", active: isPlayers },
                 {
                     to: "/rshogi-viewer",
                     label: "CSA 棋譜ビューア",
-                    active: pathname.startsWith("/rshogi-viewer") && !isLive,
+                    active: pathname.startsWith("/rshogi-viewer") && !isLive && !isPlayers,
                 },
             ],
         },

@@ -222,12 +222,20 @@ export default function RshogiViewerListPage(): ReactElement {
                     title="rshogi 棋譜一覧"
                     description="rshogi CSA サーバで終局した棋譜を新着順で表示します。クリックすると個別の viewer に遷移します。"
                 >
-                    <Link
-                        to="/rshogi-viewer/live"
-                        className="text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                    >
-                        進行中の対局一覧へ →
-                    </Link>
+                    <div className="flex flex-wrap gap-x-4 gap-y-2">
+                        <Link
+                            to="/rshogi-viewer/players"
+                            className="text-sm font-medium text-wafuu-shu underline-offset-2 hover:underline"
+                        >
+                            選手番付を見る →
+                        </Link>
+                        <Link
+                            to="/rshogi-viewer/live"
+                            className="text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                        >
+                            進行中の対局一覧へ →
+                        </Link>
+                    </div>
                 </PageHeading>
 
                 <form
