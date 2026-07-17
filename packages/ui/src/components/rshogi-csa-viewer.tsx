@@ -50,7 +50,13 @@ const formatTimestampMs = (value: number | undefined): string => {
 const formatTimeControl = (value: RshogiGame["meta"]["timeControl"]): string => {
     if (!value) return "持ち時間: 不明";
     const main = `${Math.round(value.mainSeconds / 60)}分`;
-    const byoyomi = value.byoyomiSeconds > 0 ? ` + 秒読み${value.byoyomiSeconds}秒` : "";
+    // byoyomiSeconds は ms からの丸め値なので、秒未満の秒読み (countdown_msec) は
+    // ms 側を優先して 0.25秒 のように表示する
+    const byoyomiValue =
+        value.byoyomiMilliseconds !== undefined && value.byoyomiMilliseconds > 0
+            ? value.byoyomiMilliseconds / 1000
+            : value.byoyomiSeconds;
+    const byoyomi = byoyomiValue > 0 ? ` + 秒読み${byoyomiValue}秒` : "";
     const inc =
         value.incrementSeconds && value.incrementSeconds > 0
             ? ` + 加算${value.incrementSeconds}秒`
@@ -73,12 +79,15 @@ const RESULT_KIND_LABEL: Record<NonNullable<RshogiGame["meta"]["result"]>["kind"
 const formatResult = (meta: RshogiGame["meta"]): string => {
     const result = meta.result;
     if (!result) return "結果: 不明";
+    // winner なし = 引き分けとは限らない (中断・異常終了も winner なし)
     const winnerLabel =
         result.winner === "sente"
             ? `先手 (${meta.senteName}) 勝ち`
             : result.winner === "gote"
               ? `後手 (${meta.goteName}) 勝ち`
-              : "引き分け";
+              : result.kind === "draw" || result.kind === "max_moves"
+                ? "引き分け"
+                : "勝敗なし";
     const reason = RESULT_KIND_LABEL[result.kind] ?? "終局";
     return `結果: ${winnerLabel} (${reason})`;
 };

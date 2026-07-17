@@ -135,11 +135,14 @@ const createStaticGameFetch = () =>
             new Response(
                 JSON.stringify({
                     game_id: "game-1",
-                    black_handle: "alice",
-                    white_handle: "bob",
-                    result_kind: "WIN_WHITE",
-                    end_reason: "RESIGN",
                     csa: "V2.2\nN+alice\nN-bob\nPI\n+\n+7776FU\n%TORYO\n",
+                    meta: {
+                        game_id: "game-1",
+                        black_handle: "alice",
+                        white_handle: "bob",
+                        result_kind: "WIN_WHITE",
+                        end_reason: "RESIGN",
+                    },
                 }),
                 { status: 200, headers: { "content-type": "application/json" } },
             ),
@@ -159,11 +162,14 @@ const createInvalidStaticGameFetch = () =>
             new Response(
                 JSON.stringify({
                     game_id: "game-1",
-                    black_handle: "alice",
-                    white_handle: "bob",
-                    result_kind: "WIN_WHITE",
-                    end_reason: "RESIGN",
                     csa: "not csa",
+                    meta: {
+                        game_id: "game-1",
+                        black_handle: "alice",
+                        white_handle: "bob",
+                        result_kind: "WIN_WHITE",
+                        end_reason: "RESIGN",
+                    },
                 }),
                 { status: 200, headers: { "content-type": "application/json" } },
             ),
