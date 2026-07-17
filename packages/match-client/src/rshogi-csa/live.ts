@@ -9,7 +9,8 @@
  *    `Black/White_Time_Remaining_Ms:` から残時間を抽出して `onClock`、
  *    move 行を `parseCsaMoves` でフル再パースして `onSnapshot`
  * 3. snapshot 後の broadcast move 行は `parseSingleCsaMove` で 1 手ずつ apply
- *    し `onMove` を発火
+ *    し `onMove` を発火。続く `##[CLOCK]` 行があればサーバーの ms 粒度残時間で
+ *    `onClock` を発火し、表示用時計を毎手再同期
  * 4. `%TORYO` / `%KACHI` / `%TIME_UP` / `#RESIGN` / `#TIME_UP` 等の終局コードで
  *    `onEnd` を発火し、reconnect 経路を停止
  *
@@ -145,11 +146,16 @@ export interface RshogiLiveMoveCommentEvent {
     comment: RshogiLiveComment;
 }
 
-/** snapshot 受信時の clock 同期イベント。 */
+/** snapshot または指し手直後の clock 同期イベント。 */
 export interface RshogiLiveClockEvent {
     remainingMs: { sente: number; gote: number };
     sideToMove: "sente" | "gote";
+    /** live の毎手同期では対応する手数。snapshot 同期では undefined。 */
+    ply?: number;
 }
+
+/** server の毎手 clock wire。snapshot callback と異なり ply を必須にする。 */
+type RshogiLiveClockUpdate = RshogiLiveClockEvent & { ply: number };
 
 export type RshogiLiveConnectionState = "connecting" | "connected" | "reconnecting" | "closed";
 
@@ -168,14 +174,14 @@ export class RshogiLiveRoomFullError extends Error {
 export interface RshogiLiveCallbacks {
     /** 初回 + 再接続時に毎回呼ばれる (state を全置換)。 */
     onSnapshot(snapshot: RshogiLiveSnapshot): void;
-    /** 1 手 broadcast の到着。残り時間は本 callback には載せない (client 側 timer で計算)。 */
+    /** 1 手 broadcast の到着。旧サーバー互換のため client 側でも時計を暫定計算する。 */
     onMove(event: RshogiLiveMoveEvent): void;
     /**
      * move コメント (eval / PV) の到着。live stream では move 行の直後に別行で届く。
      * 任意 callback (旧 consumer との後方互換のため optional)。
      */
     onMoveComment?(event: RshogiLiveMoveCommentEvent): void;
-    /** clock countdown を再同期する任意 callback。snapshot 受信時のみ呼ばれる。 */
+    /** clock countdown を再同期する callback。snapshot と毎手の権威時計で呼ばれる。 */
     onClock(event: RshogiLiveClockEvent): void;
     /** 終局検知。`onEnd` 発火後は reconnect 経路を停止する。 */
     onEnd(result: RshogiGameResult): void;
@@ -363,12 +369,15 @@ const deriveTimeControl = (summary: ParsedSummary): RshogiTimeControl | undefine
     };
 };
 
+const SPECTATOR_CLOCK_PREFIX = "##[CLOCK] ";
+
 /**
  * snapshot block の wire 行群を `RshogiLiveSnapshot` に decode する。
  *
  * snapshot 行群は以下の構造で並ぶ前提:
  * - `BEGIN Game_Summary` ... `END Game_Summary`
  * - move 行 (1 行 1 手、`+7776FU,T3` 形式)
+ * - snapshot 中に着手が競合した場合、queued move に続く `##[CLOCK]` 行
  * - 終局済 DO の場合のみ末尾に `#RESIGN` / `#TIME_UP` 等の result_code 行
  *
  * `BEGIN MONITOR2` / `END MONITOR2` 行自体は本関数には渡らない契約。
@@ -376,10 +385,12 @@ const deriveTimeControl = (summary: ParsedSummary): RshogiTimeControl | undefine
 const decodeSnapshotBlock = (
     gameId: string,
     snapshotLines: string[],
-): { snapshot: RshogiLiveSnapshot; finalResultLine?: string } => {
+): { snapshot: RshogiLiveSnapshot; finalResultLine?: string; warnings: Error[] } => {
     const summaryLines: string[] = [];
     /** move 行を順に蓄積する (token + 消費秒 + 直後に来たコメント)。 */
     const moveEntries: { token: string; elapsedSec: number; comment?: RshogiLiveComment }[] = [];
+    const queuedClockUpdates: RshogiLiveClockUpdate[] = [];
+    const warnings: Error[] = [];
     let resultCodeLine: string | undefined;
     let inSummary = false;
     for (const raw of snapshotLines) {
@@ -406,6 +417,18 @@ const decodeSnapshotBlock = (
             // `'` コメント行は直前の move 行に属する。move が未出現なら握り潰す。
             const last = moveEntries[moveEntries.length - 1];
             if (last) last.comment = parseLiveComment(line);
+            continue;
+        }
+        if (line.startsWith(SPECTATOR_CLOCK_PREFIX)) {
+            const clock = parseSpectatorClockUpdate(line);
+            // summary clock は独立した fallback として完全なので、不正な追加 clock
+            // だけを非致命 warning にして snapshot 自体は適用する。live 行と同じく
+            // consumer の onError へ通知し、接続と後続 move の処理は継続する。
+            if (clock) {
+                queuedClockUpdates.push(clock);
+            } else {
+                warnings.push(new Error(`invalid spectator clock update in snapshot: ${line}`));
+            }
             continue;
         }
         if (line.startsWith("#")) {
@@ -450,6 +473,15 @@ const decodeSnapshotBlock = (
 
     // To_Move は初期局面手番であり現在手番ではないため、replay 後の手番を表示する。
     const sideToMove: "sente" | "gote" = state.turn;
+    // server は snapshot pending queue を MONITOR2 END より前に flush する。summary
+    // clock 採取後に着手が競合すると move と CLOCK がともに block 内へ入るため、
+    // replay 後の ply/手番に一致する最後の CLOCK を summary より優先する。
+    let authoritativeClock: RshogiLiveClockEvent | undefined;
+    for (const clock of queuedClockUpdates) {
+        if (clock.ply === moves.length && clock.sideToMove === sideToMove) {
+            authoritativeClock = clock;
+        }
+    }
 
     const snapshot: RshogiLiveSnapshot = {
         meta,
@@ -457,8 +489,8 @@ const decodeSnapshotBlock = (
         moveDetails,
         state,
         clocks: {
-            sente: summary.blackRemainingMs ?? 0,
-            gote: summary.whiteRemainingMs ?? 0,
+            sente: authoritativeClock?.remainingMs.sente ?? summary.blackRemainingMs ?? 0,
+            gote: authoritativeClock?.remainingMs.gote ?? summary.whiteRemainingMs ?? 0,
             sideToMove,
         },
         finalResult: resultCodeLine
@@ -466,7 +498,7 @@ const decodeSnapshotBlock = (
             : undefined,
     };
 
-    return { snapshot, finalResultLine: resultCodeLine };
+    return { snapshot, finalResultLine: resultCodeLine, warnings };
 };
 
 /**
@@ -645,6 +677,44 @@ const parseLiveComment = (line: string): RshogiLiveComment => {
         }
     }
     return { raw };
+};
+
+/**
+ * サーバーが指し手直後に送る ms 粒度の権威時計を decode する。
+ *
+ * 旧サーバーはこの行を送らない。payload は型・範囲を検証し、不正値を UI の
+ * 時計状態へ混入させない。
+ */
+const parseSpectatorClockUpdate = (line: string): RshogiLiveClockUpdate | null => {
+    if (!line.startsWith(SPECTATOR_CLOCK_PREFIX)) return null;
+    let value: unknown;
+    try {
+        value = JSON.parse(line.slice(SPECTATOR_CLOCK_PREFIX.length));
+    } catch {
+        return null;
+    }
+    if (typeof value !== "object" || value === null) return null;
+    const wire = value as Record<string, unknown>;
+    const black = wire.black_remaining_ms;
+    const white = wire.white_remaining_ms;
+    const side = wire.side_to_move;
+    const ply = wire.ply;
+    if (
+        !Number.isSafeInteger(black) ||
+        (black as number) < 0 ||
+        !Number.isSafeInteger(white) ||
+        (white as number) < 0 ||
+        (side !== "sente" && side !== "gote") ||
+        !Number.isSafeInteger(ply) ||
+        (ply as number) < 1
+    ) {
+        return null;
+    }
+    return {
+        remainingMs: { sente: black as number, gote: white as number },
+        sideToMove: side,
+        ply: ply as number,
+    };
 };
 
 const isRoomFullText = (value: string): boolean => {
@@ -1014,7 +1084,7 @@ export function subscribeRshogiLiveGame(
         snapshotLines = [];
         inSnapshot = false;
         try {
-            const { snapshot, finalResultLine } = decodeSnapshotBlock(gameId, lines);
+            const { snapshot, finalResultLine, warnings } = decodeSnapshotBlock(gameId, lines);
             liveState = snapshot.state;
             liveTurn = snapshot.clocks.sideToMove;
             // ply カウンタを snapshot 手数に同期。以降の broadcast move で +1 され、
@@ -1039,6 +1109,7 @@ export function subscribeRshogiLiveGame(
                     err instanceof Error ? err : new Error(`onClock handler threw: ${String(err)}`),
                 );
             }
+            for (const warning of warnings) emitError(warning);
             // 終局済 DO に接続したケース: snapshot 内に result_code 行がある。
             if (finalResultLine && snapshot.finalResult) {
                 requestStaticFallback("terminal-snapshot");
@@ -1054,6 +1125,33 @@ export function subscribeRshogiLiveGame(
     const handleLiveLine = (line: string) => {
         const trimmed = line.trim();
         if (trimmed.length === 0) return;
+        if (trimmed.startsWith(SPECTATOR_CLOCK_PREFIX)) {
+            const clock = parseSpectatorClockUpdate(trimmed);
+            if (!clock) {
+                emitError(new Error(`invalid spectator clock update: ${trimmed}`));
+                return;
+            }
+            // snapshot 中に queue された clock は、snapshot 自体がその ply を既に含むと
+            // 古い順に flush される。それらは正常な競合なので静かに捨て、現在より未来の
+            // ply または同一 ply で手番不一致だけを protocol error とする。
+            if (clock.ply < liveMoveCount) return;
+            if (clock.ply !== liveMoveCount || clock.sideToMove !== liveTurn) {
+                emitError(
+                    new Error(
+                        `spectator clock update does not match live position: ply=${clock.ply}, expectedPly=${liveMoveCount}, side=${clock.sideToMove}, expectedSide=${liveTurn}`,
+                    ),
+                );
+                return;
+            }
+            try {
+                callbacks.onClock(clock);
+            } catch (err) {
+                emitError(
+                    err instanceof Error ? err : new Error(`onClock handler threw: ${String(err)}`),
+                );
+            }
+            return;
+        }
         // `'` コメント行は直前 move に属する。move / 終局判定より前に処理して、
         // 絶対に move 行・終局行として扱われないようにする (detectEndLine は `'`
         // に一致しないが、順序で確実に防御する)。
@@ -1344,4 +1442,5 @@ export const __test_internals = {
     extractElapsedSec,
     parseGameSummaryLines,
     parseLiveComment,
+    parseSpectatorClockUpdate,
 };
