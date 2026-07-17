@@ -262,11 +262,15 @@ const buildClientHeaders = (): Record<string, string> => {
  * 付与する必要がない場合は `headers` を含めない (= 既存挙動完全互換)。
  */
 const buildRequestInit = (signal: AbortSignal | undefined): RequestInit => {
+    // `cache: "no-store"`: rshogi API は CDN edge 経由で `max-age` が長い値 (数時間)
+    // に書き換わることがあり、ブラウザ HTTP キャッシュに乗ると live 一覧のポーリングが
+    // ネットワークに出ず終局済み対局を「対局中」のまま表示し続ける。鮮度はサーバ側の
+    // edge キャッシュ (60 秒) に任せ、ブラウザ側では常にネットワークへ出す。
     const headers = buildClientHeaders();
     if (Object.keys(headers).length === 0) {
-        return { signal };
+        return { signal, cache: "no-store" };
     }
-    return { signal, headers };
+    return { signal, headers, cache: "no-store" };
 };
 
 // ===== wire format (snake_case) =====
