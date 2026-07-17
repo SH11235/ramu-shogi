@@ -61,7 +61,7 @@ describe("fetchRshogiGameSearch (real baseUrl)", () => {
 
         expect(fetchImpl).toHaveBeenCalledWith(
             "https://rshogi.example.com/api/v1/games/search?name=Alice+Bob&result=resignation&source=floodgate&from=1000&to=2000&page=2&pageSize=20",
-            { signal: undefined },
+            { signal: undefined, cache: "no-store" },
         );
         expect(result).toEqual({
             games: [
@@ -664,7 +664,7 @@ describe("fetchRshogiGame* X-Client header (rshogi#564)", () => {
         await fetchRshogiGame("x1", { baseUrl: "https://rshogi.example.com", fetchImpl });
         const init = (fetchImpl as unknown as { mock: { calls: [string, RequestInit][] } }).mock
             .calls[0][1];
-        expect(init).toEqual({ signal: undefined });
+        expect(init).toEqual({ signal: undefined, cache: "no-store" });
         expect((init as { headers?: unknown }).headers).toBeUndefined();
     });
 
