@@ -56,7 +56,16 @@ const { default: RshogiPlayerDetailPage } = await import("./RshogiPlayerDetailPa
 describe("RshogiPlayerDetailPage", () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        fetchRshogiPlayerDetail.mockResolvedValue(detail);
+        fetchRshogiPlayerDetail.mockImplementation(
+            (_playerId: string, options: { page?: number }) => {
+                const page = options.page ?? 1;
+                return Promise.resolve({
+                    ...detail,
+                    games: [{ gameId: `game-${page}` }],
+                    page,
+                });
+            },
+        );
     });
 
     it("選手成績、対局履歴、ページ移動を表示する", async () => {
@@ -82,6 +91,24 @@ describe("RshogiPlayerDetailPage", () => {
                 expect.objectContaining({ page: 2, pageSize: 20 }),
             ),
         );
+        expect(await screen.findByRole("button", { name: "game-2" })).toBeTruthy();
+        expect(screen.getByText("2 / 2")).toBeTruthy();
+    });
+
+    it("次ページの取得失敗時は成功済みページを表示して再試行できる", async () => {
+        render(<RshogiPlayerDetailPage />);
+        await screen.findByRole("button", { name: "game-1" });
+
+        fetchRshogiPlayerDetail.mockRejectedValueOnce(new Error("page unavailable"));
+        fireEvent.click(screen.getByRole("button", { name: "古い対局 →" }));
+
+        expect((await screen.findByRole("alert")).textContent).toContain("page unavailable");
+        expect(screen.getByRole("button", { name: "game-1" })).toBeTruthy();
+        expect(screen.getByText("1 / 2")).toBeTruthy();
+
+        fireEvent.click(screen.getByRole("button", { name: "古い対局 →" }));
+        expect(await screen.findByRole("button", { name: "game-2" })).toBeTruthy();
+        expect(screen.getByText("2 / 2")).toBeTruthy();
     });
 
     it("取得失敗を表示する", async () => {
