@@ -279,6 +279,104 @@ describe("subscribeRshogiLiveGame: snapshot → broadcast → end → close", ()
         ]);
     });
 
+    it("broadcast move 直後の ##[CLOCK] でサーバー残時間を毎手再同期する", () => {
+        const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+        subscribeRshogiLiveGame(
+            "game-1",
+            { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+            callbacks,
+        );
+        const ws = wsInstances[0];
+        ws.fireOpen();
+        ws.fireLines(buildSnapshotLines([]));
+
+        ws.fireLines([
+            "+7776FU,T8",
+            '##[CLOCK] {"black_remaining_ms":595123,"white_remaining_ms":600000,"side_to_move":"gote","ply":1}',
+        ]);
+
+        expect(events.errors).toEqual([]);
+        expect(events.moves).toEqual([{ csaMove: "7g7f", elapsedSec: 8 }]);
+        expect(events.clocks).toHaveLength(2);
+        expect(events.clocks[1]).toEqual({
+            remainingMs: { sente: 595_123, gote: 600_000 },
+            sideToMove: "gote",
+            ply: 1,
+        });
+    });
+
+    it("MONITOR2 END 前に flush された queued move/clock を snapshot の権威値にする", () => {
+        const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+        subscribeRshogiLiveGame(
+            "game-1",
+            { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+            callbacks,
+        );
+        const ws = wsInstances[0];
+        ws.fireOpen();
+
+        // summary clock は着手前だが、snapshot 構築中に ply1 が競合して pending
+        // queue の move/clock が END より前へ flush された実 server 順序を再現する。
+        ws.fireLines(
+            buildSnapshotLines([
+                "+7776FU,T8",
+                '##[CLOCK] {"black_remaining_ms":595123,"white_remaining_ms":600000,"side_to_move":"gote","ply":1}',
+            ]),
+        );
+
+        expect(events.errors).toEqual([]);
+        expect(events.snapshot).toHaveLength(1);
+        expect(events.snapshot[0].moves).toEqual(["7g7f"]);
+        expect(events.snapshot[0].clocks).toEqual({
+            sente: 595_123,
+            gote: 600_000,
+            sideToMove: "gote",
+        });
+        expect(events.clocks[0]).toEqual({
+            remainingMs: { sente: 595_123, gote: 600_000 },
+            sideToMove: "gote",
+        });
+    });
+
+    it("盤面より未来の ##[CLOCK] は適用せずエラー通知する", () => {
+        const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+        subscribeRshogiLiveGame(
+            "game-1",
+            { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+            callbacks,
+        );
+        const ws = wsInstances[0];
+        ws.fireOpen();
+        ws.fireLines(buildSnapshotLines([]));
+
+        ws.fireLines([
+            '##[CLOCK] {"black_remaining_ms":595123,"white_remaining_ms":600000,"side_to_move":"gote","ply":1}',
+        ]);
+
+        expect(events.clocks).toHaveLength(1);
+        expect(events.errors).toHaveLength(1);
+        expect(events.errors[0].message).toContain("does not match live position");
+    });
+
+    it("snapshot queue から届く盤面より古い ##[CLOCK] は静かに無視する", () => {
+        const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+        subscribeRshogiLiveGame(
+            "game-1",
+            { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+            callbacks,
+        );
+        const ws = wsInstances[0];
+        ws.fireOpen();
+        ws.fireLines(buildSnapshotLines(["+7776FU,T8", "-3334FU,T7"]));
+
+        ws.fireLines([
+            '##[CLOCK] {"black_remaining_ms":592000,"white_remaining_ms":600000,"side_to_move":"gote","ply":1}',
+        ]);
+
+        expect(events.clocks).toHaveLength(1);
+        expect(events.errors).toEqual([]);
+    });
+
     it("broadcast move の適用失敗を通知し、後続 move の購読を継続する", () => {
         const { wsInstances, wsFactory, events, callbacks } = makeMocks();
         subscribeRshogiLiveGame(
@@ -824,6 +922,26 @@ describe("subscribeRshogiLiveGame: room full", () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+});
+
+describe("parseSpectatorClockUpdate", () => {
+    it("structured clock wire を decode し、不正 payload を拒否する", () => {
+        expect(
+            __test_internals.parseSpectatorClockUpdate(
+                '##[CLOCK] {"black_remaining_ms":445123,"white_remaining_ms":405987,"side_to_move":"sente","ply":48}',
+            ),
+        ).toEqual({
+            remainingMs: { sente: 445_123, gote: 405_987 },
+            sideToMove: "sente",
+            ply: 48,
+        });
+        expect(__test_internals.parseSpectatorClockUpdate("##[CLOCK] not-json")).toBeNull();
+        expect(
+            __test_internals.parseSpectatorClockUpdate(
+                '##[CLOCK] {"black_remaining_ms":-1,"white_remaining_ms":0,"side_to_move":"sente","ply":1}',
+            ),
+        ).toBeNull();
     });
 });
 

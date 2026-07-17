@@ -9,6 +9,7 @@ import {
     computeRemaining,
     deriveInByoyomi,
     formatByoyomiClock,
+    formatLiveTimeControl,
     formatOwnEval,
     type LiveClocks,
     moveDetailsToEvals,
@@ -24,11 +25,14 @@ vi.mock("./shogi-match", () => ({
     ShogiMatch: ({
         initialReview,
         reviewLeftContent,
+        reviewTopContent,
     }: {
         initialReview?: { moves?: string[] };
         reviewLeftContent?: ReactNode;
+        reviewTopContent?: ReactNode;
     }) => (
         <div data-testid="shogi-match" data-move-count={initialReview?.moves?.length ?? 0}>
+            {reviewTopContent}
             {reviewLeftContent}
         </div>
     ),
@@ -127,6 +131,15 @@ const buildLiveSnapshot = (moves: string[] = [], finalCode?: string): string[] =
     if (finalCode) lines.push(finalCode);
     lines.push("##[MONITOR2] END");
     return lines;
+};
+
+const buildTimedLiveSnapshot = (moves: string[] = []): string[] => {
+    const lines = LIVE_SNAPSHOT_LINES.flatMap((line) =>
+        line === "Black_Time_Remaining_Ms:600000"
+            ? ["BEGIN Time", "Time_Unit:1sec", "Total_Time:600", "Byoyomi:10", "END Time", line]
+            : [line],
+    );
+    return [...lines, ...moves, "##[MONITOR2] END"];
 };
 
 const createStaticGameFetch = () =>
@@ -419,6 +432,33 @@ describe("RshogiCsaLiveViewer: static fallback", () => {
             vi.useRealTimers();
         }
     });
+
+    it("毎手の権威 clock で暫定計算を上書きし、時間ルールも表示する", () => {
+        render(
+            <RshogiCsaLiveViewer
+                gameId="game-1"
+                engineOptions={[]}
+                manifestUrl="/nnue/manifest.json"
+                apiBaseUrl="https://example.com/api/v1"
+            />,
+        );
+
+        const ws = MockWebSocket.instances[0];
+        act(() => {
+            ws.fireOpen();
+            ws.fireLines(buildTimedLiveSnapshot());
+            // T8 の client 暫定値は 592s (09:52) だが、直後の server clock 595.123s
+            // (09:55) が権威値として上書きされる。
+            ws.fireLines([
+                "+7776FU,T8",
+                '##[CLOCK] {"black_remaining_ms":595123,"white_remaining_ms":600000,"side_to_move":"gote","ply":1}',
+            ]);
+        });
+
+        expect(screen.getByText("09:55")).toBeDefined();
+        expect(screen.queryByText("09:52")).toBeNull();
+        expect(screen.getByText("10分 + 秒読み10秒")).toBeDefined();
+    });
 });
 
 describe("computeRemaining", () => {
@@ -499,6 +539,15 @@ describe("formatByoyomiClock", () => {
         expect(formatByoyomiClock(119_999)).toBe("1:59");
         expect(formatByoyomiClock(120_000)).toBe("2:00");
         expect(formatByoyomiClock(0)).toBe("0:00");
+    });
+});
+
+describe("formatLiveTimeControl", () => {
+    it("Fischer 加算と秒読みを区別して表示する", () => {
+        expect(formatLiveTimeControl(FISCHER)).toBe("1分 + 1手5秒加算");
+        expect(formatLiveTimeControl(COUNTDOWN)).toBe("10分 + 秒読み10秒");
+        expect(formatLiveTimeControl(COUNTDOWN_MSEC)).toBe("10秒 + 秒読み0.5秒");
+        expect(formatLiveTimeControl(SUDDEN_DEATH)).toBe("5分 (切れ負け)");
     });
 });
 

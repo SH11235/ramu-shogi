@@ -8,7 +8,8 @@
  *   broadcast move では key を変えず initialReview.moves を伸ばし、prop 更新で反映する
  *   (毎手 remount しないので盤・棋譜がちらつかない)。
  * - 対局者・時計・手数・接続状態は上部のブロードキャスト・スコアボードに集約表示する。
- * - clock countdown は server の残時間を anchor に local timer で 1Hz 減算する。
+ * - clock countdown は server の残時間を anchor に local timer で補間し、毎手の
+ *   `##[CLOCK]` で権威値へ再同期する (旧 server は `T` から暫定計算)。
  * - 終局時に最終結果を表示する。
  */
 
@@ -276,6 +277,26 @@ export const formatByoyomiClock = (ms: number): string => {
     // 1:00 とは表示せず 0:59 に留める。
     const sec = Math.min(59, secWithinMinute);
     return `${min}:${String(sec).padStart(2, "0")}`;
+};
+
+const formatRuleSeconds = (ms: number): string => {
+    const seconds = Math.max(0, ms) / 1000;
+    return Number.isInteger(seconds) ? String(seconds) : String(Number(seconds.toFixed(3)));
+};
+
+/** live scoreboard に表示する時間ルールを、加算と秒読みを区別して整形する。 */
+export const formatLiveTimeControl = (timeControl: RshogiTimeControl): string => {
+    const main =
+        timeControl.mainSeconds > 0 && timeControl.mainSeconds % 60 === 0
+            ? `${timeControl.mainSeconds / 60}分`
+            : `${timeControl.mainSeconds}秒`;
+    if (timeControl.kind === "fischer") {
+        return `${main} + 1手${timeControl.incrementSeconds ?? 0}秒加算`;
+    }
+    const byoyomiMs = timeControl.byoyomiMilliseconds ?? (timeControl.byoyomiSeconds ?? 0) * 1000;
+    return byoyomiMs > 0
+        ? `${main} + 秒読み${formatRuleSeconds(byoyomiMs)}秒`
+        : `${main} (切れ負け)`;
 };
 
 /** timeControl から秒読みの full 量 (ms) を取り出す (ms 粒度優先、無ければ秒→ms)。 */
@@ -636,6 +657,11 @@ export function RshogiLiveScoreboard({
                     </span>
                 )}
                 <span className="text-xs text-muted-foreground">{turnLabel}</span>
+                {meta.timeControl && (
+                    <span className="text-center text-[11px] leading-tight text-muted-foreground">
+                        {formatLiveTimeControl(meta.timeControl)}
+                    </span>
+                )}
                 {lastMoveElapsedSec !== undefined && (
                     <span className="text-[11px] tabular-nums text-muted-foreground">
                         直前手 {lastMoveElapsedSec}秒
@@ -842,10 +868,9 @@ export function RshogiCsaLiveViewer({
                         moves: [...prev.moves, csaMove],
                         // 新規手を付随情報配列にも追加 (この時点では消費秒のみ、eval は後追い)。
                         moveEvals: appendMoveEval(prev.moveEvals, elapsedSec),
-                        // broadcast move 到着時に手番側 (= mover) の時計を kind ごとの
-                        // ルールで更新し、手番を相手側へ切り替える。local wall-clock では
-                        // なく wire の権威ある elapsedSec を使う (本 fix の要点)。
-                        // 秒切り捨て由来の最大 1 秒のドリフトは snapshot resync で補正される。
+                        // broadcast move 到着時は旧サーバー互換のため、手番側 (= mover) の
+                        // 時計を T<elapsedSec> から暫定更新する。新サーバーでは直後の
+                        // ##[CLOCK] → onClock が ms 粒度の権威値で上書きする。
                         clocks: prev.clocks
                             ? applyMoveToClocks(
                                   prev.clocks,
@@ -869,11 +894,10 @@ export function RshogiCsaLiveViewer({
             },
             onClock({ remainingMs, sideToMove }) {
                 setState((prev) => {
-                    // onClock は snapshot 完了直後 (onSnapshot の後) にのみ発火するため、
-                    // prev.snapshot は既に最新へ更新済み。そこから timeControl を引き、
-                    // 本体残 0 の秒読み局面を即座に秒読み表示へ乗せる。
-                    // もし契約外に snapshot なしで届いた場合は timeControl undefined とし、
-                    // 秒読み判定をスキップする (安全側で本体時計表示に寄せる)。
+                    // snapshot 完了直後と各 broadcast move 直後に届く権威時計で再同期する。
+                    // prev.snapshot から timeControl を引き、本体残 0 の秒読み局面も即座に
+                    // 秒読み表示へ乗せる。旧サーバーでは snapshot 時だけ呼ばれ、各 move は
+                    // applyMoveToClocks の暫定計算を継続するため後方互換を保つ。
                     const timeControl = prev.snapshot?.meta.timeControl;
                     return {
                         ...prev,
