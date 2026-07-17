@@ -154,6 +154,9 @@ export interface RshogiLiveClockEvent {
     ply?: number;
 }
 
+/** server の毎手 clock wire。snapshot callback と異なり ply を必須にする。 */
+type RshogiLiveClockUpdate = RshogiLiveClockEvent & { ply: number };
+
 export type RshogiLiveConnectionState = "connecting" | "connected" | "reconnecting" | "closed";
 
 export type RshogiLiveStaticFallbackReason =
@@ -366,6 +369,8 @@ const deriveTimeControl = (summary: ParsedSummary): RshogiTimeControl | undefine
     };
 };
 
+const SPECTATOR_CLOCK_PREFIX = "##[CLOCK] ";
+
 /**
  * snapshot block の wire 行群を `RshogiLiveSnapshot` に decode する。
  *
@@ -380,11 +385,12 @@ const deriveTimeControl = (summary: ParsedSummary): RshogiTimeControl | undefine
 const decodeSnapshotBlock = (
     gameId: string,
     snapshotLines: string[],
-): { snapshot: RshogiLiveSnapshot; finalResultLine?: string } => {
+): { snapshot: RshogiLiveSnapshot; finalResultLine?: string; warnings: Error[] } => {
     const summaryLines: string[] = [];
     /** move 行を順に蓄積する (token + 消費秒 + 直後に来たコメント)。 */
     const moveEntries: { token: string; elapsedSec: number; comment?: RshogiLiveComment }[] = [];
-    const queuedClockUpdates: RshogiLiveClockEvent[] = [];
+    const queuedClockUpdates: RshogiLiveClockUpdate[] = [];
+    const warnings: Error[] = [];
     let resultCodeLine: string | undefined;
     let inSummary = false;
     for (const raw of snapshotLines) {
@@ -415,8 +421,14 @@ const decodeSnapshotBlock = (
         }
         if (line.startsWith(SPECTATOR_CLOCK_PREFIX)) {
             const clock = parseSpectatorClockUpdate(line);
-            if (!clock) throw new Error(`invalid spectator clock update in snapshot: ${line}`);
-            queuedClockUpdates.push(clock);
+            // summary clock は独立した fallback として完全なので、不正な追加 clock
+            // だけを非致命 warning にして snapshot 自体は適用する。live 行と同じく
+            // consumer の onError へ通知し、接続と後続 move の処理は継続する。
+            if (clock) {
+                queuedClockUpdates.push(clock);
+            } else {
+                warnings.push(new Error(`invalid spectator clock update in snapshot: ${line}`));
+            }
             continue;
         }
         if (line.startsWith("#")) {
@@ -486,7 +498,7 @@ const decodeSnapshotBlock = (
             : undefined,
     };
 
-    return { snapshot, finalResultLine: resultCodeLine };
+    return { snapshot, finalResultLine: resultCodeLine, warnings };
 };
 
 /**
@@ -667,15 +679,13 @@ const parseLiveComment = (line: string): RshogiLiveComment => {
     return { raw };
 };
 
-const SPECTATOR_CLOCK_PREFIX = "##[CLOCK] ";
-
 /**
  * サーバーが指し手直後に送る ms 粒度の権威時計を decode する。
  *
  * 旧サーバーはこの行を送らない。payload は型・範囲を検証し、不正値を UI の
  * 時計状態へ混入させない。
  */
-const parseSpectatorClockUpdate = (line: string): RshogiLiveClockEvent | null => {
+const parseSpectatorClockUpdate = (line: string): RshogiLiveClockUpdate | null => {
     if (!line.startsWith(SPECTATOR_CLOCK_PREFIX)) return null;
     let value: unknown;
     try {
@@ -1074,7 +1084,7 @@ export function subscribeRshogiLiveGame(
         snapshotLines = [];
         inSnapshot = false;
         try {
-            const { snapshot, finalResultLine } = decodeSnapshotBlock(gameId, lines);
+            const { snapshot, finalResultLine, warnings } = decodeSnapshotBlock(gameId, lines);
             liveState = snapshot.state;
             liveTurn = snapshot.clocks.sideToMove;
             // ply カウンタを snapshot 手数に同期。以降の broadcast move で +1 され、
@@ -1099,6 +1109,7 @@ export function subscribeRshogiLiveGame(
                     err instanceof Error ? err : new Error(`onClock handler threw: ${String(err)}`),
                 );
             }
+            for (const warning of warnings) emitError(warning);
             // 終局済 DO に接続したケース: snapshot 内に result_code 行がある。
             if (finalResultLine && snapshot.finalResult) {
                 requestStaticFallback("terminal-snapshot");
@@ -1123,7 +1134,7 @@ export function subscribeRshogiLiveGame(
             // snapshot 中に queue された clock は、snapshot 自体がその ply を既に含むと
             // 古い順に flush される。それらは正常な競合なので静かに捨て、現在より未来の
             // ply または同一 ply で手番不一致だけを protocol error とする。
-            if (clock.ply !== undefined && clock.ply < liveMoveCount) return;
+            if (clock.ply < liveMoveCount) return;
             if (clock.ply !== liveMoveCount || clock.sideToMove !== liveTurn) {
                 emitError(
                     new Error(

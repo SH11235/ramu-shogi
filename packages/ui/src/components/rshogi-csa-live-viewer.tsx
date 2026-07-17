@@ -281,7 +281,9 @@ export const formatByoyomiClock = (ms: number): string => {
 
 const formatRuleSeconds = (ms: number): string => {
     const seconds = Math.max(0, ms) / 1000;
-    return Number.isInteger(seconds) ? String(seconds) : String(Number(seconds.toFixed(3)));
+    return Number.isInteger(seconds)
+        ? String(seconds)
+        : String(Number.parseFloat(seconds.toFixed(3)));
 };
 
 /** live scoreboard に表示する時間ルールを、加算と秒読みを区別して整形する。 */
@@ -293,7 +295,7 @@ export const formatLiveTimeControl = (timeControl: RshogiTimeControl): string =>
     if (timeControl.kind === "fischer") {
         return `${main} + 1手${timeControl.incrementSeconds ?? 0}秒加算`;
     }
-    const byoyomiMs = timeControl.byoyomiMilliseconds ?? (timeControl.byoyomiSeconds ?? 0) * 1000;
+    const byoyomiMs = byoyomiFullMs(timeControl);
     return byoyomiMs > 0
         ? `${main} + 秒読み${formatRuleSeconds(byoyomiMs)}秒`
         : `${main} (切れ負け)`;

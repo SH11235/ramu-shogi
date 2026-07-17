@@ -338,6 +338,28 @@ describe("subscribeRshogiLiveGame: snapshot → broadcast → end → close", ()
         });
     });
 
+    it("snapshot 内の不正 CLOCK は通知し、summary clock で snapshot を継続する", () => {
+        const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+        subscribeRshogiLiveGame(
+            "game-1",
+            { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+            callbacks,
+        );
+        const ws = wsInstances[0];
+        ws.fireOpen();
+
+        ws.fireLines(buildSnapshotLines(["##[CLOCK] not-json"]));
+
+        expect(events.snapshot).toHaveLength(1);
+        expect(events.snapshot[0].clocks).toEqual({
+            sente: 600_000,
+            gote: 600_000,
+            sideToMove: "sente",
+        });
+        expect(events.errors).toHaveLength(1);
+        expect(events.errors[0].message).toContain("invalid spectator clock update in snapshot");
+    });
+
     it("盤面より未来の ##[CLOCK] は適用せずエラー通知する", () => {
         const { wsInstances, wsFactory, events, callbacks } = makeMocks();
         subscribeRshogiLiveGame(
