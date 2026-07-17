@@ -96,7 +96,8 @@ const formatResult = (meta: RshogiGame["meta"]): string => {
               : result.kind === "draw" || result.kind === "max_moves"
                 ? "引き分け"
                 : "勝敗なし";
-    const reason = RESULT_KIND_LABEL[result.kind] ?? "終局";
+    const reason =
+        result.endReason === "ILLEGAL" ? "反則" : (RESULT_KIND_LABEL[result.kind] ?? "終局");
     return `結果: ${winnerLabel} (${reason})`;
 };
 

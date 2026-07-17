@@ -59,20 +59,36 @@ describe("RshogiCsaViewer: 対局情報パネル", () => {
         expect(screen.queryByText(/不明/)).toBeNull();
     });
 
-    it("winner なしの中断を引き分けと表示しない", async () => {
+    it("winner なしの異常終了を引き分けと表示しない", async () => {
         vi.mocked(fetchRshogiGame).mockResolvedValue({
             meta: {
                 gameId: GAME_ID,
                 senteName: "alice",
                 goteName: "bob",
-                result: { kind: "abort", endReason: "ILLEGAL" },
+                result: { kind: "abnormal", endReason: "ABNORMAL" },
             },
             csa: CSA_TEXT,
         });
 
         renderViewer();
 
-        expect(await screen.findByText("結果: 勝敗なし (中断)")).toBeTruthy();
+        expect(await screen.findByText("結果: 勝敗なし (異常終了)")).toBeTruthy();
+    });
+
+    it("反則時は勝者と反則を表示する", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue({
+            meta: {
+                gameId: GAME_ID,
+                senteName: "alice",
+                goteName: "bob",
+                result: { kind: "abort", winner: "gote", endReason: "ILLEGAL" },
+            },
+            csa: CSA_TEXT,
+        });
+
+        renderViewer();
+
+        expect(await screen.findByText("結果: 後手 (bob) 勝ち (反則)")).toBeTruthy();
     });
 
     it("千日手は引き分けと表示する", async () => {
