@@ -128,23 +128,26 @@ describe("fetchRshogiGame (real baseUrl)", () => {
     it("decodes wire (snake_case + epoch_ms) into camelCase + epoch_ms domain types", async () => {
         const wirePayload = {
             game_id: "abc",
-            started_at_ms: 1777391025209,
-            ended_at_ms: 1777392877244,
-            black_handle: "alice",
-            white_handle: "bob",
-            result_kind: "WIN_BLACK",
-            end_reason: "RESIGN",
-            moves_count: 142,
-            clock: {
-                kind: "fischer",
-                total_sec: 300,
-                byoyomi_sec: 10,
-                byoyomi_ms: null,
-                increment_sec: 5,
-            },
-            source: "kifu",
-            event: "test event",
             csa: "V2.2\nN+alice\nN-bob\nPI\n+\n",
+            meta: {
+                game_id: "abc",
+                started_at_ms: 1777391025209,
+                ended_at_ms: 1777392877244,
+                black_handle: "alice",
+                white_handle: "bob",
+                result_kind: "WIN_BLACK",
+                end_reason: "RESIGN",
+                moves_count: 142,
+                clock: {
+                    kind: "fischer",
+                    total_sec: 300,
+                    byoyomi_sec: 10,
+                    byoyomi_ms: null,
+                    increment_sec: 5,
+                },
+                source: "kifu",
+                event: "test event",
+            },
         };
         const fetchImpl = vi.fn(
             async () =>
@@ -190,16 +193,19 @@ describe("fetchRshogiGame (real baseUrl)", () => {
     it("decodes WIN_WHITE + TIME_UP into gote winner + time_expired", async () => {
         const wirePayload = {
             game_id: "g1",
-            started_at_ms: 1,
-            ended_at_ms: 2,
-            black_handle: "B",
-            white_handle: "W",
-            result_kind: "WIN_WHITE",
-            end_reason: "TIME_UP",
-            moves_count: 50,
-            clock: { kind: "countdown", total_sec: 60, byoyomi_sec: 30 },
-            source: "floodgate",
             csa: "V2.2\n",
+            meta: {
+                game_id: "g1",
+                started_at_ms: 1,
+                ended_at_ms: 2,
+                black_handle: "B",
+                white_handle: "W",
+                result_kind: "WIN_WHITE",
+                end_reason: "TIME_UP",
+                moves_count: 50,
+                clock: { kind: "countdown", total_sec: 60, byoyomi_sec: 30 },
+                source: "floodgate",
+            },
         };
         const fetchImpl = vi.fn(
             async () =>
@@ -221,11 +227,14 @@ describe("fetchRshogiGame (real baseUrl)", () => {
     it("decodes DRAW + SENNICHITE into draw without winner", async () => {
         const wirePayload = {
             game_id: "g2",
-            black_handle: "B",
-            white_handle: "W",
-            result_kind: "DRAW",
-            end_reason: "SENNICHITE",
             csa: "V2.2\n",
+            meta: {
+                game_id: "g2",
+                black_handle: "B",
+                white_handle: "W",
+                result_kind: "DRAW",
+                end_reason: "SENNICHITE",
+            },
         };
         const fetchImpl = vi.fn(
             async () =>
@@ -247,11 +256,14 @@ describe("fetchRshogiGame (real baseUrl)", () => {
     it("decodes WIN_BLACK + JISHOGI into jishogi with sente winner", async () => {
         const wirePayload = {
             game_id: "g3",
-            black_handle: "B",
-            white_handle: "W",
-            result_kind: "WIN_BLACK",
-            end_reason: "JISHOGI",
             csa: "V2.2\n",
+            meta: {
+                game_id: "g3",
+                black_handle: "B",
+                white_handle: "W",
+                result_kind: "WIN_BLACK",
+                end_reason: "JISHOGI",
+            },
         };
         const fetchImpl = vi.fn(
             async () =>
@@ -273,11 +285,14 @@ describe("fetchRshogiGame (real baseUrl)", () => {
     it("decodes WIN_WHITE + OUTE_SENNICHITE into oute_sennichite with gote winner", async () => {
         const wirePayload = {
             game_id: "g4",
-            black_handle: "B",
-            white_handle: "W",
-            result_kind: "WIN_WHITE",
-            end_reason: "OUTE_SENNICHITE",
             csa: "V2.2\n",
+            meta: {
+                game_id: "g4",
+                black_handle: "B",
+                white_handle: "W",
+                result_kind: "WIN_WHITE",
+                end_reason: "OUTE_SENNICHITE",
+            },
         };
         const fetchImpl = vi.fn(
             async () =>
@@ -299,10 +314,13 @@ describe("fetchRshogiGame (real baseUrl)", () => {
     it("normalizes stopwatch clock from total_min/byoyomi_min", async () => {
         const wirePayload = {
             game_id: "g5",
-            black_handle: "B",
-            white_handle: "W",
-            clock: { kind: "stopwatch", total_min: 30, byoyomi_min: 1 },
             csa: "V2.2\n",
+            meta: {
+                game_id: "g5",
+                black_handle: "B",
+                white_handle: "W",
+                clock: { kind: "stopwatch", total_min: 30, byoyomi_min: 1 },
+            },
         };
         const fetchImpl = vi.fn(
             async () =>
@@ -326,10 +344,13 @@ describe("fetchRshogiGame (real baseUrl)", () => {
     it("normalizes countdown_msec clock from total_ms/byoyomi_ms", async () => {
         const wirePayload = {
             game_id: "g6",
-            black_handle: "B",
-            white_handle: "W",
-            clock: { kind: "countdown_msec", total_ms: 30000, byoyomi_ms: 250 },
             csa: "V2.2\n",
+            meta: {
+                game_id: "g6",
+                black_handle: "B",
+                white_handle: "W",
+                clock: { kind: "countdown_msec", total_ms: 30000, byoyomi_ms: 250 },
+            },
         };
         const fetchImpl = vi.fn(
             async () =>
@@ -348,6 +369,28 @@ describe("fetchRshogiGame (real baseUrl)", () => {
             byoyomiMilliseconds: 250,
             incrementSeconds: undefined,
         });
+    });
+
+    it("degrades gracefully when meta is missing", async () => {
+        const wirePayload = {
+            game_id: "g7",
+            csa: "V2.2\n",
+        };
+        const fetchImpl = vi.fn(
+            async () =>
+                new Response(JSON.stringify(wirePayload), {
+                    status: 200,
+                }),
+        ) as unknown as typeof fetch;
+        const game = await fetchRshogiGame("g7", {
+            baseUrl: "https://rshogi.example.com",
+            fetchImpl,
+        });
+        expect(game.meta.gameId).toBe("g7");
+        expect(game.meta.senteName).toBe("");
+        expect(game.meta.goteName).toBe("");
+        expect(game.meta.result).toBeUndefined();
+        expect(game.csa).toBe("V2.2\n");
     });
 
     it("maps 404 to RshogiGameNotFoundError", async () => {

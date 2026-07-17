@@ -304,8 +304,17 @@ interface GameWireBase {
     event?: string | null;
 }
 
-interface GameDetailWire extends GameWireBase {
+/**
+ * 単局 GET (`/api/v1/games/:gameId`) のレスポンス (wire)。
+ *
+ * 一覧 (`GameWireBase` をフラットに並べる) と異なり、サーバ
+ * (rshogi-csa-server-workers viewer_api.rs::GameResponse) はメタを `meta` に
+ * ネストして返す。`meta` の中身は一覧 entry と同じ shape。
+ */
+interface GameDetailWire {
+    game_id: string;
     csa: string;
+    meta?: GameWireBase | null;
 }
 
 interface GameListResponseWire {
@@ -476,14 +485,19 @@ const decodeGameSummary = (wire: GameWireBase): RshogiGameSummary => ({
 });
 
 const decodeGameDetail = (wire: GameDetailWire): RshogiGame => {
-    const summary = decodeGameSummary(wire);
+    const metaWire: GameWireBase = wire.meta ?? {
+        game_id: wire.game_id,
+        black_handle: "",
+        white_handle: "",
+    };
+    const summary = decodeGameSummary(metaWire);
     const meta: RshogiGameMeta = {
-        gameId: summary.gameId,
+        gameId: wire.game_id,
         senteName: summary.senteName,
         goteName: summary.goteName,
         startedAtMs: summary.startedAtMs,
         endedAtMs: summary.endedAtMs,
-        event: decodeStringOrUndefined(wire.event ?? undefined),
+        event: decodeStringOrUndefined(metaWire.event ?? undefined),
         timeControl: summary.timeControl,
         result: summary.result,
         source: summary.source,

@@ -36,6 +36,120 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
+describe("RshogiCsaViewer: 対局情報パネル", () => {
+    it("メタ (対局者・時刻・持ち時間・結果) を表示する", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue({
+            meta: {
+                gameId: GAME_ID,
+                senteName: "alice",
+                goteName: "bob",
+                startedAtMs: 1784307914273,
+                endedAtMs: 1784309092948,
+                timeControl: { kind: "countdown", mainSeconds: 600, byoyomiSeconds: 10 },
+                result: { kind: "resignation", winner: "gote", endReason: "RESIGN" },
+            },
+            csa: CSA_TEXT,
+        });
+
+        renderViewer();
+
+        expect(await screen.findByText("☗ alice vs ☖ bob")).toBeTruthy();
+        expect(screen.getByText("持ち時間: 10分 + 秒読み10秒")).toBeTruthy();
+        expect(screen.getByText("結果: 後手 (bob) 勝ち (投了)")).toBeTruthy();
+        expect(screen.queryByText(/不明/)).toBeNull();
+    });
+
+    it("winner なしの異常終了を引き分けと表示しない", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue({
+            meta: {
+                gameId: GAME_ID,
+                senteName: "alice",
+                goteName: "bob",
+                result: { kind: "abnormal", endReason: "ABNORMAL" },
+            },
+            csa: CSA_TEXT,
+        });
+
+        renderViewer();
+
+        expect(await screen.findByText("結果: 勝敗なし (異常終了)")).toBeTruthy();
+    });
+
+    it("反則時は勝者と反則を表示する", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue({
+            meta: {
+                gameId: GAME_ID,
+                senteName: "alice",
+                goteName: "bob",
+                result: { kind: "abort", winner: "gote", endReason: "ILLEGAL" },
+            },
+            csa: CSA_TEXT,
+        });
+
+        renderViewer();
+
+        expect(await screen.findByText("結果: 後手 (bob) 勝ち (反則)")).toBeTruthy();
+    });
+
+    it("千日手は引き分けと表示する", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue({
+            meta: {
+                gameId: GAME_ID,
+                senteName: "alice",
+                goteName: "bob",
+                result: { kind: "draw", endReason: "SENNICHITE" },
+            },
+            csa: CSA_TEXT,
+        });
+
+        renderViewer();
+
+        expect(await screen.findByText("結果: 引き分け (千日手)")).toBeTruthy();
+    });
+
+    it("秒未満の秒読みは ms から表示する", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue({
+            meta: {
+                gameId: GAME_ID,
+                senteName: "alice",
+                goteName: "bob",
+                timeControl: {
+                    kind: "countdown_msec",
+                    mainSeconds: 30,
+                    byoyomiSeconds: 0,
+                    byoyomiMilliseconds: 250,
+                },
+            },
+            csa: CSA_TEXT,
+        });
+
+        renderViewer();
+
+        expect(await screen.findByText("持ち時間: 30秒 + 秒読み0.25秒")).toBeTruthy();
+    });
+
+    it("10秒の持ち時間と100msの秒読みを丸めず表示する", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue({
+            meta: {
+                gameId: GAME_ID,
+                senteName: "alice",
+                goteName: "bob",
+                timeControl: {
+                    kind: "countdown_msec",
+                    mainSeconds: 10,
+                    byoyomiSeconds: 0,
+                    byoyomiMilliseconds: 100,
+                },
+            },
+            csa: CSA_TEXT,
+        });
+
+        renderViewer();
+
+        expect(await screen.findByText("持ち時間: 10秒 + 秒読み0.1秒")).toBeTruthy();
+    });
+});
+
 describe("RshogiCsaViewer", () => {
     it("ready 状態で CSA ダウンロードボタンを表示する", async () => {
         vi.mocked(fetchRshogiGame).mockResolvedValue(GAME);
