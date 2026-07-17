@@ -153,6 +153,12 @@ export interface RshogiPlayerSummary {
 
 export interface RshogiPlayerList {
     players: RshogiPlayerSummary[];
+    page: number;
+    pageSize: number;
+    totalCount: number;
+    totalGames: number;
+    /** 全ページを通したレーティング首位。選手がいない場合は undefined。 */
+    leader?: RshogiPlayerSummary;
 }
 
 export interface RshogiPlayerDetail {
@@ -226,6 +232,13 @@ export interface FetchRshogiLiveGameListOptions extends FetchRshogiGameOptions {
     cursor?: string;
     /** 1 ページあたり件数 (1〜100、サーバ既定 50)。 */
     limit?: number;
+}
+
+export interface FetchRshogiPlayerListOptions extends FetchRshogiGameOptions {
+    /** 1 始まり。 */
+    page?: number;
+    /** 1 ページあたり件数 (1〜100、サーバ既定 20)。 */
+    pageSize?: number;
 }
 
 export interface FetchRshogiPlayerDetailOptions extends FetchRshogiGameOptions {
@@ -393,6 +406,11 @@ interface PlayerSummaryWire {
 
 interface PlayerListResponseWire {
     players?: PlayerSummaryWire[];
+    page?: number;
+    page_size?: number;
+    total_count?: number;
+    total_games?: number;
+    leader?: PlayerSummaryWire | null;
 }
 
 interface PlayerDetailResponseWire {
@@ -765,17 +783,21 @@ export async function fetchRshogiGameSearch(
 
 /** 終局履歴から算出された選手ランキングを取得する。 */
 export async function fetchRshogiPlayerList(
-    options: FetchRshogiGameOptions = {},
+    options: FetchRshogiPlayerListOptions = {},
 ): Promise<RshogiPlayerList> {
     const baseUrl = options.baseUrl?.trim();
-    if (!baseUrl) return { players: buildMockPlayerList() };
+    if (!baseUrl) return mockPlayerList(options.page, options.pageSize);
 
     const fetchImpl = options.fetchImpl ?? globalThis.fetch;
     if (!fetchImpl) {
         throw new RshogiGameFetchError("", "fetch is not available in this environment");
     }
+    const params = new URLSearchParams();
+    if (options.page !== undefined) params.set("page", String(options.page));
+    if (options.pageSize !== undefined) params.set("pageSize", String(options.pageSize));
+    const query = params.toString();
     const response = await fetchImpl(
-        `${trimTrailingSlash(baseUrl)}/players`,
+        `${trimTrailingSlash(baseUrl)}/players${query ? `?${query}` : ""}`,
         buildRequestInit(options.signal),
     );
     if (!response.ok) {
@@ -789,7 +811,15 @@ export async function fetchRshogiPlayerList(
     if (!payload || !Array.isArray(payload.players)) {
         throw new RshogiGameFetchError("", "rshogi API response missing players array");
     }
-    return { players: payload.players.map(decodePlayerSummary) };
+    const players = payload.players.map(decodePlayerSummary);
+    return {
+        players,
+        page: payload.page ?? 1,
+        pageSize: payload.page_size ?? 20,
+        totalCount: payload.total_count ?? players.length,
+        totalGames: payload.total_games ?? 0,
+        leader: payload.leader ? decodePlayerSummary(payload.leader) : undefined,
+    };
 }
 
 /** 選手の集計成績と、その選手が参加した終局済棋譜を取得する。 */
@@ -886,6 +916,10 @@ const DEFAULT_MOCK_SEARCH_PAGE_SIZE = 20;
 
 const mockPlayerId = (name: string): string => `legacy_mock_${encodeURIComponent(name)}`;
 
+const mockGamePlayerId = (game: RshogiGameSummary, side: "sente" | "gote"): string =>
+    (side === "sente" ? game.sentePlayerId : game.gotePlayerId) ??
+    mockPlayerId(side === "sente" ? game.senteName : game.goteName);
+
 const buildMockPlayerList = (): RshogiPlayerSummary[] => {
     const records = new Map<string, Omit<RshogiPlayerSummary, "rating">>();
     for (const game of [...MOCK_RSHOGI_GAME_LIST].reverse()) {
@@ -894,7 +928,7 @@ const buildMockPlayerList = (): RshogiPlayerSummary[] => {
             ["sente", game.senteName],
             ["gote", game.goteName],
         ] as const) {
-            const id = mockPlayerId(name);
+            const id = mockGamePlayerId(game, side);
             const current = records.get(id) ?? {
                 playerId: id,
                 displayName: name,
@@ -909,7 +943,12 @@ const buildMockPlayerList = (): RshogiPlayerSummary[] => {
             if (!winner) current.draws += 1;
             else if (winner === side) current.wins += 1;
             else current.losses += 1;
-            current.lastPlayedAtMs = Math.max(current.lastPlayedAtMs ?? 0, game.endedAtMs ?? 0);
+            if (game.endedAtMs !== undefined) {
+                current.lastPlayedAtMs = Math.max(
+                    current.lastPlayedAtMs ?? game.endedAtMs,
+                    game.endedAtMs,
+                );
+            }
             records.set(id, current);
         }
     }
@@ -921,6 +960,21 @@ const buildMockPlayerList = (): RshogiPlayerSummary[] => {
         .sort((a, b) => b.rating - a.rating || a.displayName.localeCompare(b.displayName));
 };
 
+const mockPlayerList = (page = 1, pageSize = DEFAULT_MOCK_SEARCH_PAGE_SIZE): RshogiPlayerList => {
+    const allPlayers = buildMockPlayerList();
+    const normalizedPage = Math.max(1, page);
+    const normalizedPageSize = Math.min(Math.max(1, pageSize), MAX_MOCK_LIMIT);
+    const start = (normalizedPage - 1) * normalizedPageSize;
+    return {
+        players: allPlayers.slice(start, start + normalizedPageSize),
+        page: normalizedPage,
+        pageSize: normalizedPageSize,
+        totalCount: allPlayers.length,
+        totalGames: MOCK_RSHOGI_GAME_LIST.length,
+        leader: allPlayers[0],
+    };
+};
+
 const mockPlayerDetail = (
     playerId: string,
     page = 1,
@@ -929,7 +983,9 @@ const mockPlayerDetail = (
     const player = buildMockPlayerList().find((candidate) => candidate.playerId === playerId);
     if (!player) throw new RshogiPlayerNotFoundError(playerId);
     const allGames = MOCK_RSHOGI_GAME_LIST.filter(
-        (game) => game.senteName === player.displayName || game.goteName === player.displayName,
+        (game) =>
+            mockGamePlayerId(game, "sente") === playerId ||
+            mockGamePlayerId(game, "gote") === playerId,
     );
     const normalizedPage = Math.max(1, page);
     const normalizedPageSize = Math.min(Math.max(1, pageSize), MAX_MOCK_LIMIT);

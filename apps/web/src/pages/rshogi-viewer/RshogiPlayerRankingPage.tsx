@@ -1,4 +1,4 @@
-import type { RshogiPlayerSummary } from "@shogi/match-client";
+import type { RshogiPlayerList, RshogiPlayerSummary } from "@shogi/match-client";
 import { fetchRshogiPlayerList } from "@shogi/match-client";
 import { Link } from "@tanstack/react-router";
 import type { ReactElement } from "react";
@@ -7,11 +7,9 @@ import { HeaderNav } from "../../components/HeaderNav";
 import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
 import { StatusBanner } from "../../components/StatusBanner";
+import { resolveRshogiApiBaseUrl } from "../../lib/rshogiApiBaseUrl";
 
-const resolveApiBaseUrl = (): string | undefined => {
-    const raw = import.meta.env.VITE_RSHOGI_API_BASE as string | undefined;
-    return raw?.trim() || undefined;
-};
+const PAGE_SIZE = 50;
 
 const formatRate = (rating: number): string => Math.round(rating).toLocaleString("ja-JP");
 
@@ -25,6 +23,7 @@ const lastPlayed = (value: number | undefined): string => {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "日時不明";
     return new Intl.DateTimeFormat("ja-JP", {
+        year: "numeric",
         month: "short",
         day: "numeric",
         hour: "2-digit",
@@ -33,8 +32,9 @@ const lastPlayed = (value: number | undefined): string => {
 };
 
 export default function RshogiPlayerRankingPage(): ReactElement {
-    const apiBaseUrl = resolveApiBaseUrl();
-    const [players, setPlayers] = useState<RshogiPlayerSummary[]>([]);
+    const apiBaseUrl = resolveRshogiApiBaseUrl();
+    const [ranking, setRanking] = useState<RshogiPlayerList | null>(null);
+    const [pageRequest, setPageRequest] = useState({ page: 1, attempt: 0 });
     const [isLoading, setIsLoading] = useState(true);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -42,9 +42,14 @@ export default function RshogiPlayerRankingPage(): ReactElement {
         const controller = new AbortController();
         setIsLoading(true);
         setErrorMessage(null);
-        void fetchRshogiPlayerList({ baseUrl: apiBaseUrl, signal: controller.signal })
+        void fetchRshogiPlayerList({
+            baseUrl: apiBaseUrl,
+            page: pageRequest.page,
+            pageSize: PAGE_SIZE,
+            signal: controller.signal,
+        })
             .then((response) => {
-                if (!controller.signal.aborted) setPlayers(response.players);
+                if (!controller.signal.aborted) setRanking(response);
             })
             .catch((error: unknown) => {
                 if (!controller.signal.aborted) {
@@ -59,12 +64,21 @@ export default function RshogiPlayerRankingPage(): ReactElement {
                 if (!controller.signal.aborted) setIsLoading(false);
             });
         return () => controller.abort();
-    }, [apiBaseUrl]);
+    }, [apiBaseUrl, pageRequest]);
 
+    const players = ranking?.players ?? [];
+    // player.games の合計を 2 で割る方法は全対局が二人制という前提に依存するため、
+    // 全体集計はページ外の選手も含めてサーバが返す値を使う。
     const totals = {
-        players: players.length,
-        games: Math.round(players.reduce((sum, player) => sum + player.games, 0) / 2),
-        leader: players[0],
+        players: ranking?.totalCount ?? 0,
+        games: ranking?.totalGames ?? 0,
+        leader: ranking?.leader,
+    };
+    const totalPages = ranking ? Math.max(1, Math.ceil(ranking.totalCount / ranking.pageSize)) : 1;
+    const firstRank = ranking ? (ranking.page - 1) * ranking.pageSize + 1 : 1;
+    const displayedPage = ranking?.page ?? pageRequest.page;
+    const requestPage = (nextPage: number): void => {
+        setPageRequest((current) => ({ page: nextPage, attempt: current.attempt + 1 }));
     };
 
     return (
@@ -159,54 +173,88 @@ export default function RshogiPlayerRankingPage(): ReactElement {
                         </div>
                     )}
                     {!isLoading && players.length > 0 && (
-                        <ol aria-label="選手ランキング" className="divide-y divide-wafuu-border">
-                            {players.map((player, index) => (
-                                <li key={player.playerId}>
-                                    <Link
-                                        to="/rshogi-viewer/players/$playerId"
-                                        params={{ playerId: player.playerId }}
-                                        className="group grid grid-cols-[3rem_minmax(0,1fr)_5rem] items-center px-3 py-3 transition-colors hover:bg-wafuu-kincha/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-wafuu-shu sm:grid-cols-[4rem_minmax(0,1fr)_7rem_9rem_8rem] sm:px-5 sm:py-4"
-                                    >
-                                        <span
-                                            className={
-                                                index < 3
-                                                    ? "font-serif text-2xl font-bold text-wafuu-shu"
-                                                    : "font-mono text-sm text-muted-foreground"
-                                            }
+                        <ol
+                            start={firstRank}
+                            aria-label="選手ランキング"
+                            className="divide-y divide-wafuu-border"
+                        >
+                            {players.map((player, index) => {
+                                const rank = firstRank + index;
+                                return (
+                                    <li key={player.playerId}>
+                                        <Link
+                                            to="/rshogi-viewer/players/$playerId"
+                                            params={{ playerId: player.playerId }}
+                                            className="group grid grid-cols-[3rem_minmax(0,1fr)_5rem] items-center px-3 py-3 transition-colors hover:bg-wafuu-kincha/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-wafuu-shu sm:grid-cols-[4rem_minmax(0,1fr)_7rem_9rem_8rem] sm:px-5 sm:py-4"
                                         >
-                                            {String(index + 1).padStart(2, "0")}
-                                        </span>
-                                        <span className="min-w-0">
-                                            <span className="flex items-center gap-2">
-                                                <strong className="truncate font-serif text-base text-wafuu-sumi group-hover:text-wafuu-shu sm:text-lg">
-                                                    {player.displayName}
-                                                </strong>
-                                                {player.legacy && (
-                                                    <span className="shrink-0 rounded-sm border border-wafuu-border px-1.5 py-0.5 text-[9px] tracking-wider text-muted-foreground">
-                                                        LEGACY
-                                                    </span>
-                                                )}
+                                            <span
+                                                className={
+                                                    rank <= 3
+                                                        ? "font-serif text-2xl font-bold text-wafuu-shu"
+                                                        : "font-mono text-sm text-muted-foreground"
+                                                }
+                                            >
+                                                {String(rank).padStart(2, "0")}
                                             </span>
-                                            <span className="mt-0.5 block text-[11px] text-muted-foreground sm:text-xs">
-                                                {player.games}局 · 最終{" "}
-                                                {lastPlayed(player.lastPlayedAtMs)}
+                                            <span className="min-w-0">
+                                                <span className="flex items-center gap-2">
+                                                    <strong className="truncate font-serif text-base text-wafuu-sumi group-hover:text-wafuu-shu sm:text-lg">
+                                                        {player.displayName}
+                                                    </strong>
+                                                    {player.legacy && (
+                                                        <span className="shrink-0 rounded-sm border border-wafuu-border px-1.5 py-0.5 text-[9px] tracking-wider text-muted-foreground">
+                                                            LEGACY
+                                                        </span>
+                                                    )}
+                                                </span>
+                                                <span className="mt-0.5 block text-[11px] text-muted-foreground sm:text-xs">
+                                                    {player.games}局 · 最終{" "}
+                                                    {lastPlayed(player.lastPlayedAtMs)}
+                                                </span>
                                             </span>
-                                        </span>
-                                        <strong className="text-right font-mono text-lg tabular-nums text-wafuu-sumi sm:text-xl">
-                                            {formatRate(player.rating)}
-                                        </strong>
-                                        <span className="hidden text-right font-mono text-sm tabular-nums text-muted-foreground sm:block">
-                                            {player.wins}–{player.losses}–{player.draws}
-                                        </span>
-                                        <span className="hidden text-right font-mono text-sm tabular-nums text-muted-foreground sm:block">
-                                            {winRate(player)}
-                                        </span>
-                                    </Link>
-                                </li>
-                            ))}
+                                            <strong className="text-right font-mono text-lg tabular-nums text-wafuu-sumi sm:text-xl">
+                                                {formatRate(player.rating)}
+                                            </strong>
+                                            <span className="hidden text-right font-mono text-sm tabular-nums text-muted-foreground sm:block">
+                                                {player.wins}–{player.losses}–{player.draws}
+                                            </span>
+                                            <span className="hidden text-right font-mono text-sm tabular-nums text-muted-foreground sm:block">
+                                                {winRate(player)}
+                                            </span>
+                                        </Link>
+                                    </li>
+                                );
+                            })}
                         </ol>
                     )}
                 </section>
+
+                {totalPages > 1 && (
+                    <nav
+                        className="flex items-center justify-between border-t border-wafuu-border pt-3"
+                        aria-label="選手番付ページ"
+                    >
+                        <button
+                            type="button"
+                            onClick={() => requestPage(Math.max(1, displayedPage - 1))}
+                            disabled={displayedPage <= 1 || isLoading}
+                            className="rounded-md border border-wafuu-border px-4 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:opacity-40"
+                        >
+                            ← 上位
+                        </button>
+                        <span className="font-mono text-xs text-muted-foreground">
+                            {displayedPage} / {totalPages}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => requestPage(Math.min(totalPages, displayedPage + 1))}
+                            disabled={displayedPage >= totalPages || isLoading}
+                            className="rounded-md border border-wafuu-border px-4 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:opacity-40"
+                        >
+                            下位 →
+                        </button>
+                    </nav>
+                )}
 
                 <p className="text-xs leading-6 text-muted-foreground">
                     Elo は初期値 1500、K=32、引分 0.5 で算出。同一 ID

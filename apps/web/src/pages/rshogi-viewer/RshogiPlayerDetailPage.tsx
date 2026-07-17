@@ -8,21 +8,17 @@ import { HeaderNav } from "../../components/HeaderNav";
 import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
 import { StatusBanner } from "../../components/StatusBanner";
+import { resolveRshogiApiBaseUrl } from "../../lib/rshogiApiBaseUrl";
 
 const PAGE_SIZE = 20;
 const routeApi = getRouteApi("/rshogi-viewer/players/$playerId");
 
-const resolveApiBaseUrl = (): string | undefined => {
-    const raw = import.meta.env.VITE_RSHOGI_API_BASE as string | undefined;
-    return raw?.trim() || undefined;
-};
-
 export default function RshogiPlayerDetailPage(): ReactElement {
     const { playerId } = routeApi.useParams();
     const navigate = useNavigate();
-    const apiBaseUrl = resolveApiBaseUrl();
+    const apiBaseUrl = resolveRshogiApiBaseUrl();
     const [detail, setDetail] = useState<RshogiPlayerDetail | null>(null);
-    const [page, setPage] = useState(1);
+    const [pageRequest, setPageRequest] = useState({ page: 1, attempt: 0 });
     const [isLoading, setIsLoading] = useState(true);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -32,7 +28,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
         setErrorMessage(null);
         void fetchRshogiPlayerDetail(playerId, {
             baseUrl: apiBaseUrl,
-            page,
+            page: pageRequest.page,
             pageSize: PAGE_SIZE,
             signal: controller.signal,
         })
@@ -52,10 +48,14 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                 if (!controller.signal.aborted) setIsLoading(false);
             });
         return () => controller.abort();
-    }, [apiBaseUrl, page, playerId]);
+    }, [apiBaseUrl, pageRequest, playerId]);
 
     const player = detail?.player;
     const totalPages = detail ? Math.max(1, Math.ceil(detail.totalCount / detail.pageSize)) : 1;
+    const displayedPage = detail?.page ?? pageRequest.page;
+    const requestPage = (nextPage: number): void => {
+        setPageRequest((current) => ({ page: nextPage, attempt: current.attempt + 1 }));
+    };
 
     return (
         <>
@@ -172,23 +172,21 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                                 >
                                     <button
                                         type="button"
-                                        onClick={() =>
-                                            setPage((current) => Math.max(1, current - 1))
-                                        }
-                                        disabled={page <= 1 || isLoading}
+                                        onClick={() => requestPage(Math.max(1, displayedPage - 1))}
+                                        disabled={displayedPage <= 1 || isLoading}
                                         className="rounded-md border border-wafuu-border px-4 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:opacity-40"
                                     >
                                         ← 新しい対局
                                     </button>
                                     <span className="font-mono text-xs text-muted-foreground">
-                                        {page} / {totalPages}
+                                        {displayedPage} / {totalPages}
                                     </span>
                                     <button
                                         type="button"
                                         onClick={() =>
-                                            setPage((current) => Math.min(totalPages, current + 1))
+                                            requestPage(Math.min(totalPages, displayedPage + 1))
                                         }
-                                        disabled={page >= totalPages || isLoading}
+                                        disabled={displayedPage >= totalPages || isLoading}
                                         className="rounded-md border border-wafuu-border px-4 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:opacity-40"
                                     >
                                         古い対局 →

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -19,35 +19,54 @@ vi.mock("../../components/StatusBanner", () => ({
 
 const { default: RshogiPlayerRankingPage } = await import("./RshogiPlayerRankingPage");
 
+const rankingResponse = {
+    players: [
+        {
+            playerId: "p_one",
+            displayName: "銀将",
+            rating: 1612.4,
+            games: 12,
+            wins: 8,
+            losses: 3,
+            draws: 1,
+            lastPlayedAtMs: 1_777_392_877_244,
+            legacy: false,
+        },
+        {
+            playerId: "legacy_two",
+            displayName: "桂馬",
+            rating: 1490,
+            games: 12,
+            wins: 3,
+            losses: 8,
+            draws: 1,
+            lastPlayedAtMs: 1_777_392_800_000,
+            legacy: true,
+        },
+    ],
+    page: 1,
+    pageSize: 50,
+    totalCount: 100,
+    totalGames: 12,
+    leader: {
+        playerId: "p_one",
+        displayName: "銀将",
+        rating: 1612.4,
+        games: 12,
+        wins: 8,
+        losses: 3,
+        draws: 1,
+        lastPlayedAtMs: 1_777_392_877_244,
+        legacy: false,
+    },
+};
+
 describe("RshogiPlayerRankingPage", () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        fetchRshogiPlayerList.mockResolvedValue({
-            players: [
-                {
-                    playerId: "p_one",
-                    displayName: "銀将",
-                    rating: 1612.4,
-                    games: 12,
-                    wins: 8,
-                    losses: 3,
-                    draws: 1,
-                    lastPlayedAtMs: 1_777_392_877_244,
-                    legacy: false,
-                },
-                {
-                    playerId: "legacy_two",
-                    displayName: "桂馬",
-                    rating: 1490,
-                    games: 12,
-                    wins: 3,
-                    losses: 8,
-                    draws: 1,
-                    lastPlayedAtMs: 1_777_392_800_000,
-                    legacy: true,
-                },
-            ],
-        });
+        fetchRshogiPlayerList.mockImplementation((options: { page?: number }) =>
+            Promise.resolve({ ...rankingResponse, page: options.page ?? 1 }),
+        );
     });
 
     it("Elo順の番付と集計値を表示する", async () => {
@@ -59,7 +78,43 @@ describe("RshogiPlayerRankingPage", () => {
         expect(screen.getByText("LEGACY")).toBeTruthy();
         expect(screen.getByText("12", { selector: "section > div > strong" })).toBeTruthy();
         expect(fetchRshogiPlayerList).toHaveBeenCalledWith(
-            expect.objectContaining({ baseUrl: "https://example.test/rshogi" }),
+            expect.objectContaining({
+                baseUrl: "https://example.test/rshogi",
+                page: 1,
+                pageSize: 50,
+            }),
+        );
+        expect(screen.getAllByText(/2026年/)).toHaveLength(2);
+
+        fireEvent.click(screen.getByRole("button", { name: "下位 →" }));
+        await waitFor(() =>
+            expect(fetchRshogiPlayerList).toHaveBeenLastCalledWith(
+                expect.objectContaining({ page: 2, pageSize: 50 }),
+            ),
+        );
+        const list = screen.getByRole("list", { name: "選手ランキング" });
+        await waitFor(() => expect(list.getAttribute("start")).toBe("51"));
+        expect(screen.getByText("51").className).not.toContain("text-wafuu-shu");
+    });
+
+    it("下位ページの取得失敗時は成功済みページを表示して再試行できる", async () => {
+        render(<RshogiPlayerRankingPage />);
+        await screen.findByText("桂馬");
+
+        fetchRshogiPlayerList.mockRejectedValueOnce(new Error("page unavailable"));
+        fireEvent.click(screen.getByRole("button", { name: "下位 →" }));
+
+        expect((await screen.findByRole("alert")).textContent).toContain("page unavailable");
+        expect(screen.getByText("1 / 2")).toBeTruthy();
+        expect(screen.getByRole("list", { name: "選手ランキング" }).getAttribute("start")).toBe(
+            "1",
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "下位 →" }));
+        await waitFor(() =>
+            expect(screen.getByRole("list", { name: "選手ランキング" }).getAttribute("start")).toBe(
+                "51",
+            ),
         );
     });
 

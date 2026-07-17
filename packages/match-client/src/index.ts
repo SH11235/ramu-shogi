@@ -51,6 +51,7 @@ export type {
     FetchRshogiGameSearchOptions,
     FetchRshogiLiveGameListOptions,
     FetchRshogiPlayerDetailOptions,
+    FetchRshogiPlayerListOptions,
     RshogiClockKind,
     RshogiEndReason,
     RshogiGame,
