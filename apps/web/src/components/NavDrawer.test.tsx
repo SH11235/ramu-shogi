@@ -55,6 +55,7 @@ describe("NavDrawer", () => {
             "マイ棋譜 要ログイン",
             "公開棋譜",
             "ライブ観戦",
+            "選手番付",
             "CSA 棋譜ビューア",
             "NNUE モデル 要ログイン",
             "ログイン",
@@ -82,6 +83,14 @@ describe("NavDrawer", () => {
         expect(screen.getByRole("link", { name: "ライブ観戦" }).getAttribute("aria-current")).toBe(
             null,
         );
+
+        const playerSections = buildNavSections("/rshogi-viewer/players/p_one");
+        const activePlayerItems = playerSections
+            .flatMap((section) => section.items)
+            .filter((item) => item.active);
+        expect(activePlayerItems).toEqual([
+            expect.objectContaining({ to: "/rshogi-viewer/players" }),
+        ]);
     });
 
     it("リンククリックでドロワーを閉じる", async () => {

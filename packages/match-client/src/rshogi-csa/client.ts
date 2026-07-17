@@ -78,8 +78,12 @@ export interface RshogiGameMeta {
     gameId: string;
     /** 黒 (= 先手 / sente) のハンドル。 */
     senteName: string;
+    /** 先手の公開用不透明 player ID。過去棋譜では存在しないことがある。 */
+    sentePlayerId?: string;
     /** 白 (= 後手 / gote) のハンドル。 */
     goteName: string;
+    /** 後手の公開用不透明 player ID。過去棋譜では存在しないことがある。 */
+    gotePlayerId?: string;
     /** 開始時刻 (epoch ms)。Date 化は UI 側で行う (タイムゾーン事故防止)。 */
     startedAtMs?: number;
     /** 終了時刻 (epoch ms)。 */
@@ -109,7 +113,9 @@ export interface RshogiGame {
 export interface RshogiGameSummary {
     gameId: string;
     senteName: string;
+    sentePlayerId?: string;
     goteName: string;
+    gotePlayerId?: string;
     startedAtMs?: number;
     endedAtMs?: number;
     timeControl?: RshogiTimeControl;
@@ -125,6 +131,32 @@ export interface RshogiGameListPage {
 }
 
 export interface RshogiGameSearchPage {
+    games: RshogiGameSummary[];
+    page: number;
+    pageSize: number;
+    totalCount: number;
+}
+
+/** 終局履歴から算出した選手の Elo と通算成績。 */
+export interface RshogiPlayerSummary {
+    playerId: string;
+    displayName: string;
+    rating: number;
+    games: number;
+    wins: number;
+    losses: number;
+    draws: number;
+    lastPlayedAtMs?: number;
+    /** secret-aware ID 導入前の、名前だけで集約された履歴か。 */
+    legacy: boolean;
+}
+
+export interface RshogiPlayerList {
+    players: RshogiPlayerSummary[];
+}
+
+export interface RshogiPlayerDetail {
+    player: RshogiPlayerSummary;
     games: RshogiGameSummary[];
     page: number;
     pageSize: number;
@@ -196,6 +228,13 @@ export interface FetchRshogiLiveGameListOptions extends FetchRshogiGameOptions {
     limit?: number;
 }
 
+export interface FetchRshogiPlayerDetailOptions extends FetchRshogiGameOptions {
+    /** 1 始まり。 */
+    page?: number;
+    /** 1 ページあたり件数 (1〜100、サーバ既定 20)。 */
+    pageSize?: number;
+}
+
 export class RshogiGameNotFoundError extends Error {
     readonly gameId: string;
     constructor(gameId: string) {
@@ -213,6 +252,15 @@ export class RshogiGameFetchError extends Error {
         this.name = "RshogiGameFetchError";
         this.gameId = gameId;
         this.status = status;
+    }
+}
+
+export class RshogiPlayerNotFoundError extends Error {
+    readonly playerId: string;
+    constructor(playerId: string) {
+        super(`rshogi player not found: ${playerId}`);
+        this.name = "RshogiPlayerNotFoundError";
+        this.playerId = playerId;
     }
 }
 
@@ -295,7 +343,9 @@ interface GameWireBase {
     started_at_ms?: number | null;
     ended_at_ms?: number | null;
     black_handle: string;
+    black_player_id?: string | null;
     white_handle: string;
+    white_player_id?: string | null;
     result_kind?: RshogiResultKindWire | string | null;
     end_reason?: RshogiEndReasonWire | string | null;
     moves_count?: number | null;
@@ -323,6 +373,30 @@ interface GameListResponseWire {
 }
 
 interface GameSearchResponseWire {
+    games?: GameWireBase[];
+    page?: number;
+    page_size?: number;
+    total_count?: number;
+}
+
+interface PlayerSummaryWire {
+    player_id: string;
+    display_name: string;
+    rating: number;
+    games: number;
+    wins: number;
+    losses: number;
+    draws: number;
+    last_played_at_ms?: number | null;
+    legacy?: boolean;
+}
+
+interface PlayerListResponseWire {
+    players?: PlayerSummaryWire[];
+}
+
+interface PlayerDetailResponseWire {
+    player?: PlayerSummaryWire;
     games?: GameWireBase[];
     page?: number;
     page_size?: number;
@@ -475,7 +549,9 @@ const decodeGameSummary = (wire: GameWireBase): RshogiGameSummary => ({
     gameId: wire.game_id,
     // black=sente, white=gote のマッピング (rshogi 側の命名と TS 側の慣習を橋渡しする)
     senteName: wire.black_handle,
+    sentePlayerId: decodeStringOrUndefined(wire.black_player_id ?? undefined),
     goteName: wire.white_handle,
+    gotePlayerId: decodeStringOrUndefined(wire.white_player_id ?? undefined),
     startedAtMs: decodeNumberOrUndefined(wire.started_at_ms),
     endedAtMs: decodeNumberOrUndefined(wire.ended_at_ms),
     timeControl: decodeClock(wire.clock),
@@ -494,7 +570,9 @@ const decodeGameDetail = (wire: GameDetailWire): RshogiGame => {
     const meta: RshogiGameMeta = {
         gameId: wire.game_id,
         senteName: summary.senteName,
+        sentePlayerId: summary.sentePlayerId,
         goteName: summary.goteName,
+        gotePlayerId: summary.gotePlayerId,
         startedAtMs: summary.startedAtMs,
         endedAtMs: summary.endedAtMs,
         event: decodeStringOrUndefined(metaWire.event ?? undefined),
@@ -519,6 +597,18 @@ const decodeGameSearchResponse = (wire: GameSearchResponseWire): RshogiGameSearc
     page: wire.page ?? 1,
     pageSize: wire.page_size ?? 20, // server default
     totalCount: wire.total_count ?? 0,
+});
+
+const decodePlayerSummary = (wire: PlayerSummaryWire): RshogiPlayerSummary => ({
+    playerId: wire.player_id,
+    displayName: wire.display_name,
+    rating: Number.isFinite(wire.rating) ? wire.rating : 1500,
+    games: Number.isFinite(wire.games) ? wire.games : 0,
+    wins: Number.isFinite(wire.wins) ? wire.wins : 0,
+    losses: Number.isFinite(wire.losses) ? wire.losses : 0,
+    draws: Number.isFinite(wire.draws) ? wire.draws : 0,
+    lastPlayedAtMs: decodeNumberOrUndefined(wire.last_played_at_ms),
+    legacy: wire.legacy === true,
 });
 
 const decodeLiveGameSummary = (wire: LiveGameWireBase): RshogiLiveGameSummary => ({
@@ -673,6 +763,77 @@ export async function fetchRshogiGameSearch(
     return decodeGameSearchResponse(payload);
 }
 
+/** 終局履歴から算出された選手ランキングを取得する。 */
+export async function fetchRshogiPlayerList(
+    options: FetchRshogiGameOptions = {},
+): Promise<RshogiPlayerList> {
+    const baseUrl = options.baseUrl?.trim();
+    if (!baseUrl) return { players: buildMockPlayerList() };
+
+    const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+    if (!fetchImpl) {
+        throw new RshogiGameFetchError("", "fetch is not available in this environment");
+    }
+    const response = await fetchImpl(
+        `${trimTrailingSlash(baseUrl)}/players`,
+        buildRequestInit(options.signal),
+    );
+    if (!response.ok) {
+        throw new RshogiGameFetchError(
+            "",
+            `rshogi API returned ${response.status} ${response.statusText}`,
+            response.status,
+        );
+    }
+    const payload = (await response.json()) as PlayerListResponseWire | null;
+    if (!payload || !Array.isArray(payload.players)) {
+        throw new RshogiGameFetchError("", "rshogi API response missing players array");
+    }
+    return { players: payload.players.map(decodePlayerSummary) };
+}
+
+/** 選手の集計成績と、その選手が参加した終局済棋譜を取得する。 */
+export async function fetchRshogiPlayerDetail(
+    playerId: string,
+    options: FetchRshogiPlayerDetailOptions = {},
+): Promise<RshogiPlayerDetail> {
+    if (!playerId) throw new RshogiPlayerNotFoundError(playerId);
+    const baseUrl = options.baseUrl?.trim();
+    if (!baseUrl) return mockPlayerDetail(playerId, options.page, options.pageSize);
+
+    const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+    if (!fetchImpl) {
+        throw new RshogiGameFetchError("", "fetch is not available in this environment");
+    }
+    const params = new URLSearchParams();
+    if (options.page !== undefined) params.set("page", String(options.page));
+    if (options.pageSize !== undefined) params.set("pageSize", String(options.pageSize));
+    const query = params.toString();
+    const response = await fetchImpl(
+        `${trimTrailingSlash(baseUrl)}/players/${encodeURIComponent(playerId)}${query ? `?${query}` : ""}`,
+        buildRequestInit(options.signal),
+    );
+    if (response.status === 404) throw new RshogiPlayerNotFoundError(playerId);
+    if (!response.ok) {
+        throw new RshogiGameFetchError(
+            "",
+            `rshogi API returned ${response.status} ${response.statusText}`,
+            response.status,
+        );
+    }
+    const payload = (await response.json()) as PlayerDetailResponseWire | null;
+    if (!payload?.player || !Array.isArray(payload.games)) {
+        throw new RshogiGameFetchError("", "rshogi API response missing player/games");
+    }
+    return {
+        player: decodePlayerSummary(payload.player),
+        games: payload.games.map(decodeGameSummary),
+        page: payload.page ?? 1,
+        pageSize: payload.page_size ?? 20,
+        totalCount: payload.total_count ?? 0,
+    };
+}
+
 /**
  * rshogi の進行中対局一覧 (`GET /api/v1/games/live`) を取得する。
  *
@@ -722,6 +883,65 @@ export async function fetchRshogiLiveGameList(
 const DEFAULT_MOCK_LIMIT = 50;
 const MAX_MOCK_LIMIT = 100;
 const DEFAULT_MOCK_SEARCH_PAGE_SIZE = 20;
+
+const mockPlayerId = (name: string): string => `legacy_mock_${encodeURIComponent(name)}`;
+
+const buildMockPlayerList = (): RshogiPlayerSummary[] => {
+    const records = new Map<string, Omit<RshogiPlayerSummary, "rating">>();
+    for (const game of [...MOCK_RSHOGI_GAME_LIST].reverse()) {
+        const winner = game.result?.winner;
+        for (const [side, name] of [
+            ["sente", game.senteName],
+            ["gote", game.goteName],
+        ] as const) {
+            const id = mockPlayerId(name);
+            const current = records.get(id) ?? {
+                playerId: id,
+                displayName: name,
+                games: 0,
+                wins: 0,
+                losses: 0,
+                draws: 0,
+                lastPlayedAtMs: undefined,
+                legacy: true,
+            };
+            current.games += 1;
+            if (!winner) current.draws += 1;
+            else if (winner === side) current.wins += 1;
+            else current.losses += 1;
+            current.lastPlayedAtMs = Math.max(current.lastPlayedAtMs ?? 0, game.endedAtMs ?? 0);
+            records.set(id, current);
+        }
+    }
+    return [...records.values()]
+        .map((record) => ({
+            ...record,
+            rating: Math.round(1500 + (record.wins - record.losses) * 16),
+        }))
+        .sort((a, b) => b.rating - a.rating || a.displayName.localeCompare(b.displayName));
+};
+
+const mockPlayerDetail = (
+    playerId: string,
+    page = 1,
+    pageSize = DEFAULT_MOCK_SEARCH_PAGE_SIZE,
+): RshogiPlayerDetail => {
+    const player = buildMockPlayerList().find((candidate) => candidate.playerId === playerId);
+    if (!player) throw new RshogiPlayerNotFoundError(playerId);
+    const allGames = MOCK_RSHOGI_GAME_LIST.filter(
+        (game) => game.senteName === player.displayName || game.goteName === player.displayName,
+    );
+    const normalizedPage = Math.max(1, page);
+    const normalizedPageSize = Math.min(Math.max(1, pageSize), MAX_MOCK_LIMIT);
+    const start = (normalizedPage - 1) * normalizedPageSize;
+    return {
+        player,
+        games: allGames.slice(start, start + normalizedPageSize),
+        page: normalizedPage,
+        pageSize: normalizedPageSize,
+        totalCount: allGames.length,
+    };
+};
 
 const mockGameListPage = (
     cursor: string | undefined,

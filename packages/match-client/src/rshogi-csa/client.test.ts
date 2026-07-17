@@ -4,10 +4,121 @@ import {
     fetchRshogiGameList,
     fetchRshogiGameSearch,
     fetchRshogiLiveGameList,
+    fetchRshogiPlayerDetail,
+    fetchRshogiPlayerList,
     listMockRshogiGameIds,
     RshogiGameFetchError,
     RshogiGameNotFoundError,
+    RshogiPlayerNotFoundError,
 } from "./client";
+
+describe("rshogi player API (mock fallback)", () => {
+    it("builds a ranked player list and paginated detail from fixtures", async () => {
+        const list = await fetchRshogiPlayerList();
+        expect(list.players.length).toBeGreaterThan(1);
+        expect(list.players[0]).toEqual(
+            expect.objectContaining({
+                playerId: expect.stringMatching(/^legacy_mock_/),
+                rating: expect.any(Number),
+                games: expect.any(Number),
+                legacy: true,
+            }),
+        );
+
+        const detail = await fetchRshogiPlayerDetail(list.players[0].playerId, { pageSize: 1 });
+        expect(detail.player).toEqual(list.players[0]);
+        expect(detail.games).toHaveLength(1);
+        expect(detail.totalCount).toBeGreaterThanOrEqual(1);
+    });
+
+    it("rejects an unknown player id", async () => {
+        await expect(fetchRshogiPlayerDetail("missing")).rejects.toBeInstanceOf(
+            RshogiPlayerNotFoundError,
+        );
+    });
+});
+
+describe("rshogi player API (real baseUrl)", () => {
+    const summary = {
+        player_id: "p_012345",
+        display_name: "RAMU",
+        rating: 1542.4,
+        games: 12,
+        wins: 7,
+        losses: 4,
+        draws: 1,
+        last_played_at_ms: 1_777_392_877_244,
+        legacy: false,
+    };
+
+    it("decodes the ranking list", async () => {
+        const fetchImpl = vi.fn(
+            async () => new Response(JSON.stringify({ players: [summary] }), { status: 200 }),
+        ) as unknown as typeof fetch;
+        const result = await fetchRshogiPlayerList({
+            baseUrl: "https://rshogi.example.com/api/v1/",
+            fetchImpl,
+        });
+        expect(fetchImpl).toHaveBeenCalledWith("https://rshogi.example.com/api/v1/players", {
+            signal: undefined,
+            cache: "no-store",
+        });
+        expect(result.players[0]).toEqual({
+            playerId: "p_012345",
+            displayName: "RAMU",
+            rating: 1542.4,
+            games: 12,
+            wins: 7,
+            losses: 4,
+            draws: 1,
+            lastPlayedAtMs: 1_777_392_877_244,
+            legacy: false,
+        });
+    });
+
+    it("encodes the player id and decodes detail games with player ids", async () => {
+        const fetchImpl = vi.fn(
+            async () =>
+                new Response(
+                    JSON.stringify({
+                        player: summary,
+                        games: [
+                            {
+                                game_id: "g-1",
+                                black_handle: "RAMU",
+                                black_player_id: "p_012345",
+                                white_handle: "OTHER",
+                                white_player_id: "p_987654",
+                                result_kind: "WIN_BLACK",
+                                end_reason: "RESIGN",
+                            },
+                        ],
+                        page: 2,
+                        page_size: 10,
+                        total_count: 12,
+                    }),
+                    { status: 200 },
+                ),
+        ) as unknown as typeof fetch;
+        const result = await fetchRshogiPlayerDetail("p/a", {
+            baseUrl: "https://rshogi.example.com/api/v1",
+            page: 2,
+            pageSize: 10,
+            fetchImpl,
+        });
+        expect(fetchImpl).toHaveBeenCalledWith(
+            "https://rshogi.example.com/api/v1/players/p%2Fa?page=2&pageSize=10",
+            { signal: undefined, cache: "no-store" },
+        );
+        expect(result.games[0]).toEqual(
+            expect.objectContaining({
+                sentePlayerId: "p_012345",
+                gotePlayerId: "p_987654",
+            }),
+        );
+        expect(result).toEqual(expect.objectContaining({ page: 2, pageSize: 10, totalCount: 12 }));
+    });
+});
 
 describe("fetchRshogiGameSearch (mock fallback)", () => {
     it("filters by name and paginates the embedded fixtures", async () => {
