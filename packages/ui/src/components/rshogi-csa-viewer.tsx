@@ -47,9 +47,17 @@ const formatTimestampMs = (value: number | undefined): string => {
     return date.toLocaleString("ja-JP");
 };
 
+const formatMainTime = (seconds: number): string => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    if (minutes === 0) return `${remainingSeconds}秒`;
+    if (remainingSeconds === 0) return `${minutes}分`;
+    return `${minutes}分${remainingSeconds}秒`;
+};
+
 const formatTimeControl = (value: RshogiGame["meta"]["timeControl"]): string => {
     if (!value) return "持ち時間: 不明";
-    const main = `${Math.round(value.mainSeconds / 60)}分`;
+    const main = formatMainTime(value.mainSeconds);
     // byoyomiSeconds は ms からの丸め値なので、秒未満の秒読み (countdown_msec) は
     // ms 側を優先して 0.25秒 のように表示する
     const byoyomiValue =

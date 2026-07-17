@@ -109,7 +109,28 @@ describe("RshogiCsaViewer: 対局情報パネル", () => {
 
         renderViewer();
 
-        expect(await screen.findByText("持ち時間: 1分 + 秒読み0.25秒")).toBeTruthy();
+        expect(await screen.findByText("持ち時間: 30秒 + 秒読み0.25秒")).toBeTruthy();
+    });
+
+    it("10秒の持ち時間と100msの秒読みを丸めず表示する", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue({
+            meta: {
+                gameId: GAME_ID,
+                senteName: "alice",
+                goteName: "bob",
+                timeControl: {
+                    kind: "countdown_msec",
+                    mainSeconds: 10,
+                    byoyomiSeconds: 0,
+                    byoyomiMilliseconds: 100,
+                },
+            },
+            csa: CSA_TEXT,
+        });
+
+        renderViewer();
+
+        expect(await screen.findByText("持ち時間: 10秒 + 秒読み0.1秒")).toBeTruthy();
     });
 });
 
