@@ -54,7 +54,7 @@ describe("useBatchAnalysis", () => {
         expect(analyzePosition).toHaveBeenCalledTimes(1);
     });
 
-    it("NNUE未ダウンロード後に分岐ノード解析が成功したら古いエラーメッセージを消す", async () => {
+    it("分岐ノード解析はNNUE未ダウンロード中の案内を維持し、ダウンロード後の成功時に消す", async () => {
         const startPosition = {
             board: createInitialBoard(),
             hands: createEmptyHands(),
@@ -64,7 +64,13 @@ describe("useBatchAnalysis", () => {
         const nodePosition = { ...startPosition, turn: "gote" as const, ply: 1 };
         const kifuTree = addMove(createKifuTree(startPosition, "startpos"), "7g7f", nodePosition);
         const analyzePosition = vi.fn().mockResolvedValue(undefined);
+        const openNnueManager = vi.fn();
         const setMessage = vi.fn();
+        const resolveNnue = vi
+            .fn()
+            .mockRejectedValueOnce(new Error("評価関数がダウンロードされていません"))
+            .mockRejectedValueOnce(new Error("評価関数がダウンロードされていません"))
+            .mockResolvedValueOnce({ nnueId: "ramu", fvScale: 8 });
 
         const { result } = renderHook(() =>
             useBatchAnalysis({
@@ -78,9 +84,7 @@ describe("useBatchAnalysis", () => {
                     cancel: vi.fn().mockResolvedValue(undefined),
                     dispose: vi.fn().mockResolvedValue(undefined),
                 },
-                resolveNnue: vi
-                    .fn()
-                    .mockRejectedValueOnce(new Error("評価関数がダウンロードされていません")),
+                resolveNnue,
                 analysisNnueSelection: { presetKey: "ramu", nnueId: null },
                 recordEvalByPly: vi.fn(),
                 recordEvalByNodeId: vi.fn(),
@@ -89,7 +93,7 @@ describe("useBatchAnalysis", () => {
                 analyzePosition,
                 isAnalyzing: false,
                 kifuTree,
-                openNnueManager: vi.fn(),
+                openNnueManager,
                 setMessage,
                 batchAnalysis: null,
                 setBatchAnalysis: vi.fn(),
@@ -98,6 +102,11 @@ describe("useBatchAnalysis", () => {
 
         await act(() => result.current.handleAnalyzePly(1));
         expect(setMessage).toHaveBeenLastCalledWith(expect.objectContaining({ type: "error" }));
+
+        await act(() => result.current.handleAnalyzeNode(kifuTree.currentNodeId));
+        expect(setMessage).toHaveBeenLastCalledWith(expect.objectContaining({ type: "error" }));
+        expect(openNnueManager).toHaveBeenLastCalledWith("missing-analysis");
+        expect(analyzePosition).not.toHaveBeenCalled();
 
         await act(() => result.current.handleAnalyzeNode(kifuTree.currentNodeId));
 
