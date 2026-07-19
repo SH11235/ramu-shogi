@@ -1,34 +1,21 @@
-import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type { EngineOption } from "@shogi/ui";
 import { EngineControlPanel, ShogiMatch, useDevMode } from "@shogi/ui";
 import { useState } from "react";
 import { HeaderNav } from "./components/HeaderNav";
 import { PageHeader } from "./components/PageHeader";
 import { useRemotePrivateNnueManager } from "./hooks/useRemotePrivateNnueManager";
-
-const resolveWasmThreads = () => {
-    const fallback = import.meta.env.DEV ? 4 : 1;
-    const raw = import.meta.env.VITE_WASM_THREADS;
-    if (typeof raw !== "string" || raw.trim() === "") return fallback;
-    const parsed = Number(raw);
-    if (!Number.isFinite(parsed) || parsed < 1) return fallback;
-    return Math.trunc(parsed);
-};
-
-const wasmThreads = resolveWasmThreads();
-
-const createEngineClient = () =>
-    createWasmEngineClient({
-        stopMode: "terminate",
-        defaultInitOptions: { threads: wasmThreads },
-        logWarningsToConsole: true,
-    });
+import { createWebWasmEngineClient } from "./platform/wasm-engine-client";
 
 const engineOptions: EngineOption[] = [
-    { id: "wasm", label: "内蔵エンジン", createClient: createEngineClient, kind: "internal" },
+    {
+        id: "wasm",
+        label: "内蔵エンジン",
+        createClient: createWebWasmEngineClient,
+        kind: "internal",
+    },
 ];
 
-const panelEngine = createEngineClient();
+const panelEngine = createWebWasmEngineClient();
 
 // NNUE プリセット manifest.json の URL（環境変数で設定、必須）
 const nnueManifestUrl = import.meta.env.VITE_NNUE_MANIFEST_URL as string;

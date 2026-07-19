@@ -232,8 +232,8 @@ const normalizeThreadCount = (value?: number): number | undefined => {
 };
 
 // 0 (自動) は UI が「自動（推奨: N）」と表示する検出値に解決する。
-// undefined のまま init に渡すとクライアントの既定値 (Web 本番は 1) に落ち、
-// ラベルと実際のスレッド数が食い違う
+// undefined のまま init に渡すとクライアントごとの既定値に落ち、
+// UI の「自動（推奨: N）」と実際のスレッド数が食い違う
 const getThreadCountForSide = (threads: Record<Player, number>, side: Player): number =>
     normalizeThreadCount(threads[side]) ?? detectParallelism().recommendedWorkers;
 

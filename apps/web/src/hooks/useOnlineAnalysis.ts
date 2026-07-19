@@ -1,6 +1,6 @@
-import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type { AnalysisMoveResult, OnlineAnalysis } from "@shogi/ui";
 import { useEffect, useRef, useState } from "react";
+import { createWebWasmEngineClient } from "../platform/wasm-engine-client";
 
 function buildPassRightsForAnalysis(moves: string[], initialCount: number) {
     const hasPass = moves.some((m) => m.toLowerCase() === "pass");
@@ -28,7 +28,7 @@ export function useOnlineAnalysis(
     searchTimeMs: number | null,
     initialPassCount = 1,
 ): OnlineAnalysis {
-    const engineRef = useRef<ReturnType<typeof createWasmEngineClient> | null>(null);
+    const engineRef = useRef<ReturnType<typeof createWebWasmEngineClient> | null>(null);
     const searchHandleRef = useRef<{ cancel(): Promise<void> } | null>(null);
     const unsubscribeRef = useRef<(() => void) | null>(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -36,10 +36,10 @@ export function useOnlineAnalysis(
     const topMovesMapRef = useRef<Map<number, AnalysisMoveResult>>(new Map());
 
     useEffect(() => {
-        const engine = createWasmEngineClient({ stopMode: "terminate" });
+        const engine = createWebWasmEngineClient();
         engineRef.current = engine;
         engine
-            .init({ threads: 1 })
+            .init()
             .then(() => engine.setOption("MultiPV", 3))
             .catch(console.error);
         return () => {
