@@ -217,6 +217,7 @@ export function useBatchAnalysis({
                 depth: analysisSettings.batchAnalysisDepth,
                 multiPv: analysisSettings.multiPv,
             });
+            setMessage(null);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             setAnalyzingState({ type: "error", ply: node.ply, message: errorMessage });

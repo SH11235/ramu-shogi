@@ -1,3 +1,4 @@
+import { addMove, createEmptyHands, createInitialBoard, createKifuTree } from "@shogi/app-core";
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_ANALYSIS_SETTINGS } from "../types";
@@ -51,5 +52,58 @@ describe("useBatchAnalysis", () => {
 
         expect(setMessage).toHaveBeenLastCalledWith(null);
         expect(analyzePosition).toHaveBeenCalledTimes(1);
+    });
+
+    it("NNUE未ダウンロード後に分岐ノード解析が成功したら古いエラーメッセージを消す", async () => {
+        const startPosition = {
+            board: createInitialBoard(),
+            hands: createEmptyHands(),
+            turn: "sente" as const,
+            ply: 0,
+        };
+        const nodePosition = { ...startPosition, turn: "gote" as const, ply: 1 };
+        const kifuTree = addMove(createKifuTree(startPosition, "startpos"), "7g7f", nodePosition);
+        const analyzePosition = vi.fn().mockResolvedValue(undefined);
+        const setMessage = vi.fn();
+
+        const { result } = renderHook(() =>
+            useBatchAnalysis({
+                kifMoves: [],
+                startSfen: "startpos",
+                analysisSettings: DEFAULT_ANALYSIS_SETTINGS,
+                enginePool: {
+                    isRunning: false,
+                    progress: null,
+                    start: vi.fn(),
+                    cancel: vi.fn().mockResolvedValue(undefined),
+                    dispose: vi.fn().mockResolvedValue(undefined),
+                },
+                resolveNnue: vi
+                    .fn()
+                    .mockRejectedValueOnce(new Error("評価関数がダウンロードされていません")),
+                analysisNnueSelection: { presetKey: "ramu", nnueId: null },
+                recordEvalByPly: vi.fn(),
+                recordEvalByNodeId: vi.fn(),
+                clearEvalByPly: vi.fn(),
+                clearEvalByNodeId: vi.fn(),
+                analyzePosition,
+                isAnalyzing: false,
+                kifuTree,
+                openNnueManager: vi.fn(),
+                setMessage,
+                batchAnalysis: null,
+                setBatchAnalysis: vi.fn(),
+            }),
+        );
+
+        await act(() => result.current.handleAnalyzePly(1));
+        expect(setMessage).toHaveBeenLastCalledWith(expect.objectContaining({ type: "error" }));
+
+        await act(() => result.current.handleAnalyzeNode(kifuTree.currentNodeId));
+
+        expect(analyzePosition).toHaveBeenCalledWith(
+            expect.objectContaining({ moves: ["7g7f"], ply: 1 }),
+        );
+        expect(setMessage).toHaveBeenLastCalledWith(null);
     });
 });
