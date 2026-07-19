@@ -82,7 +82,16 @@ export default function RshogiPlayerDetailPage(): ReactElement {
         )
             .then(async (response) => {
                 if (response.status !== 200) return null;
-                return (await response.json()) as NnueLabExperiment;
+                const body = (await response.json()) as Partial<NnueLabExperiment> | null;
+                // 外部 API 依存のため実行時にも必須フィールドを検証し、欠落時は非表示に倒す
+                if (
+                    typeof body?.tenant_slug !== "string" ||
+                    typeof body.experiment_id !== "string" ||
+                    typeof body.experiment_name !== "string"
+                ) {
+                    return null;
+                }
+                return body as NnueLabExperiment;
             })
             .then((experiment) => {
                 if (!controller.signal.aborted) setNnueLabExperiment(experiment);
@@ -195,7 +204,9 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                                         {nnueLabExperiment.experiment_name}
                                     </span>
                                 </span>
-                                <span className="shrink-0 text-sm">nnue-lab で実験を見る ↗</span>
+                                <span className="shrink-0 text-sm">
+                                    nnue-lab で実験を見る <span aria-hidden="true">↗</span>
+                                </span>
                             </a>
                         )}
 
