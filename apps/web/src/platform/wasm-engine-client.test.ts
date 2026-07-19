@@ -7,6 +7,7 @@ describe("resolveWasmThreads", () => {
         "",
         "false",
         "0",
+        "0.5",
         "-1",
         "NaN",
     ])("無効値 %s ではマルチスレッド既定値を返す", (raw) => {
