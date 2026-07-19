@@ -87,7 +87,7 @@ export default function RshogiPlayerRankingPage(): ReactElement {
                 items={[
                     { label: "ラム将棋", to: "/" },
                     { label: "rshogi viewer", to: "/rshogi-viewer" },
-                    { label: "選手番付" },
+                    { label: "レーティング" },
                 ]}
                 right={<HeaderNav />}
             />
@@ -100,14 +100,14 @@ export default function RshogiPlayerRankingPage(): ReactElement {
                     <div className="relative grid gap-7 lg:grid-cols-[1fr_auto] lg:items-end">
                         <div className="flex flex-col gap-3">
                             <p className="text-xs font-semibold tracking-[0.28em] text-wafuu-kincha">
-                                RSHOGI PLAYER RATING
+                                RSHOGI ELO RATING
                             </p>
                             <h1 className="font-serif text-3xl font-bold tracking-tight sm:text-4xl">
-                                選手番付
+                                レーティング
                             </h1>
                             <p className="max-w-2xl text-sm leading-7 text-wafuu-washi-warm/75">
                                 終局順に Elo を更新した、CSA
-                                サーバの選手ランキングです。勝敗だけでなく、対戦相手の強さも評点に反映します。
+                                サーバのレーティング一覧です。勝敗だけでなく、対戦相手の強さもレーティングに反映します。
                             </p>
                         </div>
                         <Link
@@ -123,11 +123,11 @@ export default function RshogiPlayerRankingPage(): ReactElement {
 
                 <section
                     className="grid grid-cols-3 overflow-hidden rounded-xl border border-wafuu-border bg-wafuu-washi-warm"
-                    aria-label="番付概要"
+                    aria-label="レーティング概要"
                 >
                     <div className="flex flex-col gap-1 border-r border-wafuu-border px-3 py-4 text-center sm:px-6">
                         <span className="text-[10px] tracking-widest text-muted-foreground sm:text-xs">
-                            登録選手
+                            集計対象
                         </span>
                         <strong className="font-serif text-xl text-wafuu-sumi sm:text-2xl">
                             {totals.players}
@@ -154,7 +154,7 @@ export default function RshogiPlayerRankingPage(): ReactElement {
                 <section className="overflow-hidden rounded-xl border border-wafuu-border bg-wafuu-washi-warm">
                     <div className="grid grid-cols-[3rem_minmax(0,1fr)_5rem] items-center border-b border-wafuu-border bg-wafuu-kincha/10 px-3 py-2 text-[11px] font-semibold tracking-widest text-muted-foreground sm:grid-cols-[4rem_minmax(0,1fr)_7rem_9rem_8rem] sm:px-5">
                         <span>順位</span>
-                        <span>選手</span>
+                        <span>名前</span>
                         <span className="text-right">RATING</span>
                         <span className="hidden text-right sm:block">勝–敗–分</span>
                         <span className="hidden text-right sm:block">勝率</span>
@@ -164,7 +164,7 @@ export default function RshogiPlayerRankingPage(): ReactElement {
                             className="px-5 py-12 text-center text-sm text-muted-foreground"
                             aria-live="polite"
                         >
-                            番付を編成中…
+                            レーティングを集計中…
                         </div>
                     )}
                     {!isLoading && players.length === 0 && !errorMessage && (
@@ -175,7 +175,7 @@ export default function RshogiPlayerRankingPage(): ReactElement {
                     {!isLoading && players.length > 0 && (
                         <ol
                             start={firstRank}
-                            aria-label="選手ランキング"
+                            aria-label="レーティング一覧"
                             className="divide-y divide-wafuu-border"
                         >
                             {players.map((player, index) => {
@@ -232,7 +232,7 @@ export default function RshogiPlayerRankingPage(): ReactElement {
                 {totalPages > 1 && (
                     <nav
                         className="flex items-center justify-between border-t border-wafuu-border pt-3"
-                        aria-label="選手番付ページ"
+                        aria-label="レーティング一覧ページ"
                     >
                         <button
                             type="button"
@@ -259,7 +259,7 @@ export default function RshogiPlayerRankingPage(): ReactElement {
                 <p className="text-xs leading-6 text-muted-foreground">
                     Elo は初期値 1500、K=32、引分 0.5 で算出。同一 ID
                     同士の対局は集計対象外です。LEGACY
-                    は識別情報導入前の棋譜を選手名だけでまとめた記録です。
+                    は識別情報導入前の棋譜を名前だけでまとめた記録です。
                 </p>
             </PageContainer>
         </>

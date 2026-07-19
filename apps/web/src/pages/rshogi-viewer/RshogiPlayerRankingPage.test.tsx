@@ -69,9 +69,12 @@ describe("RshogiPlayerRankingPage", () => {
         );
     });
 
-    it("Elo順の番付と集計値を表示する", async () => {
+    it("Elo順のレーティングと集計値を表示する", async () => {
         render(<RshogiPlayerRankingPage />);
 
+        expect(screen.getByRole("heading", { name: "レーティング" })).toBeTruthy();
+        expect(screen.getByText("集計対象")).toBeTruthy();
+        expect(screen.getByText("名前")).toBeTruthy();
         expect((await screen.findAllByText("銀将")).length).toBe(2);
         expect(screen.getByText("桂馬")).toBeTruthy();
         expect(screen.getByText("1,612")).toBeTruthy();
@@ -92,7 +95,7 @@ describe("RshogiPlayerRankingPage", () => {
                 expect.objectContaining({ page: 2, pageSize: 50 }),
             ),
         );
-        const list = screen.getByRole("list", { name: "選手ランキング" });
+        const list = screen.getByRole("list", { name: "レーティング一覧" });
         await waitFor(() => expect(list.getAttribute("start")).toBe("51"));
         expect(screen.getByText("51").className).not.toContain("text-wafuu-shu");
     });
@@ -106,15 +109,15 @@ describe("RshogiPlayerRankingPage", () => {
 
         expect((await screen.findByRole("alert")).textContent).toContain("page unavailable");
         expect(screen.getByText("1 / 2")).toBeTruthy();
-        expect(screen.getByRole("list", { name: "選手ランキング" }).getAttribute("start")).toBe(
+        expect(screen.getByRole("list", { name: "レーティング一覧" }).getAttribute("start")).toBe(
             "1",
         );
 
         fireEvent.click(screen.getByRole("button", { name: "下位 →" }));
         await waitFor(() =>
-            expect(screen.getByRole("list", { name: "選手ランキング" }).getAttribute("start")).toBe(
-                "51",
-            ),
+            expect(
+                screen.getByRole("list", { name: "レーティング一覧" }).getAttribute("start"),
+            ).toBe("51"),
         );
     });
 

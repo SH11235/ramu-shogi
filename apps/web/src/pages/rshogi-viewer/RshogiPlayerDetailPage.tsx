@@ -40,7 +40,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                     setErrorMessage(
                         error instanceof Error
                             ? error.message
-                            : `選手情報の取得に失敗しました: ${String(error)}`,
+                            : `レーティング情報の取得に失敗しました: ${String(error)}`,
                     );
                 }
             })
@@ -63,8 +63,8 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                 items={[
                     { label: "ラム将棋", to: "/" },
                     { label: "rshogi viewer", to: "/rshogi-viewer" },
-                    { label: "選手番付", to: "/rshogi-viewer/players" },
-                    { label: player?.displayName ?? "選手詳細" },
+                    { label: "レーティング", to: "/rshogi-viewer/players" },
+                    { label: player?.displayName ?? "レーティング詳細" },
                 ]}
                 right={<HeaderNav />}
             />
@@ -75,7 +75,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                         className="rounded-xl border border-wafuu-border bg-wafuu-washi-warm px-5 py-16 text-center text-sm text-muted-foreground"
                         aria-live="polite"
                     >
-                        選手記録を読み込み中…
+                        対局記録を読み込み中…
                     </div>
                 )}
                 {player && (
@@ -85,7 +85,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                                 <div className="flex min-w-0 flex-col justify-between gap-8 bg-wafuu-sumi px-5 py-7 text-wafuu-washi-warm sm:px-8 sm:py-9">
                                     <div className="flex flex-col gap-3">
                                         <div className="flex flex-wrap items-center gap-2 text-xs tracking-[0.18em] text-wafuu-kincha">
-                                            PLAYER RECORD
+                                            RATING RECORD
                                             {player.legacy && (
                                                 <span className="rounded-sm border border-wafuu-kincha/50 px-1.5 py-0.5 text-[9px]">
                                                     LEGACY
@@ -103,7 +103,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                                         to="/rshogi-viewer/players"
                                         className="w-fit border-b border-wafuu-kincha pb-1 text-sm hover:text-wafuu-kincha"
                                     >
-                                        ← 選手番付へ戻る
+                                        ← レーティングへ戻る
                                     </Link>
                                 </div>
                                 <div className="flex flex-col justify-center gap-1 border-t border-wafuu-border px-6 py-7 lg:border-l lg:border-t-0">
@@ -163,7 +163,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                                     })
                                 }
                                 isLoading={isLoading}
-                                emptyMessage="この選手の棋譜はありません。"
+                                emptyMessage="該当する棋譜はありません。"
                             />
                             {totalPages > 1 && (
                                 <nav

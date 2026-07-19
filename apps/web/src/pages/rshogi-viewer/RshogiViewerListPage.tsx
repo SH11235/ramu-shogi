@@ -227,7 +227,7 @@ export default function RshogiViewerListPage(): ReactElement {
                             to="/rshogi-viewer/players"
                             className="text-sm font-medium text-wafuu-shu underline-offset-2 hover:underline"
                         >
-                            選手番付を見る →
+                            レーティングを見る →
                         </Link>
                         <Link
                             to="/rshogi-viewer/live"
@@ -248,7 +248,7 @@ export default function RshogiViewerListPage(): ReactElement {
                             htmlFor="rshogi-search-name"
                             className="flex flex-col gap-1 text-sm text-wafuu-sumi"
                         >
-                            選手名
+                            名前
                             <Input
                                 id="rshogi-search-name"
                                 value={searchForm.name}

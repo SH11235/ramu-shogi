@@ -68,9 +68,11 @@ describe("RshogiPlayerDetailPage", () => {
         );
     });
 
-    it("選手成績、対局履歴、ページ移動を表示する", async () => {
+    it("レーティング、対局履歴、ページ移動を表示する", async () => {
         render(<RshogiPlayerDetailPage />);
         expect(await screen.findByRole("heading", { name: "銀将" })).toBeTruthy();
+        expect(screen.getByText("RATING RECORD")).toBeTruthy();
+        expect(screen.getByRole("link", { name: "← レーティングへ戻る" })).toBeTruthy();
         expect(screen.getByText("1,612")).toBeTruthy();
         expect(screen.getByText("全 21 局")).toBeTruthy();
         expect(fetchRshogiPlayerDetail).toHaveBeenCalledWith(

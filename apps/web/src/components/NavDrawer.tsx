@@ -73,7 +73,7 @@ function buildNavSections(pathname: string): NavSection[] {
             label: "観戦",
             items: [
                 { to: "/rshogi-viewer/live", label: "ライブ観戦", active: isLive },
-                { to: "/rshogi-viewer/players", label: "選手番付", active: isPlayers },
+                { to: "/rshogi-viewer/players", label: "レーティング", active: isPlayers },
                 {
                     to: "/rshogi-viewer",
                     label: "CSA 棋譜ビューア",

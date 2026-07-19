@@ -70,7 +70,8 @@ describe("RshogiViewerListPage search", () => {
         render(<RshogiViewerListPage />);
         await screen.findByText("もっと読み込む");
 
-        fireEvent.change(screen.getByLabelText("選手名"), { target: { value: "RAMU" } });
+        expect(screen.getByRole("link", { name: "レーティングを見る →" })).toBeTruthy();
+        fireEvent.change(screen.getByLabelText("名前"), { target: { value: "RAMU" } });
         fireEvent.click(screen.getByRole("button", { name: "検索" }));
 
         await waitFor(() => expect(fetchRshogiGameSearch).toHaveBeenCalledTimes(1));
@@ -90,7 +91,7 @@ describe("RshogiViewerListPage search", () => {
         render(<RshogiViewerListPage />);
         await screen.findByText("もっと読み込む");
 
-        fireEvent.change(screen.getByLabelText("選手名"), { target: { value: "RAMU" } });
+        fireEvent.change(screen.getByLabelText("名前"), { target: { value: "RAMU" } });
         fireEvent.click(screen.getByRole("button", { name: "検索" }));
 
         expect(await screen.findByText("ネットワークエラー")).toBeTruthy();
@@ -120,11 +121,11 @@ describe("RshogiViewerListPage search", () => {
         render(<RshogiViewerListPage />);
         await screen.findByText("もっと読み込む");
 
-        fireEvent.change(screen.getByLabelText("選手名"), { target: { value: "RAMU" } });
+        fireEvent.change(screen.getByLabelText("名前"), { target: { value: "RAMU" } });
         fireEvent.click(screen.getByRole("button", { name: "検索" }));
         await screen.findByText("23件中 1-20件");
 
-        fireEvent.change(screen.getByLabelText("選手名"), { target: { value: "OTHER" } });
+        fireEvent.change(screen.getByLabelText("名前"), { target: { value: "OTHER" } });
         fireEvent.click(screen.getByRole("button", { name: "次へ" }));
 
         await waitFor(() => expect(fetchRshogiGameSearch).toHaveBeenCalledTimes(2));
@@ -144,19 +145,19 @@ describe("RshogiViewerListPage search", () => {
         );
         expect(await screen.findByText("23件中 1-20件")).toBeTruthy();
         expect(screen.getByTestId("game-ids").textContent).toBe("search-1-returned");
-        expect((screen.getByLabelText("選手名") as HTMLInputElement).value).toBe("OTHER");
+        expect((screen.getByLabelText("名前") as HTMLInputElement).value).toBe("OTHER");
     });
 
     it("クリアで検索条件とpaginationを消し、cursor一覧へ戻る", async () => {
         render(<RshogiViewerListPage />);
         await screen.findByText("もっと読み込む");
-        fireEvent.change(screen.getByLabelText("選手名"), { target: { value: "RAMU" } });
+        fireEvent.change(screen.getByLabelText("名前"), { target: { value: "RAMU" } });
         fireEvent.click(screen.getByRole("button", { name: "検索" }));
         await screen.findByText("23件中 1-20件");
 
         fireEvent.click(screen.getByRole("button", { name: "クリア" }));
 
-        expect((screen.getByLabelText("選手名") as HTMLInputElement).value).toBe("");
+        expect((screen.getByLabelText("名前") as HTMLInputElement).value).toBe("");
         expect(screen.queryByText("23件中 1-20件")).toBeNull();
         expect(screen.getByText("もっと読み込む")).toBeTruthy();
         expect(screen.getByTestId("game-ids").textContent).toBe("recent-1");
