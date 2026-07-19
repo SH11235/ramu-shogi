@@ -33,10 +33,12 @@ export default function RshogiPlayerDetailPage(): ReactElement {
 
     // route の playerId が変わったら旧 player の詳細と nnue-lab カードを即座に
     // 破棄する (新詳細の取得が失敗しても旧 player の情報が残らないように)。
-    useEffect(() => {
+    const [renderedPlayerId, setRenderedPlayerId] = useState(playerId);
+    if (renderedPlayerId !== playerId) {
+        setRenderedPlayerId(playerId);
         setDetail(null);
         setNnueLabExperiment(null);
-    }, [playerId]);
+    }
 
     useEffect(() => {
         const controller = new AbortController();
