@@ -4,7 +4,8 @@ compatibility_date = "2026-01-20"
 
 # Workerエントリーポイント（COOPヘッダー追加用）
 main = "./worker/index.ts"
-# custom_domains = ["ramu-shogi.sh11235.com"]
+# Custom Domain binding。DNS record (AAAA 100:: proxied) は iac repo (Pulumi) が正典
+routes = [{ pattern = "ramu-shogi.sh11235.com", custom_domain = true }]
 
 # /api/* を backend Worker にプロキシ（Service Binding）
 [[services]]
@@ -45,8 +46,9 @@ period = 60
 
 [env.stg]
 name = "ramu-shogi-stg"
+# Custom Domain binding。DNS record (AAAA 100:: proxied) は iac repo (Pulumi) が正典
+routes = [{ pattern = "stg.ramu-shogi.sh11235.com", custom_domain = true }]
 [env.stg.vars]
-# custom_domains = ["ramu-shogi-stg.sh11235.workers.dev"]
 
 [env.stg.assets]
 directory = "./dist"
