@@ -1,35 +1,19 @@
 import type { GameRecordDetail } from "@shogi/api-contract";
 import { parseCsaMoves } from "@shogi/app-core";
-import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type { EngineOption } from "@shogi/ui";
 import { ShogiMatch } from "@shogi/ui";
 import { getRouteApi } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
 import { PageHeader } from "../../components/PageHeader";
+import { createWebWasmEngineClient } from "../../platform/wasm-engine-client";
 import { formatGameResult } from "./gameResultUtils";
-
-const resolveWasmThreads = () => {
-    const fallback = import.meta.env.DEV ? 4 : 1;
-    const raw = import.meta.env.VITE_WASM_THREADS;
-    if (typeof raw !== "string" || raw.trim() === "") return fallback;
-    const parsed = Number(raw);
-    if (!Number.isFinite(parsed) || parsed < 1) return fallback;
-    return Math.trunc(parsed);
-};
-
-const wasmThreads = resolveWasmThreads();
 
 const engineOptions: EngineOption[] = [
     {
         id: "wasm",
         label: "内蔵エンジン",
-        createClient: () =>
-            createWasmEngineClient({
-                stopMode: "terminate",
-                defaultInitOptions: { threads: wasmThreads },
-                logWarningsToConsole: true,
-            }),
+        createClient: createWebWasmEngineClient,
         kind: "internal",
     },
 ];

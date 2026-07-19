@@ -7,7 +7,6 @@ import type {
     GetAnalysisSnapshotResponse,
     JsonValue,
 } from "@shogi/api-contract";
-import { createWasmEngineClient } from "@shogi/engine-wasm";
 import type { AnalysisSettings, AnalysisSnapshotDraft, EngineOption } from "@shogi/ui";
 import {
     decodeSnapshotEvalMateReviver,
@@ -21,28 +20,13 @@ import { HeaderNav } from "../../components/HeaderNav";
 import { PageHeader } from "../../components/PageHeader";
 import { parseApiError } from "../../hooks/useAuthSession";
 import { useRemotePrivateNnueManager } from "../../hooks/useRemotePrivateNnueManager";
-
-const resolveWasmThreads = () => {
-    const fallback = import.meta.env.DEV ? 4 : 1;
-    const raw = import.meta.env.VITE_WASM_THREADS;
-    if (typeof raw !== "string" || raw.trim() === "") return fallback;
-    const parsed = Number(raw);
-    if (!Number.isFinite(parsed) || parsed < 1) return fallback;
-    return Math.trunc(parsed);
-};
-
-const wasmThreads = resolveWasmThreads();
+import { createWebWasmEngineClient } from "../../platform/wasm-engine-client";
 
 const engineOptions: EngineOption[] = [
     {
         id: "wasm",
         label: "内蔵エンジン",
-        createClient: () =>
-            createWasmEngineClient({
-                stopMode: "terminate",
-                defaultInitOptions: { threads: wasmThreads },
-                logWarningsToConsole: true,
-            }),
+        createClient: createWebWasmEngineClient,
         kind: "internal",
     },
 ];
