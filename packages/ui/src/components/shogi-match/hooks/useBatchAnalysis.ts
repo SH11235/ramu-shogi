@@ -146,6 +146,7 @@ export function useBatchAnalysis({
             openNnueManager("missing-analysis");
             return;
         }
+        setMessage(null);
 
         // ply手目の局面を解析するには、ply-1手までの指し手が必要
         // （ply 1 = 1手目を指した後の局面 = moves[0]まで適用した局面）
@@ -250,6 +251,7 @@ export function useBatchAnalysis({
             openNnueManager("missing-analysis");
             return;
         }
+        setMessage(null);
 
         // ジョブを生成
         const jobs: AnalysisJob[] = targetPlies.map((ply) => ({
@@ -293,6 +295,7 @@ export function useBatchAnalysis({
             openNnueManager("missing-analysis");
             return;
         }
+        setMessage(null);
 
         // AnalysisJob形式に変換
         const jobs: AnalysisJob[] = treeJobs.map((job) => ({
@@ -337,6 +340,7 @@ export function useBatchAnalysis({
             openNnueManager("missing-analysis");
             return;
         }
+        setMessage(null);
 
         // AnalysisJob形式に変換
         const jobs: AnalysisJob[] = branchJobs.map((job) => ({
