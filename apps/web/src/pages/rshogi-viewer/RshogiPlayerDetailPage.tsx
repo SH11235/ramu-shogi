@@ -8,19 +8,35 @@ import { HeaderNav } from "../../components/HeaderNav";
 import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
 import { StatusBanner } from "../../components/StatusBanner";
+import { resolveNnueLabBaseUrl } from "../../lib/nnueLabBaseUrl";
 import { resolveRshogiApiBaseUrl } from "../../lib/rshogiApiBaseUrl";
 
 const PAGE_SIZE = 20;
 const routeApi = getRouteApi("/rshogi-viewer/players/$playerId");
 
+type NnueLabExperiment = {
+    tenant_slug: string;
+    experiment_id: string;
+    experiment_name: string;
+};
+
 export default function RshogiPlayerDetailPage(): ReactElement {
     const { playerId } = routeApi.useParams();
     const navigate = useNavigate();
     const apiBaseUrl = resolveRshogiApiBaseUrl();
+    const nnueLabBaseUrl = resolveNnueLabBaseUrl();
     const [detail, setDetail] = useState<RshogiPlayerDetail | null>(null);
+    const [nnueLabExperiment, setNnueLabExperiment] = useState<NnueLabExperiment | null>(null);
     const [pageRequest, setPageRequest] = useState({ page: 1, attempt: 0 });
     const [isLoading, setIsLoading] = useState(true);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+    // route の playerId が変わったら旧 player の詳細と nnue-lab カードを即座に
+    // 破棄する (新詳細の取得が失敗しても旧 player の情報が残らないように)。
+    useEffect(() => {
+        setDetail(null);
+        setNnueLabExperiment(null);
+    }, [playerId]);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -51,6 +67,28 @@ export default function RshogiPlayerDetailPage(): ReactElement {
     }, [apiBaseUrl, pageRequest, playerId]);
 
     const player = detail?.player;
+    const canonicalPlayerId = player?.playerId;
+
+    useEffect(() => {
+        setNnueLabExperiment(null);
+        if (!canonicalPlayerId) return;
+
+        const controller = new AbortController();
+        void fetch(
+            `${nnueLabBaseUrl}/api/public/csa-players/${encodeURIComponent(canonicalPlayerId)}`,
+            { signal: controller.signal },
+        )
+            .then(async (response) => {
+                if (response.status !== 200) return null;
+                return (await response.json()) as NnueLabExperiment;
+            })
+            .then((experiment) => {
+                if (!controller.signal.aborted) setNnueLabExperiment(experiment);
+            })
+            .catch(() => undefined);
+        return () => controller.abort();
+    }, [canonicalPlayerId, nnueLabBaseUrl]);
+
     const totalPages = detail ? Math.max(1, Math.ceil(detail.totalCount / detail.pageSize)) : 1;
     const displayedPage = detail?.page ?? pageRequest.page;
     const requestPage = (nextPage: number): void => {
@@ -139,6 +177,25 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                                 ))}
                             </dl>
                         </section>
+
+                        {nnueLabExperiment && (
+                            <a
+                                href={`${nnueLabBaseUrl}/t/${encodeURIComponent(nnueLabExperiment.tenant_slug)}/experiments/${encodeURIComponent(nnueLabExperiment.experiment_id)}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="flex items-center justify-between gap-4 rounded-xl border border-wafuu-border bg-wafuu-washi-warm px-5 py-4 text-wafuu-sumi shadow-sm transition-colors hover:bg-wafuu-kincha/10"
+                            >
+                                <span className="min-w-0">
+                                    <span className="block text-[10px] font-semibold tracking-[0.2em] text-wafuu-shu">
+                                        NNUE EXPERIMENT
+                                    </span>
+                                    <span className="block truncate font-serif font-bold">
+                                        {nnueLabExperiment.experiment_name}
+                                    </span>
+                                </span>
+                                <span className="shrink-0 text-sm">nnue-lab で実験を見る ↗</span>
+                            </a>
+                        )}
 
                         <section className="flex flex-col gap-3">
                             <div className="flex items-end justify-between gap-4 border-b border-wafuu-border pb-2">

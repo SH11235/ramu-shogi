@@ -6,8 +6,9 @@ const fetchRshogiPlayerDetail = vi.fn();
 const navigate = vi.fn();
 
 vi.mock("@shogi/match-client", () => ({ fetchRshogiPlayerDetail }));
+let routePlayerId = "p_one";
 vi.mock("@tanstack/react-router", () => ({
-    getRouteApi: () => ({ useParams: () => ({ playerId: "p_one" }) }),
+    getRouteApi: () => ({ useParams: () => ({ playerId: routePlayerId }) }),
     Link: ({ children }: { children: ReactNode }) => <a href="/players">{children}</a>,
     useNavigate: () => navigate,
 }));
@@ -56,6 +57,8 @@ const { default: RshogiPlayerDetailPage } = await import("./RshogiPlayerDetailPa
 describe("RshogiPlayerDetailPage", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        routePlayerId = "p_one";
+        vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 404 }));
         fetchRshogiPlayerDetail.mockImplementation(
             (_playerId: string, options: { page?: number }) => {
                 const page = options.page ?? 1;
@@ -117,5 +120,75 @@ describe("RshogiPlayerDetailPage", () => {
         fetchRshogiPlayerDetail.mockRejectedValueOnce(new Error("player unavailable"));
         render(<RshogiPlayerDetailPage />);
         expect((await screen.findByRole("alert")).textContent).toContain("player unavailable");
+    });
+
+    it("公開実験がある場合は nnue-lab へのリンクを表示する", async () => {
+        vi.mocked(fetch).mockResolvedValueOnce({
+            status: 200,
+            json: () =>
+                Promise.resolve({
+                    tenant_slug: "public-team",
+                    experiment_id: "exp-42",
+                    experiment_name: "HalfKA 実験",
+                }),
+        } as Response);
+
+        render(<RshogiPlayerDetailPage />);
+
+        const link = await screen.findByRole("link", { name: /nnue-lab で実験を見る/ });
+        expect(link.getAttribute("href")).toBe(
+            "https://nnue-lab.sh11235.com/t/public-team/experiments/exp-42",
+        );
+        expect(link.getAttribute("target")).toBe("_blank");
+        expect(link.getAttribute("rel")).toBe("noreferrer");
+        expect(screen.getByText("HalfKA 実験")).toBeTruthy();
+    });
+
+    it("公開実験がない場合は nnue-lab の表示を追加しない", async () => {
+        render(<RshogiPlayerDetailPage />);
+
+        await waitFor(() => expect(fetch).toHaveBeenCalled());
+        expect(screen.queryByRole("link", { name: /nnue-lab で実験を見る/ })).toBeNull();
+    });
+
+    it("player 遷移時は新詳細の取得完了前に旧 nnue-lab リンクを消す", async () => {
+        vi.mocked(fetch).mockResolvedValueOnce({
+            status: 200,
+            json: () =>
+                Promise.resolve({
+                    tenant_slug: "public-team",
+                    experiment_id: "exp-42",
+                    experiment_name: "HalfKA 実験",
+                }),
+        } as Response);
+
+        const { rerender } = render(<RshogiPlayerDetailPage />);
+        await screen.findByRole("link", { name: /nnue-lab で実験を見る/ });
+
+        // 次 player の詳細取得を未解決のまま保留し、遷移直後の表示を検証する
+        fetchRshogiPlayerDetail.mockImplementation(() => new Promise(() => {}));
+        routePlayerId = "p_two";
+        rerender(<RshogiPlayerDetailPage />);
+
+        await waitFor(() =>
+            expect(screen.queryByRole("link", { name: /nnue-lab で実験を見る/ })).toBeNull(),
+        );
+        expect(screen.queryByText("銀将")).toBeNull();
+    });
+
+    it("読み込んだ詳細の canonical playerId で公開実験を検索する", async () => {
+        fetchRshogiPlayerDetail.mockResolvedValueOnce({
+            ...detail,
+            player: { ...detail.player, playerId: "canonical/player" },
+        });
+
+        render(<RshogiPlayerDetailPage />);
+
+        await waitFor(() =>
+            expect(fetch).toHaveBeenCalledWith(
+                "https://nnue-lab.sh11235.com/api/public/csa-players/canonical%2Fplayer",
+                expect.objectContaining({ signal: expect.any(AbortSignal) }),
+            ),
+        );
     });
 });
