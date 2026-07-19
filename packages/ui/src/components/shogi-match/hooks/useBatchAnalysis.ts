@@ -192,6 +192,18 @@ export function useBatchAnalysis({
             return;
         }
 
+        // NNUE の存在確認（未ダウンロードの場合はエラー）
+        try {
+            await resolveNnue(analysisNnueSelection);
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : "評価関数の準備に失敗しました";
+            const detailedMessage = `解析を開始できません: ${errorMessage}\n\n対処方法:\n1. NNUE管理画面が開きます\n2. 必要なファイルをダウンロードしてください\n3. 再度解析を実行してください`;
+            setMessage({ text: detailedMessage, type: "error" });
+            openNnueManager("missing-analysis");
+            return;
+        }
+        setMessage(null);
+
         // 再解析のために既存の評価値をクリア
         clearEvalByNodeId(nodeId);
 
