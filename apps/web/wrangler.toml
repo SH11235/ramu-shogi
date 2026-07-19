@@ -6,6 +6,11 @@ compatibility_date = "2026-01-20"
 main = "./worker/index.ts"
 # Custom Domain binding。DNS record (AAAA 100:: proxied) は iac repo (Pulumi) が正典
 routes = [{ pattern = "ramu-shogi.sh11235.com", custom_domain = true }]
+# workers.dev 直 URL / preview URL は zone (sh11235.com) の WAF・Rate Limiting を
+# 経由しないため公開しない。到達経路は Custom Domain (proxied) のみに限定する。
+# named env (stg 含む) にも継承される
+workers_dev = false
+preview_urls = false
 
 # /api/* を backend Worker にプロキシ（Service Binding）
 [[services]]
