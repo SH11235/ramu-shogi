@@ -141,4 +141,18 @@ describe("GamesPage keyset pagination", () => {
         await waitFor(() => expect(screen.queryByText("古い追加結果")).toBeNull());
         expect(screen.getByText("1件を表示中")).toBeTruthy();
     });
+
+    it("追加取得中にunmountした場合はrequestをabortする", () => {
+        vi.spyOn(globalThis, "fetch").mockReturnValue(new Promise<Response>(() => {}));
+
+        const { unmount } = render(<GamesPage />);
+        fireEvent.click(screen.getByRole("button", { name: "もっと見る" }));
+        const requestInit = vi.mocked(globalThis.fetch).mock.calls[0]?.[1];
+        const signal = requestInit?.signal;
+        expect(signal?.aborted).toBe(false);
+
+        unmount();
+
+        expect(signal?.aborted).toBe(true);
+    });
 });
