@@ -372,6 +372,7 @@ export interface components {
         };
         ListGamesResponse: {
             games: components["schemas"]["GameRecordSummary"][];
+            nextCursor: string | null;
         };
         GameRecordSummary: {
             id: string;
@@ -682,7 +683,10 @@ export interface operations {
     };
     listGames: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                cursor?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -696,6 +700,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListGamesResponse"];
+                };
+            };
+            /** @description Invalid pagination query or cursor */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
             /** @description Authentication is required */
