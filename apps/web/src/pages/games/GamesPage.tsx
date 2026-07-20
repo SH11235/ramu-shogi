@@ -23,7 +23,7 @@ export default function GamesPage(): ReactElement {
         games: GameRecordSummary[];
         nextCursor: string | null;
     };
-    const needsAuth = loaderData.needsAuth;
+    const [needsAuth, setNeedsAuth] = useState(loaderData.needsAuth);
     const [games, setGames] = useState(loaderData.games);
     const [nextCursor, setNextCursor] = useState(loaderData.nextCursor);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -35,6 +35,7 @@ export default function GamesPage(): ReactElement {
         loaderGenerationRef.current += 1;
         requestAbortRef.current?.abort();
         requestAbortRef.current = null;
+        setNeedsAuth(loaderData.needsAuth);
         setGames(loaderData.games);
         setNextCursor(loaderData.nextCursor);
         setIsLoadingMore(false);
@@ -57,6 +58,18 @@ export default function GamesPage(): ReactElement {
                 credentials: "same-origin",
                 signal: abortController.signal,
             });
+            if (response.status === 401) {
+                if (
+                    abortController.signal.aborted ||
+                    loaderGeneration !== loaderGenerationRef.current
+                ) {
+                    return;
+                }
+                setNeedsAuth(true);
+                setGames([]);
+                setNextCursor(null);
+                return;
+            }
             if (!response.ok) throw new Error("棋譜の追加取得に失敗しました");
 
             const payload = (await response.json()) as ListGamesResponse;

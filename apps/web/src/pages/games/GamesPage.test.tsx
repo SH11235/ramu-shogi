@@ -10,7 +10,9 @@ vi.mock("@tanstack/react-router", () => ({
     Link: ({ children }: { children: ReactNode }) => <a href="/games/example">{children}</a>,
 }));
 
-vi.mock("../../components/AuthRequiredCard", () => ({ AuthRequiredCard: () => null }));
+vi.mock("../../components/AuthRequiredCard", () => ({
+    AuthRequiredCard: () => <div>認証が必要です</div>,
+}));
 vi.mock("../../components/HeaderNav", () => ({ HeaderNav: () => null }));
 vi.mock("../../components/PageHeader", () => ({ PageHeader: () => null }));
 vi.mock("../../components/PageContainer", () => ({
@@ -93,6 +95,19 @@ describe("GamesPage keyset pagination", () => {
                 (screen.getByRole("button", { name: "もっと見る" }) as HTMLButtonElement).disabled,
             ).toBe(false),
         );
+    });
+
+    it("追加取得中にsessionが切れた場合は認証要求表示へ戻す", async () => {
+        vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 401 }));
+
+        render(<GamesPage />);
+        fireEvent.click(screen.getByRole("button", { name: "もっと見る" }));
+
+        await waitFor(() => expect(screen.queryByText("先手1")).toBeNull());
+        expect(screen.getByText("認証が必要です")).toBeTruthy();
+        expect(screen.queryByRole("alert")).toBeNull();
+        expect(screen.queryByRole("button", { name: "もっと見る" })).toBeNull();
+        expect(screen.queryByText("0件を表示中")).toBeNull();
     });
 
     it("loader再検証時に一覧を置換し、古い追加取得結果を混ぜない", async () => {
