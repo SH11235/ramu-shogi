@@ -119,9 +119,12 @@
                         "items": {
                             "$ref": "#/components/schemas/GameRecordSummary"
                         }
+                    },
+                    "nextCursor": {
+                        "type": ["string", "null"]
                     }
                 },
-                "required": ["games"]
+                "required": ["games", "nextCursor"]
             },
             "GameRecordSummary": {
                 "type": "object",
@@ -964,6 +967,26 @@
             "get": {
                 "operationId": "listGames",
                 "tags": ["Games"],
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 50
+                        },
+                        "required": false,
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": false,
+                        "name": "cursor",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "List accessible games",
@@ -971,6 +994,16 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/ListGamesResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid pagination query or cursor",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
                                 }
                             }
                         }

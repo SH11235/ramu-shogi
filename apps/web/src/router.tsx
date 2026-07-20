@@ -57,6 +57,7 @@ const authRoute = createRoute({
 interface GamesRouteLoaderData {
     needsAuth: boolean;
     games: GameRecordSummary[];
+    nextCursor: string | null;
 }
 
 async function fetchGamesLoaderData(): Promise<GamesRouteLoaderData> {
@@ -73,6 +74,7 @@ async function fetchGamesLoaderData(): Promise<GamesRouteLoaderData> {
         return {
             needsAuth: true,
             games: [],
+            nextCursor: null,
         };
     }
 
@@ -80,6 +82,7 @@ async function fetchGamesLoaderData(): Promise<GamesRouteLoaderData> {
     return {
         needsAuth: false,
         games: payload.games,
+        nextCursor: payload.nextCursor,
     };
 }
 

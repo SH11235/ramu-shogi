@@ -1,6 +1,7 @@
-import type { GameRecordSummary } from "@shogi/api-contract";
+import type { GameRecordSummary, ListGamesResponse } from "@shogi/api-contract";
 import { getRouteApi, Link } from "@tanstack/react-router";
 import type { ReactElement } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AuthRequiredCard } from "../../components/AuthRequiredCard";
 import { HeaderNav } from "../../components/HeaderNav";
 import { PageContainer } from "../../components/PageContainer";
@@ -20,9 +21,84 @@ export default function GamesPage(): ReactElement {
     const loaderData = routeApi.useLoaderData() as {
         needsAuth: boolean;
         games: GameRecordSummary[];
+        nextCursor: string | null;
     };
-    const needsAuth = loaderData.needsAuth;
-    const games = loaderData.games;
+    const [needsAuth, setNeedsAuth] = useState(loaderData.needsAuth);
+    const [games, setGames] = useState(loaderData.games);
+    const [nextCursor, setNextCursor] = useState(loaderData.nextCursor);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const loaderGenerationRef = useRef(0);
+    const requestAbortRef = useRef<AbortController | null>(null);
+
+    useEffect(() => {
+        loaderGenerationRef.current += 1;
+        requestAbortRef.current?.abort();
+        requestAbortRef.current = null;
+        setNeedsAuth(loaderData.needsAuth);
+        setGames(loaderData.games);
+        setNextCursor(loaderData.nextCursor);
+        setIsLoadingMore(false);
+        setLoadError(null);
+
+        return () => requestAbortRef.current?.abort();
+    }, [loaderData]);
+
+    async function handleLoadMore(): Promise<void> {
+        if (isLoadingMore || !nextCursor) return;
+        const loaderGeneration = loaderGenerationRef.current;
+        const abortController = new AbortController();
+        requestAbortRef.current = abortController;
+        setIsLoadingMore(true);
+        setLoadError(null);
+
+        try {
+            const params = new URLSearchParams({ cursor: nextCursor });
+            const response = await fetch(`/api/games?${params.toString()}`, {
+                credentials: "same-origin",
+                signal: abortController.signal,
+            });
+            if (response.status === 401) {
+                if (
+                    abortController.signal.aborted ||
+                    loaderGeneration !== loaderGenerationRef.current
+                ) {
+                    return;
+                }
+                setNeedsAuth(true);
+                setGames([]);
+                setNextCursor(null);
+                return;
+            }
+            if (!response.ok) throw new Error("棋譜の追加取得に失敗しました");
+
+            const payload = (await response.json()) as ListGamesResponse;
+            if (
+                abortController.signal.aborted ||
+                loaderGeneration !== loaderGenerationRef.current
+            ) {
+                return;
+            }
+            setGames((current) => [...current, ...payload.games]);
+            setNextCursor(payload.nextCursor);
+        } catch {
+            if (
+                abortController.signal.aborted ||
+                loaderGeneration !== loaderGenerationRef.current
+            ) {
+                return;
+            }
+            setLoadError("棋譜の追加取得に失敗しました。時間をおいて再度お試しください。");
+        } finally {
+            if (requestAbortRef.current === abortController) {
+                requestAbortRef.current = null;
+                if (loaderGeneration === loaderGenerationRef.current) {
+                    setIsLoadingMore(false);
+                }
+            }
+        }
+    }
+
     return (
         <>
             <PageHeader
@@ -35,14 +111,7 @@ export default function GamesPage(): ReactElement {
                     description="保存済みのオンライン対局を確認できます。"
                 >
                     {!needsAuth && (
-                        <p className="text-xs text-muted-foreground">
-                            {games.length} / 50件
-                            {games.length >= 45 && (
-                                <span className="ml-2 text-wafuu-shu">
-                                    ※ 50件を超えると古い棋譜から自動削除されます
-                                </span>
-                            )}
-                        </p>
+                        <p className="text-xs text-muted-foreground">{games.length}件を表示中</p>
                     )}
                 </PageHeading>
 
@@ -109,6 +178,25 @@ export default function GamesPage(): ReactElement {
                                 </div>
                             </Link>
                         ))}
+                    </div>
+                )}
+
+                {!needsAuth && loadError && (
+                    <p role="alert" className="text-center text-sm text-destructive">
+                        {loadError}
+                    </p>
+                )}
+
+                {!needsAuth && nextCursor && (
+                    <div className="flex justify-center">
+                        <button
+                            type="button"
+                            onClick={() => void handleLoadMore()}
+                            disabled={isLoadingMore}
+                            className="rounded-md border border-input px-6 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted/50 disabled:pointer-events-none disabled:opacity-50"
+                        >
+                            {isLoadingMore ? "読み込み中..." : "もっと見る"}
+                        </button>
                     </div>
                 )}
             </PageContainer>
