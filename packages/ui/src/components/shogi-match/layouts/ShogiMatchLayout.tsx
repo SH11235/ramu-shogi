@@ -186,7 +186,6 @@ export function ShogiMatchLayout({
         setDisplaySettings,
         handlePlySelect,
         handleCopyKif,
-        handleExportJsonl,
         handleMoveDetailSelect,
     } = navigationProps;
 
@@ -461,7 +460,6 @@ export function ShogiMatchLayout({
                                 onDisplaySettingsChange={setDisplaySettings}
                                 handlePlySelect={handlePlySelect}
                                 handleCopyKif={handleCopyKif}
-                                handleExportJsonl={handleExportJsonl}
                                 handleMoveDetailSelect={handleMoveDetailSelect}
                                 isMatchRunning={isMatchRunning}
                             >
@@ -595,7 +593,6 @@ export function ShogiMatchLayout({
                                 onDisplaySettingsChange={setDisplaySettings}
                                 handlePlySelect={handlePlySelect}
                                 handleCopyKif={handleCopyKif}
-                                handleExportJsonl={handleExportJsonl}
                                 handleMoveDetailSelect={handleMoveDetailSelect}
                                 isMatchRunning={isMatchRunning}
                             >

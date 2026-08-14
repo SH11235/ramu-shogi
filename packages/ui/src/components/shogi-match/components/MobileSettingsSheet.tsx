@@ -16,7 +16,6 @@ import type {
 import type { KifMoveData } from "../utils/kifParser";
 import { parseKif, parseSfen } from "../utils/kifParser";
 import { buildThreadOptions } from "../utils/threadOptions";
-import { JsonlExportHelp } from "./JsonlExportHelp";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 
 type SideKey = "sente" | "gote";
@@ -127,8 +126,6 @@ interface MobileSettingsSheetProps {
     onImportKif?: (moves: string[], moveData: KifMoveData[], startSfen?: string) => Promise<void>;
     /** 局面が準備完了しているか */
     positionReady?: boolean;
-    /** rshogi 互換 JSONL をダウンロード */
-    onExportJsonl?: () => Promise<void>;
 }
 
 // iOS Safari は16px未満のinput/selectにフォーカスすると自動ズームするため、text-base(16px)を使用
@@ -307,7 +304,6 @@ export function MobileSettingsSheet({
     onImportSfen,
     onImportKif,
     positionReady = true,
-    onExportJsonl,
 }: MobileSettingsSheetProps): ReactElement {
     const threadOptions = buildThreadOptions();
     const externalEngines = engineOptions?.filter((engine) => engine.kind === "external") ?? [];
@@ -915,19 +911,6 @@ export function MobileSettingsSheet({
                     onImportKif={onImportKif}
                     positionReady={positionReady}
                 />
-            )}
-
-            {onExportJsonl && (
-                <div className="space-y-1">
-                    <button
-                        type="button"
-                        onClick={() => void onExportJsonl()}
-                        className="w-full rounded-lg border border-border bg-background p-2 text-sm text-foreground"
-                    >
-                        JSONL エクスポート
-                    </button>
-                    <JsonlExportHelp />
-                </div>
             )}
 
             {/* 表示設定 */}

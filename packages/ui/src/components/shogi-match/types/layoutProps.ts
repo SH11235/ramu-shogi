@@ -186,7 +186,6 @@ export interface NavigationProps {
     setDisplaySettings: import("react").Dispatch<import("react").SetStateAction<DisplaySettings>>;
     handlePlySelect: (ply: number) => void;
     handleCopyKif: () => string;
-    handleExportJsonl: () => Promise<void>;
     handleMoveDetailSelect: (
         move: import("../utils/kifFormat").KifMove | null,
         position: PositionState | null,
