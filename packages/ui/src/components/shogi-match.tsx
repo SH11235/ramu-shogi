@@ -1,7 +1,6 @@
 import type {
     BoardState,
     GameResult,
-    KifuNode,
     LastMove,
     MoveSearchStats,
     NnueSelection,
@@ -15,7 +14,6 @@ import {
     createDefaultNnueSelection,
     createEmptyHands,
     DEFAULT_PRESET_KEY,
-    detectParallelism,
     getAllSquares,
     getPositionService,
     resolveWorkerCount,
@@ -85,7 +83,6 @@ import type {
     NavigationProps,
     PCSpecificProps,
 } from "./shogi-match/types/layoutProps";
-import { exportToRshogiJsonl } from "./shogi-match/utils/jsonlExport";
 import type { KifMove } from "./shogi-match/utils/kifFormat";
 import { LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
 import {
@@ -162,10 +159,6 @@ export const getInitialReviewSyncMode = (
     if (loaded.moveDataKey !== next.moveDataKey) return "diff";
     return "skip";
 };
-
-// 0 (自動) を controller と同じ推奨値に解決する (JSONL メタ等の表示用)
-const resolveAutoThreads = (value: number): number =>
-    value > 0 ? value : detectParallelism().recommendedWorkers;
 
 // ライブ探索表示のクリアは複数の effect / callback から呼ばれる。コンポーネント内
 // 関数だと毎レンダー再生成され hook 依存に使えない (biome) ため、ref と setState を
@@ -1699,84 +1692,6 @@ export function ShogiMatch({
         setIsMatchRunning,
     });
 
-    const handleExportJsonl = async (): Promise<void> => {
-        try {
-            await exportJsonlInner();
-        } catch (error) {
-            setMessage({
-                text: `JSONL エクスポートに失敗しました: ${String(error)}`,
-                type: "error",
-            });
-        }
-    };
-
-    const exportJsonlInner = async (): Promise<void> => {
-        if (!navigation.tree) return;
-        // 現在のナビゲーション位置に依存しないよう、ツリーの主分岐を親子ペアで辿る
-        // (sfen_before と手番は親ノードの positionAfter から導出する)
-        const mainMoves: { node: KifuNode; parent: KifuNode }[] = [];
-        let node = navigation.tree.nodes.get(navigation.tree.rootId);
-        while (node?.children[0]) {
-            const child = navigation.tree.nodes.get(node.children[0]);
-            if (!child || !child.usiMove) break;
-            mainMoves.push({ node: child, parent: node });
-            node = child;
-        }
-        const service = getPositionService();
-        const jsonlNodes = await Promise.all(
-            mainMoves.map(async ({ node: mainNode, parent }) => ({
-                moveUsi: mainNode.usiMove as string,
-                sfenBefore: await service.boardToSfen(parent.positionAfter),
-                sideToMove: parent.positionAfter.turn,
-                elapsedMs: mainNode.elapsedMs,
-                searchStats: mainNode.searchStats,
-            })),
-        );
-        const now = new Date();
-        const filename = `${now.toISOString().replace(/[:.]/g, "-")}.jsonl`;
-        const labelFor = (side: Player) => {
-            const setting = sides[side];
-            if (setting.role === "human") return "human";
-            return (
-                engineOptions.find((option) => option.id === setting.engineId)?.label ??
-                setting.engineId ??
-                "engine"
-            );
-        };
-        const result = gameResult
-            ? {
-                  outcome:
-                      gameResult.winner === "sente"
-                          ? ("black_win" as const)
-                          : ("white_win" as const),
-                  reason: gameResult.reason.kind,
-                  winner: gameResult.winner,
-              }
-            : undefined;
-        const contents = exportToRshogiJsonl(jsonlNodes, {
-            timestamp: now,
-            output: filename,
-            startSfen,
-            maxMoves: Math.max(1, mainMoves.length),
-            byoyomiMs: Math.max(timeSettings.sente.byoyomiMs, timeSettings.gote.byoyomiMs),
-            mainTimeMs: Math.max(timeSettings.sente.mainMs, timeSettings.gote.mainMs),
-            threads: Math.max(
-                1,
-                resolveAutoThreads(engineThreads.sente),
-                resolveAutoThreads(engineThreads.gote),
-            ),
-            hashMb: 0,
-            labels: { sente: labelFor("sente"), gote: labelFor("gote") },
-            result,
-        });
-        const url = URL.createObjectURL(new Blob([contents], { type: "application/x-ndjson" }));
-        const anchor = document.createElement("a");
-        anchor.href = url;
-        anchor.download = filename;
-        anchor.click();
-        URL.revokeObjectURL(url);
-    };
-
     const initialAnalysisAppliedRef = useRef<string | null>(null);
 
     // initialReview を取り込む。live 観戦では moves が逐次伸びた場合だけ importSfen で
@@ -2007,7 +1922,6 @@ export function ShogiMatch({
         setDisplaySettings,
         handlePlySelect,
         handleCopyKif,
-        handleExportJsonl,
         handleMoveDetailSelect,
     };
 

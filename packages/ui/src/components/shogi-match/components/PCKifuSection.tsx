@@ -17,7 +17,6 @@ import { useNavigation } from "../contexts/NavigationContext";
 import { ANALYSIS_TIME_OPTIONS, PARALLEL_WORKER_OPTIONS } from "../utils/threadOptions";
 import { CurrentPositionAiHintPanel } from "./CurrentPositionAiHintPanel";
 import { EvalPanel } from "./EvalPanel";
-import { JsonlExportHelp } from "./JsonlExportHelp";
 import { KifuPanel } from "./KifuPanel";
 import { TabHeader } from "./TabHeader";
 
@@ -78,7 +77,6 @@ export function PCKifuSection({
         onDisplaySettingsChange,
         handlePlySelect,
         handleCopyKif,
-        handleExportJsonl,
         handleMoveDetailSelect,
         isMatchRunning,
     } = useNavigation();
@@ -110,17 +108,6 @@ export function PCKifuSection({
                     initialOpen={evalPanelInitialOpen ?? false}
                     reviewMode={reviewMode}
                 />
-                <div className="space-y-1">
-                    <button
-                        type="button"
-                        onClick={() => void handleExportJsonl()}
-                        className="rounded border border-border bg-background px-2 py-1 text-xs text-foreground hover:bg-muted"
-                    >
-                        JSONL エクスポート
-                    </button>
-                    <JsonlExportHelp />
-                </div>
-
                 {/* 棋譜パネル + ドロワー（横並び） */}
                 <div className="relative flex items-start">
                     {/* 棋譜パネル（常時表示） */}
