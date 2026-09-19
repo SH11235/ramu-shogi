@@ -14,12 +14,6 @@ edition = "2024"
 # Tab spaces
 tab_spaces = 4
 
-# Function call style
-fn_call_width = 80
-
-# Chain indent
-chain_width = 80
-
 # Newline style
 newline_style = "Unix"
 

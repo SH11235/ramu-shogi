@@ -1,3 +1,4 @@
+import { type LayerStacksConfig, validateLayerStacks } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import {
@@ -11,12 +12,21 @@ import {
     AlertDialogTitle,
 } from "../alert-dialog";
 import { Input } from "../input";
+import { LayerStacksFields } from "./LayerStacksFields";
 
 interface NnueFvScaleInputDialogProps {
     /** インポート対象のファイル名 */
     fileName: string;
+    initialFvScale?: number;
+    initialLayerStacks?: LayerStacksConfig;
+    editing?: boolean;
+    requireLayerStacks?: boolean;
     /** 確定時のコールバック */
-    onConfirm: (fvScale: number, displayName: string) => void | Promise<void>;
+    onConfirm: (
+        fvScale: number,
+        displayName: string,
+        layerStacks?: LayerStacksConfig,
+    ) => void | Promise<void>;
     /** キャンセル時のコールバック */
     onCancel: () => void;
 }
@@ -29,11 +39,18 @@ interface NnueFvScaleInputDialogProps {
  */
 export function NnueFvScaleInputDialog({
     fileName,
+    initialFvScale,
+    initialLayerStacks,
+    editing = false,
+    requireLayerStacks = false,
     onConfirm,
     onCancel,
 }: NnueFvScaleInputDialogProps): ReactElement {
     // FV_SCALE 入力
-    const [value, setValue] = useState("");
+    const [value, setValue] = useState(initialFvScale?.toString() ?? "");
+    const [layerStacks, setLayerStacks] = useState(initialLayerStacks);
+    const [uploading, setUploading] = useState(false);
+    const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     // 表示名入力（マウント時にファイル名から自動生成）
@@ -48,7 +65,9 @@ export function NnueFvScaleInputDialog({
         }
     };
 
-    const handleConfirm = () => {
+    const handleConfirm = async () => {
+        if (saving || uploading) return;
+        if (requireLayerStacks && !layerStacks) return;
         // 表示名のバリデーション
         const trimmedName = displayName.trim();
         if (trimmedName === "") {
@@ -67,33 +86,57 @@ export function NnueFvScaleInputDialog({
             return;
         }
 
-        void onConfirm(num, trimmedName);
+        try {
+            if (layerStacks) validateLayerStacks(layerStacks);
+        } catch (error) {
+            setError(error instanceof Error ? error.message : String(error));
+            return;
+        }
+        setSaving(true);
+        try {
+            await onConfirm(num, trimmedName, layerStacks);
+        } catch (error) {
+            setError(error instanceof Error ? error.message : String(error));
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === "Enter") {
             e.preventDefault();
-            handleConfirm();
+            void handleConfirm();
         }
     };
 
     // インポートボタンの有効/無効判定
     const canConfirm = (() => {
+        if (saving || uploading || (requireLayerStacks && !layerStacks)) return false;
         const trimmedName = displayName.trim();
         if (trimmedName === "") return false;
         const num = Number(value);
         if (value === "" || Number.isNaN(num)) return false;
         if (!Number.isInteger(num) || num < 1 || num > 100) return false;
+        try {
+            if (layerStacks) validateLayerStacks(layerStacks);
+        } catch {
+            return false;
+        }
         return true;
     })();
 
     return (
         <AlertDialog defaultOpen>
-            <AlertDialogContent onEscapeKeyDown={onCancel}>
+            <AlertDialogContent
+                className="max-h-[calc(100dvh-32px)] overflow-y-auto"
+                onEscapeKeyDown={onCancel}
+            >
                 <AlertDialogHeader>
-                    <AlertDialogTitle>評価関数のインポート</AlertDialogTitle>
+                    <AlertDialogTitle>
+                        {editing ? "評価関数の設定" : "評価関数のインポート"}
+                    </AlertDialogTitle>
                     <AlertDialogDescription>
-                        「{fileName}」をインポートします。表示名と FV_SCALE を設定してください。
+                        「{fileName}」の表示名と FV_SCALE、LayerStacks の方式を設定してください。
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <div className="flex flex-col gap-4 py-2">
@@ -138,12 +181,23 @@ export function NnueFvScaleInputDialog({
                         </p>
                     </div>
 
+                    <LayerStacksFields
+                        value={layerStacks}
+                        onChange={setLayerStacks}
+                        onLoadingChange={setUploading}
+                    />
                     {error && <p className="text-xs text-destructive">{error}</p>}
                 </div>
                 <AlertDialogFooter>
                     <AlertDialogCancel onClick={onCancel}>キャンセル</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleConfirm} disabled={!canConfirm}>
-                        インポート
+                    <AlertDialogAction
+                        onClick={(event) => {
+                            event.preventDefault();
+                            void handleConfirm();
+                        }}
+                        disabled={!canConfirm}
+                    >
+                        {editing ? "保存" : "インポート"}
                     </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>

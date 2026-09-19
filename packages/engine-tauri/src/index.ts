@@ -3,6 +3,7 @@ import type {
     EngineEvent,
     EngineEventHandler,
     EngineInitOptions,
+    LayerStacksOptions,
     LoadPositionOptions,
     SearchHandle,
     SearchParams,
@@ -325,10 +326,10 @@ export function createTauriEngineClient(options: TauriEngineClientOptions = {}):
 
             // Note: init() は呼び出し側が明示的に呼ぶ必要がある
         },
-        async loadNnue(nnueId: string): Promise<void> {
+        async loadNnue(nnueId: string, layerStacks?: LayerStacksOptions): Promise<void> {
             return runOrMock(
                 async () => {
-                    await ipc.invoke("engine_load_nnue", { nnueId });
+                    await ipc.invoke("engine_load_nnue", { args: { nnueId, layerStacks } });
                 },
                 async () => {
                     // モックではNNUEロードは no-op

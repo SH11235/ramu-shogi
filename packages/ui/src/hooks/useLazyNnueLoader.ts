@@ -1,5 +1,5 @@
 import type { NnueSelection, ResolvedNnue } from "@shogi/app-core";
-import { NnueError } from "@shogi/app-core";
+import { NnueError, validateLayerStacks } from "@shogi/app-core";
 import { useState } from "react";
 import { useNnueContextOptional } from "../providers/NnueContext";
 
@@ -57,7 +57,15 @@ export function useLazyNnueLoader(options?: UseLazyNnueLoaderOptions): UseLazyNn
                 `評価関数「${meta.displayName}」の FV_SCALE が未設定です。評価関数ファイル管理を開いて FV_SCALE を設定してください。`,
             );
         }
+        if (meta.format?.architecture.includes("LayerStacks") && !meta.layerStacks) {
+            throw new NnueError(
+                "NNUE_RESOLVE_FAILED",
+                "LayerStacks の振り分け方式が未設定です。評価関数ファイル管理で設定してください。",
+            );
+        }
+        if (meta.layerStacks) validateLayerStacks(meta.layerStacks);
         return {
+            layerStacks: meta.layerStacks,
             nnueId,
             fvScale: meta.fvScale,
         };
@@ -106,10 +114,7 @@ export function useLazyNnueLoader(options?: UseLazyNnueLoaderOptions): UseLazyNn
                         `評価関数「${displayName}」の FV_SCALE が未設定です。評価関数ファイル管理を開いて FV_SCALE を設定してください。`,
                     );
                 }
-                return {
-                    nnueId: meta.id,
-                    fvScale: meta.fvScale,
-                };
+                return createResolvedNnue(meta.id);
             }
 
             // 未ダウンロードのプリセット → エラーをスロー

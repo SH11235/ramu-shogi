@@ -1,3 +1,4 @@
+import type { LayerStacksConfig, NnueMeta } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { useNnueStorage } from "../../hooks/useNnueStorage";
@@ -96,6 +97,7 @@ export function NnueManagerDialog({
         deleteNnue,
         updateDisplayName,
         updateFvScale,
+        updateLayerStacks,
         clearError: clearStorageError,
         refreshList,
         capabilities,
@@ -119,6 +121,8 @@ export function NnueManagerDialog({
         },
     });
 
+    const [settingsChanged, setSettingsChanged] = useState(false);
+    const [editingMeta, setEditingMeta] = useState<NnueMeta | null>(null);
     const [isImporting, setIsImporting] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     // FV_SCALE 入力待ちのファイル/パス
@@ -155,7 +159,11 @@ export function NnueManagerDialog({
     };
 
     // FV_SCALE と表示名確定時: 実際にインポート
-    const handleFvScaleConfirm = async (fvScale: number, displayName: string) => {
+    const handleFvScaleConfirm = async (
+        fvScale: number,
+        displayName: string,
+        layerStacks?: LayerStacksConfig,
+    ) => {
         // 先に pending をクリアしてダイアログを閉じる（二重実行を防止）
         const fileToImport = pendingFile;
         const pathToImport = pendingPath;
@@ -166,13 +174,32 @@ export function NnueManagerDialog({
 
         setIsImporting(true);
         try {
+            let importedMeta: NnueMeta | undefined;
             if (fileToImport) {
-                await importFromFile(fileToImport, fvScale, displayName);
+                importedMeta = await importFromFile(
+                    fileToImport,
+                    fvScale,
+                    displayName,
+                    layerStacks,
+                );
             } else if (pathToImport) {
-                await importFromPath(pathToImport, fvScale, displayName);
+                importedMeta = await importFromPath(
+                    pathToImport,
+                    fvScale,
+                    displayName,
+                    layerStacks,
+                );
             } else if (remoteFileToImport && remoteNnueManager) {
-                await remoteNnueManager.importFile(remoteFileToImport, fvScale, displayName);
+                const meta = await remoteNnueManager.importFile(
+                    remoteFileToImport,
+                    fvScale,
+                    displayName,
+                );
+                importedMeta = meta;
+                if (meta && layerStacks) await updateLayerStacks(meta.id, layerStacks);
             }
+            if (importedMeta?.format?.architecture.includes("LayerStacks") && !layerStacks)
+                setEditingMeta(importedMeta);
         } catch {
             // エラーは useNnueStorage で管理される
         } finally {
@@ -204,6 +231,7 @@ export function NnueManagerDialog({
 
     const handleFvScaleChange = async (id: string, fvScale: number | undefined) => {
         await updateFvScale(id, fvScale);
+        setSettingsChanged(true);
     };
 
     const handleClose = () => {
@@ -221,7 +249,7 @@ export function NnueManagerDialog({
         isImporting ||
         deletingId !== null ||
         downloadingKey !== null ||
-        remoteNnueManager?.importingFileId !== null;
+        Boolean(remoteNnueManager?.importingFileId);
     const hasPendingImport =
         pendingFile !== null || pendingPath !== null || pendingRemoteFile !== null;
     const pendingFileName =
@@ -261,6 +289,27 @@ export function NnueManagerDialog({
                         </div>
                     )}
 
+                    {settingsChanged && (
+                        <div
+                            aria-live="polite"
+                            className="flex flex-col gap-2 rounded-md border border-border bg-muted p-3 text-sm"
+                        >
+                            <p>
+                                {capabilities?.supportsPathImport
+                                    ? "設定を保存しました。使用中のエンジンに反映するには、対局・解析を終了してアプリを終了し、再起動してください。"
+                                    : "設定を保存しました。使用中のエンジンに反映するには、対局・解析を終了してページを再読み込みしてください。未保存の棋譜は先に保存してください。"}
+                            </p>
+                            {!capabilities?.supportsPathImport && (
+                                <Button
+                                    variant="secondary"
+                                    disabled={isMatchActive}
+                                    onClick={() => window.location.reload()}
+                                >
+                                    再読み込みして設定を反映
+                                </Button>
+                            )}
+                        </div>
+                    )}
                     {/* エラー表示 */}
                     <NnueErrorAlert error={error} onClose={handleClearError} />
                     {remoteNnueManager?.error && (
@@ -276,23 +325,35 @@ export function NnueManagerDialog({
                                 インポート済み ({nnueList.length})
                             </div>
                             {nnueList.map((meta) => (
-                                <NnueListItem
-                                    key={meta.id}
-                                    meta={meta}
-                                    selectable={false}
-                                    onDelete={() => handleDelete(meta.id)}
-                                    isDeleting={deletingId === meta.id}
-                                    disabled={isOperationInProgress}
-                                    deleteDisabledReason={
-                                        isMatchActive ? "対局中は削除できません" : undefined
-                                    }
-                                    onDisplayNameChange={(newName) =>
-                                        handleDisplayNameChange(meta.id, newName)
-                                    }
-                                    onFvScaleChange={(fvScale) =>
-                                        handleFvScaleChange(meta.id, fvScale)
-                                    }
-                                />
+                                <div key={meta.id} className="flex flex-col gap-1">
+                                    <NnueListItem
+                                        meta={meta}
+                                        selectable={false}
+                                        onDelete={() => handleDelete(meta.id)}
+                                        isDeleting={deletingId === meta.id}
+                                        disabled={isOperationInProgress}
+                                        deleteDisabledReason={
+                                            isMatchActive ? "対局中は削除できません" : undefined
+                                        }
+                                        onDisplayNameChange={(newName) =>
+                                            handleDisplayNameChange(meta.id, newName)
+                                        }
+                                        onFvScaleChange={(fvScale) =>
+                                            handleFvScaleChange(meta.id, fvScale)
+                                        }
+                                    />
+                                    <Button
+                                        variant="secondary"
+                                        disabled={isOperationInProgress || isMatchActive}
+                                        onClick={() => setEditingMeta(meta)}
+                                    >
+                                        モデル設定
+                                        {meta.format?.architecture.includes("LayerStacks") &&
+                                        !meta.layerStacks
+                                            ? "（LayerStacks 未設定）"
+                                            : ""}
+                                    </Button>
+                                </div>
                             ))}
                         </div>
                     ) : (
@@ -425,6 +486,23 @@ export function NnueManagerDialog({
             </DialogContent>
 
             {/* FV_SCALE 入力ダイアログ（マウント時に state が初期化されるよう条件レンダリング） */}
+            {editingMeta && (
+                <NnueFvScaleInputDialog
+                    editing
+                    requireLayerStacks={editingMeta.format?.architecture.includes("LayerStacks")}
+                    fileName={editingMeta.displayName}
+                    initialFvScale={editingMeta.fvScale}
+                    initialLayerStacks={editingMeta.layerStacks}
+                    onCancel={() => setEditingMeta(null)}
+                    onConfirm={async (fvScale, displayName, layerStacks) => {
+                        await updateFvScale(editingMeta.id, fvScale);
+                        await updateDisplayName(editingMeta.id, displayName);
+                        await updateLayerStacks(editingMeta.id, layerStacks);
+                        setSettingsChanged(true);
+                        setEditingMeta(null);
+                    }}
+                />
+            )}
             {hasPendingImport && (
                 <NnueFvScaleInputDialog
                     fileName={pendingFileName}

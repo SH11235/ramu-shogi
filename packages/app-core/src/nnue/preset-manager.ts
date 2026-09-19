@@ -1,3 +1,8 @@
+import {
+    encodeProgressCoefficients,
+    PROGRESS_COEFFICIENTS_SIZE,
+    validateLayerStacks,
+} from "./layer-stacks";
 /**
  * プリセット NNUE 管理
  *
@@ -93,6 +98,13 @@ export async function downloadPreset(
         throw new NnueError(
             "NNUE_DOWNLOAD_FAILED",
             `プリセット「${preset.displayName}」の FV_SCALE が manifest に設定されていません`,
+        );
+    }
+
+    if (preset.format?.architecture?.includes("LayerStacks") && !preset.layerStacks) {
+        throw new NnueError(
+            "NNUE_INVALID_FORMAT",
+            "LayerStacks プリセットの振り分け方式が未設定です",
         );
     }
 
@@ -206,6 +218,54 @@ export async function downloadPreset(
         throw new NnueError("NNUE_HASH_MISMATCH", "ファイル検証に失敗しました（ハッシュ不一致）");
     }
 
+    let layerStacks = preset.layerStacks;
+    if (preset.progressCoefficients) {
+        const coefficients = preset.progressCoefficients;
+        if (
+            coefficients.size !== PROGRESS_COEFFICIENTS_SIZE ||
+            layerStacks?.bucketMode !== "progresskpabs"
+        ) {
+            throw new NnueError("NNUE_INVALID_FORMAT", "進行度係数の配布設定が不正です");
+        }
+        const coefficientResponse = await fetch(coefficients.url);
+        if (!coefficientResponse.ok)
+            throw new NnueError("NNUE_DOWNLOAD_FAILED", "進行度係数をダウンロードできませんでした");
+        const coefficientReader = coefficientResponse.body?.getReader();
+        if (!coefficientReader)
+            throw new NnueError("NNUE_DOWNLOAD_FAILED", "進行度係数を読み込めませんでした");
+        const coefficientBytes = new Uint8Array(coefficients.size);
+        let coefficientOffset = 0;
+        try {
+            while (true) {
+                const { done, value } = await coefficientReader.read();
+                if (done) break;
+                if (coefficientOffset + value.length > coefficientBytes.length) {
+                    await coefficientReader.cancel();
+                    throw new NnueError(
+                        "NNUE_SIZE_MISMATCH",
+                        "進行度係数のサイズが上限を超えています",
+                    );
+                }
+                coefficientBytes.set(value, coefficientOffset);
+                coefficientOffset += value.length;
+            }
+        } finally {
+            coefficientReader.releaseLock();
+        }
+        if (coefficientOffset !== coefficients.size)
+            throw new NnueError("NNUE_SIZE_MISMATCH", "進行度係数のサイズが一致しません");
+        const coefficientData = coefficientBytes.buffer;
+        if (coefficientData.byteLength !== coefficients.size)
+            throw new NnueError("NNUE_SIZE_MISMATCH", "進行度係数のサイズが一致しません");
+        if ((await computeSha256(coefficientData)) !== coefficients.sha256)
+            throw new NnueError("NNUE_HASH_MISMATCH", "進行度係数のハッシュが一致しません");
+        layerStacks = {
+            ...layerStacks,
+            progressCoeffBase64: encodeProgressCoefficients(new Uint8Array(coefficientData)),
+        };
+    }
+    if (layerStacks) validateLayerStacks(layerStacks);
+
     // 進捗通知: 保存中
     onProgress?.({
         targetKey: preset.presetKey,
@@ -243,6 +303,8 @@ export async function downloadPreset(
               }
             : undefined,
         fvScale: preset.recommendedFvScale,
+        layerStacks,
+        progressCoefficientsSha256: preset.progressCoefficients?.sha256,
     };
 
     // 先に新バージョンを保存する
@@ -251,7 +313,7 @@ export async function downloadPreset(
     // 保存成功後に同じ presetKey の旧バージョンを削除
     const oldMetas = await storage.listByPresetKey(preset.presetKey);
     for (const old of oldMetas) {
-        if (old.contentHashSha256 !== hash) {
+        if (old.id !== id) {
             await storage.delete(old.id);
         }
     }
@@ -262,6 +324,23 @@ export async function downloadPreset(
 /**
  * プリセットの状態を取得
  */
+function matchesPreset(meta: NnueMeta, preset: PresetConfig): boolean {
+    if (
+        meta.layerStacks?.bucketMode === "progresskpabs" &&
+        (meta.layerStacks.progressBuckets ?? 0) > 1 &&
+        !meta.layerStacks.progressCoeffBase64
+    )
+        return false;
+    return (
+        meta.contentHashSha256 === preset.sha256 &&
+        meta.layerStacks?.bucketMode === preset.layerStacks?.bucketMode &&
+        meta.layerStacks?.progressBuckets === preset.layerStacks?.progressBuckets &&
+        (preset.progressCoefficients
+            ? meta.progressCoefficientsSha256 === preset.progressCoefficients.sha256
+            : meta.layerStacks?.progressCoeffBase64 === preset.layerStacks?.progressCoeffBase64)
+    );
+}
+
 export async function getPresetStatus(
     preset: PresetConfig,
     storage: NnueStorage,
@@ -274,7 +353,7 @@ export async function getPresetStatus(
     }
 
     // SHA-256 が一致するものがあれば最新
-    const hasLatest = localMetas.some((m) => m.contentHashSha256 === preset.sha256);
+    const hasLatest = localMetas.some((m) => matchesPreset(m, preset));
     if (hasLatest) {
         return { status: "latest", localMetas };
     }
@@ -350,7 +429,7 @@ export function createPresetManager(options: PresetManagerOptions) {
             if (!preset) return false;
 
             const existing = await storage.listByContentHash(preset.sha256);
-            return existing.length > 0;
+            return existing.some((meta) => matchesPreset(meta, preset));
         },
 
         /**

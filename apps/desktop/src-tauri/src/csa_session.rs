@@ -27,7 +27,7 @@ use rshogi_csa_client::config::{
     KeepaliveConfig as OssKeepaliveConfig, RecordConfig as OssRecordConfig,
     ServerConfig as OssServerConfig, TimeConfig as OssTimeConfig,
 };
-use rshogi_csa_client::engine::{UsiEngine, UsiEngineDriver};
+use rshogi_csa_client::engine::{SpawnOptions, UsiEngine, UsiEngineDriver};
 use rshogi_csa_client::events::SearchInfoEmitPolicy;
 use rshogi_csa_client::protocol::CsaConnection;
 use rshogi_csa_client::session::{run_game_session_with_events, run_resumed_session_with_events};
@@ -97,8 +97,11 @@ fn run_csa_session_blocking(
             let usi_engine = UsiEngine::spawn(
                 &oss_config.engine.path,
                 &oss_config.engine.options,
-                oss_config.game.ponder,
-                timeout,
+                SpawnOptions {
+                    ponder: oss_config.game.ponder,
+                    startup_timeout: timeout,
+                    stderr_passthrough: false,
+                },
             )
             .map_err(|e| CsaError::EngineError(format!("外部エンジン起動失敗: {e}")))?;
             Box::new(usi_engine)

@@ -1,5 +1,6 @@
 import initWasm, {
     apply_moves as applyMoves,
+    configure_layer_stacks as configureLayerStacks,
     dispose as disposeEngine,
     init as initEngine,
     initThreadPool as initThreadPoolWasm,
@@ -33,6 +34,7 @@ createEngineWorker({
     disposeEngine,
     initEngine,
     loadModel,
+    configureLayerStacks,
     loadPosition,
     runSearch,
     setEventHandler,

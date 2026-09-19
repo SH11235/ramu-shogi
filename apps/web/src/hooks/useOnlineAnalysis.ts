@@ -1,3 +1,4 @@
+import type { LayerStacksOptions } from "@shogi/engine-client";
 import type { AnalysisMoveResult, OnlineAnalysis } from "@shogi/ui";
 import { useEffect, useRef, useState } from "react";
 import { createWebWasmEngineClient } from "../platform/wasm-engine-client";
@@ -118,10 +119,13 @@ export function useOnlineAnalysis(
         setIsAnalyzing(false);
     };
 
-    const loadNnue = async (nnueId: string | null): Promise<void> => {
+    const loadNnue = async (
+        nnueId: string | null,
+        layerStacks?: LayerStacksOptions,
+    ): Promise<void> => {
         const engine = engineRef.current;
         if (!engine?.loadNnue) return;
-        if (nnueId) await engine.loadNnue(nnueId);
+        if (nnueId) await engine.loadNnue(nnueId, layerStacks);
     };
 
     return { isAnalyzing, topMoves, startAnalysis, cancelAnalysis, loadNnue };

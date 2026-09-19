@@ -5,7 +5,11 @@ mod csa_session;
 mod csa_sink;
 mod csa_types;
 mod engine_lock;
+#[path = "../../../../packages/rust-core/shared/nnue_settings.rs"]
+mod nnue_settings;
 mod usi_engine;
+#[path = "../../../../packages/rust-core/shared/yo_sfnn.rs"]
+mod yo_sfnn;
 
 /// integration test (`tests/csa_session_contract.rs`) から CSA 関連の internal
 /// API を呼ぶための再エクスポート。production code から直接利用しない。
@@ -27,7 +31,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use rshogi_core::movegen::{MoveList, generate_legal_all_with_pass, generate_legal_with_pass};
-use rshogi_core::nnue::{detect_format, set_fv_scale_override};
+use rshogi_core::nnue::set_fv_scale_override;
 use rshogi_core::position::{Position, SFEN_HIRATE};
 use rshogi_core::search::{
     DEFAULT_MAX_MOVES_TO_DRAW, LimitsType, Search, SearchInfo, SearchResult, SkillOptions,
@@ -41,6 +45,7 @@ use tauri::{AppHandle, Emitter, Manager, State, Window};
 use tauri_plugin_store::StoreExt;
 use tokio::io::AsyncReadExt;
 use uuid::Uuid;
+use yo_sfnn::detect_format;
 
 const ENGINE_EVENT: &str = "engine://event";
 const SEARCH_STACK_SIZE: usize = 64 * 1024 * 1024;
@@ -1067,6 +1072,7 @@ pub struct NnueImportResult {
     id: String,
     size: u64,
     path: String,
+    format: NnueFormatInfo,
 }
 
 /// NNUE インポートの引数
@@ -1102,6 +1108,14 @@ async fn import_nnue_from_path(
         return Err(format!("Failed to copy NNUE file: {e}"));
     }
 
+    let format = match read_nnue_format(&temp_path).await {
+        Ok(format) => format,
+        Err(error) => {
+            let _ = tokio::fs::remove_file(&temp_path).await;
+            return Err(error);
+        }
+    };
+
     // 2. 一時ファイルを本番パスにリネーム（ほぼ原子的）
     // ⚠️ Windows では rename が既存ファイルを上書きできないため、先に削除
     #[cfg(target_os = "windows")]
@@ -1124,6 +1138,7 @@ async fn import_nnue_from_path(
         id: normalized_id,
         size: metadata.len(),
         path: dest_path.to_string_lossy().into_owned(),
+        format,
     })
 }
 
@@ -1150,7 +1165,70 @@ async fn delete_nnue(app: AppHandle, id: String) -> Result<(), String> {
             .await
             .map_err(|e| format!("Failed to delete NNUE file: {e}"))?;
     }
+    let progress = nnue_path_with_id(&app, &normalized_id, "progress");
+    if progress.exists() {
+        ensure_path_within_dir(&get_nnue_dir(&app), &progress)?;
+        tokio::fs::remove_file(progress)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
     Ok(())
+}
+
+#[derive(Deserialize)]
+struct SaveNnueProgressArgs {
+    id: String,
+    base64: Option<String>,
+}
+
+/// 係数を NNUE と同じディレクトリへ保存し、localStorage の容量制限を避ける。
+#[tauri::command]
+async fn save_nnue_progress(app: AppHandle, args: SaveNnueProgressArgs) -> Result<(), String> {
+    let id = validate_nnue_id(&args.id)?;
+    let path = nnue_path_with_id(&app, &id, "progress");
+    if path.exists() {
+        ensure_path_within_dir(&get_nnue_dir(&app), &path)?;
+    }
+    if let Some(encoded) = args.base64 {
+        let bytes = nnue_settings::decode_progress_coefficients(&encoded)?;
+        tokio::fs::create_dir_all(get_nnue_dir(&app))
+            .await
+            .map_err(|e| e.to_string())?;
+        let temp = nnue_path_with_id(&app, &id, "progress.tmp");
+        tokio::fs::write(&temp, bytes)
+            .await
+            .map_err(|e| e.to_string())?;
+        tokio::fs::rename(&temp, &path)
+            .await
+            .map_err(|e| format!("Failed to save progress coefficients: {e}"))?;
+    } else if path.exists() {
+        tokio::fs::remove_file(path)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn read_nnue_progress(app: AppHandle, id: String) -> Result<Option<String>, String> {
+    use base64::Engine;
+    let id = validate_nnue_id(&id)?;
+    let path = nnue_path_with_id(&app, &id, "progress");
+    if !path.exists() {
+        return Ok(None);
+    }
+    ensure_path_within_dir(&get_nnue_dir(&app), &path)?;
+    let size = tokio::fs::metadata(&path)
+        .await
+        .map_err(|e| e.to_string())?
+        .len();
+    if size != (rshogi_core::nnue::SHOGI_PROGRESS_KP_ABS_NUM_WEIGHTS * 8) as u64 {
+        return Err("Invalid progress coefficient file size".into());
+    }
+    let bytes = tokio::fs::read(path).await.map_err(|e| e.to_string())?;
+    Ok(Some(
+        base64::engine::general_purpose::STANDARD.encode(bytes),
+    ))
 }
 
 /// SHA-256 ハッシュを計算（検証用）
@@ -1324,6 +1402,8 @@ async fn finalize_nnue_save(app: AppHandle, id: String) -> Result<NnueImportResu
         return Err("Temp file is empty".to_string());
     }
 
+    let format = read_nnue_format(&temp_path).await?;
+
     // Windows では既存ファイルを先に削除
     #[cfg(target_os = "windows")]
     if dest_path.exists() {
@@ -1344,6 +1424,7 @@ async fn finalize_nnue_save(app: AppHandle, id: String) -> Result<NnueImportResu
         id: normalized_id,
         size: metadata.len(),
         path: dest_path.to_string_lossy().into_owned(),
+        format,
     })
 }
 
@@ -1370,6 +1451,31 @@ struct NnueFormatInfo {
     l3_dimension: u32,
     activation: String,
     version_header: String,
+}
+
+impl From<rshogi_core::nnue::NnueFormatInfo> for NnueFormatInfo {
+    fn from(info: rshogi_core::nnue::NnueFormatInfo) -> Self {
+        Self {
+            architecture: info.architecture,
+            l1_dimension: info.l1_dimension,
+            l2_dimension: info.l2_dimension,
+            l3_dimension: info.l3_dimension,
+            activation: info.activation,
+            version_header: format!("0x{:08X}", info.version),
+        }
+    }
+}
+
+async fn read_nnue_format(path: &Path) -> Result<NnueFormatInfo, String> {
+    let mut file = tokio::fs::File::open(path)
+        .await
+        .map_err(|e| e.to_string())?;
+    let size = file.metadata().await.map_err(|e| e.to_string())?.len();
+    let mut header = vec![0; size.min(1024) as usize];
+    file.read_exact(&mut header)
+        .await
+        .map_err(|e| e.to_string())?;
+    detect_format(&header, size).map(Into::into)
 }
 
 /// NNUE フォーマット検出コマンドの引数
@@ -1419,14 +1525,26 @@ fn is_nnue_compatible_cmd(args: DetectNnueFormatArgs) -> Result<bool, String> {
 #[serde(rename_all = "camelCase")]
 struct EngineLoadNnueArgs {
     nnue_id: String,
+    layer_stacks: Option<nnue_settings::LayerStacksOptions>,
 }
 
 /// NNUE をエンジンにロード
-/// ⚠️ NNUE は OnceLock で管理されているため、一度ロードすると変更不可
-/// 変更するにはアプリの再起動が必要
+/// アプリではモデル切り替え時に探索状態を引き継がないよう再起動を必要とする。
 #[tauri::command]
-fn engine_load_nnue(app: AppHandle, args: EngineLoadNnueArgs) -> Result<(), String> {
+fn engine_load_nnue(
+    app: AppHandle,
+    lock: State<'_, Arc<engine_lock::EngineLock>>,
+    state: State<'_, Arc<EngineState>>,
+    args: EngineLoadNnueArgs,
+) -> Result<(), String> {
     use rshogi_core::nnue::{init_nnue, is_nnue_initialized};
+
+    let _engine_guard = lock.acquire(engine_lock::EngineTarget::Builtin)?;
+    stop_active_search(&state)?;
+    let _inner = state
+        .inner
+        .lock()
+        .map_err(|e| format!("Failed to acquire engine state lock: {e}"))?;
 
     // 既に NNUE が初期化済みの場合はエラー
     if is_nnue_initialized() {
@@ -1443,8 +1561,28 @@ fn engine_load_nnue(app: AppHandle, args: EngineLoadNnueArgs) -> Result<(), Stri
 
     ensure_path_within_dir(&get_nnue_dir(&app), &nnue_path)?;
 
-    // NNUE をロード
-    init_nnue(&nnue_path).map_err(|e| format!("Failed to load NNUE: {e}"))
+    let mut file =
+        std::fs::File::open(&nnue_path).map_err(|e| format!("Failed to open NNUE: {e}"))?;
+    let mut header = [0; 256];
+    let count = std::io::Read::read(&mut file, &mut header).map_err(|e| e.to_string())?;
+    let routing = if yo_sfnn::is_yo_sfnn(&header[..count]) {
+        nnue_settings::require_yo_kingrank9(args.layer_stacks.as_ref())?;
+        let bytes = std::fs::read(&nnue_path).map_err(|e| e.to_string())?;
+        let normalized = yo_sfnn::normalize_model(&bytes)?;
+        let routing = nnue_settings::prepare_routing(
+            &mut std::io::Cursor::new(normalized.as_ref()),
+            args.layer_stacks.as_ref(),
+        )?;
+        rshogi_core::nnue::init_nnue_from_bytes(&normalized).map_err(|e| e.to_string())?;
+        routing
+    } else {
+        let routing = nnue_settings::prepare_routing(&mut file, args.layer_stacks.as_ref())?;
+        init_nnue(&nnue_path).map_err(|e| format!("Failed to load NNUE: {e}"))?;
+        routing
+    };
+    nnue_settings::apply_routing(routing)?;
+    rshogi_core::eval::disable_material();
+    Ok(())
 }
 
 // ── USI Engine IPC Commands ──────────────────────────────────────
@@ -1692,6 +1830,8 @@ pub fn run() {
             import_nnue_from_path,
             get_nnue_path,
             delete_nnue,
+            save_nnue_progress,
+            read_nnue_progress,
             calculate_nnue_hash,
             list_nnue_files,
             save_nnue_chunk,

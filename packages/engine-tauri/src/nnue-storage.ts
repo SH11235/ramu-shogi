@@ -46,21 +46,24 @@ export interface TauriNnueStorageOptions {
 }
 
 interface NnueImportResult {
+    format?: NnueMeta["format"];
     id: string;
     size: number;
     path: string;
 }
+
+type StoredNnueMeta = NnueMeta & { progressCoefficientsStored?: boolean };
 
 const META_STORAGE_KEY = "shogi-nnue-meta";
 
 /**
  * localStorage からメタデータを読み込む
  */
-function loadMetaFromStorage(): Map<string, NnueMeta> {
+function loadMetaFromStorage(): Map<string, StoredNnueMeta> {
     try {
         const data = localStorage.getItem(META_STORAGE_KEY);
         if (!data) return new Map();
-        const arr = JSON.parse(data) as NnueMeta[];
+        const arr = JSON.parse(data) as StoredNnueMeta[];
         return new Map(arr.map((m) => [m.id, m]));
     } catch {
         return new Map();
@@ -70,8 +73,12 @@ function loadMetaFromStorage(): Map<string, NnueMeta> {
 /**
  * localStorage にメタデータを保存
  */
-function saveMetaToStorage(meta: Map<string, NnueMeta>): void {
-    const arr = Array.from(meta.values());
+function saveMetaToStorage(meta: Map<string, StoredNnueMeta>): void {
+    const arr = Array.from(meta.values(), (value) => {
+        if (!value.layerStacks?.progressCoeffBase64) return value;
+        const { progressCoeffBase64: _coefficients, ...layerStacks } = value.layerStacks;
+        return { ...value, layerStacks, progressCoefficientsStored: true };
+    });
     localStorage.setItem(META_STORAGE_KEY, JSON.stringify(arr));
 }
 
@@ -81,6 +88,40 @@ function saveMetaToStorage(meta: Map<string, NnueMeta>): void {
 export function createTauriNnueStorage(options: TauriNnueStorageOptions = {}): NnueStorage {
     const invoke = options.invoke ?? tauriInvoke;
     const metaCache = loadMetaFromStorage();
+    const hydrate = async (meta: StoredNnueMeta): Promise<StoredNnueMeta> => {
+        if (
+            meta.progressCoefficientsStored &&
+            meta.layerStacks &&
+            !meta.layerStacks.progressCoeffBase64
+        ) {
+            const coefficients = await invoke<string | null>("read_nnue_progress", {
+                id: meta.id,
+            }).catch(() => null);
+            if (!coefficients) return meta;
+            const hydrated = {
+                ...meta,
+                layerStacks: { ...meta.layerStacks, progressCoeffBase64: coefficients },
+            };
+            metaCache.set(meta.id, hydrated);
+            return hydrated;
+        }
+        return meta;
+    };
+    const saveCoefficients = async (
+        meta: StoredNnueMeta,
+        existing?: StoredNnueMeta,
+    ): Promise<StoredNnueMeta> => {
+        const base64 = meta.layerStacks?.progressCoeffBase64;
+        if (
+            base64 ||
+            existing?.progressCoefficientsStored ||
+            existing?.layerStacks?.progressCoeffBase64
+        ) {
+            await invoke("save_nnue_progress", { args: { id: meta.id, base64: base64 ?? null } });
+            return { ...meta, progressCoefficientsStored: Boolean(base64) };
+        }
+        return meta;
+    };
 
     return {
         capabilities: {
@@ -100,14 +141,14 @@ export function createTauriNnueStorage(options: TauriNnueStorageOptions = {}): N
                     const length = Math.min(CHUNK_SIZE, bytes.length - offset);
                     const dataBase64 = chunkToBase64(bytes, offset, length);
 
-                    await invoke("save_nnue_chunk", { id, chunkIndex, dataBase64 });
+                    await invoke("save_nnue_chunk", { args: { id, chunkIndex, dataBase64 } });
                 }
 
                 // 保存を完了
                 await invoke("finalize_nnue_save", { id });
 
                 // メタデータを保存
-                metaCache.set(id, meta);
+                metaCache.set(id, await saveCoefficients(meta));
                 saveMetaToStorage(metaCache);
             } catch (error) {
                 // エラー時は一時ファイルを削除
@@ -143,11 +184,12 @@ export function createTauriNnueStorage(options: TauriNnueStorageOptions = {}): N
                 saveMetaToStorage(metaCache);
             }
 
-            return Array.from(metaCache.values());
+            return Promise.all(Array.from(metaCache.values(), hydrate));
         },
 
         async getMeta(id: string): Promise<NnueMeta | null> {
-            return metaCache.get(id) ?? null;
+            const meta = metaCache.get(id);
+            return meta ? hydrate(meta) : null;
         },
 
         async updateMeta(id: string, partial: Partial<NnueMeta>): Promise<void> {
@@ -155,7 +197,8 @@ export function createTauriNnueStorage(options: TauriNnueStorageOptions = {}): N
             if (!existing) {
                 throw new Error(`NNUE not found: ${id}`);
             }
-            const updated = { ...existing, ...partial };
+            let updated = { ...existing, ...partial };
+            if ("layerStacks" in partial) updated = await saveCoefficients(updated, existing);
             metaCache.set(id, updated);
             saveMetaToStorage(metaCache);
         },
@@ -168,11 +211,19 @@ export function createTauriNnueStorage(options: TauriNnueStorageOptions = {}): N
         },
 
         async listByContentHash(hash: string): Promise<NnueMeta[]> {
-            return Array.from(metaCache.values()).filter((m) => m.contentHashSha256 === hash);
+            return Promise.all(
+                Array.from(metaCache.values())
+                    .filter((m) => m.contentHashSha256 === hash)
+                    .map(hydrate),
+            );
         },
 
         async listByPresetKey(presetKey: string): Promise<NnueMeta[]> {
-            return Array.from(metaCache.values()).filter((m) => m.presetKey === presetKey);
+            return Promise.all(
+                Array.from(metaCache.values())
+                    .filter((m) => m.presetKey === presetKey)
+                    .map(hydrate),
+            );
         },
 
         async importFromPath(srcPath: string, displayName?: string): Promise<NnueMeta> {
@@ -194,7 +245,11 @@ export function createTauriNnueStorage(options: TauriNnueStorageOptions = {}): N
             if (existing.length > 0) {
                 // 重複ファイルを削除して既存のメタを返す
                 await invoke("delete_nnue", { id });
-                return existing[0];
+                const previous = existing[0];
+                const updated = { ...previous, format: result.format ?? previous.format };
+                metaCache.set(updated.id, updated);
+                saveMetaToStorage(metaCache);
+                return hydrate(updated);
             }
 
             const meta: NnueMeta = {
@@ -202,6 +257,7 @@ export function createTauriNnueStorage(options: TauriNnueStorageOptions = {}): N
                 displayName: displayName ?? fileName.replace(/\.nnue$/i, ""),
                 originalFileName: fileName,
                 size: result.size,
+                format: result.format,
                 contentHashSha256: hash,
                 source: "user-uploaded",
                 createdAt: Date.now(),
@@ -237,7 +293,6 @@ async function importNnueFromPath(
 ): Promise<NnueImportResult> {
     const invoke = options.invoke ?? tauriInvoke;
     return invoke<NnueImportResult>("import_nnue_from_path", {
-        srcPath,
-        id,
+        args: { srcPath, id },
     });
 }
