@@ -1,7 +1,7 @@
-//! YaneuraOu の 8bit SFNN / KingRank9 を rshogi LayerStacks へ移送する。
+//! YaneuraOu の 8bit SFNN を rshogi LayerStacks へ移送する。
 //!
-//! 対応するのは 5 種の HalfK 系特徴量、shortcut あり、9 bucket の形式。
-//! NN16、common+shard、別 bucket routing、形状を特定できない export は拒否する。
+//! 対応するのは 5 種の HalfK 系特徴量、shortcut あり、k3k3 または単独 progressN。
+//! NN16、common+shard、複合 bucket routing、形状を特定できない export は拒否する。
 //! 重みの整数値と順序を保持し、header と hash のみ正規化する。
 
 use std::borrow::Cow;
@@ -77,6 +77,7 @@ struct Arch<'a> {
     ft: usize,
     l1: usize,
     l2: usize,
+    buckets: usize,
     end: usize,
 }
 
@@ -131,10 +132,20 @@ fn parse(header: &[u8]) -> Result<Arch<'_>, String> {
     if number(inputs)? != feature.inputs || ft == 0 || ft > 8192 || !ft.is_multiple_of(32) {
         return Err(error("inconsistent or unsupported FT dimensions"));
     }
-    let network = network
-        .strip_suffix("{LayerStack=9}")
-        .ok_or_else(|| error("only 9-bucket KingRank9 networks are supported"))?
-        .to_ascii_uppercase();
+    let (network, count) = network
+        .split_once("{LayerStack=")
+        .ok_or_else(|| error("missing LayerStack count"))?;
+    let buckets = number(
+        count
+            .strip_suffix('}')
+            .ok_or_else(|| error("invalid LayerStack count"))?,
+    )?;
+    if !matches!(buckets, 2 | 4 | 8 | 9 | 16) {
+        return Err(error(
+            "only k3k3 or standalone progress2/4/8/16 is supported",
+        ));
+    }
+    let network = network.to_ascii_uppercase();
     let (l1, l2) = if network == "SFNN-1536" || network == "SFNN-1536-V2" {
         if feature.key != "HALFKAHM2" || ft != 1536 {
             return Err(error(
@@ -143,7 +154,18 @@ fn parse(header: &[u8]) -> Result<Arch<'_>, String> {
         }
         (16, 32)
     } else {
-        let body = network.strip_prefix("SFNN_").and_then(|s| s.strip_suffix("_K3K3")).ok_or_else(|| error("unsupported or ambiguous Network name; expected SFNN-1536 or SFNN_<feature>_<FT>_<H1>_<H2>_K3K3"))?;
+        let (body, routing) = network
+            .strip_prefix("SFNN_")
+            .and_then(|s| s.rsplit_once('_'))
+            .ok_or_else(|| error("unsupported or ambiguous Network name"))?;
+        let routing_matches = if buckets == 9 {
+            routing == "K3K3"
+        } else {
+            routing == format!("PROGRESS{buckets}")
+        };
+        if !routing_matches {
+            return Err(error("Network routing disagrees with LayerStack count"));
+        }
         let parts: Vec<_> = body.split('_').collect();
         if parts.len() != 4 || parts[0] != feature.key || number(parts[1])? != ft {
             return Err(error(
@@ -165,6 +187,7 @@ fn parse(header: &[u8]) -> Result<Arch<'_>, String> {
         ft,
         l1,
         l2,
+        buckets,
         end: cursor.pos,
     })
 }
@@ -179,10 +202,10 @@ pub fn detect_format(header: &[u8], file_size: u64) -> Result<NnueFormatInfo, St
         + 4
         + 2 * (MAGIC.len() as u64 + 4)
         + (arch.ft * (arch.feature.inputs + 1)) as u64
-        + 9 * (4
-            + affine_len(arch.ft, arch.l1)
-            + affine_len(2 * (arch.l1 - 1), arch.l2)
-            + affine_len(arch.l2, 1)) as u64;
+        + arch.buckets as u64
+            * (4 + affine_len(arch.ft, arch.l1)
+                + affine_len(2 * (arch.l1 - 1), arch.l2)
+                + affine_len(arch.l2, 1)) as u64;
     if file_size < minimum {
         return Err(error("file is too short for the declared architecture"));
     }
@@ -199,6 +222,28 @@ pub fn detect_format(header: &[u8], file_size: u64) -> Result<NnueFormatInfo, St
 
 fn affine_len(input: usize, output: usize) -> usize {
     output * (4 + input.div_ceil(32) * 32)
+}
+
+/// YO は tatara と進行度量子化が異なるため、明示設定と header の整合性を検証する。
+pub fn validate_routing(
+    header: &[u8],
+    mode: &str,
+    progress_buckets: Option<usize>,
+) -> Result<(), String> {
+    let arch = parse(header)?;
+    if arch.buckets == 9 {
+        if mode != "kingrank9" || progress_buckets.is_some() {
+            return Err(error(
+                "k3k3 requires KingRank9 without a progress bucket count",
+            ));
+        }
+    } else if mode != "progresskpabsq16" || progress_buckets != Some(arch.buckets) {
+        return Err(error(format!(
+            "progress{} requires YaneuraOu/BulletOu Q16 routing with the matching bucket count",
+            arch.buckets
+        )));
+    }
+    Ok(())
 }
 
 fn fc_hash(ft: usize, l2: usize) -> u32 {
@@ -237,8 +282,8 @@ pub fn normalize_model(bytes: &[u8]) -> Result<Cow<'_, [u8]>, String> {
     cursor.leb(a.ft)?;
     cursor.leb(a.feature.inputs * a.ft)?;
     let ft_end = cursor.pos;
-    let mut buckets = Vec::with_capacity(9);
-    for _ in 0..9 {
+    let mut buckets = Vec::with_capacity(a.buckets);
+    for _ in 0..a.buckets {
         cursor.expect(NETWORK_HASH, "LayerStack hash")?;
         let start = cursor.pos;
         cursor.affine(a.ft, a.l1)?;
@@ -264,7 +309,7 @@ pub fn normalize_model(bytes: &[u8]) -> Result<Cow<'_, [u8]>, String> {
         out.extend_from_slice(&value.to_le_bytes());
     }
     out.extend_from_slice(arch.as_bytes());
-    out.extend_from_slice(&9u32.to_le_bytes());
+    out.extend_from_slice(&(a.buckets as u32).to_le_bytes());
     out.extend_from_slice(&ft_hash.to_le_bytes());
     out.extend_from_slice(&bytes[ft_start..ft_end]);
     for range in buckets {
@@ -360,8 +405,12 @@ mod tests {
     use super::*;
 
     fn fixture(feature: &Feature) -> Vec<u8> {
+        fixture_routing(feature, "K3K3", 9)
+    }
+
+    fn fixture_routing(feature: &Feature, routing: &str, buckets: usize) -> Vec<u8> {
         let arch = format!(
-            "{PREFIX}{}(Friend)[{}->32x2],Network=SFNN_{}_32_7_8_K3K3{{LayerStack=9}}",
+            "{PREFIX}{}(Friend)[{}->32x2],Network=SFNN_{}_32_7_8_{routing}{{LayerStack={buckets}}}",
             feature.yo, feature.inputs, feature.key
         );
         let mut bytes = Vec::new();
@@ -376,7 +425,7 @@ mod tests {
             bytes.extend_from_slice(&(n as u32).to_le_bytes());
             bytes.resize(bytes.len() + n, 0);
         }
-        for _ in 0..9 {
+        for _ in 0..buckets {
             bytes.extend_from_slice(&NETWORK_HASH.to_le_bytes());
             bytes.resize(
                 bytes.len() + affine_len(32, 8) + affine_len(14, 8) + affine_len(8, 1),
@@ -384,6 +433,25 @@ mod tests {
             );
         }
         bytes
+    }
+
+    #[test]
+    fn progress_preserves_stack_count_and_requires_q16_routing() {
+        for buckets in [2, 4, 8, 16] {
+            let input = fixture_routing(&FEATURES[4], &format!("PROGRESS{buckets}"), buckets);
+            let output = normalize_model(&input).unwrap();
+            let network = rshogi_core::nnue::NNUENetwork::from_bytes(&output).unwrap();
+            assert_eq!(network.layer_stack_num_buckets(), Some(buckets));
+            validate_routing(&input, "progresskpabsq16", Some(buckets)).unwrap();
+            assert!(validate_routing(&input, "progresskpabs", Some(buckets)).is_err());
+            assert!(validate_routing(&input, "kingrank9", None).is_err());
+            assert!(validate_routing(&input, "progresskpabsq16", Some(1)).is_err());
+        }
+        assert!(normalize_model(&fixture_routing(&FEATURES[4], "K3K3_PROGRESS8", 8)).is_err());
+        assert!(normalize_model(&fixture_routing(&FEATURES[4], "PROGRESS4", 8)).is_err());
+        let king = fixture(&FEATURES[4]);
+        validate_routing(&king, "kingrank9", None).unwrap();
+        assert!(validate_routing(&king, "progresskpabsq16", Some(8)).is_err());
     }
 
     #[test]

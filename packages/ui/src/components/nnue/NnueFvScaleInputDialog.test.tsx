@@ -5,6 +5,37 @@ import { NnueFvScaleInputDialog } from "./NnueFvScaleInputDialog";
 
 afterEach(cleanup);
 describe("LayerStacks model settings", () => {
+    it("offers Q16 progressN with only compatible bucket counts", () => {
+        render(
+            <NnueFvScaleInputDialog
+                editing
+                fileName="model"
+                initialFvScale={16}
+                onConfirm={vi.fn()}
+                onCancel={() => {}}
+            />,
+        );
+        fireEvent.change(screen.getByLabelText("LayerStacks の振り分け方式"), {
+            target: { value: "progresskpabsq16" },
+        });
+        const buckets = screen.getByLabelText(
+            "進行度バケット数（2・4・8・16）",
+        ) as HTMLSelectElement;
+        expect(Array.from(buckets.options, (option) => option.value)).toEqual([
+            "",
+            "2",
+            "4",
+            "8",
+            "16",
+        ]);
+        fireEvent.change(buckets, { target: { value: "8" } });
+        expect((screen.getByRole("button", { name: "保存" }) as HTMLButtonElement).disabled).toBe(
+            true,
+        );
+        expect(
+            screen.getByLabelText("進行度係数ファイル（f64 LE、2 バケット以上では必須）"),
+        ).toBeDefined();
+    });
     it("requires an explicit progress bucket count", () => {
         render(
             <NnueFvScaleInputDialog

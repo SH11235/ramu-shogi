@@ -2,7 +2,10 @@ import type { LayerStacksConfig } from "./types";
 
 export const PROGRESS_COEFFICIENTS_SIZE = 81 * 1548 * 8;
 
-export function encodeProgressCoefficients(bytes: Uint8Array): string {
+export function encodeProgressCoefficients(
+    bytes: Uint8Array,
+    mode: LayerStacksConfig["bucketMode"] = "progresskpabs",
+): string {
     if (bytes.byteLength !== PROGRESS_COEFFICIENTS_SIZE) {
         throw new Error(
             "進行度係数ファイルは " +
@@ -12,7 +15,8 @@ export function encodeProgressCoefficients(bytes: Uint8Array): string {
     }
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     for (let i = 0; i < bytes.byteLength; i += 8) {
-        if (!Number.isFinite(Math.fround(view.getFloat64(i, true))))
+        const value = view.getFloat64(i, true);
+        if (!Number.isFinite(mode === "progresskpabsq16" ? value : Math.fround(value)))
             throw new Error("進行度係数に非有限値が含まれています");
     }
     let binary = "";
@@ -24,7 +28,7 @@ export function encodeProgressCoefficients(bytes: Uint8Array): string {
 
 export function validateLayerStacks(config: LayerStacksConfig): void {
     if (config.bucketMode === "kingrank9") return;
-    if (config.bucketMode !== "progresskpabs")
+    if (config.bucketMode !== "progresskpabs" && config.bucketMode !== "progresskpabsq16")
         throw new Error("LayerStacks の振り分け方式を選択してください");
     if (
         !Number.isInteger(config.progressBuckets) ||
@@ -32,6 +36,14 @@ export function validateLayerStacks(config: LayerStacksConfig): void {
         (config.progressBuckets ?? 0) > 16
     ) {
         throw new Error("進行度バケット数は 1〜16 の整数を指定してください");
+    }
+    if (
+        config.bucketMode === "progresskpabsq16" &&
+        ![2, 4, 8, 16].includes(config.progressBuckets ?? 0)
+    ) {
+        throw new Error(
+            "YaneuraOu / BulletOu の進行度バケット数は 2、4、8、16 のいずれかを指定してください",
+        );
     }
     if ((config.progressBuckets ?? 0) > 1 && !config.progressCoeffBase64) {
         throw new Error("進行度バケット数が 2 以上の場合は進行度係数ファイルが必要です");

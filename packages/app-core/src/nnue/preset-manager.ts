@@ -223,7 +223,8 @@ export async function downloadPreset(
         const coefficients = preset.progressCoefficients;
         if (
             coefficients.size !== PROGRESS_COEFFICIENTS_SIZE ||
-            layerStacks?.bucketMode !== "progresskpabs"
+            (layerStacks?.bucketMode !== "progresskpabs" &&
+                layerStacks?.bucketMode !== "progresskpabsq16")
         ) {
             throw new NnueError("NNUE_INVALID_FORMAT", "進行度係数の配布設定が不正です");
         }
@@ -261,7 +262,10 @@ export async function downloadPreset(
             throw new NnueError("NNUE_HASH_MISMATCH", "進行度係数のハッシュが一致しません");
         layerStacks = {
             ...layerStacks,
-            progressCoeffBase64: encodeProgressCoefficients(new Uint8Array(coefficientData)),
+            progressCoeffBase64: encodeProgressCoefficients(
+                new Uint8Array(coefficientData),
+                layerStacks.bucketMode,
+            ),
         };
     }
     if (layerStacks) validateLayerStacks(layerStacks);
@@ -326,7 +330,8 @@ export async function downloadPreset(
  */
 function matchesPreset(meta: NnueMeta, preset: PresetConfig): boolean {
     if (
-        meta.layerStacks?.bucketMode === "progresskpabs" &&
+        (meta.layerStacks?.bucketMode === "progresskpabs" ||
+            meta.layerStacks?.bucketMode === "progresskpabsq16") &&
         (meta.layerStacks.progressBuckets ?? 0) > 1 &&
         !meta.layerStacks.progressCoeffBase64
     )

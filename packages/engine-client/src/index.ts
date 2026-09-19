@@ -1,5 +1,5 @@
 export interface LayerStacksOptions {
-    bucketMode: "kingrank9" | "progresskpabs";
+    bucketMode: "kingrank9" | "progresskpabs" | "progresskpabsq16";
     progressBuckets?: number;
     /** Raw little-endian f64 progress coefficients, encoded as Base64. */
     progressCoeffBase64?: string;

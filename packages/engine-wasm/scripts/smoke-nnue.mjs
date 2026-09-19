@@ -11,7 +11,7 @@ import {
     set_option,
 } from "../pkg/engine_wasm.js";
 
-// Usage: node scripts/smoke-nnue.mjs model.bin [kingrank9|progresskpabs] [buckets] [progress.bin]
+// Usage: node scripts/smoke-nnue.mjs model.bin [kingrank9|progresskpabs|progresskpabsq16] [buckets] [progress.bin]
 const [modelPath, bucketMode, buckets, coefficientPath] = process.argv.slice(2);
 if (!modelPath) throw new Error("Specify a model file");
 initSync({ module: readFileSync(new URL("../pkg/engine_wasm_bg.wasm", import.meta.url)) });

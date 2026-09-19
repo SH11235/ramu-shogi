@@ -6,9 +6,11 @@ use base64::Engine;
 use rshogi_core::nnue::net_bin_layout::LayerStacksBinLayout;
 use rshogi_core::nnue::{
     LayerStackBucketMode, configure_layer_stack_routing, detect_format,
-    load_progress_coeff_kpabs_from_bytes, parse_layer_stack_bucket_mode,
-    reset_layer_stack_progress_buckets, reset_layer_stack_progress_kpabs_weights,
-    set_layer_stack_progress_kpabs_weights, validate_layer_stack_routing_configuration,
+    load_progress_coeff_kpabs_from_bytes, load_progress_coeff_kpabs_q16_from_bytes,
+    parse_layer_stack_bucket_mode, reset_layer_stack_progress_buckets,
+    reset_layer_stack_progress_kpabs_q16_weights, reset_layer_stack_progress_kpabs_weights,
+    set_layer_stack_progress_kpabs_q16_weights, set_layer_stack_progress_kpabs_weights,
+    validate_layer_stack_routing_configuration,
 };
 use serde::Deserialize;
 
@@ -25,6 +27,7 @@ pub struct PreparedRouting {
     stored_buckets: usize,
     progress_buckets: Option<usize>,
     weights: Option<Box<[f32]>>,
+    q16_weights: Option<Box<[i32]>>,
 }
 
 pub fn decode_progress_coefficients(encoded: &str) -> Result<Vec<u8>, String> {
@@ -35,9 +38,12 @@ pub fn decode_progress_coefficients(encoded: &str) -> Result<Vec<u8>, String> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(encoded)
         .map_err(|e| format!("Invalid progress coefficient Base64: {e}"))?;
-    let weights = load_progress_coeff_kpabs_from_bytes(&bytes)?;
-    if weights.iter().any(|v| !v.is_finite()) {
-        return Err("Progress coefficients must be finite f32 values".to_string());
+    if bytes.len() != expected_bytes
+        || bytes.chunks_exact(8).any(|chunk| {
+            !f64::from_le_bytes(chunk.try_into().expect("exact chunk size")).is_finite()
+        })
+    {
+        return Err("Progress coefficients must be finite f64 values".to_string());
     }
     Ok(bytes)
 }
@@ -47,6 +53,7 @@ impl LayerStacksOptions {
         let mode = parse_layer_stack_bucket_mode(&self.bucket_mode)
             .ok_or_else(|| format!("Unknown LayerStacks bucket mode: {}", self.bucket_mode))?;
         validate_layer_stack_routing_configuration(mode, stored_buckets, self.progress_buckets)?;
+        let mut q16_weights = None;
         let weights = match (mode, &self.progress_coeff_base64) {
             (LayerStackBucketMode::KingRank9, Some(_)) => {
                 return Err("KingRank9 does not use progress coefficients".to_string());
@@ -62,6 +69,18 @@ impl LayerStacksOptions {
             (LayerStackBucketMode::ProgressKPAbs, None) if self.progress_buckets != Some(1) => {
                 return Err("progresskpabs requires a progress coefficient file".to_string());
             }
+            (LayerStackBucketMode::ProgressKPAbsQ16, encoded) => {
+                if !matches!(self.progress_buckets, Some(2 | 4 | 8 | 16)) {
+                    return Err("YaneuraOu/BulletOu progress requires 2, 4, 8 or 16 buckets".into());
+                }
+                let bytes = decode_progress_coefficients(
+                    encoded
+                        .as_deref()
+                        .ok_or("YaneuraOu/BulletOu progress requires a coefficient file")?,
+                )?;
+                q16_weights = Some(load_progress_coeff_kpabs_q16_from_bytes(&bytes)?);
+                None
+            }
             _ => None,
         };
         Ok(PreparedRouting {
@@ -69,15 +88,18 @@ impl LayerStacksOptions {
             stored_buckets,
             progress_buckets: self.progress_buckets,
             weights,
+            q16_weights,
         })
     }
 }
 
-pub fn require_yo_kingrank9(options: Option<&LayerStacksOptions>) -> Result<(), String> {
-    if options.is_none_or(|options| options.bucket_mode != "kingrank9") {
-        return Err("YaneuraOu SFNN requires KingRank9 in the model settings".into());
-    }
-    Ok(())
+pub fn require_yo_routing(
+    header: &[u8],
+    options: Option<&LayerStacksOptions>,
+) -> Result<(), String> {
+    let options =
+        options.ok_or("YaneuraOu SFNN requires explicit routing in the model settings")?;
+    crate::yo_sfnn::validate_routing(header, &options.bucket_mode, options.progress_buckets)
 }
 
 /// 重みを公開する前にモデルの格納数とユーザー設定を検証する。
@@ -116,9 +138,15 @@ pub fn apply_routing(routing: Option<PreparedRouting>) -> Result<(), String> {
         } else {
             reset_layer_stack_progress_kpabs_weights();
         }
+        if let Some(weights) = routing.q16_weights {
+            set_layer_stack_progress_kpabs_q16_weights(weights)?;
+        } else {
+            reset_layer_stack_progress_kpabs_q16_weights();
+        }
     } else {
         reset_layer_stack_progress_buckets();
         reset_layer_stack_progress_kpabs_weights();
+        reset_layer_stack_progress_kpabs_q16_weights();
     }
     Ok(())
 }
@@ -167,6 +195,33 @@ mod tests {
     }
 
     #[test]
+    fn q16_settings_keep_integer_coefficients_and_require_supported_counts() {
+        let mut settings = options("progresskpabsq16", Some(8));
+        assert!(settings.prepare(8).is_err());
+        let mut bytes = vec![0; rshogi_core::nnue::SHOGI_PROGRESS_KP_ABS_NUM_WEIGHTS * 8];
+        bytes[..8].copy_from_slice(&(1.5f64 / 65536.0).to_le_bytes());
+        settings.progress_coeff_base64 =
+            Some(base64::engine::general_purpose::STANDARD.encode(&bytes));
+        let prepared = settings.prepare(8).unwrap();
+        assert!(prepared.weights.is_none());
+        assert_eq!(prepared.q16_weights.unwrap()[0], 2);
+        bytes[..8].copy_from_slice(&f64::MAX.to_le_bytes());
+        settings.progress_coeff_base64 =
+            Some(base64::engine::general_purpose::STANDARD.encode(&bytes));
+        assert_eq!(
+            settings.prepare(8).unwrap().q16_weights.unwrap()[0],
+            i32::MAX
+        );
+        settings.bucket_mode = "progresskpabs".into();
+        assert!(settings.prepare(8).is_err());
+        settings.bucket_mode = "progresskpabsq16".into();
+        for buckets in [1, 3, 5, 9, 17] {
+            settings.progress_buckets = Some(buckets);
+            assert!(settings.prepare(16).is_err());
+        }
+    }
+
+    #[test]
     #[ignore = "NNUE_TEST_FILE and optional NNUE_TEST_ROUTING JSON are required"]
     fn real_model_load_and_search() {
         std::thread::Builder::new()
@@ -187,7 +242,7 @@ mod tests {
                 }
                 let bytes = std::fs::read(&path).unwrap();
                 if crate::yo_sfnn::is_yo_sfnn(&bytes) {
-                    require_yo_kingrank9(settings.as_ref()).unwrap();
+                    require_yo_routing(&bytes, settings.as_ref()).unwrap();
                 }
                 let normalized = crate::yo_sfnn::normalize_model(&bytes).unwrap();
                 let routing = prepare_routing(

@@ -570,7 +570,7 @@ pub fn configure_layer_stacks(options: JsValue) -> Result<(), JsValue> {
 fn load_model_bytes(bytes: &[u8]) -> Result<(), String> {
     if yo_sfnn::is_yo_sfnn(bytes) {
         LAYER_STACKS_OPTIONS
-            .with(|state| nnue_settings::require_yo_kingrank9(state.borrow().as_ref()))?;
+            .with(|state| nnue_settings::require_yo_routing(bytes, state.borrow().as_ref()))?;
     }
     let normalized = yo_sfnn::normalize_model(bytes)?;
     let bytes = normalized.as_ref();

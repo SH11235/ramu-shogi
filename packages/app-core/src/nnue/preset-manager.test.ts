@@ -477,9 +477,15 @@ describe("createPresetManager", () => {
 
 describe("LayerStacks preset coefficients", () => {
     it.each([
-        false,
-        true,
-    ])("validates the companion hash before saving (corrupt=%s)", async (corrupt) => {
+        { corrupt: false, bucketMode: "progresskpabs" as const, progressBuckets: 9 },
+        { corrupt: true, bucketMode: "progresskpabs" as const, progressBuckets: 9 },
+        { corrupt: false, bucketMode: "progresskpabsq16" as const, progressBuckets: 8 },
+        { corrupt: true, bucketMode: "progresskpabsq16" as const, progressBuckets: 8 },
+    ])("validates companion for $bucketMode (corrupt=$corrupt)", async ({
+        corrupt,
+        bucketMode,
+        progressBuckets,
+    }) => {
         mockFetch.mockReset();
         const data = new Uint8Array(16);
         const coefficients = new Uint8Array(PROGRESS_COEFFICIENTS_SIZE);
@@ -490,7 +496,7 @@ describe("LayerStacks preset coefficients", () => {
         const preset = createTestPreset({
             size: data.length,
             sha256: await hash(data),
-            layerStacks: { bucketMode: "progresskpabs", progressBuckets: 9 },
+            layerStacks: { bucketMode, progressBuckets },
             progressCoefficients: {
                 url: "https://example.com/progress.bin",
                 size: coefficients.length,
@@ -512,7 +518,8 @@ describe("LayerStacks preset coefficients", () => {
             expect(storage.delete).not.toHaveBeenCalled();
         } else {
             const meta = await downloadPreset(preset, storage);
-            expect(meta.layerStacks?.progressBuckets).toBe(9);
+            expect(meta.layerStacks?.progressBuckets).toBe(progressBuckets);
+            expect(meta.layerStacks?.bucketMode).toBe(bucketMode);
             expect(atob(meta.layerStacks?.progressCoeffBase64 ?? "").length).toBe(
                 coefficients.length,
             );

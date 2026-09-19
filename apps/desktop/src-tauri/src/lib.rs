@@ -1566,8 +1566,8 @@ fn engine_load_nnue(
     let mut header = [0; 256];
     let count = std::io::Read::read(&mut file, &mut header).map_err(|e| e.to_string())?;
     let routing = if yo_sfnn::is_yo_sfnn(&header[..count]) {
-        nnue_settings::require_yo_kingrank9(args.layer_stacks.as_ref())?;
         let bytes = std::fs::read(&nnue_path).map_err(|e| e.to_string())?;
+        nnue_settings::require_yo_routing(&bytes, args.layer_stacks.as_ref())?;
         let normalized = yo_sfnn::normalize_model(&bytes)?;
         let routing = nnue_settings::prepare_routing(
             &mut std::io::Cursor::new(normalized.as_ref()),
