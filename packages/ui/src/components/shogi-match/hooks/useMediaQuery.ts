@@ -33,7 +33,7 @@ function useMediaQuery(query: string): boolean {
 /**
  * モバイル判定用ブレークポイント (768px未満)
  */
-export const MOBILE_BREAKPOINT = 768;
+const MOBILE_BREAKPOINT = 768;
 
 /**
  * モバイル表示かどうかを判定するフック

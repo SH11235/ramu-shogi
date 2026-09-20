@@ -1,11 +1,13 @@
 import type { Player } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
 import type { ReactElement } from "react";
+import { useState } from "react";
+import { BottomSheet } from "./BottomSheet";
 
 interface SearchInfoPanelProps {
     side: Player;
     info: EngineInfoEvent;
-    /** モバイルでは右下 FAB (設定ボタン) と重ならないよう上にオフセットする */
+    /** モバイルは通常フローの要約とタップで開く詳細を表示する。 */
     isMobile?: boolean;
 }
 
@@ -27,17 +29,15 @@ export function SearchInfoPanel({
     info,
     isMobile = false,
 }: SearchInfoPanelProps): ReactElement {
+    const [detailsOpen, setDetailsOpen] = useState(false);
     const depth =
         info.depth === undefined
             ? "-"
             : info.seldepth === undefined
               ? String(info.depth)
               : `${info.depth}/${info.seldepth}`;
-    const bottomClass = isMobile ? "bottom-[calc(4.5rem+env(safe-area-inset-bottom))]" : "bottom-3";
-    return (
-        <aside
-            className={`fixed ${bottomClass} left-1/2 z-40 w-[min(44rem,calc(100%-1.5rem))] -translate-x-1/2 rounded-lg border border-border bg-card/95 p-2 text-xs text-foreground shadow-lg`}
-        >
+    const details = (
+        <div className="text-xs">
             <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono tabular-nums">
                 <span>{side === "sente" ? "▲" : "△"} 思考中</span>
                 <span>深さ {depth}</span>
@@ -54,6 +54,31 @@ export function SearchInfoPanel({
                     PV {info.pv.slice(0, 8).join(" ")}
                 </div>
             )}
+        </div>
+    );
+    if (isMobile) {
+        return (
+            <>
+                <button
+                    type="button"
+                    className="flex min-h-10 w-full flex-wrap items-center justify-between gap-x-2 rounded-lg border border-border bg-card px-2 py-1 text-xs tabular-nums"
+                    onClick={() => setDetailsOpen(true)}
+                    aria-label="探索情報の詳細"
+                >
+                    <span>{side === "sente" ? "▲" : "△"} 思考中</span>
+                    <span>NPS {formatCount(info.nps)}</span>
+                    <span>深さ {info.depth ?? "-"}</span>
+                    <span>詳細</span>
+                </button>
+                <BottomSheet open={detailsOpen} onOpenChange={setDetailsOpen} title="探索情報">
+                    {details}
+                </BottomSheet>
+            </>
+        );
+    }
+    return (
+        <aside className="fixed bottom-3 left-1/2 z-40 w-[min(44rem,calc(100%-1.5rem))] -translate-x-1/2 rounded-lg border border-border bg-card/95 p-2 text-foreground shadow-lg">
+            {details}
         </aside>
     );
 }

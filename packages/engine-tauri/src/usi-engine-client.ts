@@ -85,7 +85,7 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
         // エンジン登録時に保存したオプション (usi_engine_start が isready 前に適用)
         // を優先し、UI の自動解決値で無条件に上書きしない。厳格な USI エンジンは
         // isready 後の setoption を反映しないため、起動後に送っても保証がない
-        async init(_opts?: EngineInitOptions): Promise<void> {
+        async init(opts?: EngineInitOptions): Promise<void> {
             await runExclusive(async () => {
                 // 再初期化 (retry / restartForNnue 等) で呼ばれたとき、旧セッションを
                 // quit せずに sessionId を上書きすると外部プロセスがリークする
@@ -93,6 +93,7 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
 
                 const newSessionId = await tauriInvoke<string>("usi_engine_start", {
                     registration_id: registrationId,
+                    ...(opts?.usiThreads !== undefined ? { threads: opts.usiThreads } : {}),
                 });
 
                 try {
