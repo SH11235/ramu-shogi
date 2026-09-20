@@ -10,7 +10,7 @@
  */
 
 import type { PositionState } from "@shogi/app-core";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { useRef, useState } from "react";
 import {
     BottomSheet,
@@ -52,6 +52,7 @@ export function formatMobileCompactEval(evalCp?: number, evalMate?: number): str
  * Context では取得できない、MobileLayout 特有の機能用の Props
  */
 interface MobileLayoutProps {
+    searchInfo?: ReactNode;
     /** 候補手の注釈（盤面表示用） */
     candidateNote: string | null;
 
@@ -79,11 +80,10 @@ interface MobileLayoutProps {
 
 /**
  * スマホ用レイアウト
- * 「盤面優先 + Flexbox」方式
- * - 盤面は画面幅から計算した固定サイズ
- * - コントロール部分は残りの高さを使い、必要に応じて縮小
+ * 盤面はコンテナ幅に合わせ、低い画面ではページスクロールで操作欄へ到達できる。
  */
 export function MobileLayout({
+    searchInfo,
     candidateNote,
     isReviewMode,
     reviewMode = false,
@@ -309,7 +309,7 @@ export function MobileLayout({
             // text-foreground はスコープ内で継承色を明転させるために必須(欠くと body の
             // 濃色が継承されて墨地に沈む)。シート/オーバーレイ類はポータル未使用で
             // このツリー配下に出るため一括追従。
-            className={`fixed inset-0 flex flex-col gap-1 w-full h-dvh overflow-hidden px-2 bg-background text-foreground${
+            className={`relative flex flex-col gap-1 w-full min-w-0 px-2 pb-[env(safe-area-inset-bottom)] bg-background text-foreground${
                 reviewMode ? " dark" : ""
             }`}
         >
@@ -321,7 +321,7 @@ export function MobileLayout({
                     isRunning={isMatchRunning}
                     centerContent={
                         <>
-                            <span className="text-xs text-muted-foreground tabular-nums">
+                            <span className="hidden min-[360px]:inline text-xs text-muted-foreground tabular-nums">
                                 {moves.length === 0 ? "開始" : `${moves.length}手`}
                             </span>
                             <button
@@ -329,6 +329,7 @@ export function MobileLayout({
                                 onClick={handleFlipBoard}
                                 className="flex items-center justify-center w-6 h-6 rounded hover:bg-muted text-sm"
                                 title="盤面を反転"
+                                aria-label="盤面を反転"
                             >
                                 🔄
                             </button>
@@ -338,7 +339,7 @@ export function MobileLayout({
             </header>
 
             {/* === 盤面セクション: 固定サイズ、縮小しない === */}
-            <main className="flex-shrink-0 relative">
+            <main className="flex-shrink-0 relative flex justify-center">
                 <MobileBoardSection
                     grid={grid}
                     position={position}
@@ -407,7 +408,7 @@ export function MobileLayout({
                 )}
             </main>
 
-            {/* === コントロール: 残りの高さを使う、必要に応じて縮小 === */}
+            {/* === 対局・検討・編集の操作 === */}
             <footer className="flex-1 flex flex-col min-h-0 pb-[env(safe-area-inset-bottom)]">
                 {gameMode === "playing" ? (
                     /* 対局モード: 1行棋譜 + パス権 + 停止・投了・待ったボタン */
@@ -586,10 +587,11 @@ export function MobileLayout({
                 )}
             </footer>
 
-            {/* FAB: 設定ボタン（右下固定）
-                検討モードで棋譜がある場合と編集モードでは、インラインで表示するため非表示 */}
+            {displaySettings.showSearchInfo && <div className="min-h-10 w-full">{searchInfo}</div>}
+
+            {/* 検討・編集以外の設定操作も通常フローに置き、盤や停止ボタンを覆わない。 */}
             {shouldShowFloatingSettings && (
-                <div className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-4 flex items-center gap-2 z-40">
+                <div className="flex justify-end gap-2 py-4">
                     <MobileSettingsActions
                         variant="fab"
                         onSettingsClick={() => setIsSettingsOpen(true)}

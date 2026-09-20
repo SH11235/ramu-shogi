@@ -308,13 +308,6 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
     let threadedDisabled = false;
     let activeThreads: number | null = null;
 
-    // Cache for getThreadInfo() - hardwareConcurrency and threadedAvailable rarely change
-    let cachedStaticThreadInfo: {
-        hardwareConcurrency: number;
-        maxThreads: number;
-        threadedAvailable: boolean;
-    } | null = null;
-
     const pendingOptions = new Map<string, string | number | boolean>();
     const warnedReasons = new Set<string>();
 
@@ -544,16 +537,8 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         backend = kind;
 
         const gen = workerGen;
-        try {
-            worker = options.workerFactory
-                ? options.workerFactory(kind)
-                : defaultWorkerFactory(kind);
-        } catch (error) {
-            const message = error instanceof Error ? error.message : "engine worker spawn failed";
-            const code = classifyErrorCode(error);
-            enterErrorState(message, code);
-            return;
-        }
+        // 生成失敗も初期化側で扱い、threaded から single への復旧を先に試す。
+        worker = options.workerFactory ? options.workerFactory(kind) : defaultWorkerFactory(kind);
 
         worker.onmessage = (msg: MessageEvent) => {
             if (gen !== workerGen) return;
@@ -730,9 +715,11 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
                 } catch (fallbackError) {
                     const fallbackCode = classifyErrorCode(fallbackError);
                     enterErrorState("Wasm engine initialization failed", fallbackCode);
+                    throw fallbackError;
                 }
                 return;
             }
+            enterErrorState("Wasm engine initialization failed", classifyErrorCode(error));
             throw error;
         }
     };
@@ -804,16 +791,10 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             }
             // Allow retry from error state
             if (backend === "error") {
-                // Preserve previous worker kind preference if available
-                const preferredKind: WorkerKind = threadedDisabled
-                    ? "single"
-                    : cachedStaticThreadInfo?.threadedAvailable
-                      ? "threaded"
-                      : "single";
-                backend = preferredKind;
+                // startInit が現在の設定と可用性から Worker の種類を選び直す。
+                backend = "single";
                 initialized = false;
                 warnedReasons.clear();
-                // Keep cachedStaticThreadInfo as it's still valid
             }
             lastPosition = null;
             if (initInFlight) {
@@ -1009,7 +990,6 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             initialized = false;
             threadedDisabled = false;
             warnedReasons.clear();
-            // Keep cachedStaticThreadInfo as hardware capabilities don't change
             // Note: Does not call init() - caller should explicitly call init() after reset()
         },
         getBackendStatus(): EngineBackendStatus {
@@ -1023,7 +1003,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             if (backend === "error") {
                 const hcRaw =
                     typeof navigator !== "undefined" &&
-                    typeof navigator.hardwareConcurrency === "number"
+                    Number.isFinite(navigator.hardwareConcurrency)
                         ? navigator.hardwareConcurrency
                         : 1;
                 return {
@@ -1033,23 +1013,17 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
                     hardwareConcurrency: Math.max(1, Math.trunc(hcRaw)),
                 };
             }
-            // Use cached static values (hardwareConcurrency, threadedAvailable rarely change)
-            if (!cachedStaticThreadInfo) {
-                const hcRaw =
-                    typeof navigator !== "undefined" &&
-                    typeof navigator.hardwareConcurrency === "number"
-                        ? navigator.hardwareConcurrency
-                        : 1;
-                const hardwareConcurrency = Math.max(1, Math.trunc(hcRaw));
-                const threadedAvailable = getThreadedAvailability();
-                const maxThreads = threadedAvailable
-                    ? Math.max(1, Math.min(MAX_WASM_THREADS, hardwareConcurrency))
+            const hcRaw =
+                typeof navigator !== "undefined" && Number.isFinite(navigator.hardwareConcurrency)
+                    ? navigator.hardwareConcurrency
                     : 1;
-                cachedStaticThreadInfo = { hardwareConcurrency, maxThreads, threadedAvailable };
-            }
+            const hardwareConcurrency = Math.max(1, Math.trunc(hcRaw));
+            const threadedAvailable = getThreadedAvailability();
             return {
                 activeThreads: activeThreads ?? 1,
-                ...cachedStaticThreadInfo,
+                hardwareConcurrency,
+                threadedAvailable,
+                maxThreads: threadedAvailable ? Math.min(MAX_WASM_THREADS, hardwareConcurrency) : 1,
             };
         },
         async loadNnue(nnueId: string, layerStacks?: LayerStacksOptions): Promise<void> {

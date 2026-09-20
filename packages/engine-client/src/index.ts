@@ -69,6 +69,8 @@ export interface EngineInitOptions {
     backend?: EngineBackend;
     /** 並列設定 (native / wasm の threaded build で使用) */
     threads?: number;
+    /** 外部 USI の保存済み Threads を起動時に明示的に上書きする。一括解析用。 */
+    usiThreads?: number;
     /** Worker 数 (将来の並列用) */
     workers?: number;
     /** 停止モード: terminate または cooperative */

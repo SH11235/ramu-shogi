@@ -364,6 +364,88 @@ describe("createWasmEngineClient", () => {
     });
 
     describe("エラーハンドリング", () => {
+        const autoAckWorker = (error?: string) => {
+            const worker = createMockWorker();
+            worker.postMessage.mockImplementation((command) => {
+                queueMicrotask(() =>
+                    worker.onmessage?.({
+                        data: { type: "ack", requestId: command.requestId, error },
+                    } as MessageEvent),
+                );
+            });
+            return worker as unknown as Worker;
+        };
+
+        const enableThreads = () => {
+            vi.stubGlobal("crossOriginIsolated", true);
+            vi.stubGlobal("navigator", { hardwareConcurrency: 8 });
+        };
+
+        it("threaded Worker の生成例外は single に復旧し、fatal を通知しない", async () => {
+            enableThreads();
+            const factory = vi.fn((kind: WorkerKind) => {
+                if (kind === "threaded") throw new Error("Worker spawn failed");
+                return autoAckWorker();
+            });
+            const client = createWasmEngineClient({ workerFactory: factory });
+            const events: EngineEvent[] = [];
+            client.subscribe((event) => events.push(event));
+
+            await client.init({ threads: 4 });
+            await client.loadPosition("startpos");
+
+            expect(factory.mock.calls.map(([kind]) => kind)).toEqual(["threaded", "single"]);
+            expect(client.getBackendStatus?.()).toBe("ready");
+            expect(client.getThreadInfo?.()).toMatchObject({ activeThreads: 1, maxThreads: 1 });
+            expect(
+                events.some((event) => event.type === "error" && event.severity !== "warning"),
+            ).toBe(false);
+            await client.dispose();
+        });
+
+        it("threaded と single の両方で生成に失敗したら init を reject する", async () => {
+            enableThreads();
+            const factory = vi.fn(() => {
+                throw new Error("Worker spawn failed");
+            });
+            const client = createWasmEngineClient({ workerFactory: factory });
+
+            await expect(client.init({ threads: 4 })).rejects.toThrow("Worker spawn failed");
+            expect(factory).toHaveBeenCalledTimes(2);
+            expect(client.getBackendStatus?.()).toBe("error");
+            expect(client.getThreadInfo?.()?.activeThreads).toBe(0);
+            await client.dispose();
+        });
+
+        it("初期化前に取得した可用性を降格・reset後に更新する", async () => {
+            enableThreads();
+            let failThreaded = true;
+            const client = createWasmEngineClient({
+                workerFactory: (kind) =>
+                    autoAckWorker(kind === "threaded" && failThreaded ? "init failed" : undefined),
+            });
+            expect(client.getThreadInfo?.()).toMatchObject({
+                threadedAvailable: true,
+                maxThreads: 8,
+            });
+            await client.init({ threads: 4 });
+            expect(client.getThreadInfo?.()).toMatchObject({
+                threadedAvailable: false,
+                maxThreads: 1,
+                activeThreads: 1,
+            });
+
+            failThreaded = false;
+            await client.reset?.();
+            expect(client.getThreadInfo?.()).toMatchObject({
+                threadedAvailable: true,
+                maxThreads: 8,
+            });
+            await client.init({ threads: 4 });
+            expect(client.getThreadInfo?.()?.activeThreads).toBe(4);
+            await client.dispose();
+        });
+
         it("Worker 初期化失敗時にエラー状態になる", async () => {
             const failingFactory = vi.fn((_kind: WorkerKind) => {
                 throw new Error("Worker initialization failed");

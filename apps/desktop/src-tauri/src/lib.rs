@@ -1599,6 +1599,7 @@ async fn usi_engine_probe(
 async fn usi_engine_start(
     app: AppHandle,
     registration_id: String,
+    threads: Option<u32>,
     manager: State<'_, usi_engine::UsiEngineManager>,
 ) -> Result<String, String> {
     // Look up registration from store
@@ -1617,10 +1618,21 @@ async fn usi_engine_start(
 
     // Load saved options
     let options_key = format!("engine-options:{registration_id}");
-    let saved_options: Vec<usi_engine::OptionValue> = store
+    let mut saved_options: Vec<usi_engine::OptionValue> = store
         .get(&options_key)
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default();
+
+    if let Some(threads) = threads {
+        if threads == 0 {
+            return Err("Threads must be at least 1".to_string());
+        }
+        saved_options.retain(|option| option.name != "Threads");
+        saved_options.push(usi_engine::OptionValue {
+            name: "Threads".to_string(),
+            value: serde_json::json!(threads),
+        });
+    }
 
     manager
         .start(&registration_id, &reg.path, &saved_options, &app)

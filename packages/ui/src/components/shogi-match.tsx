@@ -1983,6 +1983,13 @@ export function ShogiMatch({
 
     // Props グループ化: Mobile専用
     const mobileSpecificProps: MobileSpecificProps = {
+        searchInfo:
+            displaySettings.showSearchInfo &&
+            isMatchRunning &&
+            liveSearchInfo &&
+            engineStatus[liveSearchInfo.side] !== "error" ? (
+                <SearchInfoPanel side={liveSearchInfo.side} info={liveSearchInfo.event} isMobile />
+            ) : null,
         isReviewMode,
         reviewMode,
         onOpenAbout: () => setIsAboutOpen(true),
@@ -2012,7 +2019,8 @@ export function ShogiMatch({
                     isMatchRunning={isMatchRunning}
                     isPaused={isPaused}
                 />
-                {displaySettings.showSearchInfo &&
+                {!isMobile &&
+                    displaySettings.showSearchInfo &&
                     isMatchRunning &&
                     liveSearchInfo &&
                     engineStatus[liveSearchInfo.side] !== "error" && (

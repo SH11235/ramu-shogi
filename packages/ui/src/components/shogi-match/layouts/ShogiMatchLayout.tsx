@@ -464,6 +464,7 @@ export function ShogiMatchLayout({
                                 isMatchRunning={isMatchRunning}
                             >
                                 <MobileLayout
+                                    searchInfo={mobileSpecificProps.searchInfo}
                                     candidateNote={candidateNote}
                                     isReviewMode={isReviewMode}
                                     reviewMode={mobileReviewMode}

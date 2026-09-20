@@ -1,108 +1,36 @@
-import { useEffect, useRef, useState } from "react";
-import { MOBILE_BREAKPOINT } from "./useMediaQuery";
-
-// =============================================================================
-// 定数定義
-// =============================================================================
+import type { RefObject } from "react";
+import { useEffect, useState } from "react";
 
 const BOARD_CELLS = 9;
-const PC_CELL_SIZE = 44;
-
-// 横方向のマージン（盤面装飾含む）
-// CSSの変更時にこれらの値も更新が必要
-const MOBILE_LAYOUT_HORIZONTAL_PADDING = 16; // MobileLayout px-2: 8px × 2
-const BOARD_BORDER_WIDTH = 2; // ShogiBoard border: 1px × 2
-const BOARD_LABEL_PADDING = 4; // 左右パディング px-0.5: 2px × 2
-const SELECTION_RING_MARGIN = 4; // 選択リング余裕
-
-const HORIZONTAL_MARGIN =
-    MOBILE_LAYOUT_HORIZONTAL_PADDING +
-    BOARD_BORDER_WIDTH +
-    BOARD_LABEL_PADDING +
-    SELECTION_RING_MARGIN;
-
-// セルサイズの範囲
+// 左右の段ラベル (15px × 2)、外枠 (2px)、盤の左罫線 (1px)。
+const BOARD_DECORATION_WIDTH = 33;
 const MIN_CELL_SIZE = 28;
 const MAX_CELL_SIZE = 52;
 
-// =============================================================================
-// ヘルパー関数
-// =============================================================================
-
-/**
- * 画面幅から最適なセルサイズを計算
- * 高さは考慮せず、幅のみで決定（高さはFlexboxで自動調整）
- */
-function calcCellSizeFromWidth(viewportWidth: number): number {
-    const availableWidth = viewportWidth - HORIZONTAL_MARGIN;
-    const cellSize = Math.floor(availableWidth / BOARD_CELLS);
-    return Math.max(MIN_CELL_SIZE, Math.min(cellSize, MAX_CELL_SIZE));
+function cellSizeForWidth(width: number): number {
+    return Math.max(
+        MIN_CELL_SIZE,
+        Math.min(MAX_CELL_SIZE, Math.floor((width - BOARD_DECORATION_WIDTH) / BOARD_CELLS)),
+    );
 }
 
-/**
- * 初期セルサイズを計算（SSR対応）
- */
-function getInitialCellSize(): number {
-    if (typeof window === "undefined") return PC_CELL_SIZE;
-    if (window.innerWidth >= MOBILE_BREAKPOINT) return PC_CELL_SIZE;
-    return calcCellSizeFromWidth(window.innerWidth);
-}
+/** 盤の親コンテナの幅に合わせる。高さが足りない画面ではページをスクロールする。 */
+export function useMobileCellSize(boardRef: RefObject<HTMLElement | null>): number {
+    const [cellSize, setCellSize] = useState(() =>
+        typeof document === "undefined"
+            ? 28
+            : cellSizeForWidth(document.documentElement.clientWidth - 16),
+    );
 
-// =============================================================================
-// フック
-// =============================================================================
-
-/**
- * モバイル時の盤面セルサイズを計算するフック
- * 画面幅のみを考慮（高さはFlexboxに任せる）
- * PC表示時は固定値44pxを返す
- *
- * @returns セルサイズ (px)
- */
-export function useMobileCellSize(): number {
-    const [cellSize, setCellSize] = useState(getInitialCellSize);
-
-    const prevSizeRef = useRef(cellSize);
-
-    // リサイズ時の再計算（requestAnimationFrameでthrottling）
     useEffect(() => {
-        if (typeof window === "undefined") return;
-
-        let rafId: number | null = null;
-
-        const updateSize = () => {
-            rafId = null; // リセット
-
-            if (window.innerWidth >= MOBILE_BREAKPOINT) {
-                if (prevSizeRef.current !== PC_CELL_SIZE) {
-                    prevSizeRef.current = PC_CELL_SIZE;
-                    setCellSize(PC_CELL_SIZE);
-                }
-                return;
-            }
-
-            const newSize = calcCellSizeFromWidth(window.innerWidth);
-
-            if (newSize !== prevSizeRef.current) {
-                prevSizeRef.current = newSize;
-                setCellSize(newSize);
-            }
-        };
-
-        const handleResize = () => {
-            // 既にrequestAnimationFrameが予約されていればスキップ
-            if (rafId !== null) return;
-            rafId = requestAnimationFrame(updateSize);
-        };
-
-        window.addEventListener("resize", handleResize);
-        return () => {
-            window.removeEventListener("resize", handleResize);
-            if (rafId !== null) {
-                cancelAnimationFrame(rafId);
-            }
-        };
-    }, []);
+        const container = boardRef.current?.parentElement;
+        if (!container) return;
+        const update = () => setCellSize(cellSizeForWidth(container.clientWidth));
+        update();
+        const observer = new ResizeObserver(update);
+        observer.observe(container);
+        return () => observer.disconnect();
+    }, [boardRef]);
 
     return cellSize;
 }

@@ -39,6 +39,23 @@ describe("createUsiEngineClient", () => {
         expect(invokeMock).not.toHaveBeenCalledWith("usi_engine_quit", expect.anything());
     });
 
+    it("通常の自動スレッド値は保存設定を上書きせず、一括解析の指定だけ起動時に渡す", async () => {
+        const client = createUsiEngineClient({ registrationId: "reg-1" });
+        await client.init({ threads: 4 });
+        expect(invokeMock).toHaveBeenLastCalledWith("usi_engine_start", {
+            registration_id: "reg-1",
+        });
+        await client.init({ threads: 1, usiThreads: 1 });
+        expect(invokeMock).toHaveBeenLastCalledWith("usi_engine_start", {
+            registration_id: "reg-1",
+            threads: 1,
+        });
+        expect(invokeMock.mock.calls.some(([command]) => command === "usi_engine_setoption")).toBe(
+            false,
+        );
+        await client.dispose();
+    });
+
     it("再 init は旧セッションを quit してから新セッションを張る", async () => {
         const client = createUsiEngineClient({ registrationId: "reg-1" });
         await client.init();

@@ -127,6 +127,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         currentFvScale: number | undefined;
         /** 初期化済みワーカーが使用しているエンジンキー */
         currentClientKey: string | undefined;
+        currentWorkerCount?: number;
     }>({
         workers: [],
         jobQueue: [],
@@ -268,9 +269,11 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
 
         const workers: EngineWorker[] = [];
         for (let i = 0; i < workerCount; i++) {
+            let client: EngineClient | undefined;
             try {
-                const client = createClient();
-                await client.init();
+                client = createClient();
+                // 一括解析は局面単位で並列化し、各エンジン内の並列化との積を避ける。
+                await client.init({ threads: 1, usiThreads: 1 });
 
                 // NNUE をロード（指定されている場合）
                 if (effectiveNnueId && client.loadNnue) {
@@ -285,7 +288,6 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                             `Failed to load NNUE for pool worker ${i} (${effectiveNnueId}):`,
                             error,
                         );
-                        await client.dispose();
                         throw error;
                     }
                 }
@@ -297,6 +299,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                     subscription: null,
                 });
             } catch (error) {
+                await client?.dispose().catch(() => undefined);
                 console.error(`Failed to initialize worker ${i}:`, error);
             }
         }
@@ -326,6 +329,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         state.currentFvScale = effectiveFvScale;
         state.currentLayerStacks = state.overrideLayerStacks;
         state.currentClientKey = clientKey;
+        state.currentWorkerCount = workerCount;
     };
 
     // 一括解析を開始する
@@ -359,7 +363,8 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                 nextFvScale !== currentFvScale ||
                 JSON.stringify(state.overrideLayerStacks) !==
                     JSON.stringify(state.currentLayerStacks) ||
-                nextClientKey !== currentClientKey);
+                nextClientKey !== currentClientKey ||
+                workerCount !== state.currentWorkerCount);
         if (shouldReinitialize) {
             state.initialized = false;
         }
@@ -444,6 +449,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         state.workers = [];
         state.initialized = false;
         state.currentNnueId = undefined;
+        state.currentWorkerCount = undefined;
     };
 
     const disposeEvent = useEffectEvent(dispose);

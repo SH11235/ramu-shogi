@@ -299,6 +299,7 @@ export interface PCSpecificProps {
  * - 表示設定変更（Mobile版）
  */
 export interface MobileSpecificProps {
+    searchInfo?: import("react").ReactNode;
     isReviewMode: boolean;
     /** ページレベルの検討/観戦モード(外部 prop)。isReviewMode は対局準備中も
         true になる導出値のため、墨地サーフェス等「検討室」の意匠はこちらで判定する */

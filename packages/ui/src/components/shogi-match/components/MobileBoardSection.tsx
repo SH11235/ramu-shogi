@@ -108,22 +108,15 @@ export function MobileBoardSection({
     passRights,
     turn,
 }: MobileBoardSectionProps): ReactElement {
-    // セルサイズはこのコンポーネント内で管理（画面幅のみから計算）
-    const cellSize = useMobileCellSize();
-
-    // 盤面の幅を計算（9セル + 盤面装飾）
-    // ShogiBoard: border (1px×2=2) + 段ラベル左右 (px-0.5×2 + 文字幅) × 2 ≈ 30px + border-l (1px)
-    // 余裕を持たせて 20px に設定（p-2 削除、マージン縮小後）
-    const boardWidth = cellSize * 9 + 20;
+    const cellSize = useMobileCellSize(boardSectionRef);
 
     return (
         <div
             ref={boardSectionRef}
-            className={`relative mx-auto flex flex-col gap-1 ${isDraggingPiece ? "touch-none" : ""}`}
+            className={`relative flex w-fit max-w-full flex-col gap-1 ${isDraggingPiece ? "touch-none" : ""}`}
             style={
                 {
                     "--shogi-cell-size": `${cellSize}px`,
-                    width: `${boardWidth}px`,
                 } as React.CSSProperties
             }
         >
