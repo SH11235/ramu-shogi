@@ -275,10 +275,10 @@ export function useNnueStorage(): UseNnueStorageReturn {
         setLocalError(null);
         try {
             const meta = await storage.importFromPath(srcPath, displayName);
-            // fvScale を設定
-            await storage.updateMeta(meta.id, { fvScale, layerStacks });
+            const updates = layerStacks ? { fvScale, layerStacks } : { fvScale };
+            await storage.updateMeta(meta.id, updates);
             await refreshList();
-            return { ...meta, fvScale, layerStacks };
+            return { ...meta, ...updates };
         } catch (e) {
             const err =
                 e instanceof NnueError

@@ -5,6 +5,7 @@ on:
     paths:
       - 'packages/rust-core/**'
       - 'apps/desktop/src-tauri/**'
+      - 'rustfmt.toml'
       - '.github/workflows/rust-ci.yml'
   pull_request:
   workflow_dispatch:
@@ -36,6 +37,8 @@ jobs:
         with:
           filters: |
             rust_code:
+              - 'rustfmt.toml'
+              - 'packages/rust-core/shared/**'
               - 'packages/rust-core/Cargo.toml'
               - 'packages/rust-core/Cargo.lock'
               - 'packages/rust-core/build.rs'
@@ -50,6 +53,8 @@ jobs:
               - '!**/*.md'
               - '!**/*.mdx'
             tauri_code:
+              - 'rustfmt.toml'
+              - 'packages/rust-core/shared/**'
               - 'apps/desktop/src-tauri/Cargo.toml'
               - 'apps/desktop/src-tauri/Cargo.lock'
               - 'apps/desktop/src-tauri/build.rs'
