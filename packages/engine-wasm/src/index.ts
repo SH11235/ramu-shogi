@@ -694,10 +694,14 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
 
         initialized = false;
 
+        const attempt = initWorkerWithKind(desiredKind, payload, module, forceReplace);
+        const generation = workerGen;
         try {
-            await initWorkerWithKind(desiredKind, payload, module, forceReplace);
+            await attempt;
             return;
         } catch (error) {
+            // panic 復旧などで置換済みなら、旧初期化の失敗は新 Worker に適用しない。
+            if (generation !== workerGen) throw error;
             if ((backend as BackendKind) === "mock") {
                 await mock.init(opts);
                 return;
@@ -710,9 +714,12 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
                 threadedDisabled = true;
                 const fallbackPayload = buildInitPayload(1);
                 const fallbackModule = getInitWasmModule();
+                const fallback = initWorkerWithKind("single", fallbackPayload, fallbackModule);
+                const fallbackGeneration = workerGen;
                 try {
-                    await initWorkerWithKind("single", fallbackPayload, fallbackModule);
+                    await fallback;
                 } catch (fallbackError) {
+                    if (fallbackGeneration !== workerGen) throw fallbackError;
                     const fallbackCode = classifyErrorCode(fallbackError);
                     enterErrorState("Wasm engine initialization failed", fallbackCode);
                     throw fallbackError;
@@ -731,11 +738,12 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             await initInFlight;
             return;
         }
-        initInFlight = startInit();
+        const attempt = startInit();
+        initInFlight = attempt;
         try {
-            await initInFlight;
+            await attempt;
         } finally {
-            initInFlight = null;
+            if (initInFlight === attempt) initInFlight = null;
         }
     };
 
@@ -800,11 +808,12 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             if (initInFlight) {
                 await initInFlight;
             }
-            initInFlight = startInit(opts);
+            const attempt = startInit(opts);
+            initInFlight = attempt;
             try {
-                await initInFlight;
+                await attempt;
             } finally {
-                initInFlight = null;
+                if (initInFlight === attempt) initInFlight = null;
             }
         },
         async loadPosition(sfen: string, moves?: string[], options?: LoadPositionOptions) {

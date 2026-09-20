@@ -919,6 +919,58 @@ describe("createWasmEngineClient", () => {
             return { workers, workerFactory };
         };
 
+        it.each([
+            { threads: 1, fallback: false },
+            { threads: 4, fallback: false },
+            { threads: 4, fallback: true },
+        ])("初期化中のpanic後も復旧Workerを維持する %j", async ({ threads, fallback }) => {
+            vi.stubGlobal("crossOriginIsolated", true);
+            vi.stubGlobal("navigator", { hardwareConcurrency: 8 });
+            const { workers, workerFactory } = setupWorkers();
+            const client = createWasmEngineClient({ workerFactory });
+            const events: EngineEvent[] = [];
+            client.subscribe((event) => events.push(event));
+            const firstInit = client.init({ threads });
+            const rejected = expect(firstInit).rejects.toThrow("RuntimeError: unreachable");
+
+            if (fallback) {
+                const command = lastCallOfType(workers[0], "init");
+                workers[0].onmessage?.({
+                    data: { type: "ack", requestId: command.requestId, error: "init failed" },
+                } as MessageEvent);
+                await tick();
+            }
+            const failedWorker = workers[workers.length - 1];
+            const command = lastCallOfType(failedWorker, "init");
+            failedWorker.onmessage?.({
+                data: {
+                    type: "ack",
+                    requestId: command.requestId,
+                    error: "RuntimeError: unreachable",
+                },
+            } as MessageEvent);
+            await rejected;
+            await tick();
+
+            const replacement = workers[workers.length - 1];
+            expect(replacement).not.toBe(failedWorker);
+            expect(replacement.terminate).not.toHaveBeenCalled();
+            // 復旧中のコマンドは新しい初期化を待ち、重複 init を送らない。
+            const load = client.loadPosition("startpos");
+            expect(replacement.postMessage).toHaveBeenCalledTimes(1);
+            ack(replacement, lastCallOfType(replacement, "init"));
+            await tick();
+            ack(replacement, lastCallOfType(replacement, "loadPosition"));
+            await load;
+            expect(workers).toHaveLength(fallback ? 3 : 2);
+            expect(replacement.terminate).not.toHaveBeenCalled();
+            expect(client.getBackendStatus?.()).toBe("ready");
+            expect(
+                events.filter((event) => event.type === "error" && event.severity !== "warning"),
+            ).toHaveLength(0);
+            await client.dispose();
+        });
+
         it("panic (unreachable) 検出時に worker を作り直して再初期化する", async () => {
             const { workers, workerFactory } = setupWorkers();
             const client = createWasmEngineClient({ workerFactory });
