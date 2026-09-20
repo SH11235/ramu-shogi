@@ -881,9 +881,15 @@ describe("createWasmEngineClient", () => {
             ack(workers[0], workers[0].postMessage.mock.calls[0][0]);
             await initPromise;
 
-            const nnuePromise = client.loadNnue?.("nnue-1");
+            const layerStacks = {
+                bucketMode: "progresskpabs" as const,
+                progressBuckets: 9,
+                progressCoeffBase64: "coefficients",
+            };
+            const nnuePromise = client.loadNnue?.("nnue-1", layerStacks);
             await tick();
             const nnueCall = lastCallOfType(workers[0], "loadNnue");
+            expect(nnueCall.layerStacks).toEqual(layerStacks);
             ack(workers[0], nnueCall);
             await nnuePromise;
 
@@ -903,6 +909,7 @@ describe("createWasmEngineClient", () => {
             const restoredNnue = lastCallOfType(workers[1], "loadNnue");
             expect(restoredNnue).toBeDefined();
             expect(restoredNnue.source).toEqual({ type: "idb", id: "nnue-1" });
+            expect(restoredNnue.layerStacks).toEqual(layerStacks);
             ack(workers[1], restoredNnue);
         });
 

@@ -4,13 +4,18 @@
 )]
 
 use std::cell::RefCell;
-use std::io::ErrorKind;
+use std::io::Cursor;
+
+#[path = "../../../shared/nnue_settings.rs"]
+mod nnue_settings;
+#[path = "../../../shared/yo_sfnn.rs"]
+mod yo_sfnn;
 
 use rshogi_core::eval::{
     MaterialLevel, disable_material, set_eval_hash_enabled, set_material_level,
 };
 use rshogi_core::movegen::{MoveList, generate_legal_all_with_pass};
-use rshogi_core::nnue::{detect_format, init_nnue_from_bytes, set_fv_scale_override};
+use rshogi_core::nnue::{init_nnue_from_bytes, set_fv_scale_override};
 use rshogi_core::position::{Position, SFEN_HIRATE};
 use rshogi_core::search::{LimitsType, Search, SearchInfo, SearchResult, SkillOptions};
 use rshogi_core::types::json::BoardStateJson;
@@ -19,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen as swb;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
+use yo_sfnn::detect_format;
 
 const DEFAULT_TT_SIZE_MB: usize = 64;
 const DEFAULT_EVAL_HASH_SIZE_MB: usize = 16;
@@ -27,6 +33,7 @@ const DEFAULT_USE_EVAL_HASH: bool = false;
 thread_local! {
     static ENGINE: RefCell<Option<EngineState>> = const { RefCell::new(None) };
     static EVENT_CALLBACK: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
+    static LAYER_STACKS_OPTIONS: RefCell<Option<nnue_settings::LayerStacksOptions>> = const { RefCell::new(None) };
 }
 
 #[cfg(all(target_arch = "wasm32", feature = "wasm-threads"))]
@@ -259,8 +266,9 @@ fn parse_moves(value: Option<JsValue>) -> Result<Vec<String>, JsValue> {
     if value.is_null() || value.is_undefined() {
         return Ok(Vec::new());
     }
-    let array: js_sys::Array =
-        value.dyn_into().map_err(|_| JsValue::from_str("moves must be an array"))?;
+    let array: js_sys::Array = value
+        .dyn_into()
+        .map_err(|_| JsValue::from_str("moves must be an array"))?;
     let mut moves = Vec::with_capacity(array.length() as usize);
     for mv in array.iter() {
         let mv = mv
@@ -295,7 +303,9 @@ fn parse_set_option_value(value: Option<JsValue>) -> Result<serde_json::Value, J
             .ok_or_else(|| JsValue::from_str("setOption value is not a valid JSON number"))?;
         return Ok(serde_json::Value::Number(num));
     }
-    Err(JsValue::from_str("setOption value must be string/number/boolean"))
+    Err(JsValue::from_str(
+        "setOption value must be string/number/boolean",
+    ))
 }
 
 /// パス権設定
@@ -312,9 +322,13 @@ fn build_position(
 ) -> Result<Position, JsValue> {
     let mut position = Position::new();
     if sfen.trim() == "startpos" {
-        position.set_sfen(SFEN_HIRATE).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        position
+            .set_sfen(SFEN_HIRATE)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
     } else {
-        position.set_sfen(sfen).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        position
+            .set_sfen(sfen)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
     }
 
     // パス権を有効化（movesを適用する前に設定）
@@ -540,19 +554,38 @@ pub fn init(opts: Option<JsValue>) -> Result<(), JsValue> {
 pub use wasm_bindgen_rayon::init_thread_pool;
 
 #[wasm_bindgen]
-pub fn load_model(bytes: &[u8]) -> Result<(), JsValue> {
-    init_nnue_from_bytes(bytes)
-        .or_else(|err| {
-            if err.kind() == ErrorKind::AlreadyExists {
-                Ok(())
-            } else {
-                Err(err)
-            }
-        })
-        .map_err(|err| JsValue::from_str(&err.to_string()))?;
-    // NNUEロード成功時はMaterial評価を無効化（NNUE評価を優先）
+pub fn configure_layer_stacks(options: JsValue) -> Result<(), JsValue> {
+    let options = if options.is_null() || options.is_undefined() {
+        None
+    } else {
+        Some(
+            swb::from_value(options)
+                .map_err(|e| JsValue::from_str(&format!("Invalid LayerStacks settings: {e}")))?,
+        )
+    };
+    LAYER_STACKS_OPTIONS.with(|state| *state.borrow_mut() = options);
+    Ok(())
+}
+
+fn load_model_bytes(bytes: &[u8]) -> Result<(), String> {
+    if yo_sfnn::is_yo_sfnn(bytes) {
+        LAYER_STACKS_OPTIONS
+            .with(|state| nnue_settings::require_yo_routing(bytes, state.borrow().as_ref()))?;
+    }
+    let normalized = yo_sfnn::normalize_model(bytes)?;
+    let bytes = normalized.as_ref();
+    let routing = LAYER_STACKS_OPTIONS.with(|state| {
+        nnue_settings::prepare_routing(&mut Cursor::new(bytes), state.borrow().as_ref())
+    })?;
+    init_nnue_from_bytes(bytes).map_err(|e| e.to_string())?;
+    nnue_settings::apply_routing(routing)?;
     disable_material();
     Ok(())
+}
+
+#[wasm_bindgen]
+pub fn load_model(bytes: &[u8]) -> Result<(), JsValue> {
+    load_model_bytes(bytes).map_err(|e| JsValue::from_str(&e))
 }
 
 /// NNUE バッファの最大サイズ（500MB）
@@ -654,18 +687,7 @@ pub fn load_model_from_ptr(ptr: *mut u8, len: usize) -> Result<(), JsValue> {
     }
 
     let buf = unsafe { Vec::from_raw_parts(ptr, len, len) };
-    init_nnue_from_bytes(&buf)
-        .or_else(|err| {
-            if err.kind() == ErrorKind::AlreadyExists {
-                Ok(())
-            } else {
-                Err(err)
-            }
-        })
-        .map_err(|err| JsValue::from_str(&err.to_string()))?;
-    // NNUEロード成功時はMaterial評価を無効化（NNUE評価を優先）
-    disable_material();
-    Ok(())
+    load_model_bytes(&buf).map_err(|e| JsValue::from_str(&e))
 }
 
 /// NNUE バッファを解放する

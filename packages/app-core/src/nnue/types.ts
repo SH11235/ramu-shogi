@@ -1,3 +1,10 @@
+export interface LayerStacksConfig {
+    bucketMode: "kingrank9" | "progresskpabs" | "progresskpabsq16";
+    progressBuckets?: number;
+    /** Raw little-endian f64 progress coefficients, encoded as Base64. */
+    progressCoeffBase64?: string;
+}
+
 /**
  * NNUE ファイル管理の型定義
  */
@@ -29,6 +36,8 @@ export interface NnueFormat {
  * NNUE メタデータ
  */
 export interface NnueMeta {
+    progressCoefficientsSha256?: string;
+    layerStacks?: LayerStacksConfig;
     /**
      * アプリ内識別子（UUID v4）
      * SHA-256 とは別。ID は不変、ハッシュは内容に依存
@@ -141,6 +150,8 @@ export interface PresetUpdate {
  * プリセット設定（manifest.json の各エントリ）
  */
 export interface PresetConfig {
+    progressCoefficients?: { url: string; size: number; sha256: string };
+    layerStacks?: LayerStacksConfig;
     /** プリセット識別キー */
     presetKey: string;
     /** 表示名 */
@@ -235,6 +246,7 @@ export const NONE_NNUE_SELECTION: NnueSelection = {
  * NnueSelection を解決し、実際に使用する nnueId と設定値を含む。
  */
 export interface ResolvedNnue {
+    layerStacks?: LayerStacksConfig;
     /** NNUE の ID（IndexedDB キーまたはファイルシステム ID） */
     nnueId: string;
     /** FV_SCALE 値（必須: エンジンの自動判定に頼らず明示的に指定） */

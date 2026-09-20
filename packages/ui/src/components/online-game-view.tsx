@@ -1,3 +1,4 @@
+import type { LayerStacksConfig } from "@shogi/app-core";
 import {
     applyMoveWithState,
     type BoardState,
@@ -52,7 +53,7 @@ export interface OnlineAnalysis {
     topMoves: AnalysisMoveResult[];
     startAnalysis: (sfen: string, moves: string[]) => Promise<void>;
     cancelAnalysis: () => Promise<void>;
-    loadNnue?: (nnueId: string | null) => Promise<void>;
+    loadNnue?: (nnueId: string | null, layerStacks?: LayerStacksConfig) => Promise<void>;
 }
 
 // ─── 型定義 ───────────────────────────────────────────────────────────────────
@@ -758,7 +759,9 @@ export function OnlineGameView({
     const loadNnueEvent = useEffectEvent((sel: NnueSelection) => {
         if (!analysis?.loadNnue) return;
         resolveNnue(sel)
-            .then((resolved) => analysis.loadNnue?.(resolved?.nnueId ?? null))
+            .then((resolved) =>
+                analysis.loadNnue?.(resolved?.nnueId ?? null, resolved?.layerStacks),
+            )
             .catch(console.error);
     });
     useEffect(() => {

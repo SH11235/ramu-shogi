@@ -275,7 +275,11 @@ export function useBatchAnalysis({
         }));
 
         // 並列一括解析を開始（resolvedを直接渡す）
-        enginePool.start(jobs, { nnueId: resolved?.nnueId ?? null, fvScale: resolved?.fvScale });
+        enginePool.start(jobs, {
+            nnueId: resolved?.nnueId ?? null,
+            layerStacks: resolved?.layerStacks,
+            fvScale: resolved?.fvScale,
+        });
     };
 
     // ツリー全体（分岐含む）の一括解析を開始
@@ -322,6 +326,7 @@ export function useBatchAnalysis({
         // 並列一括解析を開始（resolvedを直接渡す）
         enginePool.start(jobs, {
             nnueId: resolved?.nnueId ?? null,
+            layerStacks: resolved?.layerStacks,
             fvScale: resolved?.fvScale,
         });
     };
@@ -367,6 +372,7 @@ export function useBatchAnalysis({
         // 並列一括解析を開始（resolvedを直接渡す）
         enginePool.start(jobs, {
             nnueId: resolved?.nnueId ?? null,
+            layerStacks: resolved?.layerStacks,
             fvScale: resolved?.fvScale,
         });
     };

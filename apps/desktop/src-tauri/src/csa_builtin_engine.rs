@@ -36,7 +36,7 @@ use anyhow::{Context, Result, anyhow, bail};
 
 use rshogi_core::position::{Position, SFEN_HIRATE};
 use rshogi_core::search::{LimitsType, PonderhitHandle, SearchInfo as CoreSearchInfo};
-use rshogi_core::types::{Color, Move};
+use rshogi_core::types::{Color, EnteringKingRule, Move};
 
 use rshogi_csa_client::{
     BestMoveResult, Event, SearchInfo as OssSearchInfo, SearchOutcome, UsiEngineDriver,
@@ -347,6 +347,30 @@ impl Drop for BuiltinEngineDriver {
 }
 
 impl UsiEngineDriver for BuiltinEngineDriver {
+    fn set_option(&mut self, name: &str, value: &str) -> Result<()> {
+        if name != "EnteringKingRule" {
+            bail!("unsupported builtin CSA engine option: {name}");
+        }
+        let rule = EnteringKingRule::from_usi(value)
+            .ok_or_else(|| anyhow!("invalid EnteringKingRule: {value}"))?;
+
+        // The session applies the server's rule before new_game. Reclaim Search
+        // before updating it if a previous ponder search is still running.
+        self.signal_stop();
+        self.drain_and_join();
+        let mut inner = self
+            .engine_state
+            .inner
+            .lock()
+            .map_err(|e| anyhow!("engine state lock poisoned: {e}"))?;
+        let search = inner
+            .search
+            .as_mut()
+            .ok_or_else(|| anyhow!("Search instance unavailable"))?;
+        search.set_entering_king_rule(rule);
+        Ok(())
+    }
+
     fn new_game(&mut self) -> Result<()> {
         // 既存探索があれば確実に停止 (idempotent)
         self.signal_stop();
@@ -642,6 +666,49 @@ mod tests {
 
     fn fresh_engine_state() -> Arc<EngineState> {
         Arc::new(EngineState::default())
+    }
+
+    #[test]
+    fn advertised_entering_king_rule_survives_new_game() {
+        let state = fresh_engine_state();
+        let mut driver = BuiltinEngineDriver::new(Arc::clone(&state));
+        for rule in [EnteringKingRule::Point24, EnteringKingRule::None] {
+            driver
+                .set_option("EnteringKingRule", rule.to_usi())
+                .unwrap();
+            driver.new_game().unwrap();
+            assert_eq!(
+                state
+                    .inner
+                    .lock()
+                    .unwrap()
+                    .search
+                    .as_ref()
+                    .unwrap()
+                    .entering_king_rule(),
+                rule
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_builtin_options_preserve_entering_king_rule() {
+        let state = fresh_engine_state();
+        let mut driver = BuiltinEngineDriver::new(Arc::clone(&state));
+        driver.set_option("EnteringKingRule", "CSARule24").unwrap();
+        assert!(driver.set_option("EnteringKingRule", "invalid").is_err());
+        assert!(driver.set_option("unknown", "value").is_err());
+        assert_eq!(
+            state
+                .inner
+                .lock()
+                .unwrap()
+                .search
+                .as_ref()
+                .unwrap()
+                .entering_king_rule(),
+            EnteringKingRule::Point24
+        );
     }
 
     #[test]

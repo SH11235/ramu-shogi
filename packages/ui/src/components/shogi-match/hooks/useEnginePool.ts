@@ -1,4 +1,9 @@
-import type { EngineClient, EngineInfoEvent, SearchHandle } from "@shogi/engine-client";
+import type {
+    EngineClient,
+    EngineInfoEvent,
+    LayerStacksOptions,
+    SearchHandle,
+} from "@shogi/engine-client";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 /**
@@ -49,6 +54,7 @@ interface UseEnginePoolOptions {
  * start関数のオプション
  */
 interface StartOptions {
+    layerStacks?: LayerStacksOptions;
     /** 使用するNNUE ID（指定するとoptions.nnueIdを上書き） */
     nnueId?: string | null;
     /** FV_SCALE 値 */
@@ -114,6 +120,8 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         /** 初期化済みワーカーが使用しているNNUE ID（null=Material） */
         currentNnueId: string | null | undefined;
         /** start()で渡されたfvScale */
+        overrideLayerStacks?: LayerStacksOptions;
+        currentLayerStacks?: LayerStacksOptions;
         overrideFvScale: number | undefined;
         /** 初期化済みワーカーが使用しているFV_SCALE */
         currentFvScale: number | undefined;
@@ -267,7 +275,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                 // NNUE をロード（指定されている場合）
                 if (effectiveNnueId && client.loadNnue) {
                     try {
-                        await client.loadNnue(effectiveNnueId);
+                        await client.loadNnue(effectiveNnueId, state.overrideLayerStacks);
                         // FV_SCALE を設定（指定されている場合）
                         if (effectiveFvScale !== undefined) {
                             await client.setOption("FV_SCALE", effectiveFvScale);
@@ -277,6 +285,8 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                             `Failed to load NNUE for pool worker ${i} (${effectiveNnueId}):`,
                             error,
                         );
+                        await client.dispose();
+                        throw error;
                     }
                 }
 
@@ -314,6 +324,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         state.initialized = true;
         state.currentNnueId = effectiveNnueId;
         state.currentFvScale = effectiveFvScale;
+        state.currentLayerStacks = state.overrideLayerStacks;
         state.currentClientKey = clientKey;
     };
 
@@ -331,6 +342,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         // start()で渡されたnnueIdとfvScaleを記録
         state.overrideNnueId = startOptions?.nnueId;
         state.overrideFvScale = startOptions?.fvScale;
+        state.overrideLayerStacks = startOptions?.layerStacks;
 
         const nextNnueId =
             (state.overrideNnueId !== undefined ? state.overrideNnueId : nnueId) ?? null;
@@ -345,6 +357,8 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             state.initialized &&
             (nextNnueId !== currentNnueId ||
                 nextFvScale !== currentFvScale ||
+                JSON.stringify(state.overrideLayerStacks) !==
+                    JSON.stringify(state.currentLayerStacks) ||
                 nextClientKey !== currentClientKey);
         if (shouldReinitialize) {
             state.initialized = false;

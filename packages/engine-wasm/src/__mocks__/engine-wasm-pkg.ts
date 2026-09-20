@@ -27,3 +27,5 @@ export const search = vi.fn();
 export const stop = vi.fn();
 export const set_event_handler = vi.fn();
 export const set_option = vi.fn();
+
+export const configure_layer_stacks = vi.fn();

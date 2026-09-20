@@ -1,5 +1,10 @@
 import { NNUE_DB_NAME, NNUE_DB_VERSION, NNUE_PROGRESS_THROTTLE_MS } from "@shogi/app-core";
-import type { EngineEvent, EngineInitOptions, SearchParams } from "@shogi/engine-client";
+import type {
+    EngineEvent,
+    EngineInitOptions,
+    LayerStacksOptions,
+    SearchParams,
+} from "@shogi/engine-client";
 
 type WasmModuleSource = WebAssembly.Module | ArrayBuffer | Uint8Array | string | URL;
 type WasmInitInput =
@@ -17,6 +22,7 @@ type WasmWorkerBindings = {
     applyMoves: (moves: string[]) => Promise<void> | void;
     disposeEngine: () => void;
     initEngine: (opts?: EngineInitOptions) => Promise<void> | void;
+    configureLayerStacks: (options?: LayerStacksOptions) => Promise<void> | void;
     loadModel: (bytes: Uint8Array) => Promise<void> | void;
     loadPosition: (
         sfen: string,
@@ -74,7 +80,11 @@ type WorkerCommand =
     | (CommandBase & { type: "stop" })
     | (CommandBase & { type: "dispose" })
     | (CommandBase & { type: "setOption"; name: string; value: string | number | boolean })
-    | (CommandBase & { type: "loadNnue"; source: NnueLoadSource });
+    | (CommandBase & {
+          type: "loadNnue";
+          source: NnueLoadSource;
+          layerStacks?: LayerStacksOptions;
+      });
 
 type ModelCache = { uri: string; bytes: Uint8Array };
 
@@ -446,6 +456,7 @@ export function createEngineWorker(bindings: WasmWorkerBindings) {
     async function loadModelIfNeeded(opts?: EngineInitOptions) {
         const uri = opts?.modelUri ?? opts?.nnuePath;
         if (!uri) return;
+        await bindings.configureLayerStacks(undefined);
 
         if (cachedModel && cachedModel.uri === uri) {
             await bindings.loadModel(cachedModel.bytes);
@@ -500,7 +511,11 @@ export function createEngineWorker(bindings: WasmWorkerBindings) {
     /**
      * NNUE をロード
      */
-    async function handleLoadNnue(source: NnueLoadSource): Promise<void> {
+    async function handleLoadNnue(
+        source: NnueLoadSource,
+        layerStacks?: LayerStacksOptions,
+    ): Promise<void> {
+        await bindings.configureLayerStacks(layerStacks);
         const directWrite = getDirectWriteBindings();
         let result: NnueLoadResult;
 
@@ -590,7 +605,7 @@ export function createEngineWorker(bindings: WasmWorkerBindings) {
                     break;
                 case "loadNnue":
                     await ensureModule(lastInit?.wasmModule);
-                    await handleLoadNnue(command.source);
+                    await handleLoadNnue(command.source, command.layerStacks);
                     postAck(requestId);
                     break;
                 default:

@@ -1,3 +1,10 @@
+export interface LayerStacksOptions {
+    bucketMode: "kingrank9" | "progresskpabs" | "progresskpabsq16";
+    progressBuckets?: number;
+    /** Raw little-endian f64 progress coefficients, encoded as Base64. */
+    progressCoeffBase64?: string;
+}
+
 type EngineBackend = "native" | "wasm" | "external-usi";
 
 export type EngineStopMode = "terminate" | "cooperative";
@@ -352,7 +359,7 @@ export interface EngineClient {
      * - Desktop: ファイルシステムの ID（パスに変換）
      * Optional - only implemented by wasm/tauri backends.
      */
-    loadNnue?(nnueId: string): Promise<void>;
+    loadNnue?(nnueId: string, layerStacks?: LayerStacksOptions): Promise<void>;
 }
 
 /**

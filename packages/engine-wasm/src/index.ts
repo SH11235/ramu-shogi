@@ -6,6 +6,7 @@ import type {
     EngineEventHandler,
     EngineInitOptions,
     EngineStopMode,
+    LayerStacksOptions,
     LoadPositionOptions,
     SearchHandle,
     SearchParams,
@@ -140,7 +141,12 @@ type WorkerCommand =
     | { type: "stop"; requestId?: string }
     | { type: "dispose"; requestId?: string }
     | { type: "setOption"; name: string; value: string | number | boolean; requestId?: string }
-    | { type: "loadNnue"; source: NnueLoadSource; requestId?: string };
+    | {
+          type: "loadNnue";
+          source: NnueLoadSource;
+          layerStacks?: LayerStacksOptions;
+          requestId?: string;
+      };
 
 type WorkerCommandPayload =
     | { type: "init"; opts?: WasmEngineInitOptions; wasmModule?: WasmModuleSource }
@@ -155,7 +161,7 @@ type WorkerCommandPayload =
     | { type: "stop" }
     | { type: "dispose" }
     | { type: "setOption"; name: string; value: string | number | boolean }
-    | { type: "loadNnue"; source: NnueLoadSource };
+    | { type: "loadNnue"; source: NnueLoadSource; layerStacks?: LayerStacksOptions };
 
 type WorkerAck = { type: "ack"; requestId: string; error?: string };
 
@@ -297,6 +303,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         passRights?: { sente: number; gote: number };
     } | null = null;
     // panic 後の worker 再生成時に NNUE を再ロードするため、最後に読んだ源を保持する。
+    let lastLayerStacks: LayerStacksOptions | undefined;
     let lastNnueSource: NnueLoadSource | null = null;
     let threadedDisabled = false;
     let activeThreads: number | null = null;
@@ -641,7 +648,11 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
 
     const restoreNnue = async () => {
         if (!worker || !lastNnueSource) return;
-        await postToWorkerAwait({ type: "loadNnue", source: lastNnueSource });
+        await postToWorkerAwait({
+            type: "loadNnue",
+            source: lastNnueSource,
+            layerStacks: lastLayerStacks,
+        });
     };
 
     const initWorkerWithKind = async (
@@ -971,6 +982,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             nnueLoadListeners.clear();
             lastPosition = null;
             lastNnueSource = null;
+            lastLayerStacks = undefined;
             lastInitOpts = undefined;
             pendingOptions.clear();
             warnedReasons.clear();
@@ -1040,7 +1052,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
                 ...cachedStaticThreadInfo,
             };
         },
-        async loadNnue(nnueId: string): Promise<void> {
+        async loadNnue(nnueId: string, layerStacks?: LayerStacksOptions): Promise<void> {
             if (backend === "mock") {
                 // モックではNNUEロードは no-op
                 return;
@@ -1056,8 +1068,9 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
                 return;
             }
             const source: NnueLoadSource = { type: "idb", id: nnueId };
-            await postToWorkerAwait({ type: "loadNnue", source });
+            await postToWorkerAwait({ type: "loadNnue", source, layerStacks });
             lastNnueSource = source;
+            lastLayerStacks = layerStacks;
         },
     };
 }

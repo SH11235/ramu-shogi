@@ -24,6 +24,15 @@ describe("createTauriEngineClient", () => {
     });
 
     describe("基本操作", () => {
+        it("wraps model loading arguments for the native command", async () => {
+            mockInvoke.mockResolvedValue(undefined);
+            const client = createTauriEngineClient({ ipc: mockIpc });
+            const layerStacks = { bucketMode: "kingrank9" as const };
+            await client.loadNnue?.("model-id", layerStacks);
+            expect(mockInvoke).toHaveBeenCalledWith("engine_load_nnue", {
+                args: { nnueId: "model-id", layerStacks },
+            });
+        });
         it("init で IPC を呼び出す", async () => {
             mockInvoke.mockResolvedValue(undefined);
             mockListen.mockResolvedValue(mockUnlisten);

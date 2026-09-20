@@ -9,6 +9,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
+name = "base64"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+
+[[package]]
 name = "bumpalo"
 version = "3.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -74,6 +80,7 @@ checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 name = "engine-wasm"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "console_error_panic_hook",
  "getrandom",
  "js-sys",
@@ -234,9 +241,8 @@ dependencies = [
 
 [[package]]
 name = "rshogi-core"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4f0509a245495ee3a01fcb9d62ebc95cb615ed77d0d23ffc40931c81860d737"
+version = "0.7.0"
+source = "git+https://github.com/SH11235/rshogi.git?rev=a06576bef2193333c9bcb80876de8bfcf9d1d65d#a06576bef2193333c9bcb80876de8bfcf9d1d65d"
 dependencies = [
  "anyhow",
  "getrandom",

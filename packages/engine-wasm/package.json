@@ -26,6 +26,7 @@
         "build:wasm": "node ./scripts/build-wasm.mjs",
         "build:wasm:production": "node ./scripts/build-wasm.mjs --production",
         "bench:wasm": "node ./scripts/bench-wasm.mjs",
+        "smoke:nnue": "node ./scripts/smoke-nnue.mjs",
         "dev": "tsc -p tsconfig.build.json --watch",
         "format": "pnpm --workspace-root exec biome format --write .",
         "format:check": "pnpm --workspace-root exec biome format .",

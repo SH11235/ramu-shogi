@@ -23,6 +23,7 @@
         "@shogi/api-contract": "workspace:*",
         "@shogi/app-core": "workspace:*",
         "@shogi/design-system": "workspace:*",
+        "@shogi/engine-client": "workspace:*",
         "@shogi/engine-wasm": "workspace:*",
         "@shogi/match-client": "workspace:*",
         "@shogi/match-protocol": "workspace:*",

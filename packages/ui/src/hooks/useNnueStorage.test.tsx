@@ -1,5 +1,5 @@
-import type { NnueStorage } from "@shogi/app-core";
-import { renderHook } from "@testing-library/react";
+import type { LayerStacksConfig, NnueMeta, NnueStorage } from "@shogi/app-core";
+import { act, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { NnueProvider } from "../providers/NnueContext";
@@ -77,6 +77,52 @@ describe("useNnueStorage", () => {
     });
 
     describe("Desktop storage (supportsPathImport=true, supportsLoad=false)", () => {
+        it("再インポートで省略された routing と係数を保持する", async () => {
+            const storage = createDesktopMockStorage();
+            const layerStacks: LayerStacksConfig = {
+                bucketMode: "progresskpabsq16",
+                progressBuckets: 8,
+                progressCoeffBase64: "saved-coefficients",
+            };
+            const existing: NnueMeta = {
+                id: "existing",
+                displayName: "Progress model",
+                originalFileName: "nn.bin",
+                size: 1024,
+                contentHashSha256: "abc",
+                source: "user-uploaded",
+                createdAt: 1,
+                verified: true,
+                fvScale: 28,
+                layerStacks,
+            };
+            storage.importFromPath = vi.fn().mockResolvedValue(existing);
+            const { result } = renderHook(() => useNnueStorage(), {
+                wrapper: createWrapper(storage),
+            });
+
+            await act(async () => {
+                const imported = await result.current.importFromPath("/models/nn.bin", 28);
+                expect(imported.layerStacks).toEqual(layerStacks);
+            });
+            expect(storage.updateMeta).toHaveBeenLastCalledWith("existing", { fvScale: 28 });
+
+            const replacement: LayerStacksConfig = { bucketMode: "kingrank9" };
+            await act(async () => {
+                const imported = await result.current.importFromPath(
+                    "/models/nn.bin",
+                    28,
+                    undefined,
+                    replacement,
+                );
+                expect(imported.layerStacks).toEqual(replacement);
+            });
+            expect(storage.updateMeta).toHaveBeenLastCalledWith("existing", {
+                fvScale: 28,
+                layerStacks: replacement,
+            });
+        });
+
         it("capabilities が正しく返される", () => {
             const storage = createDesktopMockStorage();
             const { result } = renderHook(() => useNnueStorage(), {

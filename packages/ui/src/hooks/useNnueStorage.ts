@@ -1,3 +1,4 @@
+import type { LayerStacksConfig } from "@shogi/app-core";
 import {
     generateNnueId,
     NNUE_HEADER_SIZE,
@@ -18,21 +19,33 @@ interface UseNnueStorageReturn {
     /** 一覧を再取得 */
     refreshList: () => Promise<void>;
     /** ファイルから NNUE をインポート（capabilities.supportsFileImport === true の場合） */
-    importFromFile: (file: File, fvScale: number, displayName?: string) => Promise<NnueMeta>;
+    importFromFile: (
+        file: File,
+        fvScale: number,
+        displayName?: string,
+        layerStacks?: LayerStacksConfig,
+    ) => Promise<NnueMeta>;
     /** Blob から NNUE をインポート */
     importFromBlob: (
         blob: Blob,
         originalFileName: string,
         fvScale: number,
         displayName?: string,
+        layerStacks?: LayerStacksConfig,
     ) => Promise<NnueMeta>;
     /** パスから NNUE をインポート（capabilities.supportsPathImport === true の場合） */
-    importFromPath: (srcPath: string, fvScale: number, displayName?: string) => Promise<NnueMeta>;
+    importFromPath: (
+        srcPath: string,
+        fvScale: number,
+        displayName?: string,
+        layerStacks?: LayerStacksConfig,
+    ) => Promise<NnueMeta>;
     /** NNUE を削除 */
     deleteNnue: (id: string) => Promise<void>;
     /** NNUE の表示名を更新 */
     updateDisplayName: (id: string, displayName: string) => Promise<void>;
     /** NNUE の FV_SCALE を更新 */
+    updateLayerStacks: (id: string, layerStacks: LayerStacksConfig | undefined) => Promise<void>;
     updateFvScale: (id: string, fvScale: number | undefined) => Promise<void>;
     /** エラーをクリア */
     clearError: () => void;
@@ -84,6 +97,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
         originalFileName: string,
         fvScale: number,
         displayName?: string,
+        layerStacks?: LayerStacksConfig,
     ): Promise<NnueMeta> => {
         if (!storage) {
             throw new NnueError("NNUE_STORAGE_FAILED", "NnueProvider が設定されていません", null);
@@ -124,7 +138,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
         if (existing.length > 0) {
             const existingMeta = existing[0];
             // format や fvScale が更新される場合は更新
-            const updates: Partial<NnueMeta> = {};
+            const updates: Partial<NnueMeta> = layerStacks ? { layerStacks } : {};
             if (format && !existingMeta.format) {
                 updates.format = format;
             }
@@ -160,6 +174,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
             verified: false,
             format,
             fvScale,
+            layerStacks,
         };
 
         // 保存
@@ -172,6 +187,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
         file: File,
         fvScale: number,
         displayName?: string,
+        layerStacks?: LayerStacksConfig,
     ): Promise<NnueMeta> => {
         if (!storage) {
             throw new NnueError("NNUE_STORAGE_FAILED", "NnueProvider が設定されていません", null);
@@ -192,6 +208,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
                 file.name,
                 fvScale,
                 displayName,
+                layerStacks,
             );
         } catch (e) {
             const err =
@@ -210,6 +227,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
         originalFileName: string,
         fvScale: number,
         displayName?: string,
+        layerStacks?: LayerStacksConfig,
     ): Promise<NnueMeta> => {
         if (!storage) {
             throw new NnueError("NNUE_STORAGE_FAILED", "NnueProvider が設定されていません", null);
@@ -223,6 +241,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
                 originalFileName,
                 fvScale,
                 displayName,
+                layerStacks,
             );
         } catch (e) {
             const err =
@@ -240,6 +259,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
         srcPath: string,
         fvScale: number,
         displayName?: string,
+        layerStacks?: LayerStacksConfig,
     ): Promise<NnueMeta> => {
         if (!storage) {
             throw new NnueError("NNUE_STORAGE_FAILED", "NnueProvider が設定されていません", null);
@@ -255,10 +275,10 @@ export function useNnueStorage(): UseNnueStorageReturn {
         setLocalError(null);
         try {
             const meta = await storage.importFromPath(srcPath, displayName);
-            // fvScale を設定
-            await storage.updateMeta(meta.id, { fvScale });
+            const updates = layerStacks ? { fvScale, layerStacks } : { fvScale };
+            await storage.updateMeta(meta.id, updates);
             await refreshList();
-            return { ...meta, fvScale };
+            return { ...meta, ...updates };
         } catch (e) {
             const err =
                 e instanceof NnueError
@@ -328,6 +348,24 @@ export function useNnueStorage(): UseNnueStorageReturn {
         }
     };
 
+    const updateLayerStacks = async (id: string, layerStacks: LayerStacksConfig | undefined) => {
+        if (!storage)
+            throw new NnueError("NNUE_STORAGE_FAILED", "評価関数ストレージが利用できません");
+        setLocalError(null);
+        try {
+            await storage.updateMeta(id, { layerStacks });
+            await refreshList();
+        } catch (error) {
+            const err = new NnueError(
+                "NNUE_STORAGE_FAILED",
+                "LayerStacks 設定の保存に失敗しました",
+                error,
+            );
+            setLocalError(err);
+            throw err;
+        }
+    };
+
     const clearError = () => {
         setLocalError(null);
         contextClearError?.();
@@ -344,6 +382,7 @@ export function useNnueStorage(): UseNnueStorageReturn {
         deleteNnue,
         updateDisplayName,
         updateFvScale,
+        updateLayerStacks,
         clearError,
         storageUsage,
         capabilities,

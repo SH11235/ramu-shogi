@@ -148,6 +148,7 @@ export type {
 } from "./nnue/storage";
 // nnue/types
 export type {
+    LayerStacksConfig,
     NnueDownloadProgress,
     NnueFormat,
     NnueMeta,
@@ -176,3 +177,9 @@ export {
     detectParallelism,
     resolveWorkerCount,
 } from "./engine/parallelism";
+
+export {
+    encodeProgressCoefficients,
+    PROGRESS_COEFFICIENTS_SIZE,
+    validateLayerStacks,
+} from "./nnue/layer-stacks";

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NnueError } from "./errors";
+import { PROGRESS_COEFFICIENTS_SIZE } from "./layer-stacks";
 import {
     createPresetManager,
     downloadPreset,
@@ -471,5 +472,84 @@ describe("createPresetManager", () => {
         await expect(manager.download("non-existent")).rejects.toMatchObject({
             code: "NNUE_NOT_FOUND",
         });
+    });
+});
+
+describe("LayerStacks preset coefficients", () => {
+    it.each([
+        { corrupt: false, bucketMode: "progresskpabs" as const, progressBuckets: 9 },
+        { corrupt: true, bucketMode: "progresskpabs" as const, progressBuckets: 9 },
+        { corrupt: false, bucketMode: "progresskpabsq16" as const, progressBuckets: 8 },
+        { corrupt: true, bucketMode: "progresskpabsq16" as const, progressBuckets: 8 },
+    ])("validates companion for $bucketMode (corrupt=$corrupt)", async ({
+        corrupt,
+        bucketMode,
+        progressBuckets,
+    }) => {
+        mockFetch.mockReset();
+        const data = new Uint8Array(16);
+        const coefficients = new Uint8Array(PROGRESS_COEFFICIENTS_SIZE);
+        const hash = async (bytes: Uint8Array<ArrayBuffer>) =>
+            Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
+                .map((b) => b.toString(16).padStart(2, "0"))
+                .join("");
+        const preset = createTestPreset({
+            size: data.length,
+            sha256: await hash(data),
+            layerStacks: { bucketMode, progressBuckets },
+            progressCoefficients: {
+                url: "https://example.com/progress.bin",
+                size: coefficients.length,
+                sha256: corrupt ? "bad" : await hash(coefficients),
+            },
+        });
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            headers: new Headers(),
+            body: createMockReadableStream(data),
+        });
+        mockFetch.mockResolvedValueOnce({ ok: true, body: createMockReadableStream(coefficients) });
+        const storage = createMockStorage();
+        if (corrupt) {
+            await expect(downloadPreset(preset, storage)).rejects.toMatchObject({
+                code: "NNUE_HASH_MISMATCH",
+            });
+            expect(storage.save).not.toHaveBeenCalled();
+            expect(storage.delete).not.toHaveBeenCalled();
+        } else {
+            const meta = await downloadPreset(preset, storage);
+            expect(meta.layerStacks?.progressBuckets).toBe(progressBuckets);
+            expect(meta.layerStacks?.bucketMode).toBe(bucketMode);
+            expect(atob(meta.layerStacks?.progressCoeffBase64 ?? "").length).toBe(
+                coefficients.length,
+            );
+        }
+    });
+});
+
+describe("LayerStacks preset updates", () => {
+    it("detects routing and companion-only changes with an unchanged NNUE hash", async () => {
+        const meta = createTestMeta({
+            layerStacks: {
+                bucketMode: "progresskpabs",
+                progressBuckets: 9,
+                progressCoeffBase64: "coefficients",
+            },
+            progressCoefficientsSha256: "old",
+        });
+        const storage = createMockStorage({ listByPresetKey: vi.fn().mockResolvedValue([meta]) });
+        const preset = createTestPreset({
+            layerStacks: { bucketMode: "progresskpabs", progressBuckets: 9 },
+            progressCoefficients: {
+                url: "https://example.com/coeff",
+                size: PROGRESS_COEFFICIENTS_SIZE,
+                sha256: "new",
+            },
+        });
+        expect((await getPresetStatus(preset, storage)).status).toBe("update-available");
+        if (preset.progressCoefficients) preset.progressCoefficients.sha256 = "old";
+        expect((await getPresetStatus(preset, storage)).status).toBe("latest");
+        preset.layerStacks = { bucketMode: "kingrank9" };
+        expect((await getPresetStatus(preset, storage)).status).toBe("update-available");
     });
 });

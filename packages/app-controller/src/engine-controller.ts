@@ -800,7 +800,7 @@ export function createEngineController(
             if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
                 const resolved = await dependencies.resolveNnue(selection);
                 if (resolved) {
-                    await client.loadNnue(resolved.nnueId);
+                    await client.loadNnue(resolved.nnueId, resolved.layerStacks);
                     await client.setOption("FV_SCALE", resolved.fvScale);
                 }
             }
@@ -886,7 +886,7 @@ export function createEngineController(
             if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
                 const resolved = await dependencies.resolveNnue(selection);
                 if (resolved) {
-                    await client.loadNnue(resolved.nnueId);
+                    await client.loadNnue(resolved.nnueId, resolved.layerStacks);
                     await client.setOption("FV_SCALE", resolved.fvScale);
                 }
             }
@@ -1091,7 +1091,7 @@ export function createEngineController(
                 if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
                     const resolved = await dependencies.resolveNnue(selection);
                     if (resolved) {
-                        await client.loadNnue(resolved.nnueId);
+                        await client.loadNnue(resolved.nnueId, resolved.layerStacks);
                         await client.setOption("FV_SCALE", resolved.fvScale);
                     }
                 }
