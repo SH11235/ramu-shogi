@@ -108,6 +108,9 @@ importers:
       '@shogi/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
+      '@shogi/engine-client':
+        specifier: workspace:*
+        version: link:../../packages/engine-client
       '@shogi/engine-wasm':
         specifier: workspace:*
         version: link:../../packages/engine-wasm

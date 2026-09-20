@@ -39,9 +39,11 @@ pub fn decode_progress_coefficients(encoded: &str) -> Result<Vec<u8>, String> {
         .decode(encoded)
         .map_err(|e| format!("Invalid progress coefficient Base64: {e}"))?;
     if bytes.len() != expected_bytes
-        || bytes.chunks_exact(8).any(|chunk| {
-            !f64::from_le_bytes(chunk.try_into().expect("exact chunk size")).is_finite()
-        })
+        || bytes
+            .as_chunks::<8>()
+            .0
+            .iter()
+            .any(|chunk| !f64::from_le_bytes(*chunk).is_finite())
     {
         return Err("Progress coefficients must be finite f64 values".to_string());
     }
