@@ -3129,8 +3129,8 @@ dependencies = [
 
 [[package]]
 name = "rshogi-core"
-version = "0.7.0"
-source = "git+https://github.com/SH11235/rshogi.git?rev=9f19e70490541f8e802e527fb68544534fc09b52#9f19e70490541f8e802e527fb68544534fc09b52"
+version = "0.8.0"
+source = "git+https://github.com/SH11235/rshogi.git?rev=3f84dceb1af5cc8e1700b4405762cd434f465378#3f84dceb1af5cc8e1700b4405762cd434f465378"
 dependencies = [
  "getrandom 0.3.4",
  "libc",
@@ -3145,7 +3145,7 @@ dependencies = [
 [[package]]
 name = "rshogi-csa"
 version = "0.1.0"
-source = "git+https://github.com/SH11235/rshogi.git?rev=9f19e70490541f8e802e527fb68544534fc09b52#9f19e70490541f8e802e527fb68544534fc09b52"
+source = "git+https://github.com/SH11235/rshogi.git?rev=3f84dceb1af5cc8e1700b4405762cd434f465378#3f84dceb1af5cc8e1700b4405762cd434f465378"
 dependencies = [
  "anyhow",
 ]
@@ -3153,7 +3153,7 @@ dependencies = [
 [[package]]
 name = "rshogi-csa-client"
 version = "0.1.0"
-source = "git+https://github.com/SH11235/rshogi.git?rev=9f19e70490541f8e802e527fb68544534fc09b52#9f19e70490541f8e802e527fb68544534fc09b52"
+source = "git+https://github.com/SH11235/rshogi.git?rev=3f84dceb1af5cc8e1700b4405762cd434f465378#3f84dceb1af5cc8e1700b4405762cd434f465378"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3174,7 +3174,7 @@ dependencies = [
 [[package]]
 name = "rshogi-csa-server"
 version = "0.1.0"
-source = "git+https://github.com/SH11235/rshogi.git?rev=9f19e70490541f8e802e527fb68544534fc09b52#9f19e70490541f8e802e527fb68544534fc09b52"
+source = "git+https://github.com/SH11235/rshogi.git?rev=3f84dceb1af5cc8e1700b4405762cd434f465378#3f84dceb1af5cc8e1700b4405762cd434f465378"
 dependencies = [
  "chrono",
  "rand 0.9.4",
