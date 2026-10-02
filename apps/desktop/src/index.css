@@ -2,6 +2,10 @@
 @import "tailwindcss";
 /* theme.css は @layer base を使用するため tailwindcss の後に読み込む */
 @import "@shogi/design-system/theme.css";
+/* 見出しの書体 (丸ゴシック)。日本語サブセットは unicode-range で分割配信される */
+@import "@fontsource/zen-maru-gothic/500.css";
+@import "@fontsource/zen-maru-gothic/700.css";
+@import "@fontsource/zen-maru-gothic/900.css";
 
 /* Tailwind v4: preset と content 設定を読み込む */
 @config "../tailwind.config.ts";

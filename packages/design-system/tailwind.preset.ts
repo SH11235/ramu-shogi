@@ -78,6 +78,16 @@ const preset: Omit<Config, "content"> = {
                     "warning-bg": "hsl(var(--status-warning-bg))",
                     "warning-border": "hsl(var(--status-warning-border))",
                 },
+                // ラム（トイプードル）配色
+                "card-edge": "hsl(var(--card-edge))",
+                ram: {
+                    fur: "hsl(var(--ram-fur))",
+                    "fur-deep": "hsl(var(--ram-fur-deep))",
+                    cream: "hsl(var(--ram-cream))",
+                    collar: "hsl(var(--ram-collar))",
+                    ink: "hsl(var(--ram-ink))",
+                    blush: "hsl(var(--ram-blush))",
+                },
                 // 将棋盤配色
                 shogi: {
                     border: "hsl(var(--shogi-border))",
@@ -108,6 +118,10 @@ const preset: Omit<Config, "content"> = {
             },
             boxShadow: {
                 card: "0 20px 25px -5px rgba(15, 23, 42, 0.08), 0 10px 10px -5px rgba(15, 23, 42, 0.04)",
+                // 毛玉のようにふくらんだ面。上端のハイライト + 暖色の柔らかい落ち影
+                puffy: "inset 0 2px 0 hsl(var(--puffy-hi)), 0 1px 0 hsl(var(--ram-shadow) / 0.08), 0 14px 28px -12px hsl(var(--ram-shadow) / 0.28)",
+                "puffy-lift":
+                    "inset 0 2px 0 hsl(var(--puffy-hi)), 0 1px 0 hsl(var(--ram-shadow) / 0.1), 0 22px 36px -14px hsl(var(--ram-shadow) / 0.38)",
             },
             keyframes: {
                 "accordion-down": {

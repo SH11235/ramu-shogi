@@ -313,7 +313,7 @@ export function NnueManagerDialog({
                     {/* エラー表示 */}
                     <NnueErrorAlert error={error} onClose={handleClearError} />
                     {remoteNnueManager?.error && (
-                        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                        <div className="rounded-full border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                             {remoteNnueManager.error}
                         </div>
                     )}
@@ -377,7 +377,7 @@ export function NnueManagerDialog({
                             </div>
 
                             {!remoteNnueManager.isAuthenticated ? (
-                                <div className="rounded-md border border-border bg-muted/40 px-3 py-3 text-[13px] text-muted-foreground">
+                                <div className="rounded-full border border-border bg-muted/40 px-3 py-3 text-[13px] text-muted-foreground">
                                     ログインすると、アカウントに保存した private NNUE
                                     をブラウザへ取り込めます。
                                     {remoteNnueManager.loginHref && (

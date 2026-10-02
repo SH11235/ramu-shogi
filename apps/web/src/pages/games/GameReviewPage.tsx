@@ -183,7 +183,7 @@ export default function GameReviewPage(): ReactElement {
                 </div>
             )}
             {error && (
-                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                <div className="rounded-full border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                     {error}
                 </div>
             )}
@@ -199,7 +199,7 @@ export default function GameReviewPage(): ReactElement {
                     type="button"
                     onClick={() => void handleSaveSnapshot()}
                     disabled={isSaving || !effectiveDraft || effectiveDraft.entries.length === 0}
-                    className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+                    className="rounded-full bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
                 >
                     {isSaving ? "保存中..." : "解析結果を保存"}
                 </button>

@@ -17,7 +17,8 @@ const SETTINGS_LOCKED_MESSAGE = "対局中は変更不可";
 const sectionClassName = "flex flex-col gap-3";
 const sectionTitleClassName = "text-sm font-semibold text-wafuu-sumi";
 const labelClassName = "flex flex-col gap-1 text-xs text-muted-foreground";
-const inputClassName = "border border-wafuu-border bg-wafuu-washi text-sm text-xs";
+const inputClassName =
+    "rounded-2xl border border-wafuu-border bg-card/70 px-3 py-2 text-xs shadow-[inset_0_1px_3px_hsl(var(--ram-shadow)/0.08)]";
 
 /**
  * 左サイドバーコンポーネント
@@ -347,7 +348,7 @@ export function LeftSidebar(): ReactElement {
     };
 
     return (
-        <div className="w-96 self-center overflow-y-auto bg-wafuu-washi-warm border border-wafuu-border rounded-xl p-4 flex flex-col gap-6">
+        <div className="w-96 self-center overflow-y-auto bg-card/80 border border-card-edge rounded-[28px] p-5 shadow-puffy backdrop-blur-sm flex flex-col gap-6">
             {/* 対局設定 */}
             <div className={sectionClassName}>
                 <div className={sectionTitleClassName}>対局設定</div>
@@ -394,7 +395,7 @@ export function LeftSidebar(): ReactElement {
                     onClick={onOpenPassRightsSettings}
                     disabled={settingsLocked}
                     title={settingsLocked ? SETTINGS_LOCKED_MESSAGE : "変則ルール設定を開く"}
-                    className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm disabled:hover:translate-y-0 disabled:hover:border-wafuu-border flex items-center gap-2"
+                    className="w-full text-left px-4 py-2.5 rounded-full text-sm font-bold text-wafuu-sumi bg-card/80 border border-card-edge shadow-puffy hover:shadow-puffy-lift hover:-translate-y-0.5 transition-[transform,box-shadow] duration-200 motion-reduce:transition-none disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-puffy disabled:hover:translate-y-0 flex items-center gap-2"
                 >
                     <span>🎲</span>
                     <span>
@@ -431,7 +432,7 @@ export function LeftSidebar(): ReactElement {
             <button
                 type="button"
                 onClick={onOpenNnueManager}
-                className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
+                className="w-full text-left px-4 py-2.5 rounded-full text-sm font-bold text-wafuu-sumi bg-card/80 border border-card-edge shadow-puffy hover:shadow-puffy-lift hover:-translate-y-0.5 transition-[transform,box-shadow] duration-200 motion-reduce:transition-none flex items-center gap-2"
             >
                 <span>📁</span>
                 <span>{EVAL_FILE_MANAGER_LABEL}...</span>
@@ -442,7 +443,7 @@ export function LeftSidebar(): ReactElement {
                 <button
                     type="button"
                     onClick={onOpenEngineManager}
-                    className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
+                    className="w-full text-left px-4 py-2.5 rounded-full text-sm font-bold text-wafuu-sumi bg-card/80 border border-card-edge shadow-puffy hover:shadow-puffy-lift hover:-translate-y-0.5 transition-[transform,box-shadow] duration-200 motion-reduce:transition-none flex items-center gap-2"
                 >
                     <span>⚙️</span>
                     <span>外部エンジン管理...</span>
@@ -464,7 +465,7 @@ export function LeftSidebar(): ReactElement {
                                 key={`engine-settings-${side}`}
                                 type="button"
                                 onClick={() => onOpenEngineSettings(side)}
-                                className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
+                                className="w-full text-left px-4 py-2.5 rounded-full text-sm font-bold text-wafuu-sumi bg-card/80 border border-card-edge shadow-puffy hover:shadow-puffy-lift hover:-translate-y-0.5 transition-[transform,box-shadow] duration-200 motion-reduce:transition-none flex items-center gap-2"
                             >
                                 <span>{side === "sente" ? "☗" : "☖"}</span>
                                 <span>
@@ -480,7 +481,7 @@ export function LeftSidebar(): ReactElement {
                             <button
                                 type="button"
                                 onClick={() => onOpenEngineSettings("analysis")}
-                                className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
+                                className="w-full text-left px-4 py-2.5 rounded-full text-sm font-bold text-wafuu-sumi bg-card/80 border border-card-edge shadow-puffy hover:shadow-puffy-lift hover:-translate-y-0.5 transition-[transform,box-shadow] duration-200 motion-reduce:transition-none flex items-center gap-2"
                             >
                                 <span>🔍</span>
                                 <span>解析 {aEngine.label} 設定...</span>
@@ -494,7 +495,7 @@ export function LeftSidebar(): ReactElement {
             <button
                 type="button"
                 onClick={onOpenDisplaySettings}
-                className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
+                className="w-full text-left px-4 py-2.5 rounded-full text-sm font-bold text-wafuu-sumi bg-card/80 border border-card-edge shadow-puffy hover:shadow-puffy-lift hover:-translate-y-0.5 transition-[transform,box-shadow] duration-200 motion-reduce:transition-none flex items-center gap-2"
             >
                 <span>👁️</span>
                 <span>表示設定...</span>

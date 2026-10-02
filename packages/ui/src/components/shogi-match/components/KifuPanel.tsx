@@ -1337,7 +1337,7 @@ export function KifuPanel({
 
     return (
         <TooltipProvider delayDuration={300}>
-            <div className="bg-card border border-border rounded-xl p-3 shadow-lg w-[var(--panel-width)]">
+            <div className="w-[var(--panel-width)] rounded-[28px] border border-card-edge bg-card/80 p-4 shadow-puffy backdrop-blur-sm">
                 <div className="font-bold mb-1.5 flex justify-between items-center gap-2">
                     <div className="flex items-center gap-2">
                         <span>棋譜</span>

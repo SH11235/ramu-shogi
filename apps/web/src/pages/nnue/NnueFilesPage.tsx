@@ -268,7 +268,7 @@ export default function NnueFilesPage(): ReactElement {
                                 type="button"
                                 onClick={() => void handleUpload()}
                                 disabled={!selectedFile || isUploading}
-                                className="w-fit rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+                                className="w-fit rounded-full bg-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
                             >
                                 {isUploading ? "アップロード中..." : "アップロード"}
                             </button>
@@ -284,7 +284,7 @@ export default function NnueFilesPage(): ReactElement {
                                     {files.map((file) => (
                                         <div
                                             key={file.id}
-                                            className="rounded-md border border-border px-4 py-3"
+                                            className="rounded-full border border-border px-4 py-3"
                                         >
                                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                                 <div className="flex flex-col gap-1">
@@ -300,7 +300,7 @@ export default function NnueFilesPage(): ReactElement {
                                                     <button
                                                         type="button"
                                                         onClick={() => void handleDownload(file)}
-                                                        className="rounded-md border border-input px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
+                                                        className="rounded-full border border-card-edge bg-card/80 shadow-puffy px-3 py-2 text-sm font-bold text-foreground transition-colors hover:bg-muted/50"
                                                     >
                                                         ダウンロード
                                                     </button>

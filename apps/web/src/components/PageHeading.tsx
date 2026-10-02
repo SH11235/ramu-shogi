@@ -18,7 +18,9 @@ export function PageHeading({
 }: PageHeadingProps): ReactElement {
     return (
         <div className={cn("flex flex-col gap-2", className)}>
-            <h1 className="text-2xl font-bold text-foreground">{title}</h1>
+            <h1 className="font-display text-3xl font-black tracking-tight text-foreground">
+                {title}
+            </h1>
             {description && <p className="text-sm text-muted-foreground">{description}</p>}
             {children}
         </div>

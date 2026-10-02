@@ -117,6 +117,11 @@ export function PCBoardSection({ candidateNote, hideClock }: PCBoardSectionProps
                                     sides[position.turn].role === "engine"
                                 }
                                 size="lg"
+                                thinking={
+                                    isMatchRunning &&
+                                    gameMode !== "reviewing" &&
+                                    sides[position.turn].role === "engine"
+                                }
                             />
                         </output>
 
@@ -124,8 +129,8 @@ export function PCBoardSection({ candidateNote, hideClock }: PCBoardSectionProps
                         <button
                             type="button"
                             onClick={() => onFlipBoardChange(!flipBoard)}
-                            className={`flex items-center gap-1 px-2 py-1 rounded-md border border-wafuu-border cursor-pointer text-[13px] whitespace-nowrap ${
-                                flipBoard ? "bg-wafuu-kin/20" : "bg-card"
+                            className={`flex items-center gap-1 rounded-full border border-card-edge px-3 py-1 text-[13px] font-bold whitespace-nowrap cursor-pointer shadow-puffy transition-transform hover:-translate-y-px motion-reduce:transition-none ${
+                                flipBoard ? "bg-wafuu-kin/30" : "bg-card/80"
                             }`}
                             title="盤面を反転"
                         >

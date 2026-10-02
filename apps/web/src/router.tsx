@@ -17,6 +17,7 @@ import {
     useNavigate,
 } from "@tanstack/react-router";
 import { AppProviders } from "./AppProviders";
+import { RamNotice } from "./components/RamNotice";
 import { handleLoaderResponse } from "./router-loader-utils";
 
 const rootRoute = createRootRoute({
@@ -294,18 +295,20 @@ function DefaultErrorComponent({ error }: { error: unknown }) {
     // 非 Error の Promise rejection もありうる) ため、安全に文字列化する。
     const message = error instanceof Error ? error.message : String(error);
     return (
-        <div className="mx-auto flex max-w-[480px] flex-col gap-4 px-4 py-10">
-            <p className="text-destructive">
-                ページの読み込みに失敗しました。ネットワークを確認して再読み込みしてください。
-            </p>
-            <p className="text-xs text-muted-foreground">{message}</p>
-            <button
-                type="button"
-                onClick={() => window.location.reload()}
-                className="self-start text-sm text-muted-foreground hover:text-foreground"
-            >
-                再読み込み
-            </button>
+        <div className="mx-auto max-w-[480px] px-4 py-10">
+            <RamNotice tone="error" title="ページの読み込みに失敗しました">
+                <p className="text-sm text-wafuu-sumi-light">
+                    ネットワークを確認して再読み込みしてください。
+                </p>
+                <p className="break-all text-xs text-muted-foreground">{message}</p>
+                <button
+                    type="button"
+                    onClick={() => window.location.reload()}
+                    className="rounded-full bg-primary px-5 py-2 text-sm font-bold text-primary-foreground shadow-[inset_0_2px_0_hsl(0_0%_100%/0.3),0_10px_20px_-8px_hsl(var(--primary)/0.65)] transition-transform hover:-translate-y-px"
+                >
+                    再読み込み
+                </button>
+            </RamNotice>
         </div>
     );
 }
@@ -313,15 +316,16 @@ function DefaultErrorComponent({ error }: { error: unknown }) {
 function RoomErrorComponent({ error }: { error: Error }) {
     const navigate = useNavigate();
     return (
-        <div className="mx-auto flex max-w-[480px] flex-col gap-4 px-4 py-10">
-            <p className="text-destructive">{error.message}</p>
-            <button
-                type="button"
-                onClick={() => void navigate({ to: "/online", search: undefined })}
-                className="text-sm text-muted-foreground hover:text-foreground"
-            >
-                ← オンライン対局に戻る
-            </button>
+        <div className="mx-auto max-w-[480px] px-4 py-10">
+            <RamNotice tone="error" title={error.message}>
+                <button
+                    type="button"
+                    onClick={() => void navigate({ to: "/online", search: undefined })}
+                    className="rounded-full border border-card-edge bg-card/80 px-5 py-2 text-sm font-bold text-wafuu-sumi shadow-puffy transition-transform hover:-translate-y-px"
+                >
+                    ← オンライン対局に戻る
+                </button>
+            </RamNotice>
         </div>
     );
 }

@@ -7,7 +7,7 @@ interface ShogiMatchConfig {
 }
 
 const defaultConfig: ShogiMatchConfig = {
-    aiIconUrl: "/ramu.jpeg",
+    aiIconUrl: "/ram.svg",
 };
 
 const ShogiMatchContext = createContext<ShogiMatchConfig>(defaultConfig);

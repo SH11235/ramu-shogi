@@ -129,7 +129,7 @@ interface MobileSettingsSheetProps {
 }
 
 // iOS Safari は16px未満のinput/selectにフォーカスすると自動ズームするため、text-base(16px)を使用
-const selectClassName = "w-full p-2 rounded-lg border border-border bg-background text-base";
+const selectClassName = "w-full rounded-2xl border border-border bg-background p-2.5 text-base";
 const inputClassName = "w-full border border-border bg-background text-base";
 const labelClassName = "flex flex-col gap-1 text-sm";
 

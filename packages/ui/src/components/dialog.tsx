@@ -47,7 +47,7 @@ export const DialogContent = forwardRef<
                 style={style}
                 className={cn(
                     surfaceTheme,
-                    "fixed left-1/2 top-1/2 z-[51] w-[min(960px,calc(100%-24px))] -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-xl border border-border bg-card p-6 text-foreground shadow-[0_24px_70px_rgba(0,0,0,0.35)] max-h-[85vh] gap-4 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+                    "fixed left-1/2 top-1/2 z-[51] w-[min(960px,calc(100%-24px))] -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-[28px] border border-card-edge bg-card p-6 text-foreground shadow-[0_24px_70px_rgba(0,0,0,0.35)] max-h-[85vh] gap-4 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
                     className,
                 )}
                 ref={ref}

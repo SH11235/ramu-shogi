@@ -240,7 +240,7 @@ export default function RshogiViewerListPage(): ReactElement {
 
                 <form
                     onSubmit={handleSearch}
-                    className="mb-4 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-4"
+                    className="mb-4 rounded-3xl border border-card-edge bg-card/80 p-4 shadow-puffy"
                     aria-label="棋譜検索"
                 >
                     <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
@@ -272,7 +272,7 @@ export default function RshogiViewerListPage(): ReactElement {
                                         result: event.target.value as SearchFormValues["result"],
                                     })
                                 }
-                                className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                                className="h-10 rounded-2xl border border-input bg-card/70 px-3 text-sm text-foreground"
                             >
                                 <option value="">すべて</option>
                                 {RESULT_OPTIONS.map((option) => (
@@ -325,7 +325,7 @@ export default function RshogiViewerListPage(): ReactElement {
                                         source: event.target.value as SearchFormValues["source"],
                                     })
                                 }
-                                className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                                className="h-10 rounded-2xl border border-input bg-card/70 px-3 text-sm text-foreground"
                             >
                                 <option value="">すべて</option>
                                 <option value="kifu">kifu</option>
@@ -338,14 +338,14 @@ export default function RshogiViewerListPage(): ReactElement {
                             type="button"
                             onClick={handleClear}
                             disabled={!hasSearchCondition(searchForm) && !isSearchMode}
-                            className="rounded-md border border-wafuu-border px-4 py-2 text-sm text-wafuu-sumi disabled:cursor-not-allowed disabled:opacity-50"
+                            className="rounded-full border border-card-edge bg-card/80 shadow-puffy px-4 py-2 text-sm text-wafuu-sumi disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             クリア
                         </button>
                         <button
                             type="submit"
                             disabled={!hasSearchCondition(searchForm) || isSearchLoading}
-                            className="rounded-md bg-wafuu-shu px-4 py-2 text-sm text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                            className="rounded-full bg-wafuu-shu px-4 py-2 text-sm text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             {isSearchLoading ? "検索中..." : "検索"}
                         </button>
@@ -376,7 +376,7 @@ export default function RshogiViewerListPage(): ReactElement {
                                 type="button"
                                 onClick={() => handleSearchPage(searchPage.page - 1)}
                                 disabled={searchPage.page <= 1 || isSearchLoading}
-                                className="rounded-md border border-wafuu-border px-4 py-1.5 text-sm text-wafuu-sumi disabled:cursor-not-allowed disabled:opacity-50"
+                                className="rounded-full border border-card-edge bg-card/80 shadow-puffy px-4 py-1.5 text-sm text-wafuu-sumi disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 前へ
                             </button>
@@ -384,7 +384,7 @@ export default function RshogiViewerListPage(): ReactElement {
                                 type="button"
                                 onClick={() => handleSearchPage(searchPage.page + 1)}
                                 disabled={rangeEnd >= searchPage.totalCount || isSearchLoading}
-                                className="rounded-md border border-wafuu-border px-4 py-1.5 text-sm text-wafuu-sumi disabled:cursor-not-allowed disabled:opacity-50"
+                                className="rounded-full border border-card-edge bg-card/80 shadow-puffy px-4 py-1.5 text-sm text-wafuu-sumi disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 次へ
                             </button>

@@ -10,7 +10,7 @@ export function HeaderNav(): ReactElement {
         <nav aria-label="ヘッダーアクション" className="flex items-center gap-2">
             <Link
                 to="/auth"
-                className="inline-flex h-8 min-w-0 max-w-32 items-center truncate rounded-md px-2 text-sm text-wafuu-sumi-light transition-colors hover:bg-muted/50 hover:text-wafuu-sumi"
+                className="inline-flex h-8 min-w-0 max-w-32 items-center truncate rounded-full bg-card/70 px-3.5 text-[13px] font-medium text-wafuu-sumi shadow-puffy transition-colors hover:bg-card"
             >
                 {authLabel}
             </Link>

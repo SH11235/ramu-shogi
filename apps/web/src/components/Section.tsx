@@ -12,11 +12,11 @@ export function Section({ title, className, children }: SectionProps): ReactElem
     return (
         <section
             className={cn(
-                "flex flex-col gap-3 rounded-xl border border-border bg-card p-5 shadow-sm",
+                "flex flex-col gap-3 rounded-3xl border border-card-edge bg-card/80 p-5 shadow-puffy",
                 className,
             )}
         >
-            {title && <h2 className="text-lg font-semibold text-foreground">{title}</h2>}
+            {title && <h2 className="font-display text-lg font-bold text-foreground">{title}</h2>}
             {children}
         </section>
     );

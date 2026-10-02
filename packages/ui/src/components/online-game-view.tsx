@@ -983,7 +983,7 @@ export function OnlineGameView({
 
             {/* 切断バナー */}
             {offlineSeats.size > 0 && (
-                <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-destructive px-4 py-2 text-sm text-destructive-foreground shadow-lg">
+                <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 rounded-full bg-destructive px-4 py-2 text-sm text-destructive-foreground shadow-lg">
                     {Array.from(offlineSeats).map((s) => (
                         <span key={s}>{s === "b" ? "先手" : "後手"}が切断しました</span>
                     ))}
@@ -1129,7 +1129,7 @@ export function OnlineGameView({
                             type="button"
                             onClick={() => void sendMove("pass")}
                             disabled={!legalMoves.includes("pass")}
-                            className="rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="rounded-full bg-secondary px-4 py-2 text-sm font-bold text-secondary-foreground hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             パス
                         </button>
@@ -1152,7 +1152,7 @@ export function OnlineGameView({
                         <button
                             type="button"
                             onClick={handleResign}
-                            className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            className="rounded-full bg-destructive px-4 py-2 text-sm font-bold text-destructive-foreground hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                             投了
                         </button>
@@ -1160,7 +1160,7 @@ export function OnlineGameView({
                     <button
                         type="button"
                         onClick={() => dispatchUI({ type: "set_kifu_sheet_open", open: true })}
-                        className="md:hidden rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
+                        className="md:hidden rounded-full border border-border bg-card px-3 py-2 text-sm font-bold text-foreground hover:bg-muted"
                         aria-label="棋譜"
                     >
                         棋譜
@@ -1169,7 +1169,7 @@ export function OnlineGameView({
                         <button
                             type="button"
                             onClick={() => dispatchUI({ type: "set_ai_sheet_open", open: true })}
-                            className="md:hidden rounded-md border border-wafuu-ai/40 bg-wafuu-ai/10 px-3 py-2 text-sm font-medium text-wafuu-ai hover:bg-wafuu-ai/20"
+                            className="md:hidden rounded-full border border-wafuu-ai/40 bg-wafuu-ai/10 px-3 py-2 text-sm font-bold text-wafuu-ai hover:bg-wafuu-ai/20"
                             aria-label="AI解析"
                         >
                             🤖 AI解析
@@ -1182,7 +1182,7 @@ export function OnlineGameView({
                     <button
                         type="button"
                         onClick={() => dispatchUI({ type: "set_ai_sheet_open", open: true })}
-                        className="md:hidden flex items-center gap-2 rounded-md border border-border bg-card/80 px-3 py-1.5 text-xs w-full"
+                        className="md:hidden flex items-center gap-2 rounded-full border border-border bg-card/80 px-3 py-1.5 text-xs w-full"
                     >
                         <span className="text-muted-foreground shrink-0">🤖</span>
                         <div className="flex-1 h-1.5 rounded-full bg-wafuu-ai overflow-hidden">
@@ -1233,7 +1233,7 @@ export function OnlineGameView({
             {/* 待った: 承認ダイアログ（相手向け） */}
             {pendingTakeback && pendingTakeback.seat !== seat && !isSpectator && !gameResult && (
                 <div className="fixed inset-0 z-40 flex items-end justify-center pb-8 md:items-center md:pb-0">
-                    <div className="rounded-xl border border-border bg-card p-5 shadow-xl w-[300px]">
+                    <div className="rounded-3xl border border-card-edge bg-card/80 p-5 shadow-xl w-[300px] shadow-puffy">
                         <p className="mb-1 text-center font-semibold text-foreground">
                             待ったの申請
                         </p>
@@ -1244,14 +1244,14 @@ export function OnlineGameView({
                             <button
                                 type="button"
                                 onClick={() => handleTakebackResponse(true)}
-                                className="flex-1 rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                                className="flex-1 rounded-full bg-primary py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90"
                             >
                                 承認する
                             </button>
                             <button
                                 type="button"
                                 onClick={() => handleTakebackResponse(false)}
-                                className="flex-1 rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
+                                className="flex-1 rounded-full bg-secondary py-2 text-sm font-bold text-secondary-foreground hover:bg-secondary/80"
                             >
                                 拒否する
                             </button>
@@ -1426,7 +1426,7 @@ function GameEndDialog({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-            <div className="rounded-xl border border-border bg-card p-6 shadow-xl min-w-[280px] max-w-sm">
+            <div className="rounded-3xl border border-card-edge bg-card/80 p-6 shadow-xl min-w-[280px] max-w-sm shadow-puffy">
                 <h2 className="mb-3 text-center text-xl font-bold text-foreground">
                     {winnerName ? `${winnerName} の勝ち` : "引き分け"}
                 </h2>
@@ -1458,7 +1458,7 @@ function GameEndDialog({
                         <button
                             type="button"
                             onClick={onStartReview}
-                            className="w-full rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                            className="w-full rounded-full bg-primary py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90"
                         >
                             棋譜を検討する
                         </button>
@@ -1471,14 +1471,14 @@ function GameEndDialog({
                                     await navigator.clipboard.writeText(kifu);
                                     setKifuCopied(true);
                                 }}
-                                className="w-full rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
+                                className="w-full rounded-full bg-secondary py-2 text-sm font-bold text-secondary-foreground hover:bg-secondary/80"
                             >
                                 {kifuCopied ? "コピーしました！" : "棋譜をコピー"}
                             </button>
                             <button
                                 type="button"
                                 onClick={onDownloadKifu}
-                                className="w-full rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
+                                className="w-full rounded-full bg-secondary py-2 text-sm font-bold text-secondary-foreground hover:bg-secondary/80"
                             >
                                 棋譜をダウンロード
                             </button>
@@ -1488,7 +1488,7 @@ function GameEndDialog({
                         <button
                             type="button"
                             onClick={onExit}
-                            className="w-full rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
+                            className="w-full rounded-full bg-secondary py-2 text-sm font-bold text-secondary-foreground hover:bg-secondary/80"
                         >
                             トップへ戻る
                         </button>
