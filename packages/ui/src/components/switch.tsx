@@ -27,7 +27,7 @@ const Switch = forwardRef<
         >
             <SwitchPrimitives.Thumb
                 className={cn(
-                    "pointer-events-none block h-5 w-5 rounded-full bg-white shadow-md ring-0 transition-transform duration-300 ease-[cubic-bezier(0.3,1.6,0.5,1)] motion-reduce:transition-none",
+                    "pointer-events-none block h-5 w-5 rounded-full bg-glint shadow-md ring-0 transition-transform duration-300 ease-[cubic-bezier(0.3,1.6,0.5,1)] motion-reduce:transition-none",
                     "data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0",
                 )}
             />

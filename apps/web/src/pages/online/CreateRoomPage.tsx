@@ -237,7 +237,7 @@ export default function CreateRoomPage(): ReactElement {
                             onChange={(e) =>
                                 set("initialMinutes", Math.max(0, Number(e.target.value)))
                             }
-                            className="w-20 rounded-full border border-card-edge shadow-puffy bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            className="w-20 rounded-2xl border border-input bg-card/70 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         />
                         <span className="text-sm text-muted-foreground">分</span>
                     </div>
@@ -258,7 +258,7 @@ export default function CreateRoomPage(): ReactElement {
                                 onChange={(e) =>
                                     set("byoyomiSeconds", Math.max(0, Number(e.target.value)))
                                 }
-                                className="w-20 rounded-full border border-card-edge shadow-puffy bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                className="w-20 rounded-2xl border border-input bg-card/70 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                             />
                             <span className="text-sm text-muted-foreground">秒</span>
                         </div>
@@ -283,7 +283,7 @@ export default function CreateRoomPage(): ReactElement {
                                         Math.max(0, Number(e.target.value)),
                                     )
                                 }
-                                className="w-20 rounded-full border border-card-edge shadow-puffy bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                className="w-20 rounded-2xl border border-input bg-card/70 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                             />
                             <span className="text-sm text-muted-foreground">秒</span>
                         </div>
@@ -324,7 +324,7 @@ export default function CreateRoomPage(): ReactElement {
                                     onChange={(e) =>
                                         set("passRightsCount", Math.max(1, Number(e.target.value)))
                                     }
-                                    className="w-16 rounded-full border border-card-edge shadow-puffy bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    className="w-16 rounded-2xl border border-input bg-card/70 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                 />
                                 <span className="text-sm text-muted-foreground">回</span>
                             </div>

@@ -3,10 +3,11 @@ import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useRef, useState } from "react";
 import { AuthBadge } from "../components/AuthBadge";
 import { HeaderNav } from "../components/HeaderNav";
-import { DEMO_MOVES, HeroBoard } from "../components/HeroBoard";
+import { HeroBoard } from "../components/HeroBoard";
 import { PageHeader } from "../components/PageHeader";
 import { RamMascot } from "../components/RamMascot";
 import { Reveal } from "../components/Reveal";
+import { RAM_LINES } from "../lib/heroDemo";
 
 // トップ（迎える面 / T0）。ラムが出迎える、丸くてふわっとした入口。
 // 盤は実盤 ShogiBoard の静的描画、ラムは盤の縁から顔をのぞかせる。
@@ -86,21 +87,6 @@ const FEATURES = [
     },
 ] as const;
 
-// 手数ごとの台詞 (0 = 初期局面)。DEMO_MOVES と同じ長さ + 1
-const RAM_LINES = [
-    "どこに指す？",
-    "ふむふむ…",
-    "なるほど",
-    "飛車先、いくよ",
-    "そう来る？",
-    "ぐいぐい来るね",
-    "金を寄せて…",
-    "落ち着いて",
-    "突き捨て！",
-    "取るよ",
-    "同飛車！",
-] as const satisfies readonly string[] & { length: 11 };
-
 // ヒーロー: 盤が序盤を自動で指し、ラムが直近の一手を目で追って台詞を返す。
 function HeroDemo(): ReactElement {
     const boardRef = useRef<HTMLDivElement>(null);
@@ -135,7 +121,7 @@ function HeroDemo(): ReactElement {
                 key={ply}
                 className="ram-pop absolute -right-1 top-6 z-30 rounded-2xl rounded-bl-sm bg-card px-3.5 py-2 font-display text-sm font-bold text-wafuu-sumi shadow-puffy sm:-right-6"
             >
-                {RAM_LINES[Math.min(ply, DEMO_MOVES.length)]}
+                {RAM_LINES[ply]}
             </div>
             <div
                 ref={boardRef}
@@ -149,8 +135,7 @@ function HeroDemo(): ReactElement {
 
 function Paw({ className }: { className?: string }): ReactElement {
     return (
-        <svg aria-hidden viewBox="0 0 32 32" className={className}>
-            <title>肉球</title>
+        <svg aria-hidden role="presentation" viewBox="0 0 32 32" className={className}>
             <ellipse cx="16" cy="21" rx="7.5" ry="6" />
             <ellipse cx="6.5" cy="14" rx="3" ry="4" transform="rotate(-18 6.5 14)" />
             <ellipse cx="12.5" cy="7.5" rx="3" ry="4.2" transform="rotate(-6 12.5 7.5)" />
@@ -162,7 +147,7 @@ function Paw({ className }: { className?: string }): ReactElement {
 
 export default function LandingPage(): ReactElement {
     return (
-        <div className="relative isolate overflow-hidden">
+        <div className="relative isolate overflow-x-clip">
             {/* 背景: やわらかい色のかたまり + 肉球 */}
             <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
                 <div className="absolute -left-24 top-24 size-[420px] rounded-full bg-ram-fur/25 blur-3xl" />
@@ -193,12 +178,12 @@ export default function LandingPage(): ReactElement {
                                 <span className="relative inline-block text-wafuu-shu">
                                     将棋
                                     <svg
+                                        role="presentation"
                                         aria-hidden
                                         viewBox="0 0 120 12"
                                         preserveAspectRatio="none"
                                         className="absolute -bottom-1 left-0 h-2.5 w-full"
                                     >
-                                        <title>下線</title>
                                         <path
                                             d="M2 8 Q 30 1 60 6 T 118 4"
                                             fill="none"
@@ -233,7 +218,7 @@ export default function LandingPage(): ReactElement {
                         >
                             <Link
                                 to="/play"
-                                className="group inline-flex items-center gap-2.5 rounded-full bg-wafuu-shu px-7 py-4 font-display text-base font-bold text-wafuu-shu-fg shadow-[inset_0_2px_0_hsl(0_0%_100%/0.35),0_14px_26px_-10px_hsl(var(--wafuu-shu)/0.7)] transition-[transform,box-shadow] duration-300 hover:-translate-y-0.5 hover:shadow-[inset_0_2px_0_hsl(0_0%_100%/0.35),0_20px_32px_-10px_hsl(var(--wafuu-shu)/0.8)] active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-reduce:transition-none"
+                                className="group inline-flex items-center gap-2.5 rounded-full bg-wafuu-shu-deep px-7 py-4 font-display text-base font-bold text-wafuu-shu-fg shadow-[inset_0_2px_0_hsl(var(--sheen)),0_14px_26px_-10px_hsl(var(--wafuu-shu)/0.7)] transition-[transform,box-shadow] duration-300 hover:-translate-y-0.5 hover:shadow-[inset_0_2px_0_hsl(var(--sheen)),0_20px_32px_-10px_hsl(var(--wafuu-shu)/0.8)] active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-reduce:transition-none"
                             >
                                 <span
                                     aria-hidden
@@ -337,13 +322,13 @@ export default function LandingPage(): ReactElement {
                             aria-hidden
                             className="pointer-events-none absolute -bottom-16 left-1/2 size-72 -translate-x-1/2 rounded-full bg-ram-collar/25 blur-3xl"
                         />
-                        <RamMascot className="relative w-28" />
+                        <RamMascot decorative className="relative w-28" />
                         <h2 className="relative text-balance font-display text-3xl font-black text-wafuu-sumi sm:text-4xl">
                             さあ、一局。
                         </h2>
                         <Link
                             to="/play"
-                            className="group relative inline-flex items-center gap-2.5 rounded-full bg-wafuu-shu px-8 py-4 font-display text-base font-bold text-wafuu-shu-fg shadow-[inset_0_2px_0_hsl(0_0%_100%/0.35),0_14px_26px_-10px_hsl(var(--wafuu-shu)/0.7)] transition-[transform,box-shadow] duration-300 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-reduce:transition-none"
+                            className="group relative inline-flex items-center gap-2.5 rounded-full bg-wafuu-shu-deep px-8 py-4 font-display text-base font-bold text-wafuu-shu-fg shadow-[inset_0_2px_0_hsl(var(--sheen)),0_14px_26px_-10px_hsl(var(--wafuu-shu)/0.7)] transition-[transform,box-shadow] duration-300 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-reduce:transition-none"
                         >
                             <span
                                 aria-hidden

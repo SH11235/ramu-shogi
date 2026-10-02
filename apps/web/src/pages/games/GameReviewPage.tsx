@@ -183,7 +183,7 @@ export default function GameReviewPage(): ReactElement {
                 </div>
             )}
             {error && (
-                <div className="rounded-full border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                     {error}
                 </div>
             )}

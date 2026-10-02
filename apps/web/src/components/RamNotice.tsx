@@ -14,13 +14,13 @@ export function RamNotice({ tone, title, children, className }: RamNoticeProps):
     return (
         <div
             role={tone === "error" ? "alert" : "status"}
-            aria-live={tone === "error" ? "assertive" : "polite"}
             className={cn(
                 "flex flex-col items-center gap-4 rounded-3xl border border-card-edge bg-card/80 px-6 py-8 text-center shadow-puffy",
                 className,
             )}
         >
             <RamMascot
+                decorative
                 className="w-28"
                 mood={tone === "error" ? "worried" : "happy"}
                 thinking={tone === "loading"}

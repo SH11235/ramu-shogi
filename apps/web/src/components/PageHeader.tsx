@@ -24,7 +24,7 @@ export function PageHeader({ items, right }: PageHeaderProps): ReactElement {
                         aria-label="ラム将棋 トップへ"
                         className="grid size-8 shrink-0 place-items-center rounded-full bg-ram-cream/70 transition-transform duration-300 hover:-rotate-6 hover:scale-110 motion-reduce:transition-none"
                     >
-                        <RamMascot animated={false} className="size-7" />
+                        <RamMascot decorative animated={false} className="size-7" />
                     </Link>
                     <nav aria-label="パンくずリスト" className="flex min-w-0 items-center gap-1">
                         {items.map((item, i) => (

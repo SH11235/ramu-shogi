@@ -23,10 +23,7 @@ export function Reveal({ children, className, delay = 0 }: RevealProps): ReactEl
     useEffect(() => {
         const el = ref.current;
         if (!el) return;
-        if (
-            window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
-            !("IntersectionObserver" in window)
-        ) {
+        if (!("IntersectionObserver" in window)) {
             setShown(true);
             return;
         }

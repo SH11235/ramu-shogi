@@ -54,6 +54,7 @@ const preset: Omit<Config, "content"> = {
                     shu: "hsl(var(--wafuu-shu))",
                     "shu-light": "hsl(var(--wafuu-shu-light))",
                     "shu-fg": "hsl(var(--wafuu-shu-fg))",
+                    "shu-deep": "hsl(var(--wafuu-shu-deep))",
                     ai: "hsl(var(--wafuu-ai))",
                     "ai-light": "hsl(var(--wafuu-ai-light))",
                     "ai-fg": "hsl(var(--wafuu-ai-fg))",
@@ -80,6 +81,7 @@ const preset: Omit<Config, "content"> = {
                 },
                 // ラム（トイプードル）配色
                 "card-edge": "hsl(var(--card-edge))",
+                glint: "hsl(var(--glint))",
                 ram: {
                     fur: "hsl(var(--ram-fur))",
                     "fur-deep": "hsl(var(--ram-fur-deep))",

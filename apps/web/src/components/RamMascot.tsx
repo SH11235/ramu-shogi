@@ -1,5 +1,6 @@
 import { cn } from "@shogi/design-system";
-import { type ReactElement, useEffect, useRef } from "react";
+import { type ReactElement, useEffect, useId, useRef } from "react";
+import { usePrefersReducedMotion } from "../lib/usePrefersReducedMotion";
 
 // マスコットのラム。favicon と同じ造形 (モコモコのドーム + 垂れ耳 + 水色の首輪) を
 // 大きく描き、ポインタを目で追う・まばたき・耳のゆれを付けた。
@@ -16,6 +17,8 @@ interface RamMascotProps {
     mood?: "happy" | "worried";
     // 視線を向ける画面座標。ポインタが動くまで、または次の gaze が来るまで保持する
     gaze?: { x: number; y: number } | null;
+    // true で支援技術から隠す。近くに同じ内容のテキストがある場面 (ロゴ・通知の見出し) 用
+    decorative?: boolean;
 }
 
 const EYE_TRAVEL = 3.2;
@@ -26,13 +29,16 @@ export function RamMascot({
     animated = true,
     mood = "happy",
     gaze = null,
+    decorative = false,
 }: RamMascotProps): ReactElement {
     const rootRef = useRef<SVGSVGElement>(null);
+    // 同じページに複数描画されるため、グラデーション id は個体ごとに一意にする
+    const furLightId = useId();
+    const reducedMotion = usePrefersReducedMotion();
 
     useEffect(() => {
         const root = rootRef.current;
-        if (!animated || !root) return;
-        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        if (!animated || reducedMotion || !root) return;
 
         let frame = 0;
         let target: { x: number; y: number } | null = gaze;
@@ -61,21 +67,22 @@ export function RamMascot({
             window.removeEventListener("pointermove", onMove);
             if (frame) cancelAnimationFrame(frame);
         };
-    }, [animated, gaze]);
+    }, [animated, reducedMotion, gaze]);
 
     return (
         <svg
             ref={rootRef}
             viewBox="0 0 128 128"
-            role="img"
-            aria-label="トイプードルのラム"
+            {...(decorative
+                ? { "aria-hidden": true }
+                : { role: "img", "aria-label": "トイプードルのラム" })}
             className={cn("ram-mascot overflow-visible", className)}
             data-thinking={thinking || undefined}
             data-animated={animated || undefined}
         >
             <title>ラム</title>
             <defs>
-                <radialGradient id="ram-fur-light" cx="42%" cy="28%" r="75%">
+                <radialGradient id={furLightId} cx="42%" cy="28%" r="75%">
                     <stop offset="0%" stopColor="hsl(var(--ram-cream))" stopOpacity="0.55" />
                     <stop offset="60%" stopColor="hsl(var(--ram-fur))" stopOpacity="0" />
                 </radialGradient>
@@ -86,10 +93,26 @@ export function RamMascot({
             <rect x="46" y="100" width="36" height="14" rx="6" className="fill-ram-fur" />
             {/* 首輪 */}
             <rect x="40" y="111" width="48" height="10" rx="5" className="fill-ram-collar" />
-            <rect x="40" y="111" width="48" height="4" rx="2" fill="white" opacity="0.35" />
+            <rect
+                x="40"
+                y="111"
+                width="48"
+                height="4"
+                rx="2"
+                className="fill-glint"
+                opacity="0.35"
+            />
             <rect x="60" y="109.5" width="9" height="13" rx="3.5" className="fill-ram-collar" />
-            <rect x="60" y="109.5" width="9" height="13" rx="3.5" fill="white" opacity="0.28" />
-            <circle cx="64.5" cy="116" r="1.6" fill="white" opacity="0.9" />
+            <rect
+                x="60"
+                y="109.5"
+                width="9"
+                height="13"
+                rx="3.5"
+                className="fill-glint"
+                opacity="0.28"
+            />
+            <circle cx="64.5" cy="116" r="1.6" className="fill-glint" opacity="0.9" />
 
             {/* 垂れ耳 */}
             <g className="ram-ear ram-ear-l">
@@ -123,7 +146,7 @@ export function RamMascot({
                 </g>
                 {/* 顔 */}
                 <ellipse cx="64" cy="72" rx="35" ry="36" className="fill-ram-fur" />
-                <ellipse cx="64" cy="64" rx="48" ry="52" fill="url(#ram-fur-light)" />
+                <ellipse cx="64" cy="64" rx="48" ry="52" fill={`url(#${furLightId})`} />
 
                 {/* カールの筆線 */}
                 <g
@@ -163,13 +186,13 @@ export function RamMascot({
                 {/* 目 */}
                 <g className="ram-eye">
                     <ellipse cx="50" cy="63" rx="6.5" ry="6.5" className="fill-ram-ink ram-lid" />
-                    <circle cx="52.2" cy="60.8" r="1.9" fill="white" className="ram-glint" />
-                    <circle cx="48.2" cy="65.6" r="0.9" fill="white" opacity="0.7" />
+                    <circle cx="52.2" cy="60.8" r="1.9" className="ram-glint fill-glint" />
+                    <circle cx="48.2" cy="65.6" r="0.9" className="fill-glint" opacity="0.7" />
                 </g>
                 <g className="ram-eye">
                     <ellipse cx="78" cy="63" rx="6.5" ry="6.5" className="fill-ram-ink ram-lid" />
-                    <circle cx="80.2" cy="60.8" r="1.9" fill="white" className="ram-glint" />
-                    <circle cx="76.2" cy="65.6" r="0.9" fill="white" opacity="0.7" />
+                    <circle cx="80.2" cy="60.8" r="1.9" className="ram-glint fill-glint" />
+                    <circle cx="76.2" cy="65.6" r="0.9" className="fill-glint" opacity="0.7" />
                 </g>
 
                 {/* 鼻 */}
@@ -177,7 +200,7 @@ export function RamMascot({
                     d="M56 83 Q64 78.5 72 83 Q72 90.5 64 93.5 Q56 90.5 56 83 Z"
                     className="fill-ram-ink"
                 />
-                <ellipse cx="62" cy="83" rx="2.6" ry="1.1" fill="white" opacity="0.4" />
+                <ellipse cx="62" cy="83" rx="2.6" ry="1.1" className="fill-glint" opacity="0.4" />
                 {/* 口 */}
                 <path
                     d={

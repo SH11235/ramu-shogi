@@ -80,29 +80,34 @@ export function PlayerIcon({
         );
         return (
             <>
-                {canZoom ? (
-                    <button
-                        type="button"
-                        className={cn(
-                            "inline-flex rounded-full border-0 bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                            borderColorClass,
-                        )}
-                        onClick={() => setIsZoomOpen(true)}
-                        aria-label={`${aiAlt}を拡大表示`}
-                        aria-expanded={isZoomOpen}
-                    >
-                        {aiImage}
-                    </button>
-                ) : (
-                    aiImage
-                )}
-                {thinking && (
-                    <span aria-hidden className="ram-thinking-dots">
-                        <i />
-                        <i />
-                        <i />
-                    </span>
-                )}
+                <span className="relative inline-flex shrink-0">
+                    {canZoom ? (
+                        <button
+                            type="button"
+                            className={cn(
+                                "inline-flex rounded-full border-0 bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                                borderColorClass,
+                            )}
+                            onClick={() => setIsZoomOpen(true)}
+                            aria-label={`${aiAlt}を拡大表示`}
+                            aria-expanded={isZoomOpen}
+                        >
+                            {aiImage}
+                        </button>
+                    ) : (
+                        aiImage
+                    )}
+                    {thinking && (
+                        <span
+                            aria-hidden
+                            className="ram-thinking-dots absolute left-full top-1/2 -translate-y-1/2"
+                        >
+                            <i />
+                            <i />
+                            <i />
+                        </span>
+                    )}
+                </span>
                 {canZoom && (
                     <Dialog open={isZoomOpen} onOpenChange={setIsZoomOpen}>
                         <DialogContent className="w-auto max-w-[min(90vw,400px)] p-4">

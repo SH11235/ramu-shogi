@@ -1182,7 +1182,7 @@ export function OnlineGameView({
                     <button
                         type="button"
                         onClick={() => dispatchUI({ type: "set_ai_sheet_open", open: true })}
-                        className="md:hidden flex items-center gap-2 rounded-full border border-border bg-card/80 px-3 py-1.5 text-xs w-full"
+                        className="md:hidden flex items-center gap-2 rounded-2xl border border-border bg-card/80 px-3 py-1.5 text-xs w-full"
                     >
                         <span className="text-muted-foreground shrink-0">🤖</span>
                         <div className="flex-1 h-1.5 rounded-full bg-wafuu-ai overflow-hidden">
@@ -1233,7 +1233,7 @@ export function OnlineGameView({
             {/* 待った: 承認ダイアログ（相手向け） */}
             {pendingTakeback && pendingTakeback.seat !== seat && !isSpectator && !gameResult && (
                 <div className="fixed inset-0 z-40 flex items-end justify-center pb-8 md:items-center md:pb-0">
-                    <div className="rounded-3xl border border-card-edge bg-card/80 p-5 shadow-xl w-[300px] shadow-puffy">
+                    <div className="rounded-3xl border border-card-edge bg-card p-5 shadow-puffy-lift w-[300px]">
                         <p className="mb-1 text-center font-semibold text-foreground">
                             待ったの申請
                         </p>
@@ -1426,7 +1426,7 @@ function GameEndDialog({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-            <div className="rounded-3xl border border-card-edge bg-card/80 p-6 shadow-xl min-w-[280px] max-w-sm shadow-puffy">
+            <div className="rounded-3xl border border-card-edge bg-card p-6 shadow-puffy-lift min-w-[280px] max-w-sm">
                 <h2 className="mb-3 text-center text-xl font-bold text-foreground">
                     {winnerName ? `${winnerName} の勝ち` : "引き分け"}
                 </h2>

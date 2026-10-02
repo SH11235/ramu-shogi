@@ -69,7 +69,7 @@ export function ShogiBoard({
     const { files, ranks } = getBoardLabels(flipBoard);
 
     return (
-        <div className="relative inline-block rounded-[22px] border-2 border-shogi-outer-border bg-shogi-cell-light p-0.5 shadow-[inset_0_2px_0_hsl(0_0%_100%/0.45),0_18px_34px_-16px_hsl(var(--ram-shadow)/0.55)]">
+        <div className="relative inline-block rounded-[22px] border-2 border-shogi-outer-border bg-shogi-cell-light p-0.5 shadow-[inset_0_2px_0_hsl(var(--sheen)),0_18px_34px_-16px_hsl(var(--ram-shadow)/0.55)]">
             {/* 盤外ラベル: 筋（上） */}
             <div
                 className={cn(

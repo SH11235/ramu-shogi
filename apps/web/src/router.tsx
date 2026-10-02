@@ -304,7 +304,7 @@ function DefaultErrorComponent({ error }: { error: unknown }) {
                 <button
                     type="button"
                     onClick={() => window.location.reload()}
-                    className="rounded-full bg-primary px-5 py-2 text-sm font-bold text-primary-foreground shadow-[inset_0_2px_0_hsl(0_0%_100%/0.3),0_10px_20px_-8px_hsl(var(--primary)/0.65)] transition-transform hover:-translate-y-px"
+                    className="rounded-full bg-primary px-5 py-2 text-sm font-bold text-primary-foreground shadow-[inset_0_2px_0_hsl(var(--sheen)),0_10px_20px_-8px_hsl(var(--primary)/0.65)] transition-transform hover:-translate-y-px"
                 >
                     再読み込み
                 </button>

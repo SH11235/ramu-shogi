@@ -146,7 +146,7 @@ export default function GameDetailPage(): ReactElement {
                                 type="button"
                                 onClick={() => void handleUpdateVisibility(value)}
                                 disabled={isUpdatingVisibility || game.visibility === value}
-                                className="flex items-start gap-3 rounded-full border border-card-edge bg-card/80 shadow-puffy px-4 py-3 text-left transition-colors hover:bg-muted/50 disabled:pointer-events-none disabled:opacity-50"
+                                className="flex items-start gap-3 rounded-3xl border border-card-edge bg-card/80 shadow-puffy px-4 py-3 text-left transition-colors hover:bg-muted/50 disabled:pointer-events-none disabled:opacity-50"
                             >
                                 <span className="mt-0.5 text-sm font-medium text-foreground">
                                     {label}
@@ -224,7 +224,7 @@ export default function GameDetailPage(): ReactElement {
                             return (
                                 <li
                                     key={`${game.id}:${ply}:${move}`}
-                                    className="rounded-full border border-border px-3 py-2"
+                                    className="rounded-2xl border border-border px-3 py-2"
                                 >
                                     {ply}. {move}
                                 </li>

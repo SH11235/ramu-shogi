@@ -284,7 +284,7 @@ export default function NnueFilesPage(): ReactElement {
                                     {files.map((file) => (
                                         <div
                                             key={file.id}
-                                            className="rounded-full border border-border px-4 py-3"
+                                            className="rounded-2xl border border-border px-4 py-3"
                                         >
                                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                                 <div className="flex flex-col gap-1">

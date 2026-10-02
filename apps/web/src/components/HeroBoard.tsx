@@ -1,27 +1,15 @@
 import { applyMoveWithState, createInitialPositionState } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import { boardToGrid, ShogiBoard } from "@shogi/ui";
-import { type ReactElement, useEffect, useState } from "react";
+import { type ReactElement, useEffect, useEffectEvent, useState } from "react";
+import { DEMO_MOVES } from "../lib/heroDemo";
+import { usePrefersReducedMotion } from "../lib/usePrefersReducedMotion";
 
 // トップの装飾用に、対局で使う実盤 ShogiBoard を描画する。装飾なので inert +
 // aria-hidden で 81 マスのボタンをフォーカス・支援技術の対象から外す。
 // 平手の序盤から飛車交換までの実戦的な手順を app-core の applyMoveWithState で
 // 順に指し、直近の移動先の駒だけが着地アニメーションを再生する。
 // reduced-motion では初期局面のまま静止する。
-
-export const DEMO_MOVES = [
-    "7g7f",
-    "3c3d",
-    "2g2f",
-    "8c8d",
-    "2f2e",
-    "8d8e",
-    "6i7h",
-    "4a3b",
-    "2e2d",
-    "2c2d",
-    "2h2d",
-] as const;
 
 const STEP_MS = 1500;
 const START_DELAY_MS = 1400;
@@ -62,19 +50,21 @@ interface HeroBoardProps {
 
 export function HeroBoard({ className, onStep }: HeroBoardProps): ReactElement {
     const [index, setIndex] = useState(0);
+    const reducedMotion = usePrefersReducedMotion();
 
     useEffect(() => {
-        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        if (reducedMotion) return;
         const last = FRAMES.length - 1;
         const delay = index === 0 ? START_DELAY_MS : index === last ? END_HOLD_MS : STEP_MS;
         const timer = window.setTimeout(() => setIndex(index === last ? 0 : index + 1), delay);
         return () => window.clearTimeout(timer);
-    }, [index]);
+    }, [index, reducedMotion]);
 
     const frame = FRAMES[index];
+    const notifyStep = useEffectEvent((ply: number, to: string | null) => onStep?.(ply, to));
     useEffect(() => {
-        onStep?.(frame.ply, frame.lastMove?.to ?? null);
-    }, [frame, onStep]);
+        notifyStep(frame.ply, frame.lastMove?.to ?? null);
+    }, [frame]);
 
     return (
         <div
