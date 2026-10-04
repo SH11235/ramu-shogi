@@ -136,7 +136,7 @@ graph LR
 
 エンジンコア実装は [rshogi](https://github.com/SH11235/rshogi) リポジトリで管理されています。
 
-モデルの設定・進行度係数のセット配布は [NNUE モデルの読み込み](docs/nnue-models.md) を参照してください。
+対応する NNUE モデルと設定は [NNUE モデルの読み込み](docs/nnue-models.md) を参照してください。
 
 ## 📄 ライセンス
 
