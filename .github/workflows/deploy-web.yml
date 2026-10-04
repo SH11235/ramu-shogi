@@ -43,6 +43,7 @@ jobs:
   deploy:
     name: Deploy (${{ github.event_name == 'push' && 'staging' || inputs.target }})
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     if: github.event_name == 'push' || inputs.target == 'staging' || (inputs.target == 'production' && github.ref == 'refs/heads/main')
     environment: ${{ github.event_name == 'push' && 'staging' || inputs.target }}
     # 途中キャンセルすると wrangler の upload が中途半端になるため、同じ環境への deploy は直列にする。
@@ -67,6 +68,10 @@ jobs:
         run: |
           rustup toolchain install "${RUST_NIGHTLY_TOOLCHAIN}"
           rustup component add rust-src --toolchain "${RUST_NIGHTLY_TOOLCHAIN}"
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: "packages/rust-core -> target"
+          shared-key: deploy-web
       - name: Resolve wasm-bindgen version
         run: |
           WASM_BINDGEN_VERSION=$(awk -F '"' '/^name = "wasm-bindgen"$/ {getline; print $2; exit}' packages/rust-core/Cargo.lock)
@@ -77,10 +82,6 @@ jobs:
           echo "wasm-bindgen version: $WASM_BINDGEN_VERSION"
       - name: Install wasm-bindgen-cli
         run: cargo install wasm-bindgen-cli --locked --version "$WASM_BINDGEN_VERSION"
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-        with:
-          workspaces: "packages/rust-core -> target"
-          shared-key: deploy-web
       - name: Build and deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
