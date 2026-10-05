@@ -12,13 +12,12 @@ import {
     type Square,
 } from "@shogi/app-core";
 import type {
-    AiSupportPlayerSettings,
     AiSupportSettings,
     ClockState,
     ErrorCode,
     GameResult,
-    PassRightsState,
     RoomClient,
+    RoomEvent,
     Seat,
     SnapshotPayload,
 } from "@shogi/match-client";
@@ -28,6 +27,15 @@ import { useLazyNnueLoader } from "../hooks/useLazyNnueLoader";
 import { useShogiSound } from "../hooks/useShogiSound";
 import { NnueManagerDialog } from "./nnue/NnueManagerDialog";
 import type { RemoteNnueManager } from "./nnue/types";
+import {
+    createSerialQueue,
+    exportGameKif,
+    gameReducer,
+    makeInitialGameState,
+    resolveStartSfen,
+    restorePosition,
+    type SerialQueue,
+} from "./online-game-state";
 import { type AiHintMove, AiHintPanel } from "./shogi-match/components/AiHintPanel";
 import { BottomSheet } from "./shogi-match/components/BottomSheet";
 import { KifuNavigationToolbar } from "./shogi-match/components/KifuNavigationToolbar";
@@ -37,7 +45,7 @@ import { PvPreviewDialog } from "./shogi-match/components/PvPreviewDialog";
 import { TabHeader } from "./shogi-match/components/TabHeader";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import type { PromotionSelection } from "./shogi-match/types";
-import { exportToKifString, formatMoveSimple } from "./shogi-match/utils/kifFormat";
+import { formatMoveSimple } from "./shogi-match/utils/kifFormat";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
 import { determinePromotion } from "./shogi-match/utils/promotionLogic";
 
@@ -78,235 +86,18 @@ function rejectedCommandNotice(code: ErrorCode, seat: Seat): string | null {
     if (code === "DESYNC") {
         return "局面が更新されました。もう一度操作してください。";
     }
-    // 対局者の席でこのエラーになるのは、同じ席を後から開いた別の接続が操作している場合
+    // 対局者の席でこのエラーになるのは、同じ席を後から開いた別の接続が操作している場合か、
+    // この接続が席に結び付いていない場合。画面からはどちらか区別できないので断定しない
     if (code === "SPECTATOR_FORBIDDEN" && seat !== "s") {
-        return "この席は別のタブまたはウィンドウで操作中です。そちらで対局を続けてください。";
+        return "この画面からは操作できません。別のタブやウィンドウで対局中の場合は、そちらで続けてください。";
     }
     return null;
 }
 
-// ─── ゲーム状態管理 ───────────────────────────────────────────────────────────
-
-interface GameState {
-    position: PositionState | null;
-    positionHistory: PositionState[];
-    turn: "b" | "w";
-    clockState: ClockState;
-    gameResult: GameResult | null;
-    offlineSeats: Set<string>;
-    passRights: PassRightsState | null;
-    myAnalysisRemaining: number | null;
-    analysisLog: Array<{ seat: "b" | "w"; ply: number }>;
-    /** elapsedMs は対局中に受信した指し手にだけ付く（snapshot は消費時間を持たない） */
-    usiMoveLog: Array<{ usi: string; elapsedMs?: number }>;
-    pendingTakeback: { seat: "b" | "w"; ply: number } | null;
-    /** 初期局面の読み込みより先に届いた指し手。読み込み後に順に適用する */
-    queuedMoves: MoveAction[];
-}
-
-interface MoveAction {
-    type: "move";
-    usi: string;
-    turn: "b" | "w";
-    clock: ClockState;
-    passRights: PassRightsState | null;
-}
-
-/** snapshot から復元した局面。history は指し手を再生できた場合の全局面（開始局面〜現局面） */
-interface RestoredPosition {
-    position: PositionState;
-    history: PositionState[] | null;
-    moves: string[];
-}
-
-type GameAction =
-    | ({ type: "init" } & RestoredPosition)
-    | MoveAction
-    | { type: "result"; result: GameResult }
-    | { type: "player_offline"; seat: string }
-    | { type: "player_online"; seat: string }
-    | {
-          type: "analysis_used";
-          isMySeat: boolean;
-          seat: "b" | "w";
-          analysisRemaining: number | null;
-          ply: number;
-      }
-    | ({
-          type: "resync";
-          turn: "b" | "w";
-          clock: ClockState;
-          passRights: PassRightsState | null;
-      } & RestoredPosition)
-    | { type: "takeback_requested"; seat: "b" | "w"; ply: number }
-    | {
-          type: "takeback_accepted";
-          position: PositionState;
-          turn: "b" | "w";
-          clock: ClockState;
-          passRights: PassRightsState | null;
-      }
-    | { type: "takeback_rejected" }
-    | { type: "takeback_cancelled" };
-
-function makeInitialGameState(
-    snapshot: SnapshotPayload,
-    myAiSettings: AiSupportPlayerSettings | null,
-): GameState {
-    return {
-        position: null,
-        positionHistory: [],
-        turn: snapshot.turn,
-        clockState: snapshot.clock,
-        gameResult: snapshot.result ?? null,
-        offlineSeats: new Set(),
-        passRights: snapshot.passRights,
-        myAnalysisRemaining:
-            myAiSettings?.mode === "limited" ? (myAiSettings.limitCount ?? 0) : null,
-        analysisLog: [],
-        usiMoveLog: [],
-        pendingTakeback: null,
-        queuedMoves: [],
-    };
-}
-
-function applyMoveAction(state: GameState, action: MoveAction): GameState {
-    if (!state.position) {
-        return { ...state, queuedMoves: [...state.queuedMoves, action] };
-    }
-    // 消費時間: 動いた側の残り時間の差分（手番交代前の turn が動いた側）
-    const movedSeat = state.turn;
-    const elapsedMs = Math.max(
-        0,
-        state.clockState[movedSeat].remainMs - action.clock[movedSeat].remainMs,
-    );
-    // パス手は局面変化なし（手番のみ交代）。
-    // PositionState に passRights が未設定のため applyMoveWithState は使わない
-    const next =
-        action.usi === "pass"
-            ? {
-                  ...state.position,
-                  turn: state.position.turn === "sente" ? ("gote" as const) : ("sente" as const),
-              }
-            : applyMoveWithState(state.position, action.usi).next;
-    return {
-        ...state,
-        position: next,
-        positionHistory: [...state.positionHistory, next],
-        turn: action.turn,
-        clockState: action.clock,
-        passRights: action.passRights,
-        usiMoveLog: [...state.usiMoveLog, { usi: action.usi, elapsedMs }],
-    };
-}
-
-/**
- * 開始局面から指し手を再生し、開始局面から現局面までの全局面を返す。
- * snapshot は指し手の列しか持たないため、棋譜パネルと KIF 出力に要る各手の局面はここで作る。
- * 再生できない指し手があれば null を返す。
- */
-async function replayPositions(
-    startSfen: string,
-    moves: string[],
-    current: PositionState,
-): Promise<PositionState[] | null> {
-    if (moves.length === 0) return [current];
-    try {
-        let position = await getPositionService().parseSfen(startSfen);
-        const history: PositionState[] = [];
-        for (const usi of moves) {
-            history.push(position);
-            if (usi === "pass") {
-                position = { ...position, turn: position.turn === "sente" ? "gote" : "sente" };
-                continue;
-            }
-            const applied = applyMoveWithState(position, usi);
-            if (!applied.ok) return null;
-            position = applied.next;
-        }
-        return [...history, current];
-    } catch {
-        return null;
-    }
-}
-
-async function restorePosition(
-    sfen: string,
-    startSfen: string,
-    moves: string[],
-): Promise<RestoredPosition> {
-    const position = await getPositionService().parseSfen(sfen);
-    return { position, history: await replayPositions(startSfen, moves, position), moves };
-}
-
-function gameReducer(state: GameState, action: GameAction): GameState {
-    switch (action.type) {
-        case "init":
-            return state.queuedMoves.reduce(applyMoveAction, {
-                ...state,
-                position: action.position,
-                positionHistory: action.history ?? [action.position],
-                usiMoveLog: action.history ? action.moves.map((usi) => ({ usi })) : [],
-                queuedMoves: [],
-            });
-        case "move":
-            return applyMoveAction(state, action);
-        case "result":
-            // 終局は終局イベント・game_end・棋譜 ID 付きの game_end・snapshot と複数回届く。
-            // 最初の結果を保ち、gameResult に依存する処理が終局後に再実行されないようにする
-            return state.gameResult ? state : { ...state, gameResult: action.result };
-        case "player_offline":
-            return {
-                ...state,
-                offlineSeats: new Set([...state.offlineSeats, action.seat]),
-            };
-        case "player_online": {
-            const next = new Set(state.offlineSeats);
-            next.delete(action.seat);
-            return { ...state, offlineSeats: next };
-        }
-        case "analysis_used":
-            return {
-                ...state,
-                myAnalysisRemaining: action.isMySeat
-                    ? action.analysisRemaining
-                    : state.myAnalysisRemaining,
-                analysisLog: [...state.analysisLog, { seat: action.seat, ply: action.ply }],
-            };
-        case "resync":
-            return {
-                ...state,
-                position: action.position,
-                positionHistory: action.history ?? [action.position],
-                turn: action.turn,
-                clockState: action.clock,
-                passRights: action.passRights,
-                usiMoveLog: action.history
-                    ? action.moves.map((usi, i) => {
-                          const known = state.usiMoveLog[i];
-                          return known?.usi === usi ? known : { usi };
-                      })
-                    : state.usiMoveLog,
-            };
-        case "takeback_requested":
-            return { ...state, pendingTakeback: { seat: action.seat, ply: action.ply } };
-        case "takeback_accepted":
-            return {
-                ...state,
-                position: action.position,
-                positionHistory: [action.position],
-                turn: action.turn,
-                clockState: action.clock,
-                passRights: action.passRights,
-                usiMoveLog: state.usiMoveLog.slice(0, -1),
-                pendingTakeback: null,
-            };
-        case "takeback_rejected":
-            return { ...state, pendingTakeback: null };
-        case "takeback_cancelled":
-            return { ...state, pendingTakeback: null };
-    }
-}
+/** 届いた順に反映するサーバーからのメッセージ。initial は画面を開いたときの snapshot */
+type Incoming =
+    | { t: "snapshot"; payload: SnapshotPayload; initial: boolean }
+    | { t: "event"; payload: RoomEvent };
 
 // ─── UI インタラクション状態管理 ───────────────────────────────────────────────
 
@@ -471,13 +262,12 @@ export function OnlineGameView({
         summaryEvalCp !== null ? Math.min(100, Math.max(0, 50 + (summaryEvalCp / 2000) * 50)) : 50;
 
     // 現在の start SFEN と moves
-    const startSfenRef = useRef(snapshot.settings.startSfen);
+    const startSfenRef = useRef(resolveStartSfen(snapshot.settings.startSfen));
     const movesRef = useRef<string[]>([...snapshot.moves]);
     const gameRecordIdRef = useRef<string | null>(snapshot.gameRecordId ?? null);
-    // サーバーの latestEventId を追跡（move/resign/use_analysis 送信時に使用）
-    // 指し手以外のイベント（chat/analysis_used/player_online 等）でも増加するため
-    // snapshot.eventId + moves.length の計算式は使えない
-    const latestEventIdRef = useRef(snapshot.eventId);
+    // 画面に反映し終えた最新のイベント。操作の送信にはこの番号を使う: 受信しただけで
+    // まだ反映していないイベントの番号を送ると、古い局面を見て選んだ操作がサーバーを通ってしまう
+    const appliedEventIdRef = useRef(snapshot.eventId);
 
     // 自分の手番か
     const myPlayer: Player | null = seat === "b" ? "sente" : seat === "w" ? "gote" : null;
@@ -494,155 +284,189 @@ export function OnlineGameView({
     // 表示用局面: 巻き戻し中は履歴局面、それ以外はライブ局面
     const displayPosition = isRewound ? (positionHistory[effectiveNavIndex] ?? null) : position;
 
-    // ─── 初期局面の読み込み ──────────────────────────────────────────────────
-
-    useEffect(() => {
-        let cancelled = false;
-        restorePosition(snapshot.sfen, snapshot.settings.startSfen, snapshot.moves)
-            .then((restored) => {
-                if (!cancelled) {
-                    dispatch({ type: "init", ...restored });
-                }
-            })
-            .catch(console.error);
-        return () => {
-            cancelled = true;
-        };
-    }, [snapshot.sfen, snapshot.settings.startSfen, snapshot.moves]);
-
     // ─── サーバーに拒否された操作の案内 ──────────────────────────────────────
 
-    const [commandNotice, setCommandNotice] = useState<string | null>(null);
+    // 同じ案内が続いたときも表示時間を数え直せるよう、文言を毎回新しいオブジェクトで持つ
+    const [commandNotice, setCommandNotice] = useState<{ text: string } | null>(null);
     useEffect(() => {
         if (!commandNotice) return;
         const timerId = setTimeout(() => setCommandNotice(null), 5000);
         return () => clearTimeout(timerId);
     }, [commandNotice]);
 
-    // ─── RoomClient サブスクライブ ────────────────────────────────────────────
+    const showRejection = useEffectEvent((code: ErrorCode): void => {
+        const text = rejectedCommandNotice(code, seat);
+        if (text) {
+            setCommandNotice({ text });
+        }
+        if (code === "DESYNC") {
+            // 見ている局面が古いと指し直しても通らないので、取りこぼしたイベントを取り直す
+            client.sync({ sinceEventId: appliedEventIdRef.current });
+        }
+    });
 
-    useEffect(() => {
-        const unsub = client.subscribe((msg) => {
-            if (msg.t === "event") {
-                const e = msg.payload;
-                // 終局済みルームへ再接続すると、snapshot に反映済みのイベントが後から届く。
-                // 二重に適用しないよう、終局の通知以外は読み飛ばす
-                const alreadyApplied = e.eventId <= latestEventIdRef.current;
-                // すべてのイベントで latestEventId を更新する
-                // サーバーは指し手以外のイベントでも latestEventId を増加させるため
-                latestEventIdRef.current = Math.max(latestEventIdRef.current, e.eventId);
-                if (e.kind === "game_end") {
-                    if (e.gameRecordId) {
-                        gameRecordIdRef.current = e.gameRecordId;
+    // ─── サーバーからのメッセージの反映 ──────────────────────────────────────
+
+    // 局面の解析は非同期なので、メッセージごとに別々に進めると、後から届いたものが先に
+    // 反映されたり、古い snapshot が新しい指し手を巻き戻したりする。画面を開いたときの
+    // snapshot も含めて 1 本の列に並べ、届いた順に 1 件ずつ反映し終えてから次へ進む
+    const incomingRef = useRef<SerialQueue<Incoming> | null>(null);
+    const initialSnapshotRef = useRef(snapshot);
+    const isListeningRef = useRef(false);
+
+    const applyIncoming = useEffectEvent((incoming: Incoming): void | Promise<void> => {
+        if (incoming.t === "snapshot") {
+            const { payload, initial } = incoming;
+            return restorePosition(payload).then(
+                (restored) => {
+                    if (!isListeningRef.current) return;
+                    appliedEventIdRef.current = payload.eventId;
+                    startSfenRef.current = resolveStartSfen(payload.settings.startSfen);
+                    movesRef.current = [...payload.moves];
+                    // 終局イベントは購読開始より前に配信済みのことがあるので、snapshot からも復元する
+                    if (payload.result) {
+                        dispatch({ type: "result", result: payload.result });
                     }
-                    dispatch({ type: "result", result: e.result });
-                } else if (
-                    e.kind === "resign" ||
-                    e.kind === "timeout" ||
-                    e.kind === "checkmate" ||
-                    e.kind === "sennichite" ||
-                    e.kind === "illegal_move" ||
-                    e.kind === "disconnect_loss"
-                ) {
-                    dispatch({ type: "result", result: e.result });
-                } else if (alreadyApplied) {
-                    return;
-                } else if (e.kind === "move") {
+                    if (payload.gameRecordId) {
+                        gameRecordIdRef.current = payload.gameRecordId;
+                    }
+                    if (initial) {
+                        dispatch({ type: "init", ...restored });
+                        return;
+                    }
                     dispatch({
-                        type: "move",
-                        usi: e.usi,
+                        type: "resync",
+                        ...restored,
+                        turn: payload.turn,
+                        clock: payload.clock,
+                        passRights: payload.passRights,
+                    });
+                    dispatchUI({ type: "resync_received" }); // 再接続後は最新局面に戻す
+                },
+                (err) => {
+                    console.error("[OnlineGameView] Failed to parse SFEN from snapshot:", err);
+                    if (!isListeningRef.current || initial) return;
+                    // サーバーに再同期リクエストを送信して最新状態を取得する
+                    client.sync({ sinceEventId: appliedEventIdRef.current });
+                },
+            );
+        }
+
+        const e = incoming.payload;
+        // 終局済みルームへ再接続すると、snapshot に反映済みのイベントが後から届く。
+        // 二重に適用しないよう、終局の通知以外は読み飛ばす
+        const alreadyApplied = e.eventId <= appliedEventIdRef.current;
+        // サーバーは指し手以外のイベントでもイベント番号を増やすので、すべてのイベントで更新する
+        const markApplied = (): void => {
+            appliedEventIdRef.current = Math.max(appliedEventIdRef.current, e.eventId);
+        };
+
+        if (e.kind === "game_end") {
+            if (e.gameRecordId) {
+                gameRecordIdRef.current = e.gameRecordId;
+            }
+            dispatch({ type: "result", result: e.result });
+        } else if (
+            e.kind === "resign" ||
+            e.kind === "timeout" ||
+            e.kind === "checkmate" ||
+            e.kind === "sennichite" ||
+            e.kind === "illegal_move" ||
+            e.kind === "disconnect_loss"
+        ) {
+            dispatch({ type: "result", result: e.result });
+        } else if (alreadyApplied) {
+            return;
+        } else if (e.kind === "takeback_accepted") {
+            return getPositionService()
+                .parseSfen(e.sfen)
+                .then((pos) => {
+                    if (!isListeningRef.current) return;
+                    movesRef.current = movesRef.current.slice(0, -1);
+                    dispatch({
+                        type: "takeback_accepted",
+                        position: pos,
                         turn: e.turn,
                         clock: e.clock,
                         passRights: e.passRights,
                     });
-                    movesRef.current = [...movesRef.current, e.usi];
-                    dispatchUI({ type: "move_received" });
+                    dispatchUI({ type: "resync_received" });
+                    markApplied();
+                });
+        } else if (e.kind === "move") {
+            dispatch({
+                type: "move",
+                usi: e.usi,
+                turn: e.turn,
+                clock: e.clock,
+                passRights: e.passRights,
+            });
+            movesRef.current = [...movesRef.current, e.usi];
+            dispatchUI({ type: "move_received" });
 
-                    // ─── 着手通知 ────────────────────────────────────────
-                    // e.turn は着手後の次の手番。自分の席が次手番 = 相手が指した
-                    const isOpponentMove = seat !== "s" && e.turn === seat;
-                    if (e.usi === "pass") {
-                        playSoundEvent("pass");
-                    } else if (isOpponentMove || seat === "s") {
-                        playSoundEvent("move_opponent");
-                    } else {
-                        playSoundEvent("move_self");
-                    }
-                } else if (e.kind === "player_offline") {
-                    dispatch({ type: "player_offline", seat: e.seat });
-                } else if (e.kind === "player_online") {
-                    dispatch({ type: "player_online", seat: e.seat });
-                } else if (e.kind === "analysis_used" && (e.seat === "b" || e.seat === "w")) {
-                    dispatch({
-                        type: "analysis_used",
-                        isMySeat: e.seat === seat,
-                        seat: e.seat,
-                        analysisRemaining: e.analysisRemaining,
-                        ply: movesRef.current.length,
-                    });
-                } else if (e.kind === "takeback_requested" && (e.seat === "b" || e.seat === "w")) {
-                    dispatch({ type: "takeback_requested", seat: e.seat, ply: e.ply });
-                } else if (e.kind === "takeback_accepted") {
-                    movesRef.current = movesRef.current.slice(0, -1);
-                    getPositionService()
-                        .parseSfen(e.sfen)
-                        .then((pos) => {
-                            dispatch({
-                                type: "takeback_accepted",
-                                position: pos,
-                                turn: e.turn,
-                                clock: e.clock,
-                                passRights: e.passRights,
-                            });
-                            dispatchUI({ type: "resync_received" });
-                        })
-                        .catch(console.error);
-                } else if (e.kind === "takeback_rejected") {
-                    dispatch({ type: "takeback_rejected" });
-                } else if (e.kind === "takeback_cancelled") {
-                    dispatch({ type: "takeback_cancelled" });
-                }
+            // ─── 着手通知 ────────────────────────────────────────
+            // e.turn は着手後の次の手番。自分の席が次手番 = 相手が指した
+            const isOpponentMove = seat !== "s" && e.turn === seat;
+            if (e.usi === "pass") {
+                playSoundEvent("pass");
+            } else if (isOpponentMove || seat === "s") {
+                playSoundEvent("move_opponent");
+            } else {
+                playSoundEvent("move_self");
+            }
+        } else if (e.kind === "player_offline") {
+            dispatch({ type: "player_offline", seat: e.seat });
+        } else if (e.kind === "player_online") {
+            dispatch({ type: "player_online", seat: e.seat });
+        } else if (e.kind === "analysis_used" && (e.seat === "b" || e.seat === "w")) {
+            dispatch({
+                type: "analysis_used",
+                isMySeat: e.seat === seat,
+                seat: e.seat,
+                analysisRemaining: e.analysisRemaining,
+                ply: movesRef.current.length,
+            });
+        } else if (e.kind === "takeback_requested" && (e.seat === "b" || e.seat === "w")) {
+            dispatch({ type: "takeback_requested", seat: e.seat, ply: e.ply });
+        } else if (e.kind === "takeback_rejected") {
+            dispatch({ type: "takeback_rejected" });
+        } else if (e.kind === "takeback_cancelled") {
+            dispatch({ type: "takeback_cancelled" });
+        }
+        markApplied();
+    });
+
+    useEffect(() => {
+        isListeningRef.current = true;
+        if (!incomingRef.current) {
+            incomingRef.current = createSerialQueue<Incoming>(
+                (incoming) => applyIncoming(incoming),
+                () => isListeningRef.current,
+            );
+            incomingRef.current.push({
+                t: "snapshot",
+                payload: initialSnapshotRef.current,
+                initial: true,
+            });
+        } else {
+            incomingRef.current.resume();
+        }
+        const incoming = incomingRef.current;
+        const unsub = client.subscribe((msg) => {
+            if (msg.t === "event") {
+                incoming.push(msg);
             } else if (msg.t === "snapshot") {
-                // 再接続後のスナップショット更新
-                // latestEventId と moves を最新状態に同期する
-                latestEventIdRef.current = msg.payload.eventId;
-                movesRef.current = [...msg.payload.moves];
-                // 終局イベントは購読開始より前に配信済みのことがあるので、snapshot からも復元する
-                if (msg.payload.result) {
-                    dispatch({ type: "result", result: msg.payload.result });
-                }
-                if (msg.payload.gameRecordId) {
-                    gameRecordIdRef.current = msg.payload.gameRecordId;
-                }
-                restorePosition(msg.payload.sfen, startSfenRef.current, msg.payload.moves)
-                    .then((restored) => {
-                        dispatch({
-                            type: "resync",
-                            ...restored,
-                            turn: msg.payload.turn,
-                            clock: msg.payload.clock,
-                            passRights: msg.payload.passRights,
-                        });
-                        dispatchUI({ type: "resync_received" }); // 再接続後は最新局面に戻す
-                    })
-                    .catch((err) => {
-                        console.error("[OnlineGameView] Failed to parse SFEN from snapshot:", err);
-                        // サーバーに再同期リクエストを送信して最新状態を取得する
-                        client.sync({ sinceEventId: latestEventIdRef.current });
-                    });
+                incoming.push({ t: "snapshot", payload: msg.payload, initial: false });
             } else if (msg.t === "error") {
-                const notice = rejectedCommandNotice(msg.payload.code, seat);
-                if (notice) {
-                    setCommandNotice(notice);
-                }
-                if (msg.payload.code === "DESYNC") {
-                    // 見ている局面が古いと指し直しても通らないので、取りこぼしたイベントを取り直す
-                    client.sync({ sinceEventId: latestEventIdRef.current });
-                }
+                showRejection(msg.payload.code);
             }
         });
-        return unsub;
-    }, [client, seat]);
+        return () => {
+            unsub();
+            // 解析の途中で画面を離れたら、その結果も残りのメッセージも反映しない
+            isListeningRef.current = false;
+        };
+    }, [client]);
 
     // ─── 合法手の取得 ────────────────────────────────────────────────────────
 
@@ -665,7 +489,7 @@ export function OnlineGameView({
                     dispatchUI({ type: "set_legal_moves", moves });
                     // 合法手が0 = 自分が詰まされている → サーバーに通知
                     if (moves.length === 0) {
-                        client.checkmate({ eventId: latestEventIdRef.current });
+                        client.checkmate({ eventId: appliedEventIdRef.current });
                     }
                 } catch {
                     if (!cancelled) {
@@ -715,7 +539,7 @@ export function OnlineGameView({
                   }
                 : applyMoveWithState(position, usi).next;
         const nextSfen = await getPositionService().boardToSfen(nextPos);
-        client.move({ eventId: latestEventIdRef.current, usi, sfen: nextSfen });
+        client.move({ eventId: appliedEventIdRef.current, usi, sfen: nextSfen });
     };
 
     // ─── 盤面クリック処理 ────────────────────────────────────────────────────
@@ -803,21 +627,21 @@ export function OnlineGameView({
 
     function handleResign(): void {
         if (!isMyTurn || !position) return;
-        client.resign({ eventId: latestEventIdRef.current });
+        client.resign({ eventId: appliedEventIdRef.current });
     }
 
     // ─── 待った ───────────────────────────────────────────────────────────────
 
     function handleTakebackRequest(): void {
-        client.takebackRequest({ eventId: latestEventIdRef.current });
+        client.takebackRequest({ eventId: appliedEventIdRef.current });
     }
 
     function handleTakebackResponse(accept: boolean): void {
-        client.takebackResponse({ eventId: latestEventIdRef.current, accept });
+        client.takebackResponse({ eventId: appliedEventIdRef.current, accept });
     }
 
     function handleTakebackCancel(): void {
-        client.takebackCancel({ eventId: latestEventIdRef.current });
+        client.takebackCancel({ eventId: appliedEventIdRef.current });
     }
 
     // ─── AI 解析トリガー ─────────────────────────────────────────────────────
@@ -836,7 +660,7 @@ export function OnlineGameView({
         // 制限モードは use_analysis を先送信してからエンジン解析（観戦者はスキップ）
         if (myAiSettings?.mode === "limited" && seat !== "s") {
             const ply = movesRef.current.length;
-            client.consumeAnalysis({ eventId: latestEventIdRef.current, ply });
+            client.consumeAnalysis({ eventId: appliedEventIdRef.current, ply });
             // analysis_used 受信後に自動で残り回数が更新される
         }
         if (analysis) {
@@ -981,20 +805,7 @@ export function OnlineGameView({
     };
 
     // KIF テキスト（対局終了後のダウンロード・コピー用）
-    const generatedKif =
-        usiMoveLog.length > 0
-            ? exportToKifString(
-                  usiMoveLog.map((entry, i) => ({
-                      ply: i + 1,
-                      usiMove: entry.usi,
-                      elapsedMs: entry.elapsedMs,
-                      kifText: "",
-                      displayText: "",
-                  })),
-                  positionHistory.slice(0, usiMoveLog.length).map((p) => p.board),
-                  { senteName: playerNames.b, goteName: playerNames.w },
-              )
-            : "";
+    const generatedKif = exportGameKif(gameState, snapshot.settings.startSfen, playerNames);
 
     // PC サイドバーとモバイル BottomSheet で共通利用するコンテンツ
     const canAnalyzeNow = !gameResult && (isMyTurn || isSpectator);
@@ -1225,7 +1036,7 @@ export function OnlineGameView({
 
                 {commandNotice && (
                     <p role="alert" className="text-sm text-destructive">
-                        {commandNotice}
+                        {commandNotice.text}
                     </p>
                 )}
 

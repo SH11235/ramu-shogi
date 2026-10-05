@@ -796,8 +796,11 @@ export function exportToKifString(
         lines.push(`終了日時：${dateStr}`);
     }
 
-    // 手合割
-    lines.push(`手合割：${options.handicap ?? "平手"}　　`);
+    const normalizedStartSfen = normalizeStartSfen(options.startSfen);
+    const startsFromHirate = !normalizedStartSfen || normalizedStartSfen === HIRATE_SFEN;
+
+    // 手合割。「平手」と書くと読み込み側は開始局面行より手合割を優先して平手から始める
+    lines.push(`手合割：${options.handicap ?? (startsFromHirate ? "平手" : "その他")}　　`);
 
     // 先手・後手
     lines.push(`先手：${options.senteName ?? ""}`);
@@ -815,8 +818,7 @@ export function exportToKifString(
         lines.push(`持ち時間：${timeLimitStr}+${byoyomiStr}`);
     }
 
-    const normalizedStartSfen = normalizeStartSfen(options.startSfen);
-    if (normalizedStartSfen && normalizedStartSfen !== HIRATE_SFEN) {
+    if (!startsFromHirate) {
         lines.push(`開始局面：${normalizedStartSfen}`);
     }
 

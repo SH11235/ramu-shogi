@@ -414,5 +414,34 @@ describe("createRoomClient", () => {
 
             expect(received).toEqual([]);
         });
+
+        it("保持できる件数を超えたら一部だけ渡さず、最後に渡したイベントの後を sync で取り直す", () => {
+            const { factory, instances } = createMockWsFactory();
+            const client = createRoomClient(
+                { wsUrl: "ws://localhost/api/rooms/room1/ws" },
+                factory as unknown as (url: string) => WebSocket,
+            );
+            instances[0].emitOpen();
+
+            const unsubscribe = client.subscribe(() => {});
+            instances[0].emitMessage(onlineEvent(7));
+            unsubscribe();
+            for (let eventId = 8; eventId <= 8 + 300; eventId++) {
+                instances[0].emitMessage(onlineEvent(eventId));
+            }
+
+            const received: ServerMessage[] = [];
+            client.subscribe((msg) => received.push(msg));
+
+            expect(received).toEqual([]);
+            const sent = instances[0].sentMessages.map((raw) => JSON.parse(raw));
+            expect(sent.filter((msg) => msg.t === "sync")).toEqual([
+                expect.objectContaining({ t: "sync", payload: { sinceEventId: 7 } }),
+            ]);
+
+            instances[0].emitMessage(onlineEvent(400));
+            expect(received).toEqual([onlineEvent(400)]);
+            client.disconnect();
+        });
     });
 });

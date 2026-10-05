@@ -1,9 +1,43 @@
 import type { GameResult, RoomClient, ServerMessage, SnapshotPayload } from "@shogi/match-client";
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockUseIsMobile = vi.fn(() => false);
-const mockGetLegalMoves = vi.fn<() => Promise<string[]>>();
+const mockGetLegalMoves = vi.fn<(sfen: string, moves?: string[]) => Promise<string[]>>();
+
+const PARSED_POSITION = { board: {}, hands: { sente: {}, gote: {} } };
+const mockParseSfen = vi.fn<(sfen: string) => Promise<typeof PARSED_POSITION>>();
+
+/** 局面の解析が終わる時点をテストから決めるための保留中の解析。SFEN ごとに 1 つ */
+function holdParsing(): {
+    finish: (sfen: string) => Promise<void>;
+    fail: (sfen: string) => Promise<void>;
+} {
+    const held = new Map<
+        string,
+        { promise: Promise<typeof PARSED_POSITION>; settle: (ok: boolean) => void }
+    >();
+    const holdFor = (sfen: string) => {
+        let entry = held.get(sfen);
+        if (!entry) {
+            let settle: (ok: boolean) => void = () => {};
+            const promise = new Promise<typeof PARSED_POSITION>((resolve, reject) => {
+                settle = (ok) =>
+                    ok ? resolve(PARSED_POSITION) : reject(new Error("parse failed"));
+            });
+            entry = { promise, settle };
+            held.set(sfen, entry);
+        }
+        return entry;
+    };
+    mockParseSfen.mockImplementation((sfen) => holdFor(sfen).promise);
+    const settle = (sfen: string, ok: boolean) =>
+        act(async () => {
+            holdFor(sfen).settle(ok);
+        });
+    return { finish: (sfen) => settle(sfen, true), fail: (sfen) => settle(sfen, false) };
+}
 
 // 重量依存をモック
 vi.mock("@shogi/app-core", async () => {
@@ -11,10 +45,7 @@ vi.mock("@shogi/app-core", async () => {
     return {
         ...actual,
         getPositionService: () => ({
-            parseSfen: vi.fn().mockResolvedValue({
-                board: {},
-                hands: { sente: {}, gote: {} },
-            }),
+            parseSfen: mockParseSfen,
             getLegalMoves: mockGetLegalMoves,
             boardToSfen: vi.fn().mockResolvedValue("startpos"),
         }),
@@ -147,6 +178,10 @@ function moveMessage(eventId: number, usi: string, turn: "b" | "w"): ServerMessa
     });
 }
 
+function errorMessage(code: "DESYNC" | "SPECTATOR_FORBIDDEN" | "ROOM_FINISHED"): ServerMessage {
+    return { v: 1, t: "error", payload: { code, message: "" } };
+}
+
 function gameEndMessage(eventId: number, gameRecordId?: string): ServerMessage {
     return {
         v: 1,
@@ -177,6 +212,7 @@ describe("OnlineGameView", () => {
         vi.clearAllMocks();
         mockUseIsMobile.mockReturnValue(false);
         mockGetLegalMoves.mockResolvedValue([]);
+        mockParseSfen.mockResolvedValue(PARSED_POSITION);
     });
 
     it("観戦者には投了ボタンが表示されない", () => {
@@ -697,10 +733,6 @@ describe("OnlineGameView", () => {
     });
 
     describe("サーバーに拒否された操作", () => {
-        function errorMessage(code: "DESYNC" | "SPECTATOR_FORBIDDEN" | "ROOM_FINISHED") {
-            return { v: 1, t: "error", payload: { code, message: "" } } satisfies ServerMessage;
-        }
-
         it("DESYNC ではやり直しを案内し、取りこぼしたイベントを取り直す", async () => {
             const { client, emit } = makeSubscribableClient();
             render(
@@ -721,7 +753,7 @@ describe("OnlineGameView", () => {
             expect(client.disconnect).not.toHaveBeenCalled();
         });
 
-        it("対局者の席で SPECTATOR_FORBIDDEN を受けたら別のタブで操作中だと案内する", async () => {
+        it("対局者の席で SPECTATOR_FORBIDDEN を受けたら、別のタブで対局中の可能性を断定せずに案内する", async () => {
             const { client, emit } = makeSubscribableClient();
             render(
                 <OnlineGameView
@@ -735,7 +767,7 @@ describe("OnlineGameView", () => {
             await emit(errorMessage("SPECTATOR_FORBIDDEN"));
 
             expect(screen.getByRole("alert").textContent).toBe(
-                "この席は別のタブまたはウィンドウで操作中です。そちらで対局を続けてください。",
+                "この画面からは操作できません。別のタブやウィンドウで対局中の場合は、そちらで続けてください。",
             );
             expect(client.sync).not.toHaveBeenCalled();
             expect(client.disconnect).not.toHaveBeenCalled();
@@ -756,6 +788,232 @@ describe("OnlineGameView", () => {
             await emit(errorMessage("SPECTATOR_FORBIDDEN"));
 
             expect(screen.queryByRole("alert")).toBeNull();
+        });
+
+        it("同じ案内が続いたら表示時間を数え直す", async () => {
+            vi.useFakeTimers();
+            try {
+                const { client, emit } = makeSubscribableClient();
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={makeSnapshot()}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                );
+
+                await emit(errorMessage("DESYNC"));
+                await act(async () => {
+                    vi.advanceTimersByTime(4000);
+                });
+                await emit(errorMessage("DESYNC"));
+                await act(async () => {
+                    vi.advanceTimersByTime(4000);
+                });
+                expect(screen.queryByRole("alert")).not.toBeNull();
+
+                await act(async () => {
+                    vi.advanceTimersByTime(1500);
+                });
+                expect(screen.queryByRole("alert")).toBeNull();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it("反映済みより古い終局イベントが届いても、取り直しの起点を巻き戻さない", async () => {
+            const { client, emit } = makeSubscribableClient();
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={makeFinishedSnapshot({ eventId: 8, result: RESIGN_RESULT })}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                );
+            });
+
+            await emit(gameEndMessage(6));
+            await emit(errorMessage("DESYNC"));
+
+            expect(client.sync).toHaveBeenCalledWith({ sinceEventId: 8 });
+        });
+    });
+
+    describe("メッセージを届いた順に反映する", () => {
+        const SNAPSHOT_SFEN = "9/9/9/9/9/9/9/9/9 b - 4";
+        const TAKEBACK_SFEN = "9/9/9/9/9/9/9/9/9 w - 3";
+        const RESYNC_SFEN = "9/9/9/9/9/9/9/9/9 b - 10";
+
+        function takebackMessage(eventId: number): ServerMessage {
+            return eventMessage({
+                kind: "takeback_accepted",
+                eventId,
+                serverTs: 0,
+                sfen: TAKEBACK_SFEN,
+                turn: "w",
+                clock: makeSnapshot().clock,
+                passRights: null,
+            });
+        }
+
+        it("初期局面の読み込み前に届いた指し手とその待ったを、読み込み後に届いた順で反映する", async () => {
+            const parsing = holdParsing();
+            const { client, emit } = makeSubscribableClient();
+            const onStartReview = vi.fn();
+            render(
+                <OnlineGameView
+                    client={client}
+                    snapshot={makeSnapshot({
+                        eventId: 5,
+                        sfen: SNAPSHOT_SFEN,
+                        moves: FINAL_MOVES,
+                        turn: "w",
+                    })}
+                    seat="b"
+                    roomId="test-room"
+                    onStartReview={onStartReview}
+                />,
+            );
+
+            await emit(moveMessage(6, "3a2b", "b"));
+            await emit(takebackMessage(7));
+            // 待ったの局面の解析が、初期局面の解析より先に終わる
+            await parsing.finish(TAKEBACK_SFEN);
+            await parsing.finish(SNAPSHOT_SFEN);
+            await parsing.finish("startpos");
+
+            expect(screen.getByText("3.")).toBeTruthy();
+            expect(screen.queryByText("4.")).toBeNull();
+
+            await emit(gameEndMessage(8));
+            expect(startReview(onStartReview)).toMatchObject({ moves: FINAL_MOVES });
+        });
+
+        it("snapshot の復元中に届いた指し手を、復元の後に反映する", async () => {
+            const { client, emit } = makeSubscribableClient();
+            const onStartReview = vi.fn();
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={makeSnapshot({ eventId: 5, moves: FINAL_MOVES.slice(0, 2) })}
+                        seat="b"
+                        roomId="test-room"
+                        onStartReview={onStartReview}
+                    />,
+                );
+            });
+
+            const parsing = holdParsing();
+            await emit({
+                v: 1,
+                t: "snapshot",
+                payload: makeSnapshot({
+                    eventId: 10,
+                    sfen: RESYNC_SFEN,
+                    moves: FINAL_MOVES,
+                    turn: "w",
+                }),
+            });
+            await emit(moveMessage(11, "3a2b", "b"));
+            await parsing.finish(RESYNC_SFEN);
+            await parsing.finish("startpos");
+
+            expect(screen.getByText("4.")).toBeTruthy();
+            expect(screen.queryByText("5.")).toBeNull();
+
+            // 反映し終えた番号で操作を送る
+            await emit(errorMessage("DESYNC"));
+            expect(client.sync).toHaveBeenCalledWith({ sinceEventId: 11 });
+
+            await emit(gameEndMessage(12));
+            expect(startReview(onStartReview)).toMatchObject({
+                moves: [...FINAL_MOVES, "3a2b"],
+            });
+        });
+
+        it("StrictMode で購読が張り直されても、最初の購読に渡されたメッセージを反映する", async () => {
+            const flushed = [moveMessage(6, "3a2b", "b"), gameEndMessage(7, "record-1")];
+            const client = makeMockClient({
+                subscribe: vi.fn((handler: (message: ServerMessage) => void) => {
+                    for (const message of flushed.splice(0)) handler(message);
+                    return () => {};
+                }),
+            });
+            const onStartReview = vi.fn();
+            await act(async () => {
+                render(
+                    <StrictMode>
+                        <OnlineGameView
+                            client={client}
+                            snapshot={makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" })}
+                            seat="b"
+                            roomId="test-room"
+                            onStartReview={onStartReview}
+                        />
+                    </StrictMode>,
+                );
+            });
+
+            expect(client.subscribe).toHaveBeenCalledTimes(2);
+            expect(screen.getByText("4.")).toBeTruthy();
+            expect(startReview(onStartReview)).toMatchObject({
+                moves: [...FINAL_MOVES, "3a2b"],
+                gameRecordId: "record-1",
+            });
+        });
+
+        it("復元の途中で画面を離れたら、その結果を使わない", async () => {
+            const { client, emit } = makeSubscribableClient();
+            const view = await act(async () =>
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={makeSnapshot({ eventId: 5 })}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                ),
+            );
+
+            const parsing = holdParsing();
+            await emit({
+                v: 1,
+                t: "snapshot",
+                payload: makeSnapshot({ eventId: 10, sfen: RESYNC_SFEN }),
+            });
+            view.unmount();
+            await parsing.fail(RESYNC_SFEN);
+
+            expect(client.sync).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("駒落ちプリセットの開始局面", () => {
+        it("合法手の取得にはプリセット名でなく展開した局面を渡す", async () => {
+            const snapshot = makeSnapshot({ turn: "b" });
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={makeMockClient()}
+                        snapshot={{
+                            ...snapshot,
+                            settings: { ...snapshot.settings, startSfen: "handicap:bishop" },
+                        }}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                );
+            });
+
+            expect(mockGetLegalMoves).toHaveBeenCalledWith(
+                "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+                [],
+                {},
+            );
         });
     });
 });

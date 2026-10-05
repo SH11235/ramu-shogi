@@ -18,6 +18,7 @@ import {
     parseToSquare,
     squareToKanji,
 } from "./kifFormat";
+import { parseKif } from "./kifParser";
 
 // テスト用のヘルパー: 空の盤面を作成
 function createEmptyBoard(): BoardState {
@@ -587,6 +588,19 @@ describe("exportToKifString", () => {
         expect(result).toContain(
             "開始局面：lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPP1/1B5R1/LNSGKGSNL b - 1",
         );
+    });
+
+    it("開始局面が平手以外なら手合割を平手と書かず、読み込むと同じ開始局面に戻る", () => {
+        const startSfen = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPP1/1B5R1/LNSGKGSNL b - 1";
+        const result = buildSingleMoveExport(startSfen);
+
+        expect(result).toContain("手合割：その他");
+        expect(parseKif(result)).toMatchObject({ startSfen, moves: ["7g7f"] });
+    });
+
+    it("開始局面が平手なら手合割は平手のまま", () => {
+        expect(buildSingleMoveExport("startpos")).toContain("手合割：平手");
+        expect(buildSingleMoveExport()).toContain("手合割：平手");
     });
 
     it("手数不明の詰みコメントは手数を出力しない", () => {
