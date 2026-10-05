@@ -122,4 +122,33 @@ describe("useRoomConnection", () => {
             lastEventId: 0,
         });
     });
+
+    it("resume で終局済みルームの snapshot を受けると result と gameRecordId を保ったまま対局画面へ進む", () => {
+        const connection = createMockClient();
+        mockGetStoredResumeToken.mockReturnValue("resume-token");
+        mockGetStoredSeat.mockReturnValue("b");
+        mockCreateRoomClient.mockReturnValue(connection.client);
+
+        const { result } = renderHook(() => useRoomConnection({ roomId: "room-3" }));
+
+        act(() => {
+            connection.emit({
+                v: 1,
+                t: "snapshot",
+                payload: {
+                    eventId: 7,
+                    status: "finished",
+                    result: { winner: "b", reason: "resign" },
+                    gameRecordId: "record-1",
+                },
+            });
+        });
+
+        expect(result.current.gamePhase).toBe("playing");
+        expect(result.current.snapshot).toMatchObject({
+            eventId: 7,
+            result: { winner: "b", reason: "resign" },
+            gameRecordId: "record-1",
+        });
+    });
 });

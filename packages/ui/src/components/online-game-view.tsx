@@ -135,7 +135,7 @@ function makeInitialGameState(
         positionHistory: [],
         turn: snapshot.turn,
         clockState: snapshot.clock,
-        gameResult: null,
+        gameResult: snapshot.result ?? null,
         offlineSeats: new Set(),
         passRights: snapshot.passRights,
         myAnalysisRemaining:
@@ -185,9 +185,10 @@ function gameReducer(state: GameState, action: GameAction): GameState {
             };
         }
         case "result":
-            return { ...state, gameResult: action.result };
         case "game_end":
-            return { ...state, gameResult: action.result };
+            // 終局は終局イベント・game_end・棋譜 ID 付きの game_end・snapshot と複数回届く。
+            // 最初の結果を保ち、gameResult に依存する処理が終局後に再実行されないようにする
+            return state.gameResult ? state : { ...state, gameResult: action.result };
         case "player_offline":
             return {
                 ...state,
@@ -400,7 +401,7 @@ export function OnlineGameView({
     // 現在の start SFEN と moves
     const startSfenRef = useRef(snapshot.settings.startSfen);
     const movesRef = useRef<string[]>([...snapshot.moves]);
-    const gameRecordIdRef = useRef<string | null>(null);
+    const gameRecordIdRef = useRef<string | null>(snapshot.gameRecordId ?? null);
     // サーバーの latestEventId を追跡（move/resign/use_analysis 送信時に使用）
     // 指し手以外のイベント（chat/analysis_used/player_online 等）でも増加するため
     // snapshot.eventId + moves.length の計算式は使えない
@@ -521,6 +522,13 @@ export function OnlineGameView({
                 // latestEventId と moves を最新状態に同期する
                 latestEventIdRef.current = msg.payload.eventId;
                 movesRef.current = [...msg.payload.moves];
+                // 終局イベントは購読開始より前に配信済みのことがあるので、snapshot からも復元する
+                if (msg.payload.result) {
+                    dispatch({ type: "result", result: msg.payload.result });
+                }
+                if (msg.payload.gameRecordId) {
+                    gameRecordIdRef.current = msg.payload.gameRecordId;
+                }
                 getPositionService()
                     .parseSfen(msg.payload.sfen)
                     .then((pos) => {

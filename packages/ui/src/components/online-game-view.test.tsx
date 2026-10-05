@@ -1,5 +1,5 @@
-import type { RoomClient, SnapshotPayload } from "@shogi/match-client";
-import { fireEvent, render, screen } from "@testing-library/react";
+import type { GameResult, RoomClient, ServerMessage, SnapshotPayload } from "@shogi/match-client";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockUseIsMobile = vi.fn(() => false);
@@ -91,6 +91,65 @@ function makeSnapshot(overrides: Partial<SnapshotPayload> = {}): SnapshotPayload
         },
         ...overrides,
     };
+}
+
+function makeSubscribableClient(): {
+    client: RoomClient;
+    emit: (message: ServerMessage) => Promise<void>;
+} {
+    const handlers = new Set<(message: ServerMessage) => void>();
+    const client = makeMockClient({
+        subscribe: vi.fn((handler: (message: ServerMessage) => void) => {
+            handlers.add(handler);
+            return () => handlers.delete(handler);
+        }),
+    });
+    return {
+        client,
+        // snapshot は局面の解析を待って反映されるので、非同期の act で流す
+        emit: (message) =>
+            act(async () => {
+                for (const handler of handlers) {
+                    handler(message);
+                }
+            }),
+    };
+}
+
+const FINAL_MOVES = ["7g7f", "3c3d", "8h2b+"];
+const RESIGN_RESULT: GameResult = { winner: "b", reason: "resign" };
+
+function makeFinishedSnapshot(overrides: Partial<SnapshotPayload> = {}): SnapshotPayload {
+    return makeSnapshot({
+        eventId: 7,
+        status: "finished",
+        moves: FINAL_MOVES,
+        turn: "w",
+        ...overrides,
+    });
+}
+
+function gameEndMessage(eventId: number, gameRecordId?: string): ServerMessage {
+    return {
+        v: 1,
+        t: "event",
+        payload: {
+            kind: "game_end",
+            eventId,
+            serverTs: 0,
+            result: RESIGN_RESULT,
+            kifu: "",
+            ...(gameRecordId ? { gameRecordId } : {}),
+        },
+    };
+}
+
+function startReview(onStartReview: ReturnType<typeof vi.fn>): {
+    moves: string[];
+    gameRecordId: string | null;
+} {
+    fireEvent.click(screen.getByRole("button", { name: "棋譜を検討する" }));
+    return onStartReview.mock.lastCall?.[0];
 }
 
 const { OnlineGameView } = await import("./online-game-view");
@@ -202,5 +261,176 @@ describe("OnlineGameView", () => {
         fireEvent.click(screen.getByLabelText("AI解析"));
 
         expect(screen.queryByTestId("bottom-sheet")).toBeNull();
+    });
+
+    describe("終局済みルームの復元", () => {
+        it("snapshot の result と gameRecordId から終局表示と棋譜 ID を復元する", () => {
+            const onStartReview = vi.fn();
+            render(
+                <OnlineGameView
+                    client={makeMockClient()}
+                    snapshot={makeFinishedSnapshot({
+                        result: RESIGN_RESULT,
+                        gameRecordId: "record-1",
+                    })}
+                    seat="b"
+                    roomId="test-room"
+                    onStartReview={onStartReview}
+                />,
+            );
+
+            expect(screen.getAllByText("Alice の勝ち")).toHaveLength(1);
+            expect(startReview(onStartReview)).toMatchObject({
+                moves: FINAL_MOVES,
+                gameRecordId: "record-1",
+            });
+        });
+
+        it("result と gameRecordId が無い snapshot では終局表示を出さない", () => {
+            render(
+                <OnlineGameView
+                    client={makeMockClient()}
+                    snapshot={makeFinishedSnapshot()}
+                    seat="b"
+                    roomId="test-room"
+                    onStartReview={vi.fn()}
+                />,
+            );
+
+            expect(screen.queryByText("Alice の勝ち")).toBeNull();
+            expect(screen.queryByRole("button", { name: "棋譜を検討する" })).toBeNull();
+        });
+
+        it("両フィールドの無い snapshot でも game_end から従来どおり復元する", async () => {
+            const { client, emit } = makeSubscribableClient();
+            const onStartReview = vi.fn();
+            render(
+                <OnlineGameView
+                    client={client}
+                    snapshot={makeFinishedSnapshot()}
+                    seat="b"
+                    roomId="test-room"
+                    onStartReview={onStartReview}
+                />,
+            );
+
+            await emit(gameEndMessage(7, "record-1"));
+
+            expect(screen.getAllByText("Alice の勝ち")).toHaveLength(1);
+            expect(startReview(onStartReview)).toMatchObject({
+                moves: FINAL_MOVES,
+                gameRecordId: "record-1",
+            });
+        });
+
+        it("snapshot の後に game_end が 2 回届いても終局表示と指し手は増えず、棋譜 ID だけが加わる", async () => {
+            const { client, emit } = makeSubscribableClient();
+            const onStartReview = vi.fn();
+            render(
+                <OnlineGameView
+                    client={client}
+                    snapshot={makeFinishedSnapshot({ eventId: 6, result: RESIGN_RESULT })}
+                    seat="b"
+                    roomId="test-room"
+                    onStartReview={onStartReview}
+                />,
+            );
+
+            await emit(gameEndMessage(6));
+            expect(screen.getAllByText("Alice の勝ち")).toHaveLength(1);
+            expect(startReview(onStartReview)).toMatchObject({
+                moves: FINAL_MOVES,
+                gameRecordId: null,
+            });
+
+            await emit(gameEndMessage(7, "record-1"));
+            expect(screen.getAllByText("Alice の勝ち")).toHaveLength(1);
+            expect(startReview(onStartReview)).toMatchObject({
+                moves: FINAL_MOVES,
+                gameRecordId: "record-1",
+            });
+        });
+
+        it("棋譜 ID 付きの game_end だけが届いても結果と棋譜 ID を得る", async () => {
+            const { client, emit } = makeSubscribableClient();
+            const onStartReview = vi.fn();
+            render(
+                <OnlineGameView
+                    client={client}
+                    snapshot={makeSnapshot({ moves: FINAL_MOVES, turn: "w" })}
+                    seat="b"
+                    roomId="test-room"
+                    onStartReview={onStartReview}
+                />,
+            );
+
+            await emit(gameEndMessage(7, "record-1"));
+
+            expect(screen.getAllByText("Alice の勝ち")).toHaveLength(1);
+            expect(startReview(onStartReview)).toMatchObject({
+                moves: FINAL_MOVES,
+                gameRecordId: "record-1",
+            });
+        });
+
+        it("棋譜 ID を得た後に ID の無い game_end や snapshot が届いても ID を失わない", async () => {
+            const { client, emit } = makeSubscribableClient();
+            const onStartReview = vi.fn();
+            render(
+                <OnlineGameView
+                    client={client}
+                    snapshot={makeFinishedSnapshot({
+                        result: RESIGN_RESULT,
+                        gameRecordId: "record-1",
+                    })}
+                    seat="b"
+                    roomId="test-room"
+                    onStartReview={onStartReview}
+                />,
+            );
+
+            await emit(gameEndMessage(6));
+            await emit({
+                v: 1,
+                t: "snapshot",
+                payload: makeFinishedSnapshot({ result: RESIGN_RESULT }),
+            });
+
+            expect(screen.getAllByText("Alice の勝ち")).toHaveLength(1);
+            expect(startReview(onStartReview)).toMatchObject({
+                moves: FINAL_MOVES,
+                gameRecordId: "record-1",
+            });
+        });
+
+        it("再接続時の snapshot からも結果と棋譜 ID を復元する", async () => {
+            const { client, emit } = makeSubscribableClient();
+            const onStartReview = vi.fn();
+            render(
+                <OnlineGameView
+                    client={client}
+                    snapshot={makeSnapshot({ moves: FINAL_MOVES.slice(0, 2) })}
+                    seat="b"
+                    roomId="test-room"
+                    onStartReview={onStartReview}
+                />,
+            );
+            expect(screen.queryByText("Alice の勝ち")).toBeNull();
+
+            await emit({
+                v: 1,
+                t: "snapshot",
+                payload: makeFinishedSnapshot({
+                    result: RESIGN_RESULT,
+                    gameRecordId: "record-1",
+                }),
+            });
+
+            expect(screen.getAllByText("Alice の勝ち")).toHaveLength(1);
+            expect(startReview(onStartReview)).toMatchObject({
+                moves: FINAL_MOVES,
+                gameRecordId: "record-1",
+            });
+        });
     });
 });
