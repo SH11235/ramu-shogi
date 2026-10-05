@@ -110,3 +110,18 @@ Material評価のみを計測する場合は `--material` を指定します。
 - **推奨スレッド数**: CPU コア数の 50-75%（例: 8コアなら 4スレッド）
 - **メモリ使用量**: ベース + (threads - 1) × 2MB + TT サイズ
 - **最大スレッド数**: 4（安定性のため上限を設定）
+
+## 実モデルでの動作確認
+
+WASM をビルドした後、単一スレッド WASM でフォーマット検出・ロード・初期局面から深さ2の探索を行います。
+
+```sh
+node scripts/smoke-nnue.mjs /path/to/kingrank9.bin kingrank9
+node scripts/smoke-nnue.mjs /path/to/progress.bin progresskpabs 8 /path/to/coeff.bin
+node scripts/smoke-nnue.mjs /path/to/halfkp.bin
+node scripts/smoke-nnue.mjs /path/to/yo-progress-nn.bin progresskpabsq16 8 /path/to/progress.bin
+```
+
+Rust 側にも外部モデルを使う ignored test があります。`NNUE_TEST_FILE`、必要なら
+`NNUE_TEST_ROUTING`（例: `{"bucketMode":"progresskpabs","progressBuckets":8}`）と
+`NNUE_TEST_PROGRESS_FILE` を設定し、`cargo test real_model_load_and_search -- --ignored --nocapture` で実行します。

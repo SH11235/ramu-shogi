@@ -5,8 +5,7 @@ WASM バインディング用のワークスペースです。
 
 Q16 routing 対応の `rshogi-core`（0.7.0 ベース）を Desktop と同じ Git revision で固定し、
 `edition-universal` を明示してビルドします。
-LayerStacks の設定・進行度係数の配布・実モデルの検証手順は
-[NNUE モデルの読み込み](../../docs/nnue-models.md) を参照してください。
+対応する NNUE モデルと設定は [NNUE モデルの読み込み](../../docs/nnue-models.md) を参照してください。
 `shared/` の Rust モジュールは Web/WASM と Desktop の両方から参照します。
 
 ## License

@@ -1,0 +1,90 @@
+# Web (apps/web) を Cloudflare Workers へ deploy する。
+#
+#   - staging   : main への push で自動 deploy。workflow_dispatch で target=staging でも実行できる
+#   - production: workflow_dispatch で target=production を選んだときだけ deploy (main からのみ)
+#
+# ビルドと deploy は scripts/deploy-web.sh に任せ、ローカルからの deploy と同じ手順を通す。
+# CI には開発用の .cargo/config.toml (rshogi-core のローカル差し替え) が存在しないため、
+# rshogi-core は Cargo.lock の版でビルドされる。
+#
+# production に承認を挟む場合は、GitHub の Environment `production` に Required reviewers を設定する。
+name: Deploy Web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - "packages/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "scripts/deploy-web.sh"
+      - "scripts/check-env.mjs"
+      - ".github/workflows/deploy-web.yml"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Deploy target environment"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+        default: staging
+
+permissions:
+  contents: read
+
+env:
+  RUST_NIGHTLY_TOOLCHAIN: nightly-2025-12-25
+
+jobs:
+  deploy:
+    name: Deploy (${{ github.event_name == 'push' && 'staging' || inputs.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: github.event_name == 'push' || inputs.target == 'staging' || (inputs.target == 'production' && github.ref == 'refs/heads/main')
+    environment: ${{ github.event_name == 'push' && 'staging' || inputs.target }}
+    # 途中キャンセルすると wrangler の upload が中途半端になるため、同じ環境への deploy は直列にする。
+    concurrency:
+      group: deploy-web-${{ github.event_name == 'push' && 'staging' || inputs.target }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788 # v6.0.6
+      - id: versions
+        run: |
+          echo "node=$(node -p "require('./package.json').volta.node")" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: ${{ steps.versions.outputs.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Setup Rust nightly (wasm threads)
+        run: |
+          rustup toolchain install "${RUST_NIGHTLY_TOOLCHAIN}"
+          rustup component add rust-src --toolchain "${RUST_NIGHTLY_TOOLCHAIN}"
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: "packages/rust-core -> target"
+          shared-key: deploy-web
+      - name: Resolve wasm-bindgen version
+        run: |
+          WASM_BINDGEN_VERSION=$(awk -F '"' '/^name = "wasm-bindgen"$/ {getline; print $2; exit}' packages/rust-core/Cargo.lock)
+          if [ -z "$WASM_BINDGEN_VERSION" ]; then
+            echo "Failed to resolve wasm-bindgen version"; exit 1;
+          fi
+          echo "WASM_BINDGEN_VERSION=$WASM_BINDGEN_VERSION" >> "$GITHUB_ENV"
+          echo "wasm-bindgen version: $WASM_BINDGEN_VERSION"
+      - name: Install wasm-bindgen-cli
+        run: cargo install wasm-bindgen-cli --locked --version "$WASM_BINDGEN_VERSION"
+      - name: Build and deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DEPLOY_MODE: ${{ (github.event_name == 'push' || inputs.target == 'staging') && 'stg' || 'prod' }}
+        run: bash scripts/deploy-web.sh "$DEPLOY_MODE"
