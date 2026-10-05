@@ -1,7 +1,7 @@
 import type { GameResult, RoomClient, ServerMessage, SnapshotPayload } from "@shogi/match-client";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { StrictMode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockUseIsMobile = vi.fn(() => false);
 const mockGetLegalMoves = vi.fn<(sfen: string, moves?: string[]) => Promise<string[]>>();
@@ -1140,14 +1140,14 @@ describe("OnlineGameView", () => {
             expect(screen.getByText("3.")).toBeTruthy();
         });
 
-        it("やり直しても読み込めなければ案内を出し、イベント番号を進めず、次の snapshot で復帰する", async () => {
-            const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+        /** 画面を開いたときの読み込みを 2 回とも失敗させた状態で、後手からのメッセージを待つ */
+        async function renderUnrestored(): Promise<ReturnType<typeof makeSubscribableClient>> {
             mockParseSfen.mockRejectedValue(new Error("parse failed"));
-            const { client, emit } = makeSubscribableClient();
+            const connection = makeSubscribableClient();
             await act(async () => {
                 render(
                     <OnlineGameView
-                        client={client}
+                        client={connection.client}
                         snapshot={makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" })}
                         seat="b"
                         roomId="test-room"
@@ -1155,27 +1155,101 @@ describe("OnlineGameView", () => {
                 );
             });
             expect(screen.getByRole("alert").textContent).toBe(LOAD_FAILED);
+            return connection;
+        }
 
-            await emit(moveMessage(6, "3a2b", "b"));
-            await emit(errorMessage("DESYNC"));
-            expect(client.sync).toHaveBeenLastCalledWith({ sinceEventId: 5 });
+        async function recoverWith(
+            emit: (message: ServerMessage) => Promise<void>,
+            payload: SnapshotPayload,
+        ): Promise<void> {
+            mockParseSfen.mockImplementation(async () => structuredClone(PARSED_POSITION));
+            await emit({ v: 1, t: "snapshot", payload });
+            expect(screen.queryByText(LOAD_FAILED)).toBeNull();
+        }
+
+        const takebackRequested = (eventId: number): ServerMessage =>
+            eventMessage({ kind: "takeback_requested", eventId, serverTs: 0, seat: "w", ply: 3 });
+
+        beforeEach(() => {
+            vi.spyOn(console, "error").mockImplementation(() => {});
+        });
+
+        afterEach(() => {
+            vi.restoreAllMocks();
+        });
+
+        it("やり直しても読み込めなければ案内を出し、切断せず、次の snapshot で復帰する", async () => {
+            const { client, emit } = await renderUnrestored();
             expect(client.disconnect).not.toHaveBeenCalled();
 
-            mockParseSfen.mockImplementation(async () => structuredClone(PARSED_POSITION));
-            await emit({
-                v: 1,
-                t: "snapshot",
-                payload: makeSnapshot({ eventId: 6, moves: [...FINAL_MOVES, "3a2b"], turn: "b" }),
-            });
-            await act(async () => {
-                vi.useFakeTimers();
-                vi.advanceTimersByTime(6000);
-                vi.useRealTimers();
-            });
+            await recoverWith(emit, makeSnapshot({ eventId: 6, moves: FINAL_MOVES, turn: "w" }));
 
-            expect(screen.queryByText(LOAD_FAILED)).toBeNull();
+            expect(screen.getByText("3.")).toBeTruthy();
+        });
+
+        it("読み込めない間に届いた待ったの申請は、復帰後に承認ダイアログとして出る", async () => {
+            const { client, emit } = await renderUnrestored();
+
+            await emit(takebackRequested(6));
+            await recoverWith(emit, makeSnapshot({ eventId: 6, moves: FINAL_MOVES, turn: "w" }));
+            expect(screen.getAllByText("待ったの申請")).toHaveLength(1);
+
+            // 同じ申請がもう一度届いても反映済みとして扱う
+            await emit(takebackRequested(6));
+            expect(screen.getAllByText("待ったの申請")).toHaveLength(1);
+            await emit(errorMessage("DESYNC"));
+            expect(client.sync).toHaveBeenLastCalledWith({ sinceEventId: 6 });
+        });
+
+        it("読み込めない間に待ったの申請と取り消しが届いたら、復帰後にダイアログを出さない", async () => {
+            const { emit } = await renderUnrestored();
+
+            await emit(takebackRequested(6));
+            await emit(eventMessage({ kind: "takeback_cancelled", eventId: 7, serverTs: 0 }));
+            await recoverWith(emit, makeSnapshot({ eventId: 7, moves: FINAL_MOVES, turn: "w" }));
+
+            expect(screen.queryByText("待ったの申請")).toBeNull();
+        });
+
+        it("読み込めない間に届いた指し手は snapshot と重ねて数えず、復帰後の指し手は 1 度だけ反映する", async () => {
+            const { emit } = await renderUnrestored();
+
+            await emit(moveMessage(6, "3a2b", "b"));
+            await recoverWith(
+                emit,
+                makeSnapshot({ eventId: 6, moves: [...FINAL_MOVES, "3a2b"], turn: "b" }),
+            );
             expect(screen.getByText("4.")).toBeTruthy();
-            errorLog.mockRestore();
+            expect(screen.queryByText("5.")).toBeNull();
+
+            await emit(moveMessage(7, "7g7f", "w"));
+            expect(screen.getByText("5.")).toBeTruthy();
+            expect(screen.queryByText("6.")).toBeNull();
+        });
+    });
+
+    describe("局面の読み込み前", () => {
+        it("読み込みが終わるまで合法手を取得せず、詰みも申告しない", async () => {
+            const sfen = "9/9/9/9/9/9/9/9/9 b - 1";
+            const parsing = holdParsing();
+            const client = makeMockClient();
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={makeSnapshot({ sfen, turn: "b" })}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                );
+            });
+            expect(mockGetLegalMoves).not.toHaveBeenCalled();
+            expect(client.checkmate).not.toHaveBeenCalled();
+
+            await parsing.finish(sfen);
+
+            expect(mockGetLegalMoves).toHaveBeenCalledTimes(1);
+            expect(client.checkmate).toHaveBeenCalledTimes(1);
         });
     });
 

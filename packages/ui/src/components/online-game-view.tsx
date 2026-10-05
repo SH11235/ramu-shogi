@@ -320,7 +320,6 @@ export function OnlineGameView({
     const incomingRef = useRef<SerialQueue<Incoming> | null>(null);
     const initialSnapshotRef = useRef(snapshot);
     const isListeningRef = useRef(false);
-    const hasBaselineRef = useRef(false);
     const [loadFailed, setLoadFailed] = useState(false);
 
     const applyIncoming = useEffectEvent((incoming: Incoming): void | Promise<void> => {
@@ -333,7 +332,6 @@ export function OnlineGameView({
             return restoring.then(
                 (restored) => {
                     if (!isListeningRef.current) return;
-                    hasBaselineRef.current = true;
                     setLoadFailed(false);
                     appliedEventIdRef.current = payload.eventId;
                     startSfenRef.current = resolveStartSfen(payload.settings.startSfen);
@@ -377,7 +375,6 @@ export function OnlineGameView({
         const alreadyApplied = e.eventId <= appliedEventIdRef.current;
         // サーバーは指し手以外のイベントでもイベント番号を増やすので、すべてのイベントで更新する
         const markApplied = (): void => {
-            if (!hasBaselineRef.current) return;
             appliedEventIdRef.current = Math.max(appliedEventIdRef.current, e.eventId);
         };
 
@@ -395,8 +392,7 @@ export function OnlineGameView({
             e.kind === "disconnect_loss"
         ) {
             dispatch({ type: "result", result: e.result });
-        } else if (alreadyApplied || !hasBaselineRef.current) {
-            // 局面を復元できていない間は反映できない。番号も進めず、後から届く snapshot に任せる
+        } else if (alreadyApplied) {
             return;
         } else if (e.kind === "takeback_accepted") {
             return getPositionService()

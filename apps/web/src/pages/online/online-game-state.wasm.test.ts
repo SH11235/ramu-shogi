@@ -14,7 +14,6 @@ import {
 } from "@shogi/ui/components/online-game-state";
 import { parseKif, parseSfen } from "@shogi/ui/components/shogi-match/utils/kifParser";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import legacyRoomDoSource from "../../../worker/room-do.ts?raw";
 
 // テスト設定は engine-wasm が読み込む pkg をモックに差し替えるので、実物を直接読み込んで渡す。
 // pkg と node:fs を式や文字列で指すのは、pkg が無い状態でも通る型検査と、
@@ -248,7 +247,10 @@ describe("オンライン対局の状態（実物の Wasm 局面サービス）"
         expect(state.positionHistory).toHaveLength(3);
     });
 
-    it.each(PRESETS)("%s の展開先は Worker の RoomDO の定義と一致する", (preset) => {
-        expect(legacyRoomDoSource).toContain(`"${preset}": "${resolveStartSfen(preset)}"`);
+    // Worker の RoomDO を廃止するときは、この照合も一緒に消す
+    it.each(PRESETS)("%s の展開先は Worker の RoomDO の定義と一致する", async (preset) => {
+        const { default: roomDoSource } = await import("../../../worker/room-do.ts?raw");
+
+        expect(roomDoSource).toContain(`"${preset}": "${resolveStartSfen(preset)}"`);
     });
 });
