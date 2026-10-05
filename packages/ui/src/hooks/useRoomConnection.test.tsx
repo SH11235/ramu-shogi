@@ -122,4 +122,69 @@ describe("useRoomConnection", () => {
             lastEventId: 0,
         });
     });
+
+    it("resume で終局済みルームの snapshot を受けると result と gameRecordId を保ったまま対局画面へ進む", () => {
+        const connection = createMockClient();
+        mockGetStoredResumeToken.mockReturnValue("resume-token");
+        mockGetStoredSeat.mockReturnValue("b");
+        mockCreateRoomClient.mockReturnValue(connection.client);
+
+        const { result } = renderHook(() => useRoomConnection({ roomId: "room-3" }));
+
+        act(() => {
+            connection.emit({
+                v: 1,
+                t: "snapshot",
+                payload: {
+                    eventId: 7,
+                    status: "finished",
+                    result: { winner: "b", reason: "resign" },
+                    gameRecordId: "record-1",
+                },
+            });
+        });
+
+        expect(result.current.gamePhase).toBe("playing");
+        expect(result.current.snapshot).toMatchObject({
+            eventId: 7,
+            result: { winner: "b", reason: "resign" },
+            gameRecordId: "record-1",
+        });
+    });
+
+    it("roomId が変わると前のルームの接続を切り、snapshot と対局フェーズを持ち越さない", () => {
+        const roomA = createMockClient();
+        const roomB = createMockClient();
+        mockGetStoredResumeToken.mockImplementation((roomId: string) =>
+            roomId === "room-a" ? "token-a" : null,
+        );
+        mockGetStoredSeat.mockImplementation((roomId: string) =>
+            roomId === "room-a" ? "b" : null,
+        );
+        mockCreateRoomClient.mockReturnValueOnce(roomA.client).mockReturnValue(roomB.client);
+
+        const { result, rerender } = renderHook(({ roomId }) => useRoomConnection({ roomId }), {
+            initialProps: { roomId: "room-a" },
+        });
+        act(() => {
+            roomA.emit({
+                v: 1,
+                t: "snapshot",
+                payload: { eventId: 7, status: "finished" },
+            });
+        });
+        expect(result.current.gamePhase).toBe("playing");
+
+        rerender({ roomId: "room-b" });
+
+        expect(roomA.client.disconnect).toHaveBeenCalled();
+        expect(result.current).toMatchObject({
+            snapshot: null,
+            joined: false,
+            gamePhase: "waiting",
+            client: null,
+            isJoining: false,
+            joinError: null,
+        });
+    });
 });

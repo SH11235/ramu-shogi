@@ -334,4 +334,119 @@ describe("createRoomClient", () => {
 
         client.disconnect();
     });
+
+    describe("購読者がいない間のメッセージ", () => {
+        const onlineEvent = (eventId: number): ServerMessage => ({
+            v: 1,
+            t: "event",
+            payload: {
+                kind: "player_online",
+                eventId,
+                serverTs: 0,
+                seat: "b",
+            },
+        });
+
+        it("購読者の入れ替わりの間に届いた event を次の購読者へ届いた順に 1 度だけ渡す", () => {
+            const { factory, instances } = createMockWsFactory();
+            const client = createRoomClient(
+                { wsUrl: "ws://localhost/api/rooms/room1/ws" },
+                factory as unknown as (url: string) => WebSocket,
+            );
+            instances[0].emitOpen();
+
+            const first: ServerMessage[] = [];
+            const unsubscribe = client.subscribe((msg) => first.push(msg));
+            instances[0].emitMessage(onlineEvent(1));
+            unsubscribe();
+
+            instances[0].emitMessage(onlineEvent(2));
+            instances[0].emitMessage(onlineEvent(3));
+
+            const second: ServerMessage[] = [];
+            client.subscribe((msg) => second.push(msg));
+            const third: ServerMessage[] = [];
+            client.subscribe((msg) => third.push(msg));
+            instances[0].emitMessage(onlineEvent(4));
+
+            expect(first).toEqual([onlineEvent(1)]);
+            expect(second).toEqual([onlineEvent(2), onlineEvent(3), onlineEvent(4)]);
+            expect(third).toEqual([onlineEvent(4)]);
+            client.disconnect();
+        });
+
+        it("購読者がいない間に届いた snapshot も保持し、pong と error は保持しない", () => {
+            const { factory, instances } = createMockWsFactory();
+            const client = createRoomClient(
+                { wsUrl: "ws://localhost/api/rooms/room1/ws" },
+                factory as unknown as (url: string) => WebSocket,
+            );
+            instances[0].emitOpen();
+
+            const snapshot = { v: 1, t: "snapshot", payload: { eventId: 5 } };
+            instances[0].emitMessage(snapshot);
+            instances[0].emitMessage({ v: 1, t: "pong", payload: { ts: 1, serverTs: 2 } });
+            instances[0].emitMessage({
+                v: 1,
+                t: "error",
+                payload: { code: "DESYNC", message: "" },
+            });
+
+            const received: ServerMessage[] = [];
+            client.subscribe((msg) => received.push(msg));
+
+            expect(received).toEqual([snapshot]);
+            client.disconnect();
+        });
+
+        it("disconnect すると保持していたメッセージを捨てる", () => {
+            const { factory, instances } = createMockWsFactory();
+            const client = createRoomClient(
+                { wsUrl: "ws://localhost/api/rooms/room1/ws" },
+                factory as unknown as (url: string) => WebSocket,
+            );
+            instances[0].emitOpen();
+            instances[0].emitMessage(onlineEvent(1));
+            client.disconnect();
+
+            const received: ServerMessage[] = [];
+            client.subscribe((msg) => received.push(msg));
+
+            expect(received).toEqual([]);
+        });
+
+        it("購読者がいない間に対局が終わるほど多く届いても、指し手から終局まで欠けずに渡す", () => {
+            const { factory, instances } = createMockWsFactory();
+            const client = createRoomClient(
+                { wsUrl: "ws://localhost/api/rooms/room1/ws" },
+                factory as unknown as (url: string) => WebSocket,
+            );
+            instances[0].emitOpen();
+
+            const sent: ServerMessage[] = [];
+            for (let eventId = 1; eventId <= 400; eventId++) {
+                sent.push(onlineEvent(eventId));
+            }
+            sent.push({
+                v: 1,
+                t: "event",
+                payload: {
+                    kind: "game_end",
+                    eventId: 401,
+                    serverTs: 0,
+                    result: { winner: "b", reason: "resign" },
+                    kifu: "",
+                    gameRecordId: "record-1",
+                },
+            });
+            for (const message of sent) instances[0].emitMessage(message);
+
+            const received: ServerMessage[] = [];
+            client.subscribe((msg) => received.push(msg));
+
+            expect(received).toEqual(sent);
+            expect(instances[0].sentMessages).toEqual([]);
+            client.disconnect();
+        });
+    });
 });

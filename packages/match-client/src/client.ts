@@ -26,6 +26,12 @@ export function createRoomClient(
     let lastKnownEventId = 0;
     let pingIntervalId: ReturnType<typeof setInterval> | null = null;
     const handlers = new Set<(msg: ServerMessage) => void>();
+    // 購読者がいない間に届いた event / snapshot。待機画面から対局画面へ購読者が
+    // 入れ替わる間にも対局は進むので、捨てずに次の購読者へ届いた順に渡す。
+    // 件数に上限は設けない: 捨てた分を取り直す手段がサーバーに無い（sync は差分が少ないと
+    // snapshot を返さず、終局後は直近のイベントしか残らない）ので、捨てると盤面を復元できない。
+    // 溜まるのは購読者が入れ替わる間に届いた分だけで、切断すれば空になる
+    let undelivered: ServerMessage[] = [];
 
     // wsUrl から roomId を抽出（sessionStorage のキー生成に使用）
     // 例: /api/rooms/abc123/ws → "abc123"
@@ -69,6 +75,13 @@ export function createRoomClient(
         // joined メッセージの resumeToken を sessionStorage に保存
         if (msg.t === "joined" && msg.payload.resumeToken && roomId) {
             storeResumeToken(roomId, msg.payload.resumeToken);
+        }
+
+        if (handlers.size === 0) {
+            if (msg.t === "event" || msg.t === "snapshot") {
+                undelivered.push(msg);
+            }
+            return;
         }
 
         for (const handler of handlers) {
@@ -198,6 +211,11 @@ export function createRoomClient(
 
         subscribe(handler) {
             handlers.add(handler);
+            const missed = undelivered;
+            undelivered = [];
+            for (const msg of missed) {
+                handler(msg);
+            }
             return () => handlers.delete(handler);
         },
 
@@ -211,6 +229,7 @@ export function createRoomClient(
             ws?.close();
             ws = null;
             handlers.clear();
+            undelivered = [];
         },
 
         getStatus() {

@@ -210,6 +210,10 @@ export interface SnapshotPayload {
     };
     spectators: number;
     settings: RoomSettings;
+    /** 終局済みの部屋でのみ付く */
+    result?: GameResult;
+    /** 棋譜が保存済みの場合のみ付く */
+    gameRecordId?: string;
 }
 
 // ─── エラーコード ─────────────────────────────────────────────────────────
