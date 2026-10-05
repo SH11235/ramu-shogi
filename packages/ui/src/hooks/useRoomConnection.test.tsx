@@ -151,4 +151,40 @@ describe("useRoomConnection", () => {
             gameRecordId: "record-1",
         });
     });
+
+    it("roomId が変わると前のルームの接続を切り、snapshot と対局フェーズを持ち越さない", () => {
+        const roomA = createMockClient();
+        const roomB = createMockClient();
+        mockGetStoredResumeToken.mockImplementation((roomId: string) =>
+            roomId === "room-a" ? "token-a" : null,
+        );
+        mockGetStoredSeat.mockImplementation((roomId: string) =>
+            roomId === "room-a" ? "b" : null,
+        );
+        mockCreateRoomClient.mockReturnValueOnce(roomA.client).mockReturnValue(roomB.client);
+
+        const { result, rerender } = renderHook(({ roomId }) => useRoomConnection({ roomId }), {
+            initialProps: { roomId: "room-a" },
+        });
+        act(() => {
+            roomA.emit({
+                v: 1,
+                t: "snapshot",
+                payload: { eventId: 7, status: "finished" },
+            });
+        });
+        expect(result.current.gamePhase).toBe("playing");
+
+        rerender({ roomId: "room-b" });
+
+        expect(roomA.client.disconnect).toHaveBeenCalled();
+        expect(result.current).toMatchObject({
+            snapshot: null,
+            joined: false,
+            gamePhase: "waiting",
+            client: null,
+            isJoining: false,
+            joinError: null,
+        });
+    });
 });

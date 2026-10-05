@@ -58,7 +58,8 @@ type JoinFormAction =
     | { type: "set_name"; name: string }
     | { type: "start_join"; seat: "b" | "w" | "s" }
     | { type: "joined" }
-    | { type: "error"; message: string };
+    | { type: "error"; message: string }
+    | { type: "room_changed" };
 
 function joinFormReducer(state: JoinFormState, action: JoinFormAction): JoinFormState {
     switch (action.type) {
@@ -70,6 +71,8 @@ function joinFormReducer(state: JoinFormState, action: JoinFormAction): JoinForm
             return { ...state, isJoining: false };
         case "error":
             return { ...state, isJoining: false, error: action.message };
+        case "room_changed":
+            return { ...state, isJoining: false, error: null };
     }
 }
 
@@ -94,7 +97,8 @@ type RoomAction =
           passRights?: PassRightsState | null;
       }
     | { type: "client_set"; client: RoomClient }
-    | { type: "client_cleared" };
+    | { type: "client_cleared" }
+    | { type: "room_changed" };
 
 const INITIAL_ROOM_STATE: RoomState = {
     snapshot: null,
@@ -129,6 +133,8 @@ function roomReducer(state: RoomState, action: RoomAction): RoomState {
             return { ...state, client: action.client };
         case "client_cleared":
             return { ...state, client: null };
+        case "room_changed":
+            return INITIAL_ROOM_STATE;
     }
 }
 
@@ -182,6 +188,7 @@ export function useRoomConnection({
     const [roomState, dispatchRoom] = useReducer(roomReducer, INITIAL_ROOM_STATE);
 
     const clientRef = useRef<RoomClient | null>(null);
+    const disposeConnectionRef = useRef<(() => void) | null>(null);
 
     const connectClient = ({
         timeoutMessage,
@@ -196,8 +203,8 @@ export function useRoomConnection({
             stopListening: () => void;
             fail: (message: string) => void;
         }) => void;
-    }): (() => void) => {
-        clientRef.current?.disconnect();
+    }): void => {
+        disposeConnectionRef.current?.();
 
         let isDisposed = false;
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -260,7 +267,7 @@ export function useRoomConnection({
             cleanup();
         }, 5_000);
 
-        return cleanup;
+        disposeConnectionRef.current = cleanup;
     };
 
     // ─── WebSocket 接続 + join 送信 ──────────────────────────────────────────
@@ -328,26 +335,27 @@ export function useRoomConnection({
         });
     };
 
-    // ─── アンマウント時 cleanup ───────────────────────────────────────────────
-
-    useEffect(() => {
-        return () => {
-            clientRef.current?.disconnect();
-        };
-    }, []);
-
-    // ─── ページロード時 resume 自動接続 ─────────────────────────────────────
+    // ─── ページロード時 resume 自動接続・ルームを離れる時の cleanup ─────────
 
     const connectClientEvent = useEffectEvent(connectClient);
 
     useEffect(() => {
+        // ルーターは roomId だけが変わる遷移でページを作り直さないので、
+        // 前のルームの接続と状態が次のルームに残らないようにする
+        const leaveRoom = (): void => {
+            disposeConnectionRef.current?.();
+            disposeConnectionRef.current = null;
+            dispatchRoom({ type: "room_changed" });
+            dispatchJoin({ type: "room_changed" });
+        };
+
         const token = getStoredResumeToken(roomId);
         const seat = getStoredSeat(roomId);
-        if (!token || !seat) return;
+        if (!token || !seat) return leaveRoom;
 
         dispatchJoin({ type: "start_join", seat });
 
-        return connectClientEvent({
+        connectClientEvent({
             timeoutMessage: "接続タイムアウト。再度参加してください。",
             onOpen: (client) => {
                 client.resume({ resumeToken: token, lastEventId: 0 });
@@ -379,6 +387,7 @@ export function useRoomConnection({
                 }
             },
         });
+        return leaveRoom;
     }, [roomId]);
 
     // ─── ヘルパー ─────────────────────────────────────────────────────────────

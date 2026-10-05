@@ -15,6 +15,7 @@ import type {
     AiSupportPlayerSettings,
     AiSupportSettings,
     ClockState,
+    ErrorCode,
     GameResult,
     PassRightsState,
     RoomClient,
@@ -72,6 +73,18 @@ function formatMs(ms: number): string {
     return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
+// サーバーに拒否された操作のうち、利用者がやり直せるものだけ案内する
+function rejectedCommandNotice(code: ErrorCode, seat: Seat): string | null {
+    if (code === "DESYNC") {
+        return "局面が更新されました。もう一度操作してください。";
+    }
+    // 対局者の席でこのエラーになるのは、同じ席を後から開いた別の接続が操作している場合
+    if (code === "SPECTATOR_FORBIDDEN" && seat !== "s") {
+        return "この席は別のタブまたはウィンドウで操作中です。そちらで対局を続けてください。";
+    }
+    return null;
+}
+
 // ─── ゲーム状態管理 ───────────────────────────────────────────────────────────
 
 interface GameState {
@@ -84,21 +97,32 @@ interface GameState {
     passRights: PassRightsState | null;
     myAnalysisRemaining: number | null;
     analysisLog: Array<{ seat: "b" | "w"; ply: number }>;
-    usiMoveLog: Array<{ usi: string; elapsedMs: number }>;
+    /** elapsedMs は対局中に受信した指し手にだけ付く（snapshot は消費時間を持たない） */
+    usiMoveLog: Array<{ usi: string; elapsedMs?: number }>;
     pendingTakeback: { seat: "b" | "w"; ply: number } | null;
+    /** 初期局面の読み込みより先に届いた指し手。読み込み後に順に適用する */
+    queuedMoves: MoveAction[];
+}
+
+interface MoveAction {
+    type: "move";
+    usi: string;
+    turn: "b" | "w";
+    clock: ClockState;
+    passRights: PassRightsState | null;
+}
+
+/** snapshot から復元した局面。history は指し手を再生できた場合の全局面（開始局面〜現局面） */
+interface RestoredPosition {
+    position: PositionState;
+    history: PositionState[] | null;
+    moves: string[];
 }
 
 type GameAction =
-    | { type: "init"; position: PositionState }
-    | {
-          type: "move";
-          usi: string;
-          turn: "b" | "w";
-          clock: ClockState;
-          passRights: PassRightsState | null;
-      }
+    | ({ type: "init" } & RestoredPosition)
+    | MoveAction
     | { type: "result"; result: GameResult }
-    | { type: "game_end"; result: GameResult }
     | { type: "player_offline"; seat: string }
     | { type: "player_online"; seat: string }
     | {
@@ -108,13 +132,12 @@ type GameAction =
           analysisRemaining: number | null;
           ply: number;
       }
-    | {
+    | ({
           type: "resync";
-          position: PositionState;
           turn: "b" | "w";
           clock: ClockState;
           passRights: PassRightsState | null;
-      }
+      } & RestoredPosition)
     | { type: "takeback_requested"; seat: "b" | "w"; ply: number }
     | {
           type: "takeback_accepted";
@@ -143,49 +166,92 @@ function makeInitialGameState(
         analysisLog: [],
         usiMoveLog: [],
         pendingTakeback: null,
+        queuedMoves: [],
     };
+}
+
+function applyMoveAction(state: GameState, action: MoveAction): GameState {
+    if (!state.position) {
+        return { ...state, queuedMoves: [...state.queuedMoves, action] };
+    }
+    // 消費時間: 動いた側の残り時間の差分（手番交代前の turn が動いた側）
+    const movedSeat = state.turn;
+    const elapsedMs = Math.max(
+        0,
+        state.clockState[movedSeat].remainMs - action.clock[movedSeat].remainMs,
+    );
+    // パス手は局面変化なし（手番のみ交代）。
+    // PositionState に passRights が未設定のため applyMoveWithState は使わない
+    const next =
+        action.usi === "pass"
+            ? {
+                  ...state.position,
+                  turn: state.position.turn === "sente" ? ("gote" as const) : ("sente" as const),
+              }
+            : applyMoveWithState(state.position, action.usi).next;
+    return {
+        ...state,
+        position: next,
+        positionHistory: [...state.positionHistory, next],
+        turn: action.turn,
+        clockState: action.clock,
+        passRights: action.passRights,
+        usiMoveLog: [...state.usiMoveLog, { usi: action.usi, elapsedMs }],
+    };
+}
+
+/**
+ * 開始局面から指し手を再生し、開始局面から現局面までの全局面を返す。
+ * snapshot は指し手の列しか持たないため、棋譜パネルと KIF 出力に要る各手の局面はここで作る。
+ * 再生できない指し手があれば null を返す。
+ */
+async function replayPositions(
+    startSfen: string,
+    moves: string[],
+    current: PositionState,
+): Promise<PositionState[] | null> {
+    if (moves.length === 0) return [current];
+    try {
+        let position = await getPositionService().parseSfen(startSfen);
+        const history: PositionState[] = [];
+        for (const usi of moves) {
+            history.push(position);
+            if (usi === "pass") {
+                position = { ...position, turn: position.turn === "sente" ? "gote" : "sente" };
+                continue;
+            }
+            const applied = applyMoveWithState(position, usi);
+            if (!applied.ok) return null;
+            position = applied.next;
+        }
+        return [...history, current];
+    } catch {
+        return null;
+    }
+}
+
+async function restorePosition(
+    sfen: string,
+    startSfen: string,
+    moves: string[],
+): Promise<RestoredPosition> {
+    const position = await getPositionService().parseSfen(sfen);
+    return { position, history: await replayPositions(startSfen, moves, position), moves };
 }
 
 function gameReducer(state: GameState, action: GameAction): GameState {
     switch (action.type) {
         case "init":
-            return {
+            return state.queuedMoves.reduce(applyMoveAction, {
                 ...state,
                 position: action.position,
-                positionHistory: [action.position],
-            };
-        case "move": {
-            if (!state.position) return state;
-            // 消費時間: 動いた側の残り時間の差分（手番交代前の turn が動いた側）
-            const movedSeat = state.turn;
-            const elapsedMs = Math.max(
-                0,
-                state.clockState[movedSeat].remainMs - action.clock[movedSeat].remainMs,
-            );
-            // パス手は局面変化なし（手番のみ交代）。
-            // PositionState に passRights が未設定のため applyMoveWithState は使わない
-            const next =
-                action.usi === "pass"
-                    ? {
-                          ...state.position,
-                          turn:
-                              state.position.turn === "sente"
-                                  ? ("gote" as const)
-                                  : ("sente" as const),
-                      }
-                    : applyMoveWithState(state.position, action.usi).next;
-            return {
-                ...state,
-                position: next,
-                positionHistory: [...state.positionHistory, next],
-                turn: action.turn,
-                clockState: action.clock,
-                passRights: action.passRights,
-                usiMoveLog: [...state.usiMoveLog, { usi: action.usi, elapsedMs }],
-            };
-        }
+                positionHistory: action.history ?? [action.position],
+                usiMoveLog: action.history ? action.moves.map((usi) => ({ usi })) : [],
+                queuedMoves: [],
+            });
+        case "move":
+            return applyMoveAction(state, action);
         case "result":
-        case "game_end":
             // 終局は終局イベント・game_end・棋譜 ID 付きの game_end・snapshot と複数回届く。
             // 最初の結果を保ち、gameResult に依存する処理が終局後に再実行されないようにする
             return state.gameResult ? state : { ...state, gameResult: action.result };
@@ -211,10 +277,16 @@ function gameReducer(state: GameState, action: GameAction): GameState {
             return {
                 ...state,
                 position: action.position,
-                positionHistory: [action.position],
+                positionHistory: action.history ?? [action.position],
                 turn: action.turn,
                 clockState: action.clock,
                 passRights: action.passRights,
+                usiMoveLog: action.history
+                    ? action.moves.map((usi, i) => {
+                          const known = state.usiMoveLog[i];
+                          return known?.usi === usi ? known : { usi };
+                      })
+                    : state.usiMoveLog,
             };
         case "takeback_requested":
             return { ...state, pendingTakeback: { seat: action.seat, ply: action.ply } };
@@ -426,18 +498,26 @@ export function OnlineGameView({
 
     useEffect(() => {
         let cancelled = false;
-        getPositionService()
-            .parseSfen(snapshot.sfen)
-            .then((pos) => {
+        restorePosition(snapshot.sfen, snapshot.settings.startSfen, snapshot.moves)
+            .then((restored) => {
                 if (!cancelled) {
-                    dispatch({ type: "init", position: pos });
+                    dispatch({ type: "init", ...restored });
                 }
             })
             .catch(console.error);
         return () => {
             cancelled = true;
         };
-    }, [snapshot.sfen]);
+    }, [snapshot.sfen, snapshot.settings.startSfen, snapshot.moves]);
+
+    // ─── サーバーに拒否された操作の案内 ──────────────────────────────────────
+
+    const [commandNotice, setCommandNotice] = useState<string | null>(null);
+    useEffect(() => {
+        if (!commandNotice) return;
+        const timerId = setTimeout(() => setCommandNotice(null), 5000);
+        return () => clearTimeout(timerId);
+    }, [commandNotice]);
 
     // ─── RoomClient サブスクライブ ────────────────────────────────────────────
 
@@ -445,10 +525,29 @@ export function OnlineGameView({
         const unsub = client.subscribe((msg) => {
             if (msg.t === "event") {
                 const e = msg.payload;
+                // 終局済みルームへ再接続すると、snapshot に反映済みのイベントが後から届く。
+                // 二重に適用しないよう、終局の通知以外は読み飛ばす
+                const alreadyApplied = e.eventId <= latestEventIdRef.current;
                 // すべてのイベントで latestEventId を更新する
                 // サーバーは指し手以外のイベントでも latestEventId を増加させるため
-                latestEventIdRef.current = e.eventId;
-                if (e.kind === "move") {
+                latestEventIdRef.current = Math.max(latestEventIdRef.current, e.eventId);
+                if (e.kind === "game_end") {
+                    if (e.gameRecordId) {
+                        gameRecordIdRef.current = e.gameRecordId;
+                    }
+                    dispatch({ type: "result", result: e.result });
+                } else if (
+                    e.kind === "resign" ||
+                    e.kind === "timeout" ||
+                    e.kind === "checkmate" ||
+                    e.kind === "sennichite" ||
+                    e.kind === "illegal_move" ||
+                    e.kind === "disconnect_loss"
+                ) {
+                    dispatch({ type: "result", result: e.result });
+                } else if (alreadyApplied) {
+                    return;
+                } else if (e.kind === "move") {
                     dispatch({
                         type: "move",
                         usi: e.usi,
@@ -469,20 +568,6 @@ export function OnlineGameView({
                     } else {
                         playSoundEvent("move_self");
                     }
-                } else if (
-                    e.kind === "resign" ||
-                    e.kind === "timeout" ||
-                    e.kind === "checkmate" ||
-                    e.kind === "sennichite" ||
-                    e.kind === "illegal_move" ||
-                    e.kind === "disconnect_loss"
-                ) {
-                    dispatch({ type: "result", result: e.result });
-                } else if (e.kind === "game_end") {
-                    if (e.gameRecordId) {
-                        gameRecordIdRef.current = e.gameRecordId;
-                    }
-                    dispatch({ type: "game_end", result: e.result });
                 } else if (e.kind === "player_offline") {
                     dispatch({ type: "player_offline", seat: e.seat });
                 } else if (e.kind === "player_online") {
@@ -529,12 +614,11 @@ export function OnlineGameView({
                 if (msg.payload.gameRecordId) {
                     gameRecordIdRef.current = msg.payload.gameRecordId;
                 }
-                getPositionService()
-                    .parseSfen(msg.payload.sfen)
-                    .then((pos) => {
+                restorePosition(msg.payload.sfen, startSfenRef.current, msg.payload.moves)
+                    .then((restored) => {
                         dispatch({
                             type: "resync",
-                            position: pos,
+                            ...restored,
                             turn: msg.payload.turn,
                             clock: msg.payload.clock,
                             passRights: msg.payload.passRights,
@@ -546,6 +630,15 @@ export function OnlineGameView({
                         // サーバーに再同期リクエストを送信して最新状態を取得する
                         client.sync({ sinceEventId: latestEventIdRef.current });
                     });
+            } else if (msg.t === "error") {
+                const notice = rejectedCommandNotice(msg.payload.code, seat);
+                if (notice) {
+                    setCommandNotice(notice);
+                }
+                if (msg.payload.code === "DESYNC") {
+                    // 見ている局面が古いと指し直しても通らないので、取りこぼしたイベントを取り直す
+                    client.sync({ sinceEventId: latestEventIdRef.current });
+                }
             }
         });
         return unsub;
@@ -1128,6 +1221,12 @@ export function OnlineGameView({
                             取り消す
                         </button>
                     </div>
+                )}
+
+                {commandNotice && (
+                    <p role="alert" className="text-sm text-destructive">
+                        {commandNotice}
+                    </p>
                 )}
 
                 {/* 操作ボタン */}

@@ -370,6 +370,7 @@ export default function RoomPage(): ReactElement {
     if (gamePhase === "playing" && snapshot && client) {
         return (
             <OnlineGameView
+                key={roomId}
                 client={client}
                 snapshot={snapshot}
                 seat={joinSeat as Seat}

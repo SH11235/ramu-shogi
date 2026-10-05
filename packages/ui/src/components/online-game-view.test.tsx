@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockUseIsMobile = vi.fn(() => false);
+const mockGetLegalMoves = vi.fn<() => Promise<string[]>>();
 
 // 重量依存をモック
 vi.mock("@shogi/app-core", async () => {
@@ -14,10 +15,11 @@ vi.mock("@shogi/app-core", async () => {
                 board: {},
                 hands: { sente: {}, gote: {} },
             }),
-            getLegalMoves: vi.fn().mockResolvedValue([]),
+            getLegalMoves: mockGetLegalMoves,
             boardToSfen: vi.fn().mockResolvedValue("startpos"),
         }),
         applyMoveWithState: vi.fn().mockReturnValue({
+            ok: true,
             next: { board: {}, hands: { sente: {}, gote: {} } },
         }),
     };
@@ -129,6 +131,22 @@ function makeFinishedSnapshot(overrides: Partial<SnapshotPayload> = {}): Snapsho
     });
 }
 
+function eventMessage(payload: Extract<ServerMessage, { t: "event" }>["payload"]): ServerMessage {
+    return { v: 1, t: "event", payload };
+}
+
+function moveMessage(eventId: number, usi: string, turn: "b" | "w"): ServerMessage {
+    return eventMessage({
+        kind: "move",
+        eventId,
+        serverTs: 0,
+        usi,
+        turn,
+        clock: makeSnapshot().clock,
+        passRights: null,
+    });
+}
+
 function gameEndMessage(eventId: number, gameRecordId?: string): ServerMessage {
     return {
         v: 1,
@@ -158,6 +176,7 @@ describe("OnlineGameView", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockUseIsMobile.mockReturnValue(false);
+        mockGetLegalMoves.mockResolvedValue([]);
     });
 
     it("観戦者には投了ボタンが表示されない", () => {
@@ -431,6 +450,312 @@ describe("OnlineGameView", () => {
                 moves: FINAL_MOVES,
                 gameRecordId: "record-1",
             });
+        });
+
+        it("対局中に投了 → game_end → 棋譜 ID 付き game_end と届いても終局表示は 1 つで、棋譜 ID は最後に加わる", async () => {
+            const { client, emit } = makeSubscribableClient();
+            const onStartReview = vi.fn();
+            render(
+                <OnlineGameView
+                    client={client}
+                    snapshot={makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" })}
+                    seat="b"
+                    roomId="test-room"
+                    onStartReview={onStartReview}
+                />,
+            );
+
+            await emit(
+                eventMessage({
+                    kind: "resign",
+                    eventId: 6,
+                    serverTs: 0,
+                    seat: "w",
+                    result: RESIGN_RESULT,
+                }),
+            );
+            await emit(gameEndMessage(7));
+            expect(startReview(onStartReview)).toMatchObject({ gameRecordId: null });
+
+            await emit(gameEndMessage(8, "record-1"));
+            expect(screen.getAllByText("Alice の勝ち")).toHaveLength(1);
+            expect(startReview(onStartReview)).toMatchObject({
+                moves: FINAL_MOVES,
+                gameRecordId: "record-1",
+            });
+        });
+
+        it("終局済み snapshot の後に再送された終局イベント列から棋譜 ID を得る", async () => {
+            const { client, emit } = makeSubscribableClient();
+            const onStartReview = vi.fn();
+            render(
+                <OnlineGameView
+                    client={client}
+                    snapshot={makeFinishedSnapshot({ eventId: 8, result: RESIGN_RESULT })}
+                    seat="b"
+                    roomId="test-room"
+                    onStartReview={onStartReview}
+                />,
+            );
+
+            await emit(
+                eventMessage({
+                    kind: "resign",
+                    eventId: 6,
+                    serverTs: 0,
+                    seat: "w",
+                    result: RESIGN_RESULT,
+                }),
+            );
+            await emit(gameEndMessage(7));
+            await emit(gameEndMessage(8, "record-1"));
+
+            expect(screen.getAllByText("Alice の勝ち")).toHaveLength(1);
+            expect(startReview(onStartReview)).toMatchObject({
+                moves: FINAL_MOVES,
+                gameRecordId: "record-1",
+            });
+        });
+
+        it("購読開始時にまとめて渡された棋譜 ID 付き game_end を取りこぼさない", async () => {
+            const missed = gameEndMessage(8, "record-1");
+            const client = makeMockClient({
+                subscribe: vi.fn((handler: (message: ServerMessage) => void) => {
+                    handler(missed);
+                    return () => {};
+                }),
+            });
+            const onStartReview = vi.fn();
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={makeFinishedSnapshot({ result: RESIGN_RESULT })}
+                        seat="b"
+                        roomId="test-room"
+                        onStartReview={onStartReview}
+                    />,
+                );
+            });
+
+            expect(startReview(onStartReview)).toMatchObject({ gameRecordId: "record-1" });
+        });
+
+        it("棋譜 ID の無い game_end が 1 回だけ届くルームでは棋譜 ID は null のまま", async () => {
+            const { client, emit } = makeSubscribableClient();
+            const onStartReview = vi.fn();
+            render(
+                <OnlineGameView
+                    client={client}
+                    snapshot={makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" })}
+                    seat="b"
+                    roomId="test-room"
+                    onStartReview={onStartReview}
+                />,
+            );
+
+            await emit(gameEndMessage(6));
+
+            expect(screen.getAllByText("Alice の勝ち")).toHaveLength(1);
+            expect(startReview(onStartReview)).toMatchObject({
+                moves: FINAL_MOVES,
+                gameRecordId: null,
+            });
+        });
+    });
+
+    describe("指し手の記録", () => {
+        it("snapshot の指し手から棋譜パネルと KIF の出力を復元する", async () => {
+            const writeText = vi.fn().mockResolvedValue(undefined);
+            vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={makeMockClient()}
+                        snapshot={makeFinishedSnapshot({ result: RESIGN_RESULT })}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                );
+            });
+
+            expect(screen.queryByText("まだ指し手がありません")).toBeNull();
+            expect(screen.getByText("3.")).toBeTruthy();
+            expect(screen.queryByText("4.")).toBeNull();
+
+            fireEvent.click(screen.getByRole("button", { name: "棋譜をコピー" }));
+            const kif: string = writeText.mock.lastCall?.[0];
+            expect(kif.split("\n").filter((line) => /^ +\d+ /.test(line))).toHaveLength(3);
+            vi.unstubAllGlobals();
+        });
+
+        it("snapshot に含まれる指し手のイベントが再び届いても記録を増やさない", async () => {
+            const { client, emit } = makeSubscribableClient();
+            const onStartReview = vi.fn();
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" })}
+                        seat="b"
+                        roomId="test-room"
+                        onStartReview={onStartReview}
+                    />,
+                );
+            });
+
+            await emit(moveMessage(5, "8h2b+", "w"));
+            expect(screen.queryByText("4.")).toBeNull();
+
+            await emit(moveMessage(6, "3a2b", "b"));
+            expect(screen.getByText("4.")).toBeTruthy();
+            expect(screen.queryByText("5.")).toBeNull();
+
+            await emit(gameEndMessage(7));
+            expect(startReview(onStartReview)).toMatchObject({
+                moves: [...FINAL_MOVES, "3a2b"],
+            });
+        });
+
+        it("初期局面の読み込みより先に届いた指し手を読み込み後に反映する", async () => {
+            const firstMove = moveMessage(6, "3a2b", "b");
+            const client = makeMockClient({
+                subscribe: vi.fn((handler: (message: ServerMessage) => void) => {
+                    handler(firstMove);
+                    return () => {};
+                }),
+            });
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" })}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                );
+            });
+
+            expect(screen.getByText("4.")).toBeTruthy();
+        });
+    });
+
+    describe("詰みの自動申告", () => {
+        it("自分の手番で合法手が無ければ checkmate を送る", async () => {
+            const client = makeMockClient();
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={makeSnapshot({ turn: "b" })}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                );
+            });
+
+            expect(client.checkmate).toHaveBeenCalled();
+        });
+
+        it("終局済みの snapshot で開いたときは手番側でも checkmate を送らない", async () => {
+            const client = makeMockClient();
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={makeFinishedSnapshot({ turn: "b", result: RESIGN_RESULT })}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                );
+            });
+
+            expect(client.checkmate).not.toHaveBeenCalled();
+        });
+
+        it("対局中に終局済みの snapshot が届いても手番側は checkmate を送らない", async () => {
+            const { client, emit } = makeSubscribableClient();
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={makeSnapshot({ turn: "w" })}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                );
+            });
+
+            await emit({
+                v: 1,
+                t: "snapshot",
+                payload: makeFinishedSnapshot({ turn: "b", result: RESIGN_RESULT }),
+            });
+
+            expect(client.checkmate).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("サーバーに拒否された操作", () => {
+        function errorMessage(code: "DESYNC" | "SPECTATOR_FORBIDDEN" | "ROOM_FINISHED") {
+            return { v: 1, t: "error", payload: { code, message: "" } } satisfies ServerMessage;
+        }
+
+        it("DESYNC ではやり直しを案内し、取りこぼしたイベントを取り直す", async () => {
+            const { client, emit } = makeSubscribableClient();
+            render(
+                <OnlineGameView
+                    client={client}
+                    snapshot={makeSnapshot({ eventId: 5 })}
+                    seat="b"
+                    roomId="test-room"
+                />,
+            );
+
+            await emit(errorMessage("DESYNC"));
+
+            expect(screen.getByRole("alert").textContent).toBe(
+                "局面が更新されました。もう一度操作してください。",
+            );
+            expect(client.sync).toHaveBeenCalledWith({ sinceEventId: 5 });
+            expect(client.disconnect).not.toHaveBeenCalled();
+        });
+
+        it("対局者の席で SPECTATOR_FORBIDDEN を受けたら別のタブで操作中だと案内する", async () => {
+            const { client, emit } = makeSubscribableClient();
+            render(
+                <OnlineGameView
+                    client={client}
+                    snapshot={makeSnapshot()}
+                    seat="b"
+                    roomId="test-room"
+                />,
+            );
+
+            await emit(errorMessage("SPECTATOR_FORBIDDEN"));
+
+            expect(screen.getByRole("alert").textContent).toBe(
+                "この席は別のタブまたはウィンドウで操作中です。そちらで対局を続けてください。",
+            );
+            expect(client.sync).not.toHaveBeenCalled();
+            expect(client.disconnect).not.toHaveBeenCalled();
+        });
+
+        it("案内の対象でないエラーでは何も表示しない", async () => {
+            const { client, emit } = makeSubscribableClient();
+            render(
+                <OnlineGameView
+                    client={client}
+                    snapshot={makeSnapshot()}
+                    seat="s"
+                    roomId="test-room"
+                />,
+            );
+
+            await emit(errorMessage("ROOM_FINISHED"));
+            await emit(errorMessage("SPECTATOR_FORBIDDEN"));
+
+            expect(screen.queryByRole("alert")).toBeNull();
         });
     });
 });
