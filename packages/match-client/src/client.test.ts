@@ -415,7 +415,7 @@ describe("createRoomClient", () => {
             expect(received).toEqual([]);
         });
 
-        it("保持できる件数を超えたら一部だけ渡さず、最後に渡したイベントの後を sync で取り直す", () => {
+        it("購読者がいない間に対局が終わるほど多く届いても、指し手から終局まで欠けずに渡す", () => {
             const { factory, instances } = createMockWsFactory();
             const client = createRoomClient(
                 { wsUrl: "ws://localhost/api/rooms/room1/ws" },
@@ -423,24 +423,29 @@ describe("createRoomClient", () => {
             );
             instances[0].emitOpen();
 
-            const unsubscribe = client.subscribe(() => {});
-            instances[0].emitMessage(onlineEvent(7));
-            unsubscribe();
-            for (let eventId = 8; eventId <= 8 + 300; eventId++) {
-                instances[0].emitMessage(onlineEvent(eventId));
+            const sent: ServerMessage[] = [];
+            for (let eventId = 1; eventId <= 400; eventId++) {
+                sent.push(onlineEvent(eventId));
             }
+            sent.push({
+                v: 1,
+                t: "event",
+                payload: {
+                    kind: "game_end",
+                    eventId: 401,
+                    serverTs: 0,
+                    result: { winner: "b", reason: "resign" },
+                    kifu: "",
+                    gameRecordId: "record-1",
+                },
+            });
+            for (const message of sent) instances[0].emitMessage(message);
 
             const received: ServerMessage[] = [];
             client.subscribe((msg) => received.push(msg));
 
-            expect(received).toEqual([]);
-            const sent = instances[0].sentMessages.map((raw) => JSON.parse(raw));
-            expect(sent.filter((msg) => msg.t === "sync")).toEqual([
-                expect.objectContaining({ t: "sync", payload: { sinceEventId: 7 } }),
-            ]);
-
-            instances[0].emitMessage(onlineEvent(400));
-            expect(received).toEqual([onlineEvent(400)]);
+            expect(received).toEqual(sent);
+            expect(instances[0].sentMessages).toEqual([]);
             client.disconnect();
         });
     });

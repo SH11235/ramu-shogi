@@ -113,7 +113,7 @@ interface UIState {
 
 type UIAction =
     | { type: "move_received" } // selectedSquare, selectedHand, legalMoves を一括リセット
-    | { type: "resync_received" } // navIndex をリセット
+    | { type: "resync_received" } // 選択・成り選択・合法手・navIndex を一括リセット
     | { type: "clear_selection" } // selectedSquare, selectedHand を一括リセット
     | { type: "select_square"; squareId: string | null }
     | { type: "select_hand"; pieceType: PieceType | null }
@@ -138,7 +138,14 @@ function uiReducer(state: UIState, action: UIAction): UIState {
         case "move_received":
             return { ...state, selectedSquare: null, selectedHand: null, legalMoves: [] };
         case "resync_received":
-            return { ...state, navIndex: null };
+            return {
+                ...state,
+                selectedSquare: null,
+                selectedHand: null,
+                legalMoves: [],
+                promoteDialog: null,
+                navIndex: null,
+            };
         case "clear_selection":
             return { ...state, selectedSquare: null, selectedHand: null };
         case "select_square":
@@ -313,13 +320,21 @@ export function OnlineGameView({
     const incomingRef = useRef<SerialQueue<Incoming> | null>(null);
     const initialSnapshotRef = useRef(snapshot);
     const isListeningRef = useRef(false);
+    const hasBaselineRef = useRef(false);
+    const [loadFailed, setLoadFailed] = useState(false);
 
     const applyIncoming = useEffectEvent((incoming: Incoming): void | Promise<void> => {
         if (incoming.t === "snapshot") {
             const { payload, initial } = incoming;
-            return restorePosition(payload).then(
+            // 画面を開いたときの snapshot を復元できないと盤面を出せないので、1 度だけやり直す
+            const restoring = initial
+                ? restorePosition(payload).catch(() => restorePosition(payload))
+                : restorePosition(payload);
+            return restoring.then(
                 (restored) => {
                     if (!isListeningRef.current) return;
+                    hasBaselineRef.current = true;
+                    setLoadFailed(false);
                     appliedEventIdRef.current = payload.eventId;
                     startSfenRef.current = resolveStartSfen(payload.settings.startSfen);
                     movesRef.current = [...payload.moves];
@@ -345,7 +360,11 @@ export function OnlineGameView({
                 },
                 (err) => {
                     console.error("[OnlineGameView] Failed to parse SFEN from snapshot:", err);
-                    if (!isListeningRef.current || initial) return;
+                    if (!isListeningRef.current) return;
+                    if (initial) {
+                        setLoadFailed(true);
+                        return;
+                    }
                     // サーバーに再同期リクエストを送信して最新状態を取得する
                     client.sync({ sinceEventId: appliedEventIdRef.current });
                 },
@@ -358,6 +377,7 @@ export function OnlineGameView({
         const alreadyApplied = e.eventId <= appliedEventIdRef.current;
         // サーバーは指し手以外のイベントでもイベント番号を増やすので、すべてのイベントで更新する
         const markApplied = (): void => {
+            if (!hasBaselineRef.current) return;
             appliedEventIdRef.current = Math.max(appliedEventIdRef.current, e.eventId);
         };
 
@@ -375,7 +395,8 @@ export function OnlineGameView({
             e.kind === "disconnect_loss"
         ) {
             dispatch({ type: "result", result: e.result });
-        } else if (alreadyApplied) {
+        } else if (alreadyApplied || !hasBaselineRef.current) {
+            // 局面を復元できていない間は反映できない。番号も進めず、後から届く snapshot に任せる
             return;
         } else if (e.kind === "takeback_accepted") {
             return getPositionService()
@@ -478,7 +499,9 @@ export function OnlineGameView({
             : {};
         let cancelled = false;
         void (async () => {
-            if (isMyTurn && !gameResult && !isRewound) {
+            // position に依存させる: 手番が変わらないまま局面だけ変わる再同期でも、
+            // 反映し終えた局面の合法手を取り直す
+            if (position && isMyTurn && !gameResult && !isRewound) {
                 try {
                     const moves = await getPositionService().getLegalMoves(
                         startSfenRef.current,
@@ -503,7 +526,7 @@ export function OnlineGameView({
         return () => {
             cancelled = true;
         };
-    }, [isMyTurn, gameResult, isRewound, passRights, client]);
+    }, [isMyTurn, gameResult, isRewound, passRights, client, position]);
 
     // ─── 棋譜ナビゲーションハンドラ ───────────────────────────────────────────
 
@@ -1034,9 +1057,11 @@ export function OnlineGameView({
                     </div>
                 )}
 
-                {commandNotice && (
+                {(loadFailed || commandNotice) && (
                     <p role="alert" className="text-sm text-destructive">
-                        {commandNotice.text}
+                        {loadFailed
+                            ? "局面を読み込めませんでした。ページを再読み込みしてください。"
+                            : commandNotice?.text}
                     </p>
                 )}
 

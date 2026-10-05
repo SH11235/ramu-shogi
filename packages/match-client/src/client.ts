@@ -3,9 +3,6 @@ import type { ClientMessageType, RoomClient, RoomClientOptions, ServerMessage } 
 
 type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "disconnected";
 
-// 購読者がいない時間は画面の切り替えの間だけなので、通常は数件しか溜まらない
-const MAX_UNDELIVERED_MESSAGES = 256;
-
 // WebSocket コンストラクタの型（テスト時のインジェクション対応）
 type WebSocketFactory = (url: string) => WebSocket;
 
@@ -30,12 +27,11 @@ export function createRoomClient(
     let pingIntervalId: ReturnType<typeof setInterval> | null = null;
     const handlers = new Set<(msg: ServerMessage) => void>();
     // 購読者がいない間に届いた event / snapshot。待機画面から対局画面へ購読者が
-    // 入れ替わる間にも対局は進むので、捨てずに次の購読者へ届いた順に渡す
+    // 入れ替わる間にも対局は進むので、捨てずに次の購読者へ届いた順に渡す。
+    // 件数に上限は設けない: 捨てた分を取り直す手段がサーバーに無い（sync は差分が少ないと
+    // snapshot を返さず、終局後は直近のイベントしか残らない）ので、捨てると盤面を復元できない。
+    // 溜まるのは購読者が入れ替わる間に届いた分だけで、切断すれば空になる
     let undelivered: ServerMessage[] = [];
-    // 一部だけ捨てると途中のイベントが欠けた列を渡すことになるので、上限を超えたら
-    // すべて捨て、次の購読者には最後に渡したイベントより後をサーバーから取り直させる
-    let undeliveredOverflowed = false;
-    let lastDeliveredEventId = 0;
 
     // wsUrl から roomId を抽出（sessionStorage のキー生成に使用）
     // 例: /api/rooms/abc123/ws → "abc123"
@@ -82,26 +78,13 @@ export function createRoomClient(
         }
 
         if (handlers.size === 0) {
-            if (undeliveredOverflowed || (msg.t !== "event" && msg.t !== "snapshot")) {
-                return;
+            if (msg.t === "event" || msg.t === "snapshot") {
+                undelivered.push(msg);
             }
-            if (undelivered.length >= MAX_UNDELIVERED_MESSAGES) {
-                undelivered = [];
-                undeliveredOverflowed = true;
-                return;
-            }
-            undelivered.push(msg);
             return;
         }
 
-        deliver(msg, handlers);
-    }
-
-    function deliver(msg: ServerMessage, to: Iterable<(msg: ServerMessage) => void>): void {
-        if (msg.t === "event" || msg.t === "snapshot") {
-            lastDeliveredEventId = msg.payload.eventId;
-        }
-        for (const handler of to) {
+        for (const handler of handlers) {
             handler(msg);
         }
     }
@@ -231,11 +214,7 @@ export function createRoomClient(
             const missed = undelivered;
             undelivered = [];
             for (const msg of missed) {
-                deliver(msg, [handler]);
-            }
-            if (undeliveredOverflowed) {
-                undeliveredOverflowed = false;
-                send("sync", { sinceEventId: lastDeliveredEventId });
+                handler(msg);
             }
             return () => handlers.delete(handler);
         },
@@ -251,7 +230,6 @@ export function createRoomClient(
             ws = null;
             handlers.clear();
             undelivered = [];
-            undeliveredOverflowed = false;
         },
 
         getStatus() {

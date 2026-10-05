@@ -6,7 +6,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mockUseIsMobile = vi.fn(() => false);
 const mockGetLegalMoves = vi.fn<(sfen: string, moves?: string[]) => Promise<string[]>>();
 
-const PARSED_POSITION = { board: {}, hands: { sente: {}, gote: {} } };
+const PARSED_POSITION = {
+    board: { "7g": { owner: "sente", type: "P" } },
+    hands: { sente: {}, gote: {} },
+};
 const mockParseSfen = vi.fn<(sfen: string) => Promise<typeof PARSED_POSITION>>();
 
 /** 局面の解析が終わる時点をテストから決めるための保留中の解析。SFEN ごとに 1 つ */
@@ -24,7 +27,9 @@ function holdParsing(): {
             let settle: (ok: boolean) => void = () => {};
             const promise = new Promise<typeof PARSED_POSITION>((resolve, reject) => {
                 settle = (ok) =>
-                    ok ? resolve(PARSED_POSITION) : reject(new Error("parse failed"));
+                    ok
+                        ? resolve(structuredClone(PARSED_POSITION))
+                        : reject(new Error("parse failed"));
             });
             entry = { promise, settle };
             held.set(sfen, entry);
@@ -56,7 +61,23 @@ vi.mock("@shogi/app-core", async () => {
     };
 });
 
-vi.mock("./shogi-board", () => ({ ShogiBoard: () => <div data-testid="shogi-board" /> }));
+vi.mock("./shogi-board", () => ({
+    ShogiBoard: ({
+        selectedSquare,
+        onSelect,
+    }: {
+        selectedSquare?: string | null;
+        onSelect?: (square: string) => void;
+    }) => (
+        <div data-testid="shogi-board" data-selected={selectedSquare ?? ""}>
+            {["7g", "7f"].map((square) => (
+                <button key={square} type="button" onClick={() => onSelect?.(square)}>
+                    {`マス ${square}`}
+                </button>
+            ))}
+        </div>
+    ),
+}));
 vi.mock("./shogi-match/components/HandPiecesDisplay", () => ({
     HandPiecesDisplay: () => null,
 }));
@@ -212,7 +233,7 @@ describe("OnlineGameView", () => {
         vi.clearAllMocks();
         mockUseIsMobile.mockReturnValue(false);
         mockGetLegalMoves.mockResolvedValue([]);
-        mockParseSfen.mockResolvedValue(PARSED_POSITION);
+        mockParseSfen.mockImplementation(async () => structuredClone(PARSED_POSITION));
     });
 
     it("観戦者には投了ボタンが表示されない", () => {
@@ -989,6 +1010,172 @@ describe("OnlineGameView", () => {
             await parsing.fail(RESYNC_SFEN);
 
             expect(client.sync).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("再同期後の操作", () => {
+        const clickSquare = (square: string): void => {
+            fireEvent.click(screen.getByRole("button", { name: `マス ${square}` }));
+        };
+        const selectedSquare = (): string | undefined =>
+            screen.getByTestId("shogi-board").dataset.selected;
+
+        function takebackAccepted(eventId: number): ServerMessage {
+            return eventMessage({
+                kind: "takeback_accepted",
+                eventId,
+                serverTs: 0,
+                sfen: "9/9/9/9/9/9/9/9/9 b - 1",
+                turn: "b",
+                clock: makeSnapshot().clock,
+                passRights: null,
+            });
+        }
+
+        it("手番が同じまま 2 手進んだ snapshot を受けたら、選択を解除し新しい局面の合法手を使う", async () => {
+            mockGetLegalMoves.mockImplementation(async (_sfen, moves) =>
+                moves?.length === 2 ? ["7g7f"] : ["7g7f+"],
+            );
+            const { client, emit } = makeSubscribableClient();
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={makeSnapshot({
+                            eventId: 5,
+                            moves: FINAL_MOVES.slice(0, 2),
+                            turn: "b",
+                        })}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                );
+            });
+            clickSquare("7g");
+            expect(selectedSquare()).toBe("7g");
+
+            const advanced = [...FINAL_MOVES.slice(0, 2), "8h2b+", "3a2b"];
+            await emit({
+                v: 1,
+                t: "snapshot",
+                payload: makeSnapshot({ eventId: 7, moves: advanced, turn: "b" }),
+            });
+
+            expect(selectedSquare()).toBe("");
+            expect(mockGetLegalMoves).toHaveBeenLastCalledWith("startpos", advanced, {});
+
+            // 古い局面でだけ合法だった 7g7f は送らず、新しい局面の合法手 7g7f+ を送る
+            clickSquare("7g");
+            await act(async () => {
+                clickSquare("7f");
+            });
+            expect(client.move).toHaveBeenCalledTimes(1);
+            expect(client.move).toHaveBeenCalledWith({
+                eventId: 7,
+                usi: "7g7f+",
+                sfen: "startpos",
+            });
+        });
+
+        it("再接続の snapshot を反映した後の投了には、その snapshot のイベント番号を付ける", async () => {
+            const { client, emit } = makeSubscribableClient();
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={makeSnapshot({ eventId: 5, turn: "b" })}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                );
+            });
+
+            await emit({
+                v: 1,
+                t: "snapshot",
+                payload: makeSnapshot({ eventId: 10, turn: "b" }),
+            });
+            fireEvent.click(screen.getByRole("button", { name: "投了" }));
+
+            expect(client.resign).toHaveBeenCalledWith({ eventId: 10 });
+        });
+
+        it("待ったを反映した後の投了には、待ったのイベント番号を付ける", async () => {
+            const { client, emit } = makeSubscribableClient();
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" })}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                );
+            });
+
+            await emit(takebackAccepted(12));
+            fireEvent.click(screen.getByRole("button", { name: "投了" }));
+
+            expect(client.resign).toHaveBeenCalledWith({ eventId: 12 });
+        });
+    });
+
+    describe("画面を開いたときの局面の読み込み失敗", () => {
+        const LOAD_FAILED = "局面を読み込めませんでした。ページを再読み込みしてください。";
+
+        it("1 度失敗しても、やり直して読み込めれば案内を出さない", async () => {
+            mockParseSfen.mockRejectedValueOnce(new Error("parse failed"));
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={makeMockClient()}
+                        snapshot={makeSnapshot({ moves: FINAL_MOVES })}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                );
+            });
+
+            expect(screen.queryByRole("alert")).toBeNull();
+            expect(screen.getByText("3.")).toBeTruthy();
+        });
+
+        it("やり直しても読み込めなければ案内を出し、イベント番号を進めず、次の snapshot で復帰する", async () => {
+            const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+            mockParseSfen.mockRejectedValue(new Error("parse failed"));
+            const { client, emit } = makeSubscribableClient();
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" })}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                );
+            });
+            expect(screen.getByRole("alert").textContent).toBe(LOAD_FAILED);
+
+            await emit(moveMessage(6, "3a2b", "b"));
+            await emit(errorMessage("DESYNC"));
+            expect(client.sync).toHaveBeenLastCalledWith({ sinceEventId: 5 });
+            expect(client.disconnect).not.toHaveBeenCalled();
+
+            mockParseSfen.mockImplementation(async () => structuredClone(PARSED_POSITION));
+            await emit({
+                v: 1,
+                t: "snapshot",
+                payload: makeSnapshot({ eventId: 6, moves: [...FINAL_MOVES, "3a2b"], turn: "b" }),
+            });
+            await act(async () => {
+                vi.useFakeTimers();
+                vi.advanceTimersByTime(6000);
+                vi.useRealTimers();
+            });
+
+            expect(screen.queryByText(LOAD_FAILED)).toBeNull();
+            expect(screen.getByText("4.")).toBeTruthy();
+            errorLog.mockRestore();
         });
     });
 

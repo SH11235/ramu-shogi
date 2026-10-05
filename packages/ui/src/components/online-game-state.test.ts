@@ -178,8 +178,14 @@ describe("gameReducer", () => {
 
 describe("resolveStartSfen", () => {
     it("駒落ちプリセットの名前を局面に展開し、それ以外はそのまま返す", () => {
+        expect(resolveStartSfen("handicap:bishop")).toBe(
+            "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+        );
         expect(resolveStartSfen("handicap:rook")).toBe(
             "lnsgkgsnl/7b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+        );
+        expect(resolveStartSfen("handicap:rook-bishop")).toBe(
+            "lnsgkgsnl/9/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
         );
         expect(resolveStartSfen("startpos")).toBe("startpos");
         expect(resolveStartSfen("9/9/9/9/9/9/9/9/9 b - 1")).toBe("9/9/9/9/9/9/9/9/9 b - 1");

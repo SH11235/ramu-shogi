@@ -14,6 +14,7 @@ import {
 } from "@shogi/ui/components/online-game-state";
 import { parseKif, parseSfen } from "@shogi/ui/components/shogi-match/utils/kifParser";
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import legacyRoomDoSource from "../../../worker/room-do.ts?raw";
 
 // テスト設定は engine-wasm が読み込む pkg をモックに差し替えるので、実物を直接読み込んで渡す。
 // pkg と node:fs を式や文字列で指すのは、pkg が無い状態でも通る型検査と、
@@ -228,14 +229,26 @@ describe("オンライン対局の状態（実物の Wasm 局面サービス）"
         });
     });
 
-    it("駒落ちプリセットは名前のままでは解析できず、展開した局面なら合法手を得られる", async () => {
-        await expect(service.getLegalMoves("handicap:bishop", [])).rejects.toBeDefined();
-        await expect(service.parseSfen("handicap:bishop")).rejects.toBeDefined();
+    const PRESETS = ["handicap:bishop", "handicap:rook", "handicap:rook-bishop"];
 
-        for (const preset of ["handicap:bishop", "handicap:rook", "handicap:rook-bishop"]) {
-            const legalMoves = await service.getLegalMoves(resolveStartSfen(preset), []);
-            expect(legalMoves.length).toBeGreaterThan(0);
-            expect((await service.parseSfen(resolveStartSfen(preset))).turn).toBe("gote");
+    it("駒落ちプリセットは名前のままでは解析できない", async () => {
+        for (const preset of PRESETS) {
+            await expect(service.getLegalMoves(preset, [])).rejects.toBeDefined();
+            await expect(service.parseSfen(preset)).rejects.toBeDefined();
         }
+    });
+
+    it.each(PRESETS)("%s は展開した局面から上手（後手）が指し始められる", async (preset) => {
+        const resolved = resolveStartSfen(preset);
+
+        expect((await service.parseSfen(resolved)).turn).toBe("gote");
+        expect(await service.getLegalMoves(resolved, [])).toContain("3c3d");
+        const state = await restore(await makeSnapshot(preset, ["3c3d", "7g7f"]));
+        expect(state.usiMoveLog).toHaveLength(2);
+        expect(state.positionHistory).toHaveLength(3);
+    });
+
+    it.each(PRESETS)("%s の展開先は Worker の RoomDO の定義と一致する", (preset) => {
+        expect(legacyRoomDoSource).toContain(`"${preset}": "${resolveStartSfen(preset)}"`);
     });
 });
