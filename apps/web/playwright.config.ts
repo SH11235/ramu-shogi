@@ -12,6 +12,8 @@ const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:8787";
 export default defineConfig({
     testDir: "./src",
     testMatch: "**/*.e2e.ts",
+    // 両 Worker を起動して実行するスイート。playwright.room.config.ts から実行する
+    testIgnore: "**/*.room.e2e.ts",
     fullyParallel: false, // 2 タブ対戦テストのため直列実行
     forbidOnly: !!process.env.CI,
     retries: process.env.CI ? 1 : 0,

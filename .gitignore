@@ -62,4 +62,4 @@ kif/*.kif
 apps/web/.env.production
 apps/web/.wrangler/state/
 apps/web/.wrangler/tmp/
-
+apps/web/.wrangler/room-dev/

@@ -1,7 +1,7 @@
 import type { ApiErrorResponse, CreateRoomRequest, CreateRoomResponse } from "@shogi/api-contract";
 import type { RoomSettings } from "@shogi/match-protocol";
 
-// REST API: POST /api/rooms, GET /api/rooms/:roomId
+// frontend Worker 内の RoomDO で処理する REST API: POST /api/rooms, GET /api/rooms/:roomId
 
 // Cloudflare Workers Rate Limiting API の型定義
 interface RateLimiter {
@@ -14,6 +14,29 @@ export interface Env {
     ROOM: DurableObjectNamespace;
     /** POST /api/rooms の IP ごとのレート制限。wrangler.toml で設定 */
     ROOM_RATE_LIMITER?: RateLimiter;
+}
+
+export type RoomBackend = "legacy" | "backend";
+
+let warnedInvalidRoomBackend = false;
+
+/**
+ * ROOM_BACKEND の値からルームの処理先を決める。
+ * 未設定や想定外の値は、設定ミスで処理先が切り替わらないよう legacy として扱う。
+ */
+export function resolveRoomBackend(value: string | undefined): RoomBackend {
+    if (value === "legacy" || value === "backend") return value;
+    if (!warnedInvalidRoomBackend) {
+        warnedInvalidRoomBackend = true;
+        console.warn(
+            JSON.stringify({
+                event: "room_backend_invalid",
+                value: value === undefined ? null : value.slice(0, 32),
+                fallback: "legacy",
+            }),
+        );
+    }
+    return "legacy";
 }
 
 type ValidationError = { error: string };
@@ -155,22 +178,29 @@ function jsonResponse(data: unknown, status = 200): Response {
 // ─── エンドポイント ──────────────────────────────────────────────────────
 
 /**
- * POST /api/rooms: ルームを作成して { roomId, shareUrl } を返す
+ * POST /api/rooms の IP ごとのレート制限。超過時は 429 を返し、通過時は null を返す。
+ * ルームの処理先によらず、ルームを作成する前に呼ぶ。
+ */
+export async function enforceRoomCreateRateLimit(
+    request: Request,
+    env: Pick<Env, "ROOM_RATE_LIMITER">,
+): Promise<Response | null> {
+    if (!env.ROOM_RATE_LIMITER) return null;
+    const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+    const { success } = await env.ROOM_RATE_LIMITER.limit({ key: ip });
+    if (success) return null;
+    return apiErrorResponse(
+        429,
+        "RATE_LIMITED",
+        "Too many room creation requests. Please try again later.",
+    );
+}
+
+/**
+ * POST /api/rooms: ルームを作成して { roomId, shareUrl } を返す。
+ * レート制限は呼び出し側で先に済ませる。
  */
 async function handleCreateRoom(request: Request, env: Env): Promise<Response> {
-    // IP ごとのレート制限チェック
-    if (env.ROOM_RATE_LIMITER) {
-        const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
-        const { success } = await env.ROOM_RATE_LIMITER.limit({ key: ip });
-        if (!success) {
-            return apiErrorResponse(
-                429,
-                "RATE_LIMITED",
-                "Too many room creation requests. Please try again later.",
-            );
-        }
-    }
-
     let body: unknown;
     try {
         body = await request.json();
@@ -218,19 +248,14 @@ async function handleGetRoom(roomId: string, request: Request, env: Env): Promis
 // ─── エントリポイント ────────────────────────────────────────────────────
 
 /**
- * /api/* リクエストを処理する
+ * frontend Worker 内の RoomDO でルーム API を処理する。
+ * 対象外のリクエストには null を返す（呼び出し側が backend へ転送する）。
  */
-export async function handleApiRequest(
+export async function handleLegacyRoomRequest(
     request: Request,
     env: Env,
-    _ctx: ExecutionContext,
 ): Promise<Response | null> {
-    const url = new URL(request.url);
-    const pathname = url.pathname;
-
-    if (!pathname.startsWith("/api/")) {
-        return null;
-    }
+    const { pathname } = new URL(request.url);
 
     // GET /api/rooms/:roomId/ws → DO にルーティング（WebSocket アップグレード）
     const wsMatch = pathname.match(/^\/api\/rooms\/([^/]+)\/ws$/);
@@ -252,6 +277,5 @@ export async function handleApiRequest(
         return handleGetRoom(roomGetMatch[1], request, env);
     }
 
-    // /api/rooms/* 以外は null を返してプロキシに委譲
     return null;
 }

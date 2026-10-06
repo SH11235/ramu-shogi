@@ -16,7 +16,7 @@ export default defineConfig({
         },
         exclude: [
             "**/node_modules/**",
-            "**/worker/**", // 統合テストは test:integration スクリプトで実行
+            "**/worker/**/*.integration.test.ts", // 統合テストは test:integration スクリプトで実行
             "**/e2e/**",
             "**/*.e2e.*",
         ],
