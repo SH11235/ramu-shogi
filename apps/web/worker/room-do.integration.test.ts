@@ -20,6 +20,7 @@ async function createRoom(settings?: Record<string, unknown>): Promise<string> {
         timeControl: { type: "byoyomi", initialMs: 600_000, byoyomiMs: 30_000 },
         passRights: null,
         aiSupport: null,
+        takeback: false,
     };
     const res = await fetch(`${BASE_URL}/api/rooms`, {
         method: "POST",
