@@ -4,7 +4,7 @@ import {
     type PositionState,
     setPositionServiceFactory,
 } from "@shogi/app-core";
-import type { SnapshotPayload } from "@shogi/match-client";
+import type { GameStartEvent, RoomSettings, SnapshotPayload } from "@shogi/match-client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     createSerialQueue,
@@ -13,6 +13,7 @@ import {
     makeInitialGameState,
     resolveStartSfen,
     restorePosition,
+    snapshotAtGameStart,
 } from "./online-game-state";
 
 const CLOCK = {
@@ -189,6 +190,108 @@ describe("resolveStartSfen", () => {
         );
         expect(resolveStartSfen("startpos")).toBe("startpos");
         expect(resolveStartSfen("9/9/9/9/9/9/9/9/9 b - 1")).toBe("9/9/9/9/9/9/9/9/9 b - 1");
+    });
+});
+
+describe("snapshotAtGameStart", () => {
+    const PLAYERS = { b: { name: "Alice", online: true }, w: { name: "Bob", online: true } };
+
+    function gameStart(settings: Partial<RoomSettings> = {}): GameStartEvent {
+        return {
+            kind: "game_start",
+            eventId: 3,
+            serverTs: 5_000,
+            settings: { ...makeSnapshot([]).settings, ...settings },
+            players: PLAYERS,
+        };
+    }
+
+    it("平手は初期局面・先手番で、先手の時計を対局開始の時刻から動かす", () => {
+        const event = gameStart();
+
+        expect(snapshotAtGameStart(event)).toEqual({
+            eventId: 3,
+            status: "playing",
+            sfen: "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+            moves: [],
+            turn: "b",
+            clock: {
+                b: { remainMs: 600_000 },
+                w: { remainMs: 600_000 },
+                running: "b",
+                lastTickTs: 5_000,
+            },
+            passRights: null,
+            players: PLAYERS,
+            settings: event.settings,
+        });
+    });
+
+    it.each([
+        ["handicap:bishop", "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1"],
+        ["handicap:rook", "lnsgkgsnl/7b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1"],
+        ["handicap:rook-bishop", "lnsgkgsnl/9/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1"],
+    ])("駒落ちプリセット %s は展開した局面・上手の手番になる", (startSfen, sfen) => {
+        expect(snapshotAtGameStart(gameStart({ startSfen }))).toMatchObject({
+            sfen,
+            turn: "w",
+            clock: { running: "w" },
+            settings: { startSfen },
+        });
+    });
+
+    it("SFEN の開始局面は、その局面と手番を使う", () => {
+        const startSfen = "4k4/9/9/9/9/9/9/9/4K4 w 2Pb 1";
+
+        expect(snapshotAtGameStart(gameStart({ startSfen }))).toMatchObject({
+            sfen: startSfen,
+            turn: "w",
+        });
+    });
+
+    it("パス権は設定の回数を双方に配る", () => {
+        expect(snapshotAtGameStart(gameStart({ passRights: { initialCount: 2 } }))).toMatchObject({
+            passRights: { b: 2, w: 2 },
+        });
+    });
+
+    it.each<RoomSettings["timeControl"]>([
+        { type: "byoyomi", initialMs: 0, byoyomiMs: 0 },
+        { type: "byoyomi", initialMs: 0 },
+        { type: "fischer", initialMs: 0, fischerIncrementMs: 10_000 },
+    ])("持ち時間が無制限（%o）なら時計を動かさない", (timeControl) => {
+        expect(snapshotAtGameStart(gameStart({ timeControl }))?.clock.running).toBeNull();
+    });
+
+    it("持ち時間 0 でも秒読みがあれば時計を動かす", () => {
+        const timeControl = { type: "byoyomi", initialMs: 0, byoyomiMs: 3_000 } as const;
+
+        expect(snapshotAtGameStart(gameStart({ timeControl }))?.clock).toEqual({
+            b: { remainMs: 0 },
+            w: { remainMs: 0 },
+            running: "b",
+            lastTickTs: 5_000,
+        });
+    });
+
+    // 空白の読み方と手数の補い方は RoomDO の実装によって違うので、どの実装でも同じ結果になる形
+    // 以外は組み立てない
+    it.each([
+        ["知らないプリセット名", "handicap:unknown"],
+        ["空文字", ""],
+        ["盤面だけ", "4k4/9/9/9/9/9/9/9/4K4"],
+        ["手番が b / w でない", "4k4/9/9/9/9/9/9/9/4K4 x - 1"],
+        ["先頭に空白", " 4k4/9/9/9/9/9/9/9/4K4 w - 1"],
+        ["末尾に空白", "4k4/9/9/9/9/9/9/9/4K4 w - 1 "],
+        ["手番の前に空白が 2 つ", "4k4/9/9/9/9/9/9/9/4K4  w - 1"],
+        ["持ち駒の前に空白が 2 つ", "4k4/9/9/9/9/9/9/9/4K4 w  - 1"],
+        ["タブ区切り", "4k4/9/9/9/9/9/9/9/4K4\tw\t-\t1"],
+        ["全角空白区切り", "4k4/9/9/9/9/9/9/9/4K4\u3000w - 1"],
+        ["末尾に改行", "4k4/9/9/9/9/9/9/9/4K4 w - 1\n"],
+        ["手数を省いた 3 フィールド", "4k4/9/9/9/9/9/9/9/4K4 w -"],
+        ["5 フィールド", "4k4/9/9/9/9/9/9/9/4K4 w - 1 extra"],
+    ])("%s の開始局面は組み立てず null を返す", (_name, startSfen) => {
+        expect(snapshotAtGameStart(gameStart({ startSfen }))).toBeNull();
     });
 });
 

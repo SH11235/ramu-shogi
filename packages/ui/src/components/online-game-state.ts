@@ -5,6 +5,7 @@ import type {
     AiSupportPlayerSettings,
     ClockState,
     GameResult,
+    GameStartEvent,
     PassRightsState,
     SnapshotPayload,
 } from "@shogi/match-client";
@@ -214,6 +215,44 @@ const HANDICAP_PRESETS: Record<string, { sfen: string; kifName: string }> = {
 /** ルーム設定の startSfen を局面として解釈できる文字列にする */
 export function resolveStartSfen(startSfen: string): string {
     return HANDICAP_PRESETS[startSfen]?.sfen ?? startSfen;
+}
+
+// サーバーが startSfen の "startpos" を展開する局面
+const STARTPOS_SFEN = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
+
+/** 観戦者数は game_start に含まれないので、対局開始時点の snapshot からは除く */
+export type GameStartSnapshot = Omit<SnapshotPayload, "spectators">;
+
+/**
+ * game_start から対局開始時点の snapshot を組み立てる。空白の読み方と省かれた手数の補い方は RoomDO の
+ * 実装ごとに違うので、どの実装でも同じ局面・手番になる開始局面以外は null を返す。
+ */
+export function snapshotAtGameStart(event: GameStartEvent): GameStartSnapshot | null {
+    const { settings } = event;
+    const sfen =
+        settings.startSfen === "startpos" ? STARTPOS_SFEN : resolveStartSfen(settings.startSfen);
+    const turn = /^\S+ ([bw]) \S+ \S+$/.exec(sfen)?.[1];
+    if (turn !== "b" && turn !== "w") return null;
+
+    const { timeControl, passRights } = settings;
+    const isUnlimited =
+        timeControl.initialMs === 0 && (timeControl.type !== "byoyomi" || !timeControl.byoyomiMs);
+    return {
+        eventId: event.eventId,
+        status: "playing",
+        sfen,
+        moves: [],
+        turn,
+        clock: {
+            b: { remainMs: timeControl.initialMs },
+            w: { remainMs: timeControl.initialMs },
+            running: isUnlimited ? null : turn,
+            lastTickTs: event.serverTs,
+        },
+        passRights: passRights ? { b: passRights.initialCount, w: passRights.initialCount } : null,
+        players: event.players,
+        settings,
+    };
 }
 
 /**

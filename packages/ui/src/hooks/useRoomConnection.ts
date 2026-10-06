@@ -1,11 +1,4 @@
-import type {
-    ErrorCode,
-    PassRightsState,
-    PlayerPublicInfo,
-    RoomClient,
-    ServerMessage,
-    SnapshotPayload,
-} from "@shogi/match-client";
+import type { ErrorCode, RoomClient, ServerMessage, SnapshotPayload } from "@shogi/match-client";
 import {
     createRoomClient,
     getStoredResumeToken,
@@ -13,6 +6,7 @@ import {
     storeSeat,
 } from "@shogi/match-client";
 import { useEffect, useEffectEvent, useReducer, useRef } from "react";
+import { type GameStartSnapshot, snapshotAtGameStart } from "../components/online-game-state";
 
 function errorCodeToMessage(code: ErrorCode): string {
     switch (code) {
@@ -81,6 +75,7 @@ function joinFormReducer(state: JoinFormState, action: JoinFormAction): JoinForm
 interface RoomState {
     snapshot: SnapshotPayload | null;
     joined: boolean;
+    connectionLost: boolean;
     localStartSfen: string | null;
     gamePhase: "waiting" | "playing";
     client: RoomClient | null;
@@ -90,12 +85,8 @@ type RoomAction =
     | { type: "joined" }
     | { type: "snapshot_received"; snapshot: SnapshotPayload }
     | { type: "settings_updated"; startSfen: string }
-    | {
-          type: "game_start";
-          eventId: number;
-          players?: { b: PlayerPublicInfo; w: PlayerPublicInfo };
-          passRights?: PassRightsState | null;
-      }
+    | { type: "game_start"; snapshot: SnapshotPayload | GameStartSnapshot }
+    | { type: "connection_failed"; canResume: boolean }
     | { type: "client_set"; client: RoomClient }
     | { type: "client_cleared" }
     | { type: "room_changed" };
@@ -103,6 +94,7 @@ type RoomAction =
 const INITIAL_ROOM_STATE: RoomState = {
     snapshot: null,
     joined: false,
+    connectionLost: false,
     localStartSfen: null,
     gamePhase: "waiting",
     client: null,
@@ -117,17 +109,23 @@ function roomReducer(state: RoomState, action: RoomAction): RoomState {
         case "settings_updated":
             return { ...state, localStartSfen: action.startSfen };
         case "game_start":
+            // 待機中の snapshot から引き継ぐのは観戦者数だけ。局面・手番・時計・設定は、
+            // 待機中に開始局面が変更されると食い違うので引き継がない
             return {
                 ...state,
                 gamePhase: "playing",
-                snapshot: state.snapshot
-                    ? {
-                          ...state.snapshot,
-                          eventId: action.eventId,
-                          ...(action.players ? { players: action.players } : {}),
-                          ...("passRights" in action ? { passRights: action.passRights } : {}),
-                      }
-                    : state.snapshot,
+                snapshot: { spectators: state.snapshot?.spectators ?? 0, ...action.snapshot },
+            };
+        case "connection_failed":
+            // 参加済みのままにすると、待機画面は接続の切れた後も対局開始を待つ表示を続ける。
+            // 席を持ったまま切れた対局者は、参加し直すと自分の席が埋まっていて相手の席にしか
+            // 入れないので、参加フォームへは戻さず、再読み込みで席へ戻る案内に切り替えさせる。
+            // snapshot は切れた時点の在席状況なので、表示に使い続けない
+            return {
+                ...state,
+                joined: false,
+                snapshot: null,
+                connectionLost: state.joined && action.canResume,
             };
         case "client_set":
             return { ...state, client: action.client };
@@ -136,6 +134,111 @@ function roomReducer(state: RoomState, action: RoomAction): RoomState {
         case "room_changed":
             return INITIAL_ROOM_STATE;
     }
+}
+
+// ─── 待機中の参加者が受け取るメッセージの処理 ─────────────────────────────────
+
+/** 開始局面を解釈できない game_start を受けてから、サーバーの snapshot を待つ上限 */
+const FULL_SNAPSHOT_TIMEOUT_MS = 15_000;
+
+interface MessageContext {
+    client: RoomClient;
+    message: ServerMessage;
+    stopListening: () => void;
+    fail: (message: string) => void;
+    /** 指定した時間のうちに stopListening まで進まなければ fail する */
+    failAfter: (delayMs: number, message: string) => void;
+}
+
+interface ConnectionHandlers {
+    /** 切断後に RoomClient が resume し直したとき */
+    onReconnect: (client: RoomClient) => void;
+    onMessage: (context: MessageContext) => void;
+}
+
+/**
+ * 参加した直後と、待機中に再読み込みして復帰した後とで、対局開始までの処理を共通にする。
+ * requestFullSnapshot は、サーバーが必ず snapshot を返す要求を送る。送る手段が無ければ false を返す。
+ */
+function createWaitingRoomHandlers({
+    roomId,
+    seat,
+    dispatchRoom,
+    dispatchJoin,
+    requestFullSnapshot,
+    errorMessage,
+}: {
+    roomId: string;
+    seat: "b" | "w" | "s";
+    dispatchRoom: (action: RoomAction) => void;
+    dispatchJoin: (action: JoinFormAction) => void;
+    requestFullSnapshot: (client: RoomClient) => boolean;
+    errorMessage: (code: ErrorCode) => string;
+}): ConnectionHandlers {
+    // 開始局面を解釈できない game_start を受けてから、サーバーの snapshot で盤面を開くまで真
+    let needsFullSnapshot = false;
+
+    return {
+        onReconnect: (client) => {
+            // RoomClient は再接続すると、最後に受け取ったイベントより後の差分だけを求める。
+            // サーバーは差分に snapshot を含めないので、待っている間に切れたら要求を送り直す
+            if (needsFullSnapshot) {
+                requestFullSnapshot(client);
+            }
+        },
+        onMessage: ({ client, message, stopListening, fail, failAfter }) => {
+            switch (message.t) {
+                case "joined": {
+                    storeSeat(roomId, seat);
+                    dispatchRoom({ type: "joined" });
+                    dispatchJoin({ type: "joined" });
+                    break;
+                }
+                case "snapshot": {
+                    dispatchRoom({ type: "snapshot_received", snapshot: message.payload });
+                    dispatchRoom({ type: "joined" });
+                    dispatchJoin({ type: "joined" });
+                    if (message.payload.status !== "waiting") {
+                        needsFullSnapshot = false;
+                        stopListening();
+                        dispatchRoom({ type: "game_start", snapshot: message.payload });
+                    }
+                    break;
+                }
+                case "event": {
+                    if (message.payload.kind === "settings_updated") {
+                        dispatchRoom({
+                            type: "settings_updated",
+                            startSfen: message.payload.settings.startSfen,
+                        });
+                    }
+                    if (message.payload.kind === "game_start") {
+                        const started = snapshotAtGameStart(message.payload);
+                        if (started) {
+                            stopListening();
+                            dispatchRoom({ type: "game_start", snapshot: started });
+                            break;
+                        }
+                        // 開始局面を組み立てられないまま盤面を開くと、サーバーと違う局面から
+                        // 指せてしまう。サーバーの snapshot を待ち、届いたらそこから開く
+                        needsFullSnapshot = true;
+                        if (requestFullSnapshot(client)) {
+                            failAfter(FULL_SNAPSHOT_TIMEOUT_MS, errorCodeToMessage("DESYNC"));
+                        } else {
+                            fail(errorCodeToMessage("DESYNC"));
+                        }
+                    }
+                    break;
+                }
+                case "error": {
+                    fail(errorMessage(message.payload.code));
+                    break;
+                }
+                default:
+                    break;
+            }
+        },
+    };
 }
 
 // ─── デフォルト WebSocket URL ファクトリ ─────────────────────────────────────
@@ -163,6 +266,8 @@ export interface UseRoomConnectionReturn {
     // ルーム状態
     snapshot: SnapshotPayload | null;
     joined: boolean;
+    /** 席を持ったまま接続に失敗した。再読み込みすると保存済みのトークンで席へ戻れる */
+    connectionLost: boolean;
     localStartSfen: string | null;
     gamePhase: "waiting" | "playing";
     client: RoomClient | null;
@@ -193,27 +298,36 @@ export function useRoomConnection({
     const connectClient = ({
         timeoutMessage,
         onOpen,
+        onReconnect,
         onMessage,
     }: {
         timeoutMessage: string;
         onOpen: (client: RoomClient) => void;
-        onMessage: (context: {
-            client: RoomClient;
-            message: ServerMessage;
-            stopListening: () => void;
-            fail: (message: string) => void;
-        }) => void;
-    }): void => {
+    } & ConnectionHandlers): void => {
         disposeConnectionRef.current?.();
 
         let isDisposed = false;
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
+        let failAfterId: ReturnType<typeof setTimeout> | null = null;
+        let isListening = true;
 
         const newClient = createRoomClient({
             wsUrl: buildWsUrl(roomId),
             autoReconnect: true,
+            // RoomClient は resume し直せたときにも、再接続を諦めたときにもこれを呼ぶ。
+            // 諦めたときだけ状態が disconnected になっている。待機中に諦められたまま参加済みの
+            // 表示を続けると、対局が始まっても画面は気づけない
+            onReconnect: () => {
+                if (isListening && newClient.getStatus() === "disconnected") {
+                    fail(timeoutMessage);
+                }
+            },
             onOpen: ({ reconnect }) => {
-                if (reconnect || isDisposed) {
+                if (isDisposed) {
+                    return;
+                }
+                if (reconnect) {
+                    onReconnect(newClient);
                     return;
                 }
                 if (timeoutId !== null) {
@@ -227,6 +341,21 @@ export function useRoomConnection({
         clientRef.current = newClient;
         dispatchRoom({ type: "client_set", client: newClient });
 
+        const fail = (messageText: string): void => {
+            if (isDisposed) {
+                return;
+            }
+            dispatchJoin({ type: "error", message: messageText });
+            const storedSeat = getStoredSeat(roomId);
+            dispatchRoom({
+                type: "connection_failed",
+                canResume:
+                    getStoredResumeToken(roomId) !== null &&
+                    (storedSeat === "b" || storedSeat === "w"),
+            });
+            cleanup();
+        };
+
         const unsubscribe = newClient.subscribe((message: ServerMessage) => {
             if (isDisposed) {
                 return;
@@ -234,13 +363,18 @@ export function useRoomConnection({
             onMessage({
                 client: newClient,
                 message,
-                stopListening: unsubscribe,
-                fail: (messageText: string) => {
-                    if (isDisposed) {
-                        return;
+                stopListening: () => {
+                    isListening = false;
+                    if (failAfterId !== null) {
+                        clearTimeout(failAfterId);
+                        failAfterId = null;
                     }
-                    dispatchJoin({ type: "error", message: messageText });
-                    cleanup();
+                    unsubscribe();
+                },
+                fail,
+                failAfter: (delayMs, messageText) => {
+                    // 切断して要求を送り直しても、待つ時間は最初の要求から数える
+                    failAfterId ??= setTimeout(() => fail(messageText), delayMs);
                 },
             });
         });
@@ -253,6 +387,10 @@ export function useRoomConnection({
             if (timeoutId !== null) {
                 clearTimeout(timeoutId);
                 timeoutId = null;
+            }
+            if (failAfterId !== null) {
+                clearTimeout(failAfterId);
+                failAfterId = null;
             }
             unsubscribe();
             newClient.disconnect();
@@ -287,51 +425,25 @@ export function useRoomConnection({
             onOpen: (client) => {
                 client.join({ seat: seatToJoin, name: trimmedName });
             },
-            onMessage: ({ message, stopListening, fail }) => {
-                switch (message.t) {
-                    case "joined": {
-                        storeSeat(roomId, seatToJoin);
-                        dispatchRoom({ type: "joined" });
-                        dispatchJoin({ type: "joined" });
-                        break;
+            ...createWaitingRoomHandlers({
+                roomId,
+                seat: seatToJoin,
+                dispatchRoom,
+                dispatchJoin,
+                // サーバーが必ず snapshot を返すのは、対局者なら lastEventId 0 の resume、
+                // 観戦者なら参加し直し
+                requestFullSnapshot: (client) => {
+                    if (seatToJoin === "s") {
+                        client.join({ seat: "s", name: trimmedName });
+                        return true;
                     }
-                    case "snapshot": {
-                        dispatchRoom({ type: "snapshot_received", snapshot: message.payload });
-                        if (message.payload.status !== "waiting") {
-                            stopListening();
-                            dispatchRoom({ type: "joined" });
-                            dispatchJoin({ type: "joined" });
-                            dispatchRoom({ type: "game_start", eventId: message.payload.eventId });
-                        }
-                        break;
-                    }
-                    case "event": {
-                        if (message.payload.kind === "settings_updated") {
-                            dispatchRoom({
-                                type: "settings_updated",
-                                startSfen: message.payload.settings.startSfen,
-                            });
-                        }
-                        if (message.payload.kind === "game_start") {
-                            stopListening();
-                            const pr = message.payload.settings.passRights;
-                            dispatchRoom({
-                                type: "game_start",
-                                eventId: message.payload.eventId,
-                                players: message.payload.players,
-                                passRights: pr ? { b: pr.initialCount, w: pr.initialCount } : null,
-                            });
-                        }
-                        break;
-                    }
-                    case "error": {
-                        fail(errorCodeToMessage(message.payload.code));
-                        break;
-                    }
-                    default:
-                        break;
-                }
-            },
+                    const resumeToken = getStoredResumeToken(roomId);
+                    if (!resumeToken) return false;
+                    client.resume({ resumeToken, lastEventId: 0 });
+                    return true;
+                },
+                errorMessage: errorCodeToMessage,
+            }),
         });
     };
 
@@ -360,32 +472,17 @@ export function useRoomConnection({
             onOpen: (client) => {
                 client.resume({ resumeToken: token, lastEventId: 0 });
             },
-            onMessage: ({ message, stopListening, fail }) => {
-                switch (message.t) {
-                    case "joined": {
-                        storeSeat(roomId, seat);
-                        dispatchRoom({ type: "joined" });
-                        dispatchJoin({ type: "joined" });
-                        break;
-                    }
-                    case "snapshot": {
-                        dispatchRoom({ type: "snapshot_received", snapshot: message.payload });
-                        dispatchRoom({ type: "joined" });
-                        dispatchJoin({ type: "joined" });
-                        if (message.payload.status !== "waiting") {
-                            stopListening();
-                            dispatchRoom({ type: "game_start", eventId: message.payload.eventId });
-                        }
-                        break;
-                    }
-                    case "error": {
-                        fail("セッションが切れました。再度参加してください。");
-                        break;
-                    }
-                    default:
-                        break;
-                }
-            },
+            ...createWaitingRoomHandlers({
+                roomId,
+                seat,
+                dispatchRoom,
+                dispatchJoin,
+                requestFullSnapshot: (client) => {
+                    client.resume({ resumeToken: token, lastEventId: 0 });
+                    return true;
+                },
+                errorMessage: () => "セッションが切れました。再度参加してください。",
+            }),
         });
         return leaveRoom;
     }, [roomId]);
@@ -394,7 +491,11 @@ export function useRoomConnection({
 
     const handleUpdateStartSfen = (startSfen: string): void => {
         dispatchRoom({ type: "settings_updated", startSfen });
-        clientRef.current?.updateSettings({ startSfen });
+        // 空は「SFEN 直接入力」へ切り替えただけで、まだ局面が入力されていない状態。
+        // 空の開始局面をエラーで返すサーバーがあり、待機中の接続はエラーを受けると切れる
+        if (startSfen !== "") {
+            clientRef.current?.updateSettings({ startSfen });
+        }
     };
 
     return {
@@ -406,6 +507,7 @@ export function useRoomConnection({
 
         snapshot: roomState.snapshot,
         joined: roomState.joined,
+        connectionLost: roomState.connectionLost,
         localStartSfen: roomState.localStartSfen,
         gamePhase: roomState.gamePhase,
         client: roomState.client,
