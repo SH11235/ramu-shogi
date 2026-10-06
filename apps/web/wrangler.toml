@@ -21,7 +21,7 @@ service = "ramu-shogi-backend"
 # "backend" = backend Worker の RoomDO。vars は named env に継承されないので env ごとに書く。
 # 未設定・想定外の値は "legacy" として扱う
 [vars]
-ROOM_BACKEND = "legacy"
+ROOM_BACKEND = "backend"
 
 # Workers Logs。Worker が console に出した行（ルーム API の処理先を記録する 1 行など）を全件残す。
 # invocation log はリクエストの URL をそのまま記録する。この Worker は静的アセットを含む全リクエストを
