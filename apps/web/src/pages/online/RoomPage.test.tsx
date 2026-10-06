@@ -91,6 +91,12 @@ class FakeSocket {
         this.readyState = 3;
     }
 
+    /** サーバー側から接続が切れた */
+    drop(): void {
+        this.readyState = 3;
+        for (const listener of this.listeners.close ?? []) listener({});
+    }
+
     open(): void {
         for (const listener of this.listeners.open ?? []) listener({});
     }
@@ -576,6 +582,121 @@ describe("RoomPage", () => {
             expect(squareLabel("3d")).toMatch(/^3d 後手の歩/);
             expect(squareLabel("3c")).toBe("3c 空マス");
             expect(getLegalMoves).toHaveBeenLastCalledWith(BISHOP_HANDICAP_SFEN, ["3c3d"], {});
+        });
+
+        it("開始局面を解釈できず snapshot を待つ間に切断されても、再接続後の snapshot から開き、その間の指し手を 1 度だけ反映する", async () => {
+            // 手数を省いた SFEN は backend の RoomDO だけが受け付け、1 手目として補って対局を始める
+            const startSfen = "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w -";
+            const firstSocket = await joinAndWait("b");
+            await receive(firstSocket, [settingsUpdated(1, startSfen), gameStart(2, startSfen)]);
+            expect(firstSocket.sent.filter((message) => message.t === "resume")).toEqual([
+                expect.objectContaining({ payload: { resumeToken: "token", lastEventId: 0 } }),
+            ]);
+            expect(screen.getByText("接続しました。対局開始を待っています...")).toBeTruthy();
+
+            // snapshot が届く前に切断され、その間に相手が初手を指した
+            vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+            try {
+                await act(async () => {
+                    firstSocket.drop();
+                    vi.advanceTimersByTime(1_000);
+                });
+            } finally {
+                vi.useRealTimers();
+            }
+            const socket = socketFor("test-room");
+            expect(socket).not.toBe(firstSocket);
+            const move = eventMessage({
+                kind: "move",
+                eventId: 3,
+                serverTs: 0,
+                usi: "3c3d",
+                turn: "b",
+                clock: makeSnapshot().clock,
+                passRights: null,
+            });
+            // RoomClient 自身の resume には差分（指し手）だけが返り、snapshot は取り直しの要求に返る
+            await deliverOnOpen("test-room", [
+                move,
+                {
+                    v: 1,
+                    t: "snapshot",
+                    payload: makeSnapshot({
+                        eventId: 3,
+                        sfen: "lnsgkgsnl/1r7/pppppp1pp/6p2/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 2",
+                        moves: ["3c3d"],
+                        turn: "b",
+                        settings: { ...SETTINGS, startSfen },
+                    }),
+                },
+            ]);
+
+            expect(socket.sent.filter((message) => message.t === "resume")).toEqual([
+                expect.objectContaining({ payload: { resumeToken: "token", lastEventId: 2 } }),
+                expect.objectContaining({ payload: { resumeToken: "token", lastEventId: 0 } }),
+            ]);
+            expect(squareLabel("2b")).toBe("2b 空マス");
+            expect(squareLabel("3d")).toMatch(/^3d 後手の歩/);
+            expect(squareLabel("3c")).toBe("3c 空マス");
+            expect(getLegalMoves).toHaveBeenCalledTimes(1);
+            expect(getLegalMoves).toHaveBeenCalledWith(startSfen, ["3c3d"], {});
+        });
+
+        describe("待機中に再読み込みした対局者", () => {
+            // 再読み込み後は保存済みのトークンで resume する。lastEventId 0 の resume には、
+            // legacy / backend どちらの RoomDO も snapshot を返す
+            async function reloadAndWait(startSfen: string): Promise<FakeSocket> {
+                rememberSeat("test-room");
+                render(<RoomPage />);
+                await deliverOnOpen("test-room", [
+                    {
+                        v: 1,
+                        t: "snapshot",
+                        payload: makeSnapshot({
+                            eventId: 1,
+                            status: "waiting",
+                            sfen: "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+                            moves: [],
+                            turn: "b",
+                            players: { b: { name: "Alice", online: true }, w: null },
+                            settings: { ...SETTINGS, startSfen },
+                        }),
+                    },
+                ]);
+                expect(screen.getByText("接続しました。対局開始を待っています...")).toBeTruthy();
+                return socketFor("test-room");
+            }
+
+            it("相手が参加すると対局画面を開き、先手は平手の合法手を取得する", async () => {
+                const socket = await reloadAndWait("startpos");
+
+                await receive(socket, [gameStart(2, "startpos")]);
+
+                expect(squareLabel("2b")).toMatch(/^2b 後手の角/);
+                expect(getLegalMoves).toHaveBeenCalledWith("startpos", [], {});
+            });
+
+            it("再読み込みの前に角落ちへ変更していたら、角落ちの局面で開く", async () => {
+                const socket = await reloadAndWait("handicap:bishop");
+
+                await receive(socket, [gameStart(2, "handicap:bishop")]);
+
+                expect(squareLabel("2b")).toBe("2b 空マス");
+                expect(squareLabel("8b")).toMatch(/^8b 後手の飛/);
+                expect(getLegalMoves).not.toHaveBeenCalled();
+            });
+
+            it("再読み込みの後に開始局面が変更されたら、その局面で開く", async () => {
+                const socket = await reloadAndWait("startpos");
+
+                await receive(socket, [
+                    settingsUpdated(2, WHITE_TO_MOVE_SFEN),
+                    gameStart(3, WHITE_TO_MOVE_SFEN),
+                ]);
+
+                expect(squareLabel("5a")).toMatch(/^5a 後手の玉/);
+                expect(squareLabel("7g")).toBe("7g 空マス");
+            });
         });
     });
 });

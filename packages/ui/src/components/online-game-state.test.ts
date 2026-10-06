@@ -249,12 +249,6 @@ describe("snapshotAtGameStart", () => {
         });
     });
 
-    it("手数を省いた SFEN には 1 手目を補う", () => {
-        expect(
-            snapshotAtGameStart(gameStart({ startSfen: "4k4/9/9/9/9/9/9/9/4K4 b -" })),
-        ).toMatchObject({ sfen: "4k4/9/9/9/9/9/9/9/4K4 b - 1", turn: "b" });
-    });
-
     it("パス権は設定の回数を双方に配る", () => {
         expect(snapshotAtGameStart(gameStart({ passRights: { initialCount: 2 } }))).toMatchObject({
             passRights: { b: 2, w: 2 },
@@ -280,12 +274,23 @@ describe("snapshotAtGameStart", () => {
         });
     });
 
+    // 空白の読み方と手数の補い方は RoomDO の実装によって違うので、どの実装でも同じ結果になる形
+    // 以外は組み立てない
     it.each([
-        "handicap:unknown",
-        "",
-        "4k4/9/9/9/9/9/9/9/4K4",
-        "4k4/9/9/9/9/9/9/9/4K4 x - 1",
-    ])("開始局面 %j を解釈できなければ null を返す", (startSfen) => {
+        ["知らないプリセット名", "handicap:unknown"],
+        ["空文字", ""],
+        ["盤面だけ", "4k4/9/9/9/9/9/9/9/4K4"],
+        ["手番が b / w でない", "4k4/9/9/9/9/9/9/9/4K4 x - 1"],
+        ["先頭に空白", " 4k4/9/9/9/9/9/9/9/4K4 w - 1"],
+        ["末尾に空白", "4k4/9/9/9/9/9/9/9/4K4 w - 1 "],
+        ["手番の前に空白が 2 つ", "4k4/9/9/9/9/9/9/9/4K4  w - 1"],
+        ["持ち駒の前に空白が 2 つ", "4k4/9/9/9/9/9/9/9/4K4 w  - 1"],
+        ["タブ区切り", "4k4/9/9/9/9/9/9/9/4K4\tw\t-\t1"],
+        ["全角空白区切り", "4k4/9/9/9/9/9/9/9/4K4\u3000w - 1"],
+        ["末尾に改行", "4k4/9/9/9/9/9/9/9/4K4 w - 1\n"],
+        ["手数を省いた 3 フィールド", "4k4/9/9/9/9/9/9/9/4K4 w -"],
+        ["5 フィールド", "4k4/9/9/9/9/9/9/9/4K4 w - 1 extra"],
+    ])("%s の開始局面は組み立てず null を返す", (_name, startSfen) => {
         expect(snapshotAtGameStart(gameStart({ startSfen }))).toBeNull();
     });
 });

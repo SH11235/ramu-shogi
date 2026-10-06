@@ -253,7 +253,11 @@ describe("useRoomConnection", () => {
         /** 平手のルームに参加し、相手を待っている状態にする */
         function joinAndWait(seat: "b" | "w" | "s") {
             const connection = createMockClient();
-            mockCreateRoomClient.mockReturnValue(connection.client);
+            let onOpen: ((event: { reconnect: boolean }) => void) | undefined;
+            mockCreateRoomClient.mockImplementation((options) => {
+                onOpen = options.onOpen;
+                return connection.client;
+            });
             mockGetStoredResumeToken.mockReturnValue(null);
             const { result } = renderHook(() =>
                 useRoomConnection({ roomId: "room-1", initialName: "Alice" }),
@@ -262,6 +266,7 @@ describe("useRoomConnection", () => {
                 result.current.handleJoin(seat);
             });
             act(() => {
+                onOpen?.({ reconnect: false });
                 connection.emit({
                     v: 1,
                     t: "joined",
@@ -273,7 +278,12 @@ describe("useRoomConnection", () => {
                 connection.emit(waitingSnapshot(seat));
             });
             expect(result.current.gamePhase).toBe("waiting");
-            return { connection, result };
+            return {
+                connection,
+                result,
+                /** RoomClient が接続し直した。resumed は RoomClient が resume を送ったかどうか */
+                reopen: (resumed: boolean) => act(() => onOpen?.({ reconnect: resumed })),
+            };
         }
 
         it("開始局面が変更されなければ、平手の先手番で対局画面を開く", () => {
@@ -410,6 +420,18 @@ describe("useRoomConnection", () => {
             });
         });
 
+        it("開始局面を解釈できる対局開始の後に接続し直しても、snapshot は求めない", () => {
+            const { connection, reopen } = joinAndWait("b");
+            mockGetStoredResumeToken.mockReturnValue("token-1");
+            act(() => {
+                connection.emit(gameStart(1));
+            });
+
+            reopen(true);
+
+            expect(connection.client.resume).not.toHaveBeenCalled();
+        });
+
         it("対局開始の後は購読をやめ、続くメッセージを対局画面に残す", () => {
             const { connection, result } = joinAndWait("b");
 
@@ -492,6 +514,119 @@ describe("useRoomConnection", () => {
                 expect(result.current.snapshot).toEqual(playingSnapshot.payload);
             });
 
+            it("snapshot を待つ間に接続し直したら、対局者は差分でなく snapshot を求め直す", () => {
+                const { connection, result, reopen } = joinAndWait("b");
+                mockGetStoredResumeToken.mockReturnValue("token-1");
+                act(() => {
+                    connection.emit(gameStart(2, UNKNOWN_PRESET));
+                });
+                expect(connection.client.resume).toHaveBeenCalledTimes(1);
+
+                reopen(true);
+
+                expect(connection.client.resume).toHaveBeenCalledTimes(2);
+                expect(connection.client.resume).toHaveBeenLastCalledWith({
+                    resumeToken: "token-1",
+                    lastEventId: 0,
+                });
+
+                // 差分として届く指し手では開かず、snapshot が届いてから開く
+                act(() => {
+                    connection.emit({
+                        v: 1,
+                        t: "event",
+                        payload: {
+                            kind: "move",
+                            eventId: 3,
+                            serverTs: 6_000,
+                            usi: "5a5b",
+                            turn: "b",
+                            clock: playingSnapshot.payload.clock,
+                            passRights: null,
+                        },
+                    });
+                });
+                expect(result.current.gamePhase).toBe("waiting");
+                act(() => {
+                    connection.emit(playingSnapshot);
+                });
+                expect(result.current.gamePhase).toBe("playing");
+                expect(result.current.snapshot).toEqual(playingSnapshot.payload);
+            });
+
+            it("snapshot を待つ間に接続し直したら、観戦者は参加し直す", () => {
+                const { connection, reopen } = joinAndWait("s");
+                connection.client.join.mockClear();
+                act(() => {
+                    connection.emit(gameStart(2, UNKNOWN_PRESET));
+                });
+                expect(connection.client.join).toHaveBeenCalledTimes(1);
+
+                // 観戦者は resume できないので、RoomClient は新規の接続として開く
+                reopen(false);
+
+                expect(connection.client.join).toHaveBeenCalledTimes(2);
+                expect(connection.client.join).toHaveBeenLastCalledWith({
+                    seat: "s",
+                    name: "Alice",
+                });
+            });
+
+            it("snapshot から盤面を開いた後の再接続では、snapshot を求め直さない", () => {
+                const { connection, reopen } = joinAndWait("b");
+                mockGetStoredResumeToken.mockReturnValue("token-1");
+                act(() => {
+                    connection.emit(gameStart(2, UNKNOWN_PRESET));
+                    connection.emit(playingSnapshot);
+                });
+                expect(connection.client.resume).toHaveBeenCalledTimes(1);
+
+                reopen(true);
+
+                expect(connection.client.resume).toHaveBeenCalledTimes(1);
+            });
+
+            it("snapshot が届かないまま時間が過ぎたら、盤面を開かずに再読み込みを案内する", () => {
+                const { connection, result, reopen } = joinAndWait("b");
+                mockGetStoredResumeToken.mockReturnValue("token-1");
+                act(() => {
+                    connection.emit(gameStart(2, UNKNOWN_PRESET));
+                });
+
+                act(() => {
+                    vi.advanceTimersByTime(10_000);
+                });
+                // 接続し直しても、待つ時間は延びない
+                reopen(true);
+                expect(result.current.joinError).toBeNull();
+                act(() => {
+                    vi.advanceTimersByTime(5_000);
+                });
+
+                expect(result.current.gamePhase).toBe("waiting");
+                expect(result.current.joinError).toBe(
+                    "同期エラーが発生しました。ページを再読み込みしてください",
+                );
+                expect(connection.client.disconnect).toHaveBeenCalled();
+            });
+
+            it("時間内に snapshot が届けば、その後に時間が過ぎても案内を出さない", () => {
+                const { connection, result } = joinAndWait("b");
+                mockGetStoredResumeToken.mockReturnValue("token-1");
+                act(() => {
+                    connection.emit(gameStart(2, UNKNOWN_PRESET));
+                    connection.emit(playingSnapshot);
+                });
+
+                act(() => {
+                    vi.advanceTimersByTime(60_000);
+                });
+
+                expect(result.current.gamePhase).toBe("playing");
+                expect(result.current.joinError).toBeNull();
+                expect(connection.client.disconnect).not.toHaveBeenCalled();
+            });
+
             it("取り直す手段が無ければ、盤面を開かずに再読み込みを案内する", () => {
                 const { connection, result } = joinAndWait("b");
 
@@ -505,6 +640,116 @@ describe("useRoomConnection", () => {
                 );
                 expect(connection.client.disconnect).toHaveBeenCalled();
             });
+        });
+    });
+
+    describe("待機中に再読み込みした対局者が対局開始を迎える", () => {
+        /** 保存済みの席とトークンで復帰し、待機中の snapshot を受け取った状態にする */
+        function resumeAndWait(seat: "b" | "w", startSfen = "startpos") {
+            const connection = createMockClient();
+            let onOpen: ((event: { reconnect: boolean }) => void) | undefined;
+            mockGetStoredResumeToken.mockReturnValue("token-1");
+            mockGetStoredSeat.mockReturnValue(seat);
+            mockCreateRoomClient.mockImplementation((options) => {
+                onOpen = options.onOpen;
+                return connection.client;
+            });
+            const { result } = renderHook(() => useRoomConnection({ roomId: "room-1" }));
+            const waiting = waitingSnapshot(seat);
+            if (waiting.t !== "snapshot") throw new Error("unreachable");
+            act(() => {
+                onOpen?.({ reconnect: false });
+                connection.emit({
+                    ...waiting,
+                    payload: {
+                        ...waiting.payload,
+                        eventId: 1,
+                        settings: { ...SETTINGS, startSfen },
+                    },
+                });
+            });
+            expect(result.current).toMatchObject({ joined: true, gamePhase: "waiting" });
+            return { connection, result };
+        }
+
+        it("相手が参加して game_start が届いたら、対局画面を開く", () => {
+            const { connection, result } = resumeAndWait("b");
+
+            act(() => {
+                connection.emit(gameStart(2));
+            });
+
+            expect(result.current.gamePhase).toBe("playing");
+            expect(result.current.snapshot).toMatchObject({
+                eventId: 2,
+                status: "playing",
+                sfen: STARTPOS_SFEN,
+                turn: "b",
+                clock: { running: "b", lastTickTs: 5_000 },
+                players: { b: { name: "Alice" }, w: { name: "Bob" } },
+            });
+        });
+
+        it("再読み込みの前に変更した開始局面で開く", () => {
+            const { connection, result } = resumeAndWait("b", "handicap:bishop");
+
+            act(() => {
+                connection.emit(gameStart(2, { startSfen: "handicap:bishop" }));
+            });
+
+            expect(result.current.snapshot).toMatchObject({
+                sfen: BISHOP_HANDICAP_SFEN,
+                turn: "w",
+                settings: { startSfen: "handicap:bishop" },
+            });
+        });
+
+        it("再読み込みの後に変更された開始局面を待機画面に反映し、その局面で開く", () => {
+            const { connection, result } = resumeAndWait("w");
+
+            act(() => {
+                connection.emit(settingsUpdated(2, WHITE_TO_MOVE_SFEN));
+            });
+            expect(result.current.localStartSfen).toBe(WHITE_TO_MOVE_SFEN);
+            act(() => {
+                connection.emit(gameStart(3, { startSfen: WHITE_TO_MOVE_SFEN }));
+            });
+
+            expect(result.current.gamePhase).toBe("playing");
+            expect(result.current.snapshot).toMatchObject({
+                eventId: 3,
+                sfen: WHITE_TO_MOVE_SFEN,
+                turn: "w",
+            });
+        });
+
+        it("開始局面を解釈できない game_start では、resume で snapshot を取り直す", () => {
+            const { connection, result } = resumeAndWait("b");
+            connection.client.resume.mockClear();
+
+            act(() => {
+                connection.emit(gameStart(2, { startSfen: "handicap:unknown" }));
+            });
+
+            expect(result.current.gamePhase).toBe("waiting");
+            expect(connection.client.resume).toHaveBeenCalledWith({
+                resumeToken: "token-1",
+                lastEventId: 0,
+            });
+        });
+
+        it("サーバーがエラーを返したら、参加し直しを案内する", () => {
+            const { connection, result } = resumeAndWait("b");
+
+            act(() => {
+                connection.emit({
+                    v: 1,
+                    t: "error",
+                    payload: { code: "INVALID_TOKEN", message: "" },
+                });
+            });
+
+            expect(result.current.joinError).toBe("セッションが切れました。再度参加してください。");
         });
     });
 });

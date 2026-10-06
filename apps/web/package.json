@@ -6,6 +6,7 @@
     "scripts": {
         "dev": "vite",
         "dev:workers": "node ../../scripts/dev-room-workers.mjs",
+        "record:room-game-start": "node ../../scripts/record-room-game-start.mjs",
         "check:env": "node ../../scripts/check-env.mjs --dir . --mode production",
         "build": "pnpm check:env && tsc -b && vite build",
         "build:analyze": "pnpm check:env && ANALYZE=true tsc -b && ANALYZE=true vite build",

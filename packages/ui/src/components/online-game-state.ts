@@ -228,19 +228,18 @@ export type GameStartSnapshot = Omit<SnapshotPayload, "spectators">;
  * サーバーは対局開始時に snapshot を送らず、待機中に受け取った snapshot はその後の開始局面の
  * 変更を反映していない。game_start の設定はサーバーが対局に使うものなので、局面・手番・時計を
  * サーバーと同じ規則でそこから求める。
- * 開始局面を解釈できなければ（この画面が知らないプリセット名など）null を返す。
+ *
+ * サーバーと同じ結果になると言い切れる開始局面だけを扱い、それ以外は null を返す
+ * （呼び出し側はサーバーの snapshot を取り直す）。扱うのは "startpos"、駒落ちプリセットの名前、
+ * 前後に空白が無く 1 つの空白で区切られた 4 フィールドの SFEN。空白の読み方と省かれた手数の
+ * 補い方は RoomDO の実装によって違い、同じ文字列から別の手番で対局が始まることがある。
  */
 export function snapshotAtGameStart(event: GameStartEvent): GameStartSnapshot | null {
     const { settings } = event;
-    const fields = (
-        settings.startSfen === "startpos" ? STARTPOS_SFEN : resolveStartSfen(settings.startSfen)
-    )
-        .trim()
-        .split(/\s+/);
-    const turn = fields[1];
-    if (fields.length < 3 || (turn !== "b" && turn !== "w")) return null;
-    // 手数を省いた局面は、サーバーが 1 手目として補う
-    if (fields.length === 3) fields.push("1");
+    const sfen =
+        settings.startSfen === "startpos" ? STARTPOS_SFEN : resolveStartSfen(settings.startSfen);
+    const turn = /^\S+ ([bw]) \S+ \S+$/.exec(sfen)?.[1];
+    if (turn !== "b" && turn !== "w") return null;
 
     const { timeControl, passRights } = settings;
     const isUnlimited =
@@ -248,7 +247,7 @@ export function snapshotAtGameStart(event: GameStartEvent): GameStartSnapshot | 
     return {
         eventId: event.eventId,
         status: "playing",
-        sfen: fields.join(" "),
+        sfen,
         moves: [],
         turn,
         clock: {

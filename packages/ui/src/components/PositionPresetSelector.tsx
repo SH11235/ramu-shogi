@@ -61,6 +61,12 @@ function validateCustomSfen(sfen: string): string | null {
     return null;
 }
 
+// サーバーには前後の空白を除き、フィールドの間を 1 つの空白にそろえて渡す。
+// 空白の読み方は RoomDO の実装によって違い、余分な空白があると手番を読み違えるものがある
+function normalizeSfenSpacing(sfen: string): string {
+    return sfen.trim().replace(/\s+/g, " ");
+}
+
 // ─── コンポーネント ────────────────────────────────────────────────────────────
 
 export interface PositionPresetSelectorProps {
@@ -90,7 +96,7 @@ export function PositionPresetSelector({
         setSfenError(null);
         if (selected === CUSTOM_VALUE) {
             // カスタム入力モードへ切り替え（現在のカスタム SFEN を維持）
-            onChange(customSfen);
+            onChange(normalizeSfenSpacing(customSfen));
         } else {
             onChange(selected);
         }
@@ -101,7 +107,7 @@ export function PositionPresetSelector({
         const error = validateCustomSfen(input);
         setSfenError(error);
         if (!error) {
-            onChange(input);
+            onChange(normalizeSfenSpacing(input));
         }
     }
 

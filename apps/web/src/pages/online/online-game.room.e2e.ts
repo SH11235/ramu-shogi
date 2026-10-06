@@ -413,6 +413,46 @@ test.describe(`オンライン対局（ルーム API: ${roomBackend}）`, () => 
         await closeAll(contextB, contextW);
     });
 
+    test("待機中に開始局面を変更して再読み込みした側も、相手が参加すると変更後の局面で対局が始まる", async ({
+        browser,
+        request,
+    }) => {
+        const roomId = await createRoom(request);
+        const contextB = await newContext(browser, 1);
+        const contextW = await newContext(browser, 2);
+        const b = await contextB.newPage();
+        const w = await contextW.newPage();
+
+        await joinRoom(b, roomId, "b", NAMES.b);
+        await expect(b.getByText("接続しました。対局開始を待っています...")).toBeVisible();
+        await b.getByRole("combobox", { name: "開始局面を選択" }).click();
+        await b.getByRole("option", { name: "角落ち", exact: true }).click();
+        await expect
+            .poll(async () => {
+                const response = await request.get(`/api/rooms/${roomId}`);
+                const room = (await response.json()) as { settings: { startSfen: string } };
+                return room.settings.startSfen;
+            })
+            .toBe("handicap:bishop");
+
+        await b.reload();
+        await expect(b.getByText("接続しました。対局開始を待っています...")).toBeVisible();
+        await expect(b.getByRole("combobox", { name: "開始局面を選択" })).toHaveText("角落ち");
+
+        await joinRoom(w, roomId, "w", NAMES.w);
+        for (const page of [b, w]) {
+            await expectBoard(page);
+            await expectSquare(page, "2b", null);
+            await expectSquare(page, "8b", "後手の飛");
+        }
+        const match: Match = { roomId, b, w, contexts: { b: contextB, w: contextW } };
+        await playMoveOnBoth(match, "w", "3c", "3d", "後手の歩");
+        await playMoveOnBoth(match, "b", "7g", "7f", "先手の歩");
+        await expectPly(b, 2, 2);
+
+        await closeAll(contextB, contextW);
+    });
+
     test("開始局面を解釈できない game_start を受けた側は、サーバーの snapshot から盤面を開く", async ({
         browser,
         request,

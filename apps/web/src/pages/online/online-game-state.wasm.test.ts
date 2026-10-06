@@ -11,7 +11,6 @@ import {
     makeInitialGameState,
     resolveStartSfen,
     restorePosition,
-    snapshotAtGameStart,
 } from "@shogi/ui/components/online-game-state";
 import { parseKif, parseSfen } from "@shogi/ui/components/shogi-match/utils/kifParser";
 import { beforeAll, describe, expect, it, vi } from "vitest";
@@ -246,29 +245,6 @@ describe("オンライン対局の状態（実物の Wasm 局面サービス）"
         const state = await restore(await makeSnapshot(preset, ["3c3d", "7g7f"]));
         expect(state.usiMoveLog).toHaveLength(2);
         expect(state.positionHistory).toHaveLength(3);
-    });
-
-    it.each([
-        "startpos",
-        ...PRESETS,
-        "4k4/9/9/9/9/9/9/9/4K4 w 2Pb 1",
-        "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPP1/1B5R1/LNSGKGSNL b -",
-    ])("game_start（%s）から組み立てた snapshot は、サーバーが対局を始める局面と手番になる", async (startSfen) => {
-        const server = await makeSnapshot(startSfen, []);
-
-        const started = snapshotAtGameStart({
-            kind: "game_start",
-            eventId: 1,
-            serverTs: 0,
-            settings: server.settings,
-            players: { b: { name: "Alice", online: true }, w: { name: "Bob", online: true } },
-        });
-
-        expect(started?.turn).toBe(server.turn);
-        const position = await service.parseSfen(started?.sfen ?? "");
-        expect(withoutMoveNumber(await service.boardToSfen(position))).toBe(
-            withoutMoveNumber(server.sfen),
-        );
     });
 
     // Worker の RoomDO を廃止するときは、この照合も一緒に消す
