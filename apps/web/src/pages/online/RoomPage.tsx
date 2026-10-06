@@ -290,6 +290,7 @@ export default function RoomPage(): ReactElement {
         joinError,
         snapshot,
         joined,
+        connectionLost,
         localStartSfen,
         gamePhase,
         client,
@@ -329,6 +330,10 @@ export default function RoomPage(): ReactElement {
             if (isNotAuthenticated) saveLocalPlayerName(trimmedName);
             await syncProfileDisplayNameIfNeeded(session, trimmedName);
             handleJoin(seat);
+            // ここから先の「接続中」は useRoomConnection が持つ。残すと、接続に失敗して
+            // 参加フォームへ戻ったときに入力もボタンも無効のままになる
+            setIsPreparingJoin(false);
+            setPendingJoinSeat(null);
         } catch (nextError) {
             setJoinActionError(
                 nextError instanceof Error ? nextError.message : "ユーザー名の保存に失敗しました",
@@ -396,6 +401,39 @@ export default function RoomPage(): ReactElement {
                     void navigate({ to: "/" });
                 }}
             />
+        );
+    }
+
+    if (connectionLost) {
+        return (
+            <>
+                <PageHeader
+                    items={[
+                        { label: "ラム将棋", to: "/" },
+                        { label: "オンライン対局", to: "/online" },
+                        { label: "対局ルーム" },
+                    ]}
+                    right={<HeaderNav />}
+                />
+                <div className="mx-auto flex max-w-[480px] flex-col gap-5 px-4 py-8">
+                    <h1 className="text-xl font-bold text-foreground">対局ルーム</h1>
+                    <div
+                        role="alert"
+                        className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
+                    >
+                        <p className="text-sm text-foreground">
+                            接続が切れました。再読み込みすると元の席に戻れます
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => window.location.reload()}
+                            className="rounded-md bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground shadow-sm hover:bg-secondary/80 transition-colors"
+                        >
+                            再読み込み
+                        </button>
+                    </div>
+                </div>
+            </>
         );
     }
 

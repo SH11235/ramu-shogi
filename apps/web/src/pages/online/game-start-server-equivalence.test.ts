@@ -4,8 +4,9 @@
 //
 // - legacy: この repo の RoomDO（worker/room-do.ts）をテストの中で動かす
 // - backend: 起動した backend の RoomDO から記録した fixtures/backend-game-start.json。
-//   backendCommit が記録元の commit で、backend の RoomDO を変えたら記録し直す
-//   （手順は scripts/record-room-game-start.mjs）
+//   backendCommit は記録元の commit を示すだけで、いまの backend と一致することは確かめない
+//   （この repo の CI から backend は見えない）。backend の RoomDO の対局開始まわりを変えたら、
+//   scripts/record-room-game-start.mjs で記録し直す
 
 import type { GameStartEvent, RoomSettings, SnapshotPayload } from "@shogi/match-client";
 import { snapshotAtGameStart } from "@shogi/ui/components/online-game-state";
@@ -48,10 +49,6 @@ function expectSameAsServer(gameStart: GameStartEvent, snapshot: SnapshotPayload
 }
 
 describe("backend の RoomDO が送った game_start と対局開始直後の snapshot", () => {
-    it("記録元の backend の commit を持つ", () => {
-        expect(recorded.backendCommit).toMatch(/^[0-9a-f]{40}$/);
-    });
-
     it("記録に、組み立てる開始局面と組み立てない開始局面の両方がある", () => {
         const names = BACKEND_CASES.map((recordedCase) => recordedCase.name);
 

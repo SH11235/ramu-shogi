@@ -642,11 +642,25 @@ describe("RoomPage", () => {
             expect(getLegalMoves).toHaveBeenCalledWith(startSfen, ["3c3d"], {});
         });
 
-        describe("開始局面を解釈できない対局開始の後、snapshot を得られないとき", () => {
+        describe("待機中の接続の失敗", () => {
             const WAITING_TEXT = "接続しました。対局開始を待っています...";
+            const LOST_TEXT = "接続が切れました。再読み込みすると元の席に戻れます";
             const UNKNOWN_PRESET = "handicap:unknown";
 
-            it("15 秒待っても snapshot が届かなければ、待機中の表示をやめて再読み込みを案内する", async () => {
+            /** 席を持ったまま切れた対局者には、参加フォームでなく再読み込みの案内だけを出す */
+            function expectReloadGuidanceOnly(): void {
+                expect(screen.getByRole("alert").textContent).toContain(LOST_TEXT);
+                expect(screen.getByRole("button", { name: "再読み込み" })).toBeTruthy();
+                expect(screen.queryByText(WAITING_TEXT)).toBeNull();
+                expect(
+                    screen.queryByRole("button", { name: /参加する|満席です|接続中/ }),
+                ).toBeNull();
+                expect(screen.queryByLabelText(/名前/)).toBeNull();
+                expect(screen.queryByText("● オンライン")).toBeNull();
+                expect(screen.queryByRole("button", { name: /^5e / })).toBeNull();
+            }
+
+            it("開始局面を解釈できない対局開始の後、15 秒待っても snapshot が届かなければ、再読み込みを案内する", async () => {
                 const socket = await joinAndWait("b");
                 vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
                 try {
@@ -664,14 +678,10 @@ describe("RoomPage", () => {
                     vi.useRealTimers();
                 }
 
-                expect(
-                    screen.getByText("同期エラーが発生しました。ページを再読み込みしてください"),
-                ).toBeTruthy();
-                expect(screen.queryByText(WAITING_TEXT)).toBeNull();
-                expect(screen.queryByRole("button", { name: /^5e / })).toBeNull();
+                expectReloadGuidanceOnly();
             });
 
-            it("snapshot の代わりにエラーが返ったら、待機中の表示をやめてエラーを案内する", async () => {
+            it("開始局面を解釈できない対局開始の後、snapshot の代わりにエラーが返ったら、再読み込みを案内する", async () => {
                 const socket = await joinAndWait("b");
                 await receive(socket, [gameStart(1, UNKNOWN_PRESET)]);
                 expect(screen.getByText(WAITING_TEXT)).toBeTruthy();
@@ -680,10 +690,44 @@ describe("RoomPage", () => {
                     { v: 1, t: "error", payload: { code: "INVALID_TOKEN", message: "" } },
                 ]);
 
-                expect(
-                    screen.getByText("セッションが切れました。再度参加してください"),
-                ).toBeTruthy();
-                expect(screen.queryByText(WAITING_TEXT)).toBeNull();
+                expectReloadGuidanceOnly();
+            });
+
+            it("相手を待つ間にエラーが返ったら、再読み込みを案内し、ボタンで再読み込みする", async () => {
+                const reload = vi.fn();
+                vi.stubGlobal("location", { ...window.location, reload });
+                const socket = await joinAndWait("b");
+
+                await receive(socket, [
+                    { v: 1, t: "error", payload: { code: "UNKNOWN", message: "" } },
+                ]);
+
+                expectReloadGuidanceOnly();
+                fireEvent.click(screen.getByRole("button", { name: "再読み込み" }));
+                expect(reload).toHaveBeenCalledTimes(1);
+            });
+
+            it("参加できなかったときは、エラーを表示した参加フォームをそのまま操作できる", async () => {
+                render(<RoomPage />);
+                fireEvent.change(screen.getByLabelText(/名前/), { target: { value: "Alice" } });
+                await act(async () => {
+                    fireEvent.click(screen.getByRole("button", { name: "先手として参加する" }));
+                });
+                await deliverOnOpen("test-room", [
+                    { v: 1, t: "error", payload: { code: "ROOM_FULL", message: "" } },
+                ]);
+
+                expect(screen.getByText("この席はすでに埋まっています")).toBeTruthy();
+                expect(screen.queryByText(LOST_TEXT)).toBeNull();
+                expect((screen.getByLabelText(/名前/) as HTMLInputElement).disabled).toBe(false);
+                for (const name of [
+                    "先手として参加する",
+                    "後手として参加する",
+                    "観戦者として参加する",
+                ]) {
+                    const button = screen.getByRole("button", { name }) as HTMLButtonElement;
+                    expect(button.disabled).toBe(false);
+                }
             });
         });
 

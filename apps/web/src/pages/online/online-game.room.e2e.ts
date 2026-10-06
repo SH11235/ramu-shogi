@@ -27,6 +27,8 @@ const SEAT_LABEL: Record<PlayerSeat | "s", string> = {
 };
 const NAMES: Record<PlayerSeat, string> = { b: "先手テスト", w: "後手テスト" };
 
+const LOST_CONNECTION_NOTICE = /^接続が切れました。再読み込みすると元の席に戻れます/;
+
 const SECOND_TAB_NOTICE =
     "この画面からは操作できません。別のタブやウィンドウで対局中の場合は、そちらで続けてください。";
 
@@ -307,16 +309,26 @@ test.describe(`オンライン対局（ルーム API: ${roomBackend}）`, () => 
         await b.getByRole("combobox", { name: "開始局面を選択" }).click();
         await b.getByRole("option", { name: "SFEN 直接入力" }).click();
 
+        // 選んだだけでは何も送らないので、どちらの処理先でも接続は保たれる
+        await expect(b.getByPlaceholder(/^例: lnsgkgsnl/)).toBeVisible();
+        await expect(b.getByText("接続しました。対局開始を待っています...")).toBeVisible();
+
         if (roomBackend === "legacy") {
-            // legacy は「SFEN 直接入力」を選んだ時点で送られる空の開始局面をエラーで返し、
-            // 待機中の接続はそこで切れる。変更した側にはエラーが表示され、平手のまま始まる
-            await expect(b.getByText("エラーが発生しました")).toBeVisible();
-            await expect(b.getByText("接続しました。対局開始を待っています...")).toHaveCount(0);
+            // legacy は入力途中の、手数まで届いていない SFEN をエラーで返し、待機中の接続は
+            // そこで切れる。変更した側には再読み込みの案内が出て、変更は届かず平手のまま始まる
+            await b
+                .getByPlaceholder(/^例: lnsgkgsnl/)
+                .pressSequentially("4k4/9/4p4/9/9/9/4P4/9/4K4 b -");
+            await expect(b.getByRole("alert")).toHaveText(LOST_CONNECTION_NOTICE);
             await joinRoom(w, roomId, "w", NAMES.w);
             await expectBoard(w);
             await expectSquare(w, "7g", "先手の歩");
-            await expect(b.getByRole("heading", { name: "対局ルーム" })).toBeVisible();
-            await expect(square(b, "5e")).toHaveCount(0);
+
+            // 再読み込みすると元の席に戻り、始まっている対局を続けられる
+            await b.getByRole("button", { name: "再読み込み" }).click();
+            await expectBoard(b);
+            const resumed: Match = { roomId, b, w, contexts: { b: contextB, w: contextW } };
+            await playMoveOnBoth(resumed, "b", "7g", "7f", "先手の歩");
             await closeAll(contextB, contextW);
             return;
         }
@@ -453,6 +465,48 @@ test.describe(`オンライン対局（ルーム API: ${roomBackend}）`, () => 
         await playMoveOnBoth(match, "w", "3c", "3d", "後手の歩");
         await playMoveOnBoth(match, "b", "7g", "7f", "先手の歩");
         await expectPly(b, 2, 2);
+
+        await closeAll(contextB, contextW);
+    });
+
+    test("待機中にサーバーがエラーを返して接続が切れても、再読み込みすると元の席に戻れる", async ({
+        browser,
+        request,
+    }) => {
+        const roomId = await createRoom(request);
+        const contextB = await newContext(browser, 1);
+        const contextW = await newContext(browser, 2);
+        const b = await contextB.newPage();
+        const w = await contextW.newPage();
+
+        // サーバーがエラーを返した状況を、先手の受信に差し込んで作る
+        let sendErrorToPage = (): void => {};
+        await b.routeWebSocket(/\/api\/rooms\/[^/]+\/ws$/, (ws) => {
+            ws.connectToServer();
+            sendErrorToPage = () =>
+                ws.send(
+                    JSON.stringify({ v: 1, t: "error", payload: { code: "UNKNOWN", message: "" } }),
+                );
+        });
+
+        await joinRoom(b, roomId, "b", NAMES.b);
+        await expect(b.getByText("接続しました。対局開始を待っています...")).toBeVisible();
+        sendErrorToPage();
+
+        await expect(b.getByRole("alert")).toHaveText(LOST_CONNECTION_NOTICE);
+        await expect(b.getByText("接続しました。対局開始を待っています...")).toHaveCount(0);
+        // 席は残っているので、参加し直す入口は出さない（相手の席に入れてしまう）
+        await expect(b.getByRole("button", { name: /参加する|満席です|接続中/ })).toHaveCount(0);
+
+        await b.getByRole("button", { name: "再読み込み" }).click();
+        await expect(b.getByText("接続しました。対局開始を待っています...")).toBeVisible();
+
+        await joinRoom(w, roomId, "w", NAMES.w);
+        await expectBoard(b);
+        await expectBoard(w);
+        const match: Match = { roomId, b, w, contexts: { b: contextB, w: contextW } };
+        await playMoveOnBoth(match, "b", "7g", "7f", "先手の歩");
+        await playMoveOnBoth(match, "w", "3c", "3d", "後手の歩");
 
         await closeAll(contextB, contextW);
     });

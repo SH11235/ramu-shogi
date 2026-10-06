@@ -96,7 +96,8 @@ export function PositionPresetSelector({
         setSfenError(null);
         if (selected === CUSTOM_VALUE) {
             // カスタム入力モードへ切り替え（現在のカスタム SFEN を維持）
-            onChange(normalizeSfenSpacing(customSfen));
+            // 入力欄が空や入力途中のままなら、局面としては通知しない
+            onChange(validateCustomSfen(customSfen) ? "" : normalizeSfenSpacing(customSfen));
         } else {
             onChange(selected);
         }

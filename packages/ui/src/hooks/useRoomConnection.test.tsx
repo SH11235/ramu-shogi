@@ -432,6 +432,52 @@ describe("useRoomConnection", () => {
             expect(connection.client.resume).not.toHaveBeenCalled();
         });
 
+        it("席を持つ対局者がエラーを受けたら、参加済みを取り消し、再読み込みで戻れる状態にする", () => {
+            const { connection, result } = joinAndWait("b");
+            mockGetStoredResumeToken.mockReturnValue("token-1");
+            mockGetStoredSeat.mockReturnValue("b");
+
+            act(() => {
+                connection.emit({ v: 1, t: "error", payload: { code: "UNKNOWN", message: "" } });
+            });
+
+            expect(result.current).toMatchObject({
+                joined: false,
+                connectionLost: true,
+                snapshot: null,
+                client: null,
+            });
+        });
+
+        it("観戦者がエラーを受けたら、参加フォームへ戻す", () => {
+            const { connection, result } = joinAndWait("s");
+            // 同じブラウザで以前に対局者として得たトークンが残っていても、観戦者の席には戻れない
+            mockGetStoredResumeToken.mockReturnValue("token-1");
+            mockGetStoredSeat.mockReturnValue("s");
+
+            act(() => {
+                connection.emit({ v: 1, t: "error", payload: { code: "UNKNOWN", message: "" } });
+            });
+
+            expect(result.current).toMatchObject({
+                joined: false,
+                connectionLost: false,
+                snapshot: null,
+                joinError: "エラーが発生しました",
+            });
+        });
+
+        it("空の開始局面は待機画面の表示にだけ反映し、サーバーへ送らない", () => {
+            const { connection, result } = joinAndWait("b");
+
+            act(() => {
+                result.current.handleUpdateStartSfen("");
+            });
+
+            expect(result.current.localStartSfen).toBe("");
+            expect(connection.client.updateSettings).not.toHaveBeenCalled();
+        });
+
         it("対局開始の後は購読をやめ、続くメッセージを対局画面に残す", () => {
             const { connection, result } = joinAndWait("b");
 
@@ -589,6 +635,7 @@ describe("useRoomConnection", () => {
             it("snapshot が届かないまま時間が過ぎたら、盤面を開かずに再読み込みを案内する", () => {
                 const { connection, result, reopen } = joinAndWait("b");
                 mockGetStoredResumeToken.mockReturnValue("token-1");
+                mockGetStoredSeat.mockReturnValue("b");
                 act(() => {
                     connection.emit(gameStart(2, UNKNOWN_PRESET));
                 });
@@ -607,6 +654,11 @@ describe("useRoomConnection", () => {
                 expect(result.current.joinError).toBe(
                     "同期エラーが発生しました。ページを再読み込みしてください",
                 );
+                expect(result.current).toMatchObject({
+                    joined: false,
+                    connectionLost: true,
+                    snapshot: null,
+                });
                 expect(connection.client.disconnect).toHaveBeenCalled();
             });
 
@@ -738,7 +790,7 @@ describe("useRoomConnection", () => {
             });
         });
 
-        it("サーバーがエラーを返したら、参加し直しを案内する", () => {
+        it("待機中にサーバーがエラーを返したら、再読み込みで席へ戻れる状態にする", () => {
             const { connection, result } = resumeAndWait("b");
 
             act(() => {
@@ -750,6 +802,30 @@ describe("useRoomConnection", () => {
             });
 
             expect(result.current.joinError).toBe("セッションが切れました。再度参加してください。");
+            expect(result.current).toMatchObject({ joined: false, connectionLost: true });
+        });
+
+        it("resume がエラーで拒否されたら、参加フォームへ戻す", () => {
+            const connection = createMockClient();
+            mockGetStoredResumeToken.mockReturnValue("token-1");
+            mockGetStoredSeat.mockReturnValue("b");
+            mockCreateRoomClient.mockReturnValue(connection.client);
+            const { result } = renderHook(() => useRoomConnection({ roomId: "room-1" }));
+
+            act(() => {
+                connection.emit({
+                    v: 1,
+                    t: "error",
+                    payload: { code: "INVALID_TOKEN", message: "" },
+                });
+            });
+
+            expect(result.current).toMatchObject({
+                joined: false,
+                connectionLost: false,
+                isJoining: false,
+                joinError: "セッションが切れました。再度参加してください。",
+            });
         });
     });
 });

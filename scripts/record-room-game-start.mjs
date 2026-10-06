@@ -26,22 +26,16 @@ const FIXTURE_PATH = path.join(
 );
 
 function resolveBackendCommit() {
-    const commit =
-        process.env.BACKEND_COMMIT ??
-        execFileSync(
-            "git",
-            [
-                "-C",
-                path.resolve(repoRoot, process.env.BACKEND_DIR ?? "../ramu-shogi-backend"),
-                "rev-parse",
-                "HEAD",
-            ],
-            { encoding: "utf8" },
-        ).trim();
-    if (!/^[0-9a-f]{40}$/.test(commit)) {
-        throw new Error(`backend の commit を 40 桁の sha で指定してください: ${commit}`);
+    if (process.env.BACKEND_COMMIT) return process.env.BACKEND_COMMIT;
+    const backendDir = path.resolve(repoRoot, process.env.BACKEND_DIR ?? "../ramu-shogi-backend");
+    const git = (...args) =>
+        execFileSync("git", ["-C", backendDir, ...args], { encoding: "utf8" }).trim();
+    // 未 commit の変更がある RoomDO から記録すると、commit から記録を再現できない
+    const uncommitted = git("status", "--porcelain", "--", "apps/api-worker");
+    if (uncommitted) {
+        throw new Error(`backend の apps/api-worker に未 commit の変更があります:\n${uncommitted}`);
     }
-    return commit;
+    return git("rev-parse", "HEAD");
 }
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:8787";
@@ -176,6 +170,9 @@ async function record({ name, create, startSfen }) {
 }
 
 const backendCommit = resolveBackendCommit();
+if (!/^[0-9a-f]{40}$/.test(backendCommit)) {
+    throw new Error(`backend の commit を 40 桁の sha で指定してください: ${backendCommit}`);
+}
 const cases = [];
 for (const testCase of CASES) {
     cases.push(await record(testCase));
