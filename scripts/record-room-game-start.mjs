@@ -1,15 +1,48 @@
-// 起動済みの環境で対局を始め、RoomDO が送る game_start と、その直後に参加した観戦者へ送る
-// snapshot の組を記録して標準出力に書く。
-//
-// apps/web/src/pages/online/fixtures/backend-game-start.json を作り直すとき:
+// 起動済みの環境で対局を始め、backend の RoomDO が送る game_start と、その直後に参加した観戦者へ
+// 送る snapshot の組を、記録元の backend の commit と一緒に
+// apps/web/src/pages/online/fixtures/backend-game-start.json へ記録する。
 //
 //   pnpm --filter web dev:workers          # ROOM_BACKEND=backend（既定）で起動しておく
-//   pnpm --filter web record:room-game-start \
-//       > apps/web/src/pages/online/fixtures/backend-game-start.json
+//   pnpm --filter web record:room-game-start
 //   pnpm exec biome format --write apps/web/src/pages/online/fixtures
 //
+// 途中で失敗したときに記録を壊さないよう、すべて記録できてから一時ファイル経由で置き換える。
+//
 // 環境変数:
-//   BASE_URL  対象環境の URL（既定: http://localhost:8787）
+//   BASE_URL        対象環境の URL（既定: http://localhost:8787）
+//   BACKEND_DIR     対象環境が動かしている ramu-shogi-backend の checkout
+//                   （既定: この repo の隣の ../ramu-shogi-backend）。commit の取得にだけ使う
+//   BACKEND_COMMIT  checkout から取得できない環境（デプロイ済みなど）で、記録元の commit を直接渡す
+
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const FIXTURE_PATH = path.join(
+    repoRoot,
+    "apps/web/src/pages/online/fixtures/backend-game-start.json",
+);
+
+function resolveBackendCommit() {
+    const commit =
+        process.env.BACKEND_COMMIT ??
+        execFileSync(
+            "git",
+            [
+                "-C",
+                path.resolve(repoRoot, process.env.BACKEND_DIR ?? "../ramu-shogi-backend"),
+                "rev-parse",
+                "HEAD",
+            ],
+            { encoding: "utf8" },
+        ).trim();
+    if (!/^[0-9a-f]{40}$/.test(commit)) {
+        throw new Error(`backend の commit を 40 桁の sha で指定してください: ${commit}`);
+    }
+    return commit;
+}
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:8787";
 // ルーム作成は IP ごとに 60 秒 10 回までに制限されている
@@ -142,9 +175,13 @@ async function record({ name, create, startSfen }) {
     return { name, create, ...(startSfen !== undefined ? { startSfen } : {}), gameStart, snapshot };
 }
 
-const recorded = [];
+const backendCommit = resolveBackendCommit();
+const cases = [];
 for (const testCase of CASES) {
-    recorded.push(await record(testCase));
+    cases.push(await record(testCase));
     console.error(`[record] ${testCase.name}`);
 }
-console.log(JSON.stringify(recorded, null, 4));
+const temporaryPath = `${FIXTURE_PATH}.tmp`;
+fs.writeFileSync(temporaryPath, `${JSON.stringify({ backendCommit, cases }, null, 4)}\n`);
+fs.renameSync(temporaryPath, FIXTURE_PATH);
+console.error(`[record] ${path.relative(process.cwd(), FIXTURE_PATH)} (backend ${backendCommit})`);

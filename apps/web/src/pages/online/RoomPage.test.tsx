@@ -642,6 +642,51 @@ describe("RoomPage", () => {
             expect(getLegalMoves).toHaveBeenCalledWith(startSfen, ["3c3d"], {});
         });
 
+        describe("開始局面を解釈できない対局開始の後、snapshot を得られないとき", () => {
+            const WAITING_TEXT = "接続しました。対局開始を待っています...";
+            const UNKNOWN_PRESET = "handicap:unknown";
+
+            it("15 秒待っても snapshot が届かなければ、待機中の表示をやめて再読み込みを案内する", async () => {
+                const socket = await joinAndWait("b");
+                vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+                try {
+                    await receive(socket, [gameStart(1, UNKNOWN_PRESET)]);
+                    expect(screen.getByText(WAITING_TEXT)).toBeTruthy();
+
+                    await act(async () => {
+                        vi.advanceTimersByTime(14_999);
+                    });
+                    expect(screen.getByText(WAITING_TEXT)).toBeTruthy();
+                    await act(async () => {
+                        vi.advanceTimersByTime(1);
+                    });
+                } finally {
+                    vi.useRealTimers();
+                }
+
+                expect(
+                    screen.getByText("同期エラーが発生しました。ページを再読み込みしてください"),
+                ).toBeTruthy();
+                expect(screen.queryByText(WAITING_TEXT)).toBeNull();
+                expect(screen.queryByRole("button", { name: /^5e / })).toBeNull();
+            });
+
+            it("snapshot の代わりにエラーが返ったら、待機中の表示をやめてエラーを案内する", async () => {
+                const socket = await joinAndWait("b");
+                await receive(socket, [gameStart(1, UNKNOWN_PRESET)]);
+                expect(screen.getByText(WAITING_TEXT)).toBeTruthy();
+
+                await receive(socket, [
+                    { v: 1, t: "error", payload: { code: "INVALID_TOKEN", message: "" } },
+                ]);
+
+                expect(
+                    screen.getByText("セッションが切れました。再度参加してください"),
+                ).toBeTruthy();
+                expect(screen.queryByText(WAITING_TEXT)).toBeNull();
+            });
+        });
+
         describe("待機中に再読み込みした対局者", () => {
             // 再読み込み後は保存済みのトークンで resume する。lastEventId 0 の resume には、
             // legacy / backend どちらの RoomDO も snapshot を返す

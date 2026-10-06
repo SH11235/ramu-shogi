@@ -306,32 +306,36 @@ test.describe(`オンライン対局（ルーム API: ${roomBackend}）`, () => 
         await expect(b.getByText("接続しました。対局開始を待っています...")).toBeVisible();
         await b.getByRole("combobox", { name: "開始局面を選択" }).click();
         await b.getByRole("option", { name: "SFEN 直接入力" }).click();
-        await b
-            .getByPlaceholder(/^例: lnsgkgsnl/)
-            .pressSequentially("4k4/9/4p4/9/9/9/4P4/9/4K4 b - 1");
 
-        await joinRoom(w, roomId, "w", NAMES.w);
-        await expectBoard(w);
-
-        if (roomBackend === "backend") {
-            // 入力途中の不正な SFEN は無視されて接続は保たれ、入力し終えた局面で始まる
-            await expectBoard(b);
-            for (const page of [b, w]) {
-                await expectSquare(page, "5a", "後手の玉");
-                await expectSquare(page, "7g", null);
-            }
-            // 変更した側が先に指す局面なので、変更後の局面から指せて、双方の盤面が一致する
-            const match: Match = { roomId, b, w, contexts: { b: contextB, w: contextW } };
-            await playMoveOnBoth(match, "b", "5g", "5f", "先手の歩");
-            await playMoveOnBoth(match, "w", "5c", "5d", "後手の歩");
-            await expectPly(b, 2, 2);
-        } else {
-            // legacy は入力途中の SFEN をエラーで返し、待機中の接続はそこで切れる。
-            // 変更は届かず平手のまま始まり、変更した側は待機画面に取り残される
+        if (roomBackend === "legacy") {
+            // legacy は「SFEN 直接入力」を選んだ時点で送られる空の開始局面をエラーで返し、
+            // 待機中の接続はそこで切れる。変更した側にはエラーが表示され、平手のまま始まる
+            await expect(b.getByText("エラーが発生しました")).toBeVisible();
+            await expect(b.getByText("接続しました。対局開始を待っています...")).toHaveCount(0);
+            await joinRoom(w, roomId, "w", NAMES.w);
+            await expectBoard(w);
             await expectSquare(w, "7g", "先手の歩");
             await expect(b.getByRole("heading", { name: "対局ルーム" })).toBeVisible();
             await expect(square(b, "5e")).toHaveCount(0);
+            await closeAll(contextB, contextW);
+            return;
         }
+
+        // 入力途中の不正な SFEN は無視されて接続は保たれ、入力し終えた局面で始まる
+        await b
+            .getByPlaceholder(/^例: lnsgkgsnl/)
+            .pressSequentially("4k4/9/4p4/9/9/9/4P4/9/4K4 b - 1");
+        await joinRoom(w, roomId, "w", NAMES.w);
+        for (const page of [b, w]) {
+            await expectBoard(page);
+            await expectSquare(page, "5a", "後手の玉");
+            await expectSquare(page, "7g", null);
+        }
+        // 変更した側が先に指す局面なので、変更後の局面から指せて、双方の盤面が一致する
+        const match: Match = { roomId, b, w, contexts: { b: contextB, w: contextW } };
+        await playMoveOnBoth(match, "b", "5g", "5f", "先手の歩");
+        await playMoveOnBoth(match, "w", "5c", "5d", "後手の歩");
+        await expectPly(b, 2, 2);
 
         await closeAll(contextB, contextW);
     });

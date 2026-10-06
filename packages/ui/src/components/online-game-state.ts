@@ -224,15 +224,8 @@ const STARTPOS_SFEN = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL
 export type GameStartSnapshot = Omit<SnapshotPayload, "spectators">;
 
 /**
- * game_start イベントから、対局開始時点の snapshot を組み立てる。
- * サーバーは対局開始時に snapshot を送らず、待機中に受け取った snapshot はその後の開始局面の
- * 変更を反映していない。game_start の設定はサーバーが対局に使うものなので、局面・手番・時計を
- * サーバーと同じ規則でそこから求める。
- *
- * サーバーと同じ結果になると言い切れる開始局面だけを扱い、それ以外は null を返す
- * （呼び出し側はサーバーの snapshot を取り直す）。扱うのは "startpos"、駒落ちプリセットの名前、
- * 前後に空白が無く 1 つの空白で区切られた 4 フィールドの SFEN。空白の読み方と省かれた手数の
- * 補い方は RoomDO の実装によって違い、同じ文字列から別の手番で対局が始まることがある。
+ * game_start から対局開始時点の snapshot を組み立てる。空白の読み方と省かれた手数の補い方は RoomDO の
+ * 実装ごとに違うので、どの実装でも同じ局面・手番になる開始局面以外は null を返す。
  */
 export function snapshotAtGameStart(event: GameStartEvent): GameStartSnapshot | null {
     const { settings } = event;

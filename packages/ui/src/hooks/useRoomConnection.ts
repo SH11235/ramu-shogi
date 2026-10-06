@@ -85,6 +85,7 @@ type RoomAction =
     | { type: "snapshot_received"; snapshot: SnapshotPayload }
     | { type: "settings_updated"; startSfen: string }
     | { type: "game_start"; snapshot: SnapshotPayload | GameStartSnapshot }
+    | { type: "connection_failed" }
     | { type: "client_set"; client: RoomClient }
     | { type: "client_cleared" }
     | { type: "room_changed" };
@@ -113,6 +114,10 @@ function roomReducer(state: RoomState, action: RoomAction): RoomState {
                 gamePhase: "playing",
                 snapshot: { spectators: state.snapshot?.spectators ?? 0, ...action.snapshot },
             };
+        case "connection_failed":
+            // 参加済みのままにすると、待機画面は接続の切れた後も対局開始を待つ表示を続け、
+            // 失敗の案内（参加フォームに出る）が利用者に見えない
+            return { ...state, joined: false };
         case "client_set":
             return { ...state, client: action.client };
         case "client_cleared":
@@ -321,6 +326,7 @@ export function useRoomConnection({
                 return;
             }
             dispatchJoin({ type: "error", message: messageText });
+            dispatchRoom({ type: "connection_failed" });
             cleanup();
         };
 

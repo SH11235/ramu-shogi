@@ -1,1240 +1,1243 @@
-[
-    {
-        "name": "平手",
-        "create": {},
-        "gameStart": {
-            "eventId": 1,
-            "kind": "game_start",
-            "settings": {
-                "startSfen": "startpos",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
+{
+    "backendCommit": "4b73235de41db5b7acd89d918364fb2a33cf1fd8",
+    "cases": [
+        {
+            "name": "平手",
+            "create": {},
+            "gameStart": {
+                "eventId": 1,
+                "kind": "game_start",
+                "settings": {
+                    "startSfen": "startpos",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                },
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "serverTs": 1791277294997
+            },
+            "snapshot": {
+                "eventId": 1,
+                "status": "playing",
+                "sfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+                "moves": [],
+                "turn": "b",
+                "clock": {
+                    "b": {
+                        "remainMs": 600000
+                    },
+                    "w": {
+                        "remainMs": 600000
+                    },
+                    "running": "b",
+                    "lastTickTs": 1791277294997
                 },
                 "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            },
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
                 },
-                "w": {
-                    "name": "Bob",
-                    "online": true
+                "spectators": 1,
+                "settings": {
+                    "startSfen": "startpos",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
                 }
-            },
-            "serverTs": 1791277294997
-        },
-        "snapshot": {
-            "eventId": 1,
-            "status": "playing",
-            "sfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
-            "moves": [],
-            "turn": "b",
-            "clock": {
-                "b": {
-                    "remainMs": 600000
-                },
-                "w": {
-                    "remainMs": 600000
-                },
-                "running": "b",
-                "lastTickTs": 1791277294997
-            },
-            "passRights": null,
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "spectators": 1,
-            "settings": {
-                "startSfen": "startpos",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            }
-        }
-    },
-    {
-        "name": "作成時から角落ち",
-        "create": {
-            "startSfen": "handicap:bishop"
-        },
-        "gameStart": {
-            "eventId": 1,
-            "kind": "game_start",
-            "settings": {
-                "startSfen": "handicap:bishop",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            },
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "serverTs": 1791277295195
-        },
-        "snapshot": {
-            "eventId": 1,
-            "status": "playing",
-            "sfen": "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
-            "moves": [],
-            "turn": "w",
-            "clock": {
-                "b": {
-                    "remainMs": 600000
-                },
-                "w": {
-                    "remainMs": 600000
-                },
-                "running": "w",
-                "lastTickTs": 1791277295195
-            },
-            "passRights": null,
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "spectators": 1,
-            "settings": {
-                "startSfen": "handicap:bishop",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            }
-        }
-    },
-    {
-        "name": "待機中に角落ちへ変更",
-        "create": {},
-        "startSfen": "handicap:bishop",
-        "gameStart": {
-            "eventId": 2,
-            "kind": "game_start",
-            "settings": {
-                "startSfen": "handicap:bishop",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            },
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "serverTs": 1791277295401
-        },
-        "snapshot": {
-            "eventId": 2,
-            "status": "playing",
-            "sfen": "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
-            "moves": [],
-            "turn": "w",
-            "clock": {
-                "b": {
-                    "remainMs": 600000
-                },
-                "w": {
-                    "remainMs": 600000
-                },
-                "running": "w",
-                "lastTickTs": 1791277295401
-            },
-            "passRights": null,
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "spectators": 1,
-            "settings": {
-                "startSfen": "handicap:bishop",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            }
-        }
-    },
-    {
-        "name": "待機中に飛車落ちへ変更",
-        "create": {},
-        "startSfen": "handicap:rook",
-        "gameStart": {
-            "eventId": 2,
-            "kind": "game_start",
-            "settings": {
-                "startSfen": "handicap:rook",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            },
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "serverTs": 1791277295636
-        },
-        "snapshot": {
-            "eventId": 2,
-            "status": "playing",
-            "sfen": "lnsgkgsnl/7b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
-            "moves": [],
-            "turn": "w",
-            "clock": {
-                "b": {
-                    "remainMs": 600000
-                },
-                "w": {
-                    "remainMs": 600000
-                },
-                "running": "w",
-                "lastTickTs": 1791277295636
-            },
-            "passRights": null,
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "spectators": 1,
-            "settings": {
-                "startSfen": "handicap:rook",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            }
-        }
-    },
-    {
-        "name": "待機中に飛車角落ちへ変更",
-        "create": {},
-        "startSfen": "handicap:rook-bishop",
-        "gameStart": {
-            "eventId": 2,
-            "kind": "game_start",
-            "settings": {
-                "startSfen": "handicap:rook-bishop",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            },
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "serverTs": 1791277295867
-        },
-        "snapshot": {
-            "eventId": 2,
-            "status": "playing",
-            "sfen": "lnsgkgsnl/9/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
-            "moves": [],
-            "turn": "w",
-            "clock": {
-                "b": {
-                    "remainMs": 600000
-                },
-                "w": {
-                    "remainMs": 600000
-                },
-                "running": "w",
-                "lastTickTs": 1791277295867
-            },
-            "passRights": null,
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "spectators": 1,
-            "settings": {
-                "startSfen": "handicap:rook-bishop",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            }
-        }
-    },
-    {
-        "name": "待機中に後手番の SFEN へ変更",
-        "create": {},
-        "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
-        "gameStart": {
-            "eventId": 2,
-            "kind": "game_start",
-            "settings": {
-                "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            },
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "serverTs": 1791277296085
-        },
-        "snapshot": {
-            "eventId": 2,
-            "status": "playing",
-            "sfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
-            "moves": [],
-            "turn": "w",
-            "clock": {
-                "b": {
-                    "remainMs": 600000
-                },
-                "w": {
-                    "remainMs": 600000
-                },
-                "running": "w",
-                "lastTickTs": 1791277296085
-            },
-            "passRights": null,
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "spectators": 1,
-            "settings": {
-                "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            }
-        }
-    },
-    {
-        "name": "待機中に持ち駒のある先手番の SFEN へ変更",
-        "create": {},
-        "startSfen": "4k4/9/9/9/9/9/9/9/4K4 b 2Pb 1",
-        "gameStart": {
-            "eventId": 2,
-            "kind": "game_start",
-            "settings": {
-                "startSfen": "4k4/9/9/9/9/9/9/9/4K4 b 2Pb 1",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            },
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "serverTs": 1791277296314
-        },
-        "snapshot": {
-            "eventId": 2,
-            "status": "playing",
-            "sfen": "4k4/9/9/9/9/9/9/9/4K4 b 2Pb 1",
-            "moves": [],
-            "turn": "b",
-            "clock": {
-                "b": {
-                    "remainMs": 600000
-                },
-                "w": {
-                    "remainMs": 600000
-                },
-                "running": "b",
-                "lastTickTs": 1791277296314
-            },
-            "passRights": null,
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "spectators": 1,
-            "settings": {
-                "startSfen": "4k4/9/9/9/9/9/9/9/4K4 b 2Pb 1",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            }
-        }
-    },
-    {
-        "name": "持ち時間なしの秒読み",
-        "create": {
-            "timeControl": {
-                "type": "byoyomi",
-                "initialMs": 0,
-                "byoyomiMs": 3000
             }
         },
-        "gameStart": {
-            "eventId": 1,
-            "kind": "game_start",
-            "settings": {
-                "startSfen": "startpos",
+        {
+            "name": "作成時から角落ち",
+            "create": {
+                "startSfen": "handicap:bishop"
+            },
+            "gameStart": {
+                "eventId": 1,
+                "kind": "game_start",
+                "settings": {
+                    "startSfen": "handicap:bishop",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                },
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "serverTs": 1791277295195
+            },
+            "snapshot": {
+                "eventId": 1,
+                "status": "playing",
+                "sfen": "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+                "moves": [],
+                "turn": "w",
+                "clock": {
+                    "b": {
+                        "remainMs": 600000
+                    },
+                    "w": {
+                        "remainMs": 600000
+                    },
+                    "running": "w",
+                    "lastTickTs": 1791277295195
+                },
+                "passRights": null,
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "spectators": 1,
+                "settings": {
+                    "startSfen": "handicap:bishop",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                }
+            }
+        },
+        {
+            "name": "待機中に角落ちへ変更",
+            "create": {},
+            "startSfen": "handicap:bishop",
+            "gameStart": {
+                "eventId": 2,
+                "kind": "game_start",
+                "settings": {
+                    "startSfen": "handicap:bishop",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                },
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "serverTs": 1791277295401
+            },
+            "snapshot": {
+                "eventId": 2,
+                "status": "playing",
+                "sfen": "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+                "moves": [],
+                "turn": "w",
+                "clock": {
+                    "b": {
+                        "remainMs": 600000
+                    },
+                    "w": {
+                        "remainMs": 600000
+                    },
+                    "running": "w",
+                    "lastTickTs": 1791277295401
+                },
+                "passRights": null,
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "spectators": 1,
+                "settings": {
+                    "startSfen": "handicap:bishop",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                }
+            }
+        },
+        {
+            "name": "待機中に飛車落ちへ変更",
+            "create": {},
+            "startSfen": "handicap:rook",
+            "gameStart": {
+                "eventId": 2,
+                "kind": "game_start",
+                "settings": {
+                    "startSfen": "handicap:rook",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                },
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "serverTs": 1791277295636
+            },
+            "snapshot": {
+                "eventId": 2,
+                "status": "playing",
+                "sfen": "lnsgkgsnl/7b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+                "moves": [],
+                "turn": "w",
+                "clock": {
+                    "b": {
+                        "remainMs": 600000
+                    },
+                    "w": {
+                        "remainMs": 600000
+                    },
+                    "running": "w",
+                    "lastTickTs": 1791277295636
+                },
+                "passRights": null,
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "spectators": 1,
+                "settings": {
+                    "startSfen": "handicap:rook",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                }
+            }
+        },
+        {
+            "name": "待機中に飛車角落ちへ変更",
+            "create": {},
+            "startSfen": "handicap:rook-bishop",
+            "gameStart": {
+                "eventId": 2,
+                "kind": "game_start",
+                "settings": {
+                    "startSfen": "handicap:rook-bishop",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                },
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "serverTs": 1791277295867
+            },
+            "snapshot": {
+                "eventId": 2,
+                "status": "playing",
+                "sfen": "lnsgkgsnl/9/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+                "moves": [],
+                "turn": "w",
+                "clock": {
+                    "b": {
+                        "remainMs": 600000
+                    },
+                    "w": {
+                        "remainMs": 600000
+                    },
+                    "running": "w",
+                    "lastTickTs": 1791277295867
+                },
+                "passRights": null,
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "spectators": 1,
+                "settings": {
+                    "startSfen": "handicap:rook-bishop",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                }
+            }
+        },
+        {
+            "name": "待機中に後手番の SFEN へ変更",
+            "create": {},
+            "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
+            "gameStart": {
+                "eventId": 2,
+                "kind": "game_start",
+                "settings": {
+                    "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                },
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "serverTs": 1791277296085
+            },
+            "snapshot": {
+                "eventId": 2,
+                "status": "playing",
+                "sfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
+                "moves": [],
+                "turn": "w",
+                "clock": {
+                    "b": {
+                        "remainMs": 600000
+                    },
+                    "w": {
+                        "remainMs": 600000
+                    },
+                    "running": "w",
+                    "lastTickTs": 1791277296085
+                },
+                "passRights": null,
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "spectators": 1,
+                "settings": {
+                    "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                }
+            }
+        },
+        {
+            "name": "待機中に持ち駒のある先手番の SFEN へ変更",
+            "create": {},
+            "startSfen": "4k4/9/9/9/9/9/9/9/4K4 b 2Pb 1",
+            "gameStart": {
+                "eventId": 2,
+                "kind": "game_start",
+                "settings": {
+                    "startSfen": "4k4/9/9/9/9/9/9/9/4K4 b 2Pb 1",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                },
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "serverTs": 1791277296314
+            },
+            "snapshot": {
+                "eventId": 2,
+                "status": "playing",
+                "sfen": "4k4/9/9/9/9/9/9/9/4K4 b 2Pb 1",
+                "moves": [],
+                "turn": "b",
+                "clock": {
+                    "b": {
+                        "remainMs": 600000
+                    },
+                    "w": {
+                        "remainMs": 600000
+                    },
+                    "running": "b",
+                    "lastTickTs": 1791277296314
+                },
+                "passRights": null,
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "spectators": 1,
+                "settings": {
+                    "startSfen": "4k4/9/9/9/9/9/9/9/4K4 b 2Pb 1",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                }
+            }
+        },
+        {
+            "name": "持ち時間なしの秒読み",
+            "create": {
                 "timeControl": {
                     "type": "byoyomi",
                     "initialMs": 0,
                     "byoyomiMs": 3000
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            },
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
                 }
             },
-            "serverTs": 1791277296496
-        },
-        "snapshot": {
-            "eventId": 1,
-            "status": "playing",
-            "sfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
-            "moves": [],
-            "turn": "b",
-            "clock": {
-                "b": {
-                    "remainMs": 0
+            "gameStart": {
+                "eventId": 1,
+                "kind": "game_start",
+                "settings": {
+                    "startSfen": "startpos",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 0,
+                        "byoyomiMs": 3000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
                 },
-                "w": {
-                    "remainMs": 0
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
                 },
-                "running": "b",
-                "lastTickTs": 1791277296496
+                "serverTs": 1791277296496
             },
-            "passRights": null,
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "spectators": 1,
-            "settings": {
-                "startSfen": "startpos",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 0,
-                    "byoyomiMs": 3000
+            "snapshot": {
+                "eventId": 1,
+                "status": "playing",
+                "sfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+                "moves": [],
+                "turn": "b",
+                "clock": {
+                    "b": {
+                        "remainMs": 0
+                    },
+                    "w": {
+                        "remainMs": 0
+                    },
+                    "running": "b",
+                    "lastTickTs": 1791277296496
                 },
                 "passRights": null,
-                "aiSupport": null,
-                "takeback": false
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "spectators": 1,
+                "settings": {
+                    "startSfen": "startpos",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 0,
+                        "byoyomiMs": 3000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                }
             }
-        }
-    },
-    {
-        "name": "無制限（秒読み 0）",
-        "create": {
-            "timeControl": {
-                "type": "byoyomi",
-                "initialMs": 0,
-                "byoyomiMs": 0
-            }
         },
-        "gameStart": {
-            "eventId": 1,
-            "kind": "game_start",
-            "settings": {
-                "startSfen": "startpos",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 0,
-                    "byoyomiMs": 0
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            },
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "serverTs": 1791277296698
-        },
-        "snapshot": {
-            "eventId": 1,
-            "status": "playing",
-            "sfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
-            "moves": [],
-            "turn": "b",
-            "clock": {
-                "b": {
-                    "remainMs": 0
-                },
-                "w": {
-                    "remainMs": 0
-                },
-                "running": null,
-                "lastTickTs": 1791277296698
-            },
-            "passRights": null,
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "spectators": 1,
-            "settings": {
-                "startSfen": "startpos",
+        {
+            "name": "無制限（秒読み 0）",
+            "create": {
                 "timeControl": {
                     "type": "byoyomi",
                     "initialMs": 0,
                     "byoyomiMs": 0
+                }
+            },
+            "gameStart": {
+                "eventId": 1,
+                "kind": "game_start",
+                "settings": {
+                    "startSfen": "startpos",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 0,
+                        "byoyomiMs": 0
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                },
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "serverTs": 1791277296698
+            },
+            "snapshot": {
+                "eventId": 1,
+                "status": "playing",
+                "sfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+                "moves": [],
+                "turn": "b",
+                "clock": {
+                    "b": {
+                        "remainMs": 0
+                    },
+                    "w": {
+                        "remainMs": 0
+                    },
+                    "running": null,
+                    "lastTickTs": 1791277296698
                 },
                 "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            }
-        }
-    },
-    {
-        "name": "フィッシャー",
-        "create": {
-            "timeControl": {
-                "type": "fischer",
-                "initialMs": 300000,
-                "fischerIncrementMs": 5000
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "spectators": 1,
+                "settings": {
+                    "startSfen": "startpos",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 0,
+                        "byoyomiMs": 0
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                }
             }
         },
-        "gameStart": {
-            "eventId": 1,
-            "kind": "game_start",
-            "settings": {
-                "startSfen": "startpos",
+        {
+            "name": "フィッシャー",
+            "create": {
                 "timeControl": {
                     "type": "fischer",
                     "initialMs": 300000,
                     "fischerIncrementMs": 5000
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            },
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
                 }
             },
-            "serverTs": 1791277296876
-        },
-        "snapshot": {
-            "eventId": 1,
-            "status": "playing",
-            "sfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
-            "moves": [],
-            "turn": "b",
-            "clock": {
-                "b": {
-                    "remainMs": 300000
+            "gameStart": {
+                "eventId": 1,
+                "kind": "game_start",
+                "settings": {
+                    "startSfen": "startpos",
+                    "timeControl": {
+                        "type": "fischer",
+                        "initialMs": 300000,
+                        "fischerIncrementMs": 5000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
                 },
-                "w": {
-                    "remainMs": 300000
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
                 },
-                "running": "b",
-                "lastTickTs": 1791277296876
+                "serverTs": 1791277296876
             },
-            "passRights": null,
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "spectators": 1,
-            "settings": {
-                "startSfen": "startpos",
-                "timeControl": {
-                    "type": "fischer",
-                    "initialMs": 300000,
-                    "fischerIncrementMs": 5000
+            "snapshot": {
+                "eventId": 1,
+                "status": "playing",
+                "sfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+                "moves": [],
+                "turn": "b",
+                "clock": {
+                    "b": {
+                        "remainMs": 300000
+                    },
+                    "w": {
+                        "remainMs": 300000
+                    },
+                    "running": "b",
+                    "lastTickTs": 1791277296876
                 },
                 "passRights": null,
-                "aiSupport": null,
-                "takeback": false
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "spectators": 1,
+                "settings": {
+                    "startSfen": "startpos",
+                    "timeControl": {
+                        "type": "fischer",
+                        "initialMs": 300000,
+                        "fischerIncrementMs": 5000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                }
             }
-        }
-    },
-    {
-        "name": "無制限（持ち時間 0 のフィッシャー）",
-        "create": {
-            "timeControl": {
-                "type": "fischer",
-                "initialMs": 0,
-                "fischerIncrementMs": 10000
-            }
         },
-        "gameStart": {
-            "eventId": 1,
-            "kind": "game_start",
-            "settings": {
-                "startSfen": "startpos",
-                "timeControl": {
-                    "type": "fischer",
-                    "initialMs": 0,
-                    "fischerIncrementMs": 10000
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            },
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "serverTs": 1791277327104
-        },
-        "snapshot": {
-            "eventId": 1,
-            "status": "playing",
-            "sfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
-            "moves": [],
-            "turn": "b",
-            "clock": {
-                "b": {
-                    "remainMs": 0
-                },
-                "w": {
-                    "remainMs": 0
-                },
-                "running": null,
-                "lastTickTs": 1791277327104
-            },
-            "passRights": null,
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "spectators": 1,
-            "settings": {
-                "startSfen": "startpos",
+        {
+            "name": "無制限（持ち時間 0 のフィッシャー）",
+            "create": {
                 "timeControl": {
                     "type": "fischer",
                     "initialMs": 0,
                     "fischerIncrementMs": 10000
+                }
+            },
+            "gameStart": {
+                "eventId": 1,
+                "kind": "game_start",
+                "settings": {
+                    "startSfen": "startpos",
+                    "timeControl": {
+                        "type": "fischer",
+                        "initialMs": 0,
+                        "fischerIncrementMs": 10000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                },
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "serverTs": 1791277327104
+            },
+            "snapshot": {
+                "eventId": 1,
+                "status": "playing",
+                "sfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+                "moves": [],
+                "turn": "b",
+                "clock": {
+                    "b": {
+                        "remainMs": 0
+                    },
+                    "w": {
+                        "remainMs": 0
+                    },
+                    "running": null,
+                    "lastTickTs": 1791277327104
                 },
                 "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            }
-        }
-    },
-    {
-        "name": "パス権 2 回・角落ち",
-        "create": {
-            "passRights": {
-                "initialCount": 2
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "spectators": 1,
+                "settings": {
+                    "startSfen": "startpos",
+                    "timeControl": {
+                        "type": "fischer",
+                        "initialMs": 0,
+                        "fischerIncrementMs": 10000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                }
             }
         },
-        "startSfen": "handicap:bishop",
-        "gameStart": {
-            "eventId": 2,
-            "kind": "game_start",
-            "settings": {
-                "startSfen": "handicap:bishop",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
-                },
+        {
+            "name": "パス権 2 回・角落ち",
+            "create": {
                 "passRights": {
                     "initialCount": 2
-                },
-                "aiSupport": null,
-                "takeback": false
-            },
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
                 }
             },
-            "serverTs": 1791277327313
-        },
-        "snapshot": {
-            "eventId": 2,
-            "status": "playing",
-            "sfen": "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
-            "moves": [],
-            "turn": "w",
-            "clock": {
-                "b": {
-                    "remainMs": 600000
+            "startSfen": "handicap:bishop",
+            "gameStart": {
+                "eventId": 2,
+                "kind": "game_start",
+                "settings": {
+                    "startSfen": "handicap:bishop",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": {
+                        "initialCount": 2
+                    },
+                    "aiSupport": null,
+                    "takeback": false
                 },
-                "w": {
-                    "remainMs": 600000
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
                 },
-                "running": "w",
-                "lastTickTs": 1791277327313
+                "serverTs": 1791277327313
             },
-            "passRights": {
-                "b": 2,
-                "w": 2
-            },
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "spectators": 1,
-            "settings": {
-                "startSfen": "handicap:bishop",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
+            "snapshot": {
+                "eventId": 2,
+                "status": "playing",
+                "sfen": "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+                "moves": [],
+                "turn": "w",
+                "clock": {
+                    "b": {
+                        "remainMs": 600000
+                    },
+                    "w": {
+                        "remainMs": 600000
+                    },
+                    "running": "w",
+                    "lastTickTs": 1791277327313
                 },
                 "passRights": {
-                    "initialCount": 2
+                    "b": 2,
+                    "w": 2
                 },
-                "aiSupport": null,
-                "takeback": false
-            }
-        }
-    },
-    {
-        "name": "先頭に空白のある SFEN",
-        "create": {},
-        "startSfen": " 4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
-        "gameStart": {
-            "eventId": 2,
-            "kind": "game_start",
-            "settings": {
-                "startSfen": " 4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
                 },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            },
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
+                "spectators": 1,
+                "settings": {
+                    "startSfen": "handicap:bishop",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": {
+                        "initialCount": 2
+                    },
+                    "aiSupport": null,
+                    "takeback": false
                 }
-            },
-            "serverTs": 1791277327504
+            }
         },
-        "snapshot": {
-            "eventId": 2,
-            "status": "playing",
-            "sfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
-            "moves": [],
-            "turn": "w",
-            "clock": {
-                "b": {
-                    "remainMs": 600000
+        {
+            "name": "先頭に空白のある SFEN",
+            "create": {},
+            "startSfen": " 4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
+            "gameStart": {
+                "eventId": 2,
+                "kind": "game_start",
+                "settings": {
+                    "startSfen": " 4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
                 },
-                "w": {
-                    "remainMs": 600000
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
                 },
-                "running": "w",
-                "lastTickTs": 1791277327504
+                "serverTs": 1791277327504
             },
-            "passRights": null,
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "spectators": 1,
-            "settings": {
-                "startSfen": " 4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
+            "snapshot": {
+                "eventId": 2,
+                "status": "playing",
+                "sfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
+                "moves": [],
+                "turn": "w",
+                "clock": {
+                    "b": {
+                        "remainMs": 600000
+                    },
+                    "w": {
+                        "remainMs": 600000
+                    },
+                    "running": "w",
+                    "lastTickTs": 1791277327504
                 },
                 "passRights": null,
-                "aiSupport": null,
-                "takeback": false
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "spectators": 1,
+                "settings": {
+                    "startSfen": " 4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                }
             }
-        }
-    },
-    {
-        "name": "末尾に空白のある SFEN",
-        "create": {},
-        "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1 ",
-        "gameStart": {
-            "eventId": 2,
-            "kind": "game_start",
-            "settings": {
-                "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1 ",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            },
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "serverTs": 1791277327689
         },
-        "snapshot": {
-            "eventId": 2,
-            "status": "playing",
-            "sfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
-            "moves": [],
-            "turn": "w",
-            "clock": {
-                "b": {
-                    "remainMs": 600000
+        {
+            "name": "末尾に空白のある SFEN",
+            "create": {},
+            "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1 ",
+            "gameStart": {
+                "eventId": 2,
+                "kind": "game_start",
+                "settings": {
+                    "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1 ",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
                 },
-                "w": {
-                    "remainMs": 600000
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
                 },
-                "running": "w",
-                "lastTickTs": 1791277327689
+                "serverTs": 1791277327689
             },
-            "passRights": null,
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "spectators": 1,
-            "settings": {
-                "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1 ",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
+            "snapshot": {
+                "eventId": 2,
+                "status": "playing",
+                "sfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
+                "moves": [],
+                "turn": "w",
+                "clock": {
+                    "b": {
+                        "remainMs": 600000
+                    },
+                    "w": {
+                        "remainMs": 600000
+                    },
+                    "running": "w",
+                    "lastTickTs": 1791277327689
                 },
                 "passRights": null,
-                "aiSupport": null,
-                "takeback": false
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "spectators": 1,
+                "settings": {
+                    "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1 ",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                }
             }
-        }
-    },
-    {
-        "name": "手番の前に空白が 2 つある SFEN",
-        "create": {},
-        "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4  w - 1",
-        "gameStart": {
-            "eventId": 2,
-            "kind": "game_start",
-            "settings": {
-                "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4  w - 1",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            },
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "serverTs": 1791277327900
         },
-        "snapshot": {
-            "eventId": 2,
-            "status": "playing",
-            "sfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
-            "moves": [],
-            "turn": "w",
-            "clock": {
-                "b": {
-                    "remainMs": 600000
+        {
+            "name": "手番の前に空白が 2 つある SFEN",
+            "create": {},
+            "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4  w - 1",
+            "gameStart": {
+                "eventId": 2,
+                "kind": "game_start",
+                "settings": {
+                    "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4  w - 1",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
                 },
-                "w": {
-                    "remainMs": 600000
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
                 },
-                "running": "w",
-                "lastTickTs": 1791277327900
+                "serverTs": 1791277327900
             },
-            "passRights": null,
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "spectators": 1,
-            "settings": {
-                "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4  w - 1",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
+            "snapshot": {
+                "eventId": 2,
+                "status": "playing",
+                "sfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
+                "moves": [],
+                "turn": "w",
+                "clock": {
+                    "b": {
+                        "remainMs": 600000
+                    },
+                    "w": {
+                        "remainMs": 600000
+                    },
+                    "running": "w",
+                    "lastTickTs": 1791277327900
                 },
                 "passRights": null,
-                "aiSupport": null,
-                "takeback": false
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "spectators": 1,
+                "settings": {
+                    "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4  w - 1",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                }
             }
-        }
-    },
-    {
-        "name": "タブ区切りの SFEN",
-        "create": {},
-        "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4\tw\t-\t1",
-        "gameStart": {
-            "eventId": 2,
-            "kind": "game_start",
-            "settings": {
-                "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4\tw\t-\t1",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            },
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "serverTs": 1791277328097
         },
-        "snapshot": {
-            "eventId": 2,
-            "status": "playing",
-            "sfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
-            "moves": [],
-            "turn": "w",
-            "clock": {
-                "b": {
-                    "remainMs": 600000
+        {
+            "name": "タブ区切りの SFEN",
+            "create": {},
+            "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4\tw\t-\t1",
+            "gameStart": {
+                "eventId": 2,
+                "kind": "game_start",
+                "settings": {
+                    "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4\tw\t-\t1",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
                 },
-                "w": {
-                    "remainMs": 600000
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
                 },
-                "running": "w",
-                "lastTickTs": 1791277328097
+                "serverTs": 1791277328097
             },
-            "passRights": null,
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "spectators": 1,
-            "settings": {
-                "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4\tw\t-\t1",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
+            "snapshot": {
+                "eventId": 2,
+                "status": "playing",
+                "sfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
+                "moves": [],
+                "turn": "w",
+                "clock": {
+                    "b": {
+                        "remainMs": 600000
+                    },
+                    "w": {
+                        "remainMs": 600000
+                    },
+                    "running": "w",
+                    "lastTickTs": 1791277328097
                 },
                 "passRights": null,
-                "aiSupport": null,
-                "takeback": false
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "spectators": 1,
+                "settings": {
+                    "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4\tw\t-\t1",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                }
             }
-        }
-    },
-    {
-        "name": "手数を省いた SFEN",
-        "create": {},
-        "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w -",
-        "gameStart": {
-            "eventId": 2,
-            "kind": "game_start",
-            "settings": {
-                "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w -",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
-                },
-                "passRights": null,
-                "aiSupport": null,
-                "takeback": false
-            },
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "serverTs": 1791277328291
         },
-        "snapshot": {
-            "eventId": 2,
-            "status": "playing",
-            "sfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
-            "moves": [],
-            "turn": "w",
-            "clock": {
-                "b": {
-                    "remainMs": 600000
+        {
+            "name": "手数を省いた SFEN",
+            "create": {},
+            "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w -",
+            "gameStart": {
+                "eventId": 2,
+                "kind": "game_start",
+                "settings": {
+                    "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w -",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
                 },
-                "w": {
-                    "remainMs": 600000
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
                 },
-                "running": "w",
-                "lastTickTs": 1791277328291
+                "serverTs": 1791277328291
             },
-            "passRights": null,
-            "players": {
-                "b": {
-                    "name": "Alice",
-                    "online": true
-                },
-                "w": {
-                    "name": "Bob",
-                    "online": true
-                }
-            },
-            "spectators": 1,
-            "settings": {
-                "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w -",
-                "timeControl": {
-                    "type": "byoyomi",
-                    "initialMs": 600000,
-                    "byoyomiMs": 30000
+            "snapshot": {
+                "eventId": 2,
+                "status": "playing",
+                "sfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1",
+                "moves": [],
+                "turn": "w",
+                "clock": {
+                    "b": {
+                        "remainMs": 600000
+                    },
+                    "w": {
+                        "remainMs": 600000
+                    },
+                    "running": "w",
+                    "lastTickTs": 1791277328291
                 },
                 "passRights": null,
-                "aiSupport": null,
-                "takeback": false
+                "players": {
+                    "b": {
+                        "name": "Alice",
+                        "online": true
+                    },
+                    "w": {
+                        "name": "Bob",
+                        "online": true
+                    }
+                },
+                "spectators": 1,
+                "settings": {
+                    "startSfen": "4k4/9/4p4/9/9/9/4P4/9/4K4 w -",
+                    "timeControl": {
+                        "type": "byoyomi",
+                        "initialMs": 600000,
+                        "byoyomiMs": 30000
+                    },
+                    "passRights": null,
+                    "aiSupport": null,
+                    "takeback": false
+                }
             }
         }
-    }
-]
+    ]
+}

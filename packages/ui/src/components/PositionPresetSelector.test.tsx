@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { PositionPresetSelector } from "./PositionPresetSelector";
 
@@ -47,5 +48,37 @@ describe("PositionPresetSelector の SFEN 直接入力", () => {
         fireEvent.change(input, { target: { value: "4k4/9/4p4 " } });
 
         expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("プリセットから SFEN 直接入力へ戻したときも、空白をそろえて通知する", () => {
+        const onChange = vi.fn();
+        function Controlled() {
+            const [value, setValue] = useState(SFEN);
+            return (
+                <PositionPresetSelector
+                    value={value}
+                    onChange={(sfen) => {
+                        onChange(sfen);
+                        setValue(sfen);
+                    }}
+                />
+            );
+        }
+        render(<Controlled />);
+        const choose = (label: string): void => {
+            fireEvent.keyDown(screen.getByRole("combobox", { name: "開始局面を選択" }), {
+                key: "ArrowDown",
+            });
+            fireEvent.keyDown(screen.getByRole("option", { name: label }), { key: "Enter" });
+        };
+        fireEvent.change(screen.getByPlaceholderText(/^例: lnsgkgsnl/), {
+            target: { value: ` ${SFEN}  ` },
+        });
+
+        choose("平手");
+        expect(onChange).toHaveBeenLastCalledWith("startpos");
+        choose("SFEN 直接入力");
+
+        expect(onChange).toHaveBeenLastCalledWith(SFEN);
     });
 });
