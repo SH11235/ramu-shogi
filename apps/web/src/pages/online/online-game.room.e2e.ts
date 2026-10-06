@@ -316,8 +316,15 @@ test.describe(`オンライン対局（ルーム API: ${roomBackend}）`, () => 
         if (roomBackend === "backend") {
             // 入力途中の不正な SFEN は無視されて接続は保たれ、入力し終えた局面で始まる
             await expectBoard(b);
-            await expectSquare(w, "5a", "後手の玉");
-            await expectSquare(w, "7g", null);
+            for (const page of [b, w]) {
+                await expectSquare(page, "5a", "後手の玉");
+                await expectSquare(page, "7g", null);
+            }
+            // 変更した側が先に指す局面なので、変更後の局面から指せて、双方の盤面が一致する
+            const match: Match = { roomId, b, w, contexts: { b: contextB, w: contextW } };
+            await playMoveOnBoth(match, "b", "5g", "5f", "先手の歩");
+            await playMoveOnBoth(match, "w", "5c", "5d", "後手の歩");
+            await expectPly(b, 2, 2);
         } else {
             // legacy は入力途中の SFEN をエラーで返し、待機中の接続はそこで切れる。
             // 変更は届かず平手のまま始まり、変更した側は待機画面に取り残される
@@ -352,17 +359,130 @@ test.describe(`オンライン対局（ルーム API: ${roomBackend}）`, () => 
             .toBe("handicap:bishop");
 
         await joinRoom(w, roomId, "w", NAMES.w);
-        await expectBoard(w);
-        await expectSquare(w, "2b", null);
-        await expectBoard(b);
-
-        // 待機画面は対局開始時に、参加した時点の局面のまま盤面を開く。サーバーと後から参加した側は
-        // 変更後の局面なので、変更した側だけ盤面が食い違う。ここまでの手順の失敗は通常どおり失敗に
-        // なるよう、期待する失敗は最後の確認だけに掛ける。解消したらこの指定を外す
-        test.fail(true, "待機中に変更した開始局面が、変更した側の盤面に反映されない");
-        await expectSquare(b, "2b", null);
+        for (const page of [b, w]) {
+            await expectBoard(page);
+            await expectSquare(page, "2b", null);
+            await expectSquare(page, "8b", "後手の飛");
+        }
+        const match: Match = { roomId, b, w, contexts: { b: contextB, w: contextW } };
+        await playMoveOnBoth(match, "w", "3c", "3d", "後手の歩");
+        await playMoveOnBoth(match, "b", "7g", "7f", "先手の歩");
+        await expectPly(b, 2, 2);
 
         await closeAll(contextB, contextW);
+    });
+
+    test("待機中に開始局面を変更した側が先に指す局面でも、変更後の局面から指せる", async ({
+        browser,
+        request,
+    }) => {
+        const roomId = await createRoom(request);
+        const contextB = await newContext(browser, 1);
+        const contextW = await newContext(browser, 2);
+        const b = await contextB.newPage();
+        const w = await contextW.newPage();
+
+        await joinRoom(w, roomId, "w", NAMES.w);
+        await expect(w.getByText("接続しました。対局開始を待っています...")).toBeVisible();
+        await w.getByRole("combobox", { name: "開始局面を選択" }).click();
+        await w.getByRole("option", { name: "角落ち", exact: true }).click();
+        await expect
+            .poll(async () => {
+                const response = await request.get(`/api/rooms/${roomId}`);
+                const room = (await response.json()) as { settings: { startSfen: string } };
+                return room.settings.startSfen;
+            })
+            .toBe("handicap:bishop");
+
+        await joinRoom(b, roomId, "b", NAMES.b);
+        for (const page of [b, w]) {
+            await expectBoard(page);
+            await expectSquare(page, "2b", null);
+            await expectSquare(page, "8b", "後手の飛");
+        }
+        // 角落ちは上手（後手）から指す。変更した側が古い局面のまま指すと、サーバーの局面が
+        // 相手の盤面と食い違う
+        const match: Match = { roomId, b, w, contexts: { b: contextB, w: contextW } };
+        await playMoveOnBoth(match, "w", "3c", "3d", "後手の歩");
+        await playMoveOnBoth(match, "b", "7g", "7f", "先手の歩");
+        for (const page of [b, w]) {
+            await expectSquare(page, "2b", null);
+            await expectPly(page, 2, 2);
+        }
+
+        await closeAll(contextB, contextW);
+    });
+
+    test("開始局面を解釈できない game_start を受けた側は、サーバーの snapshot から盤面を開く", async ({
+        browser,
+        request,
+    }) => {
+        const roomId = await createRoom(request, { startSfen: "handicap:bishop" });
+        const contextB = await newContext(browser, 1);
+        const contextW = await newContext(browser, 2);
+        const contextS = await newContext(browser);
+        const b = await contextB.newPage();
+        const w = await contextW.newPage();
+        const s = await contextS.newPage();
+
+        // クライアントの知らないプリセット名が届いた状況を、先手と観戦者の受信だけ書き換えて作る
+        const sentTypes = new Map<Page, string[]>([
+            [b, []],
+            [s, []],
+        ]);
+        for (const [page, sent] of sentTypes) {
+            await page.routeWebSocket(/\/api\/rooms\/[^/]+\/ws$/, (ws) => {
+                const server = ws.connectToServer();
+                ws.onMessage((data) => {
+                    sent.push((JSON.parse(String(data)) as { t: string }).t);
+                    server.send(data);
+                });
+                server.onMessage((data) => {
+                    const message = JSON.parse(String(data)) as {
+                        t: string;
+                        payload: { kind?: string; settings?: { startSfen: string } };
+                    };
+                    if (message.t === "event" && message.payload.kind === "game_start") {
+                        ws.send(
+                            JSON.stringify({
+                                ...message,
+                                payload: {
+                                    ...message.payload,
+                                    settings: {
+                                        ...message.payload.settings,
+                                        startSfen: "handicap:unknown",
+                                    },
+                                },
+                            }),
+                        );
+                        return;
+                    }
+                    ws.send(data);
+                });
+            });
+        }
+
+        await joinRoom(b, roomId, "b", NAMES.b);
+        await expect(b.getByText("接続しました。対局開始を待っています...")).toBeVisible();
+        await joinRoom(s, roomId, "s", "観戦者テスト");
+        await expect(s.getByText("接続しました。対局開始を待っています...")).toBeVisible();
+        await joinRoom(w, roomId, "w", NAMES.w);
+
+        for (const page of [b, w, s]) {
+            await expectBoard(page);
+            await expectSquare(page, "2b", null);
+            await expectSquare(page, "8b", "後手の飛");
+        }
+        const match: Match = { roomId, b, w, contexts: { b: contextB, w: contextW } };
+        await playMoveOnBoth(match, "w", "3c", "3d", "後手の歩");
+        await playMoveOnBoth(match, "b", "7g", "7f", "先手の歩");
+        await expectSquare(s, "7f", "先手の歩");
+        await expectPly(s, 2, 2);
+        // 盤面は game_start からでなく、対局者は resume、観戦者は参加し直しで得た snapshot から開いた
+        expect(sentTypes.get(b)).toContain("resume");
+        expect(sentTypes.get(s)?.filter((type) => type === "join")).toHaveLength(2);
+
+        await closeAll(contextB, contextW, contextS);
     });
 
     test("対局中に再読み込みすると盤面と棋譜が復元され、続きを指せる", async ({

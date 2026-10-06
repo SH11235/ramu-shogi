@@ -1,5 +1,16 @@
-import { createInitialPositionState, setPositionServiceFactory } from "@shogi/app-core";
-import type { RoomClientOptions, ServerMessage, SnapshotPayload } from "@shogi/match-client";
+import {
+    createInitialPositionState,
+    getAllSquares,
+    type PieceType,
+    type PositionState,
+    setPositionServiceFactory,
+} from "@shogi/app-core";
+import type {
+    RoomClientOptions,
+    RoomSettings,
+    ServerMessage,
+    SnapshotPayload,
+} from "@shogi/match-client";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -63,6 +74,7 @@ let realCreateRoomClient: typeof import("@shogi/match-client").createRoomClient 
 
 class FakeSocket {
     readyState = 1;
+    readonly sent: Array<{ t: string; payload: unknown }> = [];
     private listeners: Record<string, ((event: { data?: string }) => void)[]> = {};
 
     constructor(readonly url: string) {}
@@ -71,7 +83,9 @@ class FakeSocket {
         this.listeners[type] = [...(this.listeners[type] ?? []), listener];
     }
 
-    send(): void {}
+    send(data: string): void {
+        this.sent.push(JSON.parse(data));
+    }
 
     close(): void {
         this.readyState = 3;
@@ -334,6 +348,234 @@ describe("RoomPage", () => {
                 to: "/games/$gameId/review",
                 params: { gameId: "record-b" },
             });
+        });
+    });
+
+    describe("待機中の参加者の対局開始", () => {
+        const BISHOP_HANDICAP_SFEN =
+            "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1";
+        const WHITE_TO_MOVE_SFEN = "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1";
+        const SETTINGS = ROOM_INFO.settings as RoomSettings;
+
+        /** 成駒と持ち駒の無い SFEN を盤面にする */
+        function positionFromSfen(sfen: string): PositionState {
+            const [rows, turn] = sfen.split(" ");
+            const position = createInitialPositionState();
+            for (const square of getAllSquares()) position.board[square] = null;
+            rows.split("/").forEach((row, rankIndex) => {
+                let file = 9;
+                for (const char of row) {
+                    if (/\d/.test(char)) {
+                        file -= Number(char);
+                        continue;
+                    }
+                    const square = getAllSquares().find(
+                        (id) => id === `${file}${"abcdefghi"[rankIndex]}`,
+                    );
+                    if (!square) throw new Error(`bad square in ${sfen}`);
+                    position.board[square] = {
+                        owner: char === char.toUpperCase() ? "sente" : "gote",
+                        type: char.toUpperCase() as PieceType,
+                    };
+                    file -= 1;
+                }
+            });
+            return { ...position, turn: turn === "w" ? "gote" : "sente" };
+        }
+
+        const getLegalMoves = vi.fn<(sfen: string, moves?: string[]) => Promise<string[]>>();
+
+        beforeEach(() => {
+            sockets = [];
+            vi.stubGlobal("WebSocket", FakeSocket);
+            Object.assign(FakeSocket, { OPEN: 1 });
+            getLegalMoves.mockReset();
+            getLegalMoves.mockResolvedValue(["3c3d", "7g7f"]);
+            setPositionServiceFactory(() => ({
+                getInitialBoard: async () => createInitialPositionState(),
+                parseSfen: async (sfen) => positionFromSfen(sfen),
+                boardToSfen: async () => "sfen after move",
+                getLegalMoves,
+                replayMovesStrict: async () => {
+                    throw new Error("not used");
+                },
+            }));
+        });
+
+        function eventMessage(
+            payload: Extract<ServerMessage, { t: "event" }>["payload"],
+        ): ServerMessage {
+            return { v: 1, t: "event", payload };
+        }
+
+        function settingsUpdated(eventId: number, startSfen: string): ServerMessage {
+            return eventMessage({
+                kind: "settings_updated",
+                eventId,
+                serverTs: 0,
+                settings: { startSfen },
+            });
+        }
+
+        // legacy / backend どちらの RoomDO も、対局開始時は snapshot を送らず、
+        // 設定の全体と対局者名を持つ game_start だけを送る
+        function gameStart(eventId: number, startSfen: string): ServerMessage {
+            return eventMessage({
+                kind: "game_start",
+                eventId,
+                serverTs: Date.now(),
+                settings: { ...SETTINGS, startSfen },
+                players: { b: { name: "Alice", online: true }, w: { name: "Bob", online: true } },
+            });
+        }
+
+        /** 平手のルームに 1 人目として参加し、待機画面で相手を待つ */
+        async function joinAndWait(seat: "b" | "w"): Promise<FakeSocket> {
+            render(<RoomPage />);
+            fireEvent.change(screen.getByLabelText(/名前/), { target: { value: "Alice" } });
+            await act(async () => {
+                fireEvent.click(
+                    screen.getByRole("button", {
+                        name: seat === "b" ? "先手として参加する" : "後手として参加する",
+                    }),
+                );
+            });
+            const me = { name: "Alice", online: true };
+            await deliverOnOpen("test-room", [
+                {
+                    v: 1,
+                    t: "joined",
+                    payload: { roomId: "test-room", seat, resumeToken: "token", youAre: "player" },
+                },
+                {
+                    v: 1,
+                    t: "snapshot",
+                    payload: makeSnapshot({
+                        eventId: 0,
+                        status: "waiting",
+                        sfen: "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+                        moves: [],
+                        turn: "b",
+                        players: { b: seat === "b" ? me : null, w: seat === "w" ? me : null },
+                    }),
+                },
+            ]);
+            expect(screen.getByText("接続しました。対局開始を待っています...")).toBeTruthy();
+            return socketFor("test-room");
+        }
+
+        async function receive(socket: FakeSocket, messages: ServerMessage[]): Promise<void> {
+            await act(async () => {
+                for (const message of messages) socket.receive(message);
+            });
+        }
+
+        function squareLabel(id: string): string {
+            return screen
+                .getByRole("button", { name: new RegExp(`^${id} `) })
+                .getAttribute("aria-label") as string;
+        }
+
+        it("開始局面が変更されなければ、平手の先手番で始まり、先手は平手の合法手を取得する", async () => {
+            const socket = await joinAndWait("b");
+
+            await receive(socket, [gameStart(1, "startpos")]);
+
+            expect(squareLabel("2b")).toMatch(/^2b 後手の角/);
+            expect(squareLabel("7g")).toMatch(/^7g 先手の歩/);
+            expect(getLegalMoves).toHaveBeenCalledWith("startpos", [], {});
+        });
+
+        it("先手が待機中に角落ちへ変更すると、先手の盤面も角落ちで始まり、上手の手番になる", async () => {
+            const socket = await joinAndWait("b");
+
+            await receive(socket, [
+                settingsUpdated(1, "handicap:bishop"),
+                gameStart(2, "handicap:bishop"),
+            ]);
+
+            expect(squareLabel("2b")).toBe("2b 空マス");
+            expect(squareLabel("8b")).toMatch(/^8b 後手の飛/);
+            expect(getLegalMoves).not.toHaveBeenCalled();
+        });
+
+        it("後手が待機中に角落ちへ変更すると、後手は角落ちの局面から最初の手を指せる", async () => {
+            const socket = await joinAndWait("w");
+
+            await receive(socket, [
+                settingsUpdated(1, "handicap:bishop"),
+                gameStart(2, "handicap:bishop"),
+            ]);
+
+            expect(squareLabel("2b")).toBe("2b 空マス");
+            expect(getLegalMoves).toHaveBeenCalledTimes(1);
+            expect(getLegalMoves).toHaveBeenCalledWith(BISHOP_HANDICAP_SFEN, [], {});
+
+            await act(async () => {
+                fireEvent.click(screen.getByRole("button", { name: /^3c / }));
+            });
+            await act(async () => {
+                fireEvent.click(screen.getByRole("button", { name: /^3d / }));
+            });
+
+            expect(socket.sent.filter((message) => message.t === "move")).toEqual([
+                expect.objectContaining({
+                    payload: { eventId: 2, usi: "3c3d", sfen: "sfen after move" },
+                }),
+            ]);
+        });
+
+        it("待機中に後手番の SFEN へ変更すると、その局面で始まり、後手がその局面の合法手を取得する", async () => {
+            const socket = await joinAndWait("w");
+
+            await receive(socket, [
+                settingsUpdated(1, WHITE_TO_MOVE_SFEN),
+                gameStart(2, WHITE_TO_MOVE_SFEN),
+            ]);
+
+            expect(squareLabel("5a")).toMatch(/^5a 後手の玉/);
+            expect(squareLabel("7g")).toBe("7g 空マス");
+            expect(getLegalMoves).toHaveBeenCalledTimes(1);
+            expect(getLegalMoves).toHaveBeenCalledWith(WHITE_TO_MOVE_SFEN, [], {});
+        });
+
+        it("開始局面が何度も変更されたら、最後の変更の局面で始まる", async () => {
+            const socket = await joinAndWait("w");
+
+            await receive(socket, [settingsUpdated(1, "handicap:rook")]);
+            await receive(socket, [settingsUpdated(2, WHITE_TO_MOVE_SFEN)]);
+            await receive(socket, [
+                settingsUpdated(3, "handicap:bishop"),
+                gameStart(4, "handicap:bishop"),
+            ]);
+
+            expect(squareLabel("2b")).toBe("2b 空マス");
+            expect(squareLabel("8b")).toMatch(/^8b 後手の飛/);
+            expect(getLegalMoves).toHaveBeenCalledTimes(1);
+            expect(getLegalMoves).toHaveBeenCalledWith(BISHOP_HANDICAP_SFEN, [], {});
+        });
+
+        it("対局開始と同時に届いた相手の初手を、変更後の開始局面に重ねて反映する", async () => {
+            const socket = await joinAndWait("b");
+
+            await receive(socket, [
+                settingsUpdated(1, "handicap:bishop"),
+                gameStart(2, "handicap:bishop"),
+                eventMessage({
+                    kind: "move",
+                    eventId: 3,
+                    serverTs: 0,
+                    usi: "3c3d",
+                    turn: "b",
+                    clock: makeSnapshot().clock,
+                    passRights: null,
+                }),
+            ]);
+
+            expect(squareLabel("2b")).toBe("2b 空マス");
+            expect(squareLabel("3d")).toMatch(/^3d 後手の歩/);
+            expect(squareLabel("3c")).toBe("3c 空マス");
+            expect(getLegalMoves).toHaveBeenLastCalledWith(BISHOP_HANDICAP_SFEN, ["3c3d"], {});
         });
     });
 });

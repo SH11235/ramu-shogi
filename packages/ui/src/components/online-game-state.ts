@@ -5,6 +5,7 @@ import type {
     AiSupportPlayerSettings,
     ClockState,
     GameResult,
+    GameStartEvent,
     PassRightsState,
     SnapshotPayload,
 } from "@shogi/match-client";
@@ -214,6 +215,52 @@ const HANDICAP_PRESETS: Record<string, { sfen: string; kifName: string }> = {
 /** ルーム設定の startSfen を局面として解釈できる文字列にする */
 export function resolveStartSfen(startSfen: string): string {
     return HANDICAP_PRESETS[startSfen]?.sfen ?? startSfen;
+}
+
+// サーバーが startSfen の "startpos" を展開する局面
+const STARTPOS_SFEN = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
+
+/** 観戦者数は game_start に含まれないので、対局開始時点の snapshot からは除く */
+export type GameStartSnapshot = Omit<SnapshotPayload, "spectators">;
+
+/**
+ * game_start イベントから、対局開始時点の snapshot を組み立てる。
+ * サーバーは対局開始時に snapshot を送らず、待機中に受け取った snapshot はその後の開始局面の
+ * 変更を反映していない。game_start の設定はサーバーが対局に使うものなので、局面・手番・時計を
+ * サーバーと同じ規則でそこから求める。
+ * 開始局面を解釈できなければ（この画面が知らないプリセット名など）null を返す。
+ */
+export function snapshotAtGameStart(event: GameStartEvent): GameStartSnapshot | null {
+    const { settings } = event;
+    const fields = (
+        settings.startSfen === "startpos" ? STARTPOS_SFEN : resolveStartSfen(settings.startSfen)
+    )
+        .trim()
+        .split(/\s+/);
+    const turn = fields[1];
+    if (fields.length < 3 || (turn !== "b" && turn !== "w")) return null;
+    // 手数を省いた局面は、サーバーが 1 手目として補う
+    if (fields.length === 3) fields.push("1");
+
+    const { timeControl, passRights } = settings;
+    const isUnlimited =
+        timeControl.initialMs === 0 && (timeControl.type !== "byoyomi" || !timeControl.byoyomiMs);
+    return {
+        eventId: event.eventId,
+        status: "playing",
+        sfen: fields.join(" "),
+        moves: [],
+        turn,
+        clock: {
+            b: { remainMs: timeControl.initialMs },
+            w: { remainMs: timeControl.initialMs },
+            running: isUnlimited ? null : turn,
+            lastTickTs: event.serverTs,
+        },
+        passRights: passRights ? { b: passRights.initialCount, w: passRights.initialCount } : null,
+        players: event.players,
+        settings,
+    };
 }
 
 /**

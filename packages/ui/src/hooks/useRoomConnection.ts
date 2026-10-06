@@ -1,11 +1,4 @@
-import type {
-    ErrorCode,
-    PassRightsState,
-    PlayerPublicInfo,
-    RoomClient,
-    ServerMessage,
-    SnapshotPayload,
-} from "@shogi/match-client";
+import type { ErrorCode, RoomClient, ServerMessage, SnapshotPayload } from "@shogi/match-client";
 import {
     createRoomClient,
     getStoredResumeToken,
@@ -13,6 +6,7 @@ import {
     storeSeat,
 } from "@shogi/match-client";
 import { useEffect, useEffectEvent, useReducer, useRef } from "react";
+import { type GameStartSnapshot, snapshotAtGameStart } from "../components/online-game-state";
 
 function errorCodeToMessage(code: ErrorCode): string {
     switch (code) {
@@ -90,12 +84,7 @@ type RoomAction =
     | { type: "joined" }
     | { type: "snapshot_received"; snapshot: SnapshotPayload }
     | { type: "settings_updated"; startSfen: string }
-    | {
-          type: "game_start";
-          eventId: number;
-          players?: { b: PlayerPublicInfo; w: PlayerPublicInfo };
-          passRights?: PassRightsState | null;
-      }
+    | { type: "game_start"; snapshot: SnapshotPayload | GameStartSnapshot }
     | { type: "client_set"; client: RoomClient }
     | { type: "client_cleared" }
     | { type: "room_changed" };
@@ -117,17 +106,12 @@ function roomReducer(state: RoomState, action: RoomAction): RoomState {
         case "settings_updated":
             return { ...state, localStartSfen: action.startSfen };
         case "game_start":
+            // 待機中の snapshot から引き継ぐのは観戦者数だけ。局面・手番・時計・設定は、
+            // 待機中に開始局面が変更されると食い違うので引き継がない
             return {
                 ...state,
                 gamePhase: "playing",
-                snapshot: state.snapshot
-                    ? {
-                          ...state.snapshot,
-                          eventId: action.eventId,
-                          ...(action.players ? { players: action.players } : {}),
-                          ...("passRights" in action ? { passRights: action.passRights } : {}),
-                      }
-                    : state.snapshot,
+                snapshot: { spectators: state.snapshot?.spectators ?? 0, ...action.snapshot },
             };
         case "client_set":
             return { ...state, client: action.client };
@@ -287,7 +271,7 @@ export function useRoomConnection({
             onOpen: (client) => {
                 client.join({ seat: seatToJoin, name: trimmedName });
             },
-            onMessage: ({ message, stopListening, fail }) => {
+            onMessage: ({ client, message, stopListening, fail }) => {
                 switch (message.t) {
                     case "joined": {
                         storeSeat(roomId, seatToJoin);
@@ -301,7 +285,7 @@ export function useRoomConnection({
                             stopListening();
                             dispatchRoom({ type: "joined" });
                             dispatchJoin({ type: "joined" });
-                            dispatchRoom({ type: "game_start", eventId: message.payload.eventId });
+                            dispatchRoom({ type: "game_start", snapshot: message.payload });
                         }
                         break;
                     }
@@ -313,14 +297,24 @@ export function useRoomConnection({
                             });
                         }
                         if (message.payload.kind === "game_start") {
-                            stopListening();
-                            const pr = message.payload.settings.passRights;
-                            dispatchRoom({
-                                type: "game_start",
-                                eventId: message.payload.eventId,
-                                players: message.payload.players,
-                                passRights: pr ? { b: pr.initialCount, w: pr.initialCount } : null,
-                            });
+                            const started = snapshotAtGameStart(message.payload);
+                            if (started) {
+                                stopListening();
+                                dispatchRoom({ type: "game_start", snapshot: started });
+                                break;
+                            }
+                            // 開始局面を組み立てられないまま盤面を開くと、サーバーと違う局面から
+                            // 指せてしまう。サーバーの snapshot を待ち、届いたらそこから開く。
+                            // サーバーが必ず snapshot を返すのは、対局者なら lastEventId 0 の
+                            // resume、観戦者なら参加し直し
+                            const resumeToken = getStoredResumeToken(roomId);
+                            if (seatToJoin === "s") {
+                                client.join({ seat: "s", name: trimmedName });
+                            } else if (resumeToken) {
+                                client.resume({ resumeToken, lastEventId: 0 });
+                            } else {
+                                fail(errorCodeToMessage("DESYNC"));
+                            }
                         }
                         break;
                     }
@@ -374,7 +368,7 @@ export function useRoomConnection({
                         dispatchJoin({ type: "joined" });
                         if (message.payload.status !== "waiting") {
                             stopListening();
-                            dispatchRoom({ type: "game_start", eventId: message.payload.eventId });
+                            dispatchRoom({ type: "game_start", snapshot: message.payload });
                         }
                         break;
                     }
