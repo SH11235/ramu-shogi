@@ -69,7 +69,7 @@ name = "ramu-shogi-stg"
 # Custom Domain binding。DNS record (AAAA 100:: proxied) は iac repo (Pulumi) が正典
 routes = [{ pattern = "stg.ramu-shogi.sh11235.com", custom_domain = true }]
 [env.stg.vars]
-ROOM_BACKEND = "legacy"
+ROOM_BACKEND = "backend"
 
 [env.stg.observability.logs]
 enabled = true
