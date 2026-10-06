@@ -1,18 +1,24 @@
-import { handleApiRequest } from "./api";
+import {
+    enforceRoomCreateRateLimit,
+    handleLegacyRoomRequest,
+    type Env as LegacyRoomEnv,
+    type RoomBackend,
+    resolveRoomBackend,
+} from "./api";
 
 export { RoomDO } from "./room-do";
 
-interface Env {
-    ASSETS: Fetcher;
-    NNUE_BUCKET: R2Bucket;
-    ROOM: DurableObjectNamespace;
+interface Env extends LegacyRoomEnv {
     BACKEND?: Fetcher;
     BACKEND_ORIGIN?: string;
+    /** ルーム API の処理先。"legacy" = この Worker の RoomDO、"backend" = backend Worker */
+    ROOM_BACKEND?: string;
 }
 
 const NNUE_MANIFEST_PATH = "/nnue/manifest.json";
 const NNUE_FILES_PREFIX = "/nnue/files/";
 const API_PREFIX = "/api/";
+const ROOMS_PATH = "/api/rooms";
 const SECURITY_HEADERS: Record<string, string> = {
     "Cross-Origin-Opener-Policy": "same-origin",
     "Cross-Origin-Embedder-Policy": "require-corp",
@@ -118,7 +124,8 @@ async function handleApiProxyRequest(request: Request, env: Env): Promise<Respon
         return null;
     }
 
-    if (request.headers.get("Upgrade") === "websocket" && backendResponse.status === 101) {
+    // 101 は WebSocket を保持した応答で、作り直すと接続を引き継げない
+    if (backendResponse.status === 101) {
         return backendResponse;
     }
 
@@ -129,6 +136,97 @@ async function handleApiProxyRequest(request: Request, env: Env): Promise<Respon
         statusText: backendResponse.statusText,
         headers: responseHeaders,
     });
+}
+
+function apiErrorResponse(status: number, error: string, message: string): Response {
+    return new Response(JSON.stringify({ error, message }), {
+        status,
+        headers: {
+            "Content-Type": "application/json",
+            "cache-control": "no-store",
+        },
+    });
+}
+
+function apiNotFoundResponse(): Response {
+    return apiErrorResponse(404, "NOT_FOUND", "API endpoint not found");
+}
+
+type RoomRoute = "create" | "info" | "ws" | "other";
+type RoomServedBy = RoomBackend | "rate_limiter" | "none";
+type RoomRequestOutcome = { servedBy: RoomServedBy; response: Response; backendFailed?: true };
+
+function classifyRoomRoute(method: string, pathname: string): RoomRoute {
+    if (pathname === ROOMS_PATH) return method === "POST" ? "create" : "other";
+    if (/^\/api\/rooms\/[^/]+\/ws$/.test(pathname)) return "ws";
+    if (/^\/api\/rooms\/[^/]+$/.test(pathname)) return method === "GET" ? "info" : "other";
+    return "other";
+}
+
+async function serveRoomRequest(
+    request: Request,
+    env: Env,
+    roomBackend: RoomBackend,
+    route: RoomRoute,
+): Promise<RoomRequestOutcome> {
+    // backend Worker にはレート制限の binding が無いので、処理先によらずここで掛ける
+    if (route === "create") {
+        const rateLimited = await enforceRoomCreateRateLimit(request, env);
+        if (rateLimited) return { servedBy: "rate_limiter", response: rateLimited };
+    }
+
+    if (roomBackend === "legacy") {
+        const legacyResponse = await handleLegacyRoomRequest(request, env);
+        if (legacyResponse) return { servedBy: "legacy", response: legacyResponse };
+    }
+
+    try {
+        const proxiedResponse = await handleApiProxyRequest(request, env);
+        if (proxiedResponse) return { servedBy: "backend", response: proxiedResponse };
+        return { servedBy: "none", response: apiNotFoundResponse() };
+    } catch (error) {
+        // legacy でここに来るのは RoomDO が扱わないルーム API だけなので、失敗の扱いは他の API と揃えておく
+        if (roomBackend === "legacy") throw error;
+        return {
+            servedBy: "backend",
+            backendFailed: true,
+            response: apiErrorResponse(
+                502,
+                "BACKEND_UNAVAILABLE",
+                "Room service is temporarily unavailable. Please try again later.",
+            ),
+        };
+    }
+}
+
+async function handleRoomRequest(request: Request, env: Env): Promise<Response | null> {
+    const { pathname } = new URL(request.url);
+    if (pathname !== ROOMS_PATH && !pathname.startsWith(`${ROOMS_PATH}/`)) {
+        return null;
+    }
+
+    const roomBackend = resolveRoomBackend(env.ROOM_BACKEND);
+    const route = classifyRoomRoute(request.method, pathname);
+    const { servedBy, response, backendFailed } = await serveRoomRequest(
+        request,
+        env,
+        roomBackend,
+        route,
+    );
+    // ルーム ID は知っていれば参加できる値なので、パスやクエリは記録しない。
+    // 転送に失敗したときの例外の文言も URL を含み得るので記録しない
+    console.log(
+        JSON.stringify({
+            event: "room_request",
+            served_by: servedBy,
+            room_backend: roomBackend,
+            route,
+            method: request.method,
+            status: response.status,
+            ...(backendFailed ? { error: "backend_fetch_failed" } : {}),
+        }),
+    );
+    return response;
 }
 
 async function handleNnueRequest(request: Request, env: Env): Promise<Response | null> {
@@ -208,28 +306,31 @@ async function handleNnueRequest(request: Request, env: Env): Promise<Response |
 }
 
 export default {
-    async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    async fetch(request: Request, env: Env): Promise<Response> {
         const { pathname } = new URL(request.url);
 
-        // /api/rooms/* はローカルで処理（frontend の Durable Object を使用）
-        const apiResponse = await handleApiRequest(request, env, ctx);
-        if (apiResponse) return apiResponse;
+        // backend のルーターはパスを percent-decode してから照合するので、エンコードされたパスは
+        // ここでの判定（ルーム API の振り分けとルーム作成のレート制限）に掛からないまま backend の
+        // ルーム API に届く。クライアントが使う API のパスにエンコードが要る文字は無いので受け付けない
+        if (pathname.startsWith(API_PREFIX) && pathname.includes("%")) {
+            console.warn(JSON.stringify({ event: "api_path_rejected", reason: "percent_encoded" }));
+            return apiErrorResponse(
+                400,
+                "INVALID_REQUEST",
+                "Percent-encoded API paths are not supported",
+            );
+        }
+
+        // /api/rooms/* は ROOM_BACKEND に従い、この Worker の RoomDO か backend Worker で処理
+        const roomResponse = await handleRoomRequest(request, env);
+        if (roomResponse) return roomResponse;
 
         // その他の /api/* はバックエンド Worker にプロキシ
         const proxiedApiResponse = await handleApiProxyRequest(request, env);
         if (proxiedApiResponse) return proxiedApiResponse;
 
         if (pathname.startsWith(API_PREFIX)) {
-            return new Response(
-                JSON.stringify({ error: "NOT_FOUND", message: "API endpoint not found" }),
-                {
-                    status: 404,
-                    headers: {
-                        "Content-Type": "application/json",
-                        "cache-control": "no-store",
-                    },
-                },
-            );
+            return apiNotFoundResponse();
         }
 
         const nnueResponse = await handleNnueRequest(request, env);

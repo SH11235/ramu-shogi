@@ -9,5 +9,5 @@
         "jsx": "preserve"
     },
     "include": ["worker"],
-    "exclude": ["worker/**/*.test.ts"]
+    "exclude": ["worker/**/*.integration.test.ts"]
 }
