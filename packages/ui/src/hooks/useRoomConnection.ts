@@ -309,10 +309,19 @@ export function useRoomConnection({
         let isDisposed = false;
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
         let failAfterId: ReturnType<typeof setTimeout> | null = null;
+        let isListening = true;
 
         const newClient = createRoomClient({
             wsUrl: buildWsUrl(roomId),
             autoReconnect: true,
+            // RoomClient は resume し直せたときにも、再接続を諦めたときにもこれを呼ぶ。
+            // 諦めたときだけ状態が disconnected になっている。待機中に諦められたまま参加済みの
+            // 表示を続けると、対局が始まっても画面は気づけない
+            onReconnect: () => {
+                if (isListening && newClient.getStatus() === "disconnected") {
+                    fail(timeoutMessage);
+                }
+            },
             onOpen: ({ reconnect }) => {
                 if (isDisposed) {
                     return;
@@ -355,6 +364,7 @@ export function useRoomConnection({
                 client: newClient,
                 message,
                 stopListening: () => {
+                    isListening = false;
                     if (failAfterId !== null) {
                         clearTimeout(failAfterId);
                         failAfterId = null;

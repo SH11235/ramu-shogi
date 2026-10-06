@@ -254,8 +254,10 @@ describe("useRoomConnection", () => {
         function joinAndWait(seat: "b" | "w" | "s") {
             const connection = createMockClient();
             let onOpen: ((event: { reconnect: boolean }) => void) | undefined;
+            let onReconnect: (() => void) | undefined;
             mockCreateRoomClient.mockImplementation((options) => {
                 onOpen = options.onOpen;
+                onReconnect = options.onReconnect;
                 return connection.client;
             });
             mockGetStoredResumeToken.mockReturnValue(null);
@@ -283,6 +285,18 @@ describe("useRoomConnection", () => {
                 result,
                 /** RoomClient が接続し直した。resumed は RoomClient が resume を送ったかどうか */
                 reopen: (resumed: boolean) => act(() => onOpen?.({ reconnect: resumed })),
+                /** RoomClient が再接続を諦めた（状態を disconnected にして onReconnect を呼ぶ） */
+                giveUpReconnecting: () =>
+                    act(() => {
+                        connection.client.getStatus.mockReturnValue("disconnected");
+                        onReconnect?.();
+                    }),
+                /** RoomClient が resume し直せた（onReconnect は接続できたときにも呼ばれる） */
+                notifyResumed: () =>
+                    act(() => {
+                        connection.client.getStatus.mockReturnValue("connected");
+                        onReconnect?.();
+                    }),
             };
         }
 
@@ -430,6 +444,66 @@ describe("useRoomConnection", () => {
             reopen(true);
 
             expect(connection.client.resume).not.toHaveBeenCalled();
+        });
+
+        it("待機中に再接続を諦められたら、席を持つ対局者は再読み込みで戻れる状態にする", () => {
+            const { connection, result, giveUpReconnecting } = joinAndWait("b");
+            mockGetStoredResumeToken.mockReturnValue("token-1");
+            mockGetStoredSeat.mockReturnValue("b");
+
+            giveUpReconnecting();
+
+            expect(result.current).toMatchObject({
+                joined: false,
+                connectionLost: true,
+                snapshot: null,
+                client: null,
+            });
+            expect(connection.client.disconnect).toHaveBeenCalled();
+        });
+
+        it("待機中に再接続を諦められたら、観戦者は参加フォームへ戻す", () => {
+            const { result, giveUpReconnecting } = joinAndWait("s");
+            mockGetStoredSeat.mockReturnValue("s");
+
+            giveUpReconnecting();
+
+            expect(result.current).toMatchObject({
+                joined: false,
+                connectionLost: false,
+                joinError: "接続タイムアウト。再度お試しください。",
+            });
+        });
+
+        it("resume し直せた通知では、待機を続ける", () => {
+            const { connection, result, notifyResumed } = joinAndWait("b");
+            mockGetStoredResumeToken.mockReturnValue("token-1");
+            mockGetStoredSeat.mockReturnValue("b");
+
+            notifyResumed();
+
+            expect(result.current).toMatchObject({ joined: true, connectionLost: false });
+            expect(connection.client.disconnect).not.toHaveBeenCalled();
+        });
+
+        it("対局開始の後に再接続を諦められても、対局画面へ渡した状態を変えない", () => {
+            const { connection, result, giveUpReconnecting } = joinAndWait("b");
+            mockGetStoredResumeToken.mockReturnValue("token-1");
+            mockGetStoredSeat.mockReturnValue("b");
+            act(() => {
+                connection.emit(gameStart(1));
+            });
+
+            giveUpReconnecting();
+
+            expect(result.current).toMatchObject({
+                gamePhase: "playing",
+                joined: true,
+                connectionLost: false,
+                snapshot: { eventId: 1 },
+                joinError: null,
+            });
+            expect(connection.client.disconnect).not.toHaveBeenCalled();
         });
 
         it("席を持つ対局者がエラーを受けたら、参加済みを取り消し、再読み込みで戻れる状態にする", () => {

@@ -52,6 +52,7 @@ describe("backend の RoomDO が送った game_start と対局開始直後の sn
     it("記録に、組み立てる開始局面と組み立てない開始局面の両方がある", () => {
         const names = BACKEND_CASES.map((recordedCase) => recordedCase.name);
 
+        // 「5 フィールドの SFEN」は legacy だけが受け付けるので、backend の記録には無い
         expect(names.filter((name) => NOT_BUILT_LOCALLY.includes(name))).toHaveLength(5);
         expect(names.filter((name) => !NOT_BUILT_LOCALLY.includes(name))).toHaveLength(12);
     });

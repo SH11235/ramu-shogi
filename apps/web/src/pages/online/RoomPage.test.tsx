@@ -707,6 +707,34 @@ describe("RoomPage", () => {
                 expect(reload).toHaveBeenCalledTimes(1);
             });
 
+            it("相手を待つ間に接続が切れ、再接続を 5 回試みてもつながらなければ、再読み込みを案内する", async () => {
+                let socket = await joinAndWait("b");
+                vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+                try {
+                    for (const delayMs of [1_000, 2_000, 4_000, 8_000, 16_000]) {
+                        const dropped = socket;
+                        await act(async () => {
+                            dropped.drop();
+                        });
+                        expect(screen.getByText(WAITING_TEXT)).toBeTruthy();
+                        await act(async () => {
+                            vi.advanceTimersByTime(delayMs);
+                        });
+                        socket = socketFor("test-room");
+                        expect(socket).not.toBe(dropped);
+                    }
+                    const lastAttempt = socket;
+                    await act(async () => {
+                        lastAttempt.drop();
+                    });
+                } finally {
+                    vi.useRealTimers();
+                }
+
+                expectReloadGuidanceOnly();
+                expect(sockets).toHaveLength(6);
+            });
+
             it("参加できなかったときは、エラーを表示した参加フォームをそのまま操作できる", async () => {
                 render(<RoomPage />);
                 fireEvent.change(screen.getByLabelText(/名前/), { target: { value: "Alice" } });
