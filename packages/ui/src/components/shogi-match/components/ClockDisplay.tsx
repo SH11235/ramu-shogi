@@ -38,13 +38,13 @@ export function ClockDisplay({
         return (
             <div
                 className={cn(
-                    "flex items-center gap-1 px-1.5 py-0.5 rounded-md transition-opacity",
-                    ticking ? "bg-primary/10 ring-1 ring-primary/30" : "bg-muted/50",
+                    "flex items-center gap-1 rounded-full px-2 py-1 transition-[opacity,box-shadow,background-color] sm:gap-1.5 sm:px-2.5",
+                    ticking ? "bg-card shadow-puffy ring-2 ring-primary/40" : "bg-muted/60",
                     !isRunning && "opacity-50",
                 )}
             >
                 <PlayerIcon side={side} size="sm" />
-                <span className="font-mono text-sm tabular-nums">
+                <span className="font-mono text-[13px] tabular-nums sm:text-sm">
                     {timeEnabled ? (
                         <>
                             {formatTime(clock.mainMs)}

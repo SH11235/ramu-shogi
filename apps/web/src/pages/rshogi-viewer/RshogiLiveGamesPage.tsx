@@ -45,7 +45,7 @@ export default function RshogiLiveGamesPage(): ReactElement {
                             type="button"
                             onClick={refresh}
                             disabled={isLoading}
-                            className="rounded-md border border-wafuu-border px-3 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="rounded-full border border-card-edge bg-card/80 shadow-puffy px-3 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                             {isLoading ? "更新中..." : "更新"}
                         </button>

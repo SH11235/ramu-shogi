@@ -143,7 +143,7 @@ export default function GamesPage(): ReactElement {
                                 key={game.id}
                                 to="/games/$gameId"
                                 params={{ gameId: game.id }}
-                                className="rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:bg-muted/20"
+                                className="rounded-3xl border border-card-edge bg-card/80 p-5 shadow-puffy transition-colors hover:bg-muted/20"
                             >
                                 <div className="flex flex-col gap-3">
                                     <div className="flex flex-wrap items-center gap-2 text-xs">

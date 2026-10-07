@@ -59,7 +59,7 @@ function App() {
                     remoteNnueManager={remoteNnueManager}
                     allowAnalysisDuringMatch={true}
                     defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
-                    aiIconUrl={`${import.meta.env.BASE_URL}ramu.jpeg`}
+                    aiIconUrl={`${import.meta.env.BASE_URL}ram.svg`}
                     onPositionSnapshot={(snapshot) => setPanelPosition(snapshot)}
                     initialReview={initialReview}
                     {...(initialReview

@@ -69,7 +69,7 @@ export function ShogiBoard({
     const { files, ranks } = getBoardLabels(flipBoard);
 
     return (
-        <div className="relative inline-block rounded-lg border border-shogi-outer-border bg-shogi-cell-light shadow-[0_4px_12px_rgba(0,0,0,0.12)]">
+        <div className="relative inline-block rounded-[22px] border-2 border-shogi-outer-border bg-shogi-cell-light p-0.5 shadow-[inset_0_2px_0_hsl(var(--sheen)),0_18px_34px_-16px_hsl(var(--ram-shadow)/0.55)]">
             {/* 盤外ラベル: 筋（上） */}
             <div
                 className={cn(
@@ -197,7 +197,10 @@ export function ShogiBoard({
                                                         ) ?? ""
                                                     }
                                                     alt={`${cell.piece.owner === "sente" ? "先手" : "後手"}の${PIECE_LABELS[cell.piece.type] ?? cell.piece.type}${cell.piece.promoted ? "成" : ""}`}
-                                                    className="h-[90%] w-[90%] object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.15)]"
+                                                    className={cn(
+                                                        "h-[90%] w-[90%] object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.15)]",
+                                                        isLastMoveTo && "ram-piece-land",
+                                                    )}
                                                     draggable={false}
                                                 />
                                             </span>

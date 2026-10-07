@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- ラム v6: 構造 = モコモコのドーム + シルエットとして垂れる大きな耳 + 滑らかな顔下半分。
+       毛並みスカラップはドームと耳の輪郭にのみ入れる -->
+  <g>
+    <!-- 首・胸元 -->
+    <rect x="46" y="100" width="36" height="16" fill="#d1a377"/>
+    <!-- 首輪 (水色) -->
+    <rect x="42" y="112" width="44" height="9" rx="4.5" fill="#6fa8dc"/>
+
+    <!-- 垂れ耳 (シルエットの一部。顔より外へ張り出し顎近くまで。縁はスカラップ) -->
+    <g fill="#d7ab7f">
+      <circle cx="28" cy="46" r="12"/>
+      <circle cx="23" cy="58" r="11"/>
+      <circle cx="22" cy="70" r="10.5"/>
+      <circle cx="27" cy="80" r="9.5"/>
+      <circle cx="100" cy="46" r="12"/>
+      <circle cx="105" cy="58" r="11"/>
+      <circle cx="106" cy="70" r="10.5"/>
+      <circle cx="101" cy="80" r="9.5"/>
+    </g>
+    <!-- 耳の濃さは輪郭に触れない内側の陰で示す (輪郭は一続きの毛並みに) -->
+    <g fill="#c09063">
+      <ellipse cx="27" cy="63" rx="8" ry="17"/>
+      <ellipse cx="101" cy="63" rx="8" ry="17"/>
+    </g>
+
+    <!-- 頭頂ドーム (小さめの房でスカラップ) -->
+    <g fill="#d7ab7f">
+      <circle cx="64" cy="42" r="28"/>
+      <circle cx="42" cy="36" r="12"/>
+      <circle cx="52" cy="27" r="12"/>
+      <circle cx="64" cy="24" r="12"/>
+      <circle cx="76" cy="27" r="12"/>
+      <circle cx="86" cy="36" r="12"/>
+    </g>
+
+    <!-- 顔 (頬〜顎は滑らか。耳の内側に収まる幅) -->
+    <ellipse cx="64" cy="72" rx="35" ry="36" fill="#d7ab7f"/>
+
+    <!-- カールの筆線 (ドームにのみ、控えめ) -->
+    <g fill="none" stroke="#c09063" stroke-width="2.4" stroke-linecap="round" opacity="0.5">
+      <path d="M50 32 q6 -6 12 0"/>
+      <path d="M68 29 q6 -5 11 1"/>
+      <path d="M42 45 q5 -5 10 0"/>
+      <path d="M78 43 q5 -4 10 1"/>
+    </g>
+
+    <!-- マズル -->
+    <ellipse cx="64" cy="90" rx="18" ry="13" fill="#f0ddb9"/>
+    <!-- 目 -->
+    <circle cx="50" cy="63" r="6.5" fill="#2b2419"/>
+    <circle cx="78" cy="63" r="6.5" fill="#2b2419"/>
+    <circle cx="52.2" cy="60.8" r="1.9" fill="#fff"/>
+    <circle cx="80.2" cy="60.8" r="1.9" fill="#fff"/>
+    <!-- 鼻 -->
+    <path d="M56 83 Q64 78.5 72 83 Q72 90.5 64 93.5 Q56 90.5 56 83 Z" fill="#2b2419"/>
+  </g>
+</svg>

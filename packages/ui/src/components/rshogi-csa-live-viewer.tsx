@@ -631,7 +631,7 @@ export function RshogiLiveScoreboard({
     return (
         <section
             aria-label="対局スコアボード"
-            className="grid grid-cols-1 overflow-hidden rounded-xl border border-wafuu-border bg-wafuu-washi-warm shadow-sm sm:grid-cols-[1fr_auto_1fr]"
+            className="grid grid-cols-1 overflow-hidden rounded-3xl border border-card-edge bg-card/80 shadow-puffy sm:grid-cols-[1fr_auto_1fr]"
         >
             <ScoreboardSide
                 side="sente"
@@ -705,7 +705,7 @@ export function RshogiLiveMetaPanel({
     return (
         <section
             aria-label="観戦情報"
-            className="flex flex-col gap-3 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-3 text-sm text-wafuu-sumi"
+            className="flex flex-col gap-3 rounded-3xl border border-card-edge bg-card/80 p-3 text-sm text-wafuu-sumi shadow-puffy"
         >
             <div className="flex flex-col gap-1">
                 <span className="text-[11px] uppercase tracking-wider text-muted-foreground">

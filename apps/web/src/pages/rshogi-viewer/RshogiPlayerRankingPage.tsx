@@ -122,7 +122,7 @@ export default function RshogiPlayerRankingPage(): ReactElement {
                 {errorMessage && <StatusBanner variant="error">{errorMessage}</StatusBanner>}
 
                 <section
-                    className="grid grid-cols-3 overflow-hidden rounded-xl border border-wafuu-border bg-wafuu-washi-warm"
+                    className="grid grid-cols-3 overflow-hidden rounded-3xl border border-card-edge bg-card/80 shadow-puffy"
                     aria-label="レーティング概要"
                 >
                     <div className="flex flex-col gap-1 border-r border-wafuu-border px-3 py-4 text-center sm:px-6">
@@ -151,7 +151,7 @@ export default function RshogiPlayerRankingPage(): ReactElement {
                     </div>
                 </section>
 
-                <section className="overflow-hidden rounded-xl border border-wafuu-border bg-wafuu-washi-warm">
+                <section className="overflow-hidden rounded-3xl border border-card-edge bg-card/80 shadow-puffy">
                     <div className="grid grid-cols-[3rem_minmax(0,1fr)_5rem] items-center border-b border-wafuu-border bg-wafuu-kincha/10 px-3 py-2 text-[11px] font-semibold tracking-widest text-muted-foreground sm:grid-cols-[4rem_minmax(0,1fr)_7rem_9rem_8rem] sm:px-5">
                         <span>順位</span>
                         <span>名前</span>
@@ -238,7 +238,7 @@ export default function RshogiPlayerRankingPage(): ReactElement {
                             type="button"
                             onClick={() => requestPage(Math.max(1, displayedPage - 1))}
                             disabled={displayedPage <= 1 || isLoading}
-                            className="rounded-md border border-wafuu-border px-4 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:opacity-40"
+                            className="rounded-full border border-card-edge bg-card/80 shadow-puffy px-4 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:opacity-40"
                         >
                             ← 上位
                         </button>
@@ -249,7 +249,7 @@ export default function RshogiPlayerRankingPage(): ReactElement {
                             type="button"
                             onClick={() => requestPage(Math.min(totalPages, displayedPage + 1))}
                             disabled={displayedPage >= totalPages || isLoading}
-                            className="rounded-md border border-wafuu-border px-4 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:opacity-40"
+                            className="rounded-full border border-card-edge bg-card/80 shadow-puffy px-4 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:opacity-40"
                         >
                             下位 →
                         </button>

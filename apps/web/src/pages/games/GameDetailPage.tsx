@@ -146,7 +146,7 @@ export default function GameDetailPage(): ReactElement {
                                 type="button"
                                 onClick={() => void handleUpdateVisibility(value)}
                                 disabled={isUpdatingVisibility || game.visibility === value}
-                                className="flex items-start gap-3 rounded-md border border-input px-4 py-3 text-left transition-colors hover:bg-muted/50 disabled:pointer-events-none disabled:opacity-50"
+                                className="flex items-start gap-3 rounded-3xl border border-card-edge bg-card/80 shadow-puffy px-4 py-3 text-left transition-colors hover:bg-muted/50 disabled:pointer-events-none disabled:opacity-50"
                             >
                                 <span className="mt-0.5 text-sm font-medium text-foreground">
                                     {label}
@@ -181,7 +181,7 @@ export default function GameDetailPage(): ReactElement {
                                             setError("共有リンクのコピーに失敗しました。");
                                         });
                                 }}
-                                className="shrink-0 rounded-md border border-input px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
+                                className="shrink-0 rounded-full border border-card-edge bg-card/80 shadow-puffy px-3 py-2 text-sm font-bold text-foreground transition-colors hover:bg-muted/50"
                             >
                                 コピー
                             </button>
@@ -190,7 +190,7 @@ export default function GameDetailPage(): ReactElement {
                                 params={{ publicId: game.publicId }}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="shrink-0 rounded-md border border-input px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
+                                className="shrink-0 rounded-full border border-card-edge bg-card/80 shadow-puffy px-3 py-2 text-sm font-bold text-foreground transition-colors hover:bg-muted/50"
                             >
                                 開く
                             </Link>
@@ -209,7 +209,7 @@ export default function GameDetailPage(): ReactElement {
                         <Link
                             to="/games/$gameId/review"
                             params={{ gameId }}
-                            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90"
+                            className="rounded-full bg-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow transition-colors hover:bg-primary/90"
                         >
                             棋譜を検討する
                         </Link>
@@ -224,7 +224,7 @@ export default function GameDetailPage(): ReactElement {
                             return (
                                 <li
                                     key={`${game.id}:${ply}:${move}`}
-                                    className="rounded-md border border-border px-3 py-2"
+                                    className="rounded-2xl border border-border px-3 py-2"
                                 >
                                     {ply}. {move}
                                 </li>
@@ -248,7 +248,7 @@ export default function GameDetailPage(): ReactElement {
                                         setError("棋譜のコピーに失敗しました。");
                                     });
                             }}
-                            className="rounded-md border border-input px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
+                            className="rounded-full border border-card-edge bg-card/80 shadow-puffy px-3 py-2 text-sm font-bold text-foreground transition-colors hover:bg-muted/50"
                         >
                             コピー
                         </button>

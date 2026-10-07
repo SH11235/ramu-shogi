@@ -48,12 +48,12 @@ function InviteLinkSection({
                 <input
                     readOnly
                     value={inviteUrl}
-                    className="flex h-10 flex-1 rounded-md border border-input bg-muted px-3 py-2 text-xs text-muted-foreground"
+                    className="flex h-10 flex-1 rounded-2xl border border-input bg-muted px-3 py-2 text-xs text-muted-foreground"
                 />
                 <button
                     type="button"
                     onClick={onCopy}
-                    className="rounded-md bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground shadow-sm hover:bg-secondary/80 transition-colors"
+                    className="rounded-full bg-secondary px-3 py-2 text-sm font-bold text-secondary-foreground shadow-sm hover:bg-secondary/80 transition-colors"
                 >
                     {copied ? "コピーしました！" : "コピー"}
                 </button>
@@ -72,7 +72,7 @@ function PlayersStatusSection({
     // スナップショットがあればリアルタイム情報を優先して表示
     if (snapshotPlayers) {
         return (
-            <div className="rounded-lg border border-border bg-card p-4">
+            <div className="rounded-3xl border border-card-edge bg-card/80 p-4 shadow-puffy">
                 <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-wafuu-shu">
@@ -102,7 +102,7 @@ function PlayersStatusSection({
     }
 
     return (
-        <div className="rounded-lg border border-border bg-card p-4">
+        <div className="rounded-3xl border border-card-edge bg-card/80 p-4 shadow-puffy">
             <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-wafuu-shu">
@@ -149,7 +149,7 @@ function JoinFormSection({
     onJoin: (seat: "b" | "w" | "s") => void;
 }): ReactElement {
     return (
-        <div className="flex flex-col gap-4 rounded-lg border border-border bg-card p-4">
+        <div className="flex flex-col gap-4 rounded-3xl border border-card-edge bg-card/80 p-4 shadow-puffy">
             <h2 className="text-sm font-semibold text-foreground">参加する</h2>
             <div className="flex flex-col gap-1">
                 <label htmlFor="join-name" className="text-sm text-foreground">
@@ -163,7 +163,7 @@ function JoinFormSection({
                     placeholder="プレイヤー名を入力してください"
                     maxLength={20}
                     disabled={isJoining}
-                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
+                    className="flex h-10 w-full rounded-2xl border border-input bg-card/70 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
                 />
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
@@ -172,7 +172,7 @@ function JoinFormSection({
                     type="button"
                     onClick={() => onJoin("b")}
                     disabled={isJoining || !joinName.trim() || isSeatTaken("b")}
-                    className="w-full rounded-lg bg-wafuu-shu py-2.5 text-sm font-semibold text-wafuu-shu-fg shadow hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    className="w-full rounded-full bg-wafuu-shu py-2.5 text-sm font-bold text-wafuu-shu-fg shadow hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                     {isJoining && joinSeat === "b"
                         ? "接続中..."
@@ -184,7 +184,7 @@ function JoinFormSection({
                     type="button"
                     onClick={() => onJoin("w")}
                     disabled={isJoining || !joinName.trim() || isSeatTaken("w")}
-                    className="w-full rounded-lg bg-wafuu-ai py-2.5 text-sm font-semibold text-wafuu-ai-fg shadow hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    className="w-full rounded-full bg-wafuu-ai py-2.5 text-sm font-bold text-wafuu-ai-fg shadow hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                     {isJoining && joinSeat === "w"
                         ? "接続中..."
@@ -196,7 +196,7 @@ function JoinFormSection({
                     type="button"
                     onClick={() => onJoin("s")}
                     disabled={isJoining || !joinName.trim()}
-                    className="w-full rounded-lg bg-secondary py-2.5 text-sm font-semibold text-secondary-foreground shadow-sm hover:bg-secondary/80 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    className="w-full rounded-full bg-secondary py-2.5 text-sm font-bold text-secondary-foreground shadow-sm hover:bg-secondary/80 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                     {isJoining && joinSeat === "s" ? "接続中..." : "観戦者として参加する"}
                 </button>
@@ -225,12 +225,12 @@ function GameSettingsSection({
     return (
         <>
             {joined && currentStatus === "waiting" && (
-                <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4">
+                <div className="flex flex-col gap-2 rounded-3xl border border-card-edge bg-card/80 p-4 shadow-puffy">
                     <span className="text-sm font-semibold text-foreground">開始局面を変更</span>
                     <PositionPresetSelector value={displayStartSfen} onChange={onUpdateStartSfen} />
                 </div>
             )}
-            <div className="rounded-lg border border-border bg-card p-4">
+            <div className="rounded-3xl border border-card-edge bg-card/80 p-4 shadow-puffy">
                 <h2 className="mb-3 text-sm font-semibold text-foreground">対局設定</h2>
                 <div className="flex flex-col gap-1 text-sm text-muted-foreground">
                     <div className="flex justify-between">

@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
 import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
+import { RamNotice } from "../../components/RamNotice";
 import { StatusBanner } from "../../components/StatusBanner";
 import { resolveNnueLabBaseUrl } from "../../lib/nnueLabBaseUrl";
 import { resolveRshogiApiBaseUrl } from "../../lib/rshogiApiBaseUrl";
@@ -119,17 +120,10 @@ export default function RshogiPlayerDetailPage(): ReactElement {
             />
             <PageContainer width="wide" className="gap-5">
                 {errorMessage && <StatusBanner variant="error">{errorMessage}</StatusBanner>}
-                {isLoading && !detail && (
-                    <div
-                        className="rounded-xl border border-wafuu-border bg-wafuu-washi-warm px-5 py-16 text-center text-sm text-muted-foreground"
-                        aria-live="polite"
-                    >
-                        対局記録を読み込み中…
-                    </div>
-                )}
+                {isLoading && !detail && <RamNotice tone="loading" title="対局記録を読み込み中…" />}
                 {player && (
                     <>
-                        <section className="overflow-hidden rounded-2xl border border-wafuu-border bg-wafuu-washi-warm shadow-sm">
+                        <section className="overflow-hidden rounded-3xl border border-card-edge bg-card/80 shadow-puffy">
                             <div className="grid lg:grid-cols-[minmax(0,1fr)_18rem]">
                                 <div className="flex min-w-0 flex-col justify-between gap-8 bg-wafuu-sumi px-5 py-7 text-wafuu-washi-warm sm:px-8 sm:py-9">
                                     <div className="flex flex-col gap-3">
@@ -194,7 +188,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                                 href={`${nnueLabBaseUrl}/t/${encodeURIComponent(nnueLabExperiment.tenant_slug)}/experiments/${encodeURIComponent(nnueLabExperiment.experiment_id)}`}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="flex items-center justify-between gap-4 rounded-xl border border-wafuu-border bg-wafuu-washi-warm px-5 py-4 text-wafuu-sumi shadow-sm transition-colors hover:bg-wafuu-kincha/10"
+                                className="flex items-center justify-between gap-4 rounded-3xl border border-card-edge bg-card/80 px-5 py-4 text-wafuu-sumi shadow-puffy transition-colors hover:bg-wafuu-kincha/10"
                             >
                                 <span className="min-w-0">
                                     <span className="block text-[10px] font-semibold tracking-[0.2em] text-wafuu-shu">
@@ -244,7 +238,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                                         type="button"
                                         onClick={() => requestPage(Math.max(1, displayedPage - 1))}
                                         disabled={displayedPage <= 1 || isLoading}
-                                        className="rounded-md border border-wafuu-border px-4 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:opacity-40"
+                                        className="rounded-full border border-card-edge bg-card/80 shadow-puffy px-4 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:opacity-40"
                                     >
                                         ← 新しい対局
                                     </button>
@@ -257,7 +251,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                                             requestPage(Math.min(totalPages, displayedPage + 1))
                                         }
                                         disabled={displayedPage >= totalPages || isLoading}
-                                        className="rounded-md border border-wafuu-border px-4 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:opacity-40"
+                                        className="rounded-full border border-card-edge bg-card/80 shadow-puffy px-4 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:opacity-40"
                                     >
                                         古い対局 →
                                     </button>

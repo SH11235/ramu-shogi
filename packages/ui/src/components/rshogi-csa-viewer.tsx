@@ -106,7 +106,7 @@ function RshogiGameMetaPanel({ game }: { game: RshogiGame }): ReactElement {
     return (
         <section
             aria-label="対局情報"
-            className="flex flex-col gap-2 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-3 text-sm text-wafuu-sumi"
+            className="flex flex-col gap-2 rounded-3xl border border-card-edge bg-card/80 p-3 text-sm text-wafuu-sumi shadow-puffy"
         >
             <div className="flex flex-col gap-1">
                 <span className="text-xs text-muted-foreground">対局 ID</span>

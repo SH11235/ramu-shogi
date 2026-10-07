@@ -44,7 +44,7 @@ function AuthenticatedProfileSection({
                     type="button"
                     onClick={() => void onRefreshSession()}
                     disabled={isLoadingSession || isSubmitting}
-                    className="rounded-md border border-input px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted/50 disabled:pointer-events-none disabled:opacity-50"
+                    className="rounded-full border border-card-edge bg-card/80 shadow-puffy px-3 py-2 text-sm font-bold text-foreground transition-colors hover:bg-muted/50 disabled:pointer-events-none disabled:opacity-50"
                 >
                     再読み込み
                 </button>
@@ -66,14 +66,14 @@ function AuthenticatedProfileSection({
                         autoComplete="nickname"
                         maxLength={50}
                         required
-                        className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        className="flex h-10 w-full rounded-2xl border border-input bg-card/70 px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     />
                 </label>
                 <div className="flex flex-col gap-2 sm:flex-row">
                     <button
                         type="submit"
                         disabled={isSubmitting || !profileDisplayName.trim()}
-                        className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+                        className="rounded-full bg-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
                     >
                         ユーザー名を保存
                     </button>
@@ -81,7 +81,7 @@ function AuthenticatedProfileSection({
                         type="button"
                         onClick={() => void onLogout()}
                         disabled={isSubmitting}
-                        className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground shadow-sm transition-colors hover:bg-destructive/90 disabled:pointer-events-none disabled:opacity-50"
+                        className="rounded-full bg-destructive px-4 py-2 text-sm font-bold text-destructive-foreground shadow-sm transition-colors hover:bg-destructive/90 disabled:pointer-events-none disabled:opacity-50"
                     >
                         ログアウト
                     </button>
@@ -233,7 +233,7 @@ export default function AuthPage(): ReactElement {
                         <button
                             type="button"
                             onClick={handleGoogleLogin}
-                            className="inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
+                            className="inline-flex h-10 items-center justify-center rounded-full border border-card-edge bg-card/80 px-4 text-sm font-bold shadow-puffy text-foreground transition-colors hover:bg-muted/50"
                         >
                             Google アカウントでログイン
                         </button>

@@ -66,7 +66,7 @@ export default function PublicGamesPage(): ReactElement {
                                 key={game.publicId ?? game.id}
                                 to="/public/games/$publicId"
                                 params={{ publicId: game.publicId ?? "" }}
-                                className="rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:bg-muted/20"
+                                className="rounded-3xl border border-card-edge bg-card/80 p-5 shadow-puffy transition-colors hover:bg-muted/20"
                             >
                                 <div className="flex flex-col gap-3">
                                     <div className="flex flex-col gap-1">

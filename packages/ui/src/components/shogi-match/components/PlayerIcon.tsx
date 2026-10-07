@@ -28,8 +28,10 @@ interface PlayerIconProps {
     showBorder?: boolean;
     /** クリックで拡大表示を有効にするか（AI時のみ有効） */
     enableZoom?: boolean;
-    /** AIアイコンのURL（デフォルト: "/ramu.jpeg"） */
+    /** AIアイコンのURL（デフォルト: "/ram.svg"） */
     aiIconUrl?: string;
+    /** AI が思考中のとき、アイコンを揺らして「…」を添える */
+    thinking?: boolean;
 }
 
 /**
@@ -46,6 +48,7 @@ export function PlayerIcon({
     showBorder = true,
     enableZoom = false,
     aiIconUrl,
+    thinking = false,
 }: PlayerIconProps): ReactElement {
     const matchConfig = useShogiMatchConfig();
     const [isZoomOpen, setIsZoomOpen] = useState(false);
@@ -65,33 +68,46 @@ export function PlayerIcon({
                 alt={aiAlt}
                 title={aiTitle}
                 className={cn(
-                    "rounded-full object-cover",
+                    "rounded-full bg-ram-cream object-cover",
                     config.icon,
                     showBorder && "ring-2",
                     showBorder && borderColorClass,
                     canZoom && "cursor-pointer hover:opacity-80 transition-opacity",
+                    thinking && "ram-thinking",
                     className,
                 )}
             />
         );
         return (
             <>
-                {canZoom ? (
-                    <button
-                        type="button"
-                        className={cn(
-                            "inline-flex rounded-full border-0 bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                            borderColorClass,
-                        )}
-                        onClick={() => setIsZoomOpen(true)}
-                        aria-label={`${aiAlt}を拡大表示`}
-                        aria-expanded={isZoomOpen}
-                    >
-                        {aiImage}
-                    </button>
-                ) : (
-                    aiImage
-                )}
+                <span className="relative inline-flex shrink-0">
+                    {canZoom ? (
+                        <button
+                            type="button"
+                            className={cn(
+                                "inline-flex rounded-full border-0 bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                                borderColorClass,
+                            )}
+                            onClick={() => setIsZoomOpen(true)}
+                            aria-label={`${aiAlt}を拡大表示`}
+                            aria-expanded={isZoomOpen}
+                        >
+                            {aiImage}
+                        </button>
+                    ) : (
+                        aiImage
+                    )}
+                    {thinking && (
+                        <span
+                            aria-hidden
+                            className="ram-thinking-dots absolute left-full top-1/2 -translate-y-1/2"
+                        >
+                            <i />
+                            <i />
+                            <i />
+                        </span>
+                    )}
+                </span>
                 {canZoom && (
                     <Dialog open={isZoomOpen} onOpenChange={setIsZoomOpen}>
                         <DialogContent className="w-auto max-w-[min(90vw,400px)] p-4">
@@ -100,7 +116,7 @@ export function PlayerIcon({
                                 <img
                                     src={aiIconSrc}
                                     alt="ラム"
-                                    className="w-full max-w-[360px] rounded-lg object-cover"
+                                    className="w-full max-w-[360px] rounded-3xl bg-ram-cream object-cover"
                                 />
                             </div>
                         </DialogContent>

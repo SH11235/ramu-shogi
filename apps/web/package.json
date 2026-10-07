@@ -23,6 +23,7 @@
         "test:e2e:rooms": "playwright test -c playwright.room.config.ts"
     },
     "dependencies": {
+        "@fontsource/zen-maru-gothic": "^5.3.0",
         "@shogi/api-contract": "workspace:*",
         "@shogi/app-core": "workspace:*",
         "@shogi/design-system": "workspace:*",

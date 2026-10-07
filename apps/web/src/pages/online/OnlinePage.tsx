@@ -32,7 +32,7 @@ export default function OnlinePage(): ReactElement {
                 <button
                     type="button"
                     onClick={() => void navigate({ to: "/online/create" })}
-                    className="w-full rounded-lg bg-primary py-3 text-base font-semibold text-primary-foreground shadow hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    className="w-full rounded-full bg-primary py-3 text-base font-bold text-primary-foreground shadow hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                     部屋を作成する
                 </button>
@@ -57,13 +57,13 @@ export default function OnlinePage(): ReactElement {
                                 if (e.key === "Enter") handleJoin();
                             }}
                             placeholder="例: abc123"
-                            className="flex h-10 flex-1 rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            className="flex h-10 flex-1 rounded-2xl border border-input bg-card/70 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         />
                         <button
                             type="button"
                             onClick={handleJoin}
                             disabled={!joinRoomId.trim()}
-                            className="rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground shadow-sm hover:bg-secondary/80 disabled:pointer-events-none disabled:opacity-50"
+                            className="rounded-full bg-secondary px-4 py-2 text-sm font-bold text-secondary-foreground shadow-sm hover:bg-secondary/80 disabled:pointer-events-none disabled:opacity-50"
                         >
                             参加する
                         </button>

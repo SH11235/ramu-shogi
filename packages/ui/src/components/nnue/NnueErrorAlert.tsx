@@ -20,7 +20,7 @@ export function NnueErrorAlert({ error, onClose }: NnueErrorAlertProps): ReactEl
     return (
         <div
             role="alert"
-            className="flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive"
+            className="flex items-start gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive"
         >
             {/* Error icon */}
             <svg
