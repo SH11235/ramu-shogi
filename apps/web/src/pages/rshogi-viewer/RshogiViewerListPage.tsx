@@ -7,6 +7,7 @@ import type {
 } from "@shogi/match-client";
 import { fetchRshogiGameList, fetchRshogiGameSearch } from "@shogi/match-client";
 import { Input } from "@shogi/ui/components/input";
+import { NativeSelect } from "@shogi/ui/components/native-select";
 import { RshogiCsaGameList } from "@shogi/ui/components/rshogi-csa-game-list";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { type FormEvent, type ReactElement, useEffect, useRef, useState } from "react";
@@ -263,7 +264,7 @@ export default function RshogiViewerListPage(): ReactElement {
                             className="flex flex-col gap-1 text-sm text-wafuu-sumi"
                         >
                             結果
-                            <select
+                            <NativeSelect
                                 id="rshogi-search-result"
                                 value={searchForm.result}
                                 onChange={(event) =>
@@ -272,7 +273,7 @@ export default function RshogiViewerListPage(): ReactElement {
                                         result: event.target.value as SearchFormValues["result"],
                                     })
                                 }
-                                className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                                className="h-10 text-sm"
                             >
                                 <option value="">すべて</option>
                                 {RESULT_OPTIONS.map((option) => (
@@ -280,7 +281,7 @@ export default function RshogiViewerListPage(): ReactElement {
                                         {option.label}
                                     </option>
                                 ))}
-                            </select>
+                            </NativeSelect>
                         </label>
                         <label
                             htmlFor="rshogi-search-from"
@@ -316,7 +317,7 @@ export default function RshogiViewerListPage(): ReactElement {
                             className="flex flex-col gap-1 text-sm text-wafuu-sumi"
                         >
                             source
-                            <select
+                            <NativeSelect
                                 id="rshogi-search-source"
                                 value={searchForm.source}
                                 onChange={(event) =>
@@ -325,12 +326,12 @@ export default function RshogiViewerListPage(): ReactElement {
                                         source: event.target.value as SearchFormValues["source"],
                                     })
                                 }
-                                className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                                className="h-10 text-sm"
                             >
                                 <option value="">すべて</option>
                                 <option value="kifu">kifu</option>
                                 <option value="floodgate">floodgate</option>
-                            </select>
+                            </NativeSelect>
                         </label>
                     </div>
                     <div className="mt-3 flex flex-wrap justify-end gap-2">

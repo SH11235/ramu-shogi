@@ -1,8 +1,10 @@
 import type { NnueSelection } from "@shogi/app-core";
 import { NONE_NNUE_SELECTION } from "@shogi/app-core";
 import type { SkillLevelSettings } from "@shogi/engine-client";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
+import { ChevronIcon } from "../../chevron-icon";
 import { Input } from "../../input";
+import { NativeSelect } from "../../native-select";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../select";
 import { Switch } from "../../switch";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
@@ -15,7 +17,6 @@ type SideKey = "sente" | "gote";
 const EVAL_FILE_MANAGER_LABEL = "評価関数を管理";
 const SETTINGS_LOCKED_MESSAGE = "対局中は変更不可";
 const sectionClassName = "flex flex-col gap-3";
-const sectionTitleClassName = "text-sm font-semibold text-wafuu-sumi";
 const labelClassName = "flex flex-col gap-1 text-xs text-muted-foreground";
 const inputClassName = "border border-wafuu-border bg-wafuu-washi text-sm text-xs";
 
@@ -26,7 +27,15 @@ const inputClassName = "border border-wafuu-border bg-wafuu-washi text-sm text-x
  * 対局設定は MatchSettingsContext から取得
  * 分析設定は AnalysisContext から取得
  */
-export function LeftSidebar(): ReactElement {
+export function LeftSidebar({
+    displaySettingsOpen = false,
+    onDisplaySettingsToggle,
+    displaySettingsPanel,
+}: {
+    displaySettingsOpen?: boolean;
+    onDisplaySettingsToggle?: () => void;
+    displaySettingsPanel?: ReactNode;
+}): ReactElement {
     // 対局設定は Context から取得
     const {
         sides,
@@ -218,10 +227,7 @@ export function LeftSidebar(): ReactElement {
                                             showBorder={false}
                                             size="xs"
                                         />
-                                        AI（{preset.config.displayName}
-                                        {preset.config.usageLabel &&
-                                            `・${preset.config.usageLabel}`}
-                                        ）
+                                        {preset.config.displayName}
                                     </span>
                                 </SelectItem>
                             ))}
@@ -294,7 +300,7 @@ export function LeftSidebar(): ReactElement {
                 {isDevMode && (
                     <div className={labelClassName}>
                         <span>スレッド数</span>
-                        <select
+                        <NativeSelect
                             value={String(engineThreads[side])}
                             disabled={settingsLocked}
                             onChange={(e) =>
@@ -303,14 +309,13 @@ export function LeftSidebar(): ReactElement {
                                     [side]: Number(e.target.value),
                                 })
                             }
-                            className={inputClassName}
                         >
                             {threadOptions.map((opt) => (
                                 <option key={opt.value} value={opt.value}>
                                     {opt.label}
                                 </option>
                             ))}
-                        </select>
+                        </NativeSelect>
                         <span className="text-[11px] text-muted-foreground">
                             0 = 自動。外部エンジンの自動は登録時の設定に従います
                         </span>
@@ -359,10 +364,9 @@ export function LeftSidebar(): ReactElement {
     };
 
     return (
-        <div className="w-96 self-center overflow-y-auto bg-wafuu-washi-warm border border-wafuu-border rounded-xl p-4 flex flex-col gap-6">
+        <div className="w-96 max-h-[calc(100dvh-5rem)] self-center overflow-y-auto bg-wafuu-washi-warm border border-wafuu-border rounded-xl p-4 flex flex-col gap-6">
             {/* 対局設定 */}
             <div className={sectionClassName}>
-                <div className={sectionTitleClassName}>対局設定</div>
                 {/* 先手/後手ラベル + 入替ボタン */}
                 <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1 mb-1">
                     <div className="text-xs font-semibold text-wafuu-shu text-center">☗先手</div>
@@ -423,18 +427,17 @@ export function LeftSidebar(): ReactElement {
                 {onAnalysisEngineIdChange && availableEngines.length > 1 && (
                     <div className={labelClassName}>
                         <span>解析エンジン</span>
-                        <select
+                        <NativeSelect
                             value={analysisEngineId ?? internalEngineId}
                             disabled={settingsLocked}
                             onChange={(e) => onAnalysisEngineIdChange(e.target.value)}
-                            className={inputClassName}
                         >
                             {availableEngines.map((engine) => (
                                 <option key={engine.id} value={engine.id}>
                                     {engine.label}
                                 </option>
                             ))}
-                        </select>
+                        </NativeSelect>
                     </div>
                 )}
             </div>
@@ -503,14 +506,20 @@ export function LeftSidebar(): ReactElement {
             )}
 
             {/* 表示設定 */}
-            <button
-                type="button"
-                onClick={onOpenDisplaySettings}
-                className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
-            >
-                <span>👁️</span>
-                <span>表示設定</span>
-            </button>
+            <div className="overflow-hidden rounded-lg border-2 border-wafuu-border bg-wafuu-washi shadow-sm">
+                <button
+                    type="button"
+                    onClick={onDisplaySettingsToggle ?? onOpenDisplaySettings}
+                    aria-expanded={displaySettingsOpen}
+                    aria-controls="board-display-settings"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-border"
+                >
+                    <span aria-hidden="true">👁️</span>
+                    <span className="flex-1">表示設定</span>
+                    <ChevronIcon expanded={displaySettingsOpen} />
+                </button>
+                {displaySettingsPanel}
+            </div>
         </div>
     );
 }

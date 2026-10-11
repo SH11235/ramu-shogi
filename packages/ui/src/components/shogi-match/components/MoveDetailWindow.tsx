@@ -1,3 +1,4 @@
+import { NativeSelect } from "../../native-select";
 /**
  * 手の詳細ウィンドウ（ドラッグ・リサイズ可能）
  *
@@ -525,14 +526,15 @@ export function MoveDetailWindow({
                         {showNnueSelector && (
                             <label className="flex flex-col gap-1 text-[10px] text-muted-foreground">
                                 <span>分析に使うAI</span>
-                                <select
+                                <NativeSelect
                                     value={selectedValue}
                                     onChange={(e) =>
                                         onAnalysisNnueSelectionChange?.(
                                             parseNnueSelectionValue(e.target.value),
                                         )
                                     }
-                                    className="w-full px-2 py-1 text-xs rounded border border-border bg-background"
+                                    wrapperClassName="w-full"
+                                    className="text-xs"
                                 >
                                     <option value="material">簡易AI（駒得）</option>
                                     {nnueOptions.map((opt) => (
@@ -540,7 +542,7 @@ export function MoveDetailWindow({
                                             {opt.label}
                                         </option>
                                     ))}
-                                </select>
+                                </NativeSelect>
                             </label>
                         )}
                         <button

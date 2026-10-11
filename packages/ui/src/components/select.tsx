@@ -8,6 +8,8 @@ import * as SelectPrimitive from "@radix-ui/react-select";
 import { cn } from "@shogi/design-system";
 import type { ComponentPropsWithoutRef, ComponentRef, ReactElement } from "react";
 import { forwardRef } from "react";
+import { ChevronIcon } from "./chevron-icon";
+import { selectControlClassName } from "./native-select";
 import { useSurfaceTheme } from "./surface-theme";
 
 const Select = SelectPrimitive.Root;
@@ -20,7 +22,8 @@ const SelectTrigger = forwardRef<
     return (
         <SelectPrimitive.Trigger
             className={cn(
-                "flex w-full items-center justify-between rounded-lg border border-wafuu-border bg-wafuu-washi px-3 py-2 text-xs",
+                selectControlClassName,
+                "flex items-center justify-between gap-2 pr-3",
                 "placeholder:text-muted-foreground",
                 "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
                 "disabled:cursor-not-allowed disabled:opacity-50",
@@ -32,19 +35,7 @@ const SelectTrigger = forwardRef<
         >
             {children}
             <SelectPrimitive.Icon asChild>
-                <svg
-                    className="h-4 w-4 opacity-50 shrink-0 ml-2"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    aria-hidden="true"
-                >
-                    <path
-                        fillRule="evenodd"
-                        d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-                        clipRule="evenodd"
-                    />
-                </svg>
+                <ChevronIcon />
             </SelectPrimitive.Icon>
         </SelectPrimitive.Trigger>
     );

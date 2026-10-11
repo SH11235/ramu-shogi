@@ -19,6 +19,7 @@ import {
     DialogTrigger,
 } from "./dialog";
 import { Input } from "./input";
+import { NativeSelect } from "./native-select";
 import { buildThreadOptions } from "./shogi-match/utils/threadOptions";
 
 type PanelStatus = "idle" | "init" | "ready" | "searching" | "stopping" | "error";
@@ -113,8 +114,6 @@ const surfaceClassName =
 const gridClassName = "grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]";
 const labelClassName = "text-xs text-muted-foreground";
 const inputClassName = "bg-background";
-const selectClassName =
-    "h-10 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground";
 
 const parseMovesText = (text: string): string[] =>
     text
@@ -592,7 +591,7 @@ export function EngineControlPanel({
                                         className="flex flex-col gap-1"
                                     >
                                         <span className={labelClassName}>スレッド数</span>
-                                        <select
+                                        <NativeSelect
                                             id="engine-panel-threads"
                                             value={String(threadSetting)}
                                             onChange={(e) =>
@@ -601,14 +600,14 @@ export function EngineControlPanel({
                                                     value: Math.max(0, Number(e.target.value)),
                                                 })
                                             }
-                                            className={selectClassName}
+                                            className="text-sm"
                                         >
                                             {THREAD_OPTIONS.map((opt) => (
                                                 <option key={opt.value} value={opt.value}>
                                                     {opt.label}
                                                 </option>
                                             ))}
-                                        </select>
+                                        </NativeSelect>
                                     </label>
                                     <label
                                         htmlFor="engine-panel-sfen"

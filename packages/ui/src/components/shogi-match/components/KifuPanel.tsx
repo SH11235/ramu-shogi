@@ -1,3 +1,4 @@
+import { NativeSelect } from "../../native-select";
 /**
  * KIF形式棋譜表示パネル
  *
@@ -522,14 +523,15 @@ function ExpandedMoveDetails({
                     {showNnueSelector && (
                         <label className="flex flex-col gap-1 text-[10px] text-muted-foreground">
                             <span>分析に使うAI</span>
-                            <select
+                            <NativeSelect
                                 value={selectedValue}
                                 onChange={(e) =>
                                     onAnalysisNnueSelectionChange?.(
                                         parseNnueSelectionValue(e.target.value),
                                     )
                                 }
-                                className="w-full px-2 py-1 text-xs rounded border border-border bg-background"
+                                wrapperClassName="w-full"
+                                className="text-xs"
                             >
                                 <option value="material">簡易AI（駒得）</option>
                                 {nnueOptions.map((opt) => (
@@ -537,7 +539,7 @@ function ExpandedMoveDetails({
                                         {opt.label}
                                     </option>
                                 ))}
-                            </select>
+                            </NativeSelect>
                         </label>
                     )}
                     <button
@@ -918,14 +920,15 @@ function BatchAnalysisDropdown({
                     {showNnueSelector && (
                         <div className="space-y-1.5">
                             <div className="text-xs font-medium text-foreground">分析NNUE</div>
-                            <select
+                            <NativeSelect
                                 value={selectedValue}
                                 onChange={(e) =>
                                     onAnalysisNnueSelectionChange?.(
                                         parseNnueSelectionValue(e.target.value),
                                     )
                                 }
-                                className="w-full px-2 py-1 text-xs rounded border border-border bg-background"
+                                wrapperClassName="w-full"
+                                className="text-xs"
                             >
                                 <option value="material">簡易AI（駒得）</option>
                                 {nnueOptions.map((opt) => (
@@ -933,7 +936,7 @@ function BatchAnalysisDropdown({
                                         {opt.label}
                                     </option>
                                 ))}
-                            </select>
+                            </NativeSelect>
                         </div>
                     )}
 

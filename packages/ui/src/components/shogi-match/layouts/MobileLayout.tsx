@@ -86,7 +86,6 @@ export function MobileLayout({
     searchInfo,
     candidateNote,
     isReviewMode,
-    reviewMode = false,
     onOpenAbout,
     onImportSfen,
     onImportKif,
@@ -302,17 +301,7 @@ export function MobileLayout({
     const shouldShowFloatingSettings = !(isReviewMode && totalPly > 0) && !isEditModeActive;
 
     return (
-        <div
-            // 検討/観戦ページ(外部 prop reviewMode)では `dark` で .dark 変数スコープを
-            // 局所適用し涼しい墨地にする (密度勾配モデル T2)。導出値 isReviewMode は
-            // 対局準備中も true になるため判定に使わない。対局時は暖かい和紙のまま。
-            // text-foreground はスコープ内で継承色を明転させるために必須(欠くと body の
-            // 濃色が継承されて墨地に沈む)。シート/オーバーレイ類はポータル未使用で
-            // このツリー配下に出るため一括追従。
-            className={`relative flex flex-col gap-1 w-full min-w-0 px-2 pb-[env(safe-area-inset-bottom)] bg-background text-foreground${
-                reviewMode ? " dark" : ""
-            }`}
-        >
+        <div className="relative flex flex-col gap-1 w-full min-w-0 px-2 pb-[env(safe-area-inset-bottom)] bg-background text-foreground">
             {/* === ヘッダー: クロック + 手数 + 反転ボタンを1行に統合 === */}
             <header className="flex-shrink-0 pt-1">
                 <ClockDisplay

@@ -1,3 +1,4 @@
+import { ChevronIcon } from "../../chevron-icon";
 /**
  * 棋譜ナビゲーションツールバー
  *
@@ -169,7 +170,7 @@ export function KifuNavigationToolbar({
                         <span className="text-wafuu-shu font-medium">
                             {branchInfo.currentIndex + 1}/{branchInfo.count}
                         </span>
-                        <span className="text-[10px]">▼</span>
+                        <ChevronIcon />
                     </button>
 
                     {/* 分岐メニュー */}

@@ -1,6 +1,7 @@
 import type { NnueSelection } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useNnueContextOptional } from "../../../providers/NnueContext";
+import { NativeSelect } from "../../native-select";
 
 export interface AiHintMove {
     usi: string;
@@ -70,7 +71,7 @@ export function AiHintPanel({
 
             <div className="flex flex-col gap-2 px-3 py-2">
                 <div className="flex items-center gap-1.5">
-                    <select
+                    <NativeSelect
                         value={nnueSelection.nnueId ?? ""}
                         onChange={(event) =>
                             onNnueSelectionChange({
@@ -78,7 +79,8 @@ export function AiHintPanel({
                                 nnueId: event.target.value || null,
                             })
                         }
-                        className="flex-1 rounded-md border border-input bg-transparent px-2 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        wrapperClassName="flex-1"
+                        className="text-xs"
                     >
                         <option value="">駒得（NNUE なし）</option>
                         {nnueList.map((nnue) => (
@@ -86,7 +88,7 @@ export function AiHintPanel({
                                 {nnue.displayName}
                             </option>
                         ))}
-                    </select>
+                    </NativeSelect>
                     <button
                         type="button"
                         onClick={onOpenNnueManager}

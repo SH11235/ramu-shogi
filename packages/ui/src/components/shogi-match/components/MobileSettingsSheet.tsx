@@ -3,6 +3,8 @@ import { NONE_NNUE_SELECTION } from "@shogi/app-core";
 import type { SkillLevelSettings } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 import { useEffect, useRef, useState } from "react";
+import { ChevronIcon } from "../../chevron-icon";
+import { NativeSelect } from "../../native-select";
 import { Switch } from "../../switch";
 import type { ClockSettings } from "../hooks/useClockManager";
 import type {
@@ -128,8 +130,7 @@ interface MobileSettingsSheetProps {
     positionReady?: boolean;
 }
 
-// iOS Safari は16px未満のinput/selectにフォーカスすると自動ズームするため、text-base(16px)を使用
-const selectClassName = "w-full p-2 rounded-lg border border-border bg-background text-base";
+// iOS Safari の自動ズームを防ぐため input はここで、NativeSelect は各呼び出しで text-base(16px) を指定
 const inputClassName = "w-full border border-border bg-background text-base";
 const labelClassName = "flex flex-col gap-1 text-sm";
 
@@ -224,7 +225,7 @@ function KifuImportSection({
                 className="flex items-center justify-between w-full text-left"
             >
                 <span className="font-medium text-sm">棋譜/局面インポート</span>
-                <span className="text-muted-foreground text-sm">{isExpanded ? "▲" : "▼"}</span>
+                <ChevronIcon expanded={isExpanded} />
             </button>
 
             {isExpanded && (
@@ -456,11 +457,11 @@ export function MobileSettingsSheet({
                 <div className="flex flex-col gap-2 border-r border-border pr-3">
                     <label className={labelClassName}>
                         <span className="text-xs text-muted-foreground">プレイヤー</span>
-                        <select
+                        <NativeSelect
                             value={getSelectorValue("sente", sides.sente)}
                             onChange={(e) => handleSelectorChange("sente", e.target.value)}
                             disabled={settingsLocked}
-                            className={selectClassName}
+                            className="text-base"
                         >
                             <option value="human">人間</option>
                             {/* プリセット NNUE */}
@@ -469,8 +470,7 @@ export function MobileSettingsSheet({
                                     key={preset.config.presetKey}
                                     value={`preset:${preset.config.presetKey}`}
                                 >
-                                    AI（{preset.config.displayName}
-                                    {preset.config.usageLabel && `・${preset.config.usageLabel}`}）
+                                    {preset.config.displayName}
                                 </option>
                             ))}
                             {/* カスタム NNUE */}
@@ -485,7 +485,7 @@ export function MobileSettingsSheet({
                                     {engine.label}
                                 </option>
                             ))}
-                        </select>
+                        </NativeSelect>
                     </label>
                     {/* レイアウトシフト防止のため固定高さを確保 */}
                     <div className={SKILL_LEVEL_SELECTOR_MIN_HEIGHT}>
@@ -512,7 +512,7 @@ export function MobileSettingsSheet({
                     {isDevMode && (
                         <label htmlFor="mobile-sente-threads" className={labelClassName}>
                             <span className="text-xs text-muted-foreground">スレッド数</span>
-                            <select
+                            <NativeSelect
                                 id="mobile-sente-threads"
                                 value={engineThreads.sente}
                                 disabled={settingsLocked}
@@ -522,14 +522,14 @@ export function MobileSettingsSheet({
                                         sente: Number(e.target.value),
                                     })
                                 }
-                                className={selectClassName}
+                                className="text-base"
                             >
                                 {threadOptions.map((opt) => (
                                     <option key={opt.value} value={opt.value}>
                                         {opt.label}
                                     </option>
                                 ))}
-                            </select>
+                            </NativeSelect>
                             <span className="text-[11px] text-muted-foreground">
                                 0 = 自動。外部エンジンの自動は登録時の設定に従います
                             </span>
@@ -570,11 +570,11 @@ export function MobileSettingsSheet({
                 <div className="flex flex-col gap-2">
                     <label className={labelClassName}>
                         <span className="text-xs text-muted-foreground">プレイヤー</span>
-                        <select
+                        <NativeSelect
                             value={getSelectorValue("gote", sides.gote)}
                             onChange={(e) => handleSelectorChange("gote", e.target.value)}
                             disabled={settingsLocked}
-                            className={selectClassName}
+                            className="text-base"
                         >
                             <option value="human">人間</option>
                             {/* プリセット NNUE */}
@@ -583,8 +583,7 @@ export function MobileSettingsSheet({
                                     key={preset.config.presetKey}
                                     value={`preset:${preset.config.presetKey}`}
                                 >
-                                    AI（{preset.config.displayName}
-                                    {preset.config.usageLabel && `・${preset.config.usageLabel}`}）
+                                    {preset.config.displayName}
                                 </option>
                             ))}
                             {/* カスタム NNUE */}
@@ -599,7 +598,7 @@ export function MobileSettingsSheet({
                                     {engine.label}
                                 </option>
                             ))}
-                        </select>
+                        </NativeSelect>
                     </label>
                     {/* レイアウトシフト防止のため固定高さを確保 */}
                     <div className={SKILL_LEVEL_SELECTOR_MIN_HEIGHT}>
@@ -626,7 +625,7 @@ export function MobileSettingsSheet({
                     {isDevMode && (
                         <label htmlFor="mobile-gote-threads" className={labelClassName}>
                             <span className="text-xs text-muted-foreground">スレッド数</span>
-                            <select
+                            <NativeSelect
                                 id="mobile-gote-threads"
                                 value={engineThreads.gote}
                                 disabled={settingsLocked}
@@ -636,14 +635,14 @@ export function MobileSettingsSheet({
                                         gote: Number(e.target.value),
                                     })
                                 }
-                                className={selectClassName}
+                                className="text-base"
                             >
                                 {threadOptions.map((opt) => (
                                     <option key={opt.value} value={opt.value}>
                                         {opt.label}
                                     </option>
                                 ))}
-                            </select>
+                            </NativeSelect>
                             <span className="text-[11px] text-muted-foreground">
                                 0 = 自動。外部エンジンの自動は登録時の設定に従います
                             </span>
@@ -687,18 +686,18 @@ export function MobileSettingsSheet({
                     <div className="font-medium text-sm">解析エンジン</div>
                     <label className={labelClassName}>
                         <span className="text-xs text-muted-foreground">使用エンジン</span>
-                        <select
+                        <NativeSelect
                             value={resolvedAnalysisEngineId}
                             disabled={settingsLocked}
                             onChange={(e) => onAnalysisEngineIdChange(e.target.value)}
-                            className={selectClassName}
+                            className="text-base"
                         >
                             {engineOptions.map((engine) => (
                                 <option key={engine.id} value={engine.id}>
                                     {engine.label}
                                 </option>
                             ))}
-                        </select>
+                        </NativeSelect>
                     </label>
                 </div>
             )}
@@ -922,7 +921,7 @@ export function MobileSettingsSheet({
                 {/* 座標表示 */}
                 <label htmlFor="mobile-notation" className={labelClassName}>
                     <span className="text-xs text-muted-foreground">座標表示</span>
-                    <select
+                    <NativeSelect
                         id="mobile-notation"
                         value={displaySettings.squareNotation}
                         onChange={(e) =>
@@ -931,14 +930,14 @@ export function MobileSettingsSheet({
                                 squareNotation: e.target.value as SquareNotation,
                             })
                         }
-                        className={selectClassName}
+                        className="text-base"
                     >
                         {NOTATION_OPTIONS.map((opt) => (
                             <option key={opt.value} value={opt.value}>
                                 {opt.label}
                             </option>
                         ))}
-                    </select>
+                    </NativeSelect>
                 </label>
 
                 {/* チェックボックス設定 */}

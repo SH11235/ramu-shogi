@@ -5,6 +5,7 @@ import {
 } from "@shogi/app-core";
 import { useId, useState } from "react";
 import { Input } from "../input";
+import { NativeSelect } from "../native-select";
 
 export function LayerStacksFields({
     value,
@@ -23,9 +24,9 @@ export function LayerStacksFields({
             <label htmlFor={id} className="text-sm font-medium">
                 LayerStacks の振り分け方式
             </label>
-            <select
+            <NativeSelect
                 id={id}
-                className="rounded border border-border bg-background p-2 text-sm"
+                className="text-sm"
                 disabled={loading}
                 value={value?.bucketMode ?? ""}
                 onChange={(e) => {
@@ -47,7 +48,7 @@ export function LayerStacksFields({
                 <option value="progresskpabsq16">
                     YaneuraOu / BulletOu progressN（Q16 進行度）
                 </option>
-            </select>
+            </NativeSelect>
             <p className="text-xs text-muted-foreground">
                 LayerStacks はモデル配布元が指定する方式を選択してください。
             </p>
@@ -60,9 +61,9 @@ export function LayerStacksFields({
                             : "進行度バケット数（1〜16）"}
                     </label>
                     {value.bucketMode === "progresskpabsq16" ? (
-                        <select
+                        <NativeSelect
                             id={`${id}-buckets`}
-                            className="rounded border border-border bg-background p-2 text-sm"
+                            className="text-sm"
                             disabled={loading}
                             value={value.progressBuckets ?? ""}
                             onChange={(e) =>
@@ -79,7 +80,7 @@ export function LayerStacksFields({
                                     {count}
                                 </option>
                             ))}
-                        </select>
+                        </NativeSelect>
                     ) : (
                         <Input
                             id={`${id}-buckets`}
