@@ -20,6 +20,7 @@ import type { Player } from "@shogi/app-core";
 import type { Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../dialog";
 import { Switch } from "../../switch";
+import { DisplaySettingsPanel } from "../components/DisplaySettingsPanel";
 import { EngineLogsPanel } from "../components/EngineLogsPanel";
 import { KifuImportPanel } from "../components/KifuImportPanel";
 import { LeftSidebar } from "../components/LeftSidebar";
@@ -66,7 +67,7 @@ interface PCLayoutProps {
     retryEngine: (side: Player) => Promise<void>;
     isRetrying?: Record<Player, boolean>;
 
-    /** 表示設定ダイアログ */
+    /** サイドバーの表示設定 */
     isDisplaySettingsOpen: boolean;
     onDisplaySettingsOpenChange: (open: boolean) => void;
     setDisplaySettings: Dispatch<SetStateAction<DisplaySettings>>;
@@ -120,7 +121,7 @@ export function PCLayout({
     // MatchSettingsContext から取得
     const { passRightsSettings, settingsLocked } = matchSettings;
 
-    // NavigationContext から取得（ダイアログで使用）
+    // NavigationContext から表示設定を取得
     const { displaySettings: navDisplaySettings } = navigation;
 
     return (
@@ -134,10 +135,7 @@ export function PCLayout({
                 // 一致させてはみ出しを防ぐ。情報列の minmax は盤幅の変動を吸収する。
                 // 情報パネルが無いときは盤を狭い列へ押し込まないよう 2 列にし、
                 // justify-center で盤+棋譜の対を中央へ寄せる。
-                // `dark` クラスで theme.css の .dark 変数スコープを局所適用し、
-                // 検討/観戦だけを涼しい墨地の「検討室」にする(密度勾配モデル T2)。
-                // 対局モード(下の分岐)とトップは暖かい和紙のまま。
-                <div className="dark flex w-full max-w-[1240px] flex-col gap-4 rounded-xl bg-background p-4 text-foreground shadow-card">
+                <div className="flex w-full max-w-[1240px] flex-col gap-4 rounded-xl bg-background p-4 text-foreground shadow-card">
                     {reviewTopContent}
                     <div
                         className={`grid grid-cols-1 gap-4 min-[1280px]:items-start min-[1280px]:justify-center ${
@@ -178,7 +176,20 @@ export function PCLayout({
                 <div className="w-full overflow-x-auto">
                     <div className="mx-auto flex w-max items-start gap-4 px-4 py-2">
                         <div className="shrink-0">
-                            <LeftSidebar />
+                            <LeftSidebar
+                                displaySettingsOpen={isDisplaySettingsOpen}
+                                onDisplaySettingsToggle={() =>
+                                    onDisplaySettingsOpenChange(!isDisplaySettingsOpen)
+                                }
+                                displaySettingsPanel={
+                                    isDisplaySettingsOpen ? (
+                                        <DisplaySettingsPanel
+                                            settings={navDisplaySettings}
+                                            onChange={setDisplaySettings}
+                                        />
+                                    ) : null
+                                }
+                            />
                         </div>
                         <PCBoardSection candidateNote={candidateNote} />
                         <PCKifuSection />
@@ -208,122 +219,6 @@ export function PCLayout({
                     )}
                 </div>
             </SettingsModal>
-
-            {/* 表示設定ダイアログ */}
-            <Dialog open={isDisplaySettingsOpen} onOpenChange={onDisplaySettingsOpenChange}>
-                <DialogContent className="w-[min(450px,calc(100%-24px))]">
-                    <DialogHeader>
-                        <DialogTitle>表示設定</DialogTitle>
-                    </DialogHeader>
-                    <div className="flex flex-col gap-4 pt-2">
-                        {/* マス内座標表示 */}
-                        <div className="flex flex-col gap-2">
-                            <span className="text-sm font-medium">マス内座標表示</span>
-                            <div className="flex gap-2">
-                                {(
-                                    [
-                                        { value: "none", label: "なし" },
-                                        { value: "sfen", label: "SFEN (5e)" },
-                                        { value: "japanese", label: "日本式 (５五)" },
-                                    ] as const
-                                ).map((opt) => (
-                                    <button
-                                        key={opt.value}
-                                        type="button"
-                                        onClick={() =>
-                                            setDisplaySettings({
-                                                ...navDisplaySettings,
-                                                squareNotation: opt.value,
-                                            })
-                                        }
-                                        className={`px-3 py-1.5 rounded text-sm transition-colors ${
-                                            navDisplaySettings.squareNotation === opt.value
-                                                ? "bg-wafuu-kincha text-white"
-                                                : "bg-wafuu-washi text-wafuu-sumi hover:bg-wafuu-border border border-wafuu-border"
-                                        }`}
-                                    >
-                                        {opt.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="h-px bg-wafuu-border" />
-
-                        {/* チェックボックス項目 */}
-                        <label className="flex items-center gap-3 text-sm cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={navDisplaySettings.showBoardLabels}
-                                onChange={(e) =>
-                                    setDisplaySettings({
-                                        ...navDisplaySettings,
-                                        showBoardLabels: e.target.checked,
-                                    })
-                                }
-                                className="w-4 h-4"
-                            />
-                            <span>盤外ラベル表示（筋・段）</span>
-                        </label>
-                        <label className="flex items-center gap-3 text-sm cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={navDisplaySettings.highlightLastMove}
-                                onChange={(e) =>
-                                    setDisplaySettings({
-                                        ...navDisplaySettings,
-                                        highlightLastMove: e.target.checked,
-                                    })
-                                }
-                                className="w-4 h-4"
-                            />
-                            <span>最終手を強調</span>
-                        </label>
-                        <label className="flex items-center gap-3 text-sm cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={navDisplaySettings.showKifuEval}
-                                onChange={(e) =>
-                                    setDisplaySettings({
-                                        ...navDisplaySettings,
-                                        showKifuEval: e.target.checked,
-                                    })
-                                }
-                                className="w-4 h-4"
-                            />
-                            <span>棋譜パネルに評価値を表示</span>
-                        </label>
-                        <label className="flex items-center gap-3 text-sm cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={navDisplaySettings.showSearchInfo}
-                                onChange={(e) =>
-                                    setDisplaySettings({
-                                        ...navDisplaySettings,
-                                        showSearchInfo: e.target.checked,
-                                    })
-                                }
-                                className="w-4 h-4"
-                            />
-                            <span>探索情報 (NPS/深さ) を表示</span>
-                        </label>
-                        <label className="flex items-center gap-3 text-sm cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={navDisplaySettings.enableWheelNavigation}
-                                onChange={(e) =>
-                                    setDisplaySettings({
-                                        ...navDisplaySettings,
-                                        enableWheelNavigation: e.target.checked,
-                                    })
-                                }
-                                className="w-4 h-4"
-                            />
-                            <span>ホイールナビゲーション</span>
-                        </label>
-                    </div>
-                </DialogContent>
-            </Dialog>
 
             {/* 変則ルールダイアログ */}
             {passRightsSettings && (

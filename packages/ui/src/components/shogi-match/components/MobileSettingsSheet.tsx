@@ -469,8 +469,7 @@ export function MobileSettingsSheet({
                                     key={preset.config.presetKey}
                                     value={`preset:${preset.config.presetKey}`}
                                 >
-                                    AI（{preset.config.displayName}
-                                    {preset.config.usageLabel && `・${preset.config.usageLabel}`}）
+                                    {preset.config.displayName}
                                 </option>
                             ))}
                             {/* カスタム NNUE */}
@@ -583,8 +582,7 @@ export function MobileSettingsSheet({
                                     key={preset.config.presetKey}
                                     value={`preset:${preset.config.presetKey}`}
                                 >
-                                    AI（{preset.config.displayName}
-                                    {preset.config.usageLabel && `・${preset.config.usageLabel}`}）
+                                    {preset.config.displayName}
                                 </option>
                             ))}
                             {/* カスタム NNUE */}
