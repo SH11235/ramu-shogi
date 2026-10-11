@@ -44,12 +44,37 @@ describe("stringifySearch", () => {
         expect(stringifySearch({})).toBe("");
     });
 
+    it("配列は同じキーを繰り返して書く", () => {
+        expect(stringifySearch({ a: ["1", "2", "3"], b: "x" })).toBe("?a=1&a=2&a=3&b=x");
+        expect(stringifySearch({ a: [] })).toBe("");
+        expect(stringifySearch({ a: ["x", undefined, "y"] })).toBe("?a=x&a=y");
+    });
+
     it("文字列以外は JSON で書く", () => {
         expect(stringifySearch({ page: 2, flag: false })).toBe("?page=2&flag=false");
     });
 });
 
 describe("parseSearch と stringifySearch の往復", () => {
+    it("要素が 2 つ以上の配列は同じ配列として戻る", () => {
+        for (const value of [
+            ["1", "2"],
+            ["kifu", "floodgate", "wdoor"],
+            ["2026", "true", "サンプル大会", "a&b=c d", '"quoted"'],
+        ]) {
+            expect(parseSearch(stringifySearch({ source: value, event: "x" }))).toEqual({
+                source: value,
+                event: "x",
+            });
+        }
+        // 読み込んだものを書き戻しても同じクエリになる。
+        expect(stringifySearch(parseSearch("?a=1&a=2&a=3&b=x"))).toBe("?a=1&a=2&a=3&b=x");
+    });
+
+    it("要素が 1 つの配列は文字列として戻る (URL 上は区別できない)", () => {
+        expect(parseSearch(stringifySearch({ a: ["only"] }))).toEqual({ a: "only" });
+    });
+
     it.each([
         "2026",
         "true",

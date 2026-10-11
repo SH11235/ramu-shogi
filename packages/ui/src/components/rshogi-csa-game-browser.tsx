@@ -189,14 +189,24 @@ export function RshogiCsaGameBrowser({
     const [isSearchLoading, setIsSearchLoading] = useState(false);
     const [events, setEvents] = useState<RshogiGameEventSummary[]>([]);
     const searchControllerRef = useRef<AbortController | null>(null);
+    const loadMoreControllerRef = useRef<AbortController | null>(null);
+    /** 新着順の一覧をどの接続先について取得済みか。 */
+    const recentListRef = useRef<{ baseUrl: string | undefined; done: boolean }>({
+        baseUrl: undefined,
+        done: false,
+    });
 
     // 条件の中身が同じなら、呼び出し側がオブジェクトを作り直しても検索し直さない。
     const appliedSearch = normalizeRshogiGameBrowserSearch({ ...search });
     const searchKey = JSON.stringify(appliedSearch);
     const isSearchMode = hasSearchCondition(appliedSearch);
 
-    // 新着順の一覧 (初回)
+    // 新着順の一覧。検索モードのあいだは使わないので取得しない (検索結果の画面に、裏で
+    // 走った新着一覧の取得失敗が出ることも無くなる)。検索をやめたときに未取得なら取得する。
     useEffect(() => {
+        if (isSearchMode) return;
+        const loaded = recentListRef.current;
+        if (loaded.done && loaded.baseUrl === apiBaseUrl) return;
         const controller = new AbortController();
         setIsLoading(true);
         void (async () => {
@@ -207,6 +217,7 @@ export function RshogiCsaGameBrowser({
                     signal: controller.signal,
                 });
                 if (controller.signal.aborted) return;
+                recentListRef.current = { baseUrl: apiBaseUrl, done: true };
                 setGames(page.games);
                 setNextCursor(page.nextCursor);
             } catch (error) {
@@ -217,9 +228,13 @@ export function RshogiCsaGameBrowser({
             }
         })();
         return () => {
+            // 検索モードに入った・接続先が変わった・画面を離れたときは、進行中の取得
+            // (追加読み込みを含む) を捨てて、後から届いた結果やエラーで状態を上書きしない。
             controller.abort();
+            loadMoreControllerRef.current?.abort();
+            loadMoreControllerRef.current = null;
         };
-    }, [apiBaseUrl]);
+    }, [apiBaseUrl, isSearchMode]);
 
     // イベントの選択肢。取得に失敗しても一覧と検索はそのまま使える。
     useEffect(() => {
@@ -275,6 +290,8 @@ export function RshogiCsaGameBrowser({
             void runSearch(conditions, 1);
         } else {
             setIsSearchLoading(false);
+            // 検索をやめたら、検索のエラーを新着順の一覧に持ち越さない。
+            setErrorMessage(null);
         }
         return () => {
             searchControllerRef.current?.abort();
@@ -283,7 +300,9 @@ export function RshogiCsaGameBrowser({
     }, [searchKey, apiBaseUrl]);
 
     const handleLoadMore = async (): Promise<void> => {
-        if (!nextCursor || isLoading) return;
+        if (!nextCursor || isLoading || isSearchMode) return;
+        const controller = new AbortController();
+        loadMoreControllerRef.current = controller;
         setIsLoading(true);
         setErrorMessage(null);
         try {
@@ -291,14 +310,18 @@ export function RshogiCsaGameBrowser({
                 baseUrl: apiBaseUrl,
                 cursor: nextCursor,
                 limit: PAGE_LIMIT,
+                signal: controller.signal,
             });
+            if (controller.signal.aborted) return;
             // append (新→旧で連結)
             setGames((prev) => [...prev, ...page.games]);
             setNextCursor(page.nextCursor);
         } catch (error) {
+            if (controller.signal.aborted) return;
             setErrorMessage(describeError(error, "棋譜一覧の取得に失敗しました"));
         } finally {
-            setIsLoading(false);
+            if (!controller.signal.aborted) setIsLoading(false);
+            if (loadMoreControllerRef.current === controller) loadMoreControllerRef.current = null;
         }
     };
 
@@ -364,137 +387,140 @@ export function RshogiCsaGameBrowser({
                     className="rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-4"
                     aria-label="棋譜検索"
                 >
-                    <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                        <label
-                            htmlFor="rshogi-search-venue"
-                            className="flex flex-col gap-1 text-sm text-wafuu-sumi"
-                        >
-                            対局場所
-                            <NativeSelect
-                                id="rshogi-search-venue"
-                                value={searchForm.venue}
-                                onChange={(event) =>
-                                    setSearchForm({
-                                        ...searchForm,
-                                        venue: event.target.value as SearchFormValues["venue"],
-                                    })
-                                }
-                                className="h-10 text-sm"
+                    <div className="flex flex-col gap-3">
+                        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                            <label
+                                htmlFor="rshogi-search-venue"
+                                className="flex flex-col gap-1 text-sm text-wafuu-sumi"
                             >
-                                <option value="">すべて</option>
-                                {RSHOGI_VENUE_FILTERS.map((filter) => (
-                                    <option key={filter.kind} value={filter.kind}>
-                                        {filter.label}
-                                    </option>
-                                ))}
-                            </NativeSelect>
-                        </label>
-                        <label
-                            htmlFor="rshogi-search-event"
-                            className="flex flex-col gap-1 text-sm text-wafuu-sumi"
-                        >
-                            イベント
-                            <NativeSelect
-                                id="rshogi-search-event"
-                                value={searchForm.event}
-                                onChange={(event) =>
-                                    setSearchForm({ ...searchForm, event: event.target.value })
-                                }
-                                className="h-10 text-sm"
+                                対局場所
+                                <NativeSelect
+                                    id="rshogi-search-venue"
+                                    value={searchForm.venue}
+                                    onChange={(event) =>
+                                        setSearchForm({
+                                            ...searchForm,
+                                            venue: event.target.value as SearchFormValues["venue"],
+                                        })
+                                    }
+                                    className="h-10 text-sm"
+                                >
+                                    <option value="">すべて</option>
+                                    {RSHOGI_VENUE_FILTERS.map((filter) => (
+                                        <option key={filter.kind} value={filter.kind}>
+                                            {filter.label}
+                                        </option>
+                                    ))}
+                                </NativeSelect>
+                            </label>
+                            <label
+                                htmlFor="rshogi-search-event"
+                                className="flex flex-col gap-1 text-sm text-wafuu-sumi"
                             >
-                                <option value="">すべて</option>
-                                {eventOptions.map((option) => (
-                                    <option key={option.event} value={option.event}>
-                                        {option.label}
-                                    </option>
-                                ))}
-                            </NativeSelect>
-                        </label>
-                        <label
-                            htmlFor="rshogi-search-name"
-                            className="flex flex-col gap-1 text-sm text-wafuu-sumi"
-                        >
-                            名前
-                            <Input
-                                id="rshogi-search-name"
-                                value={searchForm.name}
-                                maxLength={MAX_TEXT_LENGTH}
-                                onChange={(event) =>
-                                    setSearchForm({ ...searchForm, name: event.target.value })
-                                }
-                                placeholder="先手または後手"
-                            />
-                        </label>
-                        <label
-                            htmlFor="rshogi-search-result"
-                            className="flex flex-col gap-1 text-sm text-wafuu-sumi"
-                        >
-                            結果
-                            <NativeSelect
-                                id="rshogi-search-result"
-                                value={searchForm.result}
-                                onChange={(event) =>
-                                    setSearchForm({
-                                        ...searchForm,
-                                        result: event.target.value as SearchFormValues["result"],
-                                    })
-                                }
-                                className="h-10 text-sm"
+                                イベント
+                                <NativeSelect
+                                    id="rshogi-search-event"
+                                    value={searchForm.event}
+                                    onChange={(event) =>
+                                        setSearchForm({ ...searchForm, event: event.target.value })
+                                    }
+                                    className="h-10 text-sm"
+                                >
+                                    <option value="">すべて</option>
+                                    {eventOptions.map((option) => (
+                                        <option key={option.event} value={option.event}>
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </NativeSelect>
+                            </label>
+                            <label
+                                htmlFor="rshogi-search-name"
+                                className="flex flex-col gap-1 text-sm text-wafuu-sumi"
                             >
-                                <option value="">すべて</option>
-                                {RESULT_OPTIONS.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                        {option.label}
-                                    </option>
-                                ))}
-                            </NativeSelect>
-                        </label>
-                        <label
-                            htmlFor="rshogi-search-from"
-                            className="flex flex-col gap-1 text-sm text-wafuu-sumi"
-                        >
-                            終了日（開始）
-                            <Input
-                                id="rshogi-search-from"
-                                type="date"
-                                value={searchForm.from}
-                                onChange={(event) =>
-                                    setSearchForm({ ...searchForm, from: event.target.value })
-                                }
-                            />
-                        </label>
-                        <label
-                            htmlFor="rshogi-search-to"
-                            className="flex flex-col gap-1 text-sm text-wafuu-sumi"
-                        >
-                            終了日（終了）
-                            <Input
-                                id="rshogi-search-to"
-                                type="date"
-                                value={searchForm.to}
-                                min={searchForm.from || undefined}
-                                onChange={(event) =>
-                                    setSearchForm({ ...searchForm, to: event.target.value })
-                                }
-                            />
-                        </label>
-                    </div>
-                    <div className="mt-3 flex flex-wrap justify-end gap-2">
-                        <button
-                            type="button"
-                            onClick={handleClear}
-                            disabled={!formHasCondition && !isSearchMode}
-                            className="rounded-md border border-wafuu-border px-4 py-2 text-sm text-wafuu-sumi disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                            クリア
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={!formHasCondition || isSearchLoading}
-                            className="rounded-md bg-wafuu-shu px-4 py-2 text-sm text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                            {isSearchLoading ? "検索中..." : "検索"}
-                        </button>
+                                名前
+                                <Input
+                                    id="rshogi-search-name"
+                                    value={searchForm.name}
+                                    maxLength={MAX_TEXT_LENGTH}
+                                    onChange={(event) =>
+                                        setSearchForm({ ...searchForm, name: event.target.value })
+                                    }
+                                    placeholder="先手または後手"
+                                />
+                            </label>
+                            <label
+                                htmlFor="rshogi-search-result"
+                                className="flex flex-col gap-1 text-sm text-wafuu-sumi"
+                            >
+                                結果
+                                <NativeSelect
+                                    id="rshogi-search-result"
+                                    value={searchForm.result}
+                                    onChange={(event) =>
+                                        setSearchForm({
+                                            ...searchForm,
+                                            result: event.target
+                                                .value as SearchFormValues["result"],
+                                        })
+                                    }
+                                    className="h-10 text-sm"
+                                >
+                                    <option value="">すべて</option>
+                                    {RESULT_OPTIONS.map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </NativeSelect>
+                            </label>
+                            <label
+                                htmlFor="rshogi-search-from"
+                                className="flex flex-col gap-1 text-sm text-wafuu-sumi"
+                            >
+                                終了日（開始）
+                                <Input
+                                    id="rshogi-search-from"
+                                    type="date"
+                                    value={searchForm.from}
+                                    onChange={(event) =>
+                                        setSearchForm({ ...searchForm, from: event.target.value })
+                                    }
+                                />
+                            </label>
+                            <label
+                                htmlFor="rshogi-search-to"
+                                className="flex flex-col gap-1 text-sm text-wafuu-sumi"
+                            >
+                                終了日（終了）
+                                <Input
+                                    id="rshogi-search-to"
+                                    type="date"
+                                    value={searchForm.to}
+                                    min={searchForm.from || undefined}
+                                    onChange={(event) =>
+                                        setSearchForm({ ...searchForm, to: event.target.value })
+                                    }
+                                />
+                            </label>
+                        </div>
+                        <div className="flex flex-wrap justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={handleClear}
+                                disabled={!formHasCondition && !isSearchMode}
+                                className="rounded-md border border-wafuu-border px-4 py-2 text-sm text-wafuu-sumi disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                クリア
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={!formHasCondition || isSearchLoading}
+                                className="rounded-md bg-wafuu-shu px-4 py-2 text-sm text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {isSearchLoading ? "検索中..." : "検索"}
+                            </button>
+                        </div>
                     </div>
                 </form>
 

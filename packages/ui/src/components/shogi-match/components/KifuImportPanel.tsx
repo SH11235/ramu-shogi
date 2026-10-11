@@ -31,41 +31,44 @@ export function KifuImportPanel({
         useKifuTextImport({ onImportSfen, onImportKif });
 
     return (
-        <div className="bg-card border border-border rounded-xl p-3 shadow-lg w-full">
-            <div className="font-bold mb-2">インポート（SFEN / KIF / CSA）</div>
+        // 要素どうしの間隔は親の gap で決める (子に margin を持たせない)。
+        <div className="flex w-full flex-col gap-3 rounded-xl border border-border bg-card p-3 shadow-lg">
+            <div className="flex flex-col gap-2">
+                <div className="font-bold">インポート（SFEN / KIF / CSA）</div>
 
-            {/* 説明文 */}
-            <div className="text-xs text-muted-foreground mb-2">
-                SFEN形式の局面、またはKIF・CSA形式の棋譜を貼り付けるか、ファイルを選んでください
-                <br />
-                例: <code className="bg-muted px-1 rounded">startpos moves 7g7f 3c3d</code>
-                <br />
-                例: <code className="bg-muted px-1 rounded">1 ７六歩(77)</code>
-                <br />
-                例: <code className="bg-muted px-1 rounded">+7776FU</code>
-                （CSA は評価値・読み筋・消費時間も読み込みます）
+                {/* 説明文 */}
+                <div className="text-xs text-muted-foreground">
+                    SFEN形式の局面、またはKIF・CSA形式の棋譜を貼り付けるか、ファイルを選んでください
+                    <br />
+                    例: <code className="bg-muted px-1 rounded">startpos moves 7g7f 3c3d</code>
+                    <br />
+                    例: <code className="bg-muted px-1 rounded">1 ７六歩(77)</code>
+                    <br />
+                    例: <code className="bg-muted px-1 rounded">+7776FU</code>
+                    （CSA は評価値・読み筋・消費時間も読み込みます）
+                </div>
+
+                {/* 入力エリア */}
+                <textarea
+                    aria-label="棋譜または局面のテキスト"
+                    value={inputValue}
+                    onChange={(e) => handleInputChange(e.target.value)}
+                    placeholder={
+                        "startpos moves 7g7f 3c3d\nlnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1\n1 ７六歩(77)\n2 ３四歩(33)"
+                    }
+                    rows={5}
+                    className="w-full p-2 text-sm font-mono rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                    disabled={!positionReady}
+                />
+
+                {/* エラー表示 */}
+                {error && <div className="text-xs text-destructive">{error}</div>}
             </div>
-
-            {/* 入力エリア */}
-            <textarea
-                aria-label="棋譜または局面のテキスト"
-                value={inputValue}
-                onChange={(e) => handleInputChange(e.target.value)}
-                placeholder={
-                    "startpos moves 7g7f 3c3d\nlnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1\n1 ７六歩(77)\n2 ３四歩(33)"
-                }
-                rows={5}
-                className="w-full p-2 text-sm font-mono rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring"
-                disabled={!positionReady}
-            />
-
-            {/* エラー表示 */}
-            {error && <div className="mt-2 text-xs text-destructive">{error}</div>}
 
             {/* 読み込みボタン */}
             <button
                 type="button"
-                className={`mt-3 w-full py-2 text-sm rounded-md border transition-colors ${
+                className={`w-full py-2 text-sm rounded-md border transition-colors ${
                     success
                         ? "bg-green-600 text-white border-green-600"
                         : "bg-primary text-primary-foreground border-primary hover:bg-primary/90"
@@ -77,7 +80,7 @@ export function KifuImportPanel({
             </button>
 
             {/* ファイル選択 */}
-            <label className="mt-3 flex flex-col gap-1 text-xs text-muted-foreground">
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 ファイルから読み込む（.csa / .kif / .kifu / .sfen / .txt）
                 <input
                     type="file"

@@ -63,6 +63,44 @@ describe("detectKifuTextFormat", () => {
         expect(detectKifuTextFormat("V2.2\nN+A\nN-B\nPI\n+\n%CHUDAN")).toBe("csa");
     });
 
+    it("指し手も V 行も無い CSA は局面の行で判別する", () => {
+        // PI (駒落ち指定つきを含む)
+        expect(detectKifuTextFormat("PI82HI22KA\n-\n%CHUDAN")).toBe("csa");
+        expect(detectKifuTextFormat("PI\n+")).toBe("csa");
+        // P+ / P- の駒別表現 (持ち駒・00AL を含む)
+        expect(detectKifuTextFormat("P-51OU\nP+53FU00KI\n+")).toBe("csa");
+        expect(detectKifuTextFormat("P-51OU\nP+53FU\nP-00AL\n+")).toBe("csa");
+        // P1〜P9 の一括表現 (行末の空白が落ちていてもよい、CRLF でもよい)
+        expect(detectKifuTextFormat(MIDGAME_POSITION.join("\n"))).toBe("csa");
+        expect(
+            detectKifuTextFormat(MIDGAME_POSITION.map((row) => row.trimEnd()).join("\r\n")),
+        ).toBe("csa");
+    });
+
+    it("SFEN や KIF を CSA と取り違えない", () => {
+        const sfenInputs = [
+            "startpos",
+            "startpos moves 7g7f 3c3d",
+            "position startpos moves 7g7f",
+            "sfen lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+            "position sfen lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1 moves 7g7f",
+            // 先頭が P で始まる盤面 (SFEN は `/` で区切る)
+            "P8/9/9/9/4k4/9/9/9/4K4 b - 1",
+            "PI4k3/9/9/9/9/9/9/9/4K4 b - 1",
+            "7g7f 3c3d",
+            "P*5e",
+        ];
+        for (const input of sfenInputs) {
+            expect(detectKifuTextFormat(input)).toBe("sfen");
+        }
+        // 行頭が P で始まる英語の行があっても、KIF は日本語ヘッダーで KIF と判別する。
+        expect(detectKifuTextFormat(`${KIF_TEXT}\nPI`)).toBe("kif");
+        expect(detectKifuTextFormat("手合割：平手\nPlayer memo\n1 ７六歩(77)")).toBe("kif");
+        // 文の途中に PI や P1 があるだけでは CSA にしない。
+        expect(detectKifuTextFormat("PIECE 7g7f")).toBe("sfen");
+        expect(detectKifuTextFormat("P1 player")).toBe("sfen");
+    });
+
     it("KIF と SFEN は従来どおり判別する", () => {
         expect(detectKifuTextFormat(KIF_TEXT)).toBe("kif");
         expect(detectKifuTextFormat("1 ７六歩(77)\n2 ３四歩(33)")).toBe("kif");
@@ -156,6 +194,17 @@ describe("importKifuText", () => {
             /CSA の解析に失敗しました: 5 行目の指し手を適用できません/,
         );
         expect(handlers.onImportSfen).not.toHaveBeenCalled();
+    });
+
+    it("指し手の無い CSA の局面を貼っても、その局面を読み込む", async () => {
+        const handlers = createHandlers();
+        await importKifuText("PI82HI22KA\n-\n%CHUDAN", handlers);
+
+        expect(handlers.onImportSfen).toHaveBeenCalledWith(
+            "lnsgkgsnl/9/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+            [],
+            { moveData: [] },
+        );
     });
 
     it("KIF と SFEN は従来のコールバックへ渡す", async () => {

@@ -55,11 +55,20 @@ type KifuTextFormat = "csa" | "kif" | "sfen";
 
 const CSA_MOVE_LINE = /^[+-]\d{4}[A-Z]{2}(?:,.*)?$/m;
 const CSA_HEADER_LINE = /^(?:V\d[\d.]*|PI|P[1-9][ +\-*A-Z]*|N[+-].*)$/m;
+/**
+ * CSA の開始局面の行。指し手も `V` 行も無い「局面だけ」の CSA をこれで見分ける。
+ * - `PI` (平手。`PI82HI22KA` のような駒落ち指定つきも)
+ * - `P1`〜`P9` (1 マス 3 文字の一括表現: ` * ` か `+FU` / `-KY`)
+ * - `P+` / `P-` (駒別表現: `63FU`、持ち駒 `00KA`、`00AL`)
+ * 行全体がこの形のときだけ一致する。SFEN の盤面は `/` で区切るので一致しない。
+ */
+const CSA_SETUP_LINE =
+    /^(?:PI(?:\d{2}[A-Z]{2})*|P[1-9](?: \* ?|[+-][A-Z]{2}){1,9}|P[+-](?:\d{2}[A-Z]{2})+)[ \t]*$/m;
 
 /** 貼り付け・ファイルのテキストがどの形式かを判別する。 */
 export function detectKifuTextFormat(text: string): KifuTextFormat {
     const normalized = text.replace(/\r\n?/g, "\n");
-    // CSA は指し手行 (`+7776FU`) が決め手。指し手の無い棋譜はヘッダーで見る。
+    // CSA は指し手行 (`+7776FU`) が決め手。指し手の無い棋譜はヘッダーか局面の行で見る。
     if (CSA_MOVE_LINE.test(normalized)) return "csa";
     const looksLikeKif =
         /#KIF|手数----|開始日時|終了日時|手合割|開始局面|先手：|後手：|持ち時間|表題|棋戦/.test(
@@ -71,6 +80,7 @@ export function detectKifuTextFormat(text: string): KifuTextFormat {
         );
     if (looksLikeKif) return "kif";
     if (/^V\d/m.test(normalized) && CSA_HEADER_LINE.test(normalized)) return "csa";
+    if (CSA_SETUP_LINE.test(normalized)) return "csa";
     return "sfen";
 }
 

@@ -208,15 +208,15 @@ export function MoveDetailBottomSheet({
         >
             <div className="space-y-4">
                 {/* 指し手表示 */}
-                <div className="text-center py-2">
+                <div className="flex flex-col items-center gap-1 py-2 text-center">
                     <span className="text-2xl font-bold">{move.displayText}</span>
                     {move.elapsedMs !== undefined && (
-                        <div className="mt-1 text-xs text-muted-foreground">
+                        <div className="text-xs text-muted-foreground">
                             消費 {formatElapsedTime(move.elapsedMs)}
                         </div>
                     )}
                     {evalInfo && (
-                        <div className="mt-1">
+                        <div>
                             <span
                                 className={`text-lg font-semibold ${
                                     evalInfo.advantage === "sente"

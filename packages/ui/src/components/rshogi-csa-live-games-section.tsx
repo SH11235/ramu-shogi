@@ -24,6 +24,9 @@ export function RshogiCsaLiveGamesSection({
     const { games, isLoading, errorMessage, hasMore, refresh, loadMore } =
         useRshogiLiveGameList(apiBaseUrl);
 
+    // 進行中の対局が 1 件も無いときは、理由 (本当に 0 件・読み込み中・取得失敗) を問わず
+    // セクションごと出さない。このセクションは終局済み一覧の上に添えるもので、空の枠や
+    // エラーで終局済み一覧の表示を妨げないのが意図。取得に失敗しても 60 秒後に取り直す。
     if (games.length === 0) return null;
 
     return (

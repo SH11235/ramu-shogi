@@ -8,7 +8,9 @@
  *
  * - 読み込み: 値はすべて文字列。同じキーが複数あれば配列にする。以前の形式で書かれた
  *   引用符付きの文字列 (`%22abc%22`) は中身の文字列として読む。
- * - 書き出し: 文字列はそのまま。文字列以外 (数値・真偽値・オブジェクト) は JSON にする
+ * - 書き出し: 文字列はそのまま。配列は同じキーを繰り返して書く (読み込むと配列に戻る。
+ *   ただし要素が 1 つの配列は文字列として、空の配列はキーなしとして読まれる)。
+ *   それ以外 (数値・真偽値・オブジェクト) は JSON にする
  *   (読み戻すと文字列になるので、型が要る値を置くルートを作るときは `validateSearch` で
  *   変換すること)。`"` で始まる文字列だけは、読み込み時に引用符付きの値と区別できるよう
  *   JSON の文字列として書く。
@@ -52,6 +54,13 @@ export function stringifySearch(search: Record<string, unknown>): string {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(search)) {
         if (value === undefined) continue;
+        if (Array.isArray(value)) {
+            // 配列は同じキーを繰り返して書く (`?a=1&a=2`)。読み込み側が配列に戻す。
+            for (const item of value) {
+                if (item !== undefined) params.append(key, encodeValue(item));
+            }
+            continue;
+        }
         params.set(key, encodeValue(value));
     }
     const text = params.toString();

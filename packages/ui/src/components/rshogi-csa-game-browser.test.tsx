@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { type ReactElement, useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RshogiGameBrowserSearch } from "./rshogi-csa-game-browser";
@@ -248,6 +248,107 @@ describe("RshogiCsaGameBrowser", () => {
                     to: new Date(2026, 9, 3).getTime() - 1,
                 }),
             );
+        });
+    });
+
+    describe("新着順の一覧と検索の切り分け", () => {
+        it("検索条件つきで開いたときは新着順の一覧を取得しない", async () => {
+            render(<Harness initial={{ event: "WCSC36" }} />);
+
+            await screen.findByText("23件中 1-20件");
+            expect(fetchRshogiGameSearch).toHaveBeenCalledTimes(1);
+            expect(fetchRshogiGameList).not.toHaveBeenCalled();
+        });
+
+        it("検索をやめたときに、未取得なら新着順の一覧を取得する", async () => {
+            render(<Harness initial={{ event: "WCSC36" }} />);
+            await screen.findByText("23件中 1-20件");
+
+            fireEvent.click(screen.getByRole("button", { name: "クリア" }));
+
+            await waitFor(() => expect(fetchRshogiGameList).toHaveBeenCalledTimes(1));
+            await waitFor(() => expect(gameIds()).toEqual(["recent-1"]));
+            expect(screen.getByText("もっと読み込む")).toBeTruthy();
+        });
+
+        it("取得済みの新着順の一覧は、検索から戻っても取り直さない", async () => {
+            render(<Harness />);
+            await screen.findByText("もっと読み込む");
+
+            fireEvent.change(screen.getByLabelText("名前"), { target: { value: "RAMU" } });
+            fireEvent.click(screen.getByRole("button", { name: "検索" }));
+            await screen.findByText("23件中 1-20件");
+            fireEvent.click(screen.getByRole("button", { name: "クリア" }));
+
+            await waitFor(() => expect(gameIds()).toEqual(["recent-1"]));
+            expect(fetchRshogiGameList).toHaveBeenCalledTimes(1);
+        });
+
+        it("検索に入った後で新着順の一覧の取得が失敗しても、検索結果にエラーを出さない", async () => {
+            let rejectRecent: (error: Error) => void = () => {};
+            fetchRshogiGameList.mockImplementation(
+                () =>
+                    new Promise((_resolve, reject) => {
+                        rejectRecent = reject;
+                    }),
+            );
+            render(<Harness />);
+            await waitFor(() => expect(fetchRshogiGameList).toHaveBeenCalledTimes(1));
+            const recentSignal = fetchRshogiGameList.mock.calls[0]?.[0]?.signal as AbortSignal;
+
+            // 新着順の一覧が返る前に検索する。
+            fireEvent.change(screen.getByLabelText("名前"), { target: { value: "RAMU" } });
+            fireEvent.click(screen.getByRole("button", { name: "検索" }));
+            await screen.findByText("23件中 1-20件");
+            expect(recentSignal.aborted).toBe(true);
+
+            await act(async () => {
+                rejectRecent(new Error("新着一覧の取得に失敗"));
+                await Promise.resolve();
+            });
+
+            expect(screen.queryByRole("alert")).toBeNull();
+            expect(screen.queryByText("新着一覧の取得に失敗")).toBeNull();
+            expect(gameIds()).toEqual(["search-1"]);
+        });
+
+        it("検索に入った後で届いた新着順の一覧が、検索結果を上書きしない", async () => {
+            let resolveRecent: (page: unknown) => void = () => {};
+            fetchRshogiGameList.mockImplementation(
+                () =>
+                    new Promise((resolve) => {
+                        resolveRecent = resolve;
+                    }),
+            );
+            render(<Harness />);
+            await waitFor(() => expect(fetchRshogiGameList).toHaveBeenCalledTimes(1));
+
+            fireEvent.change(screen.getByLabelText("名前"), { target: { value: "RAMU" } });
+            fireEvent.click(screen.getByRole("button", { name: "検索" }));
+            await screen.findByText("23件中 1-20件");
+
+            await act(async () => {
+                resolveRecent({ games: [game("late-recent")], nextCursor: "cursor-9" });
+                await Promise.resolve();
+            });
+
+            expect(gameIds()).toEqual(["search-1"]);
+            expect(screen.queryByText("もっと読み込む")).toBeNull();
+        });
+
+        it("検索のエラーを、検索をやめた後の新着順の一覧に持ち越さない", async () => {
+            fetchRshogiGameSearch.mockRejectedValueOnce(new Error("検索に失敗"));
+            render(<Harness />);
+            await screen.findByText("もっと読み込む");
+
+            fireEvent.change(screen.getByLabelText("名前"), { target: { value: "RAMU" } });
+            fireEvent.click(screen.getByRole("button", { name: "検索" }));
+            expect((await screen.findByRole("alert")).textContent).toBe("検索に失敗");
+
+            fireEvent.click(screen.getByRole("button", { name: "クリア" }));
+
+            await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+            expect(gameIds()).toEqual(["recent-1"]);
         });
     });
 

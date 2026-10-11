@@ -129,6 +129,13 @@ const hasUnpromotedPawnOnFile = (board: BoardState, file: number, owner: Player)
     return false;
 };
 
+/**
+ * `owner` の玉に相手の駒の利きがあるか (王手放置の判定)。
+ *
+ * `owner` の玉が盤上に無い局面では false を返し、判定そのものをスキップする。
+ * 詰将棋の攻め方のように玉を置かない局面も CSA の開始局面として受け付けているので、
+ * 玉が無いことを「王手放置」として弾かないための意図的な扱い。
+ */
 const isKingAttacked = (board: BoardState, owner: Player): boolean => {
     let kingSquare: Square | null = null;
     for (const rank of BOARD_RANKS) {
