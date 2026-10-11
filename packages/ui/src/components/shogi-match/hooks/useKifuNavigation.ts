@@ -854,14 +854,22 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
             const hasMultiPv = node.multiPvEvals != null && node.multiPvEvals.length > 0;
 
             if (hasEval || hasElapsed || hasMultiPv) {
-                const normalizedEval = normalizeEvalToSentePerspective(node.eval, node.ply);
+                const normalizedEval = normalizeEvalToSentePerspective(
+                    node.eval,
+                    node.ply,
+                    node.positionAfter.turn,
+                );
 
                 // multiPvEvalsを正規化
                 let normalizedMultiPvEvals: (MultiPvNodeData | undefined)[] | undefined;
                 if (hasMultiPv && node.multiPvEvals) {
                     normalizedMultiPvEvals = node.multiPvEvals.map((eval_) => {
                         if (!eval_) return undefined;
-                        const normalized = normalizeEvalToSentePerspective(eval_, node.ply);
+                        const normalized = normalizeEvalToSentePerspective(
+                            eval_,
+                            node.ply,
+                            node.positionAfter.turn,
+                        );
                         return {
                             scoreCp: normalized.evalCp,
                             scoreMate: normalized.evalMate,
@@ -887,7 +895,9 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
         }
 
         const validMoves = moves.slice(0, boardHistory.length);
-        return convertMovesToKif(validMoves, boardHistory, nodeDataMap);
+        // 開始局面の手番 (ルートの局面の手番)。後手番から始まる棋譜では 1 手目が後手になる。
+        const startTurn = fullLinePath[0]?.positionAfter.turn ?? "sente";
+        return convertMovesToKif(validMoves, boardHistory, nodeDataMap, startTurn);
     })();
 
     // 評価値履歴を生成（グラフ用、フルラインに対応、未来の手も含む）
@@ -898,10 +908,15 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
             // ルートはスキップ（ply: 0はすでに追加済み）
             if (node.ply === 0) continue;
 
-            const normalizedEval = normalizeEvalToSentePerspective(node.eval, node.ply);
+            const normalizedEval = normalizeEvalToSentePerspective(
+                node.eval,
+                node.ply,
+                node.positionAfter.turn,
+            );
 
             history.push({
                 ply: node.ply,
+                mover: node.positionAfter.turn === "sente" ? "gote" : "sente",
                 evalCp: normalizedEval.evalCp ?? null,
                 evalMate: normalizedEval.evalMate ?? null,
             });
@@ -918,10 +933,15 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
             // ルートはスキップ（ply: 0はすでに追加済み）
             if (node.ply === 0) continue;
 
-            const normalizedEval = normalizeEvalToSentePerspective(node.eval, node.ply);
+            const normalizedEval = normalizeEvalToSentePerspective(
+                node.eval,
+                node.ply,
+                node.positionAfter.turn,
+            );
 
             history.push({
                 ply: node.ply,
+                mover: node.positionAfter.turn === "sente" ? "gote" : "sente",
                 evalCp: normalizedEval.evalCp ?? null,
                 evalMate: normalizedEval.evalMate ?? null,
             });

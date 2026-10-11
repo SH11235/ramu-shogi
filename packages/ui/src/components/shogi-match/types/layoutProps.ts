@@ -258,12 +258,8 @@ export interface PCSpecificProps {
     matchLayoutClasses: string;
     candidateNote: string | null;
     isSettingsModalOpen: boolean;
-    importSfen: (sfen: string, moves: string[]) => Promise<void>;
-    importKif: (
-        moves: string[],
-        moveData: import("../utils/kifParser").KifMoveData[],
-        startSfen?: string,
-    ) => Promise<void>;
+    importSfen: import("../utils/kifuImport").ImportSfenHandler;
+    importKif: import("../utils/kifuImport").ImportKifHandler;
     positionReady: boolean;
     isDevMode: boolean;
     eventLogs: import("@shogi/app-controller").EngineControllerEvent[];
@@ -305,11 +301,7 @@ export interface MobileSpecificProps {
         true になる導出値のため、墨地サーフェス等「検討室」の意匠はこちらで判定する */
     reviewMode?: boolean;
     onOpenAbout: () => void;
-    onImportSfen: (sfen: string, moves: string[]) => Promise<void>;
-    onImportKif: (
-        moves: string[],
-        moveData: import("../utils/kifParser").KifMoveData[],
-        startSfen?: string,
-    ) => Promise<void>;
+    onImportSfen: import("../utils/kifuImport").ImportSfenHandler;
+    onImportKif: import("../utils/kifuImport").ImportKifHandler;
     onDisplaySettingsChange: (settings: DisplaySettings) => void;
 }

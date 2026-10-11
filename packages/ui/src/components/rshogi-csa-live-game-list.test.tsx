@@ -27,7 +27,7 @@ const SAMPLE_LIVE_GAMES: RshogiLiveGameSummary[] = [
             mainSeconds: 600,
             byoyomiSeconds: 30,
         },
-        source: "floodgate",
+        source: "wdoor",
     },
 ];
 
@@ -38,8 +38,10 @@ describe("RshogiCsaLiveGameList", () => {
         expect(screen.getByText("☗ carol vs ☖ dave")).toBeDefined();
         // 進行中バッジは 1 行につき 1 つ。
         expect(screen.getAllByText("対局中")).toHaveLength(2);
-        expect(screen.getByText("source: kifu")).toBeDefined();
-        expect(screen.getByText("source: floodgate")).toBeDefined();
+        // 対局場所は内部値 (source) ではなく画面上の呼び名で出す。
+        expect(screen.getByText("rshogi サーバー")).toBeDefined();
+        expect(screen.getByText("Floodgate")).toBeDefined();
+        expect(screen.queryByText(/source:/)).toBeNull();
     });
 
     it("invokes onSelectGame with the gameId when a row is clicked", () => {

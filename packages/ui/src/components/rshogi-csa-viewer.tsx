@@ -9,13 +9,18 @@
  * 変換される。本コンポーネントは decode 後の TS 型のみを扱う。
  */
 
-import { parseCsaMoves } from "@shogi/app-core";
+import { parseCsaGameRecord } from "@shogi/app-core";
 import type { FetchRshogiGameOptions, RshogiGame } from "@shogi/match-client";
 import { fetchRshogiGame, RshogiGameNotFoundError } from "@shogi/match-client";
 import { type ReactElement, type ReactNode, useEffect, useState } from "react";
 import { Button } from "./button";
+import { RshogiVenueBadge } from "./rshogi-csa-venue";
 import { ShogiMatch } from "./shogi-match";
+import { BottomSheet } from "./shogi-match/components/BottomSheet";
+import type { ReviewMoveEval } from "./shogi-match/hooks/useKifuImportExport";
+import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import type { EngineOption } from "./shogi-match/types";
+import { csaAnnotationsToMoveData } from "./shogi-match/utils/kifuImport";
 
 export interface RshogiCsaViewerProps {
     gameId: string;
@@ -36,9 +41,26 @@ export interface RshogiCsaViewerProps {
 interface LoadState {
     status: "loading" | "ready" | "not-found" | "error";
     game?: RshogiGame;
+    /** 開始局面の SFEN。平手なら `"startpos"`。 */
+    startSfen?: string;
     moves?: string[];
+    /** `moves` と同じ index で対応する評価値・読み筋・消費時間 (CSA のコメント由来)。 */
+    moveData?: (ReviewMoveEval | undefined)[];
+    /** CSA の `'black_rate:` / `'white_rate:` 行のレート。 */
+    rates?: PlayerRates;
     errorMessage?: string;
 }
+
+interface PlayerRates {
+    sente?: number;
+    gote?: number;
+}
+
+/** 元棋譜へのリンクにしてよい URL の接頭辞。それ以外の `origin_url` はリンクにしない。 */
+const ORIGIN_URL_PREFIX = "https://wdoor.c.u-tokyo.ac.jp/";
+
+const formatRate = (rate: number | undefined): string =>
+    rate === undefined ? "" : ` (R${Math.round(rate)})`;
 
 const formatTimestampMs = (value: number | undefined): string => {
     if (value === undefined) return "不明";
@@ -101,8 +123,15 @@ const formatResult = (meta: RshogiGame["meta"]): string => {
     return `結果: ${winnerLabel} (${reason})`;
 };
 
-function RshogiGameMetaPanel({ game }: { game: RshogiGame }): ReactElement {
+function RshogiGameMetaPanel({
+    game,
+    rates,
+}: {
+    game: RshogiGame;
+    rates?: PlayerRates;
+}): ReactElement {
     const { meta } = game;
+    const originUrl = meta.originUrl?.startsWith(ORIGIN_URL_PREFIX) ? meta.originUrl : undefined;
     return (
         <section
             aria-label="対局情報"
@@ -115,14 +144,34 @@ function RshogiGameMetaPanel({ game }: { game: RshogiGame }): ReactElement {
             <div className="flex flex-col gap-1">
                 <span className="text-xs text-muted-foreground">対局者</span>
                 <span className="text-sm font-semibold">
-                    ☗ {meta.senteName} vs ☖ {meta.goteName}
+                    ☗ {meta.senteName}
+                    {formatRate(rates?.sente)} vs ☖ {meta.goteName}
+                    {formatRate(rates?.gote)}
                 </span>
             </div>
+            {meta.source && (
+                <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted-foreground">対局場所</span>
+                    <span className="text-sm">
+                        <RshogiVenueBadge source={meta.source} withLabelPrefix={false} />
+                    </span>
+                </div>
+            )}
             {meta.event && (
                 <div className="flex flex-col gap-1">
-                    <span className="text-xs text-muted-foreground">大会</span>
+                    <span className="text-xs text-muted-foreground">イベント</span>
                     <span>{meta.event}</span>
                 </div>
+            )}
+            {originUrl && (
+                <a
+                    href={originUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-wafuu-ai underline underline-offset-2 hover:text-wafuu-ai-light"
+                >
+                    元の棋譜を開く（Floodgate）
+                </a>
             )}
             <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
                 <span>開始: {formatTimestampMs(meta.startedAtMs)}</span>
@@ -149,6 +198,8 @@ export function RshogiCsaViewer({
     isDevMode,
 }: RshogiCsaViewerProps): ReactElement {
     const [state, setState] = useState<LoadState>({ status: "loading" });
+    const isMobile = useIsMobile();
+    const [isMetaSheetOpen, setIsMetaSheetOpen] = useState(false);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -161,17 +212,26 @@ export function RshogiCsaViewer({
                     signal: controller.signal,
                 });
                 if (controller.signal.aborted) return;
-                let moves: string[];
+                let record: ReturnType<typeof parseCsaGameRecord>;
                 try {
-                    moves = parseCsaMoves(game.csa);
+                    record = parseCsaGameRecord(game.csa);
                 } catch (parseError) {
                     setState({
                         status: "error",
-                        errorMessage: `CSA の解析に失敗しました: ${String(parseError)}`,
+                        errorMessage: `CSA の解析に失敗しました: ${
+                            parseError instanceof Error ? parseError.message : String(parseError)
+                        }`,
                     });
                     return;
                 }
-                setState({ status: "ready", game, moves });
+                setState({
+                    status: "ready",
+                    game,
+                    startSfen: record.startSfen,
+                    moves: record.moves,
+                    moveData: csaAnnotationsToMoveData(record.annotations),
+                    rates: { sente: record.senteRate, gote: record.goteRate },
+                });
             } catch (error) {
                 if (controller.signal.aborted) return;
                 if (error instanceof RshogiGameNotFoundError) {
@@ -221,10 +281,14 @@ export function RshogiCsaViewer({
         );
     }
 
-    const { game, moves } = state;
-    if (!game || !moves) {
+    const { game, startSfen, moves, moveData, rates } = state;
+    if (!game || !moves || !startSfen) {
         return <div className="mx-auto flex max-w-[480px] flex-col gap-2 px-4 py-10 text-sm" />;
     }
+
+    const hasRecordedEval =
+        moveData?.some((data) => data?.evalCp !== undefined || data?.evalMate !== undefined) ??
+        false;
 
     const handleDownloadCsa = (): void => {
         const blob = new Blob([game.csa], { type: "text/plain;charset=utf-8" });
@@ -238,9 +302,44 @@ export function RshogiCsaViewer({
         URL.revokeObjectURL(url);
     };
 
+    const metaContent = (
+        <div className="flex flex-col gap-2">
+            <RshogiGameMetaPanel game={game} rates={rates} />
+            <Button type="button" variant="outline" size="sm" onClick={handleDownloadCsa}>
+                CSA ダウンロード
+            </Button>
+        </div>
+    );
+
     return (
         <div>
             {header}
+            {/* モバイルのレイアウトには左カラムが無い。盤面を狭めないよう対局者と対局場所だけを
+                1 行で出し、残り (レート・元棋譜へのリンク・CSA ダウンロードなど) はシートで開く。 */}
+            {isMobile && (
+                <>
+                    <button
+                        type="button"
+                        onClick={() => setIsMetaSheetOpen(true)}
+                        aria-haspopup="dialog"
+                        className="flex w-full items-center gap-2 border-b border-wafuu-border bg-wafuu-washi-warm px-3 py-1.5 text-left text-xs text-wafuu-sumi"
+                    >
+                        <span className="min-w-0 flex-1 truncate font-semibold">
+                            ☗ {game.meta.senteName} vs ☖ {game.meta.goteName}
+                        </span>
+                        <RshogiVenueBadge source={game.meta.source} />
+                        <span className="shrink-0 text-wafuu-shu">対局情報</span>
+                    </button>
+                    <BottomSheet
+                        open={isMetaSheetOpen}
+                        onOpenChange={setIsMetaSheetOpen}
+                        title="対局情報"
+                        height="auto"
+                    >
+                        {metaContent}
+                    </BottomSheet>
+                </>
+            )}
             <ShogiMatch
                 engineOptions={engineOptions}
                 manifestUrl={manifestUrl}
@@ -252,21 +351,11 @@ export function RshogiCsaViewer({
                     sente: { role: "human" },
                     gote: { role: "human" },
                 }}
-                initialReview={{ sfen: "startpos", moves }}
+                initialReview={{ sfen: startSfen, moves, moveData }}
                 reviewMode={true}
-                reviewLeftContent={
-                    <div className="flex flex-col gap-2">
-                        <RshogiGameMetaPanel game={game} />
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={handleDownloadCsa}
-                        >
-                            CSA ダウンロード
-                        </Button>
-                    </div>
-                }
+                // 棋譜に評価値が入っているときは、観戦と同じく評価値の列とグラフを最初から出す。
+                spectateMode={hasRecordedEval}
+                reviewLeftContent={metaContent}
             />
         </div>
     );

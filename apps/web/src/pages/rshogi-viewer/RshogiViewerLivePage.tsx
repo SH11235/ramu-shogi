@@ -35,7 +35,7 @@ export default function RshogiViewerLivePage(): ReactElement {
                 items={[
                     { label: "ラム将棋", to: "/" },
                     { label: "rshogi viewer", to: "/rshogi-viewer" },
-                    { label: `live: ${gameId}` },
+                    { label: `観戦: ${gameId}` },
                 ]}
                 right={<HeaderNav />}
             />

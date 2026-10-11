@@ -43,7 +43,7 @@ export function RshogiViewerLiveView({ gameId, onBackToList, onBackToLocal }: Pr
                     ← ローカル対局へ戻る
                 </Button>
                 <Button variant="outline" size="sm" onClick={onBackToList}>
-                    ← 棋譜一覧へ戻る
+                    ← 一覧へ戻る
                 </Button>
                 <span className="text-sm font-semibold text-wafuu-sumi">rshogi viewer (live)</span>
                 <span className="text-xs text-muted-foreground">対局 ID: {gameId}</span>

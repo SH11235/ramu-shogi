@@ -27,11 +27,16 @@ vi.mock("./shogi-match", () => ({
         reviewLeftContent,
         reviewTopContent,
     }: {
-        initialReview?: { moves?: string[] };
+        initialReview?: { sfen?: string; moves?: string[]; moveData?: unknown[] };
         reviewLeftContent?: ReactNode;
         reviewTopContent?: ReactNode;
     }) => (
-        <div data-testid="shogi-match" data-move-count={initialReview?.moves?.length ?? 0}>
+        <div
+            data-testid="shogi-match"
+            data-move-count={initialReview?.moves?.length ?? 0}
+            data-sfen={initialReview?.sfen ?? ""}
+            data-move-data={JSON.stringify(initialReview?.moveData ?? null)}
+        >
             {reviewTopContent}
             {reviewLeftContent}
         </div>
@@ -142,13 +147,13 @@ const buildTimedLiveSnapshot = (moves: string[] = []): string[] => {
     return [...lines, ...moves, "##[MONITOR2] END"];
 };
 
-const createStaticGameFetch = () =>
+const createStaticGameFetch = (csa = "V2.2\nN+alice\nN-bob\nPI\n+\n+7776FU\n%TORYO\n") =>
     vi.fn(
         async () =>
             new Response(
                 JSON.stringify({
                     game_id: "game-1",
-                    csa: "V2.2\nN+alice\nN-bob\nPI\n+\n+7776FU\n%TORYO\n",
+                    csa,
                     meta: {
                         game_id: "game-1",
                         black_handle: "alice",
@@ -230,6 +235,106 @@ describe("RshogiCsaLiveViewer: static fallback", () => {
         });
         expect(screen.getByTestId("shogi-match").getAttribute("data-move-count")).toBe("1");
         expect(screen.getByText("後手 (bob) 勝ち (投了)")).toBeTruthy();
+    });
+
+    it("静的終局表示へ切り替えても評価値・消費時間を落とさない", async () => {
+        const fetchOverride = createStaticGameFetch(
+            [
+                "V2.2",
+                "N+alice",
+                "N-bob",
+                "PI",
+                "+",
+                "+7776FU,T8",
+                "'** 45 -3334FU",
+                "-3334FU,T3",
+                "'** -120",
+                "%TORYO",
+            ].join("\n"),
+        );
+
+        render(
+            <RshogiCsaLiveViewer
+                gameId="game-1"
+                engineOptions={[]}
+                manifestUrl="/nnue/manifest.json"
+                apiBaseUrl="https://example.com/api/v1"
+                fetchOverride={fetchOverride}
+            />,
+        );
+
+        const ws = MockWebSocket.instances[0];
+        act(() => {
+            ws.fireOpen();
+            ws.fireLines(buildLiveSnapshot(["+7776FU,T8"], "#RESIGN"));
+        });
+
+        await waitFor(() => {
+            expect(
+                screen.getByText("ライブ接続は終了済みのため、保存済み棋譜を表示しています。"),
+            ).toBeTruthy();
+        });
+        const match = screen.getByTestId("shogi-match");
+        expect(match.getAttribute("data-sfen")).toBe("startpos");
+        expect(match.getAttribute("data-move-count")).toBe("2");
+        expect(JSON.parse(match.getAttribute("data-move-data") ?? "null")).toEqual([
+            { elapsedMs: 8000, evalCp: 45, pv: ["3c3d"] },
+            { elapsedMs: 3000, evalCp: -120 },
+        ]);
+    });
+
+    it("静的終局表示は保存済み棋譜の開始局面 (途中局面・後手番開始) から再生する", async () => {
+        const fetchOverride = createStaticGameFetch(
+            [
+                "V2.2",
+                "N+alice",
+                "N-bob",
+                "P1-KY-KE * -KI-OU * -GI-KE-KY",
+                "P2 * -HI *  *  *  * -KI *  * ",
+                "P3-FU * -FU-FU-FU-FU-GI-FU-FU",
+                "P4 *  *  *  *  *  * -FU *  * ",
+                "P5 * -FU *  *  *  *  * +FU * ",
+                "P6 *  * +FU *  *  *  *  *  * ",
+                "P7+FU+FU+GI+FU+FU+FU+FU * +FU",
+                "P8 *  * +KI *  *  *  * +HI * ",
+                "P9+KY+KE *  * +OU+KI+GI+KE+KY",
+                "P+00KA",
+                "P-00KA",
+                "-",
+                "-0055KA,T3",
+                "'** -35 +2524FU",
+                "%TORYO",
+            ].join("\n"),
+        );
+
+        render(
+            <RshogiCsaLiveViewer
+                gameId="game-1"
+                engineOptions={[]}
+                manifestUrl="/nnue/manifest.json"
+                apiBaseUrl="https://example.com/api/v1"
+                fetchOverride={fetchOverride}
+            />,
+        );
+
+        const ws = MockWebSocket.instances[0];
+        act(() => {
+            ws.fireOpen();
+            ws.fireLines(buildLiveSnapshot(["+7776FU,T8"], "#RESIGN"));
+        });
+
+        await waitFor(() => {
+            expect(
+                screen.getByText("ライブ接続は終了済みのため、保存済み棋譜を表示しています。"),
+            ).toBeTruthy();
+        });
+        const match = screen.getByTestId("shogi-match");
+        expect(match.getAttribute("data-sfen")).toBe(
+            "ln1gk1snl/1r4g2/p1ppppspp/6p2/1p5P1/2P6/PPSPPPP1P/2G4R1/LN2KGSNL w Bb 1",
+        );
+        expect(JSON.parse(match.getAttribute("data-move-data") ?? "null")).toEqual([
+            { elapsedMs: 3000, evalCp: -35, pv: ["2e2d"] },
+        ]);
     });
 
     it("静的 fallback が RshogiGameNotFoundError になったら not-found 表示にする", async () => {

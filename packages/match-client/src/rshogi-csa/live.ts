@@ -39,6 +39,7 @@
 import {
     createInitialPositionState,
     type PositionState,
+    parseCsaEvalComment,
     parseSingleCsaMove,
 } from "@shogi/app-core";
 import type {
@@ -654,6 +655,7 @@ const extractElapsedSec = (line: string): number => {
 
 /**
  * spectator へ配信される Floodgate コメント行 (`'* <eval> <pv...>`) を解析する。
+ * 終局済み棋譜と同じ規則 (`parseCsaEvalComment`) を使い、`'** ` も受ける。
  *
  * - 先頭の CSA コメントマーカ `'` を剥がした本文を `raw` に保持する。
  * - Floodgate 標準形 `* <整数 eval> <pv の CSA トークン...>` を eval / pv に分解する。
@@ -662,22 +664,7 @@ const extractElapsedSec = (line: string): number => {
  *
  * eval の符号規約は {@link RshogiLiveComment} を参照 (常に先手視点、+ が先手有利)。
  */
-const parseLiveComment = (line: string): RshogiLiveComment => {
-    const withoutQuote = line.startsWith("'") ? line.slice(1) : line;
-    const raw = withoutQuote.trim();
-    if (raw.startsWith("*")) {
-        const rest = raw.slice(1).trim();
-        if (rest.length > 0) {
-            const parts = rest.split(/\s+/);
-            const evalNum = Number(parts[0]);
-            if (Number.isInteger(evalNum)) {
-                const pv = parts.slice(1);
-                return { raw, evalCp: evalNum, pv: pv.length > 0 ? pv : undefined };
-            }
-        }
-    }
-    return { raw };
-};
+const parseLiveComment = (line: string): RshogiLiveComment => parseCsaEvalComment(line);
 
 /**
  * サーバーが指し手直後に送る ms 粒度の権威時計を decode する。

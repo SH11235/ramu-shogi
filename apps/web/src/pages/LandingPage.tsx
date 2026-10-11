@@ -10,7 +10,7 @@ import { PageHeader } from "../components/PageHeader";
 // 色はすべて design-system の wafuu-*/shogi-* トークン経由（ハードコード禁止）。
 
 interface EntryCardProps {
-    to: "/play" | "/online" | "/rshogi-viewer/live" | "/games";
+    to: "/play" | "/online" | "/rshogi-viewer" | "/games";
     heading: string;
     tone: "shu" | "ai";
     requiresAuth?: boolean;
@@ -89,8 +89,8 @@ export default function LandingPage(): ReactElement {
                     <EntryCard to="/online" heading="オンライン対局" tone="shu">
                         部屋を作り、招待リンクで人と指す。名前を入れるだけで参加できる。
                     </EntryCard>
-                    <EntryCard to="/rshogi-viewer/live" heading="観戦" tone="ai">
-                        進行中のエンジン対局をリアルタイムで見る。
+                    <EntryCard to="/rshogi-viewer" heading="観戦" tone="ai">
+                        進行中のエンジン対局をリアルタイムで見る。終局した棋譜も再生できる。
                     </EntryCard>
                     <EntryCard to="/games" heading="マイ棋譜" tone="ai" requiresAuth>
                         指した対局を保存して振り返る。

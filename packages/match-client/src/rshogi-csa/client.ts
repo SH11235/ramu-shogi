@@ -34,7 +34,13 @@ export type RshogiEndReason = RshogiEndReasonWire | (string & {});
 /** 持ち時間の方式 (Fischer / 秒読み / ストップウォッチ等)。 */
 export type RshogiClockKind = RshogiClockKindWire | (string & {});
 
-/** 棋譜のソース (kifu = ユーザー登録 / floodgate 等)。 */
+/**
+ * 棋譜のソース。
+ *
+ * - `kifu` / `floodgate`: 自前サーバーの対局 (後者は Floodgate モード)
+ * - `wdoor`: wdoor の Floodgate から取り込んだ対局
+ * - `upload`: 管理者がアップロードした棋譜
+ */
 export type RshogiGameSource = RshogiGameSourceWire | (string & {});
 
 /**
@@ -88,8 +94,11 @@ export interface RshogiGameMeta {
     startedAtMs?: number;
     /** 終了時刻 (epoch ms)。 */
     endedAtMs?: number;
-    /** 大会名等の自由記述 (CSA `$EVENT`)。 */
+    /** 棋譜のタグ。`wdoor` はゲーム名 (例 `floodgate-300-10F`)、`upload` は大会名など。 */
     event?: string;
+    /** `wdoor` のときの元棋譜 URL。 */
+    originUrl?: string;
+    /** 持ち時間。サーバーが判定できなかった棋譜では無い。 */
     timeControl?: RshogiTimeControl;
     result?: RshogiGameResult;
     /** 棋譜のソース。 */
@@ -122,6 +131,18 @@ export interface RshogiGameSummary {
     result?: RshogiGameResult;
     movesCount?: number;
     source?: RshogiGameSource;
+    /** 棋譜のタグ。`wdoor` はゲーム名、`upload` は大会名など。 */
+    event?: string;
+    /** `wdoor` のときの元棋譜 URL。 */
+    originUrl?: string;
+}
+
+/** イベント一覧 API (`GET /api/v1/games/events`) の 1 件分。 */
+export interface RshogiGameEventSummary {
+    event: string;
+    source?: RshogiGameSource;
+    /** そのイベント・ソースの対局数。 */
+    games: number;
 }
 
 export interface RshogiGameListPage {
@@ -218,7 +239,10 @@ export interface FetchRshogiGameListOptions extends FetchRshogiGameOptions {
 export interface FetchRshogiGameSearchOptions extends FetchRshogiGameOptions {
     name?: string;
     result?: RshogiGameResultKind;
-    source?: RshogiGameSource;
+    /** 複数渡すとカンマ区切りで送り、いずれかに一致する棋譜を返す。 */
+    source?: RshogiGameSource | readonly RshogiGameSource[];
+    /** `event` の完全一致。 */
+    event?: string;
     from?: number;
     to?: number;
     /** 1 始まり (サーバ既定 1)。 */
@@ -365,6 +389,7 @@ interface GameWireBase {
     clock?: ClockWire | null;
     source?: RshogiGameSourceWire | string | null;
     event?: string | null;
+    origin_url?: string | null;
 }
 
 /**
@@ -378,6 +403,16 @@ interface GameDetailWire {
     game_id: string;
     csa: string;
     meta?: GameWireBase | null;
+}
+
+interface GameEventWire {
+    event?: string | null;
+    source?: RshogiGameSourceWire | string | null;
+    games?: number | null;
+}
+
+interface GameEventsResponseWire {
+    events?: GameEventWire[];
 }
 
 interface GameListResponseWire {
@@ -576,6 +611,8 @@ const decodeGameSummary = (wire: GameWireBase): RshogiGameSummary => ({
     result: decodeResult(wire.result_kind, wire.end_reason),
     movesCount: decodeNumberOrUndefined(wire.moves_count),
     source: decodeStringOrUndefined(wire.source ?? undefined),
+    event: decodeStringOrUndefined(wire.event ?? undefined),
+    originUrl: decodeStringOrUndefined(wire.origin_url ?? undefined),
 });
 
 const decodeGameDetail = (wire: GameDetailWire): RshogiGame => {
@@ -593,7 +630,8 @@ const decodeGameDetail = (wire: GameDetailWire): RshogiGame => {
         gotePlayerId: summary.gotePlayerId,
         startedAtMs: summary.startedAtMs,
         endedAtMs: summary.endedAtMs,
-        event: decodeStringOrUndefined(metaWire.event ?? undefined),
+        event: summary.event,
+        originUrl: summary.originUrl,
         timeControl: summary.timeControl,
         result: summary.result,
         source: summary.source,
@@ -739,6 +777,59 @@ export async function fetchRshogiGameList(
     return decodeGameListResponse(payload);
 }
 
+const normalizeSearchSources = (
+    source: FetchRshogiGameSearchOptions["source"],
+): RshogiGameSource[] => {
+    if (source === undefined) return [];
+    const list = typeof source === "string" ? source.split(",") : [...source];
+    return list.map((value) => value.trim()).filter((value) => value.length > 0);
+};
+
+/**
+ * イベント (棋譜のタグ) の一覧を取得する (`GET /api/v1/games/events`)。
+ *
+ * `(event, source)` ごとの対局数が、件数の多い順で返る。
+ */
+export async function fetchRshogiGameEvents(
+    options: FetchRshogiGameOptions = {},
+): Promise<RshogiGameEventSummary[]> {
+    const baseUrl = options.baseUrl?.trim();
+    if (!baseUrl) {
+        return mockGameEvents();
+    }
+
+    const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+    if (!fetchImpl) {
+        throw new RshogiGameFetchError("", "fetch is not available in this environment");
+    }
+
+    const url = `${trimTrailingSlash(baseUrl)}/games/events`;
+    const response = await fetchImpl(url, buildRequestInit(options.signal));
+    if (!response.ok) {
+        throw new RshogiGameFetchError(
+            "",
+            `rshogi API returned ${response.status} ${response.statusText}`,
+            response.status,
+        );
+    }
+
+    const payload = (await response.json()) as GameEventsResponseWire | null;
+    if (!payload || !Array.isArray(payload.events)) {
+        throw new RshogiGameFetchError("", "rshogi API response missing events array");
+    }
+    const events: RshogiGameEventSummary[] = [];
+    for (const wire of payload.events) {
+        const event = decodeStringOrUndefined(wire.event ?? undefined);
+        if (event === undefined) continue;
+        events.push({
+            event,
+            source: decodeStringOrUndefined(wire.source ?? undefined),
+            games: decodeNumberOrUndefined(wire.games) ?? 0,
+        });
+    }
+    return events;
+}
+
 /** rshogi の終局済棋譜を条件検索する (`GET /api/v1/games/search`)。 */
 export async function fetchRshogiGameSearch(
     options: FetchRshogiGameSearchOptions = {},
@@ -757,7 +848,10 @@ export async function fetchRshogiGameSearch(
     const name = options.name?.trim();
     if (name) params.set("name", name);
     if (options.result) params.set("result", options.result);
-    if (options.source) params.set("source", options.source);
+    const sources = normalizeSearchSources(options.source);
+    if (sources.length > 0) params.set("source", sources.join(","));
+    const event = options.event?.trim();
+    if (event) params.set("event", event);
     if (options.from !== undefined) params.set("from", String(options.from));
     if (options.to !== undefined) params.set("to", String(options.to));
     if (options.page !== undefined) params.set("page", String(options.page));
@@ -920,9 +1014,13 @@ const mockGamePlayerId = (game: RshogiGameSummary, side: "sente" | "gote"): stri
     (side === "sente" ? game.sentePlayerId : game.gotePlayerId) ??
     mockPlayerId(side === "sente" ? game.senteName : game.goteName);
 
+/** 外部から取り込んだ棋譜 (`wdoor` / `upload`) はサーバーと同じくレーティング集計から外す。 */
+const mockRatedGames = (): RshogiGameSummary[] =>
+    MOCK_RSHOGI_GAME_LIST.filter((game) => game.source !== "wdoor" && game.source !== "upload");
+
 const buildMockPlayerList = (): RshogiPlayerSummary[] => {
     const records = new Map<string, Omit<RshogiPlayerSummary, "rating">>();
-    for (const game of [...MOCK_RSHOGI_GAME_LIST].reverse()) {
+    for (const game of mockRatedGames().reverse()) {
         const winner = game.result?.winner;
         for (const [side, name] of [
             ["sente", game.senteName],
@@ -970,7 +1068,7 @@ const mockPlayerList = (page = 1, pageSize = DEFAULT_MOCK_SEARCH_PAGE_SIZE): Rsh
         page: normalizedPage,
         pageSize: normalizedPageSize,
         totalCount: allPlayers.length,
-        totalGames: MOCK_RSHOGI_GAME_LIST.length,
+        totalGames: mockRatedGames().length,
         leader: allPlayers[0],
     };
 };
@@ -982,7 +1080,7 @@ const mockPlayerDetail = (
 ): RshogiPlayerDetail => {
     const player = buildMockPlayerList().find((candidate) => candidate.playerId === playerId);
     if (!player) throw new RshogiPlayerNotFoundError(playerId);
-    const allGames = MOCK_RSHOGI_GAME_LIST.filter(
+    const allGames = mockRatedGames().filter(
         (game) =>
             mockGamePlayerId(game, "sente") === playerId ||
             mockGamePlayerId(game, "gote") === playerId,
@@ -1031,8 +1129,22 @@ const mockLiveGameListPage = (
     };
 };
 
+const mockGameEvents = (): RshogiGameEventSummary[] => {
+    const counts = new Map<string, RshogiGameEventSummary>();
+    for (const game of MOCK_RSHOGI_GAME_LIST) {
+        if (!game.event) continue;
+        const key = `${game.event}\u0000${game.source ?? ""}`;
+        const current = counts.get(key) ?? { event: game.event, source: game.source, games: 0 };
+        current.games += 1;
+        counts.set(key, current);
+    }
+    return [...counts.values()].sort((a, b) => b.games - a.games || a.event.localeCompare(b.event));
+};
+
 const mockGameSearchPage = (options: FetchRshogiGameSearchOptions): RshogiGameSearchPage => {
     const name = options.name?.trim().toLocaleLowerCase();
+    const sources = normalizeSearchSources(options.source);
+    const event = options.event?.trim();
     const filtered = MOCK_RSHOGI_GAME_LIST.filter((game) => {
         if (
             name &&
@@ -1042,7 +1154,8 @@ const mockGameSearchPage = (options: FetchRshogiGameSearchOptions): RshogiGameSe
             return false;
         }
         if (options.result && game.result?.kind !== options.result) return false;
-        if (options.source && game.source !== options.source) return false;
+        if (sources.length > 0 && (!game.source || !sources.includes(game.source))) return false;
+        if (event && game.event !== event) return false;
         if (options.from !== undefined && (game.endedAtMs ?? -Infinity) < options.from)
             return false;
         if (options.to !== undefined && (game.endedAtMs ?? Infinity) > options.to) return false;

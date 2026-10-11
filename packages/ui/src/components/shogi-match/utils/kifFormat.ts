@@ -93,6 +93,11 @@ export interface KifMove {
 /** 評価値の履歴（グラフ用） */
 export interface EvalHistory {
     ply: number;
+    /**
+     * その手を指した側。省略時は手数の偶奇で決める (奇数 = 先手)。
+     * 後手番から始まる棋譜では偶奇と一致しないので、棋譜ツリーから作るときは必ず入れる。
+     */
+    mover?: Player;
     /** 評価値（センチポーン）。null = 詰み or 未計算 */
     evalCp: number | null;
     /** 詰み手数。null = 詰みなし */
@@ -546,19 +551,21 @@ export interface NodeData {
  * @param moves USI形式の指し手配列
  * @param boardHistory 各手直前の盤面状態の配列（moves と同じ長さ）
  * @param nodeDataMap 手数 → 評価値・消費時間のマップ（オプション）
+ * @param startTurn 1 手目を指す側（省略時は先手。後手番から始まる棋譜では "gote"）
  * @returns KifMove の配列
  */
 export function convertMovesToKif(
     moves: string[],
     boardHistory: BoardState[],
     nodeDataMap?: Map<number, NodeData>,
+    startTurn: Player = "sente",
 ): KifMove[] {
     const kifMoves: KifMove[] = [];
     let prevTo: Square | undefined;
 
     for (let i = 0; i < moves.length; i++) {
         const ply = i + 1;
-        const turn: Player = i % 2 === 0 ? "sente" : "gote";
+        const turn: Player = i % 2 === 0 ? startTurn : startTurn === "sente" ? "gote" : "sente";
         const board = boardHistory[i];
         const nodeData = nodeDataMap?.get(ply);
         const move = moves[i];

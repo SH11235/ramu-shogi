@@ -11,8 +11,9 @@
 
 import type { RshogiLiveGameSummary, RshogiTimeControl } from "@shogi/match-client";
 import type { ReactElement } from "react";
+import { RshogiVenueBadge } from "./rshogi-csa-venue";
 
-export interface RshogiCsaLiveGameListProps {
+interface RshogiCsaLiveGameListProps {
     games: RshogiLiveGameSummary[];
     /** 行クリック時に gameId を返す。 */
     onSelectGame: (gameId: string) => void;
@@ -107,8 +108,8 @@ export function RshogiCsaLiveGameList({
                                     <span className="rounded-full bg-wafuu-shu/15 px-2 py-0.5 font-semibold text-wafuu-shu">
                                         対局中
                                     </span>
+                                    <RshogiVenueBadge source={game.source} />
                                     <span>{formatClockSummary(game.timeControl)}</span>
-                                    {game.source && <span>source: {game.source}</span>}
                                 </div>
                                 <div className="text-[11px] font-mono text-muted-foreground/80">
                                     {game.gameId}

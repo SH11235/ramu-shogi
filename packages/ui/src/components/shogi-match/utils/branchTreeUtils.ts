@@ -44,11 +44,14 @@ interface NormalizedEval {
  *
  * @param evalData 評価値データ
  * @param ply 手数
+ * @param sideToMove その局面 (指し手を適用した後) の手番。渡すと手数の偶奇ではなく
+ *   これで判定する。後手番から始まる棋譜 (駒落ち・途中局面) では偶奇と手番がずれるため。
  * @returns 先手視点に正規化された評価値
  */
 export function normalizeEvalToSentePerspective(
     evalData: EvalData | null | undefined,
     ply: number,
+    sideToMove?: Player,
 ): NormalizedEval {
     if (!evalData) {
         return {};
@@ -57,7 +60,7 @@ export function normalizeEvalToSentePerspective(
     // normalized=true の場合は既に先手視点なので符号反転不要
     // それ以外（エンジン出力）は「手番側から見た値」なので反転して先手視点に正規化
     const needsSignFlip = !evalData.normalized;
-    const isSenteMove = ply % 2 !== 0;
+    const isSenteMove = sideToMove !== undefined ? sideToMove === "gote" : ply % 2 !== 0;
     const sign = needsSignFlip && isSenteMove ? -1 : 1;
 
     return {
@@ -246,13 +249,11 @@ function getPathToRoot(tree: KifuTree): Set<string> {
 }
 
 /**
- * ノードの手番を取得
+ * そのノードの手を指した側を取得する。
+ * 手数の偶奇ではなく適用後の手番から決める (後手番から始まる棋譜でもずれない)。
  */
-function getNodeTurn(ply: number): Player {
-    // ply 0 = ルート（開始局面）
-    // ply 1 = 先手の1手目
-    // ply 2 = 後手の1手目
-    return ply % 2 === 1 ? "sente" : "gote";
+function getNodeTurn(node: KifuNode): Player {
+    return node.positionAfter.turn === "sente" ? "gote" : "sente";
 }
 
 /**
@@ -278,7 +279,7 @@ function getDisplayText(node: KifuNode, prevToSquare: Square | undefined): strin
         return "開始局面";
     }
 
-    const turn = getNodeTurn(node.ply);
+    const turn = getNodeTurn(node);
     return formatMoveSimple(node.usiMove, turn, node.boardBefore, prevToSquare);
 }
 
@@ -496,7 +497,11 @@ export function getBranchMoves(tree: KifuTree, branchNodeId: string): FlatTreeNo
         const hasBranches = node.children.length > 1;
 
         // 評価値を先手視点に正規化
-        const normalizedEval = normalizeEvalToSentePerspective(node.eval, node.ply);
+        const normalizedEval = normalizeEvalToSentePerspective(
+            node.eval,
+            node.ply,
+            node.positionAfter.turn,
+        );
 
         result.push({
             nodeId,

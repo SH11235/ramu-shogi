@@ -48,7 +48,11 @@ export function useCurrentPositionAiHints(): CurrentPositionAiHintsResult {
     const hintMoves = hintEvals
         .slice(0, Math.max(1, analysisSettings.multiPv))
         .map((evalData) => {
-            const normalized = normalizeEvalToSentePerspective(evalData, ply);
+            const normalized = normalizeEvalToSentePerspective(
+                evalData,
+                ply,
+                currentNode?.positionAfter.turn,
+            );
             const usi = evalData.pv?.[0] ?? "";
             return {
                 usi,
@@ -70,7 +74,11 @@ export function useCurrentPositionAiHints(): CurrentPositionAiHintsResult {
             ? (() => {
                   const bestEvalSource = hintEvals[0] ?? currentNode.eval ?? undefined;
                   const bestEval = bestEvalSource
-                      ? normalizeEvalToSentePerspective(bestEvalSource, currentNode.ply)
+                      ? normalizeEvalToSentePerspective(
+                            bestEvalSource,
+                            currentNode.ply,
+                            currentNode.positionAfter.turn,
+                        )
                       : undefined;
                   const evalCp = bestEval?.evalCp ?? null;
                   const evalMate = bestEval?.evalMate ?? null;

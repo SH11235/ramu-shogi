@@ -13,7 +13,7 @@
  * - 終局時に最終結果を表示する。
  */
 
-import { parseCsaMoves } from "@shogi/app-core";
+import { CSA_MATE_EVAL_THRESHOLD, parseCsaGameRecord } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import {
     type FetchRshogiGameOptions,
@@ -38,6 +38,7 @@ import { ShogiMatch } from "./shogi-match";
 import type { ReviewMoveEval } from "./shogi-match/hooks/useKifuImportExport";
 import type { EngineOption } from "./shogi-match/types";
 import { MATE_WITHOUT_PLY } from "./shogi-match/utils/kifFormat";
+import { csaAnnotationsToMoveData } from "./shogi-match/utils/kifuImport";
 
 export interface RshogiCsaLiveViewerProps {
     gameId: string;
@@ -125,7 +126,11 @@ type StaticFallbackState =
           status: "ready";
           reason: RshogiLiveStaticFallbackReason;
           game: RshogiGame;
+          /** 保存済み棋譜の開始局面の SFEN。平手なら `"startpos"`。 */
+          startSfen: string;
           moves: string[];
+          /** 保存済み棋譜のコメントから取った評価値・読み筋・消費時間。 */
+          moveData: (ReviewMoveEval | undefined)[];
       }
     | { status: "not-found"; reason: RshogiLiveStaticFallbackReason }
     | { status: "error"; reason: RshogiLiveStaticFallbackReason; errorMessage: string };
@@ -140,8 +145,11 @@ const initialLiveState: LiveState = {
     connectionState: "connecting",
 };
 
-/** 詰みを表すセンチネル (サーバ `build_floodgate_comment` は詰みを ±100000 で符号化)。 */
-const MATE_EVAL_SENTINEL = 100_000;
+/**
+ * 詰みを表すセンチネル (サーバ `build_floodgate_comment` は詰みを ±100000 で符号化)。
+ * 終局済み棋譜の読み込み (`parseCsaGameRecord`) と同じしきい値を使う。
+ */
+const MATE_EVAL_SENTINEL = CSA_MATE_EVAL_THRESHOLD;
 
 /**
  * 評価値 (その手番自身の視点に直した値。`+` = その手番が有利) を表示文字列にする。
@@ -777,9 +785,14 @@ export function RshogiCsaLiveViewer({
                         signal: controller.signal,
                     });
                     if (controller.signal.aborted) return;
+                    let startSfen: string;
                     let moves: string[];
+                    let moveData: (ReviewMoveEval | undefined)[];
                     try {
-                        moves = parseCsaMoves(game.csa);
+                        const record = parseCsaGameRecord(game.csa);
+                        startSfen = record.startSfen;
+                        moves = record.moves;
+                        moveData = csaAnnotationsToMoveData(record.annotations);
                     } catch (parseError) {
                         setState((prev) => ({
                             ...prev,
@@ -796,7 +809,14 @@ export function RshogiCsaLiveViewer({
                     }
                     setState((prev) => ({
                         ...prev,
-                        staticFallback: { status: "ready", reason, game, moves },
+                        staticFallback: {
+                            status: "ready",
+                            reason,
+                            game,
+                            startSfen,
+                            moves,
+                            moveData,
+                        },
                     }));
                 } catch (error) {
                     if (controller.signal.aborted) return;
@@ -979,7 +999,7 @@ export function RshogiCsaLiveViewer({
         state.clockAnchorAtMs !== null ? Math.max(0, tickMs - state.clockAnchorAtMs) : 0;
 
     if (state.staticFallback?.status === "ready") {
-        const { game, moves } = state.staticFallback;
+        const { game, startSfen, moves, moveData } = state.staticFallback;
         return (
             <div className="flex flex-col gap-2">
                 {header}
@@ -998,7 +1018,8 @@ export function RshogiCsaLiveViewer({
                         sente: { role: "human" },
                         gote: { role: "human" },
                     }}
-                    initialReview={{ sfen: "startpos", moves }}
+                    // 保存済み棋譜に切り替えても評価値・消費時間を落とさない。
+                    initialReview={{ sfen: startSfen, moves, moveData }}
                     reviewMode={true}
                     spectateMode={true}
                     reviewLeftContent={

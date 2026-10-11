@@ -72,6 +72,35 @@ function computeNiceScale(maxAbsValue: number, minScale: number): number {
 }
 
 /**
+ * 評価値から決める縦軸の上限 (センチポーン)。
+ * エンジンによっては詰みや必勝を 31998 のような巨大な評価値で表すので、そのまま縦軸に
+ * 使うと他の手の動きが潰れて見えなくなる。評価値がいくら大きくても縦軸はここで止め、
+ * 超えた値は上端・下端に張り付けて描く。
+ */
+const EVAL_GRAPH_AXIS_CAP = 10000;
+
+/** 詰み (evalMate) を含むときに縦軸の計算に使う大きさ。従来からの値。 */
+const EVAL_GRAPH_MATE_VALUE = 10000;
+
+/** 評価値の履歴からグラフの縦軸の最大値 (センチポーン) を決める。 */
+export function computeEvalGraphScale(
+    evalHistory: readonly EvalHistory[],
+    minScale: number,
+): number {
+    let maxAbsCp = 0;
+    let hasMate = false;
+    for (const entry of evalHistory) {
+        if (entry.evalCp !== null && entry.evalCp !== undefined) {
+            maxAbsCp = Math.max(maxAbsCp, Math.abs(entry.evalCp));
+        }
+        if (entry.evalMate !== null && entry.evalMate !== undefined) hasMate = true;
+    }
+    const cpScale = Math.min(computeNiceScale(maxAbsCp, minScale), EVAL_GRAPH_AXIS_CAP);
+    // 詰みを含むグラフは従来どおりの縦軸にする (詰みは上端・下端に固定して描く)。
+    return hasMate ? Math.max(cpScale, computeNiceScale(EVAL_GRAPH_MATE_VALUE, minScale)) : cpScale;
+}
+
+/**
  * 評価値グラフ
  */
 export function EvalGraph({
@@ -107,18 +136,7 @@ export function EvalGraph({
         onPlySelect(clampedPly);
     };
 
-    // 自動スケール計算
-    let maxAbs = 0;
-    for (const entry of evalHistory) {
-        if (entry.evalCp !== null && entry.evalCp !== undefined) {
-            maxAbs = Math.max(maxAbs, Math.abs(entry.evalCp));
-        }
-        // 詰みの場合は大きな値として扱う
-        if (entry.evalMate !== null && entry.evalMate !== undefined) {
-            maxAbs = Math.max(maxAbs, 10000);
-        }
-    }
-    const scaleMax = computeNiceScale(maxAbs, minScale);
+    const scaleMax = computeEvalGraphScale(evalHistory, minScale);
 
     // ポイントの計算（先手・後手を分離して別々のセグメントを生成）
     // viewBox="0 0 100 height" なので x は 0-100 の数値、y はピクセル値
@@ -134,7 +152,8 @@ export function EvalGraph({
         evalHistory.forEach((entry, index) => {
             const hasValue = entry.evalCp !== null || entry.evalMate !== null;
             // ply=0は初期局面（評価値0）、ply奇数は先手の手、ply偶数は後手の手
-            const isSenteMove = entry.ply % 2 === 1;
+            const isSenteMove =
+                entry.mover !== undefined ? entry.mover === "sente" : entry.ply % 2 === 1;
 
             if (hasValue) {
                 const x = (index / maxPly) * 100;
@@ -154,13 +173,13 @@ export function EvalGraph({
                 }
             } else {
                 // null値で区切り
-                if (index === 0 || entry.ply % 2 === 1) {
+                if (index === 0 || isSenteMove) {
                     if (currentSenteSegment.length > 0) {
                         sente.push(currentSenteSegment);
                         currentSenteSegment = [];
                     }
                 }
-                if (index === 0 || entry.ply % 2 === 0) {
+                if (index === 0 || !isSenteMove) {
                     if (currentGoteSegment.length > 0) {
                         gote.push(currentGoteSegment);
                         currentGoteSegment = [];

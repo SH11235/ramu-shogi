@@ -54,9 +54,8 @@ describe("NavDrawer", () => {
             // 要ログイン導線はバッジ「要ログイン」がアクセシブルネームに続く
             "マイ棋譜 要ログイン",
             "公開棋譜",
-            "ライブ観戦",
+            "観戦・棋譜一覧",
             "レーティング",
-            "CSA 棋譜ビューア",
             "NNUE モデル 要ログイン",
             "ログイン",
         ]) {
@@ -64,33 +63,33 @@ describe("NavDrawer", () => {
         }
     });
 
-    it("現在地を aria-current で示し、live はセグメント境界で判定する", () => {
-        const liveSections = buildNavSections("/rshogi-viewer/live/test");
-        const liveItem = liveSections
-            .flatMap((section) => section.items)
-            .find((item) => {
-                return item.to === "/rshogi-viewer/live";
-            });
-        expect(liveItem?.active).toBe(true);
+    it("観戦ページと棋譜ページは「観戦・棋譜一覧」を現在地にし、レーティングは別扱いにする", () => {
+        const findViewerItem = (pathname: string) =>
+            buildNavSections(pathname)
+                .flatMap((section) => section.items)
+                .find((item) => item.to === "/rshogi-viewer");
+        expect(findViewerItem("/rshogi-viewer")?.active).toBe(true);
+        expect(findViewerItem("/rshogi-viewer/live/test")?.active).toBe(true);
+        expect(findViewerItem("/rshogi-viewer/some-game")?.active).toBe(true);
+        expect(findViewerItem("/rshogi-viewer/players")?.active).toBe(false);
+        expect(findViewerItem("/rshogi-viewer-other")?.active).toBe(false);
+        // 進行中一覧ページは廃止したので、ナビに専用の項目は無い。
+        expect(
+            buildNavSections("/rshogi-viewer")
+                .flatMap((section) => section.items)
+                .some((item) => (item.to as string) === "/rshogi-viewer/live"),
+        ).toBe(false);
 
-        mockPathname = "/rshogi-viewer/live-game-id";
+        mockPathname = "/rshogi-viewer/live/game-id";
         render(<NavDrawer />);
         fireEvent.click(screen.getByRole("button", { name: "メニュー" }));
 
         expect(
-            screen.getByRole("link", { name: "CSA 棋譜ビューア" }).getAttribute("aria-current"),
+            screen.getByRole("link", { name: "観戦・棋譜一覧" }).getAttribute("aria-current"),
         ).toBe("page");
-        expect(screen.getByRole("link", { name: "ライブ観戦" }).getAttribute("aria-current")).toBe(
-            null,
-        );
-
-        const playerSections = buildNavSections("/rshogi-viewer/players/p_one");
-        const activePlayerItems = playerSections
-            .flatMap((section) => section.items)
-            .filter((item) => item.active);
-        expect(activePlayerItems).toEqual([
-            expect.objectContaining({ to: "/rshogi-viewer/players" }),
-        ]);
+        expect(
+            screen.getByRole("link", { name: "レーティング" }).getAttribute("aria-current"),
+        ).toBe(null);
     });
 
     it("リンククリックでドロワーを閉じる", async () => {
