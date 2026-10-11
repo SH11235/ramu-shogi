@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import { useNavigation } from "../contexts/NavigationContext";
+import { DEFAULT_DISPLAY_SETTINGS } from "../types";
 
 export function SoundToggle(): ReactElement {
     const { displaySettings, onDisplaySettingsChange } = useNavigation();
@@ -14,7 +15,7 @@ export function SoundToggle(): ReactElement {
             onClick={() =>
                 onDisplaySettingsChange((previous) => ({
                     ...previous,
-                    enableSound: !previous.enableSound,
+                    enableSound: !(previous.enableSound ?? DEFAULT_DISPLAY_SETTINGS.enableSound),
                 }))
             }
             className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md border border-wafuu-border bg-card text-wafuu-sumi transition-colors hover:bg-wafuu-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
