@@ -67,6 +67,11 @@ vi.mock("@shogi/ui", () => ({
     },
 }));
 
+/** コメント欄が知らせる「下書きを置く」（コメントが空のときに書き始めた入力）。 */
+const setDraft = (text: string) => ({ type: "set" as const, text, base: "" });
+/** コメント欄が知らせる「保存できたので消す」。 */
+const clearDraft = (savedText: string | null) => ({ type: "clear" as const, savedText });
+
 const { resetStudySyncForTest } = await import("../../lib/studySync");
 const { default: StudyPage } = await import("./StudyPage");
 
@@ -160,7 +165,7 @@ describe("StudyPage", () => {
             const nodeId = workspaceProps?.doc.tree.rootId ?? "";
 
             // コメントを書いている途中（自動保存の前）にログインが切れる。
-            workspaceProps?.onCommentDraftChange?.(nodeId, "書きかけのコメント");
+            workspaceProps?.onCommentDraftChange?.(nodeId, setDraft("書きかけのコメント"));
             auth = AUTH_SIGNED_OUT;
             view.rerender(<StudyPage />);
 
@@ -177,7 +182,7 @@ describe("StudyPage", () => {
             // 下書きは、ノートの持ち主と一緒に残っている。
             expect(JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? "{}")[STUDY_ID]).toMatchObject({
                 ownerId: "user-1",
-                nodes: [{ nodeId, text: "書きかけのコメント" }],
+                nodes: [{ nodeId, text: "書きかけのコメント", base: "" }],
             });
 
             // 同じアカウントでログインし直すと、そのまま編集できるようになる。
@@ -190,7 +195,10 @@ describe("StudyPage", () => {
                 ]),
             ).toBe(true);
             // 保存できたら、下書きは消える。
-            workspaceProps?.onCommentDraftChange?.(nodeId, null);
+            // 別の内容の保存の完了（古いコメント欄からの通知）では、消さない。
+            workspaceProps?.onCommentDraftChange?.(nodeId, clearDraft("別の内容"));
+            expect(JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? "{}")[STUDY_ID]).toBeDefined();
+            workspaceProps?.onCommentDraftChange?.(nodeId, clearDraft("書きかけのコメント"));
             expect(JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? "{}")[STUDY_ID]).toBeUndefined();
         });
 
@@ -202,7 +210,7 @@ describe("StudyPage", () => {
             const doc = workspaceProps?.doc;
             const nodeId = Object.keys(doc?.tree.nodes ?? {}).find((id) => id !== doc?.tree.rootId);
             expect(nodeId).toBeTruthy();
-            workspaceProps?.onCommentDraftChange?.(nodeId ?? "", "戻ってくる下書き");
+            workspaceProps?.onCommentDraftChange?.(nodeId ?? "", setDraft("戻ってくる下書き"));
             auth = AUTH_SIGNED_OUT;
             first.rerender(<StudyPage />);
             await waitFor(() => expect(workspaceProps?.locked).toBe(true));
@@ -215,7 +223,10 @@ describe("StudyPage", () => {
             await screen.findByTestId("workspace");
 
             const reopened = workspaceProps as StudyWorkspaceProps | null;
-            expect(reopened?.initialCommentDrafts).toEqual([{ nodeId, text: "戻ってくる下書き" }]);
+            // 書き始めたときのコメント（空）も一緒に戻す（変わっていたら、画面が利用者に選ばせる）。
+            expect(reopened?.initialCommentDrafts).toEqual([
+                { nodeId, text: "戻ってくる下書き", base: "" },
+            ]);
             // 下書きのある手を開く。
             expect(reopened?.initialView?.currentNodeId).toBe(nodeId);
         });
@@ -226,7 +237,7 @@ describe("StudyPage", () => {
             const view = render(<StudyPage />);
             await screen.findByTestId("workspace");
             const nodeId = workspaceProps?.doc.tree.rootId ?? "";
-            workspaceProps?.onCommentDraftChange?.(nodeId, "user-1 の下書き");
+            workspaceProps?.onCommentDraftChange?.(nodeId, setDraft("user-1 の下書き"));
 
             auth = authSignedIn("user-2");
             view.rerender(<StudyPage />);
@@ -268,13 +279,13 @@ describe("StudyPage", () => {
         const tooLong = "あ".repeat(2000);
 
         // 手 A に長すぎるコメントを書いたまま、手 B でコメントを書いて保存する。
-        workspaceProps?.onCommentDraftChange?.(nodeA, tooLong);
-        workspaceProps?.onCommentDraftChange?.(nodeB, "保存できるコメント");
-        workspaceProps?.onCommentDraftChange?.(nodeB, null);
+        workspaceProps?.onCommentDraftChange?.(nodeA, setDraft(tooLong));
+        workspaceProps?.onCommentDraftChange?.(nodeB, setDraft("保存できるコメント"));
+        workspaceProps?.onCommentDraftChange?.(nodeB, clearDraft("保存できるコメント"));
 
         // 手 B を保存しても、手 A の下書きは消えない。
-        expect(JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? "{}")[STUDY_ID].nodes).toEqual([
-            { nodeId: nodeA, text: tooLong },
+        expect(JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? "{}")[STUDY_ID].nodes).toMatchObject([
+            { nodeId: nodeA, text: tooLong, base: "" },
         ]);
 
         first.unmount();
@@ -282,7 +293,9 @@ describe("StudyPage", () => {
         render(<StudyPage />);
         await screen.findByTestId("workspace");
         const reopened = workspaceProps as StudyWorkspaceProps | null;
-        expect(reopened?.initialCommentDrafts).toEqual([{ nodeId: nodeA, text: tooLong }]);
+        expect(reopened?.initialCommentDrafts).toEqual([
+            { nodeId: nodeA, text: tooLong, base: "" },
+        ]);
         // 長すぎる下書きのために、開く局面は変えない（棋譜の印で知らせる）。
         expect(reopened?.initialView?.currentNodeId ?? null).toBeNull();
     });
@@ -298,8 +311,9 @@ describe("StudyPage", () => {
         render(<StudyPage />);
         await screen.findByTestId("workspace");
 
+        // 書き始めたときのコメントは分からない（画面は、自動では保存せず利用者に選ばせる）。
         expect(workspaceProps?.initialCommentDrafts).toEqual([
-            { nodeId: "node", text: "前の形の下書き" },
+            { nodeId: "node", text: "前の形の下書き", base: null },
         ]);
     });
 

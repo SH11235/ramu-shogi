@@ -119,6 +119,33 @@ interface EngineWorker {
     currentPly: number | null;
     subscription: (() => void) | null;
     run: ActiveRun | null;
+    /**
+     * このワーカーへの操作（局面読込 → 探索の開始、探索の停止）を順番に行うための列。
+     *
+     * エンジンの停止は「その探索」ではなく「いま動いている探索」を止める（WASM は Worker を
+     * 終了し、Tauri は `engine_stop` を送る）。前の実行の `search()` の応答が遅れて返り、その
+     * 後始末（停止）が次の実行の探索を止めてしまわないよう、1 つのワーカーは、前の操作の後始末が
+     * 済むまで次の操作を始めない。
+     */
+    chain: Promise<void>;
+}
+
+/** ワーカーへの操作を、そのワーカーの列の最後に積む。前の操作が失敗していても実行する。 */
+function enqueueOnWorker(worker: EngineWorker, task: () => Promise<void>): Promise<void> {
+    const next = worker.chain.then(task, task);
+    worker.chain = next.catch(() => undefined);
+    return next;
+}
+
+/** ワーカーの探索を止める操作を、そのワーカーの列に積む（次の探索の開始より前に済ませる）。 */
+function enqueueStop(worker: EngineWorker, handle: SearchHandle): Promise<void> {
+    return enqueueOnWorker(worker, async () => {
+        try {
+            await handle.cancel();
+        } catch {
+            // 無視
+        }
+    });
 }
 
 /**
@@ -224,10 +251,14 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         callbacksRef.current.onProgress?.(newProgress);
     };
 
-    // 次のジョブを取得して実行する
+    // 次のジョブを取得して実行する。ワーカーごとの列に積み、前の操作（前の実行の探索の開始待ちと
+    // その後始末を含む）が済んでから始める。
+    const processNextJob = (worker: EngineWorker, runId: number): Promise<void> =>
+        enqueueOnWorker(worker, () => startNextJob(worker, runId));
+
     // Note: JavaScriptはシングルスレッドのため、複数ワーカーが同時にこの関数を呼び出しても
     // jobQueue.shift() は安全にアトミックに実行される
-    const processNextJob = async (worker: EngineWorker, runId: number) => {
+    const startNextJob = async (worker: EngineWorker, runId: number) => {
         const state = stateRef.current;
         const isCurrent = () => state.runId === runId;
 
@@ -278,6 +309,9 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                   }
                 : null;
             worker.run = run;
+            // この探索が（`search()` の応答より先に）終わったか。終わっていたら、遅れて届いた
+            // ハンドルは、もう止める対象ではない。
+            let finished = false;
 
             // イベントを購読
             const unsubscribe = worker.client.subscribe((event) => {
@@ -306,6 +340,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                         }
                         finishRun(worker, "completed");
                     }
+                    finished = true;
                     worker.handle = null;
                     worker.currentPly = null;
                     state.inProgress.delete(job.ply);
@@ -319,6 +354,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                 if (event.type === "error") {
                     callbacksRef.current.onError?.(job.ply, new Error(event.message));
                     if (worker.run === run) worker.run = null;
+                    finished = true;
                     worker.handle = null;
                     worker.currentPly = null;
                     state.inProgress.delete(job.ply);
@@ -340,7 +376,8 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                 ponder: false,
             });
             // 探索の開始を待つ間に中止されていたら、中止の時点ではハンドルが無く止められて
-            // いないので、ここで止める。
+            // いないので、ここで止める。この停止は、このワーカーの列の中（次の実行の探索を
+            // 始める前）で済ませる。
             if (!isCurrent()) {
                 try {
                     await handle.cancel();
@@ -353,7 +390,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                 }
                 return;
             }
-            worker.handle = handle;
+            if (!finished) worker.handle = handle;
         } catch (error) {
             // 古い実行の失敗は、現在の実行の進捗に数えない
             if (!isCurrent()) return;
@@ -438,6 +475,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                     currentPly: null,
                     subscription: null,
                     run: null,
+                    chain: Promise.resolve(),
                 });
             } catch (error) {
                 await client?.dispose().catch(() => undefined);
@@ -503,10 +541,10 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             }
             worker.run = null;
             worker.currentPly = null;
-            // 前の実行の探索が残っていれば止める
+            // 前の実行の探索が残っていれば止める（この実行の探索を始める前に済ませる）
             const handle = worker.handle;
             worker.handle = null;
-            if (handle) void handle.cancel().catch(() => undefined);
+            if (handle) void enqueueStop(worker, handle);
         }
 
         // start()で渡されたnnueIdを優先、なければoptions.nnueIdを使用
@@ -584,13 +622,8 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                 worker.subscription = null;
             }
             worker.currentPly = null;
-            if (handle) {
-                try {
-                    await handle.cancel();
-                } catch {
-                    // 無視
-                }
-            }
+            // 停止は、このワーカーの列に積む（直後に次の実行を始めても、その探索より前に済む）。
+            if (handle) await enqueueStop(worker, handle);
         });
 
         await Promise.all(stopPromises);

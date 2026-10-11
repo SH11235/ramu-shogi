@@ -12,6 +12,7 @@ import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ANALYSIS_SETTINGS, type Message } from "./shogi-match/types";
 import { StudyWorkspaceView } from "./study-workspace";
+import type { StudyCommentDraftChange } from "./study-workspace/StudyCommentBox";
 import type { StudyWorkspaceSaveStatus } from "./study-workspace/StudySaveStatus";
 import {
     cp,
@@ -66,8 +67,15 @@ interface HarnessProps {
     /** 保存層が操作を受け付けなかった場合の模擬（文書を変えず、理由を通知する）。 */
     rejectOps?: boolean;
     locked?: boolean;
-    initialCommentDrafts?: { nodeId: string; text: string }[];
-    onCommentDraftChange?: (nodeId: string, text: string | null) => void;
+    initialCommentDrafts?: { nodeId: string; text: string; base?: string | null }[];
+    onCommentDraftChange?: (nodeId: string, change: StudyCommentDraftChange) => void;
+    /**
+     * 保存層の応答を手で進めるための差し込み。Promise を返した操作は、文書には反映せず、
+     * その Promise を保存の結果として返す。
+     */
+    interceptOps?: (ops: StudyOp[]) => Promise<boolean> | undefined;
+    /** 他のタブ・端末からの変更を模擬するための口（文書に操作を適用する関数を受け取る）。 */
+    onExternal?: (apply: (ops: StudyOp[]) => void) => void;
     /** 最初に表示する解析の設定（省略時は、結果の最も多いもの）。 */
     initialDisplayLayerId?: string;
     deepLayerId?: string | null;
@@ -87,6 +95,8 @@ function Harness({
     locked,
     initialCommentDrafts,
     onCommentDraftChange,
+    interceptOps,
+    onExternal,
     initialDisplayLayerId,
     deepLayerId,
 }: HarnessProps) {
@@ -96,6 +106,7 @@ function Harness({
         initialDisplayLayerId ?? null,
     );
     const displayLayerId = chooseStudyDisplayLayer(doc.layers, preferredLayerId);
+    onExternal?.((ops) => setDoc((previous) => applyStudyOps(previous, ops)));
     const { tree } = buildStudyViewTree(doc, displayLayerId);
     return (
         <StudyWorkspaceView
@@ -103,6 +114,8 @@ function Harness({
             tree={tree}
             onApplyOps={(ops) => {
                 onOps?.(ops);
+                const intercepted = interceptOps?.(ops);
+                if (intercepted) return intercepted;
                 if (rejectOps) {
                     setMessage({ text: "このノートの局面の数が上限に達しました。", type: "error" });
                     return Promise.resolve(false);
@@ -611,7 +624,11 @@ describe("StudyWorkspaceView", () => {
         // 捨てずに知らせる。保存はしていない。
         expect(screen.getByText(/1手目のコメントは長すぎるため、保存されていません/)).toBeTruthy();
         expect(onOps).not.toHaveBeenCalled();
-        expect(onDraft).toHaveBeenLastCalledWith(ids[1], tooLong);
+        expect(onDraft).toHaveBeenLastCalledWith(ids[1], {
+            type: "set",
+            text: tooLong,
+            base: "",
+        });
         expect(comment().value).toBe("");
         // 棋譜のその手に印が付く。
         expect(
@@ -732,7 +749,11 @@ describe("StudyWorkspaceView", () => {
             );
             const comment = () => screen.getByRole("textbox", { name: "コメント" });
             fireEvent.change(comment(), { target: { value: "書きかけ" } });
-            expect(onDraft).toHaveBeenLastCalledWith(ids[0], "書きかけ");
+            expect(onDraft).toHaveBeenLastCalledWith(ids[0], {
+                type: "set",
+                text: "書きかけ",
+                base: "",
+            });
 
             // 自動保存の前にログインが切れた。
             view.rerender(
@@ -769,7 +790,71 @@ describe("StudyWorkspaceView", () => {
                     ]),
                 { timeout: 2000 },
             );
-            await waitFor(() => expect(onDraft).toHaveBeenLastCalledWith(ids[0], null));
+            await waitFor(() =>
+                expect(onDraft).toHaveBeenLastCalledWith(ids[0], {
+                    type: "clear",
+                    savedText: "書きかけ",
+                }),
+            );
+        });
+
+        it("編集と解析のすべての入口を止め、開いていた設定も閉じる", () => {
+            const { doc } = createTestStudy([cp(0), cp(10), cp(20), null, null]);
+            const onOps = vi.fn();
+            const onRetrySave = vi.fn();
+            const analysis = createAnalysis();
+            const props = {
+                initialDoc: doc,
+                onOps,
+                analysis,
+                onRetrySave,
+                onLogin: vi.fn(),
+                saveStatus: {
+                    state: "limit_exceeded",
+                    reason: null,
+                    limit: "nodesPerStudy",
+                    retrying: false,
+                } as StudyWorkspaceSaveStatus,
+            };
+            const view = render(<Harness {...props} />);
+            expect(screen.getByRole("button", { name: "もう一度保存する" })).toBeTruthy();
+            // 設定を開いた状態で、ログインが切れる。
+            fireEvent.click(screen.getByRole("button", { name: /解析の設定/ }));
+            expect(screen.getByRole("dialog", { name: "解析の設定" })).toBeTruthy();
+
+            view.rerender(<Harness {...props} locked />);
+
+            // 開いていた設定は閉じ、設定のボタンも押せない。
+            expect(screen.queryByRole("dialog", { name: "解析の設定" })).toBeNull();
+            const settingsButton = screen.getByRole("button", { name: /解析の設定/ });
+            expect((settingsButton as HTMLButtonElement).disabled).toBe(true);
+            fireEvent.click(settingsButton);
+            expect(screen.queryByRole("dialog", { name: "解析の設定" })).toBeNull();
+            // 表題は編集できない。
+            const title = screen.getByRole("textbox", { name: "研究ノートの表題" });
+            expect((title as HTMLInputElement).readOnly).toBe(true);
+            fireEvent.change(title, { target: { value: "書き換え" } });
+            fireEvent.blur(title);
+            // 再送の操作も出さない。
+            expect(screen.queryByRole("button", { name: "もう一度保存する" })).toBeNull();
+            // 深く解析・残りを解析・しおり・コメントは、操作できない領域（inert）の中にある。
+            for (const name of ["この局面を深く解析", "残りを解析", "この手にしおりを付ける"]) {
+                expect(screen.getByRole("button", { name }).closest("[inert]")).toBeTruthy();
+            }
+            expect(
+                screen.getByRole("textbox", { name: "コメント" }).closest("[inert]"),
+            ).toBeTruthy();
+            // キーボードでも動かない。
+            const before = currentMove();
+            fireEvent.keyDown(window, { key: "ArrowRight" });
+            expect(currentMove()).toBe(before);
+
+            expect(onOps).not.toHaveBeenCalled();
+            expect(analysis.startFull).not.toHaveBeenCalled();
+            expect(analysis.resumeLayer).not.toHaveBeenCalled();
+            expect(analysis.startDeep).not.toHaveBeenCalled();
+            // 残すのは「ログインし直す」の案内。
+            expect(screen.getByRole("button", { name: "ログインし直す" })).toBeTruthy();
         });
 
         it("前回の下書きを、その手のコメント欄に戻して保存する", async () => {
@@ -781,7 +866,7 @@ describe("StudyWorkspaceView", () => {
                     initialDoc={doc}
                     onOps={onOps}
                     onCommentDraftChange={onDraft}
-                    initialCommentDrafts={[{ nodeId: ids[0], text: "戻ってきた下書き" }]}
+                    initialCommentDrafts={[{ nodeId: ids[0], text: "戻ってきた下書き", base: "" }]}
                 />,
             );
 
@@ -795,7 +880,12 @@ describe("StudyWorkspaceView", () => {
                     ]),
                 { timeout: 2000 },
             );
-            await waitFor(() => expect(onDraft).toHaveBeenLastCalledWith(ids[0], null));
+            await waitFor(() =>
+                expect(onDraft).toHaveBeenLastCalledWith(ids[0], {
+                    type: "clear",
+                    savedText: "戻ってきた下書き",
+                }),
+            );
         });
 
         it("保存できなかったコメントは、保存済み扱いにせず下書きとして残す", async () => {
@@ -807,8 +897,221 @@ describe("StudyWorkspaceView", () => {
             fireEvent.change(comment, { target: { value: "保存できない" } });
             fireEvent.blur(comment);
 
-            await waitFor(() => expect(onDraft).toHaveBeenLastCalledWith(ids[0], "保存できない"));
+            await waitFor(() =>
+                expect(onDraft).toHaveBeenLastCalledWith(ids[0], {
+                    type: "set",
+                    text: "保存できない",
+                    base: "",
+                }),
+            );
             expect((comment as HTMLTextAreaElement).value).toBe("保存できない");
+        });
+    });
+
+    describe("コメントの下書きと、あとから届く保存の結果・他の端末の変更", () => {
+        const comment = () =>
+            screen.getByRole("textbox", { name: "コメント" }) as HTMLTextAreaElement;
+        const next = () => fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+        const back = () => fireEvent.click(screen.getByRole("button", { name: "1 手戻る（←）" }));
+        const wait = (ms: number) =>
+            act(async () => {
+                await new Promise((resolve) => setTimeout(resolve, ms));
+            });
+
+        /** 入力 A を残して別の手へ移り（保存は応答待ち）、戻って B を入力した状態を作る。 */
+        const setUpStaleSave = () => {
+            const { doc, ids } = createTestStudy();
+            const pending: Array<(saved: boolean) => void> = [];
+            const drafts = new Map<string, string>();
+            // 呼び出し側（ページ）と同じ規則で下書きを持つ。
+            const onDraft = vi.fn((nodeId: string, change: StudyCommentDraftChange) => {
+                if (change.type === "set") drafts.set(nodeId, change.text);
+                else if (change.savedText === null || drafts.get(nodeId) === change.savedText) {
+                    drafts.delete(nodeId);
+                }
+            });
+            render(
+                <Harness
+                    initialDoc={doc}
+                    onCommentDraftChange={onDraft}
+                    interceptOps={(ops) =>
+                        ops.some((op) => op.type === "setComment")
+                            ? new Promise<boolean>((resolve) => pending.push(resolve))
+                            : undefined
+                    }
+                />,
+            );
+            next();
+            fireEvent.change(comment(), { target: { value: "入力 A" } });
+            // 別の手へ移る（前のコメント欄が A を保存し始める。応答はまだ）。
+            next();
+            expect(pending).toHaveLength(1);
+            // 応答の前に同じ手へ戻り、B を入力する。
+            back();
+            expect(comment().value).toBe("入力 A");
+            fireEvent.change(comment(), { target: { value: "入力 B" } });
+            return { ids, pending, drafts };
+        };
+
+        it("前のコメント欄の保存が成功で終わっても、そのあとに書いた下書きを消さない", async () => {
+            const { ids, pending, drafts } = setUpStaleSave();
+
+            await act(async () => {
+                pending[0](true);
+            });
+
+            expect(comment().value).toBe("入力 B");
+            expect(drafts.get(ids[1])).toBe("入力 B");
+            // 画面が持っている下書きも B のまま（移って戻ると B が戻る）。
+            next();
+            back();
+            expect(comment().value).toBe("入力 B");
+        });
+
+        it("前のコメント欄の保存が失敗で終わっても、そのあとに書いた下書きを古い内容で上書きしない", async () => {
+            const { ids, pending, drafts } = setUpStaleSave();
+
+            await act(async () => {
+                pending[0](false);
+            });
+
+            expect(comment().value).toBe("入力 B");
+            expect(drafts.get(ids[1])).toBe("入力 B");
+            next();
+            back();
+            expect(comment().value).toBe("入力 B");
+        });
+
+        it("保存済みと同じ下書きは消すだけにし、あとから取り込んだコメントを上書きしない", async () => {
+            const { doc, ids } = createTestStudy();
+            const saved = applyStudyOps(doc, [
+                { type: "setComment", nodeId: ids[0], value: "コメント A" },
+            ]);
+            const onOps = vi.fn();
+            const onDraft = vi.fn();
+            let external: (ops: StudyOp[]) => void = () => {};
+            render(
+                <Harness
+                    initialDoc={saved}
+                    onOps={onOps}
+                    onCommentDraftChange={onDraft}
+                    initialCommentDrafts={[{ nodeId: ids[0], text: "コメント A", base: "" }]}
+                    onExternal={(apply) => {
+                        external = apply;
+                    }}
+                />,
+            );
+
+            // 下書きは保存済みと同じなので、保存し直さずに消す。
+            expect(onDraft).toHaveBeenLastCalledWith(ids[0], {
+                type: "clear",
+                savedText: "コメント A",
+            });
+            // 他のタブでコメントが B になった。
+            act(() => external([{ type: "setComment", nodeId: ids[0], value: "コメント B" }]));
+            expect(comment().value).toBe("コメント B");
+            await wait(900);
+
+            // 古い下書き A で B を上書きしていない。
+            expect(onOps).not.toHaveBeenCalled();
+            expect(comment().value).toBe("コメント B");
+            expect(
+                onDraft.mock.calls.some(
+                    ([, change]) => (change as { type: string }).type === "set",
+                ),
+            ).toBe(false);
+        });
+
+        it("書き始めたあとにコメントが変わっていた下書きは、自動では保存せず、利用者に選ばせる", async () => {
+            const { doc, ids } = createTestStudy();
+            // 下書き A は、コメントが空のときに書き始めた。そのあと B が保存されている。
+            const saved = applyStudyOps(doc, [
+                { type: "setComment", nodeId: ids[0], value: "コメント B" },
+            ]);
+            const onOps = vi.fn();
+            const onDraft = vi.fn();
+            render(
+                <Harness
+                    initialDoc={saved}
+                    onOps={onOps}
+                    onCommentDraftChange={onDraft}
+                    initialCommentDrafts={[{ nodeId: ids[0], text: "下書き A", base: "" }]}
+                />,
+            );
+
+            const prompt = screen.getByRole("group", { name: "以前の書きかけ" });
+            expect(prompt.textContent).toContain("以前の書きかけがあります");
+            expect(prompt.textContent).toContain("下書き A");
+            expect(comment().value).toBe("コメント B");
+            await wait(900);
+            // 何もしなければ、保存もしないし、下書きも消さない。
+            expect(onOps).not.toHaveBeenCalled();
+            expect(onDraft).not.toHaveBeenCalled();
+
+            fireEvent.click(within(prompt).getByRole("button", { name: "書きかけを使う" }));
+            expect(comment().value).toBe("下書き A");
+            expect(screen.queryByRole("group", { name: "以前の書きかけ" })).toBeNull();
+            fireEvent.blur(comment());
+            expect(onOps).toHaveBeenCalledWith([
+                { type: "setComment", nodeId: ids[0], value: "下書き A" },
+            ]);
+        });
+
+        it("以前の書きかけを捨てると、保存済みのコメントのまま下書きだけが消える", () => {
+            const { doc, ids } = createTestStudy();
+            const saved = applyStudyOps(doc, [
+                { type: "setComment", nodeId: ids[0], value: "コメント B" },
+            ]);
+            const onOps = vi.fn();
+            const onDraft = vi.fn();
+            render(
+                <Harness
+                    initialDoc={saved}
+                    onOps={onOps}
+                    onCommentDraftChange={onDraft}
+                    // 書き始めたときのコメントが分からない下書き（以前の形）も、選んでもらう。
+                    initialCommentDrafts={[{ nodeId: ids[0], text: "下書き A" }]}
+                />,
+            );
+
+            fireEvent.click(screen.getByRole("button", { name: "捨てる" }));
+
+            expect(comment().value).toBe("コメント B");
+            expect(onDraft).toHaveBeenLastCalledWith(ids[0], { type: "clear", savedText: null });
+            expect(onOps).not.toHaveBeenCalled();
+        });
+
+        it("他の端末の変更を取り込むとき、入力中でない下書きは消し、入力中の入力は残す", () => {
+            const { doc, ids } = createTestStudy();
+            const onOps = vi.fn();
+            const onDraft = vi.fn();
+            let external: (ops: StudyOp[]) => void = () => {};
+            render(
+                <Harness
+                    initialDoc={doc}
+                    onOps={onOps}
+                    onCommentDraftChange={onDraft}
+                    onExternal={(apply) => {
+                        external = apply;
+                    }}
+                />,
+            );
+            // 入力中（フォーカスがあり、保存していない変更がある）に、他の端末の変更が届く。
+            fireEvent.focus(comment());
+            fireEvent.change(comment(), { target: { value: "入力中" } });
+            act(() => external([{ type: "setComment", nodeId: ids[0], value: "他の端末 1" }]));
+            expect(comment().value).toBe("入力中");
+
+            // 入力中でない下書き（長すぎて保存できず、欄から離れている）は、取り込んだ内容を優先する。
+            const tooLong = "あ".repeat(2000);
+            fireEvent.change(comment(), { target: { value: tooLong } });
+            fireEvent.blur(comment());
+            onOps.mockClear();
+            act(() => external([{ type: "setComment", nodeId: ids[0], value: "他の端末 2" }]));
+
+            expect(comment().value).toBe("他の端末 2");
+            expect(onDraft).toHaveBeenLastCalledWith(ids[0], { type: "clear", savedText: null });
+            expect(onOps).not.toHaveBeenCalled();
         });
     });
 

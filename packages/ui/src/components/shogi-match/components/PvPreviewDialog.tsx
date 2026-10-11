@@ -7,7 +7,7 @@
 import type { BoardState, PositionState, Square } from "@shogi/app-core";
 import { applyMoveWithState, boardToMatrix } from "@shogi/app-core";
 import type { ReactElement } from "react";
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useId, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../dialog";
 import type { ShogiBoardCell } from "../../shogi-board";
 import { ShogiBoard } from "../../shogi-board";
@@ -33,7 +33,7 @@ interface PvPreviewDialogProps {
     squareNotation?: SquareNotation;
     /** 盤外ラベル表示 */
     showBoardLabels?: boolean;
-    /** 読み上げ用の説明（画面には出さない）。渡したときだけ付ける。 */
+    /** 読み上げ用の説明（画面には出さない）。渡したときだけ付け、ダイアログに関連付ける。 */
     description?: string;
 }
 
@@ -66,6 +66,7 @@ export function PvPreviewDialog({
 }: PvPreviewDialogProps): ReactElement {
     // 現在のプレビュー位置（0 = 開始局面、1 = PVの1手目後、...）
     const [previewIndex, setPreviewIndex] = useState(0);
+    const descriptionId = useId();
 
     // 各ステップの局面を事前計算（有効な手のみ）
     const { positions, validPv } = (() => {
@@ -162,7 +163,11 @@ export function PvPreviewDialog({
 
     return (
         <Dialog defaultOpen onOpenChange={(isOpen) => !isOpen && onClose()}>
-            <DialogContent className="max-w-[500px]">
+            <DialogContent
+                className="max-w-[500px]"
+                // 説明を渡したときだけ関連付ける（渡さない呼び出しは、これまでどおり）。
+                {...(description !== undefined ? { "aria-describedby": descriptionId } : {})}
+            >
                 <DialogHeader className="flex flex-row items-center justify-between pr-8">
                     <DialogTitle className="text-sm font-medium">
                         {ply}手目の読み筋
@@ -176,7 +181,9 @@ export function PvPreviewDialog({
                         )}
                     </DialogTitle>
                     {description !== undefined && (
-                        <DialogDescription className="sr-only">{description}</DialogDescription>
+                        <DialogDescription id={descriptionId} className="sr-only">
+                            {description}
+                        </DialogDescription>
                     )}
                 </DialogHeader>
                 {/* 右上の閉じるボタン */}

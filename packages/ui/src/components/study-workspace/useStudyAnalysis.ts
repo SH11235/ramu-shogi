@@ -129,6 +129,11 @@ interface UseStudyAnalysisOptions {
     /** 解析を始めたレイヤー（画面はこのレイヤーを表示に切り替える）。 */
     onLayerStarted: (layerId: string, mode: "full" | "deep") => void;
     setMessage: (message: Message | null) => void;
+    /**
+     * 編集できない状態（ログインが切れて、結果を保存できない）。この間は、どの入口からも解析を
+     * 始めない。進行中・準備中の解析は止める。
+     */
+    locked?: boolean;
 }
 
 const formatSeconds = (timeMs: number): string => {
@@ -147,6 +152,7 @@ export function useStudyAnalysis({
     onFlush,
     onLayerStarted,
     setMessage,
+    locked = false,
 }: UseStudyAnalysisOptions): {
     controller: StudyAnalysisController;
     /** AI のダウンロード確認ダイアログ（`MatchNnueDownloadDialog`）に渡す状態。 */
@@ -214,6 +220,10 @@ export function useStudyAnalysis({
         timer: null,
     });
     const cancelRef = useRef<() => Promise<void>>(async () => {});
+    // 編集できない状態か。準備（AI の確認・ダウンロード）を待っている間に変わることがあるので、
+    // 非同期の続きからは、ここで最新の値を見る。
+    const lockedRef = useRef(locked);
+    lockedRef.current = locked;
 
     /** ためてある解析結果を文書へ反映する。保存できなかったら解析を止める。 */
     const flushResults = (): void => {
@@ -395,10 +405,18 @@ export function useStudyAnalysis({
         multiPv: number,
         nextMode: "full" | "deep",
     ): void => {
+        // 画面側の無効化だけに頼らず、ここでも確かめる（結果を保存できない解析は始めない）。
+        if (lockedRef.current) return;
         const { layer, resolved } = prepared;
-        void latestRef.current.onApplyOps([
+        const ensured = latestRef.current.onApplyOps([
             { type: "ensureLayer", spec: layer.spec, display: layer.display },
         ]);
+        if (ensured instanceof Promise) {
+            // 設定を保存できなかったら、結果も保存できない。黙って探索を続けない。
+            void ensured.then((saved) => {
+                if (!saved && mountedRef.current) void cancelRef.current();
+            });
+        }
         onLayerStarted(layer.layerId, nextMode);
         setMode(nextMode);
         pool.start(jobs, {
@@ -419,6 +437,7 @@ export function useStudyAnalysis({
         task: (isCurrent: () => boolean) => Promise<void>,
     ): Promise<void> => {
         if (pool.isRunning || preparingRef.current || !mountedRef.current) return;
+        if (lockedRef.current) return;
         const generation = generationRef.current + 1;
         generationRef.current = generation;
         preparingRef.current = true;
@@ -448,7 +467,7 @@ export function useStudyAnalysis({
             };
             const multiPv = target?.spec.multiPv ?? fullMultiPv;
             const prepared = await prepareLayer(selection, limits, multiPv);
-            if (!isCurrent() || !prepared) return;
+            if (!isCurrent() || !prepared || lockedRef.current) return;
             if (target && prepared.layer.layerId !== target.id) {
                 // AI のファイルや版が違うと、同じ設定の続きにならない。別の結果を黙って作らない。
                 setMessage({
@@ -494,6 +513,7 @@ export function useStudyAnalysis({
     };
 
     const resumeLayer = async (layerId: string): Promise<void> => {
+        if (lockedRef.current) return;
         const target = latestRef.current.doc.layers.find((layer) => layer.id === layerId);
         if (!target) return;
         const selection = selectionOfLayer(target);
@@ -515,7 +535,8 @@ export function useStudyAnalysis({
                 Math.max(STUDY_DEEP_MIN_MULTI_PV, settings.multiPv),
             );
             const prepared = await prepareLayer(selection, limits, multiPv);
-            if (!isCurrent() || !prepared || !canUseLayer(prepared.layer.layerId)) return;
+            if (!isCurrent() || !prepared || lockedRef.current) return;
+            if (!canUseLayer(prepared.layer.layerId)) return;
             const current = latestRef.current;
             const node = current.tree.nodes.get(nodeId);
             if (!node) return;
@@ -568,7 +589,7 @@ export function useStudyAnalysis({
         download.cancel();
         setAnalysisNnueSelection(MATERIAL_SELECTION);
         setIsPreparing(false);
-        if (!request) return;
+        if (!request || lockedRef.current) return;
         // 選択の保存を待たず、簡易 AI を指定して同じ依頼をやり直す。閉じたダイアログの後始末
         // （AI の確認の終了）が済んでから始めるよう、次のタスクに回す。
         setTimeout(() => {
@@ -578,6 +599,16 @@ export function useStudyAnalysis({
                 : startDeepWith(request.nodeId, MATERIAL_SELECTION));
         }, 0);
     };
+
+    // 編集できなくなったら、進行中・準備中の解析を止め、AI のダウンロードの確認も閉じる
+    // （結果を保存できないため）。
+    const downloadCancelRef = useRef(download.cancel);
+    downloadCancelRef.current = download.cancel;
+    useEffect(() => {
+        if (!locked) return;
+        downloadCancelRef.current();
+        void cancelRef.current();
+    }, [locked]);
 
     const activeMode = pool.isRunning ? mode : null;
     return {

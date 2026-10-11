@@ -259,4 +259,95 @@ describe("useEnginePool: 中止とやり直し", () => {
             analyzed.filter((completion) => completion.result.completion === "completed"),
         ).toEqual([]);
     });
+
+    it("前の実行の探索の開始応答が遅れて届いても、同じワーカーで始めた次の実行を止めない", async () => {
+        // 実物のエンジンと同じく、停止は「その探索」ではなく「いま動いている探索」を止める。
+        const listeners = new Set<EngineEventHandler>();
+        let loaded: string[] = [];
+        let running: { position: string[]; timer: ReturnType<typeof setTimeout> } | null = null;
+        const started: string[][] = [];
+        const stoppedWhile: Array<string[] | null> = [];
+        const firstSearchGate = createGate();
+        let searchCalls = 0;
+        const client: EngineClient = {
+            init: vi.fn().mockResolvedValue(undefined),
+            loadPosition: vi.fn(async (_sfen: string, moves?: string[]) => {
+                loaded = moves ?? [];
+            }),
+            setOption: vi.fn().mockResolvedValue(undefined),
+            stop: vi.fn().mockResolvedValue(undefined),
+            dispose: vi.fn().mockResolvedValue(undefined),
+            subscribe(handler) {
+                listeners.add(handler);
+                return () => listeners.delete(handler);
+            },
+            async search() {
+                const position = loaded;
+                const isFirst = searchCalls++ === 0;
+                started.push(position);
+                const timer = setTimeout(
+                    () => {
+                        running = null;
+                        for (const listener of [...listeners]) {
+                            listener({ type: "info", depth: 10, scoreCp: 30, multipv: 1 });
+                        }
+                        for (const listener of [...listeners]) {
+                            listener({ type: "bestmove", move: "7g7f" });
+                        }
+                        // 1 回目（A）の探索は、止めない限り終わらない長さにする。
+                    },
+                    isFirst ? 5000 : 40,
+                );
+                running = { position, timer };
+                // 1 回目の探索だけ、開始の応答を遅らせる。
+                if (isFirst) await firstSearchGate.wait;
+                return {
+                    async cancel() {
+                        stoppedWhile.push(running?.position ?? null);
+                        if (running) clearTimeout(running.timer);
+                        running = null;
+                    },
+                };
+            },
+        };
+        const analyzed: StudyAnalysisCompletion[] = [];
+        const onComplete = vi.fn();
+        const { result } = renderHook(() =>
+            useEnginePool({
+                createClient: () => client,
+                workerCount: 1,
+                onPositionAnalyzed: (completion) => analyzed.push(completion),
+                onComplete,
+            }),
+        );
+
+        // A の探索の開始応答を待っている間に中止し、同じワーカーで B を始める。
+        act(() => result.current.start([job("a", ["7g7f"])], { layer: layer("A") }));
+        await waitFor(() => expect(started).toEqual([["7g7f"]]));
+        await act(async () => {
+            await result.current.cancel();
+        });
+        act(() => result.current.start([job("b", ["2g2f"])], { layer: layer("B") }));
+        await act(async () => {
+            await settle(20);
+        });
+        // A の開始応答が返るまで、このワーカーでは B を始めない。
+        expect(client.loadPosition).toHaveBeenCalledTimes(1);
+        expect(started).toEqual([["7g7f"]]);
+
+        // A の応答が後から届く。A の後始末（停止）が済んでから B が始まり、B は止まらない。
+        await act(async () => {
+            firstSearchGate.open();
+            await settle(120);
+        });
+        await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+
+        expect(started).toEqual([["7g7f"], ["2g2f"]]);
+        // 停止したのは A の探索だけ（B の探索中には停止していない）。
+        expect(stoppedWhile).toEqual([["7g7f"]]);
+        expect(analyzed.map((completion) => completion.runtimeNodeId)).toEqual(["b"]);
+        expect(analyzed[0]?.result.completion).toBe("completed");
+        expect(analyzed[0]?.layer?.layerId).toBe("layer-B");
+        expect(result.current.isRunning).toBe(false);
+    });
 });

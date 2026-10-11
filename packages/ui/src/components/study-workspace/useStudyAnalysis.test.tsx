@@ -62,7 +62,11 @@ function createEngineOption(searchMs = 5): {
 function useHarness(
     initialDoc: StudyDocument,
     engineOptions: EngineOption[],
-    options: { rejectAnalysis?: boolean; onOps?: (ops: StudyOp[]) => void } = {},
+    options: {
+        rejectAnalysis?: boolean;
+        onOps?: (ops: StudyOp[]) => void;
+        locked?: boolean;
+    } = {},
 ) {
     const [doc, setDoc] = useState(initialDoc);
     const [ops, setOps] = useState<StudyOp[]>([]);
@@ -89,6 +93,7 @@ function useHarness(
         onLayerStarted: (layerId, mode) =>
             setStartedLayers((previous) => [...previous, `${mode}:${layerId}`]),
         setMessage: () => {},
+        locked: options.locked,
     });
     return { controller, doc, ops, startedLayers, flushCount };
 }
@@ -275,5 +280,52 @@ describe("useStudyAnalysis", () => {
         expect(resumed.current.doc.layers.map((item) => item.id)).toEqual([layer.id]);
         expect(Object.keys(resumed.current.doc.layers[0].results)).toHaveLength(7);
         expect(resumed.current.startedLayers).toEqual([`full:${layer.id}`]);
+    });
+
+    it("編集できない間（ログインが切れた）は、どの入口からも解析を始めない", async () => {
+        const { doc, ids } = createTestStudy();
+        const engine = createEngineOption();
+        const onOps = vi.fn();
+        const { result } = renderHook(() =>
+            useHarness(doc, [engine.option], { onOps, locked: true }),
+        );
+
+        await act(async () => {
+            await result.current.controller.startFull();
+            await result.current.controller.startDeep(ids[1]);
+            await result.current.controller.resumeLayer("any-layer");
+        });
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+        });
+
+        expect(onOps).not.toHaveBeenCalled();
+        expect(engine.clients()).toBe(0);
+        expect(result.current.controller.mode).toBeNull();
+        expect(result.current.controller.isPreparing).toBe(false);
+        expect(result.current.startedLayers).toEqual([]);
+    });
+
+    it("解析の途中で編集できなくなったら、解析を止める", async () => {
+        const { doc } = createTestStudy();
+        const engine = createEngineOption(200);
+        const { result, rerender } = renderHook(
+            ({ locked }: { locked: boolean }) => useHarness(doc, [engine.option], { locked }),
+            { initialProps: { locked: false } },
+        );
+        await act(async () => {
+            await result.current.controller.startFull();
+        });
+        await waitFor(() => expect(result.current.controller.mode).toBe("full"));
+
+        rerender({ locked: true });
+
+        await waitFor(() => expect(result.current.controller.mode).toBeNull());
+        const searches = engine.searches();
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 300));
+        });
+        // 残りの局面の探索は始まらない。
+        expect(engine.searches()).toBe(searches);
     });
 });

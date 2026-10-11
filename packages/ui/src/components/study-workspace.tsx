@@ -62,7 +62,11 @@ import { LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
 import { StudyAnalysisSettings } from "./study-workspace/StudyAnalysisSettings";
 import { StudyCandidatesPanel, type StudyPvRequest } from "./study-workspace/StudyCandidatesPanel";
-import { isStudyCommentOverLimit, StudyCommentBox } from "./study-workspace/StudyCommentBox";
+import {
+    isStudyCommentOverLimit,
+    StudyCommentBox,
+    type StudyCommentDraftChange,
+} from "./study-workspace/StudyCommentBox";
 import { StudyHighlightsPanel } from "./study-workspace/StudyHighlightsPanel";
 import { StudyIconButton } from "./study-workspace/StudyIconButton";
 import {
@@ -150,7 +154,8 @@ interface StudyWorkspaceCommonProps {
     fetchLegalMoves?: FetchLegalMoves;
     /**
      * 編集できない状態（開いている間にログインが切れて、ノートを保存できなくなった）。
-     * 画面は残し、操作を止めて、ログインし直す案内を出す。書きかけのコメントは消さない。
+     * 画面は残し、編集と解析のすべての入口を止めて、ログインし直す案内を出す。
+     * 書きかけのコメントは消さない。
      */
     locked?: boolean;
     /**
@@ -158,8 +163,12 @@ interface StudyWorkspaceCommonProps {
      * その手を開いたときにコメント欄へ戻す。
      */
     initialCommentDrafts?: readonly StudyCommentDraft[] | null;
-    /** まだ保存できていないコメントの入力が変わった（保存できたら `text` は null）。 */
-    onCommentDraftChange?: (nodeId: string, text: string | null) => void;
+    /**
+     * まだ保存できていないコメントの入力（下書き）が変わった。呼び出し側は、手ごとの下書きの
+     * 置き場所に反映する。消す通知（`clear`）は、保存できた内容（`savedText`）を持つ: 置いてある
+     * 下書きがその内容と同じときだけ消すこと（古い保存の完了が、新しい下書きを消さないように）。
+     */
+    onCommentDraftChange?: (nodeId: string, change: StudyCommentDraftChange) => void;
 }
 
 /** 保存できていないコメントの入力。 */
@@ -167,6 +176,11 @@ export interface StudyCommentDraft {
     /** コメントを書いていた手（保存用の `nodeId`）。 */
     nodeId: string;
     text: string;
+    /**
+     * この下書きを書き始めたときの、保存済みのコメント。開き直したときに保存済みのコメントが
+     * ここから変わっていたら、自動では保存せず、利用者に選んでもらう。分からなければ省略。
+     */
+    base?: string | null;
 }
 
 interface StudyWorkspaceViewProps extends StudyWorkspaceCommonProps {
@@ -215,9 +229,11 @@ function lastMoveOf(usiMove: string | null): LastMove | undefined {
 function TitleInput({
     title,
     onCommit,
+    disabled,
 }: {
     title: string;
     onCommit: (title: string) => void;
+    disabled: boolean;
 }): ReactElement {
     const [draft, setDraft] = useState(title);
     const commit = (): void => {
@@ -235,8 +251,13 @@ function TitleInput({
             aria-label="研究ノートの表題"
             title="クリックして表題を編集"
             value={draft}
+            readOnly={disabled}
             onChange={(event) => setDraft(event.target.value)}
-            onBlur={commit}
+            onBlur={() => {
+                // 編集できない間は、保存を試みない（入力は元に戻す）。
+                if (disabled) setDraft(title);
+                else commit();
+            }}
             onKeyDown={(event) => {
                 if (event.key === "Enter") {
                     event.currentTarget.blur();
@@ -395,10 +416,15 @@ export function StudyWorkspaceView({
     const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
     // まだ保存できていないコメントの入力（手ごと）。コメント欄は手を移るたびに作り直すので、
     // 上限を超えていて保存できない入力も、ここに残しておき、その手へ戻ったときに戻す。
-    const commentDraftsRef = useRef<Map<string, string> | null>(null);
+    const commentDraftsRef = useRef<Map<string, { text: string; base?: string | null }> | null>(
+        null,
+    );
     if (!commentDraftsRef.current) {
         commentDraftsRef.current = new Map(
-            (initialCommentDrafts ?? []).map((draft) => [draft.nodeId, draft.text]),
+            (initialCommentDrafts ?? []).map((draft) => [
+                draft.nodeId,
+                { text: draft.text, base: draft.base },
+            ]),
         );
     }
     const commentDrafts = commentDraftsRef.current;
@@ -452,7 +478,7 @@ export function StudyWorkspaceView({
             setDeepNodeId(null);
             // 長すぎて保存できていないコメントを残して移るときは、黙って移らず知らせる。
             const leaving = commentDrafts.get(currentNodeId);
-            if (leaving !== undefined && isStudyCommentOverLimit(leaving)) {
+            if (leaving !== undefined && isStudyCommentOverLimit(leaving.text)) {
                 onMessageChange({
                     text: `${currentNode.ply === 0 ? "開始局面" : `${currentNode.ply}手目`}のコメントは長すぎるため、保存されていません。入力はその手に残してあります（棋譜に「未保存」の印が付きます）。`,
                     type: "warning",
@@ -719,7 +745,7 @@ export function StudyWorkspaceView({
     const confirmDeleteVariation = (): void => {
         const targetId = deleteTargetId;
         setDeleteTargetId(null);
-        if (targetId === null) return;
+        if (targetId === null || locked) return;
         const target = tree.nodes.get(targetId);
         if (!target || target.parentId === null) return;
         // 消す変化の中を見ていたら、枝分かれの手前へ戻ってから消す。
@@ -736,22 +762,46 @@ export function StudyWorkspaceView({
         if (isMobile) setMobileTab("candidates");
     };
 
+    // 編集できなくなったら、開いているダイアログ・シートを閉じる（その中から編集や解析を
+    // 始められないように）。開いているかどうかの表示も、編集できる間だけにする。
+    useEffect(() => {
+        if (!locked) return;
+        setIsSettingsOpen(false);
+        setDeleteTargetId(null);
+        setSelection(null);
+        setPromotionSelection(null);
+    }, [locked]);
+    const settingsOpen = isSettingsOpen && !locked;
+    const deleteDialogTargetId = locked ? null : deleteTargetId;
+
     const startFull = (): void => {
+        if (locked) return;
         void analysis.startFull();
     };
     /** 表示中の設定の未解析分を、その設定で解析する。表示中の結果が無ければ全体の解析。 */
     const resumeDisplayLayer = (): void => {
+        if (locked) return;
         if (displayLayerId === null) startFull();
         else void analysis.resumeLayer(displayLayerId);
     };
     const startDeep = (): void => {
+        if (locked) return;
         setDeepNodeId(currentNodeId);
         void analysis.startDeep(currentNodeId);
     };
-    const changeCommentDraft = (nodeId: string, text: string | null): void => {
-        if (text === null) commentDrafts.delete(nodeId);
-        else commentDrafts.set(nodeId, text);
-        const isOver = text !== null && isStudyCommentOverLimit(text);
+    const changeCommentDraft = (nodeId: string, change: StudyCommentDraftChange): void => {
+        if (change.type === "set") {
+            commentDrafts.set(nodeId, { text: change.text, base: change.base });
+        } else if (
+            // 消すのは、持っている下書きが、保存できた内容と同じときだけ。作り直す前のコメント欄の
+            // 保存があとから終わっても、そのあとに書いた新しい下書きは消さない。
+            change.savedText === null ||
+            commentDrafts.get(nodeId)?.text === change.savedText
+        ) {
+            commentDrafts.delete(nodeId);
+        }
+        const held = commentDrafts.get(nodeId);
+        const isOver = held !== undefined && isStudyCommentOverLimit(held.text);
         setOverLimitCommentIds((previous) => {
             if (previous.has(nodeId) === isOver) return previous;
             const next = new Set(previous);
@@ -759,7 +809,7 @@ export function StudyWorkspaceView({
             else next.delete(nodeId);
             return next;
         });
-        onCommentDraftChange?.(nodeId, text);
+        onCommentDraftChange?.(nodeId, change);
     };
     const cancelAnalysis = (): void => {
         void analysis.cancel();
@@ -967,7 +1017,7 @@ export function StudyWorkspaceView({
             value={storedNode?.comment ?? ""}
             onChange={(value) => changeComment(currentNodeId, value)}
             initialDraft={commentDrafts.get(currentNodeId)}
-            onDraftChange={(text) => changeCommentDraft(currentNodeId, text)}
+            onDraftChange={(change) => changeCommentDraft(currentNodeId, change)}
             disabled={locked}
         />
     );
@@ -1002,6 +1052,7 @@ export function StudyWorkspaceView({
                         <TitleInput
                             key={doc.title}
                             title={doc.title}
+                            disabled={locked}
                             onCommit={(value) => void onApplyOps([{ type: "setTitle", value }])}
                         />
                         {settingsButtonLabel ? (
@@ -1009,7 +1060,8 @@ export function StudyWorkspaceView({
                                 type="button"
                                 onClick={() => setIsSettingsOpen(true)}
                                 aria-haspopup="dialog"
-                                className="flex h-10 max-w-[45%] shrink-0 items-center gap-1.5 rounded-md border border-wafuu-border bg-background px-2 text-xs text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                disabled={locked}
+                                className="flex h-10 max-w-[45%] shrink-0 items-center gap-1.5 rounded-md border border-wafuu-border bg-background px-2 text-xs text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
                             >
                                 <SettingsIcon />
                                 <span className="sr-only">解析の設定:</span>
@@ -1019,6 +1071,7 @@ export function StudyWorkspaceView({
                             <StudyIconButton
                                 label="解析の設定"
                                 aria-haspopup="dialog"
+                                disabled={locked}
                                 onClick={() => setIsSettingsOpen(true)}
                             >
                                 <SettingsIcon />
@@ -1038,7 +1091,12 @@ export function StudyWorkspaceView({
                     </div>
                 </header>
 
-                <StudySaveNotice status={saveStatus} onRetry={onRetrySave} onDiscard={onDiscard} />
+                {/* 編集できない間は、再送とノートの破棄も止める（残すのは「ログインし直す」だけ）。 */}
+                <StudySaveNotice
+                    status={saveStatus}
+                    onRetry={locked ? undefined : onRetrySave}
+                    onDiscard={locked ? undefined : onDiscard}
+                />
 
                 {unrestoredCount > 0 && (
                     <output className="block rounded-lg border border-status-warning-border bg-status-warning-bg px-3 py-2 text-sm text-status-warning">
@@ -1176,7 +1234,7 @@ export function StudyWorkspaceView({
             <Notice message={message} onDismiss={() => onMessageChange(null)} />
 
             <StudyAnalysisSettings
-                open={isSettingsOpen}
+                open={settingsOpen}
                 onOpenChange={setIsSettingsOpen}
                 isMobile={isMobile}
                 doc={doc}
@@ -1184,12 +1242,12 @@ export function StudyWorkspaceView({
                 onDisplayLayerChange={onDisplayLayerChange}
                 form={analysis.form}
                 settingsLabel={analysis.settingsLabel}
-                canStart={analysis.mode === null && !analysis.isPreparing}
+                canStart={!locked && analysis.mode === null && !analysis.isPreparing}
                 onStartFull={startFull}
             />
 
             <AlertDialog
-                open={deleteTargetId !== null}
+                open={deleteDialogTargetId !== null}
                 onOpenChange={(open) => {
                     if (!open) setDeleteTargetId(null);
                 }}
@@ -1315,6 +1373,7 @@ export function StudyWorkspace({
         defaultNnuePresetKey,
         onApplyOps,
         onFlush,
+        locked,
         // 全体の解析を始めたら、その設定の結果を表示に切り替える。1 局面だけの深い解析では
         // 切り替えない（評価値グラフと注目局面は全体の解析の結果のまま見せる）。
         onLayerStarted: (layerId, mode) => {
@@ -1363,13 +1422,6 @@ export function StudyWorkspace({
             onViewChange?.({ selectedLayerId: previous.id, currentNodeId: viewNodeIdRef.current });
         }
     }, [revertLayerId, controller.mode, doc, displayLayerId, onViewChange]);
-
-    // 編集できなくなったら（ログインが切れたら）、進行中の解析を止める（結果を保存できないため）。
-    const cancelAnalysisRef = useRef(controller.cancel);
-    cancelAnalysisRef.current = controller.cancel;
-    useEffect(() => {
-        if (locked) void cancelAnalysisRef.current();
-    }, [locked]);
 
     const analysis: StudyAnalysisController = {
         ...controller,

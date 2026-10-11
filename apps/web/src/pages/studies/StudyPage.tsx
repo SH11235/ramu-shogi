@@ -11,7 +11,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { Section } from "../../components/Section";
 import { dispatchAuthSessionSyncEvent, useAuthSession } from "../../hooks/useAuthSession";
 import { resolveBuiltinEngineIdentity } from "../../lib/builtinEngine";
-import { readStudyCommentDrafts, writeStudyCommentDraft } from "../../lib/studyDrafts";
+import { applyStudyCommentDraftChange, readStudyCommentDrafts } from "../../lib/studyDrafts";
 import { ensureStudySession, getStudySync } from "../../lib/studySync";
 import { createWebWasmEngineClient } from "../../platform/wasm-engine-client";
 
@@ -225,7 +225,9 @@ export default function StudyPage(): ReactElement {
                 // 前回、保存できないまま残っていたコメントは、その手のコメント欄に戻す。
                 // 保存できる長さの下書き（ログインが切れて保存できなかった入力）があれば、その手を
                 // 開く（開けば自動で保存される）。長すぎる下書きは、棋譜の印で知らせる。
-                const drafts = readStudyCommentDrafts(targetId, owner);
+                const drafts: StudyCommentDraft[] = readStudyCommentDrafts(targetId, owner).map(
+                    ({ nodeId, text, base }) => ({ nodeId, text, base }),
+                );
                 const resumable = [...drafts]
                     .reverse()
                     .find((draft) => fitsCommentLimit(draft.text));
@@ -525,8 +527,8 @@ export default function StudyPage(): ReactElement {
                         originLink={renderOriginLink(state.doc.origin)}
                         locked={state.locked}
                         initialCommentDrafts={state.drafts}
-                        onCommentDraftChange={(nodeId, text) =>
-                            writeStudyCommentDraft(studyId, state.ownerId, nodeId, text)
+                        onCommentDraftChange={(nodeId, change) =>
+                            applyStudyCommentDraftChange(studyId, state.ownerId, nodeId, change)
                         }
                         initialView={state.view}
                         onViewChange={(view) => {

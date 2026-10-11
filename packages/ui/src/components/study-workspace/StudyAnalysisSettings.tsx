@@ -9,6 +9,7 @@
 import type { StudyDocument } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
+import { useId } from "react";
 import { Button } from "../button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../dialog";
 import { NativeSelect } from "../native-select";
@@ -191,6 +192,7 @@ export function StudyAnalysisSettings({
     onOpenChange,
     ...props
 }: StudyAnalysisSettingsProps): ReactElement {
+    const descriptionId = useId();
     if (props.isMobile) {
         return (
             <BottomSheet
@@ -206,11 +208,14 @@ export function StudyAnalysisSettings({
     }
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="w-[min(440px,calc(100%-24px))]">
+            <DialogContent
+                className="w-[min(440px,calc(100%-24px))]"
+                aria-describedby={descriptionId}
+            >
                 <div className="flex flex-col gap-4">
                     <DialogHeader>
                         <DialogTitle>解析の設定</DialogTitle>
-                        <DialogDescription>
+                        <DialogDescription id={descriptionId}>
                             どの AI で、どれくらいの時間をかけて解析するかを決めます。
                         </DialogDescription>
                     </DialogHeader>
