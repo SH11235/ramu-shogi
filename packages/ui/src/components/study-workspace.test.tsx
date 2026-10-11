@@ -1,4 +1,12 @@
-import { applyStudyOps, type StudyDocument, type StudyOp, studyChildNodeId } from "@shogi/app-core";
+import {
+    applyStudyOps,
+    buildStudyLayerSpec,
+    type StudyDocument,
+    type StudyOp,
+    type StudyScore,
+    studyChildNodeId,
+    studyLayerId,
+} from "@shogi/app-core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -31,6 +39,7 @@ const createAnalysis = (
     settingsLabel: "RAMU・1 秒",
     fullTargetCount: 5,
     startFull: vi.fn(async () => {}),
+    resumeLayer: vi.fn(async () => {}),
     startDeep: vi.fn(async () => {}),
     cancel: vi.fn(async () => {}),
     form: {
@@ -57,8 +66,11 @@ interface HarnessProps {
     /** 保存層が操作を受け付けなかった場合の模擬（文書を変えず、理由を通知する）。 */
     rejectOps?: boolean;
     locked?: boolean;
-    initialCommentDraft?: { nodeId: string; text: string };
+    initialCommentDrafts?: { nodeId: string; text: string }[];
     onCommentDraftChange?: (nodeId: string, text: string | null) => void;
+    /** 最初に表示する解析の設定（省略時は、結果の最も多いもの）。 */
+    initialDisplayLayerId?: string;
+    deepLayerId?: string | null;
 }
 
 /** 呼び出し側（ページ）の代わりに、操作を文書へ適用して画面に渡し直す。 */
@@ -73,12 +85,17 @@ function Harness({
     fetchLegalMoves,
     rejectOps = false,
     locked,
-    initialCommentDraft,
+    initialCommentDrafts,
     onCommentDraftChange,
+    initialDisplayLayerId,
+    deepLayerId,
 }: HarnessProps) {
     const [doc, setDoc] = useState(initialDoc);
     const [message, setMessage] = useState<Message | null>(null);
-    const displayLayerId = chooseStudyDisplayLayer(doc.layers, null);
+    const [preferredLayerId, setPreferredLayerId] = useState<string | null>(
+        initialDisplayLayerId ?? null,
+    );
+    const displayLayerId = chooseStudyDisplayLayer(doc.layers, preferredLayerId);
     const { tree } = buildStudyViewTree(doc, displayLayerId);
     return (
         <StudyWorkspaceView
@@ -99,10 +116,11 @@ function Harness({
             onDiscard={onDiscard}
             fetchLegalMoves={fetchLegalMoves}
             locked={locked}
-            initialCommentDraft={initialCommentDraft}
+            initialCommentDrafts={initialCommentDrafts}
             onCommentDraftChange={onCommentDraftChange}
             displayLayerId={displayLayerId}
-            onDisplayLayerChange={() => {}}
+            onDisplayLayerChange={setPreferredLayerId}
+            deepLayerId={deepLayerId}
             analysis={analysis}
             message={message}
             onMessageChange={setMessage}
@@ -362,6 +380,257 @@ describe("StudyWorkspaceView", () => {
         expect(currentMove()).toContain("☗6六歩(67)");
     });
 
+    describe("同じ AI で設定の違う解析結果が 2 つあるとき", () => {
+        // 表示中の設定（0.5 秒・候補 2）と、同じ AI で時間の長い設定（1 秒・候補 1）。
+        const FAST_SPEC = buildStudyLayerSpec({
+            engine: { kind: "wasm", name: "rshogi", version: "0.8.1" },
+            appVersion: "0.0.0",
+            nnue: { sha256: "a".repeat(64), fvScale: 24 },
+            limits: { timeMs: 500, depth: 15 },
+            multiPv: 2,
+        });
+        const FAST_ID = studyLayerId(FAST_SPEC);
+        const candidate = (rank: number, score: StudyScore, pv: string[]) => ({
+            rank,
+            score,
+            depth: 9,
+            seldepth: null,
+            pv,
+        });
+        /** 0.5 秒の設定の結果（候補 2 つ）を入れる操作。 */
+        const putFast = (
+            nodeId: string,
+            first: [StudyScore, string[]],
+            second: [StudyScore, string[]],
+        ): StudyOp => ({
+            type: "putAnalysis",
+            layerId: FAST_ID,
+            nodeId,
+            result: {
+                runId: "run-fast",
+                completion: "completed",
+                depth: 9,
+                nodes: null,
+                timeMs: null,
+                execution: { threads: null, hashMb: null, parallelWorkers: null },
+                candidates: [candidate(1, ...first), candidate(2, ...second)],
+            },
+        });
+        /**
+         * 1 秒の設定（候補 1）で全体を解析したあと、0.5 秒の設定（候補 2）で全体を解析した文書。
+         * 2 つの設定で、各局面の最善手と評価値が違う。
+         */
+        const createTwoLayerStudy = () => {
+            // 1 秒の設定: 3 手目の 1 手前の局面の最善は ☗5六歩、という結果。
+            const { doc, ids } = createTestStudy([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
+            const withSlowPv = applyStudyOps(doc, [
+                putScoreOp(ids[1], cp(45), { depth: 20, pv: ["8c8d"] }),
+                putScoreOp(ids[2], cp(-20), { depth: 20, pv: ["5g5f", "8c8d"] }),
+                putScoreOp(ids[3], cp(-700), { depth: 20, pv: ["4c4d"] }),
+            ]);
+            // 0.5 秒の設定: 同じ局面の最善は ☗6六歩（次点 ☗4六歩）。
+            const twoLayers = applyStudyOps(withSlowPv, [
+                { type: "ensureLayer", spec: FAST_SPEC, display: { label: "RAMU・0.5 秒" } },
+                putFast(ids[0], [cp(35), ["7g7f"]], [cp(10), ["2g2f"]]),
+                putFast(ids[1], [cp(50), ["3c3d"]], [cp(60), ["8c8d"]]),
+                putFast(ids[2], [cp(240), ["6g6f", "8c8d"]], [cp(120), ["4g4f"]]),
+                putFast(ids[3], [cp(-800), ["8c8d"]], [cp(-600), ["4c4d"]]),
+                putFast(ids[4], [cp(-810), ["2f2e"]], [cp(-900), ["6g6f"]]),
+            ]);
+            return { doc: twoLayers, ids };
+        };
+
+        it("注目局面の行の「最善」と、候補手の「この手の代わりに」の 1 位が、全行で一致する", () => {
+            const { doc } = createTwoLayerStudy();
+            render(<Harness initialDoc={doc} initialDisplayLayerId={FAST_ID} />);
+
+            const rows = within(highlights())
+                .getAllByRole("button")
+                .filter((row) => /手目/.test(row.textContent ?? ""));
+            expect(rows.length).toBeGreaterThan(0);
+            let compared = 0;
+            for (const row of rows) {
+                const best = /最善\s*(\S+)/.exec(row.textContent ?? "")?.[1];
+                if (best === undefined) continue;
+                fireEvent.click(row);
+                const candidates = screen.getByRole("region", { name: "候補手" });
+                const heading = within(candidates).getByRole("heading", {
+                    name: "この手の代わりに（1 手前の局面の候補）",
+                });
+                const group = heading.closest("div")?.parentElement as HTMLElement;
+                const items = within(group).getAllByRole("listitem");
+                // 1 位が行の「最善」と同じ手で、候補の数は表示中の設定（候補 2）どおり。
+                expect(items[0].textContent).toContain(best);
+                expect(items).toHaveLength(2);
+                // どの設定の結果かは、表示中の設定の名前で出す（別の設定の名前を出さない）。
+                expect(group.textContent).toContain("RAMU・0.5 秒");
+                expect(group.textContent).not.toContain("RAMU・1 秒");
+                compared++;
+            }
+            expect(compared).toBeGreaterThan(0);
+        });
+
+        it("この局面の候補手は表示中の設定の結果で、より深い結果は別の段に添える", () => {
+            const { doc } = createTwoLayerStudy();
+            render(<Harness initialDoc={doc} initialDisplayLayerId={FAST_ID} />);
+            fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+            fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+
+            const candidates = screen.getByRole("region", { name: "候補手" });
+            // 表示中の設定（0.5 秒・候補 2）の候補手が 2 つ。
+            expect(within(candidates).getByText("☗6六歩(67)")).toBeTruthy();
+            expect(within(candidates).getByText("☗4六歩(47)")).toBeTruthy();
+            expect(candidates.textContent).not.toContain("深く解析した結果");
+            // 1 秒の設定の結果は、差し替えずに「より深い解析」として 1 行で添える。
+            const deeper = within(candidates).getByRole("button", { name: /より深い解析/ });
+            expect(deeper.textContent).toContain("RAMU・1 秒");
+            expect(deeper.textContent).toContain("☗5六歩(57)");
+            expect(deeper.getAttribute("aria-expanded")).toBe("false");
+            // 開くと読み筋を見られ、その設定に表示を切り替えられる。
+            fireEvent.click(deeper);
+            expect(
+                within(candidates).getByRole("button", {
+                    name: "深い解析の候補 1 の読み筋を盤で見る",
+                }),
+            ).toBeTruthy();
+            fireEvent.click(
+                within(candidates).getByRole("button", {
+                    name: "表示を「RAMU・1 秒」の結果に切り替える",
+                }),
+            );
+            // 切り替えたあとは、1 秒の設定の結果が「この局面の候補手」になる。
+            expect(within(candidates).queryByRole("button", { name: /より深い解析/ })).toBeNull();
+            expect(within(candidates).getByText("☗5六歩(57)")).toBeTruthy();
+            expect(within(candidates).queryByText("☗4六歩(47)")).toBeNull();
+        });
+
+        it("いま「この局面を深く解析」で得た結果は、その局面を見ている間、開いた状態で目立たせる", () => {
+            const { doc } = createTwoLayerStudy();
+            const analysis = createAnalysis();
+            render(
+                <Harness initialDoc={doc} analysis={analysis} initialDisplayLayerId={FAST_ID} />,
+            );
+            fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+            fireEvent.click(screen.getByRole("button", { name: "この局面を深く解析" }));
+
+            const candidates = screen.getByRole("region", { name: "候補手" });
+            const fresh = within(candidates).getByRole("button", { name: /深く解析した結果/ });
+            expect(fresh.getAttribute("aria-expanded")).toBe("true");
+            expect(fresh.textContent).toContain("RAMU・1 秒");
+            // 候補手そのものは、表示中の設定のまま。
+            expect(within(candidates).getByText("☖3四歩(33)")).toBeTruthy();
+
+            // 別の局面へ移って戻ると、ふだんの「より深い解析」（畳んだ状態）に戻る。
+            fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+            fireEvent.click(screen.getByRole("button", { name: "1 手戻る（←）" }));
+            const folded = within(candidates).getByRole("button", { name: /より深い解析/ });
+            expect(folded.getAttribute("aria-expanded")).toBe("false");
+        });
+
+        it("別の AI で深く解析した結果も、押した局面では必ず出す", () => {
+            const { doc, ids } = createTestStudy([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
+            const OTHER_SPEC = buildStudyLayerSpec({
+                engine: { kind: "wasm", name: "rshogi", version: "0.8.1" },
+                appVersion: "0.0.0",
+                nnue: null,
+                limits: { timeMs: 10_000, depth: 64 },
+                multiPv: 3,
+            });
+            const otherId = studyLayerId(OTHER_SPEC);
+            const withOther = applyStudyOps(doc, [
+                {
+                    type: "ensureLayer",
+                    spec: OTHER_SPEC,
+                    display: { label: "簡易AI（駒得）・10 秒" },
+                },
+                putScoreOp(ids[0], cp(5), { layerId: otherId, depth: 30, pv: ["2g2f"] }),
+            ]);
+            render(<Harness initialDoc={withOther} deepLayerId={otherId} />);
+
+            const candidates = screen.getByRole("region", { name: "候補手" });
+            // 押す前は、別の AI の結果は出さない。
+            expect(within(candidates).queryByRole("button", { name: /解析（|結果（/ })).toBeNull();
+            fireEvent.click(screen.getByRole("button", { name: "この局面を深く解析" }));
+            const fresh = within(candidates).getByRole("button", { name: /深く解析した結果/ });
+            expect(fresh.textContent).toContain("簡易AI（駒得）・10 秒");
+            expect(fresh.textContent).toContain("☗2六歩(27)");
+        });
+    });
+
+    it("指した手が 1 手前の局面の 1 位の候補と同じなら、「この手の代わりに」は出さない", () => {
+        const { doc, ids } = createTestStudy([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
+        // 3 手目（☗2六歩）は、1 手前の局面の解析でも 1 位の手。
+        const playedBest = applyStudyOps(doc, [
+            putScoreOp(ids[2], cp(25), { depth: 18, pv: ["2g2f", "8c8d"] }),
+        ]);
+        render(<Harness initialDoc={playedBest} />);
+
+        const item = within(highlights()).getByRole("button", { name: /3手目 ☗2六歩\(27\)/ });
+        // 行には、代わりの最善手も、指した手を最善と呼ぶ文言も出さない。
+        expect(item.textContent).not.toContain("最善");
+        fireEvent.click(item);
+
+        const candidates = screen.getByRole("region", { name: "候補手" });
+        expect(within(candidates).queryByRole("heading", { name: /この手の代わりに/ })).toBeNull();
+        expect(within(candidates).queryByRole("heading", { name: "この局面の候補手" })).toBeNull();
+        expect(
+            within(candidates).getByText(/指した手 ☗2六歩\(27\) は、1 手前の局面の候補の 1/),
+        ).toBeTruthy();
+    });
+
+    it("「残りを解析」は、表示中の設定の未解析分を、その設定で解析する", () => {
+        const { doc } = createTestStudy([cp(0), cp(10), cp(20), null, null]);
+        // 設定の画面には、表示中とは別の設定（簡易AI・0.5 秒）が残っている。
+        const analysis = createAnalysis({ settingsLabel: "簡易AI（駒得）・0.5 秒" });
+        render(<Harness initialDoc={doc} analysis={analysis} />);
+
+        // 文言の設定名と局面数は、表示中の設定のもの。
+        expect(
+            within(highlights()).getByText(/RAMU・1 秒で未解析の局面が 2\s*あります。/),
+        ).toBeTruthy();
+        expect(highlights().textContent).not.toContain("簡易AI");
+        fireEvent.click(within(highlights()).getByRole("button", { name: "残りを解析" }));
+
+        expect(analysis.resumeLayer).toHaveBeenCalledWith(TEST_LAYER_ID);
+        expect(analysis.startFull).not.toHaveBeenCalled();
+    });
+
+    it("長すぎて保存できないコメントを残して手を移ると、知らせて、その手に下書きと印を残す", () => {
+        const { doc, ids } = createTestStudy();
+        const onOps = vi.fn();
+        const onDraft = vi.fn();
+        render(<Harness initialDoc={doc} onOps={onOps} onCommentDraftChange={onDraft} />);
+        const comment = () =>
+            screen.getByRole("textbox", { name: "コメント" }) as HTMLTextAreaElement;
+        const tooLong = "あ".repeat(2000);
+
+        fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+        fireEvent.change(comment(), { target: { value: tooLong } });
+        fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+
+        // 捨てずに知らせる。保存はしていない。
+        expect(screen.getByText(/1手目のコメントは長すぎるため、保存されていません/)).toBeTruthy();
+        expect(onOps).not.toHaveBeenCalled();
+        expect(onDraft).toHaveBeenLastCalledWith(ids[1], tooLong);
+        expect(comment().value).toBe("");
+        // 棋譜のその手に印が付く。
+        expect(
+            within(moveList()).getByRole("img", { name: "コメントが長すぎて保存されていません" }),
+        ).toBeTruthy();
+
+        // その手へ戻ると、入力が残っている。短くすると保存され、印が消える。
+        fireEvent.click(screen.getByRole("button", { name: "1 手戻る（←）" }));
+        expect(comment().value).toBe(tooLong);
+        fireEvent.change(comment(), { target: { value: "短くした" } });
+        fireEvent.blur(comment());
+        expect(onOps).toHaveBeenCalledWith([
+            { type: "setComment", nodeId: ids[1], value: "短くした" },
+        ]);
+        expect(
+            within(moveList()).queryByRole("img", { name: "コメントが長すぎて保存されていません" }),
+        ).toBeNull();
+    });
+
     it("注目局面は手数順が既定で、大きい順に切り替えられる", () => {
         // 1 手目が疑問手、3 手目が悪手（落差は 3 手目の方が大きい）。
         const { doc } = createTestStudy([cp(400), cp(0), cp(0), cp(-900), cp(-880)]);
@@ -512,7 +781,7 @@ describe("StudyWorkspaceView", () => {
                     initialDoc={doc}
                     onOps={onOps}
                     onCommentDraftChange={onDraft}
-                    initialCommentDraft={{ nodeId: ids[0], text: "戻ってきた下書き" }}
+                    initialCommentDrafts={[{ nodeId: ids[0], text: "戻ってきた下書き" }]}
                 />,
             );
 

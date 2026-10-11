@@ -2,7 +2,8 @@
  * いま見ている手のコメント。入力が止まったら自動で保存する。
  *
  * コメントには上限（UTF-8 で 4 KiB）がある。黙って切らず、上限に近づいたら残りを出し、
- * 超えたら保存を止めてその場で知らせる（入力した内容は残す）。
+ * 超えたら保存を止めてその場で知らせる（入力した内容は残す）。上限を超えたまま別の手へ移っても、
+ * 入力は呼び出し側が手ごとに持っておき、その手へ戻ると `initialDraft` で戻る。
  *
  * まだ保存できていない入力（下書き）は `onDraftChange` で呼び出し側に知らせる。保存できない間
  * （セッションが切れた、など）も入力を失わないよう、呼び出し側が別の場所に残せるようにするため。
@@ -36,6 +37,11 @@ const COMMENT_SAVE_DELAY_MS = 700;
 const REMAINING_NOTICE_BYTES = 600;
 
 const utf8Length = (text: string): number => new TextEncoder().encode(text).length;
+
+/** コメントが保存できる長さの上限を超えているか。 */
+export function isStudyCommentOverLimit(text: string): boolean {
+    return utf8Length(text) > STUDY_LIMITS.commentBytes;
+}
 
 /**
  * コメント欄。別の局面へ移るときは `key` を変えて作り直すこと（書きかけは、そのとき保存する）。
@@ -79,7 +85,7 @@ export function StudyCommentBox({
         if (disabledRef.current) return;
         if (draftRef.current === lastSavedRef.current) return;
         // 上限を超えている間は保存しない（入力は残し、下の案内で知らせる）。
-        if (utf8Length(draftRef.current) > STUDY_LIMITS.commentBytes) return;
+        if (isStudyCommentOverLimit(draftRef.current)) return;
         const previous = lastSavedRef.current;
         const attempted = draftRef.current;
         lastSavedRef.current = attempted;

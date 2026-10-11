@@ -20,6 +20,7 @@ import {
 } from "./studies-test-support";
 
 const STUDY_ID = "11111111-1111-4111-8111-111111111111";
+const DRAFTS_KEY = "ramu-study-comment-drafts";
 const OTHER_ID = "22222222-2222-4222-8222-222222222222";
 const navigate = vi.fn(async () => {});
 let currentSync: StudySync;
@@ -32,12 +33,22 @@ vi.mock("@tanstack/react-router", () => ({
     Link: ({ to, children }: { to: string; children: ReactNode }) => <a href={to}>{children}</a>,
     useNavigate: () => navigate,
 }));
+const refreshSession = vi.fn(async () => {});
+let headerLogin: { href: string; onNavigate: () => void } | undefined;
+
 vi.mock("../../hooks/useAuthSession", () => ({
-    useAuthSession: () => ({ ...auth, sessionError: null }),
+    useAuthSession: () => ({ ...auth, sessionError: null, refreshSession }),
     dispatchAuthSessionSyncEvent: vi.fn(),
 }));
-vi.mock("../../components/HeaderNav", () => ({ HeaderNav: () => null }));
-vi.mock("../../components/PageHeader", () => ({ PageHeader: () => null }));
+vi.mock("../../components/HeaderNav", () => ({
+    HeaderNav: (props: { login?: { href: string; onNavigate: () => void } }) => {
+        headerLogin = props.login;
+        return null;
+    },
+}));
+vi.mock("../../components/PageHeader", () => ({
+    PageHeader: ({ right }: { right?: ReactNode }) => <>{right}</>,
+}));
 vi.mock("../../platform/wasm-engine-client", () => ({ createWebWasmEngineClient: vi.fn() }));
 // `lib/studySync`（セッションの伝達・引き継ぎ）は本物を使い、その下の同期エンジンだけを差し替える。
 vi.mock("@shogi/study-client", async (importOriginal) => ({
@@ -74,6 +85,8 @@ const prepareOwnedStudy = async (title: string): Promise<void> => {
 describe("StudyPage", () => {
     beforeEach(() => {
         navigate.mockClear();
+        refreshSession.mockClear();
+        headerLogin = undefined;
         workspaceProps = null;
         currentStudyId = STUDY_ID;
         auth = AUTH_SIGNED_OUT;
@@ -138,8 +151,6 @@ describe("StudyPage", () => {
     });
 
     describe("開いている間にログインが切れたとき", () => {
-        const DRAFTS_KEY = "ramu-study-comment-drafts";
-
         it("「見つかりません」にせず、画面を残して編集を止め、書きかけのコメントを持ち主つきで残す", async () => {
             await prepareOwnedStudy("アカウントのノート");
             auth = authSignedIn("user-1");
@@ -166,8 +177,7 @@ describe("StudyPage", () => {
             // 下書きは、ノートの持ち主と一緒に残っている。
             expect(JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? "{}")[STUDY_ID]).toMatchObject({
                 ownerId: "user-1",
-                nodeId,
-                text: "書きかけのコメント",
+                nodes: [{ nodeId, text: "書きかけのコメント" }],
             });
 
             // 同じアカウントでログインし直すと、そのまま編集できるようになる。
@@ -205,10 +215,7 @@ describe("StudyPage", () => {
             await screen.findByTestId("workspace");
 
             const reopened = workspaceProps as StudyWorkspaceProps | null;
-            expect(reopened?.initialCommentDraft).toEqual({
-                nodeId,
-                text: "戻ってくる下書き",
-            });
+            expect(reopened?.initialCommentDrafts).toEqual([{ nodeId, text: "戻ってくる下書き" }]);
             // 下書きのある手を開く。
             expect(reopened?.initialView?.currentNodeId).toBe(nodeId);
         });
@@ -246,8 +253,54 @@ describe("StudyPage", () => {
             render(<StudyPage />);
             await screen.findByTestId("workspace");
 
-            expect(workspaceProps?.initialCommentDraft ?? null).toBeNull();
+            expect(workspaceProps?.initialCommentDrafts ?? []).toEqual([]);
         });
+    });
+
+    it("長すぎて保存できないコメントは、手ごとに下書きとして残り、開き直すとその手に戻る", async () => {
+        await currentSync.createStudy(createTestDoc(STUDY_ID, "匿名のノート"));
+        const first = render(<StudyPage />);
+        await screen.findByTestId("workspace");
+        const doc = workspaceProps?.doc;
+        const [nodeA, nodeB] = Object.keys(doc?.tree.nodes ?? {}).filter(
+            (id) => id !== doc?.tree.rootId,
+        );
+        const tooLong = "あ".repeat(2000);
+
+        // 手 A に長すぎるコメントを書いたまま、手 B でコメントを書いて保存する。
+        workspaceProps?.onCommentDraftChange?.(nodeA, tooLong);
+        workspaceProps?.onCommentDraftChange?.(nodeB, "保存できるコメント");
+        workspaceProps?.onCommentDraftChange?.(nodeB, null);
+
+        // 手 B を保存しても、手 A の下書きは消えない。
+        expect(JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? "{}")[STUDY_ID].nodes).toEqual([
+            { nodeId: nodeA, text: tooLong },
+        ]);
+
+        first.unmount();
+        workspaceProps = null;
+        render(<StudyPage />);
+        await screen.findByTestId("workspace");
+        const reopened = workspaceProps as StudyWorkspaceProps | null;
+        expect(reopened?.initialCommentDrafts).toEqual([{ nodeId: nodeA, text: tooLong }]);
+        // 長すぎる下書きのために、開く局面は変えない（棋譜の印で知らせる）。
+        expect(reopened?.initialView?.currentNodeId ?? null).toBeNull();
+    });
+
+    it("以前の形（1 つのノートに 1 つの手）で残っていた下書きも戻す", async () => {
+        await currentSync.createStudy(createTestDoc(STUDY_ID, "匿名のノート"));
+        localStorage.setItem(
+            DRAFTS_KEY,
+            JSON.stringify({
+                [STUDY_ID]: { ownerId: null, nodeId: "node", text: "前の形の下書き", at: 1 },
+            }),
+        );
+        render(<StudyPage />);
+        await screen.findByTestId("workspace");
+
+        expect(workspaceProps?.initialCommentDrafts).toEqual([
+            { nodeId: "node", text: "前の形の下書き" },
+        ]);
     });
 
     it("開き直し（ログイン状態の確定）の途中で保存した編集を、古い内容で消さない", async () => {
@@ -435,6 +488,48 @@ describe("StudyPage", () => {
         );
         expect(settled).toHaveBeenCalled();
         vi.unstubAllGlobals();
+    });
+
+    it("見出しの「ログイン」にも戻り先（このノート）を付け、書き込みが終わるのを待ってから進む", async () => {
+        await currentSync.createStudy(createTestDoc(STUDY_ID, "開くノート"));
+        const settled = vi.spyOn(currentSync, "whenLocalWritesSettled");
+        const assign = vi.fn();
+        vi.stubGlobal("location", { ...window.location, assign });
+        render(<StudyPage />);
+        await screen.findByTestId("workspace");
+        settled.mockClear();
+
+        expect(headerLogin?.href).toBe(`/auth?next=%2Fstudies%2F${STUDY_ID}`);
+        headerLogin?.onNavigate();
+
+        await waitFor(() =>
+            expect(assign).toHaveBeenCalledWith(`/auth?next=%2Fstudies%2F${STUDY_ID}`),
+        );
+        expect(settled).toHaveBeenCalled();
+        vi.unstubAllGlobals();
+    });
+
+    it("ログイン状態を確認できなかったあとの「もう一度読み込む」は、確認からやり直す", async () => {
+        // 確認そのものが失敗した（backend に届かない）。ブラウザ内にもノートは無い。
+        auth = { session: null, isLoadingSession: false };
+        const view = render(<StudyPage />);
+
+        expect(
+            await screen.findByRole("heading", { name: "研究ノートを読み込めませんでした" }),
+        ).toBeTruthy();
+        expect(screen.getByText("ログイン状態を確認できませんでした。")).toBeTruthy();
+        expect(refreshSession).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole("button", { name: "もう一度読み込む" }));
+        expect(refreshSession).toHaveBeenCalledTimes(1);
+
+        // 取り直して確認できたら、アカウントのノートが開く。
+        await prepareOwnedStudy("アカウントのノート");
+        resetStudySyncForTest();
+        auth = authSignedIn("user-1");
+        view.rerender(<StudyPage />);
+        await screen.findByTestId("workspace");
+        expect(workspaceText()).toContain("アカウントのノート");
     });
 
     it("どこにも無いノートは「見つかりません」と、未ログインならログインの案内を出す", async () => {

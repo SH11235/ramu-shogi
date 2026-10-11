@@ -317,11 +317,6 @@ export function chooseStudyDisplayLayer(
 export interface StudyPositionResult {
     layer: StudyLayer;
     result: StudyAnalysisResult;
-    /**
-     * 表示中の設定の結果か。false なら、表示中の設定と同じ AI で、探索の上限だけを大きくして
-     * 読んだ結果（「この局面を深く解析」の結果）。
-     */
-    fromDisplayLayer: boolean;
 }
 
 /** 2 つの設定が同じ AI・同じ評価関数か（探索の上限と候補手の数は見ない）。 */
@@ -350,12 +345,11 @@ function hasLargerStudyLimits(other: StudyLayer, base: StudyLayer): boolean {
 }
 
 /**
- * ある局面の候補手として出す解析結果を選ぶ。
+ * ある局面の、表示中の設定の解析結果。
  *
- * 基本は表示中の設定の結果。「この局面を深く解析」の結果は、時間の長い別の設定として保存される
- * ので、**表示中の設定と AI・評価関数が同じで、探索の上限だけが大きい設定**に、より深く読めた
- * 結果があるときだけ、そちらを出す（どの設定の結果かは画面に出す）。別の AI の結果は、その設定を
- * 表示に選んだときだけ出る。
+ * 注目局面の行の「最善」、候補手の「この手の代わりに」、「この局面の候補手」は、どれもこの
+ * 結果から出す（欄によって別の設定の結果が混ざると、行とパネルで手や評価値が食い違う）。
+ * 別の設定の結果は `pickStudyDeeperResult` で、別の段として添える。
  */
 export function pickStudyPositionResult(
     doc: StudyDocument,
@@ -363,17 +357,30 @@ export function pickStudyPositionResult(
     displayLayerId: string | null,
 ): StudyPositionResult | null {
     const display = doc.layers.find((layer) => layer.id === displayLayerId);
+    if (!display || !Object.hasOwn(display.results, nodeId)) return null;
+    return { layer: display, result: display.results[nodeId] };
+}
+
+/**
+ * ある局面の、表示中の設定より深く読んだ解析結果（候補手の欄に、別の段として添える）。
+ *
+ * 「この局面を深く解析」の結果は、時間の長い別の設定として保存される。**表示中の設定と AI・
+ * 評価関数が同じで、探索の上限だけが大きい設定**の結果を対象にし、その中で最も深く読めたものを
+ * 返す。別の AI の結果は、その設定を表示に選んだときだけ出る。
+ */
+export function pickStudyDeeperResult(
+    doc: StudyDocument,
+    nodeId: string,
+    displayLayerId: string | null,
+): StudyPositionResult | null {
+    const display = doc.layers.find((layer) => layer.id === displayLayerId);
     if (!display) return null;
-    let picked: StudyPositionResult | null = Object.hasOwn(display.results, nodeId)
-        ? { layer: display, result: display.results[nodeId], fromDisplayLayer: true }
-        : null;
+    let picked: StudyPositionResult | null = null;
     for (const layer of doc.layers) {
         if (layer.id === display.id || !Object.hasOwn(layer.results, nodeId)) continue;
         if (!isSameStudyAi(layer, display) || !hasLargerStudyLimits(layer, display)) continue;
         const result = layer.results[nodeId];
-        if (picked === null || result.depth > picked.result.depth) {
-            picked = { layer, result, fromDisplayLayer: false };
-        }
+        if (picked === null || result.depth > picked.result.depth) picked = { layer, result };
     }
     return picked;
 }

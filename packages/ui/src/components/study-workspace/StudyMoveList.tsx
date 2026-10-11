@@ -33,6 +33,8 @@ interface StudyMoveListProps {
     currentNodeId: string;
     /** 悪手・疑問手と判定された手（ノード ID → 判定）。 */
     highlightKinds: ReadonlyMap<string, StudyHighlightKind>;
+    /** コメントが長すぎて保存できていない手（ノード ID）。 */
+    unsavedCommentIds?: ReadonlySet<string>;
     onSelect: (nodeId: string) => void;
     /** 本譜の表示に戻す。 */
     onBackToMainLine: () => void;
@@ -73,6 +75,7 @@ export function StudyMoveList({
     line,
     currentNodeId,
     highlightKinds,
+    unsavedCommentIds,
     onSelect,
     onBackToMainLine,
     onRequestDeleteVariation,
@@ -177,7 +180,7 @@ export function StudyMoveList({
                                 aria-current={isCurrent ? "true" : undefined}
                                 className={cn(
                                     rowGrid,
-                                    "w-full rounded-md border border-transparent px-2 py-1 text-left text-sm transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                    "min-h-10 w-full rounded-md border border-transparent px-2 py-1 text-left text-sm transition-colors md:min-h-0 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                     isCurrent && "border-wafuu-border bg-wafuu-kin/20",
                                 )}
                             >
@@ -207,6 +210,15 @@ export function StudyMoveList({
                                                 filled
                                                 className="h-3.5 w-3.5 text-wafuu-kin"
                                             />
+                                        </span>
+                                    )}
+                                    {unsavedCommentIds?.has(nodeId) && (
+                                        <span
+                                            role="img"
+                                            aria-label="コメントが長すぎて保存されていません"
+                                            className="shrink-0 rounded border border-status-warning-border bg-status-warning-bg px-1 text-[10px] font-semibold leading-4 text-status-warning"
+                                        >
+                                            未保存
                                         </span>
                                     )}
                                     {stored && stored.comment !== "" && (

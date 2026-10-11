@@ -193,7 +193,13 @@ export function StudyAnalysisSettings({
 }: StudyAnalysisSettingsProps): ReactElement {
     if (props.isMobile) {
         return (
-            <BottomSheet open={open} onOpenChange={onOpenChange} title="解析の設定" height="auto">
+            <BottomSheet
+                open={open}
+                onOpenChange={onOpenChange}
+                title="解析の設定"
+                description="どの AI で、どれくらいの時間をかけて解析するかを決めます。"
+                height="auto"
+            >
                 <SettingsBody onOpenChange={onOpenChange} {...props} />
             </BottomSheet>
         );

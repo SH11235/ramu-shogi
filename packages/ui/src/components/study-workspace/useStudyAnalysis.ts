@@ -19,6 +19,7 @@ import {
     STUDY_LIMITS,
     type StudyAnalysisCompletion,
     type StudyDocument,
+    type StudyLayer,
     type StudyLayerRef,
     type StudyLayerSpecInput,
     type StudyOp,
@@ -103,6 +104,11 @@ export interface StudyAnalysisController {
     fullTargetCount: number;
     /** いまの設定で、まだ解析していない局面をすべて解析する。 */
     startFull: () => Promise<void>;
+    /**
+     * 既にある解析結果（レイヤー）の続きを、**その結果と同じ設定**で解析する（「残りを解析」）。
+     * 設定の画面に残っている値は使わない。
+     */
+    resumeLayer: (layerId: string) => Promise<void>;
     /** 指定した局面を長い時間で解析する。 */
     startDeep: (nodeId: string) => Promise<void>;
     cancel: () => Promise<void>;
@@ -430,14 +436,28 @@ export function useStudyAnalysis({
         }
     };
 
-    const startFullWith = (selection: NnueSelection): Promise<void> =>
+    /**
+     * 全体を解析する。`target` を渡すと、設定の画面の値ではなく、その解析結果（レイヤー）と
+     * 同じ探索の条件で、その続きを解析する。
+     */
+    const startFullWith = (selection: NnueSelection, target?: StudyLayer): Promise<void> =>
         withPreparation({ kind: "full" }, async (isCurrent) => {
             const limits = {
-                timeMs: settings.batchAnalysisTimeMs,
-                depth: settings.batchAnalysisDepth,
+                timeMs: target?.spec.limits.timeMs ?? settings.batchAnalysisTimeMs,
+                depth: target?.spec.limits.depth ?? settings.batchAnalysisDepth,
             };
-            const prepared = await prepareLayer(selection, limits, fullMultiPv);
-            if (!isCurrent() || !prepared || !canUseLayer(prepared.layer.layerId)) return;
+            const multiPv = target?.spec.multiPv ?? fullMultiPv;
+            const prepared = await prepareLayer(selection, limits, multiPv);
+            if (!isCurrent() || !prepared) return;
+            if (target && prepared.layer.layerId !== target.id) {
+                // AI のファイルや版が違うと、同じ設定の続きにならない。別の結果を黙って作らない。
+                setMessage({
+                    text: `「${target.display.label}」と同じ条件の AI を用意できないため、続きを解析できません。「設定を変える」から、解析する設定を選び直してください。`,
+                    type: "error",
+                });
+                return;
+            }
+            if (!canUseLayer(prepared.layer.layerId)) return;
             const current = latestRef.current;
             const results =
                 current.doc.layers.find((item) => item.id === prepared.layer.layerId)?.results ??
@@ -461,8 +481,31 @@ export function useStudyAnalysis({
                 onLayerStarted(prepared.layer.layerId, "full");
                 return;
             }
-            run(jobs, prepared, fullMultiPv, "full");
+            run(jobs, prepared, multiPv, "full");
         });
+
+    /** 解析結果（レイヤー）を作ったときの AI の選択。このブラウザで分からなければ null。 */
+    const selectionOfLayer = (layer: StudyLayer): NnueSelection | null => {
+        const sha256 = layer.spec.evaluation.nnueSha256;
+        if (sha256 === null) return MATERIAL_SELECTION;
+        if (layer.display.presetKey) return { presetKey: layer.display.presetKey, nnueId: null };
+        const stored = nnueList.find((nnue) => nnue.contentHashSha256.toLowerCase() === sha256);
+        return stored ? { presetKey: null, nnueId: stored.id } : null;
+    };
+
+    const resumeLayer = async (layerId: string): Promise<void> => {
+        const target = latestRef.current.doc.layers.find((layer) => layer.id === layerId);
+        if (!target) return;
+        const selection = selectionOfLayer(target);
+        if (selection === null) {
+            setMessage({
+                text: `「${target.display.label}」で使った AI がこのブラウザに無いため、続きを解析できません。「設定を変える」から、解析する設定を選び直してください。`,
+                type: "error",
+            });
+            return;
+        }
+        await startFullWith(selection, target);
+    };
 
     const startDeepWith = (nodeId: string, selection: NnueSelection): Promise<void> =>
         withPreparation({ kind: "deep", nodeId }, async (isCurrent) => {
@@ -549,6 +592,7 @@ export function useStudyAnalysis({
             settingsLabel,
             fullTargetCount,
             startFull: () => startFullWith(analysisNnueSelection),
+            resumeLayer,
             startDeep: (nodeId) => startDeepWith(nodeId, analysisNnueSelection),
             cancel,
             form: {

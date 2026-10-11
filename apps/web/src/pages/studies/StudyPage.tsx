@@ -1,4 +1,4 @@
-import { applyStudyOps, type StudyDocument, type StudyOp } from "@shogi/app-core";
+import { applyStudyOps, STUDY_LIMITS, type StudyDocument, type StudyOp } from "@shogi/app-core";
 import type { StoredStudy } from "@shogi/study-client";
 import type { EngineOption, StudyCommentDraft, StudyWorkspaceViewState } from "@shogi/ui";
 import { StudyWorkspace } from "@shogi/ui";
@@ -11,7 +11,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { Section } from "../../components/Section";
 import { dispatchAuthSessionSyncEvent, useAuthSession } from "../../hooks/useAuthSession";
 import { resolveBuiltinEngineIdentity } from "../../lib/builtinEngine";
-import { readStudyCommentDraft, writeStudyCommentDraft } from "../../lib/studyDrafts";
+import { readStudyCommentDrafts, writeStudyCommentDraft } from "../../lib/studyDrafts";
 import { ensureStudySession, getStudySync } from "../../lib/studySync";
 import { createWebWasmEngineClient } from "../../platform/wasm-engine-client";
 
@@ -43,8 +43,8 @@ type LoadState =
            * 「見つかりません」にはせず、画面を残して編集だけを止める。
            */
           locked: boolean;
-          /** 前回、保存できないまま残っていたコメントの入力。 */
-          draft: StudyCommentDraft | null;
+          /** 前回、保存できないまま残っていたコメントの入力（手ごと）。 */
+          drafts: StudyCommentDraft[];
       }
     /** ブラウザ内にもクラウドにも無い。 */
     | { status: "not_found" }
@@ -81,6 +81,10 @@ function describeOpError(error: unknown): string {
     const detail = error instanceof Error ? error.message : String(error);
     return `変更を保存できませんでした: ${detail}`;
 }
+
+/** コメントとして保存できる長さか（長すぎる下書きは、短くするまで保存されない）。 */
+const fitsCommentLimit = (text: string): boolean =>
+    new TextEncoder().encode(text).length <= STUDY_LIMITS.commentBytes;
 
 /** ログインへ進む先。ログイン後は元のノートの画面へ戻る。 */
 const loginHref = (studyId: string): string =>
@@ -127,7 +131,7 @@ function StudyStateCard({ title, children }: { title: string; children: ReactNod
 export default function StudyPage(): ReactElement {
     const { studyId } = routeApi.useParams();
     const navigate = useNavigate();
-    const { session, isLoadingSession } = useAuthSession();
+    const { session, isLoadingSession, refreshSession } = useAuthSession();
     const sessionState: SessionState = isLoadingSession
         ? "loading"
         : session === null
@@ -218,21 +222,26 @@ export default function StudyPage(): ReactElement {
                     return { ...previous, doc, ownerId: owner, locked: false };
                 }
                 if (mode === "refresh") return previous;
-                // 前回、保存できないまま残っていたコメントがあれば、その手を開いて戻す。
-                const draft = readStudyCommentDraft(targetId, owner);
+                // 前回、保存できないまま残っていたコメントは、その手のコメント欄に戻す。
+                // 保存できる長さの下書き（ログインが切れて保存できなかった入力）があれば、その手を
+                // 開く（開けば自動で保存される）。長すぎる下書きは、棋譜の印で知らせる。
+                const drafts = readStudyCommentDrafts(targetId, owner);
+                const resumable = [...drafts]
+                    .reverse()
+                    .find((draft) => fitsCommentLimit(draft.text));
                 return {
                     status: "ready",
                     studyId: targetId,
                     doc,
-                    view: draft
+                    view: resumable
                         ? {
                               selectedLayerId: view?.selectedLayerId ?? null,
-                              currentNodeId: draft.nodeId,
+                              currentNodeId: resumable.nodeId,
                           }
                         : view,
                     ownerId: owner,
                     locked: false,
-                    draft,
+                    drafts,
                 };
             });
             return true;
@@ -420,6 +429,15 @@ export default function StudyPage(): ReactElement {
             });
     };
 
+    /**
+     * 読み込めなかったあとの「もう一度読み込む」。ログイン状態の確認からやり直す
+     * （確認そのものが失敗していた場合、ノートだけ読み直しても開けない）。
+     */
+    const handleReload = (): void => {
+        void refreshSession();
+        setReloadCount((count) => count + 1);
+    };
+
     const handleDiscard = (): void => {
         void sync
             .deleteStudy(studyId)
@@ -441,7 +459,8 @@ export default function StudyPage(): ReactElement {
                     { label: "研究ノート", to: "/studies" },
                     { label: title },
                 ]}
-                right={<HeaderNav />}
+                // 見出しの「ログイン」も、保存状態の案内と同じく、ログイン後にこのノートへ戻る。
+                right={<HeaderNav login={{ href: loginHref(studyId), onNavigate: handleLogin }} />}
             />
             {state.status === "loading" && (
                 <PageContainer width="narrow">
@@ -477,7 +496,7 @@ export default function StudyPage(): ReactElement {
                     <p className="text-xs text-muted-foreground">{state.message}</p>
                     <button
                         type="button"
-                        onClick={() => setReloadCount((count) => count + 1)}
+                        onClick={handleReload}
                         className="self-start rounded-md border border-input px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
                     >
                         もう一度読み込む
@@ -505,7 +524,7 @@ export default function StudyPage(): ReactElement {
                         onDiscard={handleDiscard}
                         originLink={renderOriginLink(state.doc.origin)}
                         locked={state.locked}
-                        initialCommentDraft={state.draft}
+                        initialCommentDrafts={state.drafts}
                         onCommentDraftChange={(nodeId, text) =>
                             writeStudyCommentDraft(studyId, state.ownerId, nodeId, text)
                         }

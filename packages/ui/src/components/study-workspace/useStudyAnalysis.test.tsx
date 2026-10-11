@@ -232,4 +232,48 @@ describe("useStudyAnalysis", () => {
 
         expect(result.current.controller.fullTargetCount).toBe(0);
     });
+
+    it("「残りを解析」は、設定の画面の値ではなく、その解析結果と同じ設定で、未解析の局面だけを解析する", async () => {
+        const { doc, ids } = createTestStudy();
+        const engine = createEngineOption();
+        const { result, unmount } = renderHook(() => useHarness(doc, [engine.option]));
+        // 0.5 秒・候補 1 で全体を解析する。
+        await act(async () => {
+            await result.current.controller.startFull();
+        });
+        await waitFor(() => expect(result.current.controller.mode).toBeNull());
+        const layer = result.current.doc.layers[0];
+        expect(layer.spec.limits.timeMs).toBe(500);
+        expect(layer.spec.multiPv).toBe(1);
+        const analyzed = result.current.doc;
+        const searchesBefore = engine.searches();
+        unmount();
+
+        // 手を足して未解析の局面を 2 つ作り、設定の画面では別の設定（3 秒・候補 3）にしておく。
+        localStorage.setItem(
+            "shogi-analysis-settings",
+            JSON.stringify({
+                parallelWorkers: 2,
+                batchAnalysisTimeMs: 3000,
+                batchAnalysisDepth: 15,
+                multiPv: 3,
+            }),
+        );
+        const extended = applyStudyOps(analyzed, [
+            { type: "addMoves", parentId: ids[4], moves: ["2f2e", "8d8e"] },
+        ]);
+        const { result: resumed } = renderHook(() => useHarness(extended, [engine.option]));
+        expect(resumed.current.controller.settingsLabel).toBe("簡易AI（駒得）・3 秒");
+
+        await act(async () => {
+            await resumed.current.controller.resumeLayer(layer.id);
+        });
+        await waitFor(() => expect(resumed.current.controller.mode).toBeNull());
+
+        // 新しい設定の結果は作らず、同じ設定（0.5 秒・候補 1）の結果に、足した 2 局面だけが増える。
+        expect(engine.searches() - searchesBefore).toBe(2);
+        expect(resumed.current.doc.layers.map((item) => item.id)).toEqual([layer.id]);
+        expect(Object.keys(resumed.current.doc.layers[0].results)).toHaveLength(7);
+        expect(resumed.current.startedLayers).toEqual([`full:${layer.id}`]);
+    });
 });

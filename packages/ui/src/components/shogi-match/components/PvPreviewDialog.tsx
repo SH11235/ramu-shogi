@@ -8,7 +8,7 @@ import type { BoardState, PositionState, Square } from "@shogi/app-core";
 import { applyMoveWithState, boardToMatrix } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../dialog";
 import type { ShogiBoardCell } from "../../shogi-board";
 import { ShogiBoard } from "../../shogi-board";
 import type { SquareNotation } from "../types";
@@ -33,6 +33,8 @@ interface PvPreviewDialogProps {
     squareNotation?: SquareNotation;
     /** 盤外ラベル表示 */
     showBoardLabels?: boolean;
+    /** 読み上げ用の説明（画面には出さない）。渡したときだけ付ける。 */
+    description?: string;
 }
 
 function boardToGrid(board: BoardState): ShogiBoardCell[][] {
@@ -60,6 +62,7 @@ export function PvPreviewDialog({
     evalMate,
     squareNotation = "none",
     showBoardLabels = false,
+    description,
 }: PvPreviewDialogProps): ReactElement {
     // 現在のプレビュー位置（0 = 開始局面、1 = PVの1手目後、...）
     const [previewIndex, setPreviewIndex] = useState(0);
@@ -172,6 +175,9 @@ export function PvPreviewDialog({
                             </span>
                         )}
                     </DialogTitle>
+                    {description !== undefined && (
+                        <DialogDescription className="sr-only">{description}</DialogDescription>
+                    )}
                 </DialogHeader>
                 {/* 右上の閉じるボタン */}
                 <button

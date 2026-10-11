@@ -30,11 +30,15 @@ interface StudyHighlightsPanelProps {
     settingsLabel: string;
     /** いまの設定で全体を解析したときに、実際に解析する局面の数。 */
     fullTargetCount: number;
+    /** 表示中の解析の設定の表示名（例: 「RAMU・1 秒」）。結果が無ければ null。 */
+    displayLabel: string | null;
     analysisMode: "full" | "deep" | null;
     isPreparing: boolean;
     progress: { completed: number; total: number } | null;
     onSelect: (nodeId: string) => void;
     onStartFull: () => void;
+    /** 表示中の設定で、まだ解析していない局面を解析する（「残りを解析」）。 */
+    onResume: () => void;
     onCancel: () => void;
     /** 解析の設定を開く。 */
     onOpenSettings: () => void;
@@ -91,11 +95,13 @@ export function StudyHighlightsPanel({
     totalCount,
     settingsLabel,
     fullTargetCount,
+    displayLabel,
     analysisMode,
     isPreparing,
     progress,
     onSelect,
     onStartFull,
+    onResume,
     onCancel,
     onOpenSettings,
     hideHeading = false,
@@ -221,23 +227,6 @@ export function StudyHighlightsPanel({
                 </div>
             )}
 
-            {!needsFullAnalysis && !isRunningFull && unanalyzedCount > 0 && (
-                <div className="flex items-center justify-between gap-3 rounded-lg bg-wafuu-washi px-3 py-2">
-                    <p className="text-xs text-muted-foreground">
-                        まだ解析していない局面が {unanalyzedCount} あります。
-                    </p>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={onStartFull}
-                        disabled={isPreparing || analysisMode !== null}
-                    >
-                        残りを解析
-                    </Button>
-                </div>
-            )}
-
             {ordered.length > 0 ? (
                 <ol className="flex min-h-0 flex-col gap-0.5 overflow-y-auto overscroll-contain">
                     {ordered.map((highlight) => {
@@ -311,6 +300,24 @@ export function StudyHighlightsPanel({
                         悪手・疑問手は見つかりませんでした。気になる手にしおりやコメントを付けると、ここに並びます。
                     </p>
                 )
+            )}
+
+            {/* 一覧の行数を圧迫しないよう、一覧の下に 1 行で出す。 */}
+            {!needsFullAnalysis && !isRunningFull && unanalyzedCount > 0 && (
+                <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border pt-2">
+                    <p className="min-w-0 text-xs text-muted-foreground">
+                        {displayLabel ? `${displayLabel}で` : ""}未解析の局面が {unanalyzedCount}{" "}
+                        あります。
+                    </p>
+                    <button
+                        type="button"
+                        onClick={onResume}
+                        disabled={isPreparing || analysisMode !== null}
+                        className="min-h-10 shrink-0 rounded-md border border-input bg-background px-3 text-xs font-medium text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 md:min-h-8"
+                    >
+                        残りを解析
+                    </button>
+                </div>
             )}
         </section>
     );

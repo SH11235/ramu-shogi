@@ -62,7 +62,7 @@ import { LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
 import { StudyAnalysisSettings } from "./study-workspace/StudyAnalysisSettings";
 import { StudyCandidatesPanel, type StudyPvRequest } from "./study-workspace/StudyCandidatesPanel";
-import { StudyCommentBox } from "./study-workspace/StudyCommentBox";
+import { isStudyCommentOverLimit, StudyCommentBox } from "./study-workspace/StudyCommentBox";
 import { StudyHighlightsPanel } from "./study-workspace/StudyHighlightsPanel";
 import { StudyIconButton } from "./study-workspace/StudyIconButton";
 import {
@@ -87,6 +87,7 @@ import {
     chooseStudyDisplayLayer,
     countStudyLayerResults,
     countStudyUnanalyzed,
+    pickStudyDeeperResult,
     pickStudyPositionResult,
     resolveStudyLine,
     type StudyStructureTree,
@@ -119,7 +120,7 @@ const DISPLAY_SETTINGS_KEY = "shogi-display-settings";
 const GRAPH_AXIS_CAP = 3000;
 const GRAPH_MIN_SCALE = 1000;
 
-/** 画面下の通知を出しておく時間（ミリ秒）。エラーは読む時間を長めに取る。 */
+/** 通知を出しておく時間（ミリ秒）。エラーは読む時間を長めに取る。 */
 const NOTICE_DURATION_MS = { error: 9000, warning: 7000, success: 4000 } as const;
 
 type FetchLegalMoves = (
@@ -152,8 +153,11 @@ interface StudyWorkspaceCommonProps {
      * 画面は残し、操作を止めて、ログインし直す案内を出す。書きかけのコメントは消さない。
      */
     locked?: boolean;
-    /** 最初に入れておくコメントの下書き（前回、保存できないまま残っていた入力）。 */
-    initialCommentDraft?: StudyCommentDraft | null;
+    /**
+     * 最初に入れておくコメントの下書き（前回、保存できないまま残っていた入力）。手ごとに 1 つ。
+     * その手を開いたときにコメント欄へ戻す。
+     */
+    initialCommentDrafts?: readonly StudyCommentDraft[] | null;
     /** まだ保存できていないコメントの入力が変わった（保存できたら `text` は null）。 */
     onCommentDraftChange?: (nodeId: string, text: string | null) => void;
 }
@@ -174,13 +178,15 @@ interface StudyWorkspaceViewProps extends StudyWorkspaceCommonProps {
     displayLayerId: string | null;
     onDisplayLayerChange: (layerId: string) => void;
     analysis: StudyAnalysisController;
-    /** 画面下に出す通知（操作の結果・エラー）。 */
+    /** 画面の上に重ねて出す通知（操作の結果・エラー）。 */
     message: Message | null;
     onMessageChange: (message: Message | null) => void;
     /** 最初に開く局面（前回見ていた局面）。 */
     initialNodeId?: string | null;
     /** 見ている局面が変わった。 */
     onCurrentNodeChange?: (nodeId: string) => void;
+    /** 直近の「この局面を深く解析」で使った解析の設定（レイヤー）。 */
+    deepLayerId?: string | null;
 }
 
 type MobileTab = "highlights" | "moves" | "candidates";
@@ -302,25 +308,20 @@ function NavBar({
 }
 
 /**
- * 画面下の通知。レイアウトを動かさないよう、固定した位置に重ねて出す。
- * `raised` は、スマートフォンで下端に固定した操作があるとき、その上に出すための指定。
+ * 通知。レイアウトを動かさないよう、固定した位置に重ねて出す。
+ *
+ * 画面の上（ページの見出しのすぐ下）に出す。下に出すと、スマートフォンでは局面の移動ボタンや
+ * 下端に固定した操作に、PC ではコメント欄に重なるため。
  */
 function Notice({
     message,
-    raised,
     onDismiss,
 }: {
     message: Message | null;
-    raised: boolean;
     onDismiss: () => void;
 }): ReactElement {
     return (
-        <div
-            className={cn(
-                "pointer-events-none fixed inset-x-0 z-40 flex justify-center px-3",
-                raised ? "bottom-20" : "bottom-4",
-            )}
-        >
+        <div className="pointer-events-none fixed inset-x-0 top-14 z-40 flex justify-center px-3">
             {message && (
                 <div
                     role={message.type === "error" ? "alert" : "status"}
@@ -360,7 +361,7 @@ export function StudyWorkspaceView({
     originLink,
     fetchLegalMoves,
     locked = false,
-    initialCommentDraft,
+    initialCommentDrafts,
     onCommentDraftChange,
     displayLayerId,
     onDisplayLayerChange,
@@ -369,6 +370,7 @@ export function StudyWorkspaceView({
     onMessageChange,
     initialNodeId,
     onCurrentNodeChange,
+    deepLayerId = null,
 }: StudyWorkspaceViewProps): ReactElement {
     const isMobile = useIsMobile();
     // 768〜1023px（タブレットの縦持ち）: 盤を小さくして 2 列にする。
@@ -391,10 +393,26 @@ export function StudyWorkspaceView({
     const [mobileTab, setMobileTab] = useState<MobileTab>("highlights");
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
-    // 復元する下書き。コメント欄に渡したら役目は終わり（以後はコメント欄が持つ）。
-    const [pendingDraft, setPendingDraft] = useState<StudyCommentDraft | null>(
-        initialCommentDraft ?? null,
+    // まだ保存できていないコメントの入力（手ごと）。コメント欄は手を移るたびに作り直すので、
+    // 上限を超えていて保存できない入力も、ここに残しておき、その手へ戻ったときに戻す。
+    const commentDraftsRef = useRef<Map<string, string> | null>(null);
+    if (!commentDraftsRef.current) {
+        commentDraftsRef.current = new Map(
+            (initialCommentDrafts ?? []).map((draft) => [draft.nodeId, draft.text]),
+        );
+    }
+    const commentDrafts = commentDraftsRef.current;
+    // コメントが長すぎて保存できていない手（棋譜に印を付ける）。
+    const [overLimitCommentIds, setOverLimitCommentIds] = useState<ReadonlySet<string>>(
+        () =>
+            new Set(
+                (initialCommentDrafts ?? [])
+                    .filter((draft) => isStudyCommentOverLimit(draft.text))
+                    .map((draft) => draft.nodeId),
+            ),
     );
+    // 「この局面を深く解析」を押した局面。その局面を見ている間、結果を開いた状態で目立たせる。
+    const [deepNodeId, setDeepNodeId] = useState<string | null>(null);
     const [pvPreview, setPvPreview] = useState<{
         pv: string[];
         startPosition: PositionState;
@@ -430,6 +448,17 @@ export function StudyWorkspaceView({
     }
 
     const navigateTo = (nodeId: string, options?: { resetLine?: boolean }): void => {
+        if (nodeId !== currentNodeId) {
+            setDeepNodeId(null);
+            // 長すぎて保存できていないコメントを残して移るときは、黙って移らず知らせる。
+            const leaving = commentDrafts.get(currentNodeId);
+            if (leaving !== undefined && isStudyCommentOverLimit(leaving)) {
+                onMessageChange({
+                    text: `${currentNode.ply === 0 ? "開始局面" : `${currentNode.ply}手目`}のコメントは長すぎるため、保存されていません。入力はその手に残してあります（棋譜に「未保存」の印が付きます）。`,
+                    type: "warning",
+                });
+            }
+        }
         setLineState(options?.resetLine ? [] : line);
         setFallbackNodeId(currentNodeId);
         setRequestedNodeId(nodeId);
@@ -546,21 +575,38 @@ export function StudyWorkspaceView({
     const analyzedCount = displayLayer === undefined ? 0 : totalCount - unanalyzedCount;
     const hasResults = analyzedCount > 0;
     const needsFullAnalysis = analysis.mode !== "full" && analyzedCount * 2 < totalCount;
+    // 候補手・「この手の代わりに」・注目局面の行の「最善」は、どれも表示中の設定の結果から出す
+    // （欄によって別の設定の結果が混ざると、行とパネルで手や評価値が食い違う）。
     const positionResult = pickStudyPositionResult(doc, currentNodeId, displayLayerId);
+
+    // 表示中の設定より深く読んだ結果は、候補手を差し替えず、別の段として添える。
+    // 利用者がいま「この局面を深く解析」で得た結果は、AI が表示中の設定と違っていても必ず出す
+    // （押したのに結果が見当たらない、にならないように）。
+    const isDeepHere = deepNodeId === currentNodeId;
+    const deepLayer =
+        isDeepHere && deepLayerId !== null && deepLayerId !== displayLayerId
+            ? doc.layers.find((layer) => layer.id === deepLayerId)
+            : undefined;
+    const freshDeepResult =
+        deepLayer && Object.hasOwn(deepLayer.results, currentNodeId)
+            ? { layer: deepLayer, result: deepLayer.results[currentNodeId] }
+            : null;
+    const deeperResult =
+        freshDeepResult ?? pickStudyDeeperResult(doc, currentNodeId, displayLayerId);
+    const deeperIsFresh =
+        isDeepHere && deeperResult !== null && (freshDeepResult !== null || deepLayerId === null);
 
     // 悪手・疑問手の「代わりの最善手」（1 手前の局面の、表示中の設定の 1 位の候補の初手）。
     const bestMoveLabels = new Map<string, string>();
     for (const highlight of highlights) {
-        if (highlight.kind === null || highlight.parentId === null || !displayLayer) continue;
-        const parentNode = tree.nodes.get(highlight.parentId);
-        const parentResult = Object.hasOwn(displayLayer.results, highlight.parentId)
-            ? displayLayer.results[highlight.parentId]
-            : undefined;
-        if (!parentNode || !parentResult) continue;
-        const best = studyBestCandidate(parentResult);
+        if (highlight.kind === null || highlight.parentId === null) continue;
+        const parent = tree.nodes.get(highlight.parentId);
+        const result = pickStudyPositionResult(doc, highlight.parentId, displayLayerId);
+        if (!parent || !result) continue;
+        const best = studyBestCandidate(result.result);
         // 指した手が 1 位の候補と同じなら、代わりの手は無い。
         if (!best || best.pv[0] === highlight.usiMove) continue;
-        const label = studyFirstMoveLabel(parentNode, best.pv);
+        const label = studyFirstMoveLabel(parent, best.pv);
         if (label) bestMoveLabels.set(highlight.nodeId, label);
     }
 
@@ -571,8 +617,13 @@ export function StudyWorkspaceView({
         currentKind && parentNode
             ? pickStudyPositionResult(doc, parentNode.id, displayLayerId)
             : null;
+    // 指した手が 1 手前の局面の 1 位の候補と同じなら、代わりの手は無い（判定は相手の応手のあとの
+    // 評価値との落差なので、1 位の手でも悪手・疑問手になることがある）。
+    const playedIsBest =
+        parentResult !== null &&
+        studyBestCandidate(parentResult.result)?.pv[0] === currentNode.usiMove;
     const alternative =
-        currentKind && parentNode && parentResult
+        currentKind && parentNode && parentResult && !playedIsBest
             ? {
                   node: parentNode,
                   result: parentResult,
@@ -688,6 +739,28 @@ export function StudyWorkspaceView({
     const startFull = (): void => {
         void analysis.startFull();
     };
+    /** 表示中の設定の未解析分を、その設定で解析する。表示中の結果が無ければ全体の解析。 */
+    const resumeDisplayLayer = (): void => {
+        if (displayLayerId === null) startFull();
+        else void analysis.resumeLayer(displayLayerId);
+    };
+    const startDeep = (): void => {
+        setDeepNodeId(currentNodeId);
+        void analysis.startDeep(currentNodeId);
+    };
+    const changeCommentDraft = (nodeId: string, text: string | null): void => {
+        if (text === null) commentDrafts.delete(nodeId);
+        else commentDrafts.set(nodeId, text);
+        const isOver = text !== null && isStudyCommentOverLimit(text);
+        setOverLimitCommentIds((previous) => {
+            if (previous.has(nodeId) === isOver) return previous;
+            const next = new Set(previous);
+            if (isOver) next.add(nodeId);
+            else next.delete(nodeId);
+            return next;
+        });
+        onCommentDraftChange?.(nodeId, text);
+    };
     const cancelAnalysis = (): void => {
         void analysis.cancel();
     };
@@ -719,8 +792,9 @@ export function StudyWorkspaceView({
     const playersLabel = studyPlayersLabel(doc.meta);
     const settingsButtonLabel =
         doc.layers.length > 1 && displayLayer ? displayLayer.display.label : null;
-    // スマートフォンでは、未解析のあいだ「全体を解析」を画面の下端に固定して出す
-    // （盤面が先に来るので、そのままでは最初の画面に入らない）。
+    // スマートフォンでは、未解析のあいだ「全体を解析」を盤のすぐ下（切り替えタブの上）に出す。
+    // 画面が低くてそこまで入らないときは、画面の下端に貼り付く（`sticky`）。下端に固定して
+    // 重ねる形（`fixed`）にはしない（切り替えタブや本文の末尾に、常に重なってしまうため）。
     const showsFixedStart = isMobile && needsFullAnalysis && analysis.mode === null;
 
     const boardStatus = (
@@ -801,16 +875,19 @@ export function StudyWorkspaceView({
             totalCount={totalCount}
             settingsLabel={analysis.settingsLabel}
             fullTargetCount={analysis.fullTargetCount}
+            displayLabel={displayLayer?.display.label ?? null}
             analysisMode={analysis.mode}
             isPreparing={analysis.isPreparing}
             progress={analysis.progress}
             onSelect={selectHighlight}
             onStartFull={startFull}
+            onResume={resumeDisplayLayer}
             onCancel={cancelAnalysis}
             onOpenSettings={() => setIsSettingsOpen(true)}
             hideHeading={isMobile}
             hideStartButton={showsFixedStart}
-            className={isMobile ? "max-h-[70vh]" : "max-h-[17rem]"}
+            // 主役なので、PC では画面の高さに合わせて伸ばす（下に候補手の欄が見える分は残す）。
+            className={isMobile ? "max-h-[70vh]" : "max-h-[max(17rem,calc(100dvh-24rem))]"}
         />
     );
     const graphPanel = (
@@ -856,6 +933,7 @@ export function StudyWorkspaceView({
             line={line}
             currentNodeId={currentNodeId}
             highlightKinds={highlightKinds}
+            unsavedCommentIds={overLimitCommentIds}
             onSelect={(nodeId) => navigateTo(nodeId)}
             onBackToMainLine={backToMainLine}
             onRequestDeleteVariation={setDeleteTargetId}
@@ -867,11 +945,17 @@ export function StudyWorkspaceView({
             node={currentNode}
             positionResult={positionResult}
             alternative={alternative}
+            playedBestLabel={
+                currentKind && playedIsBest ? studyMoveLabel(tree, currentNodeId) : null
+            }
+            deeperResult={deeperResult}
+            deeperIsFresh={deeperIsFresh}
+            onShowLayer={onDisplayLayerChange}
             source={storedNode?.source ?? null}
             analysisMode={analysis.mode}
             isPreparing={analysis.isPreparing}
             liveDepth={analysis.live?.nodeId === currentNodeId ? analysis.live.depth : undefined}
-            onStartDeep={() => void analysis.startDeep(currentNodeId)}
+            onStartDeep={startDeep}
             onCancel={cancelAnalysis}
             onPreviewPv={previewPv}
             onAddPvAsVariation={addPvAsVariation}
@@ -882,11 +966,8 @@ export function StudyWorkspaceView({
             key={currentNodeId}
             value={storedNode?.comment ?? ""}
             onChange={(value) => changeComment(currentNodeId, value)}
-            initialDraft={pendingDraft?.nodeId === currentNodeId ? pendingDraft.text : undefined}
-            onDraftChange={(text) => {
-                if (pendingDraft?.nodeId === currentNodeId) setPendingDraft(null);
-                onCommentDraftChange?.(currentNodeId, text);
-            }}
+            initialDraft={commentDrafts.get(currentNodeId)}
+            onDraftChange={(text) => changeCommentDraft(currentNodeId, text)}
             disabled={locked}
         />
     );
@@ -915,12 +996,7 @@ export function StudyWorkspaceView({
 
     return (
         <TooltipProvider delayDuration={TOOLTIP_DELAY_DURATION_MS}>
-            <div
-                className={cn(
-                    "flex w-full max-w-[1320px] flex-col gap-3 self-center px-3 py-3 md:px-4",
-                    showsFixedStart && "pb-24",
-                )}
-            >
+            <div className="flex w-full max-w-[1320px] flex-col gap-3 self-center px-3 py-3 md:px-4">
                 <header className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
                         <TitleInput
@@ -1000,6 +1076,20 @@ export function StudyWorkspaceView({
                                 {fluidBoard}
                                 {navBar}
                             </div>
+                            {showsFixedStart && !locked && (
+                                <div className="sticky bottom-0 z-30 -mx-3 bg-background px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2">
+                                    <Button
+                                        type="button"
+                                        size="lg"
+                                        className="w-full gap-2"
+                                        onClick={startFull}
+                                        disabled={analysis.isPreparing}
+                                    >
+                                        <AnalyzeIcon />
+                                        全体を解析
+                                    </Button>
+                                </div>
+                            )}
                             <div
                                 role="tablist"
                                 aria-label="表示の切り替え"
@@ -1083,26 +1173,7 @@ export function StudyWorkspaceView({
                 </div>
             </div>
 
-            {showsFixedStart && !locked && (
-                <div className="fixed inset-x-0 bottom-0 z-30 border-t border-wafuu-border bg-card px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 shadow-card">
-                    <Button
-                        type="button"
-                        size="lg"
-                        className="w-full gap-2"
-                        onClick={startFull}
-                        disabled={analysis.isPreparing}
-                    >
-                        <AnalyzeIcon />
-                        全体を解析
-                    </Button>
-                </div>
-            )}
-
-            <Notice
-                message={message}
-                raised={showsFixedStart}
-                onDismiss={() => onMessageChange(null)}
-            />
+            <Notice message={message} onDismiss={() => onMessageChange(null)} />
 
             <StudyAnalysisSettings
                 open={isSettingsOpen}
@@ -1151,6 +1222,7 @@ export function StudyWorkspaceView({
                     evalMate={pvPreview.evalMate}
                     squareNotation={displaySettings.squareNotation}
                     showBoardLabels={displaySettings.showBoardLabels}
+                    description="読み筋を 1 手ずつ盤面で再生します。"
                 />
             )}
         </TooltipProvider>
@@ -1214,6 +1286,8 @@ export function StudyWorkspace({
     // 設定を変えた解析を中止したときに、表示を戻す先（解析を始める前に表示していた設定）。
     const [revertLayerId, setRevertLayerId] = useState<string | null>(null);
     const previousLayerIdRef = useRef<string | null>(null);
+    // 直近の「この局面を深く解析」で使った設定（結果を、候補手の欄に別の段として出すのに使う）。
+    const [deepLayerId, setDeepLayerId] = useState<string | null>(null);
 
     const displayLayerId = chooseStudyDisplayLayer(doc.layers, preferredLayerId);
 
@@ -1244,7 +1318,10 @@ export function StudyWorkspace({
         // 全体の解析を始めたら、その設定の結果を表示に切り替える。1 局面だけの深い解析では
         // 切り替えない（評価値グラフと注目局面は全体の解析の結果のまま見せる）。
         onLayerStarted: (layerId, mode) => {
-            if (mode !== "full") return;
+            if (mode !== "full") {
+                setDeepLayerId(layerId);
+                return;
+            }
             previousLayerIdRef.current = displayLayerId !== layerId ? displayLayerId : null;
             setRevertLayerId(null);
             changeDisplayLayer(layerId);
@@ -1319,6 +1396,7 @@ export function StudyWorkspace({
                 analysis={analysis}
                 message={message}
                 onMessageChange={setMessage}
+                deepLayerId={deepLayerId}
                 initialNodeId={initialView?.currentNodeId ?? null}
                 onCurrentNodeChange={(nodeId) => {
                     viewNodeIdRef.current = nodeId;

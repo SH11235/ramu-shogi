@@ -17,6 +17,7 @@ import {
     chooseStudyDisplayLayer,
     countStudyUnanalyzed,
     formatStudyScore,
+    pickStudyDeeperResult,
     pickStudyPositionResult,
     resolveStudyLine,
     studyDeletableBranchHead,
@@ -119,18 +120,23 @@ describe("解析結果の選び方", () => {
         expect(chooseStudyDisplayLayer([...withDeep.layers].reverse(), null)).toBe(TEST_LAYER_ID);
     });
 
-    it("候補手には、より深く読めている結果があればそれを出す", () => {
+    it("候補手は表示中の設定の結果。より深く読めた結果は、差し替えずに別に返す", () => {
         const { doc, ids } = createTestStudy([cp(0), cp(10), cp(20), null, null]);
         const withDeep = applyStudyOps(doc, [
             { type: "ensureLayer", spec: DEEP_SPEC, display: { label: "RAMU・10 秒" } },
             putScoreOp(ids[1], cp(15), { layerId: DEEP_LAYER_ID, depth: 30 }),
         ]);
-        const deep = pickStudyPositionResult(withDeep, ids[1], TEST_LAYER_ID);
+        // 深い結果があっても、候補手は表示中の設定（1 秒）のもの。
+        const shown = pickStudyPositionResult(withDeep, ids[1], TEST_LAYER_ID);
+        expect(shown?.layer.id).toBe(TEST_LAYER_ID);
+        expect(shown?.result.candidates[0].score).toEqual(cp(10));
+        const deep = pickStudyDeeperResult(withDeep, ids[1], TEST_LAYER_ID);
         expect(deep?.layer.id).toBe(DEEP_LAYER_ID);
-        expect(deep?.fromDisplayLayer).toBe(false);
-        const shallow = pickStudyPositionResult(withDeep, ids[2], TEST_LAYER_ID);
-        expect(shallow?.layer.id).toBe(TEST_LAYER_ID);
-        expect(shallow?.fromDisplayLayer).toBe(true);
+        expect(deep?.result.depth).toBe(30);
+        expect(pickStudyPositionResult(withDeep, ids[2], TEST_LAYER_ID)?.layer.id).toBe(
+            TEST_LAYER_ID,
+        );
+        expect(pickStudyDeeperResult(withDeep, ids[2], TEST_LAYER_ID)).toBeNull();
         expect(pickStudyPositionResult(withDeep, ids[3], TEST_LAYER_ID)).toBeNull();
     });
 
@@ -166,27 +172,30 @@ describe("候補手に出す結果（表示中の設定が基本）", () => {
         // 表示中（RAMU・1 秒）の結果がある局面: その結果を出す。
         const shown = pickStudyPositionResult(withOther, ids[1], TEST_LAYER_ID);
         expect(shown?.layer.id).toBe(TEST_LAYER_ID);
-        expect(shown?.fromDisplayLayer).toBe(true);
         // 表示中の設定に結果が無い局面: 別の AI の結果で埋めない。
         expect(pickStudyPositionResult(withOther, ids[2], TEST_LAYER_ID)).toBeNull();
+        // 別の AI の結果は「より深い解析」としても添えない。
+        expect(pickStudyDeeperResult(withOther, ids[1], TEST_LAYER_ID)).toBeNull();
+        expect(pickStudyDeeperResult(withOther, ids[2], TEST_LAYER_ID)).toBeNull();
         // その設定を選べば出る。
         expect(pickStudyPositionResult(withOther, ids[2], OTHER_AI_ID)?.layer.id).toBe(OTHER_AI_ID);
         // 表示する設定が無ければ、何も出さない。
         expect(pickStudyPositionResult(withOther, ids[1], null)).toBeNull();
     });
 
-    it("同じ AI でも、探索の上限が小さい設定の結果は「深く解析した結果」にしない", () => {
+    it("同じ AI でも、探索の上限が小さい設定の結果は「より深い解析」にしない", () => {
         const { doc, ids } = createTestStudy([cp(0), cp(10), null, null, null]);
         const withDeep = applyStudyOps(doc, [
             { type: "ensureLayer", spec: DEEP_SPEC, display: { label: "RAMU・10 秒" } },
             putScoreOp(ids[1], cp(15), { layerId: DEEP_LAYER_ID, depth: 30 }),
         ]);
         // 10 秒の設定を表示中に、1 秒の設定の結果は使わない。
-        const shown = pickStudyPositionResult(withDeep, ids[0], DEEP_LAYER_ID);
-        expect(shown).toBeNull();
-        expect(pickStudyPositionResult(withDeep, ids[1], DEEP_LAYER_ID)?.fromDisplayLayer).toBe(
-            true,
+        expect(pickStudyPositionResult(withDeep, ids[0], DEEP_LAYER_ID)).toBeNull();
+        expect(pickStudyDeeperResult(withDeep, ids[0], DEEP_LAYER_ID)).toBeNull();
+        expect(pickStudyPositionResult(withDeep, ids[1], DEEP_LAYER_ID)?.layer.id).toBe(
+            DEEP_LAYER_ID,
         );
+        expect(pickStudyDeeperResult(withDeep, ids[1], DEEP_LAYER_ID)).toBeNull();
     });
 });
 
