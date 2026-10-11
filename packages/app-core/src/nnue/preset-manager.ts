@@ -251,12 +251,16 @@ export async function downloadPreset(
                 }
                 coefficientBytes.set(value, coefficientOffset);
                 coefficientOffset += value.length;
-                onProgress?.({
-                    targetKey: preset.presetKey,
-                    loaded: loaded + coefficientOffset,
-                    total: totalSize,
-                    phase: "downloading",
-                });
+                const now = Date.now();
+                if (now - lastProgressTime >= NNUE_PROGRESS_THROTTLE_MS) {
+                    onProgress?.({
+                        targetKey: preset.presetKey,
+                        loaded: loaded + coefficientOffset,
+                        total: totalSize,
+                        phase: "downloading",
+                    });
+                    lastProgressTime = now;
+                }
             }
         } finally {
             coefficientReader.releaseLock();

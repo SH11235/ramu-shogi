@@ -45,6 +45,27 @@ beforeEach(() => {
 });
 
 describe("match download consent", () => {
+    it("ignores concurrent start requests without abandoning the first consent", async () => {
+        const resolveNnue = vi.fn().mockRejectedValue(missing());
+        const { result } = renderHook(() =>
+            useMatchNnueDownload({
+                manifestUrl: "https://example.com/manifest",
+                resolveNnue,
+                setMessage: vi.fn(),
+            }),
+        );
+        let pending: Promise<boolean> = Promise.resolve(true);
+        let duplicate = true;
+        await act(async () => {
+            pending = result.current.ensureMatchNnue([selection("RAMU")]);
+            duplicate = await result.current.ensureMatchNnue([selection("COCO")]);
+        });
+        expect(duplicate).toBe(false);
+        expect(result.current.presets.map((config) => config.presetKey)).toEqual(["RAMU"]);
+        expect(mocks.getManifest).toHaveBeenCalledOnce();
+        act(() => result.current.cancel());
+        expect(await pending).toBe(false);
+    });
     it("does not fetch or ask when selections are already available", async () => {
         const resolveNnue = vi.fn().mockResolvedValue(null);
         const { result } = renderHook(() =>

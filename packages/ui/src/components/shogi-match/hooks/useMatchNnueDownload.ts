@@ -32,6 +32,7 @@ export function useMatchNnueDownload({
     const [error, setError] = useState<string | null>(null);
     const pending = useRef<((approved: boolean) => void) | null>(null);
     const busyRef = useRef(false);
+    const checkingRef = useRef(false);
     const mounted = useRef(true);
     useEffect(() => {
         mounted.current = true;
@@ -57,6 +58,8 @@ export function useMatchNnueDownload({
         finish(false);
     };
     const ensureMatchNnue = async (selections: NnueSelection[]): Promise<boolean> => {
+        if (checkingRef.current) return false;
+        checkingRef.current = true;
         try {
             const missing = new Set<string>();
             for (const selection of selections) {
@@ -97,6 +100,8 @@ export function useMatchNnueDownload({
                 type: "error",
             });
             return false;
+        } finally {
+            checkingRef.current = false;
         }
     };
     const download = async () => {
