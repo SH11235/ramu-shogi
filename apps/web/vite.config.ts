@@ -79,6 +79,15 @@ function manualChunks(id: string): string | undefined {
         return "shogi-match";
     }
 
+    // 研究ノートの画面（`/studies/$studyId` と一覧の取り込みフォームが使う）。放置すると
+    // rollup が共有 chunk（app-shell）に同梱し、全ルートの初期読み込みに載ってしまう。
+    if (
+        normalizedId.includes("/packages/ui/src/components/study-workspace/") ||
+        normalizedId.endsWith("/packages/ui/src/components/study-workspace.tsx")
+    ) {
+        return "study-workspace";
+    }
+
     if (normalizedId.includes("/packages/app-core/src/")) {
         return "app-core";
     }

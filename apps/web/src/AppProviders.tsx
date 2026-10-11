@@ -8,6 +8,7 @@ import { NnueProvider } from "@shogi/ui/providers/NnueContext";
 import { Outlet } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { AuthSessionProvider } from "./hooks/useAuthSession";
+import { useStudySessionSync } from "./hooks/useStudySessionSync";
 import { useUserSettingsSync } from "./hooks/useUserSettingsSync";
 
 // Web版のストレージも同期的に初期化可能
@@ -20,6 +21,7 @@ const validateNnueHeader = async (header: Uint8Array, fileSize: number) => ({
 
 function AppProvidersInner(): ReactElement {
     useUserSettingsSync();
+    useStudySessionSync();
 
     return (
         <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>

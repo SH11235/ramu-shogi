@@ -3,7 +3,9 @@ import { RshogiCsaViewer } from "@shogi/ui";
 import { getRouteApi } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
+import { OpenStudyButton } from "../../components/OpenStudyButton";
 import { PageHeader } from "../../components/PageHeader";
+import { openStudyFromRshogiGame } from "../../lib/studyEntry";
 import { createWebWasmEngineClient } from "../../platform/wasm-engine-client";
 
 const engineOptions: EngineOption[] = [
@@ -37,6 +39,13 @@ export default function RshogiViewerPage(): ReactElement {
                 engineOptions={engineOptions}
                 manifestUrl={import.meta.env.VITE_NNUE_MANIFEST_URL as string}
                 apiBaseUrl={apiBaseUrl}
+                // 同じ棋譜の研究ノートがあればそれを開き、無ければ対局時の評価値ごと取り込んで作る。
+                renderGameAction={(game) => (
+                    <OpenStudyButton
+                        open={() => openStudyFromRshogiGame(game)}
+                        className="w-full"
+                    />
+                )}
             />
         </>
     );

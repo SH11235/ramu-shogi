@@ -1,5 +1,6 @@
 import type { EngineOption } from "@shogi/ui";
 import { EngineControlPanel, ShogiMatch, useDevMode } from "@shogi/ui";
+import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { HeaderNav } from "./components/HeaderNav";
 import { PageHeader } from "./components/PageHeader";
@@ -33,6 +34,7 @@ function readReviewKifuFromSessionStorage(): { sfen: string; moves: string[] } |
 
 function App() {
     const isDevMode = useDevMode();
+    const navigate = useNavigate();
     const remoteNnueManager = useRemotePrivateNnueManager();
     const [panelPosition, setPanelPosition] = useState<{
         label?: string;
@@ -62,6 +64,23 @@ function App() {
                     aiIconUrl={`${import.meta.env.BASE_URL}ramu.jpeg`}
                     onPositionSnapshot={(snapshot) => setPanelPosition(snapshot)}
                     initialReview={initialReview}
+                    // 読み込んだ棋譜（分岐・コメントごと）を研究ノートにして、その画面へ移る。
+                    // 研究ノートの保存層は使うときだけ読み込む（対局だけの人には要らない）。
+                    onOpenAsStudy={(tree) => {
+                        void import("./lib/studyEntry")
+                            .then(({ createStudyFromKifuTree }) => createStudyFromKifuTree(tree))
+                            .then(({ studyId }) =>
+                                navigate({ to: "/studies/$studyId", params: { studyId } }),
+                            )
+                            .catch((error: unknown) => {
+                                console.error("[study] 研究ノートを作れませんでした", error);
+                                window.alert(
+                                    `研究ノートを作れませんでした: ${
+                                        error instanceof Error ? error.message : String(error)
+                                    }`,
+                                );
+                            });
+                    }}
                     {...(initialReview
                         ? { defaultSides: { sente: { role: "human" }, gote: { role: "human" } } }
                         : {})}

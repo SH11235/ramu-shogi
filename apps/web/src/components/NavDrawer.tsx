@@ -9,6 +9,7 @@ import { AuthBadge } from "./AuthBadge";
 type NavTo =
     | "/play"
     | "/online"
+    | "/studies"
     | "/games"
     | "/public/games"
     | "/rshogi-viewer/players"
@@ -50,6 +51,12 @@ function buildNavSections(pathname: string): NavSection[] {
         {
             label: "棋譜",
             items: [
+                // 棋譜を AI で解析して残す。未ログインでも使える（ブラウザ内に保存）。
+                {
+                    to: "/studies",
+                    label: "研究ノート",
+                    active: pathname.startsWith("/studies"),
+                },
                 {
                     to: "/games",
                     label: "マイ棋譜",

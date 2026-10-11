@@ -24,8 +24,39 @@ export const syncStudySession = (userId: string | null): void => {
     getStudySync().setSession(userId === null ? null : { userId });
 };
 
+let adoption: { userId: string; done: Promise<void> } | null = null;
+
+/**
+ * セッションが確定したときに呼ぶ。ログイン状態を同期エンジンに伝え、ログイン中なら、
+ * 未ログインのあいだにこのブラウザで作ったノートをそのアカウントに引き継ぐ（設計書 7.2）。
+ *
+ * 引き継ぎはアカウントごとに 1 回だけ走らせ、同じ処理を待てるよう同じ Promise を返す
+ * （アプリの起動時と、研究ノートの各ページの両方から呼ばれるため）。
+ */
+export const ensureStudySession = (userId: string | null): Promise<void> => {
+    syncStudySession(userId);
+    if (userId === null) {
+        adoption = null;
+        return Promise.resolve();
+    }
+    if (adoption?.userId === userId) return adoption.done;
+    const done = getStudySync()
+        .adoptAnonymousStudies()
+        .then(
+            () => undefined,
+            (error: unknown) => {
+                // 引き継げなくてもノートはブラウザ内に残る。次にセッションが確定したときにやり直す。
+                console.error("[study] 未ログイン中のノートの引き継ぎに失敗しました", error);
+                if (adoption?.done === done) adoption = null;
+            },
+        );
+    adoption = { userId, done };
+    return done;
+};
+
 /** 同期エンジンを破棄する（テスト用）。 */
 export const resetStudySyncForTest = (): void => {
     instance?.dispose();
     instance = null;
+    adoption = null;
 };

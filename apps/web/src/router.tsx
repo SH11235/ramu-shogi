@@ -279,6 +279,20 @@ const rshogiViewerRoute = createRoute({
     component: lazyRouteComponent(() => import("./pages/rshogi-viewer/RshogiViewerPage")),
 });
 
+// 研究ノート。ノートはブラウザ内（IndexedDB）とクラウドの両方にありうるので、loader では
+// 取得せず、ページが同期エンジン経由で読む（未ログインでもブラウザ内のノートを開ける）。
+const studiesRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/studies",
+    component: lazyRouteComponent(() => import("./pages/studies/StudiesPage")),
+});
+
+const studyRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/studies/$studyId",
+    component: lazyRouteComponent(() => import("./pages/studies/StudyPage")),
+});
+
 const createRoomRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/online/create",
@@ -366,6 +380,8 @@ const routeTree = rootRoute.addChildren([
     publicGamesRoute,
     publicGameRoute,
     nnueFilesRoute,
+    studiesRoute,
+    studyRoute,
     createRoomRoute,
     roomRoute,
     rshogiViewerListRoute,
