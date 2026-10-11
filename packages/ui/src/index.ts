@@ -64,6 +64,7 @@ export {
 export { boardToGrid } from "./components/shogi-match/utils/positionUtils";
 // study-workspace（研究ノートの画面）
 export type {
+    StudyCommentDraft,
     StudyWorkspaceProps,
     StudyWorkspaceViewState,
 } from "./components/study-workspace";

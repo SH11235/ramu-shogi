@@ -3,6 +3,9 @@
  *
  * コメントには上限（UTF-8 で 4 KiB）がある。黙って切らず、上限に近づいたら残りを出し、
  * 超えたら保存を止めてその場で知らせる（入力した内容は残す）。
+ *
+ * まだ保存できていない入力（下書き）は `onDraftChange` で呼び出し側に知らせる。保存できない間
+ * （セッションが切れた、など）も入力を失わないよう、呼び出し側が別の場所に残せるようにするため。
  */
 
 import { STUDY_LIMITS } from "@shogi/app-core";
@@ -13,8 +16,18 @@ import { useEffect, useRef, useState } from "react";
 interface StudyCommentBoxProps {
     /** 保存されているコメント。 */
     value: string;
-    /** コメントを保存する（上限に収まっているときだけ呼ばれる）。 */
-    onChange: (value: string) => void;
+    /**
+     * コメントを保存する（上限に収まっているときだけ呼ばれる）。保存できなかったとき `false` で
+     * 解決する Promise を返すと、入力を「まだ保存していない」扱いに戻す。
+     */
+    // biome-ignore lint/suspicious/noConfusingVoidType: 何も返さないコールバックもそのまま渡せるようにする
+    onChange: (value: string) => void | Promise<boolean>;
+    /** 最初に入れておく下書き（前回、保存できないまま残っていた入力）。 */
+    initialDraft?: string;
+    /** 保存していない入力が変わった。保存できたら null。 */
+    onDraftChange?: (draft: string | null) => void;
+    /** 保存できない状態（入力は残すが、保存はしない）。 */
+    disabled?: boolean;
     className?: string;
 }
 
@@ -30,15 +43,20 @@ const utf8Length = (text: string): number => new TextEncoder().encode(text).leng
 export function StudyCommentBox({
     value,
     onChange,
+    initialDraft,
+    onDraftChange,
+    disabled = false,
     className,
 }: StudyCommentBoxProps): ReactElement {
-    const [draft, setDraft] = useState(value);
+    const [draft, setDraft] = useState(initialDraft ?? value);
     const lastSavedRef = useRef(value);
-    const draftRef = useRef(value);
-    const onChangeRef = useRef(onChange);
+    const draftRef = useRef(initialDraft ?? value);
+    const disabledRef = useRef(disabled);
+    disabledRef.current = disabled;
+    const callbacksRef = useRef({ onChange, onDraftChange });
     useEffect(() => {
-        onChangeRef.current = onChange;
-    }, [onChange]);
+        callbacksRef.current = { onChange, onDraftChange };
+    }, [onChange, onDraftChange]);
 
     // 他のタブ・端末で変わったコメントを取り込む（こちらで編集中でなければ）。
     useEffect(() => {
@@ -50,25 +68,50 @@ export function StudyCommentBox({
         lastSavedRef.current = value;
     }, [value]);
 
+    /** 保存していない入力があれば、その内容を呼び出し側に知らせる。 */
+    const reportDraft = (): void => {
+        callbacksRef.current.onDraftChange?.(
+            draftRef.current === lastSavedRef.current ? null : draftRef.current,
+        );
+    };
+
     const save = (): void => {
+        if (disabledRef.current) return;
         if (draftRef.current === lastSavedRef.current) return;
         // 上限を超えている間は保存しない（入力は残し、下の案内で知らせる）。
         if (utf8Length(draftRef.current) > STUDY_LIMITS.commentBytes) return;
-        lastSavedRef.current = draftRef.current;
-        onChangeRef.current(draftRef.current);
+        const previous = lastSavedRef.current;
+        const attempted = draftRef.current;
+        lastSavedRef.current = attempted;
+        const outcome = callbacksRef.current.onChange(attempted);
+        if (!(outcome instanceof Promise)) {
+            reportDraft();
+            return;
+        }
+        void outcome.then((saved) => {
+            // 保存できなかったら、まだ保存していない入力として扱い直す（下書きとして残る）。
+            if (!saved && lastSavedRef.current === attempted) lastSavedRef.current = previous;
+            reportDraft();
+        });
     };
     const saveRef = useRef(save);
     saveRef.current = save;
 
-    // 入力が止まったら保存する。
+    // 入力が止まったら保存する。保存できない状態が解けたときも、残っていた入力を保存する。
+    // biome-ignore lint/correctness/useExhaustiveDependencies: disabled が変わったときにも保存を試みる
     useEffect(() => {
         if (draft === lastSavedRef.current) return;
         const timer = setTimeout(() => saveRef.current(), COMMENT_SAVE_DELAY_MS);
         return () => clearTimeout(timer);
-    }, [draft]);
+    }, [draft, disabled]);
 
+    // 最初から下書きが入っているとき（前回の入力の復元）は、その旨を知らせる。
     // 別の局面へ移るとき（このコンポーネントが作り直されるとき）に、書きかけを保存する。
-    useEffect(() => () => saveRef.current(), []);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: マウント時と、アンマウント時にだけ行う
+    useEffect(() => {
+        if (draftRef.current !== lastSavedRef.current) reportDraft();
+        return () => saveRef.current();
+    }, []);
 
     const remaining = STUDY_LIMITS.commentBytes - utf8Length(draft);
     const isOver = remaining < 0;
@@ -90,6 +133,7 @@ export function StudyCommentBox({
                     onChange={(event) => {
                         draftRef.current = event.target.value;
                         setDraft(event.target.value);
+                        reportDraft();
                     }}
                     onBlur={save}
                     rows={2}

@@ -56,6 +56,9 @@ interface HarnessProps {
     fetchLegalMoves?: (sfen: string, moves: string[]) => Promise<string[]>;
     /** 保存層が操作を受け付けなかった場合の模擬（文書を変えず、理由を通知する）。 */
     rejectOps?: boolean;
+    locked?: boolean;
+    initialCommentDraft?: { nodeId: string; text: string };
+    onCommentDraftChange?: (nodeId: string, text: string | null) => void;
 }
 
 /** 呼び出し側（ページ）の代わりに、操作を文書へ適用して画面に渡し直す。 */
@@ -69,6 +72,9 @@ function Harness({
     onDiscard,
     fetchLegalMoves,
     rejectOps = false,
+    locked,
+    initialCommentDraft,
+    onCommentDraftChange,
 }: HarnessProps) {
     const [doc, setDoc] = useState(initialDoc);
     const [message, setMessage] = useState<Message | null>(null);
@@ -92,6 +98,9 @@ function Harness({
             onRetrySave={onRetrySave}
             onDiscard={onDiscard}
             fetchLegalMoves={fetchLegalMoves}
+            locked={locked}
+            initialCommentDraft={initialCommentDraft}
+            onCommentDraftChange={onCommentDraftChange}
             displayLayerId={displayLayerId}
             onDisplayLayerChange={() => {}}
             analysis={analysis}
@@ -441,6 +450,97 @@ describe("StudyWorkspaceView", () => {
         // 続けて別の操作をしても、通知は残る。
         fireEvent.keyDown(document, { key: "ArrowRight" });
         expect(screen.getByRole("alert").textContent).toContain("局面の数が上限に達しました");
+    });
+
+    describe("ログインが切れて編集できないとき", () => {
+        it("画面を残して操作を止め、ログインし直す案内を出す。書きかけのコメントは保存せずに残す", async () => {
+            const { doc, ids } = createTestStudy();
+            const onOps = vi.fn();
+            const onLogin = vi.fn();
+            const onDraft = vi.fn();
+            const view = render(
+                <Harness initialDoc={doc} onOps={onOps} onCommentDraftChange={onDraft} />,
+            );
+            const comment = () => screen.getByRole("textbox", { name: "コメント" });
+            fireEvent.change(comment(), { target: { value: "書きかけ" } });
+            expect(onDraft).toHaveBeenLastCalledWith(ids[0], "書きかけ");
+
+            // 自動保存の前にログインが切れた。
+            view.rerender(
+                <Harness
+                    initialDoc={doc}
+                    onOps={onOps}
+                    onLogin={onLogin}
+                    onCommentDraftChange={onDraft}
+                    locked
+                />,
+            );
+            fireEvent.blur(comment());
+            await act(async () => {
+                await new Promise((resolve) => setTimeout(resolve, 800));
+            });
+
+            expect(onOps).not.toHaveBeenCalled();
+            expect((comment() as HTMLTextAreaElement).value).toBe("書きかけ");
+            const alert = screen.getByRole("alert");
+            expect(alert.textContent).toContain("ログインし直すと、続きから編集できます");
+            fireEvent.click(within(alert).getByRole("button", { name: "ログインし直す" }));
+            expect(onLogin).toHaveBeenCalledTimes(1);
+            // 盤や棋譜は残っているが、操作できない。
+            expect(moveList().closest("[inert]")).toBeTruthy();
+
+            // 編集できるようになったら、残っていた入力を保存する。
+            view.rerender(
+                <Harness initialDoc={doc} onOps={onOps} onCommentDraftChange={onDraft} />,
+            );
+            await waitFor(
+                () =>
+                    expect(onOps).toHaveBeenCalledWith([
+                        { type: "setComment", nodeId: ids[0], value: "書きかけ" },
+                    ]),
+                { timeout: 2000 },
+            );
+            await waitFor(() => expect(onDraft).toHaveBeenLastCalledWith(ids[0], null));
+        });
+
+        it("前回の下書きを、その手のコメント欄に戻して保存する", async () => {
+            const { doc, ids } = createTestStudy();
+            const onOps = vi.fn();
+            const onDraft = vi.fn();
+            render(
+                <Harness
+                    initialDoc={doc}
+                    onOps={onOps}
+                    onCommentDraftChange={onDraft}
+                    initialCommentDraft={{ nodeId: ids[0], text: "戻ってきた下書き" }}
+                />,
+            );
+
+            expect(
+                (screen.getByRole("textbox", { name: "コメント" }) as HTMLTextAreaElement).value,
+            ).toBe("戻ってきた下書き");
+            await waitFor(
+                () =>
+                    expect(onOps).toHaveBeenCalledWith([
+                        { type: "setComment", nodeId: ids[0], value: "戻ってきた下書き" },
+                    ]),
+                { timeout: 2000 },
+            );
+            await waitFor(() => expect(onDraft).toHaveBeenLastCalledWith(ids[0], null));
+        });
+
+        it("保存できなかったコメントは、保存済み扱いにせず下書きとして残す", async () => {
+            const { doc, ids } = createTestStudy();
+            const onDraft = vi.fn();
+            render(<Harness initialDoc={doc} onCommentDraftChange={onDraft} rejectOps />);
+
+            const comment = screen.getByRole("textbox", { name: "コメント" });
+            fireEvent.change(comment, { target: { value: "保存できない" } });
+            fireEvent.blur(comment);
+
+            await waitFor(() => expect(onDraft).toHaveBeenLastCalledWith(ids[0], "保存できない"));
+            expect((comment as HTMLTextAreaElement).value).toBe("保存できない");
+        });
     });
 
     describe("保存の状態", () => {

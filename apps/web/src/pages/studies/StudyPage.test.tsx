@@ -77,6 +77,7 @@ describe("StudyPage", () => {
         workspaceProps = null;
         currentStudyId = STUDY_ID;
         auth = AUTH_SIGNED_OUT;
+        localStorage.clear();
         resetStudySyncForTest();
         currentSync = createTestSync();
     });
@@ -136,19 +137,166 @@ describe("StudyPage", () => {
         });
     });
 
-    it("ログアウトしたら、開いていたアカウントのノートを閉じる", async () => {
-        await prepareOwnedStudy("アカウントのノート");
-        auth = authSignedIn("user-1");
+    describe("開いている間にログインが切れたとき", () => {
+        const DRAFTS_KEY = "ramu-study-comment-drafts";
+
+        it("「見つかりません」にせず、画面を残して編集を止め、書きかけのコメントを持ち主つきで残す", async () => {
+            await prepareOwnedStudy("アカウントのノート");
+            auth = authSignedIn("user-1");
+            const view = render(<StudyPage />);
+            await screen.findByTestId("workspace");
+            expect(workspaceProps?.locked).toBe(false);
+            const nodeId = workspaceProps?.doc.tree.rootId ?? "";
+
+            // コメントを書いている途中（自動保存の前）にログインが切れる。
+            workspaceProps?.onCommentDraftChange?.(nodeId, "書きかけのコメント");
+            auth = AUTH_SIGNED_OUT;
+            view.rerender(<StudyPage />);
+
+            await waitFor(() => expect(workspaceProps?.locked).toBe(true));
+            expect(screen.getByTestId("workspace")).toBeTruthy();
+            expect(screen.queryByText("研究ノートが見つかりません")).toBeNull();
+            // 編集できない間の操作は保存を試みず、エラーの通知も出さない。
+            expect(
+                await workspaceProps?.onApplyOps([
+                    { type: "setComment", nodeId, value: "書きかけのコメント" },
+                ]),
+            ).toBe(false);
+            expect(workspaceProps?.notice ?? null).toBeNull();
+            // 下書きは、ノートの持ち主と一緒に残っている。
+            expect(JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? "{}")[STUDY_ID]).toMatchObject({
+                ownerId: "user-1",
+                nodeId,
+                text: "書きかけのコメント",
+            });
+
+            // 同じアカウントでログインし直すと、そのまま編集できるようになる。
+            auth = authSignedIn("user-1");
+            view.rerender(<StudyPage />);
+            await waitFor(() => expect(workspaceProps?.locked).toBe(false));
+            expect(
+                await workspaceProps?.onApplyOps([
+                    { type: "setComment", nodeId, value: "書きかけのコメント" },
+                ]),
+            ).toBe(true);
+            // 保存できたら、下書きは消える。
+            workspaceProps?.onCommentDraftChange?.(nodeId, null);
+            expect(JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? "{}")[STUDY_ID]).toBeUndefined();
+        });
+
+        it("ログインし直して戻ってくると（ページを開き直しても）、下書きがその手のコメント欄に戻る", async () => {
+            await prepareOwnedStudy("アカウントのノート");
+            auth = authSignedIn("user-1");
+            const first = render(<StudyPage />);
+            await screen.findByTestId("workspace");
+            const doc = workspaceProps?.doc;
+            const nodeId = Object.keys(doc?.tree.nodes ?? {}).find((id) => id !== doc?.tree.rootId);
+            expect(nodeId).toBeTruthy();
+            workspaceProps?.onCommentDraftChange?.(nodeId ?? "", "戻ってくる下書き");
+            auth = AUTH_SIGNED_OUT;
+            first.rerender(<StudyPage />);
+            await waitFor(() => expect(workspaceProps?.locked).toBe(true));
+            // ログインのためにページを離れる（OAuth でページが遷移する）。
+            first.unmount();
+            workspaceProps = null;
+
+            auth = authSignedIn("user-1");
+            render(<StudyPage />);
+            await screen.findByTestId("workspace");
+
+            const reopened = workspaceProps as StudyWorkspaceProps | null;
+            expect(reopened?.initialCommentDraft).toEqual({
+                nodeId,
+                text: "戻ってくる下書き",
+            });
+            // 下書きのある手を開く。
+            expect(reopened?.initialView?.currentNodeId).toBe(nodeId);
+        });
+
+        it("別のアカウントでログインした場合は、ノートも下書きも出さない", async () => {
+            await prepareOwnedStudy("アカウントのノート");
+            auth = authSignedIn("user-1");
+            const view = render(<StudyPage />);
+            await screen.findByTestId("workspace");
+            const nodeId = workspaceProps?.doc.tree.rootId ?? "";
+            workspaceProps?.onCommentDraftChange?.(nodeId, "user-1 の下書き");
+
+            auth = authSignedIn("user-2");
+            view.rerender(<StudyPage />);
+
+            expect(
+                await screen.findByRole("heading", { name: "研究ノートが見つかりません" }),
+            ).toBeTruthy();
+            expect(screen.queryByTestId("workspace")).toBeNull();
+            // user-1 の下書きは消さずに残す（user-1 が戻ってきたときのため）。
+            expect(JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? "{}")[STUDY_ID]).toMatchObject({
+                ownerId: "user-1",
+            });
+        });
+
+        it("別の持ち主の下書きは、同じ ID のノートを開いても戻さない", async () => {
+            // user-1 の下書きが残っているブラウザで、匿名のノート（持ち主なし）を同じ ID で開く。
+            localStorage.setItem(
+                DRAFTS_KEY,
+                JSON.stringify({
+                    [STUDY_ID]: { ownerId: "user-1", nodeId: "node", text: "他人の下書き", at: 1 },
+                }),
+            );
+            await currentSync.createStudy(createTestDoc(STUDY_ID, "匿名のノート"));
+            render(<StudyPage />);
+            await screen.findByTestId("workspace");
+
+            expect(workspaceProps?.initialCommentDraft ?? null).toBeNull();
+        });
+    });
+
+    it("開き直し（ログイン状態の確定）の途中で保存した編集を、古い内容で消さない", async () => {
+        await currentSync.createStudy(createTestDoc(STUDY_ID, "匿名のノート"));
+        auth = AUTH_LOADING;
         const view = render(<StudyPage />);
         await screen.findByTestId("workspace");
+        const nodeId = workspaceProps?.doc.tree.rootId ?? "";
 
+        // 開き直しの途中（表示の状態の読み込み）で止める。
+        const getViewState = currentSync.getViewState.bind(currentSync);
+        let release: () => void = () => {};
+        const held = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        vi.spyOn(currentSync, "getViewState").mockImplementationOnce(async (id) => {
+            await held;
+            return getViewState(id);
+        });
+        const load = currentSync.load.bind(currentSync);
+        const loadSpy = vi.spyOn(currentSync, "load");
         auth = AUTH_SIGNED_OUT;
         view.rerender(<StudyPage />);
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        });
 
-        expect(
-            await screen.findByRole("heading", { name: "研究ノートが見つかりません" }),
-        ).toBeTruthy();
-        expect(screen.queryByTestId("workspace")).toBeNull();
+        // 待っている間に、コメントを保存する。
+        let saved: unknown;
+        act(() => {
+            saved = workspaceProps?.onApplyOps([
+                { type: "setComment", nodeId, value: "待機中に書いたコメント" },
+            ]);
+        });
+        expect(await saved).toBe(true);
+        // 読み出しが古い内容を返しても（読んだ直後に編集が入った場合の模擬）、読み直す。
+        loadSpy.mockImplementationOnce(async (id) => {
+            const stale = await load(id);
+            void workspaceProps?.onApplyOps([{ type: "setTitle", value: "さらに後の編集" }]);
+            return stale;
+        });
+        await act(async () => {
+            release();
+            await new Promise((resolve) => setTimeout(resolve, 50));
+        });
+
+        expect(workspaceProps?.doc.tree.nodes[nodeId]?.comment).toBe("待機中に書いたコメント");
+        expect(workspaceProps?.doc.title).toBe("さらに後の編集");
+        expect((await currentSync.load(STUDY_ID))?.doc.title).toBe("さらに後の編集");
     });
 
     it("編集の操作は画面にすぐ反映し、保存層へ流す", async () => {

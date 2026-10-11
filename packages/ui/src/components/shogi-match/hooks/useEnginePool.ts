@@ -153,16 +153,18 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         completed: number;
         total: number;
         inProgress: Set<number>;
-        cancelled: boolean;
+        /**
+         * 実行の世代。start() と cancel() のたびに進む。
+         * 初期化・局面読込・探索開始・結果通知の各段階で、自分の世代がまだ現在のものかを確かめる
+         * （中止した・次の解析が始まったあとに、古い実行の続きが動かないように）。
+         */
+        runId: number;
+        /** ワーカーの初期化・作り直し・破棄を順番に行うための列（同時に走らせない）。 */
+        initChain: Promise<void>;
         initialized: boolean;
-        /** start()で渡されたnnueId（options.nnueIdを上書き） */
-        overrideNnueId: string | null | undefined;
         /** 初期化済みワーカーが使用しているNNUE ID（null=Material） */
         currentNnueId: string | null | undefined;
-        /** start()で渡されたfvScale */
-        overrideLayerStacks?: LayerStacksOptions;
         currentLayerStacks?: LayerStacksOptions;
-        overrideFvScale: number | undefined;
         /** 初期化済みワーカーが使用しているFV_SCALE */
         currentFvScale: number | undefined;
         /** 初期化済みワーカーが使用しているエンジンキー */
@@ -175,11 +177,10 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         completed: 0,
         total: 0,
         inProgress: new Set(),
-        cancelled: false,
+        runId: 0,
+        initChain: Promise.resolve(),
         initialized: false,
-        overrideNnueId: undefined,
         currentNnueId: undefined,
-        overrideFvScale: undefined,
         currentFvScale: undefined,
         currentClientKey: undefined,
     });
@@ -226,11 +227,12 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
     // 次のジョブを取得して実行する
     // Note: JavaScriptはシングルスレッドのため、複数ワーカーが同時にこの関数を呼び出しても
     // jobQueue.shift() は安全にアトミックに実行される
-    const processNextJob = async (worker: EngineWorker) => {
+    const processNextJob = async (worker: EngineWorker, runId: number) => {
         const state = stateRef.current;
+        const isCurrent = () => state.runId === runId;
 
-        // キャンセルされた場合は処理しない
-        if (state.cancelled) {
+        // 中止された・次の実行が始まった場合は処理しない
+        if (!isCurrent()) {
             return;
         }
 
@@ -254,6 +256,9 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         try {
             // 局面を読み込み
             await worker.client.loadPosition(job.sfen, job.moves);
+            // 読み込みを待つ間に中止された・次の実行が始まったら、探索を始めない。
+            // （進捗やワーカーの状態は、中止・次の実行の側が持っているので触らない）
+            if (!isCurrent()) return;
 
             // 既存のサブスクリプションを解除
             if (worker.subscription) {
@@ -275,8 +280,9 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             worker.run = run;
 
             // イベントを購読
-            worker.subscription = worker.client.subscribe((event) => {
-                if (state.cancelled) return;
+            const unsubscribe = worker.client.subscribe((event) => {
+                // 古い実行のイベントは、結果にも進捗にも使わない
+                if (!isCurrent()) return;
 
                 if (event.type === "info") {
                     if (run && worker.run === run) run.collector.push(event);
@@ -307,7 +313,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                     updateProgress();
 
                     // 次のジョブを処理
-                    void processNextJob(worker);
+                    void processNextJob(worker, runId);
                 }
 
                 if (event.type === "error") {
@@ -320,19 +326,37 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                     updateProgress();
 
                     // エラーでも次のジョブを処理
-                    void processNextJob(worker);
+                    void processNextJob(worker, runId);
                 }
             });
+            worker.subscription = unsubscribe;
 
             // 探索開始
-            worker.handle = await worker.client.search({
+            const handle = await worker.client.search({
                 limits: {
                     movetimeMs: job.timeMs,
                     maxDepth: job.depth,
                 },
                 ponder: false,
             });
+            // 探索の開始を待つ間に中止されていたら、中止の時点ではハンドルが無く止められて
+            // いないので、ここで止める。
+            if (!isCurrent()) {
+                try {
+                    await handle.cancel();
+                } catch {
+                    // 無視
+                }
+                if (worker.subscription === unsubscribe) {
+                    unsubscribe();
+                    worker.subscription = null;
+                }
+                return;
+            }
+            worker.handle = handle;
         } catch (error) {
+            // 古い実行の失敗は、現在の実行の進捗に数えない
+            if (!isCurrent()) return;
             callbacksRef.current.onError?.(job.ply, error as Error);
             worker.run = null;
             worker.handle = null;
@@ -342,40 +366,66 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             updateProgress();
 
             // エラーでも次のジョブを処理
-            void processNextJob(worker);
+            void processNextJob(worker, runId);
         }
     };
 
-    // ワーカーを初期化する
-    const initializeWorkers = async () => {
+    /** ワーカーの初期化に使う条件（start() の時点の値を、その実行の最後まで使う）。 */
+    interface WorkerParams {
+        nnueId: string | null;
+        fvScale: number | undefined;
+        layerStacks: LayerStacksOptions | undefined;
+        clientKey: string | undefined;
+        workerCount: number;
+        createClient: () => EngineClient;
+    }
+
+    /** いまあるワーカーをすべて破棄する。 */
+    const disposeWorkers = async () => {
+        const state = stateRef.current;
+        const workers = state.workers;
+        state.workers = [];
+        state.initialized = false;
+        state.currentNnueId = undefined;
+        state.currentWorkerCount = undefined;
+        await Promise.all(
+            workers.map(async (worker) => {
+                try {
+                    await worker.client.dispose();
+                } catch {
+                    // 無視
+                }
+            }),
+        );
+    };
+
+    // ワーカーを初期化する（`initChain` の中で 1 つずつ実行する。同時には走らせない）
+    const initializeWorkers = async (params: WorkerParams, runId: number) => {
         const state = stateRef.current;
         if (state.initialized) return;
 
-        // start()で渡されたnnueIdを優先、なければoptions.nnueIdを使用
-        const effectiveNnueId =
-            (state.overrideNnueId !== undefined ? state.overrideNnueId : nnueId) ?? null;
-        // start()で渡されたfvScaleを使用
-        const effectiveFvScale = state.overrideFvScale;
-
         const workers: EngineWorker[] = [];
-        for (let i = 0; i < workerCount; i++) {
+        for (let i = 0; i < params.workerCount; i++) {
+            // 初期化の途中で中止された・次の実行が始まったら、残りは作らない
+            // （ここまでに作ったワーカーは、次の実行が条件に合えばそのまま使う）。
+            if (state.runId !== runId && workers.length > 0) break;
             let client: EngineClient | undefined;
             try {
-                client = createClient();
+                client = params.createClient();
                 // 一括解析は局面単位で並列化し、各エンジン内の並列化との積を避ける。
                 await client.init({ threads: 1, usiThreads: 1 });
 
                 // NNUE をロード（指定されている場合）
-                if (effectiveNnueId && client.loadNnue) {
+                if (params.nnueId && client.loadNnue) {
                     try {
-                        await client.loadNnue(effectiveNnueId, state.overrideLayerStacks);
+                        await client.loadNnue(params.nnueId, params.layerStacks);
                         // FV_SCALE を設定（指定されている場合）
-                        if (effectiveFvScale !== undefined) {
-                            await client.setOption("FV_SCALE", effectiveFvScale);
+                        if (params.fvScale !== undefined) {
+                            await client.setOption("FV_SCALE", params.fvScale);
                         }
                     } catch (error) {
                         console.warn(
-                            `Failed to load NNUE for pool worker ${i} (${effectiveNnueId}):`,
+                            `Failed to load NNUE for pool worker ${i} (${params.nnueId}):`,
                             error,
                         );
                         throw error;
@@ -397,35 +447,46 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
 
         // 初期化に成功したワーカーが1つもない場合はエラー
         if (workers.length === 0) {
-            const error = new Error("No workers could be initialized");
-            callbacksRef.current.onError?.(0, error);
-            // アンマウント後は状態を更新しない
-            if (mountedRef.current) {
-                setIsRunning(false);
+            if (state.runId === runId) {
+                callbacksRef.current.onError?.(0, new Error("No workers could be initialized"));
+                // アンマウント後は状態を更新しない
+                if (mountedRef.current) {
+                    setIsRunning(false);
+                }
             }
             return;
         }
 
         // 要求された数より少ないワーカーしか初期化できなかった場合は警告
-        if (workers.length < workerCount) {
+        if (workers.length < params.workerCount && state.runId === runId) {
             console.warn(
-                `Only ${workers.length}/${workerCount} workers initialized. ` +
+                `Only ${workers.length}/${params.workerCount} workers initialized. ` +
                     "Analysis will continue with fewer parallel workers.",
             );
         }
 
         state.workers = workers;
         state.initialized = true;
-        state.currentNnueId = effectiveNnueId;
-        state.currentFvScale = effectiveFvScale;
-        state.currentLayerStacks = state.overrideLayerStacks;
-        state.currentClientKey = clientKey;
-        state.currentWorkerCount = workerCount;
+        state.currentNnueId = params.nnueId;
+        state.currentFvScale = params.fvScale;
+        state.currentLayerStacks = params.layerStacks;
+        state.currentClientKey = params.clientKey;
+        // 途中で打ち切った場合は、実際に作れた数を覚える（次の実行が足りなければ作り直す）。
+        state.currentWorkerCount =
+            workers.length < params.workerCount && state.runId !== runId
+                ? workers.length
+                : params.workerCount;
     };
 
     // 一括解析を開始する
     const start = (jobs: AnalysisJob[], startOptions?: StartOptions) => {
         const state = stateRef.current;
+
+        // 新しい実行を始める。前の実行の続き（初期化・局面読込・探索・結果通知）は、世代が
+        // 変わったことを見て自分で止まる。
+        state.runId += 1;
+        const runId = state.runId;
+        const isCurrent = () => state.runId === runId;
 
         // 状態をリセット（レイヤーは start の時点のものをジョブごとに持たせる）
         const layer = startOptions?.layer ?? null;
@@ -434,56 +495,55 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         state.completed = 0;
         state.total = jobs.length;
         state.inProgress.clear();
-        state.cancelled = false;
-
-        // start()で渡されたnnueIdとfvScaleを記録
-        state.overrideNnueId = startOptions?.nnueId;
-        state.overrideFvScale = startOptions?.fvScale;
-        state.overrideLayerStacks = startOptions?.layerStacks;
-
-        const nextNnueId =
-            (state.overrideNnueId !== undefined ? state.overrideNnueId : nnueId) ?? null;
-        const nextFvScale = state.overrideFvScale;
-        const currentNnueId = state.currentNnueId ?? null;
-        const currentFvScale = state.currentFvScale;
-        const nextClientKey = clientKey;
-        const currentClientKey = state.currentClientKey;
-
-        // NNUEまたはFV_SCALEが変わった場合は再初期化
-        const shouldReinitialize =
-            state.initialized &&
-            (nextNnueId !== currentNnueId ||
-                nextFvScale !== currentFvScale ||
-                JSON.stringify(state.overrideLayerStacks) !==
-                    JSON.stringify(state.currentLayerStacks) ||
-                nextClientKey !== currentClientKey ||
-                workerCount !== state.currentWorkerCount);
-        if (shouldReinitialize) {
-            state.initialized = false;
+        // 前の実行が持っていたワーカーの状態を外す（前の実行は、もう触らない）
+        for (const worker of state.workers) {
+            if (worker.subscription) {
+                worker.subscription();
+                worker.subscription = null;
+            }
+            worker.run = null;
+            worker.currentPly = null;
+            // 前の実行の探索が残っていれば止める
+            const handle = worker.handle;
+            worker.handle = null;
+            if (handle) void handle.cancel().catch(() => undefined);
         }
+
+        // start()で渡されたnnueIdを優先、なければoptions.nnueIdを使用
+        const params: WorkerParams = {
+            nnueId: (startOptions?.nnueId !== undefined ? startOptions.nnueId : nnueId) ?? null,
+            fvScale: startOptions?.fvScale,
+            layerStacks: startOptions?.layerStacks,
+            clientKey,
+            workerCount,
+            createClient,
+        };
+        const multiPv = state.multiPv;
 
         setIsRunning(true);
         updateProgress();
 
-        // 遅延初期化してジョブを開始
-        void (async () => {
-            // 再初期化が必要な場合は既存ワーカーを破棄
+        // 遅延初期化してジョブを開始。初期化・作り直しは順番に行い、前の実行の初期化が
+        // 終わってから、この実行の条件で確かめ直す。
+        const prepare = async () => {
+            if (!isCurrent()) return;
+            // NNUE・FV_SCALE・エンジン・並列数が変わった場合は再初期化
+            const shouldReinitialize =
+                state.initialized &&
+                (params.nnueId !== (state.currentNnueId ?? null) ||
+                    params.fvScale !== state.currentFvScale ||
+                    JSON.stringify(params.layerStacks) !==
+                        JSON.stringify(state.currentLayerStacks) ||
+                    params.clientKey !== state.currentClientKey ||
+                    params.workerCount !== state.currentWorkerCount);
             if (shouldReinitialize) {
-                const disposePromises = state.workers.map(async (worker) => {
-                    try {
-                        await worker.client.dispose();
-                    } catch {
-                        // 無視
-                    }
-                });
-                await Promise.all(disposePromises);
-                state.workers = [];
+                await disposeWorkers();
             }
 
-            await initializeWorkers();
+            await initializeWorkers(params, runId);
+            if (!isCurrent()) return;
 
             // 候補手数（MultiPV）を毎回設定する（前回の一括解析の設定を残さない）
-            const multiPv = state.multiPv;
             await Promise.all(
                 state.workers.map(async (worker) => {
                     try {
@@ -493,20 +553,23 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                     }
                 }),
             );
-
+        };
+        state.initChain = state.initChain.then(prepare, prepare);
+        void state.initChain.then(() => {
+            if (!isCurrent()) return;
             // 各ワーカーにジョブを割り当て
             for (const worker of state.workers) {
-                if (!state.cancelled) {
-                    void processNextJob(worker);
-                }
+                void processNextJob(worker, runId);
             }
-        })();
+        });
     };
 
     // 一括解析をキャンセルする
     const cancel = async () => {
         const state = stateRef.current;
-        state.cancelled = true;
+        // 世代を進める。待機中（初期化・局面読込・探索開始）の処理は、戻ってきたときに
+        // 世代が変わっているのを見て止まる。
+        state.runId += 1;
         state.jobQueue = [];
 
         // 全ワーカーを停止
@@ -514,19 +577,20 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             // 途中で止めた探索も、そこまでの結果を「中断」として通知する（アンマウント後は捨てる）
             if (mountedRef.current) finishRun(worker, "aborted");
             else worker.run = null;
-            if (worker.handle) {
-                try {
-                    await worker.handle.cancel();
-                } catch {
-                    // 無視
-                }
-                worker.handle = null;
-            }
+            const handle = worker.handle;
+            worker.handle = null;
             if (worker.subscription) {
                 worker.subscription();
                 worker.subscription = null;
             }
             worker.currentPly = null;
+            if (handle) {
+                try {
+                    await handle.cancel();
+                } catch {
+                    // 無視
+                }
+            }
         });
 
         await Promise.all(stopPromises);
@@ -544,20 +608,10 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
     const dispose = async () => {
         await cancel();
 
+        // 進行中の初期化が終わってから破棄する（初期化の途中で作られたワーカーを残さない）
         const state = stateRef.current;
-        const disposePromises = state.workers.map(async (worker) => {
-            try {
-                await worker.client.dispose();
-            } catch {
-                // 無視
-            }
-        });
-
-        await Promise.all(disposePromises);
-        state.workers = [];
-        state.initialized = false;
-        state.currentNnueId = undefined;
-        state.currentWorkerCount = undefined;
+        state.initChain = state.initChain.then(disposeWorkers, disposeWorkers);
+        await state.initChain;
     };
 
     const disposeEvent = useEffectEvent(dispose);

@@ -147,6 +147,22 @@ interface StudyWorkspaceCommonProps {
     originLink?: ReactNode;
     /** 合法手の取得の差し替え（Desktop・テスト用）。省略時は共通の PositionService。 */
     fetchLegalMoves?: FetchLegalMoves;
+    /**
+     * 編集できない状態（開いている間にログインが切れて、ノートを保存できなくなった）。
+     * 画面は残し、操作を止めて、ログインし直す案内を出す。書きかけのコメントは消さない。
+     */
+    locked?: boolean;
+    /** 最初に入れておくコメントの下書き（前回、保存できないまま残っていた入力）。 */
+    initialCommentDraft?: StudyCommentDraft | null;
+    /** まだ保存できていないコメントの入力が変わった（保存できたら `text` は null）。 */
+    onCommentDraftChange?: (nodeId: string, text: string | null) => void;
+}
+
+/** 保存できていないコメントの入力。 */
+export interface StudyCommentDraft {
+    /** コメントを書いていた手（保存用の `nodeId`）。 */
+    nodeId: string;
+    text: string;
 }
 
 interface StudyWorkspaceViewProps extends StudyWorkspaceCommonProps {
@@ -343,6 +359,9 @@ export function StudyWorkspaceView({
     onDiscard,
     originLink,
     fetchLegalMoves,
+    locked = false,
+    initialCommentDraft,
+    onCommentDraftChange,
     displayLayerId,
     onDisplayLayerChange,
     analysis,
@@ -372,6 +391,10 @@ export function StudyWorkspaceView({
     const [mobileTab, setMobileTab] = useState<MobileTab>("highlights");
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+    // 復元する下書き。コメント欄に渡したら役目は終わり（以後はコメント欄が持つ）。
+    const [pendingDraft, setPendingDraft] = useState<StudyCommentDraft | null>(
+        initialCommentDraft ?? null,
+    );
     const [pvPreview, setPvPreview] = useState<{
         pv: string[];
         startPosition: PositionState;
@@ -506,7 +529,7 @@ export function StudyWorkspaceView({
         onToStart: goToStart,
         onToEnd: goToEnd,
         // 読み筋の再生・確認ダイアログが開いている間は、そちらのキー操作を優先する。
-        disabled: pvPreview !== null || deleteTargetId !== null || isSettingsOpen,
+        disabled: locked || pvPreview !== null || deleteTargetId !== null || isSettingsOpen,
         containerRef: boardSectionRef,
         enableWheelNavigation: displaySettings.enableWheelNavigation,
     });
@@ -589,9 +612,8 @@ export function StudyWorkspaceView({
             },
         ]);
     };
-    const changeComment = (nodeId: string, value: string): void => {
-        void onApplyOps([{ type: "setComment", nodeId, value }]);
-    };
+    const changeComment = (nodeId: string, value: string): StudyApplyOpsResult =>
+        onApplyOps([{ type: "setComment", nodeId, value }]);
     const addPvAsVariation = (request: StudyPvRequest): void => {
         const baseNode = tree.nodes.get(request.nodeId);
         if (!baseNode) return;
@@ -860,6 +882,12 @@ export function StudyWorkspaceView({
             key={currentNodeId}
             value={storedNode?.comment ?? ""}
             onChange={(value) => changeComment(currentNodeId, value)}
+            initialDraft={pendingDraft?.nodeId === currentNodeId ? pendingDraft.text : undefined}
+            onDraftChange={(text) => {
+                if (pendingDraft?.nodeId === currentNodeId) setPendingDraft(null);
+                onCommentDraftChange?.(currentNodeId, text);
+            }}
+            disabled={locked}
         />
     );
 
@@ -943,96 +971,119 @@ export function StudyWorkspaceView({
                     </output>
                 )}
 
-                {isMobile ? (
-                    <div className="flex flex-col gap-3">
-                        <div className="flex flex-col items-center gap-2">
-                            {boardStatus}
-                            {fluidBoard}
-                            {navBar}
-                        </div>
-                        <div
-                            role="tablist"
-                            aria-label="表示の切り替え"
-                            className="grid grid-cols-3 gap-1 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-1"
-                        >
-                            {MOBILE_TABS.map((tab) => (
-                                <button
-                                    key={tab.id}
-                                    id={`study-tab-${tab.id}`}
-                                    type="button"
-                                    role="tab"
-                                    aria-selected={mobileTab === tab.id}
-                                    aria-controls="study-tabpanel"
-                                    tabIndex={mobileTab === tab.id ? 0 : -1}
-                                    onClick={() => setMobileTab(tab.id)}
-                                    onKeyDown={handleTabKeyDown}
-                                    className={cn(
-                                        "h-10 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                        mobileTab === tab.id
-                                            ? "bg-card text-wafuu-shu shadow-sm"
-                                            : "text-wafuu-sumi-light hover:text-wafuu-sumi",
-                                    )}
-                                >
-                                    {tab.label}
-                                </button>
-                            ))}
-                        </div>
-                        <div
-                            id="study-tabpanel"
-                            role="tabpanel"
-                            aria-labelledby={`study-tab-${mobileTab}`}
-                            className="flex flex-col gap-3"
-                        >
-                            {mobileTab === "highlights" && highlightsPanel}
-                            {mobileTab === "moves" && moveList}
-                            {mobileTab === "candidates" && candidatesPanel}
-                            {mobileTab === "candidates" && commentBox}
-                        </div>
-                        {graphPanel}
+                {locked && (
+                    <div
+                        role="alert"
+                        className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-status-warning-border bg-status-warning-bg px-3 py-2 text-sm text-status-warning"
+                    >
+                        <p className="min-w-0 flex-1">
+                            ログインが切れたため、このノートはいま編集できません。ログインし直すと、続きから編集できます（書きかけのコメントは残っています）。
+                        </p>
+                        {onLogin && (
+                            <button
+                                type="button"
+                                onClick={onLogin}
+                                className="min-h-10 shrink-0 rounded-md border border-current px-3 text-xs font-medium transition-colors hover:bg-background/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                                ログインし直す
+                            </button>
+                        )}
                     </div>
-                ) : isTablet ? (
-                    // タブレットの縦持ち: 盤を小さくして左に置き、右に注目局面からの列を並べる。
-                    <div className="grid grid-cols-[22.5rem_minmax(0,1fr)] items-start gap-3">
-                        <div className="flex min-w-0 flex-col gap-3">
+                )}
+
+                {/* 編集できない間は、画面を残したまま操作だけを止める。 */}
+                <div inert={locked} className={cn("flex flex-col gap-3", locked && "opacity-70")}>
+                    {isMobile ? (
+                        <div className="flex flex-col gap-3">
                             <div className="flex flex-col items-center gap-2">
                                 {boardStatus}
                                 {fluidBoard}
                                 {navBar}
                             </div>
-                            {commentBox}
-                            {graphPanel}
-                        </div>
-                        <div className="flex min-w-0 flex-col gap-3">
-                            {highlightsPanel}
-                            {candidatesPanel}
-                            {moveList}
-                        </div>
-                    </div>
-                ) : (
-                    <div className="grid items-start gap-3 lg:grid-cols-[auto_minmax(0,1fr)] xl:grid-cols-[auto_minmax(300px,1fr)_350px]">
-                        <div className="flex w-fit flex-col gap-3 lg:row-span-2 xl:row-span-1">
                             <div
-                                ref={boardSectionRef}
-                                className="flex flex-col items-center gap-2 [--shogi-cell-size:44px]"
+                                role="tablist"
+                                aria-label="表示の切り替え"
+                                className="grid grid-cols-3 gap-1 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-1"
                             >
-                                {boardStatus}
-                                <PCBoardContent {...boardProps} />
-                                {navBar}
+                                {MOBILE_TABS.map((tab) => (
+                                    <button
+                                        key={tab.id}
+                                        id={`study-tab-${tab.id}`}
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={mobileTab === tab.id}
+                                        aria-controls="study-tabpanel"
+                                        tabIndex={mobileTab === tab.id ? 0 : -1}
+                                        onClick={() => setMobileTab(tab.id)}
+                                        onKeyDown={handleTabKeyDown}
+                                        className={cn(
+                                            "h-10 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                            mobileTab === tab.id
+                                                ? "bg-card text-wafuu-shu shadow-sm"
+                                                : "text-wafuu-sumi-light hover:text-wafuu-sumi",
+                                        )}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
                             </div>
-                            {/* コメント欄の幅は盤に合わせる。 */}
-                            <div className="w-0 min-w-full">{commentBox}</div>
-                        </div>
-                        <div className="flex min-w-0 flex-col gap-3">
-                            {highlightsPanel}
-                            {candidatesPanel}
+                            <div
+                                id="study-tabpanel"
+                                role="tabpanel"
+                                aria-labelledby={`study-tab-${mobileTab}`}
+                                className="flex flex-col gap-3"
+                            >
+                                {mobileTab === "highlights" && highlightsPanel}
+                                {mobileTab === "moves" && moveList}
+                                {mobileTab === "candidates" && candidatesPanel}
+                                {mobileTab === "candidates" && commentBox}
+                            </div>
                             {graphPanel}
                         </div>
-                        <div className="min-w-0 lg:col-start-2 xl:col-start-3">{moveList}</div>
-                    </div>
-                )}
+                    ) : isTablet ? (
+                        // タブレットの縦持ち: 盤を小さくして左に置き、右に注目局面からの列を並べる。
+                        <div className="grid grid-cols-[22.5rem_minmax(0,1fr)] items-start gap-3">
+                            <div className="flex min-w-0 flex-col gap-3">
+                                <div className="flex flex-col items-center gap-2">
+                                    {boardStatus}
+                                    {fluidBoard}
+                                    {navBar}
+                                </div>
+                                {commentBox}
+                                {graphPanel}
+                            </div>
+                            <div className="flex min-w-0 flex-col gap-3">
+                                {highlightsPanel}
+                                {candidatesPanel}
+                                {moveList}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="grid items-start gap-3 lg:grid-cols-[auto_minmax(0,1fr)] xl:grid-cols-[auto_minmax(300px,1fr)_350px]">
+                            <div className="flex w-fit flex-col gap-3 lg:row-span-2 xl:row-span-1">
+                                <div
+                                    ref={boardSectionRef}
+                                    className="flex flex-col items-center gap-2 [--shogi-cell-size:44px]"
+                                >
+                                    {boardStatus}
+                                    <PCBoardContent {...boardProps} />
+                                    {navBar}
+                                </div>
+                                {/* コメント欄の幅は盤に合わせる。 */}
+                                <div className="w-0 min-w-full">{commentBox}</div>
+                            </div>
+                            <div className="flex min-w-0 flex-col gap-3">
+                                {highlightsPanel}
+                                {candidatesPanel}
+                                {graphPanel}
+                            </div>
+                            <div className="min-w-0 lg:col-start-2 xl:col-start-3">{moveList}</div>
+                        </div>
+                    )}
+                </div>
             </div>
 
-            {showsFixedStart && (
+            {showsFixedStart && !locked && (
                 <div className="fixed inset-x-0 bottom-0 z-30 border-t border-wafuu-border bg-card px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 shadow-card">
                     <Button
                         type="button"
@@ -1152,6 +1203,7 @@ export function StudyWorkspace({
     initialView,
     onViewChange,
     notice,
+    locked = false,
     ...viewProps
 }: StudyWorkspaceProps): ReactElement {
     const [preferredLayerId, setPreferredLayerId] = useState<string | null>(
@@ -1235,6 +1287,13 @@ export function StudyWorkspace({
         }
     }, [revertLayerId, controller.mode, doc, displayLayerId, onViewChange]);
 
+    // 編集できなくなったら（ログインが切れたら）、進行中の解析を止める（結果を保存できないため）。
+    const cancelAnalysisRef = useRef(controller.cancel);
+    cancelAnalysisRef.current = controller.cancel;
+    useEffect(() => {
+        if (locked) void cancelAnalysisRef.current();
+    }, [locked]);
+
     const analysis: StudyAnalysisController = {
         ...controller,
         cancel: async () => {
@@ -1250,6 +1309,7 @@ export function StudyWorkspace({
         <>
             <StudyWorkspaceView
                 {...viewProps}
+                locked={locked}
                 doc={doc}
                 tree={tree}
                 unrestoredCount={structure.unrestoredCount}

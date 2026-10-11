@@ -1,6 +1,6 @@
 import { applyStudyOps, type StudyDocument, type StudyOp } from "@shogi/app-core";
 import type { StoredStudy } from "@shogi/study-client";
-import type { EngineOption, StudyWorkspaceViewState } from "@shogi/ui";
+import type { EngineOption, StudyCommentDraft, StudyWorkspaceViewState } from "@shogi/ui";
 import { StudyWorkspace } from "@shogi/ui";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import type { ReactElement, ReactNode } from "react";
@@ -11,6 +11,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { Section } from "../../components/Section";
 import { dispatchAuthSessionSyncEvent, useAuthSession } from "../../hooks/useAuthSession";
 import { resolveBuiltinEngineIdentity } from "../../lib/builtinEngine";
+import { readStudyCommentDraft, writeStudyCommentDraft } from "../../lib/studyDrafts";
 import { ensureStudySession, getStudySync } from "../../lib/studySync";
 import { createWebWasmEngineClient } from "../../platform/wasm-engine-client";
 
@@ -35,6 +36,15 @@ type LoadState =
           doc: StudyDocument;
           /** 前回の表示の状態（表示していた解析の設定と、見ていた局面）。 */
           view: StudyWorkspaceViewState | null;
+          /** ノートの持ち主（匿名のノートは null）。 */
+          ownerId: string | null;
+          /**
+           * 開いている間にログインが切れて、ノートが見えなくなった（保存できない）。
+           * 「見つかりません」にはせず、画面を残して編集だけを止める。
+           */
+          locked: boolean;
+          /** 前回、保存できないまま残っていたコメントの入力。 */
+          draft: StudyCommentDraft | null;
       }
     /** ブラウザ内にもクラウドにも無い。 */
     | { status: "not_found" }
@@ -133,6 +143,10 @@ export default function StudyPage(): ReactElement {
         () => sync.getStatus(studyId),
     );
 
+    // 非同期の処理から、いまの画面の状態を見るための写し。
+    const stateRef = useRef(state);
+    stateRef.current = state;
+
     // ノートごとの、こちらの編集の進み具合。
     // - `seq`: 編集のたびに増える。保存層から読み直している間に編集があったかを見分ける。
     // - `pending`: 保存層への書き込みを待っている数。
@@ -147,11 +161,35 @@ export default function StudyPage(): ReactElement {
     };
 
     /**
-     * 保存層の内容を画面に取り込む（他のタブ・端末の変更、拒否された操作の取り消し）。
+     * 保存層の内容を画面に出す。文書を画面に反映するのは、必ずここを通す
+     * （開く・開き直す・他のタブや端末の変更の取り込み・拒否された操作の取り消し）。
+     *
      * 読んでいる間にこちらで編集があったら、古い内容で上書きしないよう、読み直す。
+     *
+     * @param mode `open` は、まだ開いていなければ開く。`refresh` は、開いている画面の更新だけ。
+     * @returns 保存層にノートが無かった（見えなかった）ら false。
      */
-    const reloadFromStore = async (targetId: string, isCancelled: () => boolean): Promise<void> => {
+    const presentFromStore = async (
+        targetId: string,
+        mode: "open" | "refresh",
+        isCancelled: () => boolean,
+    ): Promise<boolean> => {
         const writes = writesOf(targetId);
+        // 表示の状態（このブラウザだけの状態）は、最初に開くときにだけ使う。読めなくても開く。
+        let view: StudyWorkspaceViewState | null = null;
+        if (mode === "open") {
+            try {
+                const stored = await sync.getViewState(targetId);
+                view = {
+                    selectedLayerId:
+                        typeof stored.selectedLayerId === "string" ? stored.selectedLayerId : null,
+                    currentNodeId:
+                        typeof stored.currentNodeId === "string" ? stored.currentNodeId : null,
+                };
+            } catch {
+                view = null;
+            }
+        }
         for (;;) {
             const seq = writes.seq;
             await sync.whenLocalWritesSettled();
@@ -159,35 +197,54 @@ export default function StudyPage(): ReactElement {
             try {
                 stored = await sync.load(targetId);
             } catch {
-                return;
+                return false;
             }
-            if (isCancelled()) return;
+            if (isCancelled()) return true;
+            // 読んでいる間に編集があった。いま読んだ内容は古いので、読み直す。
             if (writes.seq !== seq) continue;
-            if (!stored) return;
+            if (!stored || stored.deleting) return false;
             if (stored.mergedInto !== null) {
                 void navigate({
                     to: "/studies/$studyId",
                     params: { studyId: stored.mergedInto },
                     replace: true,
                 });
-                return;
+                return true;
             }
-            const doc = stored.doc;
-            setState((previous) =>
-                previous.status === "ready" && previous.studyId === targetId
-                    ? { ...previous, doc }
-                    : previous,
-            );
-            return;
+            const { doc, owner } = stored;
+            setState((previous) => {
+                if (previous.status === "ready" && previous.studyId === targetId) {
+                    // 開いている画面の更新。表示の状態と書きかけは、画面が持っているものを使う。
+                    return { ...previous, doc, ownerId: owner, locked: false };
+                }
+                if (mode === "refresh") return previous;
+                // 前回、保存できないまま残っていたコメントがあれば、その手を開いて戻す。
+                const draft = readStudyCommentDraft(targetId, owner);
+                return {
+                    status: "ready",
+                    studyId: targetId,
+                    doc,
+                    view: draft
+                        ? {
+                              selectedLayerId: view?.selectedLayerId ?? null,
+                              currentNodeId: draft.nodeId,
+                          }
+                        : view,
+                    ownerId: owner,
+                    locked: false,
+                    draft,
+                };
+            });
+            return true;
         }
     };
 
-    // biome-ignore lint/correctness/useExhaustiveDependencies: reloadCount は「もう一度読み込む」で開き直すための合図。reloadFromStore は毎回作り直されるが、中身は ref と studyId だけに依存する
+    // biome-ignore lint/correctness/useExhaustiveDependencies: reloadCount は「もう一度読み込む」で開き直すための合図。presentFromStore は毎回作り直されるが、中身は ref と引数だけに依存する
     useEffect(() => {
         let cancelled = false;
         const isCancelled = (): boolean => cancelled;
         // 同じノートを開き直すだけのとき（ログイン状態が変わった、など）は、画面を作り直さない
-        // （作り直すと、実行中の解析が止まってしまう）。
+        // （作り直すと、実行中の解析が止まり、書きかけのコメントも消えてしまう）。
         setState((previous) =>
             previous.status === "ready" && previous.studyId === studyId
                 ? previous
@@ -202,34 +259,27 @@ export default function StudyPage(): ReactElement {
             });
         };
 
-        /** 前回の表示の状態を読む（このブラウザだけの状態。読めなくても画面は開く）。 */
-        const loadView = async (): Promise<StudyWorkspaceViewState | null> => {
-            try {
-                const stored = await sync.getViewState(studyId);
-                return {
-                    selectedLayerId:
-                        typeof stored.selectedLayerId === "string" ? stored.selectedLayerId : null,
-                    currentNodeId:
-                        typeof stored.currentNodeId === "string" ? stored.currentNodeId : null,
-                };
-            } catch {
-                return null;
+        /**
+         * 開いていたアカウントのノートが、ログインが切れて見えなくなったか。
+         * その場合は「見つかりません」にせず、画面を残して編集を止める。
+         */
+        const lockIfWasOpen = (): boolean => {
+            const current = stateRef.current;
+            if (
+                current.status !== "ready" ||
+                current.studyId !== studyId ||
+                current.ownerId === null ||
+                // 別のアカウントでログインした場合は、前のアカウントのノートを画面に残さない。
+                userId !== null
+            ) {
+                return false;
             }
-        };
-
-        /** 開けた文書を画面に出す。開き直しでは、画面が持っている表示の状態をそのまま使う。 */
-        const show = async (doc: StudyDocument): Promise<void> => {
-            const view = await loadView();
-            if (cancelled) return;
-            setState((previous) => ({
-                status: "ready",
-                studyId,
-                doc,
-                view:
-                    previous.status === "ready" && previous.studyId === studyId
-                        ? previous.view
-                        : view,
-            }));
+            setState((previous) =>
+                previous.status === "ready" && previous.studyId === studyId
+                    ? { ...previous, locked: true }
+                    : previous,
+            );
+            return true;
         };
 
         const unsubscribe = sync.subscribeEvents((event) => {
@@ -247,7 +297,7 @@ export default function StudyPage(): ReactElement {
                 setState({ status: "removed" });
             } else if (event.origin !== "local") {
                 // 他のタブ・他の端末の変更を取り込む。
-                void reloadFromStore(studyId, isCancelled);
+                void presentFromStore(studyId, "refresh", isCancelled);
             }
         });
 
@@ -256,16 +306,8 @@ export default function StudyPage(): ReactElement {
                 // ログイン状態が分かる前に出してよいのは、匿名のノート（未ログイン中に作ったノート）だけ。
                 // アカウントのノートは保存層が返さない（`load` が null）。その場合は「見つかりません」と
                 // 決めつけず、ログイン状態が分かるまで読み込み中のままにする。
-                const stored = await sync.load(studyId);
-                if (cancelled) return;
-                if (stored && !stored.deleting) {
-                    if (stored.mergedInto !== null) {
-                        goTo(stored.mergedInto);
-                        return;
-                    }
-                    await show(stored.doc);
-                    return;
-                }
+                const shown = await presentFromStore(studyId, "open", isCancelled);
+                if (cancelled || shown) return;
                 if (sessionState === "error") {
                     setState((previous) =>
                         previous.status === "ready" && previous.studyId === studyId
@@ -280,19 +322,23 @@ export default function StudyPage(): ReactElement {
             }
             // ログイン状態を伝え、未ログイン中に作ったノートをアカウントへ引き継いでから開く。
             await ensureStudySession(userId);
-            // 開き直すときに、書きかけの変更を古い内容で上書きしないよう、書き込みが終わるのを待つ。
-            await sync.whenLocalWritesSettled();
             const result = await sync.open(studyId);
             if (cancelled) return;
-            if (result.status === "ok") {
-                await show(result.study.doc);
-            } else if (result.status === "merged") {
+            if (result.status === "merged") {
                 goTo(result.into);
-            } else if (result.status === "unavailable") {
-                setState({ status: "unavailable", message: result.message });
-            } else {
-                setState({ status: "not_found" });
+                return;
             }
+            // 開けたら、保存層の内容を画面に出す（`open` が返した文書は、待っている間の編集で
+            // 古くなっていることがあるので、そのままは使わない）。
+            if (result.status === "ok" && (await presentFromStore(studyId, "open", isCancelled))) {
+                return;
+            }
+            if (cancelled || lockIfWasOpen()) return;
+            setState(
+                result.status === "unavailable"
+                    ? { status: "unavailable", message: result.message }
+                    : { status: "not_found" },
+            );
         })().catch((error: unknown) => {
             if (cancelled) return;
             setState({
@@ -318,6 +364,11 @@ export default function StudyPage(): ReactElement {
      * 結果など）が、次に開いたノートの表示を変えないよう、必ずこの ID に対して行う。
      */
     const applyOpsTo = (targetId: string, ops: StudyOp[]): Promise<boolean> => {
+        const current = stateRef.current;
+        // 編集できない間（ログインが切れた）は、保存を試みない。書きかけは画面と下書きに残る。
+        if (current.status === "ready" && current.studyId === targetId && current.locked) {
+            return Promise.resolve(false);
+        }
         const writes = writesOf(targetId);
         writes.seq += 1;
         writes.pending += 1;
@@ -353,7 +404,7 @@ export default function StudyPage(): ReactElement {
                 }));
                 // 画面に先に反映していた分を取り消す（保存されている内容に戻す）。
                 writes.seq += 1;
-                void reloadFromStore(targetId, () => false);
+                void presentFromStore(targetId, "refresh", () => false);
                 return false;
             },
         );
@@ -453,6 +504,11 @@ export default function StudyPage(): ReactElement {
                         onLogin={handleLogin}
                         onDiscard={handleDiscard}
                         originLink={renderOriginLink(state.doc.origin)}
+                        locked={state.locked}
+                        initialCommentDraft={state.draft}
+                        onCommentDraftChange={(nodeId, text) =>
+                            writeStudyCommentDraft(studyId, state.ownerId, nodeId, text)
+                        }
                         initialView={state.view}
                         onViewChange={(view) => {
                             void sync.setViewState(studyId, { ...view }).catch(() => undefined);

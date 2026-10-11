@@ -44,6 +44,7 @@ import { useEditModeActions } from "./shogi-match/hooks/useEditModeActions";
 import { useEngineManager } from "./shogi-match/hooks/useEngineManager";
 import { useEnginePool } from "./shogi-match/hooks/useEnginePool";
 import { useGameControls } from "./shogi-match/hooks/useGameControls";
+import { useImportedKifuPlayers } from "./shogi-match/hooks/useImportedKifuPlayers";
 import { type ReviewMoveEval, useKifuImportExport } from "./shogi-match/hooks/useKifuImportExport";
 import { useKifuKeyboardNavigation } from "./shogi-match/hooks/useKifuKeyboardNavigation";
 import {
@@ -88,7 +89,6 @@ import type {
     PCSpecificProps,
 } from "./shogi-match/types/layoutProps";
 import type { KifMove } from "./shogi-match/utils/kifFormat";
-import type { ImportSfenHandler } from "./shogi-match/utils/kifuImport";
 import { LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
 import {
     isSamePassRightsSettings,
@@ -1715,17 +1715,11 @@ export function ShogiMatch({
     const initialAnalysisAppliedRef = useRef<string | null>(null);
 
     // 棋譜読込で読んだ棋譜の対局者名を覚えておく（研究ノートにするときの表題に使う）。
-    // 読み込んだあとで別の棋譜になっていないかは、本譜の手順で見分ける。
-    const importedPlayersRef = useRef<{
-        movesKey: string;
-        players: { sente?: string; gote?: string };
-    } | null>(null);
-    const importSfenFromPanel: ImportSfenHandler = async (sfen, importedMoves, options) => {
-        await importSfen(sfen, importedMoves, { moveData: options?.moveData });
-        importedPlayersRef.current = options?.players
-            ? { movesKey: importedMoves.join(" "), players: options.players }
-            : null;
-    };
+    // 別の棋譜（KIF を含む）を読んだら忘れ、同じ棋譜のままかは開始局面と本譜の手順で見分ける。
+    const { importSfenFromPanel, importKifFromPanel, playersFor } = useImportedKifuPlayers({
+        importSfen,
+        importKif,
+    });
 
     // initialReview を取り込む。live 観戦では moves が逐次伸びた場合だけ importSfen で
     // 末尾まで再構築し、コメントだけが遅れて届いた場合は既存ノードへ差分適用する。
@@ -1995,7 +1989,7 @@ export function ShogiMatch({
         candidateNote,
         isSettingsModalOpen,
         importSfen: importSfenFromPanel,
-        importKif,
+        importKif: importKifFromPanel,
         positionReady,
         isDevMode,
         eventLogs,
@@ -2027,7 +2021,7 @@ export function ShogiMatch({
         reviewMode,
         onOpenAbout: () => setIsAboutOpen(true),
         onImportSfen: importSfenFromPanel,
-        onImportKif: importKif,
+        onImportKif: importKifFromPanel,
         onDisplaySettingsChange: setDisplaySettings,
     };
 
@@ -2046,13 +2040,8 @@ export function ShogiMatch({
                 type="button"
                 className="w-full rounded-md border border-wafuu-border bg-wafuu-washi py-2 text-sm font-medium text-wafuu-sumi transition-colors hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => {
-                    const imported = importedPlayersRef.current;
-                    const mainLineKey = navigation.getMainLineMoves().join(" ");
                     onOpenAsStudy?.(navigation.tree, {
-                        players:
-                            imported && imported.movesKey === mainLineKey
-                                ? imported.players
-                                : undefined,
+                        players: playersFor(startSfen, navigation.getMainLineMoves()),
                     });
                 }}
             >
