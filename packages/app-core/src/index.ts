@@ -195,3 +195,115 @@ export {
     PROGRESS_COEFFICIENTS_SIZE,
     validateLayerStacks,
 } from "./nnue/layer-stacks";
+
+// ============================================================
+// study モジュール（研究ノート）
+// ============================================================
+
+// study/analysis
+export type {
+    StudyAnalysisCollector,
+    StudyAnalysisCollectorOptions,
+    StudyAnalysisInfo,
+    StudyLayerRef,
+    StudyLayerSpecInput,
+} from "./study/analysis";
+export {
+    buildStudyLayerDisplay,
+    buildStudyLayerSpec,
+    createStudyAnalysisCollector,
+    createStudyLayerRef,
+} from "./study/analysis";
+// study/highlights
+export type { StudyHighlight, StudyHighlightKind } from "./study/highlights";
+export {
+    computeStudyHighlights,
+    STUDY_BLUNDER_DROP,
+    STUDY_DUBIOUS_DROP,
+    STUDY_WIN_RATE_MODEL,
+    STUDY_WIN_RATE_SCALE_CP,
+    studyScoreToSenteWinRate,
+} from "./study/highlights";
+// study/ids
+export {
+    canonicalJSON,
+    normalizeStudyStartSfen,
+    studyChildNodeId,
+    studyHash,
+    studyLayerId,
+    studyOriginKey,
+    studyRootNodeId,
+} from "./study/ids";
+// study/import
+export type {
+    StudyCsaImportInput,
+    StudyImportAnnotation,
+    StudyImportInput,
+    StudyKifuTreeImportInput,
+} from "./study/import";
+export {
+    createStudyDocumentFromCsa,
+    createStudyDocumentFromKifuTree,
+    createStudyDocumentFromMoves,
+    generateStudyId,
+} from "./study/import";
+// study/ops
+export {
+    applyStudyOp,
+    applyStudyOps,
+    compareStudyAnalysisPriority,
+    isStudyUsiMove,
+    StudyOpError,
+    studyDocumentToOps,
+} from "./study/ops";
+// study/score
+export {
+    kifuEvalToStudyScore,
+    legacyEvalToStudyScore,
+    STUDY_LEGACY_MATE_WITHOUT_PLY,
+    studyScoreToKifuEval,
+    studyScoreToLegacyEval,
+} from "./study/score";
+// study/sfen
+export { parseStudySfen } from "./study/sfen";
+// study/sha256
+export { sha256Hex, utf8Encode } from "./study/sha256";
+// study/tree-convert
+export type {
+    KifuTreeToStudyOptions,
+    KifuTreeToStudyResult,
+    StudyNodeIdIndex,
+    StudyToKifuTreeOptions,
+    StudyToKifuTreeResult,
+} from "./study/tree-convert";
+export {
+    buildStudyNodeIdIndex,
+    diffKifuTreeToStudyOps,
+    kifuTreeToStudyTree,
+    studyCandidateToKifuEval,
+    studyDocumentToKifuTree,
+    studyResultToKifuEvals,
+} from "./study/tree-convert";
+// study/types
+export type {
+    StudyAnalysisResult,
+    StudyCandidate,
+    StudyDocument,
+    StudyEngineKind,
+    StudyExecution,
+    StudyLayer,
+    StudyLayerDisplay,
+    StudyLayerSpec,
+    StudyLayerStacksSpec,
+    StudyMeta,
+    StudyNode,
+    StudyOp,
+    StudyOrigin,
+    StudyOriginKind,
+    StudyPlayer,
+    StudyRules,
+    StudyScore,
+    StudySource,
+    StudyTree,
+} from "./study/types";
+export { STANDARD_STUDY_RULES, STUDY_HIRATE_SFEN, STUDY_LIMITS } from "./study/types";

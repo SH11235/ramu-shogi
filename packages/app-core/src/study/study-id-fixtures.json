@@ -1,0 +1,61 @@
+{
+    "note": "frontend が設計書 5.2 の入力から計算した値。backend の study-id-fixtures.json が確定したら同じ内容に差し替える。",
+    "canonicalJSON": [
+        {
+            "input": { "b": 1, "a": [2, { "d": null, "c": "x" }] },
+            "expected": "{\"a\":[2,{\"c\":\"x\",\"d\":null}],\"b\":1}"
+        }
+    ],
+    "hash": [
+        {
+            "input": ["日本語", "😀"],
+            "expected": "c1f177603ec00696007c2f3b720fe5192002949a0a0b33787779f18d694fd945"
+        }
+    ],
+    "rootNodeId": [
+        {
+            "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+            "rules": { "variant": "standard" },
+            "canonicalInput": "[\"ramu-node-v1\",\"lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1\",{\"variant\":\"standard\"}]",
+            "expected": "6c3e7548e58759b28e57ec9f892f6edd"
+        }
+    ],
+    "childNodeId": [
+        {
+            "parentNodeId": "6c3e7548e58759b28e57ec9f892f6edd",
+            "usiMove": "7g7f",
+            "expected": "e1393a3aa2d1c963df08cb86a47ff380"
+        },
+        {
+            "parentNodeId": "e1393a3aa2d1c963df08cb86a47ff380",
+            "usiMove": "3c3d",
+            "expected": "9f336c88dfedd100cdf0d143dac0ed36"
+        }
+    ],
+    "layerId": [
+        {
+            "spec": {
+                "version": 1,
+                "engine": { "kind": "wasm", "name": "rshogi", "version": "0.8.1" },
+                "evaluation": {
+                    "nnueSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "fvScale": 24,
+                    "progressSha256": null,
+                    "layerStacks": null
+                },
+                "limits": { "timeMs": 1000, "depth": 15, "nodes": null },
+                "multiPv": 3,
+                "rules": { "variant": "standard" }
+            },
+            "expected": "76554fe4476e85837e43e0cf8c79245d"
+        }
+    ],
+    "originKey": [
+        {
+            "kind": "rshogi_csa",
+            "ref": "wdoor-20261009000001-93ef4d36a6",
+            "expected": "1f8a85b93e015794ce5d34022a0ee5c3"
+        },
+        { "kind": "paste", "ref": null, "expected": null }
+    ]
+}

@@ -20,6 +20,12 @@ export interface KifuEval {
     normalized?: boolean;
     /** 読み筋（USI形式の指し手配列） */
     pv?: string[];
+    /** 選択的探索深さ（解析結果の統計。取れたときだけ入る） */
+    seldepth?: number;
+    /** 探索ノード数（解析結果の統計。取れたときだけ入る） */
+    nodes?: number;
+    /** 探索時間（ミリ秒。解析結果の統計。取れたときだけ入る） */
+    timeMs?: number;
 }
 
 /** 対局エンジンが1手を決定するまでに得られた探索統計 */
