@@ -588,10 +588,86 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             await harness.advance(120_000);
             expect(harness.postOpsCalls()).toHaveLength(1);
 
+            // 同じユーザーでログインし直したら、少し間隔を空けてから送り直す。
+            harness.login(USER_A);
+            await harness.advance(1999);
+            expect(harness.postOpsCalls()).toHaveLength(1);
+            await harness.advance(1);
+            expect(serverDoc(harness).tree.nodes[firstId].comment).toBe("セッション切れ");
+            expect(harness.sync.getStatus(TEST_STUDY_ID).state).toBe("synced");
+        });
+
+        it("未認証（401）のあと別のユーザーになったら、間隔を空けずに、そのユーザーとして扱う", async () => {
+            const harness = await createSyncedHarness();
+            harness.server.interceptOnce("postOps", { status: 401 });
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("セッション切れ")]);
+            await harness.sync.flush(TEST_STUDY_ID);
+
+            harness.login(USER_B);
+            await harness.advance(0);
+            // 別のアカウントのノートは送らない。
+            expect(harness.postOpsCalls()).toHaveLength(1);
+            // 元のユーザーに戻れば、待たずに送る（401 の続いた回数は引き継がない）。
             harness.login(USER_A);
             await harness.advance(0);
             expect(serverDoc(harness).tree.nodes[firstId].comment).toBe("セッション切れ");
+        });
+
+        it("同じユーザーのまま 401 が続くときは、再送の間隔を延ばし、成功したら通常に戻る", async () => {
+            const harness = await createSyncedHarness();
+            // セッションは有効と言われるのに、API は 401 を返し続ける（サーバー側の障害）。
+            const stop = harness.server.intercept("postOps", { status: 401 });
+            // 画面と同じく、401 の知らせを受けるたびにセッションを取り直す（結果は同じユーザー）。
+            let refreshes = 0;
+            harness.sync.subscribeEvents((event) => {
+                if (event.type !== "unauthorized") return;
+                refreshes++;
+                harness.login(USER_A);
+            });
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("401 が続く")]);
+            await harness.sync.flush(TEST_STUDY_ID);
+            expect(harness.postOpsCalls()).toHaveLength(1);
+
+            // 待ち時間なしでは送り直さない。間隔は 2 秒 → 4 秒 → 8 秒 … と延びる。
+            const attemptsAt: number[] = [];
+            let elapsed = 0;
+            for (const step of [1999, 1, 3999, 1, 7999, 1, 15_999, 1]) {
+                await harness.advance(step);
+                elapsed += step;
+                attemptsAt.push(harness.postOpsCalls().length);
+                // 取り直したセッションを同じユーザーとして何度伝えても、間隔は縮まない。
+                harness.login(USER_A);
+            }
+            expect(attemptsAt).toEqual([1, 2, 2, 3, 3, 4, 4, 5]);
+            expect(elapsed).toBe(30_000);
+            expect(refreshes).toBe(5);
+            // 上限（60 秒）を超えて延びない。
+            await harness.advance(32_000);
+            expect(harness.postOpsCalls()).toHaveLength(6);
+            await harness.advance(59_999);
+            expect(harness.postOpsCalls()).toHaveLength(6);
+            await harness.advance(1);
+            expect(harness.postOpsCalls()).toHaveLength(7);
+
+            // サーバーが直ったら、次の再送で届き、通常に戻る。
+            stop();
+            await harness.advance(60_000);
+            expect(serverDoc(harness).tree.nodes[firstId].comment).toBe("401 が続く");
             expect(harness.sync.getStatus(TEST_STUDY_ID).state).toBe("synced");
+            // 以後の編集は、いつもどおりの間引き（5 秒）で送る。間隔を引きずらない。
+            const sent = harness.postOpsCalls().length;
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("直ったあと")]);
+            await harness.advance(5000);
+            expect(harness.postOpsCalls()).toHaveLength(sent + 1);
+            expect(serverDoc(harness).tree.nodes[firstId].comment).toBe("直ったあと");
+            // そのあとの 1 回の 401 は、最初の間隔（2 秒）からやり直す。
+            harness.server.interceptOnce("postOps", { status: 401 });
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("もう一度")]);
+            await harness.sync.flush(TEST_STUDY_ID);
+            await harness.advance(1999);
+            expect(serverDoc(harness).tree.nodes[firstId].comment).toBe("直ったあと");
+            await harness.advance(1);
+            expect(serverDoc(harness).tree.nodes[firstId].comment).toBe("もう一度");
         });
 
         it("他人の studyId と衝突（409 ID_CONFLICT）: 保存に失敗と表示する", async () => {

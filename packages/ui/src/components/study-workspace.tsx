@@ -442,14 +442,30 @@ export function StudyWorkspaceView({
     const [pvPreview, setPvPreview] = useState<{
         pv: string[];
         startPosition: PositionState;
+        /** 最初の手の表記（候補手の欄と同じ。直前の手と同じマスなら「同」）。 */
+        firstMoveLabel: string | null;
         ply: number;
         evalCp?: number;
         evalMate?: number;
     } | null>(null);
 
+    // 見ている局面までの経路（ルートから）。その局面が文書から消えたとき、残っている最も近い
+    // 祖先（分岐点）へ移るのに使う。消えたあとではツリーからたどれないので、あるうちに覚えておく。
+    const seenPathRef = useRef<string[]>([]);
+    // この画面で足した手のうち、保存の結果がまだ分からないもの（保存層に拒否されて消えた手を、
+    // 「別の画面で削除された」と取り違えないために覚えておく）。
+    const unconfirmedAddsRef = useRef(new Set<string>());
+
     // 見ていた局面が（他の端末での削除や、保存層の拒否で）無くなっていたら、残っている所まで戻る。
     const currentNodeId = ((): string => {
         if (tree.nodes.has(requestedNodeId)) return requestedNodeId;
+        // 見ていた局面の、残っている最も近い祖先（直前に見ていた別の局面へは飛ばさない）。
+        const seenPath = seenPathRef.current;
+        if (seenPath[seenPath.length - 1] === requestedNodeId) {
+            for (let i = seenPath.length - 2; i >= 0; i--) {
+                if (tree.nodes.has(seenPath[i])) return seenPath[i];
+            }
+        }
         if (fallbackNodeId !== null && tree.nodes.has(fallbackNodeId)) return fallbackNodeId;
         const index = lineState.indexOf(requestedNodeId);
         for (let i = index - 1; i >= 0; i--) {
@@ -472,6 +488,51 @@ export function StudyWorkspaceView({
         const move = tree.nodes.get(nodeId)?.usiMove;
         if (move) movesToCurrent.push(move);
     }
+
+    // 見ている局面までの経路を覚える。見ていた局面が文書から消えていたら、移った先を見ている
+    // 局面として確定し、別の画面で削除された場合は知らせる。
+    const isCurrentMissing = currentNodeId !== requestedNodeId;
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 見ている局面とツリーが変わったときにだけ確かめる
+    useEffect(() => {
+        if (!isCurrentMissing) {
+            seenPathRef.current = studyPathTo(tree, currentNodeId);
+            return;
+        }
+        const seenPath = seenPathRef.current;
+        const wasSeen = seenPath[seenPath.length - 1] === requestedNodeId;
+        // この画面で足して、保存層に拒否された手は、理由を呼び出し側が知らせる。
+        const wasRejectedAdd = unconfirmedAddsRef.current.has(requestedNodeId);
+        setRequestedNodeId(currentNodeId);
+        setSelection(null);
+        setPromotionSelection(null);
+        onCurrentNodeChange?.(currentNodeId);
+        if (wasSeen && !wasRejectedAdd) {
+            onMessageChange({
+                text: "見ていた変化は別の画面で削除されました。分岐の手前の局面に移りました。",
+                type: "warning",
+            });
+        }
+    }, [isCurrentMissing, currentNodeId, tree]);
+
+    /** この画面で足した手を、保存の結果が分かるまで覚えておく。 */
+    const trackAddedNodes = (
+        parentId: string,
+        moves: readonly string[],
+        outcome: StudyApplyOpsResult,
+    ): void => {
+        if (!(outcome instanceof Promise)) return;
+        const ids: string[] = [];
+        let cursor = parentId;
+        for (const move of moves) {
+            cursor = studyChildNodeId(cursor, move);
+            ids.push(cursor);
+        }
+        for (const id of ids) unconfirmedAddsRef.current.add(id);
+        void outcome.then((saved) => {
+            // 保存できたら、以後に消えた場合は「別の画面で削除された」として扱う。
+            if (saved) for (const id of ids) unconfirmedAddsRef.current.delete(id);
+        });
+    };
 
     const navigateTo = (nodeId: string, options?: { resetLine?: boolean }): void => {
         if (nodeId !== currentNodeId) {
@@ -531,7 +592,11 @@ export function StudyWorkspaceView({
                 });
                 return;
             }
-            void onApplyOps([{ type: "addMoves", parentId: currentNodeId, moves: [usiMove] }]);
+            trackAddedNodes(
+                currentNodeId,
+                [usiMove],
+                onApplyOps([{ type: "addMoves", parentId: currentNodeId, moves: [usiMove] }]),
+            );
         }
         navigateTo(childId);
     };
@@ -617,8 +682,14 @@ export function StudyWorkspaceView({
         deepLayer && Object.hasOwn(deepLayer.results, currentNodeId)
             ? { layer: deepLayer, result: deepLayer.results[currentNodeId] }
             : null;
+    // ふだん添えるのは、表示中の結果より深く読めているものだけ（同じ深さ・浅い結果は出さない）。
+    const storedDeeperResult = pickStudyDeeperResult(doc, currentNodeId, displayLayerId);
     const deeperResult =
-        freshDeepResult ?? pickStudyDeeperResult(doc, currentNodeId, displayLayerId);
+        freshDeepResult ??
+        (storedDeeperResult !== null &&
+        (positionResult === null || storedDeeperResult.result.depth > positionResult.result.depth)
+            ? storedDeeperResult
+            : null);
     const deeperIsFresh =
         isDeepHere && deeperResult !== null && (freshDeepResult !== null || deepLayerId === null);
 
@@ -711,7 +782,11 @@ export function StudyWorkspaceView({
             onMessageChange({ text: "この読み筋は変化として追加できません", type: "error" });
             return;
         }
-        void onApplyOps([{ type: "addMoves", parentId: baseNode.id, moves }]);
+        trackAddedNodes(
+            baseNode.id,
+            moves,
+            onApplyOps([{ type: "addMoves", parentId: baseNode.id, moves }]),
+        );
         navigateTo(studyChildNodeId(baseNode.id, moves[0]));
         onMessageChange({
             text: `読み筋を変化として追加しました（${moves.length} 手）`,
@@ -725,6 +800,7 @@ export function StudyWorkspaceView({
         setPvPreview({
             pv: request.pv,
             startPosition: baseNode.positionAfter,
+            firstMoveLabel: studyFirstMoveLabel(baseNode, request.pv),
             ply: baseNode.ply,
             evalCp: evalData?.scoreCp,
             evalMate: evalData?.scoreMate,
@@ -842,9 +918,9 @@ export function StudyWorkspaceView({
     const playersLabel = studyPlayersLabel(doc.meta);
     const settingsButtonLabel =
         doc.layers.length > 1 && displayLayer ? displayLayer.display.label : null;
-    // スマートフォンでは、未解析のあいだ「全体を解析」を盤のすぐ下（切り替えタブの上）に出す。
-    // 画面が低くてそこまで入らないときは、画面の下端に貼り付く（`sticky`）。下端に固定して
-    // 重ねる形（`fixed`）にはしない（切り替えタブや本文の末尾に、常に重なってしまうため）。
+    // スマートフォンでは、未解析のあいだ「全体を解析」を盤と移動ボタンのすぐ下（切り替えタブの
+    // 上）に、通常の流れとして出す。画面の下端に固定・貼り付けはしない（貼り付くのは画面が低くて
+    // 入りきらないときだけで、そのときは必ず移動ボタンや盤に重なってしまうため）。
     const showsFixedStart = isMobile && needsFullAnalysis && analysis.mode === null;
 
     const boardStatus = (
@@ -1106,9 +1182,11 @@ export function StudyWorkspaceView({
                 )}
 
                 {locked && (
+                    // スクロール位置によらず見えるよう、画面の上端に貼り付ける（下にあるのは、
+                    // 薄くなって操作できない画面だけなので、理由が見えないと困る）。
                     <div
                         role="alert"
-                        className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-status-warning-border bg-status-warning-bg px-3 py-2 text-sm text-status-warning"
+                        className="sticky top-2 z-30 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-status-warning-border bg-status-warning-bg px-3 py-2 text-sm text-status-warning shadow-card"
                     >
                         <p className="min-w-0 flex-1">
                             ログインが切れたため、このノートはいま編集できません。ログインし直すと、続きから編集できます（書きかけのコメントは残っています）。
@@ -1135,7 +1213,7 @@ export function StudyWorkspaceView({
                                 {navBar}
                             </div>
                             {showsFixedStart && !locked && (
-                                <div className="sticky bottom-0 z-30 -mx-3 bg-background px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2">
+                                <div className="flex flex-col">
                                     <Button
                                         type="button"
                                         size="lg"
@@ -1281,6 +1359,7 @@ export function StudyWorkspaceView({
                     squareNotation={displaySettings.squareNotation}
                     showBoardLabels={displaySettings.showBoardLabels}
                     description="読み筋を 1 手ずつ盤面で再生します。"
+                    firstMoveLabel={pvPreview.firstMoveLabel ?? undefined}
                 />
             )}
         </TooltipProvider>

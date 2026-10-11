@@ -421,7 +421,7 @@ export default function StudyPage(): ReactElement {
         );
     };
 
-    const handleLogin = (): void => {
+    const goToLogin = (): void => {
         // OAuth でページが遷移するので、ブラウザ内への書き込みが終わってから進む。
         void sync
             .whenLocalWritesSettled()
@@ -430,6 +430,49 @@ export default function StudyPage(): ReactElement {
                 window.location.assign(loginHref(studyId));
             });
     };
+
+    const isLocked = state.status === "ready" && state.locked;
+
+    const handleLogin = (): void => {
+        if (!isLocked) {
+            goToLogin();
+            return;
+        }
+        // ログインが切れて編集を止めている間の「ログインし直す」。別のタブでログインし直して
+        // いることがあるので、まずセッションを確かめる。ログイン済みなら、ログインの画面へは
+        // 送らず、ログイン状態を取り直す（同じ持ち主なら、その場で編集できるようになる）。
+        void fetch("/api/auth/session", { credentials: "same-origin" })
+            .then(async (response) => {
+                if (!response.ok) return false;
+                const payload: unknown = await response.json();
+                return (
+                    payload !== null &&
+                    typeof payload === "object" &&
+                    "authenticated" in payload &&
+                    payload.authenticated === true
+                );
+            })
+            .catch(() => false)
+            .then((authenticated) => {
+                if (authenticated) dispatchAuthSessionSyncEvent();
+                else goToLogin();
+            });
+    };
+
+    // 編集を止めている間にこのタブへ戻ってきたら、セッションを取り直す（別のタブでログイン
+    // し直していれば、その場で編集できるようになる）。
+    useEffect(() => {
+        if (!isLocked) return;
+        const recheck = (): void => {
+            if (document.visibilityState === "visible") dispatchAuthSessionSyncEvent();
+        };
+        document.addEventListener("visibilitychange", recheck);
+        window.addEventListener("focus", recheck);
+        return () => {
+            document.removeEventListener("visibilitychange", recheck);
+            window.removeEventListener("focus", recheck);
+        };
+    }, [isLocked]);
 
     /**
      * 読み込めなかったあとの「もう一度読み込む」。ログイン状態の確認からやり直す
@@ -462,7 +505,7 @@ export default function StudyPage(): ReactElement {
                     { label: title },
                 ]}
                 // 見出しの「ログイン」も、保存状態の案内と同じく、ログイン後にこのノートへ戻る。
-                right={<HeaderNav login={{ href: loginHref(studyId), onNavigate: handleLogin }} />}
+                right={<HeaderNav login={{ href: loginHref(studyId), onNavigate: goToLogin }} />}
             />
             {state.status === "loading" && (
                 <PageContainer width="narrow">

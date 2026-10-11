@@ -7,7 +7,6 @@
 
 import { cn } from "@shogi/design-system";
 import type { ReactElement, ReactNode } from "react";
-import { useId } from "react";
 import { Button } from "../../button";
 import {
     Dialog,
@@ -67,12 +66,11 @@ export function BottomSheet({
         overlay === "transparent" ? "bg-transparent backdrop-blur-0" : undefined;
     const surfaceClassName =
         surface === "glass" ? "bg-background/[0.05] backdrop-blur-[1px]" : "bg-background";
-    const descriptionId = useId();
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent
                 // 説明を渡したときだけ関連付ける（渡さない呼び出しは、これまでどおり）。
-                {...(description !== undefined ? { "aria-describedby": descriptionId } : {})}
+                hasDescription={description !== undefined}
                 overlayClassName={overlayClassName}
                 onOpenAutoFocus={(event) => event.preventDefault()}
                 data-state={open ? "open" : "closed"}
@@ -100,9 +98,7 @@ export function BottomSheet({
                 <DialogHeader className={cn("px-4 pb-3 border-b border-border", surfaceClassName)}>
                     <DialogTitle className="font-semibold text-lg">{title}</DialogTitle>
                     {description !== undefined && (
-                        <DialogDescription id={descriptionId} className="sr-only">
-                            {description}
-                        </DialogDescription>
+                        <DialogDescription className="sr-only">{description}</DialogDescription>
                     )}
                 </DialogHeader>
 

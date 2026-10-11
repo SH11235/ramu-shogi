@@ -56,7 +56,7 @@ export function MatchNnueDownloadDialog({
         >
             <DialogContent
                 className="w-[min(440px,calc(100%-24px))]"
-                aria-describedby="match-ai-download-description"
+                hasDescription
                 onEscapeKeyDown={(event) => {
                     if (busy) event.preventDefault();
                 }}
@@ -71,7 +71,7 @@ export function MatchNnueDownloadDialog({
                                 ? "AIをダウンロードしています"
                                 : `${names}をダウンロードしますか？`}
                         </DialogTitle>
-                        <DialogDescription id="match-ai-download-description" className="pt-2">
+                        <DialogDescription className="pt-2">
                             {text.description}約 {mb(total)} MB のダウンロードが必要です。
                             {text.after}
                         </DialogDescription>

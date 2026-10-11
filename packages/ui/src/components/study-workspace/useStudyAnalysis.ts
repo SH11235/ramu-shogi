@@ -408,15 +408,9 @@ export function useStudyAnalysis({
         // 画面側の無効化だけに頼らず、ここでも確かめる（結果を保存できない解析は始めない）。
         if (lockedRef.current) return;
         const { layer, resolved } = prepared;
-        const ensured = latestRef.current.onApplyOps([
-            { type: "ensureLayer", spec: layer.spec, display: layer.display },
-        ]);
-        if (ensured instanceof Promise) {
-            // 設定を保存できなかったら、結果も保存できない。黙って探索を続けない。
-            void ensured.then((saved) => {
-                if (!saved && mountedRef.current) void cancelRef.current();
-            });
-        }
+        // 設定（レイヤー）は、ここでは文書に作らない。最初の結果を反映するときに一緒に作る
+        // （`handlePositionAnalyzed`）。始めてすぐ中止したときに、結果が 1 件も無い設定が
+        // 一覧に残らないようにするため。結果を保存できなかったら `flushResults` が解析を止める。
         onLayerStarted(layer.layerId, nextMode);
         setMode(nextMode);
         pool.start(jobs, {

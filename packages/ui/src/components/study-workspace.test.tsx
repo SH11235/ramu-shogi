@@ -570,6 +570,110 @@ describe("StudyWorkspaceView", () => {
         });
     });
 
+    it("同じ AI のより時間の長い結果でも、深さが表示中の結果を超えなければ「より深い解析」に出さない", () => {
+        const { doc, ids } = createTestStudy([cp(30), cp(40), cp(20), null, null]);
+        const LONGER_SPEC = buildStudyLayerSpec({
+            engine: { kind: "wasm", name: "rshogi", version: "0.8.1" },
+            appVersion: "0.0.0",
+            nnue: { sha256: "a".repeat(64), fvScale: 24 },
+            limits: { timeMs: 10_000, depth: 64 },
+            multiPv: 1,
+        });
+        const longerId = studyLayerId(LONGER_SPEC);
+        // 表示中の結果の深さは 15。開始局面は同じ深さ、1 手目はより深い結果がある。
+        const withLonger = applyStudyOps(doc, [
+            { type: "ensureLayer", spec: LONGER_SPEC, display: { label: "RAMU・10 秒" } },
+            putScoreOp(ids[0], cp(35), { layerId: longerId, depth: 15, pv: ["2g2f"] }),
+            putScoreOp(ids[1], cp(45), { layerId: longerId, depth: 16, pv: ["8c8d"] }),
+        ]);
+        render(<Harness initialDoc={withLonger} />);
+        const candidates = screen.getByRole("region", { name: "候補手" });
+
+        expect(within(candidates).queryByRole("button", { name: /より深い解析/ })).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+        expect(within(candidates).getByRole("button", { name: /より深い解析/ })).toBeTruthy();
+    });
+
+    describe("見ている局面が文書から消えたとき", () => {
+        /** 本譜の 2 手目から枝分かれする変化（3 手）を持つ文書。 */
+        const createBranched = () => {
+            const { doc, ids } = createTestStudy();
+            const head = studyChildNodeId(ids[2], "6g6f");
+            const second = studyChildNodeId(head, "8c8d");
+            const third = studyChildNodeId(second, "6f6e");
+            const branched = applyStudyOps(doc, [
+                { type: "addMoves", parentId: ids[2], moves: ["6g6f", "8c8d", "6f6e"] },
+            ]);
+            return { doc: branched, ids, head, third };
+        };
+
+        it("別の画面が変化を削除したら、残っている最も近い祖先（分岐点）へ移り、知らせる", () => {
+            const { doc, head } = createBranched();
+            let external: (ops: StudyOp[]) => void = () => {};
+            render(
+                <Harness
+                    initialDoc={doc}
+                    onExternal={(apply) => {
+                        external = apply;
+                    }}
+                />,
+            );
+            // 本譜の最後（4 手目）を見てから、変化の最初の手へ直接移る（直前に見ていたのは本譜の最後）。
+            fireEvent.click(screen.getByRole("button", { name: "最後の局面へ" }));
+            expect(currentMove()).toContain("☖8四歩(83)");
+            fireEvent.click(
+                within(moveList()).getAllByRole("button", { name: /変化.*☗6六歩\(67\)/ })[0],
+            );
+            expect(currentMove()).toContain("☗6六歩(67)");
+
+            // 別の画面が、見ている変化を削除した。
+            act(() => external([{ type: "deleteSubtree", nodeId: head }]));
+
+            // 分岐点（本譜の 2 手目）に移る。直前に見ていた本譜の最後（4 手目）へは飛ばない。
+            expect(currentMove()).toContain("☖3四歩(33)");
+            expect(screen.getByText("2 / 4")).toBeTruthy();
+            expect(screen.getByText(/見ていた変化は別の画面で削除されました/)).toBeTruthy();
+        });
+
+        it("この画面で足して保存層に拒否された手は、「別の画面で削除された」とは知らせない", async () => {
+            const { doc } = createTestStudy();
+            const pending: Array<(saved: boolean) => void> = [];
+            let external: (ops: StudyOp[]) => void = () => {};
+            render(
+                <Harness
+                    initialDoc={doc}
+                    fetchLegalMoves={async () => ["7g7f", "5g5f"]}
+                    onExternal={(apply) => {
+                        external = apply;
+                    }}
+                    interceptOps={(ops) => {
+                        if (!ops.some((op) => op.type === "addMoves")) return undefined;
+                        // 画面には先に反映し、保存の結果はあとで返す（ページと同じ）。
+                        external(ops);
+                        return new Promise<boolean>((resolve) => pending.push(resolve));
+                    }}
+                />,
+            );
+            // 開始局面で、本譜とは別の手（☗5六歩）を指す。
+            fireEvent.click(screen.getByRole("button", { name: /^5g 先手の歩/ }));
+            await act(async () => {
+                fireEvent.click(screen.getByRole("button", { name: /^5f 空マス/ }));
+            });
+            await waitFor(() => expect(pending).toHaveLength(1));
+            expect(currentMove()).toContain("☗5六歩(57)");
+            const added = studyChildNodeId(doc.tree.rootId, "5g5f");
+
+            // 保存層が拒否し、画面に先に反映していた手が取り消された。
+            await act(async () => {
+                external([{ type: "deleteSubtree", nodeId: added }]);
+                pending[0](false);
+            });
+
+            expect(screen.getByText("0 / 4")).toBeTruthy();
+            expect(screen.queryByText(/別の画面で削除されました/)).toBeNull();
+        });
+    });
+
     it("指した手が 1 手前の局面の 1 位の候補と同じなら、「この手の代わりに」は出さない", () => {
         const { doc, ids } = createTestStudy([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
         // 3 手目（☗2六歩）は、1 手前の局面の解析でも 1 位の手。

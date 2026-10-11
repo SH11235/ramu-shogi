@@ -36,9 +36,10 @@ vi.mock("@tanstack/react-router", () => ({
 const refreshSession = vi.fn(async () => {});
 let headerLogin: { href: string; onNavigate: () => void } | undefined;
 
+const dispatchAuthSessionSyncEvent = vi.fn();
 vi.mock("../../hooks/useAuthSession", () => ({
     useAuthSession: () => ({ ...auth, sessionError: null, refreshSession }),
-    dispatchAuthSessionSyncEvent: vi.fn(),
+    dispatchAuthSessionSyncEvent: () => dispatchAuthSessionSyncEvent(),
 }));
 vi.mock("../../components/HeaderNav", () => ({
     HeaderNav: (props: { login?: { href: string; onNavigate: () => void } }) => {
@@ -91,6 +92,7 @@ describe("StudyPage", () => {
     beforeEach(() => {
         navigate.mockClear();
         refreshSession.mockClear();
+        dispatchAuthSessionSyncEvent.mockClear();
         headerLogin = undefined;
         workspaceProps = null;
         currentStudyId = STUDY_ID;
@@ -200,6 +202,74 @@ describe("StudyPage", () => {
             expect(JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? "{}")[STUDY_ID]).toBeDefined();
             workspaceProps?.onCommentDraftChange?.(nodeId, clearDraft("書きかけのコメント"));
             expect(JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? "{}")[STUDY_ID]).toBeUndefined();
+        });
+
+        /** アカウントのノートを開いたあと、ログインが切れて編集が止まった状態にする。 */
+        const openThenLock = async () => {
+            await prepareOwnedStudy("アカウントのノート");
+            auth = authSignedIn("user-1");
+            const view = render(<StudyPage />);
+            await screen.findByTestId("workspace");
+            auth = AUTH_SIGNED_OUT;
+            view.rerender(<StudyPage />);
+            await waitFor(() => expect(workspaceProps?.locked).toBe(true));
+            dispatchAuthSessionSyncEvent.mockClear();
+            return view;
+        };
+        const stubSession = (authenticated: boolean) => {
+            const assign = vi.fn();
+            vi.stubGlobal("location", { ...window.location, assign });
+            const fetchMock = vi.fn(async () => ({
+                ok: true,
+                json: async () => ({
+                    authenticated,
+                    user: authenticated ? { id: "user-1" } : null,
+                }),
+            }));
+            vi.stubGlobal("fetch", fetchMock);
+            return { assign, fetchMock };
+        };
+
+        it("別のタブでログインし直してからこのタブに戻ると、セッションを取り直し、その場で編集できるようになる", async () => {
+            const view = await openThenLock();
+
+            // このタブに戻ってきた。
+            window.dispatchEvent(new Event("focus"));
+            expect(dispatchAuthSessionSyncEvent).toHaveBeenCalledTimes(1);
+
+            // 取り直した結果、同じ持ち主でログイン済みだった。
+            auth = authSignedIn("user-1");
+            view.rerender(<StudyPage />);
+            await waitFor(() => expect(workspaceProps?.locked).toBe(false));
+            // 編集できるようになったら、タブに戻るたびの確認はやめる。
+            dispatchAuthSessionSyncEvent.mockClear();
+            window.dispatchEvent(new Event("focus"));
+            expect(dispatchAuthSessionSyncEvent).not.toHaveBeenCalled();
+        });
+
+        it("ログイン済みなのに「ログインし直す」を押しても、ログインの画面へは送らず、セッションを取り直す", async () => {
+            await openThenLock();
+            const { assign, fetchMock } = stubSession(true);
+
+            workspaceProps?.onLogin?.();
+
+            await waitFor(() => expect(dispatchAuthSessionSyncEvent).toHaveBeenCalledTimes(1));
+            expect(fetchMock).toHaveBeenCalledWith("/api/auth/session", expect.anything());
+            expect(assign).not.toHaveBeenCalled();
+            vi.unstubAllGlobals();
+        });
+
+        it("ログインしていなければ、「ログインし直す」で（戻り先つきの）ログインへ進む", async () => {
+            await openThenLock();
+            const { assign } = stubSession(false);
+
+            workspaceProps?.onLogin?.();
+
+            await waitFor(() =>
+                expect(assign).toHaveBeenCalledWith(`/auth?next=%2Fstudies%2F${STUDY_ID}`),
+            );
+            expect(dispatchAuthSessionSyncEvent).not.toHaveBeenCalled();
+            vi.unstubAllGlobals();
         });
 
         it("ログインし直して戻ってくると（ページを開き直しても）、下書きがその手のコメント欄に戻る", async () => {

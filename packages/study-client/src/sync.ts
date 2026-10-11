@@ -358,7 +358,7 @@ interface Entry {
 type StepOutcome = "continue" | "done" | "retry";
 
 export function createStudySync(options: StudySyncOptions): StudySync {
-    const { store, api } = options;
+    const { store } = options;
     const locks = options.locks ?? createInProcessLockManager();
     const channel = options.channel ?? null;
     const scheduler: StudyScheduler = options.scheduler ?? {
@@ -376,7 +376,38 @@ export function createStudySync(options: StudySyncOptions): StudySync {
     /** `setSession` が呼ばれたか（呼ばれるまではセッションの確認中）。 */
     let sessionKnown = false;
     let unauthorized = false;
+    /**
+     * 同じユーザーのまま 401 が続いている回数。応答が成功したとき・別のユーザーになったときに
+     * 0 に戻る。
+     */
+    let authFailures = 0;
+    /**
+     * この時刻までは、サーバーへ送らない。
+     *
+     * 401 を受けてセッションを取り直した結果が同じユーザーだった（セッションは有効と言われるのに
+     * API は 401 を返す。サーバー側の障害など）ときは、すぐに送り直さず、他の失敗と同じ間隔の
+     * 空け方（最初の間隔から倍々、上限あり）で送り直す。待ち時間なしで再送を回し続けて、
+     * 障害時の負荷を増やさないため。
+     */
+    let authHoldUntil = 0;
     let disposed = false;
+
+    /** 応答が成功したら、401 の続いた回数を忘れる（通常の送り方に戻る）。 */
+    const noteResponse = <T extends { ok: boolean }>(response: T): T => {
+        if (response.ok) {
+            authFailures = 0;
+            authHoldUntil = 0;
+        }
+        return response;
+    };
+    const api: StudyApi = {
+        list: (...args) => options.api.list(...args).then(noteResponse),
+        create: (...args) => options.api.create(...args).then(noteResponse),
+        get: (...args) => options.api.get(...args).then(noteResponse),
+        postOps: (...args) => options.api.postOps(...args).then(noteResponse),
+        delete: (...args) => options.api.delete(...args).then(noteResponse),
+        limits: (...args) => options.api.limits(...args).then(noteResponse),
+    };
     const entries = new Map<string, Entry>();
     const eventListeners = new Set<(event: StudySyncEvent) => void>();
     const localWrites = new Set<Promise<unknown>>();
@@ -499,6 +530,7 @@ export function createStudySync(options: StudySyncOptions): StudySync {
     const markUnauthorized = (): void => {
         if (unauthorized) return;
         unauthorized = true;
+        authFailures += 1;
         for (const studyId of entries.keys()) refreshStatus(studyId);
         emit({ type: "unauthorized" });
     };
@@ -1073,6 +1105,12 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                 return "done";
             }
             if (!canSend(study)) return "done";
+            // 同じユーザーで 401 が続いている間は、間隔が空くまで送らない。
+            const authHoldMs = authHoldUntil - now();
+            if (authHoldMs > 0) {
+                schedule(studyId, authHoldMs);
+                return "done";
+            }
             if (study.deleting) return deleteRemote(studyId);
             if (study.remote.state === "deleted") return "done";
             if (study.remote.state === "limit_exceeded" || study.remote.state === "rejected") {
@@ -1178,6 +1216,8 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         observe(studyId, study, pending.length);
         if (!study || study.mergedInto !== null || study.deleting) return;
         if (!canSend(study) || study.serverRevision === null) return;
+        // 同じユーザーで 401 が続いている間は、取得も間隔が空くまで待つ（送信の再開時に取り込む）。
+        if (now() < authHoldUntil) return;
         if (study.remote.state === "deleted") return;
         // 応答待ちのバッチがあるときは、送信側の再送（replayed / 409）に任せる。
         if (study.inflight !== null) return;
@@ -1297,6 +1337,18 @@ export function createStudySync(options: StudySyncOptions): StudySync {
 
     return {
         setSession(next) {
+            const previousUserId = session?.userId ?? null;
+            const nextUserId = next?.userId ?? null;
+            if (nextUserId !== previousUserId) {
+                // 別のユーザー（またはログアウト）。401 の続いた回数は引き継がない。
+                authFailures = 0;
+                authHoldUntil = 0;
+            } else if (unauthorized && nextUserId !== null) {
+                // 401 を受けて取り直したセッションが、同じユーザーだった。間隔を空けて送り直す
+                // （続くほど間隔を延ばす）。
+                authHoldUntil =
+                    now() + Math.min(retryMaxMs, retryBaseMs * 2 ** Math.max(0, authFailures - 1));
+            }
             session = next ? { userId: next.userId } : null;
             sessionKnown = true;
             unauthorized = false;

@@ -328,4 +328,24 @@ describe("useStudyAnalysis", () => {
         // 残りの局面の探索は始まらない。
         expect(engine.searches()).toBe(searches);
     });
+
+    it("始めてすぐ中止したときは、結果が 1 件も無い設定を文書に作らない", async () => {
+        const { doc } = createTestStudy();
+        // 探索が終わる前に中止できるよう、探索に時間のかかるエンジンにする。
+        const engine = createEngineOption(500);
+        const onOps = vi.fn();
+        const { result } = renderHook(() => useHarness(doc, [engine.option], { onOps }));
+
+        await act(async () => {
+            await result.current.controller.startFull();
+        });
+        await waitFor(() => expect(result.current.controller.mode).toBe("full"));
+        await act(async () => {
+            await result.current.controller.cancel();
+        });
+
+        expect(result.current.controller.mode).toBeNull();
+        expect(onOps).not.toHaveBeenCalled();
+        expect(result.current.doc.layers).toEqual([]);
+    });
 });
