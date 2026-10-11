@@ -130,7 +130,7 @@ interface MobileSettingsSheetProps {
     positionReady?: boolean;
 }
 
-// iOS Safari は16px未満のinput/selectにフォーカスすると自動ズームするため、text-base(16px)を使用
+// iOS Safari の自動ズームを防ぐため input はここで、NativeSelect は各呼び出しで text-base(16px) を指定
 const inputClassName = "w-full border border-border bg-background text-base";
 const labelClassName = "flex flex-col gap-1 text-sm";
 
