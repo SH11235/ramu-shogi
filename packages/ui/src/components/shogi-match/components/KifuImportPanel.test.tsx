@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { KifuImportPanel } from "./KifuImportPanel";
 
@@ -113,5 +113,81 @@ describe("KifuImportPanel", () => {
         expect((screen.getByLabelText(/ファイルから読み込む/) as HTMLInputElement).disabled).toBe(
             true,
         );
+    });
+
+    it("上限 (2MB) を超えるファイルは読まずにエラーを表示する", async () => {
+        renderPanel();
+        const arrayBuffer = vi.fn(async () => new ArrayBuffer(0));
+
+        selectFile({
+            name: "huge.csa",
+            size: 2 * 1024 * 1024 + 1,
+            arrayBuffer,
+        } as unknown as File);
+
+        expect(await screen.findByText("ファイルが大きすぎます（上限 2MB）")).toBeTruthy();
+        expect(arrayBuffer).not.toHaveBeenCalled();
+        expect(onImportSfen).not.toHaveBeenCalled();
+    });
+
+    it("A → B の順に選んだとき、読むのが遅い A は捨てて B だけを取り込む", async () => {
+        renderPanel();
+        const encode = (text: string) => new TextEncoder().encode(text).buffer as ArrayBuffer;
+        let resolveA: (buffer: ArrayBuffer) => void = () => {};
+        const fileA = {
+            name: "a.csa",
+            size: 10,
+            arrayBuffer: () =>
+                new Promise<ArrayBuffer>((resolve) => {
+                    resolveA = resolve;
+                }),
+        } as unknown as File;
+        const fileB = {
+            name: "b.csa",
+            size: 10,
+            arrayBuffer: async () => encode("PI\n+\n+2726FU"),
+        } as unknown as File;
+
+        selectFile(fileA);
+        selectFile(fileB);
+        await waitFor(() => expect(onImportSfen).toHaveBeenCalledTimes(1));
+        expect(onImportSfen).toHaveBeenLastCalledWith("startpos", ["2g2f"], expect.anything());
+
+        // 遅れて読み終わった A は盤面に反映しない。
+        await act(async () => {
+            resolveA(encode("PI\n+\n+7776FU"));
+            await Promise.resolve();
+        });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(onImportSfen).toHaveBeenCalledTimes(1);
+        expect(screen.queryByText(/失敗/)).toBeNull();
+    });
+
+    it("先に始めた取り込みの反映が終わってから次を反映する (入り混じらない)", async () => {
+        const order: string[] = [];
+        let finishFirst: () => void = () => {};
+        onImportSfen.mockImplementationOnce(async (...args: unknown[]) => {
+            order.push(`start:${String((args[1] as string[])[0])}`);
+            await new Promise<void>((resolve) => {
+                finishFirst = resolve;
+            });
+            order.push("end:first");
+        });
+        onImportSfen.mockImplementationOnce(async (...args: unknown[]) => {
+            order.push(`start:${String((args[1] as string[])[0])}`);
+        });
+        renderPanel();
+
+        selectFile(new File(["PI\n+\n+7776FU"], "a.csa"));
+        await waitFor(() => expect(order).toEqual(["start:7g7f"]));
+        selectFile(new File(["PI\n+\n+2726FU"], "b.csa"));
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(order).toEqual(["start:7g7f"]);
+
+        await act(async () => {
+            finishFirst();
+            await Promise.resolve();
+        });
+        await waitFor(() => expect(order).toEqual(["start:7g7f", "end:first", "start:2g2f"]));
     });
 });

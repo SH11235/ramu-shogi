@@ -122,6 +122,42 @@ describe("importKifuText", () => {
         });
     });
 
+    it("旧 csa_client 形式 (指し手の前の `'*`) は、その指し手の評価値として読み込む", async () => {
+        const handlers = createHandlers();
+        await importKifuText(
+            [
+                "V2.2",
+                "N+RAMU",
+                "N-Opponent",
+                "PI",
+                "+",
+                "'* 30 +7776FU -3334FU",
+                "+7776FU",
+                "T3",
+                "'* -50 -3334FU +2726FU",
+                "-3334FU",
+                "T5",
+                "%TORYO",
+            ].join("\n"),
+            handlers,
+        );
+
+        expect(handlers.onImportSfen).toHaveBeenCalledWith("startpos", ["7g7f", "3c3d"], {
+            moveData: [
+                { elapsedMs: 3000, evalCp: 30, pv: ["3c3d"] },
+                { elapsedMs: 5000, evalCp: -50, pv: ["2g2f"] },
+            ],
+        });
+    });
+
+    it("指せない手を含む CSA は行番号つきで失敗する", async () => {
+        const handlers = createHandlers();
+        await expect(importKifuText("PI\n+\n+7776FU\n-3334FU\n+7771FU", handlers)).rejects.toThrow(
+            /CSA の解析に失敗しました: 5 行目の指し手を適用できません/,
+        );
+        expect(handlers.onImportSfen).not.toHaveBeenCalled();
+    });
+
     it("KIF と SFEN は従来のコールバックへ渡す", async () => {
         const handlers = createHandlers();
         await importKifuText(KIF_TEXT, handlers);
@@ -138,9 +174,9 @@ describe("importKifuText", () => {
         await expect(importKifuText("PI\n+\n+7776FU\n+7775FU", handlers)).rejects.toThrow(
             /CSA の解析に失敗しました/,
         );
-        await expect(
-            importKifuText("V2\nP-51OU\nP+53FU\nP-00AL\n+\n+5352FU", handlers),
-        ).rejects.toThrow(/CSA の開始局面を解釈できません/);
+        await expect(importKifuText("V2\nP-51OU\nP+5XFU\n+\n+5352FU", handlers)).rejects.toThrow(
+            /CSA の開始局面を解釈できません/,
+        );
         expect(handlers.onImportSfen).not.toHaveBeenCalled();
         expect(handlers.onImportKif).not.toHaveBeenCalled();
     });

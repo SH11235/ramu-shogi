@@ -72,6 +72,31 @@ function computeNiceScale(maxAbsValue: number, minScale: number): number {
 }
 
 /**
+ * グラフの縦軸を決めるときに 1 つの評価値が持てる最大の大きさ。詰みの扱いと同じ値。
+ * エンジンによっては詰みや必勝を 31998 のような巨大な評価値で表すので、そのまま縦軸に
+ * 使うと他の手の動きが潰れて見えなくなる。これを超える値は上端・下端に張り付けて描く。
+ */
+const EVAL_GRAPH_VALUE_CAP = 10000;
+
+/** 評価値の履歴からグラフの縦軸の最大値 (センチポーン) を決める。 */
+export function computeEvalGraphScale(
+    evalHistory: readonly EvalHistory[],
+    minScale: number,
+): number {
+    let maxAbs = 0;
+    for (const entry of evalHistory) {
+        if (entry.evalCp !== null && entry.evalCp !== undefined) {
+            maxAbs = Math.max(maxAbs, Math.min(Math.abs(entry.evalCp), EVAL_GRAPH_VALUE_CAP));
+        }
+        // 詰みの場合は大きな値として扱う
+        if (entry.evalMate !== null && entry.evalMate !== undefined) {
+            maxAbs = Math.max(maxAbs, EVAL_GRAPH_VALUE_CAP);
+        }
+    }
+    return computeNiceScale(maxAbs, minScale);
+}
+
+/**
  * 評価値グラフ
  */
 export function EvalGraph({
@@ -107,18 +132,7 @@ export function EvalGraph({
         onPlySelect(clampedPly);
     };
 
-    // 自動スケール計算
-    let maxAbs = 0;
-    for (const entry of evalHistory) {
-        if (entry.evalCp !== null && entry.evalCp !== undefined) {
-            maxAbs = Math.max(maxAbs, Math.abs(entry.evalCp));
-        }
-        // 詰みの場合は大きな値として扱う
-        if (entry.evalMate !== null && entry.evalMate !== undefined) {
-            maxAbs = Math.max(maxAbs, 10000);
-        }
-    }
-    const scaleMax = computeNiceScale(maxAbs, minScale);
+    const scaleMax = computeEvalGraphScale(evalHistory, minScale);
 
     // ポイントの計算（先手・後手を分離して別々のセグメントを生成）
     // viewBox="0 0 100 height" なので x は 0-100 の数値、y はピクセル値

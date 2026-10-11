@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { parseCsaMoves } from "./csa";
+import { REAL_GAME_CSA_MOVES } from "./csa-real-game.fixture";
 import { parseCsaEvalComment, parseCsaGameRecord } from "./csa-record";
 
 const HIRATE_POSITION = [
@@ -110,7 +112,7 @@ describe("parseCsaGameRecord", () => {
                 "+7776FU,T4",
                 "'** 45 -3334FU",
                 "-3334FU,T7",
-                "'* 100000",
+                "'** 100000",
                 "+2726FU,T1",
                 "%TORYO",
             ].join("\r\n"),
@@ -279,7 +281,7 @@ describe("parseCsaGameRecord", () => {
     });
 
     it("解釈できない局面記述は例外にする", () => {
-        expect(() => parseCsaGameRecord("P-51OU\nP+53FU\nP-00AL\n+\n+5352FU")).toThrow(
+        expect(() => parseCsaGameRecord("P-51OU\nP+5XFU\n+\n+5352FU")).toThrow(
             /CSA の開始局面を解釈できません/,
         );
         expect(() =>
@@ -298,5 +300,220 @@ describe("parseCsaGameRecord", () => {
         expect(() => parseCsaGameRecord("PI\n+\n+7x7yFU")).toThrow(/解釈できません/);
         // 途中の不正手も例外 (途中までの再生を返さない)
         expect(() => parseCsaGameRecord("PI\n+\n+7776FU\n-3334FU\n+7775FU\n+7774FU")).toThrow();
+    });
+});
+
+describe("parseCsaGameRecord: コメントがどの指し手のものか", () => {
+    it("旧 csa_client 形式: 指し手の前の独立行 `'*` は次の指し手のコメント", () => {
+        const record = parseCsaGameRecord(
+            [
+                "V2.2",
+                "N+RAMU",
+                "N-Opponent",
+                "PI",
+                "+",
+                "'* 30 +7776FU -3334FU",
+                "+7776FU",
+                "T3",
+                "'* 20 -3334FU +2726FU",
+                "-3334FU",
+                "T5",
+                "+2726FU",
+                "T2",
+                "'* -100000 -8384FU",
+                "-8384FU",
+                "T4",
+                "%TORYO",
+            ].join("\n"),
+        );
+        expect(record.moves).toEqual(["7g7f", "3c3d", "2g2f", "8c8d"]);
+        // 旧形式の読み筋は実際の指し手から始まるので、先頭の 1 手を落として渡す。
+        expect(record.annotations).toEqual([
+            { elapsedMs: 3000, evalCp: 30, pv: ["3c3d"] },
+            { elapsedMs: 5000, evalCp: 20, pv: ["2g2f"] },
+            // コメントの無い手に、前後の手のコメントを付けない。
+            { elapsedMs: 2000 },
+            { elapsedMs: 4000, mateWinner: "gote" },
+        ]);
+    });
+
+    it("最後の指し手の後ろに残った `'*` はどの手にも付けない", () => {
+        const record = parseCsaGameRecord(
+            ["PI", "+", "+7776FU", "T1", "'* 500 -3334FU", "%TORYO"].join("\n"),
+        );
+        expect(record.annotations).toEqual([{ elapsedMs: 1000 }]);
+    });
+
+    it("wdoor 形式 (`'**` は直前) とサーバー形式 (`,T` 連結 + `'**`) を取り違えない", () => {
+        const wdoor = parseCsaGameRecord(
+            ["PI", "+", "+7776FU", "T3", "'** 30 -3334FU", "-3334FU", "T5", "'** 20"].join("\n"),
+        );
+        expect(wdoor.annotations).toEqual([
+            { elapsedMs: 3000, evalCp: 30, pv: ["3c3d"] },
+            { elapsedMs: 5000, evalCp: 20 },
+        ]);
+        const server = parseCsaGameRecord(
+            ["PI", "+", "+7776FU,T3", "'** 30 -3334FU", "-3334FU,T5", "'** 20"].join("\n"),
+        );
+        expect(server.annotations).toEqual(wdoor.annotations);
+    });
+
+    it("指し手行に `,'*` で連結されたコメントはその指し手のもの", () => {
+        const record = parseCsaGameRecord(
+            ["PI", "+", "+7776FU,T3,'* 30 -3334FU", "-3334FU,'* 20 +2726FU"].join("\n"),
+        );
+        expect(record.annotations).toEqual([
+            { elapsedMs: 3000, evalCp: 30, pv: ["3c3d"] },
+            { evalCp: 20, pv: ["2g2f"] },
+        ]);
+    });
+
+    it("1 ファイルに混在していても行ごとの規則どおりに付ける", () => {
+        const record = parseCsaGameRecord(
+            [
+                "PI",
+                "+",
+                "'* 10 +7776FU", // 次の手 (1 手目)
+                "+7776FU",
+                "'** 99", // 直前の手 (1 手目) だが、すでにコメントがあるので使わない
+                "-3334FU,'* 20", // 連結 → 2 手目
+                "+2726FU",
+                "T1",
+                "'** 30 -8384FU", // 直前の手 (3 手目)
+                "'* 40 -8384FU", // 次の手 (4 手目)
+                "-8384FU",
+                "'* 50", // 次の手が無いので捨てる
+                "%TORYO",
+            ].join("\n"),
+        );
+        expect(record.annotations.map((annotation) => annotation?.evalCp)).toEqual([
+            10, 20, 30, 40,
+        ]);
+        expect(record.annotations[2]).toEqual({ elapsedMs: 1000, evalCp: 30, pv: ["8c8d"] });
+    });
+
+    it("'ILLEGAL_MOVE(...) や 'summary: の後ろのコメントを直前の手に付けない", () => {
+        const illegal = parseCsaGameRecord(
+            ["PI", "+", "+7776FU", "T1", "'ILLEGAL_MOVE(-3335FU)", "'** 500 -3334FU"].join("\n"),
+        );
+        expect(illegal.annotations).toEqual([{ elapsedMs: 1000 }]);
+
+        const summary = parseCsaGameRecord(
+            [
+                "PI",
+                "+",
+                "+7776FU",
+                "T1",
+                "'summary:abnormal:A win:B lose",
+                "'** 500",
+                "'* 300",
+                "T9",
+            ].join("\n"),
+        );
+        expect(summary.annotations).toEqual([{ elapsedMs: 1000 }]);
+    });
+});
+
+describe("parseCsaGameRecord: 指せない手を取り込まない", () => {
+    const expectRejected = (lines: string[], pattern: RegExp) =>
+        expect(() => parseCsaGameRecord(lines.join("\n"))).toThrow(pattern);
+
+    it("駒コードが移動元の駒と一致しない手を弾き、行番号を示す", () => {
+        expectRejected(
+            ["PI", "+", "+7776HI"],
+            /3 行目の指し手を適用できません: \+7776HI .*駒コード/,
+        );
+        // 空行や CRLF があっても元のファイルの行番号で示す。
+        expect(() => parseCsaGameRecord("V2\r\n\r\nPI\r\n+\r\n+7776FU\r\n-3334KA\r\n")).toThrow(
+            /6 行目の指し手を適用できません: -3334KA/,
+        );
+    });
+
+    it("駒の動きとして不可能な手 (飛び越えを含む) を弾く", () => {
+        // 歩が 5 マス進む
+        expectRejected(["PI", "+", "+7771FU"], /動けません/);
+        // 飛車が自分の歩を飛び越える
+        expectRejected(["PI", "+", "+2822HI"], /動けません/);
+        // 角が自分の歩を飛び越える
+        expectRejected(["PI", "+", "+8833KA"], /動けません/);
+        // 香が横に動く
+        expectRejected(["PI", "+", "+9989KY"], /動けません|自分の駒/);
+        // 銀が横に動く
+        expectRejected(
+            ["PI", "+", "+7776FU", "-3334FU", "+7978GI", "-8384FU", "+7868GI"],
+            /動けません/,
+        );
+    });
+
+    it("桂は駒を飛び越えられる", () => {
+        const record = parseCsaGameRecord(["PI", "+", "+7776FU", "-3334FU", "+8977KE"].join("\n"));
+        expect(record.moves).toEqual(["7g7f", "3c3d", "8i7g"]);
+    });
+
+    it("移動元に駒が無い・相手の駒を動かす・自分の駒を取る手を弾く", () => {
+        expectRejected(["PI", "+", "+5544FU"], /移動元に駒がありません/);
+        expectRejected(["PI", "+", "+3334FU"], /相手の駒/);
+        expectRejected(["PI", "+", "+8877KA"], /自分の駒/);
+        expectRejected(["PI", "+", "-3334FU"], /手番が違います/);
+    });
+
+    it("成りと不成を駒コードで区別し、成れない場所での成りを弾く", () => {
+        const promote = parseCsaGameRecord(["PI", "+", "+7776FU", "-3334FU", "+8822UM"].join("\n"));
+        expect(promote.moves[2]).toBe("8h2b+");
+        const stay = parseCsaGameRecord(["PI", "+", "+7776FU", "-3334FU", "+8822KA"].join("\n"));
+        expect(stay.moves[2]).toBe("8h2b");
+        // 成った駒はその後も成り駒のコードで動く (もう一度「成る」ことはない)。
+        const moved = parseCsaGameRecord(
+            ["PI", "+", "+7776FU", "-3334FU", "+8822UM", "-8384FU", "+2221UM"].join("\n"),
+        );
+        expect(moved.moves[4]).toBe("2b2a");
+        // 敵陣に出入りしない成り
+        expectRejected(["PI", "+", "+7776TO"], /成れません/);
+        // 成り駒を元の駒のコードで動かす
+        expectRejected(
+            ["PI", "+", "+7776FU", "-3334FU", "+8822UM", "-4142OU", "+2221KA"],
+            /駒コード/,
+        );
+        // 金は成れない
+        expectRejected(["P+53KI59OU", "P-11OU", "+", "+5352NG"], /駒コード/);
+    });
+
+    it("行き所のない駒になる不成を弾き、成れば受け付ける", () => {
+        expectRejected(["P+12FU59OU", "P-51OU", "+", "+1211FU"], /行き所のない駒/);
+        expect(
+            parseCsaGameRecord(["P+12FU59OU", "P-51OU", "+", "+1211TO"].join("\n")).moves,
+        ).toEqual(["1b1a+"]);
+        expectRejected(["P+14KE59OU", "P-51OU", "+", "+1422KE"], /行き所のない駒/);
+    });
+
+    it("駒打ちは持ち駒にあり、空いたマスで、二歩・行き所のない駒でないこと", () => {
+        const opening = ["PI", "+", "+7776FU", "-3334FU", "+8822UM", "-3122GI"];
+        expect(parseCsaGameRecord([...opening, "+0055KA"].join("\n")).moves[4]).toBe("B*5e");
+        expectRejected([...opening, "+0055HI"], /持ち駒にありません/);
+        expectRejected([...opening, "+0076KA"], /駒のあるマス/);
+        expectRejected([...opening, "+0055UM"], /打てない駒/);
+        expectRejected(["PI", "P+00FU", "+", "+0055FU"], /二歩/);
+        expectRejected(["PI", "P+00KE", "+", "+0052KE"], /行き所のない駒/);
+        expectRejected(["PI", "+", "+0055FU"], /持ち駒にありません/);
+    });
+
+    it("王手を放置する手を弾く", () => {
+        const position = ["P+59OU58KI", "P-51HI11OU", "+"];
+        expectRejected([...position, "+5848KI"], /王手を放置/);
+        // 同じ筋で受け続ける手は指せる。
+        expect(parseCsaGameRecord([...position, "+5857KI"].join("\n")).moves).toEqual(["5h5g"]);
+    });
+
+    it("読み筋の中の指せない手はそこで打ち切る (棋譜全体は読む)", () => {
+        const record = parseCsaGameRecord(
+            ["PI", "+", "+7776FU", "'** 10 -3334FU +7771FU -8384FU"].join("\n"),
+        );
+        expect(record.annotations[0]).toEqual({ evalCp: 10, pv: ["3c3d"] });
+    });
+
+    it("実戦の棋譜 (180 手) は 1 手も弾かずに読める", () => {
+        const record = parseCsaGameRecord(`PI\n${REAL_GAME_CSA_MOVES}`);
+        expect(record.moves).toHaveLength(180);
+        expect(record.moves).toEqual(parseCsaMoves(REAL_GAME_CSA_MOVES));
     });
 });

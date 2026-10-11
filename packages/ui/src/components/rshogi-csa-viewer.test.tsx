@@ -1,6 +1,6 @@
 import type { RshogiGame } from "@shogi/match-client";
 import { fetchRshogiGame } from "@shogi/match-client";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RshogiCsaViewer } from "./rshogi-csa-viewer";
@@ -229,10 +229,10 @@ describe("RshogiCsaViewer: 外部から取り込んだ棋譜", () => {
         });
     });
 
-    it("解釈できない局面記述 (00AL など) は再生せずエラーを表示する", async () => {
+    it("解釈できない局面記述は再生せずエラーを表示する", async () => {
         vi.mocked(fetchRshogiGame).mockResolvedValue({
             ...GAME,
-            csa: "V2\nP-51OU\nP+53FU\nP-00AL\n+\n+5352FU\n",
+            csa: "V2\nP-51OU\nP+5XFU\n+\n+5352FU\n",
         });
 
         renderViewer();
@@ -241,6 +241,70 @@ describe("RshogiCsaViewer: 外部から取り込んだ棋譜", () => {
             await screen.findByText(/CSA の解析に失敗しました: CSA の開始局面を解釈できません/),
         ).toBeTruthy();
         expect(screen.queryByTestId("shogi-match")).toBeNull();
+    });
+
+    it("00AL (残りの駒をすべて持ち駒にする) の局面から再生する", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue({
+            ...GAME,
+            csa: "V2\nP-51OU\nP+53FU\nP+00AL\n+\n+0052KI\n",
+        });
+
+        renderViewer();
+        await screen.findByTestId("shogi-match");
+
+        expect(capturedProps.at(-1)?.initialReview).toEqual({
+            sfen: "4k4/9/4P4/9/9/9/9/9/9 b 2R2B4G4S4N4L17P 1",
+            moves: ["G*5b"],
+            moveData: [undefined],
+        });
+    });
+
+    it("旧 csa_client 形式 (指し手の前の `'*`) の評価値をその指し手に付ける", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue({
+            ...GAME,
+            csa: [
+                "V2.2",
+                "PI",
+                "+",
+                "'* 30 +7776FU -3334FU",
+                "+7776FU",
+                "T3",
+                "'* -50 -3334FU",
+                "-3334FU",
+                "T5",
+            ].join("\n"),
+        });
+
+        renderViewer();
+        await screen.findByTestId("shogi-match");
+
+        expect(capturedProps.at(-1)?.initialReview?.moveData).toEqual([
+            { elapsedMs: 3000, evalCp: 30, pv: ["3c3d"] },
+            { elapsedMs: 5000, evalCp: -50 },
+        ]);
+    });
+
+    it("駒コードの合わない指し手は行番号つきのエラーにして再生しない", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue({
+            ...GAME,
+            csa: "V2\nPI\n+\n+7776HI\n",
+        });
+
+        renderViewer();
+
+        expect(
+            await screen.findByText(/CSA の解析に失敗しました: 4 行目の指し手を適用できません/),
+        ).toBeTruthy();
+        expect(screen.queryByTestId("shogi-match")).toBeNull();
+    });
+
+    it("対局場所の見出しとバッジで「対局場所」を二重に読み上げない", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(WDOOR_GAME);
+
+        renderViewer();
+
+        const panel = await screen.findByRole("region", { name: "対局情報" });
+        expect(within(panel).getAllByText(/対局場所/)).toHaveLength(1);
     });
 
     it("適用できない指し手を含む棋譜はエラーを表示する", async () => {
@@ -413,5 +477,54 @@ describe("RshogiCsaViewer", () => {
             revokeObjectUrl.mock.invocationCallOrder[0],
         );
         expect(revokeObjectUrl).toHaveBeenCalledWith("blob:csa");
+    });
+});
+
+describe("RshogiCsaViewer: モバイル幅", () => {
+    const stubMobile = (isMobile: boolean) => {
+        vi.spyOn(window, "matchMedia").mockImplementation(
+            (query: string) =>
+                ({
+                    matches: isMobile,
+                    media: query,
+                    addEventListener: () => {},
+                    removeEventListener: () => {},
+                }) as unknown as MediaQueryList,
+        );
+    };
+
+    it("左カラムの無いモバイルでも、1 行の要約とシートから対局情報に到達できる", async () => {
+        stubMobile(true);
+        vi.mocked(fetchRshogiGame).mockResolvedValue(WDOOR_GAME);
+
+        renderViewer();
+
+        // 盤面の上には対局者と対局場所だけを 1 行で出す。
+        const summary = await screen.findByRole("button", { name: /対局情報/ });
+        expect(within(summary).getByText("☗ RAMU vs ☖ SampleEngine")).toBeTruthy();
+        expect(within(summary).getByText("Floodgate")).toBeTruthy();
+
+        fireEvent.click(summary);
+
+        const sheet = await screen.findByRole("dialog", { name: "対局情報" });
+        expect(within(sheet).getByText("☗ RAMU (R3512) vs ☖ SampleEngine (R3447)")).toBeTruthy();
+        expect(within(sheet).getByText("floodgate-300-10F")).toBeTruthy();
+        expect(
+            within(sheet)
+                .getByRole("link", { name: "元の棋譜を開く（Floodgate）" })
+                .getAttribute("href"),
+        ).toBe(WDOOR_GAME.meta.originUrl);
+        expect(within(sheet).getByRole("button", { name: "CSA ダウンロード" })).toBeTruthy();
+    });
+
+    it("PC 幅では要約の行を出さない (左カラムに出るため)", async () => {
+        stubMobile(false);
+        vi.mocked(fetchRshogiGame).mockResolvedValue(WDOOR_GAME);
+
+        renderViewer();
+
+        await screen.findByTestId("shogi-match");
+        expect(screen.queryByRole("button", { name: /対局情報/ })).toBeNull();
+        expect(screen.getByRole("button", { name: "CSA ダウンロード" })).toBeTruthy();
     });
 });

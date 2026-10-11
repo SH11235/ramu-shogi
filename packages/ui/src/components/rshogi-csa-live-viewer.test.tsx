@@ -248,7 +248,7 @@ describe("RshogiCsaLiveViewer: static fallback", () => {
                 "+7776FU,T8",
                 "'** 45 -3334FU",
                 "-3334FU,T3",
-                "'* -120",
+                "'** -120",
                 "%TORYO",
             ].join("\n"),
         );

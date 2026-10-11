@@ -31,9 +31,27 @@ describe("router: rshogi viewer", () => {
             event: "WCSC36",
             venue: "floodgate",
         });
-        // `?event=2026` は数値として解釈されて届くので、validateSearch で文字列に直す。
-        expect(await loadSearch("/rshogi-viewer?event=2026")).toEqual({ event: "2026" });
         expect(await loadSearch("/rshogi-viewer")).toEqual({});
+    });
+
+    it("数値や真偽値に見えるイベント名も文字列として読み、引用符なしで書き戻す", async () => {
+        for (const event of ["2026", "true", "1.0", "null"]) {
+            await load(`/rshogi-viewer?event=${event}`);
+            expect(router.state.matches.at(-1)?.search).toEqual({ event });
+        }
+
+        await load("/rshogi-viewer");
+        await router.navigate({ to: "/rshogi-viewer", search: { event: "2026" } });
+        expect(router.state.location.searchStr).toBe("?event=2026");
+        expect(router.state.matches.at(-1)?.search).toEqual({ event: "2026" });
+
+        await router.navigate({
+            to: "/rshogi-viewer",
+            search: { event: "サンプル大会", venue: "other" },
+        });
+        expect(decodeURIComponent(router.state.location.searchStr)).toBe(
+            "?event=サンプル大会&venue=other",
+        );
     });
 
     it("validateSearch は不正な値を捨てる", () => {

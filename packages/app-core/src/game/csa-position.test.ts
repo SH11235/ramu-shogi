@@ -118,12 +118,39 @@ describe("parseCsaStartPosition", () => {
     });
 });
 
+describe("parseCsaStartPosition: 00AL (残りの駒をすべて持ち駒にする)", () => {
+    it("盤上に無い残りの駒 (玉を除く) をすべてその側の持ち駒にする", () => {
+        // 詰将棋の定番: 攻め方は盤上の歩だけ、残りはすべて玉方の持ち駒。
+        const start = parseCsaStartPosition("P-51OU\nP+53FU\nP-00AL\n+");
+        expect(start.sfen).toBe("4k4/9/4P4/9/9/9/9/9/9 b 2r2b4g4s4n4l17p 1");
+        expect(start.position.hands).toEqual({
+            sente: {},
+            gote: { R: 2, B: 2, G: 4, S: 4, N: 4, L: 4, P: 17 },
+        });
+    });
+
+    it("相手の持ち駒と、同じ側が先に持っている駒は残りから除く", () => {
+        const start = parseCsaStartPosition("P-51OU\nP+53FU\nP-00KI00KI\nP+00HI\nP+00AL\n+");
+        expect(start.sfen).toBe("4k4/9/4P4/9/9/9/9/9/9 b 2R2B2G4S4N4L17P2g 1");
+    });
+
+    it("盤上の成り駒は元の駒として数え、行の途中に書かれた 00AL も最後に配る", () => {
+        const start = parseCsaStartPosition("P+00AL\nP-51OU\nP+53TO52RY\nP-41UM\n-");
+        expect(start.sfen).toBe("4k+b3/4+R4/4+P4/9/9/9/9/9/9 w RB4G4S4N4L17P 1");
+    });
+
+    it("平手の盤に 00AL を書いても配る駒は無い", () => {
+        expect(parseCsaStartPosition("PI\nP+00AL\n+").sfen).toBe("startpos");
+    });
+});
+
 describe("parseCsaStartPosition: 解釈できない局面記述", () => {
     const expectInvalid = (csa: string) =>
         expect(() => parseCsaStartPosition(csa)).toThrow(/CSA の開始局面を解釈できません/);
 
-    it("00AL には対応しない", () => {
-        expectInvalid("P-51OU\nP+53FU\nP-00AL\n+");
+    it("00AL を両方の側に書いた局面、駒が 1 組を超える局面を弾く", () => {
+        expectInvalid("P-51OU\nP+53FU\nP+00AL\nP-00AL\n+");
+        expectInvalid("P-51OU\nP+11KA12KA13KA\nP-00AL\n+");
     });
 
     it("知らない駒・マス・持ち駒にできない駒を弾く", () => {

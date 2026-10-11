@@ -7,8 +7,8 @@
  * - `P+` / `P-` の駒別表現 (`P+63FU` はマス指定、`P+00KA` は持ち駒)
  * - 手番行 (`+` / `-`)
  *
- * `P+00AL` (残りの駒をすべて持ち駒にする) は対応しない。解釈できない記述は例外にして、
- * 誤った局面からの再生をさせない。
+ * `P+00AL` / `P-00AL` は、盤上にも相手の持ち駒にも無い残りの駒 (玉を除く) をすべて
+ * その側の持ち駒にする。解釈できない記述は例外にして、誤った局面からの再生をさせない。
  */
 
 import {
@@ -35,7 +35,8 @@ export interface CsaStartPosition {
     sfen: string;
 }
 
-const CSA_PIECES: Record<string, { type: PieceType; promoted: boolean } | undefined> = {
+/** CSA の駒コード → 駒の種類と成りの有無。 */
+export const CSA_PIECE_CODES: Record<string, { type: PieceType; promoted: boolean } | undefined> = {
     FU: { type: "P", promoted: false },
     KY: { type: "L", promoted: false },
     KE: { type: "N", promoted: false },
@@ -50,6 +51,17 @@ const CSA_PIECES: Record<string, { type: PieceType; promoted: boolean } | undefi
     NG: { type: "S", promoted: true },
     UM: { type: "B", promoted: true },
     RY: { type: "R", promoted: true },
+};
+
+/** 1 組の駒の枚数 (玉を除く)。`00AL` の残り駒の計算に使う。 */
+const FULL_SET: Readonly<Record<Exclude<PieceType, "K">, number>> = {
+    P: 18,
+    L: 4,
+    N: 4,
+    S: 4,
+    G: 4,
+    B: 2,
+    R: 2,
 };
 
 /** SFEN の持ち駒の並び順。 */
@@ -80,7 +92,7 @@ const toSquare = (value: string): Square | null => {
 };
 
 const toPiece = (owner: Player, code: string): Piece | null => {
-    const piece = CSA_PIECES[code];
+    const piece = CSA_PIECE_CODES[code];
     if (!piece) return null;
     return piece.promoted
         ? { owner, type: piece.type, promoted: true }
@@ -109,7 +121,7 @@ const applyHandicapLine = (board: BoardState, line: string): void => {
     for (let i = 0; i < body.length; i += 4) {
         const item = body.slice(i, i + 4);
         const square = toSquare(item.slice(0, 2));
-        const expected = CSA_PIECES[item.slice(2)];
+        const expected = CSA_PIECE_CODES[item.slice(2)];
         const current = square ? board[square] : null;
         if (
             !square ||
@@ -125,8 +137,12 @@ const applyHandicapLine = (board: BoardState, line: string): void => {
     }
 };
 
-/** `P+` / `P-` の駒別表現を盤・持ち駒に置く。 */
-const applyPieceLine = (board: BoardState, hands: Hands, line: string): void => {
+/**
+ * `P+` / `P-` の駒別表現を盤・持ち駒に置く。
+ * `00AL` があればその側を返す (残りの駒は、すべての行を置き終えてから配る)。
+ */
+const applyPieceLine = (board: BoardState, hands: Hands, line: string): Player | null => {
+    let allRemainingTo: Player | null = null;
     const owner: Player = line[1] === "+" ? "sente" : "gote";
     const body = line.slice(2).trim();
     if (body.length % 4 !== 0) fail(line, "駒は 4 文字ずつ並べます");
@@ -136,10 +152,13 @@ const applyPieceLine = (board: BoardState, hands: Hands, line: string): void => 
         const code = item.slice(2);
         const piece = toPiece(owner, code);
         if (where === "00") {
-            if (code === "AL") fail(line, "00AL には対応していません");
+            if (code === "AL") {
+                allRemainingTo = owner;
+                continue;
+            }
             if (!piece || piece.promoted || piece.type === "K") {
                 fail(line, `持ち駒にできない駒です: ${item}`);
-                return;
+                return null;
             }
             hands[owner][piece.type] = (hands[owner][piece.type] ?? 0) + 1;
             continue;
@@ -147,10 +166,35 @@ const applyPieceLine = (board: BoardState, hands: Hands, line: string): void => 
         const square = toSquare(where);
         if (!square || !piece) {
             fail(line, `駒を解釈できません: ${item}`);
-            return;
+            return null;
         }
         if (board[square]) fail(line, `マスが重複しています: ${item}`);
         board[square] = piece;
+    }
+    return allRemainingTo;
+};
+
+/** 盤上にもどちらの持ち駒にも無い駒を、すべて `owner` の持ち駒にする (`00AL`)。 */
+const giveRemainingPieces = (
+    board: BoardState,
+    hands: Hands,
+    owner: Player,
+    line: string,
+): void => {
+    const used: Partial<Record<PieceType, number>> = {};
+    for (const piece of Object.values(board)) {
+        if (piece) used[piece.type] = (used[piece.type] ?? 0) + 1;
+    }
+    for (const side of ["sente", "gote"] as const) {
+        for (const [type, count] of Object.entries(hands[side])) {
+            used[type as PieceType] = (used[type as PieceType] ?? 0) + (count ?? 0);
+        }
+    }
+    for (const [type, total] of Object.entries(FULL_SET)) {
+        const pieceType = type as Exclude<PieceType, "K">;
+        const remaining = total - (used[pieceType] ?? 0);
+        if (remaining < 0) fail(line, "駒の枚数が 1 組を超えています");
+        if (remaining > 0) hands[owner][pieceType] = (hands[owner][pieceType] ?? 0) + remaining;
     }
 };
 
@@ -223,7 +267,15 @@ export function buildCsaStartPosition(
     }
 
     const hands = createEmptyHands();
-    for (const line of pieceLines) applyPieceLine(board, hands, line);
+    let allRemaining: { owner: Player; line: string } | null = null;
+    for (const line of pieceLines) {
+        const owner = applyPieceLine(board, hands, line);
+        if (owner && allRemaining && allRemaining.owner !== owner) {
+            fail(line, "00AL は片方の側にだけ書けます");
+        }
+        if (owner) allRemaining = { owner, line };
+    }
+    if (allRemaining) giveRemainingPieces(board, hands, allRemaining.owner, allRemaining.line);
 
     const boardSfen = boardToSfen(board);
     const handsSfen = handsToSfen(hands);

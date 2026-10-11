@@ -24,6 +24,9 @@ export type ImportKifHandler = (
     startSfen?: string,
 ) => Promise<void>;
 
+/** 読み込む棋譜ファイルの大きさの上限。棋譜は大きくても数百 KB なので 2MB で足りる。 */
+export const MAX_KIFU_FILE_BYTES = 2 * 1024 * 1024;
+
 /** ファイル選択で受け付ける拡張子。 */
 export const KIFU_FILE_ACCEPT = ".csa,.kif,.kifu,.sfen,.txt";
 

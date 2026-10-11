@@ -1,20 +1,28 @@
 /**
  * CSA 棋譜から指し手と、指し手ごとの付随情報 (消費時間・評価値・詰み・読み筋) を取り出す。
  *
- * 読む形式は次の 2 つ (どちらもコメントは直前の指し手のもの、評価値は先手視点)。
+ * 読む形式は次の 3 つ (評価値はどれも先手視点)。
  * - wdoor 形式: 指し手行 → `T<秒>` 行 → `'** <評価値> <読み筋>` 行
  * - rshogi サーバー形式: `+7776FU,T4` → `'** <評価値> <読み筋>` 行
+ * - 旧 `csa_client` 形式: `'* <評価値> <読み筋>` 行 → 指し手行 → `T<秒>` 行
  *
- * コメントのマーカーは `'** ` と `'* ` の両方を受ける。
+ * 評価値コメントがどの指し手のものかは、行ごとに次の規則で決める
+ * (1 ファイルに混在していてもこの規則どおり)。
+ * - 指し手行に `,'*` で連結されたコメント → その指し手
+ * - 独立行の `'**` (星 2 つ) → 直前の指し手
+ * - 独立行の `'*` (星 1 つ) → 次の指し手
  */
 
 import type { Player, PositionState } from "./board";
-import { parseSingleCsaMove } from "./csa";
+import { applyCsaMoveStrict } from "./csa-move";
 import { buildCsaStartPosition } from "./csa-position";
 
 /**
  * 評価値がこの絶対値以上なら詰みとして扱う。
  * Floodgate 形のコメントは詰みを ±100000 で符号化する。
+ *
+ * これ未満の大きな値 (31998 など) を詰みと推測することはしない。エンジンごとに表現が
+ * 違い、断定できないため。そうした値は評価値のまま渡し、グラフ側の上限で頭打ちにする。
  */
 export const CSA_MATE_EVAL_THRESHOLD = 100_000;
 
@@ -126,8 +134,7 @@ const convertPvToUsi = (
     let state = afterMove;
     for (const token of rest) {
         try {
-            const applied = parseSingleCsaMove(token, state);
-            if (!applied) break;
+            const applied = applyCsaMoveStrict(token, state);
             pv.push(applied.move);
             state = applied.nextState;
         } catch {
@@ -161,12 +168,19 @@ const toAnnotation = (pending: PendingMove): CsaMoveAnnotation | undefined => {
     return Object.keys(annotation).length > 0 ? annotation : undefined;
 };
 
+/** これ以降は対局後の記録 (終局理由など) で、指し手のコメントではない。 */
+const isPostGameComment = (statement: string): boolean =>
+    statement.startsWith("'summary:") ||
+    statement.startsWith("'ILLEGAL_MOVE") ||
+    statement.startsWith("'$END_TIME");
+
 /**
  * CSA 棋譜全文を解析する。
  *
  * 開始局面は `PI` / `P1`〜`P9` / `P+`・`P-` / 手番行から組み立てる (平手以外も可)。
- * 解釈できない局面記述、解釈できない指し手行、盤面に適用できない指し手は例外にする
- * (途中までの誤った再生を返さない)。
+ * 解釈できない局面記述、解釈できない指し手行、局面に照らして指せない指し手
+ * (駒コードの不一致、駒の動きとして不可能な手、持ち駒に無い駒打ち、王手放置など) は
+ * 行番号つきの例外にする (途中までの誤った再生を返さない)。
  * 1 ファイルに複数局 (`/` 区切り) があるときは最初の 1 局だけを読む。
  */
 export function parseCsaGameRecord(contents: string): CsaGameRecord {
@@ -177,6 +191,8 @@ export function parseCsaGameRecord(contents: string): CsaGameRecord {
     // 開始局面は最初の指し手 (または棋譜の終わり) で確定する。
     let state: PositionState | null = null;
     let ended = false;
+    // 独立行の `'*` (旧 csa_client 形式)。次の指し手に付ける。
+    let commentForNextMove: CsaEvalComment | undefined;
     const resolveStart = (): PositionState => {
         const start = buildCsaStartPosition(setupLines, startTurn);
         record.startSfen = start.sfen;
@@ -184,9 +200,10 @@ export function parseCsaGameRecord(contents: string): CsaGameRecord {
     };
 
     const lines = contents.split(/\r?\n/);
-    outer: for (const rawLine of lines) {
-        const line = rawLine.trim();
+    outer: for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+        const line = lines[lineIndex].trim();
         if (line.length === 0) continue;
+        const isCommentLine = line.startsWith("'");
         for (const statement of splitStatements(line)) {
             if (statement === "/") break outer;
             if (statement.startsWith("'")) {
@@ -194,17 +211,27 @@ export function parseCsaGameRecord(contents: string): CsaGameRecord {
                 if (senteRate !== undefined) record.senteRate = senteRate;
                 const goteRate = parseRate(statement, "'white_rate:");
                 if (goteRate !== undefined) record.goteRate = goteRate;
-                const last = pendingMoves[pendingMoves.length - 1];
-                if (!ended && last && last.comment === undefined) {
-                    const comment = parseCsaEvalComment(statement);
-                    if (comment.evalCp !== undefined) last.comment = comment;
+                if (isPostGameComment(statement)) {
+                    ended = true;
+                    commentForNextMove = undefined;
                 }
+                if (ended) continue;
+                const comment = parseCsaEvalComment(statement);
+                if (comment.evalCp === undefined) continue;
+                if (isCommentLine && !statement.startsWith("'**")) {
+                    commentForNextMove ??= comment;
+                    continue;
+                }
+                // 指し手行に連結されたコメントと、独立行の `'**` は直前の指し手のもの。
+                const last = pendingMoves[pendingMoves.length - 1];
+                if (last && last.comment === undefined) last.comment = comment;
                 continue;
             }
             if (ended) continue;
             if (statement.startsWith("%")) {
-                // 終局コマンド。これ以降の `T` 行は指し手の消費時間ではない。
+                // 終局コマンド。これ以降の `T` 行やコメントは指し手のものではない。
                 ended = true;
+                commentForNextMove = undefined;
                 continue;
             }
             if (statement.startsWith("T")) {
@@ -221,12 +248,24 @@ export function parseCsaGameRecord(contents: string): CsaGameRecord {
             }
             if (statement.startsWith("+") || statement.startsWith("-")) {
                 state ??= resolveStart();
-                const applied = parseSingleCsaMove(statement, state);
-                if (!applied) {
-                    throw new Error(`CSA の指し手行を解釈できません: ${statement}`);
+                let applied: ReturnType<typeof applyCsaMoveStrict>;
+                try {
+                    applied = applyCsaMoveStrict(statement, state);
+                } catch (error) {
+                    throw new Error(
+                        `${lineIndex + 1} 行目の指し手を適用できません: ${statement} (${
+                            error instanceof Error ? error.message : String(error)
+                        })`,
+                    );
                 }
                 state = applied.nextState;
-                pendingMoves.push({ token: statement, usi: applied.move, afterMove: state });
+                pendingMoves.push({
+                    token: statement,
+                    usi: applied.move,
+                    afterMove: state,
+                    comment: commentForNextMove,
+                });
+                commentForNextMove = undefined;
                 continue;
             }
             if (pendingMoves.length > 0) continue;

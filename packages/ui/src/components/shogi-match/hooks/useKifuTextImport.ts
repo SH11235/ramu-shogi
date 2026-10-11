@@ -4,6 +4,7 @@ import {
     type ImportKifHandler,
     type ImportSfenHandler,
     importKifuText,
+    MAX_KIFU_FILE_BYTES,
 } from "../utils/kifuImport";
 
 const SUCCESS_DISPLAY_MS = 2000;
@@ -52,21 +53,44 @@ export function useKifuTextImport({
         };
     }, []);
 
-    const runImport = async (text: string): Promise<void> => {
+    // 取り込み要求の通し番号。新しい要求が来たら、進行中の古い読み込み・取り込みを捨てる
+    // (ファイル A → B の順に選んだとき、読むのが遅い A が B を上書きしないようにする)。
+    const latestRequestRef = useRef(0);
+    // 盤面への反映は 1 件ずつ順に行う (2 件の反映が入り混じらないようにする)。
+    const importQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+    const beginRequest = (): number => {
+        latestRequestRef.current += 1;
         setError(null);
         setSuccess(false);
         if (successTimerRef.current) {
             clearTimeout(successTimerRef.current);
             successTimerRef.current = null;
         }
-        try {
-            await importKifuText(text, { onImportSfen, onImportKif });
+        return latestRequestRef.current;
+    };
+
+    const isLatest = (requestId: number): boolean => latestRequestRef.current === requestId;
+
+    const runImport = (requestId: number, text: string): Promise<void> => {
+        const run = async (): Promise<void> => {
+            if (!isLatest(requestId)) return;
+            try {
+                await importKifuText(text, { onImportSfen, onImportKif });
+            } catch (e) {
+                if (isLatest(requestId)) {
+                    setError(e instanceof Error ? e.message : "インポートに失敗しました");
+                }
+                return;
+            }
+            if (!isLatest(requestId)) return;
             setSuccess(true);
             setInputValue("");
             successTimerRef.current = setTimeout(() => setSuccess(false), SUCCESS_DISPLAY_MS);
-        } catch (e) {
-            setError(e instanceof Error ? e.message : "インポートに失敗しました");
-        }
+        };
+        const queued = importQueueRef.current.then(run);
+        importQueueRef.current = queued;
+        return queued;
     };
 
     const handleInputChange = (value: string): void => {
@@ -81,17 +105,24 @@ export function useKifuTextImport({
         // 同じファイルを続けて選び直しても change が発火するよう、選択を消しておく。
         input.value = "";
         if (!file) return;
+        const requestId = beginRequest();
+        if (file.size > MAX_KIFU_FILE_BYTES) {
+            setError(`ファイルが大きすぎます（上限 ${MAX_KIFU_FILE_BYTES / (1024 * 1024)}MB）`);
+            return;
+        }
         let text: string;
         try {
             text = decodeKifuFileBytes(await file.arrayBuffer());
         } catch (e) {
-            setSuccess(false);
-            setError(
-                `ファイルを読み込めませんでした: ${e instanceof Error ? e.message : String(e)}`,
-            );
+            if (isLatest(requestId)) {
+                setError(
+                    `ファイルを読み込めませんでした: ${e instanceof Error ? e.message : String(e)}`,
+                );
+            }
             return;
         }
-        await runImport(text);
+        if (!isLatest(requestId)) return;
+        await runImport(requestId, text);
     };
 
     return {
@@ -99,7 +130,7 @@ export function useKifuTextImport({
         error,
         success,
         handleInputChange,
-        handleImport: () => runImport(inputValue),
+        handleImport: () => runImport(beginRequest(), inputValue),
         handleFileChange,
     };
 }

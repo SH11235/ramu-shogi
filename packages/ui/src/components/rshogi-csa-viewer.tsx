@@ -16,7 +16,9 @@ import { type ReactElement, type ReactNode, useEffect, useState } from "react";
 import { Button } from "./button";
 import { RshogiVenueBadge } from "./rshogi-csa-venue";
 import { ShogiMatch } from "./shogi-match";
+import { BottomSheet } from "./shogi-match/components/BottomSheet";
 import type { ReviewMoveEval } from "./shogi-match/hooks/useKifuImportExport";
+import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import type { EngineOption } from "./shogi-match/types";
 import { csaAnnotationsToMoveData } from "./shogi-match/utils/kifuImport";
 
@@ -151,7 +153,7 @@ function RshogiGameMetaPanel({
                 <div className="flex flex-col gap-1">
                     <span className="text-xs text-muted-foreground">対局場所</span>
                     <span className="text-sm">
-                        <RshogiVenueBadge source={meta.source} />
+                        <RshogiVenueBadge source={meta.source} withLabelPrefix={false} />
                     </span>
                 </div>
             )}
@@ -196,6 +198,8 @@ export function RshogiCsaViewer({
     isDevMode,
 }: RshogiCsaViewerProps): ReactElement {
     const [state, setState] = useState<LoadState>({ status: "loading" });
+    const isMobile = useIsMobile();
+    const [isMetaSheetOpen, setIsMetaSheetOpen] = useState(false);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -298,9 +302,44 @@ export function RshogiCsaViewer({
         URL.revokeObjectURL(url);
     };
 
+    const metaContent = (
+        <div className="flex flex-col gap-2">
+            <RshogiGameMetaPanel game={game} rates={rates} />
+            <Button type="button" variant="outline" size="sm" onClick={handleDownloadCsa}>
+                CSA ダウンロード
+            </Button>
+        </div>
+    );
+
     return (
         <div>
             {header}
+            {/* モバイルのレイアウトには左カラムが無い。盤面を狭めないよう対局者と対局場所だけを
+                1 行で出し、残り (レート・元棋譜へのリンク・CSA ダウンロードなど) はシートで開く。 */}
+            {isMobile && (
+                <>
+                    <button
+                        type="button"
+                        onClick={() => setIsMetaSheetOpen(true)}
+                        aria-haspopup="dialog"
+                        className="flex w-full items-center gap-2 border-b border-wafuu-border bg-wafuu-washi-warm px-3 py-1.5 text-left text-xs text-wafuu-sumi"
+                    >
+                        <span className="min-w-0 flex-1 truncate font-semibold">
+                            ☗ {game.meta.senteName} vs ☖ {game.meta.goteName}
+                        </span>
+                        <RshogiVenueBadge source={game.meta.source} />
+                        <span className="shrink-0 text-wafuu-shu">対局情報</span>
+                    </button>
+                    <BottomSheet
+                        open={isMetaSheetOpen}
+                        onOpenChange={setIsMetaSheetOpen}
+                        title="対局情報"
+                        height="auto"
+                    >
+                        {metaContent}
+                    </BottomSheet>
+                </>
+            )}
             <ShogiMatch
                 engineOptions={engineOptions}
                 manifestUrl={manifestUrl}
@@ -316,19 +355,7 @@ export function RshogiCsaViewer({
                 reviewMode={true}
                 // 棋譜に評価値が入っているときは、観戦と同じく評価値の列とグラフを最初から出す。
                 spectateMode={hasRecordedEval}
-                reviewLeftContent={
-                    <div className="flex flex-col gap-2">
-                        <RshogiGameMetaPanel game={game} rates={rates} />
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={handleDownloadCsa}
-                        >
-                            CSA ダウンロード
-                        </Button>
-                    </div>
-                }
+                reviewLeftContent={metaContent}
             />
         </div>
     );

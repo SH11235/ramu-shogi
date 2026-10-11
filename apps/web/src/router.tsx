@@ -19,6 +19,7 @@ import {
 } from "@tanstack/react-router";
 import { AppProviders } from "./AppProviders";
 import { handleLoaderResponse } from "./router-loader-utils";
+import { parseSearch, stringifySearch } from "./router-search";
 
 const rootRoute = createRootRoute({
     component: AppProviders,
@@ -377,6 +378,9 @@ const routeTree = rootRoute.addChildren([
 
 export const router = createRouter({
     routeTree,
+    // 検索パラメータは文字列のまま往復させる (`?event=2026` を数値にしない)。
+    parseSearch,
+    stringifySearch,
     defaultPendingComponent: DefaultPendingComponent,
     defaultErrorComponent: DefaultErrorComponent,
 });

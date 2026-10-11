@@ -67,8 +67,19 @@ const VENUE_ICON_CLASS: Record<RshogiVenueKind, string> = {
     unknown: "bg-wafuu-sumi-light rounded-full opacity-60",
 };
 
-/** 対局場所の色付きアイコン + ラベル。`source` が無ければ何も描画しない。 */
-export function RshogiVenueBadge({ source }: { source: string | undefined }): ReactElement | null {
+/**
+ * 対局場所の色付きアイコン + ラベル。`source` が無ければ何も描画しない。
+ *
+ * 読み上げ用に「対局場所: 」を前置きする。すぐ上に「対局場所」の見出しがある場所では
+ * 二重に読まれるので `withLabelPrefix={false}` にする。
+ */
+export function RshogiVenueBadge({
+    source,
+    withLabelPrefix = true,
+}: {
+    source: string | undefined;
+    withLabelPrefix?: boolean;
+}): ReactElement | null {
     const venue = resolveRshogiVenue(source);
     if (!venue) return null;
     return (
@@ -81,7 +92,7 @@ export function RshogiVenueBadge({ source }: { source: string | undefined }): Re
                 className={`inline-block h-2 w-2 ${VENUE_ICON_CLASS[venue.kind]}`}
             />
             <span>
-                <span className="sr-only">対局場所: </span>
+                {withLabelPrefix && <span className="sr-only">対局場所: </span>}
                 {venue.label}
             </span>
         </span>

@@ -50,6 +50,8 @@ export {
     parseCsaMovesWithState,
     parseSingleCsaMove,
 } from "./game/csa";
+// game/csa-move
+export { applyCsaMoveStrict } from "./game/csa-move";
 // game/csa-position
 export type { CsaStartPosition } from "./game/csa-position";
 export { parseCsaStartPosition } from "./game/csa-position";

@@ -323,6 +323,9 @@ export function RshogiCsaGameBrowser({
     };
 
     const handleSelectEvent = (event: string): void => {
+        // タグは「そのイベントの一覧へ飛ぶ」操作。入力中・適用中の他の条件 (対局場所・名前・
+        // 結果・日付) は引き継がず、イベントだけの絞り込みにする。条件を重ねたいときは
+        // フォームでイベントを選んで検索する。
         onSearchChange({ event });
     };
 
