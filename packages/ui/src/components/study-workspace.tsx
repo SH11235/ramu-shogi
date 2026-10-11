@@ -27,8 +27,8 @@ import {
     studyScoreToKifuEval,
 } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
-import type { ReactElement, ReactNode } from "react";
-import { useRef, useState } from "react";
+import type { KeyboardEvent, ReactElement, ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -39,6 +39,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "./alert-dialog";
+import { Button } from "./button";
 import { EvalGraph, type EvalGraphMarker } from "./shogi-match/components/EvalGraph";
 import { MatchNnueDownloadDialog } from "./shogi-match/components/MatchNnueDownloadDialog";
 import { type HandInfo, MobileBoardSection } from "./shogi-match/components/MobileBoardSection";
@@ -47,7 +48,7 @@ import { PvPreviewDialog } from "./shogi-match/components/PvPreviewDialog";
 import { TOOLTIP_DELAY_DURATION_MS } from "./shogi-match/constants";
 import { useKifuKeyboardNavigation } from "./shogi-match/hooks/useKifuKeyboardNavigation";
 import { useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
-import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
+import { useIsMobile, useMediaQuery } from "./shogi-match/hooks/useMediaQuery";
 import { useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
 import {
     DEFAULT_DISPLAY_SETTINGS,
@@ -61,9 +62,11 @@ import { LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
 import { StudyAnalysisSettings } from "./study-workspace/StudyAnalysisSettings";
 import { StudyCandidatesPanel, type StudyPvRequest } from "./study-workspace/StudyCandidatesPanel";
+import { StudyCommentBox } from "./study-workspace/StudyCommentBox";
 import { StudyHighlightsPanel } from "./study-workspace/StudyHighlightsPanel";
 import { StudyIconButton } from "./study-workspace/StudyIconButton";
 import {
+    AnalyzeIcon,
     BookmarkIcon,
     FirstIcon,
     FlipIcon,
@@ -79,21 +82,31 @@ import {
     type StudyWorkspaceSaveStatus,
 } from "./study-workspace/StudySaveStatus";
 import {
-    buildStudyViewTree,
+    applyStudyLayerToTree,
+    buildStudyStructureTree,
     chooseStudyDisplayLayer,
+    countStudyLayerResults,
     countStudyUnanalyzed,
     pickStudyPositionResult,
     resolveStudyLine,
+    type StudyStructureTree,
+    studyBestCandidate,
+    studyFirstMoveLabel,
     studyHighlightTitle,
     studyLineEvalHistory,
     studyLineSourceEvalHistory,
+    studyMainLineIds,
     studyMoveLabel,
     studyOriginLabel,
     studyPathTo,
     studyPlayersLabel,
+    studyStructureKey,
+    studySubtreeSize,
+    studyVariationLength,
 } from "./study-workspace/studyView";
 import {
     type StudyAnalysisController,
+    type StudyApplyOpsResult,
     type StudyEngineIdentity,
     useStudyAnalysis,
 } from "./study-workspace/useStudyAnalysis";
@@ -101,6 +114,13 @@ import { TooltipProvider } from "./tooltip";
 
 /** 既存の盤面と同じ表示設定（座標・最終手の強調・ホイール操作）を使う。 */
 const DISPLAY_SETTINGS_KEY = "shogi-display-settings";
+
+/** 研究ノートの評価値グラフの縦軸の上限（センチポーン）。詰みや大差は端に張り付けて描く。 */
+const GRAPH_AXIS_CAP = 3000;
+const GRAPH_MIN_SCALE = 1000;
+
+/** 画面下の通知を出しておく時間（ミリ秒）。エラーは読む時間を長めに取る。 */
+const NOTICE_DURATION_MS = { error: 9000, warning: 7000, success: 4000 } as const;
 
 type FetchLegalMoves = (
     sfen: string,
@@ -111,8 +131,11 @@ type FetchLegalMoves = (
 interface StudyWorkspaceCommonProps {
     /** 研究ノートの文書（画面の唯一の元データ）。 */
     doc: StudyDocument;
-    /** 編集の操作。呼び出し側が文書に適用し、保存層へ流す。 */
-    onApplyOps: (ops: StudyOp[]) => void;
+    /**
+     * 編集の操作。呼び出し側が文書に適用し、保存層へ流す。保存できなかったとき `false` で
+     * 解決する Promise を返すと、実行中の解析を止める。
+     */
+    onApplyOps: (ops: StudyOp[]) => StudyApplyOpsResult;
     saveStatus: StudyWorkspaceSaveStatus;
     /** 止まっている送信をもう一度試す。 */
     onRetrySave?: () => void;
@@ -127,7 +150,7 @@ interface StudyWorkspaceCommonProps {
 }
 
 interface StudyWorkspaceViewProps extends StudyWorkspaceCommonProps {
-    /** `buildStudyViewTree(doc, displayLayerId)` の結果。 */
+    /** 文書から作った棋譜ツリー（`buildStudyViewTree(doc, displayLayerId)` の結果）。 */
     tree: KifuTree;
     /** 開始局面から再生できず、表示できなかった枝の数。 */
     unrestoredCount?: number;
@@ -135,6 +158,7 @@ interface StudyWorkspaceViewProps extends StudyWorkspaceCommonProps {
     displayLayerId: string | null;
     onDisplayLayerChange: (layerId: string) => void;
     analysis: StudyAnalysisController;
+    /** 画面下に出す通知（操作の結果・エラー）。 */
     message: Message | null;
     onMessageChange: (message: Message | null) => void;
     /** 最初に開く局面（前回見ていた局面）。 */
@@ -211,7 +235,6 @@ function NavBar({
     onBack,
     onForward,
     onToEnd,
-    large,
 }: {
     index: number;
     total: number;
@@ -219,11 +242,8 @@ function NavBar({
     onBack: () => void;
     onForward: () => void;
     onToEnd: () => void;
-    /** スマートフォン向けに押しやすい大きさにする。 */
-    large: boolean;
 }): ReactElement {
-    const size = large ? "h-10 w-12" : "h-8 w-9";
-    const buttonClass = cn(size, "border-border bg-background text-wafuu-sumi");
+    const buttonClass = "w-12 border-border bg-background text-wafuu-sumi";
     return (
         <nav aria-label="局面の移動" className="flex items-center justify-center gap-1.5">
             <StudyIconButton
@@ -265,6 +285,52 @@ function NavBar({
     );
 }
 
+/**
+ * 画面下の通知。レイアウトを動かさないよう、固定した位置に重ねて出す。
+ * `raised` は、スマートフォンで下端に固定した操作があるとき、その上に出すための指定。
+ */
+function Notice({
+    message,
+    raised,
+    onDismiss,
+}: {
+    message: Message | null;
+    raised: boolean;
+    onDismiss: () => void;
+}): ReactElement {
+    return (
+        <div
+            className={cn(
+                "pointer-events-none fixed inset-x-0 z-40 flex justify-center px-3",
+                raised ? "bottom-20" : "bottom-4",
+            )}
+        >
+            {message && (
+                <div
+                    role={message.type === "error" ? "alert" : "status"}
+                    className={cn(
+                        "pointer-events-auto flex max-w-[min(36rem,100%)] items-start gap-3 whitespace-pre-line rounded-lg border px-3 py-2 text-sm shadow-card",
+                        message.type === "error"
+                            ? "border-destructive/40 bg-card text-destructive"
+                            : message.type === "warning"
+                              ? "border-status-warning-border bg-card text-status-warning"
+                              : "border-status-success-border bg-card text-status-success",
+                    )}
+                >
+                    <p className="min-w-0 flex-1">{message.text}</p>
+                    <button
+                        type="button"
+                        onClick={onDismiss}
+                        className="shrink-0 rounded-sm text-xs underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                        閉じる
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
 /** 研究ノートの画面の見た目と操作（解析の実行は `analysis` として受け取る）。 */
 export function StudyWorkspaceView({
     doc,
@@ -286,6 +352,8 @@ export function StudyWorkspaceView({
     onCurrentNodeChange,
 }: StudyWorkspaceViewProps): ReactElement {
     const isMobile = useIsMobile();
+    // 768〜1023px（タブレットの縦持ち）: 盤を小さくして 2 列にする。
+    const isTablet = useMediaQuery("(min-width: 768px) and (max-width: 1023px)");
     const [storedDisplaySettings] = useLocalStorage<DisplaySettings>(
         DISPLAY_SETTINGS_KEY,
         DEFAULT_DISPLAY_SETTINGS,
@@ -295,6 +363,8 @@ export function StudyWorkspaceView({
     const [requestedNodeId, setRequestedNodeId] = useState<string>(
         () => initialNodeId ?? tree.rootId,
     );
+    // 移る前に見ていた局面。足した手が保存層に拒否されて消えたとき、ここへ戻る。
+    const [fallbackNodeId, setFallbackNodeId] = useState<string | null>(null);
     const [lineState, setLineState] = useState<string[]>([]);
     const [selection, setSelection] = useState<Selection | null>(null);
     const [promotionSelection, setPromotionSelection] = useState<PromotionSelection | null>(null);
@@ -310,9 +380,10 @@ export function StudyWorkspaceView({
         evalMate?: number;
     } | null>(null);
 
-    // 見ていた局面が（他の端末での削除などで）無くなっていたら、手順の上で残っている所まで戻る。
+    // 見ていた局面が（他の端末での削除や、保存層の拒否で）無くなっていたら、残っている所まで戻る。
     const currentNodeId = ((): string => {
         if (tree.nodes.has(requestedNodeId)) return requestedNodeId;
+        if (fallbackNodeId !== null && tree.nodes.has(fallbackNodeId)) return fallbackNodeId;
         const index = lineState.indexOf(requestedNodeId);
         for (let i = index - 1; i >= 0; i--) {
             if (tree.nodes.has(lineState[i])) return lineState[i];
@@ -337,6 +408,7 @@ export function StudyWorkspaceView({
 
     const navigateTo = (nodeId: string, options?: { resetLine?: boolean }): void => {
         setLineState(options?.resetLine ? [] : line);
+        setFallbackNodeId(currentNodeId);
         setRequestedNodeId(nodeId);
         setSelection(null);
         setPromotionSelection(null);
@@ -369,19 +441,19 @@ export function StudyWorkspaceView({
         if (!tree.nodes.has(childId)) {
             if (Object.keys(doc.tree.nodes).length >= STUDY_LIMITS.nodesPerStudy) {
                 onMessageChange({
-                    text: `1 つのノートに入れられる局面は ${STUDY_LIMITS.nodesPerStudy} までです`,
+                    text: `このノートの局面の数が上限（${STUDY_LIMITS.nodesPerStudy}）に達しました。これ以上、手を足せません。`,
                     type: "error",
                 });
                 return;
             }
             if (currentNode.ply + 1 > STUDY_LIMITS.lineLength) {
                 onMessageChange({
-                    text: `手順は ${STUDY_LIMITS.lineLength} 手までです`,
+                    text: `このノートの手数が上限（${STUDY_LIMITS.lineLength} 手）に達しました。`,
                     type: "error",
                 });
                 return;
             }
-            onApplyOps([{ type: "addMoves", parentId: currentNodeId, moves: [usiMove] }]);
+            void onApplyOps([{ type: "addMoves", parentId: currentNodeId, moves: [usiMove] }]);
         }
         navigateTo(childId);
     };
@@ -411,7 +483,11 @@ export function StudyWorkspaceView({
         promotionSelection,
         setPromotionSelection,
         setLastMove: noop,
-        setMessage: onMessageChange,
+        // 既存のフックは手を指すたびにメッセージを消す。ここで出した通知（上限など）まで消さない
+        // よう、消す指示は受け流し、通知は時間で消す。
+        setMessage: (next) => {
+            if (next) onMessageChange(next);
+        },
         setLastAddedBranchInfo: noop,
         editFromSquare: null,
         setEditFromSquare: noop,
@@ -446,19 +522,54 @@ export function StudyWorkspaceView({
     const unanalyzedCount = countStudyUnanalyzed(doc, displayLayerId);
     const analyzedCount = displayLayer === undefined ? 0 : totalCount - unanalyzedCount;
     const hasResults = analyzedCount > 0;
+    const needsFullAnalysis = analysis.mode !== "full" && analyzedCount * 2 < totalCount;
     const positionResult = pickStudyPositionResult(doc, currentNodeId, displayLayerId);
 
+    // 悪手・疑問手の「代わりの最善手」（1 手前の局面の、表示中の設定の 1 位の候補の初手）。
+    const bestMoveLabels = new Map<string, string>();
+    for (const highlight of highlights) {
+        if (highlight.kind === null || highlight.parentId === null || !displayLayer) continue;
+        const parentNode = tree.nodes.get(highlight.parentId);
+        const parentResult = Object.hasOwn(displayLayer.results, highlight.parentId)
+            ? displayLayer.results[highlight.parentId]
+            : undefined;
+        if (!parentNode || !parentResult) continue;
+        const best = studyBestCandidate(parentResult);
+        // 指した手が 1 位の候補と同じなら、代わりの手は無い。
+        if (!best || best.pv[0] === highlight.usiMove) continue;
+        const label = studyFirstMoveLabel(parentNode, best.pv);
+        if (label) bestMoveLabels.set(highlight.nodeId, label);
+    }
+
+    // いま見ている手が悪手・疑問手なら、1 手前の局面の候補手（代わりに指すべきだった手）を出す。
+    const currentKind = highlightKinds.get(currentNodeId);
+    const parentNode = currentNode.parentId ? tree.nodes.get(currentNode.parentId) : undefined;
+    const parentResult =
+        currentKind && parentNode
+            ? pickStudyPositionResult(doc, parentNode.id, displayLayerId)
+            : null;
+    const alternative =
+        currentKind && parentNode && parentResult
+            ? {
+                  node: parentNode,
+                  result: parentResult,
+                  playedLabel: studyMoveLabel(tree, currentNodeId),
+                  kindLabel: currentKind === "blunder" ? "悪手" : "疑問手",
+              }
+            : null;
+
+    // グラフの印は悪手としおりだけ（疑問手まで出すと、件数が多いときに埋もれる。疑問手は一覧で分かる）。
     const graphMarkers: EvalGraphMarker[] = [];
     for (const highlight of highlights) {
         const index = line.indexOf(highlight.nodeId);
         if (index < 0) continue;
-        const tone = highlight.kind ?? (highlight.bookmarked ? "bookmark" : null);
+        const tone =
+            highlight.kind === "blunder" ? "blunder" : highlight.bookmarked ? "bookmark" : null;
         if (!tone) continue;
-        const kindText = tone === "blunder" ? "悪手" : tone === "dubious" ? "疑問手" : "しおり";
         graphMarkers.push({
             ply: index,
             tone,
-            label: `${studyHighlightTitle(tree, highlight)}（${kindText}）`,
+            label: `${studyHighlightTitle(tree, highlight)}（${tone === "blunder" ? "悪手" : "しおり"}）`,
         });
     }
     // 解析する前でも全体の流れが見えるよう、棋譜に付いていた評価値があればグラフに出す。
@@ -470,7 +581,7 @@ export function StudyWorkspaceView({
 
     // --- 編集 ---
     const toggleBookmark = (): void => {
-        onApplyOps([
+        void onApplyOps([
             {
                 type: "setBookmark",
                 nodeId: currentNodeId,
@@ -479,16 +590,18 @@ export function StudyWorkspaceView({
         ]);
     };
     const changeComment = (nodeId: string, value: string): void => {
-        onApplyOps([{ type: "setComment", nodeId, value }]);
+        void onApplyOps([{ type: "setComment", nodeId, value }]);
     };
-    const addPvAsVariation = (pv: string[]): void => {
+    const addPvAsVariation = (request: StudyPvRequest): void => {
+        const baseNode = tree.nodes.get(request.nodeId);
+        if (!baseNode) return;
         const moves: string[] = [];
-        let cursor = position;
+        let cursor = baseNode.positionAfter;
         const room = Math.min(
-            STUDY_LIMITS.lineLength - currentNode.ply,
+            STUDY_LIMITS.lineLength - baseNode.ply,
             STUDY_LIMITS.nodesPerStudy - totalCount,
         );
-        for (const move of pv) {
+        for (const move of request.pv) {
             if (moves.length >= room || !isStudyUsiMove(move)) break;
             const applied = applyMoveWithState(cursor, move, { validateTurn: false });
             if (!applied.ok) break;
@@ -499,28 +612,31 @@ export function StudyWorkspaceView({
             onMessageChange({ text: "この読み筋は変化として追加できません", type: "error" });
             return;
         }
-        onApplyOps([{ type: "addMoves", parentId: currentNodeId, moves }]);
-        navigateTo(studyChildNodeId(currentNodeId, moves[0]));
+        void onApplyOps([{ type: "addMoves", parentId: baseNode.id, moves }]);
+        navigateTo(studyChildNodeId(baseNode.id, moves[0]));
         onMessageChange({
             text: `読み筋を変化として追加しました（${moves.length} 手）`,
             type: "success",
         });
     };
     const previewPv = (request: StudyPvRequest): void => {
+        const baseNode = tree.nodes.get(request.nodeId);
+        if (!baseNode) return;
         const evalData = studyScoreToKifuEval(request.score);
         setPvPreview({
             pv: request.pv,
-            startPosition: position,
-            ply: currentNode.ply,
+            startPosition: baseNode.positionAfter,
+            ply: baseNode.ply,
             evalCp: evalData?.scoreCp,
             evalMate: evalData?.scoreMate,
         });
     };
     const backToMainLine = (): void => {
         // 変化の中を見ていたら本譜から外れる直前の局面へ戻り、そこから先は本譜をたどる。
+        const mainLine = studyMainLineIds(tree);
         let lastMainIndex = 0;
         for (let index = 1; index < line.length; index++) {
-            if (tree.nodes.get(line[index - 1])?.children[0] !== line[index]) break;
+            if (!mainLine.has(line[index])) break;
             lastMainIndex = index;
         }
         navigateTo(currentIndex <= lastMainIndex ? currentNodeId : line[lastMainIndex], {
@@ -539,7 +655,7 @@ export function StudyWorkspaceView({
         } else if (line.includes(targetId)) {
             setLineState([]);
         }
-        onApplyOps([{ type: "deleteSubtree", nodeId: targetId }]);
+        void onApplyOps([{ type: "deleteSubtree", nodeId: targetId }]);
     };
     const selectHighlight = (nodeId: string): void => {
         navigateTo(nodeId);
@@ -581,6 +697,9 @@ export function StudyWorkspaceView({
     const playersLabel = studyPlayersLabel(doc.meta);
     const settingsButtonLabel =
         doc.layers.length > 1 && displayLayer ? displayLayer.display.label : null;
+    // スマートフォンでは、未解析のあいだ「全体を解析」を画面の下端に固定して出す
+    // （盤面が先に来るので、そのままでは最初の画面に入らない）。
+    const showsFixedStart = isMobile && needsFullAnalysis && analysis.mode === null;
 
     const boardStatus = (
         <div className="flex w-full items-center justify-between gap-2">
@@ -611,21 +730,6 @@ export function StudyWorkspaceView({
             </div>
         </div>
     );
-    const boardMessage = message ? (
-        <p
-            role={message.type === "error" ? "alert" : "status"}
-            className={cn(
-                "w-full whitespace-pre-line rounded-md px-2 py-1 text-xs",
-                message.type === "error"
-                    ? "bg-destructive/10 text-destructive"
-                    : message.type === "warning"
-                      ? "bg-status-warning-bg text-status-warning"
-                      : "bg-status-success-bg text-status-success",
-            )}
-        >
-            {message.text}
-        </p>
-    ) : null;
     const navBar = (
         <NavBar
             index={currentIndex}
@@ -634,7 +738,6 @@ export function StudyWorkspaceView({
             onBack={goBack}
             onForward={goForward}
             onToEnd={goToEnd}
-            large={isMobile}
         />
     );
     const boardProps = {
@@ -646,8 +749,8 @@ export function StudyWorkspaceView({
         displaySettings,
         isEditModeActive: false,
         isMatchRunning: false,
-        // スマートフォンでは縦の余裕が無いので、持っていない駒の枠は出さない。
-        hideEmptyHandPieces: isMobile,
+        // 持ち駒の枠は常に出す（駒を取った・打ったときに盤が上下に動かないように）。
+        hideEmptyHandPieces: false,
         editFromSquare: null,
         candidateNote: null,
         onSquareSelect,
@@ -656,23 +759,36 @@ export function StudyWorkspaceView({
         topHand: handInfo("top"),
         bottomHand: handInfo("bottom"),
     };
+    /** 盤を親の幅に合わせて描く（スマートフォンとタブレット）。 */
+    const fluidBoard = (
+        <MobileBoardSection
+            {...boardProps}
+            position={position}
+            boardSectionRef={boardSectionRef}
+            isDraggingPiece={false}
+        />
+    );
 
     const highlightsPanel = (
         <StudyHighlightsPanel
             tree={tree}
             highlights={highlights}
+            bestMoveLabels={bestMoveLabels}
             currentNodeId={currentNodeId}
             analyzedCount={analyzedCount}
             totalCount={totalCount}
             settingsLabel={analysis.settingsLabel}
+            fullTargetCount={analysis.fullTargetCount}
             analysisMode={analysis.mode}
             isPreparing={analysis.isPreparing}
             progress={analysis.progress}
             onSelect={selectHighlight}
             onStartFull={startFull}
             onCancel={cancelAnalysis}
+            onOpenSettings={() => setIsSettingsOpen(true)}
             hideHeading={isMobile}
-            className={isMobile ? "max-h-[70vh]" : "max-h-[22rem]"}
+            hideStartButton={showsFixedStart}
+            className={isMobile ? "max-h-[70vh]" : "max-h-[17rem]"}
         />
     );
     const graphPanel = (
@@ -696,7 +812,9 @@ export function StudyWorkspaceView({
                 compact
                 evalHistory={graphHistory}
                 currentPly={currentIndex}
-                height={isMobile ? 64 : 104}
+                height={isMobile ? 64 : 88}
+                minScale={GRAPH_MIN_SCALE}
+                axisCap={GRAPH_AXIS_CAP}
                 onPlySelect={(ply) => {
                     const nodeId = line[ply];
                     if (nodeId !== undefined) navigateTo(nodeId);
@@ -725,8 +843,9 @@ export function StudyWorkspaceView({
     const candidatesPanel = (
         <StudyCandidatesPanel
             node={currentNode}
-            stored={storedNode}
             positionResult={positionResult}
+            alternative={alternative}
+            source={storedNode?.source ?? null}
             analysisMode={analysis.mode}
             isPreparing={analysis.isPreparing}
             liveDepth={analysis.live?.nodeId === currentNodeId ? analysis.live.depth : undefined}
@@ -734,28 +853,59 @@ export function StudyWorkspaceView({
             onCancel={cancelAnalysis}
             onPreviewPv={previewPv}
             onAddPvAsVariation={addPvAsVariation}
-            onCommentChange={(value) => changeComment(currentNodeId, value)}
         />
     );
+    const commentBox = (
+        <StudyCommentBox
+            key={currentNodeId}
+            value={storedNode?.comment ?? ""}
+            onChange={(value) => changeComment(currentNodeId, value)}
+        />
+    );
+
+    const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>): void => {
+        const index = MOBILE_TABS.findIndex((tab) => tab.id === mobileTab);
+        const next =
+            event.key === "ArrowRight"
+                ? (index + 1) % MOBILE_TABS.length
+                : event.key === "ArrowLeft"
+                  ? (index - 1 + MOBILE_TABS.length) % MOBILE_TABS.length
+                  : event.key === "Home"
+                    ? 0
+                    : event.key === "End"
+                      ? MOBILE_TABS.length - 1
+                      : -1;
+        if (next < 0) return;
+        // タブの上の矢印キーはタブの切り替えに使う（棋譜の移動にしない）。
+        event.preventDefault();
+        event.stopPropagation();
+        setMobileTab(MOBILE_TABS[next].id);
+        document.getElementById(`study-tab-${MOBILE_TABS[next].id}`)?.focus();
+    };
 
     const deleteTarget = deleteTargetId ? tree.nodes.get(deleteTargetId) : undefined;
 
     return (
         <TooltipProvider delayDuration={TOOLTIP_DELAY_DURATION_MS}>
-            <div className="mx-auto flex w-full max-w-[1320px] flex-col gap-3 px-3 py-3 md:px-4">
+            <div
+                className={cn(
+                    "flex w-full max-w-[1320px] flex-col gap-3 self-center px-3 py-3 md:px-4",
+                    showsFixedStart && "pb-24",
+                )}
+            >
                 <header className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
                         <TitleInput
                             key={doc.title}
                             title={doc.title}
-                            onCommit={(value) => onApplyOps([{ type: "setTitle", value }])}
+                            onCommit={(value) => void onApplyOps([{ type: "setTitle", value }])}
                         />
                         {settingsButtonLabel ? (
                             <button
                                 type="button"
                                 onClick={() => setIsSettingsOpen(true)}
                                 aria-haspopup="dialog"
-                                className="flex h-8 max-w-[45%] shrink-0 items-center gap-1.5 rounded-md border border-wafuu-border bg-background px-2 text-xs text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                className="flex h-10 max-w-[45%] shrink-0 items-center gap-1.5 rounded-md border border-wafuu-border bg-background px-2 text-xs text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             >
                                 <SettingsIcon />
                                 <span className="sr-only">解析の設定:</span>
@@ -797,13 +947,7 @@ export function StudyWorkspaceView({
                     <div className="flex flex-col gap-3">
                         <div className="flex flex-col items-center gap-2">
                             {boardStatus}
-                            <MobileBoardSection
-                                {...boardProps}
-                                position={position}
-                                boardSectionRef={boardSectionRef}
-                                isDraggingPiece={false}
-                            />
-                            {boardMessage}
+                            {fluidBoard}
                             {navBar}
                         </div>
                         <div
@@ -814,10 +958,14 @@ export function StudyWorkspaceView({
                             {MOBILE_TABS.map((tab) => (
                                 <button
                                     key={tab.id}
+                                    id={`study-tab-${tab.id}`}
                                     type="button"
                                     role="tab"
                                     aria-selected={mobileTab === tab.id}
+                                    aria-controls="study-tabpanel"
+                                    tabIndex={mobileTab === tab.id ? 0 : -1}
                                     onClick={() => setMobileTab(tab.id)}
+                                    onKeyDown={handleTabKeyDown}
                                     className={cn(
                                         "h-10 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                         mobileTab === tab.id
@@ -829,36 +977,81 @@ export function StudyWorkspaceView({
                                 </button>
                             ))}
                         </div>
-                        <div role="tabpanel">
+                        <div
+                            id="study-tabpanel"
+                            role="tabpanel"
+                            aria-labelledby={`study-tab-${mobileTab}`}
+                            className="flex flex-col gap-3"
+                        >
                             {mobileTab === "highlights" && highlightsPanel}
                             {mobileTab === "moves" && moveList}
                             {mobileTab === "candidates" && candidatesPanel}
+                            {mobileTab === "candidates" && commentBox}
                         </div>
                         {graphPanel}
                     </div>
+                ) : isTablet ? (
+                    // タブレットの縦持ち: 盤を小さくして左に置き、右に注目局面からの列を並べる。
+                    <div className="grid grid-cols-[22.5rem_minmax(0,1fr)] items-start gap-3">
+                        <div className="flex min-w-0 flex-col gap-3">
+                            <div className="flex flex-col items-center gap-2">
+                                {boardStatus}
+                                {fluidBoard}
+                                {navBar}
+                            </div>
+                            {commentBox}
+                            {graphPanel}
+                        </div>
+                        <div className="flex min-w-0 flex-col gap-3">
+                            {highlightsPanel}
+                            {candidatesPanel}
+                            {moveList}
+                        </div>
+                    </div>
                 ) : (
-                    <div className="grid items-start gap-3 md:grid-cols-[auto_minmax(0,1fr)] xl:grid-cols-[auto_minmax(280px,1fr)_350px]">
-                        <div className="flex w-fit flex-col gap-3 md:row-span-2 xl:row-span-1">
+                    <div className="grid items-start gap-3 lg:grid-cols-[auto_minmax(0,1fr)] xl:grid-cols-[auto_minmax(300px,1fr)_350px]">
+                        <div className="flex w-fit flex-col gap-3 lg:row-span-2 xl:row-span-1">
                             <div
                                 ref={boardSectionRef}
                                 className="flex flex-col items-center gap-2 [--shogi-cell-size:44px]"
                             >
                                 {boardStatus}
                                 <PCBoardContent {...boardProps} />
-                                {boardMessage}
                                 {navBar}
                             </div>
-                            {/* 候補手の読み筋の長さで左の列が広がらないよう、幅は盤に合わせる。 */}
-                            <div className="w-0 min-w-full">{candidatesPanel}</div>
+                            {/* コメント欄の幅は盤に合わせる。 */}
+                            <div className="w-0 min-w-full">{commentBox}</div>
                         </div>
                         <div className="flex min-w-0 flex-col gap-3">
                             {highlightsPanel}
+                            {candidatesPanel}
                             {graphPanel}
                         </div>
-                        <div className="min-w-0 md:col-start-2 xl:col-start-3">{moveList}</div>
+                        <div className="min-w-0 lg:col-start-2 xl:col-start-3">{moveList}</div>
                     </div>
                 )}
             </div>
+
+            {showsFixedStart && (
+                <div className="fixed inset-x-0 bottom-0 z-30 border-t border-wafuu-border bg-card px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 shadow-card">
+                    <Button
+                        type="button"
+                        size="lg"
+                        className="w-full gap-2"
+                        onClick={startFull}
+                        disabled={analysis.isPreparing}
+                    >
+                        <AnalyzeIcon />
+                        全体を解析
+                    </Button>
+                </div>
+            )}
+
+            <Notice
+                message={message}
+                raised={showsFixedStart}
+                onDismiss={() => onMessageChange(null)}
+            />
 
             <StudyAnalysisSettings
                 open={isSettingsOpen}
@@ -884,7 +1077,7 @@ export function StudyWorkspaceView({
                         <AlertDialogTitle>この変化を削除しますか？</AlertDialogTitle>
                         <AlertDialogDescription>
                             {deleteTarget && deleteTargetId
-                                ? `${deleteTarget.ply}手目 ${studyMoveLabel(tree, deleteTargetId)} からの変化と、その解析結果・コメント・しおりを削除します。元に戻せません。`
+                                ? `${deleteTarget.ply}手目 ${studyMoveLabel(tree, deleteTargetId)} から先の ${studyVariationLength(tree, deleteTargetId)} 手（その先の枝分かれを含めて ${studySubtreeSize(tree, deleteTargetId)} 局面）と、その解析結果・コメント・しおりを削除します。元に戻せません。`
                                 : "変化と、その解析結果・コメント・しおりを削除します。"}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
@@ -913,6 +1106,14 @@ export function StudyWorkspaceView({
     );
 }
 
+/** ノートごとに覚えておく表示の状態。 */
+export interface StudyWorkspaceViewState {
+    /** 表示中の解析レイヤー。 */
+    selectedLayerId: string | null;
+    /** 見ていた局面（保存用の `nodeId`）。 */
+    currentNodeId: string | null;
+}
+
 export interface StudyWorkspaceProps extends StudyWorkspaceCommonProps {
     /** 解析に使えるエンジン（Web は内蔵の Wasm エンジン）。 */
     engineOptions: EngineOption[];
@@ -930,14 +1131,10 @@ export interface StudyWorkspaceProps extends StudyWorkspaceCommonProps {
     initialView?: StudyWorkspaceViewState | null;
     /** 表示の状態が変わった。呼び出し側が保存する。 */
     onViewChange?: (view: StudyWorkspaceViewState) => void;
-}
-
-/** ノートごとに覚えておく表示の状態。 */
-export interface StudyWorkspaceViewState {
-    /** 表示中の解析レイヤー。 */
-    selectedLayerId: string | null;
-    /** 見ていた局面（保存用の `nodeId`）。 */
-    currentNodeId: string | null;
+    /**
+     * 呼び出し側から出す通知（保存できなかった操作の理由など）。`id` が変わるたびに出す。
+     */
+    notice?: { id: number; text: string; type: Message["type"] } | null;
 }
 
 /**
@@ -954,6 +1151,7 @@ export function StudyWorkspace({
     onFlush,
     initialView,
     onViewChange,
+    notice,
     ...viewProps
 }: StudyWorkspaceProps): ReactElement {
     const [preferredLayerId, setPreferredLayerId] = useState<string | null>(
@@ -961,16 +1159,28 @@ export function StudyWorkspace({
     );
     const viewNodeIdRef = useRef<string | null>(initialView?.currentNodeId ?? null);
     const [message, setMessage] = useState<Message | null>(null);
+    // 設定を変えた解析を中止したときに、表示を戻す先（解析を始める前に表示していた設定）。
+    const [revertLayerId, setRevertLayerId] = useState<string | null>(null);
+    const previousLayerIdRef = useRef<string | null>(null);
 
     const displayLayerId = chooseStudyDisplayLayer(doc.layers, preferredLayerId);
-    const { tree, unrestoredCount } = buildStudyViewTree(doc, displayLayerId);
+
+    // 盤面の復元（全ノードの指し手の再生）は重いので、ツリーの形が変わったときだけやり直す。
+    // コメント・しおり・解析結果の更新では、復元済みのツリーに評価値を重ねるだけにする。
+    const structureRef = useRef<{ key: string; value: StudyStructureTree } | null>(null);
+    const structureKey = studyStructureKey(doc);
+    if (structureRef.current === null || structureRef.current.key !== structureKey) {
+        structureRef.current = { key: structureKey, value: buildStudyStructureTree(doc) };
+    }
+    const structure = structureRef.current.value;
+    const tree = applyStudyLayerToTree(structure.tree, doc, displayLayerId);
 
     const changeDisplayLayer = (layerId: string): void => {
         setPreferredLayerId(layerId);
         onViewChange?.({ selectedLayerId: layerId, currentNodeId: viewNodeIdRef.current });
     };
 
-    const { controller, download } = useStudyAnalysis({
+    const { controller, download, switchToSimpleAi } = useStudyAnalysis({
         doc,
         tree,
         engineOptions,
@@ -982,10 +1192,59 @@ export function StudyWorkspace({
         // 全体の解析を始めたら、その設定の結果を表示に切り替える。1 局面だけの深い解析では
         // 切り替えない（評価値グラフと注目局面は全体の解析の結果のまま見せる）。
         onLayerStarted: (layerId, mode) => {
-            if (mode === "full") changeDisplayLayer(layerId);
+            if (mode !== "full") return;
+            previousLayerIdRef.current = displayLayerId !== layerId ? displayLayerId : null;
+            setRevertLayerId(null);
+            changeDisplayLayer(layerId);
         },
         setMessage,
     });
+
+    // 通知は時間で消す（次の操作ですぐ消えないように）。
+    useEffect(() => {
+        if (message === null) return;
+        const timer = setTimeout(
+            () => setMessage((current) => (current === message ? null : current)),
+            NOTICE_DURATION_MS[message.type],
+        );
+        return () => clearTimeout(timer);
+    }, [message]);
+
+    // 呼び出し側からの通知。
+    const noticeId = notice?.id ?? null;
+    const shownNoticeIdRef = useRef(noticeId);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 同じ通知を出し直さないよう、id が変わったときだけ出す
+    useEffect(() => {
+        // 開いた時点で既にあった通知（前に開いていたノートのもの）は出さない。
+        if (noticeId === shownNoticeIdRef.current) return;
+        shownNoticeIdRef.current = noticeId;
+        if (notice) setMessage({ text: notice.text, type: notice.type });
+    }, [noticeId]);
+
+    // 設定を変えた解析を中止し、その設定の結果が元の設定より少なければ、表示を元に戻す
+    // （中止しただけで、それまで見ていた結果が消えたように見えないように）。
+    useEffect(() => {
+        if (revertLayerId === null || controller.mode !== null) return;
+        setRevertLayerId(null);
+        const current = doc.layers.find((layer) => layer.id === displayLayerId);
+        const previous = doc.layers.find((layer) => layer.id === revertLayerId);
+        if (!previous || !current || current.id === previous.id) return;
+        if (countStudyLayerResults(doc, current) < countStudyLayerResults(doc, previous)) {
+            setPreferredLayerId(previous.id);
+            onViewChange?.({ selectedLayerId: previous.id, currentNodeId: viewNodeIdRef.current });
+        }
+    }, [revertLayerId, controller.mode, doc, displayLayerId, onViewChange]);
+
+    const analysis: StudyAnalysisController = {
+        ...controller,
+        cancel: async () => {
+            const wasFull = controller.mode === "full";
+            await controller.cancel();
+            if (wasFull && previousLayerIdRef.current !== null) {
+                setRevertLayerId(previousLayerIdRef.current);
+            }
+        },
+    };
 
     return (
         <>
@@ -993,11 +1252,11 @@ export function StudyWorkspace({
                 {...viewProps}
                 doc={doc}
                 tree={tree}
-                unrestoredCount={unrestoredCount}
+                unrestoredCount={structure.unrestoredCount}
                 onApplyOps={onApplyOps}
                 displayLayerId={displayLayerId}
                 onDisplayLayerChange={changeDisplayLayer}
-                analysis={controller}
+                analysis={analysis}
                 message={message}
                 onMessageChange={setMessage}
                 initialNodeId={initialView?.currentNodeId ?? null}
@@ -1006,7 +1265,14 @@ export function StudyWorkspace({
                     onViewChange?.({ selectedLayerId: displayLayerId, currentNodeId: nodeId });
                 }}
             />
-            <MatchNnueDownloadDialog state={download} purpose="analysis" />
+            <MatchNnueDownloadDialog
+                state={download}
+                purpose="analysis"
+                alternative={{
+                    label: "ダウンロードせず、簡易 AI で解析する",
+                    onSelect: switchToSimpleAi,
+                }}
+            />
         </>
     );
 }

@@ -82,10 +82,16 @@ export function useNnueManager({
     );
 
     // 分析用 NNUE 選択
-    const [analysisNnueSelection, setAnalysisNnueSelection] = useLocalStorage<NnueSelection>(
+    const [analysisNnueSelection, storeAnalysisNnueSelection] = useLocalStorage<NnueSelection>(
         "shogi:analysisNnueSelection",
         defaultNnueSelection,
     );
+    // 利用者が選んだ時点で「保存済みの選択がある」とみなす。マウント時に読んだ値のままだと、
+    // 初めての訪問で「簡易AI（駒得）」を選んでも、保存なしの駒得として既定の AI へ戻されてしまう。
+    const setAnalysisNnueSelection = (selection: NnueSelection): void => {
+        hasStoredAnalysisSelectionRef.current = true;
+        storeAnalysisNnueSelection(selection);
+    };
 
     // NNUE再起動用のref（マイグレーション・バリデーションで使用）
     const restartEngineForNnueRef = useRef<
@@ -129,7 +135,8 @@ export function useNnueManager({
     useNnueMigration({
         setSenteNnueSelection,
         setGoteNnueSelection,
-        setAnalysisNnueSelection,
+        // 自動の移行・修正は「利用者が選んだ」とは数えない（保存しない方の関数を渡す）。
+        setAnalysisNnueSelection: storeAnalysisNnueSelection,
         restartEngineForNnue: (side, selection) =>
             void restartEngineForNnueRef.current?.(side, selection),
     });
@@ -141,7 +148,7 @@ export function useNnueManager({
         goteNnueSelection,
         setGoteNnueSelection,
         analysisNnueSelection,
-        setAnalysisNnueSelection,
+        setAnalysisNnueSelection: storeAnalysisNnueSelection,
         nnueList,
         isNnueListLoading,
         presets,

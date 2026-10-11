@@ -17,10 +17,11 @@ import {
     chooseStudyDisplayLayer,
     countStudyUnanalyzed,
     formatStudyScore,
-    isStudyMainLine,
     pickStudyPositionResult,
     resolveStudyLine,
+    studyDeletableBranchHead,
     studyLineEvalHistory,
+    studyMainLineIds,
     studyMoveLabel,
     studyPlayersLabel,
 } from "./studyView";
@@ -62,13 +63,13 @@ describe("resolveStudyLine", () => {
     it("何も見ていなければ本譜を末端までたどる", () => {
         const line = resolveStudyLine(tree, ids[0]);
         expect(line).toEqual(ids);
-        expect(isStudyMainLine(tree, line)).toBe(true);
+        expect(line.every((id) => studyMainLineIds(tree).has(id))).toBe(true);
     });
 
     it("変化の手を見ていれば、その変化を末端までたどる", () => {
         const line = resolveStudyLine(tree, branch1);
         expect(line).toEqual([ids[0], ids[1], branch1, branch2]);
-        expect(isStudyMainLine(tree, line)).toBe(false);
+        expect(line.every((id) => studyMainLineIds(tree).has(id))).toBe(false);
     });
 
     it("手を戻しても、見ていた変化の続きを保つ", () => {
@@ -138,5 +139,78 @@ describe("解析結果の選び方", () => {
         expect(countStudyUnanalyzed(doc, TEST_LAYER_ID)).toBe(3);
         expect(countStudyUnanalyzed(doc, null)).toBe(5);
         expect(TEST_LAYER_SPEC.limits.timeMs).toBe(1000);
+    });
+});
+
+describe("候補手に出す結果（表示中の設定が基本）", () => {
+    const OTHER_AI_SPEC = buildStudyLayerSpec({
+        engine: { kind: "wasm" as const, name: "rshogi", version: "0.8.1" },
+        appVersion: "0.0.0",
+        nnue: null,
+        limits: { timeMs: 10_000, depth: 64 },
+        multiPv: 3,
+    });
+    const OTHER_AI_ID = studyLayerId(OTHER_AI_SPEC);
+
+    it("別の AI の結果は、より深くても、その設定を選ぶまで出さない", () => {
+        const { doc, ids } = createTestStudy([cp(0), cp(10), null, null, null]);
+        const withOther = applyStudyOps(doc, [
+            {
+                type: "ensureLayer",
+                spec: OTHER_AI_SPEC,
+                display: { label: "簡易AI（駒得）・10 秒" },
+            },
+            putScoreOp(ids[1], cp(500), { layerId: OTHER_AI_ID, depth: 40 }),
+            putScoreOp(ids[2], cp(500), { layerId: OTHER_AI_ID, depth: 40 }),
+        ]);
+        // 表示中（RAMU・1 秒）の結果がある局面: その結果を出す。
+        const shown = pickStudyPositionResult(withOther, ids[1], TEST_LAYER_ID);
+        expect(shown?.layer.id).toBe(TEST_LAYER_ID);
+        expect(shown?.fromDisplayLayer).toBe(true);
+        // 表示中の設定に結果が無い局面: 別の AI の結果で埋めない。
+        expect(pickStudyPositionResult(withOther, ids[2], TEST_LAYER_ID)).toBeNull();
+        // その設定を選べば出る。
+        expect(pickStudyPositionResult(withOther, ids[2], OTHER_AI_ID)?.layer.id).toBe(OTHER_AI_ID);
+        // 表示する設定が無ければ、何も出さない。
+        expect(pickStudyPositionResult(withOther, ids[1], null)).toBeNull();
+    });
+
+    it("同じ AI でも、探索の上限が小さい設定の結果は「深く解析した結果」にしない", () => {
+        const { doc, ids } = createTestStudy([cp(0), cp(10), null, null, null]);
+        const withDeep = applyStudyOps(doc, [
+            { type: "ensureLayer", spec: DEEP_SPEC, display: { label: "RAMU・10 秒" } },
+            putScoreOp(ids[1], cp(15), { layerId: DEEP_LAYER_ID, depth: 30 }),
+        ]);
+        // 10 秒の設定を表示中に、1 秒の設定の結果は使わない。
+        const shown = pickStudyPositionResult(withDeep, ids[0], DEEP_LAYER_ID);
+        expect(shown).toBeNull();
+        expect(pickStudyPositionResult(withDeep, ids[1], DEEP_LAYER_ID)?.fromDisplayLayer).toBe(
+            true,
+        );
+    });
+});
+
+describe("変化の削除の対象", () => {
+    it("いま見ている枝の、直近の分岐点から先を対象にする。本譜は対象にしない", () => {
+        const { doc, ids } = createTestStudy();
+        const head = studyChildNodeId(ids[0], "5g5f");
+        const first = studyChildNodeId(head, "3c3d");
+        const firstNext = studyChildNodeId(first, "2g2f");
+        const second = studyChildNodeId(head, "8c8d");
+        const nested = applyStudyOps(doc, [
+            { type: "addMoves", parentId: ids[0], moves: ["5g5f", "3c3d", "2g2f"] },
+            { type: "addMoves", parentId: head, moves: ["8c8d"] },
+        ]);
+        const { tree } = buildStudyViewTree(nested, null);
+        expect([...studyMainLineIds(tree)]).toEqual(ids);
+        // 本譜の上では消せない。
+        expect(studyDeletableBranchHead(tree, ids[2])).toBeNull();
+        expect(studyDeletableBranchHead(tree, ids[0])).toBeNull();
+        // 変化の頭は、変化全体。
+        expect(studyDeletableBranchHead(tree, head)).toBe(head);
+        // 変化の中の枝は、その枝だけ（1 つ目の子でも「本譜」扱いにしない）。
+        expect(studyDeletableBranchHead(tree, first)).toBe(first);
+        expect(studyDeletableBranchHead(tree, firstNext)).toBe(first);
+        expect(studyDeletableBranchHead(tree, second)).toBe(second);
     });
 });

@@ -33,6 +33,9 @@ describe("parseKifuTextForStudy", () => {
 
     it("指し手の無い棋譜・空の入力・パスを含む棋譜は、理由つきで断る", () => {
         expect(() => parseKifuTextForStudy("   ")).toThrow("入力が空です");
+        expect(() => parseKifuTextForStudy("こんにちは")).toThrow(
+            "棋譜の形式を判別できませんでした（CSA / KIF / SFEN に対応）",
+        );
         expect(() => parseKifuTextForStudy("startpos")).toThrow("指し手がありません");
         expect(() => parseKifuTextForStudy("startpos moves 7g7f pass")).toThrow(
             "研究ノートにできない手",

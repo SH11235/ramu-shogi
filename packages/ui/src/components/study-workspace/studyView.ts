@@ -7,16 +7,19 @@
  */
 
 import {
+    canonicalJSON,
     type KifuNode,
     type KifuTree,
     type Player,
     type Square,
     type StudyAnalysisResult,
+    type StudyCandidate,
     type StudyDocument,
     type StudyHighlight,
     type StudyLayer,
     type StudyScore,
     studyDocumentToKifuTree,
+    studyResultToKifuEvals,
     studyScoreToKifuEval,
 } from "@shogi/app-core";
 import {
@@ -29,23 +32,83 @@ import {
 /** どのレイヤーにも無い ID。「レイヤーの結果だけを評価値にする（対局時の評価値は載せない）」指定に使う。 */
 const STUDY_NO_LAYER_ID = "none";
 
+/** 盤面を復元した棋譜ツリー（評価値・コメントは載せていない）と、復元できなかった枝の数。 */
+export interface StudyStructureTree {
+    tree: KifuTree;
+    /** 開始局面から再生できず、表示できなかった枝の数。 */
+    unrestoredCount: number;
+}
+
 /**
- * 文書から画面用の棋譜ツリーを作る。
- *
- * ノードの評価値には表示中のレイヤーの結果だけを載せる（対局時の評価値は別の列で見せる）。
- * 現在位置は持たせない（画面の状態として別に持つ）。
+ * 文書のツリーの形（どの手がどの手の先にあるか）を表す文字列。
+ * これが同じなら盤面の復元結果も同じなので、復元をやり直さなくてよい。
+ */
+export function studyStructureKey(doc: StudyDocument): string {
+    return `${doc.startSfen}\n${studyStructureOf(doc.tree)}`;
+}
+
+const structureCache = new WeakMap<StudyDocument["tree"]["nodes"], string>();
+
+function studyStructureOf(tree: StudyDocument["tree"]): string {
+    const cached = structureCache.get(tree.nodes);
+    if (cached !== undefined) return cached;
+    const parts: string[] = [tree.rootId];
+    for (const [nodeId, node] of Object.entries(tree.nodes)) {
+        parts.push(`${nodeId}:${node.children.join(",")}`);
+    }
+    const key = parts.join("|");
+    structureCache.set(tree.nodes, key);
+    return key;
+}
+
+/**
+ * 文書から、盤面を復元した棋譜ツリーを作る（重い。ツリーの形が変わったときだけ呼ぶ）。
+ * 評価値は載せない（`applyStudyLayerToTree` で重ねる）。
+ */
+export function buildStudyStructureTree(doc: StudyDocument): StudyStructureTree {
+    const restored = studyDocumentToKifuTree(doc, { layerId: STUDY_NO_LAYER_ID });
+    return { tree: restored.tree, unrestoredCount: restored.errors.length };
+}
+
+/**
+ * 復元済みのツリーに、表示中のレイヤーの評価値を重ねる（盤面の復元はやり直さない）。
+ * 対局時の評価値は載せない（別の列で見せる）。
+ */
+export function applyStudyLayerToTree(
+    structure: KifuTree,
+    doc: StudyDocument,
+    displayLayerId: string | null,
+): KifuTree {
+    const layer = doc.layers.find((item) => item.id === displayLayerId);
+    if (!layer) return structure;
+    const nodes = new Map(structure.nodes);
+    for (const [nodeId, result] of Object.entries(layer.results)) {
+        const node = nodes.get(nodeId);
+        if (!node) continue;
+        const evals = studyResultToKifuEvals(result);
+        if (!evals.eval) continue;
+        nodes.set(nodeId, {
+            ...node,
+            eval: evals.eval,
+            ...(evals.multiPvEvals ? { multiPvEvals: evals.multiPvEvals } : {}),
+        });
+    }
+    return { ...structure, nodes };
+}
+
+/**
+ * 文書から画面用の棋譜ツリーを作る（構造の復元 + 表示中のレイヤーの評価値）。
+ * 画面では構造を使い回すので、これはテストと単発の用途向け。
  */
 export function buildStudyViewTree(
     doc: StudyDocument,
     displayLayerId: string | null,
-): {
-    tree: KifuTree /** 開始局面から再生できず、表示できなかった枝の数。 */;
-    unrestoredCount: number;
-} {
-    const restored = studyDocumentToKifuTree(doc, {
-        layerId: displayLayerId ?? STUDY_NO_LAYER_ID,
-    });
-    return { tree: restored.tree, unrestoredCount: restored.errors.length };
+): StudyStructureTree {
+    const structure = buildStudyStructureTree(doc);
+    return {
+        tree: applyStudyLayerToTree(structure.tree, doc, displayLayerId),
+        unrestoredCount: structure.unrestoredCount,
+    };
 }
 
 /** 対局時の評価値（`source`）による、手順の評価値の列（解析前の評価値グラフ用）。 */
@@ -149,13 +212,58 @@ export function resolveStudyLine(
     return line;
 }
 
-/** 手順が本譜（各ノードの先頭の子をたどった手順）と同じか。 */
-export function isStudyMainLine(tree: KifuTree, line: readonly string[]): boolean {
-    for (let index = 1; index < line.length; index++) {
-        const parent = tree.nodes.get(line[index - 1]);
-        if (parent?.children[0] !== line[index]) return false;
+/** 対局の本譜（開始局面から先頭の子をたどった手順）にあるノードの ID。 */
+export function studyMainLineIds(tree: KifuTree): Set<string> {
+    const ids = new Set<string>();
+    let cursor: string | undefined = tree.rootId;
+    while (cursor !== undefined && !ids.has(cursor)) {
+        const node = tree.nodes.get(cursor);
+        if (!node) break;
+        ids.add(cursor);
+        cursor = node.children[0];
     }
-    return true;
+    return ids;
+}
+
+/**
+ * いま見ている枝を消すときの対象（直近の分岐点から先の、最初の手のノード）。
+ *
+ * いま見ているノードからルートへさかのぼり、兄弟のいる最初のノードを返す。それが本譜の上なら
+ * 消せないので null（本譜は対局そのものなので、ここからは消さない）。
+ */
+export function studyDeletableBranchHead(tree: KifuTree, nodeId: string): string | null {
+    const mainLine = studyMainLineIds(tree);
+    let cursor = tree.nodes.get(nodeId);
+    while (cursor && cursor.parentId !== null) {
+        const parent = tree.nodes.get(cursor.parentId);
+        if (!parent) return null;
+        if (parent.children.length > 1 || mainLine.has(parent.id)) {
+            return mainLine.has(cursor.id) ? null : cursor.id;
+        }
+        cursor = parent;
+    }
+    return null;
+}
+
+/** ノードとその配下にある局面の数。 */
+export function studySubtreeSize(tree: KifuTree, nodeId: string): number {
+    let count = 0;
+    const stack = [nodeId];
+    while (stack.length > 0) {
+        const node = tree.nodes.get(stack.pop() as string);
+        if (!node) continue;
+        count++;
+        for (const childId of node.children) stack.push(childId);
+    }
+    return count;
+}
+
+/** 読み筋の最初の手の表記（その局面から指す手。例: `☗7六歩(77)`）。読み筋が無ければ null。 */
+export function studyFirstMoveLabel(node: KifuNode, pv: readonly string[]): string | null {
+    const move = pv[0];
+    if (move === undefined) return null;
+    const prevTo: Square | undefined = node.usiMove ? parseToSquare(node.usiMove) : undefined;
+    return formatMoveSimple(move, node.positionAfter.turn, node.positionAfter.board, prevTo);
 }
 
 /** 手順の評価値の列（評価値グラフ用）。添字 0 が開始局面。 */
@@ -209,38 +317,72 @@ export function chooseStudyDisplayLayer(
 export interface StudyPositionResult {
     layer: StudyLayer;
     result: StudyAnalysisResult;
-    /** 表示中のレイヤーの結果か。false なら、別の設定でより深く読んだ結果。 */
+    /**
+     * 表示中の設定の結果か。false なら、表示中の設定と同じ AI で、探索の上限だけを大きくして
+     * 読んだ結果（「この局面を深く解析」の結果）。
+     */
     fromDisplayLayer: boolean;
 }
 
+/** 2 つの設定が同じ AI・同じ評価関数か（探索の上限と候補手の数は見ない）。 */
+function isSameStudyAi(a: StudyLayer, b: StudyLayer): boolean {
+    return (
+        canonicalJSON(a.spec.engine) === canonicalJSON(b.spec.engine) &&
+        canonicalJSON(a.spec.evaluation) === canonicalJSON(b.spec.evaluation) &&
+        canonicalJSON(a.spec.rules) === canonicalJSON(b.spec.rules)
+    );
+}
+
+/** `other` の探索の上限が `base` より大きいか（時間・深さ・ノード数のどれも下回らず、どれかが上回る）。 */
+function hasLargerStudyLimits(other: StudyLayer, base: StudyLayer): boolean {
+    const keys = ["timeMs", "depth", "nodes"] as const;
+    let larger = false;
+    for (const key of keys) {
+        const a = other.spec.limits[key];
+        const b = base.spec.limits[key];
+        // 上限なし（null）は「いくらでも読める」なので最大として比べる。
+        const left = a ?? Number.POSITIVE_INFINITY;
+        const right = b ?? Number.POSITIVE_INFINITY;
+        if (left < right) return false;
+        if (left > right) larger = true;
+    }
+    return larger;
+}
+
 /**
- * いま見ている局面の候補手として出す解析結果を選ぶ。
+ * ある局面の候補手として出す解析結果を選ぶ。
  *
- * 基本は表示中のレイヤーの結果。「この局面を深く解析」した結果は時間の長い別のレイヤーに入るので、
- * 表示中のレイヤーより深く読めている結果があれば、そちらを出す（どの設定の結果かは画面に出す）。
+ * 基本は表示中の設定の結果。「この局面を深く解析」の結果は、時間の長い別の設定として保存される
+ * ので、**表示中の設定と AI・評価関数が同じで、探索の上限だけが大きい設定**に、より深く読めた
+ * 結果があるときだけ、そちらを出す（どの設定の結果かは画面に出す）。別の AI の結果は、その設定を
+ * 表示に選んだときだけ出る。
  */
 export function pickStudyPositionResult(
     doc: StudyDocument,
     nodeId: string,
     displayLayerId: string | null,
 ): StudyPositionResult | null {
-    let picked: StudyPositionResult | null = null;
+    const display = doc.layers.find((layer) => layer.id === displayLayerId);
+    if (!display) return null;
+    let picked: StudyPositionResult | null = Object.hasOwn(display.results, nodeId)
+        ? { layer: display, result: display.results[nodeId], fromDisplayLayer: true }
+        : null;
     for (const layer of doc.layers) {
-        if (!Object.hasOwn(layer.results, nodeId)) continue;
+        if (layer.id === display.id || !Object.hasOwn(layer.results, nodeId)) continue;
+        if (!isSameStudyAi(layer, display) || !hasLargerStudyLimits(layer, display)) continue;
         const result = layer.results[nodeId];
-        const candidate: StudyPositionResult = {
-            layer,
-            result,
-            fromDisplayLayer: layer.id === displayLayerId,
-        };
-        if (picked === null) {
-            picked = candidate;
-            continue;
+        if (picked === null || result.depth > picked.result.depth) {
+            picked = { layer, result, fromDisplayLayer: false };
         }
-        const deeper = result.depth - picked.result.depth;
-        if (deeper > 0 || (deeper === 0 && candidate.fromDisplayLayer)) picked = candidate;
     }
     return picked;
+}
+
+/** 解析結果の 1 位の候補。無ければ null。 */
+export function studyBestCandidate(result: StudyAnalysisResult): StudyCandidate | null {
+    return (
+        result.candidates.find((candidate) => candidate.rank === 1) ?? result.candidates[0] ?? null
+    );
 }
 
 /** レイヤーに結果のあるノードの数（文書に残っているノードだけ数える）。 */

@@ -13,7 +13,8 @@ import { useAuthSession } from "./useAuthSession";
  */
 export function useStudySessionSync(): void {
     const { session, isLoadingSession } = useAuthSession();
-    const sessionKnown = !isLoadingSession;
+    // 確認に失敗したとき（session が null のまま）は、未ログインと決めつけず「未確定」のままにする。
+    const sessionKnown = !isLoadingSession && session !== null;
     const userId = session?.authenticated ? session.user.id : null;
 
     useEffect(() => {

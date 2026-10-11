@@ -12,6 +12,8 @@ interface OpenStudyButtonProps {
      */
     open: () => Promise<{ studyId: string }>;
     label?: string;
+    /** 見た目。`primary` は主ボタン、`outline` は枠線の控えめなボタン。 */
+    variant?: "primary" | "outline";
     className?: string;
 }
 
@@ -22,6 +24,7 @@ interface OpenStudyButtonProps {
 export function OpenStudyButton({
     open,
     label = "研究ノートで開く",
+    variant = "primary",
     className,
 }: OpenStudyButtonProps): ReactElement {
     const navigate = useNavigate();
@@ -35,7 +38,7 @@ export function OpenStudyButton({
         setError(null);
         try {
             // ログイン中なら、クラウドにある同じ棋譜のノートも探せるよう、先にログイン状態を伝える。
-            if (!isLoadingSession) {
+            if (!isLoadingSession && session !== null) {
                 await ensureStudySession(session?.authenticated ? session.user.id : null);
             }
             const { studyId } = await open();
@@ -58,7 +61,10 @@ export function OpenStudyButton({
                 onClick={() => void handleClick()}
                 disabled={isBusy}
                 className={cn(
-                    "rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+                    "rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+                    variant === "primary"
+                        ? "bg-primary text-primary-foreground shadow hover:bg-primary/90"
+                        : "border border-input bg-background text-foreground hover:bg-muted/50",
                     className,
                 )}
             >

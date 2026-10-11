@@ -23,7 +23,7 @@ import {
 } from "@shogi/ui/components/study-workspace/studyView";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AuthBadge } from "../../components/AuthBadge";
 import { HeaderNav } from "../../components/HeaderNav";
 import { PageContainer } from "../../components/PageContainer";
@@ -139,8 +139,8 @@ interface StudiesPageProps {
 export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
     const navigate = useNavigate();
     const { session, isLoadingSession } = useAuthSession();
-    // セッションの取得に失敗したとき（backend に届かない、など）は未ログインとして扱う。
-    const sessionKnown = !isLoadingSession;
+    // ログイン状態が確認できていない間（確認中・確認に失敗）は、匿名のノートだけを扱う。
+    const sessionKnown = !isLoadingSession && session !== null;
     const userId = session?.authenticated ? session.user.id : null;
     const sync = getStudySync();
     const [client] = useState<StudyApi>(() => api ?? createStudyApiClient());
@@ -153,9 +153,20 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
     const [error, setError] = useState<string | null>(null);
     const [isImportOpen, setIsImportOpen] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<StudyListItem | null>(null);
+    // いま表示している一覧の持ち主。アカウントが変わったら、前のアカウントの一覧と続きの位置を捨てる。
+    const ownerKey = sessionKnown ? (userId ?? "signed-out") : "unknown";
+    const ownerKeyRef = useRef(ownerKey);
 
     useEffect(() => {
         let cancelled = false;
+        if (ownerKeyRef.current !== ownerKey) {
+            ownerKeyRef.current = ownerKey;
+            setLocal(null);
+            setRemote([]);
+            setNextCursor(null);
+            setRemoteError(null);
+            setIsLoadingMore(false);
+        }
 
         const loadLocal = async (): Promise<void> => {
             try {
@@ -224,12 +235,15 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
             cancelled = true;
             unsubscribe();
         };
-    }, [sessionKnown, userId, sync, client]);
+    }, [sessionKnown, userId, ownerKey, sync, client]);
 
     const handleLoadMore = async (): Promise<void> => {
         if (isLoadingMore || nextCursor === null) return;
+        const owner = ownerKeyRef.current;
         setIsLoadingMore(true);
         const listed = await client.list({ limit: REMOTE_PAGE_SIZE, cursor: nextCursor });
+        // 読み込んでいる間にアカウントが変わっていたら、前のアカウントの続きは足さない。
+        if (ownerKeyRef.current !== owner) return;
         if (listed.ok) {
             setRemote((items) => [...items, ...listed.data.studies.map(fromRemote)]);
             setNextCursor(listed.data.nextCursor);
@@ -240,7 +254,7 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
     };
 
     const handleImport = async (source: StudyKifuSource): Promise<void> => {
-        await ensureStudySession(userId);
+        if (sessionKnown) await ensureStudySession(userId);
         const { studyId } = await createStudyFromKifuSource(source, { sync, api: client });
         await navigate({ to: "/studies/$studyId", params: { studyId } });
     };
@@ -296,7 +310,7 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
                                 href={`/auth?next=${encodeURIComponent("/studies")}`}
                                 className="text-wafuu-ai underline underline-offset-2 hover:text-wafuu-ai-light"
                             >
-                                ログインすると保存できます
+                                ログインするとクラウドにも保存できます
                             </a>
                         </p>
                     )}
@@ -341,7 +355,7 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
                                 return (
                                     <li
                                         key={item.id}
-                                        className="flex items-stretch gap-2 rounded-xl border border-border bg-card shadow-sm transition-colors hover:bg-muted/20"
+                                        className="flex items-stretch gap-2 rounded-xl border border-border bg-card pr-2 shadow-sm transition-colors hover:bg-muted/20"
                                     >
                                         <Link
                                             to="/studies/$studyId"
@@ -380,7 +394,7 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
                                             type="button"
                                             onClick={() => setDeleteTarget(item)}
                                             aria-label={`「${item.title}」を削除`}
-                                            className="m-2 shrink-0 self-center rounded-md px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                            className="min-h-10 shrink-0 self-center rounded-md px-3 text-xs text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                         >
                                             削除
                                         </button>

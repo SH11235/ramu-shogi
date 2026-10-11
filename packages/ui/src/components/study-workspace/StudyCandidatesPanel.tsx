@@ -1,85 +1,91 @@
 /**
- * いま見ている局面の候補手（解析結果）とコメント。盤面の下に置く。
+ * 候補手（解析結果）。
+ *
+ * いま見ている手が悪手・疑問手のときは、「この手の代わりに」（1 手前の局面の候補手）を先に出す。
+ * 悪手を見つけた人がまず知りたいのは「代わりに何を指すべきだったか」なので、1 操作で届くようにする。
  */
 
-import {
-    type KifuNode,
-    STUDY_LIMITS,
-    type StudyCandidate,
-    type StudyNode,
-    type StudyScore,
-} from "@shogi/app-core";
+import type { KifuNode, StudyCandidate, StudyScore, StudySource } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
-import { useEffect, useRef, useState } from "react";
 import { Button } from "../button";
 import { convertPvToDisplay } from "../shogi-match/utils/kifFormat";
 import { StudyIconButton } from "./StudyIconButton";
 import { AddBranchIcon, AnalyzeIcon, PlayIcon } from "./StudyIcons";
 import { formatStudyScore, type StudyPositionResult, studyScoreSide } from "./studyView";
 
-/** 読み筋を盤で見るときに渡す内容。 */
+/** 読み筋を盤で見る・変化として足すときに渡す内容。 */
 export interface StudyPvRequest {
+    /** 読み筋の始まる局面のノード。 */
+    nodeId: string;
     pv: string[];
     score: StudyScore | null;
+}
+
+/** ある局面の候補手のまとまり。 */
+interface CandidateGroup {
+    /** 候補手を読んだ局面のノード。 */
+    node: KifuNode;
+    result: StudyPositionResult;
 }
 
 interface StudyCandidatesPanelProps {
     /** いま見ている局面のノード。 */
     node: KifuNode;
-    /** 保存されているノード（しおり・コメント・対局時の評価値）。 */
-    stored: StudyNode | undefined;
-    /** この局面の解析結果。無ければ null。 */
+    /** いま見ている局面の解析結果。無ければ null。 */
     positionResult: StudyPositionResult | null;
+    /**
+     * いま見ている手が悪手・疑問手のときの、1 手前の局面の候補手（代わりに指すべきだった手）。
+     * `playedLabel` は実際に指した手、`kindLabel` は判定（悪手 / 疑問手）。
+     */
+    alternative: (CandidateGroup & { playedLabel: string; kindLabel: string }) | null;
+    /** いま見ている手に棋譜から付いていた評価値・読み筋（対局時の評価値）。 */
+    source: StudySource | null;
     analysisMode: "full" | "deep" | null;
     isPreparing: boolean;
-    /** この局面を深く解析している途中経過。別の局面を解析中・解析していなければ null。 */
+    /** この局面を深く解析している途中経過。別の局面を解析中・解析していなければ undefined。 */
     liveDepth: number | null | undefined;
     onStartDeep: () => void;
     onCancel: () => void;
     onPreviewPv: (request: StudyPvRequest) => void;
-    onAddPvAsVariation: (pv: string[]) => void;
-    onCommentChange: (value: string) => void;
+    onAddPvAsVariation: (request: StudyPvRequest) => void;
     className?: string;
 }
 
 const sideClass = (side: "sente" | "gote" | null): string =>
     side === "sente" ? "text-wafuu-shu" : side === "gote" ? "text-wafuu-ai" : "text-foreground";
 
-/** 文字列を UTF-8 のバイト数の上限で切る（文字の途中では切らない）。 */
-function clampUtf8(text: string, maxBytes: number): string {
-    const encoder = new TextEncoder();
-    if (encoder.encode(text).length <= maxBytes) return text;
-    let result = "";
-    let bytes = 0;
-    for (const char of text) {
-        const size = encoder.encode(char).length;
-        if (bytes + size > maxBytes) break;
-        result += char;
-        bytes += size;
-    }
-    return result;
+/** どの設定の結果かの注記（例: `RAMU・1 秒・深さ 15`、`深く解析した結果（RAMU・10 秒）・深さ 22`）。 */
+function resultNote(result: StudyPositionResult): string {
+    const { label } = result.layer.display;
+    return [
+        result.fromDisplayLayer ? label : `深く解析した結果（${label}）`,
+        `深さ ${result.result.depth}`,
+        ...(result.result.completion === "aborted" ? ["途中まで"] : []),
+    ].join("・");
 }
-
-const COMMENT_SAVE_DELAY_MS = 700;
 
 function CandidateRow({
     node,
     candidate,
+    groupLabel,
     onPreviewPv,
     onAddPvAsVariation,
 }: {
     node: KifuNode;
     candidate: StudyCandidate;
+    /** ボタンの読み上げで、どの局面の候補かを区別するための言葉。 */
+    groupLabel: string;
     onPreviewPv: (request: StudyPvRequest) => void;
-    onAddPvAsVariation: (pv: string[]) => void;
+    onAddPvAsVariation: (request: StudyPvRequest) => void;
 }): ReactElement {
     const display = convertPvToDisplay(candidate.pv, node.positionAfter);
     const [first, ...rest] = display;
     const hasPv = display.length > 0;
+    const request: StudyPvRequest = { nodeId: node.id, pv: candidate.pv, score: candidate.score };
     return (
         <li className="flex items-start gap-2 rounded-md px-1 py-1">
-            <span className="mt-0.5 w-4 shrink-0 text-center font-mono text-xs tabular-nums text-muted-foreground">
+            <span className="w-4 shrink-0 pt-0.5 text-center font-mono text-xs tabular-nums text-muted-foreground">
                 {candidate.rank}
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -105,14 +111,14 @@ function CandidateRow({
             {hasPv && (
                 <div className="flex shrink-0 items-center">
                     <StudyIconButton
-                        label={`候補 ${candidate.rank} の読み筋を盤で見る`}
-                        onClick={() => onPreviewPv({ pv: candidate.pv, score: candidate.score })}
+                        label={`${groupLabel}候補 ${candidate.rank} の読み筋を盤で見る`}
+                        onClick={() => onPreviewPv(request)}
                     >
                         <PlayIcon />
                     </StudyIconButton>
                     <StudyIconButton
-                        label={`候補 ${candidate.rank} の読み筋を変化として追加`}
-                        onClick={() => onAddPvAsVariation(candidate.pv)}
+                        label={`${groupLabel}候補 ${candidate.rank} の読み筋を変化として追加`}
+                        onClick={() => onAddPvAsVariation(request)}
                     >
                         <AddBranchIcon />
                     </StudyIconButton>
@@ -122,72 +128,11 @@ function CandidateRow({
     );
 }
 
-function CommentBox({
-    value,
-    onChange,
-}: {
-    value: string;
-    onChange: (value: string) => void;
-}): ReactElement {
-    const [draft, setDraft] = useState(value);
-    const lastSavedRef = useRef(value);
-    const draftRef = useRef(value);
-    const onChangeRef = useRef(onChange);
-    useEffect(() => {
-        onChangeRef.current = onChange;
-    }, [onChange]);
-
-    // 他のタブ・端末で変わったコメントを取り込む（こちらで編集中でなければ）。
-    useEffect(() => {
-        if (value === lastSavedRef.current) return;
-        if (draftRef.current === lastSavedRef.current) {
-            draftRef.current = value;
-            setDraft(value);
-        }
-        lastSavedRef.current = value;
-    }, [value]);
-
-    const save = (): void => {
-        if (draftRef.current === lastSavedRef.current) return;
-        lastSavedRef.current = draftRef.current;
-        onChangeRef.current(draftRef.current);
-    };
-    const saveRef = useRef(save);
-    saveRef.current = save;
-
-    // 入力が止まったら保存する。
-    useEffect(() => {
-        if (draft === lastSavedRef.current) return;
-        const timer = setTimeout(() => saveRef.current(), COMMENT_SAVE_DELAY_MS);
-        return () => clearTimeout(timer);
-    }, [draft]);
-
-    // 別の局面へ移るとき（このコンポーネントが作り直されるとき）に、書きかけを保存する。
-    useEffect(() => () => saveRef.current(), []);
-
-    return (
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            コメント
-            <textarea
-                value={draft}
-                onChange={(event) => {
-                    const next = clampUtf8(event.target.value, STUDY_LIMITS.commentBytes);
-                    draftRef.current = next;
-                    setDraft(next);
-                }}
-                onBlur={save}
-                rows={2}
-                placeholder="この手について気づいたことを書けます（自動で保存されます）"
-                className="w-full resize-y rounded-md border border-border bg-background p-2 text-base text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-ring md:text-sm"
-            />
-        </label>
-    );
-}
-
 export function StudyCandidatesPanel({
     node,
-    stored,
     positionResult,
+    alternative,
+    source,
     analysisMode,
     isPreparing,
     liveDepth,
@@ -195,36 +140,21 @@ export function StudyCandidatesPanel({
     onCancel,
     onPreviewPv,
     onAddPvAsVariation,
-    onCommentChange,
     className,
 }: StudyCandidatesPanelProps): ReactElement {
     const isDeepHere = liveDepth !== undefined;
-    const source = stored?.source ?? null;
     const sourceText = formatStudyScore(source?.score);
-    const resultNote = positionResult
-        ? [
-              positionResult.layer.display.label,
-              `深さ ${positionResult.result.depth}`,
-              ...(positionResult.fromDisplayLayer ? [] : ["深く解析した結果"]),
-              ...(positionResult.result.completion === "aborted" ? ["途中まで"] : []),
-          ].join("・")
-        : null;
 
     return (
         <section
-            aria-label="候補手とコメント"
+            aria-label="候補手"
             className={cn(
                 "flex flex-col gap-3 rounded-xl border border-wafuu-border bg-card p-3 shadow-sm",
                 className,
             )}
         >
             <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex min-w-0 flex-col">
-                    <h2 className="font-display text-base font-semibold text-wafuu-sumi">候補手</h2>
-                    {resultNote && (
-                        <span className="truncate text-xs text-muted-foreground">{resultNote}</span>
-                    )}
-                </div>
+                <h2 className="font-display text-base font-semibold text-wafuu-sumi">候補手</h2>
                 {isDeepHere ? (
                     <div className="flex items-center gap-2">
                         <output aria-live="polite" className="text-xs text-muted-foreground">
@@ -249,21 +179,62 @@ export function StudyCandidatesPanel({
                 )}
             </div>
 
-            {positionResult ? (
-                <ol className="flex flex-col">
-                    {positionResult.result.candidates.map((candidate) => (
-                        <CandidateRow
-                            key={candidate.rank}
-                            node={node}
-                            candidate={candidate}
-                            onPreviewPv={onPreviewPv}
-                            onAddPvAsVariation={onAddPvAsVariation}
-                        />
-                    ))}
-                </ol>
-            ) : (
-                <p className="text-sm text-muted-foreground">この局面はまだ解析していません。</p>
+            {alternative && (
+                <div className="flex flex-col gap-1 rounded-lg bg-wafuu-washi px-2 py-2">
+                    <div className="flex flex-col px-1">
+                        <h3 className="text-sm font-medium text-wafuu-sumi">
+                            この手の代わりに（1 手前の局面の候補）
+                        </h3>
+                        <span className="text-xs text-muted-foreground">
+                            指した手 {alternative.playedLabel}（{alternative.kindLabel}）・
+                            {resultNote(alternative.result)}
+                        </span>
+                    </div>
+                    <ol className="flex flex-col">
+                        {alternative.result.result.candidates.map((candidate) => (
+                            <CandidateRow
+                                key={candidate.rank}
+                                node={alternative.node}
+                                candidate={candidate}
+                                groupLabel="代わりの"
+                                onPreviewPv={onPreviewPv}
+                                onAddPvAsVariation={onAddPvAsVariation}
+                            />
+                        ))}
+                    </ol>
+                </div>
             )}
+
+            <div className="flex flex-col gap-1">
+                <div className="flex flex-col px-1">
+                    {alternative && (
+                        <h3 className="text-sm font-medium text-wafuu-sumi">この局面の候補手</h3>
+                    )}
+                    {positionResult && (
+                        <span className="text-xs text-muted-foreground">
+                            {resultNote(positionResult)}
+                        </span>
+                    )}
+                </div>
+                {positionResult ? (
+                    <ol className="flex flex-col">
+                        {positionResult.result.candidates.map((candidate) => (
+                            <CandidateRow
+                                key={candidate.rank}
+                                node={node}
+                                candidate={candidate}
+                                groupLabel=""
+                                onPreviewPv={onPreviewPv}
+                                onAddPvAsVariation={onAddPvAsVariation}
+                            />
+                        ))}
+                    </ol>
+                ) : (
+                    <p className="px-1 text-sm text-muted-foreground">
+                        この局面はまだ解析していません。
+                    </p>
+                )}
+            </div>
 
             {source && (sourceText !== "" || source.pv) && (
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border pt-2 text-xs text-muted-foreground">
@@ -282,7 +253,11 @@ export function StudyCandidatesPanel({
                         <button
                             type="button"
                             onClick={() =>
-                                onPreviewPv({ pv: source.pv ?? [], score: source.score })
+                                onPreviewPv({
+                                    nodeId: node.id,
+                                    pv: source.pv ?? [],
+                                    score: source.score,
+                                })
                             }
                             className="rounded-sm text-wafuu-ai underline underline-offset-2 hover:text-wafuu-ai-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
@@ -291,8 +266,6 @@ export function StudyCandidatesPanel({
                     )}
                 </div>
             )}
-
-            <CommentBox key={node.id} value={stored?.comment ?? ""} onChange={onCommentChange} />
         </section>
     );
 }

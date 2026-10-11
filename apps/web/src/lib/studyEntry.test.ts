@@ -1,4 +1,13 @@
-import { createStudyDocumentFromMoves, type StudyDocument } from "@shogi/app-core";
+import {
+    addMove,
+    applyMoveWithState,
+    createKifuTree,
+    createStudyDocumentFromMoves,
+    type KifuTree,
+    parseStudySfen,
+    STUDY_HIRATE_SFEN,
+    type StudyDocument,
+} from "@shogi/app-core";
 import {
     createMemoryStudyStore,
     createStudySync,
@@ -9,6 +18,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
     canOpenGameRecordAsStudy,
     createStudyFromKifuSource,
+    createStudyFromKifuTree,
     openOrCreateStudy,
     openStudyFromGameRecord,
     openStudyFromRshogiGame,
@@ -175,5 +185,103 @@ describe("自分の対局からの入口", () => {
         ).toBe(false);
         expect(canOpenGameRecordAsStudy({ ...game, moves: ["7g7f", "pass"] })).toBe(false);
         expect(canOpenGameRecordAsStudy({ ...game, moves: [] })).toBe(false);
+    });
+});
+
+describe("貼り付けた棋譜の検証", () => {
+    const HIRATE = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
+    /** ルールどおりに再生する関数の模擬: `illegal` に入っている手で止まる。 */
+    const replayStoppingAt =
+        (illegal: string) =>
+        async (_sfen: string, moves: string[]): Promise<{ applied: string[]; error?: string }> => {
+            const index = moves.indexOf(illegal);
+            return index < 0
+                ? { applied: moves }
+                : { applied: moves.slice(0, index), error: "illegal move" };
+        };
+
+    it("指せない手を含む SFEN は、何手目かを添えて断り、ノートを作らない", async () => {
+        const api = createApi();
+        const sync = createSync(api);
+        await expect(
+            createStudyFromKifuSource(
+                { kind: "moves", startSfen: HIRATE, moves: ["7g7e"] },
+                { sync, api, replayMovesStrict: replayStoppingAt("7g7e") },
+            ),
+        ).rejects.toThrow("1 手目（7g7e）は指せない手です");
+        // 歩を飛び越える角（KIF から読んだ手順）も同じ。
+        await expect(
+            createStudyFromKifuSource(
+                { kind: "moves", startSfen: HIRATE, moves: ["7g7f", "3c3d", "8h3c"] },
+                { sync, api, replayMovesStrict: replayStoppingAt("8h3c") },
+            ),
+        ).rejects.toThrow("3 手目（8h3c）は指せない手です");
+        expect(await sync.listLocal()).toEqual([]);
+    });
+
+    it("指せる手順はそのまま取り込む", async () => {
+        const api = createApi();
+        const sync = createSync(api);
+        const { studyId } = await createStudyFromKifuSource(
+            { kind: "moves", startSfen: HIRATE, moves: ["7g7f", "3c3d"] },
+            { sync, api, replayMovesStrict: replayStoppingAt("none") },
+        );
+        expect(Object.keys((await sync.load(studyId))?.doc.tree.nodes ?? {})).toHaveLength(3);
+    });
+
+    it("長すぎる棋譜は、上限を説明して作らない", async () => {
+        const api = createApi();
+        const sync = createSync(api);
+        // 1,025 手（飛車を 1 マス往復させ続ける）。
+        const moves = Array.from(
+            { length: 1025 },
+            (_, index) => ["2h1h", "8b9b", "1h2h", "9b8b"][index % 4],
+        );
+        await expect(
+            createStudyFromKifuSource(
+                { kind: "moves", startSfen: HIRATE, moves },
+                { sync, api, replayMovesStrict: replayStoppingAt("none") },
+            ),
+        ).rejects.toThrow("この棋譜は長すぎます（研究ノートにできるのは 1,024 手までです）");
+        expect(await sync.listLocal()).toEqual([]);
+    });
+});
+
+describe("/play に読み込んだ棋譜からの入口", () => {
+    const buildTree = (moves: string[]): KifuTree => {
+        let position = parseStudySfen(STUDY_HIRATE_SFEN);
+        let tree = createKifuTree(position, "startpos");
+        for (const move of moves) {
+            const applied = applyMoveWithState(position, move, { validateTurn: false });
+            if (!applied.ok) throw new Error(`テストの手順が不正です: ${move}`);
+            position = applied.next;
+            tree = addMove(tree, move, position);
+        }
+        return tree;
+    };
+
+    it("棋譜に対局者名があれば、直接貼ったときと同じ表題と対局者名にする", async () => {
+        const api = createApi();
+        const sync = createSync(api);
+        const { studyId } = await createStudyFromKifuTree(
+            buildTree(["7g7f", "3c3d"]),
+            { players: { sente: "RAMU", gote: "Panda" } },
+            { sync, api, replayMovesStrict: async (_sfen, moves) => ({ applied: moves }) },
+        );
+        const stored = await sync.load(studyId);
+        expect(stored?.doc.title).toBe("RAMU 対 Panda");
+        expect(stored?.doc.meta).toEqual({ blackName: "RAMU", whiteName: "Panda" });
+        expect(stored?.doc.origin).toEqual({ kind: "paste", ref: null });
+    });
+
+    it("対局者名が無ければ、日付つきの表題にする", async () => {
+        const api = createApi();
+        const sync = createSync(api);
+        const { studyId } = await createStudyFromKifuTree(
+            buildTree(["7g7f"]),
+            {},
+            { sync, api, replayMovesStrict: async (_sfen, moves) => ({ applied: moves }) },
+        );
+        expect((await sync.load(studyId))?.doc.title).toMatch(/^取り込んだ棋譜（\d+\/\d+）$/);
     });
 });

@@ -66,9 +66,11 @@ function App() {
                     initialReview={initialReview}
                     // 読み込んだ棋譜（分岐・コメントごと）を研究ノートにして、その画面へ移る。
                     // 研究ノートの保存層は使うときだけ読み込む（対局だけの人には要らない）。
-                    onOpenAsStudy={(tree) => {
+                    onOpenAsStudy={(tree, info) => {
                         void import("./lib/studyEntry")
-                            .then(({ createStudyFromKifuTree }) => createStudyFromKifuTree(tree))
+                            .then(({ createStudyFromKifuTree }) =>
+                                createStudyFromKifuTree(tree, info),
+                            )
                             .then(({ studyId }) =>
                                 navigate({ to: "/studies/$studyId", params: { studyId } }),
                             )

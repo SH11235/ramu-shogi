@@ -8,6 +8,7 @@
 import {
     isStudyUsiMove,
     kifuEvalToStudyScore,
+    normalizeStudyStartSfen,
     parseCsaGameRecord,
     type StudyImportAnnotation,
 } from "@shogi/app-core";
@@ -84,8 +85,15 @@ export function parseKifuTextForStudy(text: string): StudyKifuSource {
         };
     }
     const { sfen, moves } = parseSfen(text);
-    if (!sfen) {
-        throw new Error("棋譜の形式を判別できませんでした");
+    // CSA でも KIF でもない入力は SFEN として読む。開始局面として読めなければ、棋譜ではない。
+    let isPosition = false;
+    try {
+        isPosition = sfen !== "" && normalizeStudyStartSfen(sfen) !== "";
+    } catch {
+        isPosition = false;
+    }
+    if (!isPosition) {
+        throw new Error("棋譜の形式を判別できませんでした（CSA / KIF / SFEN に対応）");
     }
     if (moves.length === 0) {
         throw new Error("指し手がありません（研究ノートにするには、指し手のある棋譜が必要です）");

@@ -41,10 +41,8 @@ export default function RshogiViewerPage(): ReactElement {
                 apiBaseUrl={apiBaseUrl}
                 // 同じ棋譜の研究ノートがあればそれを開き、無ければ対局時の評価値ごと取り込んで作る。
                 renderGameAction={(game) => (
-                    <OpenStudyButton
-                        open={() => openStudyFromRshogiGame(game)}
-                        className="w-full"
-                    />
+                    // 棋譜を見るのが主のページなので、控えめなボタンにする。
+                    <OpenStudyButton open={() => openStudyFromRshogiGame(game)} variant="outline" />
                 )}
             />
         </>

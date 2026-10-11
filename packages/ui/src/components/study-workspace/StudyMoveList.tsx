@@ -2,8 +2,11 @@
  * 棋譜と変化。
  *
  * いま見ている手順（本譜、または選んだ変化）を縦に並べ、枝分かれのある手の下に
- * 他の変化を出す。各手には表示中の解析の設定での評価値を出し、棋譜に元から付いていた
+ * 他の枝を出す。各手には表示中の解析の設定での評価値を出し、棋譜に元から付いていた
  * 評価値（対局時の評価値）がある棋譜では、別の列として並べる。
+ *
+ * 「本譜」は対局の本譜（開始局面から先頭の子をたどった手順）だけを指す。変化の中の
+ * 枝分かれは、どの枝も「変化」として個別に消せる。
  */
 
 import type { KifuTree, StudyDocument, StudyHighlightKind } from "@shogi/app-core";
@@ -15,7 +18,8 @@ import { StudyIconButton } from "./StudyIconButton";
 import { BookmarkIcon, BranchIcon, CommentIcon, TrashIcon } from "./StudyIcons";
 import {
     formatStudyScore,
-    isStudyMainLine,
+    studyDeletableBranchHead,
+    studyMainLineIds,
     studyMoveLabel,
     studyScoreSide,
     studyVariationLength,
@@ -76,19 +80,26 @@ export function StudyMoveList({
 }: StudyMoveListProps): ReactElement {
     const hasSource = Object.values(doc.tree.nodes).some((node) => node.source?.score != null);
     const rowGrid = hasSource ? ROW_GRID_WITH_SOURCE : ROW_GRID;
-    const onMainLine = isStudyMainLine(tree, line);
-    // 本譜から外れた最初の手（変化の先頭）。
-    const variationHeadId = onMainLine
-        ? null
-        : (line.find(
-              (nodeId, index) =>
-                  index > 0 && tree.nodes.get(line[index - 1])?.children[0] !== nodeId,
-          ) ?? null);
+    const mainLineIds = studyMainLineIds(tree);
+    const onMainLine = line.every((nodeId) => mainLineIds.has(nodeId));
+    // いま見ている枝の、直近の分岐点から先（本譜は消せないので、本譜の上なら null）。
+    const deletableHeadId = studyDeletableBranchHead(tree, currentNodeId);
 
+    const listRef = useRef<HTMLOListElement | null>(null);
     const currentRowRef = useRef<HTMLLIElement | null>(null);
     // biome-ignore lint/correctness/useExhaustiveDependencies: いま見ている手が変わったら、その行が見える位置まで送る
     useEffect(() => {
-        currentRowRef.current?.scrollIntoView?.({ block: "nearest" });
+        // `scrollIntoView` はページ全体まで動かしてしまうので、一覧の中だけを送る。
+        const list = listRef.current;
+        const row = currentRowRef.current;
+        if (!list || !row) return;
+        const listRect = list.getBoundingClientRect();
+        const rowRect = row.getBoundingClientRect();
+        if (rowRect.top < listRect.top) {
+            list.scrollTop -= listRect.top - rowRect.top + 4;
+        } else if (rowRect.bottom > listRect.bottom) {
+            list.scrollTop += rowRect.bottom - listRect.bottom + 4;
+        }
     }, [currentNodeId]);
 
     return (
@@ -110,14 +121,14 @@ export function StudyMoveList({
                         <button
                             type="button"
                             onClick={onBackToMainLine}
-                            className="rounded-md px-2 py-1 text-xs font-medium text-wafuu-ai underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            className="min-h-10 rounded-md px-2 text-xs font-medium text-wafuu-ai underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                             本譜に戻る
                         </button>
-                        {variationHeadId && (
+                        {deletableHeadId && (
                             <StudyIconButton
-                                label="この変化を削除"
-                                onClick={() => onRequestDeleteVariation(variationHeadId)}
+                                label="いま見ている変化を削除"
+                                onClick={() => onRequestDeleteVariation(deletableHeadId)}
                             >
                                 <TrashIcon />
                             </StudyIconButton>
@@ -139,7 +150,10 @@ export function StudyMoveList({
                 {hasSource && <span className="text-right">対局時</span>}
             </div>
 
-            <ol className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+            <ol
+                ref={listRef}
+                className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain"
+            >
                 {line.map((nodeId, index) => {
                     const node = tree.nodes.get(nodeId);
                     if (!node) return null;
@@ -229,10 +243,12 @@ export function StudyMoveList({
                                 )}
                             </button>
                             {siblings.length > 0 && (
-                                <ul className="flex flex-col gap-0.5 py-0.5 pl-10 pr-1">
+                                <ul className="flex flex-col gap-0.5 py-0.5 pl-8 pr-1">
                                     {siblings.map((siblingId) => {
-                                        const isMain = parent?.children[0] === siblingId;
+                                        // 「本譜」と呼ぶのは対局の本譜だけ。変化の中の枝は、どれも変化。
+                                        const isMain = mainLineIds.has(siblingId);
                                         const length = studyVariationLength(tree, siblingId);
+                                        const siblingLabel = studyMoveLabel(tree, siblingId);
                                         return (
                                             <li
                                                 key={siblingId}
@@ -241,26 +257,25 @@ export function StudyMoveList({
                                                 <button
                                                     type="button"
                                                     onClick={() => onSelect(siblingId)}
-                                                    className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-muted-foreground transition-colors hover:bg-muted/60 hover:text-wafuu-sumi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                    className="flex min-h-10 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 text-left text-muted-foreground transition-colors hover:bg-muted/60 hover:text-wafuu-sumi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                                 >
                                                     <BranchIcon className="h-3.5 w-3.5" />
                                                     <span className="shrink-0">
                                                         {isMain ? "本譜" : "変化"}
                                                     </span>
-                                                    <span className="truncate text-wafuu-sumi">
-                                                        {studyMoveLabel(tree, siblingId)}
+                                                    <span className="shrink-0 whitespace-nowrap text-wafuu-sumi">
+                                                        {siblingLabel}
                                                     </span>
                                                     <span className="shrink-0">{length} 手</span>
                                                 </button>
                                                 {!isMain && (
                                                     <StudyIconButton
-                                                        label={`変化 ${studyMoveLabel(tree, siblingId)} を削除`}
-                                                        className="h-7 w-7"
+                                                        label={`変化 ${siblingLabel} を削除`}
                                                         onClick={() =>
                                                             onRequestDeleteVariation(siblingId)
                                                         }
                                                     >
-                                                        <TrashIcon className="h-3.5 w-3.5" />
+                                                        <TrashIcon />
                                                     </StudyIconButton>
                                                 )}
                                             </li>

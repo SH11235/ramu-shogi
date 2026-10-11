@@ -144,6 +144,8 @@ describe("importKifuText", () => {
                 { elapsedMs: 4000, evalCp: 45, pv: ["3c3d"] },
                 { elapsedMs: 7000, evalMate: MATE_WITHOUT_PLY },
             ],
+            // 棋譜に書かれていた対局者名（研究ノートにするときの表題に使う）。
+            players: { sente: "A", gote: "B" },
         });
         expect(handlers.onImportKif).not.toHaveBeenCalled();
     });
@@ -185,6 +187,7 @@ describe("importKifuText", () => {
                 { elapsedMs: 3000, evalCp: 30, pv: ["3c3d"] },
                 { elapsedMs: 5000, evalCp: -50, pv: ["2g2f"] },
             ],
+            players: { sente: "RAMU", gote: "Opponent" },
         });
     });
 

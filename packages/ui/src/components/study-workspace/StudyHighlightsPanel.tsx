@@ -4,11 +4,13 @@
  * - 未解析: 「全体を解析」だけを主操作として出す。
  * - 解析中: 進み具合と中止。見つかった手はその場で並んでいく。
  * - 解析後: 悪手・疑問手・しおり・コメントのある手の一覧。押すとその局面へ移る。
+ *   悪手・疑問手には、代わりに指すべきだった手（1 手前の局面の最善手）を添える。
  */
 
 import type { KifuTree, StudyHighlight } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
+import { useState } from "react";
 import { Button } from "../button";
 import { Progress } from "../progress";
 import { AnalyzeIcon, BookmarkIcon, CommentIcon } from "./StudyIcons";
@@ -17,6 +19,8 @@ import { formatStudyScore, studyHighlightTitle } from "./studyView";
 interface StudyHighlightsPanelProps {
     tree: KifuTree;
     highlights: readonly StudyHighlight[];
+    /** 悪手・疑問手の代わりの最善手の表記（ノード ID → 例: `☗7六歩(77)`）。結果がある手だけ。 */
+    bestMoveLabels: ReadonlyMap<string, string>;
     currentNodeId: string;
     /** 表示中の解析の設定で、解析が済んでいる局面の数。 */
     analyzedCount: number;
@@ -24,16 +28,24 @@ interface StudyHighlightsPanelProps {
     totalCount: number;
     /** いまの設定で解析したときの表示名（例: 「RAMU・1 秒」）。 */
     settingsLabel: string;
+    /** いまの設定で全体を解析したときに、実際に解析する局面の数。 */
+    fullTargetCount: number;
     analysisMode: "full" | "deep" | null;
     isPreparing: boolean;
     progress: { completed: number; total: number } | null;
     onSelect: (nodeId: string) => void;
     onStartFull: () => void;
     onCancel: () => void;
+    /** 解析の設定を開く。 */
+    onOpenSettings: () => void;
     /** 見出しを出さない（スマートフォンでは切り替えのタブが見出しを兼ねる）。 */
     hideHeading?: boolean;
+    /** 「全体を解析」のボタンを出さない（スマートフォンでは画面下に固定して出すため）。 */
+    hideStartButton?: boolean;
     className?: string;
 }
+
+type HighlightOrder = "ply" | "drop";
 
 const KIND_BADGE = {
     blunder: {
@@ -63,22 +75,35 @@ function HighlightBadge({ highlight }: { highlight: StudyHighlight }): ReactElem
     return <span className={cn(base, "border-border bg-muted text-muted-foreground")}>メモ</span>;
 }
 
+/** 手数の順（同じ手数なら本譜を先）に並べる。 */
+function sortByPly(highlights: readonly StudyHighlight[]): StudyHighlight[] {
+    return [...highlights].sort(
+        (a, b) => a.ply - b.ply || Number(b.isMainLine) - Number(a.isMainLine),
+    );
+}
+
 export function StudyHighlightsPanel({
     tree,
     highlights,
+    bestMoveLabels,
     currentNodeId,
     analyzedCount,
     totalCount,
     settingsLabel,
+    fullTargetCount,
     analysisMode,
     isPreparing,
     progress,
     onSelect,
     onStartFull,
     onCancel,
+    onOpenSettings,
     hideHeading = false,
+    hideStartButton = false,
     className,
 }: StudyHighlightsPanelProps): ReactElement {
+    // 振り返りは対局の流れに沿って見るのが自然なので、既定は手数順にする。
+    const [order, setOrder] = useState<HighlightOrder>("ply");
     const isRunningFull = analysisMode === "full";
     const judgedCount = highlights.filter((highlight) => highlight.kind !== null).length;
     const hasResults = analyzedCount > 0;
@@ -90,6 +115,17 @@ export function StudyHighlightsPanel({
         progress && progress.total > 0
             ? Math.round((progress.completed / progress.total) * 100)
             : undefined;
+    // `highlights` は落差の大きい順（そのあとに、しおり・メモだけの手）で届く。
+    const ordered = order === "ply" ? sortByPly(highlights) : highlights;
+    const settingsLink = (
+        <button
+            type="button"
+            onClick={onOpenSettings}
+            className="rounded-sm text-wafuu-ai underline underline-offset-2 hover:text-wafuu-ai-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+            設定を変える
+        </button>
+    );
 
     return (
         <section
@@ -101,8 +137,8 @@ export function StudyHighlightsPanel({
         >
             <div
                 className={cn(
-                    "flex items-baseline justify-between gap-2",
-                    hideHeading && needsFullAnalysis && "sr-only",
+                    "flex flex-wrap items-center justify-between gap-2",
+                    hideHeading && highlights.length === 0 && "sr-only",
                 )}
             >
                 <h2
@@ -113,10 +149,38 @@ export function StudyHighlightsPanel({
                 >
                     注目局面
                 </h2>
-                {!needsFullAnalysis && !isRunningFull && (
-                    <span className="text-xs text-muted-foreground">
-                        悪手・疑問手 {judgedCount} 手
-                    </span>
+                {highlights.length > 0 && (
+                    <div className="flex items-center gap-2">
+                        {hasResults && (
+                            <span className="text-xs text-muted-foreground">
+                                悪手・疑問手 {judgedCount} 手
+                            </span>
+                        )}
+                        <fieldset className="flex overflow-hidden rounded-md border border-border text-xs">
+                            <legend className="sr-only">注目局面の並び順</legend>
+                            {(
+                                [
+                                    { id: "ply", label: "手数順" },
+                                    { id: "drop", label: "大きい順" },
+                                ] as const
+                            ).map((option) => (
+                                <button
+                                    key={option.id}
+                                    type="button"
+                                    aria-pressed={order === option.id}
+                                    onClick={() => setOrder(option.id)}
+                                    className={cn(
+                                        "px-2 py-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                                        order === option.id
+                                            ? "bg-wafuu-shu/10 font-medium text-wafuu-shu"
+                                            : "text-muted-foreground hover:bg-muted/60",
+                                    )}
+                                >
+                                    {option.label}
+                                </button>
+                            ))}
+                        </fieldset>
+                    </div>
                 )}
             </div>
 
@@ -125,18 +189,20 @@ export function StudyHighlightsPanel({
                     <p className="text-sm text-wafuu-sumi">
                         全体を解析すると、見直すべき手がここに並びます。
                     </p>
-                    <Button
-                        type="button"
-                        size="lg"
-                        className="w-full gap-2"
-                        onClick={onStartFull}
-                        disabled={isPreparing || analysisMode !== null}
-                    >
-                        <AnalyzeIcon />
-                        全体を解析
-                    </Button>
+                    {!hideStartButton && (
+                        <Button
+                            type="button"
+                            size="lg"
+                            className="w-full gap-2"
+                            onClick={onStartFull}
+                            disabled={isPreparing || analysisMode !== null}
+                        >
+                            <AnalyzeIcon />
+                            全体を解析
+                        </Button>
+                    )}
                     <p className="text-xs text-muted-foreground">
-                        {settingsLabel}で {unanalyzedCount} 局面を解析します。
+                        {settingsLabel}で {fullTargetCount} 局面を解析します。 {settingsLink}
                     </p>
                 </div>
             )}
@@ -172,12 +238,16 @@ export function StudyHighlightsPanel({
                 </div>
             )}
 
-            {highlights.length > 0 ? (
-                <ol className="flex min-h-0 flex-col gap-0.5 overflow-y-auto">
-                    {highlights.map((highlight) => {
+            {ordered.length > 0 ? (
+                <ol className="flex min-h-0 flex-col gap-0.5 overflow-y-auto overscroll-contain">
+                    {ordered.map((highlight) => {
                         const isCurrent = highlight.nodeId === currentNodeId;
                         const before = formatStudyScore(highlight.scoreBefore);
                         const after = formatStudyScore(highlight.scoreAfter);
+                        const best = bestMoveLabels.get(highlight.nodeId);
+                        const hasDetail =
+                            highlight.kind !== null &&
+                            (best !== undefined || (before !== "" && after !== ""));
                         return (
                             <li key={highlight.nodeId}>
                                 <button
@@ -185,35 +255,49 @@ export function StudyHighlightsPanel({
                                     onClick={() => onSelect(highlight.nodeId)}
                                     aria-current={isCurrent ? "true" : undefined}
                                     className={cn(
-                                        "flex w-full items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                        "flex min-h-10 w-full items-start gap-2 rounded-md border border-transparent px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                         isCurrent && "border-wafuu-border bg-wafuu-kin/15",
                                     )}
                                 >
                                     <HighlightBadge highlight={highlight} />
-                                    <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                                        <span className="truncate font-medium text-wafuu-sumi">
-                                            {studyHighlightTitle(tree, highlight)}
+                                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                                        <span className="flex min-w-0 flex-wrap items-center gap-x-1.5">
+                                            <span className="font-medium text-wafuu-sumi">
+                                                {studyHighlightTitle(tree, highlight)}
+                                            </span>
+                                            {!highlight.isMainLine && (
+                                                <span className="shrink-0 rounded border border-border px-1 text-[10px] text-muted-foreground">
+                                                    変化
+                                                </span>
+                                            )}
+                                            {highlight.kind !== null && highlight.bookmarked && (
+                                                <BookmarkIcon
+                                                    filled
+                                                    className="h-3.5 w-3.5 text-wafuu-kin"
+                                                />
+                                            )}
+                                            {highlight.kind !== null && highlight.hasComment && (
+                                                <CommentIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                                            )}
                                         </span>
-                                        {!highlight.isMainLine && (
-                                            <span className="shrink-0 rounded border border-border px-1 text-[10px] text-muted-foreground">
-                                                変化
+                                        {hasDetail && (
+                                            <span className="flex flex-wrap items-baseline gap-x-3 text-xs text-muted-foreground">
+                                                {best !== undefined && (
+                                                    <span>
+                                                        最善{" "}
+                                                        <span className="text-wafuu-sumi">
+                                                            {best}
+                                                        </span>
+                                                    </span>
+                                                )}
+                                                {before !== "" && after !== "" && (
+                                                    <span className="font-mono tabular-nums">
+                                                        {before} → {after}
+                                                    </span>
+                                                )}
                                             </span>
                                         )}
-                                        {highlight.kind !== null && highlight.bookmarked && (
-                                            <BookmarkIcon
-                                                filled
-                                                className="h-3.5 w-3.5 text-wafuu-kin"
-                                            />
-                                        )}
-                                        {highlight.kind !== null && highlight.hasComment && (
-                                            <CommentIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                                        )}
                                     </span>
-                                    {highlight.kind !== null && before !== "" && after !== "" && (
-                                        <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
-                                            {before} → {after}
-                                        </span>
-                                    )}
                                 </button>
                             </li>
                         );

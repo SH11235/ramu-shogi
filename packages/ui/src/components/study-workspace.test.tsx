@@ -5,7 +5,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ANALYSIS_SETTINGS, type Message } from "./shogi-match/types";
 import { StudyWorkspaceView } from "./study-workspace";
 import type { StudyWorkspaceSaveStatus } from "./study-workspace/StudySaveStatus";
-import { cp, createTestStudy, TEST_LAYER_ID } from "./study-workspace/study-test-support";
+import {
+    cp,
+    createTestStudy,
+    putScoreOp,
+    TEST_LAYER_ID,
+} from "./study-workspace/study-test-support";
 import { buildStudyViewTree, chooseStudyDisplayLayer } from "./study-workspace/studyView";
 import type { StudyAnalysisController } from "./study-workspace/useStudyAnalysis";
 
@@ -24,6 +29,7 @@ const createAnalysis = (
     progress: null,
     live: null,
     settingsLabel: "RAMU・1 秒",
+    fullTargetCount: 5,
     startFull: vi.fn(async () => {}),
     startDeep: vi.fn(async () => {}),
     cancel: vi.fn(async () => {}),
@@ -48,6 +54,8 @@ interface HarnessProps {
     onRetrySave?: () => void;
     onDiscard?: () => void;
     fetchLegalMoves?: (sfen: string, moves: string[]) => Promise<string[]>;
+    /** 保存層が操作を受け付けなかった場合の模擬（文書を変えず、理由を通知する）。 */
+    rejectOps?: boolean;
 }
 
 /** 呼び出し側（ページ）の代わりに、操作を文書へ適用して画面に渡し直す。 */
@@ -60,6 +68,7 @@ function Harness({
     onRetrySave,
     onDiscard,
     fetchLegalMoves,
+    rejectOps = false,
 }: HarnessProps) {
     const [doc, setDoc] = useState(initialDoc);
     const [message, setMessage] = useState<Message | null>(null);
@@ -71,7 +80,12 @@ function Harness({
             tree={tree}
             onApplyOps={(ops) => {
                 onOps?.(ops);
+                if (rejectOps) {
+                    setMessage({ text: "このノートの局面の数が上限に達しました。", type: "error" });
+                    return Promise.resolve(false);
+                }
                 setDoc((previous) => applyStudyOps(previous, ops));
+                return undefined;
             }}
             saveStatus={saveStatus}
             onLogin={onLogin}
@@ -306,6 +320,129 @@ describe("StudyWorkspaceView", () => {
         expect(analysis.startDeep).toHaveBeenCalledWith(ids[1]);
     });
 
+    it("悪手には代わりの最善手を添え、押すと「この手の代わりに」の候補手が先に出る", () => {
+        const { doc, ids } = createTestStudy([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
+        // 3 手目（☗2六歩）の 1 手前の局面の最善は ☗6六歩、という結果にする。
+        const withBest = applyStudyOps(doc, [
+            putScoreOp(ids[2], cp(25), { depth: 18, pv: ["6g6f", "8c8d"] }),
+        ]);
+        render(<Harness initialDoc={withBest} />);
+
+        const item = within(highlights()).getByRole("button", { name: /3手目 ☗2六歩\(27\)/ });
+        expect(item.textContent).toContain("最善 ☗6六歩(67)");
+
+        fireEvent.click(item);
+
+        const candidates = screen.getByRole("region", { name: "候補手" });
+        expect(
+            within(candidates).getByRole("heading", {
+                name: "この手の代わりに（1 手前の局面の候補）",
+            }),
+        ).toBeTruthy();
+        expect(within(candidates).getByText(/指した手 ☗2六歩\(27\)（悪手）/)).toBeTruthy();
+        expect(within(candidates).getByText("☗6六歩(67)")).toBeTruthy();
+        expect(within(candidates).getByRole("heading", { name: "この局面の候補手" })).toBeTruthy();
+        // 代わりの読み筋は、1 手前の局面からの変化として足せる。
+        const before = within(moveList()).queryByText("変化を表示中");
+        expect(before).toBeNull();
+        fireEvent.click(
+            within(candidates).getByRole("button", {
+                name: "代わりの候補 1 の読み筋を変化として追加",
+            }),
+        );
+        expect(currentMove()).toContain("☗6六歩(67)");
+    });
+
+    it("注目局面は手数順が既定で、大きい順に切り替えられる", () => {
+        // 1 手目が疑問手、3 手目が悪手（落差は 3 手目の方が大きい）。
+        const { doc } = createTestStudy([cp(400), cp(0), cp(0), cp(-900), cp(-880)]);
+        render(<Harness initialDoc={doc} />);
+
+        const titles = () =>
+            within(highlights())
+                .getAllByRole("listitem")
+                .map((item) => item.textContent ?? "");
+        expect(titles()[0]).toContain("1手目");
+        expect(titles()[1]).toContain("3手目");
+
+        fireEvent.click(within(highlights()).getByRole("button", { name: "大きい順" }));
+        expect(titles()[0]).toContain("3手目");
+        expect(titles()[1]).toContain("1手目");
+    });
+
+    it("局面を移っても、ページ全体をスクロールさせない", () => {
+        const scrollIntoView = vi.fn();
+        Element.prototype.scrollIntoView = scrollIntoView;
+        render(<Harness initialDoc={createTestStudy().doc} />);
+
+        fireEvent.keyDown(document, { key: "ArrowRight" });
+        fireEvent.keyDown(document, { key: "End" });
+
+        expect(currentMove()).toContain("☖8四歩(83)");
+        expect(scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it("変化の中の枝分かれは、どの枝も「変化」として個別に消せる（本譜とは呼ばない）", async () => {
+        const { doc, ids } = createTestStudy();
+        // 開始局面からの変化 ☗5六歩 の先で、☖3四歩 と ☖8四歩 に枝分かれする。
+        const head = studyChildNodeId(ids[0], "5g5f");
+        const first = studyChildNodeId(head, "3c3d");
+        const second = studyChildNodeId(head, "8c8d");
+        const nested = applyStudyOps(doc, [
+            { type: "addMoves", parentId: ids[0], moves: ["5g5f", "3c3d", "2g2f"] },
+            { type: "addMoves", parentId: head, moves: ["8c8d"] },
+        ]);
+        const onOps = vi.fn();
+        render(<Harness initialDoc={nested} onOps={onOps} />);
+
+        // 変化の中の 2 つ目の枝（☖8四歩）を見る。
+        fireEvent.click(
+            within(moveList()).getByRole("button", { name: /変化\s*☗5六歩\(57\)\s*3 手/ }),
+        );
+        fireEvent.keyDown(document, { key: "ArrowRight" });
+        expect(currentMove()).toContain("☖3四歩(33)");
+        // もう一方の枝は「変化」と表示され、消せる（「本譜」とは出ない）。
+        const sibling = within(moveList()).getByRole("button", {
+            name: /変化\s*☖8四歩\(83\)\s*1 手/,
+        });
+        expect(sibling.textContent).not.toContain("本譜");
+        expect(
+            within(moveList()).getByRole("button", { name: "変化 ☖8四歩(83) を削除" }),
+        ).toBeTruthy();
+
+        // ヘッダーのごみ箱は、いま見ている枝（直近の分岐点から先）だけを対象にする。
+        fireEvent.click(within(moveList()).getByRole("button", { name: "いま見ている変化を削除" }));
+        const dialog = await screen.findByRole("alertdialog");
+        expect(dialog.textContent).toContain("2手目 ☖3四歩(33) から先の 2 手");
+        fireEvent.click(within(dialog).getByRole("button", { name: "削除する" }));
+
+        expect(onOps).toHaveBeenCalledWith([{ type: "deleteSubtree", nodeId: first }]);
+        // 変化の残り（☗5六歩 → ☖8四歩）は消えない。
+        await waitFor(() => expect(currentMove()).toContain("☗5六歩(57)"));
+        fireEvent.keyDown(document, { key: "ArrowRight" });
+        expect(currentMove()).toContain("☖8四歩(83)");
+        expect(second).not.toBe(first);
+    });
+
+    it("上限などで手を足せないときの通知は、次の操作で消えずに残る", async () => {
+        const { doc } = createTestStudy();
+        render(
+            <Harness initialDoc={doc} fetchLegalMoves={async () => ["7g7f", "5g5f"]} rejectOps />,
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: /^5g 先手の歩/ }));
+        await act(async () => {
+            fireEvent.click(screen.getByRole("button", { name: /^5f 空マス/ }));
+        });
+
+        // 呼び出し側が拒否して文書を変えなかった → 元の局面に戻り、理由が出ている。
+        await waitFor(() => expect(currentMove()).toContain("開始局面"));
+        expect(screen.getByRole("alert").textContent).toContain("局面の数が上限に達しました");
+        // 続けて別の操作をしても、通知は残る。
+        fireEvent.keyDown(document, { key: "ArrowRight" });
+        expect(screen.getByRole("alert").textContent).toContain("局面の数が上限に達しました");
+    });
+
     describe("保存の状態", () => {
         const renderWith = (
             saveStatus: StudyWorkspaceSaveStatus,
@@ -315,12 +452,14 @@ describe("StudyWorkspaceView", () => {
                 <Harness initialDoc={createTestStudy().doc} saveStatus={saveStatus} {...extra} />,
             );
 
-        it("未ログインでは「ログインすると保存できます」を出し、押すとログインへ進む", () => {
+        it("未ログインでは「ログインするとクラウドにも保存できます」を出し、押すとログインへ進む", () => {
             const onLogin = vi.fn();
             renderWith(LOCAL_STATUS, { onLogin });
 
             expect(screen.getByText("このブラウザに保存済み")).toBeTruthy();
-            fireEvent.click(screen.getByRole("button", { name: "ログインすると保存できます" }));
+            fireEvent.click(
+                screen.getByRole("button", { name: "ログインするとクラウドにも保存できます" }),
+            );
             expect(onLogin).toHaveBeenCalledTimes(1);
             // 問題ではないので、帯は出さない。
             expect(screen.queryByRole("alert")).toBeNull();
@@ -334,7 +473,7 @@ describe("StudyWorkspaceView", () => {
                 retrying: false,
             });
             expect(screen.getByText("クラウドに保存済み")).toBeTruthy();
-            expect(screen.queryByText("ログインすると保存できます")).toBeNull();
+            expect(screen.queryByText("ログインするとクラウドにも保存できます")).toBeNull();
             view.unmount();
 
             renderWith({ state: "pending", reason: null, limit: null, retrying: true });

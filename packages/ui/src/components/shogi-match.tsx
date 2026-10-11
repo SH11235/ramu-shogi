@@ -88,6 +88,7 @@ import type {
     PCSpecificProps,
 } from "./shogi-match/types/layoutProps";
 import type { KifMove } from "./shogi-match/utils/kifFormat";
+import type { ImportSfenHandler } from "./shogi-match/utils/kifuImport";
 import { LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
 import {
     isSamePassRightsSettings,
@@ -477,7 +478,13 @@ interface ShogiMatchProps {
      * 読み込んだ棋譜を研究ノートにするコールバック。指定すると、棋譜読込の欄の下に
      * 「この棋譜を研究ノートにする」を出す（指し手があり、変則ルールでない棋譜のときだけ）。
      */
-    onOpenAsStudy?: (tree: KifuTree) => void;
+    onOpenAsStudy?: (
+        tree: KifuTree,
+        info: {
+            /** 読み込んだ棋譜に書かれていた対局者名（いま開いている棋譜がその棋譜のままのとき）。 */
+            players?: { sente?: string; gote?: string };
+        },
+    ) => void;
 }
 
 export function ShogiMatch({
@@ -1707,6 +1714,19 @@ export function ShogiMatch({
 
     const initialAnalysisAppliedRef = useRef<string | null>(null);
 
+    // 棋譜読込で読んだ棋譜の対局者名を覚えておく（研究ノートにするときの表題に使う）。
+    // 読み込んだあとで別の棋譜になっていないかは、本譜の手順で見分ける。
+    const importedPlayersRef = useRef<{
+        movesKey: string;
+        players: { sente?: string; gote?: string };
+    } | null>(null);
+    const importSfenFromPanel: ImportSfenHandler = async (sfen, importedMoves, options) => {
+        await importSfen(sfen, importedMoves, { moveData: options?.moveData });
+        importedPlayersRef.current = options?.players
+            ? { movesKey: importedMoves.join(" "), players: options.players }
+            : null;
+    };
+
     // initialReview を取り込む。live 観戦では moves が逐次伸びた場合だけ importSfen で
     // 末尾まで再構築し、コメントだけが遅れて届いた場合は既存ノードへ差分適用する。
     useInitialReviewSync({
@@ -1974,7 +1994,7 @@ export function ShogiMatch({
         matchLayoutClasses: MATCH_LAYOUT_CLASSES,
         candidateNote,
         isSettingsModalOpen,
-        importSfen,
+        importSfen: importSfenFromPanel,
         importKif,
         positionReady,
         isDevMode,
@@ -2006,7 +2026,7 @@ export function ShogiMatch({
         isReviewMode,
         reviewMode,
         onOpenAbout: () => setIsAboutOpen(true),
-        onImportSfen: importSfen,
+        onImportSfen: importSfenFromPanel,
         onImportKif: importKif,
         onDisplaySettingsChange: setDisplaySettings,
     };
@@ -2025,7 +2045,16 @@ export function ShogiMatch({
             <button
                 type="button"
                 className="w-full rounded-md border border-wafuu-border bg-wafuu-washi py-2 text-sm font-medium text-wafuu-sumi transition-colors hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => onOpenAsStudy?.(navigation.tree)}
+                onClick={() => {
+                    const imported = importedPlayersRef.current;
+                    const mainLineKey = navigation.getMainLineMoves().join(" ");
+                    onOpenAsStudy?.(navigation.tree, {
+                        players:
+                            imported && imported.movesKey === mainLineKey
+                                ? imported.players
+                                : undefined,
+                    });
+                }}
             >
                 この棋譜を研究ノートにする
             </button>

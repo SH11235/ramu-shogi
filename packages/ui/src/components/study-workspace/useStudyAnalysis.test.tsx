@@ -9,9 +9,15 @@ import { buildStudyViewTree } from "./studyView";
 import { STUDY_DEEP_TIME_MS, useStudyAnalysis } from "./useStudyAnalysis";
 
 /** 探索のたびに評価値つきの info を 1 回流してから bestmove を返すエンジン。 */
-function createEngineOption(): { option: EngineOption; searches: () => number } {
+function createEngineOption(searchMs = 5): {
+    option: EngineOption;
+    searches: () => number;
+    clients: () => number;
+} {
     let searches = 0;
+    let clients = 0;
     const createClient = (): EngineClient => {
+        clients++;
         const listeners = new Set<EngineEventHandler>();
         return {
             init: vi.fn().mockResolvedValue(undefined),
@@ -36,7 +42,7 @@ function createEngineOption(): { option: EngineOption; searches: () => number } 
                         });
                     }
                     for (const listener of listeners) listener({ type: "bestmove", move: "7g7f" });
-                }, 5);
+                }, searchMs);
                 return {
                     async cancel() {
                         clearTimeout(timer);
@@ -48,11 +54,16 @@ function createEngineOption(): { option: EngineOption; searches: () => number } 
     return {
         option: { id: "wasm", label: "内蔵エンジン", createClient, kind: "internal" },
         searches: () => searches,
+        clients: () => clients,
     };
 }
 
 /** ページの代わりに、操作を文書へ適用しながらフックを動かす。 */
-function useHarness(initialDoc: StudyDocument, engineOptions: EngineOption[]) {
+function useHarness(
+    initialDoc: StudyDocument,
+    engineOptions: EngineOption[],
+    options: { rejectAnalysis?: boolean; onOps?: (ops: StudyOp[]) => void } = {},
+) {
     const [doc, setDoc] = useState(initialDoc);
     const [ops, setOps] = useState<StudyOp[]>([]);
     const [startedLayers, setStartedLayers] = useState<string[]>([]);
@@ -65,8 +76,14 @@ function useHarness(initialDoc: StudyDocument, engineOptions: EngineOption[]) {
         manifestUrl: "",
         engine: { kind: "wasm", name: "rshogi", version: "0.8.1", appVersion: "1.2.3" },
         onApplyOps: (next) => {
+            options.onOps?.(next);
+            // 解析結果が保存できなかった（上限を超えた）場合の模擬。
+            if (options.rejectAnalysis && next.some((op) => op.type === "putAnalysis")) {
+                return Promise.resolve(false);
+            }
             setOps((previous) => [...previous, ...next]);
             setDoc((previous) => applyStudyOps(previous, next));
+            return undefined;
         },
         onFlush: () => setFlushCount((count) => count + 1),
         onLayerStarted: (layerId, mode) =>
@@ -143,5 +160,76 @@ describe("useStudyAnalysis", () => {
         expect(Object.keys(layer.results)).toEqual([ids[2]]);
         expect(result.current.startedLayers).toEqual([`deep:${layer.id}`]);
         expect(engine.searches()).toBe(1);
+    });
+
+    it("AI の準備中に画面を離れたら、解析を始めない（エンジンも作らない）", async () => {
+        const { doc } = createTestStudy();
+        const engine = createEngineOption();
+        const onOps = vi.fn();
+        const { result, unmount } = renderHook(() => useHarness(doc, [engine.option], { onOps }));
+
+        // 準備（AI の確認）を待っている間に離れる。
+        const started = result.current.controller.startFull();
+        unmount();
+        await started;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        expect(engine.clients()).toBe(0);
+        expect(engine.searches()).toBe(0);
+        expect(onOps).not.toHaveBeenCalled();
+    });
+
+    it("AI の準備中に中止したら、解析を始めない", async () => {
+        const { doc } = createTestStudy();
+        const engine = createEngineOption();
+        const { result } = renderHook(() => useHarness(doc, [engine.option]));
+
+        await act(async () => {
+            const started = result.current.controller.startFull();
+            await result.current.controller.cancel();
+            await started;
+        });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        expect(engine.searches()).toBe(0);
+        expect(result.current.doc.layers).toEqual([]);
+        expect(result.current.controller.isPreparing).toBe(false);
+        // 中止のあとは、あらためて始められる。
+        await act(async () => {
+            await result.current.controller.startFull();
+        });
+        await waitFor(() => expect(result.current.doc.layers).toHaveLength(1));
+    });
+
+    it("解析結果を保存できなかったら、黙って続けずに解析を止める", async () => {
+        const { doc } = createTestStudy();
+        // 1 局面 1 秒。結果の反映（400 ms ごと）で保存できないと分かった時点で止まる。
+        const engine = createEngineOption(1000);
+        const { result } = renderHook(() =>
+            useHarness(doc, [engine.option], { rejectAnalysis: true }),
+        );
+
+        await act(async () => {
+            await result.current.controller.startFull();
+        });
+        await waitFor(() => expect(result.current.controller.mode).toBeNull(), { timeout: 5000 });
+
+        // 5 局面のうち、止まるまでに探索を始めたのは一部だけ。
+        expect(engine.searches()).toBeLessThan(5);
+        expect(result.current.ops.filter((op) => op.type === "putAnalysis")).toHaveLength(0);
+    });
+
+    it("いまの設定で実際に解析する局面の数を返す（解析済みの局面は数えない）", async () => {
+        const { doc } = createTestStudy();
+        const engine = createEngineOption();
+        const { result } = renderHook(() => useHarness(doc, [engine.option]));
+        expect(result.current.controller.fullTargetCount).toBe(5);
+
+        await act(async () => {
+            await result.current.controller.startFull();
+        });
+        await waitFor(() => expect(result.current.flushCount).toBe(1));
+
+        expect(result.current.controller.fullTargetCount).toBe(0);
     });
 });

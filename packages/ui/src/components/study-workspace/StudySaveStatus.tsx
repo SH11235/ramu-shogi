@@ -72,7 +72,7 @@ interface StudySaveIndicatorProps {
     className?: string;
 }
 
-/** 保存の状態（1 行、控えめ）。未ログインのときは「ログインすると保存できます」を添える。 */
+/** 保存の状態（1 行、控えめ）。未ログインのときは「ログインするとクラウドにも保存できます」を添える。 */
 export function StudySaveIndicator({
     status,
     onLogin,
@@ -83,14 +83,14 @@ export function StudySaveIndicator({
         status.state !== "local"
             ? null
             : status.reason === "anonymous"
-              ? "ログインすると保存できます"
+              ? "ログインするとクラウドにも保存できます"
               : status.reason === "signed_out"
-                ? "ログインすると保存を再開します"
+                ? "ログインするとクラウドへの保存を再開します"
                 : null;
     return (
         <div
             className={cn(
-                "flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs",
+                "flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 text-xs",
                 view.attention ? "text-destructive" : "text-muted-foreground",
                 className,
             )}
@@ -99,6 +99,7 @@ export function StudySaveIndicator({
                 {view.icon}
                 <span>{view.text}</span>
             </output>
+            {loginText && <span aria-hidden="true">・</span>}
             {loginText &&
                 (onLogin ? (
                     <button

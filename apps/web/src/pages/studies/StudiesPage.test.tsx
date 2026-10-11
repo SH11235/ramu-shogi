@@ -2,14 +2,18 @@ import type { StudySync } from "@shogi/study-client";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createOfflineApi, createTestDoc, createTestSync } from "./studies-test-support";
+import {
+    AUTH_SIGNED_OUT,
+    authSignedIn,
+    createOfflineApi,
+    createTestDoc,
+    createTestSync,
+    type TestAuthState,
+} from "./studies-test-support";
 
 const navigate = vi.fn(async () => {});
 let currentSync: StudySync;
-let session: { authenticated: boolean; user: { id: string } | null } = {
-    authenticated: false,
-    user: null,
-};
+let auth: TestAuthState = AUTH_SIGNED_OUT;
 
 vi.mock("@tanstack/react-router", () => ({
     Link: ({
@@ -24,17 +28,17 @@ vi.mock("@tanstack/react-router", () => ({
     useNavigate: () => navigate,
 }));
 vi.mock("../../hooks/useAuthSession", () => ({
-    useAuthSession: () => ({ session, sessionError: null, isLoadingSession: false }),
+    useAuthSession: () => ({ ...auth, sessionError: null }),
 }));
 vi.mock("../../components/HeaderNav", () => ({ HeaderNav: () => null }));
 vi.mock("../../components/PageHeader", () => ({ PageHeader: () => null }));
-vi.mock("../../lib/studySync", () => ({
-    getStudySync: () => currentSync,
-    ensureStudySession: async (userId: string | null) => {
-        currentSync.setSession(userId === null ? null : { userId });
-    },
+// `lib/studySync`（セッションの伝達・引き継ぎ）は本物を使い、その下の同期エンジンだけを差し替える。
+vi.mock("@shogi/study-client", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@shogi/study-client")>()),
+    createBrowserStudySync: () => ({ sync: currentSync, store: null, dispose: () => {} }),
 }));
 
+const { resetStudySyncForTest } = await import("../../lib/studySync");
 const { default: StudiesPage } = await import("./StudiesPage");
 
 const CSA = ["V2.2", "N+RAMU", "N-Panda", "PI", "+", "+7776FU", "-3334FU"].join("\n");
@@ -44,7 +48,8 @@ const CLOUD_ID = "22222222-2222-4222-8222-222222222222";
 describe("StudiesPage", () => {
     beforeEach(() => {
         navigate.mockClear();
-        session = { authenticated: false, user: null };
+        auth = AUTH_SIGNED_OUT;
+        resetStudySyncForTest();
         currentSync = createTestSync();
     });
 
@@ -95,7 +100,7 @@ describe("StudiesPage", () => {
     });
 
     it("ブラウザ内のノートとクラウドのノートを 1 つの一覧にする", async () => {
-        session = { authenticated: true, user: { id: "user-1" } };
+        auth = authSignedIn("user-1");
         currentSync.setSession({ userId: "user-1" });
         await currentSync.createStudy(createTestDoc(LOCAL_ID, "ブラウザのノート"));
         const api = createOfflineApi({
@@ -146,7 +151,9 @@ describe("StudiesPage", () => {
         const link = await screen.findByRole("link", { name: /ブラウザのノート/ });
         expect(link.textContent).toContain("このブラウザに保存");
         expect(
-            screen.getByRole("link", { name: "ログインすると保存できます" }).getAttribute("href"),
+            screen
+                .getByRole("link", { name: "ログインするとクラウドにも保存できます" })
+                .getAttribute("href"),
         ).toBe("/auth?next=%2Fstudies");
         expect(api.list).not.toHaveBeenCalled();
     });
@@ -167,5 +174,102 @@ describe("StudiesPage", () => {
         expect(
             await screen.findByRole("heading", { name: "棋譜を取り込んで、研究ノートを作る" }),
         ).toBeTruthy();
+    });
+
+    it("アカウントが変わったら、前のアカウントの一覧と続きの位置を残さない", async () => {
+        const cloudNote = (id: string, title: string) => ({
+            id,
+            title,
+            origin: { kind: "paste" as const, ref: null },
+            meta: {},
+            revision: 1,
+            nodeCount: 10,
+            layerCount: 0,
+            resultCount: 0,
+            updatedAt: "2026-10-01T00:00:00.000Z",
+        });
+        const api = createOfflineApi({
+            // セッション（Cookie）のアカウントのノートだけを返すサーバーの模擬。
+            list: vi.fn(async () => {
+                const userId = currentSync.getSession()?.userId;
+                return {
+                    ok: true as const,
+                    status: 200,
+                    data:
+                        userId === "user-1"
+                            ? {
+                                  studies: [cloudNote(CLOUD_ID, "user-1 のノート")],
+                                  nextCursor: "c1",
+                              }
+                            : { studies: [], nextCursor: null },
+                };
+            }),
+        });
+        auth = authSignedIn("user-1");
+        const view = render(<StudiesPage api={api} />);
+        expect(await screen.findByRole("link", { name: /user-1 のノート/ })).toBeTruthy();
+        expect(screen.getByRole("button", { name: "もっと見る" })).toBeTruthy();
+
+        auth = authSignedIn("user-2");
+        view.rerender(<StudiesPage api={api} />);
+
+        await waitFor(() =>
+            expect(screen.queryByRole("link", { name: /user-1 のノート/ })).toBeNull(),
+        );
+        expect(screen.queryByRole("button", { name: "もっと見る" })).toBeNull();
+        expect(
+            await screen.findByRole("heading", { name: "棋譜を取り込んで、研究ノートを作る" }),
+        ).toBeTruthy();
+    });
+
+    it("続きを読み込んでいる間にアカウントが変わったら、前のアカウントの続きを足さない", async () => {
+        let releaseMore: () => void = () => {};
+        const held = new Promise<void>((resolve) => {
+            releaseMore = resolve;
+        });
+        const page = (title: string, id: string, nextCursor: string | null) => ({
+            ok: true as const,
+            status: 200,
+            data: {
+                studies: [
+                    {
+                        id,
+                        title,
+                        origin: { kind: "paste" as const, ref: null },
+                        meta: {},
+                        revision: 1,
+                        nodeCount: 10,
+                        layerCount: 0,
+                        resultCount: 0,
+                        updatedAt: "2026-10-01T00:00:00.000Z",
+                    },
+                ],
+                nextCursor,
+            },
+        });
+        const api = createOfflineApi({
+            list: vi.fn(async (params) => {
+                if (params?.cursor === "c1") {
+                    await held;
+                    return page("user-1 の続き", LOCAL_ID, null);
+                }
+                return currentSync.getSession()?.userId === "user-1"
+                    ? page("user-1 のノート", CLOUD_ID, "c1")
+                    : { ok: true as const, status: 200, data: { studies: [], nextCursor: null } };
+            }),
+        });
+        auth = authSignedIn("user-1");
+        const view = render(<StudiesPage api={api} />);
+        fireEvent.click(await screen.findByRole("button", { name: "もっと見る" }));
+
+        auth = authSignedIn("user-2");
+        view.rerender(<StudiesPage api={api} />);
+        await waitFor(() =>
+            expect(screen.queryByRole("link", { name: /user-1 のノート/ })).toBeNull(),
+        );
+        releaseMore();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        expect(screen.queryByRole("link", { name: /user-1 の続き/ })).toBeNull();
     });
 });

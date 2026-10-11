@@ -30,10 +30,16 @@ const PURPOSE_TEXT = {
 export function MatchNnueDownloadDialog({
     state,
     purpose = "match",
+    alternative,
 }: {
     state: ReturnType<typeof useMatchNnueDownload>;
     /** 何のためのダウンロードか（文言だけが変わる）。 */
     purpose?: keyof typeof PURPOSE_TEXT;
+    /**
+     * ダウンロードせずに進める別の道（研究ノートの「簡易 AI で解析する」）。
+     * 指定したときだけ、その選択肢を出す。
+     */
+    alternative?: { label: string; onSelect: () => void };
 }): ReactElement {
     const text = PURPOSE_TEXT[purpose];
     const { presets, busy, progress, completedBytes, error, cancel, download } = state;
@@ -117,6 +123,15 @@ export function MatchNnueDownloadDialog({
                                 {error ? "再試行" : text.action}
                             </Button>
                         </DialogFooter>
+                    )}
+                    {!busy && alternative && (
+                        <button
+                            type="button"
+                            onClick={alternative.onSelect}
+                            className="self-center rounded-sm text-sm text-wafuu-ai underline underline-offset-2 hover:text-wafuu-ai-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                            {alternative.label}
+                        </button>
                     )}
                 </div>
             </DialogContent>

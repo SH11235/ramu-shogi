@@ -24,6 +24,12 @@ interface EvalGraphProps {
     onClick?: () => void;
     /** 手数選択時のコールバック */
     onPlySelect?: (ply: number) => void;
+    /**
+     * 縦軸の上限（センチポーン）。指定すると、詰みや大差の評価値は上端・下端に張り付けて描き、
+     * 縦軸はこの値までの通常の評価値の範囲で決める（最終手の詰みで全体が平らに見えるのを防ぐ）。
+     * 省略時は従来どおり。
+     */
+    axisCap?: number;
     /** グラフに重ねる印（研究ノートの注目局面など）。コンパクト表示でだけ描く。 */
     markers?: readonly EvalGraphMarker[];
     /** 印を押したときのコールバック。省略時は印を押せない（見た目だけ）。 */
@@ -107,7 +113,17 @@ const EVAL_GRAPH_MATE_VALUE = 10000;
 export function computeEvalGraphScale(
     evalHistory: readonly EvalHistory[],
     minScale: number,
+    axisCap?: number,
 ): number {
+    if (axisCap !== undefined) {
+        // 上限つき: 上限を超える値と詰みは縦軸の計算に入れない（端に張り付けて描く）。
+        let maxWithinCap = 0;
+        for (const entry of evalHistory) {
+            if (entry.evalCp === null || entry.evalCp === undefined) continue;
+            maxWithinCap = Math.max(maxWithinCap, Math.min(Math.abs(entry.evalCp), axisCap));
+        }
+        return Math.min(computeNiceScale(maxWithinCap, minScale), axisCap);
+    }
     let maxAbsCp = 0;
     let hasMate = false;
     for (const entry of evalHistory) {
@@ -132,6 +148,7 @@ export function EvalGraph({
     minScale = 500,
     onClick,
     onPlySelect,
+    axisCap,
     markers,
     onMarkerSelect,
 }: EvalGraphProps): ReactElement {
@@ -159,7 +176,7 @@ export function EvalGraph({
         onPlySelect(clampedPly);
     };
 
-    const scaleMax = computeEvalGraphScale(evalHistory, minScale);
+    const scaleMax = computeEvalGraphScale(evalHistory, minScale, axisCap);
 
     // ポイントの計算（先手・後手を分離して別々のセグメントを生成）
     // viewBox="0 0 100 height" なので x は 0-100 の数値、y はピクセル値
