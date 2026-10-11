@@ -1,3 +1,4 @@
+import type { EngineOption, SideSetting } from "@shogi/app-controller";
 import {
     cloneBoard,
     type GameResult,
@@ -6,7 +7,6 @@ import {
     type PieceType,
     type Player,
     type PositionState,
-    type ResolvedNnue,
     type Square,
 } from "@shogi/app-core";
 import type { MutableRefObject } from "react";
@@ -25,6 +25,21 @@ const clonePositionState = (pos: PositionState): PositionState => ({
         ? { sente: pos.passRights.sente, gote: pos.passRights.gote }
         : undefined,
 });
+
+/** 外部エンジンは内蔵AIの評価関数を使わない。未指定IDは既定エンジンに合わせる。 */
+export function getMatchNnueSelections(
+    sides: Record<Player, SideSetting>,
+    engineOptions: Pick<EngineOption, "id" | "kind">[],
+    selections: Record<Player, NnueSelection>,
+): NnueSelection[] {
+    return (["sente", "gote"] as const).flatMap((side) => {
+        const setting = sides[side];
+        if (setting.role !== "engine") return [];
+        const engine =
+            engineOptions.find((option) => option.id === setting.engineId) ?? engineOptions[0];
+        return engine && engine.kind !== "external" ? [selections[side]] : [];
+    });
+}
 
 /**
  * useGameControls の props
@@ -49,7 +64,9 @@ interface UseGameControlsProps {
     /** パス権設定 */
     passRightsSettings: PassRightsSettings;
     /** 対局者設定 */
-    sides: { sente: { role: string }; gote: { role: string } };
+    sides: Record<Player, SideSetting>;
+    /** 利用できるエンジン（外部エンジンをNNUE確認から除外する） */
+    engineOptions: EngineOption[];
     /** 先手NNUE選択 */
     senteNnueSelection: NnueSelection;
     /** 後手NNUE選択 */
@@ -68,8 +85,8 @@ interface UseGameControlsProps {
     stopAllEngines: () => Promise<void>;
     /** 両サイドのエンジンを初期化して探索可能な状態にする。全サイド成功で true */
     prepareEngines: () => Promise<boolean>;
-    /** NNUEを解決する */
-    resolveNnue: (selection: NnueSelection) => Promise<ResolvedNnue | null>;
+    /** 必要なAIを確認し、未取得ならダウンロード承認を待つ */
+    ensureMatchNnue: (selections: NnueSelection[]) => Promise<boolean>;
     /** 合法手キャッシュをクリアする */
     clearLegalCache: () => void;
     /** SFENを更新する */
@@ -102,8 +119,6 @@ interface UseGameControlsProps {
     setGameResult: (result: GameResult | null) => void;
     /** 勝敗ダイアログ表示を設定する */
     setShowResultDialog: (show: boolean) => void;
-    /** NNUE管理ダイアログを開く */
-    openNnueManager: (reason?: string) => void;
     /** 編集モードの移動元マスを設定する */
     setEditFromSquare: (square: Square | null) => void;
     /** 編集ツールを設定する */
@@ -152,6 +167,7 @@ export function useGameControls({
     startSfen,
     passRightsSettings,
     sides,
+    engineOptions,
     senteNnueSelection,
     goteNnueSelection,
     matchEndedRef,
@@ -161,7 +177,7 @@ export function useGameControls({
     resetClocks,
     stopAllEngines,
     prepareEngines,
-    resolveNnue,
+    ensureMatchNnue,
     clearLegalCache,
     refreshStartSfen,
     setIsMatchRunning,
@@ -178,7 +194,6 @@ export function useGameControls({
     setLastAddedBranchInfo,
     setGameResult,
     setShowResultDialog,
-    openNnueManager,
     setEditFromSquare,
     setEditTool,
     setEditPromoted,
@@ -236,8 +251,15 @@ export function useGameControls({
 
         isTransitioningRef.current = true;
         try {
-            matchEndedRef.current = false;
             if (!positionReady) return;
+
+            // 承認待ち・ダウンロード中には局面や棋譜、時計を変更しない。
+            const selections = getMatchNnueSelections(sides, engineOptions, {
+                sente: senteNnueSelection,
+                gote: goteNnueSelection,
+            });
+            if (!(await ensureMatchNnue(selections))) return;
+            matchEndedRef.current = false;
 
             // 一時停止からの再開：棋譜を保持したまま再開
             if (isPaused) {
@@ -274,24 +296,6 @@ export function useGameControls({
                 positionRef.current = updatedPosition;
                 // ナビゲーションのルートノードをパス権付きの局面で更新
                 navigation.reset(updatedPosition, startSfen);
-            }
-
-            // 対局開始前に NNUE の存在確認を行う（未ダウンロードの場合はエラー）
-            try {
-                const nnuePreparations: Promise<unknown>[] = [];
-                if (sides.sente.role === "engine" && senteNnueSelection) {
-                    nnuePreparations.push(resolveNnue(senteNnueSelection));
-                }
-                if (sides.gote.role === "engine" && goteNnueSelection) {
-                    nnuePreparations.push(resolveNnue(goteNnueSelection));
-                }
-                if (nnuePreparations.length > 0) {
-                    await Promise.all(nnuePreparations);
-                }
-            } catch {
-                // NNUE未ダウンロードエラー → 評価関数ファイル管理を開く
-                openNnueManager("missing-sente"); // または "missing-gote" を適切に判定
-                return;
             }
 
             // 時計を動かす前にエンジンを初期化しておく

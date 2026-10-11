@@ -93,6 +93,8 @@ export async function downloadPreset(
     storage: NnueStorage,
     onProgress?: PresetProgressHandler,
 ): Promise<NnueMeta> {
+    const totalSize = preset.size + (preset.progressCoefficients?.size ?? 0);
+
     // FV_SCALE チェック（型安全性のため）
     if (preset.recommendedFvScale === undefined) {
         throw new NnueError(
@@ -120,7 +122,7 @@ export async function downloadPreset(
     onProgress?.({
         targetKey: preset.presetKey,
         loaded: 0,
-        total: preset.size,
+        total: totalSize,
         phase: "downloading",
     });
 
@@ -178,7 +180,7 @@ export async function downloadPreset(
                 onProgress?.({
                     targetKey: preset.presetKey,
                     loaded,
-                    total: preset.size,
+                    total: totalSize,
                     phase: "downloading",
                 });
                 lastProgressTime = now;
@@ -200,7 +202,7 @@ export async function downloadPreset(
     onProgress?.({
         targetKey: preset.presetKey,
         loaded,
-        total: preset.size,
+        total: totalSize,
         phase: "validating",
     });
 
@@ -249,6 +251,16 @@ export async function downloadPreset(
                 }
                 coefficientBytes.set(value, coefficientOffset);
                 coefficientOffset += value.length;
+                const now = Date.now();
+                if (now - lastProgressTime >= NNUE_PROGRESS_THROTTLE_MS) {
+                    onProgress?.({
+                        targetKey: preset.presetKey,
+                        loaded: loaded + coefficientOffset,
+                        total: totalSize,
+                        phase: "downloading",
+                    });
+                    lastProgressTime = now;
+                }
             }
         } finally {
             coefficientReader.releaseLock();
@@ -270,11 +282,13 @@ export async function downloadPreset(
     }
     if (layerStacks) validateLayerStacks(layerStacks);
 
+    loaded = totalSize;
+
     // 進捗通知: 保存中
     onProgress?.({
         targetKey: preset.presetKey,
         loaded,
-        total: preset.size,
+        total: totalSize,
         phase: "saving",
     });
 

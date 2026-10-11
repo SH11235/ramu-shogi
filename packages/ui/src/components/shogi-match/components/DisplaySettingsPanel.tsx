@@ -42,7 +42,15 @@ export function DisplaySettingsPanel({
                 </NativeSelect>
             </label>
             {toggles.map(({ key, label }) => (
-                <label key={key} className="flex cursor-pointer items-center gap-3 text-sm">
+                <label
+                    key={key}
+                    className="flex cursor-pointer items-center gap-3 text-sm"
+                    title={
+                        key === "enableWheelNavigation"
+                            ? "盤面上でマウスホイールを下に回すと棋譜を1手進め、上に回すと1手戻します。対局中は無効です。"
+                            : undefined
+                    }
+                >
                     <input
                         type="checkbox"
                         checked={settings[key]}

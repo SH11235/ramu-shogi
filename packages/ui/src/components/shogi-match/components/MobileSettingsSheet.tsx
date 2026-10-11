@@ -984,20 +984,6 @@ export function MobileSettingsSheet({
                         />
                         <span>探索情報 (NPS/深さ) を表示</span>
                     </label>
-                    <label className="flex items-center gap-2 text-sm">
-                        <input
-                            type="checkbox"
-                            checked={displaySettings.enableSound}
-                            onChange={(e) =>
-                                onDisplaySettingsChange({
-                                    ...displaySettings,
-                                    enableSound: e.target.checked,
-                                })
-                            }
-                            className="w-4 h-4"
-                        />
-                        <span>サウンド</span>
-                    </label>
                 </div>
             </div>
 

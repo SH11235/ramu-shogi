@@ -23,6 +23,7 @@ import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useShogiSound } from "../hooks/useShogiSound";
 import type { RemoteNnueManager } from "./nnue/types";
+import { MatchNnueDownloadDialog } from "./shogi-match/components/MatchNnueDownloadDialog";
 import { SearchInfoPanel } from "./shogi-match/components/SearchInfoPanel";
 import {
     DEFAULT_BYOYOMI_MS,
@@ -49,6 +50,7 @@ import {
 } from "./shogi-match/hooks/useKifuNavigation";
 import { useLegalMovePrefetch } from "./shogi-match/hooks/useLegalMovePrefetch";
 import { useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
+import { useMatchNnueDownload } from "./shogi-match/hooks/useMatchNnueDownload";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import { useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
 import { useNnueManager } from "./shogi-match/hooks/useNnueManager";
@@ -1462,6 +1464,8 @@ export function ShogiMatch({
         }
     };
 
+    const matchNnueDownload = useMatchNnueDownload({ manifestUrl, resolveNnue, setMessage });
+
     // 対局制御フック
     const {
         pauseAutoPlay,
@@ -1481,6 +1485,7 @@ export function ShogiMatch({
         startSfen,
         passRightsSettings,
         sides,
+        engineOptions,
         senteNnueSelection,
         goteNnueSelection,
         matchEndedRef,
@@ -1490,7 +1495,7 @@ export function ShogiMatch({
         resetClocks,
         stopAllEngines,
         prepareEngines,
-        resolveNnue,
+        ensureMatchNnue: matchNnueDownload.ensureMatchNnue,
         clearLegalCache,
         refreshStartSfen,
         setIsMatchRunning,
@@ -1507,7 +1512,6 @@ export function ShogiMatch({
         setLastAddedBranchInfo,
         setGameResult,
         setShowResultDialog,
-        openNnueManager,
         setEditFromSquare,
         setEditTool,
         setEditPromoted,
@@ -2023,6 +2027,7 @@ export function ShogiMatch({
             }}
         >
             <TooltipProvider delayDuration={TOOLTIP_DELAY_DURATION_MS}>
+                <MatchNnueDownloadDialog state={matchNnueDownload} />
                 <ShogiMatchLayout
                     // グループ化されたprops
                     matchSettings={matchSettings}
