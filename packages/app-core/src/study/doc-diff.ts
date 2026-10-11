@@ -17,6 +17,8 @@ const EMPTY_NODE: Pick<StudyNode, "comment" | "bookmarked" | "source"> = {
 /** 保存される JSON にしたときの大きさ（UTF-8 のバイト数）。 */
 const jsonLength = (value: unknown): number => utf8ByteLength(JSON.stringify(value));
 
+const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+
 /**
  * `from` に適用すると `to` と同じ中身になる操作の列を返す。
  *
@@ -28,8 +30,13 @@ const jsonLength = (value: unknown): number => utf8ByteLength(JSON.stringify(val
  *
  * 操作は「小さくする操作が先、大きくする操作が後」の順に並べる。操作の列は途中で切って
  * 何回かに分けて送られ、サーバーは 1 回ごとに大きさ・件数の上限を確かめる。この順なら、
- * `from` と `to` がどちらも上限内であれば、途中のどの時点も上限を超えない
- * （文書の大きさは、まず減り、そのあと `to` の大きさまで増えるだけになる）。
+ * `from` と `to` がどちらも上限内であれば、途中で上限を超えない（文書の大きさは、まず減り、
+ * そのあと `to` の大きさまで増えるだけになる）。
+ *
+ * 増えたノードの属性（しおり・コメント・対局時の評価値）は、そのノードの `addMoves` の直後に
+ * 並べる。ノードは「しおりなし」で作られ、しおりを付けると JSON は 1 バイト短くなるので、
+ * 送る側は `addMoves` と、それに続くそのノードへの操作を同じ回に入れること
+ * （間で切ると、切った時点の大きさが `to` より 1 バイト大きくなりうる）。
  *
  * `to` に無い個別の解析結果を消す操作は無いので、それは差分に含まれない。
  */
@@ -68,31 +75,41 @@ export function diffStudyDocuments(from: StudyDocument, to: StudyDocument): Stud
         for (let i = children.length - 1; i >= 0; i--) stack.push(children[i]);
     }
 
-    // 既にあるノードの属性のうち、短くなる（か同じ長さの）ものは先に、長くなるものは後に。
-    // 増えたノードの属性は、ノードを足したあとにしか設定できないので後に回す。
-    const attributeGrowth: StudyOp[] = [];
-    for (const nodeId of ordered) {
-        const node = toNodes[nodeId];
-        const existed = has(fromNodes, nodeId);
-        const base = existed ? fromNodes[nodeId] : EMPTY_NODE;
-        const push = (op: StudyOp, shrinks: boolean): void => {
-            (existed && shrinks ? shrinking : attributeGrowth).push(op);
-        };
-        if (node.comment !== base.comment) {
-            push(
-                { type: "setComment", nodeId, value: node.comment },
-                jsonLength(node.comment) <= jsonLength(base.comment),
-            );
-        }
+    /** ノードの属性を `base` から `node` の値にする操作。`shrinks` は JSON が長くならないか。 */
+    const attributeOps = (
+        nodeId: string,
+        node: StudyNode,
+        base: Pick<StudyNode, "comment" | "bookmarked" | "source">,
+    ): Array<{ op: StudyOp; shrinks: boolean }> => {
+        const ops: Array<{ op: StudyOp; shrinks: boolean }> = [];
         if (node.bookmarked !== base.bookmarked) {
             // JSON では true の方が false より短い。
-            push({ type: "setBookmark", nodeId, value: node.bookmarked }, node.bookmarked);
+            ops.push({
+                op: { type: "setBookmark", nodeId, value: node.bookmarked },
+                shrinks: node.bookmarked,
+            });
+        }
+        if (node.comment !== base.comment) {
+            ops.push({
+                op: { type: "setComment", nodeId, value: node.comment },
+                shrinks: jsonLength(node.comment) <= jsonLength(base.comment),
+            });
         }
         if (!sameJson(node.source, base.source)) {
-            push(
-                { type: "setSource", nodeId, value: node.source },
-                jsonLength(node.source) <= jsonLength(base.source),
-            );
+            ops.push({
+                op: { type: "setSource", nodeId, value: node.source },
+                shrinks: jsonLength(node.source) <= jsonLength(base.source),
+            });
+        }
+        return ops;
+    };
+
+    // 既にあるノードの属性: 短くなる（か同じ長さの）ものは先に、長くなるものは後に。
+    const existingGrowth: StudyOp[] = [];
+    for (const nodeId of ordered) {
+        if (!has(fromNodes, nodeId)) continue;
+        for (const { op, shrinks } of attributeOps(nodeId, toNodes[nodeId], fromNodes[nodeId])) {
+            (shrinks ? shrinking : existingGrowth).push(op);
         }
     }
     const titleShrinks = jsonLength(to.title) <= jsonLength(from.title);
@@ -100,11 +117,12 @@ export function diffStudyDocuments(from: StudyDocument, to: StudyDocument): Stud
         shrinking.push({ type: "setTitle", value: to.title });
     }
 
-    // 増えたノード。
+    // 増えたノード。属性は、そのノードを足した直後に（しおりを先に）設定する。
     for (const nodeId of ordered) {
         const node = toNodes[nodeId];
         if (node.parentId === null || node.usiMove === null || has(fromNodes, nodeId)) continue;
         growing.push({ type: "addMoves", parentId: node.parentId, moves: [node.usiMove] });
+        for (const { op } of attributeOps(nodeId, node, EMPTY_NODE)) growing.push(op);
     }
     // 兄弟の順序（大きさは変わらない。増えた子が揃ってから）。
     for (const nodeId of ordered) {
@@ -119,13 +137,12 @@ export function diffStudyDocuments(from: StudyDocument, to: StudyDocument): Stud
             growing.push({ type: "reorderChildren", parentId: nodeId, value: [...node.children] });
         }
     }
-    growing.push(...attributeGrowth);
+    growing.push(...existingGrowth);
     if (to.title !== from.title && !titleShrinks) {
         growing.push({ type: "setTitle", value: to.title });
     }
 
     // レイヤーと結果。置き換えで短くなる結果は先に、新しい結果・長くなる結果は後に。
-    const laterResults: StudyOp[] = [];
     for (const layer of to.layers) {
         const before = from.layers.find((item) => item.id === layer.id);
         const layerGrowth: StudyOp[] = [];
@@ -140,15 +157,10 @@ export function diffStudyDocuments(from: StudyDocument, to: StudyDocument): Stud
             else layerGrowth.push(op);
         }
         if (!before) {
-            laterResults.push({ type: "ensureLayer", spec: layer.spec, display: layer.display });
+            growing.push({ type: "ensureLayer", spec: layer.spec, display: layer.display });
         }
-        laterResults.push(...layerGrowth);
+        growing.push(...layerGrowth);
     }
-    growing.push(...laterResults);
 
     return [...shrinking, ...growing];
-}
-
-function sameJson(a: unknown, b: unknown): boolean {
-    return JSON.stringify(a) === JSON.stringify(b);
 }

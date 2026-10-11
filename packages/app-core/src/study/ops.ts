@@ -283,14 +283,16 @@ export function applyStudyOps(doc: StudyDocument, ops: readonly StudyOp[]): Stud
  * 統合先のコメントと手元のコメントを 1 つにする。どちらも失わない:
  * 片方が空なら空でない方、同じ内容なら 1 つ、違う内容なら統合先の後ろに改行 2 つで手元側を
  * つなぐ。つないだ結果が上限（UTF-8 で 4 KiB）を超えるなら統合先を残す。
+ * 統合先の中に、手元のコメントの全体が行の区切りに沿って既に入っていれば足さない。
  */
 export function mergeStudyComments(existing: string, incoming: string): string {
     if (incoming === "" || incoming === existing) return existing;
     if (existing === "") return incoming;
-    // 統合先のコメントに手元のコメントが既に含まれていれば、もう一度はつながない。
-    // 統合のやり直し（取り込みの途中で止まり、その間に統合先のコメントへ追記があった場合を
-    // 含む）で二重にならないよう、末尾の一致ではなく「含まれているか」で判定する。
-    if (existing.includes(incoming)) return existing;
+    // 統合先に、手元のコメントが「行のまとまり」として既に入っていれば、もう一度はつながない
+    // （統合のやり直しで二重にしないため。やり直しまでのあいだに統合先へ追記があってもよい）。
+    // 行の途中の部分一致では判定しない: 「詰みなし」に「詰み」は入っていないものとして扱う。
+    const block = incoming.trim();
+    if (block === "" || `\n${existing}\n`.includes(`\n${block}\n`)) return existing;
     const merged = `${existing}\n\n${incoming}`;
     return exceedsUtf8Bytes(merged, STUDY_LIMITS.commentBytes) ? existing : merged;
 }

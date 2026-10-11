@@ -20,6 +20,7 @@ import {
     type StudyDocument,
     type StudyLimitName,
     type StudyOp,
+    studyChildNodeId,
     studyDocumentToOps,
     studyLayerId,
     studyOriginKey,
@@ -182,7 +183,10 @@ export interface StudySync {
     pull(studyId: string): Promise<void>;
     /** 開いているノートについて、サーバーの変更を取り込む（タブに戻ったとき）。 */
     refreshOpen(): Promise<void>;
-    /** ノートを削除する。クラウドにあるノートは、送れるようになったときにサーバーからも消す。 */
+    /**
+     * ノートを削除する。クラウドにあるノートは、送れるようになったときにサーバーからも消す。
+     * いまのアカウントから見えないノートは `StudySyncError("not_found")` で拒否する。
+     */
     deleteStudy(studyId: string): Promise<void>;
 
     /**
@@ -256,6 +260,8 @@ const BATCH_BODY_BUDGET_BYTES = STUDY_LIMITS.opsBatchBytes - 32 * 1024;
 /** 1 バッチに入れる解析結果の数の上限（サーバーの 1 リクエストの処理時間を抑えるため）。 */
 const MAX_PUT_ANALYSIS_PER_BATCH = 20;
 const MAX_SYNC_STEPS = 200;
+/** 件数の上限などで拒否された作成を、自動で試し直すまでの間隔。 */
+const CREATE_RETRY_INTERVAL_MS = 10 * 60 * 1000;
 const MAX_CONFLICTS_PER_RUN = 3;
 const OTHER_TAB_REFRESH_DELAY_MS = 250;
 
@@ -533,18 +539,22 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             return "done";
         }
         if (status === 413) {
-            await setRemote(studyId, (atSeq) => ({
+            await setRemote(studyId, (atSeq, study) => ({
                 state: "limit_exceeded",
                 limit: bodyLimit,
                 atSeq,
+                locallyValid: isLocallyValid(study.doc),
+                rejectedAt: now(),
             }));
             return "done";
         }
         if (status === 422) {
-            await setRemote(studyId, (atSeq) => ({
+            await setRemote(studyId, (atSeq, study) => ({
                 state: "limit_exceeded",
                 limit: error.limit ?? "unknown",
                 atSeq,
+                locallyValid: isLocallyValid(study.doc),
+                rejectedAt: now(),
             }));
             return "done";
         }
@@ -814,7 +824,7 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         let analyses = 0;
         let newLayers = 0;
         const deletedLayerIds = new Set<string>();
-        let lastSeq = pending[0].seq;
+        let count = 0;
         for (let i = 0; i < pending.length && i < STUDY_LIMITS.opsPerBatch; i++) {
             const { op } = pending[i];
             bytes += encoder.encode(JSON.stringify(op)).length + 1;
@@ -831,9 +841,24 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             // レイヤーの作成は 1 バッチ 1 つまで。サーバーはレイヤーを作成時刻・ID の順に並べるので、
             // 同じバッチで 2 つ作ると（作成時刻が同じになり）ローカルの追加順と並びがずれる。
             if (newLayers > 1) break;
-            lastSeq = pending[i].seq;
+            count = i + 1;
         }
-        return lastSeq;
+        // ノードを足す操作と、そのノードにしおりを付ける操作は同じバッチに入れる。ノードは
+        // 「しおりなし」で作られ、しおりを付けると JSON が 1 バイト短くなるので、間で切ると
+        // 上限ちょうどのツリーが 1 バイトだけ上限を超えて拒否されうる。
+        if (count > 1 && count < pending.length) {
+            const last = pending[count - 1].op;
+            const next = pending[count].op;
+            if (
+                last.type === "addMoves" &&
+                next.type === "setBookmark" &&
+                next.value &&
+                next.nodeId === last.moves.reduce(studyChildNodeId, last.parentId)
+            ) {
+                count -= 1;
+            }
+        }
+        return pending[Math.max(count, 1) - 1].seq;
     };
 
     const sendBatch = async (
@@ -960,14 +985,28 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             // 畳むことで、拒否された途中の操作（長すぎたコメントなど）を引きずらずに、最終的な
             // 状態だけを送る。ローカルに無いことを理由にした削除は作らない: 削除になるのは、
             // 送信待ちに明示的な削除の操作があるものだけ。
-            const rebased = applyEffectiveOps(
+            const pendingOps = snapshot.pending.map((item) => item.op);
+            const rebased = applyEffectiveOps(serverDoc, pendingOps);
+            // 送信待ちの中の明示的な削除（サーバーの文書に対象があるもの）は、差分に畳まずに
+            // 先頭でそのまま送る。「消して同じものを作り直す」操作（大きくなりすぎたレイヤーの
+            // 結果を消して作り直す、枝を消して同じ手順で作り直す）は、再適用後の文書に同じ ID が
+            // 残るので、差分だけでは削除が消えて旧い結果や表示名が戻ってしまうため。
+            const explicitDeletes = applyEffectiveOps(
                 serverDoc,
-                snapshot.pending.map((item) => item.op),
+                pendingOps.filter(
+                    (op) =>
+                        (op.type === "deleteLayer" &&
+                            serverDoc.layers.some((layer) => layer.id === op.layerId)) ||
+                        (op.type === "deleteSubtree" &&
+                            op.nodeId !== serverDoc.tree.rootId &&
+                            Object.hasOwn(serverDoc.tree.nodes, op.nodeId)),
+                ),
             );
-            const { doc, effective } = applyEffectiveOps(
-                serverDoc,
-                diffStudyDocuments(serverDoc, rebased.doc),
-            );
+            // 残りは「サーバーの文書にその削除を適用した文書 → 再適用後の文書」の差分。
+            const { doc, effective } = applyEffectiveOps(serverDoc, [
+                ...explicitDeletes.effective,
+                ...diffStudyDocuments(explicitDeletes.doc, rebased.doc),
+            ]);
             return {
                 study: {
                     ...snapshot.study,
@@ -1001,6 +1040,23 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         return "retry";
     };
 
+    /**
+     * 作成が拒否された（上限超過・入力不正）ノートの作成を、明示の再試行なしで送り直してよいか。
+     * - 拒否の時点でローカルの検証が通っていなかった（内容に問題がある）場合:
+     *   検証が通るようになったとき（内容の問題が直ったとき）だけ。
+     * - ローカルでは判定できない上限（ノートの件数など）の場合: 一定の間隔を空けてから。
+     * - それ以外（ローカルの検証は通るのに入力不正で拒否された）: 明示の再試行だけ。
+     */
+    const shouldRetryCreate = (study: StoredStudy): boolean => {
+        const { remote } = study;
+        if (remote.state !== "limit_exceeded" && remote.state !== "rejected") return true;
+        if (remote.locallyValid === false) return isLocallyValid(study.doc);
+        if (remote.state === "limit_exceeded" && remote.rejectedAt !== undefined) {
+            return now() - remote.rejectedAt >= CREATE_RETRY_INTERVAL_MS;
+        }
+        return false;
+    };
+
     /** ロックの中で、送れるものが無くなるまで送る。 */
     const syncLocked = async (studyId: string, force: boolean): Promise<StepOutcome> => {
         const run = { conflicts: 0, recreated: false };
@@ -1021,15 +1077,11 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             if (study.remote.state === "deleted") return "done";
             if (study.remote.state === "limit_exceeded" || study.remote.state === "rejected") {
                 // 同じ内容を送り直しても通らない。新しい操作が積まれるか、明示の再試行まで待つ。
-                if (!forced && lastSeqOf(pending) <= study.remote.atSeq) return "done";
-                if (!forced && study.serverRevision === null && study.remote.state === "rejected") {
-                    // 作成が拒否されたノートは、編集のたびに作成を送り直さない。送り直すのは、
-                    // 明示の再試行か、拒否の時点で通っていなかったローカルの検証が通るように
-                    // なったとき（内容の問題が直ったとき）だけ。
-                    if (study.remote.locallyValid !== false) return "done";
-                    if (!isLocallyValid(study.doc)) return "done";
-                }
-                if (study.serverRevision !== null) {
+                if (study.serverRevision === null) {
+                    // 作成が拒否されたノートは、編集のたびに作成（ツリーの全体）を送り直さない。
+                    if (!forced && !shouldRetryCreate(study)) return "done";
+                } else {
+                    if (!forced && lastSeqOf(pending) <= study.remote.atSeq) return "done";
                     // 拒否された操作の列は引きずらない。サーバーの最新の文書といまのローカルの
                     // 文書の差分から、送信待ちを作り直してから送る。
                     forced = false;
@@ -1410,6 +1462,12 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             const removed = await enqueueWrite(studyId, () =>
                 mutate(studyId, (snapshot) => {
                     if (!snapshot.study) return { result: true };
+                    // 別のアカウントのノート（セッションの確認中・ログアウト中のアカウントの
+                    // ノートを含む）は、無いものとして扱う。消せてしまうと、持ち主が戻ったときに
+                    // サーバーからも削除される。
+                    if (!isVisible(snapshot.study)) {
+                        throw new StudySyncError("not_found", `研究ノートがありません: ${studyId}`);
+                    }
                     // サーバーに渡っていない匿名のノートは、ローカルから消すだけでよい。
                     if (snapshot.study.owner === null) return { study: null, result: true };
                     return {

@@ -201,6 +201,46 @@ describe("diffStudyDocuments: 操作の順序（小さくする操作が先）",
         expectNoOvershoot(from, to);
     });
 
+    it("増えたノードの属性は、そのノードの追加の直後に並び、しおりつきのノードでも大きさが両端を超えない", () => {
+        const from = base;
+        // しおり・コメント・対局時の評価値つきの新しいノードを 300 個足す（ほかに増えるものは無い）。
+        const moves = line(300, "4i4h");
+        const added = applyStudyOps(from, [{ type: "addMoves", parentId: rootId, moves }]);
+        const newIds = Object.keys(added.tree.nodes).filter(
+            (nodeId) => !Object.hasOwn(from.tree.nodes, nodeId),
+        );
+        const to = applyStudyOps(
+            added,
+            newIds.flatMap((nodeId, i): StudyOp[] => [
+                { type: "setBookmark", nodeId, value: true },
+                ...(i % 3 === 0 ? [{ type: "setComment" as const, nodeId, value: "メモ" }] : []),
+            ]),
+        );
+        const ops = diffStudyDocuments(from, to);
+        expect(applyStudyOps(from, ops).tree).toEqual(to.tree);
+
+        // どの addMoves の直後にも、そのノードへのしおりの操作が続く。
+        const created = new Set<string>();
+        ops.forEach((op, index) => {
+            if (op.type !== "addMoves") return;
+            const next = ops[index + 1];
+            expect(next).toMatchObject({ type: "setBookmark", value: true });
+            if (next?.type === "setBookmark") created.add(next.nodeId);
+        });
+        expect(created).toEqual(new Set(newIds));
+
+        // addMoves とその直後のしおりを 1 組として、組の切れ目のどこで切っても、
+        // ツリーの大きさは最終の大きさを超えない（上限ちょうどの文書でも途中で超えない）。
+        const finalBytes = bytes(to.tree);
+        let current = from;
+        for (let index = 0; index < ops.length; index++) {
+            current = applyStudyOps(current, [ops[index]]);
+            const splitsPair =
+                ops[index].type === "addMoves" && ops[index + 1]?.type === "setBookmark";
+            if (!splitsPair) expect(bytes(current.tree)).toBeLessThanOrEqual(finalBytes);
+        }
+    });
+
     it("性質: 乱数で作った 2 つの文書のどの組でも、途中で両端より大きくならない", () => {
         // 再現できるよう、種を固定した擬似乱数を使う。
         let seed = 20261012;
@@ -345,6 +385,17 @@ describe("mergeStudyComments", () => {
         expect(mergeStudyComments("既存", "匿名")).toBe("既存\n\n匿名");
         // 取り込みのやり直しでは、もう一度つながない。
         expect(mergeStudyComments("既存\n\n匿名", "匿名")).toBe("既存\n\n匿名");
+        // 行の途中の部分一致では「既に入っている」と見なさない（意味の違うコメントを落とさない）。
+        expect(mergeStudyComments("詰みなし", "詰み")).toBe("詰みなし\n\n詰み");
+        expect(mergeStudyComments("ここは詰み筋がある", "詰み")).toBe("ここは詰み筋がある\n\n詰み");
+        // 空行で区切ったまとまりとして入っていれば、足さない。前後の空白の違いは無視する。
+        expect(mergeStudyComments("既存\n\n匿名\n\n別のメモ", "匿名")).toBe(
+            "既存\n\n匿名\n\n別のメモ",
+        );
+        expect(mergeStudyComments("匿名\n\n既存", " 匿名\n")).toBe("匿名\n\n既存");
+        expect(mergeStudyComments("既存\n\n一行目\n二行目", "一行目\n二行目")).toBe(
+            "既存\n\n一行目\n二行目",
+        );
         // やり直しまでのあいだに統合先のコメントへ追記があっても、二重にならない。
         expect(mergeStudyComments("既存\n\n匿名\n追記", "匿名")).toBe("既存\n\n匿名\n追記");
     });

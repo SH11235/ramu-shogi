@@ -97,10 +97,20 @@ const isCount = (value: unknown): value is number =>
 
 const isCountOrNull = (value: unknown): boolean => value === null || isCount(value);
 
+/** 文字数（Unicode のコードポイント）が min 以上 max 以下か。 */
+const hasCodePoints = (text: string, min: number, max: number): boolean => {
+    // コード単位の数は、コードポイントの数の 1〜2 倍。明らかに長いものは数えずに弾く。
+    if (text.length > max * 2) return false;
+    const points = Array.from(text).length;
+    return points >= min && points <= max;
+};
+
 /** 決まったキーだけを持つオブジェクトか（サーバーは未知のキー・欠けたキーを 400 にする）。 */
 function assertExactKeys(value: unknown, keys: readonly string[], what: string): void {
     if (!isRecord(value)) invalid(`${what}: オブジェクトではありません`);
-    const actual = Object.keys(value as Record<string, unknown>);
+    // 値が undefined のキーは、JSON にすると消えるので、無いものとして扱う。
+    const record = value as Record<string, unknown>;
+    const actual = Object.keys(record).filter((key) => record[key] !== undefined);
     if (actual.length !== keys.length || !keys.every((key) => actual.includes(key))) {
         invalid(`${what}: 項目が契約と一致しません`);
     }
@@ -138,7 +148,8 @@ function assertPv(pv: unknown, what: string): void {
 export function assertStudySource(source: StudySource | null): void {
     if (source === null) return;
     assertExactKeys(source, ["kind", "score", "pv", "elapsedMs"], "source");
-    if (typeof source.kind !== "string" || source.kind.length < 1 || source.kind.length > 32) {
+    // 文字数は Unicode のコードポイントで数える（backend の zod と同じ。絵文字は 1 文字）。
+    if (typeof source.kind !== "string" || !hasCodePoints(source.kind, 1, 32)) {
         invalid("source: kind は 1〜32 文字にします");
     }
     assertScore(source.score, "source");
@@ -512,11 +523,7 @@ export function validateStudyDocument(doc: StudyDocument): void {
     }
     if (doc.origin.kind === "paste") {
         if (doc.origin.ref !== null) invalid("origin: paste は ref を null にします");
-    } else if (
-        typeof doc.origin.ref !== "string" ||
-        doc.origin.ref.length < 1 ||
-        doc.origin.ref.length > 256
-    ) {
+    } else if (typeof doc.origin.ref !== "string" || !hasCodePoints(doc.origin.ref, 1, 256)) {
         invalid("origin: 元棋譜の識別子（1〜256 文字）が必要です");
     }
     if (!isStudyStartSfen(doc.startSfen)) {

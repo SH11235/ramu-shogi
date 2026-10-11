@@ -2013,4 +2013,243 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             expect(await harness.store.readViewState?.(TEST_STUDY_ID)).toBeNull();
         });
     });
+
+    describe("レビュー 3 巡目の指摘の再現", () => {
+        const putResult = (layerSpec: StudyLayerSpec, nodeId: string, depth: number): StudyOp => ({
+            type: "putAnalysis",
+            layerId: studyLayerId(layerSpec),
+            nodeId,
+            result: {
+                runId: "9d6783f2-d773-4572-ae4e-bd463bf8f816",
+                completion: "completed",
+                depth,
+                nodes: null,
+                timeMs: null,
+                execution: { threads: null, hashMb: null, parallelWorkers: null },
+                candidates: [
+                    { rank: 1, score: { kind: "cp", value: depth }, depth, seldepth: null, pv: [] },
+                ],
+            },
+        });
+        const expectSameAsServer = async (harness: Harness): Promise<StudyDocument> => {
+            const local = await localDoc(harness);
+            expect(serverDoc(harness)).toEqual({
+                tree: local.tree,
+                layers: local.layers,
+                title: local.title,
+            });
+            return local;
+        };
+        /** サーバーだけが拒否する長さのコメントを送って、拒否の状態（上限超過）にする。 */
+        const enterRejectedState = async (harness: Harness): Promise<void> => {
+            harness.server.limits.commentBytes = 30;
+            await harness.sync.applyOps(TEST_STUDY_ID, [
+                comment("長すぎるコメント".repeat(4), rootId),
+            ]);
+            await harness.sync.flush(TEST_STUDY_ID);
+            expect(harness.sync.getStatus(TEST_STUDY_ID).state).toBe("limit_exceeded");
+        };
+
+        it("拒否からの復帰で、レイヤーを消して同じ設定で作り直した操作が取り消されない", async () => {
+            const harness = await createSyncedHarness();
+            // サーバーにあるレイヤー: 表示名「旧」、2 つのノートに深さ 30 の結果。
+            await harness.sync.applyOps(TEST_STUDY_ID, [
+                { type: "ensureLayer", spec, display: { label: "旧" } },
+                putResult(spec, firstId, 30),
+                putResult(spec, secondId, 30),
+            ]);
+            await harness.sync.flush(TEST_STUDY_ID);
+            await enterRejectedState(harness);
+
+            // 利用者がレイヤーを消して、同じ設定で作り直した（結果は深さ 5 を 1 つだけ）。
+            await harness.sync.applyOps(TEST_STUDY_ID, [
+                { type: "deleteLayer", layerId: studyLayerId(spec) },
+                { type: "ensureLayer", spec, display: { label: "新" } },
+                putResult(spec, firstId, 5),
+                comment("短い", rootId),
+            ]);
+            await harness.advance(5000);
+
+            expect(harness.sync.getStatus(TEST_STUDY_ID)).toMatchObject({
+                state: "synced",
+                pendingCount: 0,
+            });
+            const local = await expectSameAsServer(harness);
+            // 旧い結果（深さ 30）や旧い表示名が戻っていない。
+            expect(local.layers).toHaveLength(1);
+            expect(local.layers[0].display).toEqual({ label: "新" });
+            expect(Object.keys(local.layers[0].results)).toEqual([firstId]);
+            expect(local.layers[0].results[firstId].depth).toBe(5);
+            // 削除と、同じ設定での作り直しは、別のバッチで送る。
+            const accepted = harness
+                .postOpsCalls()
+                .filter((call) => call.status === 200)
+                .map((call) => call.body.ops.map((op) => op.type));
+            const deleteBatch = accepted.findIndex((types) => types.includes("deleteLayer"));
+            const ensureBatch = accepted.findIndex(
+                (types, index) => index > 0 && types.includes("ensureLayer"),
+            );
+            expect(deleteBatch).toBeGreaterThan(0);
+            expect(ensureBatch).toBeGreaterThan(deleteBatch);
+        });
+
+        it("拒否からの復帰で、枝を消して同じ手順で作り直しても、配下の旧い結果やコメントが戻らない", async () => {
+            const harness = await createSyncedHarness();
+            await harness.sync.applyOps(TEST_STUDY_ID, [
+                { type: "ensureLayer", spec, display: { label: "RAMU・1 秒" } },
+                putResult(spec, firstId, 30),
+                putResult(spec, secondId, 30),
+                comment("旧いコメント", secondId),
+                { type: "setBookmark", nodeId: secondId, value: true },
+            ]);
+            await harness.sync.flush(TEST_STUDY_ID);
+            await enterRejectedState(harness);
+
+            // 初手より先を消して、同じ手順で作り直した。
+            await harness.sync.applyOps(TEST_STUDY_ID, [
+                { type: "deleteSubtree", nodeId: firstId },
+                { type: "addMoves", parentId: rootId, moves: ["7g7f", "3c3d"] },
+                comment("新しいコメント", firstId),
+                comment("短い", rootId),
+            ]);
+            await harness.advance(5000);
+
+            expect(harness.sync.getStatus(TEST_STUDY_ID).state).toBe("synced");
+            const local = await expectSameAsServer(harness);
+            expect(local.tree.nodes[firstId].comment).toBe("新しいコメント");
+            expect(local.tree.nodes[secondId]).toMatchObject({ comment: "", bookmarked: false });
+            expect(local.layers[0].results).toEqual({});
+        });
+
+        it("拒否からの復帰で、消して作り直したレイヤーの優先度の低い結果が、旧い結果に負けない", async () => {
+            const harness = await createSyncedHarness();
+            await harness.sync.applyOps(TEST_STUDY_ID, [
+                { type: "ensureLayer", spec, display: { label: "RAMU・1 秒" } },
+                putResult(spec, firstId, 30),
+            ]);
+            await harness.sync.flush(TEST_STUDY_ID);
+            await enterRejectedState(harness);
+            // 他の端末がさらに深い結果を入れた（この端末は未取り込み）。
+            harness.server.applyFromOtherDevice(TEST_STUDY_ID, [putResult(spec, firstId, 40)]);
+
+            await harness.sync.applyOps(TEST_STUDY_ID, [
+                { type: "deleteLayer", layerId: studyLayerId(spec) },
+                { type: "ensureLayer", spec, display: { label: "RAMU・1 秒" } },
+                putResult(spec, firstId, 3),
+                comment("短い", rootId),
+            ]);
+            await harness.advance(5000);
+            expect(harness.sync.getStatus(TEST_STUDY_ID).state).toBe("synced");
+            const local = await expectSameAsServer(harness);
+            expect(local.layers[0].results[firstId].depth).toBe(3);
+        });
+
+        it("別のアカウントのノートは削除できない（持ち主が戻ったときにサーバーから消えない）", async () => {
+            const harness = await createSyncedHarness();
+            harness.login(USER_B);
+            await expect(harness.sync.deleteStudy(TEST_STUDY_ID)).rejects.toMatchObject({
+                code: "not_found",
+            });
+            harness.login(null);
+            await expect(harness.sync.deleteStudy(TEST_STUDY_ID)).rejects.toMatchObject({
+                code: "not_found",
+            });
+            expect((await harness.store.read(TEST_STUDY_ID)).study?.deleting).toBe(false);
+
+            harness.login(USER_A);
+            await harness.advance(0);
+            expect(harness.server.study(TEST_STUDY_ID)).not.toBeNull();
+            expect((await harness.sync.listLocal()).map((item) => item.id)).toEqual([
+                TEST_STUDY_ID,
+            ]);
+            // 無いノートの削除は、これまでどおり何もしない。
+            await expect(harness.sync.deleteStudy("missing")).resolves.toBeUndefined();
+        });
+
+        it("作成が上限超過で拒否されたノートは、検証が通るようになるまで作成を送り直さない", async () => {
+            const harness = createHarness();
+            harness.login(USER_A);
+            // 4 KiB を超えるコメントのあるノート（ローカルには残すが、サーバーは 422）。
+            const oversize = applyStudyOps(doc, [comment("あ".repeat(1400))]);
+            await harness.sync.createStudy(oversize);
+            await harness.advance(0);
+            const creates = () => harness.server.calls.filter((call) => call.method === "create");
+            expect(creates().map((call) => call.status)).toEqual([422]);
+            expect(harness.sync.getStatus(TEST_STUDY_ID)).toMatchObject({
+                state: "limit_exceeded",
+                limit: "commentBytes",
+            });
+
+            // 関係のない編集を重ねても、作成の本文を送り直さない。
+            for (const text of ["一", "二", "三"]) {
+                await harness.sync.applyOps(TEST_STUDY_ID, [comment(text, rootId)]);
+                await harness.advance(5000);
+            }
+            await harness.advance(3_600_000);
+            expect(creates()).toHaveLength(1);
+
+            // 超過を直すと、次の送信で作成が通る。
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("短くした")]);
+            await harness.advance(5000);
+            expect(creates().map((call) => call.status)).toEqual([422, 201]);
+            expect(harness.sync.getStatus(TEST_STUDY_ID).state).toBe("synced");
+            await expectSameAsServer(harness);
+        });
+
+        it("ノートの件数の上限で拒否された作成は、編集のたびには送らず、間隔を空けて試し直す", async () => {
+            const harness = createHarness();
+            harness.server.limits.studiesPerUser = 0;
+            harness.login(USER_A);
+            await harness.sync.createStudy(doc);
+            await harness.advance(0);
+            const creates = () => harness.server.calls.filter((call) => call.method === "create");
+            expect(creates()).toHaveLength(1);
+            expect(harness.sync.getStatus(TEST_STUDY_ID)).toMatchObject({
+                state: "limit_exceeded",
+                limit: "studiesPerUser",
+            });
+
+            for (const text of ["一", "二", "三"]) {
+                await harness.sync.applyOps(TEST_STUDY_ID, [comment(text)]);
+                await harness.advance(5000);
+            }
+            expect(creates()).toHaveLength(1);
+
+            // 10 分以上あとの編集では、もう一度だけ試す（まだ上限なら、また待つ）。
+            await harness.advance(600_000);
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("四")]);
+            await harness.advance(5000);
+            expect(creates()).toHaveLength(2);
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("五")]);
+            await harness.advance(5000);
+            expect(creates()).toHaveLength(2);
+
+            // 上限が空いたあとは、間隔を空けた再試行か明示の再試行で通る。
+            harness.server.limits.studiesPerUser = 200;
+            await harness.sync.retry(TEST_STUDY_ID);
+            expect(creates()).toHaveLength(3);
+            expect(harness.sync.getStatus(TEST_STUDY_ID).state).toBe("synced");
+            await expectSameAsServer(harness);
+        });
+
+        it("ノードの追加と、そのノードへのしおりは、バッチの切れ目で分けない", async () => {
+            const harness = await createSyncedHarness();
+            // 199 個の操作のあとに「ノードの追加 → そのノードにしおり」を置く（200 個目で切れる位置）。
+            const branch = studyChildNodeId(firstId, "8c8d");
+            await harness.sync.applyOps(TEST_STUDY_ID, [
+                ...Array.from({ length: 199 }, (_, i) => comment(`コメント ${i}`)),
+                { type: "addMoves", parentId: firstId, moves: ["8c8d"] },
+                { type: "setBookmark", nodeId: branch, value: true },
+            ]);
+            await harness.sync.flush(TEST_STUDY_ID);
+            expect(
+                harness.postOpsCalls().map((call) => call.body.ops.map((op) => op.type).slice(-2)),
+            ).toEqual([
+                ["setComment", "setComment"],
+                ["addMoves", "setBookmark"],
+            ]);
+            expect(harness.postOpsCalls().map((call) => call.body.ops.length)).toEqual([199, 2]);
+            await expectSameAsServer(harness);
+        });
+    });
 });

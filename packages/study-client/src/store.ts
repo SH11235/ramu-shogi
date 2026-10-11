@@ -18,7 +18,15 @@ export const STUDY_RECORD_VERSION = 1;
 export type StudyRemoteState =
     | { state: "ok" }
     /** 上限超過（413 / 422）。`atSeq` より新しい操作が積まれるまで再送しない。 */
-    | { state: "limit_exceeded"; limit: string; atSeq: number }
+    | {
+          state: "limit_exceeded";
+          limit: string;
+          atSeq: number;
+          /** 拒否された時点で、ローカルの検証（`validateStudyDocument`）は通っていたか。 */
+          locallyValid?: boolean;
+          /** 拒否された時刻（Unix ミリ秒）。作成の再試行の間隔を空けるのに使う。 */
+          rejectedAt?: number;
+      }
     /** 入力不正など（400 / 409 `ID_CONFLICT`）。`atSeq` より新しい操作が積まれるまで再送しない。 */
     | {
           state: "rejected";

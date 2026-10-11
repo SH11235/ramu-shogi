@@ -452,11 +452,54 @@ describe("backend と揃えた検証（レビュー 2 巡目）", () => {
         expectInvalid(() => assertStudyLayerDisplay(display));
     });
 
-    it("source.kind の長さは UTF-16 のコード単位で数える（backend の zod と同じ）", () => {
+    it("文字数の上限は Unicode のコードポイントで数える（backend の zod 4 と同じ。絵文字は 1 文字）", () => {
         const source = { score: null, pv: null, elapsedMs: null };
-        // 絵文字は 1 文字で 2 コード単位。16 個で 32、17 個で 34。
-        expect(() => assertStudySource({ ...source, kind: "😀".repeat(16) })).not.toThrow();
-        expectInvalid(() => assertStudySource({ ...source, kind: "😀".repeat(17) }));
+        // source.kind は 1〜32 文字。絵文字 32 個（UTF-16 では 64 コード単位）は通り、33 個は通らない。
+        expect(() => assertStudySource({ ...source, kind: "😀".repeat(32) })).not.toThrow();
+        expectInvalid(() => assertStudySource({ ...source, kind: "😀".repeat(33) }));
+        expect(() => assertStudySource({ ...source, kind: "a".repeat(32) })).not.toThrow();
+        expectInvalid(() => assertStudySource({ ...source, kind: "a".repeat(33) }));
+        // origin.ref は 1〜256 文字。
+        const withRef = (ref: string): StudyDocument => ({
+            ...doc,
+            origin: { kind: "game_record", ref },
+        });
+        expect(() => validateStudyDocument(withRef("😀".repeat(256)))).not.toThrow();
+        expectInvalid(() => validateStudyDocument(withRef("😀".repeat(257))));
+        // 取り込みも同じ数え方。
+        const create = (ref: string) =>
+            createStudyDocumentFromMoves({
+                id: STUDY_ID,
+                title: "検証",
+                origin: { kind: "game_record", ref },
+                startSfen: "startpos",
+                moves: [],
+            });
+        expect(() => create("😀".repeat(256))).not.toThrow();
+        expect(() => create("😀".repeat(257))).toThrow();
+    });
+
+    it("値が undefined の余分なキーは、JSON にすると消えるので無いものとして扱う", () => {
+        expect(() =>
+            applyStudyOpsStrict(doc, [
+                { type: "setComment", nodeId: firstId, value: "x", note: undefined } as StudyOp,
+            ]),
+        ).not.toThrow();
+        expect(() =>
+            assertStudyAnalysisResult({ ...result(), extra: undefined } as StudyAnalysisResult),
+        ).not.toThrow();
+        // 必要なキーの値が undefined なら、欠けているのと同じで入力不正。
+        expectInvalid(() => assertStudyAnalysisResult({ ...result(), timeMs: undefined } as never));
+        expectInvalid(() =>
+            applyStudyOpsStrict(doc, [
+                {
+                    type: "setComment",
+                    nodeId: firstId,
+                    value: "x",
+                    note: null,
+                } as unknown as StudyOp,
+            ]),
+        );
     });
 
     it("既に上限を超えている文書でも、減らす操作は通す（増やす操作は拒否する）", () => {

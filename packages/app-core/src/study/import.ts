@@ -70,7 +70,9 @@ const checkedOrigin = (origin: StudyOrigin): StudyOrigin => {
         if (origin.ref !== null) throw new Error("origin: paste の ref は null にします");
         return { kind: "paste", ref: null };
     }
-    if (typeof origin.ref !== "string" || origin.ref.length < 1 || origin.ref.length > 256) {
+    // 文字数は Unicode のコードポイントで数える（backend と同じ）。
+    const refLength = typeof origin.ref === "string" ? Array.from(origin.ref).length : 0;
+    if (refLength < 1 || refLength > 256) {
         throw new Error("origin: 元棋譜の識別子（1〜256 文字）が必要です");
     }
     return { kind: origin.kind, ref: origin.ref };
