@@ -9,7 +9,7 @@
  * - 上限超過は `StudyLimitError`（サーバーの 422 に相当。`limit` に上限の名前）
  */
 
-import { canonicalJSON } from "./ids";
+import { canonicalJSON, studyChildNodeId, studyRootNodeId } from "./ids";
 import { applyStudyOp, isStudyUsiMove, StudyOpError } from "./ops";
 import {
     STUDY_LIMITS,
@@ -23,6 +23,7 @@ import {
     type StudySource,
     type StudyTree,
 } from "./types";
+import { exceedsUtf8Bytes, utf8ByteLength } from "./utf8";
 
 /** 上限（設計書 5.7）を超える操作・文書。`limit` は超えた上限の名前。 */
 export class StudyLimitError extends StudyOpError {
@@ -40,31 +41,15 @@ export const STUDY_FREE_JSON_MAX_DEPTH = 8;
 
 const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+const HASH_ID_PATTERN = /^[0-9a-f]{32}$/;
+
+/** `nodeId` / `layerId` の書式（SHA-256 の先頭 32 文字、小文字 hex）か。 */
+const isHashId = (value: unknown): value is string =>
+    typeof value === "string" && HASH_ID_PATTERN.test(value);
 
 /** クライアント生成の ID（`studyId` / `runId` / `batchId`）として使える、小文字の UUID v4 か。 */
 export function isStudyUuid(value: unknown): value is string {
     return typeof value === "string" && UUID_V4_PATTERN.test(value);
-}
-
-/** UTF-8 にしたときのバイト数が limit を超えるか（必要なときだけ数える）。 */
-function exceedsUtf8Bytes(value: string, limit: number): boolean {
-    if (value.length > limit) return true;
-    if (value.length * 3 <= limit) return false;
-    let bytes = 0;
-    for (let i = 0; i < value.length; i++) {
-        const code = value.charCodeAt(i);
-        if (code < 0x80) bytes += 1;
-        else if (code < 0x800) bytes += 2;
-        else if (code >= 0xd800 && code <= 0xdbff && i + 1 < value.length) {
-            const next = value.charCodeAt(i + 1);
-            if (next >= 0xdc00 && next <= 0xdfff) {
-                bytes += 4;
-                i++;
-            } else bytes += 3;
-        } else bytes += 3;
-        if (bytes > limit) return true;
-    }
-    return false;
 }
 
 /**
@@ -276,6 +261,10 @@ export function assertStudyLayerDisplay(display: StudyLayerDisplay): void {
     if (!isRecord(display) || typeof display.label !== "string") {
         invalid("レイヤーの display: label が必要です");
     }
+    // `__proto__` という名前のキーは、サーバーの検証で落ちたり挙動が変わったりするので受け付けない。
+    if (Object.hasOwn(display, "__proto__")) {
+        invalid("レイヤーの display: __proto__ という名前の項目は使えません");
+    }
     for (const value of Object.values(display as Record<string, unknown>)) {
         if (value !== undefined && !isBoundedStudyJson(value)) {
             invalid("レイヤーの display: 追加の項目の入れ子が深すぎるか、JSON にできません");
@@ -307,35 +296,58 @@ export function assertStudyComment(comment: string): void {
  * 文書に依る上限（ノード数、手順の長さ、レイヤー数、JSON の大きさ）は `applyStudyOpsStrict` が見る。
  */
 export function assertStudyOpInput(op: StudyOp): void {
+    const hashId = (value: unknown, what: string): void => {
+        if (!isHashId(value)) invalid(`${op.type}: ${what} は 32 文字の小文字 hex にします`);
+    };
     switch (op.type) {
         case "addMoves":
+            assertExactKeys(op, ["type", "parentId", "moves"], "addMoves");
+            hashId(op.parentId, "parentId");
             // 手順の形（1 手以上、USI の書式）は適用時に確かめる。
             return;
         case "setComment":
+            assertExactKeys(op, ["type", "nodeId", "value"], "setComment");
+            hashId(op.nodeId, "nodeId");
             assertStudyComment(op.value);
             return;
         case "setBookmark":
+            assertExactKeys(op, ["type", "nodeId", "value"], "setBookmark");
+            hashId(op.nodeId, "nodeId");
             if (typeof op.value !== "boolean") invalid("setBookmark: 値は真偽値にします");
             return;
         case "setSource":
+            assertExactKeys(op, ["type", "nodeId", "value"], "setSource");
+            hashId(op.nodeId, "nodeId");
             assertStudySource(op.value);
             return;
         case "reorderChildren":
-            if (!Array.isArray(op.value) || !op.value.every((id) => typeof id === "string")) {
-                invalid("reorderChildren: 子の nodeId の配列にします");
+            assertExactKeys(op, ["type", "parentId", "value"], "reorderChildren");
+            hashId(op.parentId, "parentId");
+            if (!Array.isArray(op.value) || !op.value.every((id) => isHashId(id))) {
+                invalid("reorderChildren: 子の nodeId（32 文字の小文字 hex）の配列にします");
             }
             return;
         case "deleteSubtree":
+            assertExactKeys(op, ["type", "nodeId"], "deleteSubtree");
+            hashId(op.nodeId, "nodeId");
+            return;
         case "deleteLayer":
+            assertExactKeys(op, ["type", "layerId"], "deleteLayer");
+            hashId(op.layerId, "layerId");
             return;
         case "ensureLayer":
+            assertExactKeys(op, ["type", "spec", "display"], "ensureLayer");
             assertStudyLayerSpec(op.spec);
             assertStudyLayerDisplay(op.display);
             return;
         case "putAnalysis":
+            assertExactKeys(op, ["type", "layerId", "nodeId", "result"], "putAnalysis");
+            hashId(op.layerId, "layerId");
+            hashId(op.nodeId, "nodeId");
             assertStudyAnalysisResult(op.result);
             return;
         case "setTitle":
+            assertExactKeys(op, ["type", "value"], "setTitle");
             assertStudyTitle(op.value);
             return;
         default: {
@@ -370,6 +382,11 @@ const endOfLine = (tree: StudyTree, parentId: string, moves: readonly string[]):
     return currentId;
 };
 
+const treeBytes = (tree: StudyTree): number => utf8ByteLength(JSON.stringify(tree));
+
+const resultsBytes = (results: Record<string, StudyAnalysisResult>): number =>
+    utf8ByteLength(JSON.stringify(results));
+
 const assertTreeBytes = (tree: StudyTree): void => {
     if (exceedsUtf8Bytes(JSON.stringify(tree), STUDY_LIMITS.treeBytes)) {
         throw new StudyLimitError("treeBytes");
@@ -394,11 +411,19 @@ export function applyStudyOpsStrict(doc: StudyDocument, ops: readonly StudyOp[])
         assertStudyOpInput(op);
         const next = applyStudyOp(current, op);
         if (next.tree !== current.tree && op.type === "addMoves") {
-            if (Object.keys(next.tree.nodes).length > STUDY_LIMITS.nodesPerStudy) {
+            // この操作でノードが増えたときだけ見る（新しいノードが上限の外に出るか）。
+            const count = Object.keys(next.tree.nodes).length;
+            if (
+                count > STUDY_LIMITS.nodesPerStudy &&
+                count > Object.keys(current.tree.nodes).length
+            ) {
                 throw new StudyLimitError("nodesPerStudy");
             }
             const end = endOfLine(next.tree, op.parentId, op.moves);
-            if (depthOf(next.tree, end) > STUDY_LIMITS.lineLength) {
+            if (
+                !Object.hasOwn(current.tree.nodes, end) &&
+                depthOf(next.tree, end) > STUDY_LIMITS.lineLength
+            ) {
                 throw new StudyLimitError("lineLength");
             }
         }
@@ -410,12 +435,68 @@ export function applyStudyOpsStrict(doc: StudyDocument, ops: readonly StudyOp[])
         }
         current = next;
     }
-    if (current.tree !== doc.tree) assertTreeBytes(current.tree);
+    // 大きさの上限は「変更後が上限を超え、かつ変更前より増える」ときだけ拒否する。
+    // 既に上限を超えている文書（上限を超える棋譜から作ったノートなど）でも、減らす操作
+    // （コメントを消す、枝を消す）は通す。通さないと、利用者が超過を解消できない。
+    if (current.tree !== doc.tree) {
+        const after = JSON.stringify(current.tree);
+        if (
+            exceedsUtf8Bytes(after, STUDY_LIMITS.treeBytes) &&
+            utf8ByteLength(after) > treeBytes(doc.tree)
+        ) {
+            throw new StudyLimitError("treeBytes");
+        }
+    }
     for (const layer of current.layers) {
         const before = doc.layers.find((item) => item.id === layer.id);
-        if (before?.results !== layer.results) assertLayerResultsBytes(layer.results);
+        if (before?.results === layer.results) continue;
+        const after = JSON.stringify(layer.results);
+        if (
+            exceedsUtf8Bytes(after, STUDY_LIMITS.layerResultsBytes) &&
+            utf8ByteLength(after) > (before ? resultsBytes(before.results) : 0)
+        ) {
+            throw new StudyLimitError("layerResultsBytes");
+        }
     }
     return current;
+}
+
+/** SFEN の 4 フィールドを空白 1 つで区切った文字列か（`startpos` は不可。backend と同じ規則）。 */
+export function isStudyStartSfen(sfen: unknown): sfen is string {
+    if (typeof sfen !== "string" || sfen.length > 512) return false;
+    const fields = sfen.split(" ");
+    if (fields.length !== 4) return false;
+    const [board, turn, hands, ply] = fields;
+    if (turn !== "b" && turn !== "w") return false;
+    if (!/^[1-9]\d*$/.test(ply) || !Number.isSafeInteger(Number(ply))) return false;
+    if (hands !== "-") {
+        // 持ち駒は「枚数（省略可）+ 駒」の並びで、同じ駒は 1 回だけ。
+        const pieces = new Set<string>();
+        let consumed = "";
+        for (const token of hands.matchAll(/([1-9]\d*)?([RBGSNLPrbgsnlp])/g)) {
+            if (pieces.has(token[2])) return false;
+            pieces.add(token[2]);
+            consumed += token[0];
+        }
+        if (consumed.length === 0 || consumed !== hands) return false;
+    }
+    const ranks = board.split("/");
+    if (ranks.length !== 9) return false;
+    for (const rank of ranks) {
+        let squares = 0;
+        for (let i = 0; i < rank.length; i++) {
+            const piece = rank[i];
+            if (/^[1-9]$/.test(piece)) squares += Number(piece);
+            else if (piece === "+") {
+                const promoted = rank[++i];
+                if (!promoted || !/^[PLNSBRplnsbr]$/.test(promoted)) return false;
+                squares++;
+            } else if (/^[PLNSGBRKplnsgbrk]$/.test(piece)) squares++;
+            else return false;
+        }
+        if (squares !== 9) return false;
+    }
+    return true;
 }
 
 /**
@@ -425,11 +506,26 @@ export function applyStudyOpsStrict(doc: StudyDocument, ops: readonly StudyOp[])
 export function validateStudyDocument(doc: StudyDocument): void {
     if (!isStudyUuid(doc.id)) invalid("研究ノートの ID は小文字の UUID v4 にします");
     assertStudyTitle(doc.title);
-    if (doc.origin.kind === "paste" ? doc.origin.ref !== null : !doc.origin.ref) {
-        invalid("origin: paste は ref が null、それ以外は ref が必要です");
+    assertExactKeys(doc.origin, ["kind", "ref"], "origin");
+    if (!["rshogi_csa", "game_record", "paste"].includes(doc.origin.kind)) {
+        invalid("origin: kind が正しくありません");
     }
-    if (doc.startSfen.split(" ").length !== 4 || doc.startSfen.trim() !== doc.startSfen) {
+    if (doc.origin.kind === "paste") {
+        if (doc.origin.ref !== null) invalid("origin: paste は ref を null にします");
+    } else if (
+        typeof doc.origin.ref !== "string" ||
+        doc.origin.ref.length < 1 ||
+        doc.origin.ref.length > 256
+    ) {
+        invalid("origin: 元棋譜の識別子（1〜256 文字）が必要です");
+    }
+    if (!isStudyStartSfen(doc.startSfen)) {
         invalid("startSfen は SFEN の 4 フィールドを空白 1 つで区切った形にします");
+    }
+    assertExactKeys(doc.rules, ["variant"], "rules");
+    if (doc.rules.variant !== "standard") invalid("rules: variant が正しくありません");
+    if (!isRecord(doc.meta) || Object.hasOwn(doc.meta, "__proto__")) {
+        invalid("meta: __proto__ という名前の項目は使えません");
     }
     if (!Object.values(doc.meta).every((value) => typeof value === "string")) {
         invalid("meta の値は文字列にします");
@@ -441,7 +537,13 @@ export function validateStudyDocument(doc: StudyDocument): void {
     const { nodes, rootId } = doc.tree;
     const nodeCount = Object.keys(nodes).length;
     if (nodeCount > STUDY_LIMITS.nodesPerStudy) throw new StudyLimitError("nodesPerStudy");
+    if (rootId !== studyRootNodeId(doc.startSfen, doc.rules)) {
+        invalid("ツリーのルートの nodeId が開始局面と一致しません");
+    }
     if (!Object.hasOwn(nodes, rootId)) invalid("ツリーにルートがありません");
+    if (nodes[rootId].parentId !== null || nodes[rootId].usiMove !== null) {
+        invalid("ルートのノードは親と指し手を持てません");
+    }
     let visited = 0;
     const stack: Array<{ id: string; depth: number }> = [{ id: rootId, depth: 0 }];
     while (stack.length > 0) {
@@ -449,11 +551,26 @@ export function validateStudyDocument(doc: StudyDocument): void {
         const node = nodes[id];
         visited++;
         if (visited > nodeCount) invalid("ツリーに循環があります");
+        assertExactKeys(
+            node,
+            ["parentId", "usiMove", "children", "comment", "bookmarked", "source"],
+            "ノード",
+        );
+        if (typeof node.bookmarked !== "boolean") invalid("ノード: bookmarked は真偽値にします");
         assertStudyComment(node.comment);
         assertStudySource(node.source);
+        const seen = new Set<string>();
         for (const childId of node.children) {
+            if (seen.has(childId)) invalid("ツリーに同じ子が 2 回あります");
+            seen.add(childId);
             if (!Object.hasOwn(nodes, childId) || nodes[childId].parentId !== id) {
                 invalid("ツリーの親子の対応が正しくありません");
+            }
+            const move = nodes[childId].usiMove;
+            if (!isStudyUsiMove(move)) invalid("ツリーに USI の書式でない指し手があります");
+            // nodeId は親と指し手から決まる。合わないとサーバーの照合に通らない。
+            if (studyChildNodeId(id, move as string) !== childId) {
+                invalid("ツリーの nodeId が親と指し手から計算した値と一致しません");
             }
             if (depth + 1 > STUDY_LIMITS.lineLength) throw new StudyLimitError("lineLength");
             stack.push({ id: childId, depth: depth + 1 });

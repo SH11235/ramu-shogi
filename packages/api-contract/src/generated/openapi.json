@@ -3235,6 +3235,16 @@
                                 }
                             }
                         }
+                    },
+                    "503": {
+                        "description": "Concurrent changes kept the create from settling; retry after Retry-After",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
                     }
                 }
             }

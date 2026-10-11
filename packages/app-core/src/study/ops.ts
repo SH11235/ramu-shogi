@@ -19,6 +19,7 @@ import {
     type StudyOp,
     type StudySource,
 } from "./types";
+import { exceedsUtf8Bytes } from "./utf8";
 
 /** 入力として成り立たない操作を適用しようとした。 */
 export class StudyOpError extends Error {
@@ -278,20 +279,6 @@ export function applyStudyOps(doc: StudyDocument, ops: readonly StudyOp[]): Stud
     return next;
 }
 
-const utf8Length = (text: string): number => {
-    let bytes = 0;
-    for (let i = 0; i < text.length; i++) {
-        const code = text.charCodeAt(i);
-        if (code < 0x80) bytes += 1;
-        else if (code < 0x800) bytes += 2;
-        else if (code >= 0xd800 && code <= 0xdbff) {
-            bytes += 4;
-            i++;
-        } else bytes += 3;
-    }
-    return bytes;
-};
-
 /**
  * 統合先のコメントと手元のコメントを 1 つにする。どちらも失わない:
  * 片方が空なら空でない方、同じ内容なら 1 つ、違う内容なら統合先の後ろに改行 2 つで手元側を
@@ -300,10 +287,12 @@ const utf8Length = (text: string): number => {
 export function mergeStudyComments(existing: string, incoming: string): string {
     if (incoming === "" || incoming === existing) return existing;
     if (existing === "") return incoming;
-    // 既に取り込み済み（統合のやり直し）なら、もう一度はつながない。
-    if (existing.endsWith(`\n\n${incoming}`)) return existing;
+    // 統合先のコメントに手元のコメントが既に含まれていれば、もう一度はつながない。
+    // 統合のやり直し（取り込みの途中で止まり、その間に統合先のコメントへ追記があった場合を
+    // 含む）で二重にならないよう、末尾の一致ではなく「含まれているか」で判定する。
+    if (existing.includes(incoming)) return existing;
     const merged = `${existing}\n\n${incoming}`;
-    return utf8Length(merged) > STUDY_LIMITS.commentBytes ? existing : merged;
+    return exceedsUtf8Bytes(merged, STUDY_LIMITS.commentBytes) ? existing : merged;
 }
 
 /**

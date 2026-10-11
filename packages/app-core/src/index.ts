@@ -326,6 +326,7 @@ export {
     assertStudySource,
     assertStudyTitle,
     isBoundedStudyJson,
+    isStudyStartSfen,
     isStudyUuid,
     STUDY_FREE_JSON_MAX_DEPTH,
     StudyLimitError,

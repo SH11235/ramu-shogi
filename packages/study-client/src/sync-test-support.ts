@@ -83,6 +83,7 @@ const fail = <T>(status: number, error: StudyApiErrorBody = {}): StudyApiResult<
 
 const NETWORK_FAILURE = { ok: false, status: 0, error: { error: "NETWORK_ERROR" } } as const;
 
+const USI_MOVE = /^(?:[1-9][a-i][1-9][a-i]\+?|[PLNSBRG]\*[1-9][a-i])$/;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 type Rejection = { status: number; error: StudyApiErrorBody } | null;
@@ -171,6 +172,7 @@ function validateCreate(body: CreateStudyRequest, limits: Record<StudyLimitName,
     if (body.origin.kind === "paste" ? body.origin.ref !== null : !body.origin.ref) {
         return invalidRequest;
     }
+    if (body.origin.ref !== null && body.origin.ref.length > 256) return invalidRequest;
     const layers = body.layers ?? [];
     const over = documentLimit(
         { tree: body.tree, layers: layers.map((l) => ({ ...l, id: "" })) },
@@ -179,6 +181,8 @@ function validateCreate(body: CreateStudyRequest, limits: Record<StudyLimitName,
     if (over) return limitExceeded(over);
     for (const node of Object.values(body.tree.nodes)) {
         if (utf8Bytes(node.comment) > limits.commentBytes) return limitExceeded("commentBytes");
+        // 読み筋は USI の書式の手だけ。
+        if (node.source?.pv?.some((move) => !USI_MOVE.test(move))) return invalidRequest;
     }
     const layerIds = new Set<string>();
     for (const layer of layers) {
@@ -478,9 +482,14 @@ export function createFakeStudyServer(): FakeStudyServer {
                             next = {
                                 ...next,
                                 layers: [
-                                    ...next.layers.filter((layer) =>
-                                        layersBefore.includes(layer.id),
-                                    ),
+                                    // 同じバッチで消して作り直したレイヤーは、元の位置に戻る。
+                                    ...next.layers
+                                        .filter((layer) => layersBefore.includes(layer.id))
+                                        .sort(
+                                            (a, b) =>
+                                                layersBefore.indexOf(a.id) -
+                                                layersBefore.indexOf(b.id),
+                                        ),
                                     ...next.layers
                                         .filter((layer) => !layersBefore.includes(layer.id))
                                         .sort((a, b) => (a.id < b.id ? -1 : 1)),

@@ -16,6 +16,7 @@ import {
     assertStudyLayerSpec,
     assertStudySource,
     isBoundedStudyJson,
+    isStudyStartSfen,
     isStudyUuid,
     StudyLimitError,
     validateStudyDocument,
@@ -136,7 +137,7 @@ describe("操作の入力の検証（サーバーと同じ規則）", () => {
         expectLimit(
             () =>
                 applyStudyOpsStrict(doc, [
-                    { type: "setComment", nodeId: "missing", value: "😀".repeat(1025) },
+                    { type: "setComment", nodeId: "0".repeat(32), value: "😀".repeat(1025) },
                 ]),
             "commentBytes",
         );
@@ -413,5 +414,204 @@ describe("validateStudyDocument", () => {
             },
         ]);
         expectLimit(() => validateStudyDocument(tooLong), "lineLength");
+    });
+});
+
+describe("backend と揃えた検証（レビュー 2 巡目）", () => {
+    const doc = baseDoc();
+    const rootId = doc.tree.rootId;
+    const firstId = studyChildNodeId(rootId, "7g7f");
+
+    it("操作の直下の未知のキー、nodeId / layerId の書式を拒否する", () => {
+        const invalidOps: unknown[] = [
+            { type: "setComment", nodeId: firstId, value: "x", extra: 1 },
+            { type: "setComment", nodeId: "missing", value: "x" },
+            { type: "setComment", nodeId: firstId.toUpperCase(), value: "x" },
+            { type: "setBookmark", nodeId: "x", value: true },
+            { type: "setSource", nodeId: "x", value: null },
+            { type: "addMoves", parentId: "root", moves: ["7g7f"] },
+            { type: "addMoves", parentId: rootId, moves: ["2g2f"], comment: "x" },
+            { type: "reorderChildren", parentId: rootId, value: [firstId, "short"] },
+            { type: "deleteSubtree", nodeId: "x" },
+            { type: "deleteLayer", layerId: "x" },
+            { type: "putAnalysis", layerId: "x", nodeId: firstId, result: result() },
+            { type: "setTitle", value: "x", nodeId: firstId },
+            { type: "ensureLayer", spec: spec(), display: { label: "x" }, id: "x" },
+        ];
+        for (const op of invalidOps) {
+            expectInvalid(() => applyStudyOpsStrict(doc, [op as StudyOp]));
+        }
+        // 書式の正しい（が存在しない）ノードへの操作は、これまでどおり読み飛ばす。
+        expect(
+            applyStudyOpsStrict(doc, [{ type: "setComment", nodeId: "0".repeat(32), value: "x" }]),
+        ).toBe(doc);
+    });
+
+    it("display の __proto__ という名前の項目を拒否する", () => {
+        const display = JSON.parse('{"label":"x","__proto__":{"a":1}}');
+        expectInvalid(() => assertStudyLayerDisplay(display));
+    });
+
+    it("source.kind の長さは UTF-16 のコード単位で数える（backend の zod と同じ）", () => {
+        const source = { score: null, pv: null, elapsedMs: null };
+        // 絵文字は 1 文字で 2 コード単位。16 個で 32、17 個で 34。
+        expect(() => assertStudySource({ ...source, kind: "😀".repeat(16) })).not.toThrow();
+        expectInvalid(() => assertStudySource({ ...source, kind: "😀".repeat(17) }));
+    });
+
+    it("既に上限を超えている文書でも、減らす操作は通す（増やす操作は拒否する）", () => {
+        // 4 KiB 弱のコメントが 240 個で、ツリーの JSON は 900 KB を超える。
+        const shuffle = ["5i5h", "5a5b", "5h5i", "5b5a"];
+        const long = applyStudyOps(doc, [
+            {
+                type: "addMoves",
+                parentId: rootId,
+                moves: ["4i4h", ...Array.from({ length: 240 }, (_, i) => shuffle[i % 4])],
+            },
+        ]);
+        const ids = Object.keys(long.tree.nodes);
+        const oversize = applyStudyOps(
+            long,
+            ids.map((nodeId): StudyOp => ({ type: "setComment", nodeId, value: "x".repeat(4000) })),
+        );
+        expectLimit(() => validateStudyDocument(oversize), "treeBytes");
+
+        // コメントを空にする・枝を消す・並べ替える（大きさが変わらない）は通る。
+        const emptied = applyStudyOpsStrict(oversize, [
+            { type: "setComment", nodeId: firstId, value: "" },
+        ]);
+        expect(emptied.tree.nodes[firstId].comment).toBe("");
+        expect(() =>
+            applyStudyOpsStrict(oversize, [
+                { type: "deleteSubtree", nodeId: studyChildNodeId(rootId, "4i4h") },
+            ]),
+        ).not.toThrow();
+        expect(() =>
+            applyStudyOpsStrict(oversize, [
+                {
+                    type: "reorderChildren",
+                    parentId: rootId,
+                    value: [...oversize.tree.nodes[rootId].children].reverse(),
+                },
+            ]),
+        ).not.toThrow();
+        // 増やす操作は、超過している限り拒否する。
+        expectLimit(
+            () =>
+                applyStudyOpsStrict(oversize, [
+                    { type: "setComment", nodeId: firstId, value: "x".repeat(4001) },
+                ]),
+            "treeBytes",
+        );
+        expectLimit(
+            () =>
+                applyStudyOpsStrict(oversize, [
+                    { type: "addMoves", parentId: rootId, moves: ["6i6h"] },
+                ]),
+            "treeBytes",
+        );
+        // 減らし続ければ、上限内に戻って普通に編集できる。
+        const fixed = applyStudyOpsStrict(
+            oversize,
+            ids.slice(0, 120).map((nodeId): StudyOp => ({ type: "setComment", nodeId, value: "" })),
+        );
+        expect(() => validateStudyDocument(fixed)).not.toThrow();
+        expect(() =>
+            applyStudyOpsStrict(fixed, [{ type: "addMoves", parentId: rootId, moves: ["6i6h"] }]),
+        ).not.toThrow();
+    });
+
+    it("ノード数が上限を超えている文書でも、枝を消せる・既にある手はたどれる", () => {
+        const shuffle = ["5i5h", "5a5b", "5h5i", "5b5a"];
+        const line = (first: string, length: number): string[] => [
+            first,
+            ...Array.from({ length: length - 1 }, (_, i) => shuffle[i % 4]),
+        ];
+        const over = applyStudyOps(baseDoc([]), [
+            { type: "addMoves", parentId: rootId, moves: line("4i4h", 1000) },
+            { type: "addMoves", parentId: rootId, moves: line("6i6h", 1000) },
+            { type: "addMoves", parentId: rootId, moves: line("3i3h", 10) },
+        ]);
+        expect(Object.keys(over.tree.nodes).length).toBeGreaterThan(STUDY_LIMITS.nodesPerStudy);
+        expectLimit(
+            () =>
+                applyStudyOpsStrict(over, [
+                    { type: "addMoves", parentId: rootId, moves: ["7g7f"] },
+                ]),
+            "nodesPerStudy",
+        );
+        expect(
+            applyStudyOpsStrict(over, [{ type: "addMoves", parentId: rootId, moves: ["4i4h"] }]),
+        ).toBe(over);
+        const trimmed = applyStudyOpsStrict(over, [
+            { type: "deleteSubtree", nodeId: studyChildNodeId(rootId, "3i3h") },
+        ]);
+        expect(Object.keys(trimmed.tree.nodes)).toHaveLength(2001);
+    });
+
+    it("isStudyStartSfen: backend と同じ書式だけを通す", () => {
+        expect(
+            isStudyStartSfen("lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1"),
+        ).toBe(true);
+        expect(isStudyStartSfen("7nl/7k1/6ppp/9/9/9/9/9/9 b RBGrb4g4s3n3l15p 1")).toBe(true);
+        expect(isStudyStartSfen("4k4/9/4+P4/9/9/9/9/9/4K4 w 2P 34")).toBe(true);
+        for (const sfen of [
+            "startpos",
+            "4k4/9/9/9/9/9/9/9/4K4 b -",
+            "4k4/9/9/9/9/9/9/9/4K4  b - 1",
+            "4k4/9/9/9/9/9/9/9/4K4 x - 1",
+            "4k4/9/9/9/9/9/9/9/4K4 b - 0",
+            "4k4/9/9/9/9/9/9/9/4K4 b PP 1",
+            "4k4/9/9/9/9/9/9/9/4K4 b K 1",
+            "4k4/9/9/9/9/9/9/9/4K3 b - 1",
+            "4k4/9/9/9/9/9/9/9/+K8 b - 1",
+            "4k4/9/9/9/9/9/9/4K4 b - 1",
+        ]) {
+            expect(isStudyStartSfen(sfen)).toBe(false);
+        }
+    });
+
+    it("validateStudyDocument は、作成 API が 400 にする文書を検出する", () => {
+        const secondId = studyChildNodeId(firstId, "3c3d");
+        const withNode = (id: string, patch: object): StudyDocument => ({
+            ...doc,
+            tree: {
+                ...doc.tree,
+                nodes: { ...doc.tree.nodes, [id]: { ...doc.tree.nodes[id], ...patch } },
+            },
+        });
+        const renamed = (() => {
+            // 子の nodeId を、親と指し手から導けない値に付け替える。
+            const fake = "f".repeat(32);
+            const nodes = { ...doc.tree.nodes };
+            nodes[fake] = nodes[secondId];
+            delete nodes[secondId];
+            nodes[firstId] = { ...nodes[firstId], children: [fake] };
+            return { ...doc, tree: { ...doc.tree, nodes } };
+        })();
+        const invalidDocs: StudyDocument[] = [
+            { ...doc, origin: { kind: "game_record", ref: "x".repeat(257) } },
+            { ...doc, origin: { kind: "paste", ref: "x" } },
+            { ...doc, startSfen: "4k4/9/9/9/9/9/9/9/4K4 b - 0" },
+            // 開始局面を差し替えると、ルートの nodeId が合わなくなる。
+            { ...doc, startSfen: "4k4/9/9/9/9/9/9/9/4K4 b - 1" },
+            renamed,
+            withNode(secondId, { usiMove: null }),
+            withNode(secondId, { usiMove: "pass" }),
+            withNode(firstId, { children: [secondId, secondId] }),
+            withNode(firstId, { bookmarked: "yes" }),
+            withNode(rootId, { usiMove: "7g7f" }),
+            { ...doc, meta: JSON.parse('{"__proto__":"x"}') },
+            { ...doc, meta: { blackName: 1 as unknown as string } },
+        ];
+        for (const item of invalidDocs) {
+            expectInvalid(() => validateStudyDocument(item));
+        }
+        expect(() =>
+            validateStudyDocument({
+                ...doc,
+                origin: { kind: "game_record", ref: "x".repeat(256) },
+            }),
+        ).not.toThrow();
     });
 });

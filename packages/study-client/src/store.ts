@@ -20,7 +20,17 @@ export type StudyRemoteState =
     /** 上限超過（413 / 422）。`atSeq` より新しい操作が積まれるまで再送しない。 */
     | { state: "limit_exceeded"; limit: string; atSeq: number }
     /** 入力不正など（400 / 409 `ID_CONFLICT`）。`atSeq` より新しい操作が積まれるまで再送しない。 */
-    | { state: "rejected"; code: string; message: string; atSeq: number }
+    | {
+          state: "rejected";
+          code: string;
+          message: string;
+          atSeq: number;
+          /**
+           * 拒否された時点で、ローカルの検証（`validateStudyDocument`）は通っていたか。
+           * 作成が拒否されたノートを、編集のたびに送り直さないために使う。
+           */
+          locallyValid?: boolean;
+      }
     /** サーバー側で削除済み（410）。以後は送らない。 */
     | { state: "deleted" };
 
