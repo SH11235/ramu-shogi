@@ -577,6 +577,11 @@ export function MobileLayout({
                         </div>
                     </div>
                 )}
+                {gameMode !== "playing" && message?.type === "error" && (
+                    <p role="alert" className="text-center text-sm text-destructive">
+                        {message.text}
+                    </p>
+                )}
             </footer>
 
             {displaySettings.showSearchInfo && <div className="min-h-10 w-full">{searchInfo}</div>}
