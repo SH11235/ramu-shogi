@@ -5,6 +5,7 @@
  * - `studies`: ノートの管理情報と一覧用の要約（キー: `id`）。一覧は文書の本体を読まずに出せる。
  * - `docs`: 文書の本体（キー: `id`）。
  * - `pendingOps`: 送信待ちの操作（キー: 自動採番の `seq`、索引: `studyId`）。
+ * - `viewStates`: ノートごとの表示の状態（キー: `id`。同期しない。版 2 で追加）。
  *
  * 複数タブからの書き込みは、IndexedDB の読み書きトランザクションが直列化する。
  */
@@ -17,16 +18,18 @@ import {
     StudyStorageError,
     type StudyStore,
     type StudyStoreSnapshot,
+    type StudyViewState,
     summarizeStoredStudy,
 } from "./store";
 
 export const STUDY_DB_NAME = "ramu-studies";
 /** データベースのスキーマの版。ストアや索引を変えたら上げ、`upgrade` に移行を足す。 */
-export const STUDY_DB_VERSION = 1;
+export const STUDY_DB_VERSION = 2;
 
 const STUDIES = "studies";
 const DOCS = "docs";
 const PENDING = "pendingOps";
+const VIEW_STATES = "viewStates";
 
 /** `studies` ストアの行。文書の本体は `docs` に分ける。 */
 type StudyRow = Omit<StoredStudy, "doc"> & {
@@ -39,6 +42,11 @@ type StudyRow = Omit<StoredStudy, "doc"> & {
 interface DocRow {
     id: string;
     doc: StudyDocument;
+}
+
+interface ViewStateRow {
+    id: string;
+    state: StudyViewState;
 }
 
 interface PendingRow {
@@ -62,6 +70,9 @@ function upgrade(db: IDBDatabase, oldVersion: number): void {
         db.createObjectStore(DOCS, { keyPath: "id" });
         const pending = db.createObjectStore(PENDING, { keyPath: "seq", autoIncrement: true });
         pending.createIndex("studyId", "studyId", { unique: false });
+    }
+    if (oldVersion < 2) {
+        db.createObjectStore(VIEW_STATES, { keyPath: "id" });
     }
 }
 
@@ -246,16 +257,24 @@ export function createIndexedDbStudyStore(options: IndexedDbStudyStoreOptions = 
             }
             let transaction: IDBTransaction;
             try {
-                transaction = db.transaction([STUDIES, DOCS, PENDING], "readwrite");
+                transaction = db.transaction([STUDIES, DOCS, PENDING, VIEW_STATES], "readwrite");
             } catch (error) {
                 throw toStorageError(error, "書き込みを始められません");
             }
             const done = transactionDone(transaction);
             // 途中で失敗しても done の拒否が未処理にならないようにする（下で await する）。
             done.catch(() => undefined);
+            let mutateFailure: { error: unknown } | null = null;
             try {
                 const snapshot = await readSnapshot(transaction, studyId);
-                const write = mutate(snapshot);
+                let write: ReturnType<typeof mutate>;
+                try {
+                    write = mutate(snapshot);
+                } catch (error) {
+                    // 呼び出し側の判断（対象が無い、上限超過など）による中止。保存層の失敗ではない。
+                    mutateFailure = { error };
+                    throw error;
+                }
                 const studies = transaction.objectStore(STUDIES);
                 const docs = transaction.objectStore(DOCS);
                 const pending = transaction.objectStore(PENDING);
@@ -263,6 +282,7 @@ export function createIndexedDbStudyStore(options: IndexedDbStudyStoreOptions = 
                 if (write.study === null) {
                     studies.delete(studyId);
                     docs.delete(studyId);
+                    transaction.objectStore(VIEW_STATES).delete(studyId);
                     for (const item of snapshot.pending) pending.delete(item.seq);
                 } else {
                     if (write.study !== undefined) {
@@ -288,6 +308,9 @@ export function createIndexedDbStudyStore(options: IndexedDbStudyStoreOptions = 
                 } catch {
                     // 既に終わっている。
                 }
+                // `mutate` が投げた例外は、何も書かずにそのまま呼び出し側へ返す
+                // （`StudySyncError` や `StudyOpError` を保存の失敗に化けさせない）。
+                if (mutateFailure) throw mutateFailure.error;
                 // トランザクションの失敗理由（容量不足など）があればそちらを優先する。
                 throw toStorageError(transaction.error ?? error, "書き込みに失敗しました");
             }
@@ -312,9 +335,15 @@ export function createIndexedDbStudyStore(options: IndexedDbStudyStoreOptions = 
                             summary,
                             recordVersion: _version,
                             inflight: _inflight,
+                            mergePending,
                             ...rest
                         } = row;
-                        return { ...rest, ...summary, pendingCount: counts[i] };
+                        return {
+                            ...rest,
+                            ...summary,
+                            ...(mergePending ? { mergePending: true } : {}),
+                            pendingCount: counts[i],
+                        };
                     })
                     .sort((a, b) => b.updatedAt - a.updatedAt || (a.id < b.id ? 1 : -1));
             } catch (error) {
@@ -337,6 +366,34 @@ export function createIndexedDbStudyStore(options: IndexedDbStudyStoreOptions = 
                 return rows.sort((a, b) => b.updatedAt - a.updatedAt).map((row) => row.id);
             } catch (error) {
                 throw toStorageError(error, "読み込みに失敗しました");
+            }
+        },
+
+        async readViewState(studyId) {
+            try {
+                const db = await open();
+                const transaction = db.transaction([VIEW_STATES], "readonly");
+                const done = transactionDone(transaction);
+                const row = await requestToPromise<ViewStateRow | undefined>(
+                    transaction.objectStore(VIEW_STATES).get(studyId),
+                );
+                await done;
+                return row?.state ?? null;
+            } catch (error) {
+                throw toStorageError(error, "読み込みに失敗しました");
+            }
+        },
+
+        async writeViewState(studyId, state) {
+            try {
+                const db = await open();
+                const transaction = db.transaction([VIEW_STATES], "readwrite");
+                const done = transactionDone(transaction);
+                const row: ViewStateRow = { id: studyId, state };
+                transaction.objectStore(VIEW_STATES).put(row);
+                await done;
+            } catch (error) {
+                throw toStorageError(error, "書き込みに失敗しました");
             }
         },
 

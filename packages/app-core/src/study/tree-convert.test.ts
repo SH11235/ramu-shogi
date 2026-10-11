@@ -385,3 +385,84 @@ describe("実行時ツリーの編集を操作にする", () => {
         expect(nextDoc.tree).toEqual(kifuTreeToStudyTree(edited, { sourceKind: null }).tree);
     });
 });
+
+describe("復元できなかった枝の保護", () => {
+    /** 本譜 7g7f 3c3d に、空の升から動かす枝（5e5d …）と普通の枝（8c8d）がある文書。 */
+    const setup = () => {
+        const base = createStudyDocumentFromMoves({
+            id: "study-4",
+            title: "壊れた枝",
+            origin: { kind: "paste", ref: null },
+            startSfen: "startpos",
+            moves: ["7g7f", "3c3d"],
+        });
+        const first = studyChildNodeId(base.tree.rootId, "7g7f");
+        const doc = applyStudyOps(base, [
+            // 5e に駒は無いので、この枝は開始局面から再生できない。
+            { type: "addMoves", parentId: first, moves: ["5e5d", "5c5d"] },
+            { type: "addMoves", parentId: first, moves: ["8c8d"] },
+            {
+                type: "setComment",
+                nodeId: studyChildNodeId(first, "5e5d"),
+                value: "壊れた枝のメモ",
+            },
+        ]);
+        const restored = studyDocumentToKifuTree(doc);
+        return {
+            doc,
+            first,
+            second: studyChildNodeId(first, "3c3d"),
+            broken: studyChildNodeId(first, "5e5d"),
+            branch: studyChildNodeId(first, "8c8d"),
+            ...restored,
+        };
+    };
+
+    it("編集していなければ、復元できなかった枝があっても差分は空", () => {
+        const { doc, tree, index, errors, broken } = setup();
+        expect(errors.map((error) => error.nodeId)).toEqual([broken]);
+        expect(diffKifuTreeToStudyOps(doc, tree, index)).toEqual([]);
+        // 対応表を作り直しても（前回の対応表を渡さなくても）同じ。
+        const rebuilt = buildStudyNodeIdIndex(tree, doc.tree.rootId);
+        expect(diffKifuTreeToStudyOps(doc, tree, rebuilt)).toEqual([]);
+    });
+
+    it("他の編集をしても、復元できなかった枝は削除にならず、文書に残る", () => {
+        const { doc, tree, index, first, second, broken, branch } = setup();
+        // 普通の枝を本譜に昇格し、その先に手を足す。
+        let edited = promoteToMainLine(goToNode(tree, branch));
+        edited = play(goToNode(edited, branch), ["2g2f"]);
+        const nextIndex = buildStudyNodeIdIndex(edited, doc.tree.rootId, index);
+        const ops = diffKifuTreeToStudyOps(doc, edited, nextIndex);
+        expect(ops.some((op) => op.type === "deleteSubtree")).toBe(false);
+        expect(ops).toContainEqual({
+            type: "reorderChildren",
+            parentId: first,
+            // 復元できなかった子も並びに含める（含めないと、子の集合が合わず読み飛ばされる）。
+            value: [branch, second, broken],
+        });
+
+        const next = applyStudyOps(doc, ops);
+        expect(next.tree.nodes[first].children).toEqual([branch, second, broken]);
+        expect(next.tree.nodes[broken].comment).toBe("壊れた枝のメモ");
+        expect(next.tree.nodes[studyChildNodeId(broken, "5c5d")]).toBeDefined();
+        expect(next.tree.nodes[studyChildNodeId(branch, "2g2f")]).toBeDefined();
+        expect(diffKifuTreeToStudyOps(next, edited, nextIndex)).toEqual([]);
+    });
+
+    it("利用者が消した普通の枝は、これまでどおり削除になる", () => {
+        const { doc, tree, index, first, second, broken, branch } = setup();
+        // 初手より先をすべて消す。
+        const edited = truncateFromCurrent(goToNode(tree, first));
+        const nextIndex = buildStudyNodeIdIndex(edited, doc.tree.rootId, index);
+        const ops = diffKifuTreeToStudyOps(doc, edited, nextIndex);
+        expect(ops).toHaveLength(2);
+        expect(ops).toEqual(
+            expect.arrayContaining([
+                { type: "deleteSubtree", nodeId: second },
+                { type: "deleteSubtree", nodeId: branch },
+            ]),
+        );
+        expect(applyStudyOps(doc, ops).tree.nodes[first].children).toEqual([broken]);
+    });
+});

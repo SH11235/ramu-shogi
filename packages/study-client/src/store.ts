@@ -45,6 +45,11 @@ export interface StoredStudy {
     remote: StudyRemoteState;
     /** 同じ元棋譜の既存ノートに統合した場合の統合先。以後このノートは使わない。 */
     mergedInto: string | null;
+    /**
+     * 統合先への成果の取り込みがまだ終わっていない（`mergedInto` を付けた直後）。
+     * 取り込みは文書（`doc`）から何度でもやり直せるので、途中で閉じられても失われない。
+     */
+    mergePending?: boolean;
     /** 削除を指示済みで、サーバーへの削除がまだ終わっていない。 */
     deleting: boolean;
     /** 元棋譜のキー（`originKey`）。同じ棋譜のノートを探すのに使う。`paste` は null。 */
@@ -78,6 +83,7 @@ export interface StoredStudySummary {
     serverRevision: number | null;
     remote: StudyRemoteState;
     mergedInto: string | null;
+    mergePending?: boolean;
     deleting: boolean;
     pendingCount: number;
     createdAt: number;
@@ -102,6 +108,19 @@ export interface StudyStoreWrite<T> {
     removeOpsUpTo?: number;
     /** 呼び出し元に返す値。 */
     result: T;
+}
+
+/**
+ * ノートごとの表示の状態（同期しない、このブラウザだけのもの）。
+ * リロードしても表示中のレイヤーと見ていた局面が戻るようにするために保存する。
+ * 項目は自由に足せる。
+ */
+export interface StudyViewState {
+    /** 表示中の解析レイヤー。 */
+    selectedLayerId?: string | null;
+    /** 見ていた局面（保存用の `nodeId`）。 */
+    currentNodeId?: string | null;
+    [key: string]: unknown;
 }
 
 export type StudyStorageErrorCode = "unavailable" | "quota_exceeded" | "failed";
@@ -132,6 +151,10 @@ export interface StudyStore {
     list(): Promise<StoredStudySummary[]>;
     /** 元棋譜のキーが一致するノートの ID（更新が新しい順）。 */
     findByOriginKey(originKey: string): Promise<string[]>;
+    /** ノートの表示の状態を読む。無ければ null。（ノートを消すと一緒に消える。） */
+    readViewState?(studyId: string): Promise<StudyViewState | null>;
+    /** ノートの表示の状態を置き換える。 */
+    writeViewState?(studyId: string, state: StudyViewState): Promise<void>;
     /** 保存層を閉じる。 */
     close(): void;
 }
@@ -154,6 +177,7 @@ export function summarizeStoredStudy(study: StoredStudy, pendingCount: number): 
         serverRevision: study.serverRevision,
         remote: study.remote,
         mergedInto: study.mergedInto,
+        ...(study.mergePending ? { mergePending: true } : {}),
         deleting: study.deleting,
         pendingCount,
         createdAt: study.createdAt,
@@ -174,6 +198,7 @@ const clone = <T>(value: T): T => structuredClone(value);
 export function createMemoryStudyStore(): StudyStore {
     const studies = new Map<string, StoredStudy>();
     const pending = new Map<string, PendingStudyOp[]>();
+    const viewStates = new Map<string, StudyViewState>();
     let nextSeq = 1;
 
     const snapshotOf = (studyId: string): StudyStoreSnapshot => ({
@@ -194,6 +219,7 @@ export function createMemoryStudyStore(): StudyStore {
             if (study === null) {
                 studies.delete(studyId);
                 pending.delete(studyId);
+                viewStates.delete(studyId);
                 return write.result;
             }
             if (study !== undefined) studies.set(studyId, study);
@@ -219,6 +245,12 @@ export function createMemoryStudyStore(): StudyStore {
                 .filter((study) => study.originKey === originKey)
                 .sort((a, b) => b.updatedAt - a.updatedAt)
                 .map((study) => study.id);
+        },
+        async readViewState(studyId) {
+            return clone(viewStates.get(studyId) ?? null);
+        },
+        async writeViewState(studyId, state) {
+            viewStates.set(studyId, clone(state));
         },
         close() {
             // 何もしない。

@@ -29,6 +29,7 @@ export type { BrowserStudySync, BrowserStudySyncOptions } from "./browser";
 export {
     createBroadcastStudyChannel,
     createBrowserStudySync,
+    createSessionVerifier,
     createWebLockManager,
 } from "./browser";
 // indexeddb-store
@@ -53,6 +54,7 @@ export type {
     StudyStore,
     StudyStoreSnapshot,
     StudyStoreWrite,
+    StudyViewState,
 } from "./store";
 export { createMemoryStudyStore, STUDY_RECORD_VERSION, StudyStorageError } from "./store";
 // sync

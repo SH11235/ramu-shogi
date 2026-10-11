@@ -807,7 +807,7 @@ export interface components {
                 nnueSha256: string | null;
                 fvScale: number | null;
                 progressSha256: string | null;
-                layerStacks: components["schemas"]["JsonValue"];
+                layerStacks: unknown;
             };
             limits: {
                 timeMs: number | null;
@@ -1996,7 +1996,7 @@ export interface operations {
             cookie?: never;
         };
         /** @description Create a study with its initial tree and analysis layers */
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["CreateStudyRequest"];
             };
@@ -2274,7 +2274,7 @@ export interface operations {
             cookie?: never;
         };
         /** @description Apply a batch of idempotent operations at the expected revision */
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["ApplyStudyOpsRequest"];
             };

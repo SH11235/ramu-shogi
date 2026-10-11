@@ -4,10 +4,14 @@
  */
 
 import {
+    applyStudyOp,
     applyStudyOps,
     createStudyDocumentFromMoves,
     STUDY_LIMITS,
+    type StudyAnalysisResult,
     type StudyDocument,
+    type StudyLimitName,
+    type StudyOp,
     StudyOpError,
     studyLayerId,
     studyOriginKey,
@@ -61,7 +65,12 @@ export interface FakeStudyServer {
     seed(ownerId: string, doc: StudyDocument): void;
     /** サーバー側で削除する（別の端末で消した模擬）。 */
     remove(studyId: string): void;
-    limits: { nodesPerStudy: number; studiesPerUser: number; opsPerBatch: number };
+    /** サーバーからノートを跡形なく消す（以後は 404。作り直しの確認用）。 */
+    forget(studyId: string): void;
+    /** サーバーの上限（テストで下げて、クライアントは通すがサーバーは拒否する状況を作れる）。 */
+    limits: Record<StudyLimitName, number>;
+    /** 呼び出しを処理する直前に呼ばれる（応答待ちのあいだの出来事を模擬する）。 */
+    beforeHandle: ((call: Pick<FakeServerCall, "method" | "studyId">) => Promise<void>) | null;
     /** 同時に処理中だった `postOps` の最大数（1 ノート 1 送信の確認用）。 */
     maxConcurrentPostOps: number;
 }
@@ -74,13 +83,126 @@ const fail = <T>(status: number, error: StudyApiErrorBody = {}): StudyApiResult<
 
 const NETWORK_FAILURE = { ok: false, status: 0, error: { error: "NETWORK_ERROR" } } as const;
 
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+type Rejection = { status: number; error: StudyApiErrorBody } | null;
+
+const limitExceeded = (limit: StudyLimitName): Rejection => ({
+    status: 422,
+    error: { error: "LIMIT_EXCEEDED", limit },
+});
+const invalidRequest: Rejection = { status: 400, error: { error: "INVALID_REQUEST" } };
+
+const utf8Bytes = (text: string): number => new TextEncoder().encode(text).length;
+
+const hasExactKeys = (value: unknown, keys: readonly string[]): boolean => {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+    const actual = Object.keys(value);
+    return actual.length === keys.length && keys.every((key) => actual.includes(key));
+};
+
+/** 解析結果の検証（backend の zod スキーマと `assertAnalysisResult` に相当する部分）。 */
+function validateResult(result: StudyAnalysisResult, limits: Record<StudyLimitName, number>) {
+    const keys = ["runId", "completion", "depth", "nodes", "timeMs", "execution", "candidates"];
+    if (!hasExactKeys(result, keys) || !UUID_V4.test(result.runId)) return invalidRequest;
+    if (!Array.isArray(result.candidates) || result.candidates.length === 0) return invalidRequest;
+    if (result.candidates.length > limits.multiPv) return limitExceeded("multiPv");
+    const ranks = new Set<number>();
+    for (const candidate of result.candidates) {
+        if (!hasExactKeys(candidate, ["rank", "score", "depth", "seldepth", "pv"])) {
+            return invalidRequest;
+        }
+        if (ranks.has(candidate.rank)) return invalidRequest;
+        ranks.add(candidate.rank);
+        if (candidate.pv.length > limits.pvLength) return limitExceeded("pvLength");
+    }
+    return ranks.has(1) ? null : invalidRequest;
+}
+
+/** 操作 1 つの検証（文書に依らない部分）。 */
+function validateOp(op: StudyOp, limits: Record<StudyLimitName, number>): Rejection {
+    switch (op.type) {
+        case "setComment":
+            return utf8Bytes(op.value) > limits.commentBytes ? limitExceeded("commentBytes") : null;
+        case "setTitle":
+            return Array.from(op.value).length > limits.titleLength
+                ? limitExceeded("titleLength")
+                : null;
+        case "setSource":
+            return op.value?.pv && op.value.pv.length > limits.pvLength
+                ? limitExceeded("pvLength")
+                : null;
+        case "ensureLayer":
+            if (typeof op.display?.label !== "string") return invalidRequest;
+            if (utf8Bytes(JSON.stringify(op.display)) > limits.layerDisplayBytes) {
+                return limitExceeded("layerDisplayBytes");
+            }
+            return op.spec.multiPv > limits.multiPv ? limitExceeded("multiPv") : null;
+        case "putAnalysis":
+            return validateResult(op.result, limits);
+        default:
+            return null;
+    }
+}
+
+/** 適用後の文書が超えている上限（ノード数・手順の長さ・レイヤー数）。無ければ null。 */
+function documentLimit(
+    doc: Pick<StudyDocument, "tree" | "layers">,
+    limits: Record<StudyLimitName, number>,
+): StudyLimitName | null {
+    const { nodes } = doc.tree;
+    if (Object.keys(nodes).length > limits.nodesPerStudy) return "nodesPerStudy";
+    if (doc.layers.length > limits.layersPerStudy) return "layersPerStudy";
+    for (const node of Object.values(nodes)) {
+        if (node.children.length > 0) continue;
+        let depth = 0;
+        for (let current = node; current.parentId !== null; current = nodes[current.parentId]) {
+            depth++;
+        }
+        if (depth > limits.lineLength) return "lineLength";
+    }
+    return null;
+}
+
+/** 作成リクエストの検証。 */
+function validateCreate(body: CreateStudyRequest, limits: Record<StudyLimitName, number>) {
+    if (Array.from(body.title).length > limits.titleLength) return limitExceeded("titleLength");
+    if (body.startSfen.split(" ").length !== 4) return invalidRequest;
+    if (body.origin.kind === "paste" ? body.origin.ref !== null : !body.origin.ref) {
+        return invalidRequest;
+    }
+    const layers = body.layers ?? [];
+    const over = documentLimit(
+        { tree: body.tree, layers: layers.map((l) => ({ ...l, id: "" })) },
+        limits,
+    );
+    if (over) return limitExceeded(over);
+    for (const node of Object.values(body.tree.nodes)) {
+        if (utf8Bytes(node.comment) > limits.commentBytes) return limitExceeded("commentBytes");
+    }
+    const layerIds = new Set<string>();
+    for (const layer of layers) {
+        const id = studyLayerId(layer.spec);
+        // 同じ spec のレイヤーが 2 つあれば入力不正。
+        if (layerIds.has(id)) return invalidRequest;
+        layerIds.add(id);
+        for (const [nodeId, result] of Object.entries(layer.results)) {
+            // ツリーに無いノードの結果は入力不正。
+            if (!Object.hasOwn(body.tree.nodes, nodeId)) return invalidRequest;
+            const rejected = validateResult(result, limits);
+            if (rejected) return rejected;
+        }
+    }
+    return null;
+}
+
 export function createFakeStudyServer(): FakeStudyServer {
     const studies = new Map<string, ServerStudy>();
     const calls: FakeServerCall[] = [];
     const once: Array<{ method: FakeServerCall["method"]; interception: Interception }> = [];
     const always: Array<{ method: FakeServerCall["method"] | "*"; interception: Interception }> =
         [];
-    const limits = { nodesPerStudy: 2000, studiesPerUser: 200, opsPerBatch: 200 };
+    const limits: Record<StudyLimitName, number> = { ...STUDY_LIMITS };
     let concurrentPostOps = 0;
     let clock = Date.UTC(2026, 9, 12);
 
@@ -98,6 +220,7 @@ export function createFakeStudyServer(): FakeStudyServer {
     const server: FakeStudyServer = {
         calls,
         limits,
+        beforeHandle: null,
         maxConcurrentPostOps: 0,
         interceptOnce(method, interception) {
             once.push({ method, interception });
@@ -134,6 +257,9 @@ export function createFakeStudyServer(): FakeStudyServer {
                 deleted: false,
             });
         },
+        forget(studyId) {
+            studies.delete(studyId);
+        },
         remove(studyId) {
             const found = studies.get(studyId);
             if (found) found.deleted = true;
@@ -151,6 +277,7 @@ export function createFakeStudyServer(): FakeStudyServer {
                 // 本文は JSON で送られる。構造化複製できない値・循環はここで弾かれる。
                 const sent = body === undefined ? undefined : JSON.parse(JSON.stringify(body));
                 await Promise.resolve();
+                if (server.beforeHandle) await server.beforeHandle({ method, studyId });
                 const record = (status: number): void => {
                     calls.push({ method, studyId, userId, body: sent, status });
                 };
@@ -162,8 +289,13 @@ export function createFakeStudyServer(): FakeStudyServer {
                     record(interception.status);
                     return fail(interception.status, interception.error);
                 }
+                // 未ログインは本文の検証より前に 401。ID は小文字の UUID v4 のみ（それ以外は 400）。
                 const result =
-                    userId === null ? fail<T>(401, { error: "UNAUTHORIZED" }) : handle(userId);
+                    userId === null
+                        ? fail<T>(401, { error: "UNAUTHORIZED" })
+                        : studyId !== null && !UUID_V4.test(studyId)
+                          ? fail<T>(400, { error: "INVALID_REQUEST" })
+                          : handle(userId);
                 if (interception === "drop-response") {
                     record(0);
                     return NETWORK_FAILURE;
@@ -247,9 +379,8 @@ export function createFakeStudyServer(): FakeStudyServer {
                         if (live.length >= limits.studiesPerUser) {
                             return fail(422, { error: "LIMIT_EXCEEDED", limit: "studiesPerUser" });
                         }
-                        if (Object.keys(body.tree.nodes).length > limits.nodesPerStudy) {
-                            return fail(422, { error: "LIMIT_EXCEEDED", limit: "nodesPerStudy" });
-                        }
+                        const rejected = validateCreate(body, limits);
+                        if (rejected) return fail(rejected.status, rejected.error);
                         const createdAt = timestamp();
                         studies.set(body.id, {
                             ownerId: userId,
@@ -261,11 +392,14 @@ export function createFakeStudyServer(): FakeStudyServer {
                                 rules: body.rules,
                                 meta: body.meta,
                                 tree: structuredClone(body.tree),
-                                layers: (body.layers ?? []).map((layer) => ({
-                                    // layerId はサーバーが spec から計算する。
-                                    id: studyLayerId(layer.spec),
-                                    ...structuredClone(layer),
-                                })),
+                                layers: (body.layers ?? [])
+                                    .map((layer) => ({
+                                        // layerId はサーバーが spec から計算する。
+                                        id: studyLayerId(layer.spec),
+                                        ...structuredClone(layer),
+                                    }))
+                                    // レイヤーの並びは作成時刻・ID の順（一緒に作ると ID 順）。
+                                    .sort((a, b) => (a.id < b.id ? -1 : 1)),
                                 revision: 1,
                                 createdAt,
                                 updatedAt: createdAt,
@@ -299,6 +433,9 @@ export function createFakeStudyServer(): FakeStudyServer {
                         return await call("postOps", studyId, body, (userId) => {
                             const found = owned(studyId, userId);
                             if ("status" in found) return fail(found.status, found.error);
+                            if (!UUID_V4.test(body.batchId)) {
+                                return fail(400, { error: "INVALID_REQUEST" });
+                            }
                             if (body.ops.length > limits.opsPerBatch) {
                                 return fail(422, { error: "LIMIT_EXCEEDED", limit: "opsPerBatch" });
                             }
@@ -315,24 +452,40 @@ export function createFakeStudyServer(): FakeStudyServer {
                                     currentRevision: found.detail.revision,
                                 });
                             }
-                            let next: StudyDocument;
-                            try {
-                                next = applyStudyOps(found.detail, body.ops);
-                            } catch (error) {
-                                if (error instanceof StudyOpError) {
-                                    return fail(400, {
-                                        error: "INVALID_REQUEST",
-                                        message: error.message,
-                                    });
+                            // 操作は配列の順に検証しながら適用し、1 つでも駄目なら全体を拒否する。
+                            let next: StudyDocument = found.detail;
+                            const layersBefore = found.detail.layers.map((layer) => layer.id);
+                            for (const op of body.ops) {
+                                const rejected = validateOp(op, limits);
+                                if (rejected) return fail(rejected.status, rejected.error);
+                                try {
+                                    next = applyStudyOp(next, op);
+                                } catch (error) {
+                                    if (error instanceof StudyOpError) {
+                                        return fail(400, {
+                                            error: "INVALID_REQUEST",
+                                            message: error.message,
+                                        });
+                                    }
+                                    throw error;
                                 }
-                                throw error;
+                                const overLimit = documentLimit(next, limits);
+                                if (overLimit) {
+                                    return fail(422, { error: "LIMIT_EXCEEDED", limit: overLimit });
+                                }
                             }
-                            if (Object.keys(next.tree.nodes).length > limits.nodesPerStudy) {
-                                return fail(422, {
-                                    error: "LIMIT_EXCEEDED",
-                                    limit: "nodesPerStudy",
-                                });
-                            }
+                            // このバッチで作ったレイヤーは作成時刻が同じなので、ID 順に並ぶ。
+                            next = {
+                                ...next,
+                                layers: [
+                                    ...next.layers.filter((layer) =>
+                                        layersBefore.includes(layer.id),
+                                    ),
+                                    ...next.layers
+                                        .filter((layer) => !layersBefore.includes(layer.id))
+                                        .sort((a, b) => (a.id < b.id ? -1 : 1)),
+                                ],
+                            };
                             found.detail = {
                                 ...found.detail,
                                 ...next,
@@ -452,7 +605,7 @@ export function createChannelHub(): { join(): StudyChannel } {
 }
 
 /** 進行中の非同期処理（保存層・模擬サーバー）が落ち着くまで待つ。 */
-export async function settle(rounds = 20): Promise<void> {
+export async function settle(rounds = 40): Promise<void> {
     for (let i = 0; i < rounds; i++) {
         await new Promise((resolve) => setTimeout(resolve, 0));
     }

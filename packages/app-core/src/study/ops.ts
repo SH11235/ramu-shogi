@@ -10,13 +10,14 @@
  */
 
 import { studyChildNodeId, studyLayerId } from "./ids";
-import type {
-    StudyAnalysisResult,
-    StudyDocument,
-    StudyLayer,
-    StudyNode,
-    StudyOp,
-    StudySource,
+import {
+    STUDY_LIMITS,
+    type StudyAnalysisResult,
+    type StudyDocument,
+    type StudyLayer,
+    type StudyNode,
+    type StudyOp,
+    type StudySource,
 } from "./types";
 
 /** 入力として成り立たない操作を適用しようとした。 */
@@ -277,13 +278,48 @@ export function applyStudyOps(doc: StudyDocument, ops: readonly StudyOp[]): Stud
     return next;
 }
 
+const utf8Length = (text: string): number => {
+    let bytes = 0;
+    for (let i = 0; i < text.length; i++) {
+        const code = text.charCodeAt(i);
+        if (code < 0x80) bytes += 1;
+        else if (code < 0x800) bytes += 2;
+        else if (code >= 0xd800 && code <= 0xdbff) {
+            bytes += 4;
+            i++;
+        } else bytes += 3;
+    }
+    return bytes;
+};
+
+/**
+ * 統合先のコメントと手元のコメントを 1 つにする。どちらも失わない:
+ * 片方が空なら空でない方、同じ内容なら 1 つ、違う内容なら統合先の後ろに改行 2 つで手元側を
+ * つなぐ。つないだ結果が上限（UTF-8 で 4 KiB）を超えるなら統合先を残す。
+ */
+export function mergeStudyComments(existing: string, incoming: string): string {
+    if (incoming === "" || incoming === existing) return existing;
+    if (existing === "") return incoming;
+    // 既に取り込み済み（統合のやり直し）なら、もう一度はつながない。
+    if (existing.endsWith(`\n\n${incoming}`)) return existing;
+    const merged = `${existing}\n\n${incoming}`;
+    return utf8Length(merged) > STUDY_LIMITS.commentBytes ? existing : merged;
+}
+
 /**
  * 文書の中身を、別の文書の上に再現するための操作の列にする。
  *
  * 同じ元棋譜のノートが既にあると返されたとき（`ORIGIN_EXISTS`）、手元の成果を既存のノートに
  * 統合するのに使う。表題と兄弟の順序は相手側を尊重するので含めない。
+ *
+ * @param options.mergeInto 統合先の文書。渡すと、同じノードの両方にコメントがあって内容が
+ *   違う場合に、統合先のコメントを消さず `mergeStudyComments` でつないだ値を設定する。
  */
-export function studyDocumentToOps(doc: StudyDocument): StudyOp[] {
+export function studyDocumentToOps(
+    doc: StudyDocument,
+    options: { mergeInto?: StudyDocument } = {},
+): StudyOp[] {
+    const targetNodes = options.mergeInto?.tree.nodes;
     const ops: StudyOp[] = [];
     const { nodes, rootId } = doc.tree;
 
@@ -316,7 +352,17 @@ export function studyDocumentToOps(doc: StudyDocument): StudyOp[] {
     for (const nodeId of ordered) {
         const node = nodes[nodeId];
         if (!node) continue;
-        if (node.comment !== "") ops.push({ type: "setComment", nodeId, value: node.comment });
+        if (node.comment !== "") {
+            const existing =
+                targetNodes && Object.hasOwn(targetNodes, nodeId)
+                    ? targetNodes[nodeId].comment
+                    : "";
+            ops.push({
+                type: "setComment",
+                nodeId,
+                value: mergeStudyComments(existing, node.comment),
+            });
+        }
         if (node.bookmarked) ops.push({ type: "setBookmark", nodeId, value: true });
         if (node.source !== null) ops.push({ type: "setSource", nodeId, value: node.source });
     }

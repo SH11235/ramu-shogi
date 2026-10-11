@@ -52,6 +52,15 @@ export interface StudyAnalysisCollector {
     finish(completion: StudyAnalysisResult["completion"]): StudyAnalysisResult | null;
 }
 
+/**
+ * 2 位以下の候補（rank ≥ 2）の読み筋を残す手数。
+ *
+ * 最善（1 位）は上限（`STUDY_LIMITS.pvLength` = 40 手）まで残す。2 位以下は「その手のあと
+ * どう進むか」の冒頭が分かれば足りるので短く切り、MultiPV での全体解析がレイヤーの結果 JSON の
+ * 上限（1 MiB）に収まりやすくする。
+ */
+export const STUDY_ALTERNATIVE_PV_LENGTH = 12;
+
 const toCount = (value: number | undefined): number | null =>
     value !== undefined && Number.isFinite(value) && value >= 0 ? Math.trunc(value) : null;
 
@@ -60,6 +69,7 @@ const toCount = (value: number | undefined): number | null =>
  *
  * 候補（MultiPV の順位）ごとに最後に届いた評価値つきの情報を採用する。別の探索の候補は
  * 継ぎ足さない（探索ごとに作り直すこと）。評価値は `sideToMove` で先手視点に直す。
+ * 読み筋は 1 位を 40 手、2 位以下を `STUDY_ALTERNATIVE_PV_LENGTH` 手で切る。
  */
 export function createStudyAnalysisCollector(
     options: StudyAnalysisCollectorOptions,
@@ -83,7 +93,10 @@ export function createStudyAnalysisCollector(
             const rank = info.multipv ?? 1;
             if (!Number.isInteger(rank) || rank < 1 || rank > STUDY_LIMITS.multiPv) return;
             const previous = candidates.get(rank);
-            const pv = sanitizeStudyPv(info.pv, STUDY_LIMITS.pvLength);
+            const pv = sanitizeStudyPv(
+                info.pv,
+                rank === 1 ? STUDY_LIMITS.pvLength : STUDY_ALTERNATIVE_PV_LENGTH,
+            );
             candidates.set(rank, {
                 rank,
                 score,

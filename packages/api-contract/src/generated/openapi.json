@@ -1258,8 +1258,7 @@
                     "pv": {
                         "type": ["array", "null"],
                         "items": {
-                            "type": "string",
-                            "pattern": "^(?:[1-9][a-i][1-9][a-i]\\+?|[PLNSBRG]\\*[1-9][a-i])$"
+                            "type": "string"
                         }
                     },
                     "elapsedMs": {
@@ -1366,9 +1365,7 @@
                                 "type": ["string", "null"],
                                 "pattern": "^[0-9a-f]{64}$"
                             },
-                            "layerStacks": {
-                                "$ref": "#/components/schemas/JsonValue"
-                            }
+                            "layerStacks": {}
                         },
                         "required": ["nnueSha256", "fvScale", "progressSha256", "layerStacks"],
                         "additionalProperties": false
@@ -1501,8 +1498,7 @@
                     "pv": {
                         "type": "array",
                         "items": {
-                            "type": "string",
-                            "pattern": "^(?:[1-9][a-i][1-9][a-i]\\+?|[PLNSBRG]\\*[1-9][a-i])$"
+                            "type": "string"
                         }
                     }
                 },
@@ -3129,6 +3125,7 @@
                 "operationId": "createStudy",
                 "tags": ["Studies"],
                 "requestBody": {
+                    "required": true,
                     "description": "Create a study with its initial tree and analysis layers",
                     "content": {
                         "application/json": {
@@ -3442,6 +3439,7 @@
                     }
                 ],
                 "requestBody": {
+                    "required": true,
                     "description": "Apply a batch of idempotent operations at the expected revision",
                     "content": {
                         "application/json": {

@@ -15,6 +15,7 @@ import {
     type StudyChannel,
     type StudyChannelMessage,
     type StudyLockManager,
+    type StudySession,
     type StudySync,
     type StudySyncOptions,
 } from "./sync";
@@ -70,8 +71,35 @@ export function createBroadcastStudyChannel(
     };
 }
 
+/**
+ * サーバーから見た現在のログイン状態を取り直す関数を作る（`GET /api/auth/session`）。
+ * 未ログイン（backend 未接続の 404 を含む）なら null、取得できなければ例外。
+ */
+export function createSessionVerifier(
+    options: StudyApiClientOptions = {},
+): () => Promise<StudySession | null> {
+    return async () => {
+        const doFetch = options.fetch ?? globalThis.fetch;
+        const response = await doFetch(`${options.baseUrl ?? ""}/api/auth/session`, {
+            credentials: "same-origin",
+        });
+        if (response.status === 404) return null;
+        if (!response.ok) {
+            throw new Error(`ログイン状態を確認できませんでした (${response.status})`);
+        }
+        const payload = (await response.json()) as {
+            authenticated?: boolean;
+            user?: { id?: unknown } | null;
+        };
+        const userId = payload.authenticated ? payload.user?.id : null;
+        return typeof userId === "string" && userId !== "" ? { userId } : null;
+    };
+}
+
 export interface BrowserStudySyncOptions
-    extends Partial<Pick<StudySyncOptions, "flushDelayMs" | "retryBaseMs" | "retryMaxMs">> {
+    extends Partial<
+        Pick<StudySyncOptions, "flushDelayMs" | "retryBaseMs" | "retryMaxMs" | "verifySession">
+    > {
     /** 既定は IndexedDB の保存層。 */
     store?: StudyStore;
     /** API クライアントの設定（既定は同一オリジンの `/api/studies`）。 */
@@ -100,6 +128,7 @@ export function createBrowserStudySync(options: BrowserStudySyncOptions = {}): B
         api: createStudyApiClient(options.api),
         locks: createWebLockManager(),
         channel,
+        verifySession: options.verifySession ?? createSessionVerifier(options.api),
         flushDelayMs: options.flushDelayMs,
         retryBaseMs: options.retryBaseMs,
         retryMaxMs: options.retryMaxMs,

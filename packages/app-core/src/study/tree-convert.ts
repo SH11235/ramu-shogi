@@ -352,9 +352,21 @@ export function diffKifuTreeToStudyOps(
     }
 
     // 消す: 実行時ツリーに無いノード（親が残っているものだけ。配下は一緒に消える）。
+    // ただし、開始局面から再生できない指し手のノードは、復元の時点で実行時ツリーに載らない
+    // （`studyDocumentToKifuTree` の `errors`）。利用者が消したのではないので、削除にしない。
+    const unrestorable = new Set<string>();
     for (const [nodeId, node] of Object.entries(stored)) {
-        if (node.parentId === null || index.byNodeId.has(nodeId)) continue;
-        if (index.byNodeId.has(node.parentId)) ops.push({ type: "deleteSubtree", nodeId });
+        if (node.parentId === null || node.usiMove === null || index.byNodeId.has(nodeId)) {
+            continue;
+        }
+        const parentRuntimeId = index.byNodeId.get(node.parentId);
+        if (parentRuntimeId === undefined) continue;
+        const parent = tree.nodes.get(parentRuntimeId);
+        if (parent && !applyMoveWithState(parent.positionAfter, node.usiMove).ok) {
+            unrestorable.add(nodeId);
+            continue;
+        }
+        ops.push({ type: "deleteSubtree", nodeId });
     }
 
     // 順序とコメント。
@@ -368,14 +380,23 @@ export function diffKifuTreeToStudyOps(
             if (childId !== undefined) children.push(childId);
         }
         const before = Object.hasOwn(stored, nodeId) ? stored[nodeId] : undefined;
+        // 復元できなかった子は実行時ツリーに居ないが、文書には残る。並べ替えの対象
+        // （現在の子の集合）から漏れないよう、末尾に置いたものとして扱う。
+        for (const childId of before?.children ?? []) {
+            if (unrestorable.has(childId)) children.push(childId);
+        }
         // 足した直後の並び（既存の子のあとに新しい子が足された順）と違うときだけ並べ替える。
         const expected = before
             ? [
-                  ...before.children.filter((childId) => children.includes(childId)),
+                  ...before.children.filter(
+                      (childId) => children.includes(childId) && !unrestorable.has(childId),
+                  ),
                   ...children.filter((childId) => !before.children.includes(childId)),
+                  ...before.children.filter((childId) => unrestorable.has(childId)),
               ]
             : children;
-        if (children.length > 1 && children.some((childId, i) => childId !== expected[i])) {
+        const restorableCount = children.filter((childId) => !unrestorable.has(childId)).length;
+        if (restorableCount > 1 && children.some((childId, i) => childId !== expected[i])) {
             ops.push({ type: "reorderChildren", parentId: nodeId, value: children });
         }
         const comment = node.comment ?? "";

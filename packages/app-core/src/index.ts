@@ -215,7 +215,10 @@ export {
     buildStudyLayerSpec,
     createStudyAnalysisCollector,
     createStudyLayerRef,
+    STUDY_ALTERNATIVE_PV_LENGTH,
 } from "./study/analysis";
+// study/doc-diff
+export { diffStudyDocuments } from "./study/doc-diff";
 // study/highlights
 export type { StudyHighlight, StudyHighlightKind } from "./study/highlights";
 export {
@@ -255,6 +258,7 @@ export {
     applyStudyOps,
     compareStudyAnalysisPriority,
     isStudyUsiMove,
+    mergeStudyComments,
     StudyOpError,
     sanitizeStudyPv,
     studyDocumentToOps,
@@ -311,3 +315,19 @@ export type {
     StudyTree,
 } from "./study/types";
 export { STANDARD_STUDY_RULES, STUDY_HIRATE_SFEN, STUDY_LIMITS } from "./study/types";
+// study/validation
+export {
+    applyStudyOpsStrict,
+    assertStudyAnalysisResult,
+    assertStudyComment,
+    assertStudyLayerDisplay,
+    assertStudyLayerSpec,
+    assertStudyOpInput,
+    assertStudySource,
+    assertStudyTitle,
+    isBoundedStudyJson,
+    isStudyUuid,
+    STUDY_FREE_JSON_MAX_DEPTH,
+    StudyLimitError,
+    validateStudyDocument,
+} from "./study/validation";

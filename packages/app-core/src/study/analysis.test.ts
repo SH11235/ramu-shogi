@@ -5,6 +5,7 @@ import {
     buildStudyLayerSpec,
     createStudyAnalysisCollector,
     createStudyLayerRef,
+    STUDY_ALTERNATIVE_PV_LENGTH,
 } from "./analysis";
 import { studyLayerId } from "./ids";
 
@@ -88,6 +89,17 @@ describe("createStudyAnalysisCollector", () => {
         expect(result?.candidates).toHaveLength(1);
         expect(result?.candidates[0]).toMatchObject({ depth: 6, score: { kind: "cp", value: 2 } });
         expect(result?.candidates[0].pv).toHaveLength(40);
+    });
+
+    it("2 位以下の候補の読み筋は 12 手で切る（1 位は 40 手のまま）", () => {
+        const collector = createStudyAnalysisCollector({ runId: "run", sideToMove: "sente" });
+        const longPv = Array.from({ length: 50 }, () => "7g7f");
+        collector.push({ depth: 8, scoreCp: 30, multipv: 1, pv: longPv });
+        collector.push({ depth: 8, scoreCp: 10, multipv: 2, pv: longPv });
+        collector.push({ depth: 8, scoreCp: -5, multipv: 3, pv: longPv.slice(0, 5) });
+        const result = collector.finish("completed");
+        expect(STUDY_ALTERNATIVE_PV_LENGTH).toBe(12);
+        expect(result?.candidates.map((candidate) => candidate.pv.length)).toEqual([40, 12, 5]);
     });
 });
 

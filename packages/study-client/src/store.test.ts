@@ -266,8 +266,83 @@ describe("IndexedDB の保存層", () => {
             request.onerror = () => reject(request.error);
         });
         expect(db.version).toBe(STUDY_DB_VERSION);
-        expect([...db.objectStoreNames].sort()).toEqual(["docs", "pendingOps", "studies"]);
+        expect([...db.objectStoreNames].sort()).toEqual([
+            "docs",
+            "pendingOps",
+            "studies",
+            "viewStates",
+        ]);
         db.close();
+    });
+
+    it("版 1（表示の状態のストアが無い）のデータベースを、中身を保ったまま版 2 に上げる", async () => {
+        const indexedDB = new IDBFactory();
+        // 版 1 のスキーマを作り、ノートを 1 件入れておく。
+        await new Promise<void>((resolve, reject) => {
+            const request = indexedDB.open(STUDY_DB_NAME, 1);
+            request.onupgradeneeded = () => {
+                const db = request.result;
+                db.createObjectStore("studies", { keyPath: "id" }).createIndex(
+                    "originKey",
+                    "originKey",
+                    { unique: false },
+                );
+                db.createObjectStore("docs", { keyPath: "id" });
+                db.createObjectStore("pendingOps", {
+                    keyPath: "seq",
+                    autoIncrement: true,
+                }).createIndex("studyId", "studyId", { unique: false });
+            };
+            request.onsuccess = () => {
+                const db = request.result;
+                const { doc, ...rest } = stored({ owner: "user-1" });
+                const transaction = db.transaction(["studies", "docs", "pendingOps"], "readwrite");
+                transaction.objectStore("studies").put({
+                    ...rest,
+                    summary: {
+                        title: doc.title,
+                        origin: doc.origin,
+                        meta: doc.meta,
+                        nodeCount: 3,
+                        layerCount: 0,
+                        resultCount: 0,
+                    },
+                });
+                transaction.objectStore("docs").put({ id: doc.id, doc });
+                transaction.objectStore("pendingOps").add({ studyId: doc.id, op: comment("a") });
+                transaction.oncomplete = () => {
+                    db.close();
+                    resolve();
+                };
+                transaction.onerror = () => reject(transaction.error);
+            };
+            request.onerror = () => reject(request.error);
+        });
+
+        const store = createIndexedDbStudyStore({ indexedDB });
+        const snapshot = await store.read(TEST_STUDY_ID);
+        expect(snapshot.study).toEqual(stored({ owner: "user-1" }));
+        expect(snapshot.pending.map((item) => item.op)).toEqual([comment("a")]);
+        await store.writeViewState?.(TEST_STUDY_ID, { selectedLayerId: "layer-1" });
+        expect(await store.readViewState?.(TEST_STUDY_ID)).toEqual({ selectedLayerId: "layer-1" });
+    });
+
+    it("mutate が投げた例外は、保存の失敗に包まずにそのまま返す", async () => {
+        const store = createIndexedDbStudyStore({ indexedDB: new IDBFactory() });
+        await store.transact(TEST_STUDY_ID, () => ({ study: stored(), result: undefined }));
+        class DomainError extends Error {}
+        const thrown = new DomainError("対象がありません");
+        await expect(
+            store.transact(TEST_STUDY_ID, () => {
+                throw thrown;
+            }),
+        ).rejects.toBe(thrown);
+        // 何も書かれておらず、続けて普通に書ける。
+        await store.transact(TEST_STUDY_ID, (snapshot) => ({
+            study: { ...(snapshot.study as StoredStudy), updatedAt: 3000 },
+            result: undefined,
+        }));
+        expect((await store.read(TEST_STUDY_ID)).study?.updatedAt).toBe(3000);
     });
 
     it("新しい版のアプリが作ったデータベースは開かず、使えないことを伝える", async () => {

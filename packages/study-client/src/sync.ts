@@ -14,6 +14,8 @@
 
 import {
     applyStudyOp,
+    applyStudyOpsStrict,
+    diffStudyDocuments,
     STUDY_LIMITS,
     type StudyDocument,
     type StudyLimitName,
@@ -40,6 +42,7 @@ import {
     type StudyStore,
     type StudyStoreSnapshot,
     type StudyStoreWrite,
+    type StudyViewState,
 } from "./store";
 
 /** 送信役を 1 つにするためのロック。同じ名前の `request` は同時に 1 つしか実行されない。 */
@@ -112,6 +115,14 @@ export interface StudySyncOptions {
     now?: () => number;
     /** `batchId` の生成。既定は `crypto.randomUUID()`。 */
     randomId?: () => string;
+    /**
+     * サーバーから見た現在のログイン状態を取り直す（`/api/auth/session`）。
+     * ノートをサーバーに作成する直前に呼び、ノートの持ち主と一致するときだけ作成する
+     * （別のタブでアカウントが切り替わっていた場合に、別のアカウントへ作ってしまわないため）。
+     * 未ログインなら null を返す。取得できなければ例外を投げる（あとで試し直す）。
+     * 省略すると確認しない。
+     */
+    verifySession?: () => Promise<StudySession | null>;
     /** 送信の間引き（ミリ秒）。既定 5000。 */
     flushDelayMs?: number;
     /** 失敗時の再送の最初の間隔（ミリ秒）。既定 2000。失敗のたびに倍にする。 */
@@ -143,6 +154,10 @@ export interface StudySync {
      * 操作を適用する。ローカルに書き終えたら解決し、送信は間引いて裏で行う。
      * 何も変えない操作（対象が無い、既に同じ値、優先度が下の解析結果）は送信待ちに入れない。
      * 書き込みに失敗したら `StudyStorageError` で拒否する（保存の状態も「保存に失敗」になる）。
+     *
+     * サーバーが受け付けない操作は、保存も送信待ちへの追加もせずに拒否する（1 つでもあれば全体）:
+     * 上限超過は `StudyLimitError`（`limit` に上限の名前。例: `commentBytes`）、
+     * 形として成り立たない入力は `StudyOpError`（どちらも `@shogi/app-core`）。
      */
     applyOps(studyId: string, ops: readonly StudyOp[]): Promise<StudyDocument>;
     /** 送信待ちをすぐ送る（解析の区切りなど）。省略時は全ノート。送信の試行が終わると解決する。 */
@@ -161,10 +176,21 @@ export interface StudySync {
      * ログインして戻ってきたときに呼ぶ。引き継いだノートの ID を返す。
      */
     adoptAnonymousStudies(): Promise<string[]>;
-    /** ローカルのノートの一覧（更新が新しい順。統合済み・削除待ちは除く）。 */
+    /**
+     * ローカルのノートの一覧（更新が新しい順。統合済み・削除待ちは除く）。
+     * いまのアカウントのノートと、匿名のノートだけを返す（未ログイン時は匿名のノートだけ）。
+     */
     listLocal(): Promise<StudyLocalSummary[]>;
     /** 同じ元棋譜のローカルのノートを探す。無ければ null。 */
     findLocalByOrigin(origin: StudyDocument["origin"]): Promise<string | null>;
+
+    /**
+     * ノートの表示の状態（表示中のレイヤー、見ていた局面など）を読む。無ければ空のオブジェクト。
+     * 同期しない、このブラウザだけの状態。
+     */
+    getViewState(studyId: string): Promise<StudyViewState>;
+    /** ノートの表示の状態に `patch` の項目を上書きして保存し、保存後の状態を返す。 */
+    setViewState(studyId: string, patch: StudyViewState): Promise<StudyViewState>;
 
     /** 保存の状態。内容が変わるまで同じ参照を返す（`useSyncExternalStore` で使える）。 */
     getStatus(studyId: string): StudySaveStatus;
@@ -209,7 +235,9 @@ const INITIAL_STATUS: StudySaveStatus = {
 
 /** 1 つのバッチの本文に使う上限。サーバーの上限（512 KiB）に対して余裕を持たせる。 */
 const BATCH_BODY_BUDGET_BYTES = STUDY_LIMITS.opsBatchBytes - 32 * 1024;
-const MAX_SYNC_STEPS = 50;
+/** 1 バッチに入れる解析結果の数の上限（サーバーの 1 リクエストの処理時間を抑えるため）。 */
+const MAX_PUT_ANALYSIS_PER_BATCH = 20;
+const MAX_SYNC_STEPS = 200;
 const MAX_CONFLICTS_PER_RUN = 3;
 const OTHER_TAB_REFRESH_DELAY_MS = 250;
 
@@ -232,6 +260,11 @@ const toDocument = (detail: StudyDetail): StudyDocument => ({
     layers: detail.layers,
 });
 
+/**
+ * 作成リクエスト。ツリー（と対局時の評価値、メタ情報）だけを送り、解析レイヤーと結果は送らない
+ * （結果つきの作成はサーバーの 1 リクエストの処理時間が長くなるため）。レイヤーと結果は、
+ * 作成のあとに操作バッチ（`ensureLayer` + `putAnalysis` を少しずつ）で送る。
+ */
 const toCreateRequest = (doc: StudyDocument): CreateStudyRequest => ({
     id: doc.id,
     title: doc.title,
@@ -240,11 +273,7 @@ const toCreateRequest = (doc: StudyDocument): CreateStudyRequest => ({
     rules: doc.rules,
     meta: doc.meta,
     tree: doc.tree,
-    layers: doc.layers.map((layer) => ({
-        spec: layer.spec,
-        display: layer.display,
-        results: layer.results,
-    })),
+    layers: [],
 });
 
 /** 操作を順に適用し、文書を実際に変えた操作だけを残す。 */
@@ -281,6 +310,7 @@ interface Entry {
     rerun: boolean;
     force: boolean;
     writeChain: Promise<unknown>;
+    viewChain: Promise<unknown>;
     listeners: Set<() => void>;
     open: boolean;
     refreshTimer: unknown;
@@ -327,6 +357,7 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                 rerun: false,
                 force: false,
                 writeChain: Promise.resolve(),
+                viewChain: Promise.resolve(),
                 listeners: new Set(),
                 open: false,
                 refreshTimer: null,
@@ -413,6 +444,13 @@ export function createStudySync(options: StudySyncOptions): StudySync {
 
     const canSend = (study: Pick<StoredStudy, "owner">): boolean =>
         session !== null && !unauthorized && study.owner === session.userId;
+
+    /** いまのセッションから見えるノートか（自分のノートか、匿名のノート）。 */
+    const isVisible = (study: Pick<StoredStudy, "owner">): boolean =>
+        study.owner === null || study.owner === (session?.userId ?? null);
+
+    /** メモリ上の表示の状態（保存層が対応していないときの受け皿）。 */
+    const fallbackViewStates = new Map<string, StudyViewState>();
 
     const markUnauthorized = (): void => {
         if (unauthorized) return;
@@ -511,13 +549,29 @@ export function createStudySync(options: StudySyncOptions): StudySync {
      * サーバーの文書の上に、未送信の操作を再適用する。
      * サーバーの文書を変えない操作（既に反映済みなど）は送信待ちから落とす。
      */
-    const rebaseOnto = async (studyId: string, detail: StudyDetail): Promise<boolean> => {
+    const rebaseOnto = async (
+        studyId: string,
+        detail: StudyDetail,
+        /**
+         * 送信待ちに無いローカルの成果（作成時に送らなかったレイヤーと結果など）も、
+         * サーバーの文書に足す操作として送信待ちに積む（消す操作は作らない）。
+         */
+        keepLocalDocument = false,
+    ): Promise<boolean> => {
         const changed = await mutate(studyId, (snapshot) => {
             if (!snapshot.study) return { result: false };
-            const { doc, effective } = applyEffectiveOps(
+            const rebased = applyEffectiveOps(
                 toDocument(detail),
                 snapshot.pending.map((item) => item.op),
             );
+            const extra = keepLocalDocument
+                ? applyEffectiveOps(
+                      rebased.doc,
+                      studyDocumentToOps(snapshot.study.doc, { mergeInto: rebased.doc }),
+                  )
+                : { doc: rebased.doc, effective: [] };
+            const doc = extra.doc;
+            const effective = [...rebased.effective, ...extra.effective];
             return {
                 study: {
                     ...snapshot.study,
@@ -566,24 +620,16 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             }));
             return "done";
         }
-        const owner = study.owner;
-        const ops = studyDocumentToOps(study.doc);
-        await mutate(existingStudyId, (snapshot) => {
-            const base =
-                snapshot.study ?? newStoredStudy(toDocument(target), owner, target.revision);
-            const { doc, effective } = applyEffectiveOps(base.doc, ops);
-            return {
-                study: { ...base, doc, updatedAt: now() },
-                appendOps: effective,
-                result: undefined,
-            };
-        });
+        // まず元のノートを「統合済み（取り込み待ち）」にする。この 1 トランザクション以降、
+        // 元のノートへの編集は拒否されるので、取り込みから漏れる編集は生まれない。
+        // それより前に保存された編集は、元のノートの文書に入っている（下で読み直す）。
         await mutate(study.id, (snapshot) => {
             if (!snapshot.study) return { result: undefined };
             return {
                 study: {
                     ...snapshot.study,
                     mergedInto: existingStudyId,
+                    mergePending: true,
                     inflight: null,
                     updatedAt: now(),
                 },
@@ -592,33 +638,114 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             };
         });
         emit({ type: "merged", studyId: study.id, into: existingStudyId });
-        emit({ type: "document", studyId: existingStudyId, origin: "local" });
-        schedule(existingStudyId, 0);
+        return finishMerge(study.id, existingStudyId, target);
+    };
+
+    /**
+     * 統合済みにした元のノートの成果を、統合先に操作として積む。
+     * 元のノートの最新の文書から作るので、途中で閉じられてもやり直せる（操作は冪等）。
+     */
+    const finishMerge = async (
+        studyId: string,
+        targetId: string,
+        fetchedTarget: StudyDetail | null,
+    ): Promise<StepOutcome> => {
+        const source = (await store.read(studyId)).study;
+        if (!source) return "done";
+        let target = fetchedTarget;
+        if (target === null && (await store.read(targetId)).study === null) {
+            const fetched = await api.get(targetId);
+            if (!fetched.ok) {
+                if (fetched.status === 401) {
+                    markUnauthorized();
+                    return "done";
+                }
+                entryOf(studyId).message = describeError(fetched.status, fetched.error);
+                return "retry";
+            }
+            target = fetched.data.study;
+        }
+        const seed = target;
+        const applied = await mutate(targetId, (snapshot) => {
+            const base =
+                snapshot.study ??
+                (seed ? newStoredStudy(toDocument(seed), source.owner, seed.revision) : null);
+            if (!base) return { result: false };
+            // 同じノードの両方にコメントがあれば、統合先のコメントを消さずにつなぐ。
+            const ops = studyDocumentToOps(source.doc, { mergeInto: base.doc });
+            const { doc, effective } = applyEffectiveOps(base.doc, ops);
+            return {
+                study: { ...base, doc, updatedAt: now() },
+                appendOps: effective,
+                result: true,
+            };
+        });
+        if (!applied) return "retry";
+        await mutate(studyId, (snapshot) =>
+            snapshot.study
+                ? { study: { ...snapshot.study, mergePending: false }, result: undefined }
+                : { result: undefined },
+        );
+        emit({ type: "document", studyId: targetId, origin: "local" });
+        schedule(targetId, 0);
         return "done";
     };
 
     const createRemote = async (
         study: StoredStudy,
-        pending: readonly PendingStudyOp[],
+        run: { conflicts: number; recreated: boolean },
     ): Promise<StepOutcome> => {
-        // この時点の文書には、ここまでの送信待ちの操作がすべて反映されている。
-        const includedUpTo = lastSeqOf(pending);
-        const response = await api.create(toCreateRequest(study.doc));
+        if (options.verifySession) {
+            // 別のタブでアカウントが切り替わっていないか、作成の直前に確かめる。
+            let verified: StudySession | null;
+            try {
+                verified = await options.verifySession();
+            } catch (error) {
+                entryOf(study.id).message = error instanceof Error ? error.message : String(error);
+                return "retry";
+            }
+            if (verified?.userId !== study.owner) {
+                // 送らない。以後はサーバーから見たログイン状態に合わせる
+                // （保存の状態は `other_account` / `signed_out` になる）。
+                session = verified ? { userId: verified.userId } : null;
+                unauthorized = false;
+                for (const id of entries.keys()) refreshStatus(id);
+                return "done";
+            }
+        }
+        const sentDoc = study.doc;
+        const response = await api.create(toCreateRequest(sentDoc));
+        if (response.ok && response.data.existing) {
+            // 同じ ID のノートが既にある（作成の応答が届かなかった再送など）。サーバーの中身は
+            // 分からない（他の端末が変えているかもしれない）ので、最新の文書を取得し、
+            // 未送信の操作をその上に再適用してから続ける（409 のときと同じ）。
+            const fetched = await api.get(study.id);
+            if (!fetched.ok) return handleGetFailure(study.id, fetched, run);
+            await rebaseOnto(study.id, fetched.data.study, true);
+            return "continue";
+        }
         if (response.ok) {
-            const { revision, existing } = response.data;
+            const { revision } = response.data;
             await mutate(study.id, (snapshot) => {
                 if (!snapshot.study) return { result: undefined };
+                // サーバーにできたのは、送ったツリーだけのノート（レイヤーなし）。そこから
+                // いまのローカルの文書までの差分（レイヤーと結果、送信後の編集）を送信待ちにする。
+                // これが全部受理されるまで、保存の状態は「送信待ち」のまま。
+                const created: StudyDocument = { ...sentDoc, layers: [] };
+                const { effective } = applyEffectiveOps(
+                    created,
+                    diffStudyDocuments(created, snapshot.study.doc),
+                );
                 return {
                     study: {
                         ...snapshot.study,
                         serverRevision: revision,
                         inflight: null,
                         remote: { state: "ok" },
-                        lastSyncedAt: now(),
+                        lastSyncedAt: effective.length === 0 ? now() : snapshot.study.lastSyncedAt,
                     },
-                    // 新規作成なら、送った文書に含まれる操作は送り直さない。
-                    // 既にあった場合は、サーバーの中身が分からないので送信待ちを残して送る。
-                    ...(existing ? {} : { removeOpsUpTo: includedUpTo }),
+                    removeOpsUpTo: lastSeqOf(snapshot.pending),
+                    appendOps: effective,
                     result: undefined,
                 };
             });
@@ -642,11 +769,21 @@ export function createStudySync(options: StudySyncOptions): StudySync {
     const pickBatchLastSeq = (pending: readonly PendingStudyOp[]): number => {
         const encoder = new TextEncoder();
         let bytes = 0;
+        let analyses = 0;
+        let newLayers = 0;
         let lastSeq = pending[0].seq;
         for (let i = 0; i < pending.length && i < STUDY_LIMITS.opsPerBatch; i++) {
-            bytes += encoder.encode(JSON.stringify(pending[i].op)).length + 1;
+            const { op } = pending[i];
+            bytes += encoder.encode(JSON.stringify(op)).length + 1;
+            if (op.type === "putAnalysis") analyses += 1;
+            if (op.type === "ensureLayer") newLayers += 1;
             // 1 つ目は大きくても入れる（入れなければ永久に送れない。超過はサーバーが 413 で返す）。
             if (i > 0 && bytes > BATCH_BODY_BUDGET_BYTES) break;
+            // 解析結果は 1 バッチ 20 件まで（残りは次のバッチで、間引きを待たずに続けて送る）。
+            if (analyses > MAX_PUT_ANALYSIS_PER_BATCH) break;
+            // レイヤーの作成は 1 バッチ 1 つまで。サーバーはレイヤーを作成時刻・ID の順に並べるので、
+            // 同じバッチで 2 つ作ると（作成時刻が同じになり）ローカルの追加順と並びがずれる。
+            if (newLayers > 1) break;
             lastSeq = pending[i].seq;
         }
         return lastSeq;
@@ -755,6 +892,41 @@ export function createStudySync(options: StudySyncOptions): StudySync {
     ): Promise<StepOutcome> =>
         failure.status === 404 ? handleMissing(studyId, run) : handleFailure(studyId, failure);
 
+    /**
+     * サーバーに操作を拒否された（上限超過・入力不正）あとの復帰。
+     * サーバーの最新の文書を取得し、「サーバーの文書 → ローカルの文書」の差分で送信待ちを
+     * 置き換える。ローカルの文書は変えない（成果は消さない）。利用者がローカルで超過を
+     * 解消していれば、次の送信で通る。
+     */
+    const rebuildPending = async (
+        studyId: string,
+        run: { recreated: boolean },
+    ): Promise<StepOutcome> => {
+        const fetched = await api.get(studyId);
+        if (!fetched.ok) return handleGetFailure(studyId, fetched, run);
+        const detail = fetched.data.study;
+        await mutate(studyId, (snapshot) => {
+            if (!snapshot.study) return { result: undefined };
+            const serverDoc = toDocument(detail);
+            const { effective } = applyEffectiveOps(
+                serverDoc,
+                diffStudyDocuments(serverDoc, snapshot.study.doc),
+            );
+            return {
+                study: {
+                    ...snapshot.study,
+                    serverRevision: detail.revision,
+                    inflight: null,
+                    remote: { state: "ok" },
+                },
+                removeOpsUpTo: lastSeqOf(snapshot.pending),
+                appendOps: effective,
+                result: undefined,
+            };
+        });
+        return "continue";
+    };
+
     const deleteRemote = async (studyId: string): Promise<StepOutcome> => {
         const response = await api.delete(studyId);
         if (response.ok || response.status === 404 || response.status === 410) {
@@ -777,19 +949,34 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         for (let step = 0; step < MAX_SYNC_STEPS; step++) {
             const { study, pending } = await store.read(studyId);
             observe(studyId, study, pending.length);
-            if (!study || study.mergedInto !== null) return "done";
+            if (!study) return "done";
+            if (study.mergedInto !== null) {
+                // 統合先への取り込みが途中なら、続きを行う。
+                if (study.mergePending && canSend(study)) {
+                    return finishMerge(studyId, study.mergedInto, null);
+                }
+                return "done";
+            }
             if (!canSend(study)) return "done";
             if (study.deleting) return deleteRemote(studyId);
             if (study.remote.state === "deleted") return "done";
             if (study.remote.state === "limit_exceeded" || study.remote.state === "rejected") {
                 // 同じ内容を送り直しても通らない。新しい操作が積まれるか、明示の再試行まで待つ。
                 if (!forced && lastSeqOf(pending) <= study.remote.atSeq) return "done";
+                if (study.serverRevision !== null) {
+                    // 拒否された操作の列は引きずらない。サーバーの最新の文書といまのローカルの
+                    // 文書の差分から、送信待ちを作り直してから送る。
+                    forced = false;
+                    const rebuilt = await rebuildPending(studyId, run);
+                    if (rebuilt !== "continue") return rebuilt;
+                    continue;
+                }
             }
             forced = false;
 
             let outcome: StepOutcome;
             if (study.serverRevision === null) {
-                outcome = await createRemote(study, pending);
+                outcome = await createRemote(study, run);
             } else if (pending.length === 0) {
                 return "done";
             } else {
@@ -953,7 +1140,11 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         if (!current) return;
         const summaries = await store.list();
         for (const summary of summaries) {
-            if (summary.owner !== current.userId || summary.mergedInto !== null) continue;
+            if (summary.owner !== current.userId) continue;
+            if (summary.mergedInto !== null) {
+                if (summary.mergePending) schedule(summary.id, 0);
+                continue;
+            }
             if (summary.pendingCount > 0 || summary.serverRevision === null || summary.deleting) {
                 schedule(summary.id, 0);
             }
@@ -998,6 +1189,8 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                     return { status: "merged", into: local.study.mergedInto };
                 }
                 if (local.study.deleting) return { status: "not_found" };
+                // 別のアカウントのノートは、このアカウントからは存在しないものとして扱う。
+                if (!isVisible(local.study)) return { status: "not_found" };
                 entryOf(studyId).open = true;
                 // 他の端末の変更を裏で取り込み、送信待ちがあれば送る。
                 void pull(studyId).catch(() => undefined);
@@ -1055,6 +1248,8 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                             `研究ノートは統合済みです: ${snapshot.study.mergedInto}`,
                         );
                     }
+                    // サーバーが受け付けない操作（上限超過・形の不正）は、保存する前に弾く。
+                    applyStudyOpsStrict(snapshot.study.doc, ops);
                     const applied = applyEffectiveOps(snapshot.study.doc, ops);
                     if (applied.effective.length === 0) {
                         return { result: { doc: snapshot.study.doc, changed: false } };
@@ -1170,7 +1365,10 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         async listLocal() {
             const summaries = await store.list();
             return summaries
-                .filter((summary) => summary.mergedInto === null && !summary.deleting)
+                .filter(
+                    (summary) =>
+                        summary.mergedInto === null && !summary.deleting && isVisible(summary),
+                )
                 .map((summary) => {
                     const entry = entries.get(summary.id);
                     return {
@@ -1199,6 +1397,27 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                 return study.mergedInto ?? study.id;
             }
             return null;
+        },
+
+        async getViewState(studyId) {
+            if (!store.readViewState) return { ...fallbackViewStates.get(studyId) };
+            return (await store.readViewState(studyId)) ?? {};
+        },
+        async setViewState(studyId, patch) {
+            const entry = entryOf(studyId);
+            // 同じノートへの書き込みは呼んだ順に行う（読んでから書くので、順序が前後しないように）。
+            const result = entry.viewChain.then(async () => {
+                if (!store.readViewState || !store.writeViewState) {
+                    const next = { ...fallbackViewStates.get(studyId), ...patch };
+                    fallbackViewStates.set(studyId, next);
+                    return next;
+                }
+                const next = { ...((await store.readViewState(studyId)) ?? {}), ...patch };
+                await store.writeViewState(studyId, next);
+                return next;
+            });
+            entry.viewChain = result.catch(() => undefined);
+            return result;
         },
 
         getStatus(studyId) {
