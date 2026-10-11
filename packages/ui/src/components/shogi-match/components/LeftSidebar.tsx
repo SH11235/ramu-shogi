@@ -2,7 +2,9 @@ import type { NnueSelection } from "@shogi/app-core";
 import { NONE_NNUE_SELECTION } from "@shogi/app-core";
 import type { SkillLevelSettings } from "@shogi/engine-client";
 import type { ReactElement, ReactNode } from "react";
+import { ChevronIcon } from "../../chevron-icon";
 import { Input } from "../../input";
+import { NativeSelect } from "../../native-select";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../select";
 import { Switch } from "../../switch";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
@@ -298,7 +300,7 @@ export function LeftSidebar({
                 {isDevMode && (
                     <div className={labelClassName}>
                         <span>スレッド数</span>
-                        <select
+                        <NativeSelect
                             value={String(engineThreads[side])}
                             disabled={settingsLocked}
                             onChange={(e) =>
@@ -307,14 +309,13 @@ export function LeftSidebar({
                                     [side]: Number(e.target.value),
                                 })
                             }
-                            className={inputClassName}
                         >
                             {threadOptions.map((opt) => (
                                 <option key={opt.value} value={opt.value}>
                                     {opt.label}
                                 </option>
                             ))}
-                        </select>
+                        </NativeSelect>
                         <span className="text-[11px] text-muted-foreground">
                             0 = 自動。外部エンジンの自動は登録時の設定に従います
                         </span>
@@ -426,18 +427,17 @@ export function LeftSidebar({
                 {onAnalysisEngineIdChange && availableEngines.length > 1 && (
                     <div className={labelClassName}>
                         <span>解析エンジン</span>
-                        <select
+                        <NativeSelect
                             value={analysisEngineId ?? internalEngineId}
                             disabled={settingsLocked}
                             onChange={(e) => onAnalysisEngineIdChange(e.target.value)}
-                            className={inputClassName}
                         >
                             {availableEngines.map((engine) => (
                                 <option key={engine.id} value={engine.id}>
                                     {engine.label}
                                 </option>
                             ))}
-                        </select>
+                        </NativeSelect>
                     </div>
                 )}
             </div>
@@ -516,7 +516,7 @@ export function LeftSidebar({
                 >
                     <span aria-hidden="true">👁️</span>
                     <span className="flex-1">表示設定</span>
-                    <span aria-hidden="true">{displaySettingsOpen ? "▾" : "▸"}</span>
+                    <ChevronIcon expanded={displaySettingsOpen} />
                 </button>
                 {displaySettingsPanel}
             </div>

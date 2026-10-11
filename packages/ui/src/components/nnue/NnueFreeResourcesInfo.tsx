@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import { useState } from "react";
+import { ChevronIcon } from "../chevron-icon";
 
 interface FreeNnueResource {
     /** 評価関数名 */
@@ -47,13 +48,7 @@ export function NnueFreeResourcesInfo(): ReactElement {
                     <span className="text-base">📚</span>
                     <span>無料で手に入る将棋AI</span>
                 </div>
-                <span
-                    className={`text-sm transition-transform ${
-                        isExpanded ? "rotate-180" : "rotate-0"
-                    }`}
-                >
-                    ▼
-                </span>
+                <ChevronIcon expanded={isExpanded} />
             </button>
 
             {/* コンテンツ（展開時のみ表示） */}

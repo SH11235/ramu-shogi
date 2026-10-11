@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { NativeSelect } from "../../native-select";
 import type { DisplaySettings } from "../types";
 
 interface DisplaySettingsPanelProps {
@@ -26,7 +27,7 @@ export function DisplaySettingsPanel({
         >
             <label className="flex flex-col gap-2 text-sm">
                 <span>マス内座標表示</span>
-                <select
+                <NativeSelect
                     value={settings.squareNotation}
                     onChange={(event) =>
                         onChange({
@@ -34,12 +35,11 @@ export function DisplaySettingsPanel({
                             squareNotation: event.target.value as DisplaySettings["squareNotation"],
                         })
                     }
-                    className="rounded border border-wafuu-border bg-wafuu-washi px-2 py-1.5 text-wafuu-sumi"
                 >
                     <option value="none">なし</option>
                     <option value="sfen">SFEN (5e)</option>
                     <option value="japanese">日本式 (５五)</option>
-                </select>
+                </NativeSelect>
             </label>
             {toggles.map(({ key, label }) => (
                 <label key={key} className="flex cursor-pointer items-center gap-3 text-sm">

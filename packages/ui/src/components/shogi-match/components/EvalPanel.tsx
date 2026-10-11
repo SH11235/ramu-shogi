@@ -1,3 +1,4 @@
+import { ChevronIcon } from "../../chevron-icon";
 /**
  * 評価値パネル（折りたたみ可能）
  *
@@ -70,13 +71,7 @@ export function EvalPanel({
                         </span>
                     )}
                 </div>
-                <span
-                    className={`text-xs text-muted-foreground transition-transform duration-200 ${
-                        isOpen ? "rotate-180" : "rotate-0"
-                    }`}
-                >
-                    ▼
-                </span>
+                <ChevronIcon expanded={isOpen} />
             </button>
 
             {/* 評価値スコアボード(計器)。検討/観戦のみ、折りたたみ状態でも常時表示。
