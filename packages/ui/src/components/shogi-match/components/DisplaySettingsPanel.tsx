@@ -22,7 +22,7 @@ export function DisplaySettingsPanel({
         <section
             id="board-display-settings"
             aria-label="表示設定"
-            className="flex flex-col gap-4 rounded-lg border border-wafuu-border bg-wafuu-washi p-3"
+            className="flex flex-col gap-4 border-t border-wafuu-border p-3"
         >
             <label className="flex flex-col gap-2 text-sm">
                 <span>マス内座標表示</span>

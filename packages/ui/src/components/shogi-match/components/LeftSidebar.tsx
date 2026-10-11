@@ -506,17 +506,20 @@ export function LeftSidebar({
             )}
 
             {/* 表示設定 */}
-            <button
-                type="button"
-                onClick={onDisplaySettingsToggle ?? onOpenDisplaySettings}
-                aria-expanded={displaySettingsOpen}
-                aria-controls="board-display-settings"
-                className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
-            >
-                <span>👁️</span>
-                <span>表示設定</span>
-            </button>
-            {displaySettingsPanel}
+            <div className="overflow-hidden rounded-lg border-2 border-wafuu-border bg-wafuu-washi shadow-sm">
+                <button
+                    type="button"
+                    onClick={onDisplaySettingsToggle ?? onOpenDisplaySettings}
+                    aria-expanded={displaySettingsOpen}
+                    aria-controls="board-display-settings"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-border"
+                >
+                    <span aria-hidden="true">👁️</span>
+                    <span className="flex-1">表示設定</span>
+                    <span aria-hidden="true">{displaySettingsOpen ? "▾" : "▸"}</span>
+                </button>
+                {displaySettingsPanel}
+            </div>
         </div>
     );
 }
