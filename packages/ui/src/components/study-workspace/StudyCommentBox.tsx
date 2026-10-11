@@ -19,6 +19,10 @@
  * - 下書きを書き始めたあとに保存済みのコメントが変わっていたら、自動では保存せず、
  *   「以前の書きかけがあります」と出して利用者に選んでもらう（使う / 捨てる）。
  * - 他のタブ・端末の変更を取り込んだとき、入力中でない下書きは、取り込んだ内容を優先して消す。
+ * - 保存済みのコメントが最新か分からない間（`baseConfirmed` が false。ノートを開いた直後で、
+ *   サーバーの最新の内容をまだ取り込めていない）は、下書きを自動では保存しない。最新の内容を
+ *   取り込めた時点で、下書きを書き始めたときのコメントと比べ、同じなら保存し、違えば利用者に
+ *   選んでもらう。取り込めないままのときは、利用者が明示的に保存を選べる。
  */
 
 import { STUDY_LIMITS } from "@shogi/app-core";
@@ -61,6 +65,11 @@ interface StudyCommentBoxProps {
     onDraftChange?: (change: StudyCommentDraftChange) => void;
     /** 保存できない状態（入力は残すが、保存はしない）。 */
     disabled?: boolean;
+    /**
+     * `value`（保存済みのコメント）が最新だと確かめられているか。false の間（ノートを開いた直後で、
+     * サーバーの最新の内容をまだ取り込めていない）は、下書きを自動では保存しない。省略時は true。
+     */
+    baseConfirmed?: boolean;
     className?: string;
 }
 
@@ -84,6 +93,7 @@ export function StudyCommentBox({
     initialDraft,
     onDraftChange,
     disabled = false,
+    baseConfirmed = true,
     className,
 }: StudyCommentBoxProps): ReactElement {
     // 戻す下書きの扱いを、最初に 1 回だけ決める。
@@ -97,7 +107,9 @@ export function StudyCommentBox({
     }>(() => {
         if (!initialDraft) return { adopted: null, pending: null, redundant: false };
         if (initialDraft.text === value) return { adopted: null, pending: null, redundant: true };
-        return initialDraft.base === value
+        // 保存済みのコメントが最新か分からない間は、入力として戻すだけにして（保存は保留）、
+        // 最新の内容を取り込めた時点で、書き始めたときのコメントと比べる。
+        return !baseConfirmed || initialDraft.base === value
             ? { adopted: initialDraft.text, pending: null, redundant: false }
             : { adopted: null, pending: initialDraft.text, redundant: false };
     });
@@ -106,6 +118,23 @@ export function StudyCommentBox({
     const [pendingRestore, setPendingRestore] = useState<string | null>(restore.pending);
     const lastSavedRef = useRef(value);
     const draftRef = useRef(restore.adopted ?? value);
+    /**
+     * いまの入力を書き始めたときの、保存済みのコメント（分からなければ null）。
+     * 保存の前に、保存済みのコメントがここから変わっていないかを確かめるのに使う。
+     */
+    const baseRef = useRef<string | null>(
+        restore.adopted !== null ? (initialDraft?.base ?? null) : value,
+    );
+    /** 利用者が、確認を待たずに保存することを選んだ。 */
+    const forcedRef = useRef(false);
+    const baseConfirmedRef = useRef(baseConfirmed);
+    baseConfirmedRef.current = baseConfirmed;
+    /**
+     * 前の表示の時点で、保存済みのコメントが最新だと確かめられていたか。最新の内容の取り込みと
+     * 「確かめられた」が同時に届いたとき、その取り込みは「確かめる前に届いた変更」として扱う
+     * （下書きを黙って捨てず、書き始めたときのコメントと比べて決める）。
+     */
+    const wasConfirmedRef = useRef(baseConfirmed);
     const focusedRef = useRef(false);
     const disabledRef = useRef(disabled);
     disabledRef.current = disabled;
@@ -120,7 +149,7 @@ export function StudyCommentBox({
         callbacksRef.current.onDraftChange?.(
             text === lastSavedRef.current
                 ? { type: "clear", savedText: text }
-                : { type: "set", text, base: lastSavedRef.current },
+                : { type: "set", text, base: baseRef.current ?? lastSavedRef.current },
         );
     };
 
@@ -131,18 +160,27 @@ export function StudyCommentBox({
         lastSavedRef.current = value;
         if (!isDirty) {
             draftRef.current = value;
+            baseRef.current = value;
             setDraft(value);
             return;
         }
         if (draftRef.current === value) {
             // 同じ内容が保存された。下書きは要らない。
+            baseRef.current = value;
             callbacksRef.current.onDraftChange?.({ type: "clear", savedText: value });
             return;
         }
+        // 保存済みのコメントが最新か確かめている間は、下書きをそのまま持っておく。最新の内容を
+        // 取り込めた時点で、書き始めたときのコメントと比べて決める（下の `baseConfirmed` の処理）。
+        if (!wasConfirmedRef.current) return;
         // 入力中（フォーカスがあり、保存していない変更がある）なら、入力を残す。
-        if (focusedRef.current) return;
+        if (focusedRef.current) {
+            baseRef.current = value;
+            return;
+        }
         // 入力中でない下書きは、取り込んだ内容を優先して消す（古い下書きで上書きしない）。
         draftRef.current = value;
+        baseRef.current = value;
         setDraft(value);
         callbacksRef.current.onDraftChange?.({ type: "clear", savedText: null });
     }, [value]);
@@ -150,11 +188,16 @@ export function StudyCommentBox({
     const save = (): void => {
         if (disabledRef.current) return;
         if (draftRef.current === lastSavedRef.current) return;
+        // 保存済みのコメントが最新か分からない間は、保存しない（他の端末のコメントを、確かめずに
+        // 上書きしないため）。下書きは置いたままなので、入力は失われない。
+        if (!baseConfirmedRef.current && !forcedRef.current) return;
         // 上限を超えている間は保存しない（入力は残し、下の案内で知らせる）。
         if (isStudyCommentOverLimit(draftRef.current)) return;
         const previous = lastSavedRef.current;
         const attempted = draftRef.current;
         lastSavedRef.current = attempted;
+        baseRef.current = attempted;
+        forcedRef.current = false;
         const outcome = callbacksRef.current.onChange(attempted);
         const reportSaved = (): void =>
             callbacksRef.current.onDraftChange?.({ type: "clear", savedText: attempted });
@@ -170,19 +213,44 @@ export function StudyCommentBox({
             }
             // 保存できなかったら、まだ保存していない入力として扱い直す。下書きは置いたままなので、
             // 置き直さない（この間に書かれた新しい下書きを、古い内容で上書きしない）。
-            if (lastSavedRef.current === attempted) lastSavedRef.current = previous;
+            if (lastSavedRef.current === attempted) {
+                lastSavedRef.current = previous;
+                baseRef.current = previous;
+            }
         });
     };
     const saveRef = useRef(save);
     saveRef.current = save;
 
-    // 入力が止まったら保存する。保存できない状態が解けたときも、残っていた入力を保存する。
-    // biome-ignore lint/correctness/useExhaustiveDependencies: disabled が変わったときにも保存を試みる
+    // 保存済みのコメントが最新だと確かめられた時点で、持っていた下書きをどうするか決める。
+    // 書き始めたときのコメントのままなら保存に進み、変わっていたら利用者に選んでもらう。
+    const [isHeld, setIsHeld] = useState(false);
+    useEffect(() => {
+        wasConfirmedRef.current = baseConfirmed;
+        const isDirty = draftRef.current !== lastSavedRef.current;
+        if (!baseConfirmed) {
+            setIsHeld(isDirty);
+            return;
+        }
+        setIsHeld(false);
+        if (!isDirty || forcedRef.current) return;
+        if (baseRef.current === lastSavedRef.current) return;
+        // 書き始めたあとに、保存済みのコメントが変わっていた。自動では保存しない。
+        const text = draftRef.current;
+        draftRef.current = lastSavedRef.current;
+        baseRef.current = lastSavedRef.current;
+        setDraft(lastSavedRef.current);
+        setPendingRestore(text);
+    }, [baseConfirmed]);
+
+    // 入力が止まったら保存する。保存できない状態が解けたとき・保存済みのコメントが最新だと
+    // 確かめられたときも、残っていた入力を保存する。
+    // biome-ignore lint/correctness/useExhaustiveDependencies: disabled・baseConfirmed が変わったときにも保存を試みる
     useEffect(() => {
         if (draft === lastSavedRef.current) return;
         const timer = setTimeout(() => saveRef.current(), COMMENT_SAVE_DELAY_MS);
         return () => clearTimeout(timer);
-    }, [draft, disabled]);
+    }, [draft, disabled, baseConfirmed]);
 
     // 最初に戻した下書きの後始末と、別の局面へ移るとき（作り直されるとき）の保存。
     // biome-ignore lint/correctness/useExhaustiveDependencies: マウント時と、アンマウント時にだけ行う
@@ -198,10 +266,19 @@ export function StudyCommentBox({
 
     const applyPendingRestore = (): void => {
         if (pendingRestore === null) return;
+        // 利用者が選んだので、いまの保存済みのコメントの上に書く（確認を待たずに保存してよい）。
         draftRef.current = pendingRestore;
+        baseRef.current = lastSavedRef.current;
+        forcedRef.current = true;
         setDraft(pendingRestore);
         setPendingRestore(null);
         reportDraft();
+    };
+    /** 最新の内容を確かめられないままのとき、利用者の指示で、書きかけを保存する。 */
+    const saveHeldDraft = (): void => {
+        forcedRef.current = true;
+        setIsHeld(false);
+        save();
     };
     const discardPendingRestore = (): void => {
         setPendingRestore(null);
@@ -257,8 +334,15 @@ export function StudyCommentBox({
                 <textarea
                     value={draft}
                     onChange={(event) => {
+                        // 保存済みの内容から書き始めるとき、その内容を覚える。
+                        if (draftRef.current === lastSavedRef.current) {
+                            baseRef.current = lastSavedRef.current;
+                        }
                         draftRef.current = event.target.value;
                         setDraft(event.target.value);
+                        if (!baseConfirmedRef.current) {
+                            setIsHeld(event.target.value !== lastSavedRef.current);
+                        }
                         reportDraft();
                     }}
                     onFocus={() => {
@@ -279,6 +363,21 @@ export function StudyCommentBox({
                     )}
                 />
             </label>
+            {isHeld && pendingRestore === null && !isOver && (
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                    <p className="min-w-0 flex-1">
+                        最新のコメントを確認しています。確認できるまで、この書きかけは自動では保存しません。
+                    </p>
+                    <button
+                        type="button"
+                        onClick={saveHeldDraft}
+                        disabled={disabled}
+                        className="min-h-10 shrink-0 rounded-md border border-input bg-background px-3 font-medium text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 md:min-h-8"
+                    >
+                        書きかけを使う
+                    </button>
+                </div>
+            )}
             {isOver ? (
                 <p role="alert" className="text-xs text-destructive">
                     コメントが長すぎます。あと約 {approxChars}{" "}

@@ -225,7 +225,7 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
 
         // 削除・統合・他のタブでの変更を一覧に反映する。
         const unsubscribe = sync.subscribeEvents((event) => {
-            if (event.type === "unauthorized") return;
+            if (event.type === "unauthorized" || event.type === "pulled") return;
             if (event.type === "removed") {
                 setRemote((items) => items.filter((item) => item.id !== event.studyId));
             }

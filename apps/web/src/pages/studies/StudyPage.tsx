@@ -45,6 +45,11 @@ type LoadState =
           locked: boolean;
           /** 前回、保存できないまま残っていたコメントの入力（手ごと）。 */
           drafts: StudyCommentDraft[];
+          /**
+           * 画面の文書が、サーバーの最新の内容を取り込んだものか（取り込む相手がいないノートは
+           * 常に true）。false の間は、コメントの下書きを自動では保存しない。
+           */
+          fresh: boolean;
       }
     /** ブラウザ内にもクラウドにも無い。 */
     | { status: "not_found" }
@@ -196,6 +201,9 @@ export default function StudyPage(): ReactElement {
         }
         for (;;) {
             const seq = writes.seq;
+            // 最新の内容を取り込めているかは、読む前に確かめる（取り込みが済んでいれば、これから
+            // 読む内容はその結果を含む。読んだあとに確かめると、古い内容を最新と取り違えうる）。
+            const fresh = sync.getPullState(targetId) !== "pending";
             await sync.whenLocalWritesSettled();
             let stored: StoredStudy | null;
             try {
@@ -219,7 +227,7 @@ export default function StudyPage(): ReactElement {
             setState((previous) => {
                 if (previous.status === "ready" && previous.studyId === targetId) {
                     // 開いている画面の更新。表示の状態と書きかけは、画面が持っているものを使う。
-                    return { ...previous, doc, ownerId: owner, locked: false };
+                    return { ...previous, doc, ownerId: owner, locked: false, fresh };
                 }
                 if (mode === "refresh") return previous;
                 // 前回、保存できないまま残っていたコメントは、その手のコメント欄に戻す。
@@ -244,6 +252,7 @@ export default function StudyPage(): ReactElement {
                     ownerId: owner,
                     locked: false,
                     drafts,
+                    fresh,
                 };
             });
             return true;
@@ -301,6 +310,12 @@ export default function StudyPage(): ReactElement {
                 return;
             }
             if (event.studyId !== studyId) return;
+            if (event.type === "pulled") {
+                // サーバーの最新の内容を取り込めた。その内容を画面に出してから、コメントの下書きの
+                // 保存を解く（`presentFromStore` が、最新かどうかも一緒に反映する）。
+                void presentFromStore(studyId, "refresh", isCancelled);
+                return;
+            }
             if (event.type === "merged") {
                 // 同じ元棋譜のノートが既にあった。成果はそのノートに統合済み。
                 goTo(event.into);
@@ -569,6 +584,7 @@ export default function StudyPage(): ReactElement {
                         onDiscard={handleDiscard}
                         originLink={renderOriginLink(state.doc.origin)}
                         locked={state.locked}
+                        commentBaseConfirmed={state.fresh}
                         initialCommentDrafts={state.drafts}
                         onCommentDraftChange={(nodeId, change) =>
                             applyStudyCommentDraftChange(studyId, state.ownerId, nodeId, change)

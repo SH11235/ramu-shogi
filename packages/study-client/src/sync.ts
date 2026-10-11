@@ -80,7 +80,23 @@ export type StudySyncEvent =
     /** ノートがローカルから消えた。 */
     | { type: "removed"; studyId: string }
     /** サーバーが 401 を返した（セッション切れ）。再ログインを案内する。 */
-    | { type: "unauthorized" };
+    | { type: "unauthorized" }
+    /**
+     * 開いたあとの最初の取り込みが済んだ（`getPullState` が `done` になった）。
+     * 取り込んだ内容は、この通知より前に保存層へ書き終えている。
+     */
+    | { type: "pulled"; studyId: string };
+
+/**
+ * ノートを開いたあと、サーバーの最新の内容を取り込めたか。
+ *
+ * - `not_needed`: 取り込む相手がいない（匿名のノート、まだサーバーに作っていないノート、
+ *   いまのアカウントから見えないノート）。ローカルの内容が最新。
+ * - `pending`: まだ取り込めていない（取得の途中、オフライン、失敗、401 のあとの待機中）。
+ *   ローカルの内容は、他の端末の変更を含んでいないかもしれない。
+ * - `done`: 最後に `open` してから、サーバーの最新の内容を取り込んだ。
+ */
+export type StudyPullState = "not_needed" | "pending" | "done";
 
 export type StudySyncErrorCode = "not_found" | "merged" | "already_exists";
 
@@ -181,6 +197,12 @@ export interface StudySync {
     retry(studyId: string): Promise<void>;
     /** サーバーの変更を取り込む。 */
     pull(studyId: string): Promise<void>;
+    /**
+     * ノートを開いたあと、サーバーの最新の内容を取り込めたか。`open` のたびに確かめ直す
+     * （`open` は取り込みを待たずに返るので、ローカルの内容が最新かは、これで確かめる）。
+     * `done` になったときに `pulled` のイベントを出す。
+     */
+    getPullState(studyId: string): StudyPullState;
     /** 開いているノートについて、サーバーの変更を取り込む（タブに戻ったとき）。 */
     refreshOpen(): Promise<void>;
     /**
@@ -352,6 +374,8 @@ interface Entry {
     viewChain: Promise<unknown>;
     listeners: Set<() => void>;
     open: boolean;
+    /** 最後に `open` してから、サーバーの最新の内容を取り込んだか。 */
+    pulled: boolean;
     refreshTimer: unknown;
 }
 
@@ -390,6 +414,8 @@ export function createStudySync(options: StudySyncOptions): StudySync {
      * 障害時の負荷を増やさないため。
      */
     let authHoldUntil = 0;
+    /** 待機が明けたときに、開いているノートの取り込みをやり直すためのタイマー。 */
+    let authResumeTimer: unknown = null;
     let disposed = false;
 
     /** 応答が成功したら、401 の続いた回数を忘れる（通常の送り方に戻る）。 */
@@ -433,6 +459,7 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                 viewChain: Promise.resolve(),
                 listeners: new Set(),
                 open: false,
+                pulled: false,
                 refreshTimer: null,
             };
             entries.set(studyId, entry);
@@ -1211,25 +1238,40 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         return running;
     }
 
-    const pullLocked = async (studyId: string): Promise<void> => {
+    /**
+     * サーバーの最新の内容を取り込む（ロックの中で）。
+     * @returns `fetched`: 取り込めた（内容が同じだった場合を含む）。`inflight`: 応答待ちの
+     *   バッチがあるので、送信側に任せた。`skipped`: 取り込めなかった・取り込む相手がいない。
+     */
+    const pullLocked = async (studyId: string): Promise<"fetched" | "inflight" | "skipped"> => {
         const { study, pending } = await store.read(studyId);
         observe(studyId, study, pending.length);
-        if (!study || study.mergedInto !== null || study.deleting) return;
-        if (!canSend(study) || study.serverRevision === null) return;
-        // 同じユーザーで 401 が続いている間は、取得も間隔が空くまで待つ（送信の再開時に取り込む）。
-        if (now() < authHoldUntil) return;
-        if (study.remote.state === "deleted") return;
+        if (!study || study.mergedInto !== null || study.deleting) return "skipped";
+        if (!canSend(study) || study.serverRevision === null) return "skipped";
+        // 同じユーザーで 401 が続いている間は、取得も間隔が空くまで待つ（待機が明けたときに、
+        // 開いているノートを取り込み直す。`setSession` を参照）。
+        if (now() < authHoldUntil) return "skipped";
+        if (study.remote.state === "deleted") return "skipped";
         // 応答待ちのバッチがあるときは、送信側の再送（replayed / 409）に任せる。
-        if (study.inflight !== null) return;
+        if (study.inflight !== null) return "inflight";
         const fetched = await api.get(studyId);
         if (fetched.ok) {
             if (fetched.data.study.revision !== study.serverRevision) {
                 await rebaseOnto(studyId, fetched.data.study);
             }
-            return;
+            return "fetched";
         }
-        if (isTransient(fetched.status)) return;
+        if (isTransient(fetched.status)) return "skipped";
         await handleGetFailure(studyId, fetched, { recreated: false });
+        return "skipped";
+    };
+
+    /** 開いたあとの最初の取り込みが済んだことを覚え、知らせる。 */
+    const markPulled = (studyId: string): void => {
+        const entry = entryOf(studyId);
+        if (entry.pulled) return;
+        entry.pulled = true;
+        emit({ type: "pulled", studyId });
     };
 
     const trackWrite = <T>(promise: Promise<T>): Promise<T> => {
@@ -1286,10 +1328,17 @@ export function createStudySync(options: StudySyncOptions): StudySync {
     });
 
     const pull = async (studyId: string): Promise<void> => {
-        await locks.request(lockName(studyId), () => pullLocked(studyId));
+        let outcome = await locks.request(lockName(studyId), () => pullLocked(studyId));
+        // 取り込んだ内容は、ここまでに保存層へ書き終えている。
+        if (outcome === "fetched") markPulled(studyId);
         const entry = entryOf(studyId);
         if (entry.pendingCount > 0 || entry.study?.serverRevision === null) {
             await runSync(studyId, false);
+        }
+        if (outcome === "inflight") {
+            // 応答待ちだったバッチの再送が済んだあとで、取り込み直す。
+            outcome = await locks.request(lockName(studyId), () => pullLocked(studyId));
+            if (outcome === "fetched") markPulled(studyId);
         }
     };
 
@@ -1346,8 +1395,25 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             } else if (unauthorized && nextUserId !== null) {
                 // 401 を受けて取り直したセッションが、同じユーザーだった。間隔を空けて送り直す
                 // （続くほど間隔を延ばす）。
-                authHoldUntil =
-                    now() + Math.min(retryMaxMs, retryBaseMs * 2 ** Math.max(0, authFailures - 1));
+                const holdMs = Math.min(
+                    retryMaxMs,
+                    retryBaseMs * 2 ** Math.max(0, authFailures - 1),
+                );
+                authHoldUntil = now() + holdMs;
+                // 待機中に頼まれた取り込みは行っていない。待機が明けたら、開いているノートを
+                // 取り込み直す（送信待ちの無いノートは、送信の再開では取り込まれないため）。
+                if (authResumeTimer !== null) scheduler.clearTimeout(authResumeTimer);
+                authResumeTimer = scheduler.setTimeout(() => {
+                    authResumeTimer = null;
+                    if (disposed) return;
+                    for (const [studyId, entry] of entries) {
+                        if (entry.open) void pull(studyId).catch(() => undefined);
+                    }
+                }, holdMs);
+            }
+            if (nextUserId !== previousUserId) {
+                // 別のアカウントから見た内容は、取り込み直すまで最新とは言えない。
+                for (const entry of entries.values()) entry.pulled = false;
             }
             session = next ? { userId: next.userId } : null;
             sessionKnown = true;
@@ -1392,7 +1458,10 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                 if (local.study.deleting) return { status: "not_found" };
                 // 別のアカウントのノートは、このアカウントからは存在しないものとして扱う。
                 if (!isVisible(local.study)) return { status: "not_found" };
-                entryOf(studyId).open = true;
+                const entry = entryOf(studyId);
+                entry.open = true;
+                // 開くたびに、最新の内容を取り込めたかを確かめ直す。
+                entry.pulled = false;
                 // 他の端末の変更を裏で取り込み、送信待ちがあれば送る。
                 void pull(studyId).catch(() => undefined);
                 return { status: "ok", study: local.study };
@@ -1421,7 +1490,10 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                     );
                     return { study: created, result: created };
                 });
-                entryOf(studyId).open = true;
+                const entry = entryOf(studyId);
+                entry.open = true;
+                // いまサーバーから取得した内容そのもの。
+                entry.pulled = true;
                 return { status: "ok", study };
             });
         },
@@ -1429,6 +1501,17 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         close(studyId) {
             const entry = entries.get(studyId);
             if (entry) entry.open = false;
+        },
+
+        getPullState(studyId) {
+            const entry = entries.get(studyId);
+            const study = entry?.study ?? null;
+            // 取り込む相手がいないノート（匿名・サーバーに未作成・いまのアカウントから見えない）。
+            if (!entry || !study || study.owner === null || study.serverRevision === null) {
+                return "not_needed";
+            }
+            if (study.owner !== (session?.userId ?? null)) return "not_needed";
+            return entry.pulled ? "done" : "pending";
         },
 
         async load(studyId) {
@@ -1665,6 +1748,10 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                     scheduler.clearTimeout(entry.refreshTimer);
                     entry.refreshTimer = null;
                 }
+            }
+            if (authResumeTimer !== null) {
+                scheduler.clearTimeout(authResumeTimer);
+                authResumeTimer = null;
             }
             unsubscribeChannel?.();
             eventListeners.clear();

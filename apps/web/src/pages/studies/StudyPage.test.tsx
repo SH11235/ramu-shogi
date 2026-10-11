@@ -387,6 +387,77 @@ describe("StudyPage", () => {
         ]);
     });
 
+    describe("開いたあとの最初の取り込み（コメントの下書きの保存を解く合図）", () => {
+        /** サーバーに作成済みのアカウントのノート。取得の応答は手で進める。 */
+        const prepareSyncedStudy = async () => {
+            const doc = createTestDoc(STUDY_ID, "アカウントのノート");
+            const detail = { ...doc, revision: 1, createdAt: "", updatedAt: "" };
+            let release: () => void = () => {};
+            const gate = new Promise<void>((resolve) => {
+                release = resolve;
+            });
+            const api = createOfflineApi({
+                create: vi.fn(async () => ({
+                    ok: true as const,
+                    status: 201,
+                    data: { studyId: STUDY_ID, revision: 1 },
+                })),
+                get: vi.fn(async () => {
+                    await gate;
+                    // 他の端末が、開始局面にコメント C を書いていた。
+                    const nodes = {
+                        ...detail.tree.nodes,
+                        [detail.tree.rootId]: {
+                            ...detail.tree.nodes[detail.tree.rootId],
+                            comment: "他の端末のコメント C",
+                        },
+                    };
+                    return {
+                        ok: true as const,
+                        status: 200,
+                        data: {
+                            study: { ...detail, revision: 2, tree: { ...detail.tree, nodes } },
+                        },
+                    };
+                }),
+            });
+            const store = createMemoryStudyStore();
+            const seed = createTestSync(api, store);
+            seed.setSession({ userId: "user-1" });
+            await seed.createStudy(doc);
+            await seed.flush(STUDY_ID);
+            seed.dispose();
+            currentSync = createTestSync(api, store);
+            return { release, rootId: doc.tree.rootId };
+        };
+
+        it("取り込みが済むまでは「最新か分からない」と渡し、済んだら、取り込んだ内容と一緒に解く", async () => {
+            const { release, rootId } = await prepareSyncedStudy();
+            auth = authSignedIn("user-1");
+            render(<StudyPage />);
+            await screen.findByTestId("workspace");
+
+            // 取得の応答を待っている間は、このブラウザに残っている内容を出し、保存は保留させる。
+            expect(workspaceProps?.commentBaseConfirmed).toBe(false);
+            expect(workspaceProps?.doc.tree.nodes[rootId].comment).toBe("");
+
+            await act(async () => {
+                release();
+            });
+            await waitFor(() => expect(workspaceProps?.commentBaseConfirmed).toBe(true));
+            // 解いた時点で、画面の文書は取り込んだ内容になっている。
+            expect(workspaceProps?.doc.tree.nodes[rootId].comment).toBe("他の端末のコメント C");
+        });
+
+        it("取り込む相手がいないノート（匿名）は、最初から保留しない", async () => {
+            await currentSync.createStudy(createTestDoc(STUDY_ID, "匿名のノート"));
+            render(<StudyPage />);
+            await screen.findByTestId("workspace");
+
+            expect(workspaceProps?.commentBaseConfirmed).toBe(true);
+        });
+    });
+
     it("開き直し（ログイン状態の確定）の途中で保存した編集を、古い内容で消さない", async () => {
         await currentSync.createStudy(createTestDoc(STUDY_ID, "匿名のノート"));
         auth = AUTH_LOADING;

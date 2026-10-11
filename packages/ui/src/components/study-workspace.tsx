@@ -169,6 +169,12 @@ interface StudyWorkspaceCommonProps {
      * 下書きがその内容と同じときだけ消すこと（古い保存の完了が、新しい下書きを消さないように）。
      */
     onCommentDraftChange?: (nodeId: string, change: StudyCommentDraftChange) => void;
+    /**
+     * 文書のコメントが最新だと確かめられているか。false の間（ノートを開いた直後で、サーバーの
+     * 最新の内容をまだ取り込めていない）は、コメントの下書きを自動では保存しない（他の端末の
+     * コメントを、確かめずに上書きしないため）。省略時は true。
+     */
+    commentBaseConfirmed?: boolean;
 }
 
 /** 保存できていないコメントの入力。 */
@@ -384,6 +390,7 @@ export function StudyWorkspaceView({
     locked = false,
     initialCommentDrafts,
     onCommentDraftChange,
+    commentBaseConfirmed = true,
     displayLayerId,
     onDisplayLayerChange,
     analysis,
@@ -1095,6 +1102,7 @@ export function StudyWorkspaceView({
             initialDraft={commentDrafts.get(currentNodeId)}
             onDraftChange={(change) => changeCommentDraft(currentNodeId, change)}
             disabled={locked}
+            baseConfirmed={commentBaseConfirmed}
         />
     );
 

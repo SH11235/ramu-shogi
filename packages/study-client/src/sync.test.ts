@@ -687,6 +687,136 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
         });
     });
 
+    describe("開いたあとの最初の取り込み（最新の内容かどうか）", () => {
+        const pulledEvents = (harness: Harness) =>
+            harness.events.filter((event) => event.type === "pulled");
+
+        it("開いた直後は取り込み前で、取り込めたら `done` になり、取り込んだ内容を書いてから知らせる", async () => {
+            const harness = await createSyncedHarness();
+            harness.server.applyFromOtherDevice(TEST_STUDY_ID, [comment("他の端末 C", rootId)]);
+            // 取得の応答を手で止める。
+            let release: () => void = () => {};
+            harness.server.beforeHandle = async (call) => {
+                if (call.method !== "get") return;
+                await new Promise<void>((resolve) => {
+                    release = resolve;
+                });
+            };
+            const commentsAtPulled: string[] = [];
+            harness.sync.subscribeEvents((event) => {
+                if (event.type !== "pulled") return;
+                void harness.sync
+                    .load(TEST_STUDY_ID)
+                    .then((study) =>
+                        commentsAtPulled.push(study?.doc.tree.nodes[rootId].comment ?? ""),
+                    );
+            });
+
+            // `open` は取り込みを待たずに、ローカルの内容を返す。
+            const opened = await harness.sync.open(TEST_STUDY_ID);
+            expect(opened.status).toBe("ok");
+            expect(harness.sync.getPullState(TEST_STUDY_ID)).toBe("pending");
+            await settle();
+            expect(harness.sync.getPullState(TEST_STUDY_ID)).toBe("pending");
+            expect(pulledEvents(harness)).toHaveLength(0);
+
+            harness.server.beforeHandle = null;
+            release();
+            await harness.advance(0);
+            expect(harness.sync.getPullState(TEST_STUDY_ID)).toBe("done");
+            expect(pulledEvents(harness)).toEqual([{ type: "pulled", studyId: TEST_STUDY_ID }]);
+            // 知らせを受けた時点で、取り込んだ内容が読める。
+            expect(commentsAtPulled).toEqual(["他の端末 C"]);
+
+            // 開き直すと、もう一度確かめ直す。
+            await harness.sync.open(TEST_STUDY_ID);
+            expect(harness.sync.getPullState(TEST_STUDY_ID)).toBe("pending");
+            await harness.advance(0);
+            expect(harness.sync.getPullState(TEST_STUDY_ID)).toBe("done");
+            expect(pulledEvents(harness)).toHaveLength(2);
+        });
+
+        it("取り込めない間（オフライン・失敗）は `pending` のままで、取り込めたら `done` になる", async () => {
+            const harness = await createSyncedHarness();
+            const stop = harness.server.intercept("get", "offline");
+            await harness.sync.open(TEST_STUDY_ID);
+            await harness.advance(0);
+            expect(harness.sync.getPullState(TEST_STUDY_ID)).toBe("pending");
+            await harness.advance(120_000);
+            expect(harness.sync.getPullState(TEST_STUDY_ID)).toBe("pending");
+            expect(pulledEvents(harness)).toHaveLength(0);
+
+            stop();
+            await harness.sync.refreshOpen();
+            expect(harness.sync.getPullState(TEST_STUDY_ID)).toBe("done");
+            expect(pulledEvents(harness)).toHaveLength(1);
+        });
+
+        it("取り込む相手がいないノート（匿名・サーバーに未作成）は `not_needed`", async () => {
+            const harness = createHarness();
+            // 未ログインで作った匿名のノート。
+            await harness.sync.createStudy(doc);
+            await harness.sync.open(TEST_STUDY_ID);
+            await harness.advance(0);
+            expect(harness.sync.getPullState(TEST_STUDY_ID)).toBe("not_needed");
+            // 開いていない・知らないノート。
+            expect(harness.sync.getPullState("unknown")).toBe("not_needed");
+
+            // ログイン中に作ったが、まだサーバーに作れていないノート。
+            const offline = createHarness();
+            offline.server.intercept("*", "offline");
+            offline.login(USER_A);
+            await offline.sync.createStudy(doc);
+            await offline.sync.open(TEST_STUDY_ID);
+            await offline.advance(0);
+            expect(offline.sync.getPullState(TEST_STUDY_ID)).toBe("not_needed");
+        });
+
+        it("ログインし直したあとに開き直すと、取り込みが済むまで `pending` に戻る", async () => {
+            const harness = await createSyncedHarness();
+            await harness.sync.open(TEST_STUDY_ID);
+            await harness.advance(0);
+            expect(harness.sync.getPullState(TEST_STUDY_ID)).toBe("done");
+
+            // ログアウトしている間に、他の端末がコメントを書いた。
+            harness.login(null);
+            expect(harness.sync.getPullState(TEST_STUDY_ID)).toBe("not_needed");
+            harness.server.applyFromOtherDevice(TEST_STUDY_ID, [comment("他の端末 C", rootId)]);
+            harness.login(USER_A);
+            expect(harness.sync.getPullState(TEST_STUDY_ID)).toBe("pending");
+            await harness.sync.open(TEST_STUDY_ID);
+            expect(harness.sync.getPullState(TEST_STUDY_ID)).toBe("pending");
+            await harness.advance(0);
+            expect(harness.sync.getPullState(TEST_STUDY_ID)).toBe("done");
+            expect((await localDoc(harness)).tree.nodes[rootId].comment).toBe("他の端末 C");
+        });
+
+        it("401 のあとの待機中に頼まれた取り込みは、待機が明けたら自動でやり直す", async () => {
+            const harness = await createSyncedHarness();
+            // 取得が 401 になり、取り直したセッションは同じユーザーだった。
+            harness.server.interceptOnce("get", { status: 401 });
+            await harness.sync.open(TEST_STUDY_ID);
+            await harness.advance(0);
+            expect(harness.events).toContainEqual({ type: "unauthorized" });
+            harness.login(USER_A);
+            harness.server.applyFromOtherDevice(TEST_STUDY_ID, [comment("他の端末 C", rootId)]);
+            const getCalls = () => harness.server.calls.filter((call) => call.method === "get");
+            const before = getCalls().length;
+
+            // 待機中に取り込みを頼んでも、まだ取得しない。
+            await harness.sync.refreshOpen();
+            await harness.advance(1999);
+            expect(getCalls()).toHaveLength(before);
+            expect(harness.sync.getPullState(TEST_STUDY_ID)).toBe("pending");
+
+            // 待機が明けたら、送信待ちが無くても、開いているノートを取り込む。
+            await harness.advance(1);
+            expect(getCalls()).toHaveLength(before + 1);
+            expect(harness.sync.getPullState(TEST_STUDY_ID)).toBe("done");
+            expect((await localDoc(harness)).tree.nodes[rootId].comment).toBe("他の端末 C");
+        });
+    });
+
     describe("複数タブ", () => {
         const createTabs = () => {
             const server = createFakeStudyServer();

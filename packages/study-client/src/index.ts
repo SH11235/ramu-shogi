@@ -64,6 +64,7 @@ export type {
     StudyLocalSummary,
     StudyLockManager,
     StudyOpenResult,
+    StudyPullState,
     StudyScheduler,
     StudySession,
     StudySync,

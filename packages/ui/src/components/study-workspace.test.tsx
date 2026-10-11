@@ -76,6 +76,8 @@ interface HarnessProps {
     interceptOps?: (ops: StudyOp[]) => Promise<boolean> | undefined;
     /** 他のタブ・端末からの変更を模擬するための口（文書に操作を適用する関数を受け取る）。 */
     onExternal?: (apply: (ops: StudyOp[]) => void) => void;
+    /** 文書のコメントが最新だと確かめられているか（サーバーの最新の内容を取り込めたか）。 */
+    commentBaseConfirmed?: boolean;
     /** 最初に表示する解析の設定（省略時は、結果の最も多いもの）。 */
     initialDisplayLayerId?: string;
     deepLayerId?: string | null;
@@ -97,6 +99,7 @@ function Harness({
     onCommentDraftChange,
     interceptOps,
     onExternal,
+    commentBaseConfirmed,
     initialDisplayLayerId,
     deepLayerId,
 }: HarnessProps) {
@@ -131,6 +134,7 @@ function Harness({
             locked={locked}
             initialCommentDrafts={initialCommentDrafts}
             onCommentDraftChange={onCommentDraftChange}
+            commentBaseConfirmed={commentBaseConfirmed}
             displayLayerId={displayLayerId}
             onDisplayLayerChange={setPreferredLayerId}
             deepLayerId={deepLayerId}
@@ -1215,6 +1219,158 @@ describe("StudyWorkspaceView", () => {
 
             expect(comment().value).toBe("他の端末 2");
             expect(onDraft).toHaveBeenLastCalledWith(ids[0], { type: "clear", savedText: null });
+            expect(onOps).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("開いた直後（サーバーの最新のコメントを取り込む前）の下書き", () => {
+        const comment = () =>
+            screen.getByRole("textbox", { name: "コメント" }) as HTMLTextAreaElement;
+        const wait = (ms: number) =>
+            act(async () => {
+                await new Promise((resolve) => setTimeout(resolve, ms));
+            });
+
+        /**
+         * このブラウザに残っているコメントは A。下書きは「A のときに書き始めた B」。
+         * 最新の内容はまだ取り込めていない。
+         */
+        const setUp = () => {
+            const { doc, ids } = createTestStudy();
+            const cached = applyStudyOps(doc, [
+                { type: "setComment", nodeId: ids[0], value: "コメント A" },
+            ]);
+            const onOps = vi.fn();
+            const onDraft = vi.fn();
+            let external: (ops: StudyOp[]) => void = () => {};
+            const props: HarnessProps = {
+                initialDoc: cached,
+                onOps,
+                onCommentDraftChange: onDraft,
+                initialCommentDrafts: [{ nodeId: ids[0], text: "下書き B", base: "コメント A" }],
+                onExternal: (apply) => {
+                    external = apply;
+                },
+            };
+            const view = render(<Harness {...props} commentBaseConfirmed={false} />);
+            return {
+                ids,
+                onOps,
+                onDraft,
+                applyExternal: (ops: StudyOp[]) => act(() => external(ops)),
+                confirm: () => view.rerender(<Harness {...props} commentBaseConfirmed />),
+            };
+        };
+
+        it("取り込みが済むまで自動では保存せず、他の端末のコメント C を取り込んだら、上書きせず利用者に選ばせる", async () => {
+            const { ids, onOps, applyExternal, confirm } = setUp();
+
+            // 下書きは欄に戻るが、取り込みが済むまで保存しない。
+            expect(comment().value).toBe("下書き B");
+            expect(screen.getByText(/最新のコメントを確認しています/)).toBeTruthy();
+            await wait(900);
+            fireEvent.blur(comment());
+            expect(onOps).not.toHaveBeenCalled();
+
+            // 最新の内容（他の端末のコメント C）を取り込めた。
+            applyExternal([{ type: "setComment", nodeId: ids[0], value: "コメント C" }]);
+            confirm();
+
+            // C を B で上書きしない。書きかけは残し、利用者に選んでもらう。
+            expect(comment().value).toBe("コメント C");
+            const prompt = screen.getByRole("group", { name: "以前の書きかけ" });
+            expect(prompt.textContent).toContain("下書き B");
+            await wait(900);
+            expect(onOps).not.toHaveBeenCalled();
+
+            fireEvent.click(within(prompt).getByRole("button", { name: "書きかけを使う" }));
+            fireEvent.blur(comment());
+            expect(onOps).toHaveBeenCalledWith([
+                { type: "setComment", nodeId: ids[0], value: "下書き B" },
+            ]);
+        });
+
+        it("取り込みと「確かめられた」が同時に届いても、下書きを黙って捨てず、利用者に選ばせる", async () => {
+            const { ids, onOps, onDraft, applyExternal, confirm } = setUp();
+
+            await act(async () => {
+                applyExternal([{ type: "setComment", nodeId: ids[0], value: "コメント C" }]);
+                confirm();
+            });
+
+            expect(comment().value).toBe("コメント C");
+            expect(screen.getByRole("group", { name: "以前の書きかけ" }).textContent).toContain(
+                "下書き B",
+            );
+            expect(onOps).not.toHaveBeenCalled();
+            // 下書きは置いたまま（消していない）。
+            expect(
+                onDraft.mock.calls.some(
+                    ([, change]) => (change as { type: string }).type === "clear",
+                ),
+            ).toBe(false);
+        });
+
+        it("取り込みが済み、コメントが書き始めたときのままなら、自動で保存する", async () => {
+            const { ids, onOps, confirm } = setUp();
+            await wait(900);
+            expect(onOps).not.toHaveBeenCalled();
+
+            confirm();
+
+            expect(comment().value).toBe("下書き B");
+            expect(screen.queryByText(/最新のコメントを確認しています/)).toBeNull();
+            expect(screen.queryByRole("group", { name: "以前の書きかけ" })).toBeNull();
+            await waitFor(
+                () =>
+                    expect(onOps).toHaveBeenCalledWith([
+                        { type: "setComment", nodeId: ids[0], value: "下書き B" },
+                    ]),
+                { timeout: 2000 },
+            );
+        });
+
+        it("取り込めないままのときは保留し、利用者が「書きかけを使う」を選べば保存する", async () => {
+            const { ids, onOps } = setUp();
+            await wait(900);
+            expect(onOps).not.toHaveBeenCalled();
+            expect(comment().value).toBe("下書き B");
+
+            fireEvent.click(screen.getByRole("button", { name: "書きかけを使う" }));
+
+            expect(onOps).toHaveBeenCalledWith([
+                { type: "setComment", nodeId: ids[0], value: "下書き B" },
+            ]);
+        });
+
+        it("取り込みの前に書き始めた入力も、最初の保存の前に、書き始めたときのコメントとの照合を通す", async () => {
+            const { doc, ids } = createTestStudy();
+            const cached = applyStudyOps(doc, [
+                { type: "setComment", nodeId: ids[0], value: "コメント A" },
+            ]);
+            const onOps = vi.fn();
+            let external: (ops: StudyOp[]) => void = () => {};
+            const props: HarnessProps = {
+                initialDoc: cached,
+                onOps,
+                onExternal: (apply) => {
+                    external = apply;
+                },
+            };
+            const view = render(<Harness {...props} commentBaseConfirmed={false} />);
+            fireEvent.change(comment(), { target: { value: "コメント A に書き足し" } });
+            fireEvent.blur(comment());
+            await wait(900);
+            expect(onOps).not.toHaveBeenCalled();
+
+            act(() => external([{ type: "setComment", nodeId: ids[0], value: "コメント C" }]));
+            view.rerender(<Harness {...props} commentBaseConfirmed />);
+
+            expect(comment().value).toBe("コメント C");
+            expect(screen.getByRole("group", { name: "以前の書きかけ" }).textContent).toContain(
+                "コメント A に書き足し",
+            );
+            await wait(900);
             expect(onOps).not.toHaveBeenCalled();
         });
     });
