@@ -254,6 +254,7 @@ export {
     compareStudyAnalysisPriority,
     isStudyUsiMove,
     StudyOpError,
+    sanitizeStudyPv,
     studyDocumentToOps,
 } from "./study/ops";
 // study/score
@@ -295,6 +296,7 @@ export type {
     StudyLayerDisplay,
     StudyLayerSpec,
     StudyLayerStacksSpec,
+    StudyLimitName,
     StudyMeta,
     StudyNode,
     StudyOp,

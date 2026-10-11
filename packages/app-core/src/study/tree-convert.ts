@@ -9,7 +9,7 @@
 import { applyMoveWithState, cloneBoard, type PositionState } from "../game/board";
 import type { KifuEval, KifuNode, KifuTree } from "../game/kifu-tree";
 import { normalizeStudyStartSfen, studyChildNodeId, studyRootNodeId } from "./ids";
-import { isStudyUsiMove } from "./ops";
+import { isStudyUsiMove, sanitizeStudyPv } from "./ops";
 import { kifuEvalToStudyScore, studyScoreToKifuEval } from "./score";
 import { parseStudySfen } from "./sfen";
 import {
@@ -77,8 +77,8 @@ export function buildStudyNodeIdIndex(
 }
 
 const truncatePv = (pv: readonly string[] | undefined): string[] | null => {
-    if (!pv || pv.length === 0) return null;
-    return pv.slice(0, STUDY_LIMITS.pvLength);
+    const moves = sanitizeStudyPv(pv, STUDY_LIMITS.pvLength);
+    return moves.length > 0 ? moves : null;
 };
 
 /** 実行時ツリーの変換時に、ノードの評価値を「対局時の評価値」として持ち込むかの指定。 */

@@ -7,6 +7,7 @@
 
 import type { Player } from "../game/board";
 import { studyLayerId } from "./ids";
+import { sanitizeStudyPv } from "./ops";
 import { kifuEvalToStudyScore } from "./score";
 import {
     STANDARD_STUDY_RULES,
@@ -81,13 +82,13 @@ export function createStudyAnalysisCollector(
             const rank = info.multipv ?? 1;
             if (!Number.isInteger(rank) || rank < 1 || rank > STUDY_LIMITS.multiPv) return;
             const previous = candidates.get(rank);
-            const pv = info.pv && info.pv.length > 0 ? info.pv : (previous?.pv ?? []);
+            const pv = sanitizeStudyPv(info.pv, STUDY_LIMITS.pvLength);
             candidates.set(rank, {
                 rank,
                 score,
                 depth: toCount(info.depth) ?? 0,
                 seldepth: toCount(info.seldepth),
-                pv: pv.slice(0, STUDY_LIMITS.pvLength),
+                pv: pv.length > 0 ? pv : (previous?.pv ?? []),
             });
         },
         finish(completion) {

@@ -331,6 +331,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/studies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listStudies"];
+        put?: never;
+        post: operations["createStudy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/studies/limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getStudyLimits"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/studies/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getStudy"];
+        put?: never;
+        post?: never;
+        delete: operations["deleteStudy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/studies/{id}/ops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["applyStudyOps"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -589,6 +653,290 @@ export interface components {
             name: string;
             online: boolean;
         } | null;
+        ListStudiesResponse: {
+            studies: components["schemas"]["StudySummary"][];
+            nextCursor: string | null;
+        };
+        StudySummary: {
+            id: components["schemas"]["StudyId"];
+            title: string;
+            origin: components["schemas"]["StudyOrigin"];
+            meta: components["schemas"]["StudyMeta"];
+            revision: number;
+            nodeCount: number;
+            layerCount: number;
+            resultCount: number;
+            updatedAt: string;
+        };
+        StudyId: string;
+        StudyOrigin: {
+            kind: components["schemas"]["StudyOriginKind"];
+            ref: string | null;
+        };
+        /** @enum {string} */
+        StudyOriginKind: "rshogi_csa" | "game_record" | "paste";
+        StudyMeta: {
+            [key: string]: string;
+        };
+        GetStudyLimitsResponse: {
+            limits: components["schemas"]["StudyLimits"];
+            usage: {
+                studyCount: number;
+            };
+        };
+        StudyLimits: {
+            studiesPerUser: number;
+            nodesPerStudy: number;
+            lineLength: number;
+            layersPerStudy: number;
+            treeBytes: number;
+            layerResultsBytes: number;
+            layerSpecBytes: number;
+            layerDisplayBytes: number;
+            commentBytes: number;
+            titleLength: number;
+            metaBytes: number;
+            multiPv: number;
+            pvLength: number;
+            opsBatchBytes: number;
+            opsPerBatch: number;
+            createBodyBytes: number;
+        };
+        CreateStudyResponse: {
+            studyId: components["schemas"]["StudyId"];
+            revision: number;
+            /** @enum {boolean} */
+            existing?: true;
+        };
+        StudyConflictResponse: {
+            /** @enum {string} */
+            error: "ID_CONFLICT" | "ORIGIN_EXISTS" | "REVISION_CONFLICT";
+            message?: string;
+            existingStudyId?: components["schemas"]["StudyId"];
+            currentRevision?: number;
+        };
+        StudyLimitExceededResponse: {
+            /** @enum {string} */
+            error: "LIMIT_EXCEEDED";
+            message?: string;
+            limit: components["schemas"]["StudyLimitName"];
+        };
+        /** @enum {string} */
+        StudyLimitName:
+            | "studiesPerUser"
+            | "nodesPerStudy"
+            | "lineLength"
+            | "layersPerStudy"
+            | "treeBytes"
+            | "layerResultsBytes"
+            | "layerSpecBytes"
+            | "layerDisplayBytes"
+            | "commentBytes"
+            | "titleLength"
+            | "metaBytes"
+            | "multiPv"
+            | "pvLength"
+            | "opsBatchBytes"
+            | "opsPerBatch"
+            | "createBodyBytes";
+        CreateStudyRequest: {
+            id: components["schemas"]["StudyId"];
+            title: string;
+            origin: components["schemas"]["StudyOrigin"];
+            startSfen: string;
+            rules: components["schemas"]["StudyRules"];
+            meta: components["schemas"]["StudyMeta"];
+            tree: components["schemas"]["StudyTree"];
+            layers?: components["schemas"]["StudyLayerInput"][];
+        };
+        StudyRules: {
+            /** @enum {string} */
+            variant: "standard";
+        };
+        StudyTree: {
+            /** @enum {number} */
+            version: 1;
+            rootId: string;
+            nodes: {
+                [key: string]: components["schemas"]["StudyNode"];
+            };
+        };
+        StudyNode: {
+            parentId: string | null;
+            usiMove: string | null;
+            children: string[];
+            comment: string;
+            bookmarked: boolean;
+            source: components["schemas"]["StudyNodeSource"];
+        };
+        StudyNodeSource: {
+            kind: string;
+            score: components["schemas"]["StudyScore"];
+            pv: string[] | null;
+            elapsedMs: number | null;
+        } | null;
+        StudyScore:
+            | {
+                  /** @enum {string} */
+                  kind: "cp";
+                  value: number;
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "mate";
+                  /** @enum {string} */
+                  winner: "sente" | "gote";
+                  plies: number | null;
+              }
+            | null;
+        StudyLayerInput: {
+            spec: components["schemas"]["StudyLayerSpec"];
+            display: components["schemas"]["StudyLayerDisplay"];
+            results: components["schemas"]["StudyLayerResults"];
+        };
+        StudyLayerSpec: {
+            /** @enum {number} */
+            version: 1;
+            engine: {
+                /** @enum {string} */
+                kind: "wasm" | "native" | "external";
+                name: string;
+                version: string;
+            };
+            evaluation: {
+                nnueSha256: string | null;
+                fvScale: number | null;
+                progressSha256: string | null;
+                layerStacks: components["schemas"]["JsonValue"];
+            };
+            limits: {
+                timeMs: number | null;
+                depth: number | null;
+                nodes: number | null;
+            };
+            multiPv: number;
+            rules: components["schemas"]["StudyRules"];
+        };
+        StudyLayerDisplay: {
+            label: string;
+        } & {
+            [key: string]: unknown;
+        };
+        StudyLayerResults: {
+            [key: string]: components["schemas"]["StudyAnalysisResult"];
+        };
+        StudyAnalysisResult: {
+            runId: string;
+            /** @enum {string} */
+            completion: "completed" | "aborted";
+            depth: number;
+            nodes: number | null;
+            timeMs: number | null;
+            execution: {
+                threads: number | null;
+                hashMb: number | null;
+                parallelWorkers: number | null;
+            };
+            candidates: components["schemas"]["StudyAnalysisCandidate"][];
+        };
+        StudyAnalysisCandidate: {
+            rank: number;
+            score: components["schemas"]["StudyScore"];
+            depth: number;
+            seldepth: number | null;
+            pv: string[];
+        };
+        GetStudyResponse: {
+            study: components["schemas"]["StudyDetail"];
+        };
+        StudyDetail: {
+            id: components["schemas"]["StudyId"];
+            revision: number;
+            title: string;
+            origin: components["schemas"]["StudyOrigin"];
+            startSfen: string;
+            rules: components["schemas"]["StudyRules"];
+            meta: components["schemas"]["StudyMeta"];
+            tree: components["schemas"]["StudyTree"];
+            layers: components["schemas"]["StudyLayer"][];
+            createdAt: string;
+            updatedAt: string;
+        };
+        StudyLayer: {
+            id: string;
+            spec: components["schemas"]["StudyLayerSpec"];
+            display: components["schemas"]["StudyLayerDisplay"];
+            results: components["schemas"]["StudyLayerResults"];
+        };
+        ApplyStudyOpsResponse: {
+            revision: number;
+            /** @enum {boolean} */
+            replayed?: true;
+        };
+        ApplyStudyOpsRequest: {
+            batchId: string;
+            expectedRevision: number;
+            ops: components["schemas"]["StudyOp"][];
+        };
+        StudyOp:
+            | {
+                  /** @enum {string} */
+                  type: "addMoves";
+                  parentId: string;
+                  moves: string[];
+              }
+            | {
+                  /** @enum {string} */
+                  type: "setComment";
+                  nodeId: string;
+                  value: string;
+              }
+            | {
+                  /** @enum {string} */
+                  type: "setBookmark";
+                  nodeId: string;
+                  value: boolean;
+              }
+            | {
+                  /** @enum {string} */
+                  type: "setSource";
+                  nodeId: string;
+                  value: components["schemas"]["StudyNodeSource"];
+              }
+            | {
+                  /** @enum {string} */
+                  type: "reorderChildren";
+                  parentId: string;
+                  value: string[];
+              }
+            | {
+                  /** @enum {string} */
+                  type: "deleteSubtree";
+                  nodeId: string;
+              }
+            | {
+                  /** @enum {string} */
+                  type: "ensureLayer";
+                  spec: components["schemas"]["StudyLayerSpec"];
+                  display: components["schemas"]["StudyLayerDisplay"];
+              }
+            | {
+                  /** @enum {string} */
+                  type: "putAnalysis";
+                  layerId: string;
+                  nodeId: string;
+                  result: components["schemas"]["StudyAnalysisResult"];
+              }
+            | {
+                  /** @enum {string} */
+                  type: "deleteLayer";
+                  layerId: string;
+              }
+            | {
+                  /** @enum {string} */
+                  type: "setTitle";
+                  value: string;
+              };
     };
     responses: never;
     parameters: never;
@@ -1100,6 +1448,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
+            /** @description NNUE upload reservation expired or conflicted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
             /** @description NNUE storage is not configured */
             503: {
                 headers: {
@@ -1156,6 +1513,15 @@ export interface operations {
             };
             /** @description NNUE file not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description NNUE upload reservation expired or conflicted */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1223,6 +1589,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
+            /** @description NNUE upload cleanup conflicted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
             /** @description NNUE storage is not configured */
             503: {
                 headers: {
@@ -1281,6 +1656,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
+            /** @description Pending NNUE upload must be aborted before delete */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
             /** @description NNUE storage is not configured */
             503: {
                 headers: {
@@ -1311,6 +1695,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListPublicGamesResponse"];
+                };
+            };
+            /** @description Invalid pagination query or cursor */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
         };
@@ -1459,7 +1852,7 @@ export interface operations {
             cookie?: never;
         };
         /** @description Create a room */
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["CreateRoomRequest"];
             };
@@ -1534,6 +1927,442 @@ export interface operations {
             };
             /** @description Room binding is not configured */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    listStudies: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+                originKind?: components["schemas"]["StudyOriginKind"];
+                originRef?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List own studies, most recently updated first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListStudiesResponse"];
+                };
+            };
+            /** @description Invalid query or cursor */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Rate limited */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    createStudy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Create a study with its initial tree and analysis layers */
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CreateStudyRequest"];
+            };
+        };
+        responses: {
+            /** @description The study already exists (existing: true) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateStudyResponse"];
+                };
+            };
+            /** @description Created study */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateStudyResponse"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request origin is not allowed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description ID_CONFLICT or ORIGIN_EXISTS */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudyConflictResponse"];
+                };
+            };
+            /** @description The study with this ID has been deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description A study limit is exceeded */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudyLimitExceededResponse"];
+                };
+            };
+            /** @description Rate limited */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    getStudyLimits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Study limits and current usage */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GetStudyLimitsResponse"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Rate limited */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    getStudy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["schemas"]["StudyId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The whole study at one revision */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GetStudyResponse"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Study not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Study has been deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Rate limited */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteStudy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["schemas"]["StudyId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request origin is not allowed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Study not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Rate limited */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    applyStudyOps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["schemas"]["StudyId"];
+            };
+            cookie?: never;
+        };
+        /** @description Apply a batch of idempotent operations at the expected revision */
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ApplyStudyOpsRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted batch (or replayed: true) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplyStudyOpsResponse"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request origin is not allowed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Study not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description REVISION_CONFLICT */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudyConflictResponse"];
+                };
+            };
+            /** @description Study has been deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description A study limit is exceeded */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudyLimitExceededResponse"];
+                };
+            };
+            /** @description Rate limited */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

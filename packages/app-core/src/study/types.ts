@@ -14,7 +14,7 @@ export type StudyPlayer = "sente" | "gote";
 
 /** 対局時の評価値（棋譜の来歴。解析では上書きしない）。 */
 export interface StudySource {
-    /** 出どころの種別。初版で使うのは `"csa"`。 */
+    /** 出どころの種別（1〜32 文字）。初版で使うのは `"csa"`。 */
     kind: string;
     score: StudyScore | null;
     pv: string[] | null;
@@ -55,9 +55,10 @@ export interface StudyOrigin {
 export type StudyMeta = Record<string, string>;
 
 export interface StudyCandidate {
-    /** 1 が最善。 */
+    /** 1 が最善。同じ結果の中で重複しない。 */
     rank: number;
-    score: StudyScore;
+    /** 評価値（先手視点）。契約上は欠測（null）もありうる。 */
+    score: StudyScore | null;
     depth: number;
     seldepth: number | null;
     pv: string[];
@@ -84,10 +85,14 @@ export interface StudyAnalysisResult {
 
 export type StudyEngineKind = "wasm" | "native" | "external";
 
-export interface StudyLayerStacksSpec {
+/**
+ * LayerStacks の設定。サーバーは任意の JSON として受け取る（小数は不可）。
+ * （サーバーの「任意の JSON」の型に代入できるよう、interface ではなく型の別名にしている。）
+ */
+export type StudyLayerStacksSpec = {
     bucketMode: string;
     progressBuckets: number | null;
-}
+};
 
 /** 解析レイヤーの条件。作成後は変わらない。`layerId` はこの値のハッシュ。 */
 export interface StudyLayerSpec {
@@ -105,12 +110,15 @@ export interface StudyLayerSpec {
     rules: StudyRules;
 }
 
-/** レイヤーの表示用の情報。`spec` に入れない表示名やプリセットキーを持つ。 */
-export interface StudyLayerDisplay {
+/**
+ * レイヤーの表示用の情報。`spec` に入れない表示名やプリセットキーを持つ。
+ * サーバーは `label` を必須とし、他のキーは自由に持てる。
+ */
+export type StudyLayerDisplay = {
     label: string;
     nnueName?: string;
     presetKey?: string;
-}
+};
 
 export interface StudyLayer {
     id: string;
@@ -149,18 +157,50 @@ export type StudyOp =
     | { type: "deleteLayer"; layerId: string }
     | { type: "setTitle"; value: string };
 
-/** 上限の初期値（設計書 5.7）。サーバーが最終判定する。クライアントは切り詰めと事前の案内に使う。 */
+/**
+ * 上限の初期値（設計書 5.7）。backend の `STUDY_LIMITS` と同じ名前・同じ値。
+ *
+ * 名前は `GET /api/studies/limits` の `limits` のキーと、422 `LIMIT_EXCEEDED` の `limit` に
+ * そのまま出る。最終判定はサーバーが行い、実際の値は `GET /api/studies/limits` で得られる。
+ * クライアントはここの値を、切り詰め（読み筋・表題・バッチの分割）と事前の案内に使う。
+ */
 export const STUDY_LIMITS = {
+    /** 研究ノート／ユーザー */
+    studiesPerUser: 200,
+    /** ノード／ノート（ルート込み） */
     nodesPerStudy: 2000,
-    maxPathLength: 1024,
+    /** 手順の長さ（ルートからの手数） */
+    lineLength: 1024,
+    /** 解析レイヤー／ノート */
     layersPerStudy: 8,
+    /** ツリー JSON（UTF-8 のバイト数） */
+    treeBytes: 768 * 1024,
+    /** レイヤー 1 つの結果 JSON（UTF-8 のバイト数） */
+    layerResultsBytes: 1024 * 1024,
+    /** レイヤーの spec（UTF-8 のバイト数） */
+    layerSpecBytes: 4 * 1024,
+    /** レイヤーの display（UTF-8 のバイト数） */
+    layerDisplayBytes: 4 * 1024,
+    /** コメント／ノード（UTF-8 のバイト数） */
     commentBytes: 4 * 1024,
+    /** 表題（Unicode のコードポイント数） */
     titleLength: 200,
+    /** meta（UTF-8 のバイト数） */
+    metaBytes: 16 * 1024,
+    /** MultiPV（1 回の探索の候補数） */
     multiPv: 5,
+    /** 読み筋（各候補・対局時の評価値の手数） */
     pvLength: 40,
+    /** 操作バッチの本文（バイト数） */
+    opsBatchBytes: 512 * 1024,
+    /** 操作バッチの操作数 */
     opsPerBatch: 200,
-    batchBodyBytes: 512 * 1024,
+    /** 作成リクエストの本文（バイト数） */
+    createBodyBytes: 3 * 1024 * 1024,
 } as const;
+
+/** 上限の名前（422 `LIMIT_EXCEEDED` の `limit`）。 */
+export type StudyLimitName = keyof typeof STUDY_LIMITS;
 
 export const STANDARD_STUDY_RULES: StudyRules = { variant: "standard" };
 

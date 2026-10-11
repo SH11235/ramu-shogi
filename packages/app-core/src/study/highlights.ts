@@ -6,7 +6,7 @@
  */
 
 import { parseStudySfen } from "./sfen";
-import type { StudyDocument, StudyPlayer, StudyScore } from "./types";
+import type { StudyAnalysisResult, StudyDocument, StudyPlayer, StudyScore } from "./types";
 
 /** 評価値を勝率相当の値に直す式の名前。 */
 export const STUDY_WIN_RATE_MODEL = "logistic-cp-v1";
@@ -54,7 +54,7 @@ export interface StudyHighlight {
 }
 
 const bestScore = (
-    results: Record<string, { candidates: Array<{ rank: number; score: StudyScore }> }> | undefined,
+    results: Record<string, StudyAnalysisResult> | undefined,
     nodeId: string,
 ): StudyScore | null => {
     if (!results || !Object.hasOwn(results, nodeId)) return null;

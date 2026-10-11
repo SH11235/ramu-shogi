@@ -1,61 +1,288 @@
 {
-    "note": "frontend が設計書 5.2 の入力から計算した値。backend の study-id-fixtures.json が確定したら同じ内容に差し替える。",
-    "canonicalJSON": [
+    "version": 1,
+    "description": "研究ノートの識別子の計算（設計書 5.2）の共通 fixture。H(x) = SHA-256(UTF-8(canonicalJSON(x))) の小文字 hex。nodeId / layerId / originKey は H の先頭 32 文字。canonicalJSON のキー順は UTF-16 コード単位の昇順、文字列のエスケープは JSON.stringify と同じ。backend と frontend に同じ内容を置く。",
+    "canonicalJson": [
         {
-            "input": { "b": 1, "a": [2, { "d": null, "c": "x" }] },
+            "input": {
+                "b": 1,
+                "a": [
+                    2,
+                    {
+                        "d": null,
+                        "c": "x"
+                    }
+                ]
+            },
             "expected": "{\"a\":[2,{\"c\":\"x\",\"d\":null}],\"b\":1}"
+        },
+        {
+            "input": [],
+            "expected": "[]"
+        },
+        {
+            "input": {},
+            "expected": "{}"
+        },
+        {
+            "input": [true, false, null, 0, -5, 9007199254740991],
+            "expected": "[true,false,null,0,-5,9007199254740991]"
+        },
+        {
+            "input": {
+                "9": "nine",
+                "10": "ten",
+                "z": {
+                    "b": [3, 2, 1],
+                    "a": ""
+                },
+                "A": "upper before lower",
+                "a": "x"
+            },
+            "expected": "{\"10\":\"ten\",\"9\":\"nine\",\"A\":\"upper before lower\",\"a\":\"x\",\"z\":{\"a\":\"\",\"b\":[3,2,1]}}"
+        },
+        {
+            "input": {
+                "表題": "研究ノート",
+                "quote": "a\"bc",
+                "control": "line1\nline2\ttab",
+                "slash": "a/b",
+                "emoji": "🙂"
+            },
+            "expected": "{\"control\":\"line1\\nline2\\ttab\",\"emoji\":\"🙂\",\"quote\":\"a\\\"bc\",\"slash\":\"a/b\",\"表題\":\"研究ノート\"}"
         }
     ],
     "hash": [
         {
-            "input": ["日本語", "😀"],
-            "expected": "c1f177603ec00696007c2f3b720fe5192002949a0a0b33787779f18d694fd945"
-        }
-    ],
-    "rootNodeId": [
-        {
-            "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
-            "rules": { "variant": "standard" },
-            "canonicalInput": "[\"ramu-node-v1\",\"lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1\",{\"variant\":\"standard\"}]",
-            "expected": "6c3e7548e58759b28e57ec9f892f6edd"
-        }
-    ],
-    "childNodeId": [
-        {
-            "parentNodeId": "6c3e7548e58759b28e57ec9f892f6edd",
-            "usiMove": "7g7f",
-            "expected": "e1393a3aa2d1c963df08cb86a47ff380"
+            "input": {
+                "b": 1,
+                "a": [
+                    2,
+                    {
+                        "d": null,
+                        "c": "x"
+                    }
+                ]
+            },
+            "sha256": "41f05899d3459a3ecc94ff088afcd290b9ae4f51dc9ddaa35a82a642ddb55070"
         },
         {
-            "parentNodeId": "e1393a3aa2d1c963df08cb86a47ff380",
-            "usiMove": "3c3d",
-            "expected": "9f336c88dfedd100cdf0d143dac0ed36"
+            "input": [],
+            "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        {
+            "input": {},
+            "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        {
+            "input": [true, false, null, 0, -5, 9007199254740991],
+            "sha256": "21d22dd2deab307a0b8de1aade6b39b7e4d9ca67164b1e62884c61c1e612e0b2"
+        },
+        {
+            "input": {
+                "9": "nine",
+                "10": "ten",
+                "z": {
+                    "b": [3, 2, 1],
+                    "a": ""
+                },
+                "A": "upper before lower",
+                "a": "x"
+            },
+            "sha256": "3e14f306ec3d80f9b8a7a08b2da56e556cb1fb45810004ab292e904506dd0349"
+        },
+        {
+            "input": {
+                "表題": "研究ノート",
+                "quote": "a\"bc",
+                "control": "line1\nline2\ttab",
+                "slash": "a/b",
+                "emoji": "🙂"
+            },
+            "sha256": "166bc4f83720d9d6d33ac7f5b99cb12332f6b6b441259c5526b1a3a0cce3cb9d"
         }
     ],
-    "layerId": [
+    "rootNodeIds": [
+        {
+            "name": "平手",
+            "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+            "rules": {
+                "variant": "standard"
+            },
+            "hashInput": [
+                "ramu-node-v1",
+                "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+                {
+                    "variant": "standard"
+                }
+            ],
+            "nodeId": "6c3e7548e58759b28e57ec9f892f6edd"
+        },
+        {
+            "name": "途中局面（後手番）",
+            "startSfen": "ln1g3nl/1ks2gr2/1pppp1bpp/p4pp2/7P1/P1P1P1P2/1PSP1P2P/1BK1GS1R1/LN1G3NL w - 24",
+            "rules": {
+                "variant": "standard"
+            },
+            "hashInput": [
+                "ramu-node-v1",
+                "ln1g3nl/1ks2gr2/1pppp1bpp/p4pp2/7P1/P1P1P1P2/1PSP1P2P/1BK1GS1R1/LN1G3NL w - 24",
+                {
+                    "variant": "standard"
+                }
+            ],
+            "nodeId": "3692db3347dcc9632c836426ee94f5f5"
+        },
+        {
+            "name": "詰将棋風の局面（持ち駒あり）",
+            "startSfen": "7nl/7k1/6ppp/9/9/9/9/9/9 b RBGrb4g4s3n3l15p 1",
+            "rules": {
+                "variant": "standard"
+            },
+            "hashInput": [
+                "ramu-node-v1",
+                "7nl/7k1/6ppp/9/9/9/9/9/9 b RBGrb4g4s3n3l15p 1",
+                {
+                    "variant": "standard"
+                }
+            ],
+            "nodeId": "49a373d614320619a8c5ace663b21435"
+        }
+    ],
+    "childNodeIds": [
+        {
+            "name": "平手から 7g7f",
+            "parentNodeId": "6c3e7548e58759b28e57ec9f892f6edd",
+            "usiMove": "7g7f",
+            "hashInput": ["ramu-node-v1", "6c3e7548e58759b28e57ec9f892f6edd", "7g7f"],
+            "nodeId": "e1393a3aa2d1c963df08cb86a47ff380"
+        },
+        {
+            "name": "平手から 7g7f 3c3d",
+            "parentNodeId": "e1393a3aa2d1c963df08cb86a47ff380",
+            "usiMove": "3c3d",
+            "hashInput": ["ramu-node-v1", "e1393a3aa2d1c963df08cb86a47ff380", "3c3d"],
+            "nodeId": "9f336c88dfedd100cdf0d143dac0ed36"
+        },
+        {
+            "name": "成る手（7g7f 3c3d 8h2b+）",
+            "parentNodeId": "9f336c88dfedd100cdf0d143dac0ed36",
+            "usiMove": "8h2b+",
+            "hashInput": ["ramu-node-v1", "9f336c88dfedd100cdf0d143dac0ed36", "8h2b+"],
+            "nodeId": "8981a268a15881f22adbd8ad61afe729"
+        },
+        {
+            "name": "途中局面から 8c8d",
+            "parentNodeId": "3692db3347dcc9632c836426ee94f5f5",
+            "usiMove": "8c8d",
+            "hashInput": ["ramu-node-v1", "3692db3347dcc9632c836426ee94f5f5", "8c8d"],
+            "nodeId": "c0c2573784bdd9859f082c7b49a7510a"
+        },
+        {
+            "name": "駒を打つ手（G*2c）",
+            "parentNodeId": "49a373d614320619a8c5ace663b21435",
+            "usiMove": "G*2c",
+            "hashInput": ["ramu-node-v1", "49a373d614320619a8c5ace663b21435", "G*2c"],
+            "nodeId": "b4c4ac8e041d5d8a66796b0a817e50ed"
+        }
+    ],
+    "layerIds": [
         {
             "spec": {
                 "version": 1,
-                "engine": { "kind": "wasm", "name": "rshogi", "version": "0.8.1" },
+                "engine": {
+                    "kind": "wasm",
+                    "name": "rshogi",
+                    "version": "0.9.3"
+                },
                 "evaluation": {
-                    "nnueSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "nnueSha256": "3f6c1e0a9b7d4c2e8a5f0b1d6e7c9a4b2d8f3e1c0a7b6d5e4f3c2b1a09f8e7d6",
                     "fvScale": 24,
                     "progressSha256": null,
                     "layerStacks": null
                 },
-                "limits": { "timeMs": 1000, "depth": 15, "nodes": null },
+                "limits": {
+                    "timeMs": 1000,
+                    "depth": 15,
+                    "nodes": null
+                },
                 "multiPv": 3,
-                "rules": { "variant": "standard" }
+                "rules": {
+                    "variant": "standard"
+                }
             },
-            "expected": "76554fe4476e85837e43e0cf8c79245d"
+            "layerId": "09eaa9172ee511340bd1b3e2f3c7c80d"
+        },
+        {
+            "spec": {
+                "version": 1,
+                "engine": {
+                    "kind": "wasm",
+                    "name": "rshogi",
+                    "version": "0.9.3"
+                },
+                "evaluation": {
+                    "nnueSha256": "3f6c1e0a9b7d4c2e8a5f0b1d6e7c9a4b2d8f3e1c0a7b6d5e4f3c2b1a09f8e7d6",
+                    "fvScale": 24,
+                    "progressSha256": null,
+                    "layerStacks": null
+                },
+                "limits": {
+                    "timeMs": 10000,
+                    "depth": null,
+                    "nodes": null
+                },
+                "multiPv": 3,
+                "rules": {
+                    "variant": "standard"
+                }
+            },
+            "layerId": "9da2c9b6e7474167ef6052e64433032d"
+        },
+        {
+            "spec": {
+                "version": 1,
+                "engine": {
+                    "kind": "external",
+                    "name": "usi",
+                    "version": "YaneuraOu NNUE 9.00 64AVX2"
+                },
+                "evaluation": {
+                    "nnueSha256": null,
+                    "fvScale": null,
+                    "progressSha256": null,
+                    "layerStacks": null
+                },
+                "limits": {
+                    "timeMs": null,
+                    "depth": null,
+                    "nodes": 1000000
+                },
+                "multiPv": 1,
+                "rules": {
+                    "variant": "standard"
+                }
+            },
+            "layerId": "1c1202bda2c11ab7e71d5cccb80507be"
         }
     ],
-    "originKey": [
+    "originKeys": [
         {
             "kind": "rshogi_csa",
             "ref": "wdoor-20261009000001-93ef4d36a6",
-            "expected": "1f8a85b93e015794ce5d34022a0ee5c3"
+            "hashInput": ["ramu-origin-v1", "rshogi_csa", "wdoor-20261009000001-93ef4d36a6"],
+            "originKey": "1f8a85b93e015794ce5d34022a0ee5c3"
         },
-        { "kind": "paste", "ref": null, "expected": null }
+        {
+            "kind": "game_record",
+            "ref": "0b0e1d7c-6f0a-4c58-9d3b-2f7a5e1c8d44",
+            "hashInput": ["ramu-origin-v1", "game_record", "0b0e1d7c-6f0a-4c58-9d3b-2f7a5e1c8d44"],
+            "originKey": "24726d7cb51105c9369e12313ee69099"
+        },
+        {
+            "kind": "paste",
+            "ref": null,
+            "hashInput": null,
+            "originKey": null
+        }
     ]
 }

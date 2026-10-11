@@ -35,6 +35,22 @@ export function isStudyUsiMove(move: unknown): move is string {
 }
 
 /**
+ * 読み筋を保存できる形にする: USI の書式でない手の手前で切り、上限の手数で切る。
+ * 1 手も残らなければ空配列。
+ */
+export function sanitizeStudyPv(
+    pv: readonly string[] | null | undefined,
+    maxLength: number,
+): string[] {
+    const moves: string[] = [];
+    for (const move of pv ?? []) {
+        if (moves.length >= maxLength || !isStudyUsiMove(move)) break;
+        moves.push(move);
+    }
+    return moves;
+}
+
+/**
  * 同じレイヤー・同じノードの解析結果の採用優先度（設計書 5.6）を比べる。
  *
  * 1. `completed` を `aborted` より優先  2. `depth` が深い方

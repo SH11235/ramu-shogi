@@ -9,7 +9,7 @@ import { applyMoveWithState } from "../game/board";
 import { parseCsaGameRecord } from "../game/csa-record";
 import type { KifuTree } from "../game/kifu-tree";
 import { normalizeStudyStartSfen, studyChildNodeId, studyRootNodeId } from "./ids";
-import { isStudyUsiMove } from "./ops";
+import { isStudyUsiMove, sanitizeStudyPv } from "./ops";
 import { parseStudySfen } from "./sfen";
 import { kifuTreeToStudyTree, type StudyNodeIdIndex } from "./tree-convert";
 import {
@@ -61,16 +61,29 @@ const cleanMeta = (meta: StudyMeta | undefined): StudyMeta => {
     return cleaned;
 };
 
+/**
+ * 元棋譜の指定がサーバーの受け付ける形か確かめる。
+ * `paste` は `ref` が null、それ以外は 1〜256 文字の `ref` が必須。
+ */
+const checkedOrigin = (origin: StudyOrigin): StudyOrigin => {
+    if (origin.kind === "paste") {
+        if (origin.ref !== null) throw new Error("origin: paste の ref は null にします");
+        return { kind: "paste", ref: null };
+    }
+    if (typeof origin.ref !== "string" || origin.ref.length < 1 || origin.ref.length > 256) {
+        throw new Error("origin: 元棋譜の識別子（1〜256 文字）が必要です");
+    }
+    return { kind: origin.kind, ref: origin.ref };
+};
+
 const toSource = (
     kind: string,
     annotation: StudyImportAnnotation | null | undefined,
 ): StudySource | null => {
     if (!annotation) return null;
     const score = annotation.score ?? null;
-    const pv =
-        annotation.pv && annotation.pv.length > 0
-            ? annotation.pv.slice(0, STUDY_LIMITS.pvLength)
-            : null;
+    const moves = sanitizeStudyPv(annotation.pv, STUDY_LIMITS.pvLength);
+    const pv = moves.length > 0 ? moves : null;
     const elapsedMs =
         annotation.elapsedMs != null && Number.isFinite(annotation.elapsedMs)
             ? Math.max(0, Math.round(annotation.elapsedMs))
@@ -135,7 +148,7 @@ export function createStudyDocumentFromMoves(input: StudyImportInput): StudyDocu
     return {
         id: input.id,
         title: clampTitle(input.title),
-        origin: input.origin,
+        origin: checkedOrigin(input.origin),
         startSfen,
         rules: STANDARD_STUDY_RULES,
         meta: cleanMeta(input.meta),
@@ -219,7 +232,7 @@ export function createStudyDocumentFromKifuTree(input: StudyKifuTreeImportInput)
         doc: {
             id: input.id,
             title: clampTitle(input.title),
-            origin: input.origin,
+            origin: checkedOrigin(input.origin),
             startSfen: converted.startSfen,
             rules: STANDARD_STUDY_RULES,
             meta: cleanMeta(input.meta),
