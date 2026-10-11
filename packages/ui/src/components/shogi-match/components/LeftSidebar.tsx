@@ -7,13 +7,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Switch } from "../../switch";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { buildThreadOptions } from "../utils/threadOptions";
-import { AiPresetGuide } from "./AiPresetGuide";
 import { PlayerIcon } from "./PlayerIcon";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 
 type SideKey = "sente" | "gote";
 
-const EVAL_FILE_MANAGER_LABEL = "評価関数ファイル管理";
+const EVAL_FILE_MANAGER_LABEL = "評価関数を管理";
 const SETTINGS_LOCKED_MESSAGE = "対局中は変更不可";
 const sectionClassName = "flex flex-col gap-3";
 const sectionTitleClassName = "text-sm font-semibold text-wafuu-sumi";
@@ -396,7 +395,6 @@ export function LeftSidebar(): ReactElement {
                     <div className="text-xs font-semibold text-wafuu-ai text-center">☖後手</div>
                 </div>
                 {/* 先手/後手設定 */}
-                <AiPresetGuide presets={presets} />
                 <div className="grid grid-cols-2">
                     {sideColumn("sente", true)}
                     {sideColumn("gote", false)}
@@ -412,7 +410,7 @@ export function LeftSidebar(): ReactElement {
                 >
                     <span>🎲</span>
                     <span>
-                        変則ルール...
+                        変則ルール
                         {passRightsSettings.enabled && (
                             <span className="ml-2 text-xs text-muted-foreground">
                                 (パス権: ☗{passRightsSettings.senteInitialCount}/☖
@@ -422,7 +420,7 @@ export function LeftSidebar(): ReactElement {
                     </span>
                 </button>
 
-                {onAnalysisEngineIdChange && availableEngines.length > 0 && (
+                {onAnalysisEngineIdChange && availableEngines.length > 1 && (
                     <div className={labelClassName}>
                         <span>解析エンジン</span>
                         <select
@@ -448,7 +446,7 @@ export function LeftSidebar(): ReactElement {
                 className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
             >
                 <span>📁</span>
-                <span>{EVAL_FILE_MANAGER_LABEL}...</span>
+                <span>{EVAL_FILE_MANAGER_LABEL}</span>
             </button>
 
             {/* 外部エンジン管理（available な場合のみ） */}
@@ -459,7 +457,7 @@ export function LeftSidebar(): ReactElement {
                     className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
                 >
                     <span>⚙️</span>
-                    <span>外部エンジン管理...</span>
+                    <span>外部エンジンを管理</span>
                 </button>
             )}
 
@@ -482,7 +480,7 @@ export function LeftSidebar(): ReactElement {
                             >
                                 <span>{side === "sente" ? "☗" : "☖"}</span>
                                 <span>
-                                    {sideLabel} {engine.label} 設定...
+                                    {sideLabel} {engine.label} 設定
                                 </span>
                             </button>
                         );
@@ -497,7 +495,7 @@ export function LeftSidebar(): ReactElement {
                                 className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
                             >
                                 <span>🔍</span>
-                                <span>解析 {aEngine.label} 設定...</span>
+                                <span>解析 {aEngine.label} 設定</span>
                             </button>
                         );
                     })()}
@@ -511,7 +509,7 @@ export function LeftSidebar(): ReactElement {
                 className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
             >
                 <span>👁️</span>
-                <span>表示設定...</span>
+                <span>表示設定</span>
             </button>
         </div>
     );
