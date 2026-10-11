@@ -40,4 +40,12 @@ describe("match NNUE requirements", () => {
         expect(getMatchNnueSelections(sides, engines, selections)).toEqual([selections.sente]);
         expect(getMatchNnueSelections(sides, [...engines].reverse(), selections)).toEqual([]);
     });
+    it("checks the default model when a removed engine ID remains in saved settings", () => {
+        const sides = {
+            sente: { role: "engine" as const, engineId: "removed-usi" },
+            gote: { role: "human" as const },
+        };
+        expect(getMatchNnueSelections(sides, engines, selections)).toEqual([selections.sente]);
+        expect(getMatchNnueSelections(sides, [...engines].reverse(), selections)).toEqual([]);
+    });
 });

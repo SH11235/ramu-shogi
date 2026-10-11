@@ -35,9 +35,8 @@ export function getMatchNnueSelections(
     return (["sente", "gote"] as const).flatMap((side) => {
         const setting = sides[side];
         if (setting.role !== "engine") return [];
-        const engine = engineOptions.find(
-            (option) => option.id === (setting.engineId ?? engineOptions[0]?.id),
-        );
+        const engine =
+            engineOptions.find((option) => option.id === setting.engineId) ?? engineOptions[0];
         return engine && engine.kind !== "external" ? [selections[side]] : [];
     });
 }
