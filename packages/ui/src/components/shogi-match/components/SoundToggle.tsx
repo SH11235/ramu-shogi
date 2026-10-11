@@ -17,9 +17,7 @@ export function SoundToggle(): ReactElement {
                     enableSound: !previous.enableSound,
                 }))
             }
-            className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md border border-wafuu-border transition-colors hover:bg-wafuu-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                enabled ? "bg-wafuu-kin/20 text-wafuu-sumi" : "bg-card text-muted-foreground"
-            }`}
+            className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md border border-wafuu-border bg-card text-wafuu-sumi transition-colors hover:bg-wafuu-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
             <svg
                 viewBox="0 0 24 24"
