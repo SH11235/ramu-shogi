@@ -124,6 +124,9 @@ export function PresetListItem({
         <div className="min-w-0 flex-1">
             <div className="mb-1 flex items-center gap-2">
                 <span className="truncate font-medium">{config.displayName}</span>
+                {config.usageLabel && (
+                    <span className="text-xs text-muted-foreground">{config.usageLabel}</span>
+                )}
                 {renderStatusBadge()}
             </div>
             <div className="flex items-center gap-3 text-[13px] text-muted-foreground">
@@ -133,6 +136,16 @@ export function PresetListItem({
             {config.description && (
                 <div className="mt-1 text-xs leading-snug text-muted-foreground">
                     {config.description}
+                </div>
+            )}
+            {config.format?.architecture && (
+                <div className="text-xs text-muted-foreground">
+                    アーキテクチャ: {config.format.architecture}
+                    {config.format.l1Dimension &&
+                    config.format.l2Dimension &&
+                    config.format.l3Dimension
+                        ? `（${config.format.l1Dimension} / ${config.format.l2Dimension} / ${config.format.l3Dimension}）`
+                        : null}
                 </div>
             )}
         </div>

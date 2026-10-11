@@ -16,6 +16,7 @@ import type {
 import type { KifMoveData } from "../utils/kifParser";
 import { parseKif, parseSfen } from "../utils/kifParser";
 import { buildThreadOptions } from "../utils/threadOptions";
+import { AiPresetGuide } from "./AiPresetGuide";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 
 type SideKey = "sente" | "gote";
@@ -451,6 +452,7 @@ export function MobileSettingsSheet({
                 <div className="text-sm font-semibold text-wafuu-ai text-center">☖後手</div>
             </div>
             {/* 先手/後手設定（PC版と同じ2列レイアウト） */}
+            <AiPresetGuide presets={presets} />
             <div className="grid grid-cols-2 gap-3 [&>div]:min-w-0">
                 {/* 先手側 */}
                 <div className="flex flex-col gap-2 border-r border-border pr-3">
@@ -469,7 +471,8 @@ export function MobileSettingsSheet({
                                     key={preset.config.presetKey}
                                     value={`preset:${preset.config.presetKey}`}
                                 >
-                                    AI（{preset.config.displayName}）
+                                    AI（{preset.config.displayName}
+                                    {preset.config.usageLabel && `・${preset.config.usageLabel}`}）
                                 </option>
                             ))}
                             {/* カスタム NNUE */}
@@ -582,7 +585,8 @@ export function MobileSettingsSheet({
                                     key={preset.config.presetKey}
                                     value={`preset:${preset.config.presetKey}`}
                                 >
-                                    AI（{preset.config.displayName}）
+                                    AI（{preset.config.displayName}
+                                    {preset.config.usageLabel && `・${preset.config.usageLabel}`}）
                                 </option>
                             ))}
                             {/* カスタム NNUE */}

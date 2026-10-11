@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Switch } from "../../switch";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { buildThreadOptions } from "../utils/threadOptions";
+import { AiPresetGuide } from "./AiPresetGuide";
 import { PlayerIcon } from "./PlayerIcon";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 
@@ -214,10 +215,14 @@ export function LeftSidebar(): ReactElement {
                                         <PlayerIcon
                                             side="sente"
                                             isAI
+                                            presetKey={preset.config.presetKey}
                                             showBorder={false}
                                             size="xs"
                                         />
-                                        AI（{preset.config.displayName}）
+                                        AI（{preset.config.displayName}
+                                        {preset.config.usageLabel &&
+                                            `・${preset.config.usageLabel}`}
+                                        ）
                                     </span>
                                 </SelectItem>
                             ))}
@@ -228,6 +233,7 @@ export function LeftSidebar(): ReactElement {
                                         <PlayerIcon
                                             side="sente"
                                             isAI
+                                            presetKey={null}
                                             showBorder={false}
                                             size="xs"
                                         />
@@ -237,7 +243,13 @@ export function LeftSidebar(): ReactElement {
                             ))}
                             <SelectItem value="material">
                                 <span className="flex items-center gap-1.5">
-                                    <PlayerIcon side="sente" isAI showBorder={false} size="xs" />
+                                    <PlayerIcon
+                                        side="sente"
+                                        isAI
+                                        presetKey={null}
+                                        showBorder={false}
+                                        size="xs"
+                                    />
                                     簡易AI（駒得）
                                 </span>
                             </SelectItem>
@@ -248,6 +260,7 @@ export function LeftSidebar(): ReactElement {
                                         <PlayerIcon
                                             side="sente"
                                             isAI
+                                            presetKey={null}
                                             showBorder={false}
                                             size="xs"
                                         />
@@ -383,6 +396,7 @@ export function LeftSidebar(): ReactElement {
                     <div className="text-xs font-semibold text-wafuu-ai text-center">☖後手</div>
                 </div>
                 {/* 先手/後手設定 */}
+                <AiPresetGuide presets={presets} />
                 <div className="grid grid-cols-2">
                     {sideColumn("sente", true)}
                     {sideColumn("gote", false)}

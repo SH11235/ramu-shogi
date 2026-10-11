@@ -150,6 +150,10 @@ export interface PresetUpdate {
  * プリセット設定（manifest.json の各エントリ）
  */
 export interface PresetConfig {
+    /** AI 選択時に表示する用途の短い案内。 */
+    usageLabel?: string;
+    /** AI アイコンの URL。未指定の場合はアプリの共通アイコンを使用する。 */
+    iconUrl?: string;
     progressCoefficients?: { url: string; size: number; sha256: string };
     layerStacks?: LayerStacksConfig;
     /** プリセット識別キー */
