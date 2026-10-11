@@ -12,6 +12,7 @@ import { ClockDisplay } from "./ClockDisplay";
 import { MatchControls } from "./MatchControls";
 import { PCBoardContent } from "./PCBoardContent";
 import { PlayerIcon } from "./PlayerIcon";
+import { SoundToggle } from "./SoundToggle";
 
 // テキストスタイル用Tailwindクラス定数
 const TEXT_CLASSES = {
@@ -132,6 +133,7 @@ export function PCBoardSection({ candidateNote, hideClock }: PCBoardSectionProps
                             <span>🔄</span>
                             <span>反転</span>
                         </button>
+                        <SoundToggle />
                     </div>
 
                     {/* 盤面 + 持ち駒（共通コンポーネント） */}

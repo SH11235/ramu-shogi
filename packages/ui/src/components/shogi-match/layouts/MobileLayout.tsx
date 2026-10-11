@@ -29,6 +29,7 @@ import { MobileSettingsActions } from "../components/MobileSettingsActions";
 import { MobileSettingsSheet } from "../components/MobileSettingsSheet";
 import { MoveDetailBottomSheet } from "../components/MoveDetailBottomSheet";
 import { PassButton } from "../components/PassButton";
+import { SoundToggle } from "../components/SoundToggle";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
@@ -308,9 +309,10 @@ export function MobileLayout({
                     clocks={clocks}
                     timeSettings={timeSettings}
                     isRunning={isMatchRunning}
+                    className="[&>div]:gap-0.5 [&>div]:px-0 [&_.font-mono]:text-xs"
                     centerContent={
                         <>
-                            <span className="hidden min-[360px]:inline text-xs text-muted-foreground tabular-nums">
+                            <span className="hidden min-[360px]:inline shrink-0 whitespace-nowrap text-xs text-muted-foreground tabular-nums">
                                 {moves.length === 0 ? "開始" : `${moves.length}手`}
                             </span>
                             <button
@@ -322,6 +324,7 @@ export function MobileLayout({
                             >
                                 🔄
                             </button>
+                            <SoundToggle />
                         </>
                     }
                 />
