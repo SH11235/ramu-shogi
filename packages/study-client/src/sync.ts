@@ -1,0 +1,1240 @@
+/**
+ * 研究ノートの同期エンジン（設計書 7.1 / 7.2）。
+ *
+ * - 編集はまずローカルの保存層に書く（文書の更新と送信待ちへの追加は同じトランザクション）。
+ * - 送信は間引く（既定 5 秒。`flush` で即時）。1 つのノートにつき送信中のバッチは 1 つ。
+ * - ログイン中かつノートの持ち主がセッションのユーザーと一致するときだけ送る。
+ * - 応答が届かなかったバッチは同じ `batchId` で再送する（サーバーが `replayed` を返す）。
+ * - 409 のときは最新のノートを取得し、未送信の操作をその上に再適用して送り直す。
+ * - 複数タブでは、送信役をロック（Web Locks）で 1 つにし、変更を他のタブへ通知する。
+ *
+ * 状態はすべて保存層にあり、このエンジンが持つのは表示用の写しとタイマーだけ。どのタブが
+ * 送信役になっても続きから送れる。
+ */
+
+import {
+    applyStudyOp,
+    STUDY_LIMITS,
+    type StudyDocument,
+    type StudyLimitName,
+    type StudyOp,
+    studyDocumentToOps,
+    studyOriginKey,
+} from "@shogi/app-core";
+import type {
+    CreateStudyRequest,
+    StudyApi,
+    StudyApiErrorBody,
+    StudyApiResult,
+    StudyDetail,
+} from "./api-types";
+import { deriveStudySaveStatus, isSameStudySaveStatus, type StudySaveStatus } from "./status";
+import {
+    type PendingStudyOp,
+    STUDY_RECORD_VERSION,
+    type StoredStudy,
+    type StoredStudySummary,
+    type StudyRemoteState,
+    StudyStorageError,
+    type StudyStorageErrorCode,
+    type StudyStore,
+    type StudyStoreSnapshot,
+    type StudyStoreWrite,
+} from "./store";
+
+/** 送信役を 1 つにするためのロック。同じ名前の `request` は同時に 1 つしか実行されない。 */
+export interface StudyLockManager {
+    request<T>(name: string, task: () => Promise<T>): Promise<T>;
+}
+
+/** タブをまたいだ変更の通知。 */
+export type StudyChannelMessage = { type: "changed"; studyId: string };
+
+export interface StudyChannel {
+    post(message: StudyChannelMessage): void;
+    subscribe(handler: (message: StudyChannelMessage) => void): () => void;
+    close(): void;
+}
+
+export interface StudyScheduler {
+    setTimeout(callback: () => void, delayMs: number): unknown;
+    clearTimeout(handle: unknown): void;
+}
+
+/** ログイン中のユーザー。 */
+export interface StudySession {
+    userId: string;
+}
+
+export type StudySyncEvent =
+    /** 文書が変わった。`load` で読み直す。 */
+    | { type: "document"; studyId: string; origin: "local" | "remote" | "other-tab" }
+    /** 同じ元棋譜の既存ノートに統合された。画面は `into` のノートへ移る。 */
+    | { type: "merged"; studyId: string; into: string }
+    /** ノートがローカルから消えた。 */
+    | { type: "removed"; studyId: string }
+    /** サーバーが 401 を返した（セッション切れ）。再ログインを案内する。 */
+    | { type: "unauthorized" };
+
+export type StudySyncErrorCode = "not_found" | "merged" | "already_exists";
+
+export class StudySyncError extends Error {
+    readonly code: StudySyncErrorCode;
+
+    constructor(code: StudySyncErrorCode, message: string) {
+        super(message);
+        this.name = "StudySyncError";
+        this.code = code;
+    }
+}
+
+export type StudyOpenResult =
+    | { status: "ok"; study: StoredStudy }
+    /** 統合済み。`into` のノートを開く。 */
+    | { status: "merged"; into: string }
+    /** ローカルにもサーバーにも無い（未ログインでローカルに無い場合を含む）。 */
+    | { status: "not_found" }
+    /** ローカルに無く、サーバーにも問い合わせられなかった（オフラインなど）。 */
+    | { status: "unavailable"; message: string };
+
+export interface StudyLocalSummary extends StoredStudySummary {
+    status: StudySaveStatus;
+}
+
+export interface StudySyncOptions {
+    store: StudyStore;
+    api: StudyApi;
+    /** 既定はこのエンジンの中だけで直列化するロック。ブラウザでは Web Locks を渡す。 */
+    locks?: StudyLockManager;
+    /** 他のタブへの通知。無ければ通知しない。 */
+    channel?: StudyChannel | null;
+    scheduler?: StudyScheduler;
+    now?: () => number;
+    /** `batchId` の生成。既定は `crypto.randomUUID()`。 */
+    randomId?: () => string;
+    /** 送信の間引き（ミリ秒）。既定 5000。 */
+    flushDelayMs?: number;
+    /** 失敗時の再送の最初の間隔（ミリ秒）。既定 2000。失敗のたびに倍にする。 */
+    retryBaseMs?: number;
+    /** 再送の間隔の上限（ミリ秒）。既定 60000。 */
+    retryMaxMs?: number;
+}
+
+export interface StudySync {
+    /** ログイン状態を伝える。ログインしたら、そのアカウントのノートの送信を再開する。 */
+    setSession(session: StudySession | null): void;
+    getSession(): StudySession | null;
+
+    /**
+     * 新しいノートをローカルに作る。持ち主は、ログイン中ならそのユーザー、未ログインなら匿名。
+     * 同じ ID のノートが既にあれば `StudySyncError("already_exists")`。
+     */
+    createStudy(doc: StudyDocument): Promise<StoredStudy>;
+    /**
+     * ノートを開く。ローカルにあればそれを返し、裏でサーバーの変更を取り込む。
+     * ローカルに無ければ（ログイン中なら）サーバーから取得して保存する。
+     */
+    open(studyId: string): Promise<StudyOpenResult>;
+    /** 開いているノートの印を外す（`refreshOpen` の対象から外れる）。 */
+    close(studyId: string): void;
+    /** ローカルのノートを読む（変更通知のあとの読み直し用）。無ければ null。 */
+    load(studyId: string): Promise<StoredStudy | null>;
+    /**
+     * 操作を適用する。ローカルに書き終えたら解決し、送信は間引いて裏で行う。
+     * 何も変えない操作（対象が無い、既に同じ値、優先度が下の解析結果）は送信待ちに入れない。
+     * 書き込みに失敗したら `StudyStorageError` で拒否する（保存の状態も「保存に失敗」になる）。
+     */
+    applyOps(studyId: string, ops: readonly StudyOp[]): Promise<StudyDocument>;
+    /** 送信待ちをすぐ送る（解析の区切りなど）。省略時は全ノート。送信の試行が終わると解決する。 */
+    flush(studyId?: string): Promise<void>;
+    /** 上限超過・拒否で止まっている送信を、もう一度試す。 */
+    retry(studyId: string): Promise<void>;
+    /** サーバーの変更を取り込む。 */
+    pull(studyId: string): Promise<void>;
+    /** 開いているノートについて、サーバーの変更を取り込む（タブに戻ったとき）。 */
+    refreshOpen(): Promise<void>;
+    /** ノートを削除する。クラウドにあるノートは、送れるようになったときにサーバーからも消す。 */
+    deleteStudy(studyId: string): Promise<void>;
+
+    /**
+     * 未ログイン中に作ったノート（匿名）の持ち主を、いまのアカウントに固定して送信を始める。
+     * ログインして戻ってきたときに呼ぶ。引き継いだノートの ID を返す。
+     */
+    adoptAnonymousStudies(): Promise<string[]>;
+    /** ローカルのノートの一覧（更新が新しい順。統合済み・削除待ちは除く）。 */
+    listLocal(): Promise<StudyLocalSummary[]>;
+    /** 同じ元棋譜のローカルのノートを探す。無ければ null。 */
+    findLocalByOrigin(origin: StudyDocument["origin"]): Promise<string | null>;
+
+    /** 保存の状態。内容が変わるまで同じ参照を返す（`useSyncExternalStore` で使える）。 */
+    getStatus(studyId: string): StudySaveStatus;
+    subscribeStatus(studyId: string, listener: () => void): () => void;
+    subscribeEvents(listener: (event: StudySyncEvent) => void): () => void;
+
+    /**
+     * 進行中のローカルへの書き込みが終わるのを待つ。
+     * ログインへ遷移する前（OAuth でページが遷移する前）に呼ぶ。
+     */
+    whenLocalWritesSettled(): Promise<void>;
+    /** タイマーと通知の購読を止める（保存層は閉じない）。 */
+    dispose(): void;
+}
+
+/** このエンジンの中だけで直列化するロック（Web Locks が無い環境とテスト用）。 */
+export function createInProcessLockManager(): StudyLockManager {
+    const tails = new Map<string, Promise<unknown>>();
+    return {
+        request<T>(name: string, task: () => Promise<T>): Promise<T> {
+            const previous = tails.get(name) ?? Promise.resolve();
+            const run = previous.then(task, task);
+            const tail = run.catch(() => undefined);
+            tails.set(name, tail);
+            void tail.then(() => {
+                if (tails.get(name) === tail) tails.delete(name);
+            });
+            return run;
+        },
+    };
+}
+
+const INITIAL_STATUS: StudySaveStatus = {
+    state: "local",
+    reason: null,
+    pendingCount: 0,
+    limit: null,
+    retrying: false,
+    message: null,
+    lastSyncedAt: null,
+};
+
+/** 1 つのバッチの本文に使う上限。サーバーの上限（512 KiB）に対して余裕を持たせる。 */
+const BATCH_BODY_BUDGET_BYTES = STUDY_LIMITS.opsBatchBytes - 32 * 1024;
+const MAX_SYNC_STEPS = 50;
+const MAX_CONFLICTS_PER_RUN = 3;
+const OTHER_TAB_REFRESH_DELAY_MS = 250;
+
+const lockName = (studyId: string): string => `ramu-study-sync:${studyId}`;
+
+const isTransient = (status: number): boolean =>
+    status === 0 || status === 408 || status === 429 || status >= 500;
+
+const describeError = (status: number, error: StudyApiErrorBody): string =>
+    error.message ?? error.error ?? `HTTP ${status}`;
+
+const toDocument = (detail: StudyDetail): StudyDocument => ({
+    id: detail.id,
+    title: detail.title,
+    origin: detail.origin,
+    startSfen: detail.startSfen,
+    rules: detail.rules,
+    meta: detail.meta,
+    tree: detail.tree,
+    layers: detail.layers,
+});
+
+const toCreateRequest = (doc: StudyDocument): CreateStudyRequest => ({
+    id: doc.id,
+    title: doc.title,
+    origin: doc.origin,
+    startSfen: doc.startSfen,
+    rules: doc.rules,
+    meta: doc.meta,
+    tree: doc.tree,
+    layers: doc.layers.map((layer) => ({
+        spec: layer.spec,
+        display: layer.display,
+        results: layer.results,
+    })),
+});
+
+/** 操作を順に適用し、文書を実際に変えた操作だけを残す。 */
+const applyEffectiveOps = (
+    doc: StudyDocument,
+    ops: readonly StudyOp[],
+): { doc: StudyDocument; effective: StudyOp[] } => {
+    let next = doc;
+    const effective: StudyOp[] = [];
+    for (const op of ops) {
+        const applied = applyStudyOp(next, op);
+        if (applied !== next) {
+            effective.push(op);
+            next = applied;
+        }
+    }
+    return { doc: next, effective };
+};
+
+const lastSeqOf = (pending: readonly PendingStudyOp[]): number =>
+    pending.length > 0 ? pending[pending.length - 1].seq : 0;
+
+interface Entry {
+    study: Pick<StoredStudy, "owner" | "serverRevision" | "remote" | "lastSyncedAt"> | null;
+    pendingCount: number;
+    status: StudySaveStatus;
+    storageError: StudyStorageErrorCode | null;
+    retrying: boolean;
+    message: string | null;
+    attempt: number;
+    timer: unknown;
+    timerAt: number;
+    running: Promise<void> | null;
+    rerun: boolean;
+    force: boolean;
+    writeChain: Promise<unknown>;
+    listeners: Set<() => void>;
+    open: boolean;
+    refreshTimer: unknown;
+}
+
+type StepOutcome = "continue" | "done" | "retry";
+
+export function createStudySync(options: StudySyncOptions): StudySync {
+    const { store, api } = options;
+    const locks = options.locks ?? createInProcessLockManager();
+    const channel = options.channel ?? null;
+    const scheduler: StudyScheduler = options.scheduler ?? {
+        setTimeout: (callback, delayMs) => globalThis.setTimeout(callback, delayMs),
+        clearTimeout: (handle) =>
+            globalThis.clearTimeout(handle as ReturnType<typeof globalThis.setTimeout>),
+    };
+    const now = options.now ?? (() => Date.now());
+    const randomId = options.randomId ?? (() => crypto.randomUUID());
+    const flushDelayMs = options.flushDelayMs ?? 5000;
+    const retryBaseMs = options.retryBaseMs ?? 2000;
+    const retryMaxMs = options.retryMaxMs ?? 60_000;
+
+    let session: StudySession | null = null;
+    let unauthorized = false;
+    let disposed = false;
+    const entries = new Map<string, Entry>();
+    const eventListeners = new Set<(event: StudySyncEvent) => void>();
+    const localWrites = new Set<Promise<unknown>>();
+
+    const entryOf = (studyId: string): Entry => {
+        let entry = entries.get(studyId);
+        if (!entry) {
+            entry = {
+                study: null,
+                pendingCount: 0,
+                status: INITIAL_STATUS,
+                storageError: null,
+                retrying: false,
+                message: null,
+                attempt: 0,
+                timer: null,
+                timerAt: 0,
+                running: null,
+                rerun: false,
+                force: false,
+                writeChain: Promise.resolve(),
+                listeners: new Set(),
+                open: false,
+                refreshTimer: null,
+            };
+            entries.set(studyId, entry);
+        }
+        return entry;
+    };
+
+    const emit = (event: StudySyncEvent): void => {
+        for (const listener of [...eventListeners]) listener(event);
+    };
+
+    const statusOf = (
+        entry: Pick<Entry, "study" | "pendingCount" | "storageError" | "retrying" | "message">,
+    ): StudySaveStatus =>
+        deriveStudySaveStatus({
+            study: entry.study,
+            pendingCount: entry.pendingCount,
+            sessionUserId: session?.userId ?? null,
+            unauthorized,
+            storageError: entry.storageError,
+            retrying: entry.retrying,
+            message: entry.message,
+        });
+
+    const refreshStatus = (studyId: string): void => {
+        const entry = entryOf(studyId);
+        const next = statusOf(entry);
+        if (isSameStudySaveStatus(entry.status, next)) return;
+        entry.status = next;
+        for (const listener of [...entry.listeners]) listener();
+    };
+
+    /** 保存層から読んだ状態を、表示用の写しに反映する。 */
+    const observe = (studyId: string, study: StoredStudy | null, pendingCount: number): void => {
+        const entry = entryOf(studyId);
+        entry.study = study
+            ? {
+                  owner: study.owner,
+                  serverRevision: study.serverRevision,
+                  remote: study.remote,
+                  lastSyncedAt: study.lastSyncedAt,
+              }
+            : null;
+        entry.pendingCount = study ? pendingCount : 0;
+        refreshStatus(studyId);
+    };
+
+    /** 保存層に書き、書いたあとの状態を写しに反映し、他のタブへ知らせる。 */
+    const mutate = async <T>(
+        studyId: string,
+        fn: (snapshot: StudyStoreSnapshot) => StudyStoreWrite<T>,
+    ): Promise<T> => {
+        let after: { study: StoredStudy | null; pendingCount: number; wrote: boolean } | null =
+            null;
+        const result = await store.transact(studyId, (snapshot) => {
+            const write = fn(snapshot);
+            const study = write.study === undefined ? snapshot.study : write.study;
+            const removeUpTo = write.removeOpsUpTo;
+            const remaining =
+                removeUpTo === undefined
+                    ? snapshot.pending.length
+                    : snapshot.pending.filter((item) => item.seq > removeUpTo).length;
+            const appended = write.appendOps?.length ?? 0;
+            after = {
+                study,
+                pendingCount: study ? remaining + appended : 0,
+                wrote: write.study !== undefined || removeUpTo !== undefined || appended > 0,
+            };
+            return write;
+        });
+        const written = after as {
+            study: StoredStudy | null;
+            pendingCount: number;
+            wrote: boolean;
+        } | null;
+        if (written) {
+            observe(studyId, written.study, written.pendingCount);
+            if (written.wrote) channel?.post({ type: "changed", studyId });
+        }
+        return result;
+    };
+
+    const canSend = (study: Pick<StoredStudy, "owner">): boolean =>
+        session !== null && !unauthorized && study.owner === session.userId;
+
+    const markUnauthorized = (): void => {
+        if (unauthorized) return;
+        unauthorized = true;
+        for (const studyId of entries.keys()) refreshStatus(studyId);
+        emit({ type: "unauthorized" });
+    };
+
+    const setRemote = (studyId: string, remote: (lastSeq: number) => StudyRemoteState) =>
+        mutate(studyId, (snapshot) => {
+            if (!snapshot.study) return { result: undefined };
+            return {
+                study: {
+                    ...snapshot.study,
+                    remote: remote(lastSeqOf(snapshot.pending)),
+                    inflight: null,
+                },
+                result: undefined,
+            };
+        });
+
+    /**
+     * 取得・作成・送信に共通の失敗の扱い。
+     * `bodyLimit` は、本文が大きすぎた（413）ときに超えた上限の名前。
+     */
+    const handleFailure = async (
+        studyId: string,
+        failure: { status: number; error: StudyApiErrorBody },
+        bodyLimit: StudyLimitName = "opsBatchBytes",
+    ): Promise<StepOutcome> => {
+        const { status, error } = failure;
+        const entry = entryOf(studyId);
+        if (status === 401) {
+            markUnauthorized();
+            return "done";
+        }
+        if (status === 410) {
+            await setRemote(studyId, () => ({ state: "deleted" }));
+            return "done";
+        }
+        if (status === 413) {
+            await setRemote(studyId, (atSeq) => ({
+                state: "limit_exceeded",
+                limit: bodyLimit,
+                atSeq,
+            }));
+            return "done";
+        }
+        if (status === 422) {
+            await setRemote(studyId, (atSeq) => ({
+                state: "limit_exceeded",
+                limit: error.limit ?? "unknown",
+                atSeq,
+            }));
+            return "done";
+        }
+        if (isTransient(status)) {
+            entry.message = describeError(status, error);
+            return "retry";
+        }
+        // 400（入力不正）、403（`ORIGIN_FORBIDDEN`）、409 `ID_CONFLICT` など、同じ内容を
+        // 送り直しても通らない失敗。再送を止めて「保存に失敗」にする。送信待ちの操作は残す。
+        await setRemote(studyId, (atSeq) => ({
+            state: "rejected",
+            code: error.error ?? `HTTP_${status}`,
+            message: describeError(status, error),
+            atSeq,
+        }));
+        return "done";
+    };
+
+    const newStoredStudy = (
+        doc: StudyDocument,
+        owner: string | null,
+        serverRevision: number | null,
+    ): StoredStudy => {
+        const timestamp = now();
+        return {
+            recordVersion: STUDY_RECORD_VERSION,
+            id: doc.id,
+            owner,
+            doc,
+            serverRevision,
+            inflight: null,
+            remote: { state: "ok" },
+            mergedInto: null,
+            deleting: false,
+            originKey: studyOriginKey(doc.origin.kind, doc.origin.ref),
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            lastSyncedAt: serverRevision === null ? null : timestamp,
+        };
+    };
+
+    /**
+     * サーバーの文書の上に、未送信の操作を再適用する。
+     * サーバーの文書を変えない操作（既に反映済みなど）は送信待ちから落とす。
+     */
+    const rebaseOnto = async (studyId: string, detail: StudyDetail): Promise<boolean> => {
+        const changed = await mutate(studyId, (snapshot) => {
+            if (!snapshot.study) return { result: false };
+            const { doc, effective } = applyEffectiveOps(
+                toDocument(detail),
+                snapshot.pending.map((item) => item.op),
+            );
+            return {
+                study: {
+                    ...snapshot.study,
+                    doc,
+                    serverRevision: detail.revision,
+                    inflight: null,
+                    updatedAt: now(),
+                    lastSyncedAt: effective.length === 0 ? now() : snapshot.study.lastSyncedAt,
+                },
+                removeOpsUpTo: lastSeqOf(snapshot.pending),
+                appendOps: effective,
+                result: true,
+            };
+        });
+        if (changed) emit({ type: "document", studyId, origin: "remote" });
+        return changed;
+    };
+
+    /** 同じ元棋譜の既存ノートに、手元の成果を操作として統合する（設計書 7.2 の 4）。 */
+    const mergeInto = async (study: StoredStudy, existingStudyId: string): Promise<StepOutcome> => {
+        const fetched = await api.get(existingStudyId);
+        if (!fetched.ok) {
+            if (fetched.status === 401) {
+                markUnauthorized();
+                return "done";
+            }
+            if (isTransient(fetched.status)) {
+                entryOf(study.id).message = describeError(fetched.status, fetched.error);
+                return "retry";
+            }
+            await setRemote(study.id, (atSeq) => ({
+                state: "rejected",
+                code: "ORIGIN_EXISTS",
+                message: "同じ棋譜の既存の研究ノートを取得できませんでした",
+                atSeq,
+            }));
+            return "done";
+        }
+        const target = fetched.data.study;
+        if (target.startSfen !== study.doc.startSfen) {
+            await setRemote(study.id, (atSeq) => ({
+                state: "rejected",
+                code: "ORIGIN_MISMATCH",
+                message: "同じ棋譜の既存の研究ノートと開始局面が一致しません",
+                atSeq,
+            }));
+            return "done";
+        }
+        const owner = study.owner;
+        const ops = studyDocumentToOps(study.doc);
+        await mutate(existingStudyId, (snapshot) => {
+            const base =
+                snapshot.study ?? newStoredStudy(toDocument(target), owner, target.revision);
+            const { doc, effective } = applyEffectiveOps(base.doc, ops);
+            return {
+                study: { ...base, doc, updatedAt: now() },
+                appendOps: effective,
+                result: undefined,
+            };
+        });
+        await mutate(study.id, (snapshot) => {
+            if (!snapshot.study) return { result: undefined };
+            return {
+                study: {
+                    ...snapshot.study,
+                    mergedInto: existingStudyId,
+                    inflight: null,
+                    updatedAt: now(),
+                },
+                removeOpsUpTo: lastSeqOf(snapshot.pending),
+                result: undefined,
+            };
+        });
+        emit({ type: "merged", studyId: study.id, into: existingStudyId });
+        emit({ type: "document", studyId: existingStudyId, origin: "local" });
+        schedule(existingStudyId, 0);
+        return "done";
+    };
+
+    const createRemote = async (
+        study: StoredStudy,
+        pending: readonly PendingStudyOp[],
+    ): Promise<StepOutcome> => {
+        // この時点の文書には、ここまでの送信待ちの操作がすべて反映されている。
+        const includedUpTo = lastSeqOf(pending);
+        const response = await api.create(toCreateRequest(study.doc));
+        if (response.ok) {
+            const { revision, existing } = response.data;
+            await mutate(study.id, (snapshot) => {
+                if (!snapshot.study) return { result: undefined };
+                return {
+                    study: {
+                        ...snapshot.study,
+                        serverRevision: revision,
+                        inflight: null,
+                        remote: { state: "ok" },
+                        lastSyncedAt: now(),
+                    },
+                    // 新規作成なら、送った文書に含まれる操作は送り直さない。
+                    // 既にあった場合は、サーバーの中身が分からないので送信待ちを残して送る。
+                    ...(existing ? {} : { removeOpsUpTo: includedUpTo }),
+                    result: undefined,
+                };
+            });
+            return "continue";
+        }
+        if (response.status === 409 && response.error.error === "ORIGIN_EXISTS") {
+            const existingStudyId = response.error.existingStudyId;
+            if (typeof existingStudyId === "string" && existingStudyId !== study.id) {
+                return mergeInto(study, existingStudyId);
+            }
+        }
+        // 作成 API が無い（backend 未接続）場合は、あとで試し直す。
+        if (response.status === 404) {
+            entryOf(study.id).message = describeError(response.status, response.error);
+            return "retry";
+        }
+        return handleFailure(study.id, response, "createBodyBytes");
+    };
+
+    /** 送信待ちの先頭から、1 バッチに入れる操作の最後の連番を決める。 */
+    const pickBatchLastSeq = (pending: readonly PendingStudyOp[]): number => {
+        const encoder = new TextEncoder();
+        let bytes = 0;
+        let lastSeq = pending[0].seq;
+        for (let i = 0; i < pending.length && i < STUDY_LIMITS.opsPerBatch; i++) {
+            bytes += encoder.encode(JSON.stringify(pending[i].op)).length + 1;
+            // 1 つ目は大きくても入れる（入れなければ永久に送れない。超過はサーバーが 413 で返す）。
+            if (i > 0 && bytes > BATCH_BODY_BUDGET_BYTES) break;
+            lastSeq = pending[i].seq;
+        }
+        return lastSeq;
+    };
+
+    const sendBatch = async (
+        study: StoredStudy,
+        pending: readonly PendingStudyOp[],
+        run: { conflicts: number; recreated: boolean },
+    ): Promise<StepOutcome> => {
+        const studyId = study.id;
+        const revision = study.serverRevision as number;
+        let inflight = study.inflight;
+        if (inflight && !pending.some((item) => item.seq <= (inflight?.lastSeq ?? 0))) {
+            inflight = null;
+        }
+        if (!inflight) {
+            const batch = {
+                batchId: randomId(),
+                expectedRevision: revision,
+                lastSeq: pickBatchLastSeq(pending),
+            };
+            // 送る前に記録する。応答が届かなくても、同じ batchId・同じ操作で送り直せる。
+            await mutate(studyId, (snapshot) =>
+                snapshot.study
+                    ? { study: { ...snapshot.study, inflight: batch }, result: undefined }
+                    : { result: undefined },
+            );
+            inflight = batch;
+        }
+        const batchLastSeq = inflight.lastSeq;
+        const ops = pending.filter((item) => item.seq <= batchLastSeq).map((item) => item.op);
+        const response = await api.postOps(studyId, {
+            batchId: inflight.batchId,
+            expectedRevision: inflight.expectedRevision,
+            ops,
+        });
+        if (response.ok) {
+            // `replayed: true`（応答が届かなかった再送）も受理済みとして扱う。
+            const accepted = response.data.revision;
+            await mutate(studyId, (snapshot) => {
+                if (!snapshot.study) return { result: undefined };
+                return {
+                    study: {
+                        ...snapshot.study,
+                        serverRevision: Math.max(snapshot.study.serverRevision ?? 0, accepted),
+                        inflight: null,
+                        remote: { state: "ok" },
+                        lastSyncedAt: now(),
+                    },
+                    removeOpsUpTo: batchLastSeq,
+                    result: undefined,
+                };
+            });
+            return "continue";
+        }
+        if (response.status === 409) {
+            run.conflicts += 1;
+            if (run.conflicts > MAX_CONFLICTS_PER_RUN) {
+                entryOf(studyId).message = "他の端末の変更との競合が続いています";
+                return "retry";
+            }
+            const fetched = await api.get(studyId);
+            if (fetched.ok) {
+                await rebaseOnto(studyId, fetched.data.study);
+                return "continue";
+            }
+            return handleGetFailure(studyId, fetched, run);
+        }
+        if (response.status === 404) {
+            return handleMissing(studyId, run);
+        }
+        return handleFailure(studyId, response);
+    };
+
+    /** サーバーに無い（404）。ローカルの成果から作り直す。繰り返すなら拒否として止める。 */
+    const handleMissing = async (
+        studyId: string,
+        run: { recreated: boolean },
+    ): Promise<StepOutcome> => {
+        if (run.recreated) {
+            await setRemote(studyId, (atSeq) => ({
+                state: "rejected",
+                code: "NOT_FOUND",
+                message: "サーバーに研究ノートが見つかりません",
+                atSeq,
+            }));
+            return "done";
+        }
+        run.recreated = true;
+        await mutate(studyId, (snapshot) =>
+            snapshot.study
+                ? {
+                      study: { ...snapshot.study, serverRevision: null, inflight: null },
+                      result: undefined,
+                  }
+                : { result: undefined },
+        );
+        return "continue";
+    };
+
+    const handleGetFailure = (
+        studyId: string,
+        failure: Extract<StudyApiResult<unknown>, { ok: false }>,
+        run: { recreated: boolean },
+    ): Promise<StepOutcome> =>
+        failure.status === 404 ? handleMissing(studyId, run) : handleFailure(studyId, failure);
+
+    const deleteRemote = async (studyId: string): Promise<StepOutcome> => {
+        const response = await api.delete(studyId);
+        if (response.ok || response.status === 404 || response.status === 410) {
+            await mutate(studyId, () => ({ study: null, result: undefined }));
+            emit({ type: "removed", studyId });
+            return "done";
+        }
+        if (response.status === 401) {
+            markUnauthorized();
+            return "done";
+        }
+        entryOf(studyId).message = describeError(response.status, response.error);
+        return "retry";
+    };
+
+    /** ロックの中で、送れるものが無くなるまで送る。 */
+    const syncLocked = async (studyId: string, force: boolean): Promise<StepOutcome> => {
+        const run = { conflicts: 0, recreated: false };
+        let forced = force;
+        for (let step = 0; step < MAX_SYNC_STEPS; step++) {
+            const { study, pending } = await store.read(studyId);
+            observe(studyId, study, pending.length);
+            if (!study || study.mergedInto !== null) return "done";
+            if (!canSend(study)) return "done";
+            if (study.deleting) return deleteRemote(studyId);
+            if (study.remote.state === "deleted") return "done";
+            if (study.remote.state === "limit_exceeded" || study.remote.state === "rejected") {
+                // 同じ内容を送り直しても通らない。新しい操作が積まれるか、明示の再試行まで待つ。
+                if (!forced && lastSeqOf(pending) <= study.remote.atSeq) return "done";
+            }
+            forced = false;
+
+            let outcome: StepOutcome;
+            if (study.serverRevision === null) {
+                outcome = await createRemote(study, pending);
+            } else if (pending.length === 0) {
+                return "done";
+            } else {
+                outcome = await sendBatch(study, pending, run);
+            }
+            if (outcome !== "continue") return outcome;
+        }
+        return "retry";
+    };
+
+    const clearTimer = (entry: Entry): void => {
+        if (entry.timer !== null) {
+            scheduler.clearTimeout(entry.timer);
+            entry.timer = null;
+        }
+    };
+
+    function schedule(studyId: string, delayMs: number): void {
+        if (disposed) return;
+        const entry = entryOf(studyId);
+        const at = now() + delayMs;
+        // 既に同じか早い時刻に予定があれば、そのまま（間引き）。
+        if (entry.timer !== null && entry.timerAt <= at) return;
+        clearTimer(entry);
+        entry.timerAt = at;
+        entry.timer = scheduler.setTimeout(() => {
+            entry.timer = null;
+            void runSync(studyId, false);
+        }, delayMs);
+    }
+
+    function runSync(studyId: string, force: boolean): Promise<void> {
+        const entry = entryOf(studyId);
+        if (force) entry.force = true;
+        if (entry.running) {
+            // 1 つのノートにつき送信は 1 つ。終わったらもう一度回す。
+            entry.rerun = true;
+            return entry.running;
+        }
+        const running = (async () => {
+            try {
+                do {
+                    entry.rerun = false;
+                    const forced = entry.force;
+                    entry.force = false;
+                    let outcome: StepOutcome;
+                    try {
+                        outcome = await locks.request(lockName(studyId), () =>
+                            syncLocked(studyId, forced),
+                        );
+                    } catch (error) {
+                        outcome = "retry";
+                        entry.message = error instanceof Error ? error.message : String(error);
+                        if (error instanceof StudyStorageError) entry.storageError = error.code;
+                    }
+                    if (outcome === "retry") {
+                        // 間隔を空けて再送する（失敗のたびに倍、上限あり）。
+                        const delay = Math.min(retryMaxMs, retryBaseMs * 2 ** entry.attempt);
+                        entry.attempt += 1;
+                        entry.retrying = true;
+                        refreshStatus(studyId);
+                        schedule(studyId, delay);
+                        return;
+                    }
+                    entry.attempt = 0;
+                    entry.retrying = false;
+                    entry.message = null;
+                    entry.storageError = null;
+                    refreshStatus(studyId);
+                } while (entry.rerun && !disposed);
+            } finally {
+                entry.running = null;
+            }
+        })();
+        entry.running = running;
+        return running;
+    }
+
+    const pullLocked = async (studyId: string): Promise<void> => {
+        const { study, pending } = await store.read(studyId);
+        observe(studyId, study, pending.length);
+        if (!study || study.mergedInto !== null || study.deleting) return;
+        if (!canSend(study) || study.serverRevision === null) return;
+        if (study.remote.state === "deleted") return;
+        // 応答待ちのバッチがあるときは、送信側の再送（replayed / 409）に任せる。
+        if (study.inflight !== null) return;
+        const fetched = await api.get(studyId);
+        if (fetched.ok) {
+            if (fetched.data.study.revision !== study.serverRevision) {
+                await rebaseOnto(studyId, fetched.data.study);
+            }
+            return;
+        }
+        if (isTransient(fetched.status)) return;
+        await handleGetFailure(studyId, fetched, { recreated: false });
+    };
+
+    const trackWrite = <T>(promise: Promise<T>): Promise<T> => {
+        const settled = promise.then(
+            () => undefined,
+            () => undefined,
+        );
+        localWrites.add(settled);
+        void settled.then(() => localWrites.delete(settled));
+        return promise;
+    };
+
+    const noteStorageResult = (studyId: string, error: unknown): void => {
+        const entry = entryOf(studyId);
+        const next = error instanceof StudyStorageError ? error.code : null;
+        if (error !== null && next === null) return;
+        if (entry.storageError === next) return;
+        entry.storageError = next;
+        if (next !== null) entry.message = (error as Error).message;
+        refreshStatus(studyId);
+    };
+
+    /** ノートごとに書き込みを直列にする（呼んだ順に適用する）。 */
+    const enqueueWrite = <T>(studyId: string, task: () => Promise<T>): Promise<T> => {
+        const entry = entryOf(studyId);
+        const result = entry.writeChain.then(task, task);
+        entry.writeChain = result.catch(() => undefined);
+        void result.then(
+            () => noteStorageResult(studyId, null),
+            (error: unknown) => noteStorageResult(studyId, error),
+        );
+        return trackWrite(result);
+    };
+
+    const unsubscribeChannel = channel?.subscribe((message) => {
+        if (message.type !== "changed" || disposed) return;
+        const { studyId } = message;
+        const entry = entryOf(studyId);
+        // 連続した通知（一括解析など）はまとめて 1 回だけ読み直す。
+        if (entry.refreshTimer !== null) return;
+        entry.refreshTimer = scheduler.setTimeout(() => {
+            entry.refreshTimer = null;
+            void store.read(studyId).then(
+                ({ study, pending }) => {
+                    observe(studyId, study, pending.length);
+                    if (!study) emit({ type: "removed", studyId });
+                    else if (study.mergedInto !== null) {
+                        emit({ type: "merged", studyId, into: study.mergedInto });
+                    } else emit({ type: "document", studyId, origin: "other-tab" });
+                },
+                () => undefined,
+            );
+        }, OTHER_TAB_REFRESH_DELAY_MS);
+    });
+
+    const pull = async (studyId: string): Promise<void> => {
+        await locks.request(lockName(studyId), () => pullLocked(studyId));
+        const entry = entryOf(studyId);
+        if (entry.pendingCount > 0 || entry.study?.serverRevision === null) {
+            await runSync(studyId, false);
+        }
+    };
+
+    const resumeOwned = async (): Promise<void> => {
+        const current = session;
+        if (!current) return;
+        const summaries = await store.list();
+        for (const summary of summaries) {
+            if (summary.owner !== current.userId || summary.mergedInto !== null) continue;
+            if (summary.pendingCount > 0 || summary.serverRevision === null || summary.deleting) {
+                schedule(summary.id, 0);
+            }
+        }
+    };
+
+    return {
+        setSession(next) {
+            session = next ? { userId: next.userId } : null;
+            unauthorized = false;
+            for (const studyId of entries.keys()) refreshStatus(studyId);
+            if (session) void resumeOwned().catch(() => undefined);
+        },
+        getSession() {
+            return session;
+        },
+
+        createStudy(doc) {
+            const owner = session?.userId ?? null;
+            return enqueueWrite(doc.id, async () => {
+                const study = await mutate(doc.id, (snapshot) => {
+                    if (snapshot.study) {
+                        throw new StudySyncError(
+                            "already_exists",
+                            `研究ノートは既にあります: ${doc.id}`,
+                        );
+                    }
+                    const created = newStoredStudy(doc, owner, null);
+                    return { study: created, result: created };
+                });
+                emit({ type: "document", studyId: doc.id, origin: "local" });
+                schedule(doc.id, 0);
+                return study;
+            });
+        },
+
+        async open(studyId) {
+            const local = await store.read(studyId);
+            if (local.study) {
+                observe(studyId, local.study, local.pending.length);
+                if (local.study.mergedInto !== null) {
+                    return { status: "merged", into: local.study.mergedInto };
+                }
+                if (local.study.deleting) return { status: "not_found" };
+                entryOf(studyId).open = true;
+                // 他の端末の変更を裏で取り込み、送信待ちがあれば送る。
+                void pull(studyId).catch(() => undefined);
+                return { status: "ok", study: local.study };
+            }
+            const current = session;
+            if (!current || unauthorized) return { status: "not_found" };
+            return locks.request(lockName(studyId), async (): Promise<StudyOpenResult> => {
+                const fetched = await api.get(studyId);
+                if (!fetched.ok) {
+                    if (fetched.status === 401) markUnauthorized();
+                    if (isTransient(fetched.status)) {
+                        return {
+                            status: "unavailable",
+                            message: describeError(fetched.status, fetched.error),
+                        };
+                    }
+                    return { status: "not_found" };
+                }
+                const detail = fetched.data.study;
+                const study = await mutate(studyId, (snapshot) => {
+                    if (snapshot.study) return { result: snapshot.study };
+                    const created = newStoredStudy(
+                        toDocument(detail),
+                        current.userId,
+                        detail.revision,
+                    );
+                    return { study: created, result: created };
+                });
+                entryOf(studyId).open = true;
+                return { status: "ok", study };
+            });
+        },
+
+        close(studyId) {
+            const entry = entries.get(studyId);
+            if (entry) entry.open = false;
+        },
+
+        async load(studyId) {
+            const { study, pending } = await store.read(studyId);
+            observe(studyId, study, pending.length);
+            return study;
+        },
+
+        applyOps(studyId, ops) {
+            return enqueueWrite(studyId, async () => {
+                const { doc, changed } = await mutate(studyId, (snapshot) => {
+                    if (!snapshot.study || snapshot.study.deleting) {
+                        throw new StudySyncError("not_found", `研究ノートがありません: ${studyId}`);
+                    }
+                    if (snapshot.study.mergedInto !== null) {
+                        throw new StudySyncError(
+                            "merged",
+                            `研究ノートは統合済みです: ${snapshot.study.mergedInto}`,
+                        );
+                    }
+                    const applied = applyEffectiveOps(snapshot.study.doc, ops);
+                    if (applied.effective.length === 0) {
+                        return { result: { doc: snapshot.study.doc, changed: false } };
+                    }
+                    return {
+                        study: { ...snapshot.study, doc: applied.doc, updatedAt: now() },
+                        appendOps: applied.effective,
+                        result: { doc: applied.doc, changed: true },
+                    };
+                });
+                if (changed) {
+                    emit({ type: "document", studyId, origin: "local" });
+                    schedule(studyId, flushDelayMs);
+                }
+                return doc;
+            });
+        },
+
+        async flush(studyId) {
+            if (studyId !== undefined) {
+                const entry = entryOf(studyId);
+                clearTimer(entry);
+                await entry.writeChain;
+                await runSync(studyId, false);
+                return;
+            }
+            await Promise.allSettled([...localWrites]);
+            const summaries = await store.list();
+            await Promise.all(
+                summaries
+                    .filter(
+                        (summary) =>
+                            summary.pendingCount > 0 ||
+                            summary.serverRevision === null ||
+                            summary.deleting,
+                    )
+                    .map((summary) => {
+                        clearTimer(entryOf(summary.id));
+                        return runSync(summary.id, false);
+                    }),
+            );
+        },
+
+        async retry(studyId) {
+            const entry = entryOf(studyId);
+            clearTimer(entry);
+            entry.attempt = 0;
+            await entry.writeChain;
+            await runSync(studyId, true);
+        },
+
+        pull,
+
+        async refreshOpen() {
+            const openIds = [...entries].filter(([, entry]) => entry.open).map(([id]) => id);
+            await Promise.all(openIds.map((studyId) => pull(studyId).catch(() => undefined)));
+        },
+
+        async deleteStudy(studyId) {
+            const removed = await enqueueWrite(studyId, () =>
+                mutate(studyId, (snapshot) => {
+                    if (!snapshot.study) return { result: true };
+                    // サーバーに渡っていない匿名のノートは、ローカルから消すだけでよい。
+                    if (snapshot.study.owner === null) return { study: null, result: true };
+                    return {
+                        study: {
+                            ...snapshot.study,
+                            deleting: true,
+                            inflight: null,
+                            updatedAt: now(),
+                        },
+                        removeOpsUpTo: lastSeqOf(snapshot.pending),
+                        result: false,
+                    };
+                }),
+            );
+            const entry = entryOf(studyId);
+            entry.open = false;
+            emit({ type: "removed", studyId });
+            if (!removed) {
+                clearTimer(entry);
+                await runSync(studyId, false);
+            }
+        },
+
+        async adoptAnonymousStudies() {
+            const current = session;
+            if (!current) return [];
+            const summaries = await store.list();
+            const adopted: string[] = [];
+            for (const summary of summaries) {
+                if (summary.owner !== null || summary.mergedInto !== null) continue;
+                const done = await enqueueWrite(summary.id, () =>
+                    mutate(summary.id, (snapshot) => {
+                        // 他のタブが先に持ち主を決めていたら、それを変えない。
+                        if (!snapshot.study || snapshot.study.owner !== null) {
+                            return { result: false };
+                        }
+                        return {
+                            study: { ...snapshot.study, owner: current.userId, updatedAt: now() },
+                            result: true,
+                        };
+                    }),
+                );
+                if (done) {
+                    adopted.push(summary.id);
+                    schedule(summary.id, 0);
+                }
+            }
+            return adopted;
+        },
+
+        async listLocal() {
+            const summaries = await store.list();
+            return summaries
+                .filter((summary) => summary.mergedInto === null && !summary.deleting)
+                .map((summary) => {
+                    const entry = entries.get(summary.id);
+                    return {
+                        ...summary,
+                        status: statusOf({
+                            study: summary,
+                            pendingCount: summary.pendingCount,
+                            storageError: entry?.storageError ?? null,
+                            retrying: entry?.retrying ?? false,
+                            message: entry?.message ?? null,
+                        }),
+                    };
+                });
+        },
+
+        async findLocalByOrigin(origin) {
+            const originKey = studyOriginKey(origin.kind, origin.ref);
+            if (originKey === null) return null;
+            const ids = await store.findByOriginKey(originKey);
+            const currentUserId = session?.userId ?? null;
+            for (const studyId of ids) {
+                const { study } = await store.read(studyId);
+                if (!study || study.deleting) continue;
+                // 別のアカウントのノートは「同じ棋譜のノート」として開かない。
+                if (study.owner !== null && study.owner !== currentUserId) continue;
+                return study.mergedInto ?? study.id;
+            }
+            return null;
+        },
+
+        getStatus(studyId) {
+            return entries.get(studyId)?.status ?? INITIAL_STATUS;
+        },
+        subscribeStatus(studyId, listener) {
+            const entry = entryOf(studyId);
+            entry.listeners.add(listener);
+            return () => {
+                entry.listeners.delete(listener);
+            };
+        },
+        subscribeEvents(listener) {
+            eventListeners.add(listener);
+            return () => {
+                eventListeners.delete(listener);
+            };
+        },
+
+        async whenLocalWritesSettled() {
+            while (localWrites.size > 0) {
+                await Promise.allSettled([...localWrites]);
+            }
+        },
+
+        dispose() {
+            disposed = true;
+            for (const entry of entries.values()) {
+                clearTimer(entry);
+                if (entry.refreshTimer !== null) {
+                    scheduler.clearTimeout(entry.refreshTimer);
+                    entry.refreshTimer = null;
+                }
+            }
+            unsubscribeChannel?.();
+            eventListeners.clear();
+        },
+    };
+}

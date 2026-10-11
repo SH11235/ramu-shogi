@@ -154,7 +154,7 @@ jobs:
       # ユニットテスト (vitest): build 済みの dist / wasm pkg を再利用するため build job 内に配置。
       # tauri/wasm 前提や test 無しのパッケージは対象外。
       - name: Test (unit)
-        run: pnpm turbo test --filter=web --filter=@shogi/match-client --filter=@shogi/app-core --filter=@shogi/app-controller --filter=@shogi/design-system --filter=@shogi/engine-client --filter=@shogi/ui -- --run
+        run: pnpm turbo test --filter=web --filter=@shogi/match-client --filter=@shogi/app-core --filter=@shogi/app-controller --filter=@shogi/design-system --filter=@shogi/engine-client --filter=@shogi/study-client --filter=@shogi/ui -- --run
       - name: sccache stats
         if: always()
         run: sccache --show-stats || true

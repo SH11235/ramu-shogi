@@ -1,0 +1,26 @@
+{
+    "name": "@shogi/study-client",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "main": "./src/index.ts",
+    "types": "./src/index.ts",
+    "exports": {
+        ".": "./src/index.ts"
+    },
+    "dependencies": {
+        "@shogi/api-contract": "workspace:*",
+        "@shogi/app-core": "workspace:*"
+    },
+    "scripts": {
+        "build": "tsc -b tsconfig.build.json",
+        "typecheck": "tsc --noEmit",
+        "lint": "pnpm --workspace-root exec biome check .",
+        "test": "vitest"
+    },
+    "devDependencies": {
+        "fake-indexeddb": "^6.2.5",
+        "typescript": "~5.9.3",
+        "vitest": "^4.0.15"
+    }
+}

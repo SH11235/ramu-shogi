@@ -325,6 +325,25 @@ importers:
         specifier: ^4.0.15
         version: 4.0.15(@types/node@24.10.1)(happy-dom@20.7.0)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
+  packages/study-client:
+    dependencies:
+      '@shogi/api-contract':
+        specifier: workspace:*
+        version: link:../api-contract
+      '@shogi/app-core':
+        specifier: workspace:*
+        version: link:../app-core
+    devDependencies:
+      fake-indexeddb:
+        specifier: ^6.2.5
+        version: 6.2.5
+      typescript:
+        specifier: ~5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.15
+        version: 4.0.15(@types/node@24.10.1)(happy-dom@20.7.0)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
+
   packages/ui:
     dependencies:
       '@radix-ui/react-alert-dialog':
@@ -2443,6 +2462,10 @@ packages:
   expect-type@1.2.2:
     resolution: {integrity: sha512-JhFGDVJ7tmDJItKhYgJCGLOWjuK9vPxiXoUFLwLDc99NlmklilbiQJwoctZtt13+xMw91MCk/REan6MWHqDjyA==}
     engines: {node: '>=12.0.0'}
+
+  fake-indexeddb@6.2.5:
+    resolution: {integrity: sha512-CGnyrvbhPlWYMngksqrSSUT1BAVP49dZocrHuK0SvtR0D5TMs5wP0o3j7jexDJW01KSadjBp1M/71o/KR3nD1w==}
+    engines: {node: '>=18'}
 
   fast-glob@3.3.3:
     resolution: {integrity: sha512-7MptL8U0cqcFdzIzwOTHoilX9x5BrNqye7Z/LuC7kCMRio1EMSyqRK3BEAUD7sXRq4iT4AzTVuZdhgQ2TCvYLg==}
@@ -5180,6 +5203,8 @@ snapshots:
   eventemitter3@5.0.1: {}
 
   expect-type@1.2.2: {}
+
+  fake-indexeddb@6.2.5: {}
 
   fast-glob@3.3.3:
     dependencies:
