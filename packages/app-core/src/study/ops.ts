@@ -287,12 +287,15 @@ export function applyStudyOps(doc: StudyDocument, ops: readonly StudyOp[]): Stud
  */
 export function mergeStudyComments(existing: string, incoming: string): string {
     if (incoming === "" || incoming === existing) return existing;
-    if (existing === "") return incoming;
+    // 取り込むのは前後の空白を除いたまとまり。統合先が空のときも同じ形で入れる
+    // （空白つきのまま入れると、あとで追記されたときにやり直しで見つけられない）。
+    const block = incoming.trim();
+    if (block === "") return existing;
+    if (existing === "") return block;
     // 統合先に、手元のコメントが「行のまとまり」として既に入っていれば、もう一度はつながない
     // （統合のやり直しで二重にしないため。やり直しまでのあいだに統合先へ追記があってもよい）。
     // 行の途中の部分一致では判定しない: 「詰みなし」に「詰み」は入っていないものとして扱う。
-    const block = incoming.trim();
-    if (block === "" || `\n${existing}\n`.includes(`\n${block}\n`)) return existing;
+    if (`\n${existing}\n`.includes(`\n${block}\n`)) return existing;
     // つなぐのは前後の空白を除いたまとまり（判定と同じ形にしないと、やり直しで見つけられない）。
     const merged = `${existing}\n\n${block}`;
     return exceedsUtf8Bytes(merged, STUDY_LIMITS.commentBytes) ? existing : merged;

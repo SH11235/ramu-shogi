@@ -402,6 +402,12 @@ describe("mergeStudyComments", () => {
         const once = mergeStudyComments("既存", " 匿名 ");
         expect(once).toBe("既存\n\n匿名");
         expect(mergeStudyComments(once, " 匿名 ")).toBe(once);
+        // 統合先が空だったときも、あとで追記されてからのやり直しで二重にならない。
+        const first = mergeStudyComments("", "  匿名\r\n");
+        expect(first).toBe("匿名");
+        expect(mergeStudyComments(`${first}\n\nあとからの追記`, "  匿名\r\n")).toBe(
+            "匿名\n\nあとからの追記",
+        );
     });
 
     it("つなぐと上限（4 KiB）を超えるなら、既存側を残す", () => {
