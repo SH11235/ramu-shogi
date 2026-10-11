@@ -1485,6 +1485,7 @@ export function ShogiMatch({
         startSfen,
         passRightsSettings,
         sides,
+        engineOptions,
         senteNnueSelection,
         goteNnueSelection,
         matchEndedRef,

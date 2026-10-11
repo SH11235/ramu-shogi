@@ -1,3 +1,4 @@
+import type { EngineOption, SideSetting } from "@shogi/app-controller";
 import {
     cloneBoard,
     type GameResult,
@@ -25,6 +26,22 @@ const clonePositionState = (pos: PositionState): PositionState => ({
         : undefined,
 });
 
+/** 外部エンジンは内蔵AIの評価関数を使わない。未指定IDは既定エンジンに合わせる。 */
+export function getMatchNnueSelections(
+    sides: Record<Player, SideSetting>,
+    engineOptions: Pick<EngineOption, "id" | "kind">[],
+    selections: Record<Player, NnueSelection>,
+): NnueSelection[] {
+    return (["sente", "gote"] as const).flatMap((side) => {
+        const setting = sides[side];
+        if (setting.role !== "engine") return [];
+        const engine = engineOptions.find(
+            (option) => option.id === (setting.engineId ?? engineOptions[0]?.id),
+        );
+        return engine && engine.kind !== "external" ? [selections[side]] : [];
+    });
+}
+
 /**
  * useGameControls の props
  */
@@ -48,7 +65,9 @@ interface UseGameControlsProps {
     /** パス権設定 */
     passRightsSettings: PassRightsSettings;
     /** 対局者設定 */
-    sides: { sente: { role: string }; gote: { role: string } };
+    sides: Record<Player, SideSetting>;
+    /** 利用できるエンジン（外部エンジンをNNUE確認から除外する） */
+    engineOptions: EngineOption[];
     /** 先手NNUE選択 */
     senteNnueSelection: NnueSelection;
     /** 後手NNUE選択 */
@@ -149,6 +168,7 @@ export function useGameControls({
     startSfen,
     passRightsSettings,
     sides,
+    engineOptions,
     senteNnueSelection,
     goteNnueSelection,
     matchEndedRef,
@@ -235,10 +255,10 @@ export function useGameControls({
             if (!positionReady) return;
 
             // 承認待ち・ダウンロード中には局面や棋譜、時計を変更しない。
-            const selections = [
-                ...(sides.sente.role === "engine" ? [senteNnueSelection] : []),
-                ...(sides.gote.role === "engine" ? [goteNnueSelection] : []),
-            ];
+            const selections = getMatchNnueSelections(sides, engineOptions, {
+                sente: senteNnueSelection,
+                gote: goteNnueSelection,
+            });
             if (!(await ensureMatchNnue(selections))) return;
             matchEndedRef.current = false;
 
