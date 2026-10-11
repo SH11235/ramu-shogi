@@ -1,16 +1,23 @@
 /**
  * CSA 棋譜から指し手と、指し手ごとの付随情報 (消費時間・評価値・詰み・読み筋) を取り出す。
  *
- * 読む形式は次の 3 つ (評価値はどれも先手視点)。
+ * 読む形式は次の 4 つ (評価値はどれも先手視点)。
  * - wdoor 形式: 指し手行 → `T<秒>` 行 → `'** <評価値> <読み筋>` 行
  * - rshogi サーバー形式: `+7776FU,T4` → `'** <評価値> <読み筋>` 行
+ * - 旧 rshogi サーバー形式 (2026-07 以前の保存分): `+7776FU,T4` → `'* <評価値> <読み筋>` 行
  * - 旧 `csa_client` 形式: `'* <評価値> <読み筋>` 行 → 指し手行 → `T<秒>` 行
  *
  * 評価値コメントがどの指し手のものかは、行ごとに次の規則で決める
  * (1 ファイルに混在していてもこの規則どおり)。
  * - 指し手行に `,'*` で連結されたコメント → その指し手
  * - 独立行の `'**` (星 2 つ) → 直前の指し手
- * - 独立行の `'*` (星 1 つ) → 次の指し手
+ * - 独立行の `'*` (星 1 つ) →
+ *   - 直前の行が `,T<秒>` を連結した指し手行 (サーバー形式) なら直前の指し手
+ *   - そうでなければ (直前が独立した `T<秒>` 行・ヘッダー・局面の行など = 旧 `csa_client`
+ *     形式) 次の指し手
+ *
+ * 「直前の行」を決めるとき、`'` で始まるコメント行 (`'rating:` や別の評価値コメントなど) は
+ * 数えない。つまりコメント行が何行か挟まっても、その前の行が何だったかで決まる。
  */
 
 import type { Player, PositionState } from "./board";
@@ -193,6 +200,8 @@ export function parseCsaGameRecord(contents: string): CsaGameRecord {
     let ended = false;
     // 独立行の `'*` (旧 csa_client 形式)。次の指し手に付ける。
     let commentForNextMove: CsaEvalComment | undefined;
+    // 直前の行 (コメント行は数えない) が `,T<秒>` を連結した指し手行だったか。
+    let previousLineIsMoveWithTime = false;
     const resolveStart = (): PositionState => {
         const start = buildCsaStartPosition(setupLines, startTurn);
         record.startSfen = start.sfen;
@@ -204,7 +213,13 @@ export function parseCsaGameRecord(contents: string): CsaGameRecord {
         const line = lines[lineIndex].trim();
         if (line.length === 0) continue;
         const isCommentLine = line.startsWith("'");
-        for (const statement of splitStatements(line)) {
+        const statements = splitStatements(line);
+        if (!isCommentLine) {
+            previousLineIsMoveWithTime =
+                /^[+-]\d{4}[A-Z]{2}$/.test(statements[0] ?? "") &&
+                statements.some((statement) => /^T\d/.test(statement));
+        }
+        for (const statement of statements) {
             if (statement === "/") break outer;
             if (statement.startsWith("'")) {
                 const senteRate = parseRate(statement, "'black_rate:");
@@ -218,11 +233,12 @@ export function parseCsaGameRecord(contents: string): CsaGameRecord {
                 if (ended) continue;
                 const comment = parseCsaEvalComment(statement);
                 if (comment.evalCp === undefined) continue;
-                if (isCommentLine && !statement.startsWith("'**")) {
+                if (isCommentLine && !statement.startsWith("'**") && !previousLineIsMoveWithTime) {
                     commentForNextMove ??= comment;
                     continue;
                 }
-                // 指し手行に連結されたコメントと、独立行の `'**` は直前の指し手のもの。
+                // 指し手行に連結されたコメント、独立行の `'**`、サーバー形式の指し手行
+                // (`<指し手>,T<秒>`) に続く独立行の `'*` は、直前の指し手のもの。
                 const last = pendingMoves[pendingMoves.length - 1];
                 if (last && last.comment === undefined) last.comment = comment;
                 continue;

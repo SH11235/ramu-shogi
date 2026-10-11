@@ -82,15 +82,9 @@ describe("parseCsaStartPosition", () => {
 
     it("持ち駒は SFEN の順 (飛角金銀桂香歩、先手が先) で、複数枚は枚数を付ける", () => {
         const start = parseCsaStartPosition(
-            [
-                ...MIDGAME_ROWS.slice(0, 9),
-                "P+00FU00FU00KA00FU",
-                "P+00HI",
-                "P-00KE00KI00KE",
-                "+",
-            ].join("\n"),
+            ["P-51OU", "P+59OU", "P+00FU00FU00KA00FU", "P+00HI", "P-00KE00KI00KE", "+"].join("\n"),
         );
-        expect(start.sfen).toBe(`${MIDGAME_BOARD} b RB3Pg2n 1`);
+        expect(start.sfen).toBe("4k4/9/9/9/9/9/9/9/4K4 b RB3Pg2n 1");
     });
 
     it("成り駒を読む", () => {
@@ -170,6 +164,22 @@ describe("parseCsaStartPosition: 解釈できない局面記述", () => {
         const rows = [...HIRATE_ROWS];
         rows[3] = "P4 *  *  *  *  *  *  *  *  *  * ";
         expectInvalid([...rows, "+"].join("\n"));
+    });
+
+    it("どれかの駒が 1 組の枚数を超える局面を弾く (00AL が無くても)", () => {
+        // 平手の盤 (歩 18 枚) に持ち駒の歩を足すと 19 枚。
+        expectInvalid("PI\nP+00FU\n+");
+        expectInvalid("PI\nP-00HI\n+");
+        // 盤上の成り駒も元の駒として数える。
+        expectInvalid("P-51OU\nP+11UM12KA\nP-00KA\n+");
+        // 持ち駒だけで超える。
+        expectInvalid("P-51OU\nP+00KI00KI00KI\nP-00KI00KI\n+");
+        // 同じ側の玉が 2 枚。
+        expectInvalid("P+59OU58OU\nP-51OU\n+");
+        // ちょうど 1 組までは通る。
+        expect(parseCsaStartPosition("PI22KA\nP+00KA\n+").sfen).toBe(
+            "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b B 1",
+        );
     });
 
     it("同じマスへの重複配置、平手に無い駒の駒落ち指定、PI と P1〜P9 の併用を弾く", () => {

@@ -72,28 +72,32 @@ function computeNiceScale(maxAbsValue: number, minScale: number): number {
 }
 
 /**
- * グラフの縦軸を決めるときに 1 つの評価値が持てる最大の大きさ。詰みの扱いと同じ値。
+ * 評価値から決める縦軸の上限 (センチポーン)。
  * エンジンによっては詰みや必勝を 31998 のような巨大な評価値で表すので、そのまま縦軸に
- * 使うと他の手の動きが潰れて見えなくなる。これを超える値は上端・下端に張り付けて描く。
+ * 使うと他の手の動きが潰れて見えなくなる。評価値がいくら大きくても縦軸はここで止め、
+ * 超えた値は上端・下端に張り付けて描く。
  */
-const EVAL_GRAPH_VALUE_CAP = 10000;
+const EVAL_GRAPH_AXIS_CAP = 10000;
+
+/** 詰み (evalMate) を含むときに縦軸の計算に使う大きさ。従来からの値。 */
+const EVAL_GRAPH_MATE_VALUE = 10000;
 
 /** 評価値の履歴からグラフの縦軸の最大値 (センチポーン) を決める。 */
 export function computeEvalGraphScale(
     evalHistory: readonly EvalHistory[],
     minScale: number,
 ): number {
-    let maxAbs = 0;
+    let maxAbsCp = 0;
+    let hasMate = false;
     for (const entry of evalHistory) {
         if (entry.evalCp !== null && entry.evalCp !== undefined) {
-            maxAbs = Math.max(maxAbs, Math.min(Math.abs(entry.evalCp), EVAL_GRAPH_VALUE_CAP));
+            maxAbsCp = Math.max(maxAbsCp, Math.abs(entry.evalCp));
         }
-        // 詰みの場合は大きな値として扱う
-        if (entry.evalMate !== null && entry.evalMate !== undefined) {
-            maxAbs = Math.max(maxAbs, EVAL_GRAPH_VALUE_CAP);
-        }
+        if (entry.evalMate !== null && entry.evalMate !== undefined) hasMate = true;
     }
-    return computeNiceScale(maxAbs, minScale);
+    const cpScale = Math.min(computeNiceScale(maxAbsCp, minScale), EVAL_GRAPH_AXIS_CAP);
+    // 詰みを含むグラフは従来どおりの縦軸にする (詰みは上端・下端に固定して描く)。
+    return hasMate ? Math.max(cpScale, computeNiceScale(EVAL_GRAPH_MATE_VALUE, minScale)) : cpScale;
 }
 
 /**

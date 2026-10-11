@@ -6,7 +6,7 @@
  * 取り込まないようにする。
  *
  * 検証する内容:
- * - 移動元に手番側の駒があること、移動先が自分の駒でないこと
+ * - 移動元に手番側の駒があること、移動先が自分の駒でも相手の玉でもないこと
  * - CSA の駒コードが「移動元の駒」か「その成り駒 (成れる駒が敵陣に出入りするとき)」で
  *   あること
  * - 駒の動き (利きと飛び越え) として可能であること
@@ -191,6 +191,7 @@ export function applyCsaMoveStrict(
         if (!piece) throw new Error("移動元に駒がありません");
         if (piece.owner !== owner) throw new Error("移動元の駒は相手の駒です");
         if (target && target.owner === owner) throw new Error("移動先に自分の駒があります");
+        if (target && target.type === "K") throw new Error("玉は取れません");
 
         const alreadyPromoted = piece.promoted === true;
         let promote = false;

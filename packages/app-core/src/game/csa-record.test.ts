@@ -303,6 +303,53 @@ describe("parseCsaGameRecord", () => {
     });
 });
 
+// 本番 (rshogi-csa-server) に保存されている旧サーバー形式の棋譜の先頭 10 手。
+// 指し手行は `<指し手>,T<秒>`、評価値は指し手の「後ろ」に独立行の星 1 つで入っている。
+const OLD_SERVER_CSA = [
+    "V2.2",
+    "N+rs-baseline",
+    "N-rs-threat1536",
+    "$GAME_ID:be-p0011-1783711724-1783711732531",
+    "$START_TIME:2026/07/10 19:28:52",
+    "$END_TIME:2026/07/10 19:50:07",
+    "BEGIN Time",
+    "Time_Unit:1sec",
+    "Total_Time:600",
+    "Byoyomi:10",
+    "Least_Time_Per_Move:0",
+    "END Time",
+    "BEGIN Position",
+    "P1-KY-KE-GI-KI-OU-KI-GI-KE-KY",
+    "P2 * -HI *  *  *  *  * -KA * ",
+    "P3-FU-FU-FU-FU-FU-FU-FU-FU-FU",
+    "P4 *  *  *  *  *  *  *  *  * ",
+    "P5 *  *  *  *  *  *  *  *  * ",
+    "P6 *  *  *  *  *  *  *  *  * ",
+    "P7+FU+FU+FU+FU+FU+FU+FU+FU+FU",
+    "P8 * +KA *  *  *  *  * +HI * ",
+    "P9+KY+KE+GI+KI+OU+KI+GI+KE+KY",
+    "+",
+    "END Position",
+    "+2726FU,T2",
+    "-8384FU,T0",
+    "+2625FU,T0",
+    "'* -55",
+    "-4132KI,T0",
+    "'* -55",
+    "+6978KI,T0",
+    "-8485FU,T0",
+    "+3938GI,T0",
+    "'* -33",
+    "-7172GI,T0",
+    "'* -15",
+    "+9796FU,T0",
+    "'* -27",
+    "-5152OU,T0",
+    "'* -46",
+    "%TIME_UP",
+    "",
+].join("\n");
+
 describe("parseCsaGameRecord: コメントがどの指し手のものか", () => {
     it("旧 csa_client 形式: 指し手の前の独立行 `'*` は次の指し手のコメント", () => {
         const record = parseCsaGameRecord(
@@ -335,6 +382,84 @@ describe("parseCsaGameRecord: コメントがどの指し手のものか", () =>
             { elapsedMs: 2000 },
             { elapsedMs: 4000, mateWinner: "gote" },
         ]);
+    });
+
+    it("旧サーバー形式: `<指し手>,T<秒>` の次の独立行 `'*` は直前の指し手のコメント", () => {
+        // 本番に保存されている 2026-07 以前の棋譜 (be-p0011-1783711724-1783711732531) の
+        // 先頭 10 手をそのまま切り出し、実物と同じく終局コマンドで終えたもの。
+        const record = parseCsaGameRecord(OLD_SERVER_CSA);
+        expect(record.moves).toEqual([
+            "2g2f",
+            "8c8d",
+            "2f2e",
+            "4a3b",
+            "6i7h",
+            "8d8e",
+            "3i3h",
+            "7a7b",
+            "9g9f",
+            "5a5b",
+        ]);
+        expect(record.annotations).toEqual([
+            { elapsedMs: 2000 },
+            { elapsedMs: 0 },
+            // 3 手目の直後のコメントは 3 手目のもの (4 手目に回さない)。
+            { elapsedMs: 0, evalCp: -55 },
+            { elapsedMs: 0, evalCp: -55 },
+            { elapsedMs: 0 },
+            { elapsedMs: 0 },
+            { elapsedMs: 0, evalCp: -33 },
+            { elapsedMs: 0, evalCp: -15 },
+            { elapsedMs: 0, evalCp: -27 },
+            // 終局コマンド直前の最後のコメントは最終手のもの (捨てない)。
+            { elapsedMs: 0, evalCp: -46 },
+        ]);
+    });
+
+    it("旧サーバー形式の読み筋は指した手から始まるので、先頭の 1 手を落とす", () => {
+        const record = parseCsaGameRecord(
+            [
+                "PI",
+                "+",
+                "+2726FU,T2",
+                "'* 30 +2726FU -8384FU +2625FU",
+                "-8384FU,T0",
+                "'* 20 -8384FU",
+            ].join("\n"),
+        );
+        expect(record.annotations).toEqual([
+            { elapsedMs: 2000, evalCp: 30, pv: ["8c8d", "2f2e"] },
+            { elapsedMs: 0, evalCp: 20 },
+        ]);
+    });
+
+    it("`'*` の前に別のコメント行が挟まっても、その前の行が何だったかで決める", () => {
+        // サーバー形式の指し手行 → 無関係なコメント → `'*`: 直前の指し手のもの。
+        const server = parseCsaGameRecord(
+            ["PI", "+", "+7776FU,T3", "'rating:A+1:B+2", "'memo", "'* 30", "-3334FU,T1"].join("\n"),
+        );
+        expect(server.annotations).toEqual([{ elapsedMs: 3000, evalCp: 30 }, { elapsedMs: 1000 }]);
+
+        // 独立した T 行 (旧 csa_client 形式) → 無関係なコメント → `'*`: 次の指し手のもの。
+        const client = parseCsaGameRecord(
+            ["PI", "+", "+7776FU", "T3", "'rating:A+1:B+2", "'* 30 -3334FU", "-3334FU", "T1"].join(
+                "\n",
+            ),
+        );
+        expect(client.annotations).toEqual([{ elapsedMs: 3000 }, { elapsedMs: 1000, evalCp: 30 }]);
+
+        // 1 手に `'*` が 2 行続いたら最初の 1 行だけを使い、次の手に回さない。
+        const doubled = parseCsaGameRecord(
+            ["PI", "+", "+7776FU,T3", "'* 30", "'* 99", "-3334FU,T1"].join("\n"),
+        );
+        expect(doubled.annotations).toEqual([{ elapsedMs: 3000, evalCp: 30 }, { elapsedMs: 1000 }]);
+    });
+
+    it("T の付かない指し手行の次の `'*` は次の指し手のもの (サーバー形式とみなさない)", () => {
+        const record = parseCsaGameRecord(
+            ["PI", "+", "'* 10 +7776FU", "+7776FU", "'* 20 -3334FU", "-3334FU"].join("\n"),
+        );
+        expect(record.annotations).toEqual([{ evalCp: 10 }, { evalCp: 20 }]);
     });
 
     it("最後の指し手の後ろに残った `'*` はどの手にも付けない", () => {
@@ -492,9 +617,14 @@ describe("parseCsaGameRecord: 指せない手を取り込まない", () => {
         expectRejected([...opening, "+0055HI"], /持ち駒にありません/);
         expectRejected([...opening, "+0076KA"], /駒のあるマス/);
         expectRejected([...opening, "+0055UM"], /打てない駒/);
-        expectRejected(["PI", "P+00FU", "+", "+0055FU"], /二歩/);
-        expectRejected(["PI", "P+00KE", "+", "+0052KE"], /行き所のない駒/);
+        expectRejected(["P+59OU57FU00FU", "P-51OU", "+", "+0055FU"], /二歩/);
+        expectRejected(["P+59OU00KE", "P-51OU", "+", "+0052KE"], /行き所のない駒/);
         expectRejected(["PI", "+", "+0055FU"], /持ち駒にありません/);
+    });
+
+    it("相手の玉を取る手を弾く", () => {
+        expectRejected(["P+59OU52HI", "P-51OU", "+", "+5251HI"], /玉は取れません/);
+        expectRejected(["P+59OU52HI", "P-51OU", "+", "+5251RY"], /玉は取れません/);
     });
 
     it("王手を放置する手を弾く", () => {

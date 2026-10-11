@@ -174,13 +174,8 @@ const applyPieceLine = (board: BoardState, hands: Hands, line: string): Player |
     return allRemainingTo;
 };
 
-/** 盤上にもどちらの持ち駒にも無い駒を、すべて `owner` の持ち駒にする (`00AL`)。 */
-const giveRemainingPieces = (
-    board: BoardState,
-    hands: Hands,
-    owner: Player,
-    line: string,
-): void => {
+/** 盤上と両者の持ち駒にある駒を、種類ごと (成り駒は元の駒として) に数える。 */
+const countPieces = (board: BoardState, hands: Hands): Partial<Record<PieceType, number>> => {
     const used: Partial<Record<PieceType, number>> = {};
     for (const piece of Object.values(board)) {
         if (piece) used[piece.type] = (used[piece.type] ?? 0) + 1;
@@ -190,11 +185,36 @@ const giveRemainingPieces = (
             used[type as PieceType] = (used[type as PieceType] ?? 0) + (count ?? 0);
         }
     }
+    return used;
+};
+
+/** 盤上にもどちらの持ち駒にも無い駒を、すべて `owner` の持ち駒にする (`00AL`)。 */
+const giveRemainingPieces = (board: BoardState, hands: Hands, owner: Player): void => {
+    const used = countPieces(board, hands);
     for (const [type, total] of Object.entries(FULL_SET)) {
         const pieceType = type as Exclude<PieceType, "K">;
         const remaining = total - (used[pieceType] ?? 0);
-        if (remaining < 0) fail(line, "駒の枚数が 1 組を超えています");
         if (remaining > 0) hands[owner][pieceType] = (hands[owner][pieceType] ?? 0) + remaining;
+    }
+};
+
+/** 開始局面全体で、どの駒も 1 組の枚数を超えていないこと (玉は各 1 枚まで) を確かめる。 */
+const assertPieceCounts = (board: BoardState, hands: Hands): void => {
+    const used = countPieces(board, hands);
+    for (const [type, total] of Object.entries(FULL_SET)) {
+        if ((used[type as PieceType] ?? 0) > total) {
+            throw new Error(
+                `CSA の開始局面を解釈できません: 駒の枚数が 1 組を超えています (${type} が ${used[type as PieceType]} 枚、上限 ${total} 枚)`,
+            );
+        }
+    }
+    for (const owner of ["sente", "gote"] as const) {
+        const kings = Object.values(board).filter(
+            (piece) => piece?.type === "K" && piece.owner === owner,
+        ).length;
+        if (kings > 1) {
+            throw new Error("CSA の開始局面を解釈できません: 同じ側の玉が 2 枚以上あります");
+        }
     }
 };
 
@@ -267,15 +287,17 @@ export function buildCsaStartPosition(
     }
 
     const hands = createEmptyHands();
-    let allRemaining: { owner: Player; line: string } | null = null;
+    let allRemaining: { owner: Player } | null = null;
     for (const line of pieceLines) {
         const owner = applyPieceLine(board, hands, line);
         if (owner && allRemaining && allRemaining.owner !== owner) {
             fail(line, "00AL は片方の側にだけ書けます");
         }
-        if (owner) allRemaining = { owner, line };
+        if (owner) allRemaining = { owner };
     }
-    if (allRemaining) giveRemainingPieces(board, hands, allRemaining.owner, allRemaining.line);
+    // 枚数の検査は `00AL` で残りを配る前に行う (配った後は必ず 1 組ちょうどになる)。
+    assertPieceCounts(board, hands);
+    if (allRemaining) giveRemainingPieces(board, hands, allRemaining.owner);
 
     const boardSfen = boardToSfen(board);
     const handsSfen = handsToSfen(hands);
