@@ -8,6 +8,7 @@ import { NativeSelect } from "../../native-select";
 import { Switch } from "../../switch";
 import type { ClockSettings } from "../hooks/useClockManager";
 import { useKifuTextImport } from "../hooks/useKifuTextImport";
+import { useShogiMatchConfig } from "../ShogiMatchContext";
 import type {
     DisplaySettings,
     EngineOption,
@@ -159,6 +160,7 @@ function KifuImportSection({
     const [isExpanded, setIsExpanded] = useState(false);
     const { inputValue, error, success, handleInputChange, handleImport, handleFileChange } =
         useKifuTextImport({ onImportSfen, onImportKif });
+    const { kifuImportExtra } = useShogiMatchConfig();
 
     return (
         <div className="space-y-2 pt-3 border-t border-border">
@@ -208,6 +210,7 @@ function KifuImportSection({
                             className="text-base text-foreground file:mr-2 file:rounded-md file:border file:border-border file:bg-background file:px-3 file:py-1.5 file:text-sm disabled:opacity-50"
                         />
                     </label>
+                    {kifuImportExtra}
                 </div>
             )}
         </div>

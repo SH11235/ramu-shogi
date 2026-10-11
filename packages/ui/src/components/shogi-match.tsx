@@ -1,6 +1,7 @@
 import type {
     BoardState,
     GameResult,
+    KifuTree,
     LastMove,
     MoveSearchStats,
     NnueSelection,
@@ -16,6 +17,7 @@ import {
     DEFAULT_PRESET_KEY,
     getAllSquares,
     getPositionService,
+    isStudyUsiMove,
     resolveWorkerCount,
 } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
@@ -471,6 +473,11 @@ interface ShogiMatchProps {
         engineId: string;
         sessionId: string | null;
     }) => void;
+    /**
+     * 読み込んだ棋譜を研究ノートにするコールバック。指定すると、棋譜読込の欄の下に
+     * 「この棋譜を研究ノートにする」を出す（指し手があり、変則ルールでない棋譜のときだけ）。
+     */
+    onOpenAsStudy?: (tree: KifuTree) => void;
 }
 
 export function ShogiMatch({
@@ -501,6 +508,7 @@ export function ShogiMatch({
     reviewTopContent,
     onOpenEngineManager,
     onOpenEngineSettings,
+    onOpenAsStudy,
 }: ShogiMatchProps): ReactElement {
     // デフォルトの NNUE 選択（props のプリセットキーを使用、未指定時は DEFAULT_PRESET_KEY）
     const defaultNnueSelection = createDefaultNnueSelection(
@@ -2003,9 +2011,35 @@ export function ShogiMatch({
         onDisplaySettingsChange: setDisplaySettings,
     };
 
+    // 研究ノートにできるのは、指し手があり、変則ルール（パス権）を使っていない棋譜だけ。
+    const canOpenAsStudy =
+        onOpenAsStudy !== undefined &&
+        !isMatchRunning &&
+        !passRightsSettings.enabled &&
+        navigation.tree.nodes.size > 1 &&
+        [...navigation.tree.nodes.values()].every(
+            (node) => node.usiMove === null || isStudyUsiMove(node.usiMove),
+        );
+    const kifuImportExtra = canOpenAsStudy ? (
+        <div className="flex flex-col gap-1 border-t border-border pt-3">
+            <button
+                type="button"
+                className="w-full rounded-md border border-wafuu-border bg-wafuu-washi py-2 text-sm font-medium text-wafuu-sumi transition-colors hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => onOpenAsStudy?.(navigation.tree)}
+            >
+                この棋譜を研究ノートにする
+            </button>
+            <p className="text-xs text-muted-foreground">
+                いま開いている棋譜（{navigation.state.totalPly}
+                手）を研究ノートにして、解析結果・変化・コメントを自動で保存します。
+            </p>
+        </div>
+    ) : null;
+
     return (
         <ShogiMatchProvider
             config={{
+                kifuImportExtra,
                 aiIconUrl,
                 presetIconUrls: Object.fromEntries(
                     presetConfigs.flatMap((preset) =>

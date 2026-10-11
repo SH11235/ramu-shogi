@@ -24,7 +24,28 @@ interface EvalGraphProps {
     onClick?: () => void;
     /** 手数選択時のコールバック */
     onPlySelect?: (ply: number) => void;
+    /** グラフに重ねる印（研究ノートの注目局面など）。コンパクト表示でだけ描く。 */
+    markers?: readonly EvalGraphMarker[];
+    /** 印を押したときのコールバック。省略時は印を押せない（見た目だけ）。 */
+    onMarkerSelect?: (marker: EvalGraphMarker) => void;
 }
+
+/** 評価値グラフに重ねる印。 */
+export interface EvalGraphMarker {
+    /** `evalHistory` の添字（0 = 開始局面）。 */
+    ply: number;
+    /** 印の種類。色だけでなく形でも見分けられるようにしている。 */
+    tone: "blunder" | "dubious" | "bookmark";
+    /** 読み上げ・ツールチップ用の説明（例: `42手目 悪手`）。 */
+    label: string;
+}
+
+const MARKER_CLASS: Record<EvalGraphMarker["tone"], string> = {
+    // 悪手: 塗りの丸 / 疑問手: 白抜きの丸 / しおり: ひし形
+    blunder: "rounded-full bg-study-blunder ring-2 ring-background",
+    dubious: "rounded-full border-2 border-study-dubious bg-background",
+    bookmark: "rotate-45 bg-wafuu-kin ring-1 ring-wafuu-sumi/60",
+};
 
 /**
  * 評価値をY座標に変換（自動スケール対応版）
@@ -111,6 +132,8 @@ export function EvalGraph({
     minScale = 500,
     onClick,
     onPlySelect,
+    markers,
+    onMarkerSelect,
 }: EvalGraphProps): ReactElement {
     const height = customHeight ?? (compact ? 60 : 80);
     const padding = { top: 4, bottom: 4, left: 0, right: 0 };
@@ -391,8 +414,64 @@ export function EvalGraph({
             </>
         );
 
+        // 印（注目局面など）。SVG は横に引き伸ばして描くので、形が歪まないよう HTML で重ねる。
+        const maxPlyForMarkers = Math.max(evalHistory.length - 1, 1);
+        const markerOverlay =
+            markers && markers.length > 0 ? (
+                <div
+                    className="pointer-events-none absolute left-8 right-0 top-0"
+                    style={{ height }}
+                >
+                    {markers
+                        .filter((marker) => marker.ply >= 0 && marker.ply < evalHistory.length)
+                        .map((marker) => {
+                            const entry = evalHistory[marker.ply];
+                            const style = {
+                                left: `${(marker.ply / maxPlyForMarkers) * 100}%`,
+                                top:
+                                    padding.top +
+                                    evalToYWithScale(
+                                        entry?.evalCp,
+                                        entry?.evalMate,
+                                        graphHeight,
+                                        scaleMax,
+                                    ),
+                            };
+                            const shapeClass = `block h-2.5 w-2.5 ${MARKER_CLASS[marker.tone]}`;
+                            const key = `${marker.tone}-${marker.ply}`;
+                            return onMarkerSelect ? (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    className="pointer-events-auto absolute flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0"
+                                    style={style}
+                                    onClick={() => onMarkerSelect(marker)}
+                                    aria-label={`${marker.label}へ移動`}
+                                    title={marker.label}
+                                >
+                                    <span className={shapeClass} />
+                                </button>
+                            ) : (
+                                <span
+                                    key={key}
+                                    className="absolute flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center"
+                                    style={style}
+                                    title={marker.label}
+                                >
+                                    <span className={shapeClass} />
+                                </span>
+                            );
+                        })}
+                </div>
+            ) : null;
+
         // グラフ本体にボタンがあるので、外側は常にdiv
-        return <div className="relative w-full">{compactContent}</div>;
+        return (
+            <div className="relative w-full">
+                {compactContent}
+                {markerOverlay}
+            </div>
+        );
     }
 
     // 通常表示

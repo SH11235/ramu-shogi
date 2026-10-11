@@ -13,11 +13,29 @@ import { presetDownloadSize, type useMatchNnueDownload } from "../hooks/useMatch
 const mb = (bytes: number) =>
     (bytes / 1_000_000).toLocaleString("ja-JP", { maximumFractionDigits: 1 });
 
+/** ダウンロードの目的ごとの文言。既定は対局の開始。 */
+const PURPOSE_TEXT = {
+    match: {
+        description: "対局を始めるには、",
+        after: "ダウンロード後、自動で対局を開始します。",
+        action: "ダウンロードして対局開始",
+    },
+    analysis: {
+        description: "解析を始めるには、",
+        after: "ダウンロード後、自動で解析を始めます。",
+        action: "ダウンロードして解析",
+    },
+} as const;
+
 export function MatchNnueDownloadDialog({
     state,
+    purpose = "match",
 }: {
     state: ReturnType<typeof useMatchNnueDownload>;
+    /** 何のためのダウンロードか（文言だけが変わる）。 */
+    purpose?: keyof typeof PURPOSE_TEXT;
 }): ReactElement {
+    const text = PURPOSE_TEXT[purpose];
     const { presets, busy, progress, completedBytes, error, cancel, download } = state;
     const total = presets.reduce((sum, preset) => sum + presetDownloadSize(preset), 0);
     const loaded = Math.min(total, completedBytes + (progress?.loaded ?? 0));
@@ -48,8 +66,8 @@ export function MatchNnueDownloadDialog({
                                 : `${names}をダウンロードしますか？`}
                         </DialogTitle>
                         <DialogDescription id="match-ai-download-description" className="pt-2">
-                            対局を始めるには、約 {mb(total)} MB
-                            のダウンロードが必要です。ダウンロード後、自動で対局を開始します。
+                            {text.description}約 {mb(total)} MB のダウンロードが必要です。
+                            {text.after}
                         </DialogDescription>
                     </DialogHeader>
                     {presets.length > 1 && (
@@ -96,7 +114,7 @@ export function MatchNnueDownloadDialog({
                                 キャンセル
                             </Button>
                             <Button onClick={() => void download()}>
-                                {error ? "再試行" : "ダウンロードして対局開始"}
+                                {error ? "再試行" : text.action}
                             </Button>
                         </DialogFooter>
                     )}

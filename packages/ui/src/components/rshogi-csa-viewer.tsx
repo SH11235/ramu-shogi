@@ -36,6 +36,11 @@ export interface RshogiCsaViewerProps {
     fetchLegalMoves?: React.ComponentProps<typeof ShogiMatch>["fetchLegalMoves"];
     onRequestNnueFilePath?: React.ComponentProps<typeof ShogiMatch>["onRequestNnueFilePath"];
     isDevMode?: boolean;
+    /**
+     * 対局情報の欄に足す操作（「研究ノートで開く」など）。読み込んだ棋譜を受け取って描く。
+     * PC では左の対局情報の下、モバイルでは対局情報のシートの中に出る。
+     */
+    renderGameAction?: (game: RshogiGame) => ReactNode;
 }
 
 interface LoadState {
@@ -196,6 +201,7 @@ export function RshogiCsaViewer({
     fetchLegalMoves,
     onRequestNnueFilePath,
     isDevMode,
+    renderGameAction,
 }: RshogiCsaViewerProps): ReactElement {
     const [state, setState] = useState<LoadState>({ status: "loading" });
     const isMobile = useIsMobile();
@@ -305,6 +311,7 @@ export function RshogiCsaViewer({
     const metaContent = (
         <div className="flex flex-col gap-2">
             <RshogiGameMetaPanel game={game} rates={rates} />
+            {renderGameAction?.(game)}
             <Button type="button" variant="outline" size="sm" onClick={handleDownloadCsa}>
                 CSA ダウンロード
             </Button>

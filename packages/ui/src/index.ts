@@ -62,6 +62,14 @@ export {
     encodeSnapshotEvalMateReplacer,
 } from "./components/shogi-match/utils/kifFormat";
 export { boardToGrid } from "./components/shogi-match/utils/positionUtils";
+// study-workspace（研究ノートの画面）
+export type {
+    StudyWorkspaceProps,
+    StudyWorkspaceViewState,
+} from "./components/study-workspace";
+export { StudyWorkspace } from "./components/study-workspace";
+export type { StudyWorkspaceSaveStatus } from "./components/study-workspace/StudySaveStatus";
+export type { StudyEngineIdentity } from "./components/study-workspace/useStudyAnalysis";
 // surface-theme (Portal 脱出 UI への局所テーマ伝搬)
 export type { SurfaceTheme } from "./components/surface-theme";
 export { SurfaceThemeProvider, useSurfaceTheme } from "./components/surface-theme";

@@ -21,8 +21,8 @@ type Selection = { kind: "square"; square: string } | { kind: "hand"; piece: Pie
 interface UseMoveExecutionProps {
     /** 局面状態 */
     position: PositionState;
-    /** 棋譜ナビゲーション */
-    navigation: UseKifuNavigationResult;
+    /** 棋譜ナビゲーション（手の追加と、分岐ができるかの判定に使う部分だけ） */
+    navigation: Pick<UseKifuNavigationResult, "addMove" | "tree">;
     /** 編集モードかどうか */
     isEditMode: boolean;
     /** 検討モードかどうか */

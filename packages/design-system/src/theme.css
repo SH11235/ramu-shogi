@@ -85,6 +85,14 @@
         --status-warning-bg: 40 85% 92%; /* 警告背景 */
         --status-warning-border: 40 55% 75%; /* 警告ボーダー */
 
+        /* 研究ノートの注目局面（悪手・疑問手）。先手の朱・後手の藍と見分けがつく色にする */
+        --study-blunder: 345 62% 40%; /* 悪手 - 臙脂 */
+        --study-blunder-bg: 345 60% 94%; /* 悪手の背景 */
+        --study-blunder-border: 345 40% 80%; /* 悪手のボーダー */
+        --study-dubious: 36 80% 36%; /* 疑問手 - 山吹茶 */
+        --study-dubious-bg: 42 85% 91%; /* 疑問手の背景 */
+        --study-dubious-border: 40 55% 72%; /* 疑問手のボーダー */
+
         /* レイアウト */
         --panel-width: 400px; /* 右サイドパネルの幅 */
     }
@@ -154,6 +162,14 @@
         --status-warning-fg: 40 80% 97%; /* 警告前景 */
         --status-warning-bg: 38 40% 12%; /* 警告背景 */
         --status-warning-border: 38 35% 24%; /* 警告ボーダー */
+
+        /* 研究ノートの注目局面（ダークモード） */
+        --study-blunder: 345 70% 68%; /* 悪手 */
+        --study-blunder-bg: 345 35% 14%; /* 悪手の背景 */
+        --study-blunder-border: 345 30% 28%; /* 悪手のボーダー */
+        --study-dubious: 40 78% 58%; /* 疑問手 */
+        --study-dubious-bg: 38 40% 12%; /* 疑問手の背景 */
+        --study-dubious-border: 38 35% 26%; /* 疑問手のボーダー */
     }
 
     *,
