@@ -3,6 +3,38 @@
 評価関数ファイル管理で NNUE をインポートして使います。
 特徴量・次元・拡張はモデルヘッダーから自動判定されます。
 
+## 配布 AI
+
+Web と Desktop の AI 選択では、共通の配布 manifest から次のモデルを選べます。
+
+| AI | モデル | FV_SCALE | LayerStacks 設定 |
+| --- | --- | --- | --- |
+| COCO | HalfKP 256x2-32-32 | 14 | 不要 |
+| RAMU | LayerStacks 1536x16x32（2026年6月版） | 24 | progresskpabs、9バケット、配布された進行度係数 |
+
+COCO は軽さを重視し、スマートフォンや気軽な対局におすすめです。
+RAMU は棋力を重視し、実戦や検討におすすめです。処理性能とメモリに余裕のある環境でお使いください。
+
+プリセットの `usageLabel` と `description` を AI 選択画面の案内に使います。
+アーキテクチャ名と層の次元は `format.architecture` と `format.l1Dimension` / `l2Dimension` / `l3Dimension` に保持し、
+評価関数ファイル管理にも表示します。ダウンロード後のモデルメタデータにも `format` を保存します。
+
+RAMU のダウンロードでは進行度係数も取得し、モデルとともにサイズ・SHA-256 を検証して保存します。
+既存の `ramu` プリセットを更新すると RAMU に切り替わります。
+
+配布一覧の正本は `apps/web/nnue/manifest.json` です。
+モデルと係数は R2 の `shogi-nnue` バケットに置き、最後にこの manifest を `manifest.json` として反映します。
+モデルを変更する場合はキャッシュとの混同を避けるためファイル名と URL を変更してください。
+NNUE 本体のバイナリは Git へ追加しません。
+
+プリセットの `iconUrl` に画像の URL を指定すると、その AI を選んだ側のアイコンに使われます。
+COCO はココの写真、RAMU と画像未設定の AI は従来のラム画像を使います。
+画像も `/nnue/files/` で配信でき、変更する場合は新しいファイル名を使ってください。
+
+Web の WASM、Desktop の core と CSA クライアントは同じ rshogi Git revision を参照します。
+更新時は `packages/rust-core/crates/engine-wasm/Cargo.toml` と
+`apps/desktop/src-tauri/Cargo.toml` の3つの依存、および両 `Cargo.lock` を揃えてください。
+
 ## LayerStacks の設定
 
 LayerStacks 系のモデルは、モデル作者が指定する FV_SCALE と振り分け方式（バケット方式）を

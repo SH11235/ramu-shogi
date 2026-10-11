@@ -1999,7 +1999,29 @@ export function ShogiMatch({
     };
 
     return (
-        <ShogiMatchProvider config={{ aiIconUrl }}>
+        <ShogiMatchProvider
+            config={{
+                aiIconUrl,
+                presetIconUrls: Object.fromEntries(
+                    presetConfigs.flatMap((preset) =>
+                        preset.iconUrl ? [[preset.presetKey, preset.iconUrl]] : [],
+                    ),
+                ),
+                aiPresetKeys: {
+                    sente: engineOptions.some(
+                        (engine) =>
+                            engine.id === sides.sente.engineId && engine.kind === "external",
+                    )
+                        ? null
+                        : senteNnueSelection.presetKey,
+                    gote: engineOptions.some(
+                        (engine) => engine.id === sides.gote.engineId && engine.kind === "external",
+                    )
+                        ? null
+                        : goteNnueSelection.presetKey,
+                },
+            }}
+        >
             <TooltipProvider delayDuration={TOOLTIP_DELAY_DURATION_MS}>
                 <ShogiMatchLayout
                     // グループ化されたprops

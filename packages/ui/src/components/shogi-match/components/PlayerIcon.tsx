@@ -30,12 +30,14 @@ interface PlayerIconProps {
     enableZoom?: boolean;
     /** AIアイコンのURL（デフォルト: "/ramu.jpeg"） */
     aiIconUrl?: string;
+    /** 表示するプリセット。省略時は各側の選択に従い、null は共通アイコンを使用する。 */
+    presetKey?: string | null;
 }
 
 /**
  * プレイヤーアイコン
  * - 人間: ☗（先手）/ ☖（後手）を色付きで表示
- * - AI: ラムアイコンを色付き枠で表示（showBorder=falseで枠なし）
+ * - AI: 選択したプリセットのアイコンを色付き枠で表示（showBorder=falseで枠なし）
  * - enableZoom=trueの場合、AIアイコンクリックで拡大表示
  */
 export function PlayerIcon({
@@ -46,6 +48,7 @@ export function PlayerIcon({
     showBorder = true,
     enableZoom = false,
     aiIconUrl,
+    presetKey,
 }: PlayerIconProps): ReactElement {
     const matchConfig = useShogiMatchConfig();
     const [isZoomOpen, setIsZoomOpen] = useState(false);
@@ -55,13 +58,19 @@ export function PlayerIcon({
     const marker = side === "sente" ? "☗" : "☖";
     const aiAlt = side === "sente" ? "先手AI" : "後手AI";
     const aiTitle = side === "sente" ? "先手" : "後手";
-    const aiIconSrc = aiIconUrl ?? matchConfig.aiIconUrl;
+    const selectedPresetKey = presetKey === undefined ? matchConfig.aiPresetKeys[side] : presetKey;
+    const presetIconSrc = selectedPresetKey
+        ? matchConfig.presetIconUrls[selectedPresetKey]
+        : undefined;
+    const aiIconSrc = aiIconUrl ?? presetIconSrc ?? matchConfig.aiIconUrl;
+    const aiIconCrossOrigin = aiIconUrl === undefined && presetIconSrc ? "anonymous" : undefined;
 
     if (isAI) {
         const canZoom = enableZoom;
         const aiImage = (
             <img
                 src={aiIconSrc}
+                crossOrigin={aiIconCrossOrigin}
                 alt={aiAlt}
                 title={aiTitle}
                 className={cn(
@@ -99,7 +108,8 @@ export function PlayerIcon({
                             <div className="flex flex-col items-center gap-3">
                                 <img
                                     src={aiIconSrc}
-                                    alt="ラム"
+                                    crossOrigin={aiIconCrossOrigin}
+                                    alt={aiAlt}
                                     className="w-full max-w-[360px] rounded-lg object-cover"
                                 />
                             </div>

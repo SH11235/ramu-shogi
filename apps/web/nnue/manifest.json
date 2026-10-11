@@ -1,0 +1,56 @@
+{
+    "version": 1,
+    "updatedAt": "2026-10-11T00:00:00Z",
+    "presets": [
+        {
+            "presetKey": "coco",
+            "displayName": "COCO",
+            "iconUrl": "https://ramu-shogi.sh11235.com/nnue/files/coco-20261011.jpg",
+            "usageLabel": "軽量",
+            "description": "軽さ重視。スマートフォンや気軽な対局におすすめです。",
+            "url": "https://ramu-shogi.sh11235.com/nnue/files/coco-halfkp256-20260825.bin",
+            "size": 64217088,
+            "sha256": "f4babf2b6c51d9b9de8fe0ecee7d0665e76d13e4c4d7380c3019480423ebc037",
+            "license": "MIT License",
+            "releasedAt": "2026-10-11",
+            "recommendedFvScale": 14,
+            "format": {
+                "architecture": "HalfKP256",
+                "l1Dimension": 256,
+                "l2Dimension": 32,
+                "l3Dimension": 32,
+                "activation": "CReLU",
+                "versionHeader": "0x7AF32F16"
+            }
+        },
+        {
+            "presetKey": "ramu",
+            "displayName": "RAMU",
+            "usageLabel": "棋力重視",
+            "description": "実戦や検討におすすめです。処理性能とメモリに余裕のある環境でお使いください。",
+            "url": "https://ramu-shogi.sh11235.com/nnue/files/ramu-layerstacks1536-20260612.bin",
+            "size": 118313473,
+            "sha256": "89016fd8dd18f1a4c73b03d8bc011e09495ab62027930d7c3566a799efd530f4",
+            "license": "MIT License",
+            "releasedAt": "2026-10-11",
+            "recommendedFvScale": 24,
+            "format": {
+                "architecture": "LayerStacks",
+                "l1Dimension": 1536,
+                "l2Dimension": 16,
+                "l3Dimension": 32,
+                "activation": "CReLU",
+                "versionHeader": "0x7AF32F21"
+            },
+            "layerStacks": {
+                "bucketMode": "progresskpabs",
+                "progressBuckets": 9
+            },
+            "progressCoefficients": {
+                "url": "https://ramu-shogi.sh11235.com/nnue/files/progress-hao-full-cuda-e1.bin",
+                "size": 1003104,
+                "sha256": "8d0058b899768c00e71be5508c5c4544d8c8ce24b30c32024c2a0a4452dbdb53"
+            }
+        }
+    ]
+}
