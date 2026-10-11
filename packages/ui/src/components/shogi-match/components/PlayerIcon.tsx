@@ -59,16 +59,18 @@ export function PlayerIcon({
     const aiAlt = side === "sente" ? "先手AI" : "後手AI";
     const aiTitle = side === "sente" ? "先手" : "後手";
     const selectedPresetKey = presetKey === undefined ? matchConfig.aiPresetKeys[side] : presetKey;
-    const aiIconSrc =
-        aiIconUrl ??
-        (selectedPresetKey ? matchConfig.presetIconUrls[selectedPresetKey] : undefined) ??
-        matchConfig.aiIconUrl;
+    const presetIconSrc = selectedPresetKey
+        ? matchConfig.presetIconUrls[selectedPresetKey]
+        : undefined;
+    const aiIconSrc = aiIconUrl ?? presetIconSrc ?? matchConfig.aiIconUrl;
+    const aiIconCrossOrigin = aiIconUrl === undefined && presetIconSrc ? "anonymous" : undefined;
 
     if (isAI) {
         const canZoom = enableZoom;
         const aiImage = (
             <img
                 src={aiIconSrc}
+                crossOrigin={aiIconCrossOrigin}
                 alt={aiAlt}
                 title={aiTitle}
                 className={cn(
@@ -106,6 +108,7 @@ export function PlayerIcon({
                             <div className="flex flex-col items-center gap-3">
                                 <img
                                     src={aiIconSrc}
+                                    crossOrigin={aiIconCrossOrigin}
                                     alt={aiAlt}
                                     className="w-full max-w-[360px] rounded-lg object-cover"
                                 />

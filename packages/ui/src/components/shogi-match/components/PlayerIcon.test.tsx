@@ -18,6 +18,8 @@ describe("AI プリセットのアイコン", () => {
         const { rerender } = render(view("ramu"));
         expect(screen.getByAltText("先手AI").getAttribute("src")).toBe("/ramu.jpeg");
         expect(screen.getByAltText("後手AI").getAttribute("src")).toBe(presetIconUrls.coco);
+        expect(screen.getByAltText("先手AI").getAttribute("crossorigin")).toBeNull();
+        expect(screen.getByAltText("後手AI").getAttribute("crossorigin")).toBe("anonymous");
         rerender(view("coco"));
         expect(screen.getByAltText("先手AI").getAttribute("src")).toBe(presetIconUrls.coco);
         expect(screen.getByAltText("後手AI").getAttribute("src")).toBe(presetIconUrls.coco);
@@ -70,5 +72,6 @@ describe("AI プリセットのアイコン", () => {
         fireEvent.click(screen.getByRole("button", { name: "先手AIを拡大表示" }));
         const dialog = screen.getByRole("dialog");
         expect(within(dialog).getByAltText("先手AI").getAttribute("src")).toBe(presetIconUrls.coco);
+        expect(within(dialog).getByAltText("先手AI").getAttribute("crossorigin")).toBe("anonymous");
     });
 });
