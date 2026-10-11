@@ -398,6 +398,10 @@ describe("mergeStudyComments", () => {
         );
         // やり直しまでのあいだに統合先のコメントへ追記があっても、二重にならない。
         expect(mergeStudyComments("既存\n\n匿名\n追記", "匿名")).toBe("既存\n\n匿名\n追記");
+        // 前後に空白のあるコメントも、やり直しで二重にならない。
+        const once = mergeStudyComments("既存", " 匿名 ");
+        expect(once).toBe("既存\n\n匿名");
+        expect(mergeStudyComments(once, " 匿名 ")).toBe(once);
     });
 
     it("つなぐと上限（4 KiB）を超えるなら、既存側を残す", () => {

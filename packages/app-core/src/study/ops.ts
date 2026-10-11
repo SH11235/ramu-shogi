@@ -293,7 +293,8 @@ export function mergeStudyComments(existing: string, incoming: string): string {
     // 行の途中の部分一致では判定しない: 「詰みなし」に「詰み」は入っていないものとして扱う。
     const block = incoming.trim();
     if (block === "" || `\n${existing}\n`.includes(`\n${block}\n`)) return existing;
-    const merged = `${existing}\n\n${incoming}`;
+    // つなぐのは前後の空白を除いたまとまり（判定と同じ形にしないと、やり直しで見つけられない）。
+    const merged = `${existing}\n\n${block}`;
     return exceedsUtf8Bytes(merged, STUDY_LIMITS.commentBytes) ? existing : merged;
 }
 
