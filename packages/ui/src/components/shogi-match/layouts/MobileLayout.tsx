@@ -35,7 +35,7 @@ import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import type { DisplaySettings } from "../types";
 import { type KifMove as FullKifMove, formatEval } from "../utils/kifFormat";
-import type { KifMoveData } from "../utils/kifParser";
+import type { ImportKifHandler, ImportSfenHandler } from "../utils/kifuImport";
 
 export function formatMobileCompactEval(evalCp?: number, evalMate?: number): string {
     const formatted = formatEval(evalCp, evalMate);
@@ -67,10 +67,10 @@ interface MobileLayoutProps {
     onOpenAbout?: () => void;
 
     /** SFENインポート時のコールバック */
-    onImportSfen?: (sfen: string, moves: string[]) => Promise<void>;
+    onImportSfen?: ImportSfenHandler;
 
     /** KIFインポート時のコールバック */
-    onImportKif?: (moves: string[], moveData: KifMoveData[], startSfen?: string) => Promise<void>;
+    onImportKif?: ImportKifHandler;
 
     /** 局面が準備完了しているか */
     positionReady?: boolean;

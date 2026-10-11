@@ -11,7 +11,6 @@ type NavTo =
     | "/online"
     | "/games"
     | "/public/games"
-    | "/rshogi-viewer/live"
     | "/rshogi-viewer/players"
     | "/rshogi-viewer"
     | "/nnue"
@@ -32,12 +31,7 @@ interface NavSection {
 const activeClass = "border-wafuu-shu bg-wafuu-shu/10 text-wafuu-shu";
 const inactiveClass = "border-transparent text-wafuu-sumi hover:bg-muted/50 hover:text-foreground";
 
-function isLiveViewerPath(pathname: string): boolean {
-    return pathname === "/rshogi-viewer/live" || pathname.startsWith("/rshogi-viewer/live/");
-}
-
 function buildNavSections(pathname: string): NavSection[] {
-    const isLive = isLiveViewerPath(pathname);
     const isPlayers =
         pathname === "/rshogi-viewer/players" || pathname.startsWith("/rshogi-viewer/players/");
 
@@ -72,13 +66,16 @@ function buildNavSections(pathname: string): NavSection[] {
         {
             label: "観戦",
             items: [
-                { to: "/rshogi-viewer/live", label: "ライブ観戦", active: isLive },
-                { to: "/rshogi-viewer/players", label: "レーティング", active: isPlayers },
+                // 進行中の対局と終局済みの棋譜は同じ一覧に出る。単局の観戦ページ
+                // (`/rshogi-viewer/live/$gameId`) もこの項目の配下として扱う。
                 {
                     to: "/rshogi-viewer",
-                    label: "CSA 棋譜ビューア",
-                    active: pathname.startsWith("/rshogi-viewer") && !isLive && !isPlayers,
+                    label: "観戦・棋譜一覧",
+                    active:
+                        (pathname === "/rshogi-viewer" || pathname.startsWith("/rshogi-viewer/")) &&
+                        !isPlayers,
                 },
+                { to: "/rshogi-viewer/players", label: "レーティング", active: isPlayers },
             ],
         },
         {

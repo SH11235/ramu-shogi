@@ -203,6 +203,7 @@ export const applyReviewMoveDataDiff = (
                 elapsedMs: data.elapsedMs,
                 scoreCp: data.evalCp,
                 scoreMate: data.evalMate,
+                pv: data.pv,
             },
             {
                 usiMove: moves[index],

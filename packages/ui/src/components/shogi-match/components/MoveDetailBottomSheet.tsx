@@ -9,6 +9,7 @@ import type { PositionState } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import type { KifMove, PvDisplayMove, PvEvalInfo } from "../utils/kifFormat";
 import { convertPvToDisplay, formatEval, getEvalTooltipInfo } from "../utils/kifFormat";
+import { formatElapsedTime } from "../utils/timeFormat";
 import { BottomSheet } from "./BottomSheet";
 
 interface MoveDetailBottomSheetProps {
@@ -209,6 +210,11 @@ export function MoveDetailBottomSheet({
                 {/* 指し手表示 */}
                 <div className="text-center py-2">
                     <span className="text-2xl font-bold">{move.displayText}</span>
+                    {move.elapsedMs !== undefined && (
+                        <div className="mt-1 text-xs text-muted-foreground">
+                            消費 {formatElapsedTime(move.elapsedMs)}
+                        </div>
+                    )}
                     {evalInfo && (
                         <div className="mt-1">
                             <span

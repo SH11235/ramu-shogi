@@ -55,6 +55,7 @@ export type {
     RshogiClockKind,
     RshogiEndReason,
     RshogiGame,
+    RshogiGameEventSummary,
     RshogiGameListPage,
     RshogiGameMeta,
     RshogiGameResult,
@@ -71,6 +72,7 @@ export type {
 } from "./rshogi-csa/client";
 export {
     fetchRshogiGame,
+    fetchRshogiGameEvents,
     fetchRshogiGameList,
     fetchRshogiGameSearch,
     fetchRshogiLiveGameList,

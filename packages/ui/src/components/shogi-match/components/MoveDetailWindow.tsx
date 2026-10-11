@@ -32,6 +32,7 @@ import {
     toNnueSelectionValue,
     toOptionValue,
 } from "../utils/nnueSelectionUtils";
+import { formatElapsedTime } from "../utils/timeFormat";
 
 interface MoveDetailWindowProps {
     /** 選択された手 */
@@ -446,6 +447,11 @@ export function MoveDetailWindow({
                     <span className="font-semibold text-sm">詳細</span>
                     <span className="text-[11px] text-muted-foreground">{move.ply}手目</span>
                     <span className="text-[13px] font-medium">{move.displayText}</span>
+                    {move.elapsedMs !== undefined && (
+                        <span className="text-[11px] text-muted-foreground">
+                            消費 {formatElapsedTime(move.elapsedMs)}
+                        </span>
+                    )}
                 </div>
 
                 {showSearchInfo && searchStats && (

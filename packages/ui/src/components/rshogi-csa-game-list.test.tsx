@@ -35,6 +35,91 @@ const SAMPLE_GAMES: RshogiGameSummary[] = [
     },
 ];
 
+const EXTERNAL_GAMES: RshogiGameSummary[] = [
+    {
+        gameId: "wdoor-20261009000001-0a1b2c3d4e",
+        senteName: "RAMU",
+        goteName: "SampleEngine",
+        source: "wdoor",
+        event: "floodgate-300-10F",
+        originUrl: "https://wdoor.c.u-tokyo.ac.jp/shogi/x/a.csa",
+    },
+    {
+        gameId: "upload-00112233445566aa",
+        senteName: "A",
+        goteName: "B",
+        source: "upload",
+        event: "WCSC36",
+    },
+    { gameId: "upload-8899aabbccddeeff", senteName: "C", goteName: "D", source: "upload" },
+    { gameId: "future-1", senteName: "E", goteName: "F", source: "future-source" },
+];
+
+describe("RshogiCsaGameList: 対局場所とイベントタグ", () => {
+    it("対局場所を画面上の呼び名で出し、内部値の source は出さない", () => {
+        render(
+            <RshogiCsaGameList games={[...SAMPLE_GAMES, ...EXTERNAL_GAMES]} onSelect={vi.fn()} />,
+        );
+        expect(screen.getAllByText("rshogi サーバー")).toHaveLength(1);
+        expect(screen.getAllByText("Floodgate")).toHaveLength(1);
+        // upload は event があっても「その他」。イベント名はタグ側だけに出す。
+        expect(screen.getAllByText("その他")).toHaveLength(2);
+        expect(screen.getAllByText("WCSC36")).toHaveLength(1);
+        // 未知の source は値をそのまま出す。
+        expect(screen.getByText("future-source")).toBeDefined();
+        expect(screen.queryByText(/source:/)).toBeNull();
+    });
+
+    it("持ち時間 (clock) が無い棋譜でも落ちずに「不明」と出す", () => {
+        render(<RshogiCsaGameList games={EXTERNAL_GAMES} onSelect={vi.fn()} />);
+        expect(screen.getAllByText("持ち時間: 不明")).toHaveLength(EXTERNAL_GAMES.length);
+    });
+
+    it("onSelectEvent があるとタグはボタンになり、押すとイベント名だけを返す", () => {
+        const onSelect = vi.fn();
+        const onSelectEvent = vi.fn();
+        render(
+            <RshogiCsaGameList
+                games={EXTERNAL_GAMES}
+                onSelect={onSelect}
+                onSelectEvent={onSelectEvent}
+            />,
+        );
+
+        const tag = screen.getByRole("button", { name: "イベント「WCSC36」で絞り込む" });
+        // キーボードで到達でき、カードのボタンの中に入れ子になっていない。
+        tag.focus();
+        expect(document.activeElement).toBe(tag);
+        expect(tag.parentElement?.closest("button")).toBeNull();
+
+        fireEvent.click(tag);
+        expect(onSelectEvent).toHaveBeenCalledWith("WCSC36");
+        expect(onSelect).not.toHaveBeenCalled();
+
+        // カード本体は従来どおり単局ページへ進む。
+        const row = screen.getByText("☗ A vs ☖ B").closest("button");
+        if (row) fireEvent.click(row);
+        expect(onSelect).toHaveBeenCalledWith("upload-00112233445566aa");
+    });
+
+    it("onSelectEvent が無ければタグは押せないラベルとして出す", () => {
+        render(<RshogiCsaGameList games={EXTERNAL_GAMES} onSelect={vi.fn()} />);
+        expect(screen.getByText("WCSC36")).toBeDefined();
+        expect(screen.queryByRole("button", { name: /で絞り込む/ })).toBeNull();
+    });
+
+    it("event の無い棋譜にはタグを出さない", () => {
+        render(
+            <RshogiCsaGameList
+                games={[EXTERNAL_GAMES[2]]}
+                onSelect={vi.fn()}
+                onSelectEvent={vi.fn()}
+            />,
+        );
+        expect(screen.queryByRole("button", { name: /で絞り込む/ })).toBeNull();
+    });
+});
+
 describe("RshogiCsaGameList", () => {
     it("renders one row per game with sente/gote names and result label", () => {
         render(<RshogiCsaGameList games={SAMPLE_GAMES} onSelect={vi.fn()} />);

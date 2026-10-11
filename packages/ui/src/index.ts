@@ -16,8 +16,6 @@ export { useDevMode } from "./hooks/useDevMode";
 export { useNnueStorage } from "./hooks/useNnueStorage";
 export type { UseRoomConnectionOptions, UseRoomConnectionReturn } from "./hooks/useRoomConnection";
 export { useRoomConnection } from "./hooks/useRoomConnection";
-export type { UseRshogiLiveGameListReturn } from "./hooks/useRshogiLiveGameList";
-export { useRshogiLiveGameList } from "./hooks/useRshogiLiveGameList";
 
 // ============================================================
 // Components
@@ -71,12 +69,12 @@ export type { RemoteNnueFile, RemoteNnueManager } from "./components/nnue/types"
 export type { AnalysisMoveResult, OnlineAnalysis } from "./components/online-game-view";
 // online-game-view
 export { OnlineGameView } from "./components/online-game-view";
-export type { RshogiCsaGameListProps } from "./components/rshogi-csa-game-list";
-// rshogi-csa-game-list
-export { RshogiCsaGameList } from "./components/rshogi-csa-game-list";
-export type { RshogiCsaLiveGameListProps } from "./components/rshogi-csa-live-game-list";
-// rshogi-csa-live-game-list
-export { RshogiCsaLiveGameList } from "./components/rshogi-csa-live-game-list";
+export type {
+    RshogiCsaGameBrowserProps,
+    RshogiGameBrowserSearch,
+} from "./components/rshogi-csa-game-browser";
+// rshogi-csa-game-browser
+export { RshogiCsaGameBrowser } from "./components/rshogi-csa-game-browser";
 export type { RshogiCsaLiveViewerProps } from "./components/rshogi-csa-live-viewer";
 // rshogi-csa-live-viewer
 export { RshogiCsaLiveViewer } from "./components/rshogi-csa-live-viewer";

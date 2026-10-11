@@ -8,6 +8,7 @@ import type {
     ListPublicGamesResponse,
     RoomInfo,
 } from "@shogi/api-contract";
+import { normalizeRshogiGameBrowserSearch } from "@shogi/ui/components/rshogi-csa-game-browser";
 import {
     createRootRoute,
     createRoute,
@@ -234,6 +235,8 @@ const privacyRoute = createRoute({
 const rshogiViewerListRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/rshogi-viewer",
+    // 絞り込み条件 (対局場所・イベントなど) をクエリに置く。不正な値は捨てる。
+    validateSearch: normalizeRshogiGameBrowserSearch,
     component: lazyRouteComponent(() => import("./pages/rshogi-viewer/RshogiViewerListPage")),
 });
 
@@ -249,13 +252,16 @@ const rshogiPlayerDetailRoute = createRoute({
     component: lazyRouteComponent(() => import("./pages/rshogi-viewer/RshogiPlayerDetailPage")),
 });
 
-// 進行中対局一覧 (静的 path)。単局 `/rshogi-viewer/live/$gameId` とはセグメント数が
-// 異なるため衝突しない。単局 `/rshogi-viewer/$gameId` より前に登録して、`live` を
-// gameId として誤解決しないようにする。
+// 進行中対局一覧は `/rshogi-viewer` に統合した。以前の URL は一覧へ送る。
+// 単局 `/rshogi-viewer/live/$gameId` とはセグメント数が異なるため衝突しない。
+// 単局 `/rshogi-viewer/$gameId` より前に登録して、`live` を gameId として
+// 誤解決しないようにする。
 const rshogiViewerLiveListRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/rshogi-viewer/live",
-    component: lazyRouteComponent(() => import("./pages/rshogi-viewer/RshogiLiveGamesPage")),
+    beforeLoad: () => {
+        throw redirect({ to: "/rshogi-viewer", replace: true });
+    },
 });
 
 // `/rshogi-viewer/live/$gameId` は単局 `/rshogi-viewer/$gameId` よりも前に

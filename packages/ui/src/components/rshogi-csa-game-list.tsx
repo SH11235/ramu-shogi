@@ -10,11 +10,17 @@
 
 import type { RshogiGameSummary, RshogiTimeControl } from "@shogi/match-client";
 import type { ReactElement } from "react";
+import { RshogiVenueBadge } from "./rshogi-csa-venue";
 
-export interface RshogiCsaGameListProps {
+interface RshogiCsaGameListProps {
     games: RshogiGameSummary[];
     /** 行クリック時に gameId を返す。 */
     onSelect: (gameId: string) => void;
+    /**
+     * イベントタグ押下時にイベント名を返す。渡すとタグがボタンになり、
+     * 渡さなければ押せないラベルとして表示する。
+     */
+    onSelectEvent?: (event: string) => void;
     /** 「もっと読み込む」押下時に呼ばれる。`hasMore=true` のときのみ表示。 */
     onLoadMore?: () => void;
     /** 初回 / ページ追加読み込み中フラグ。 */
@@ -82,9 +88,41 @@ const formatResultSummary = (game: RshogiGameSummary): string => {
     return `${winnerLabel} (${reason})`;
 };
 
+const EVENT_TAG_CLASS =
+    "inline-flex max-w-full items-center rounded-full border border-wafuu-border bg-background px-2 py-0.5 text-xs text-wafuu-sumi";
+
+/** イベントタグ。`onSelect` があれば押して絞り込めるボタンにする。 */
+function RshogiEventTag({
+    event,
+    onSelect,
+}: {
+    event: string;
+    onSelect?: (event: string) => void;
+}): ReactElement {
+    if (!onSelect) {
+        return (
+            <span className={EVENT_TAG_CLASS}>
+                <span className="sr-only">イベント: </span>
+                <span className="truncate">{event}</span>
+            </span>
+        );
+    }
+    return (
+        <button
+            type="button"
+            onClick={() => onSelect(event)}
+            aria-label={`イベント「${event}」で絞り込む`}
+            className={`${EVENT_TAG_CLASS} relative z-10 transition-colors hover:border-wafuu-shu hover:text-wafuu-shu focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wafuu-shu`}
+        >
+            <span className="truncate">{event}</span>
+        </button>
+    );
+}
+
 export function RshogiCsaGameList({
     games,
     onSelect,
+    onSelectEvent,
     onLoadMore,
     isLoading,
     hasMore,
@@ -109,32 +147,42 @@ export function RshogiCsaGameList({
             {!empty && (
                 <ul className="flex flex-col gap-2" aria-label="rshogi 棋譜一覧">
                     {games.map((game) => (
-                        <li key={game.gameId}>
+                        <li
+                            key={game.gameId}
+                            className="relative flex flex-col gap-1 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-3 transition-colors hover:bg-wafuu-kincha/10"
+                        >
+                            {/* カード全体を押せるよう、ボタンの ::after をカードいっぱいに広げる。
+                                イベントタグは別のボタンとして手前 (z-10) に置き、入れ子にしない。 */}
                             <button
                                 type="button"
                                 onClick={() => onSelect(game.gameId)}
-                                className="flex w-full flex-col gap-1 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-3 text-left transition-colors hover:bg-wafuu-kincha/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wafuu-shu"
+                                className="flex w-full flex-col gap-1 rounded-lg text-left after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-wafuu-shu"
                             >
-                                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                <span className="flex flex-wrap items-baseline justify-between gap-2">
                                     <span className="text-sm font-semibold text-wafuu-sumi">
                                         ☗ {game.senteName} vs ☖ {game.goteName}
                                     </span>
                                     <span className="text-xs text-muted-foreground">
                                         {formatStartedAt(game.startedAtMs)}
                                     </span>
-                                </div>
-                                <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                                </span>
+                                <span className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                                    <RshogiVenueBadge source={game.source} />
                                     <span>{formatResultSummary(game)}</span>
                                     <span>{formatClockSummary(game.timeControl)}</span>
                                     {game.movesCount !== undefined && (
                                         <span>{game.movesCount}手</span>
                                     )}
-                                    {game.source && <span>source: {game.source}</span>}
-                                </div>
-                                <div className="text-[11px] font-mono text-muted-foreground/80">
-                                    {game.gameId}
-                                </div>
+                                </span>
                             </button>
+                            {game.event && (
+                                <div className="flex flex-wrap gap-2">
+                                    <RshogiEventTag event={game.event} onSelect={onSelectEvent} />
+                                </div>
+                            )}
+                            <div className="text-[11px] font-mono text-muted-foreground/80">
+                                {game.gameId}
+                            </div>
                         </li>
                     ))}
                 </ul>

@@ -30,7 +30,7 @@ import { SettingsModal } from "../components/SettingsModal";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import type { DisplaySettings, PassRightsSettings } from "../types";
-import type { KifMoveData } from "../utils/kifParser";
+import type { ImportKifHandler, ImportSfenHandler } from "../utils/kifuImport";
 
 /**
  * PCLayout 固有の Props
@@ -49,10 +49,10 @@ interface PCLayoutProps {
     onSettingsModalOpenChange: (open: boolean) => void;
 
     /** SFENインポート時のコールバック */
-    importSfen: (sfen: string, moves: string[]) => Promise<void>;
+    importSfen: ImportSfenHandler;
 
     /** KIFインポート時のコールバック */
-    importKif: (moves: string[], moveData: KifMoveData[], startSfen?: string) => Promise<void>;
+    importKif: ImportKifHandler;
 
     /** 局面が準備完了しているか */
     positionReady: boolean;

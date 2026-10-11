@@ -4,162 +4,178 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchRshogiGameList = vi.fn();
 const fetchRshogiGameSearch = vi.fn();
+const fetchRshogiGameEvents = vi.fn();
+const fetchRshogiLiveGameList = vi.fn();
 const navigate = vi.fn();
+let currentSearch: Record<string, unknown> = {};
 
 vi.mock("@shogi/match-client", () => ({
     fetchRshogiGameList,
     fetchRshogiGameSearch,
+    fetchRshogiGameEvents,
+    fetchRshogiLiveGameList,
 }));
 
 vi.mock("@tanstack/react-router", () => ({
-    Link: ({ children }: { children: ReactNode }) => <a href="/live">{children}</a>,
+    Link: ({ children, to }: { children: ReactNode; to: string }) => <a href={to}>{children}</a>,
     useNavigate: () => navigate,
-}));
-
-vi.mock("@shogi/ui/components/rshogi-csa-game-list", () => ({
-    RshogiCsaGameList: ({
-        games,
-        onLoadMore,
-        hasMore,
-    }: {
-        games: { gameId: string }[];
-        onLoadMore?: () => void;
-        hasMore?: boolean;
-    }) => (
-        <div>
-            <span data-testid="game-ids">{games.map((game) => game.gameId).join(",")}</span>
-            {hasMore && onLoadMore && (
-                <button type="button" onClick={onLoadMore}>
-                    もっと読み込む
-                </button>
-            )}
-        </div>
-    ),
+    getRouteApi: () => ({ useSearch: () => currentSearch }),
 }));
 
 vi.mock("../../components/HeaderNav", () => ({ HeaderNav: () => null }));
-vi.mock("../../components/PageHeader", () => ({ PageHeader: () => null }));
+vi.mock("../../components/PageHeader", () => ({
+    PageHeader: ({ items }: { items: { label: string; to?: string }[] }) => (
+        <nav aria-label="パンくず">{items.map((item) => item.label).join(" / ")}</nav>
+    ),
+}));
 vi.mock("../../components/PageContainer", () => ({
     PageContainer: ({ children }: { children: ReactNode }) => <main>{children}</main>,
 }));
 vi.mock("../../components/PageHeading", () => ({
-    PageHeading: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-}));
-vi.mock("../../components/StatusBanner", () => ({
-    StatusBanner: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+    PageHeading: ({ title, children }: { title: string; children: ReactNode }) => (
+        <div>
+            <h1>{title}</h1>
+            {children}
+        </div>
+    ),
 }));
 
 const { default: RshogiViewerListPage } = await import("./RshogiViewerListPage");
 
-describe("RshogiViewerListPage search", () => {
+const game = (gameId: string, extra: Record<string, unknown> = {}) => ({
+    gameId,
+    senteName: `${gameId}-sente`,
+    goteName: `${gameId}-gote`,
+    ...extra,
+});
+
+describe("RshogiViewerListPage", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        currentSearch = {};
         fetchRshogiGameList.mockResolvedValue({
-            games: [{ gameId: "recent-1" }],
-            nextCursor: "cursor-2",
+            games: [game("recent-1", { source: "upload", event: "WCSC36" })],
         });
         fetchRshogiGameSearch.mockResolvedValue({
-            games: [{ gameId: "search-1" }],
+            games: [game("search-1", { source: "wdoor" })],
             page: 1,
             pageSize: 20,
-            totalCount: 23,
+            totalCount: 1,
+        });
+        fetchRshogiGameEvents.mockResolvedValue([{ event: "WCSC36", source: "upload", games: 3 }]);
+        fetchRshogiLiveGameList.mockResolvedValue({
+            liveGames: [game("live-1", { source: "kifu" })],
         });
     });
 
-    it("条件入力と検索実行で検索結果とページ番号方式へ切り替える", async () => {
+    it("進行中の対局と終局済みの棋譜を 1 ページに出し、それぞれのページへ遷移する", async () => {
         render(<RshogiViewerListPage />);
-        await screen.findByText("もっと読み込む");
 
-        expect(screen.getByRole("link", { name: "レーティングを見る →" })).toBeTruthy();
-        fireEvent.change(screen.getByLabelText("名前"), { target: { value: "RAMU" } });
+        expect(await screen.findByRole("heading", { name: "進行中の対局" })).toBeTruthy();
+        expect(screen.getByRole("heading", { name: "終局済みの棋譜" })).toBeTruthy();
+        expect(fetchRshogiLiveGameList).toHaveBeenCalledWith(
+            expect.objectContaining({ baseUrl: "https://example.test/rshogi" }),
+        );
+
+        const liveRow = screen.getByText("☗ live-1-sente vs ☖ live-1-gote").closest("button");
+        if (liveRow) fireEvent.click(liveRow);
+        expect(navigate).toHaveBeenCalledWith({
+            to: "/rshogi-viewer/live/$gameId",
+            params: { gameId: "live-1" },
+        });
+
+        const row = (await screen.findByText("☗ recent-1-sente vs ☖ recent-1-gote")).closest(
+            "button",
+        );
+        if (row) fireEvent.click(row);
+        expect(navigate).toHaveBeenCalledWith({
+            to: "/rshogi-viewer/$gameId",
+            params: { gameId: "recent-1" },
+        });
+    });
+
+    it("進行中一覧ページへのリンクは無く、レーティングへのリンクは残す", async () => {
+        render(<RshogiViewerListPage />);
+        await screen.findByText("☗ recent-1-sente vs ☖ recent-1-gote");
+
+        expect(
+            screen.getByRole("link", { name: "レーティングを見る →" }).getAttribute("href"),
+        ).toBe("/rshogi-viewer/players");
+        const hrefs = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
+        expect(hrefs).not.toContain("/rshogi-viewer/live");
+        expect(screen.getByRole("navigation", { name: "パンくず" }).textContent).toBe(
+            "ラム将棋 / rshogi viewer",
+        );
+    });
+
+    it("検索条件を URL のクエリへ反映する", async () => {
+        render(<RshogiViewerListPage />);
+        await screen.findByText("☗ recent-1-sente vs ☖ recent-1-gote");
+
+        fireEvent.change(screen.getByLabelText("対局場所"), { target: { value: "floodgate" } });
         fireEvent.click(screen.getByRole("button", { name: "検索" }));
+
+        expect(navigate).toHaveBeenCalledWith({
+            to: "/rshogi-viewer",
+            search: { venue: "floodgate" },
+        });
+    });
+
+    it("イベントタグを押すと ?event=<名前> へ遷移する", async () => {
+        render(<RshogiViewerListPage />);
+
+        fireEvent.click(
+            await screen.findByRole("button", { name: "イベント「WCSC36」で絞り込む" }),
+        );
+
+        expect(navigate).toHaveBeenCalledWith({
+            to: "/rshogi-viewer",
+            search: { event: "WCSC36" },
+        });
+    });
+
+    it("URL のクエリにある条件で検索し、同じ絞り込みを再現する", async () => {
+        currentSearch = { event: "WCSC36", venue: "other" };
+
+        render(<RshogiViewerListPage />);
 
         await waitFor(() => expect(fetchRshogiGameSearch).toHaveBeenCalledTimes(1));
         expect(fetchRshogiGameSearch).toHaveBeenCalledWith(
-            expect.objectContaining({ name: "RAMU", page: 1, pageSize: 20 }),
+            expect.objectContaining({ event: "WCSC36", source: ["upload"], page: 1 }),
         );
-        expect(await screen.findByText("23件中 1-20件")).toBeTruthy();
-        expect(screen.getByTestId("game-ids").textContent).toBe("search-1");
-        expect(screen.queryByText("もっと読み込む")).toBeNull();
-        expect(screen.getByRole("button", { name: "前へ" })).toBeTruthy();
-        expect(screen.getByRole("button", { name: "次へ" })).toBeTruthy();
+        expect(await screen.findByText("☗ search-1-sente vs ☖ search-1-gote")).toBeTruthy();
+        expect((screen.getByLabelText("対局場所") as HTMLSelectElement).value).toBe("other");
+        await waitFor(() =>
+            expect((screen.getByLabelText("イベント") as HTMLSelectElement).value).toBe("WCSC36"),
+        );
     });
 
-    it("検索リクエストが失敗した場合にエラーバナーを表示する", async () => {
-        fetchRshogiGameSearch.mockRejectedValueOnce(new Error("ネットワークエラー"));
+    it("クエリに不正な値が混ざっていても無視して、有効な条件だけで検索する", async () => {
+        // TanStack Router は validateSearch が返さなかったキーも素通しで渡してくるので、
+        // 画面側でも有効な条件だけを使う。
+        currentSearch = { event: "WCSC36", venue: "wdoor", result: "bogus", from: "yesterday" };
 
         render(<RshogiViewerListPage />);
-        await screen.findByText("もっと読み込む");
 
-        fireEvent.change(screen.getByLabelText("名前"), { target: { value: "RAMU" } });
-        fireEvent.click(screen.getByRole("button", { name: "検索" }));
-
-        expect(await screen.findByText("ネットワークエラー")).toBeTruthy();
+        await waitFor(() => expect(fetchRshogiGameSearch).toHaveBeenCalledTimes(1));
+        expect(fetchRshogiGameSearch).toHaveBeenCalledWith(
+            expect.objectContaining({
+                event: "WCSC36",
+                source: undefined,
+                result: undefined,
+                from: undefined,
+            }),
+        );
+        expect((screen.getByLabelText("対局場所") as HTMLSelectElement).value).toBe("");
     });
 
-    it("入力中の条件と実行済み条件を分離して次ページと前ページを取得する", async () => {
-        fetchRshogiGameSearch
-            .mockResolvedValueOnce({
-                games: [{ gameId: "search-1" }],
-                page: 1,
-                pageSize: 20,
-                totalCount: 23,
-            })
-            .mockResolvedValueOnce({
-                games: [{ gameId: "search-2" }],
-                page: 2,
-                pageSize: 20,
-                totalCount: 23,
-            })
-            .mockResolvedValueOnce({
-                games: [{ gameId: "search-1-returned" }],
-                page: 1,
-                pageSize: 20,
-                totalCount: 23,
-            });
-
+    it("クリアでクエリを空にする", async () => {
+        currentSearch = { event: "WCSC36" };
         render(<RshogiViewerListPage />);
-        await screen.findByText("もっと読み込む");
-
-        fireEvent.change(screen.getByLabelText("名前"), { target: { value: "RAMU" } });
-        fireEvent.click(screen.getByRole("button", { name: "検索" }));
-        await screen.findByText("23件中 1-20件");
-
-        fireEvent.change(screen.getByLabelText("名前"), { target: { value: "OTHER" } });
-        fireEvent.click(screen.getByRole("button", { name: "次へ" }));
-
-        await waitFor(() => expect(fetchRshogiGameSearch).toHaveBeenCalledTimes(2));
-        expect(fetchRshogiGameSearch).toHaveBeenNthCalledWith(
-            2,
-            expect.objectContaining({ name: "RAMU", page: 2, pageSize: 20 }),
-        );
-        expect(await screen.findByText("23件中 21-23件")).toBeTruthy();
-        expect(screen.getByTestId("game-ids").textContent).toBe("search-2");
-
-        fireEvent.click(screen.getByRole("button", { name: "前へ" }));
-
-        await waitFor(() => expect(fetchRshogiGameSearch).toHaveBeenCalledTimes(3));
-        expect(fetchRshogiGameSearch).toHaveBeenNthCalledWith(
-            3,
-            expect.objectContaining({ name: "RAMU", page: 1, pageSize: 20 }),
-        );
-        expect(await screen.findByText("23件中 1-20件")).toBeTruthy();
-        expect(screen.getByTestId("game-ids").textContent).toBe("search-1-returned");
-        expect((screen.getByLabelText("名前") as HTMLInputElement).value).toBe("OTHER");
-    });
-
-    it("クリアで検索条件とpaginationを消し、cursor一覧へ戻る", async () => {
-        render(<RshogiViewerListPage />);
-        await screen.findByText("もっと読み込む");
-        fireEvent.change(screen.getByLabelText("名前"), { target: { value: "RAMU" } });
-        fireEvent.click(screen.getByRole("button", { name: "検索" }));
-        await screen.findByText("23件中 1-20件");
+        await screen.findByText("☗ search-1-sente vs ☖ search-1-gote");
 
         fireEvent.click(screen.getByRole("button", { name: "クリア" }));
 
-        expect((screen.getByLabelText("名前") as HTMLInputElement).value).toBe("");
-        expect(screen.queryByText("23件中 1-20件")).toBeNull();
-        expect(screen.getByText("もっと読み込む")).toBeTruthy();
-        expect(screen.getByTestId("game-ids").textContent).toBe("recent-1");
+        expect(navigate).toHaveBeenCalledWith({ to: "/rshogi-viewer", search: {} });
     });
 });

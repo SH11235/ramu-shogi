@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     fetchRshogiGame,
+    fetchRshogiGameEvents,
     fetchRshogiGameList,
     fetchRshogiGameSearch,
     fetchRshogiLiveGameList,
@@ -30,10 +31,16 @@ describe("rshogi player API (mock fallback)", () => {
                 page: 1,
                 pageSize: 20,
                 totalCount: list.players.length,
-                totalGames: MOCK_RSHOGI_GAME_LIST.length,
+                // 外部から取り込んだ棋譜 (wdoor / upload) は集計に入れない。
+                totalGames: MOCK_RSHOGI_GAME_LIST.filter(
+                    (game) => game.source !== "wdoor" && game.source !== "upload",
+                ).length,
                 leader: list.players[0],
             }),
         );
+        const names = list.players.map((player) => player.displayName);
+        expect(names).not.toContain("SampleEngine");
+        expect(names).not.toContain("SelfPlay-A");
 
         const detail = await fetchRshogiPlayerDetail(list.players[0].playerId, { pageSize: 1 });
         expect(detail.player).toEqual(list.players[0]);
@@ -202,6 +209,149 @@ describe("fetchRshogiGameSearch (mock fallback)", () => {
 
         const second = await fetchRshogiGameSearch({ name: "ramu", page: 2, pageSize: 2 });
         expect(second.games[0].gameId).not.toBe(first.games[0].gameId);
+    });
+});
+
+describe("fetchRshogiGameSearch (mock fallback): source / event", () => {
+    it("複数 source のいずれかに一致する棋譜を返す", async () => {
+        const own = await fetchRshogiGameSearch({ source: ["kifu", "floodgate"] });
+        expect(own.games.length).toBeGreaterThan(0);
+        expect(own.games.every((g) => g.source === "kifu" || g.source === "floodgate")).toBe(true);
+
+        const joined = await fetchRshogiGameSearch({ source: "kifu,floodgate" });
+        expect(joined.totalCount).toBe(own.totalCount);
+
+        const wdoor = await fetchRshogiGameSearch({ source: "wdoor" });
+        expect(wdoor.games.map((g) => g.source)).toEqual(["wdoor"]);
+        expect(wdoor.games[0]).toEqual(
+            expect.objectContaining({
+                gameId: expect.stringMatching(/^wdoor-\d{14}-[0-9a-f]{10}$/),
+                event: "floodgate-300-10F",
+                originUrl: expect.stringMatching(/^https:\/\/wdoor\.c\.u-tokyo\.ac\.jp\//),
+            }),
+        );
+
+        const upload = await fetchRshogiGameSearch({ source: "upload" });
+        expect(upload.games).toHaveLength(2);
+        expect(upload.games.every((g) => /^upload-[0-9a-f]{16}$/.test(g.gameId))).toBe(true);
+        // 持ち時間を判定できない棋譜は timeControl を持たない。
+        expect(upload.games.every((g) => g.timeControl === undefined)).toBe(true);
+    });
+
+    it("event の完全一致で絞り込む", async () => {
+        const hit = await fetchRshogiGameSearch({ event: "サンプル大会" });
+        expect(hit.games.map((g) => g.event)).toEqual(["サンプル大会"]);
+        const miss = await fetchRshogiGameSearch({ event: "サンプル" });
+        expect(miss.totalCount).toBe(0);
+    });
+});
+
+describe("fetchRshogiGameEvents", () => {
+    it("モックでは fixture を (event, source) ごとに数える", async () => {
+        const events = await fetchRshogiGameEvents();
+        expect(events).toContainEqual({ event: "floodgate-300-10F", source: "wdoor", games: 1 });
+        expect(events).toContainEqual({ event: "サンプル大会", source: "upload", games: 1 });
+        for (let i = 1; i < events.length; i++) {
+            expect(events[i - 1].games).toBeGreaterThanOrEqual(events[i].games);
+        }
+    });
+
+    it("GET {base}/games/events を呼び、event の無い行を捨てて decode する", async () => {
+        const fetchImpl = vi.fn(
+            async () =>
+                new Response(
+                    JSON.stringify({
+                        events: [
+                            { event: "WCSC36", source: "upload", games: 123 },
+                            { event: "floodgate-300-10F", source: "wdoor", games: 40 },
+                            { event: "", source: "upload", games: 3 },
+                            { event: "件数なし" },
+                        ],
+                    }),
+                    { status: 200 },
+                ),
+        ) as unknown as typeof fetch;
+
+        const events = await fetchRshogiGameEvents({
+            baseUrl: "https://rshogi.example.com/api/v1/",
+            fetchImpl,
+        });
+
+        expect(fetchImpl).toHaveBeenCalledWith("https://rshogi.example.com/api/v1/games/events", {
+            signal: undefined,
+            cache: "no-store",
+        });
+        expect(events).toEqual([
+            { event: "WCSC36", source: "upload", games: 123 },
+            { event: "floodgate-300-10F", source: "wdoor", games: 40 },
+            { event: "件数なし", source: undefined, games: 0 },
+        ]);
+    });
+
+    it("events 配列の無い応答や HTTP エラーは例外にする", async () => {
+        const badShape = vi.fn(
+            async () => new Response(JSON.stringify({}), { status: 200 }),
+        ) as unknown as typeof fetch;
+        await expect(
+            fetchRshogiGameEvents({ baseUrl: "https://rshogi.example.com", fetchImpl: badShape }),
+        ).rejects.toBeInstanceOf(RshogiGameFetchError);
+
+        const serverError = vi.fn(
+            async () => new Response("", { status: 500 }),
+        ) as unknown as typeof fetch;
+        await expect(
+            fetchRshogiGameEvents({
+                baseUrl: "https://rshogi.example.com",
+                fetchImpl: serverError,
+            }),
+        ).rejects.toBeInstanceOf(RshogiGameFetchError);
+    });
+});
+
+describe("fetchRshogiGameSearch (real baseUrl): source / event", () => {
+    it("複数 source をカンマ区切りで送り、event を付ける", async () => {
+        const fetchImpl = vi.fn(
+            async () =>
+                new Response(
+                    JSON.stringify({
+                        games: [
+                            {
+                                game_id: "upload-00112233445566aa",
+                                black_handle: "A",
+                                white_handle: "B",
+                                source: "upload",
+                                event: "WCSC36",
+                                origin_url: "https://wdoor.c.u-tokyo.ac.jp/shogi/x/a.csa",
+                            },
+                        ],
+                        page: 1,
+                        page_size: 20,
+                        total_count: 1,
+                    }),
+                    { status: 200 },
+                ),
+        ) as unknown as typeof fetch;
+
+        const result = await fetchRshogiGameSearch({
+            baseUrl: "https://rshogi.example.com/api/v1",
+            fetchImpl,
+            source: ["kifu", "floodgate"],
+            event: "WCSC36",
+        });
+
+        expect(fetchImpl).toHaveBeenCalledWith(
+            "https://rshogi.example.com/api/v1/games/search?source=kifu%2Cfloodgate&event=WCSC36",
+            { signal: undefined, cache: "no-store" },
+        );
+        // clock の無い応答でも落ちず、event / origin_url を decode する。
+        expect(result.games[0]).toEqual(
+            expect.objectContaining({
+                source: "upload",
+                event: "WCSC36",
+                originUrl: "https://wdoor.c.u-tokyo.ac.jp/shogi/x/a.csa",
+                timeControl: undefined,
+            }),
+        );
     });
 });
 

@@ -134,7 +134,8 @@ export function EvalGraph({
         evalHistory.forEach((entry, index) => {
             const hasValue = entry.evalCp !== null || entry.evalMate !== null;
             // ply=0は初期局面（評価値0）、ply奇数は先手の手、ply偶数は後手の手
-            const isSenteMove = entry.ply % 2 === 1;
+            const isSenteMove =
+                entry.mover !== undefined ? entry.mover === "sente" : entry.ply % 2 === 1;
 
             if (hasValue) {
                 const x = (index / maxPly) * 100;
@@ -154,13 +155,13 @@ export function EvalGraph({
                 }
             } else {
                 // null値で区切り
-                if (index === 0 || entry.ply % 2 === 1) {
+                if (index === 0 || isSenteMove) {
                     if (currentSenteSegment.length > 0) {
                         sente.push(currentSenteSegment);
                         currentSenteSegment = [];
                     }
                 }
-                if (index === 0 || entry.ply % 2 === 0) {
+                if (index === 0 || !isSenteMove) {
                     if (currentGoteSegment.length > 0) {
                         gote.push(currentGoteSegment);
                         currentGoteSegment = [];

@@ -8,7 +8,7 @@ const PAGE_LIMIT = 50;
 // stale cache が返るだけで新鮮なデータは得られないため 60 秒固定。
 const AUTO_REFRESH_MS = 60_000;
 
-export interface UseRshogiLiveGameListReturn {
+interface UseRshogiLiveGameListReturn {
     /** 取得済みの進行中対局 (先頭ページ + `loadMore` で追記した分)。 */
     games: RshogiLiveGameSummary[];
     /** 初回 / 再取得 / ページ追加読み込み中フラグ。 */
@@ -26,7 +26,7 @@ export interface UseRshogiLiveGameListReturn {
 /**
  * rshogi 進行中対局一覧の取得・自動更新・ページングを担う共有フック。
  *
- * Web (`RshogiLiveGamesPage`) と Desktop (`RshogiLiveGamesView`) で同一の
+ * Web と Desktop の一覧上部の「進行中の対局」(`RshogiCsaLiveGamesSection`) で同一の
  * データ取得ロジックを共有する。挙動:
  * - マウント時に先頭ページを取得し、60 秒ごと (サーバ edge cache TTL に一致) に
  *   自動で先頭ページを取り直す

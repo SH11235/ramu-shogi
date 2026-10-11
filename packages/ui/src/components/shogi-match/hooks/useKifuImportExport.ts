@@ -32,6 +32,8 @@ export interface ReviewMoveEval {
      * 有限値を使う。
      */
     evalMate?: number;
+    /** 読み筋 (USI)。その手を指した後の局面から始まる。 */
+    pv?: string[];
 }
 
 /**
@@ -257,6 +259,7 @@ export function useKifuImportExport({
                                           scoreCp: data.evalCp,
                                           scoreMate: data.evalMate,
                                           normalized: true,
+                                          pv: data.pv,
                                       }
                                     : undefined,
                         });

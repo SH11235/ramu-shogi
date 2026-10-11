@@ -10,10 +10,18 @@ vi.mock("@shogi/match-client", () => ({
     RshogiGameNotFoundError: class RshogiGameNotFoundError extends Error {},
 }));
 
+interface CapturedShogiMatchProps {
+    initialReview?: { sfen: string; moves: string[]; moveData?: unknown[] };
+    spectateMode?: boolean;
+}
+
+const capturedProps: CapturedShogiMatchProps[] = [];
+
 vi.mock("./shogi-match", () => ({
-    ShogiMatch: ({ reviewLeftContent }: { reviewLeftContent?: ReactNode }) => (
-        <div data-testid="shogi-match">{reviewLeftContent}</div>
-    ),
+    ShogiMatch: (props: CapturedShogiMatchProps & { reviewLeftContent?: ReactNode }) => {
+        capturedProps.push(props);
+        return <div data-testid="shogi-match">{props.reviewLeftContent}</div>;
+    },
 }));
 
 const GAME_ID = "game-download";
@@ -34,6 +42,218 @@ const renderViewer = () =>
 
 afterEach(() => {
     vi.restoreAllMocks();
+    capturedProps.length = 0;
+});
+
+const HIRATE_POSITION = [
+    "P1-KY-KE-GI-KI-OU-KI-GI-KE-KY",
+    "P2 * -HI *  *  *  *  * -KA * ",
+    "P3-FU-FU-FU-FU-FU-FU-FU-FU-FU",
+    "P4 *  *  *  *  *  *  *  *  * ",
+    "P5 *  *  *  *  *  *  *  *  * ",
+    "P6 *  *  *  *  *  *  *  *  * ",
+    "P7+FU+FU+FU+FU+FU+FU+FU+FU+FU",
+    "P8 * +KA *  *  *  *  * +HI * ",
+    "P9+KY+KE+GI+KI+OU+KI+GI+KE+KY",
+];
+
+// 角換わりの途中局面: 双方が角を 1 枚ずつ持ち、後手番。
+const MIDGAME_POSITION = [
+    "P1-KY-KE * -KI-OU * -GI-KE-KY",
+    "P2 * -HI *  *  *  * -KI *  * ",
+    "P3-FU * -FU-FU-FU-FU-GI-FU-FU",
+    "P4 *  *  *  *  *  * -FU *  * ",
+    "P5 * -FU *  *  *  *  * +FU * ",
+    "P6 *  * +FU *  *  *  *  *  * ",
+    "P7+FU+FU+GI+FU+FU+FU+FU * +FU",
+    "P8 *  * +KI *  *  *  * +HI * ",
+    "P9+KY+KE *  * +OU+KI+GI+KE+KY",
+    "P+00KA",
+    "P-00KA",
+];
+const MIDGAME_SFEN = "ln1gk1snl/1r4g2/p1ppppspp/6p2/1p5P1/2P6/PPSPPPP1P/2G4R1/LN2KGSNL w Bb 1";
+
+const WDOOR_CSA = [
+    "V2",
+    "N+RAMU",
+    "N-SampleEngine",
+    ...HIRATE_POSITION,
+    "+",
+    "'black_rate:RAMU+0123456789abcdef:3512.4",
+    "'white_rate:SampleEngine+fedcba9876543210:3447.0",
+    "+7776FU",
+    "T3",
+    "'** 30 -3334FU +2726FU",
+    "-3334FU",
+    "T5",
+    "+2726FU",
+    "T2",
+    "'** -100000",
+    "%TORYO",
+    "T1",
+    "'summary:toryo:RAMU win:SampleEngine lose",
+].join("\n");
+
+const WDOOR_GAME: RshogiGame = {
+    meta: {
+        gameId: GAME_ID,
+        senteName: "RAMU",
+        goteName: "SampleEngine",
+        source: "wdoor",
+        event: "floodgate-300-10F",
+        originUrl: "https://wdoor.c.u-tokyo.ac.jp/shogi/x/2026/10/09/sample.csa",
+    },
+    csa: WDOOR_CSA,
+};
+
+describe("RshogiCsaViewer: 外部から取り込んだ棋譜", () => {
+    it("CSA のコメントから評価値・読み筋・消費時間を取り出して ShogiMatch に渡す", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(WDOOR_GAME);
+
+        renderViewer();
+        await screen.findByTestId("shogi-match");
+
+        const props = capturedProps.at(-1);
+        expect(props?.initialReview).toEqual({
+            sfen: "startpos",
+            moves: ["7g7f", "3c3d", "2g2f"],
+            moveData: [
+                { elapsedMs: 3000, evalCp: 30, pv: ["3c3d", "2g2f"] },
+                // コメントの無い手は評価値を持たない。
+                { elapsedMs: 5000 },
+                // ±100000 は手数不明の詰み (後手勝ち)。
+                { elapsedMs: 2000, evalMate: Number.NEGATIVE_INFINITY },
+            ],
+        });
+        // 評価値つきの棋譜は、評価値の列とグラフを最初から出す。
+        expect(props?.spectateMode).toBe(true);
+    });
+
+    it("評価値の無い棋譜では表示設定を切り替えない", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(GAME);
+
+        renderViewer();
+        await screen.findByTestId("shogi-match");
+
+        const props = capturedProps.at(-1);
+        expect(props?.initialReview).toEqual({
+            sfen: "startpos",
+            moves: ["7g7f"],
+            moveData: [undefined],
+        });
+        expect(props?.spectateMode).toBe(false);
+    });
+
+    it("対局場所・イベント・レート・元棋譜へのリンクを表示する", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(WDOOR_GAME);
+
+        renderViewer();
+
+        expect(await screen.findByText("Floodgate")).toBeTruthy();
+        expect(screen.getByText("floodgate-300-10F")).toBeTruthy();
+        expect(screen.getByText("☗ RAMU (R3512) vs ☖ SampleEngine (R3447)")).toBeTruthy();
+        const link = screen.getByRole("link", { name: "元の棋譜を開く（Floodgate）" });
+        expect(link.getAttribute("href")).toBe(WDOOR_GAME.meta.originUrl);
+        expect(link.getAttribute("target")).toBe("_blank");
+        expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+        // 持ち時間 (clock) が無くても落ちない。
+        expect(screen.getByText("持ち時間: 不明")).toBeTruthy();
+    });
+
+    it.each([
+        "https://evil.example.com/https://wdoor.c.u-tokyo.ac.jp/a.csa",
+        "http://wdoor.c.u-tokyo.ac.jp/shogi/x/a.csa",
+        "https://wdoor.c.u-tokyo.ac.jp.evil.example.com/a.csa",
+        "javascript:alert(1)",
+    ])("wdoor 以外の origin_url (%s) はリンクにしない", async (originUrl) => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue({
+            ...WDOOR_GAME,
+            meta: { ...WDOOR_GAME.meta, originUrl },
+        });
+
+        renderViewer();
+
+        await screen.findByText("Floodgate");
+        expect(screen.queryByRole("link")).toBeNull();
+    });
+
+    it("upload の対局場所は「その他」で、イベント名は別の項目に出す", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue({
+            meta: { ...GAME.meta, source: "upload", event: "WCSC36" },
+            csa: CSA_TEXT,
+        });
+
+        renderViewer();
+
+        expect(await screen.findByText("その他")).toBeTruthy();
+        expect(screen.getAllByText("WCSC36")).toHaveLength(1);
+        expect(screen.queryByText(/\(R\d+\)/)).toBeNull();
+    });
+
+    it("途中局面・持ち駒あり・後手番開始の棋譜は、その局面の SFEN から再生する", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue({
+            ...GAME,
+            csa: [
+                "V2.2",
+                ...MIDGAME_POSITION,
+                "-",
+                "-0055KA,T3",
+                "'** -35 +2524FU",
+                "+2524FU,T4",
+            ].join("\n"),
+        });
+
+        renderViewer();
+        await screen.findByTestId("shogi-match");
+
+        expect(capturedProps.at(-1)?.initialReview).toEqual({
+            sfen: MIDGAME_SFEN,
+            moves: ["B*5e", "2e2d"],
+            moveData: [{ elapsedMs: 3000, evalCp: -35, pv: ["2e2d"] }, { elapsedMs: 4000 }],
+        });
+    });
+
+    it("駒落ち (PI の駒落ち指定) の棋譜も再生する", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue({
+            ...GAME,
+            csa: "V2\nPI82HI22KA\n-\n-3334FU\n",
+        });
+
+        renderViewer();
+        await screen.findByTestId("shogi-match");
+
+        expect(capturedProps.at(-1)?.initialReview).toEqual({
+            sfen: "lnsgkgsnl/9/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+            moves: ["3c3d"],
+            moveData: [undefined],
+        });
+    });
+
+    it("解釈できない局面記述 (00AL など) は再生せずエラーを表示する", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue({
+            ...GAME,
+            csa: "V2\nP-51OU\nP+53FU\nP-00AL\n+\n+5352FU\n",
+        });
+
+        renderViewer();
+
+        expect(
+            await screen.findByText(/CSA の解析に失敗しました: CSA の開始局面を解釈できません/),
+        ).toBeTruthy();
+        expect(screen.queryByTestId("shogi-match")).toBeNull();
+    });
+
+    it("適用できない指し手を含む棋譜はエラーを表示する", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue({
+            ...GAME,
+            csa: "V2\nPI\n+\n+7776FU\n-3334FU\n+5544FU\n",
+        });
+
+        renderViewer();
+
+        expect(await screen.findByText(/CSA の解析に失敗しました/)).toBeTruthy();
+        expect(screen.queryByTestId("shogi-match")).toBeNull();
+    });
 });
 
 describe("RshogiCsaViewer: 対局情報パネル", () => {

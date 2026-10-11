@@ -1103,6 +1103,14 @@ describe("__test_internals", () => {
             evalCp: -250,
         });
     });
+    it("parseLiveComment: `'** ` で始まるコメントも同じ規則で分解する", () => {
+        expect(__test_internals.parseLiveComment("'** 123 +7776FU -3334FU")).toEqual({
+            raw: "** 123 +7776FU -3334FU",
+            evalCp: 123,
+            pv: ["+7776FU", "-3334FU"],
+        });
+    });
+
     it("parseLiveComment: eval のみ (PV 無し) は pv undefined", () => {
         const c = __test_internals.parseLiveComment("'* 0");
         expect(c.evalCp).toBe(0);

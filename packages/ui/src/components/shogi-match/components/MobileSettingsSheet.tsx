@@ -2,11 +2,12 @@ import type { NnueMeta, NnueSelection, PresetWithStatus } from "@shogi/app-core"
 import { NONE_NNUE_SELECTION } from "@shogi/app-core";
 import type { SkillLevelSettings } from "@shogi/engine-client";
 import type { ReactElement } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronIcon } from "../../chevron-icon";
 import { NativeSelect } from "../../native-select";
 import { Switch } from "../../switch";
 import type { ClockSettings } from "../hooks/useClockManager";
+import { useKifuTextImport } from "../hooks/useKifuTextImport";
 import type {
     DisplaySettings,
     EngineOption,
@@ -15,8 +16,11 @@ import type {
     SideSetting,
     SquareNotation,
 } from "../types";
-import type { KifMoveData } from "../utils/kifParser";
-import { parseKif, parseSfen } from "../utils/kifParser";
+import {
+    type ImportKifHandler,
+    type ImportSfenHandler,
+    KIFU_FILE_ACCEPT,
+} from "../utils/kifuImport";
 import { buildThreadOptions } from "../utils/threadOptions";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 
@@ -123,9 +127,9 @@ interface MobileSettingsSheetProps {
 
     // 棋譜インポート
     /** SFENインポート時のコールバック */
-    onImportSfen?: (sfen: string, moves: string[]) => Promise<void>;
+    onImportSfen?: ImportSfenHandler;
     /** KIFインポート時のコールバック */
-    onImportKif?: (moves: string[], moveData: KifMoveData[], startSfen?: string) => Promise<void>;
+    onImportKif?: ImportKifHandler;
     /** 局面が準備完了しているか */
     positionReady?: boolean;
 }
@@ -142,8 +146,8 @@ const SKILL_LEVEL_SELECTOR_MIN_HEIGHT = "min-h-[4rem] flex items-center";
 // =============================================================================
 
 interface KifuImportSectionProps {
-    onImportSfen: (sfen: string, moves: string[]) => Promise<void>;
-    onImportKif: (moves: string[], moveData: KifMoveData[], startSfen?: string) => Promise<void>;
+    onImportSfen: ImportSfenHandler;
+    onImportKif: ImportKifHandler;
     positionReady: boolean;
 }
 
@@ -153,69 +157,8 @@ function KifuImportSection({
     positionReady,
 }: KifuImportSectionProps): ReactElement {
     const [isExpanded, setIsExpanded] = useState(false);
-    const [inputValue, setInputValue] = useState("");
-    const [error, setError] = useState<string | null>(null);
-    const [success, setSuccess] = useState(false);
-    const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    // コンポーネントアンマウント時にタイマーをクリーンアップ
-    useEffect(() => {
-        return () => {
-            if (successTimerRef.current) {
-                clearTimeout(successTimerRef.current);
-            }
-        };
-    }, []);
-
-    const handleImport = async () => {
-        if (!inputValue.trim()) {
-            setError("入力が空です");
-            return;
-        }
-
-        setError(null);
-        setSuccess(false);
-        if (successTimerRef.current) {
-            clearTimeout(successTimerRef.current);
-            successTimerRef.current = null;
-        }
-
-        try {
-            const looksLikeKif =
-                /#KIF|手数----|開始日時|終了日時|手合割|開始局面|先手：|後手：|持ち時間|表題|棋戦/.test(
-                    inputValue,
-                ) ||
-                /[▲△☗☖]/.test(inputValue) ||
-                /[１２３４５６７８９1-9][一二三四五六七八九].*(歩|香|桂|銀|金|角|飛|玉|王|と|馬|龍|竜)/.test(
-                    inputValue,
-                );
-
-            if (looksLikeKif) {
-                const result = parseKif(inputValue);
-                if (!result.success) {
-                    setError(result.error ?? "KIFのパースに失敗しました");
-                    return;
-                }
-                await onImportKif(result.moves, result.moveData, result.startSfen);
-                setSuccess(true);
-                setInputValue("");
-                successTimerRef.current = setTimeout(() => setSuccess(false), 2000);
-                return;
-            }
-
-            const { sfen, moves } = parseSfen(inputValue);
-            if (!sfen) {
-                setError("SFENの形式が正しくありません");
-                return;
-            }
-            await onImportSfen(sfen, moves);
-            setSuccess(true);
-            setInputValue("");
-            successTimerRef.current = setTimeout(() => setSuccess(false), 2000);
-        } catch (e) {
-            setError(e instanceof Error ? e.message : "インポートに失敗しました");
-        }
-    };
+    const { inputValue, error, success, handleInputChange, handleImport, handleFileChange } =
+        useKifuTextImport({ onImportSfen, onImportKif });
 
     return (
         <div className="space-y-2 pt-3 border-t border-border">
@@ -231,16 +174,13 @@ function KifuImportSection({
             {isExpanded && (
                 <div className="space-y-2 pt-2">
                     <p className="text-xs text-muted-foreground">
-                        SFEN形式の局面、またはKIF形式の棋譜を貼り付けてください
+                        SFEN形式の局面、またはKIF・CSA形式の棋譜を貼り付けるか、ファイルを選んでください
                     </p>
                     <textarea
+                        aria-label="棋譜または局面のテキスト"
                         value={inputValue}
-                        onChange={(e) => {
-                            setInputValue(e.target.value);
-                            setError(null);
-                            setSuccess(false);
-                        }}
-                        placeholder="startpos moves 7g7f 3c3d&#10;または&#10;1 ７六歩(77)"
+                        onChange={(e) => handleInputChange(e.target.value)}
+                        placeholder="startpos moves 7g7f 3c3d&#10;または&#10;1 ７六歩(77)&#10;または&#10;+7776FU"
                         rows={4}
                         className="w-full p-2 text-base font-mono rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring"
                         disabled={!positionReady}
@@ -248,7 +188,7 @@ function KifuImportSection({
                     {error && <div className="text-xs text-destructive">{error}</div>}
                     <button
                         type="button"
-                        onClick={handleImport}
+                        onClick={() => void handleImport()}
                         disabled={!positionReady || !inputValue.trim()}
                         className={`w-full py-2 text-sm rounded-md border transition-colors ${
                             success
@@ -258,6 +198,16 @@ function KifuImportSection({
                     >
                         {success ? "読み込み完了" : "読み込み"}
                     </button>
+                    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                        ファイルから読み込む（.csa / .kif / .kifu / .sfen / .txt）
+                        <input
+                            type="file"
+                            accept={KIFU_FILE_ACCEPT}
+                            onChange={(e) => void handleFileChange(e)}
+                            disabled={!positionReady}
+                            className="text-base text-foreground file:mr-2 file:rounded-md file:border file:border-border file:bg-background file:px-3 file:py-1.5 file:text-sm disabled:opacity-50"
+                        />
+                    </label>
                 </div>
             )}
         </div>

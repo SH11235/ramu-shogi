@@ -36,6 +36,7 @@ import {
     toOptionValue,
 } from "../utils/nnueSelectionUtils";
 import { ANALYSIS_TIME_OPTIONS, PARALLEL_WORKER_OPTIONS } from "../utils/threadOptions";
+import { formatElapsedTime } from "../utils/timeFormat";
 import { KifuNavigationToolbar } from "./KifuNavigationToolbar";
 
 /** 表示モード */
@@ -443,6 +444,11 @@ function ExpandedMoveDetails({
             <div className="flex items-center justify-between mb-2 pb-2 border-b border-border">
                 <div className="flex items-center gap-2">
                     <span className="text-[11px] text-muted-foreground">{move.ply}手目</span>
+                    {move.elapsedMs !== undefined && (
+                        <span className="text-[11px] text-muted-foreground">
+                            消費 {formatElapsedTime(move.elapsedMs)}
+                        </span>
+                    )}
                     <span
                         className={`font-medium text-[13px] ${
                             evalInfo.advantage === "sente"

@@ -1,4 +1,5 @@
 import type { BoardState, Piece, PieceType, Square } from "@shogi/app-core";
+import { createInitialBoard } from "@shogi/app-core";
 import { describe, expect, it } from "vitest";
 import {
     convertMovesToKif,
@@ -727,5 +728,21 @@ describe("snapshot evalMate wire replacer/reviver", () => {
     it("evalMate が null のときは typeof ガードでそのままパススルーする", () => {
         expect(encodeSnapshotEvalMateReplacer("evalMate", null)).toBeNull();
         expect(decodeSnapshotEvalMateReviver("evalMate", null)).toBeNull();
+    });
+});
+
+describe("convertMovesToKif: 後手番から始まる棋譜", () => {
+    it("startTurn を渡すと 1 手目を後手の手として表示する", () => {
+        const board = createInitialBoard();
+        const afterFirst = { ...board, "3c": null, "3d": board["3c"] };
+        const result = convertMovesToKif(["3c3d", "7g7f"], [board, afterFirst], undefined, "gote");
+        expect(result.map((move) => move.displayText)).toEqual(["☖3四歩(33)", "☗7六歩(77)"]);
+        expect(result.map((move) => move.ply)).toEqual([1, 2]);
+    });
+
+    it("startTurn を省くと従来どおり 1 手目は先手", () => {
+        const board = createInitialBoard();
+        const result = convertMovesToKif(["7g7f"], [board]);
+        expect(result[0]?.displayText).toBe("☗7六歩(77)");
     });
 });

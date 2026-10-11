@@ -1,19 +1,23 @@
 /**
  * 棋譜インポートパネル
  *
- * SFEN/KIF形式の棋譜をインポートする機能を提供
+ * SFEN / KIF / CSA 形式の棋譜を、貼り付けまたはファイル選択で取り込む。
+ * 読んだ内容は端末内で盤面へ反映するだけで、サーバーには送らない。
  */
 
 import type { ReactElement } from "react";
-import { useEffect, useRef, useState } from "react";
-import type { KifMoveData } from "../utils/kifParser";
-import { parseKif, parseSfen } from "../utils/kifParser";
+import { useKifuTextImport } from "../hooks/useKifuTextImport";
+import {
+    type ImportKifHandler,
+    type ImportSfenHandler,
+    KIFU_FILE_ACCEPT,
+} from "../utils/kifuImport";
 
 interface KifuImportPanelProps {
-    /** SFENインポート時のコールバック（sfen: 開始局面, moves: 指し手配列） */
-    onImportSfen: (sfen: string, moves: string[]) => Promise<void>;
+    /** SFENインポート時のコールバック（CSA は評価値・消費時間を options.moveData で渡す） */
+    onImportSfen: ImportSfenHandler;
     /** KIFインポート時のコールバック（moves: 指し手配列, moveData: 各手の詳細データ, startSfen: 開始局面） */
-    onImportKif: (moves: string[], moveData: KifMoveData[], startSfen?: string) => Promise<void>;
+    onImportKif: ImportKifHandler;
     /** 局面が準備完了しているか */
     positionReady: boolean;
 }
@@ -23,95 +27,30 @@ export function KifuImportPanel({
     onImportKif,
     positionReady,
 }: KifuImportPanelProps): ReactElement {
-    const [inputValue, setInputValue] = useState("");
-    const [error, setError] = useState<string | null>(null);
-    const [success, setSuccess] = useState(false);
-    // タイマーIDを保持してクリーンアップに使用
-    const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    // コンポーネントアンマウント時にタイマーをクリーンアップ
-    useEffect(() => {
-        return () => {
-            if (successTimerRef.current) {
-                clearTimeout(successTimerRef.current);
-            }
-        };
-    }, []);
-
-    const handleImport = async () => {
-        if (!inputValue.trim()) {
-            setError("入力が空です");
-            return;
-        }
-
-        setError(null);
-        setSuccess(false);
-        // 既存のタイマーをクリア
-        if (successTimerRef.current) {
-            clearTimeout(successTimerRef.current);
-            successTimerRef.current = null;
-        }
-
-        try {
-            const looksLikeKif =
-                /#KIF|手数----|開始日時|終了日時|手合割|開始局面|先手：|後手：|持ち時間|表題|棋戦/.test(
-                    inputValue,
-                ) ||
-                /[▲△☗☖]/.test(inputValue) ||
-                /[１２３４５６７８９1-9][一二三四五六七八九].*(歩|香|桂|銀|金|角|飛|玉|王|と|馬|龍|竜)/.test(
-                    inputValue,
-                );
-
-            if (looksLikeKif) {
-                const result = parseKif(inputValue);
-                if (!result.success) {
-                    setError(result.error ?? "KIFのパースに失敗しました");
-                    return;
-                }
-                await onImportKif(result.moves, result.moveData, result.startSfen);
-                setSuccess(true);
-                setInputValue("");
-                successTimerRef.current = setTimeout(() => setSuccess(false), 2000);
-                return;
-            }
-
-            const { sfen, moves } = parseSfen(inputValue);
-            if (!sfen) {
-                setError("SFENの形式が正しくありません");
-                return;
-            }
-            await onImportSfen(sfen, moves);
-            setSuccess(true);
-            setInputValue("");
-            successTimerRef.current = setTimeout(() => setSuccess(false), 2000);
-        } catch (e) {
-            setError(e instanceof Error ? e.message : "インポートに失敗しました");
-        }
-    };
-
-    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        setInputValue(e.target.value);
-        setError(null);
-        setSuccess(false);
-    };
+    const { inputValue, error, success, handleInputChange, handleImport, handleFileChange } =
+        useKifuTextImport({ onImportSfen, onImportKif });
 
     return (
         <div className="bg-card border border-border rounded-xl p-3 shadow-lg w-full">
-            <div className="font-bold mb-2">インポート（SFEN / KIF）</div>
+            <div className="font-bold mb-2">インポート（SFEN / KIF / CSA）</div>
 
             {/* 説明文 */}
             <div className="text-xs text-muted-foreground mb-2">
-                SFEN形式の局面、またはKIF形式の棋譜を貼り付けてください
+                SFEN形式の局面、またはKIF・CSA形式の棋譜を貼り付けるか、ファイルを選んでください
                 <br />
                 例: <code className="bg-muted px-1 rounded">startpos moves 7g7f 3c3d</code>
                 <br />
                 例: <code className="bg-muted px-1 rounded">1 ７六歩(77)</code>
+                <br />
+                例: <code className="bg-muted px-1 rounded">+7776FU</code>
+                （CSA は評価値・読み筋・消費時間も読み込みます）
             </div>
 
             {/* 入力エリア */}
             <textarea
+                aria-label="棋譜または局面のテキスト"
                 value={inputValue}
-                onChange={handleInputChange}
+                onChange={(e) => handleInputChange(e.target.value)}
                 placeholder={
                     "startpos moves 7g7f 3c3d\nlnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1\n1 ７六歩(77)\n2 ３四歩(33)"
                 }
@@ -131,11 +70,23 @@ export function KifuImportPanel({
                         ? "bg-green-600 text-white border-green-600"
                         : "bg-primary text-primary-foreground border-primary hover:bg-primary/90"
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
-                onClick={handleImport}
+                onClick={() => void handleImport()}
                 disabled={!positionReady || !inputValue.trim()}
             >
                 {success ? "読み込み完了" : "読み込み"}
             </button>
+
+            {/* ファイル選択 */}
+            <label className="mt-3 flex flex-col gap-1 text-xs text-muted-foreground">
+                ファイルから読み込む（.csa / .kif / .kifu / .sfen / .txt）
+                <input
+                    type="file"
+                    accept={KIFU_FILE_ACCEPT}
+                    onChange={(e) => void handleFileChange(e)}
+                    disabled={!positionReady}
+                    className="text-sm text-foreground file:mr-2 file:rounded-md file:border file:border-border file:bg-background file:px-3 file:py-1.5 file:text-sm disabled:opacity-50"
+                />
+            </label>
         </div>
     );
 }

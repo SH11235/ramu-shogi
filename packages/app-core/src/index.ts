@@ -50,6 +50,16 @@ export {
     parseCsaMovesWithState,
     parseSingleCsaMove,
 } from "./game/csa";
+// game/csa-position
+export type { CsaStartPosition } from "./game/csa-position";
+export { parseCsaStartPosition } from "./game/csa-position";
+// game/csa-record
+export type { CsaEvalComment, CsaGameRecord, CsaMoveAnnotation } from "./game/csa-record";
+export {
+    CSA_MATE_EVAL_THRESHOLD,
+    parseCsaEvalComment,
+    parseCsaGameRecord,
+} from "./game/csa-record";
 // game/kifu-tree
 export type {
     AddMoveOptions,
