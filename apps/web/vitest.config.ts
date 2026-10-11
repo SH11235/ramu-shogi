@@ -74,6 +74,10 @@ export default defineConfig({
                 replacement: path.resolve(rootDir, "../../packages/match-client/src"),
             },
             {
+                find: /^@shogi\/study-client$/,
+                replacement: path.resolve(rootDir, "../../packages/study-client/src"),
+            },
+            {
                 find: /^@shogi\/match-protocol$/,
                 replacement: path.resolve(rootDir, "../../packages/match-protocol/src"),
             },

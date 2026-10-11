@@ -1,3 +1,10 @@
+import {
+    createStudyAnalysisCollector,
+    type Player,
+    type StudyAnalysisCollector,
+    type StudyAnalysisCompletion,
+    type StudyLayerRef,
+} from "@shogi/app-core";
 import type {
     EngineClient,
     EngineInfoEvent,
@@ -17,6 +24,11 @@ export interface AnalysisJob {
     depth: number;
     /** 分岐解析用のノードID（オプション） */
     nodeId?: string;
+    /**
+     * 解析する局面（moves を適用した後）の実際の手番。
+     * 指定すると、探索が終わったときに `onPositionAnalyzed` で先手視点の解析結果を通知する。
+     */
+    sideToMove?: Player;
 }
 
 /**
@@ -46,6 +58,12 @@ interface UseEnginePoolOptions {
     onComplete?: () => void;
     /** エラー時のコールバック */
     onError?: (ply: number, error: Error) => void;
+    /**
+     * 1 局面の探索が終わるごとに 1 回だけ呼ばれる（途中経過ごとには呼ばれない）。
+     * `sideToMove` を指定したジョブだけが対象。研究ノートの保存層につなぐのに使う。
+     * キャンセルで止まった探索は、そこまでの結果を `completion: "aborted"` で通知する。
+     */
+    onPositionAnalyzed?: (completion: StudyAnalysisCompletion) => void;
     /** 使用する NNUE の ID（null = NNUEなし（Material評価）） */
     nnueId?: string | null;
 }
@@ -59,6 +77,13 @@ interface StartOptions {
     nnueId?: string | null;
     /** FV_SCALE 値 */
     fvScale?: number;
+    /** 候補手数（MultiPV）。省略時は 1 */
+    multiPv?: number;
+    /**
+     * 解析を始めた時点のレイヤー。この start で積んだジョブの終了通知にそのまま載る
+     * （途中で設定を変えて start し直しても、前のジョブの結果には混ざらない）。
+     */
+    layer?: StudyLayerRef;
 }
 
 /**
@@ -77,11 +102,23 @@ export interface EnginePoolHandle {
     dispose: () => Promise<void>;
 }
 
+/** キューに積んだジョブ。start の時点のレイヤーを一緒に持つ。 */
+interface QueuedJob extends AnalysisJob {
+    layer: StudyLayerRef | null;
+}
+
+/** 進行中の 1 局面の探索。結果をまとめ、終わったら 1 回だけ通知する。 */
+interface ActiveRun {
+    job: QueuedJob;
+    collector: StudyAnalysisCollector;
+}
+
 interface EngineWorker {
     client: EngineClient;
     handle: SearchHandle | null;
     currentPly: number | null;
     subscription: (() => void) | null;
+    run: ActiveRun | null;
 }
 
 /**
@@ -97,6 +134,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         onResult,
         onComplete,
         onError,
+        onPositionAnalyzed,
         nnueId,
     } = options;
 
@@ -109,7 +147,9 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
     // 内部状態をrefで管理（レンダリングに依存しない）
     const stateRef = useRef<{
         workers: EngineWorker[];
-        jobQueue: AnalysisJob[];
+        jobQueue: QueuedJob[];
+        /** start()で渡されたMultiPV */
+        multiPv: number;
         completed: number;
         total: number;
         inProgress: Set<number>;
@@ -131,6 +171,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
     }>({
         workers: [],
         jobQueue: [],
+        multiPv: 1,
         completed: 0,
         total: 0,
         inProgress: new Set(),
@@ -144,10 +185,31 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
     });
 
     // コールバックをrefで保持（依存配列の問題を回避）
-    const callbacksRef = useRef({ onProgress, onResult, onComplete, onError });
+    const callbacksRef = useRef({
+        onProgress,
+        onResult,
+        onComplete,
+        onError,
+        onPositionAnalyzed,
+    });
     useEffect(() => {
-        callbacksRef.current = { onProgress, onResult, onComplete, onError };
-    }, [onProgress, onResult, onComplete, onError]);
+        callbacksRef.current = { onProgress, onResult, onComplete, onError, onPositionAnalyzed };
+    }, [onProgress, onResult, onComplete, onError, onPositionAnalyzed]);
+
+    // 進行中の探索の結果をまとめて通知する（1 回の探索につき 1 回だけ）
+    const finishRun = (worker: EngineWorker, completion: "completed" | "aborted") => {
+        const run = worker.run;
+        worker.run = null;
+        if (!run) return;
+        const result = run.collector.finish(completion);
+        if (!result) return;
+        callbacksRef.current.onPositionAnalyzed?.({
+            runtimeNodeId: run.job.nodeId ?? null,
+            ply: run.job.ply,
+            layer: run.job.layer,
+            result,
+        });
+    };
 
     // 進捗を更新する
     const updateProgress = () => {
@@ -199,11 +261,25 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                 worker.subscription = null;
             }
 
+            // この局面の探索の結果をまとめる（手番が分かるジョブだけ）
+            const run: ActiveRun | null = job.sideToMove
+                ? {
+                      job,
+                      collector: createStudyAnalysisCollector({
+                          runId: crypto.randomUUID(),
+                          sideToMove: job.sideToMove,
+                          execution: { threads: 1, parallelWorkers: state.workers.length },
+                      }),
+                  }
+                : null;
+            worker.run = run;
+
             // イベントを購読
             worker.subscription = worker.client.subscribe((event) => {
                 if (state.cancelled) return;
 
                 if (event.type === "info") {
+                    if (run && worker.run === run) run.collector.push(event);
                     // 評価値が含まれている場合のみコールバック
                     if (event.scoreCp !== undefined || event.scoreMate !== undefined) {
                         callbacksRef.current.onResult?.(job.ply, event, job.nodeId);
@@ -212,6 +288,18 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
 
                 if (event.type === "bestmove") {
                     // 解析完了
+                    if (run && worker.run === run) {
+                        // bestmove にだけ評価値が載るエンジンでも、最善候補を残す。
+                        if (event.scoreCp !== undefined || event.scoreMate !== undefined) {
+                            run.collector.push({
+                                depth: event.depth,
+                                scoreCp: event.scoreCp,
+                                scoreMate: event.scoreMate,
+                                pv: event.pv,
+                            });
+                        }
+                        finishRun(worker, "completed");
+                    }
                     worker.handle = null;
                     worker.currentPly = null;
                     state.inProgress.delete(job.ply);
@@ -224,6 +312,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
 
                 if (event.type === "error") {
                     callbacksRef.current.onError?.(job.ply, new Error(event.message));
+                    if (worker.run === run) worker.run = null;
                     worker.handle = null;
                     worker.currentPly = null;
                     state.inProgress.delete(job.ply);
@@ -245,6 +334,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             });
         } catch (error) {
             callbacksRef.current.onError?.(job.ply, error as Error);
+            worker.run = null;
             worker.handle = null;
             worker.currentPly = null;
             state.inProgress.delete(job.ply);
@@ -297,6 +387,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                     handle: null,
                     currentPly: null,
                     subscription: null,
+                    run: null,
                 });
             } catch (error) {
                 await client?.dispose().catch(() => undefined);
@@ -336,8 +427,10 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
     const start = (jobs: AnalysisJob[], startOptions?: StartOptions) => {
         const state = stateRef.current;
 
-        // 状態をリセット
-        state.jobQueue = [...jobs];
+        // 状態をリセット（レイヤーは start の時点のものをジョブごとに持たせる）
+        const layer = startOptions?.layer ?? null;
+        state.jobQueue = jobs.map((job) => ({ ...job, layer }));
+        state.multiPv = Math.max(1, Math.trunc(startOptions?.multiPv ?? 1));
         state.completed = 0;
         state.total = jobs.length;
         state.inProgress.clear();
@@ -389,6 +482,18 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
 
             await initializeWorkers();
 
+            // 候補手数（MultiPV）を毎回設定する（前回の一括解析の設定を残さない）
+            const multiPv = state.multiPv;
+            await Promise.all(
+                state.workers.map(async (worker) => {
+                    try {
+                        await worker.client.setOption("MultiPV", String(multiPv));
+                    } catch {
+                        // MultiPV 非対応のエンジンは既定（1）のまま解析する
+                    }
+                }),
+            );
+
             // 各ワーカーにジョブを割り当て
             for (const worker of state.workers) {
                 if (!state.cancelled) {
@@ -406,6 +511,9 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
 
         // 全ワーカーを停止
         const stopPromises = state.workers.map(async (worker) => {
+            // 途中で止めた探索も、そこまでの結果を「中断」として通知する（アンマウント後は捨てる）
+            if (mountedRef.current) finishRun(worker, "aborted");
+            else worker.run = null;
             if (worker.handle) {
                 try {
                     await worker.handle.cancel();

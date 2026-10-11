@@ -30,6 +30,7 @@
         "@shogi/engine-wasm": "workspace:*",
         "@shogi/match-client": "workspace:*",
         "@shogi/match-protocol": "workspace:*",
+        "@shogi/study-client": "workspace:*",
         "@shogi/ui": "workspace:*",
         "@tanstack/react-router": "^1.162.6",
         "react": "^19.2.3",

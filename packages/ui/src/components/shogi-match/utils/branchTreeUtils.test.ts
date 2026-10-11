@@ -1,5 +1,18 @@
+import {
+    addMove,
+    applyMoveWithState,
+    createInitialPositionState,
+    createKifuTree,
+    goToNode,
+    type KifuTree,
+    setNodeEval,
+} from "@shogi/app-core";
 import { describe, expect, it } from "vitest";
-import { normalizeEvalToSentePerspective } from "./branchTreeUtils";
+import {
+    collectBranchAnalysisJobs,
+    collectTreeAnalysisJobs,
+    normalizeEvalToSentePerspective,
+} from "./branchTreeUtils";
 import { MATE_WITHOUT_PLY } from "./kifFormat";
 
 describe("normalizeEvalToSentePerspective", () => {
@@ -55,5 +68,83 @@ describe("normalizeEvalToSentePerspective: 後手番から始まる棋譜", () =
     it("手番を渡さなければ従来どおり手数の偶奇で決める", () => {
         expect(normalizeEvalToSentePerspective({ scoreCp: 120 }, 1).evalCp).toBe(-120);
         expect(normalizeEvalToSentePerspective({ scoreCp: 120 }, 2).evalCp).toBe(120);
+    });
+});
+
+describe("collectTreeAnalysisJobs", () => {
+    const play = (tree: KifuTree, moves: string[]): KifuTree => {
+        let next = tree;
+        for (const move of moves) {
+            const current = next.nodes.get(next.currentNodeId);
+            if (!current) throw new Error("current node missing");
+            next = addMove(next, move, applyMoveWithState(current.positionAfter, move).next);
+        }
+        return next;
+    };
+
+    /** 本譜 7g7f 3c3d と、初手のあとの分岐 8c8d を持つツリー。 */
+    const createTree = () => {
+        let tree = play(createKifuTree(createInitialPositionState(), "startpos"), ["7g7f", "3c3d"]);
+        const first = tree.nodes.get(tree.rootId)?.children[0] as string;
+        const second = tree.nodes.get(first)?.children[0] as string;
+        tree = play(goToNode(tree, first), ["8c8d"]);
+        const branch = tree.nodes.get(first)?.children[1] as string;
+        return { tree, first, second, branch };
+    };
+
+    it("既定ではルートを含めず、評価値の無いノードを対象にする（既存の画面の動作）", () => {
+        const { tree, first, second, branch } = createTree();
+        const withEval = setNodeEval(tree, first, { scoreCp: 30 });
+        expect(collectTreeAnalysisJobs(withEval).map((job) => job.nodeId)).toEqual([
+            second,
+            branch,
+        ]);
+        expect(collectTreeAnalysisJobs(withEval, { mainLineOnly: true })).toEqual([
+            {
+                nodeId: second,
+                ply: 2,
+                moves: ["7g7f", "3c3d"],
+                isMainLine: true,
+                // 2 手指した後の局面は先手番。
+                sideToMove: "sente",
+            },
+        ]);
+    });
+
+    it("開始局面（ルート）も解析対象にできる", () => {
+        const { tree, first, second, branch } = createTree();
+        const jobs = collectTreeAnalysisJobs(tree, { includeRoot: true });
+        expect(jobs.map((job) => job.nodeId)).toEqual([tree.rootId, first, second, branch]);
+        expect(jobs[0]).toEqual({
+            nodeId: tree.rootId,
+            ply: 0,
+            moves: [],
+            isMainLine: true,
+            sideToMove: "sente",
+        });
+        expect(jobs[1]).toMatchObject({ ply: 1, moves: ["7g7f"], sideToMove: "gote" });
+        expect(jobs[3]).toMatchObject({ isMainLine: false, moves: ["7g7f", "8c8d"] });
+    });
+
+    it("「未解析」の判定を、指定したレイヤーの結果の有無で行える", () => {
+        const { tree, first, second, branch } = createTree();
+        // ノードに評価値（対局時の評価値など）があっても、レイヤーに結果が無ければ未解析。
+        const withEval = setNodeEval(setNodeEval(tree, first, { scoreCp: 30 }), second, {
+            scoreCp: 10,
+        });
+        const analyzedInLayer = new Set([tree.rootId, second]);
+        const jobs = collectTreeAnalysisJobs(withEval, {
+            includeRoot: true,
+            isAnalyzed: (node) => analyzedInLayer.has(node.id),
+        });
+        expect(jobs.map((job) => job.nodeId)).toEqual([first, branch]);
+        expect(
+            collectBranchAnalysisJobs(withEval, first, {
+                isAnalyzed: (node) => analyzedInLayer.has(node.id),
+            }).map((job) => [job.nodeId, job.sideToMove]),
+        ).toEqual([
+            [first, "gote"],
+            [branch, "sente"],
+        ]);
     });
 });

@@ -29,7 +29,7 @@ interface ServerStudy {
     deleted: boolean;
 }
 
-export interface FakeServerCall {
+interface FakeServerCall {
     method: "list" | "create" | "get" | "postOps" | "delete" | "limits";
     studyId: string | null;
     userId: string | null;

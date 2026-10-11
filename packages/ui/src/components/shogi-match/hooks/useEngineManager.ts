@@ -17,6 +17,7 @@ import type {
     NnueSelection,
     Player,
     ResolvedNnue,
+    StudyAnalysisCompletion,
 } from "@shogi/app-core";
 import type { EngineClient, EngineInfoEvent } from "@shogi/engine-client";
 import { useEffect, useRef, useState } from "react";
@@ -50,6 +51,8 @@ interface UseEngineManagerProps {
     onEvalUpdate?: (ply: number, event: EngineInfoEvent) => void;
     onSearchComplete?: (ply: number, stats: MoveSearchStats) => void;
     onLiveInfo?: (side: Player, event: EngineInfoEvent) => void;
+    /** 解析の 1 局面の探索が終わったときのコールバック（`sideToMove` つきの解析だけ） */
+    onAnalysisComplete?: (completion: StudyAnalysisCompletion) => void;
     /** ログの最大件数 */
     maxLogs?: number;
     /** 対局用 NNUE 選択（先手） */
@@ -149,6 +152,7 @@ export function useEngineManager({
     onEvalUpdate,
     onSearchComplete,
     onLiveInfo,
+    onAnalysisComplete,
     maxLogs = 80,
     senteNnueSelection,
     goteNnueSelection,
@@ -169,6 +173,7 @@ export function useEngineManager({
         onEvalUpdate,
         onSearchComplete,
         onLiveInfo,
+        onAnalysisComplete,
     });
     useEffect(() => {
         callbacksRef.current = {
@@ -177,8 +182,16 @@ export function useEngineManager({
             onEvalUpdate,
             onSearchComplete,
             onLiveInfo,
+            onAnalysisComplete,
         };
-    }, [onMoveFromEngine, onMatchEnd, onEvalUpdate, onSearchComplete, onLiveInfo]);
+    }, [
+        onMoveFromEngine,
+        onMatchEnd,
+        onEvalUpdate,
+        onSearchComplete,
+        onLiveInfo,
+        onAnalysisComplete,
+    ]);
 
     const resolveNnueRef = useRef(resolveNnue);
     useEffect(() => {
@@ -209,6 +222,8 @@ export function useEngineManager({
                 onSearchComplete: (ply, stats) =>
                     callbacksRef.current.onSearchComplete?.(ply, stats),
                 onLiveInfo: (side, event) => callbacksRef.current.onLiveInfo?.(side, event),
+                onAnalysisComplete: (completion) =>
+                    callbacksRef.current.onAnalysisComplete?.(completion),
             },
         });
     }

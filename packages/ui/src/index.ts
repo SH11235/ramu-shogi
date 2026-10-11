@@ -8,10 +8,15 @@
 // Hooks
 // ============================================================
 
+// 一括解析（研究ノートの画面でも使う）
+export type { AnalysisJob, EnginePoolHandle } from "./components/shogi-match/hooks/useEnginePool";
+export { useEnginePool } from "./components/shogi-match/hooks/useEnginePool";
 export {
     dispatchLocalStorageSyncEvent,
     LOCAL_STORAGE_SYNC_EVENT,
 } from "./components/shogi-match/hooks/useLocalStorage";
+export type { TreeAnalysisJob } from "./components/shogi-match/utils/branchTreeUtils";
+export { collectTreeAnalysisJobs } from "./components/shogi-match/utils/branchTreeUtils";
 export { useDevMode } from "./hooks/useDevMode";
 export { useNnueStorage } from "./hooks/useNnueStorage";
 export type { UseRoomConnectionOptions, UseRoomConnectionReturn } from "./hooks/useRoomConnection";

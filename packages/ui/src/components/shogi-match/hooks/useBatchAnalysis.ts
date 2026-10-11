@@ -279,6 +279,7 @@ export function useBatchAnalysis({
             nnueId: resolved?.nnueId ?? null,
             layerStacks: resolved?.layerStacks,
             fvScale: resolved?.fvScale,
+            multiPv: analysisSettings.multiPv,
         });
     };
 
@@ -321,6 +322,7 @@ export function useBatchAnalysis({
             timeMs: analysisSettings.batchAnalysisTimeMs,
             depth: analysisSettings.batchAnalysisDepth,
             nodeId: job.nodeId, // 分岐解析用にnodeIdを保持
+            sideToMove: job.sideToMove,
         }));
 
         // 並列一括解析を開始（resolvedを直接渡す）
@@ -328,6 +330,7 @@ export function useBatchAnalysis({
             nnueId: resolved?.nnueId ?? null,
             layerStacks: resolved?.layerStacks,
             fvScale: resolved?.fvScale,
+            multiPv: analysisSettings.multiPv,
         });
     };
 
@@ -367,6 +370,7 @@ export function useBatchAnalysis({
             timeMs: analysisSettings.batchAnalysisTimeMs,
             depth: analysisSettings.batchAnalysisDepth,
             nodeId: job.nodeId,
+            sideToMove: job.sideToMove,
         }));
 
         // 並列一括解析を開始（resolvedを直接渡す）
@@ -374,6 +378,7 @@ export function useBatchAnalysis({
             nnueId: resolved?.nnueId ?? null,
             layerStacks: resolved?.layerStacks,
             fvScale: resolved?.fvScale,
+            multiPv: analysisSettings.multiPv,
         });
     };
 

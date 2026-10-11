@@ -204,12 +204,14 @@ export {
 export type {
     StudyAnalysisCollector,
     StudyAnalysisCollectorOptions,
+    StudyAnalysisCompletion,
     StudyAnalysisInfo,
     StudyLayerRef,
     StudyLayerSpecInput,
 } from "./study/analysis";
 export {
     buildStudyLayerDisplay,
+    buildStudyLayerRefFromNnue,
     buildStudyLayerSpec,
     createStudyAnalysisCollector,
     createStudyLayerRef,

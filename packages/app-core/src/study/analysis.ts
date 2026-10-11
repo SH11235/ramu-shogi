@@ -6,6 +6,7 @@
  */
 
 import type { Player } from "../game/board";
+import type { NnueMeta, ResolvedNnue } from "../nnue/types";
 import { studyLayerId } from "./ids";
 import { sanitizeStudyPv } from "./ops";
 import { kifuEvalToStudyScore } from "./score";
@@ -230,4 +231,69 @@ export function createStudyLayerRef(
     display: StudyLayerDisplay,
 ): StudyLayerRef {
     return { layerId: studyLayerId(spec), spec, display };
+}
+
+/**
+ * 解決済みの NNUE とそのメタ情報から、解析レイヤーの情報を作る。
+ *
+ * 解析を始める時点で 1 回だけ呼び、返った値をその探索の結果に最後まで付けて運ぶ
+ * （途中で設定を変えても混ざらないように）。
+ *
+ * @param input.resolved `resolveNnue` の結果。NNUE を使わない（駒得評価）なら null
+ * @param input.meta `resolved.nnueId` のメタ情報（`NnueStorage.getMeta`）。NNUE を使うなら必須
+ */
+export function buildStudyLayerRefFromNnue(input: {
+    engine: StudyLayerSpecInput["engine"];
+    appVersion: string;
+    resolved: ResolvedNnue | null;
+    meta: Pick<
+        NnueMeta,
+        "contentHashSha256" | "progressCoefficientsSha256" | "displayName" | "presetKey"
+    > | null;
+    /** NNUE を使わないときの AI の表示名（外部エンジンの名前など）。 */
+    fallbackName?: string;
+    limits: StudyLayerSpecInput["limits"];
+    multiPv: number;
+}): StudyLayerRef {
+    if (input.resolved && !input.meta) {
+        throw new Error("解析レイヤーを作れません: NNUE のメタ情報（SHA-256）がありません");
+    }
+    const spec = buildStudyLayerSpec({
+        engine: input.engine,
+        appVersion: input.appVersion,
+        nnue:
+            input.resolved && input.meta
+                ? {
+                      sha256: input.meta.contentHashSha256,
+                      fvScale: input.resolved.fvScale,
+                      progressSha256: input.meta.progressCoefficientsSha256 ?? null,
+                      layerStacks: input.resolved.layerStacks
+                          ? {
+                                bucketMode: input.resolved.layerStacks.bucketMode,
+                                progressBuckets: input.resolved.layerStacks.progressBuckets ?? null,
+                            }
+                          : null,
+                  }
+                : null,
+        limits: input.limits,
+        multiPv: input.multiPv,
+    });
+    const display = buildStudyLayerDisplay({
+        name: input.meta?.displayName ?? input.fallbackName ?? input.engine.name,
+        limits: spec.limits,
+        presetKey: input.meta?.presetKey ?? null,
+    });
+    return createStudyLayerRef(spec, display);
+}
+
+/** 1 局面の探索が終わったときの通知。探索の途中経過ごとには出ない。 */
+export interface StudyAnalysisCompletion {
+    /** 解析したノードの実行時 ID。手数だけで指定した解析では null。 */
+    runtimeNodeId: string | null;
+    /** 解析した局面の手数（ルート = 0）。 */
+    ply: number;
+    /** 解析を始めた時点のレイヤー。指定されていなければ null。 */
+    layer: StudyLayerRef | null;
+    /** この探索の結果（評価値は先手視点）。 */
+    result: StudyAnalysisResult;
 }

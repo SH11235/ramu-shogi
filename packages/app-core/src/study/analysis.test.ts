@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     buildStudyLayerDisplay,
+    buildStudyLayerRefFromNnue,
     buildStudyLayerSpec,
     createStudyAnalysisCollector,
     createStudyLayerRef,
@@ -202,5 +203,81 @@ describe("buildStudyLayerDisplay", () => {
             spec,
             display,
         });
+    });
+});
+
+describe("buildStudyLayerRefFromNnue", () => {
+    const engine = { kind: "wasm", name: "rshogi", version: "0.8.1+05d89777" } as const;
+
+    it("解決済みの NNUE とメタ情報から、spec・表示名・layerId を作る", () => {
+        const layer = buildStudyLayerRefFromNnue({
+            engine,
+            appVersion: "1.2.3",
+            resolved: {
+                nnueId: "local-uuid",
+                fvScale: 24,
+                layerStacks: {
+                    bucketMode: "progresskpabs",
+                    progressBuckets: 8,
+                    progressCoeffBase64: "AAAA",
+                },
+            },
+            meta: {
+                contentHashSha256: "ab".repeat(32),
+                progressCoefficientsSha256: "cd".repeat(32),
+                displayName: "RAMU",
+                presetKey: "ramu",
+            },
+            limits: { timeMs: 1000, depth: 15 },
+            multiPv: 3,
+        });
+        expect(layer.spec).toEqual({
+            version: 1,
+            engine,
+            evaluation: {
+                nnueSha256: "ab".repeat(32),
+                fvScale: 24,
+                progressSha256: "cd".repeat(32),
+                // 係数の本体は入れない（SHA-256 で識別する）。端末ごとの nnueId も入れない。
+                layerStacks: { bucketMode: "progresskpabs", progressBuckets: 8 },
+            },
+            limits: { timeMs: 1000, depth: 15, nodes: null },
+            multiPv: 3,
+            rules: { variant: "standard" },
+        });
+        expect(layer.display).toEqual({ label: "RAMU・1 秒", nnueName: "RAMU", presetKey: "ramu" });
+        expect(layer.layerId).toBe(studyLayerId(layer.spec));
+    });
+
+    it("NNUE を使わない場合は評価条件がすべて null になる", () => {
+        const layer = buildStudyLayerRefFromNnue({
+            engine: { kind: "external", name: "YaneuraOu", version: "YaneuraOu NNUE 9.00" },
+            appVersion: "1.2.3",
+            resolved: null,
+            meta: null,
+            fallbackName: "YaneuraOu",
+            limits: { nodes: 1_000_000 },
+            multiPv: 1,
+        });
+        expect(layer.spec.evaluation).toEqual({
+            nnueSha256: null,
+            fvScale: null,
+            progressSha256: null,
+            layerStacks: null,
+        });
+        expect(layer.display.label).toBe("YaneuraOu・1000000 ノード");
+    });
+
+    it("NNUE を使うのにメタ情報が無ければ例外にする（別の AI の結果と合流させない）", () => {
+        expect(() =>
+            buildStudyLayerRefFromNnue({
+                engine,
+                appVersion: "1.2.3",
+                resolved: { nnueId: "local-uuid", fvScale: 24 },
+                meta: null,
+                limits: { timeMs: 1000 },
+                multiPv: 1,
+            }),
+        ).toThrow();
     });
 });
