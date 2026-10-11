@@ -16,7 +16,6 @@ import type {
 import type { KifMoveData } from "../utils/kifParser";
 import { parseKif, parseSfen } from "../utils/kifParser";
 import { buildThreadOptions } from "../utils/threadOptions";
-import { AiPresetGuide } from "./AiPresetGuide";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 
 type SideKey = "sente" | "gote";
@@ -452,7 +451,6 @@ export function MobileSettingsSheet({
                 <div className="text-sm font-semibold text-wafuu-ai text-center">☖後手</div>
             </div>
             {/* 先手/後手設定（PC版と同じ2列レイアウト） */}
-            <AiPresetGuide presets={presets} />
             <div className="grid grid-cols-2 gap-3 [&>div]:min-w-0">
                 {/* 先手側 */}
                 <div className="flex flex-col gap-2 border-r border-border pr-3">
@@ -684,7 +682,7 @@ export function MobileSettingsSheet({
                 </div>
             </div>
 
-            {onAnalysisEngineIdChange && engineOptions && engineOptions.length > 0 && (
+            {onAnalysisEngineIdChange && engineOptions && engineOptions.length > 1 && (
                 <div className="space-y-2 pt-3 border-t border-border">
                     <div className="font-medium text-sm">解析エンジン</div>
                     <label className={labelClassName}>
@@ -712,7 +710,7 @@ export function MobileSettingsSheet({
                         onClick={onOpenEngineManager}
                         className="w-full rounded-lg border border-border bg-background px-3 py-2 text-left text-sm text-wafuu-sumi"
                     >
-                        外部エンジン管理...
+                        外部エンジンを管理
                     </button>
                 </div>
             )}
