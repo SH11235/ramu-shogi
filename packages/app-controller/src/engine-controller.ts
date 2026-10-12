@@ -33,6 +33,12 @@ export type EngineOption = {
     label: string;
     createClient: () => EngineClient;
     kind?: "internal" | "external";
+    /**
+     * 同時に動かせるクライアントの数の上限（省略時は制限なし）。
+     * Desktop の内蔵エンジンは、アプリに 1 つしか無いネイティブのエンジンを全クライアントが
+     * 共有するので 1。複数の局面を並列に解析すると、互いの局面を上書きしてしまう。
+     */
+    maxParallel?: number;
 };
 
 type SideRole = "human" | "engine";

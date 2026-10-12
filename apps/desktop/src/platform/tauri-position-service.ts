@@ -36,7 +36,7 @@ export const createTauriPositionService = (): PositionService => {
             return invoke<string[]>("engine_legal_moves", {
                 sfen,
                 moves,
-                pass_rights: options?.passRights,
+                passRights: options?.passRights,
             });
         },
 
@@ -48,7 +48,7 @@ export const createTauriPositionService = (): PositionService => {
             const result = await invoke<ReplayResultJson>("engine_replay_moves_strict", {
                 sfen,
                 moves,
-                pass_rights: options?.passRights,
+                passRights: options?.passRights,
             });
             return {
                 applied: result.applied,

@@ -290,6 +290,31 @@ describe("useEnginePool", () => {
         unmount();
     });
 
+    it("評価関数を使わないとき、頼まれていれば駒得の評価（簡易 AI）を明示的に有効にする", async () => {
+        const run = async (materialFallback: boolean | undefined) => {
+            const factory = engineFactory();
+            const onComplete = vi.fn();
+            const { result, unmount } = renderHook(() =>
+                useEnginePool({
+                    createClient: factory.createClient,
+                    workerCount: 1,
+                    onComplete,
+                    materialFallback,
+                }),
+            );
+            act(() => result.current.start([jobs[0]]));
+            await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+            unmount();
+            return vi
+                .mocked(factory.clients[0].setOption)
+                .mock.calls.filter(([name]) => name === "MaterialLevel");
+        };
+        // 内蔵エンジン（呼び出し側が頼む）: 探索の前に有効にする。
+        expect(await run(true)).toEqual([["MaterialLevel", 9]]);
+        // 既定（外部エンジンなど）: 知らないオプションを送らない。
+        expect(await run(undefined)).toEqual([]);
+    });
+
     it("パスを解釈できないエンジン（外部 USI）には、パスを含む手順を渡さずに失敗として数える", async () => {
         const factory = engineFactory(true);
         const onComplete = vi.fn();

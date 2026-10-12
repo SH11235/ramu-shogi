@@ -214,7 +214,8 @@ export function createTauriEngineClient(options: TauriEngineClientOptions = {}):
                     ipc.invoke("engine_position", {
                         sfen,
                         moves,
-                        pass_rights: options?.passRights,
+                        // Tauri は、JS 側の camelCase の名前を Rust 側の `pass_rights` に対応づける。
+                        passRights: options?.passRights,
                     }),
                 () => mock.loadPosition(sfen, moves, options),
             );
@@ -347,7 +348,7 @@ export async function getLegalMoves(params: LegalMovesParams): Promise<string[]>
         const result = await ipc.invoke<string[]>("engine_legal_moves", {
             sfen: params.sfen,
             moves: params.moves,
-            pass_rights: params.passRights,
+            passRights: params.passRights,
         });
         return result;
     } catch (error) {

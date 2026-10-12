@@ -1268,7 +1268,12 @@ export function ShogiMatch({
         clientKey: analysisEngineOption?.id,
         // 外部の USI エンジンは、変則ルールのパスを解釈できない。
         supportsPassRights: analysisEngineOption?.kind !== "external",
-        workerCount: resolveWorkerCount(analysisSettings.parallelWorkers),
+        materialFallback: analysisEngineOption?.kind !== "external",
+        // エンジンが同時に動かせる数に収める（Desktop の内蔵エンジンは 1 つだけ）。
+        workerCount: Math.min(
+            resolveWorkerCount(analysisSettings.parallelWorkers),
+            analysisEngineOption?.maxParallel ?? Number.POSITIVE_INFINITY,
+        ),
         onProgress: (progress) => {
             setBatchAnalysis({
                 isRunning: true,

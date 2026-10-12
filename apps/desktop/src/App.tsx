@@ -43,6 +43,8 @@ const INTERNAL_ENGINE_OPTION: EngineOption = {
     label: "内蔵エンジン",
     createClient: createEngineClient,
     kind: "internal",
+    // ネイティブのエンジンはアプリに 1 つだけなので、局面の並列解析はできない。
+    maxParallel: 1,
 };
 
 const panelEngine = createEngineClient();

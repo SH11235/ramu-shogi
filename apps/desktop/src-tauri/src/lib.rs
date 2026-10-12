@@ -352,6 +352,10 @@ fn spawn_search(
     }
 
     let stop_flag = search.stop_flag();
+    // 前の探索を止めるために立てた停止フラグが残っていると、新しい探索が始まってすぐ打ち切られる。
+    // 探索が bestmove を返した直後（スレッドが終わりきる前）に次の探索を頼まれると、前の探索は
+    // 「実行中」として止められ、フラグが立ったままになる（連続して解析するときに起きる）。
+    stop_flag.store(false, Ordering::SeqCst);
 
     let handle = thread::Builder::new()
         .name("engine-search".into())
@@ -585,6 +589,17 @@ fn apply_engine_option(
                     return Err(format!("FV_SCALE must be between 1 and 100, got {v}"));
                 }
                 set_fv_scale_override(v);
+            }
+        }
+        "MaterialLevel" => {
+            // 評価関数（NNUE）を読み込まずに探索するときの、駒得の評価（簡易 AI）。
+            // NNUE を読み込むと無効になる（`engine_load_nnue` が `disable_material` を呼ぶ）。
+            if let Some(v) = value_as_i32(value) {
+                let level = u8::try_from(v)
+                    .ok()
+                    .and_then(rshogi_core::eval::MaterialLevel::from_value)
+                    .ok_or_else(|| format!("Invalid MaterialLevel value {v}"))?;
+                rshogi_core::eval::set_material_level(level);
             }
         }
         _ => {
