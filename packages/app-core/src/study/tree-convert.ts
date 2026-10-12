@@ -6,10 +6,11 @@
  * - どちらも `children[0]` が本譜。
  */
 
-import { applyMoveWithState, cloneBoard, type PositionState } from "../game/board";
+import { cloneBoard, type PositionState } from "../game/board";
 import type { KifuEval, KifuNode, KifuTree } from "../game/kifu-tree";
 import { normalizeStudyStartSfen, studyChildNodeId, studyRootNodeId } from "./ids";
 import { isStudyUsiMove, sanitizeStudyPv } from "./ops";
+import { applyStudyMoveWithState } from "./pass";
 import { kifuEvalToStudyScore, studyScoreToKifuEval } from "./score";
 import { parseStudySfen } from "./sfen";
 import {
@@ -116,7 +117,7 @@ export interface KifuTreeToStudyResult {
 /**
  * 実行時ツリーを保存用のツリーにする。
  *
- * 研究ノートにできない指し手（パスなど）を含む場合は例外にする。
+ * 研究ノートにできない指し手（USI の書式でもパスでもない手）を含む場合は例外にする。
  */
 export function kifuTreeToStudyTree(
     tree: KifuTree,
@@ -270,7 +271,7 @@ export function studyDocumentToKifuTree(
         for (const childId of storedParent.children) {
             const stored = doc.tree.nodes[childId];
             if (!stored || stored.usiMove === null || nodes.has(childId)) continue;
-            const applied = applyMoveWithState(parent.positionAfter, stored.usiMove);
+            const applied = applyStudyMoveWithState(parent.positionAfter, stored.usiMove);
             if (!applied.ok) {
                 errors.push({
                     nodeId: childId,
@@ -362,7 +363,7 @@ export function diffKifuTreeToStudyOps(
         const parentRuntimeId = index.byNodeId.get(node.parentId);
         if (parentRuntimeId === undefined) continue;
         const parent = tree.nodes.get(parentRuntimeId);
-        if (parent && !applyMoveWithState(parent.positionAfter, node.usiMove).ok) {
+        if (parent && !applyStudyMoveWithState(parent.positionAfter, node.usiMove).ok) {
             unrestorable.add(nodeId);
             continue;
         }

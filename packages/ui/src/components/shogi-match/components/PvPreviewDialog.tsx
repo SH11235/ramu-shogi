@@ -5,7 +5,7 @@
  */
 
 import type { BoardState, PositionState, Square } from "@shogi/app-core";
-import { applyMoveWithState, boardToMatrix } from "@shogi/app-core";
+import { applyMoveAllowingStudyPass, boardToMatrix } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../dialog";
@@ -80,7 +80,9 @@ export function PvPreviewDialog({
         let currentPosition = startPosition;
 
         for (const move of pv) {
-            const moveResult = applyMoveWithState(currentPosition, move, { validateTurn: false });
+            const moveResult = applyMoveAllowingStudyPass(currentPosition, move, {
+                validateTurn: false,
+            });
             if (!moveResult.ok) {
                 // 無効な手以降は無視（エンジンPVの既知の動作）
                 break;
@@ -105,7 +107,8 @@ export function PvPreviewDialog({
     const lastMove = (() => {
         if (previewIndex === 0) return undefined;
         const move = validPv[previewIndex - 1];
-        if (!move) return undefined;
+        // パスには移動元も移動先も無い（`pass` は 4 文字なので、移動として読まないよう先に見る）。
+        if (!move || move.toLowerCase() === "pass") return undefined;
 
         // 打ち駒の場合
         if (move.includes("*")) {

@@ -198,13 +198,39 @@ describe("parseKifuTextForStudy", () => {
         }
     });
 
-    it("空の入力・棋譜でない入力・パスを含む棋譜は、理由つきで断る", () => {
+    it("空の入力・棋譜でない入力は、理由つきで断る", () => {
         expect(() => parseKifuTextForStudy("   ")).toThrow("入力が空です");
         expect(() => parseKifuTextForStudy("こんにちは")).toThrow(
             "棋譜の形式を判別できませんでした（CSA / KIF / SFEN に対応）",
         );
-        expect(() => parseKifuTextForStudy("startpos moves 7g7f pass")).toThrow(
-            "研究ノートにできない手",
-        );
+    });
+
+    it("パス（変則ルールの手）を含む棋譜も、パスを手として取り込む", () => {
+        // SFEN（USI の手順）。
+        expect(parseKifuTextForStudy("startpos moves 7g7f pass 2g2f")).toMatchObject({
+            kind: "moves",
+            moves: ["7g7f", "pass", "2g2f"],
+        });
+        // 手順だけ（`moves` の語なし）でも、大文字で書かれていても読む。
+        expect(parseKifuTextForStudy("7g7f pass 3c3d")).toMatchObject({
+            kind: "moves",
+            moves: ["7g7f", "pass", "3c3d"],
+        });
+        expect(parseKifuTextForStudy("startpos moves 7g7f PASS 2g2f")).toMatchObject({
+            kind: "moves",
+            moves: ["7g7f", "pass", "2g2f"],
+        });
+        // KIF（このアプリの書き出しは「パス」と書く）。
+        const kif = [
+            "手合割：平手",
+            "手数----指手---------消費時間--",
+            "   1 ７六歩(77)   ( 0:01/00:00:01)",
+            "   2 パス     ( 0:02/00:00:02)",
+            "   3 ２六歩(27)   ( 0:01/00:00:02)",
+        ].join("\n");
+        expect(parseKifuTextForStudy(kif)).toMatchObject({
+            kind: "moves",
+            moves: ["7g7f", "pass", "2g2f"],
+        });
     });
 });

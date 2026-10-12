@@ -190,16 +190,30 @@ describe("自分の対局からの入口", () => {
         expect(stored?.doc.meta).toMatchObject({ result: "WIN_BLACK" });
     });
 
-    it("変則ルール（パス権）の対局・パスを含む棋譜・指し手の無い棋譜では入口を出さない", () => {
+    it("パスを含む対局（変則ルールのパス権）も研究ノートにできる。指し手の無い棋譜・読めない手のある棋譜では入口を出さない", () => {
         expect(canOpenGameRecordAsStudy(game)).toBe(true);
-        expect(
-            canOpenGameRecordAsStudy({
-                ...game,
-                metadata: { roomSettings: { passRights: { initialCount: 2 } } },
-            }),
-        ).toBe(false);
-        expect(canOpenGameRecordAsStudy({ ...game, moves: ["7g7f", "pass"] })).toBe(false);
+        expect(canOpenGameRecordAsStudy({ ...game, moves: ["7g7f", "pass"] })).toBe(true);
         expect(canOpenGameRecordAsStudy({ ...game, moves: [] })).toBe(false);
+        expect(canOpenGameRecordAsStudy({ ...game, moves: ["7g7f", "resign"] })).toBe(false);
+        // 片方が 15 回パスした対局は、解析できないので入口を出さない（14 回までは出す）。
+        const sentePasses = (count: number): string[] =>
+            Array.from({ length: count }, (_, index) => [
+                "pass",
+                index % 2 === 0 ? "5a5b" : "5b5a",
+            ]).flat();
+        expect(canOpenGameRecordAsStudy({ ...game, moves: sentePasses(14) })).toBe(true);
+        expect(canOpenGameRecordAsStudy({ ...game, moves: sentePasses(15) })).toBe(false);
+    });
+
+    it("パスを含む対局から作ると、パスも手として取り込む", async () => {
+        const api = createApi();
+        const sync = createSync(api);
+        const { studyId } = await openStudyFromGameRecord(
+            { ...game, id: "game-pass", moves: ["7g7f", "pass", "2g2f", "3c3d", "pass"] },
+            { sync, api },
+        );
+        const nodes = Object.values((await sync.load(studyId))?.doc.tree.nodes ?? {});
+        expect(nodes.filter((node) => node.usiMove === "pass")).toHaveLength(2);
     });
 });
 
@@ -276,6 +290,26 @@ describe("貼り付けた棋譜の検証", () => {
             ),
         ).rejects.toThrow("この局面は研究ノートにできません（読み込めない局面です）");
         expect(await sync.listLocal()).toEqual([]);
+    });
+
+    it("パスを含む手順は、各側が使った回数 + 1 のパス権を有効にして確かめる", async () => {
+        const api = createApi();
+        const sync = createSync(api);
+        const replay = vi.fn(replayStoppingAt("none"));
+        // 先手が 2 回、後手が 1 回パスする手順。
+        const moves = ["pass", "3c3d", "pass", "pass", "7g7f"];
+        const { studyId } = await createStudyFromKifuSource(
+            { kind: "moves", startSfen: HIRATE, moves },
+            { sync, api, replayMovesStrict: replay },
+        );
+        expect(replay).toHaveBeenCalledWith(HIRATE, moves, { passRights: { sente: 3, gote: 2 } });
+        expect(Object.keys((await sync.load(studyId))?.doc.tree.nodes ?? {})).toHaveLength(6);
+        // パスの無い手順には、何も渡さない。
+        await createStudyFromKifuSource(
+            { kind: "moves", startSfen: HIRATE, moves: ["7g7f"] },
+            { sync, api, replayMovesStrict: replay },
+        );
+        expect(replay).toHaveBeenLastCalledWith(HIRATE, ["7g7f"], undefined);
     });
 
     it("長すぎる棋譜は、上限を説明して作らない", async () => {

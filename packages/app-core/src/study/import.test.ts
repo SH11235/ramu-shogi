@@ -6,6 +6,7 @@ import {
     generateStudyId,
 } from "./import";
 import { STANDARD_STUDY_RULES, STUDY_HIRATE_SFEN, STUDY_LIMITS } from "./types";
+import { validateStudyDocument } from "./validation";
 
 const CSA_HIRATE = [
     "V2.2",
@@ -124,6 +125,19 @@ describe("createStudyDocumentFromMoves", () => {
         expect(Array.from(doc.title)).toHaveLength(STUDY_LIMITS.titleLength);
     });
 
+    it("パスは、どの局面でも指せる手として取り込む（手番だけが替わる）", () => {
+        const doc = createStudyDocumentFromMoves({
+            id: "44444444-4444-4444-8444-444444444444",
+            title: "パス",
+            origin: { kind: "paste", ref: null },
+            startSfen: "startpos",
+            // 先手がパスし、後手が指し、後手番でもう一度パスが入る手順。
+            moves: ["pass", "3c3d", "7g7f", "pass", "2g2f"],
+        });
+        expect(Object.keys(doc.tree.nodes)).toHaveLength(6);
+        expect(() => validateStudyDocument(doc)).not.toThrow();
+    });
+
     it("書式が違う指し手・動かせない指し手は例外にする", () => {
         const base = {
             id: "study",
@@ -131,7 +145,7 @@ describe("createStudyDocumentFromMoves", () => {
             origin: { kind: "paste", ref: null },
             startSfen: "startpos",
         } as const;
-        expect(() => createStudyDocumentFromMoves({ ...base, moves: ["7g7f", "pass"] })).toThrow(
+        expect(() => createStudyDocumentFromMoves({ ...base, moves: ["7g7f", "resign"] })).toThrow(
             /2 手目/,
         );
         expect(() => createStudyDocumentFromMoves({ ...base, moves: ["5e5d"] })).toThrow(/1 手目/);

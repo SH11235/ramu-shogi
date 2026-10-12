@@ -1,6 +1,6 @@
 import type { BoardState, LastMove, PositionState } from "@shogi/app-core";
 import {
-    applyMoveWithState,
+    applyMoveAllowingStudyPass,
     cloneBoard,
     deriveLastMove,
     getPositionService,
@@ -149,7 +149,11 @@ export function useKifuImportExport({
         const filtered = list.filter(Boolean);
         const service = getPositionService();
         // パス入り棋譜の場合はpassRightsを渡す
-        const passRightsOption = buildPassRightsOptionForLegalMoves(passRightsSettings, filtered);
+        const passRightsOption = buildPassRightsOptionForLegalMoves(
+            passRightsSettings,
+            filtered,
+            startSfenToLoad,
+        );
         const result = await service.replayMovesStrict(startSfenToLoad, filtered, passRightsOption);
 
         // 棋譜ナビゲーションをリセット
@@ -161,7 +165,9 @@ export function useKifuImportExport({
         for (let i = 0; i < result.applied.length; i++) {
             const move = result.applied[i];
             const data = moveData?.[i];
-            const applyResult = applyMoveWithState(currentPos, move, {
+            // パス権の設定が無い局面でも、棋譜にあるパスは進める（進めないと、パスから先の手が
+            // 黙って落ちる。厳密な再生は、上の `replayMovesStrict` がパス権つきで済ませている）。
+            const applyResult = applyMoveAllowingStudyPass(currentPos, move, {
                 validateTurn: false,
             });
             if (applyResult.ok) {
@@ -245,7 +251,8 @@ export function useKifuImportExport({
                 const appliedMoves: string[] = [];
                 for (let i = 0; i < movesToLoad.length; i++) {
                     const move = movesToLoad[i];
-                    const applyResult = applyMoveWithState(currentPos, move, {
+                    // パス権の設定が無い局面でも、手順にあるパスは進める（`loadMoves` と同じ）。
+                    const applyResult = applyMoveAllowingStudyPass(currentPos, move, {
                         validateTurn: false,
                     });
                     if (applyResult.ok) {

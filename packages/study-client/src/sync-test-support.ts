@@ -83,7 +83,7 @@ const fail = <T>(status: number, error: StudyApiErrorBody = {}): StudyApiResult<
 
 const NETWORK_FAILURE = { ok: false, status: 0, error: { error: "NETWORK_ERROR" } } as const;
 
-const USI_MOVE = /^(?:[1-9][a-i][1-9][a-i]\+?|[PLNSBRG]\*[1-9][a-i])$/;
+const USI_MOVE = /^(?:[1-9][a-i][1-9][a-i]\+?|[PLNSBRG]\*[1-9][a-i]|pass)$/;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 type Rejection = { status: number; error: StudyApiErrorBody } | null;

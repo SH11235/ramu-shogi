@@ -269,6 +269,86 @@ describe("useEnginePool", () => {
         unmount();
     });
 
+    it("パスを含む手順は、各側が使った回数 + 1 のパス権を有効にして読み込む。含まなければ何も渡さない", async () => {
+        const factory = engineFactory();
+        const onComplete = vi.fn();
+        const { result, unmount } = renderHook(() =>
+            useEnginePool({ createClient: factory.createClient, workerCount: 1, onComplete }),
+        );
+        // 先手が 1 回、後手が 1 回パスしたあとの局面と、パスの無い局面。
+        const withPass = ["pass", "3c3d", "7g7f", "pass"];
+        act(() =>
+            result.current.start([
+                { ...jobs[0], ply: 4, moves: withPass },
+                { ...jobs[0], ply: 1, moves: ["7g7f"] },
+            ]),
+        );
+        await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+        const calls = vi.mocked(factory.clients[0].loadPosition).mock.calls;
+        expect(calls).toContainEqual(["startpos", withPass, { passRights: { sente: 2, gote: 2 } }]);
+        expect(calls).toContainEqual(["startpos", ["7g7f"], undefined]);
+        unmount();
+    });
+
+    it("パスを解釈できないエンジン（外部 USI）には、パスを含む手順を渡さずに失敗として数える", async () => {
+        const factory = engineFactory(true);
+        const onComplete = vi.fn();
+        const onError = vi.fn();
+        const { result, unmount } = renderHook(() =>
+            useEnginePool({
+                createClient: factory.createClient,
+                workerCount: 1,
+                supportsPassRights: false,
+                onComplete,
+                onError,
+            }),
+        );
+        act(() =>
+            result.current.start([
+                { ...jobs[0], ply: 2, moves: ["7g7f", "pass"] },
+                { ...jobs[0], ply: 1, moves: ["7g7f"] },
+            ]),
+        );
+        await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+        expect(onError).toHaveBeenCalledTimes(1);
+        expect(onError.mock.calls[0][0]).toBe(2);
+        expect(vi.mocked(factory.clients[0].loadPosition).mock.calls).toEqual([
+            ["startpos", ["7g7f"], undefined],
+        ]);
+        unmount();
+    });
+
+    it("エンジンが読み込めない回数のパスを含む手順は、エンジンに渡さずに失敗として数え、残りは続ける", async () => {
+        const factory = engineFactory();
+        const onComplete = vi.fn();
+        const onError = vi.fn();
+        const { result, unmount } = renderHook(() =>
+            useEnginePool({
+                createClient: factory.createClient,
+                workerCount: 1,
+                onComplete,
+                onError,
+            }),
+        );
+        // 先手が 15 回パスする手順（後手は玉を往復させる）。
+        const tooManyPasses = Array.from({ length: 15 }, (_, index) => [
+            "pass",
+            index % 2 === 0 ? "5a5b" : "5b5a",
+        ]).flat();
+        act(() =>
+            result.current.start([
+                { ...jobs[0], ply: 30, moves: tooManyPasses },
+                { ...jobs[0], ply: 1, moves: ["7g7f"] },
+            ]),
+        );
+        await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+        expect(onError).toHaveBeenCalledTimes(1);
+        expect(onError.mock.calls[0][0]).toBe(30);
+        const calls = vi.mocked(factory.clients[0].loadPosition).mock.calls;
+        expect(calls).toEqual([["startpos", ["7g7f"], undefined]]);
+        unmount();
+    });
+
     it("キャンセルで止めた探索は、そこまでの結果を aborted で通知する", async () => {
         const factory = infoEngineFactory({ finish: false });
         const onPositionAnalyzed = vi.fn();

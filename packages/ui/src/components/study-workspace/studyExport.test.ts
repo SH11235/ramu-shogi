@@ -67,6 +67,28 @@ describe("exportStudyLineToKif", () => {
         expect(source).toMatchObject({ kind: "moves", moves: [] });
     });
 
+    it("パスを含む手順も書き出せて、取り込み直すと同じ手順になる（KIF・SFEN とも）", () => {
+        const moves = ["7g7f", "pass", "2g2f", "3c3d", "pass"];
+        const doc = createStudyDocumentFromMoves({
+            id: "44444444-4444-4444-8444-444444444444",
+            title: "パス",
+            origin: { kind: "paste", ref: null },
+            startSfen: "startpos",
+            moves,
+            meta: {},
+        });
+        const { tree } = buildStudyViewTree(doc, null);
+        const line = resolveStudyLine(tree, tree.rootId);
+
+        const kif = exportStudyLineToKif(doc, tree, line);
+        expect(kif).toContain("パス");
+        expect(parseKifuTextForStudy(kif)).toMatchObject({ kind: "moves", moves });
+
+        expect(
+            parseKifuTextForStudy(exportStudyPositionToSfen(tree.startSfen, moves)),
+        ).toMatchObject({ kind: "moves", moves });
+    });
+
     it("変化を見ているときは、その変化の手順を書き出す", () => {
         const base = createTestStudy();
         const doc = applyStudyOps(base.doc, [

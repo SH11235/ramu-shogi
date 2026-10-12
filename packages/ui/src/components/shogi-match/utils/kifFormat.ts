@@ -5,7 +5,7 @@
  */
 
 import type { BoardState, Piece, PieceType, Player, PositionState, Square } from "@shogi/app-core";
-import { applyMoveWithState } from "@shogi/app-core";
+import { applyMoveAllowingStudyPass } from "@shogi/app-core";
 import { parseSfen } from "./kifParser";
 
 /** 手数不明の詰みを表す evalMate センチネル。符号は勝つ側を先手視点で表す。 */
@@ -720,6 +720,11 @@ function formatMoveForKifFile(
     const cumTime = formatCumulativeTime(cumulativeMs ?? 0);
     const timeStr = `(${moveTime.padStart(5, " ")}/${cumTime})`;
 
+    // パス（変則ルールの手）。`pass` は 4 文字なので、通常の移動として読まないよう先に見る。
+    if (usiMove?.toLowerCase() === "pass") {
+        return `${plyStr} パス     ${timeStr}`;
+    }
+
     if (!usiMove || usiMove.length < 4) {
         return `${plyStr} ${usiMove}`;
     }
@@ -957,7 +962,9 @@ export function convertPvToDisplay(pv: string[], position: PositionState): PvDis
         });
 
         // 次の手のために局面を進める
-        const moveResult = applyMoveWithState(currentPosition, usiMove, { validateTurn: false });
+        const moveResult = applyMoveAllowingStudyPass(currentPosition, usiMove, {
+            validateTurn: false,
+        });
         if (!moveResult.ok) {
             // 無効な手の場合は残りを処理せずに終了
             break;

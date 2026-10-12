@@ -11,7 +11,10 @@
 
 import {
     applyMoveWithState,
+    applyStudyMoveWithState,
     computeStudyHighlights,
+    getPositionService,
+    isStudyPassMove,
     isStudyUsiMove,
     type KifuTree,
     type LastMove,
@@ -20,10 +23,14 @@ import {
     type PositionState,
     type Square,
     STUDY_LIMITS,
+    STUDY_MAX_PASSES_PER_SIDE,
+    STUDY_PASS_MOVE,
     type StudyDocument,
     type StudyHighlightKind,
     type StudyOp,
     studyChildNodeId,
+    studyLineFitsPassLimit,
+    studyPassRightsForLine,
     studyScoreToKifuEval,
 } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
@@ -230,7 +237,8 @@ const noop = (): void => {};
 
 /** USI の指し手から、盤上で強調する最終手を作る。 */
 function lastMoveOf(usiMove: string | null): LastMove | undefined {
-    if (!usiMove || usiMove.length < 4) return undefined;
+    // パスには移動元も移動先も無い（`pass` は 4 文字なので、通常の移動として読まないよう先に見る）。
+    if (!usiMove || usiMove.length < 4 || isStudyPassMove(usiMove)) return undefined;
     if (usiMove.includes("*")) {
         return { from: null, to: usiMove.slice(-2) as Square, promotes: false };
     }
@@ -594,6 +602,12 @@ export function StudyWorkspaceView({
     if (!legalCacheRef.current) legalCacheRef.current = new LegalMoveCache();
     const legalCache = legalCacheRef.current;
     const turnStartTimeRef = useRef(0);
+    // 「パスを指す」が、パスできるかを確かめている間に変わりうるもの（いまの局面・編集できるか）。
+    const passPendingRef = useRef(false);
+    const latestPassGuardRef = useRef({ nodeId: currentNodeId, locked });
+    useEffect(() => {
+        latestPassGuardRef.current = { nodeId: currentNodeId, locked };
+    }, [currentNodeId, locked]);
     const moveProcessingRef = useRef(false);
 
     /** いまの局面から手を足す（既にある手なら、その手へ移るだけ）。 */
@@ -627,6 +641,61 @@ export function StudyWorkspaceView({
         navigateTo(childId);
     };
 
+    /**
+     * いまの局面でパスを指す。パスできない局面（王手がかかっている）と、エンジンが読み込めない
+     * 回数（1 つの手順で各側 `STUDY_MAX_PASSES_PER_SIDE` 回まで）は断る。
+     */
+    const passFromCurrent = async (): Promise<void> => {
+        // 確かめている間の押し直しは受け付けない。
+        if (passPendingRef.current) return;
+        const nodeId = currentNodeId;
+        const moves = [...movesToCurrent, STUDY_PASS_MOVE];
+        if (!tree.nodes.has(studyChildNodeId(currentNodeId, STUDY_PASS_MOVE))) {
+            if (!studyLineFitsPassLimit(tree.startSfen, moves)) {
+                onMessageChange({
+                    text: `1 つの手順で指せるパスは、先手・後手それぞれ ${STUDY_MAX_PASSES_PER_SIDE} 回までです。`,
+                    type: "error",
+                });
+                return;
+            }
+            // パスが合法手にあるかで確かめる（パスを足したあとの手順と同じパス権で調べる）。
+            const passRights = studyPassRightsForLine(tree.startSfen, moves);
+            const options = passRights ? { passRights } : undefined;
+            let canPass = false;
+            passPendingRef.current = true;
+            try {
+                const legal = fetchLegalMoves
+                    ? await fetchLegalMoves(tree.startSfen, movesToCurrent, options)
+                    : await getPositionService().getLegalMoves(
+                          tree.startSfen,
+                          movesToCurrent,
+                          options,
+                      );
+                canPass = legal.includes(STUDY_PASS_MOVE);
+            } catch {
+                onMessageChange({
+                    text: "パスできるかを確かめられませんでした。もう一度お試しください。",
+                    type: "error",
+                });
+                return;
+            } finally {
+                passPendingRef.current = false;
+            }
+            // 確かめている間に、別の局面へ移った・編集できなくなったときは、足さない。
+            if (latestPassGuardRef.current.nodeId !== nodeId || latestPassGuardRef.current.locked) {
+                return;
+            }
+            if (!canPass) {
+                onMessageChange({
+                    text: "この局面ではパスできません（王手がかかっているときは、パスできません）。",
+                    type: "error",
+                });
+                return;
+            }
+        }
+        addMoveFromCurrent(STUDY_PASS_MOVE);
+    };
+
     const { handleSquareSelect, handlePromotionChoice, handleHandSelect, getLegalSet } =
         useMoveExecution({
             position,
@@ -644,7 +713,11 @@ export function StudyWorkspaceView({
             legalCache,
             clearLegalCache: () => legalCache.clear(),
             setCanPassLegal: noop,
-            getPassRightsOption: () => ({}),
+            // パスを含む手順の合法手は、パス権を有効にしないと求められない。
+            getPassRightsOption: () => {
+                const passRights = studyPassRightsForLine(tree.startSfen, movesToCurrent);
+                return passRights ? { passRights } : {};
+            },
             updateClocksForNextTurn: noop,
             turnStartTimeRef,
             isEngineTurn: () => false,
@@ -803,9 +876,21 @@ export function StudyWorkspaceView({
             STUDY_LIMITS.lineLength - baseNode.ply,
             STUDY_LIMITS.nodesPerStudy - totalCount,
         );
+        const movesToBase = studyPathTo(tree, request.nodeId)
+            .map((nodeId) => tree.nodes.get(nodeId)?.usiMove ?? null)
+            .filter((move): move is string => move !== null);
         for (const move of request.pv) {
             if (moves.length >= room || !isStudyUsiMove(move)) break;
-            const applied = applyMoveWithState(cursor, move, { validateTurn: false });
+            // エンジンが読み込めない回数のパスになる手前で切る。
+            if (
+                isStudyPassMove(move) &&
+                !studyLineFitsPassLimit(tree.startSfen, [...movesToBase, ...moves, move])
+            ) {
+                break;
+            }
+            const applied = isStudyPassMove(move)
+                ? applyStudyMoveWithState(cursor, move)
+                : applyMoveWithState(cursor, move, { validateTurn: false });
             if (!applied.ok) break;
             moves.push(move);
             cursor = applied.next;
@@ -1254,6 +1339,7 @@ export function StudyWorkspaceView({
                         />
                         <StudyMoreMenu
                             onOpenChange={setIsMoreMenuOpen}
+                            onPass={locked ? undefined : () => void passFromCurrent()}
                             onCopyKif={copyKif}
                             onCopySfen={copySfen}
                             onPlayFromPosition={

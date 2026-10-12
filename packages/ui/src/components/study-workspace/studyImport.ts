@@ -5,7 +5,7 @@
  * 指し手の無い入力（局面だけ）も受け付ける（その局面から検討を始めるノートになる）。指し手が
  * あれば手順の再生で局面も確かめられるが、局面だけのときは確かめる機会が無いので、ここで
  * 局面として成り立つこと（`studyStartPositionError`）を確かめる。
- * 変則ルール（パス）の手を含む棋譜は研究ノートにできない。
+ * 変則ルール（パス権）のパスを含む棋譜も取り込む（研究ノートは、パスを普通の手として扱う）。
  */
 
 import {
@@ -145,9 +145,7 @@ const isKifPositionOnly = (text: string): boolean => {
 const assertStandardMoves = (moves: readonly string[]): void => {
     const index = moves.findIndex((move) => !isStudyUsiMove(move));
     if (index >= 0) {
-        throw new Error(
-            `${index + 1} 手目（${moves[index]}）は研究ノートにできない手です（パスなどの変則ルールには対応していません）`,
-        );
+        throw new Error(`${index + 1} 手目（${moves[index]}）は研究ノートにできない手です`);
     }
 };
 
@@ -206,7 +204,10 @@ export function parseKifuTextForStudy(text: string): StudyKifuSource {
                 : {}),
         };
     }
-    const { sfen, moves } = parseSfen(text);
+    const parsed = parseSfen(text);
+    const sfen = parsed.sfen;
+    // パスは、大文字で書かれていても小文字にそろえる（保存できるのは小文字の `pass` だけ）。
+    const moves = parsed.moves.map((move) => (move.toLowerCase() === "pass" ? "pass" : move));
     // CSA でも KIF でもない入力は SFEN として読む。開始局面として読めなければ、棋譜ではない。
     let isPosition = false;
     try {

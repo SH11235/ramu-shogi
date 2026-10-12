@@ -29,9 +29,12 @@ export class StudyOpError extends Error {
     }
 }
 
-const USI_MOVE_PATTERN = /^(?:[1-9][a-i][1-9][a-i]\+?|[PLNSGBR]\*[1-9][a-i])$/;
+const USI_MOVE_PATTERN = /^(?:[1-9][a-i][1-9][a-i]\+?|[PLNSGBR]\*[1-9][a-i]|pass)$/;
 
-/** USI の指し手の書式か（合法性は見ない）。 */
+/**
+ * 研究ノートに入れられる指し手の書式か（合法性は見ない）。
+ * 盤上の移動・成り、駒打ちと、変則ルール（パス権）のパス（小文字の `pass`）。サーバーと同じ。
+ */
 export function isStudyUsiMove(move: unknown): move is string {
     return typeof move === "string" && USI_MOVE_PATTERN.test(move);
 }

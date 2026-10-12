@@ -13,10 +13,13 @@ import {
     getPositionService,
     isStudyUsiMove,
     type KifuTree,
+    STUDY_MAX_PASSES_PER_SIDE,
     type StudyDocument,
     StudyLimitError,
     type StudyMeta,
     type StudyOrigin,
+    studyLineFitsPassLimit,
+    studyPassRightsForLine,
     validateStudyDocument,
 } from "@shogi/app-core";
 import type { RshogiGame } from "@shogi/match-client";
@@ -105,6 +108,7 @@ function explainLimits(doc: StudyDocument): void {
 type ReplayMovesStrict = (
     sfen: string,
     moves: string[],
+    options?: { passRights?: { sente: number; gote: number } },
 ) => Promise<{ applied: string[]; error?: string }>;
 
 interface ImportDeps extends Pick<OpenOrCreateStudyOptions, "sync" | "api"> {
@@ -126,7 +130,8 @@ async function assertLegalLine(
     replay: ReplayMovesStrict | undefined,
 ): Promise<void> {
     const run: ReplayMovesStrict =
-        replay ?? ((sfen, line) => getPositionService().replayMovesStrict(sfen, line));
+        replay ??
+        ((sfen, line, options) => getPositionService().replayMovesStrict(sfen, line, options));
     if (moves.length === 0) {
         const reason = studyStartPositionError(startSfen);
         if (reason) throw new Error(`この局面は研究ノートにできません: ${reason}`);
@@ -135,7 +140,14 @@ async function assertLegalLine(
             throw new Error("この局面は研究ノートにできません（読み込めない局面です）");
         return;
     }
-    const result = await run(startSfen, [...moves]);
+    if (!studyLineFitsPassLimit(startSfen, moves)) {
+        throw new Error(
+            `この棋譜はパスが多すぎます（1 つの手順で、先手・後手それぞれ ${STUDY_MAX_PASSES_PER_SIDE} 回まで）。`,
+        );
+    }
+    // パスを含む手順は、パス権を有効にしないと再生できない（回数の決め方は `studyPassRightsForLine`）。
+    const passRights = studyPassRightsForLine(startSfen, moves);
+    const result = await run(startSfen, [...moves], passRights ? { passRights } : undefined);
     if (result.applied.length >= moves.length && !result.error) return;
     const index = Math.min(result.applied.length, moves.length - 1);
     throw new Error(
@@ -207,26 +219,18 @@ interface GameRecordForStudy {
     result: { winner: "b" | "w" | null; reason: string } | null;
 }
 
-/** 対局記録のメタ情報（`{ roomSettings: { passRights } }`）から、パス権つきの対局かを読む。 */
-function usesPassRights(metadata: unknown): boolean {
-    if (metadata === null || typeof metadata !== "object") return false;
-    const settings = (metadata as { roomSettings?: unknown }).roomSettings;
-    if (settings === null || typeof settings !== "object") return false;
-    const passRights = (settings as { passRights?: unknown }).passRights;
-    return passRights !== null && passRights !== undefined;
-}
-
 /**
  * 自分の対局の棋譜が研究ノートにできるか。
- * 指し手があり、変則ルール（パス権）の対局でなく、パスの手を含まないこと。
+ * 指し手があり、どの手も研究ノートに入れられる書式で（変則ルールのパスも入れられる）、パスの
+ * 回数が解析できる範囲に収まっていること（対局の設定は、パス権の回数に上限を設けていない）。
  */
 export function canOpenGameRecordAsStudy(
-    game: Pick<GameRecordForStudy, "moves"> & { metadata?: unknown },
+    game: Pick<GameRecordForStudy, "moves" | "initialSfen">,
 ): boolean {
     return (
         game.moves.length > 0 &&
-        !usesPassRights(game.metadata) &&
-        game.moves.every((move) => isStudyUsiMove(move))
+        game.moves.every((move) => isStudyUsiMove(move)) &&
+        studyLineFitsPassLimit(game.initialSfen, game.moves)
     );
 }
 

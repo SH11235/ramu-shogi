@@ -66,7 +66,10 @@ describe("isStudyUsiMove", () => {
         expect(isStudyUsiMove("P*5e")).toBe(true);
         expect(isStudyUsiMove("p*5e")).toBe(false);
         expect(isStudyUsiMove("K*5e")).toBe(false);
-        expect(isStudyUsiMove("pass")).toBe(false);
+        // パス（変則ルールの手）は、小文字だけを通す。
+        expect(isStudyUsiMove("pass")).toBe(true);
+        expect(isStudyUsiMove("PASS")).toBe(false);
+        expect(isStudyUsiMove("pass ")).toBe(false);
         expect(isStudyUsiMove("resign")).toBe(false);
         expect(isStudyUsiMove("0a1a")).toBe(false);
         expect(isStudyUsiMove(null)).toBe(false);
@@ -127,7 +130,7 @@ describe("addMoves", () => {
             applyStudyOp(doc, { type: "addMoves", parentId: doc.tree.rootId, moves: [] }),
         ).toThrow(StudyOpError);
         expect(() =>
-            applyStudyOp(doc, { type: "addMoves", parentId: doc.tree.rootId, moves: ["pass"] }),
+            applyStudyOp(doc, { type: "addMoves", parentId: doc.tree.rootId, moves: ["resign"] }),
         ).toThrow(StudyOpError);
     });
 });
