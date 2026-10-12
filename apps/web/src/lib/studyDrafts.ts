@@ -199,6 +199,34 @@ export function applyStudyCommentDraftChange(
     writeAll(drafts);
 }
 
+/** 匿名の書きかけ（持ち主なし）が残っているノートの ID。 */
+export function listAnonymousStudyCommentDraftIds(): string[] {
+    return Object.entries(readAll())
+        .filter(([, stored]) => stored.ownerId === null)
+        .map(([studyId]) => studyId);
+}
+
+/**
+ * 未ログイン中に作ったノートをアカウントへ引き継いだとき、そのノートの書きかけの持ち主も
+ * 同じアカウントへ移す（移さないと、引き継いだあとのノートを開いても書きかけが戻らない）。
+ *
+ * 移すのは、匿名の書きかけ（持ち主なし）だけ。別のアカウントの書きかけには触らない。
+ * 書いた画面（タブ）を問わず、そのノートの書きかけをすべて移す。
+ */
+export function adoptStudyCommentDrafts(studyIds: readonly string[], ownerId: string): void {
+    if (studyIds.length === 0) return;
+    const drafts = readAll();
+    let changed = false;
+    for (const studyId of studyIds) {
+        if (!Object.hasOwn(drafts, studyId)) continue;
+        const stored = drafts[studyId];
+        if (stored.ownerId !== null) continue;
+        drafts[studyId] = { ...stored, ownerId };
+        changed = true;
+    }
+    if (changed) writeAll(drafts);
+}
+
 /** ノートを削除したとき、そのノートの書きかけも消す（持ち主を問わない）。 */
 export function removeStudyCommentDrafts(studyId: string): void {
     const drafts = readAll();

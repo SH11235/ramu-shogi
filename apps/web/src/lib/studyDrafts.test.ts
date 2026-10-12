@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+    adoptStudyCommentDrafts,
     applyStudyCommentDraftChange,
+    listAnonymousStudyCommentDraftIds,
     readStudyCommentDrafts,
     removeStudyCommentDrafts,
 } from "./studyDrafts";
@@ -115,5 +117,41 @@ describe("研究ノートのコメントの書きかけの置き場所", () => {
         removeStudyCommentDrafts(STUDY);
         expect(readStudyCommentDrafts(STUDY, "user-1")).toEqual([]);
         expect(localStorage.getItem(KEY)).toBe("{}");
+    });
+
+    it("引き継ぎでは、匿名の書きかけだけを（書いたタブを問わず）そのアカウントへ移す。別のアカウントの書きかけは移さない", () => {
+        const OTHER = "study-2";
+        const UNTOUCHED = "study-3";
+        // 匿名のノートの書きかけ（別のタブと、この画面）。
+        putFromOtherTab("別のタブ", "node-2");
+        applyStudyCommentDraftChange(STUDY, null, NODE, {
+            type: "set",
+            text: "この画面",
+            base: "",
+        });
+        // 別のアカウントの書きかけと、引き継ぎの対象でない匿名のノートの書きかけ。
+        applyStudyCommentDraftChange(OTHER, "user-2", NODE, {
+            type: "set",
+            text: "他人",
+            base: "",
+        });
+        applyStudyCommentDraftChange(UNTOUCHED, null, NODE, {
+            type: "set",
+            text: "匿名",
+            base: "",
+        });
+        expect(listAnonymousStudyCommentDraftIds().sort()).toEqual([STUDY, UNTOUCHED]);
+
+        adoptStudyCommentDrafts([STUDY, OTHER, "無いノート"], "user-1");
+
+        expect(readStudyCommentDrafts(STUDY, null)).toEqual([]);
+        expect(readStudyCommentDrafts(STUDY, "user-1")).toEqual([
+            { nodeId: "node-2", text: "別のタブ", base: "" },
+            { nodeId: NODE, text: "この画面", base: "" },
+        ]);
+        expect(readStudyCommentDrafts(OTHER, "user-1")).toEqual([]);
+        expect(readStudyCommentDrafts(OTHER, "user-2")).toHaveLength(1);
+        expect(readStudyCommentDrafts(UNTOUCHED, null)).toHaveLength(1);
+        expect(listAnonymousStudyCommentDraftIds()).toEqual([UNTOUCHED]);
     });
 });

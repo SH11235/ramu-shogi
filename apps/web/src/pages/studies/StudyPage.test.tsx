@@ -275,13 +275,11 @@ describe("StudyPage", () => {
             seed.setSession({ userId: "user-1" });
             await seed.createStudy(createTestDoc(STUDY_ID, "アカウントのノート"));
             seed.dispose();
-            const create = vi
-                .fn(createOfflineApi().create)
-                .mockImplementationOnce(async () => ({
-                    ok: false as const,
-                    status: 401,
-                    error: {},
-                }));
+            const create = vi.fn(createOfflineApi().create).mockImplementationOnce(async () => ({
+                ok: false as const,
+                status: 401,
+                error: {},
+            }));
             currentSync = createTestSync(createOfflineApi({ create }), store);
             auth = authSignedIn("user-1");
             const view = render(<StudyPage />);
@@ -542,6 +540,31 @@ describe("StudyPage", () => {
         ]);
         // 長すぎる下書きのために、開く局面は変えない（棋譜の印で知らせる）。
         expect(reopened?.initialView?.currentNodeId ?? null).toBeNull();
+    });
+
+    it("匿名のノートに残した下書きは、ログインして（ページを開き直して）ノートを引き継いだあとも、その手に戻る", async () => {
+        await currentSync.createStudy(createTestDoc(STUDY_ID, "匿名のノート"));
+        const first = render(<StudyPage />);
+        await screen.findByTestId("workspace");
+        const doc = workspaceProps?.doc;
+        const nodeId = Object.keys(doc?.tree.nodes ?? {}).find((id) => id !== doc?.tree.rootId);
+        const tooLong = "あ".repeat(2000);
+        workspaceProps?.onCommentDraftChange?.(nodeId ?? "", setDraft(tooLong));
+        // ログインのためにページを離れる（OAuth でページが遷移する）。
+        first.unmount();
+        workspaceProps = null;
+
+        // ログインして戻ってきた。引き継ぎを終えてから、ノートを開く。
+        auth = authSignedIn("user-1");
+        render(<StudyPage />);
+        await screen.findByTestId("workspace");
+
+        const reopened = workspaceProps as StudyWorkspaceProps | null;
+        expect((await currentSync.load(STUDY_ID))?.owner).toBe("user-1");
+        expect(reopened?.initialCommentDrafts).toEqual([{ nodeId, text: tooLong, base: "" }]);
+        expect(JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? "{}")[STUDY_ID].ownerId).toBe(
+            "user-1",
+        );
     });
 
     it("以前の形（1 つのノートに 1 つの手）で残っていた下書きも戻す", async () => {

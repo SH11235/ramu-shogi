@@ -6,6 +6,7 @@
  */
 
 import { type BrowserStudySync, createBrowserStudySync, type StudySync } from "@shogi/study-client";
+import { adoptStudyCommentDrafts, listAnonymousStudyCommentDraftIds } from "./studyDrafts";
 
 let instance: BrowserStudySync | null = null;
 
@@ -40,6 +41,26 @@ interface EnsureStudySessionOptions {
 }
 
 /**
+ * 引き継ぎで持ち主が `userId` になったノートの、コメントの書きかけ（localStorage）の持ち主も
+ * 同じアカウントへ移す。移さないと、引き継いだあとのノートを開いても書きかけが戻らない。
+ *
+ * 引き継いだノートの一覧ではなく、匿名のまま残っている書きかけの側から確かめる
+ * （他のタブが先に引き継いでいた場合や、前回の引き継ぎの途中でページを離れた場合も移せる）。
+ * 匿名の書きかけは、そのノートが匿名だったときにこのブラウザで書いたものなので、ノートの
+ * 持ち主がいまのアカウントになっていれば、そのアカウントのもの。
+ */
+const adoptCommentDrafts = async (userId: string): Promise<void> => {
+    const sync = getStudySync();
+    const adopted: string[] = [];
+    for (const studyId of listAnonymousStudyCommentDraftIds()) {
+        // いまのアカウントから見えないノート（別のアカウントのノート）は null が返る。
+        const stored = await sync.load(studyId).catch(() => null);
+        if (stored?.owner === userId) adopted.push(studyId);
+    }
+    adoptStudyCommentDrafts(adopted, userId);
+};
+
+/**
  * セッションが確定したときに呼ぶ。ログイン状態を同期エンジンに伝え、ログイン中なら、
  * 未ログインのあいだにこのブラウザで作ったノートをそのアカウントに引き継ぐ（設計書 7.2）。
  *
@@ -68,7 +89,9 @@ export const ensureStudySession = (
                 console.error("[study] 未ログイン中のノートの引き継ぎに失敗しました", error);
                 if (adoption?.done === done) adoption = null;
             },
-        );
+        )
+        // 一部だけ引き継げた場合も、引き継げた分の書きかけは移す。
+        .then(() => adoptCommentDrafts(userId));
     adoption = { userId, done };
     return done;
 };
