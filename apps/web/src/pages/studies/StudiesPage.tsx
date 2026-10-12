@@ -1,8 +1,10 @@
 import type { StudyMeta, StudyOrigin } from "@shogi/app-core";
 import {
+    createSessionVerifier,
     createStudyApiClient,
     type StudyApi,
     type StudySaveStatus,
+    type StudySession,
     type StudySummary,
 } from "@shogi/study-client";
 import {
@@ -135,9 +137,11 @@ function ImportSection({
 interface StudiesPageProps {
     /** クラウドの一覧の取得（テストで差し替える）。 */
     api?: StudyApi;
+    /** サーバーから見た現在のログイン状態の確認（テストで差し替える）。 */
+    verifySession?: () => Promise<StudySession | null>;
 }
 
-export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
+export default function StudiesPage({ api, verifySession }: StudiesPageProps): ReactElement {
     const navigate = useNavigate();
     const { session, isLoadingSession, sessionError } = useAuthSession();
     // 取り直しに失敗して前の値が残っているだけのときは、その値を同期エンジンへ伝え直さない。
@@ -147,6 +151,8 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
     const userId = session?.authenticated ? session.user.id : null;
     const sync = getStudySync();
     const [client] = useState<StudyApi>(() => api ?? createStudyApiClient());
+    // 同期エンジンが使うのと同じ確認（`GET /api/auth/session`）。
+    const [verify] = useState(() => verifySession ?? createSessionVerifier());
 
     const [local, setLocal] = useState<StudyListItem[] | null>(null);
     const [remote, setRemote] = useState<StudyListItem[]>([]);
@@ -286,6 +292,8 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
         const target = deleteTarget;
         setDeleteTarget(null);
         if (!target) return;
+        // 一覧を取得したときのユーザー（クラウドのノートは、そのユーザーのもの）。
+        const listOwnerId = userId;
         setError(null);
         try {
             if (target.status === null) {
@@ -297,6 +305,26 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
                     throw new Error(
                         deleted.error.message ?? `削除に失敗しました (${deleted.status})`,
                     );
+                }
+                if (!deleted.ok && deleted.status === 404) {
+                    // 404 は「既に無い」だけでなく「いまのセッションのノートではない」でも返る。
+                    // 別のタブでアカウントが切り替わっていたら、一覧の持ち主のノートはサーバーに
+                    // 残っている。サーバーから見たログイン状態が、一覧を取得したときのユーザーの
+                    // ままのときだけ、削除済みとして扱う（同期エンジンの削除と同じ確認）。
+                    let verified: StudySession | null;
+                    try {
+                        verified = await verify();
+                    } catch {
+                        throw new Error(
+                            "ログイン状態を確認できませんでした。時間をおいてお試しください。",
+                        );
+                    }
+                    if ((verified?.userId ?? null) !== listOwnerId) {
+                        dispatchAuthSessionSyncEvent();
+                        throw new Error(
+                            "ログイン状態が変わっています。ログインし直してからお試しください。",
+                        );
+                    }
                 }
                 setRemote((items) => items.filter((item) => item.id !== target.id));
                 removeStudyCommentDrafts(target.id);
