@@ -103,6 +103,8 @@ interface UseMoveExecutionReturn {
     handleHandSelect: (piece: PieceType) => void;
     /** USI形式の指し手を現在局面に適用する */
     applyUsiMove: (usiMove: string) => Promise<boolean>;
+    /** 現局面の合法手（キャッシュ優先）。局面が未確定なら null */
+    getLegalSet: () => Promise<Set<string> | null>;
 }
 
 /**
@@ -646,5 +648,6 @@ export function useMoveExecution({
         handlePromotionChoice,
         handleHandSelect,
         applyUsiMove,
+        getLegalSet,
     };
 }

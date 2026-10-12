@@ -50,6 +50,7 @@ import { useKifuKeyboardNavigation } from "./shogi-match/hooks/useKifuKeyboardNa
 import { useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
 import { useIsMobile, useMediaQuery } from "./shogi-match/hooks/useMediaQuery";
 import { useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
+import { useMoveShadow } from "./shogi-match/hooks/useMoveShadow";
 import {
     DEFAULT_DISPLAY_SETTINGS,
     type DisplaySettings,
@@ -614,46 +615,47 @@ export function StudyWorkspaceView({
         navigateTo(childId);
     };
 
-    const { handleSquareSelect, handlePromotionChoice, handleHandSelect } = useMoveExecution({
-        position,
-        navigation: {
-            addMove: (usiMove) => addMoveFromCurrent(usiMove),
-            tree: { ...tree, currentNodeId },
-        },
-        isEditMode: false,
-        isReviewMode: true,
-        isPaused: false,
-        positionReady: true,
-        fetchLegalMoves,
-        startSfen: tree.startSfen,
-        moves: movesToCurrent,
-        legalCache,
-        clearLegalCache: () => legalCache.clear(),
-        setCanPassLegal: noop,
-        getPassRightsOption: () => ({}),
-        updateClocksForNextTurn: noop,
-        turnStartTimeRef,
-        isEngineTurn: () => false,
-        selection,
-        setSelection,
-        promotionSelection,
-        setPromotionSelection,
-        setLastMove: noop,
-        // 既存のフックは手を指すたびにメッセージを消す。ここで出した通知（上限など）まで消さない
-        // よう、消す指示は受け流し、通知は時間で消す。
-        setMessage: (next) => {
-            if (next) onMessageChange(next);
-        },
-        setLastAddedBranchInfo: noop,
-        editFromSquare: null,
-        setEditFromSquare: noop,
-        editTool: "place",
-        editPieceType: null,
-        editOwner: "sente",
-        editPromoted: false,
-        placePieceAt: () => false,
-        moveProcessingRef,
-    });
+    const { handleSquareSelect, handlePromotionChoice, handleHandSelect, getLegalSet } =
+        useMoveExecution({
+            position,
+            navigation: {
+                addMove: (usiMove) => addMoveFromCurrent(usiMove),
+                tree: { ...tree, currentNodeId },
+            },
+            isEditMode: false,
+            isReviewMode: true,
+            isPaused: false,
+            positionReady: true,
+            fetchLegalMoves,
+            startSfen: tree.startSfen,
+            moves: movesToCurrent,
+            legalCache,
+            clearLegalCache: () => legalCache.clear(),
+            setCanPassLegal: noop,
+            getPassRightsOption: () => ({}),
+            updateClocksForNextTurn: noop,
+            turnStartTimeRef,
+            isEngineTurn: () => false,
+            selection,
+            setSelection,
+            promotionSelection,
+            setPromotionSelection,
+            setLastMove: noop,
+            // 既存のフックは手を指すたびにメッセージを消す。ここで出した通知（上限など）まで消さない
+            // よう、消す指示は受け流し、通知は時間で消す。
+            setMessage: (next) => {
+                if (next) onMessageChange(next);
+            },
+            setLastAddedBranchInfo: noop,
+            editFromSquare: null,
+            setEditFromSquare: noop,
+            editTool: "place",
+            editPieceType: null,
+            editOwner: "sente",
+            editPromoted: false,
+            placePieceAt: () => false,
+            moveProcessingRef,
+        });
 
     const boardSectionRef = useRef<HTMLDivElement | null>(null);
     useKifuKeyboardNavigation({
@@ -988,11 +990,21 @@ export function StudyWorkspaceView({
             onToEnd={goToEnd}
         />
     );
+    // 選んでいる駒の影（マウスを乗せた行き先に出す）
+    const moveShadow = useMoveShadow({
+        enabled: !locked,
+        selection,
+        grid,
+        turn: position.turn,
+        positionKey: `${tree.startSfen}|${movesToCurrent.join(" ")}`,
+        getLegalSet,
+    });
     const boardProps = {
         grid,
         flipBoard,
         lastMove,
         selection,
+        moveShadow,
         promotionSelection,
         displaySettings,
         isEditModeActive: false,

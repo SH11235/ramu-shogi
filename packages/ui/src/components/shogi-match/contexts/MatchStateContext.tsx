@@ -13,7 +13,7 @@
 import type { LastMove, PieceType, Player, PositionState, Square } from "@shogi/app-core";
 import type { ReactNode } from "react";
 import { createContext, useContext } from "react";
-import type { ShogiBoardCell, ShogiBoardPiece } from "../../shogi-board";
+import type { ShogiBoardCell, ShogiBoardMoveShadow, ShogiBoardPiece } from "../../shogi-board";
 import type { PassDisabledReason } from "../components/PassButton";
 import type { TickState } from "../hooks/useClockManager";
 import type {
@@ -43,6 +43,8 @@ interface MatchStateProviderProps {
 
     // 選択状態
     selection: SelectionState | null;
+    /** 選んでいる駒の影（マウスを乗せた行き先に出す） */
+    moveShadow: ShogiBoardMoveShadow | null;
     promotionSelection: PromotionSelection | null;
     lastMove?: LastMove;
 
@@ -120,6 +122,7 @@ export function MatchStateProvider({
     gameMode,
     message,
     selection,
+    moveShadow,
     promotionSelection,
     lastMove,
     flipBoard,
@@ -168,6 +171,7 @@ export function MatchStateProvider({
         gameMode,
         message,
         selection,
+        moveShadow,
         promotionSelection,
         lastMove,
         flipBoard,

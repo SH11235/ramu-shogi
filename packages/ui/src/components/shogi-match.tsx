@@ -56,6 +56,7 @@ import { useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
 import { useMatchNnueDownload } from "./shogi-match/hooks/useMatchNnueDownload";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import { useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
+import { useMoveShadow } from "./shogi-match/hooks/useMoveShadow";
 import { useNnueManager } from "./shogi-match/hooks/useNnueManager";
 import { useNormalizedSettings } from "./shogi-match/hooks/useNormalizedSettings";
 import { usePassRights } from "./shogi-match/hooks/usePassRights";
@@ -1675,40 +1676,55 @@ export function ShogiMatch({
     };
 
     // 指し手実行管理フック
-    const { handleSquareSelect, handlePromotionChoice, handleHandSelect, applyUsiMove } =
-        useMoveExecution({
-            position,
-            navigation,
-            isEditMode,
-            isReviewMode,
-            isPaused,
-            positionReady,
-            fetchLegalMoves,
-            startSfen,
-            moves,
-            legalCache,
-            clearLegalCache,
-            setCanPassLegal: passRights.setCanPassLegal,
-            getPassRightsOption: passRights.getPassRightsOption,
-            updateClocksForNextTurn,
-            turnStartTimeRef,
-            isEngineTurn,
-            selection,
-            setSelection,
-            promotionSelection,
-            setPromotionSelection,
-            setLastMove,
-            setMessage,
-            setLastAddedBranchInfo,
-            editFromSquare,
-            setEditFromSquare,
-            editTool,
-            editPieceType,
-            editOwner,
-            editPromoted,
-            placePieceAt,
-            moveProcessingRef,
-        });
+    const {
+        handleSquareSelect,
+        handlePromotionChoice,
+        handleHandSelect,
+        applyUsiMove,
+        getLegalSet,
+    } = useMoveExecution({
+        position,
+        navigation,
+        isEditMode,
+        isReviewMode,
+        isPaused,
+        positionReady,
+        fetchLegalMoves,
+        startSfen,
+        moves,
+        legalCache,
+        clearLegalCache,
+        setCanPassLegal: passRights.setCanPassLegal,
+        getPassRightsOption: passRights.getPassRightsOption,
+        updateClocksForNextTurn,
+        turnStartTimeRef,
+        isEngineTurn,
+        selection,
+        setSelection,
+        promotionSelection,
+        setPromotionSelection,
+        setLastMove,
+        setMessage,
+        setLastAddedBranchInfo,
+        editFromSquare,
+        setEditFromSquare,
+        editTool,
+        editPieceType,
+        editOwner,
+        editPromoted,
+        placePieceAt,
+        moveProcessingRef,
+    });
+
+    // 選んでいる駒の影（マウスを乗せた行き先に出す）。局面編集中は選択の意味が違うので出さない
+    const moveShadow = useMoveShadow({
+        enabled: !isEditMode,
+        selection,
+        grid,
+        turn: position.turn,
+        positionKey: `${startSfen}|${moves.join(" ")}`,
+        getLegalSet,
+    });
 
     // 棋譜インポート・エクスポート管理フック
     const { handleCopyKif, importSfen, importKif } = useKifuImportExport({
@@ -1879,6 +1895,7 @@ export function ShogiMatch({
         gameMode,
         message,
         selection,
+        moveShadow,
         promotionSelection,
         lastMove,
         moves,

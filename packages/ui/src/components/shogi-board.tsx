@@ -1,12 +1,19 @@
 import type { PieceType } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
-import type { ReactElement } from "react";
+import type { CSSProperties, ReactElement } from "react";
 import { useRef } from "react";
 import type { SquareNotation } from "./shogi-match/types";
 import { getPieceImagePath, PIECE_LABELS } from "./shogi-match/utils/constants";
 import { formatSquare, getBoardLabels } from "./shogi-match/utils/coordinateFormat";
 
 type ShogiBoardOwner = "sente" | "gote";
+
+/**
+ * 影を出すマスに付けるクラス。疑似要素に、盤のルートで渡した駒の画像（CSS 変数）を敷き、
+ * `:hover` のときだけ半透明で見せる。
+ */
+const MOVE_SHADOW_CLASS =
+    "after:pointer-events-none after:absolute after:inset-[5%] after:bg-contain after:bg-center after:bg-no-repeat after:opacity-0 after:content-[''] after:[background-image:var(--shogi-move-shadow-image)] [@media(hover:hover)]:hover:after:opacity-45";
 
 export interface ShogiBoardPiece {
     owner: ShogiBoardOwner;
@@ -17,6 +24,14 @@ export interface ShogiBoardPiece {
 export interface ShogiBoardCell {
     id: string;
     piece: ShogiBoardPiece | null;
+}
+
+/** 選んでいる駒の「影」。マウスを乗せた行き先のマスに、この駒を半透明で出す。 */
+export interface ShogiBoardMoveShadow {
+    /** 影として出す駒（いま選んでいる駒） */
+    piece: ShogiBoardPiece;
+    /** 影を出すマス（合法な行き先） */
+    targets: ReadonlySet<string>;
 }
 
 interface ShogiBoardProps {
@@ -46,6 +61,12 @@ interface ShogiBoardProps {
     squareNotation?: SquareNotation;
     /** 盤外ラベル（筋・段）を表示するか */
     showBoardLabels?: boolean;
+    /**
+     * 選んでいる駒の影。行き先のマスにマウスを乗せたときだけ、CSS の `:hover` で出す
+     * （マウスの動きを JavaScript で追わないので、動かしても再描画は起きない）。
+     * ホバーできない端末（タッチ）では出ない。
+     */
+    moveShadow?: ShogiBoardMoveShadow | null;
 }
 
 /**
@@ -64,12 +85,34 @@ export function ShogiBoard({
     isDraggable = false,
     squareNotation = "none",
     showBoardLabels = false,
+    moveShadow = null,
 }: ShogiBoardProps): ReactElement {
     const lastPointerTypeRef = useRef<"mouse" | "touch" | "pen" | null>(null);
     const { files, ranks } = getBoardLabels(flipBoard);
 
+    // 成り選択が出ている間は、次に押すのは成・不成なので影は出さない
+    const shadow = moveShadow && !promotionSquare ? moveShadow : null;
+    const shadowStyle = shadow
+        ? ({
+              "--shogi-move-shadow-image": `url("${getPieceImagePath(
+                  shadow.piece.owner,
+                  shadow.piece.type,
+                  shadow.piece.promoted,
+              )}")`,
+          } as CSSProperties)
+        : undefined;
+    // 盤上の駒と同じ規則で、相手側の駒は逆さにする
+    const isShadowUpsideDown = shadow
+        ? flipBoard
+            ? shadow.piece.owner === "sente"
+            : shadow.piece.owner === "gote"
+        : false;
+
     return (
-        <div className="relative inline-block rounded-lg border border-shogi-outer-border bg-shogi-cell-light shadow-[0_4px_12px_rgba(0,0,0,0.12)]">
+        <div
+            className="relative inline-block rounded-lg border border-shogi-outer-border bg-shogi-cell-light shadow-[0_4px_12px_rgba(0,0,0,0.12)]"
+            style={shadowStyle}
+        >
             {/* 盤外ラベル: 筋（上） */}
             <div
                 className={cn(
@@ -98,6 +141,7 @@ export function ShogiBoard({
                             const isLastMoveFrom =
                                 cell.id === lastMove?.from && lastMove?.from !== null;
                             const isPromotionSquare = promotionSquare === cell.id;
+                            const isShadowTarget = shadow?.targets.has(cell.id) ?? false;
 
                             // 背景色: ハイライト時は上書き、通常時はチェッカーパターン
                             const isHighlighted = isLastMoveTo || isLastMoveFrom || isSelected;
@@ -114,6 +158,7 @@ export function ShogiBoard({
                                     <button
                                         type="button"
                                         data-square={cell.id}
+                                        data-move-shadow={isShadowTarget ? "" : undefined}
                                         onPointerDown={(e) => {
                                             lastPointerTypeRef.current = e.pointerType;
                                             if (cell.piece && onPiecePointerDown) {
@@ -175,6 +220,11 @@ export function ShogiBoard({
                                             // 選択中 - リング + 薄い金色背景
                                             isSelected &&
                                                 "bg-wafuu-kin ring-[3px] ring-inset ring-wafuu-shu",
+                                            // 選んでいる駒の影（行き先のマスだけ。ホバーできる端末のみ）
+                                            isShadowTarget && MOVE_SHADOW_CLASS,
+                                            isShadowTarget &&
+                                                isShadowUpsideDown &&
+                                                "after:rotate-180",
                                         )}
                                     >
                                         {cell.piece ? (

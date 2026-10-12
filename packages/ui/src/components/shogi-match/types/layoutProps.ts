@@ -11,7 +11,7 @@ import type {
     PresetWithStatus,
 } from "@shogi/app-core";
 import type { RemoteNnueManager } from "../../nnue/types";
-import type { ShogiBoardCell } from "../../shogi-board";
+import type { ShogiBoardCell, ShogiBoardMoveShadow } from "../../shogi-board";
 import type { SelectionState } from "../contexts/MatchStateContext.types";
 import type { ClockSettings, TickState } from "../hooks/useClockManager";
 import type {
@@ -76,6 +76,8 @@ export interface BoardStateProps {
     gameMode: GameMode;
     message: Message | null;
     selection: SelectionState | null;
+    /** 選んでいる駒の影（マウスを乗せた行き先に出す） */
+    moveShadow: ShogiBoardMoveShadow | null;
     promotionSelection: PromotionSelection | null;
     lastMove?: LastMove;
     moves: string[];

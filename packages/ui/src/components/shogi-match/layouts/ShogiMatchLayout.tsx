@@ -114,6 +114,7 @@ export function ShogiMatchLayout({
         gameMode,
         message,
         selection,
+        moveShadow,
         promotionSelection,
         lastMove,
         moves,
@@ -395,6 +396,7 @@ export function ShogiMatchLayout({
                             gameMode={gameMode}
                             message={message}
                             selection={selection}
+                            moveShadow={moveShadow}
                             promotionSelection={promotionSelection}
                             lastMove={lastMove}
                             flipBoard={flipBoard}
@@ -529,6 +531,7 @@ export function ShogiMatchLayout({
                             gameMode={gameMode}
                             message={message}
                             selection={selection}
+                            moveShadow={moveShadow}
                             promotionSelection={promotionSelection}
                             lastMove={lastMove}
                             flipBoard={flipBoard}

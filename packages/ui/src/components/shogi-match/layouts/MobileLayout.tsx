@@ -110,6 +110,7 @@ export function MobileLayout({
         onFlipBoardChange,
         lastMove,
         selection,
+        moveShadow,
         promotionSelection,
         isEditMode,
         isMatchRunning,
@@ -352,6 +353,7 @@ export function MobileLayout({
                     flipBoard={flipBoard}
                     lastMove={lastMove}
                     selection={selection}
+                    moveShadow={moveShadow}
                     promotionSelection={promotionSelection}
                     displaySettings={displaySettings}
                     isEditModeActive={isEditModeActive}

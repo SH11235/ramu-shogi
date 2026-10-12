@@ -47,6 +47,7 @@ export function PCBoardSection({ candidateNote, hideClock }: PCBoardSectionProps
         flipBoard,
         onFlipBoardChange,
         selection,
+        moveShadow,
         displaySettings,
         passRightsSettings,
         grid,
@@ -151,6 +152,7 @@ export function PCBoardSection({ candidateNote, hideClock }: PCBoardSectionProps
                         flipBoard={flipBoard}
                         lastMove={lastMove}
                         selection={selection}
+                        moveShadow={moveShadow}
                         promotionSelection={promotionSelection}
                         displaySettings={displaySettings}
                         isEditModeActive={isEditMode && !isMatchRunning}
