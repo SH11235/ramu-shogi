@@ -204,11 +204,15 @@ export function StudyHighlightsPanel({
                             disabled={isPreparing || analysisMode !== null}
                         >
                             <AnalyzeIcon />
-                            全体を解析
+                            {fullTargetCount === 0 ? "解析済みの結果を表示" : "全体を解析"}
                         </Button>
                     )}
                     <p className="text-xs text-muted-foreground">
-                        {settingsLabel}で {fullTargetCount} 局面を解析します。 {settingsLink}
+                        {fullTargetCount === 0
+                            ? // いまの設定の解析は済んでいる（表示しているのが、別の設定の結果）。
+                              `${settingsLabel}の解析は全局面で済んでいます。押すと、その結果を表示します。`
+                            : `${settingsLabel}で ${fullTargetCount} 局面を解析します。`}{" "}
+                        {settingsLink}
                     </p>
                 </div>
             )}

@@ -11,7 +11,11 @@ import { PageHeader } from "../../components/PageHeader";
 import { Section } from "../../components/Section";
 import { dispatchAuthSessionSyncEvent, useAuthSession } from "../../hooks/useAuthSession";
 import { resolveBuiltinEngineIdentity } from "../../lib/builtinEngine";
-import { applyStudyCommentDraftChange, readStudyCommentDrafts } from "../../lib/studyDrafts";
+import {
+    applyStudyCommentDraftChange,
+    readStudyCommentDrafts,
+    removeStudyCommentDrafts,
+} from "../../lib/studyDrafts";
 import { ensureStudySession, getStudySync } from "../../lib/studySync";
 import { createWebWasmEngineClient } from "../../platform/wasm-engine-client";
 
@@ -152,6 +156,10 @@ export default function StudyPage(): ReactElement {
         () => sync.getStatus(studyId),
     );
 
+    // ノートを開いたときに戻した書きかけの内容（ノート → 手 → 内容）。この画面が引き継いだ
+    // 書きかけとして、置き換え・破棄のときに一緒に片付ける（別のタブの書きかけと区別する）。
+    const restoredDraftsRef = useRef(new Map<string, Map<string, string>>());
+
     // 非同期の処理から、いまの画面の状態を見るための写し。
     const stateRef = useRef(state);
     stateRef.current = state;
@@ -233,8 +241,10 @@ export default function StudyPage(): ReactElement {
                 // 前回、保存できないまま残っていたコメントは、その手のコメント欄に戻す。
                 // 保存できる長さの下書き（ログインが切れて保存できなかった入力）があれば、その手を
                 // 開く（開けば自動で保存される）。長すぎる下書きは、棋譜の印で知らせる。
-                const drafts: StudyCommentDraft[] = readStudyCommentDrafts(targetId, owner).map(
-                    ({ nodeId, text, base }) => ({ nodeId, text, base }),
+                const drafts: StudyCommentDraft[] = readStudyCommentDrafts(targetId, owner);
+                restoredDraftsRef.current.set(
+                    targetId,
+                    new Map(drafts.map((draft) => [draft.nodeId, draft.text])),
                 );
                 const resumable = [...drafts]
                     .reverse()
@@ -320,6 +330,8 @@ export default function StudyPage(): ReactElement {
                 // 同じ元棋譜のノートが既にあった。成果はそのノートに統合済み。
                 goTo(event.into);
             } else if (event.type === "removed") {
+                // ノートが消えたら、その書きかけも残さない。
+                removeStudyCommentDrafts(studyId);
                 setState({ status: "removed" });
             } else if (event.origin !== "local") {
                 // 他のタブ・他の端末の変更を取り込む。
@@ -501,7 +513,10 @@ export default function StudyPage(): ReactElement {
     const handleDiscard = (): void => {
         void sync
             .deleteStudy(studyId)
-            .then(() => navigate({ to: "/studies" }))
+            .then(() => {
+                removeStudyCommentDrafts(studyId);
+                return navigate({ to: "/studies" });
+            })
             .catch((error: unknown) => {
                 console.error("[study] ノートを削除できませんでした", error);
             });
@@ -587,7 +602,10 @@ export default function StudyPage(): ReactElement {
                         commentBaseConfirmed={state.fresh}
                         initialCommentDrafts={state.drafts}
                         onCommentDraftChange={(nodeId, change) =>
-                            applyStudyCommentDraftChange(studyId, state.ownerId, nodeId, change)
+                            applyStudyCommentDraftChange(studyId, state.ownerId, nodeId, change, {
+                                restoredText:
+                                    restoredDraftsRef.current.get(studyId)?.get(nodeId) ?? null,
+                            })
                         }
                         initialView={state.view}
                         onViewChange={(view) => {

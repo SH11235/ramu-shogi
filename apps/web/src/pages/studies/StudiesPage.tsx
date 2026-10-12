@@ -32,6 +32,7 @@ import { PageHeading } from "../../components/PageHeading";
 import { Section } from "../../components/Section";
 import { StatusBanner } from "../../components/StatusBanner";
 import { useAuthSession } from "../../hooks/useAuthSession";
+import { removeStudyCommentDrafts } from "../../lib/studyDrafts";
 import { createStudyFromKifuSource } from "../../lib/studyEntry";
 import { ensureStudySession, getStudySync } from "../../lib/studySync";
 
@@ -274,10 +275,12 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
                     );
                 }
                 setRemote((items) => items.filter((item) => item.id !== target.id));
+                removeStudyCommentDrafts(target.id);
             } else {
                 // ブラウザ内から消す。クラウドにもあるノートは、同期エンジンがクラウドからも消す。
                 await sync.deleteStudy(target.id);
                 setRemote((items) => items.filter((item) => item.id !== target.id));
+                removeStudyCommentDrafts(target.id);
             }
         } catch (failure) {
             setError(

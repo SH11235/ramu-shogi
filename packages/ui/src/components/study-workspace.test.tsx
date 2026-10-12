@@ -169,6 +169,23 @@ describe("StudyWorkspaceView", () => {
         expect(screen.getByText("この局面はまだ解析していません。")).toBeTruthy();
     });
 
+    it("いまの設定の解析が済んでいるのに別の設定の結果を表示しているときは、「0 局面を解析します」と出さない", () => {
+        // 表示しているのは、1 局面だけ深く解析した結果（全体の半分に満たない）。
+        const { doc } = createTestStudy([cp(0), null, null, null, null]);
+        const analysis = createAnalysis({
+            settingsLabel: "簡易AI（駒得）・1 秒",
+            fullTargetCount: 0,
+        });
+        render(<Harness initialDoc={doc} analysis={analysis} />);
+
+        expect(highlights().textContent).not.toContain("0 局面を解析します");
+        expect(
+            within(highlights()).getByText(/簡易AI（駒得）・1 秒の解析は全局面で済んでいます/),
+        ).toBeTruthy();
+        fireEvent.click(within(highlights()).getByRole("button", { name: "解析済みの結果を表示" }));
+        expect(analysis.startFull).toHaveBeenCalledTimes(1);
+    });
+
     it("解析中は進み具合と中止を出し、全体を解析は出さない", () => {
         const analysis = createAnalysis({ mode: "full", progress: { completed: 2, total: 5 } });
         render(
@@ -1130,9 +1147,16 @@ describe("StudyWorkspaceView", () => {
             ).toBe(false);
         });
 
-        it("書き始めたあとにコメントが変わっていた下書きは、自動では保存せず、利用者に選ばせる", async () => {
+        const prompt = () => screen.getByRole("group", { name: "書きかけの扱い" });
+        const queryPrompt = () => screen.queryByRole("group", { name: "書きかけの扱い" });
+        const unsavedMark = () =>
+            within(moveList()).queryByRole("img", {
+                name: "コメントの書きかけがあります（保存されていません）",
+            });
+
+        it("書き始めたあとにコメントが変わっていた書きかけは、自動では保存せず、利用者に選ばせる", async () => {
             const { doc, ids } = createTestStudy();
-            // 下書き A は、コメントが空のときに書き始めた。そのあと B が保存されている。
+            // 書きかけ A は、コメントが空のときに書き始めた。そのあと B が保存されている。
             const saved = applyStudyOps(doc, [
                 { type: "setComment", nodeId: ids[0], value: "コメント B" },
             ]);
@@ -1143,29 +1167,35 @@ describe("StudyWorkspaceView", () => {
                     initialDoc={saved}
                     onOps={onOps}
                     onCommentDraftChange={onDraft}
-                    initialCommentDrafts={[{ nodeId: ids[0], text: "下書き A", base: "" }]}
+                    initialCommentDrafts={[{ nodeId: ids[0], text: "書きかけ A", base: "" }]}
                 />,
             );
 
-            const prompt = screen.getByRole("group", { name: "以前の書きかけ" });
-            expect(prompt.textContent).toContain("以前の書きかけがあります");
-            expect(prompt.textContent).toContain("下書き A");
-            expect(comment().value).toBe("コメント B");
+            // 書きかけは入力欄に残り、保存されているコメントは帯で読める。
+            expect(prompt().textContent).toContain("以前の書きかけがあります");
+            expect(prompt().textContent).toContain("コメント B");
+            expect(comment().value).toBe("書きかけ A");
+            // 棋譜のその手に印が付く。
+            expect(unsavedMark()).toBeTruthy();
             await wait(900);
-            // 何もしなければ、保存もしないし、下書きも消さない。
-            expect(onOps).not.toHaveBeenCalled();
-            expect(onDraft).not.toHaveBeenCalled();
-
-            fireEvent.click(within(prompt).getByRole("button", { name: "書きかけを使う" }));
-            expect(comment().value).toBe("下書き A");
-            expect(screen.queryByRole("group", { name: "以前の書きかけ" })).toBeNull();
             fireEvent.blur(comment());
+            // 何もしなければ、保存もしないし、書きかけも消さない。
+            expect(onOps).not.toHaveBeenCalled();
+            expect(
+                onDraft.mock.calls.some(
+                    ([, change]) => (change as { type: string }).type === "clear",
+                ),
+            ).toBe(false);
+
+            fireEvent.click(within(prompt()).getByRole("button", { name: "書きかけを使う" }));
+            expect(queryPrompt()).toBeNull();
+            expect(unsavedMark()).toBeNull();
             expect(onOps).toHaveBeenCalledWith([
-                { type: "setComment", nodeId: ids[0], value: "下書き A" },
+                { type: "setComment", nodeId: ids[0], value: "書きかけ A" },
             ]);
         });
 
-        it("以前の書きかけを捨てると、保存済みのコメントのまま下書きだけが消える", () => {
+        it("書きかけを捨てると、保存済みのコメントに戻り、書きかけだけが消える", () => {
             const { doc, ids } = createTestStudy();
             const saved = applyStudyOps(doc, [
                 { type: "setComment", nodeId: ids[0], value: "コメント B" },
@@ -1177,19 +1207,21 @@ describe("StudyWorkspaceView", () => {
                     initialDoc={saved}
                     onOps={onOps}
                     onCommentDraftChange={onDraft}
-                    // 書き始めたときのコメントが分からない下書き（以前の形）も、選んでもらう。
-                    initialCommentDrafts={[{ nodeId: ids[0], text: "下書き A" }]}
+                    // 書き始めたときのコメントが分からない書きかけ（以前の形）も、選んでもらう。
+                    initialCommentDrafts={[{ nodeId: ids[0], text: "書きかけ A" }]}
                 />,
             );
 
-            fireEvent.click(screen.getByRole("button", { name: "捨てる" }));
+            fireEvent.click(within(prompt()).getByRole("button", { name: "捨てる" }));
 
             expect(comment().value).toBe("コメント B");
+            expect(queryPrompt()).toBeNull();
             expect(onDraft).toHaveBeenLastCalledWith(ids[0], { type: "clear", savedText: null });
             expect(onOps).not.toHaveBeenCalled();
         });
 
-        it("他の端末の変更を取り込むとき、入力中でない下書きは消し、入力中の入力は残す", () => {
+        /** 開始局面のコメント欄と、別の画面からの変更を入れる口を用意する。 */
+        const setUpTwoScreens = () => {
             const { doc, ids } = createTestStudy();
             const onOps = vi.fn();
             const onDraft = vi.fn();
@@ -1204,38 +1236,130 @@ describe("StudyWorkspaceView", () => {
                     }}
                 />,
             );
-            // 入力中（フォーカスがあり、保存していない変更がある）に、他の端末の変更が届く。
-            fireEvent.focus(comment());
-            fireEvent.change(comment(), { target: { value: "入力中" } });
-            act(() => external([{ type: "setComment", nodeId: ids[0], value: "他の端末 1" }]));
-            expect(comment().value).toBe("入力中");
+            const saveElsewhere = (value: string) =>
+                act(() => external([{ type: "setComment", nodeId: ids[0], value }]));
+            const cleared = () =>
+                onDraft.mock.calls.some(
+                    ([, change]) => (change as { type: string }).type === "clear",
+                );
+            return { ids, onOps, onDraft, saveElsewhere, cleared };
+        };
 
-            // 入力中でない下書き（長すぎて保存できず、欄から離れている）は、取り込んだ内容を優先する。
-            const tooLong = "あ".repeat(2000);
+        it("入力中でない書きかけ（長すぎて保存できていない）がある手を別の画面が保存しても、書きかけも印も消さず、選ばせる", async () => {
+            const { onOps, saveElsewhere, cleared } = setUpTwoScreens();
+            const tooLong = "あ".repeat(1400);
             fireEvent.change(comment(), { target: { value: tooLong } });
             fireEvent.blur(comment());
             onOps.mockClear();
-            act(() => external([{ type: "setComment", nodeId: ids[0], value: "他の端末 2" }]));
 
-            expect(comment().value).toBe("他の端末 2");
-            expect(onDraft).toHaveBeenLastCalledWith(ids[0], { type: "clear", savedText: null });
+            saveElsewhere("別の画面のコメント");
+
+            // 書きかけは入力欄に残り、別の画面のコメントは帯で読める。どちらも消えない。
+            expect(comment().value).toBe(tooLong);
+            expect(prompt().textContent).toContain("このコメントは別の画面で変更されました");
+            expect(prompt().textContent).toContain("別の画面のコメント");
+            expect(cleared()).toBe(false);
+            expect(unsavedMark()).toBeTruthy();
+            await wait(900);
             expect(onOps).not.toHaveBeenCalled();
+            // 長すぎる間は「書きかけを使う」を押せない（短くすれば押せる）。
+            const use = within(prompt()).getByRole("button", { name: "書きかけを使う" });
+            expect((use as HTMLButtonElement).disabled).toBe(true);
+
+            fireEvent.click(within(prompt()).getByRole("button", { name: "捨てる" }));
+            expect(comment().value).toBe("別の画面のコメント");
+            expect(unsavedMark()).toBeNull();
+            expect(onOps).not.toHaveBeenCalled();
+        });
+
+        it("入力中に別の画面が同じ手を保存したら、入力を妨げず、次の自動保存の前に選ばせる（黙って上書きしない）", async () => {
+            const { ids, onOps, saveElsewhere } = setUpTwoScreens();
+            fireEvent.focus(comment());
+            fireEvent.change(comment(), { target: { value: "入力中" } });
+
+            // 自動保存（700 ms）より前に、別の画面の保存が届く。
+            saveElsewhere("別の画面のコメント");
+            expect(comment().value).toBe("入力中");
+            expect(prompt().textContent).toContain("別の画面のコメント");
+
+            // 打鍵は続けられる。選ぶまで、自動保存もフォーカスを外したときの保存もしない。
+            fireEvent.change(comment(), { target: { value: "入力中の続き" } });
+            expect(comment().value).toBe("入力中の続き");
+            await wait(900);
+            fireEvent.blur(comment());
+            expect(onOps).not.toHaveBeenCalled();
+            expect(queryPrompt()).toBeTruthy();
+
+            fireEvent.click(within(prompt()).getByRole("button", { name: "書きかけを使う" }));
+            expect(onOps).toHaveBeenCalledWith([
+                { type: "setComment", nodeId: ids[0], value: "入力中の続き" },
+            ]);
+            expect(queryPrompt()).toBeNull();
+        });
+
+        it("自動保存のあとに別の画面の保存が届いた場合は、書きかけが無いので、そのまま取り込む", async () => {
+            const { ids, onOps, saveElsewhere } = setUpTwoScreens();
+            fireEvent.focus(comment());
+            fireEvent.change(comment(), { target: { value: "入力" } });
+            await wait(900);
+            expect(onOps).toHaveBeenCalledWith([
+                { type: "setComment", nodeId: ids[0], value: "入力" },
+            ]);
+
+            saveElsewhere("別の画面のコメント");
+
+            expect(comment().value).toBe("別の画面のコメント");
+            expect(queryPrompt()).toBeNull();
+        });
+
+        it("書きかけと同じ内容を別の画面が保存したら、書きかけを消すだけで、帯は出さない", () => {
+            const { ids, onOps, onDraft, saveElsewhere } = setUpTwoScreens();
+            fireEvent.focus(comment());
+            fireEvent.change(comment(), { target: { value: "同じ内容" } });
+
+            saveElsewhere("同じ内容");
+
+            expect(comment().value).toBe("同じ内容");
+            expect(queryPrompt()).toBeNull();
+            expect(onDraft).toHaveBeenLastCalledWith(ids[0], {
+                type: "clear",
+                savedText: "同じ内容",
+            });
+            fireEvent.blur(comment());
+            expect(onOps).not.toHaveBeenCalled();
+        });
+
+        it("選択待ちの手から離れても、棋譜の印は残り、戻ると帯がまた出る", () => {
+            const { saveElsewhere } = setUpTwoScreens();
+            fireEvent.focus(comment());
+            fireEvent.change(comment(), { target: { value: "書きかけ" } });
+            saveElsewhere("別の画面のコメント");
+            expect(queryPrompt()).toBeTruthy();
+
+            next();
+            expect(queryPrompt()).toBeNull();
+            expect(unsavedMark()).toBeTruthy();
+            back();
+            expect(comment().value).toBe("書きかけ");
+            expect(prompt().textContent).toContain("別の画面のコメント");
         });
     });
 
-    describe("開いた直後（サーバーの最新のコメントを取り込む前）の下書き", () => {
+    describe("開いた直後（サーバーの最新のコメントを取り込む前）の書きかけ", () => {
         const comment = () =>
             screen.getByRole("textbox", { name: "コメント" }) as HTMLTextAreaElement;
+        const prompt = () => screen.getByRole("group", { name: "書きかけの扱い" });
+        const queryPrompt = () => screen.queryByRole("group", { name: "書きかけの扱い" });
         const wait = (ms: number) =>
             act(async () => {
                 await new Promise((resolve) => setTimeout(resolve, ms));
             });
 
         /**
-         * このブラウザに残っているコメントは A。下書きは「A のときに書き始めた B」。
-         * 最新の内容はまだ取り込めていない。
+         * このブラウザに残っているコメントは A。書きかけは「A のときに書き始めた B」。
+         * 最新の内容はまだ取り込めていない。`locked` は、ログインが切れて編集を止めている状態。
          */
-        const setUp = () => {
+        const setUp = (options: { locked?: boolean } = {}) => {
             const { doc, ids } = createTestStudy();
             const cached = applyStudyOps(doc, [
                 { type: "setComment", nodeId: ids[0], value: "コメント A" },
@@ -1247,84 +1371,109 @@ describe("StudyWorkspaceView", () => {
                 initialDoc: cached,
                 onOps,
                 onCommentDraftChange: onDraft,
-                initialCommentDrafts: [{ nodeId: ids[0], text: "下書き B", base: "コメント A" }],
+                initialCommentDrafts: [{ nodeId: ids[0], text: "書きかけ B", base: "コメント A" }],
                 onExternal: (apply) => {
                     external = apply;
                 },
             };
-            const view = render(<Harness {...props} commentBaseConfirmed={false} />);
+            const view = render(
+                <Harness {...props} commentBaseConfirmed={false} locked={options.locked} />,
+            );
             return {
                 ids,
                 onOps,
                 onDraft,
                 applyExternal: (ops: StudyOp[]) => act(() => external(ops)),
-                confirm: () => view.rerender(<Harness {...props} commentBaseConfirmed />),
+                /** 編集できる状態で、最新の内容を取り込めた・まだ取り込めていない、を切り替える。 */
+                rerender: (confirmed: boolean) =>
+                    view.rerender(<Harness {...props} commentBaseConfirmed={confirmed} />),
             };
         };
+        const cleared = (onDraft: ReturnType<typeof vi.fn>) =>
+            onDraft.mock.calls.some(([, change]) => (change as { type: string }).type === "clear");
 
-        it("取り込みが済むまで自動では保存せず、他の端末のコメント C を取り込んだら、上書きせず利用者に選ばせる", async () => {
-            const { ids, onOps, applyExternal, confirm } = setUp();
+        it("取得が遅い場合: 取り込みが済むまで自動では保存せず、別の端末のコメント C を取り込んだら、上書きせず選ばせる", async () => {
+            const { ids, onOps, onDraft, applyExternal, rerender } = setUp();
 
-            // 下書きは欄に戻るが、取り込みが済むまで保存しない。
-            expect(comment().value).toBe("下書き B");
+            // 書きかけは欄に戻るが、取り込みが済むまで保存しない（自動保存のタイマーが先に来る）。
+            expect(comment().value).toBe("書きかけ B");
             expect(screen.getByText(/最新のコメントを確認しています/)).toBeTruthy();
             await wait(900);
             fireEvent.blur(comment());
             expect(onOps).not.toHaveBeenCalled();
 
-            // 最新の内容（他の端末のコメント C）を取り込めた。
+            // 最新の内容（別の端末のコメント C）を取り込めた。
             applyExternal([{ type: "setComment", nodeId: ids[0], value: "コメント C" }]);
-            confirm();
+            rerender(true);
 
-            // C を B で上書きしない。書きかけは残し、利用者に選んでもらう。
-            expect(comment().value).toBe("コメント C");
-            const prompt = screen.getByRole("group", { name: "以前の書きかけ" });
-            expect(prompt.textContent).toContain("下書き B");
+            // C を B で上書きしない。B も消さない。
+            expect(comment().value).toBe("書きかけ B");
+            expect(prompt().textContent).toContain("以前の書きかけがあります");
+            expect(prompt().textContent).toContain("コメント C");
+            expect(cleared(onDraft)).toBe(false);
             await wait(900);
             expect(onOps).not.toHaveBeenCalled();
 
-            fireEvent.click(within(prompt).getByRole("button", { name: "書きかけを使う" }));
-            fireEvent.blur(comment());
+            fireEvent.click(within(prompt()).getByRole("button", { name: "書きかけを使う" }));
             expect(onOps).toHaveBeenCalledWith([
-                { type: "setComment", nodeId: ids[0], value: "下書き B" },
+                { type: "setComment", nodeId: ids[0], value: "書きかけ B" },
             ]);
         });
 
-        it("取り込みと「確かめられた」が同時に届いても、下書きを黙って捨てず、利用者に選ばせる", async () => {
-            const { ids, onOps, onDraft, applyExternal, confirm } = setUp();
+        it("取得がすぐ返る場合: 取り込みと「確かめられた」が自動保存より先に同時に届いても、書きかけを黙って捨てず、選ばせる", async () => {
+            const { ids, onOps, onDraft, applyExternal, rerender } = setUp();
 
             await act(async () => {
                 applyExternal([{ type: "setComment", nodeId: ids[0], value: "コメント C" }]);
-                confirm();
+                rerender(true);
             });
 
-            expect(comment().value).toBe("コメント C");
-            expect(screen.getByRole("group", { name: "以前の書きかけ" }).textContent).toContain(
-                "下書き B",
-            );
-            expect(onOps).not.toHaveBeenCalled();
-            // 下書きは置いたまま（消していない）。
-            expect(
-                onDraft.mock.calls.some(
-                    ([, change]) => (change as { type: string }).type === "clear",
-                ),
-            ).toBe(false);
-        });
-
-        it("取り込みが済み、コメントが書き始めたときのままなら、自動で保存する", async () => {
-            const { ids, onOps, confirm } = setUp();
+            expect(comment().value).toBe("書きかけ B");
+            expect(prompt().textContent).toContain("コメント C");
+            expect(cleared(onDraft)).toBe(false);
             await wait(900);
             expect(onOps).not.toHaveBeenCalled();
 
-            confirm();
+            fireEvent.click(within(prompt()).getByRole("button", { name: "捨てる" }));
+            expect(comment().value).toBe("コメント C");
+            expect(onDraft).toHaveBeenLastCalledWith(ids[0], { type: "clear", savedText: null });
+            expect(onOps).not.toHaveBeenCalled();
+        });
 
-            expect(comment().value).toBe("下書き B");
+        it("ロックからの復帰（その場）: 復帰と取り込みがどの順で届いても、別の端末のコメントと書きかけの両方を残して選ばせる", async () => {
+            // ログインが切れている間（編集を止めている）に、別の端末がコメント C を保存した。
+            const { ids, onOps, onDraft, applyExternal, rerender } = setUp({ locked: true });
+            expect(comment().value).toBe("書きかけ B");
+
+            // 復帰した（まだ取り込めていない）。自動保存のタイマーが先に来ても、保存しない。
+            rerender(false);
+            await wait(900);
+            expect(onOps).not.toHaveBeenCalled();
+
+            applyExternal([{ type: "setComment", nodeId: ids[0], value: "コメント C" }]);
+            rerender(true);
+
+            expect(comment().value).toBe("書きかけ B");
+            expect(prompt().textContent).toContain("コメント C");
+            expect(cleared(onDraft)).toBe(false);
+            await wait(900);
+            expect(onOps).not.toHaveBeenCalled();
+        });
+
+        it("取り込みが済み、コメントが書き始めたときのままなら、これまでどおり自動で保存する", async () => {
+            const { ids, onOps, rerender } = setUp();
+            await wait(900);
+            expect(onOps).not.toHaveBeenCalled();
+
+            rerender(true);
+
+            expect(comment().value).toBe("書きかけ B");
             expect(screen.queryByText(/最新のコメントを確認しています/)).toBeNull();
-            expect(screen.queryByRole("group", { name: "以前の書きかけ" })).toBeNull();
+            expect(queryPrompt()).toBeNull();
             await waitFor(
                 () =>
                     expect(onOps).toHaveBeenCalledWith([
-                        { type: "setComment", nodeId: ids[0], value: "下書き B" },
+                        { type: "setComment", nodeId: ids[0], value: "書きかけ B" },
                     ]),
                 { timeout: 2000 },
             );
@@ -1334,12 +1483,12 @@ describe("StudyWorkspaceView", () => {
             const { ids, onOps } = setUp();
             await wait(900);
             expect(onOps).not.toHaveBeenCalled();
-            expect(comment().value).toBe("下書き B");
+            expect(comment().value).toBe("書きかけ B");
 
             fireEvent.click(screen.getByRole("button", { name: "書きかけを使う" }));
 
             expect(onOps).toHaveBeenCalledWith([
-                { type: "setComment", nodeId: ids[0], value: "下書き B" },
+                { type: "setComment", nodeId: ids[0], value: "書きかけ B" },
             ]);
         });
 
@@ -1366,10 +1515,9 @@ describe("StudyWorkspaceView", () => {
             act(() => external([{ type: "setComment", nodeId: ids[0], value: "コメント C" }]));
             view.rerender(<Harness {...props} commentBaseConfirmed />);
 
-            expect(comment().value).toBe("コメント C");
-            expect(screen.getByRole("group", { name: "以前の書きかけ" }).textContent).toContain(
-                "コメント A に書き足し",
-            );
+            expect(comment().value).toBe("コメント A に書き足し");
+            expect(prompt().textContent).toContain("このコメントは別の画面で変更されました");
+            expect(prompt().textContent).toContain("コメント C");
             await wait(900);
             expect(onOps).not.toHaveBeenCalled();
         });

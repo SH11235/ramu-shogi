@@ -66,6 +66,7 @@ function useHarness(
         rejectAnalysis?: boolean;
         onOps?: (ops: StudyOp[]) => void;
         locked?: boolean;
+        onMessage?: (message: { text: string } | null) => void;
     } = {},
 ) {
     const [doc, setDoc] = useState(initialDoc);
@@ -92,7 +93,7 @@ function useHarness(
         onFlush: () => setFlushCount((count) => count + 1),
         onLayerStarted: (layerId, mode) =>
             setStartedLayers((previous) => [...previous, `${mode}:${layerId}`]),
-        setMessage: () => {},
+        setMessage: (message) => options.onMessage?.(message),
         locked: options.locked,
     });
     return { controller, doc, ops, startedLayers, flushCount };
@@ -347,5 +348,23 @@ describe("useStudyAnalysis", () => {
         expect(result.current.controller.mode).toBeNull();
         expect(onOps).not.toHaveBeenCalled();
         expect(result.current.doc.layers).toEqual([]);
+    });
+
+    it("解析していないときに編集できなくなっても、通知を出さない（ダウンロードの確認を待っていないので、閉じるものが無い）", async () => {
+        const { doc } = createTestStudy();
+        const engine = createEngineOption();
+        const onMessage = vi.fn();
+        const { rerender } = renderHook(
+            ({ locked }: { locked: boolean }) =>
+                useHarness(doc, [engine.option], { locked, onMessage }),
+            { initialProps: { locked: false } },
+        );
+
+        rerender({ locked: true });
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+        });
+
+        expect(onMessage.mock.calls.filter(([message]) => message !== null)).toEqual([]);
     });
 });

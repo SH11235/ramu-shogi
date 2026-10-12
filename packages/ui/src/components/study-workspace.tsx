@@ -423,14 +423,16 @@ export function StudyWorkspaceView({
     const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
     // まだ保存できていないコメントの入力（手ごと）。コメント欄は手を移るたびに作り直すので、
     // 上限を超えていて保存できない入力も、ここに残しておき、その手へ戻ったときに戻す。
-    const commentDraftsRef = useRef<Map<string, { text: string; base?: string | null }> | null>(
-        null,
-    );
+    const commentDraftsRef = useRef<Map<
+        string,
+        { text: string; base?: string | null; fromStorage?: boolean }
+    > | null>(null);
     if (!commentDraftsRef.current) {
         commentDraftsRef.current = new Map(
             (initialCommentDrafts ?? []).map((draft) => [
                 draft.nodeId,
-                { text: draft.text, base: draft.base },
+                // 開いたときに戻した（前回までの）書きかけ。
+                { text: draft.text, base: draft.base, fromStorage: true },
             ]),
         );
     }
@@ -443,6 +445,10 @@ export function StudyWorkspaceView({
                     .filter((draft) => isStudyCommentOverLimit(draft.text))
                     .map((draft) => draft.nodeId),
             ),
+    );
+    // 書きかけが別の画面での変更とぶつかり、利用者の選択を待っている手（棋譜に印を付ける）。
+    const [conflictCommentIds, setConflictCommentIds] = useState<ReadonlySet<string>>(
+        () => new Set(),
     );
     // 「この局面を深く解析」を押した局面。その局面を見ている間、結果を開いた状態で目立たせる。
     const [deepNodeId, setDeepNodeId] = useState<string | null>(null);
@@ -894,6 +900,19 @@ export function StudyWorkspaceView({
         });
         onCommentDraftChange?.(nodeId, change);
     };
+    const changeCommentConflict = (nodeId: string, conflicted: boolean): void => {
+        setConflictCommentIds((previous) => {
+            if (previous.has(nodeId) === conflicted) return previous;
+            const next = new Set(previous);
+            if (conflicted) next.add(nodeId);
+            else next.delete(nodeId);
+            return next;
+        });
+    };
+    // 棋譜に付ける「未保存」の印（選択待ちの書きかけと、長すぎて保存できない書きかけ）。
+    const unsavedComments = new Map<string, "over_limit" | "conflict">();
+    for (const nodeId of overLimitCommentIds) unsavedComments.set(nodeId, "over_limit");
+    for (const nodeId of conflictCommentIds) unsavedComments.set(nodeId, "conflict");
     const cancelAnalysis = (): void => {
         void analysis.cancel();
     };
@@ -1066,7 +1085,7 @@ export function StudyWorkspaceView({
             line={line}
             currentNodeId={currentNodeId}
             highlightKinds={highlightKinds}
-            unsavedCommentIds={overLimitCommentIds}
+            unsavedComments={unsavedComments}
             onSelect={(nodeId) => navigateTo(nodeId)}
             onBackToMainLine={backToMainLine}
             onRequestDeleteVariation={setDeleteTargetId}
@@ -1101,6 +1120,7 @@ export function StudyWorkspaceView({
             onChange={(value) => changeComment(currentNodeId, value)}
             initialDraft={commentDrafts.get(currentNodeId)}
             onDraftChange={(change) => changeCommentDraft(currentNodeId, change)}
+            onConflictChange={(conflicted) => changeCommentConflict(currentNodeId, conflicted)}
             disabled={locked}
             baseConfirmed={commentBaseConfirmed}
         />
@@ -1230,7 +1250,9 @@ export function StudyWorkspaceView({
                                         disabled={analysis.isPreparing}
                                     >
                                         <AnalyzeIcon />
-                                        全体を解析
+                                        {analysis.fullTargetCount === 0
+                                            ? "解析済みの結果を表示"
+                                            : "全体を解析"}
                                     </Button>
                                 </div>
                             )}

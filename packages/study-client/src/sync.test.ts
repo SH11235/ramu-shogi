@@ -639,6 +639,12 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
                 harness.login(USER_A);
             }
             expect(attemptsAt).toEqual([1, 2, 2, 3, 3, 4, 4, 5]);
+            // 待っている間は、保存の状態から「再送待ち」と分かる。
+            await harness.advance(0);
+            expect(harness.sync.getStatus(TEST_STUDY_ID)).toMatchObject({
+                state: "pending",
+                retrying: true,
+            });
             expect(elapsed).toBe(30_000);
             expect(refreshes).toBe(5);
             // 上限（60 秒）を超えて延びない。

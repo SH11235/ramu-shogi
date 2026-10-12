@@ -33,8 +33,11 @@ interface StudyMoveListProps {
     currentNodeId: string;
     /** 悪手・疑問手と判定された手（ノード ID → 判定）。 */
     highlightKinds: ReadonlyMap<string, StudyHighlightKind>;
-    /** コメントが長すぎて保存できていない手（ノード ID）。 */
-    unsavedCommentIds?: ReadonlySet<string>;
+    /**
+     * コメントの書きかけが保存されていない手（ノード ID → 理由）。
+     * `over_limit`: 長すぎて保存できない。`conflict`: 別の画面での変更とぶつかり、選択待ち。
+     */
+    unsavedComments?: ReadonlyMap<string, "over_limit" | "conflict">;
     onSelect: (nodeId: string) => void;
     /** 本譜の表示に戻す。 */
     onBackToMainLine: () => void;
@@ -75,7 +78,7 @@ export function StudyMoveList({
     line,
     currentNodeId,
     highlightKinds,
-    unsavedCommentIds,
+    unsavedComments,
     onSelect,
     onBackToMainLine,
     onRequestDeleteVariation,
@@ -212,10 +215,14 @@ export function StudyMoveList({
                                             />
                                         </span>
                                     )}
-                                    {unsavedCommentIds?.has(nodeId) && (
+                                    {unsavedComments?.has(nodeId) && (
                                         <span
                                             role="img"
-                                            aria-label="コメントが長すぎて保存されていません"
+                                            aria-label={
+                                                unsavedComments.get(nodeId) === "conflict"
+                                                    ? "コメントの書きかけがあります（保存されていません）"
+                                                    : "コメントが長すぎて保存されていません"
+                                            }
                                             className="shrink-0 rounded border border-status-warning-border bg-status-warning-bg px-1 text-[10px] font-semibold leading-4 text-status-warning"
                                         >
                                             未保存

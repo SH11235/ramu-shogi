@@ -388,14 +388,21 @@ describe("StudyPage", () => {
     });
 
     describe("開いたあとの最初の取り込み（コメントの下書きの保存を解く合図）", () => {
-        /** サーバーに作成済みのアカウントのノート。取得の応答は手で進める。 */
-        const prepareSyncedStudy = async () => {
+        /**
+         * サーバーに作成済みのアカウントのノート。取得の応答は手で進める（`release`）。
+         * サーバー上のコメント（開始局面）は `remote.comment` で変えられる（別の端末の模擬）。
+         */
+        const prepareSyncedStudy = async (options: { held?: boolean } = {}) => {
             const doc = createTestDoc(STUDY_ID, "アカウントのノート");
             const detail = { ...doc, revision: 1, createdAt: "", updatedAt: "" };
+            const remote = { comment: "他の端末のコメント C", revision: 2 };
             let release: () => void = () => {};
-            const gate = new Promise<void>((resolve) => {
-                release = resolve;
-            });
+            const gate =
+                options.held === false
+                    ? Promise.resolve()
+                    : new Promise<void>((resolve) => {
+                          release = resolve;
+                      });
             const api = createOfflineApi({
                 create: vi.fn(async () => ({
                     ok: true as const,
@@ -404,19 +411,22 @@ describe("StudyPage", () => {
                 })),
                 get: vi.fn(async () => {
                     await gate;
-                    // 他の端末が、開始局面にコメント C を書いていた。
                     const nodes = {
                         ...detail.tree.nodes,
                         [detail.tree.rootId]: {
                             ...detail.tree.nodes[detail.tree.rootId],
-                            comment: "他の端末のコメント C",
+                            comment: remote.comment,
                         },
                     };
                     return {
                         ok: true as const,
                         status: 200,
                         data: {
-                            study: { ...detail, revision: 2, tree: { ...detail.tree, nodes } },
+                            study: {
+                                ...detail,
+                                revision: remote.revision,
+                                tree: { ...detail.tree, nodes },
+                            },
                         },
                     };
                 }),
@@ -428,8 +438,65 @@ describe("StudyPage", () => {
             await seed.flush(STUDY_ID);
             seed.dispose();
             currentSync = createTestSync(api, store);
-            return { release, rootId: doc.tree.rootId };
+            return { release, rootId: doc.tree.rootId, remote, store, api };
         };
+
+        /** 書きかけを置いたあと、ログインが切れて編集が止まり、その間に別の端末がコメントを変える。 */
+        const lockWithDraftThenChangeElsewhere = async () => {
+            const prepared = await prepareSyncedStudy({ held: false });
+            prepared.remote.comment = "";
+            prepared.remote.revision = 1;
+            auth = authSignedIn("user-1");
+            const view = render(<StudyPage />);
+            await screen.findByTestId("workspace");
+            await waitFor(() => expect(workspaceProps?.commentBaseConfirmed).toBe(true));
+            // コメントが空のときに書き始めた書きかけ。
+            workspaceProps?.onCommentDraftChange?.(prepared.rootId, setDraft("書きかけ B"));
+            auth = AUTH_SIGNED_OUT;
+            view.rerender(<StudyPage />);
+            await waitFor(() => expect(workspaceProps?.locked).toBe(true));
+            // 別の端末が、同じ手のコメントを保存した。
+            prepared.remote.comment = "別の端末のコメント C";
+            prepared.remote.revision = 2;
+            return { ...prepared, view };
+        };
+        const storedDraftTexts = (): string[] =>
+            (JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? "{}")[STUDY_ID]?.nodes ?? []).map(
+                (entry: { text: string }) => entry.text,
+            );
+
+        it("ロック → 別の端末が変更 → その場で復帰: 取り込んだコメントと書きかけの両方を残して、画面に選ばせる", async () => {
+            const { view, rootId } = await lockWithDraftThenChangeElsewhere();
+
+            auth = authSignedIn("user-1");
+            view.rerender(<StudyPage />);
+            await waitFor(() => expect(workspaceProps?.locked).toBe(false));
+            await waitFor(() => expect(workspaceProps?.commentBaseConfirmed).toBe(true));
+
+            // 画面には、別の端末のコメントが保存済みとして渡る（書きかけで上書きしていない）。
+            expect(workspaceProps?.doc.tree.nodes[rootId].comment).toBe("別の端末のコメント C");
+            // 書きかけは残っている（画面のコメント欄が、この食い違いを見て選択の帯を出す）。
+            expect(storedDraftTexts()).toEqual(["書きかけ B"]);
+        });
+
+        it("ロック → 別の端末が変更 → ページを開き直して復帰: 書きかけを書き始めたときのコメントと一緒に戻し、取り込んだコメントと照合させる", async () => {
+            const { view, rootId } = await lockWithDraftThenChangeElsewhere();
+            view.unmount();
+            workspaceProps = null;
+
+            auth = authSignedIn("user-1");
+            render(<StudyPage />);
+            await screen.findByTestId("workspace");
+            const reopened = () => workspaceProps as StudyWorkspaceProps | null;
+
+            // 書きかけは「空のときに書き始めた」ことと一緒に戻る。
+            expect(reopened()?.initialCommentDrafts).toEqual([
+                { nodeId: rootId, text: "書きかけ B", base: "" },
+            ]);
+            await waitFor(() => expect(reopened()?.commentBaseConfirmed).toBe(true));
+            expect(reopened()?.doc.tree.nodes[rootId].comment).toBe("別の端末のコメント C");
+            expect(storedDraftTexts()).toEqual(["書きかけ B"]);
+        });
 
         it("取り込みが済むまでは「最新か分からない」と渡し、済んだら、取り込んだ内容と一緒に解く", async () => {
             const { release, rootId } = await prepareSyncedStudy();

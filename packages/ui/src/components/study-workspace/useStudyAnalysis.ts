@@ -594,13 +594,15 @@ export function useStudyAnalysis({
         }, 0);
     };
 
-    // 編集できなくなったら、進行中・準備中の解析を止め、AI のダウンロードの確認も閉じる
-    // （結果を保存できないため）。
-    const downloadCancelRef = useRef(download.cancel);
-    downloadCancelRef.current = download.cancel;
+    // 編集できなくなったら、進行中・準備中の解析を止める（結果を保存できないため）。AI の
+    // ダウンロードの確認を待っていたら、それも閉じる（待っていなければ、何も出さない）。
+    const closeDownloadPromptRef = useRef<() => void>(() => {});
+    closeDownloadPromptRef.current = () => {
+        if (download.presets.length > 0) download.cancel();
+    };
     useEffect(() => {
         if (!locked) return;
-        downloadCancelRef.current();
+        closeDownloadPromptRef.current();
         void cancelRef.current();
     }, [locked]);
 

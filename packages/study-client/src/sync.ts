@@ -379,7 +379,8 @@ interface Entry {
     refreshTimer: unknown;
 }
 
-type StepOutcome = "continue" | "done" | "retry";
+/** `hold`: 同じユーザーで 401 が続いているので、間隔が空くまで待っている（予約済み）。 */
+type StepOutcome = "continue" | "done" | "retry" | "hold";
 
 export function createStudySync(options: StudySyncOptions): StudySync {
     const { store } = options;
@@ -1136,7 +1137,8 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             const authHoldMs = authHoldUntil - now();
             if (authHoldMs > 0) {
                 schedule(studyId, authHoldMs);
-                return "done";
+                // 送るものがあるのに待っているときだけ、待っていることを状態に出す。
+                return pending.length > 0 || study.serverRevision === null ? "hold" : "done";
             }
             if (study.deleting) return deleteRemote(studyId);
             if (study.remote.state === "deleted") return "done";
@@ -1214,6 +1216,12 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                         outcome = "retry";
                         entry.message = error instanceof Error ? error.message : String(error);
                         if (error instanceof StudyStorageError) entry.storageError = error.code;
+                    }
+                    if (outcome === "hold") {
+                        // 待機が明けたら送る（予約済み）。保存の状態は「再送待ち」にする。
+                        entry.retrying = true;
+                        refreshStatus(studyId);
+                        return;
                     }
                     if (outcome === "retry") {
                         // 間隔を空けて再送する（失敗のたびに倍、上限あり）。

@@ -54,6 +54,8 @@ export function useMatchNnueDownload({
     };
     const cancel = () => {
         if (busyRef.current) return;
+        // 確認待ちでなければ、取り消すものが無い（主語の欠けた通知を出さない）。
+        if (presets.length === 0) return;
         setMessage({
             text: `${presets.map((preset) => preset.displayName).join("・")}が未ダウンロードのため、${cancelReason}。`,
             type: "error",
