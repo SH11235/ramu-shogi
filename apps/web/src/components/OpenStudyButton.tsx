@@ -28,7 +28,7 @@ export function OpenStudyButton({
     className,
 }: OpenStudyButtonProps): ReactElement {
     const navigate = useNavigate();
-    const { session, isLoadingSession } = useAuthSession();
+    const { session, isLoadingSession, sessionError } = useAuthSession();
     const [isBusy, setIsBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -39,7 +39,9 @@ export function OpenStudyButton({
         try {
             // ログイン中なら、クラウドにある同じ棋譜のノートも探せるよう、先にログイン状態を伝える。
             if (!isLoadingSession && session !== null) {
-                await ensureStudySession(session?.authenticated ? session.user.id : null);
+                await ensureStudySession(session?.authenticated ? session.user.id : null, {
+                    confirmed: sessionError === null,
+                });
             }
             const { studyId } = await open();
             await navigate({ to: "/studies/$studyId", params: { studyId } });

@@ -29,7 +29,7 @@ vi.mock("@tanstack/react-router", () => ({
     useNavigate: () => navigate,
 }));
 vi.mock("../../hooks/useAuthSession", () => ({
-    useAuthSession: () => ({ ...auth, sessionError: null }),
+    useAuthSession: () => ({ sessionError: null, ...auth }),
     dispatchAuthSessionSyncEvent: () => dispatchAuthSessionSyncEvent(),
 }));
 vi.mock("../../components/HeaderNav", () => ({ HeaderNav: () => null }));
@@ -116,6 +116,50 @@ describe("StudiesPage", () => {
 
         await currentSync.createStudy(createTestDoc(LOCAL_ID, "ブラウザのノート"));
         await waitFor(() => expect(dispatchAuthSessionSyncEvent).toHaveBeenCalledTimes(1));
+    });
+
+    describe("一覧の取得が 401（セッション切れ）", () => {
+        const unauthorized = async () => ({ ok: false as const, status: 401, error: {} });
+
+        it("ログイン状態を取り直し、未ログインと分かれば、未ログインの表示になって一覧の API を呼ばない", async () => {
+            auth = authSignedIn("user-1");
+            const api = createOfflineApi({ list: vi.fn(unauthorized) });
+            const view = render(<StudiesPage api={api} />);
+
+            await waitFor(() => expect(dispatchAuthSessionSyncEvent).toHaveBeenCalledTimes(1));
+
+            // 取り直した結果、未ログインだった。
+            auth = { ...authSignedIn("user-1"), isLoadingSession: true };
+            view.rerender(<StudiesPage api={api} />);
+            auth = AUTH_SIGNED_OUT;
+            view.rerender(<StudiesPage api={api} />);
+            expect(
+                await screen.findByRole("heading", { name: "棋譜を取り込んで、研究ノートを作る" }),
+            ).toBeTruthy();
+            expect(screen.queryByText(/読み込めませんでした/)).toBeNull();
+            // 未ログインでは一覧の API を呼ばないので、取り直しは繰り返さない。
+            await new Promise((resolve) => setTimeout(resolve, 30));
+            expect(api.list).toHaveBeenCalledTimes(1);
+            expect(dispatchAuthSessionSyncEvent).toHaveBeenCalledTimes(1);
+        });
+
+        it("取り直しても同じユーザーのまま 401 が続くときは、取り直しを繰り返さず、読み込めなかったと伝える", async () => {
+            auth = authSignedIn("user-1");
+            const api = createOfflineApi({ list: vi.fn(unauthorized) });
+            const view = render(<StudiesPage api={api} />);
+            await waitFor(() => expect(dispatchAuthSessionSyncEvent).toHaveBeenCalledTimes(1));
+
+            auth = { ...authSignedIn("user-1"), isLoadingSession: true };
+            view.rerender(<StudiesPage api={api} />);
+            auth = authSignedIn("user-1");
+            view.rerender(<StudiesPage api={api} />);
+
+            expect(
+                await screen.findByText(/クラウドに保存した研究ノートを読み込めませんでした/),
+            ).toBeTruthy();
+            expect(api.list).toHaveBeenCalledTimes(2);
+            expect(dispatchAuthSessionSyncEvent).toHaveBeenCalledTimes(1);
+        });
     });
 
     it("ブラウザ内のノートとクラウドのノートを 1 つの一覧にする", async () => {

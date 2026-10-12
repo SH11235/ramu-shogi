@@ -106,6 +106,21 @@ describe("openOrCreateStudy", () => {
         expect(await sync.listLocal()).toEqual([]);
     });
 
+    it("クラウドへの問い合わせが 401（セッション切れ）なら、ログイン状態の取り直しを頼み、ノートは作る", async () => {
+        const api = createApi(async () => ({ ok: false as const, status: 401, error: {} }));
+        const sync = createSync(api);
+        sync.setSession({ userId: "user-1" });
+        const onSync = vi.fn();
+        window.addEventListener("ramu-auth-session-sync", onSync);
+        try {
+            const opened = await openStudyFromRshogiGame(GAME, { sync, api });
+            expect(opened.existing).toBe(false);
+            expect(onSync).toHaveBeenCalledTimes(1);
+        } finally {
+            window.removeEventListener("ramu-auth-session-sync", onSync);
+        }
+    });
+
     it("未ログインではクラウドに問い合わせない", async () => {
         const api = createApi();
         const sync = createSync(api);

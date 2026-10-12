@@ -140,7 +140,9 @@ function StudyStateCard({ title, children }: { title: string; children: ReactNod
 export default function StudyPage(): ReactElement {
     const { studyId } = routeApi.useParams();
     const navigate = useNavigate();
-    const { session, isLoadingSession, refreshSession } = useAuthSession();
+    const { session, isLoadingSession, sessionError, refreshSession } = useAuthSession();
+    // 取り直しに失敗して前の値が残っているだけのときは、その値を同期エンジンへ伝え直さない。
+    const sessionConfirmed = sessionError === null;
     const sessionState: SessionState = isLoadingSession
         ? "loading"
         : session === null
@@ -359,7 +361,7 @@ export default function StudyPage(): ReactElement {
                 return;
             }
             // ログイン状態を伝え、未ログイン中に作ったノートをアカウントへ引き継いでから開く。
-            await ensureStudySession(userId);
+            await ensureStudySession(userId, { confirmed: sessionConfirmed });
             const result = await sync.open(studyId);
             if (cancelled) return;
             if (result.status === "merged") {

@@ -22,6 +22,7 @@ import {
 import type { RshogiGame } from "@shogi/match-client";
 import { createStudyApiClient, type StudyApi, type StudySync } from "@shogi/study-client";
 import type { StudyKifuSource } from "@shogi/ui/components/study-workspace/studyImport";
+import { dispatchAuthSessionSyncEvent } from "../hooks/useAuthSession";
 import { getStudySync } from "./studySync";
 
 interface OpenOrCreateStudyOptions {
@@ -60,6 +61,8 @@ export async function openOrCreateStudy({
                 originRef: origin.ref,
                 limit: 1,
             });
+            // セッション切れなら、ログイン状態を取り直してもらう（ノートは新しく作って続ける）。
+            if (!listed.ok && listed.status === 401) dispatchAuthSessionSyncEvent();
             const found = listed.ok ? listed.data.studies[0] : undefined;
             if (found) return { studyId: found.id, existing: true };
         }

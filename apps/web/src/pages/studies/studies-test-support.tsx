@@ -48,6 +48,8 @@ export const createTestDoc = (id: string, title: string): StudyDocument =>
 export interface TestAuthState {
     session: { authenticated: boolean; user: { id: string } | null } | null;
     isLoadingSession: boolean;
+    /** 直近の確認に失敗したときの理由（`session` には前の値が残る）。省略時は null。 */
+    sessionError?: string | null;
 }
 
 /** 確認中。 */

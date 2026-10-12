@@ -38,7 +38,7 @@ let headerLogin: { href: string; onNavigate: () => void } | undefined;
 
 const dispatchAuthSessionSyncEvent = vi.fn();
 vi.mock("../../hooks/useAuthSession", () => ({
-    useAuthSession: () => ({ ...auth, sessionError: null, refreshSession }),
+    useAuthSession: () => ({ sessionError: null, ...auth, refreshSession }),
     dispatchAuthSessionSyncEvent: () => dispatchAuthSessionSyncEvent(),
 }));
 vi.mock("../../components/HeaderNav", () => ({
@@ -229,6 +229,43 @@ describe("StudyPage", () => {
             vi.stubGlobal("fetch", fetchMock);
             return { assign, fetchMock };
         };
+
+        it("セッション切れ（401）のあと、ログイン状態の取り直しに失敗しても、古いユーザーで送信を再開しない", async () => {
+            const store = createMemoryStudyStore();
+            const seed = createTestSync(createOfflineApi(), store);
+            seed.setSession({ userId: "user-1" });
+            await seed.createStudy(createTestDoc(STUDY_ID, "アカウントのノート"));
+            seed.dispose();
+            const unauthorized = async () => ({ ok: false as const, status: 401, error: {} });
+            const api = createOfflineApi({ create: vi.fn(unauthorized) });
+            currentSync = createTestSync(api, store);
+            auth = authSignedIn("user-1");
+            const view = render(<StudyPage />);
+            await screen.findByTestId("workspace");
+            // サーバーが 401 を返した。同期エンジンは送信を止め、画面はログイン状態を取り直す。
+            await waitFor(() => expect(dispatchAuthSessionSyncEvent).toHaveBeenCalledTimes(1));
+            expect(currentSync.getStatus(STUDY_ID).reason).toBe("signed_out");
+
+            // 取り直しが通信エラーで失敗した（前の値が残り、エラーが立つ）。
+            auth = { ...authSignedIn("user-1"), isLoadingSession: true };
+            view.rerender(<StudyPage />);
+            auth = { ...authSignedIn("user-1"), sessionError: "Failed to fetch" };
+            view.rerender(<StudyPage />);
+            await act(async () => {
+                await new Promise((resolve) => setTimeout(resolve, 30));
+            });
+            expect(currentSync.getStatus(STUDY_ID).reason).toBe("signed_out");
+            expect(api.create).toHaveBeenCalledTimes(1);
+
+            // 取り直せて、同じユーザーでログイン済みと分かれば、送信を再開する。
+            auth = { ...authSignedIn("user-1"), isLoadingSession: true };
+            view.rerender(<StudyPage />);
+            auth = authSignedIn("user-1");
+            view.rerender(<StudyPage />);
+            await waitFor(() =>
+                expect(currentSync.getStatus(STUDY_ID).reason).not.toBe("signed_out"),
+            );
+        });
 
         it("別のタブでログインし直してからこのタブに戻ると、セッションを取り直し、その場で編集できるようになる", async () => {
             const view = await openThenLock();

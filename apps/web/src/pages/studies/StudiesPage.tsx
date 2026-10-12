@@ -139,7 +139,9 @@ interface StudiesPageProps {
 
 export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
     const navigate = useNavigate();
-    const { session, isLoadingSession } = useAuthSession();
+    const { session, isLoadingSession, sessionError } = useAuthSession();
+    // 取り直しに失敗して前の値が残っているだけのときは、その値を同期エンジンへ伝え直さない。
+    const sessionConfirmed = sessionError === null;
     // ログイン状態が確認できていない間（確認中・確認に失敗）は、匿名のノートだけを扱う。
     const sessionKnown = !isLoadingSession && session !== null;
     const userId = session?.authenticated ? session.user.id : null;
@@ -157,6 +159,9 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
     // いま表示している一覧の持ち主。アカウントが変わったら、前のアカウントの一覧と続きの位置を捨てる。
     const ownerKey = sessionKnown ? (userId ?? "signed-out") : "unknown";
     const ownerKeyRef = useRef(ownerKey);
+    // 一覧の取得が 401 だったときに、ログイン状態の取り直しを頼んだユーザー。取り直しても
+    // 同じユーザーのまま 401 が続くとき（サーバー側の障害など）に、取り直しを繰り返さないため。
+    const listUnauthorizedForRef = useRef<string | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -202,9 +207,10 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
                 await loadLocal();
                 return;
             }
-            await ensureStudySession(userId);
+            await ensureStudySession(userId, { confirmed: sessionConfirmed });
             await loadLocal();
             if (userId === null) {
+                listUnauthorizedForRef.current = null;
                 if (!cancelled) {
                     setRemote([]);
                     setNextCursor(null);
@@ -214,10 +220,18 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
             const listed = await client.list({ limit: REMOTE_PAGE_SIZE });
             if (cancelled) return;
             if (listed.ok) {
+                listUnauthorizedForRef.current = null;
                 setRemote(listed.data.studies.map(fromRemote));
                 setNextCursor(listed.data.nextCursor);
                 setRemoteError(null);
-            } else if (listed.status !== 401) {
+            } else if (listed.status === 401 && listUnauthorizedForRef.current !== userId) {
+                // セッションが切れている。ログイン状態を取り直す（未ログインと分かれば、この画面は
+                // ブラウザ内のノートだけを見せ、ログインを案内する）。この取得は同期エンジンを
+                // 通らないので、ここで頼まないと、ヘッダーはログイン中のままクラウドのノートだけが
+                // 黙って消える。
+                listUnauthorizedForRef.current = userId;
+                dispatchAuthSessionSyncEvent();
+            } else {
                 setRemoteError(
                     "クラウドに保存した研究ノートを読み込めませんでした。このブラウザにあるノートだけを表示しています。",
                 );
@@ -242,7 +256,7 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
             cancelled = true;
             unsubscribe();
         };
-    }, [sessionKnown, userId, ownerKey, sync, client]);
+    }, [sessionKnown, userId, sessionConfirmed, ownerKey, sync, client]);
 
     const handleLoadMore = async (): Promise<void> => {
         if (isLoadingMore || nextCursor === null) return;
@@ -255,13 +269,15 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
             setRemote((items) => [...items, ...listed.data.studies.map(fromRemote)]);
             setNextCursor(listed.data.nextCursor);
         } else {
+            // セッション切れなら、ログイン状態を取り直す（利用者の操作 1 回につき 1 回）。
+            if (listed.status === 401) dispatchAuthSessionSyncEvent();
             setRemoteError("研究ノートの続きを読み込めませんでした。時間をおいてお試しください。");
         }
         setIsLoadingMore(false);
     };
 
     const handleImport = async (source: StudyKifuSource): Promise<void> => {
-        if (sessionKnown) await ensureStudySession(userId);
+        if (sessionKnown) await ensureStudySession(userId, { confirmed: sessionConfirmed });
         const { studyId } = await createStudyFromKifuSource(source, { sync, api: client });
         await navigate({ to: "/studies/$studyId", params: { studyId } });
     };
@@ -276,6 +292,8 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
                 // クラウドにだけあるノート。
                 const deleted = await client.delete(target.id);
                 if (!deleted.ok && deleted.status !== 404 && deleted.status !== 410) {
+                    // セッション切れなら、ログイン状態を取り直す（削除できなかったことは下で伝える）。
+                    if (deleted.status === 401) dispatchAuthSessionSyncEvent();
                     throw new Error(
                         deleted.error.message ?? `削除に失敗しました (${deleted.status})`,
                     );

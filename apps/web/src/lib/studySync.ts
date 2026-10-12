@@ -26,6 +26,19 @@ export const syncStudySession = (userId: string | null): void => {
 
 let adoption: { userId: string; done: Promise<void> } | null = null;
 
+export interface EnsureStudySessionOptions {
+    /**
+     * `userId` が、直近のログイン状態の確認で得た値か（既定は true）。
+     *
+     * 確認に失敗して前の値が残っているだけのとき（`useAuthSession` の `sessionError` が
+     * null でないとき）は false を渡す。その値は、同期エンジンが既に知っていることより
+     * 新しくないので、伝え直さない: 伝え直すと、サーバーの 401 で止めた送信（セッション切れ）を、
+     * 期限切れかもしれない古いユーザーで解いてしまう。同期エンジンがまだログイン状態を
+     * 知らないときだけ、残っている値を伝える。
+     */
+    confirmed?: boolean;
+}
+
 /**
  * セッションが確定したときに呼ぶ。ログイン状態を同期エンジンに伝え、ログイン中なら、
  * 未ログインのあいだにこのブラウザで作ったノートをそのアカウントに引き継ぐ（設計書 7.2）。
@@ -33,7 +46,13 @@ let adoption: { userId: string; done: Promise<void> } | null = null;
  * 引き継ぎはアカウントごとに 1 回だけ走らせ、同じ処理を待てるよう同じ Promise を返す
  * （アプリの起動時と、研究ノートの各ページの両方から呼ばれるため）。
  */
-export const ensureStudySession = (userId: string | null): Promise<void> => {
+export const ensureStudySession = (
+    userId: string | null,
+    { confirmed = true }: EnsureStudySessionOptions = {},
+): Promise<void> => {
+    if (!confirmed && getStudySync().getSessionStatus() !== "unknown") {
+        return adoption?.done ?? Promise.resolve();
+    }
     syncStudySession(userId);
     if (userId === null) {
         adoption = null;
