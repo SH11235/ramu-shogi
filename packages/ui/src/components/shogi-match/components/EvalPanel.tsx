@@ -11,7 +11,6 @@ import { useState } from "react";
 import type { EvalHistory } from "../utils/kifFormat";
 import { EvalGraph } from "./EvalGraph";
 import { EvalGraphModal } from "./EvalGraphModal";
-import { EvalScoreboard } from "./EvalScoreboard";
 
 interface EvalPanelProps {
     /** 評価値の履歴（グラフ用） */
@@ -22,9 +21,6 @@ interface EvalPanelProps {
     onPlySelect?: (ply: number) => void;
     /** デフォルトで開いているか */
     initialOpen?: boolean;
-    /** 検討/観戦モードか。true なら評価値スコアボード(計器)をヘッダー直下に
-        常時表示する。対局ページでは出さない(チート防止、グラフ既定閉と同方針) */
-    reviewMode?: boolean;
 }
 
 /**
@@ -36,7 +32,6 @@ export function EvalPanel({
     currentPly,
     onPlySelect,
     initialOpen = false,
-    reviewMode = false,
 }: EvalPanelProps): ReactElement {
     const [isOpen, setIsOpen] = useState(initialOpen);
     const [showEvalModal, setShowEvalModal] = useState(false);
@@ -58,7 +53,7 @@ export function EvalPanel({
             <button
                 type="button"
                 className={`flex justify-between items-center px-3 py-2.5 cursor-pointer select-none w-full bg-transparent border-0 text-left font-[inherit] text-[inherit] ${
-                    isOpen && !reviewMode ? "border-b border-border" : ""
+                    isOpen ? "border-b border-border" : ""
                 }`}
                 onClick={handleToggle}
                 aria-expanded={isOpen}
@@ -73,18 +68,6 @@ export function EvalPanel({
                 </div>
                 <ChevronIcon expanded={isOpen} />
             </button>
-
-            {/* 評価値スコアボード(計器)。検討/観戦のみ、折りたたみ状態でも常時表示。
-                ヘッダーの border-b はスコアボード表示時こちらに移す */}
-            {reviewMode && (
-                <div
-                    className={`px-3 pb-2.5 ${isOpen ? "border-b border-border" : ""}`}
-                    data-testid="eval-scoreboard"
-                >
-                    {/* evalHistory は手数 index の配列 (MobileLayout 等と同じアクセス規約) */}
-                    <EvalScoreboard entry={evalHistory[currentPly]} />
-                </div>
-            )}
 
             <div
                 className={`overflow-hidden transition-[grid-template-rows] duration-200 grid ${
