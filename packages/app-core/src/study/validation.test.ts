@@ -195,7 +195,7 @@ describe("操作の入力の検証（サーバーと同じ規則）", () => {
                 return rest;
             })(),
             result({ execution: { threads: 1, hashMb: null } as never }),
-            result({ candidates: [{ ...candidate(1), pv: ["pass"] }] }),
+            result({ candidates: [{ ...candidate(1), pv: ["resign"] }] }),
             result({ candidates: [{ ...candidate(1), extra: true } as never] }),
             result({
                 candidates: [{ ...candidate(1), score: { kind: "cp", value: 1.5 } }],

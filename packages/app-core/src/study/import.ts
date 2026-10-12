@@ -5,11 +5,11 @@
  * （対局時の評価値）に入れる。解析レイヤーには入れない。
  */
 
-import { applyMoveWithState } from "../game/board";
 import { parseCsaGameRecord } from "../game/csa-record";
 import type { KifuTree } from "../game/kifu-tree";
 import { normalizeStudyStartSfen, studyChildNodeId, studyRootNodeId } from "./ids";
 import { isStudyUsiMove, sanitizeStudyPv } from "./ops";
+import { applyStudyMoveWithState } from "./pass";
 import { parseStudySfen } from "./sfen";
 import { kifuTreeToStudyTree, type StudyNodeIdIndex } from "./tree-convert";
 import {
@@ -127,7 +127,7 @@ export function createStudyDocumentFromMoves(input: StudyImportInput): StudyDocu
         if (!isStudyUsiMove(move)) {
             throw new Error(`${index + 1} 手目が USI の指し手の書式ではありません: ${move}`);
         }
-        const applied = applyMoveWithState(position, move);
+        const applied = applyStudyMoveWithState(position, move);
         if (!applied.ok) {
             throw new Error(
                 `${index + 1} 手目を適用できません: ${move} (${applied.error ?? "unknown"})`,

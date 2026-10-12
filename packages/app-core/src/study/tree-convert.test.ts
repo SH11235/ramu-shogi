@@ -154,13 +154,33 @@ describe("実行時ツリー → 保存用", () => {
         expect(withoutSource.nodes[first].source).toBeNull();
     });
 
-    it("パスを含むツリーは研究ノートにできない", () => {
+    it("パスを含むツリーも研究ノートにでき、復元すると同じ手順になる", () => {
         const start: PositionState = {
             ...createInitialPositionState(),
             passRights: { sente: 2, gote: 2 },
         };
-        const tree = play(createKifuTree(start, "startpos"), ["pass"]);
-        expect(() => kifuTreeToStudyTree(tree, { sourceKind: null })).toThrow();
+        const tree = play(createKifuTree(start, "startpos"), ["pass", "3c3d", "pass"]);
+        const { startSfen, tree: stored } = kifuTreeToStudyTree(tree, { sourceKind: null });
+        const moves = Object.values(stored.nodes)
+            .map((node) => node.usiMove)
+            .filter((move) => move !== null);
+        expect(moves.sort()).toEqual(["3c3d", "pass", "pass"]);
+
+        // 研究ノートはパス権の回数を持たない。復元でも、回数に関係なくパスを再生できる。
+        const restored = studyDocumentToKifuTree({
+            ...createStudyDocumentFromMoves({
+                id: "study",
+                title: "パス",
+                origin: { kind: "paste", ref: null },
+                startSfen,
+                moves: ["pass", "3c3d", "pass", "8c8d", "pass", "pass"],
+            }),
+        });
+        expect(restored.errors).toEqual([]);
+        expect(restored.tree.nodes.size).toBe(7);
+        for (const node of restored.tree.nodes.values()) {
+            expect(node.positionAfter.passRights).toBeUndefined();
+        }
     });
 
     it("後手番から始まる局面も SFEN のまま持つ", () => {

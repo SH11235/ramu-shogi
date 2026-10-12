@@ -263,6 +263,13 @@ export {
     sanitizeStudyPv,
     studyDocumentToOps,
 } from "./study/ops";
+// study/pass
+export {
+    applyStudyMoveWithState,
+    isStudyPassMove,
+    STUDY_PASS_MOVE,
+    studyPassRightsForLine,
+} from "./study/pass";
 // study/score
 export {
     kifuEvalToStudyScore,
