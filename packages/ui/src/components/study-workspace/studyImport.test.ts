@@ -51,12 +51,22 @@ describe("parseKifuTextForStudy", () => {
             startSfen: "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
             moves: [],
         });
+        // 局面の行は、字下げやカンマ区切りでも読む（CSA の解析と同じ）。
+        for (const csa of ["V2.2\n PI\n+", "V2.2\nN+a\nN-b\n+,PI"]) {
+            expect(parseKifuTextForStudy(csa)).toMatchObject({ kind: "moves", moves: [] });
+        }
         const sfen = "4k4/9/9/9/9/9/9/9/4K4 b G 1";
-        expect(parseKifuTextForStudy(`開始局面：${sfen}`)).toEqual({
-            kind: "moves",
-            startSfen: sfen,
-            moves: [],
-        });
+        // 見出し・コメント・区切りの行があっても、指し手の行が無ければ局面だけ。
+        for (const kif of [
+            `開始局面：${sfen}`,
+            `#KIF version=2.0\n開始日時：2026/10/12 10:00\n開始局面：${sfen}\n*1 手目が大事\n手数----指手---------消費時間--\nまで0手で中断`,
+        ]) {
+            expect(parseKifuTextForStudy(kif)).toEqual({
+                kind: "moves",
+                startSfen: sfen,
+                moves: [],
+            });
+        }
     });
 
     it("指し手の行があるのに読めなかった棋譜・見出しだけの棋譜は、局面だけの材料にしない", () => {
@@ -64,6 +74,16 @@ describe("parseKifuTextForStudy", () => {
         expect(() => parseKifuTextForStudy("開始局面：startpos\n1 ７六歩\n2 ３四歩")).toThrow(
             "パースできる指し手が見つかりませんでした",
         );
+        // KIF: 全角の手数、「1.」の形、手数の無い行も、指し手の行として扱う。
+        for (const body of [
+            "１ ７六歩(77)\n２ ３四歩(33)",
+            "1.７六歩\n2.３四歩",
+            "７六歩\n３四歩",
+        ]) {
+            expect(() => parseKifuTextForStudy(`開始局面：startpos\n${body}`)).toThrow(
+                "パースできる指し手が見つかりませんでした",
+            );
+        }
         // KIF: 見出しだけ（開始局面の明示なし）。
         expect(() => parseKifuTextForStudy("手合割：平手\n先手：a\n後手：b")).toThrow(
             "パースできる指し手が見つかりませんでした",

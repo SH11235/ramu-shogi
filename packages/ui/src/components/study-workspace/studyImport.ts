@@ -55,16 +55,36 @@ const positionOnlySource = (startSfen: string): StudyKifuSource => {
     return { kind: "moves", startSfen: normalizeStudyStartSfen(startSfen), moves: [] };
 };
 
-/** CSA の局面の行（`PI`・`P1`〜`P9`・`P+`・`P-`）があるか。 */
-const hasCsaPositionLine = (text: string): boolean => /^P(?:I|[1-9]|[+-])/m.test(text);
+/** CSA の局面の行（`PI`・`P1`〜`P9`・`P+`・`P-`）があるか。行の分け方は CSA の解析と同じ。 */
+const hasCsaPositionLine = (text: string): boolean =>
+    text
+        .split(/\r?\n/)
+        .filter((line) => !line.trimStart().startsWith("'"))
+        .flatMap((line) => line.split(","))
+        .some((statement) => /^P(?:I|[1-9]|[+-])/.test(statement.trim()));
+
+/** KIF の、指し手ではない行（空行・コメント・見出し・手数の区切り・「まで〜」）か。 */
+const isKifNonMoveLine = (line: string): boolean => {
+    const trimmed = line.trim();
+    return (
+        trimmed === "" ||
+        trimmed.startsWith("#") ||
+        trimmed.startsWith("*") ||
+        trimmed.startsWith("手数") ||
+        trimmed.startsWith("まで") ||
+        // 見出し（「先手：〜」など）。指し手の行の消費時間（`0:00`）を見出しと取り違えないよう、
+        // 数字・記号で始まる行と、コロンの前に空白がある行は見出しにしない。
+        /^[^\d０-９\s▲△☗☖][^：:\s]*[：:]/.test(trimmed)
+    );
+};
 
 /**
- * KIF が「開始局面だけ」の入力か。開始局面が明示されていて、指し手の行（手数で始まる行や
- * ▲△ の行）が 1 つも無いとき。指し手の行があるのに 1 つも読めなかった棋譜は、局面だけの
- * 入力としては扱わない（指し手を黙って捨てない）。
+ * KIF が「開始局面だけ」の入力か。開始局面が明示されていて、指し手ではない行しか無いとき。
+ * それ以外の行がある（指し手らしい行があるのに 1 つも読めなかった）棋譜は、局面だけの入力と
+ * しては扱わない（指し手を黙って捨てない）。
  */
 const isKifPositionOnly = (text: string): boolean =>
-    /^\s*開始局面[：:]/m.test(text) && !/^\s*(?:\d+\s+\S|[▲△☗☖])/m.test(text);
+    /^\s*開始局面[：:]/m.test(text) && text.split(/\r?\n/).every(isKifNonMoveLine);
 
 const assertStandardMoves = (moves: readonly string[]): void => {
     const index = moves.findIndex((move) => !isStudyUsiMove(move));
