@@ -1,5 +1,6 @@
 import { createMemoryHistory } from "@tanstack/react-router";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { readReturnPathFromSearch } from "./lib/loginReturn";
 import { router } from "./router";
 
 const load = async (url: string) => {
@@ -63,5 +64,66 @@ describe("router: rshogi viewer", () => {
             event: "WCSC36",
             name: "RAMU",
         });
+    });
+});
+
+describe("router: ログイン後の戻り先", () => {
+    const GAME_ID = "11111111-2222-4333-8444-555555555555";
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    const stubUnauthorized = (): void => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => new Response(JSON.stringify({ error: {} }), { status: 401 })),
+        );
+    };
+
+    it("未ログインで要ログインのページを開くと、そのページを戻り先にしてログインの画面へ送る", async () => {
+        stubUnauthorized();
+
+        const location = await load(`/games/${GAME_ID}/review?ply=12#comment`);
+
+        expect(location.pathname).toBe("/auth");
+        expect(readReturnPathFromSearch(location.searchStr)).toBe(
+            `/games/${GAME_ID}/review?ply=12#comment`,
+        );
+    });
+
+    it("棋譜の詳細ページも同じ", async () => {
+        stubUnauthorized();
+
+        const location = await load(`/games/${GAME_ID}`);
+
+        expect(location.pathname).toBe("/auth");
+        expect(readReturnPathFromSearch(location.searchStr)).toBe(`/games/${GAME_ID}`);
+    });
+
+    it("ログインの画面は、戻り先とユーザー名設定の指定をクエリに保つ", async () => {
+        await load("/auth?setup=username&next=%2Fstudies%2Fabc%3Fa%3D1%23h");
+        expect(router.state.matches.at(-1)?.search).toEqual({
+            setup: "username",
+            next: "/studies/abc?a=1#h",
+        });
+
+        await router.navigate({ to: "/auth", search: { next: "/rshogi-viewer?event=2026" } });
+        expect(readReturnPathFromSearch(router.state.location.searchStr)).toBe(
+            "/rshogi-viewer?event=2026",
+        );
+    });
+
+    it("戻り先（クエリとハッシュつき）を履歴へ積むと、そのページへ遷移する", async () => {
+        await load("/auth?setup=username&next=%2Frshogi-viewer%3Fevent%3DWCSC36%23list");
+        const returnPath = readReturnPathFromSearch(router.state.location.searchStr);
+        expect(returnPath).toBe("/rshogi-viewer?event=WCSC36#list");
+
+        router.history.push(returnPath ?? "/");
+        await router.load();
+
+        expect(router.state.location.pathname).toBe("/rshogi-viewer");
+        expect(router.state.matches.at(-1)?.search).toEqual({ event: "WCSC36" });
+        expect(router.state.location.hash).toBe("list");
     });
 });

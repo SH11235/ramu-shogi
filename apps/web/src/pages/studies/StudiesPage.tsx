@@ -34,6 +34,7 @@ import { PageHeading } from "../../components/PageHeading";
 import { Section } from "../../components/Section";
 import { StatusBanner } from "../../components/StatusBanner";
 import { dispatchAuthSessionSyncEvent, useAuthSession } from "../../hooks/useAuthSession";
+import { buildLoginHref } from "../../lib/loginReturn";
 import { removeStudyCommentDrafts } from "../../lib/studyDrafts";
 import { createStudyFromKifuSource } from "../../lib/studyEntry";
 import { ensureStudySession, getStudySync } from "../../lib/studySync";
@@ -362,7 +363,7 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
                         <p className="text-xs text-muted-foreground">
                             いまはこのブラウザの中にだけ保存されています。
                             <a
-                                href={`/auth?next=${encodeURIComponent("/studies")}`}
+                                href={buildLoginHref("/studies")}
                                 className="text-wafuu-ai underline underline-offset-2 hover:text-wafuu-ai-light"
                             >
                                 ログインするとクラウドにも保存できます

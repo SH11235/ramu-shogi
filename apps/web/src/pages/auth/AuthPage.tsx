@@ -13,6 +13,7 @@ import {
     type SessionUser,
     useAuthSession,
 } from "../../hooks/useAuthSession";
+import { readReturnPathFromSearch } from "../../lib/loginReturn";
 
 function AuthenticatedProfileSection({
     sessionUser,
@@ -98,8 +99,8 @@ export default function AuthPage(): ReactElement {
         typeof window !== "undefined" ? window.location.search : "",
     );
     const requiresUsernameSetup = searchParams.get("setup") === "username";
-    const nextPath = searchParams.get("next");
-    const resolvedNextPath = nextPath?.startsWith("/") && nextPath !== "/auth" ? nextPath : "/";
+    // ログイン後の戻り先（ログインを始めた画面）。使えない値は捨てて、トップへ戻す。
+    const returnPath = readReturnPathFromSearch(searchParams.toString());
     const [status, setStatus] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -163,10 +164,10 @@ export default function AuthPage(): ReactElement {
                 await router.invalidate();
 
                 if (requiresUsernameSetup) {
-                    const destination =
-                        nextPath?.startsWith("/") && nextPath !== "/auth" ? nextPath : "/";
                     setIsSubmitting(false);
-                    await router.navigate({ to: destination });
+                    // 戻り先はクエリやハッシュを含みうるので、URL のまま履歴へ積む
+                    // （`navigate({ to })` はパスだけを受け取る）。
+                    router.history.push(returnPath ?? "/");
                     return;
                 }
 
@@ -184,8 +185,9 @@ export default function AuthPage(): ReactElement {
     }
 
     function handleGoogleLogin(): void {
+        // 戻り先は backend が OAuth の往復の間だけ持ち、ログイン後にそこへ送り返す。
         const query = new URLSearchParams({
-            next: resolvedNextPath,
+            next: returnPath ?? "/",
             t: String(Date.now()),
         });
         window.location.assign(`/api/auth/google/start?${query.toString()}`);
@@ -225,8 +227,8 @@ export default function AuthPage(): ReactElement {
                                 Google でログイン
                             </h2>
                             <p className="text-sm text-muted-foreground">
-                                {resolvedNextPath === "/auth"
-                                    ? "Google アカウントでログインすると、このページに戻ります。"
+                                {returnPath === null
+                                    ? "Google アカウントでログインすると、トップページに移動します。"
                                     : "Google アカウントでログインすると、元のページに戻ります。"}
                             </p>
                         </div>

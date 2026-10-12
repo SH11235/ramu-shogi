@@ -1,4 +1,5 @@
 import { redirect } from "@tanstack/react-router";
+import { sanitizeReturnPath } from "./lib/loginReturn";
 
 type LoaderResponseStatus = "ok" | "needs_auth";
 
@@ -7,6 +8,11 @@ interface HandleLoaderResponseOptions {
     notFoundMessage?: string;
     onUnauthorized?: "return_needs_auth" | "throw" | "redirect_to_auth";
     unauthorizedMessage?: string;
+    /**
+     * `redirect_to_auth` でログインの画面へ送るときの、ログイン後の戻り先
+     * （開こうとしていたページのパス + クエリ + ハッシュ）。
+     */
+    returnTo?: string;
 }
 
 export function handleLoaderResponse(
@@ -18,7 +24,10 @@ export function handleLoaderResponse(
             return "needs_auth";
         }
         if (options.onUnauthorized === "redirect_to_auth") {
-            throw redirect({ to: "/auth" });
+            throw redirect({
+                to: "/auth",
+                search: { next: sanitizeReturnPath(options.returnTo) ?? undefined },
+            });
         }
         throw new Error(options.unauthorizedMessage ?? "ログインが必要です");
     }

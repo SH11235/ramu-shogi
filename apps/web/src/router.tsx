@@ -53,6 +53,12 @@ const onlineRoute = createRoute({
 const authRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/auth",
+    // `next` はログイン後の戻り先、`setup=username` は初回のユーザー名設定。
+    // 値の検証（戻り先として使ってよいか）は、読む側（lib/loginReturn）で行う。
+    validateSearch: (search: Record<string, unknown>) => ({
+        next: typeof search.next === "string" ? search.next : undefined,
+        setup: typeof search.setup === "string" ? search.setup : undefined,
+    }),
     component: lazyRouteComponent(() => import("./pages/auth/AuthPage")),
 });
 
@@ -105,7 +111,7 @@ const gameDetailRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/games/$gameId",
     component: lazyRouteComponent(() => import("./pages/games/GameDetailPage")),
-    loader: async ({ params: { gameId } }) => {
+    loader: async ({ params: { gameId }, location }) => {
         if (!UUID_RE.test(gameId)) {
             throw redirect({
                 to: "/public/games/$publicId",
@@ -120,6 +126,7 @@ const gameDetailRoute = createRoute({
             errorMessage: "棋譜の取得に失敗しました",
             notFoundMessage: "棋譜が見つかりません",
             onUnauthorized: "redirect_to_auth",
+            returnTo: location.href,
         });
 
         const payload = (await response.json()) as GetGameResponse;
@@ -131,7 +138,7 @@ const gameReviewRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/games/$gameId/review",
     component: lazyRouteComponent(() => import("./pages/games/GameReviewPage")),
-    loader: async ({ params: { gameId } }) => {
+    loader: async ({ params: { gameId }, location }) => {
         const [gameResponse, snapshotsResponse] = await Promise.all([
             fetch(`/api/games/${gameId}`, {
                 credentials: "same-origin",
@@ -145,10 +152,12 @@ const gameReviewRoute = createRoute({
             errorMessage: "検討データの取得に失敗しました",
             notFoundMessage: "棋譜が見つかりません",
             onUnauthorized: "redirect_to_auth",
+            returnTo: location.href,
         });
         handleLoaderResponse(snapshotsResponse, {
             errorMessage: "検討データの取得に失敗しました",
             onUnauthorized: "redirect_to_auth",
+            returnTo: location.href,
         });
 
         const gamePayload = (await gameResponse.json()) as GetGameResponse;

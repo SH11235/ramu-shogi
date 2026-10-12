@@ -4,6 +4,7 @@ import { Link, useLocation } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { useAuthSession } from "../hooks/useAuthSession";
+import { loginSearch } from "../lib/loginReturn";
 import { AuthBadge } from "./AuthBadge";
 
 type NavTo =
@@ -99,19 +100,43 @@ function buildNavSections(pathname: string): NavSection[] {
     ];
 }
 
+const drawerLinkClass = (active: boolean): string =>
+    cn(
+        "flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors",
+        active ? activeClass : inactiveClass,
+    );
+
 function DrawerLink({ item, onNavigate }: { item: NavItem; onNavigate: () => void }): ReactElement {
     return (
         <Link
             to={item.to}
             aria-current={item.active ? "page" : undefined}
             onClick={onNavigate}
-            className={cn(
-                "flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors",
-                item.active ? activeClass : inactiveClass,
-            )}
+            className={drawerLinkClass(item.active)}
         >
             {item.label}
             {item.requiresAuth && <AuthBadge />}
+        </Link>
+    );
+}
+
+/** 未ログインのときの「ログイン」。いま開いている画面を、ログイン後の戻り先にする。 */
+function DrawerLoginLink({
+    active,
+    onNavigate,
+}: {
+    active: boolean;
+    onNavigate: () => void;
+}): ReactElement {
+    return (
+        <Link
+            to="/auth"
+            search={loginSearch}
+            aria-current={active ? "page" : undefined}
+            onClick={onNavigate}
+            className={drawerLinkClass(active)}
+        >
+            ログイン
         </Link>
     );
 }
@@ -121,11 +146,7 @@ export function NavDrawer(): ReactElement {
     const { pathname } = useLocation();
     const [open, setOpen] = useState(false);
     const sections = buildNavSections(pathname);
-    const authItem: NavItem = {
-        to: "/auth",
-        label: session?.authenticated ? session.user.displayName : "ログイン",
-        active: pathname === "/auth",
-    };
+    const isAuthActive = pathname === "/auth";
 
     return (
         <Sheet open={open} onOpenChange={setOpen}>
@@ -165,7 +186,21 @@ export function NavDrawer(): ReactElement {
                         ))}
                     </div>
                     <div className="mt-auto border-t border-border pt-4">
-                        <DrawerLink item={authItem} onNavigate={() => setOpen(false)} />
+                        {session?.authenticated ? (
+                            <DrawerLink
+                                item={{
+                                    to: "/auth",
+                                    label: session.user.displayName,
+                                    active: isAuthActive,
+                                }}
+                                onNavigate={() => setOpen(false)}
+                            />
+                        ) : (
+                            <DrawerLoginLink
+                                active={isAuthActive}
+                                onNavigate={() => setOpen(false)}
+                            />
+                        )}
                     </div>
                 </nav>
             </SheetContent>

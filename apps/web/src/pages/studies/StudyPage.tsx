@@ -11,6 +11,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { Section } from "../../components/Section";
 import { dispatchAuthSessionSyncEvent, useAuthSession } from "../../hooks/useAuthSession";
 import { resolveBuiltinEngineIdentity } from "../../lib/builtinEngine";
+import { buildLoginHref } from "../../lib/loginReturn";
 import {
     applyStudyCommentDraftChange,
     readStudyCommentDrafts,
@@ -97,8 +98,7 @@ const fitsCommentLimit = (text: string): boolean =>
     new TextEncoder().encode(text).length <= STUDY_LIMITS.commentBytes;
 
 /** ログインへ進む先。ログイン後は元のノートの画面へ戻る。 */
-const loginHref = (studyId: string): string =>
-    `/auth?next=${encodeURIComponent(`/studies/${studyId}`)}`;
+const loginHref = (studyId: string): string => buildLoginHref(`/studies/${studyId}`);
 
 /** 元の棋譜へのリンク。貼り付けた棋譜には無い。 */
 function renderOriginLink(origin: StudyDocument["origin"]): ReactNode {
