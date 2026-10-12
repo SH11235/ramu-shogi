@@ -10,6 +10,7 @@ import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
 import { Section } from "../../components/Section";
 import { dispatchAuthSessionSyncEvent, useAuthSession } from "../../hooks/useAuthSession";
+import { usePlayFromPosition } from "../../hooks/usePlayFromPosition";
 import { resolveBuiltinEngineIdentity } from "../../lib/builtinEngine";
 import { buildLoginHref } from "../../lib/loginReturn";
 import {
@@ -141,6 +142,7 @@ function StudyStateCard({ title, children }: { title: string; children: ReactNod
 export default function StudyPage(): ReactElement {
     const { studyId } = routeApi.useParams();
     const navigate = useNavigate();
+    const playFromPosition = usePlayFromPosition();
     const { session, isLoadingSession, sessionError, refreshSession } = useAuthSession();
     // 取り直しに失敗して前の値が残っているだけのときは、その値を同期エンジンへ伝え直さない。
     const sessionConfirmed = sessionError === null;
@@ -629,6 +631,7 @@ export default function StudyPage(): ReactElement {
                         onLogin={handleLogin}
                         onDiscard={handleDiscard}
                         originLink={renderOriginLink(state.doc.origin)}
+                        onPlayFromPosition={playFromPosition}
                         locked={state.locked}
                         commentBaseConfirmed={state.fresh}
                         initialCommentDrafts={state.drafts}

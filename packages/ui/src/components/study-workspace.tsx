@@ -40,6 +40,7 @@ import {
     AlertDialogTitle,
 } from "./alert-dialog";
 import { Button } from "./button";
+import type { PlayFromPosition } from "./rshogi-play-from-position";
 import { EvalGraph, type EvalGraphMarker } from "./shogi-match/components/EvalGraph";
 import { MatchNnueDownloadDialog } from "./shogi-match/components/MatchNnueDownloadDialog";
 import { type HandInfo, MobileBoardSection } from "./shogi-match/components/MobileBoardSection";
@@ -80,12 +81,14 @@ import {
     PrevIcon,
     SettingsIcon,
 } from "./study-workspace/StudyIcons";
+import { StudyMoreMenu } from "./study-workspace/StudyMoreMenu";
 import { StudyMoveList } from "./study-workspace/StudyMoveList";
 import {
     StudySaveIndicator,
     StudySaveNotice,
     type StudyWorkspaceSaveStatus,
 } from "./study-workspace/StudySaveStatus";
+import { exportStudyLineToKif, exportStudyPositionToSfen } from "./study-workspace/studyExport";
 import {
     applyStudyLayerToTree,
     buildStudyStructureTree,
@@ -151,6 +154,11 @@ interface StudyWorkspaceCommonProps {
     onDiscard?: () => void;
     /** 元の棋譜へのリンク。無ければ出どころの種別だけを出す。 */
     originLink?: ReactNode;
+    /**
+     * いま見ている局面を対局ページで開く（開き方は呼び出し側が決める。Web は `/play` へ移動）。
+     * 渡さなければ「この局面から対局」を出さない。
+     */
+    onPlayFromPosition?: (position: PlayFromPosition) => void;
     /** 合法手の取得の差し替え（Desktop・テスト用）。省略時は共通の PositionService。 */
     fetchLegalMoves?: FetchLegalMoves;
     /**
@@ -387,6 +395,7 @@ export function StudyWorkspaceView({
     onLogin,
     onDiscard,
     originLink,
+    onPlayFromPosition,
     fetchLegalMoves,
     locked = false,
     initialCommentDrafts,
@@ -858,6 +867,29 @@ export function StudyWorkspaceView({
             type: "success",
         });
     };
+    const copyText = (text: string, done: string): void => {
+        const failed = (): void =>
+            onMessageChange({ text: "コピーできませんでした。", type: "error" });
+        try {
+            void navigator.clipboard
+                .writeText(text)
+                .then(() => onMessageChange({ text: done, type: "success" }), failed);
+        } catch {
+            failed();
+        }
+    };
+    const copyKif = (): void =>
+        copyText(
+            exportStudyLineToKif(doc, tree, line),
+            line.length > 1
+                ? `表示中の手順（${line.length - 1} 手）を KIF でコピーしました。`
+                : "開始局面を KIF でコピーしました。",
+        );
+    const copySfen = (): void =>
+        copyText(
+            exportStudyPositionToSfen(tree.startSfen, movesToCurrent),
+            "いま見ている局面を SFEN でコピーしました。",
+        );
     const confirmDeleteVariation = (): void => {
         const targetId = deleteTargetId;
         setDeleteTargetId(null);
@@ -1211,6 +1243,19 @@ export function StudyWorkspaceView({
                             title={doc.title}
                             disabled={locked}
                             onCommit={(value) => void onApplyOps([{ type: "setTitle", value }])}
+                        />
+                        <StudyMoreMenu
+                            onCopyKif={copyKif}
+                            onCopySfen={copySfen}
+                            onPlayFromPosition={
+                                onPlayFromPosition
+                                    ? () =>
+                                          onPlayFromPosition({
+                                              sfen: tree.startSfen,
+                                              moves: movesToCurrent,
+                                          })
+                                    : undefined
+                            }
                         />
                         {settingsButtonLabel ? (
                             <button

@@ -81,6 +81,7 @@ interface HarnessProps {
     /** 最初に表示する解析の設定（省略時は、結果の最も多いもの）。 */
     initialDisplayLayerId?: string;
     deepLayerId?: string | null;
+    onPlayFromPosition?: (position: { sfen: string; moves: string[] }) => void;
 }
 
 /** 呼び出し側（ページ）の代わりに、操作を文書へ適用して画面に渡し直す。 */
@@ -102,6 +103,7 @@ function Harness({
     commentBaseConfirmed,
     initialDisplayLayerId,
     deepLayerId,
+    onPlayFromPosition,
 }: HarnessProps) {
     const [doc, setDoc] = useState(initialDoc);
     const [message, setMessage] = useState<Message | null>(null);
@@ -138,6 +140,7 @@ function Harness({
             displayLayerId={displayLayerId}
             onDisplayLayerChange={setPreferredLayerId}
             deepLayerId={deepLayerId}
+            onPlayFromPosition={onPlayFromPosition}
             analysis={analysis}
             message={message}
             onMessageChange={setMessage}
@@ -285,6 +288,75 @@ describe("StudyWorkspaceView", () => {
         expect(
             within(moveList()).getByRole("button", { name: /変化\s*☗7六歩\(77\)\s*\d+ 手/ }),
         ).toBeTruthy();
+    });
+
+    describe("その他の操作（書き出しと、この局面から対局）", () => {
+        const openMenu = (): void => {
+            fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
+        };
+
+        it("表示中の手順を KIF で、いま見ている局面までを SFEN でコピーする", async () => {
+            const writeText = vi.fn(async (_text: string) => {});
+            vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+            try {
+                render(<Harness initialDoc={createTestStudy().doc} />);
+                // 2 手目まで進める。
+                fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+                fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+
+                openMenu();
+                fireEvent.click(screen.getByRole("button", { name: /棋譜をコピー（KIF）/ }));
+                await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+                // KIF は、見ている局面より先も含めた、表示中の手順の全体。
+                expect(writeText.mock.calls[0][0]).toContain("先手：先手太郎");
+                expect(writeText.mock.calls[0][0]).toContain("８四歩");
+                expect(await screen.findByText(/4 手）を KIF でコピーしました/)).toBeTruthy();
+
+                openMenu();
+                fireEvent.click(screen.getByRole("button", { name: /局面をコピー（SFEN）/ }));
+                await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+                expect(writeText.mock.calls[1][0]).toBe("position startpos moves 7g7f 3c3d");
+            } finally {
+                vi.unstubAllGlobals();
+            }
+        });
+
+        it("コピーできなかったら、そう知らせる", async () => {
+            vi.stubGlobal("navigator", {
+                ...navigator,
+                clipboard: { writeText: () => Promise.reject(new Error("denied")) },
+            });
+            try {
+                render(<Harness initialDoc={createTestStudy().doc} />);
+                openMenu();
+                fireEvent.click(screen.getByRole("button", { name: /局面をコピー（SFEN）/ }));
+                expect(await screen.findByText("コピーできませんでした。")).toBeTruthy();
+            } finally {
+                vi.unstubAllGlobals();
+            }
+        });
+
+        it("「この局面から対局」は、開始局面といま見ている局面までの手順を渡す。渡し先が無ければ出さない", () => {
+            const onPlayFromPosition = vi.fn();
+            const view = render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    onPlayFromPosition={onPlayFromPosition}
+                />,
+            );
+            fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+            openMenu();
+            fireEvent.click(screen.getByRole("button", { name: /この局面から対局/ }));
+            expect(onPlayFromPosition).toHaveBeenCalledWith({
+                sfen: expect.any(String),
+                moves: ["7g7f"],
+            });
+            view.unmount();
+
+            render(<Harness initialDoc={createTestStudy().doc} />);
+            openMenu();
+            expect(screen.queryByRole("button", { name: /この局面から対局/ })).toBeNull();
+        });
     });
 
     it("既にある手を指したときは、手を足さずにその手へ移る", async () => {
