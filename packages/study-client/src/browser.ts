@@ -143,6 +143,9 @@ export function createBrowserStudySync(options: BrowserStudySyncOptions = {}): B
     };
     const onOnline = (): void => {
         void sync.flush().catch(() => undefined);
+        // 送信待ちが無くても、開いているノートの最新の内容を取り込み直す
+        // （オフラインの間に失敗した最初の取り込みを、復帰したときにやり直す）。
+        void sync.refreshOpen().catch(() => undefined);
     };
     const hasPage = typeof document !== "undefined" && typeof window !== "undefined";
     if (hasPage) {

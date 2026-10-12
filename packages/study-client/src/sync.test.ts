@@ -742,6 +742,38 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             expect(pulledEvents(harness)).toHaveLength(2);
         });
 
+        it("開き直す前に始めた取得が届いても `done` にせず、開き直したあとの取得で `done` になる", async () => {
+            const harness = await createSyncedHarness();
+            const releases: Array<() => void> = [];
+            harness.server.beforeHandle = async (call) => {
+                if (call.method !== "get") return;
+                await new Promise<void>((resolve) => {
+                    releases.push(resolve);
+                });
+            };
+
+            await harness.sync.open(TEST_STUDY_ID);
+            await settle();
+            expect(releases).toHaveLength(1);
+            // 最初の取得の応答を待っている間に、開き直す。
+            await harness.sync.open(TEST_STUDY_ID);
+            expect(harness.sync.getPullState(TEST_STUDY_ID)).toBe("pending");
+
+            // 開き直す前に始めた取得が届いても、最新を確かめたことにはしない。
+            releases[0]();
+            await settle();
+            expect(harness.sync.getPullState(TEST_STUDY_ID)).toBe("pending");
+            expect(pulledEvents(harness)).toHaveLength(0);
+
+            // 開き直したあとに始めた取得が届いて、はじめて `done` になる。
+            expect(releases).toHaveLength(2);
+            harness.server.beforeHandle = null;
+            releases[1]();
+            await harness.advance(0);
+            expect(harness.sync.getPullState(TEST_STUDY_ID)).toBe("done");
+            expect(pulledEvents(harness)).toHaveLength(1);
+        });
+
         it("取り込めない間（オフライン・失敗）は `pending` のままで、取り込めたら `done` になる", async () => {
             const harness = await createSyncedHarness();
             const stop = harness.server.intercept("get", "offline");

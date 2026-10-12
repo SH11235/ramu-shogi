@@ -376,6 +376,11 @@ interface Entry {
     open: boolean;
     /** 最後に `open` してから、サーバーの最新の内容を取り込んだか。 */
     pulled: boolean;
+    /**
+     * `pulled` を確かめ直すたびに進む番号。確かめ直す前に始めた取得が、あとから届いて
+     * 「取り込み済み」にしてしまわないようにする。
+     */
+    pullEpoch: number;
     refreshTimer: unknown;
 }
 
@@ -461,6 +466,7 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                 listeners: new Set(),
                 open: false,
                 pulled: false,
+                pullEpoch: 0,
                 refreshTimer: null,
             };
             entries.set(studyId, entry);
@@ -1274,9 +1280,14 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         return "skipped";
     };
 
-    /** 開いたあとの最初の取り込みが済んだことを覚え、知らせる。 */
-    const markPulled = (studyId: string): void => {
+    /**
+     * 開いたあとの最初の取り込みが済んだことを覚え、知らせる。
+     * 取得を始めたあとに確かめ直し（開き直し・ユーザーの切り替え）があった場合は、その取得の
+     * 結果では「済んだ」にしない（確かめ直したあとに始めた取得だけが済ませられる）。
+     */
+    const markPulled = (studyId: string, epoch: number): void => {
         const entry = entryOf(studyId);
+        if (entry.pullEpoch !== epoch) return;
         if (entry.pulled) return;
         entry.pulled = true;
         emit({ type: "pulled", studyId });
@@ -1336,17 +1347,19 @@ export function createStudySync(options: StudySyncOptions): StudySync {
     });
 
     const pull = async (studyId: string): Promise<void> => {
+        const entry = entryOf(studyId);
+        let epoch = entry.pullEpoch;
         let outcome = await locks.request(lockName(studyId), () => pullLocked(studyId));
         // 取り込んだ内容は、ここまでに保存層へ書き終えている。
-        if (outcome === "fetched") markPulled(studyId);
-        const entry = entryOf(studyId);
+        if (outcome === "fetched") markPulled(studyId, epoch);
         if (entry.pendingCount > 0 || entry.study?.serverRevision === null) {
             await runSync(studyId, false);
         }
         if (outcome === "inflight") {
             // 応答待ちだったバッチの再送が済んだあとで、取り込み直す。
+            epoch = entry.pullEpoch;
             outcome = await locks.request(lockName(studyId), () => pullLocked(studyId));
-            if (outcome === "fetched") markPulled(studyId);
+            if (outcome === "fetched") markPulled(studyId, epoch);
         }
     };
 
@@ -1421,7 +1434,10 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             }
             if (nextUserId !== previousUserId) {
                 // 別のアカウントから見た内容は、取り込み直すまで最新とは言えない。
-                for (const entry of entries.values()) entry.pulled = false;
+                for (const entry of entries.values()) {
+                    entry.pulled = false;
+                    entry.pullEpoch += 1;
+                }
             }
             session = next ? { userId: next.userId } : null;
             sessionKnown = true;
@@ -1470,6 +1486,7 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                 entry.open = true;
                 // 開くたびに、最新の内容を取り込めたかを確かめ直す。
                 entry.pulled = false;
+                entry.pullEpoch += 1;
                 // 他の端末の変更を裏で取り込み、送信待ちがあれば送る。
                 void pull(studyId).catch(() => undefined);
                 return { status: "ok", study: local.study };
