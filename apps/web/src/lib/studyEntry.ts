@@ -21,7 +21,10 @@ import {
 } from "@shogi/app-core";
 import type { RshogiGame } from "@shogi/match-client";
 import { createStudyApiClient, type StudyApi, type StudySync } from "@shogi/study-client";
-import type { StudyKifuSource } from "@shogi/ui/components/study-workspace/studyImport";
+import {
+    type StudyKifuSource,
+    studyStartPositionError,
+} from "@shogi/ui/components/study-workspace/studyImport";
 import { dispatchAuthSessionSyncEvent } from "../hooks/useAuthSession";
 import { getStudySync } from "./studySync";
 
@@ -113,6 +116,9 @@ interface ImportDeps extends Pick<OpenOrCreateStudyOptions, "sync" | "api"> {
  *
  * `createStudyDocumentFromMoves` は「駒がそこにあるか」程度しか見ない（歩を飛び越える角なども
  * 通ってしまう）ので、信頼できない入力は先にここを通す。指せない手があれば、何手目かを添えて断る。
+ *
+ * 指し手が無いとき（局面だけのノート）は、手順の再生では局面を確かめられないので、局面として
+ * 成り立つこと（玉が 1 枚ずつある、駒の枚数が一組に収まる）を確かめてから、局面を読み込ませる。
  */
 async function assertLegalLine(
     startSfen: string,
@@ -121,6 +127,14 @@ async function assertLegalLine(
 ): Promise<void> {
     const run: ReplayMovesStrict =
         replay ?? ((sfen, line) => getPositionService().replayMovesStrict(sfen, line));
+    if (moves.length === 0) {
+        const reason = studyStartPositionError(startSfen);
+        if (reason) throw new Error(`この局面は研究ノートにできません: ${reason}`);
+        const loaded = await run(startSfen, []);
+        if (loaded.error)
+            throw new Error("この局面は研究ノートにできません（読み込めない局面です）");
+        return;
+    }
     const result = await run(startSfen, [...moves]);
     if (result.applied.length >= moves.length && !result.error) return;
     const index = Math.min(result.applied.length, moves.length - 1);
@@ -252,9 +266,13 @@ export function openStudyFromGameRecord(
     });
 }
 
-/** 対局者名の無い棋譜の表題（例: 「取り込んだ棋譜（10/12）」）。あとから画面で変えられる。 */
-function importedTitle(now: Date = new Date()): string {
-    return `取り込んだ棋譜（${now.getMonth() + 1}/${now.getDate()}）`;
+/**
+ * 対局者名の無い棋譜の表題（例: 「取り込んだ棋譜（10/12）」）。あとから画面で変えられる。
+ * 指し手の無いノート（局面だけ）は「局面の研究（10/12）」にする。
+ */
+function importedTitle(hasMoves: boolean, now: Date = new Date()): string {
+    const date = `${now.getMonth() + 1}/${now.getDate()}`;
+    return hasMoves ? `取り込んだ棋譜（${date}）` : `局面の研究（${date}）`;
 }
 
 /**
@@ -278,7 +296,7 @@ export async function createStudyFromKifuSource(
                 ? createStudyDocumentFromCsa({ id, csa: source.csa, origin })
                 : createStudyDocumentFromMoves({
                       id,
-                      title: importedTitle(),
+                      title: importedTitle(source.moves.length > 0),
                       origin,
                       startSfen: source.startSfen,
                       moves: source.moves,
@@ -299,7 +317,10 @@ export async function createStudyFromKifuTree(
     deps: ImportDeps = {},
 ): Promise<OpenOrCreateStudyResult> {
     const origin: StudyOrigin = { kind: "paste", ref: null };
-    for (const line of leafLines(tree)) {
+    const lines = leafLines(tree);
+    // 指し手の無い棋譜（編集した局面だけ）は、局面を確かめる（`leafLines` はルートだけの
+    // ツリーで `[]` を返すので、空の手順を 1 件として渡す）。
+    for (const line of lines.length > 0 ? lines : [[]]) {
         await assertLegalLine(tree.startSfen, line, deps.replayMovesStrict);
     }
     const sente = info.players?.sente?.trim() || undefined;
@@ -311,7 +332,7 @@ export async function createStudyFromKifuTree(
         build: (id) =>
             createStudyDocumentFromKifuTree({
                 id,
-                title: sente && gote ? `${sente} 対 ${gote}` : importedTitle(),
+                title: sente && gote ? `${sente} 対 ${gote}` : importedTitle(tree.nodes.size > 1),
                 origin,
                 tree,
                 sourceKind: "kifu",
