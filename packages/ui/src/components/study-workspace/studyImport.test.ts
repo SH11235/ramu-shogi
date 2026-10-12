@@ -56,6 +56,8 @@ describe("parseKifuTextForStudy", () => {
             "V2.2\n PI\n+",
             "V2.2\nN+a\nN-b\n+,PI",
             "V2.2\n$EVENT:test\nPI\n+\n'comment\n%TORYO",
+            // 対局者名・棋譜情報の値に入ったカンマは、文の区切りではない。
+            "V2.2\nN+Doe, John\n$EVENT:予選,1日目\nPI\n+",
         ]) {
             expect(parseKifuTextForStudy(csa)).toMatchObject({ kind: "moves", moves: [] });
         }

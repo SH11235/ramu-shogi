@@ -132,7 +132,7 @@ async function assertLegalLine(
         if (reason) throw new Error(`この局面は研究ノートにできません: ${reason}`);
         const loaded = await run(startSfen, []);
         if (loaded.error)
-            throw new Error("この局面は研究ノートにできません（読み込めない局面です）。");
+            throw new Error("この局面は研究ノートにできません（読み込めない局面です）");
         return;
     }
     const result = await run(startSfen, [...moves]);
@@ -318,7 +318,8 @@ export async function createStudyFromKifuTree(
 ): Promise<OpenOrCreateStudyResult> {
     const origin: StudyOrigin = { kind: "paste", ref: null };
     const lines = leafLines(tree);
-    // 指し手の無い棋譜（編集した局面だけ）は、局面を確かめる。
+    // 指し手の無い棋譜（編集した局面だけ）は、局面を確かめる（`leafLines` はルートだけの
+    // ツリーで `[]` を返すので、空の手順を 1 件として渡す）。
     for (const line of lines.length > 0 ? lines : [[]]) {
         await assertLegalLine(tree.startSfen, line, deps.replayMovesStrict);
     }

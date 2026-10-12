@@ -65,6 +65,8 @@ const CSA_POSITION_STATEMENT = /^P(?:I|[1-9]|[+-])/;
 /**
  * CSA の、指し手ではない文（版・対局者名・棋譜情報・局面・手番・消費時間・終局などの指示）。
  * 決まった形のものだけを認める（`%TORYO +7776FU` のように、うしろに何か続くものは認めない）。
+ * 並びは順に: `V`=版、`N+`/`N-`=対局者名、`$`=棋譜情報、`PI`/`P1`〜`P9`/`P+`・`P-`=局面、
+ * `+`/`-`=手番、`T`=消費時間、`%`=終局などの指示。
  */
 const CSA_NON_MOVE_STATEMENT =
     /^(?:V[\d.]+|N[+-].*|\$[A-Z_]+:.*|PI(?:\d{2}[A-Z]{2})*|P[1-9](?:[+-][A-Z]{2}| \* ?)+|P[+-](?:\d{2}[A-Z]{2})*|[+-]|T\d+|%[A-Z_0-9]+)$/;
@@ -77,7 +79,10 @@ const CSA_NON_MOVE_STATEMENT =
 const isCsaPositionOnly = (text: string): boolean => {
     const statements: string[] = [];
     for (const line of text.split(/\r?\n/)) {
-        for (const part of line.split(",")) {
+        // カンマで文を区切るのは、指し手・手番・消費時間・指示の行だけ（CSA の解析と同じ）。
+        // 対局者名や棋譜情報の値にはカンマが入りうるので、行のまま見る。
+        const parts = /^[\s]*[-+T%]/.test(line) ? line.split(",") : [line];
+        for (const part of parts) {
             const statement = part.trim();
             // `'` から行末まではコメント。
             if (statement.startsWith("'")) break;
