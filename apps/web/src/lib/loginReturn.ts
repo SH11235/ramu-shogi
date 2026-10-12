@@ -29,16 +29,45 @@ const hasControlCharacter = (value: string): boolean =>
         return code < 32 || code === 127;
     });
 
+/** パスに、エンコードした `/`（`%2F`）か `\`（`%5C`）が含まれるか。 */
+const ENCODED_SEPARATOR = /%2f|%5c/i;
+
+/**
+ * パスが指す先を、ルーターと同じ見方（パーセントエンコードを解き、大文字小文字を区別しない）で
+ * 分類する。`/AUTH` や `/%61uth` も、ルーターはログインの画面として開く。
+ *
+ * - `auth`: ログインの画面（`/auth`、`/auth/...`）
+ * - `api`: API（`/api`、`/api/...`）
+ * - `invalid`: 解けないエンコード、エンコードした区切り文字（解く層によって別のパスになる）、
+ *   解くと制御文字になるもの
+ * - `page`: それ以外
+ */
+const classifyPath = (pathname: string): "auth" | "api" | "invalid" | "page" => {
+    if (ENCODED_SEPARATOR.test(pathname)) return "invalid";
+    let decoded: string;
+    try {
+        decoded = decodeURIComponent(pathname).toLowerCase();
+    } catch {
+        return "invalid";
+    }
+    if (hasControlCharacter(decoded)) return "invalid";
+    if (decoded === AUTH_PATH || decoded.startsWith(`${AUTH_PATH}/`)) return "auth";
+    if (decoded === "/api" || decoded.startsWith("/api/")) return "api";
+    return "page";
+};
+
 /**
  * 戻り先として使ってよい値なら、正規化した相対パス（パス + クエリ + ハッシュ）を返す。
  * 使えない値は `null`（呼び出し側はトップへ戻す）。
  *
  * - `/` で始まる相対パスだけ（`https://...` や `javascript:` などスキーム付きは不可）
  * - `//host` や `/\host`（ブラウザが別のサイトとして解釈する）は不可。`\` と制御文字は
- *   どこにあっても不可
+ *   どこにあっても不可。パスの中の `%2F`・`%5C`（エンコードした `/`・`\`）も不可
  * - URL として解釈した結果が別のオリジンになるものは不可
  * - ログインの画面（`/auth`）と API（`/api/...`。ログアウトなど）は不可
- *   （`/x/../auth` のような書き方も、正規化してから判定する）
+ *   （`/x/../auth` のような書き方も、正規化してから判定する。`/AUTH` や `/%61uth` のような
+ *   大文字・パーセントエンコードの書き方も、解いて小文字にそろえてから判定する）
+ * - パスのパーセントエンコードが解けないもの（`/%zz`）は不可
  * - 長すぎるものは不可
  */
 export function sanitizeReturnPath(raw: unknown): string | null {
@@ -57,8 +86,7 @@ export function sanitizeReturnPath(raw: unknown): string | null {
 
     const { pathname } = url;
     if (pathname.startsWith("//")) return null;
-    if (pathname === AUTH_PATH || pathname.startsWith(`${AUTH_PATH}/`)) return null;
-    if (pathname === "/api" || pathname.startsWith("/api/")) return null;
+    if (classifyPath(pathname) !== "page") return null;
 
     const normalized = `${pathname}${url.search}${url.hash}`;
     // トップは既定の戻り先なので、覚えておく必要がない。
@@ -87,7 +115,10 @@ export function currentReturnPath(
         : window.location,
 ): string | null {
     if (!location) return null;
-    if (location.pathname === AUTH_PATH) return readReturnPathFromSearch(location.search);
+    // ログインの画面かどうかは、戻り先の検証と同じ規則で見る（`/AUTH` や `/auth/` も同じ画面）。
+    if (classifyPath(location.pathname) === "auth") {
+        return readReturnPathFromSearch(location.search);
+    }
     return sanitizeReturnPath(`${location.pathname}${location.search}${location.hash}`);
 }
 

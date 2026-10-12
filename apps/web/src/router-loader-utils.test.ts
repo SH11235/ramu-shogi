@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { handleLoaderResponse } from "./router-loader-utils";
 
 describe("handleLoaderResponse", () => {
@@ -51,6 +51,25 @@ describe("handleLoaderResponse", () => {
                 to: "/auth",
                 search: { next: undefined },
             });
+        }
+    });
+
+    it("401 でログインの画面へ送る前に、ログイン状態の取り直しを頼む（古い「ログイン中」のままだと、ログインのボタンが出ない）", () => {
+        const onSync = vi.fn();
+        window.addEventListener("ramu-auth-session-sync", onSync);
+        try {
+            catchRedirect("/games/abc");
+            expect(onSync).toHaveBeenCalledTimes(1);
+
+            // ログインの画面へ送らない扱いでは、頼まない。
+            handleLoaderResponse(
+                { ok: false, status: 401 },
+                { errorMessage: "failed", onUnauthorized: "return_needs_auth" },
+            );
+            handleLoaderResponse({ ok: true, status: 200 }, { errorMessage: "failed" });
+            expect(onSync).toHaveBeenCalledTimes(1);
+        } finally {
+            window.removeEventListener("ramu-auth-session-sync", onSync);
         }
     });
 

@@ -73,9 +73,55 @@ describe("sanitizeReturnPath", () => {
         }
     });
 
+    it("大文字やパーセントエンコードで書いたログインの画面・API も捨てる（ルーターは同じ画面として開く）", () => {
+        for (const value of [
+            "/AUTH",
+            "/Auth?next=%2Fstudies",
+            "/AUTH/",
+            "/%61uth",
+            "/%41UTH",
+            "/a%75th#x",
+            "/x/../%61uth",
+            "/x/%2e%2e/auth",
+            "/API/auth/logout",
+            "/%61pi/auth/logout",
+            "/%61pi",
+        ]) {
+            expect(sanitizeReturnPath(value), value).toBeNull();
+        }
+    });
+
+    it("パスの中のエンコードした `/`・`\\`（解く層によって別のパスになる）と、解けないエンコードは捨てる", () => {
+        for (const value of [
+            "/auth%2F",
+            "/auth%2f",
+            "/x/..%2Fauth",
+            "/x/..%2fauth",
+            "/%2F%2Fhost",
+            "/%2f%2fhost",
+            "/%5Chost",
+            "/%5chost",
+            "/studies%2Fabc",
+            "/%zz",
+            "/studies/%E3%81",
+            "/studies/%00",
+            "/studies/%0d%0aabc",
+        ]) {
+            expect(sanitizeReturnPath(value), value).toBeNull();
+        }
+    });
+
     it("`/auth` で始まるだけの別のページは通す", () => {
         expect(sanitizeReturnPath("/authors")).toBe("/authors");
         expect(sanitizeReturnPath("/apiary")).toBe("/apiary");
+        expect(sanitizeReturnPath("/Authors")).toBe("/Authors");
+    });
+
+    it("ページのパスのエンコード・大文字と、クエリやハッシュの中の `%2F` は、そのまま通す", () => {
+        expect(sanitizeReturnPath("/studies/%E3%81%82?next=%2Fauth%5C#a%2Fb")).toBe(
+            "/studies/%E3%81%82?next=%2Fauth%5C#a%2Fb",
+        );
+        expect(sanitizeReturnPath("/Games/ABC")).toBe("/Games/ABC");
     });
 
     it("`.` や `..` を含むパスは、正規化した形で返す", () => {
@@ -118,6 +164,14 @@ describe("currentReturnPath", () => {
             currentReturnPath({ pathname: "/auth", search: "?next=%2Fstudies%2Fabc", hash: "" }),
         ).toBe("/studies/abc");
         expect(currentReturnPath({ pathname: "/auth", search: "", hash: "" })).toBeNull();
+        // 大文字・エンコード・末尾の `/` で開いたログインの画面も、同じ画面として扱う。
+        for (const pathname of ["/AUTH", "/%61uth", "/auth/"]) {
+            expect(
+                currentReturnPath({ pathname, search: "?next=%2Fstudies%2Fabc", hash: "" }),
+                pathname,
+            ).toBe("/studies/abc");
+            expect(currentReturnPath({ pathname, search: "", hash: "" }), pathname).toBeNull();
+        }
         expect(
             currentReturnPath({ pathname: "/auth", search: "?next=%2F%2Fevil.example", hash: "" }),
         ).toBeNull();

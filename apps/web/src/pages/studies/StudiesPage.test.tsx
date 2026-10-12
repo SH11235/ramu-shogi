@@ -311,6 +311,37 @@ describe("StudiesPage", () => {
             expect(dispatchAuthSessionSyncEvent).toHaveBeenCalledTimes(1);
         });
 
+        it("削除の確認を開いたあとにアカウントが変わったら、確認を閉じ、前のアカウントのノートも下書きも消さない", async () => {
+            const api = cloudApi();
+            // サーバーから見たログイン状態は、切り替わったあとの user-2。
+            const verifySession = vi.fn(async () => ({ userId: "user-2" }));
+            auth = authSignedIn("user-1");
+            localStorage.setItem(
+                DRAFTS_KEY,
+                JSON.stringify({
+                    [CLOUD_ID]: { ownerId: "user-1", nodes: [{ nodeId: "n", text: "下書き" }] },
+                }),
+            );
+            const view = render(<StudiesPage api={api} verifySession={verifySession} />);
+            fireEvent.click(
+                await screen.findByRole("button", { name: "「クラウドのノート」を削除" }),
+            );
+            await screen.findByRole("alertdialog");
+
+            // 別のタブで user-2 に切り替わり、この画面のログイン状態も user-2 になった。
+            auth = authSignedIn("user-2");
+            view.rerender(<StudiesPage api={api} verifySession={verifySession} />);
+            // 確認が残っていたら、そのまま確定する（user-2 のセッションでは 404 が返る）。
+            await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
+            const confirm = screen.queryByRole("button", { name: "削除する" });
+            if (confirm) fireEvent.click(confirm);
+            await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(hasDraft()).toBe(true);
+            expect(api.delete).not.toHaveBeenCalled();
+        });
+
         it("ログイン状態を確かめられなければ、消さない", async () => {
             await deleteCloudStudy(async () => {
                 throw new Error("Failed to fetch");

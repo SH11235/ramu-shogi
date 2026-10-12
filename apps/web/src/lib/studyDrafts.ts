@@ -153,6 +153,17 @@ export function readStudyCommentDrafts(
  * - 消す（捨てた）: この画面の書きかけ（と、この画面が戻した書きかけ）を消す。
  *
  * 別の持ち主の書きかけが残っているときは、消さない（その人が戻ってきたときのために残す）。
+ *
+ * ノートの持ち主は、匿名 → アカウントの向きにしか変わらない（引き継ぎ）。片方だけが匿名の
+ * ときは、引き継ぎの前後の同じノートなので、別の持ち主として扱わずに合流させ、アカウントの
+ * 側を持ち主として残す:
+ * - 残っている書きかけがアカウントのもので、呼び出し側が匿名: 引き継ぎで書きかけの持ち主が
+ *   移ったあと、まだ匿名のつもりの画面（確定の直後・匿名のまま開いている別のタブ）が書いた。
+ * - 残っている書きかけが匿名で、呼び出し側がアカウント: ノートは引き継いだが、書きかけの
+ *   持ち主を移せていない（移す前の確認に失敗した）間に書いた。
+ *
+ * 合流するのは書き込みだけ。読み取り（`readStudyCommentDrafts`）は、持ち主が一致するときだけ
+ * 返す（匿名の画面に、アカウントの書きかけは見せない）。
  */
 export function applyStudyCommentDraftChange(
     studyId: string,
@@ -165,8 +176,12 @@ export function applyStudyCommentDraftChange(
     const restoredText = options.restoredText ?? null;
     const drafts = readAll();
     const existing = Object.hasOwn(drafts, studyId) ? drafts[studyId] : undefined;
-    const sameOwner = existing !== undefined && existing.ownerId === ownerId;
+    const sameOwner =
+        existing !== undefined &&
+        (existing.ownerId === ownerId || existing.ownerId === null || ownerId === null);
     const current = sameOwner ? existing.nodes : [];
+    /** 合流したあとの持ち主（どちらかがアカウントなら、そのアカウント）。 */
+    const mergedOwnerId = sameOwner ? (existing.ownerId ?? ownerId) : ownerId;
     /** この画面のもの（この画面が書いた・この画面が開いたときに戻した）か。 */
     const isOurs = (entry: StudyCommentDraftEntry): boolean =>
         entry.nodeId === nodeId &&
@@ -181,7 +196,7 @@ export function applyStudyCommentDraftChange(
         );
         if (kept.length === current.length) return;
         if (kept.length === 0) delete drafts[studyId];
-        else drafts[studyId] = { ...existing, nodes: kept };
+        else drafts[studyId] = { ...existing, ownerId: mergedOwnerId, nodes: kept };
         writeAll(drafts);
         return;
     }
@@ -189,7 +204,7 @@ export function applyStudyCommentDraftChange(
         (entry) => !isOurs(entry) && !(entry.nodeId === nodeId && entry.text === change.text),
     );
     drafts[studyId] = {
-        ownerId,
+        ownerId: mergedOwnerId,
         nodes: [
             ...others,
             { nodeId, text: change.text, base: change.base, at: now, tab: TAB_ID },

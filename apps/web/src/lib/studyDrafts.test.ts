@@ -111,7 +111,9 @@ describe("研究ノートのコメントの書きかけの置き場所", () => {
     it("別の持ち主の書きかけは読めず、消しもしない。ノートを削除したら、持ち主を問わず消える", () => {
         applyStudyCommentDraftChange(STUDY, "user-1", NODE, { type: "set", text: "A", base: "" });
         expect(readStudyCommentDrafts(STUDY, null)).toEqual([]);
-        applyStudyCommentDraftChange(STUDY, null, NODE, { type: "clear", savedText: null });
+        expect(readStudyCommentDrafts(STUDY, "user-2")).toEqual([]);
+        applyStudyCommentDraftChange(STUDY, "user-2", NODE, { type: "clear", savedText: null });
+        applyStudyCommentDraftChange(STUDY, "user-2", NODE, { type: "clear", savedText: "A" });
         expect(readStudyCommentDrafts(STUDY, "user-1")).toHaveLength(1);
 
         removeStudyCommentDrafts(STUDY);
@@ -153,5 +155,91 @@ describe("研究ノートのコメントの書きかけの置き場所", () => {
         expect(readStudyCommentDrafts(OTHER, "user-2")).toHaveLength(1);
         expect(readStudyCommentDrafts(UNTOUCHED, null)).toHaveLength(1);
         expect(listAnonymousStudyCommentDraftIds()).toEqual([UNTOUCHED]);
+    });
+
+    describe("引き継ぎで持ち主が移ったあとの、匿名のままの画面からの書き込み", () => {
+        const ownerOf = (): unknown =>
+            JSON.parse(localStorage.getItem(KEY) ?? "{}")[STUDY]?.ownerId;
+
+        it("別の手に書いても、移した書きかけは残り、持ち主はアカウントのまま。匿名では読めない", () => {
+            putFromOtherTab("別のタブ", "node-2");
+            applyStudyCommentDraftChange(STUDY, null, NODE, {
+                type: "set",
+                text: "引き継ぎ前",
+                base: "",
+            });
+            adoptStudyCommentDrafts([STUDY], "user-1");
+
+            // 画面（または別のタブ）は、まだ匿名のノートのつもりで書く。
+            applyStudyCommentDraftChange(STUDY, null, "node-3", {
+                type: "set",
+                text: "引き継ぎ後",
+                base: "",
+            });
+
+            expect(ownerOf()).toBe("user-1");
+            expect(readStudyCommentDrafts(STUDY, "user-1").map((entry) => entry.text)).toEqual([
+                "別のタブ",
+                "引き継ぎ前",
+                "引き継ぎ後",
+            ]);
+            // 読み取りは、持ち主が一致するときだけ。
+            expect(readStudyCommentDrafts(STUDY, null)).toEqual([]);
+            expect(listAnonymousStudyCommentDraftIds()).toEqual([]);
+        });
+
+        it("この画面の書きかけは、匿名のままの呼び出しでも置き換え・片付けできる。他の書きかけは残る", () => {
+            putFromOtherTab("別のタブ", "node-2");
+            applyStudyCommentDraftChange(STUDY, null, NODE, { type: "set", text: "前", base: "" });
+            adoptStudyCommentDrafts([STUDY], "user-1");
+
+            applyStudyCommentDraftChange(STUDY, null, NODE, { type: "set", text: "後", base: "" });
+            expect(readStudyCommentDrafts(STUDY, "user-1").map((entry) => entry.text)).toEqual([
+                "別のタブ",
+                "後",
+            ]);
+
+            applyStudyCommentDraftChange(STUDY, null, NODE, { type: "clear", savedText: "後" });
+            expect(ownerOf()).toBe("user-1");
+            expect(readStudyCommentDrafts(STUDY, "user-1").map((entry) => entry.text)).toEqual([
+                "別のタブ",
+            ]);
+        });
+
+        it("別のアカウントの書きかけには合流しない（アカウントどうしは、従来どおり別の持ち主）", () => {
+            applyStudyCommentDraftChange(STUDY, "user-1", NODE, {
+                type: "set",
+                text: "user-1",
+                base: "",
+            });
+
+            applyStudyCommentDraftChange(STUDY, "user-2", "node-2", {
+                type: "set",
+                text: "user-2",
+                base: "",
+            });
+
+            expect(ownerOf()).toBe("user-2");
+            expect(readStudyCommentDrafts(STUDY, "user-2").map((entry) => entry.text)).toEqual([
+                "user-2",
+            ]);
+            expect(readStudyCommentDrafts(STUDY, "user-1")).toEqual([]);
+        });
+
+        it("書きかけの持ち主を移せていない間にアカウントのノートとして書いても、匿名の書きかけは残り、アカウントのものになる", () => {
+            putFromOtherTab("匿名のとき", "node-2");
+
+            applyStudyCommentDraftChange(STUDY, "user-1", NODE, {
+                type: "set",
+                text: "引き継いだあと",
+                base: "",
+            });
+
+            expect(ownerOf()).toBe("user-1");
+            expect(readStudyCommentDrafts(STUDY, "user-1").map((entry) => entry.text)).toEqual([
+                "匿名のとき",
+                "引き継いだあと",
+            ]);
+        });
     });
 });

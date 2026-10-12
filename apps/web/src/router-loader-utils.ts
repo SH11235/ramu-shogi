@@ -1,4 +1,5 @@
 import { redirect } from "@tanstack/react-router";
+import { dispatchAuthSessionSyncEvent } from "./hooks/useAuthSession";
 import { sanitizeReturnPath } from "./lib/loginReturn";
 
 type LoaderResponseStatus = "ok" | "needs_auth";
@@ -24,6 +25,9 @@ export function handleLoaderResponse(
             return "needs_auth";
         }
         if (options.onUnauthorized === "redirect_to_auth") {
+            // サーバーから見ると未ログイン。画面の認証状態が古い（ログイン中のまま）と、ログインの
+            // 画面にログインのボタンが出ず、戻り先が使われない。取り直しを頼んでから送る。
+            dispatchAuthSessionSyncEvent();
             throw redirect({
                 to: "/auth",
                 search: { next: sanitizeReturnPath(options.returnTo) ?? undefined },

@@ -133,5 +133,39 @@ describe("studySync", () => {
             expect(readStudyCommentDrafts(STILL_ANON, null)).toHaveLength(1);
             expect(readStudyCommentDrafts(STILL_ANON, "user-1")).toEqual([]);
         });
+
+        it("書きかけを移す前の確認（ノートの読み込み）に失敗したら、次にセッションが確定したときに確かめ直して移す", async () => {
+            const store = createMemoryStudyStore();
+            memorySync = createSync(store);
+            const sync = getStudySync();
+            await sync.createStudy(createDoc(ANON));
+            await sync.createStudy(createDoc(STILL_ANON));
+            applyStudyCommentDraftChange(ANON, null, "n1", draft("読めなかったノートの書きかけ"));
+            applyStudyCommentDraftChange(STILL_ANON, null, "n1", draft("読めたノートの書きかけ"));
+            const failure = vi.spyOn(console, "error").mockImplementation(() => {});
+            // 1 回だけ、ノートを読めない（ブラウザ内の保存の一時的な失敗）。
+            const load = vi
+                .spyOn(sync, "load")
+                .mockImplementationOnce(() => Promise.reject(new Error("読み込めない")));
+
+            await ensureStudySession("user-1");
+
+            // 読めなかった分は匿名のまま残り、読めた分は移っている。
+            expect(readStudyCommentDrafts(ANON, null)).toHaveLength(1);
+            expect(readStudyCommentDrafts(ANON, "user-1")).toEqual([]);
+            expect(readStudyCommentDrafts(STILL_ANON, "user-1")).toHaveLength(1);
+
+            // 同じユーザーで、もう一度セッションが確定した（別のページを開いた、など）。
+            await ensureStudySession("user-1");
+
+            expect(readStudyCommentDrafts(ANON, null)).toEqual([]);
+            expect(readStudyCommentDrafts(ANON, "user-1")).toHaveLength(1);
+
+            // すべて確かめ終えたら、同じユーザーではやり直さない。
+            const calls = load.mock.calls.length;
+            await ensureStudySession("user-1");
+            expect(load.mock.calls.length).toBe(calls);
+            failure.mockRestore();
+        });
     });
 });

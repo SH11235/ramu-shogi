@@ -48,16 +48,28 @@ interface EnsureStudySessionOptions {
  * （他のタブが先に引き継いでいた場合や、前回の引き継ぎの途中でページを離れた場合も移せる）。
  * 匿名の書きかけは、そのノートが匿名だったときにこのブラウザで書いたものなので、ノートの
  * 持ち主がいまのアカウントになっていれば、そのアカウントのもの。
+ *
+ * @returns すべての書きかけについて確かめられたら true。ノートを読めずに確かめられなかった
+ *   書きかけが残っていたら false（「別のアカウントのノートなので移さない」とは区別する。
+ *   呼び出し側は、次の機会に確かめ直す）。
  */
-const adoptCommentDrafts = async (userId: string): Promise<void> => {
+const adoptCommentDrafts = async (userId: string): Promise<boolean> => {
     const sync = getStudySync();
     const adopted: string[] = [];
+    let complete = true;
     for (const studyId of listAnonymousStudyCommentDraftIds()) {
-        // いまのアカウントから見えないノート（別のアカウントのノート）は null が返る。
-        const stored = await sync.load(studyId).catch(() => null);
-        if (stored?.owner === userId) adopted.push(studyId);
+        try {
+            // いまのアカウントから見えないノート（別のアカウントのノート）は null が返る。
+            const stored = await sync.load(studyId);
+            if (stored?.owner === userId) adopted.push(studyId);
+        } catch (error) {
+            console.error("[study] コメントの書きかけの持ち主を確かめられませんでした", error);
+            complete = false;
+        }
     }
+    // 確かめられた分は移す。
     adoptStudyCommentDrafts(adopted, userId);
+    return complete;
 };
 
 /**
@@ -65,7 +77,8 @@ const adoptCommentDrafts = async (userId: string): Promise<void> => {
  * 未ログインのあいだにこのブラウザで作ったノートをそのアカウントに引き継ぐ（設計書 7.2）。
  *
  * 引き継ぎはアカウントごとに 1 回だけ走らせ、同じ処理を待てるよう同じ Promise を返す
- * （アプリの起動時と、研究ノートの各ページの両方から呼ばれるため）。
+ * （アプリの起動時と、研究ノートの各ページの両方から呼ばれるため）。失敗した分が残ったときは、
+ * その処理が終わったあとの次の呼び出しでやり直す。
  */
 export const ensureStudySession = (
     userId: string | null,
@@ -91,7 +104,11 @@ export const ensureStudySession = (
             },
         )
         // 一部だけ引き継げた場合も、引き継げた分の書きかけは移す。
-        .then(() => adoptCommentDrafts(userId));
+        .then(() => adoptCommentDrafts(userId))
+        .then((complete) => {
+            // 確かめられなかった書きかけは、次にセッションが確定したときに確かめ直す。
+            if (!complete && adoption?.done === done) adoption = null;
+        });
     adoption = { userId, done };
     return done;
 };

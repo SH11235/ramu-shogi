@@ -567,6 +567,52 @@ describe("StudyPage", () => {
         );
     });
 
+    it("ページを開き直した順（確認中は匿名のノートとして表示 → 確定して引き継ぎ → その直後の入力）でも、引き継いだ下書きを落とさない", async () => {
+        await currentSync.createStudy(createTestDoc(STUDY_ID, "匿名のノート"));
+        const draftsOf = (): { ownerId: string | null; nodes: Array<{ text: string }> } =>
+            JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? "{}")[STUDY_ID];
+        // ログインする前に、2 つの手に残した下書き（保存できない長さ）。
+        const first = render(<StudyPage />);
+        await screen.findByTestId("workspace");
+        const doc = workspaceProps?.doc;
+        const [nodeA, nodeB, nodeC] = Object.keys(doc?.tree.nodes ?? {}).filter(
+            (id) => id !== doc?.tree.rootId,
+        );
+        const longA = "あ".repeat(2000);
+        const longB = "い".repeat(2000);
+        workspaceProps?.onCommentDraftChange?.(nodeA, setDraft(longA));
+        workspaceProps?.onCommentDraftChange?.(nodeB, setDraft(longB));
+        first.unmount();
+        workspaceProps = null;
+
+        // ログインして戻ってきた。ログイン状態を確認している間は、匿名のノートとして表示する。
+        auth = AUTH_LOADING;
+        const view = render(<StudyPage />);
+        await screen.findByTestId("workspace");
+        const beforeAdoption = workspaceProps as StudyWorkspaceProps | null;
+        expect(beforeAdoption?.initialCommentDrafts).toHaveLength(2);
+
+        // ログイン状態が確定し、ノートと下書きの持ち主がアカウントに移った。
+        auth = authSignedIn("user-1");
+        view.rerender(<StudyPage />);
+        await waitFor(() => expect(draftsOf().ownerId).toBe("user-1"));
+        // その直後、画面がまだ匿名のノートのつもりでいる間に、別の手に書いた。
+        beforeAdoption?.onCommentDraftChange?.(nodeC, setDraft("引き継ぎの直後の入力"));
+
+        expect(draftsOf().ownerId).toBe("user-1");
+        expect(
+            draftsOf()
+                .nodes.map((entry) => entry.text)
+                .sort(),
+        ).toEqual([longA, longB, "引き継ぎの直後の入力"].sort());
+
+        // 画面の持ち主も、開き直しでアカウントに変わる（以後の入力は、アカウントの下書きとして置く）。
+        await waitFor(() => expect(workspaceProps?.saveStatus.reason).not.toBe("anonymous"));
+        workspaceProps?.onCommentDraftChange?.(nodeC, setDraft("そのあとの入力"));
+        expect(draftsOf().ownerId).toBe("user-1");
+        expect(draftsOf().nodes).toHaveLength(3);
+    });
+
     it("以前の形（1 つのノートに 1 つの手）で残っていた下書きも戻す", async () => {
         await currentSync.createStudy(createTestDoc(STUDY_ID, "匿名のノート"));
         localStorage.setItem(

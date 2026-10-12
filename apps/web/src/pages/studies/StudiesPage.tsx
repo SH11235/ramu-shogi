@@ -162,7 +162,14 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
     const [remoteError, setRemoteError] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [isImportOpen, setIsImportOpen] = useState(false);
-    const [deleteTarget, setDeleteTarget] = useState<StudyListItem | null>(null);
+    // 削除の確認中のノートと、そのノートを含む一覧を取得したときのユーザー。確認している間に
+    // アカウントが変わっても、確定のときに「誰の一覧のノートか」を取り違えないよう、一緒に持つ。
+    const [deleteTarget, setDeleteTarget] = useState<{
+        item: StudyListItem;
+        listOwnerId: string | null;
+    } | null>(null);
+    // クラウドの一覧（`remote`）を取得したときのユーザー。
+    const remoteOwnerIdRef = useRef<string | null>(null);
     // いま表示している一覧の持ち主。アカウントが変わったら、前のアカウントの一覧と続きの位置を捨てる。
     const ownerKey = sessionKnown ? (userId ?? "signed-out") : "unknown";
     const ownerKeyRef = useRef(ownerKey);
@@ -175,10 +182,13 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
         if (ownerKeyRef.current !== ownerKey) {
             ownerKeyRef.current = ownerKey;
             setLocal(null);
+            remoteOwnerIdRef.current = null;
             setRemote([]);
             setNextCursor(null);
             setRemoteError(null);
             setIsLoadingMore(false);
+            // 前のアカウントの一覧のノートの削除を、いまのアカウントで確定させない。
+            setDeleteTarget(null);
         }
 
         const loadLocal = async (): Promise<void> => {
@@ -228,6 +238,7 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
             if (cancelled) return;
             if (listed.ok) {
                 listUnauthorizedForRef.current = null;
+                remoteOwnerIdRef.current = userId;
                 setRemote(listed.data.studies.map(fromRemote));
                 setNextCursor(listed.data.nextCursor);
                 setRemoteError(null);
@@ -290,11 +301,11 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
     };
 
     const handleDelete = async (): Promise<void> => {
-        const target = deleteTarget;
+        if (!deleteTarget) return;
+        // `listOwnerId` は、一覧を取得したときのユーザー（クラウドのノートは、そのユーザーのもの）。
+        // 確定した時点の画面のユーザーではない（確認している間に変わっていることがある）。
+        const { item: target, listOwnerId } = deleteTarget;
         setDeleteTarget(null);
-        if (!target) return;
-        // 一覧を取得したときのユーザー（クラウドのノートは、そのユーザーのもの）。
-        const listOwnerId = userId;
         setError(null);
         try {
             if (target.status === null) {
@@ -320,7 +331,7 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
                             "ログイン状態を確認できませんでした。時間をおいてお試しください。",
                         );
                     }
-                    if ((verified?.userId ?? null) !== listOwnerId) {
+                    if (listOwnerId === null || verified?.userId !== listOwnerId) {
                         dispatchAuthSessionSyncEvent();
                         throw new Error(
                             "ログイン状態が変わっています。ログインし直してからお試しください。",
@@ -448,7 +459,12 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
                                         </Link>
                                         <button
                                             type="button"
-                                            onClick={() => setDeleteTarget(item)}
+                                            onClick={() =>
+                                                setDeleteTarget({
+                                                    item,
+                                                    listOwnerId: remoteOwnerIdRef.current,
+                                                })
+                                            }
                                             aria-label={`「${item.title}」を削除`}
                                             className="min-h-10 shrink-0 self-center rounded-md px-3 text-xs text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                         >
@@ -484,7 +500,7 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
                     <AlertDialogHeader>
                         <AlertDialogTitle>研究ノートを削除しますか？</AlertDialogTitle>
                         <AlertDialogDescription>
-                            「{deleteTarget?.title}
+                            「{deleteTarget?.item.title}
                             」の解析結果・変化・コメントをすべて削除します。元に戻せません。
                         </AlertDialogDescription>
                     </AlertDialogHeader>
