@@ -1658,7 +1658,16 @@ fn loaded_nnue_key(
     normalized_id: &str,
     layer_stacks: Option<&nnue_settings::LayerStacksOptions>,
 ) -> String {
-    format!("{normalized_id}|{layer_stacks:?}")
+    // 比べる項目を明示して並べる（Debug の出力は、型の作りが変わると変わりうる）。
+    match layer_stacks {
+        None => normalized_id.to_string(),
+        Some(options) => format!(
+            "{normalized_id}|{}|{:?}|{}",
+            options.bucket_mode,
+            options.progress_buckets,
+            options.progress_coeff_base64.as_deref().unwrap_or(""),
+        ),
+    }
 }
 
 // ── USI Engine IPC Commands ──────────────────────────────────────

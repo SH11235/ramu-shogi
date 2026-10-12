@@ -1811,7 +1811,10 @@ describe("StudyWorkspaceView", () => {
             expect(screen.queryByText(/ログインすると/)).toBeNull();
             view.unmount();
 
-            renderWith({ state: "error", reason: "storage_failed" }, { localOnly: true });
+            renderWith(
+                { state: "error", reason: "storage_failed", limit: null, retrying: false },
+                { localOnly: true },
+            );
             expect(screen.getByRole("alert").textContent).toContain("端末への保存に失敗しました");
         });
 
