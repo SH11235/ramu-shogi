@@ -26,6 +26,8 @@ export { useRoomConnection } from "./hooks/useRoomConnection";
 // Components
 // ============================================================
 
+export { BookTreeViewer } from "./components/book-tree-viewer/BookTreeViewer";
+
 // engine-control-panel
 export { EngineControlPanel } from "./components/engine-control-panel";
 export type {

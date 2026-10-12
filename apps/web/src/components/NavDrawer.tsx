@@ -14,6 +14,7 @@ type NavTo =
     | "/games"
     | "/public/games"
     | "/rshogi-viewer"
+    | "/book-viewer"
     | "/nnue"
     | "/auth";
 
@@ -51,6 +52,7 @@ function buildNavSections(pathname: string): NavSection[] {
         {
             label: "棋譜",
             items: [
+                { to: "/book-viewer", label: "定跡ビュアー", active: pathname === "/book-viewer" },
                 // 棋譜を AI で解析して残す。未ログインでも使える（ブラウザ内に保存）。
                 {
                     to: "/studies",
