@@ -666,6 +666,7 @@ export function MobileLayout({
                     onImportSfen={viewerMode ? undefined : onImportSfen}
                     onImportKif={viewerMode ? undefined : onImportKif}
                     positionReady={positionReady}
+                    viewerMode={viewerMode}
                 />
             </BottomSheet>
 

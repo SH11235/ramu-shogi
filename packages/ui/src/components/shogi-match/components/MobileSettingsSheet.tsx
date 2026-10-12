@@ -1,6 +1,7 @@
 import type { NnueMeta, NnueSelection, PresetWithStatus } from "@shogi/app-core";
 import { NONE_NNUE_SELECTION } from "@shogi/app-core";
 import type { SkillLevelSettings } from "@shogi/engine-client";
+import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 import { useEffect, useState } from "react";
 import { ChevronIcon } from "../../chevron-icon";
@@ -133,6 +134,12 @@ interface MobileSettingsSheetProps {
     onImportKif?: ImportKifHandler;
     /** 局面が準備完了しているか */
     positionReady?: boolean;
+    /**
+     * 棋譜ビューア（対局しない画面）で開いているか。
+     * true のとき、対局にしか関係しない項目（先後の担当と強さ、持ち時間、パス権、
+     * 対局の開始・停止）を出さず、解析と表示の設定だけにする。
+     */
+    viewerMode?: boolean;
 }
 
 // iOS Safari の自動ズームを防ぐため input はここで、NativeSelect は各呼び出しで text-base(16px) を指定
@@ -258,6 +265,7 @@ export function MobileSettingsSheet({
     onImportSfen,
     onImportKif,
     positionReady = true,
+    viewerMode = false,
 }: MobileSettingsSheetProps): ReactElement {
     const threadOptions = buildThreadOptions();
     const externalEngines = engineOptions?.filter((engine) => engine.kind === "external") ?? [];
@@ -366,276 +374,285 @@ export function MobileSettingsSheet({
         });
     };
 
+    // 区切り線は「上に別の項目があるとき」だけ引く。先頭の項目（ビューアでは対局設定が無い）には
+    // 線も上の余白も付けない
+    const sectionClassName = (spacing?: string): string =>
+        cn(spacing, "pt-3 border-t border-border first:pt-0 first:border-t-0");
+
     return (
         <div className="flex flex-col gap-4 w-full max-w-full overflow-hidden">
             {/* 対局中のロック表示 */}
-            {settingsLocked && (
+            {!viewerMode && settingsLocked && (
                 <div className="flex items-center gap-2 p-2 rounded-lg bg-destructive/10 text-destructive text-sm">
                     <span>対局中は設定を変更できません</span>
                 </div>
             )}
 
             {/* 先手/後手ラベル + 入替ボタン */}
-            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1 mb-1">
-                <div className="text-sm font-semibold text-wafuu-shu text-center">☗先手</div>
-                <button
-                    type="button"
-                    onClick={() => {
-                        onSidesChange({ sente: sides.gote, gote: sides.sente });
-                        onTimeSettingsChange({
-                            sente: timeSettings.gote,
-                            gote: timeSettings.sente,
-                        });
-                        onSenteNnueSelectionChange(goteNnueSelection);
-                        onGoteNnueSelectionChange(senteNnueSelection);
-                        if (passRightsSettings && onPassRightsSettingsChange) {
-                            onPassRightsSettingsChange({
-                                ...passRightsSettings,
-                                senteInitialCount: passRightsSettings.goteInitialCount,
-                                goteInitialCount: passRightsSettings.senteInitialCount,
+            {!viewerMode && (
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1 mb-1">
+                    <div className="text-sm font-semibold text-wafuu-shu text-center">☗先手</div>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            onSidesChange({ sente: sides.gote, gote: sides.sente });
+                            onTimeSettingsChange({
+                                sente: timeSettings.gote,
+                                gote: timeSettings.sente,
                             });
-                        }
-                    }}
-                    disabled={settingsLocked}
-                    title="先手と後手の設定を入れ替える"
-                    className="px-2 py-1 text-base text-muted-foreground hover:text-primary hover:bg-primary/10 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    ⇄
-                </button>
-                <div className="text-sm font-semibold text-wafuu-ai text-center">☖後手</div>
-            </div>
+                            onSenteNnueSelectionChange(goteNnueSelection);
+                            onGoteNnueSelectionChange(senteNnueSelection);
+                            if (passRightsSettings && onPassRightsSettingsChange) {
+                                onPassRightsSettingsChange({
+                                    ...passRightsSettings,
+                                    senteInitialCount: passRightsSettings.goteInitialCount,
+                                    goteInitialCount: passRightsSettings.senteInitialCount,
+                                });
+                            }
+                        }}
+                        disabled={settingsLocked}
+                        title="先手と後手の設定を入れ替える"
+                        className="px-2 py-1 text-base text-muted-foreground hover:text-primary hover:bg-primary/10 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        ⇄
+                    </button>
+                    <div className="text-sm font-semibold text-wafuu-ai text-center">☖後手</div>
+                </div>
+            )}
             {/* 先手/後手設定（PC版と同じ2列レイアウト） */}
-            <div className="grid grid-cols-2 gap-3 [&>div]:min-w-0">
-                {/* 先手側 */}
-                <div className="flex flex-col gap-2 border-r border-border pr-3">
-                    <label className={labelClassName}>
-                        <span className="text-xs text-muted-foreground">プレイヤー</span>
-                        <NativeSelect
-                            value={getSelectorValue("sente", sides.sente)}
-                            onChange={(e) => handleSelectorChange("sente", e.target.value)}
-                            disabled={settingsLocked}
-                            className="text-base"
-                        >
-                            <option value="human">人間</option>
-                            {/* プリセット NNUE */}
-                            {presets.map((preset) => (
-                                <option
-                                    key={preset.config.presetKey}
-                                    value={`preset:${preset.config.presetKey}`}
-                                >
-                                    {preset.config.displayName}
-                                </option>
-                            ))}
-                            {/* カスタム NNUE */}
-                            {customNnueList.map((nnue) => (
-                                <option key={nnue.id} value={`nnue:${nnue.id}`}>
-                                    {nnue.displayName}
-                                </option>
-                            ))}
-                            <option value="material">簡易AI（駒得）</option>
-                            {externalEngines.map((engine) => (
-                                <option key={engine.id} value={`ext:${engine.id}`}>
-                                    {engine.label}
-                                </option>
-                            ))}
-                        </NativeSelect>
-                    </label>
-                    {/* レイアウトシフト防止のため固定高さを確保 */}
-                    <div className={SKILL_LEVEL_SELECTOR_MIN_HEIGHT}>
-                        {sides.sente.role === "engine" ? (
-                            <SkillLevelSelector
-                                value={sides.sente.skillLevel}
-                                onChange={(sl) => handleSkillLevelChange("sente", sl)}
-                                disabled={settingsLocked}
-                            />
-                        ) : (
-                            <div className="flex items-center justify-between gap-2 w-full">
-                                <span className="text-sm text-muted-foreground">時間制限</span>
-                                <Switch
-                                    id="sente-time-enabled"
-                                    checked={timeSettings.sente.enabled}
-                                    onCheckedChange={(enabled) =>
-                                        handleTimeEnabledChange("sente", enabled)
-                                    }
-                                    disabled={settingsLocked}
-                                />
-                            </div>
-                        )}
-                    </div>
-                    {isDevMode && (
-                        <label htmlFor="mobile-sente-threads" className={labelClassName}>
-                            <span className="text-xs text-muted-foreground">スレッド数</span>
+            {!viewerMode && (
+                <div className="grid grid-cols-2 gap-3 [&>div]:min-w-0">
+                    {/* 先手側 */}
+                    <div className="flex flex-col gap-2 border-r border-border pr-3">
+                        <label className={labelClassName}>
+                            <span className="text-xs text-muted-foreground">プレイヤー</span>
                             <NativeSelect
-                                id="mobile-sente-threads"
-                                value={engineThreads.sente}
+                                value={getSelectorValue("sente", sides.sente)}
+                                onChange={(e) => handleSelectorChange("sente", e.target.value)}
                                 disabled={settingsLocked}
-                                onChange={(e) =>
-                                    onEngineThreadsChange({
-                                        ...engineThreads,
-                                        sente: Number(e.target.value),
-                                    })
-                                }
                                 className="text-base"
                             >
-                                {threadOptions.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>
-                                        {opt.label}
+                                <option value="human">人間</option>
+                                {/* プリセット NNUE */}
+                                {presets.map((preset) => (
+                                    <option
+                                        key={preset.config.presetKey}
+                                        value={`preset:${preset.config.presetKey}`}
+                                    >
+                                        {preset.config.displayName}
+                                    </option>
+                                ))}
+                                {/* カスタム NNUE */}
+                                {customNnueList.map((nnue) => (
+                                    <option key={nnue.id} value={`nnue:${nnue.id}`}>
+                                        {nnue.displayName}
+                                    </option>
+                                ))}
+                                <option value="material">簡易AI（駒得）</option>
+                                {externalEngines.map((engine) => (
+                                    <option key={engine.id} value={`ext:${engine.id}`}>
+                                        {engine.label}
                                     </option>
                                 ))}
                             </NativeSelect>
-                            <span className="text-[11px] text-muted-foreground">
-                                0 = 自動。外部エンジンの自動は登録時の設定に従います
-                            </span>
                         </label>
-                    )}
-                    <label htmlFor="mobile-sente-main" className={labelClassName}>
-                        <span className="text-xs text-muted-foreground">持ち時間(秒)</span>
-                        <NumericInput
-                            id="mobile-sente-main"
-                            value={Math.floor(timeSettings.sente.mainMs / 1000)}
-                            disabled={settingsLocked || !timeSettings.sente.enabled}
-                            className={inputClassName}
-                            onChange={(v) =>
-                                onTimeSettingsChange({
-                                    ...timeSettings,
-                                    sente: { ...timeSettings.sente, mainMs: v * 1000 },
-                                })
-                            }
-                        />
-                    </label>
-                    <label htmlFor="mobile-sente-byoyomi" className={labelClassName}>
-                        <span className="text-xs text-muted-foreground">秒読み(秒)</span>
-                        <NumericInput
-                            id="mobile-sente-byoyomi"
-                            value={Math.floor(timeSettings.sente.byoyomiMs / 1000)}
-                            disabled={settingsLocked || !timeSettings.sente.enabled}
-                            className={inputClassName}
-                            onChange={(v) =>
-                                onTimeSettingsChange({
-                                    ...timeSettings,
-                                    sente: { ...timeSettings.sente, byoyomiMs: v * 1000 },
-                                })
-                            }
-                        />
-                    </label>
-                </div>
-                {/* 後手側 */}
-                <div className="flex flex-col gap-2">
-                    <label className={labelClassName}>
-                        <span className="text-xs text-muted-foreground">プレイヤー</span>
-                        <NativeSelect
-                            value={getSelectorValue("gote", sides.gote)}
-                            onChange={(e) => handleSelectorChange("gote", e.target.value)}
-                            disabled={settingsLocked}
-                            className="text-base"
-                        >
-                            <option value="human">人間</option>
-                            {/* プリセット NNUE */}
-                            {presets.map((preset) => (
-                                <option
-                                    key={preset.config.presetKey}
-                                    value={`preset:${preset.config.presetKey}`}
-                                >
-                                    {preset.config.displayName}
-                                </option>
-                            ))}
-                            {/* カスタム NNUE */}
-                            {customNnueList.map((nnue) => (
-                                <option key={nnue.id} value={`nnue:${nnue.id}`}>
-                                    {nnue.displayName}
-                                </option>
-                            ))}
-                            <option value="material">簡易AI（駒得）</option>
-                            {externalEngines.map((engine) => (
-                                <option key={engine.id} value={`ext:${engine.id}`}>
-                                    {engine.label}
-                                </option>
-                            ))}
-                        </NativeSelect>
-                    </label>
-                    {/* レイアウトシフト防止のため固定高さを確保 */}
-                    <div className={SKILL_LEVEL_SELECTOR_MIN_HEIGHT}>
-                        {sides.gote.role === "engine" ? (
-                            <SkillLevelSelector
-                                value={sides.gote.skillLevel}
-                                onChange={(sl) => handleSkillLevelChange("gote", sl)}
-                                disabled={settingsLocked}
-                            />
-                        ) : (
-                            <div className="flex items-center justify-between gap-2 w-full">
-                                <span className="text-sm text-muted-foreground">時間制限</span>
-                                <Switch
-                                    id="gote-time-enabled"
-                                    checked={timeSettings.gote.enabled}
-                                    onCheckedChange={(enabled) =>
-                                        handleTimeEnabledChange("gote", enabled)
-                                    }
+                        {/* レイアウトシフト防止のため固定高さを確保 */}
+                        <div className={SKILL_LEVEL_SELECTOR_MIN_HEIGHT}>
+                            {sides.sente.role === "engine" ? (
+                                <SkillLevelSelector
+                                    value={sides.sente.skillLevel}
+                                    onChange={(sl) => handleSkillLevelChange("sente", sl)}
                                     disabled={settingsLocked}
                                 />
-                            </div>
+                            ) : (
+                                <div className="flex items-center justify-between gap-2 w-full">
+                                    <span className="text-sm text-muted-foreground">時間制限</span>
+                                    <Switch
+                                        id="sente-time-enabled"
+                                        checked={timeSettings.sente.enabled}
+                                        onCheckedChange={(enabled) =>
+                                            handleTimeEnabledChange("sente", enabled)
+                                        }
+                                        disabled={settingsLocked}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                        {isDevMode && (
+                            <label htmlFor="mobile-sente-threads" className={labelClassName}>
+                                <span className="text-xs text-muted-foreground">スレッド数</span>
+                                <NativeSelect
+                                    id="mobile-sente-threads"
+                                    value={engineThreads.sente}
+                                    disabled={settingsLocked}
+                                    onChange={(e) =>
+                                        onEngineThreadsChange({
+                                            ...engineThreads,
+                                            sente: Number(e.target.value),
+                                        })
+                                    }
+                                    className="text-base"
+                                >
+                                    {threadOptions.map((opt) => (
+                                        <option key={opt.value} value={opt.value}>
+                                            {opt.label}
+                                        </option>
+                                    ))}
+                                </NativeSelect>
+                                <span className="text-[11px] text-muted-foreground">
+                                    0 = 自動。外部エンジンの自動は登録時の設定に従います
+                                </span>
+                            </label>
                         )}
-                    </div>
-                    {isDevMode && (
-                        <label htmlFor="mobile-gote-threads" className={labelClassName}>
-                            <span className="text-xs text-muted-foreground">スレッド数</span>
-                            <NativeSelect
-                                id="mobile-gote-threads"
-                                value={engineThreads.gote}
-                                disabled={settingsLocked}
-                                onChange={(e) =>
-                                    onEngineThreadsChange({
-                                        ...engineThreads,
-                                        gote: Number(e.target.value),
+                        <label htmlFor="mobile-sente-main" className={labelClassName}>
+                            <span className="text-xs text-muted-foreground">持ち時間(秒)</span>
+                            <NumericInput
+                                id="mobile-sente-main"
+                                value={Math.floor(timeSettings.sente.mainMs / 1000)}
+                                disabled={settingsLocked || !timeSettings.sente.enabled}
+                                className={inputClassName}
+                                onChange={(v) =>
+                                    onTimeSettingsChange({
+                                        ...timeSettings,
+                                        sente: { ...timeSettings.sente, mainMs: v * 1000 },
                                     })
                                 }
+                            />
+                        </label>
+                        <label htmlFor="mobile-sente-byoyomi" className={labelClassName}>
+                            <span className="text-xs text-muted-foreground">秒読み(秒)</span>
+                            <NumericInput
+                                id="mobile-sente-byoyomi"
+                                value={Math.floor(timeSettings.sente.byoyomiMs / 1000)}
+                                disabled={settingsLocked || !timeSettings.sente.enabled}
+                                className={inputClassName}
+                                onChange={(v) =>
+                                    onTimeSettingsChange({
+                                        ...timeSettings,
+                                        sente: { ...timeSettings.sente, byoyomiMs: v * 1000 },
+                                    })
+                                }
+                            />
+                        </label>
+                    </div>
+                    {/* 後手側 */}
+                    <div className="flex flex-col gap-2">
+                        <label className={labelClassName}>
+                            <span className="text-xs text-muted-foreground">プレイヤー</span>
+                            <NativeSelect
+                                value={getSelectorValue("gote", sides.gote)}
+                                onChange={(e) => handleSelectorChange("gote", e.target.value)}
+                                disabled={settingsLocked}
                                 className="text-base"
                             >
-                                {threadOptions.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>
-                                        {opt.label}
+                                <option value="human">人間</option>
+                                {/* プリセット NNUE */}
+                                {presets.map((preset) => (
+                                    <option
+                                        key={preset.config.presetKey}
+                                        value={`preset:${preset.config.presetKey}`}
+                                    >
+                                        {preset.config.displayName}
+                                    </option>
+                                ))}
+                                {/* カスタム NNUE */}
+                                {customNnueList.map((nnue) => (
+                                    <option key={nnue.id} value={`nnue:${nnue.id}`}>
+                                        {nnue.displayName}
+                                    </option>
+                                ))}
+                                <option value="material">簡易AI（駒得）</option>
+                                {externalEngines.map((engine) => (
+                                    <option key={engine.id} value={`ext:${engine.id}`}>
+                                        {engine.label}
                                     </option>
                                 ))}
                             </NativeSelect>
-                            <span className="text-[11px] text-muted-foreground">
-                                0 = 自動。外部エンジンの自動は登録時の設定に従います
-                            </span>
                         </label>
-                    )}
-                    <label htmlFor="mobile-gote-main" className={labelClassName}>
-                        <span className="text-xs text-muted-foreground">持ち時間(秒)</span>
-                        <NumericInput
-                            id="mobile-gote-main"
-                            value={Math.floor(timeSettings.gote.mainMs / 1000)}
-                            disabled={settingsLocked || !timeSettings.gote.enabled}
-                            className={inputClassName}
-                            onChange={(v) =>
-                                onTimeSettingsChange({
-                                    ...timeSettings,
-                                    gote: { ...timeSettings.gote, mainMs: v * 1000 },
-                                })
-                            }
-                        />
-                    </label>
-                    <label htmlFor="mobile-gote-byoyomi" className={labelClassName}>
-                        <span className="text-xs text-muted-foreground">秒読み(秒)</span>
-                        <NumericInput
-                            id="mobile-gote-byoyomi"
-                            value={Math.floor(timeSettings.gote.byoyomiMs / 1000)}
-                            disabled={settingsLocked || !timeSettings.gote.enabled}
-                            className={inputClassName}
-                            onChange={(v) =>
-                                onTimeSettingsChange({
-                                    ...timeSettings,
-                                    gote: { ...timeSettings.gote, byoyomiMs: v * 1000 },
-                                })
-                            }
-                        />
-                    </label>
+                        {/* レイアウトシフト防止のため固定高さを確保 */}
+                        <div className={SKILL_LEVEL_SELECTOR_MIN_HEIGHT}>
+                            {sides.gote.role === "engine" ? (
+                                <SkillLevelSelector
+                                    value={sides.gote.skillLevel}
+                                    onChange={(sl) => handleSkillLevelChange("gote", sl)}
+                                    disabled={settingsLocked}
+                                />
+                            ) : (
+                                <div className="flex items-center justify-between gap-2 w-full">
+                                    <span className="text-sm text-muted-foreground">時間制限</span>
+                                    <Switch
+                                        id="gote-time-enabled"
+                                        checked={timeSettings.gote.enabled}
+                                        onCheckedChange={(enabled) =>
+                                            handleTimeEnabledChange("gote", enabled)
+                                        }
+                                        disabled={settingsLocked}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                        {isDevMode && (
+                            <label htmlFor="mobile-gote-threads" className={labelClassName}>
+                                <span className="text-xs text-muted-foreground">スレッド数</span>
+                                <NativeSelect
+                                    id="mobile-gote-threads"
+                                    value={engineThreads.gote}
+                                    disabled={settingsLocked}
+                                    onChange={(e) =>
+                                        onEngineThreadsChange({
+                                            ...engineThreads,
+                                            gote: Number(e.target.value),
+                                        })
+                                    }
+                                    className="text-base"
+                                >
+                                    {threadOptions.map((opt) => (
+                                        <option key={opt.value} value={opt.value}>
+                                            {opt.label}
+                                        </option>
+                                    ))}
+                                </NativeSelect>
+                                <span className="text-[11px] text-muted-foreground">
+                                    0 = 自動。外部エンジンの自動は登録時の設定に従います
+                                </span>
+                            </label>
+                        )}
+                        <label htmlFor="mobile-gote-main" className={labelClassName}>
+                            <span className="text-xs text-muted-foreground">持ち時間(秒)</span>
+                            <NumericInput
+                                id="mobile-gote-main"
+                                value={Math.floor(timeSettings.gote.mainMs / 1000)}
+                                disabled={settingsLocked || !timeSettings.gote.enabled}
+                                className={inputClassName}
+                                onChange={(v) =>
+                                    onTimeSettingsChange({
+                                        ...timeSettings,
+                                        gote: { ...timeSettings.gote, mainMs: v * 1000 },
+                                    })
+                                }
+                            />
+                        </label>
+                        <label htmlFor="mobile-gote-byoyomi" className={labelClassName}>
+                            <span className="text-xs text-muted-foreground">秒読み(秒)</span>
+                            <NumericInput
+                                id="mobile-gote-byoyomi"
+                                value={Math.floor(timeSettings.gote.byoyomiMs / 1000)}
+                                disabled={settingsLocked || !timeSettings.gote.enabled}
+                                className={inputClassName}
+                                onChange={(v) =>
+                                    onTimeSettingsChange({
+                                        ...timeSettings,
+                                        gote: { ...timeSettings.gote, byoyomiMs: v * 1000 },
+                                    })
+                                }
+                            />
+                        </label>
+                    </div>
                 </div>
-            </div>
+            )}
 
             {onAnalysisEngineIdChange && engineOptions && engineOptions.length > 1 && (
-                <div className="space-y-2 pt-3 border-t border-border">
+                <div className={sectionClassName("space-y-2")}>
                     <div className="font-medium text-sm">解析エンジン</div>
                     <label className={labelClassName}>
                         <span className="text-xs text-muted-foreground">使用エンジン</span>
@@ -656,7 +673,7 @@ export function MobileSettingsSheet({
             )}
 
             {onOpenEngineManager && (
-                <div className="space-y-2 pt-3 border-t border-border">
+                <div className={sectionClassName("space-y-2")}>
                     <button
                         type="button"
                         onClick={onOpenEngineManager}
@@ -668,7 +685,7 @@ export function MobileSettingsSheet({
             )}
 
             {/* パス権設定（オプション） */}
-            {passRightsSettings && onPassRightsSettingsChange && (
+            {!viewerMode && passRightsSettings && onPassRightsSettingsChange && (
                 <div className="space-y-3 pt-3 border-t border-border">
                     <div className="font-medium text-sm">変則ルール</div>
                     <div className="flex items-center justify-between">
@@ -823,40 +840,42 @@ export function MobileSettingsSheet({
             )}
 
             {/* アクションボタン（頻繁に使うので上部に配置）。出すボタンが無いときは枠ごと出さない */}
-            <div className="flex justify-center gap-3 pt-3 border-t border-border empty:hidden">
-                {isMatchRunning ? (
-                    onStopMatch && (
-                        <button
-                            type="button"
-                            onClick={onStopMatch}
-                            className="flex-1 px-6 py-3 bg-destructive text-destructive-foreground rounded-lg font-medium shadow-md active:scale-95 transition-transform"
-                        >
-                            対局を停止
-                        </button>
-                    )
-                ) : (
-                    <>
-                        {onResetToStartpos && (
+            {!viewerMode && (
+                <div className="flex justify-center gap-3 pt-3 border-t border-border empty:hidden">
+                    {isMatchRunning ? (
+                        onStopMatch && (
                             <button
                                 type="button"
-                                onClick={onResetToStartpos}
-                                className="px-4 py-3 border border-border rounded-lg font-medium hover:bg-muted active:scale-95 transition-all"
+                                onClick={onStopMatch}
+                                className="flex-1 px-6 py-3 bg-destructive text-destructive-foreground rounded-lg font-medium shadow-md active:scale-95 transition-transform"
                             >
-                                平手に戻す
+                                対局を停止
                             </button>
-                        )}
-                        {onStartMatch && (
-                            <button
-                                type="button"
-                                onClick={onStartMatch}
-                                className="flex-1 px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium shadow-md active:scale-95 transition-transform"
-                            >
-                                対局を開始
-                            </button>
-                        )}
-                    </>
-                )}
-            </div>
+                        )
+                    ) : (
+                        <>
+                            {onResetToStartpos && (
+                                <button
+                                    type="button"
+                                    onClick={onResetToStartpos}
+                                    className="px-4 py-3 border border-border rounded-lg font-medium hover:bg-muted active:scale-95 transition-all"
+                                >
+                                    平手に戻す
+                                </button>
+                            )}
+                            {onStartMatch && (
+                                <button
+                                    type="button"
+                                    onClick={onStartMatch}
+                                    className="flex-1 px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium shadow-md active:scale-95 transition-transform"
+                                >
+                                    対局を開始
+                                </button>
+                            )}
+                        </>
+                    )}
+                </div>
+            )}
 
             {/* 棋譜/局面インポート */}
             {onImportSfen && onImportKif && (
@@ -868,7 +887,7 @@ export function MobileSettingsSheet({
             )}
 
             {/* 表示設定 */}
-            <div className="space-y-3 pt-3 border-t border-border">
+            <div className={sectionClassName("space-y-3")}>
                 <div className="font-medium text-sm">表示設定</div>
 
                 {/* 座標表示 */}
@@ -942,7 +961,7 @@ export function MobileSettingsSheet({
 
             {/* このアプリについて / ライセンス */}
             {onOpenAbout && (
-                <div className="pt-3 border-t border-border">
+                <div className={sectionClassName()}>
                     <button
                         type="button"
                         onClick={onOpenAbout}
