@@ -12,7 +12,6 @@ type NavTo =
     | "/studies"
     | "/games"
     | "/public/games"
-    | "/rshogi-viewer/players"
     | "/rshogi-viewer"
     | "/nnue"
     | "/auth";
@@ -82,7 +81,8 @@ function buildNavSections(pathname: string): NavSection[] {
                         (pathname === "/rshogi-viewer" || pathname.startsWith("/rshogi-viewer/")) &&
                         !isPlayers,
                 },
-                { to: "/rshogi-viewer/players", label: "レーティング", active: isPlayers },
+                // レーティング (`/rshogi-viewer/players`) は運営者向けのページなので、メニューには
+                // 出さない。URL を直接開けば見られる。
             ],
         },
         {
