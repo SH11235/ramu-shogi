@@ -1,6 +1,14 @@
 import type { Hands, PositionState, Square } from "@shogi/app-core";
+import { createInitialPositionState } from "@shogi/app-core";
 import { describe, expect, it } from "vitest";
-import { addToHand, cloneHandsState, consumeFromHand, countPieces } from "./boardUtils";
+import {
+    addToHand,
+    cloneHandsState,
+    consumeFromHand,
+    countPieces,
+    countTotalPieces,
+    validateEditedPosition,
+} from "./boardUtils";
 
 // テスト用のヘルパー関数
 const createEmptyHands = (): Hands => ({ sente: {}, gote: {} });
@@ -169,5 +177,79 @@ describe("boardUtils", () => {
                 }
             }
         });
+    });
+});
+
+describe("countTotalPieces", () => {
+    it("先手・後手の盤上と持ち駒を合算する", () => {
+        const position = createInitialPositionState();
+        position.hands.gote.P = 2;
+
+        const total = countTotalPieces(position);
+
+        expect(total.B).toBe(2);
+        expect(total.G).toBe(4);
+        expect(total.P).toBe(20);
+        expect(total.K).toBe(2);
+    });
+});
+
+describe("validateEditedPosition", () => {
+    it("平手の初期局面は成り立つ", () => {
+        expect(validateEditedPosition(createInitialPositionState())).toBeNull();
+    });
+
+    it("駒を減らした局面は成り立つ", () => {
+        const position = createInitialPositionState();
+        position.board["8h"] = null;
+        position.board["2b"] = null;
+        position.hands.gote.B = 2;
+
+        expect(validateEditedPosition(position)).toBeNull();
+    });
+
+    it("先手・後手を合わせて一組の枚数を超える局面は成り立たない（盤上に3枚目の角）", () => {
+        const position = createInitialPositionState();
+        position.board["5e"] = { owner: "sente", type: "B" };
+
+        expect(validateEditedPosition(position)).toBe("角は先手・後手あわせて最大2枚までです。");
+    });
+
+    it("持ち駒で一組の枚数を超える局面は成り立たない", () => {
+        const position = createInitialPositionState();
+        position.hands.gote.P = 1;
+
+        expect(validateEditedPosition(position)).toBe("歩は先手・後手あわせて最大18枚までです。");
+    });
+
+    it("成り駒も元の種類で数える", () => {
+        const position = createInitialPositionState();
+        position.board["5e"] = { owner: "gote", type: "R", promoted: true };
+
+        expect(validateEditedPosition(position)).toBe("飛は先手・後手あわせて最大2枚までです。");
+    });
+
+    it("玉が盤上に無い局面は成り立たない", () => {
+        const position = createInitialPositionState();
+        position.board["5a"] = null;
+
+        expect(validateEditedPosition(position)).toBe(
+            "後手の玉が盤上にありません。玉は盤上に1枚ずつ必要です。",
+        );
+    });
+
+    it("玉が持ち駒にある局面は成り立たない", () => {
+        const position = createInitialPositionState();
+        position.board["5i"] = null;
+        position.hands.sente.K = 1;
+
+        expect(validateEditedPosition(position)).toBe("玉は持ち駒にできません。");
+    });
+
+    it("同じ側の玉が2枚ある局面は成り立たない", () => {
+        const position = createInitialPositionState();
+        position.board["5e"] = { owner: "sente", type: "K" };
+
+        expect(validateEditedPosition(position)).toBe("玉はそれぞれ1枚まで配置できます。");
     });
 });

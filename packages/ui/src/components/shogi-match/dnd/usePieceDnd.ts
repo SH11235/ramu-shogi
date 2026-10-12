@@ -234,6 +234,18 @@ export function usePieceDnd(options: UsePieceDndOptions): PieceDndController {
 
         cleanup();
 
+        // ドラッグを終えた直後には、ポインタを捕まえていたドラッグ元の要素へ click が届く。
+        // これを通すと「ドラッグ元の駒をクリックで選んだ」扱いになり、ドロップが弾かれたときに
+        // その選択が残って、次の操作で駒が勝手に動く。ドラッグ由来の click は 1 回だけ捨てる。
+        const swallowClick = (clickEvent: MouseEvent) => {
+            clickEvent.stopPropagation();
+            clickEvent.preventDefault();
+        };
+        document.addEventListener("click", swallowClick, { capture: true, once: true });
+        setTimeout(() => {
+            document.removeEventListener("click", swallowClick, { capture: true });
+        }, 0);
+
         if (origin && payload && target && onDrop) {
             onDrop({ origin, payload, target });
         }
