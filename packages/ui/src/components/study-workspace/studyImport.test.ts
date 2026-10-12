@@ -59,6 +59,21 @@ describe("parseKifuTextForStudy", () => {
         ]) {
             expect(parseKifuTextForStudy(csa)).toMatchObject({ kind: "moves", moves: [] });
         }
+        // 盤面を 1 段ずつ書いた CSA と、駒を個別に置いた CSA。
+        const rows = [
+            "P1 *  *  *  * -OU *  *  *  * ",
+            ...[2, 3, 4, 5, 6, 7, 8].map((rank) => `P${rank} *  *  *  *  *  *  *  *  * `),
+            "P9 *  *  *  * +OU *  *  *  * ",
+        ];
+        expect(parseKifuTextForStudy([...rows, "P+00KI", "+"].join("\n"))).toEqual({
+            kind: "moves",
+            startSfen: "4k4/9/9/9/9/9/9/9/4K4 b G 1",
+            moves: [],
+        });
+        expect(parseKifuTextForStudy("P+59OU\nP-51OU\n-")).toMatchObject({
+            kind: "moves",
+            startSfen: "4k4/9/9/9/9/9/9/9/4K4 w - 1",
+        });
         const sfen = "4k4/9/9/9/9/9/9/9/4K4 b G 1";
         // 見出し・コメント・区切りの行があっても、指し手の行が無ければ局面だけ。
         for (const kif of [
@@ -141,6 +156,7 @@ describe("parseKifuTextForStudy", () => {
             "PI\n+\n%TORYO\n+7776FU",
             "/\nPI\n+\n+7776FU",
             "V2.2\n+,'comment,PI",
+            "PI\n+\n%TORYO\nPI +7776FU -3334FU",
         ]) {
             expect(() => parseKifuTextForStudy(csa), csa).toThrow(
                 "CSA の解析に失敗しました: 指し手を読み取れませんでした",

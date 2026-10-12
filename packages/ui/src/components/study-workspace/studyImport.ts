@@ -67,7 +67,7 @@ const CSA_POSITION_STATEMENT = /^P(?:I|[1-9]|[+-])/;
  * 決まった形のものだけを認める（`%TORYO +7776FU` のように、うしろに何か続くものは認めない）。
  */
 const CSA_NON_MOVE_STATEMENT =
-    /^(?:V[\d.]+|N[+-].*|\$[A-Z_]+:.*|P(?:I|[1-9]|[+-]).*|[+-]|T\d+|%[A-Z_0-9]+)$/;
+    /^(?:V[\d.]+|N[+-].*|\$[A-Z_]+:.*|PI(?:\d{2}[A-Z]{2})*|P[1-9](?:[+-][A-Z]{2}| \* ?)+|P[+-](?:\d{2}[A-Z]{2})*|[+-]|T\d+|%[A-Z_0-9]+)$/;
 
 /**
  * CSA が「局面だけ」の入力か。局面の文があり、指し手ではない文しか無いとき。
@@ -84,9 +84,13 @@ const isCsaPositionOnly = (text: string): boolean => {
             if (statement !== "") statements.push(statement);
         }
     }
+    // 終局などの指示（`%〜`）のあとに何か続くものも、局面だけとは扱わない（CSA の解析は
+    // 指示のあとを読まないので、そこに書かれた指し手を見落とす）。
+    const command = statements.findIndex((statement) => statement.startsWith("%"));
     return (
         statements.some((statement) => CSA_POSITION_STATEMENT.test(statement)) &&
-        statements.every((statement) => CSA_NON_MOVE_STATEMENT.test(statement))
+        statements.every((statement) => CSA_NON_MOVE_STATEMENT.test(statement)) &&
+        (command < 0 || command === statements.length - 1)
     );
 };
 
