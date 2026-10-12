@@ -113,6 +113,8 @@ function SettingsBody({
                         解析エンジン
                         <NativeSelect
                             value={form.engineId}
+                            // 解析の準備中・実行中は切り替えさせない（切り替えると、その解析は止まる）。
+                            disabled={!canStart}
                             onChange={(event) => form.onEngineIdChange(event.target.value)}
                             className={isMobile ? "text-base" : "text-sm"}
                         >
@@ -126,7 +128,8 @@ function SettingsBody({
                 )}
                 {isExternalEngine ? (
                     <p className="text-xs text-muted-foreground">
-                        外部エンジンは、エンジン自身の設定（評価関数など）で解析します。パスを含む局面は解析できません。
+                        外部エンジンは、そのエンジンに設定されている
+                        AI（評価関数）で解析します。結果は、エンジンの名前で残ります。
                     </p>
                 ) : (
                     <label className="flex flex-col gap-1 text-xs text-muted-foreground">

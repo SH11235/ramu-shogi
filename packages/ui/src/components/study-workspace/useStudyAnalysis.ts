@@ -179,6 +179,17 @@ export function useStudyAnalysis({
         engineOptions.find((option) => option.id === analysisEngineId) ?? engineOptions[0];
     // 外部の USI エンジンは、評価関数（NNUE）をこちらから渡さない（エンジン自身の設定で決まる）。
     const isExternalEngine = engineOption?.kind === "external";
+    /**
+     * 解析結果（レイヤー）に残す、エンジンの識別情報。外部エンジンは、表示名が同じ別のエンジンと
+     * 結果が混ざらないよう、登録の ID を版の欄に入れる（外部エンジンの版は分からない）。
+     */
+    const layerEngine = isExternalEngine
+        ? {
+              kind: "external" as const,
+              name: engineOption?.label ?? "external",
+              version: engineOption?.id ?? null,
+          }
+        : { kind: engine.kind, name: engine.name, version: engine.version };
 
     const nnueContext = useNnueContextOptional();
     const {
@@ -348,6 +359,10 @@ export function useStudyAnalysis({
     // ファイルを確かめないと決まらないので、ここでは表示名と探索の条件で見分ける。
     const fullTargetLayer = doc.layers.find(
         (layer) =>
+            // 表示名が同じでも、エンジンの種類が違えば別の結果（外部エンジンの名前が、
+            // 評価関数の名前と同じことがある）。外部エンジンどうしは、登録の ID でも見分ける。
+            layer.spec.engine.kind === layerEngine.kind &&
+            (!isExternalEngine || layer.spec.engine.version === layerEngine.version) &&
             layer.display.label === settingsLabel &&
             layer.spec.limits.timeMs === settings.batchAnalysisTimeMs &&
             layer.spec.limits.depth === settings.batchAnalysisDepth &&
@@ -382,9 +397,7 @@ export function useStudyAnalysis({
         const isInternal = !isExternalEngine;
         try {
             const layer = buildStudyLayerRefFromNnue({
-                engine: isInternal
-                    ? { kind: engine.kind, name: engine.name, version: engine.version }
-                    : { kind: "external", name: engineOption?.label ?? "external", version: null },
+                engine: layerEngine,
                 appVersion: engine.appVersion,
                 resolved,
                 meta,
@@ -525,6 +538,21 @@ export function useStudyAnalysis({
         if (lockedRef.current) return;
         const target = latestRef.current.doc.layers.find((layer) => layer.id === layerId);
         if (!target) return;
+        // 続きは、その結果を作ったエンジンで解析する。いま選んでいるエンジンが違うときは、
+        // 黙って別のエンジンで試さず、選び直してもらう。
+        const targetIsExternal = target.spec.engine.kind === "external";
+        const sameEngine = targetIsExternal
+            ? isExternalEngine && target.spec.engine.version === layerEngine.version
+            : !isExternalEngine;
+        if (!sameEngine) {
+            setMessage({
+                text: targetIsExternal
+                    ? `「${target.display.label}」は外部エンジン「${target.spec.engine.name}」の結果です。解析の設定でそのエンジンを選んでから、もう一度お試しください。`
+                    : `「${target.display.label}」は内蔵エンジンの結果です。解析の設定で内蔵エンジンを選んでから、もう一度お試しください。`,
+                type: "error",
+            });
+            return;
+        }
         const selection = selectionOfLayer(target);
         if (selection === null) {
             setMessage({
@@ -588,6 +616,21 @@ export function useStudyAnalysis({
         latestRef.current.onFlush?.();
     };
     cancelRef.current = cancel;
+
+    // 解析エンジンを切り替えたら（別のタブ・画面での切り替えも含む）、準備中・実行中の解析は止める。
+    // 続けると、古いエンジンで探索しているのに、新しいエンジンの条件（パスを解釈できるか、など）で
+    // 扱うことになる。
+    const isAnalysisRunningRef = useRef(pool.isRunning);
+    useEffect(() => {
+        isAnalysisRunningRef.current = pool.isRunning;
+    }, [pool.isRunning]);
+    const engineOptionId = engineOption?.id;
+    const startedEngineIdRef = useRef(engineOptionId);
+    useEffect(() => {
+        if (startedEngineIdRef.current === engineOptionId) return;
+        startedEngineIdRef.current = engineOptionId;
+        if (preparingRef.current || isAnalysisRunningRef.current) void cancelRef.current();
+    }, [engineOptionId]);
 
     const switchToSimpleAi = (): void => {
         const request = requestRef.current;

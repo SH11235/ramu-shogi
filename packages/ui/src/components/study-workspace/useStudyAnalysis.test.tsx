@@ -397,12 +397,77 @@ describe("useStudyAnalysis", () => {
 
         const layer = result.current.doc.layers[0];
         expect(layer.display.label).toBe("MyEngine・0.5 秒");
-        // 外部エンジンの版は分からないので、アプリの版が入る。
-        expect(layer.spec.engine).toMatchObject({ kind: "external", name: "MyEngine" });
+        // 外部エンジンは、表示名が同じ別のエンジンと混ざらないよう、登録の ID で見分ける。
+        expect(layer.spec.engine).toEqual({ kind: "external", name: "MyEngine", version: "ext-1" });
         expect(layer.spec.evaluation.nnueSha256).toBeNull();
         expect(Object.keys(layer.results).sort()).toEqual([...ids].sort());
         // 探索したのは外部エンジンだけ。
         expect(externalBase.searches()).toBe(5);
         expect(internal.searches()).toBe(0);
+    });
+
+    it("表示名が同じ別の外部エンジンの結果は、別の解析結果として残る", async () => {
+        const { doc } = createTestStudy();
+        const first = createEngineOption();
+        const second = createEngineOption();
+        const options: EngineOption[] = [
+            { ...first.option, id: "ext-1", label: "MyEngine", kind: "external" },
+            { ...second.option, id: "ext-2", label: "MyEngine", kind: "external" },
+        ];
+        const { result } = renderHook(() => useHarness(doc, options));
+
+        act(() => result.current.controller.form.onEngineIdChange("ext-1"));
+        await act(async () => {
+            await result.current.controller.startFull();
+        });
+        await waitFor(() => expect(result.current.flushCount).toBe(1));
+
+        act(() => result.current.controller.form.onEngineIdChange("ext-2"));
+        // 2 つ目のエンジンでは、まだ 1 局面も解析していない。
+        expect(result.current.controller.fullTargetCount).toBe(5);
+        await act(async () => {
+            await result.current.controller.startFull();
+        });
+        await waitFor(() => expect(result.current.flushCount).toBe(2));
+
+        expect(result.current.doc.layers.map((layer) => layer.spec.engine.version)).toEqual([
+            "ext-1",
+            "ext-2",
+        ]);
+        expect(first.searches()).toBe(5);
+        expect(second.searches()).toBe(5);
+    });
+
+    it("「残りを解析」は、その結果を作ったエンジンを選んでいないときは、選び直すよう知らせる", async () => {
+        const { doc } = createTestStudy();
+        const internal = createEngineOption();
+        const externalBase = createEngineOption();
+        const external: EngineOption = {
+            ...externalBase.option,
+            id: "ext-1",
+            label: "MyEngine",
+            kind: "external",
+        };
+        const onMessage = vi.fn();
+        const { result } = renderHook(() =>
+            useHarness(doc, [internal.option, external], { onMessage }),
+        );
+        // 内蔵エンジンで全体を解析しておく。
+        await act(async () => {
+            await result.current.controller.startFull();
+        });
+        await waitFor(() => expect(result.current.flushCount).toBe(1));
+        const internalLayerId = result.current.doc.layers[0].id;
+
+        // 外部エンジンを選んだまま、内蔵エンジンの結果の続きを頼む。
+        act(() => result.current.controller.form.onEngineIdChange("ext-1"));
+        onMessage.mockClear();
+        await act(async () => {
+            await result.current.controller.resumeLayer(internalLayerId);
+        });
+        expect(onMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ text: expect.stringContaining("内蔵エンジンの結果です") }),
+        );
+        expect(externalBase.searches()).toBe(0);
     });
 });

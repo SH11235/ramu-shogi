@@ -913,7 +913,7 @@ describe("StudyWorkspaceView", () => {
         render(<Harness initialDoc={createTestStudy().doc} analysis={externalSelected} />);
         fireEvent.click(screen.getByRole("button", { name: "解析の設定" }));
         expect(screen.queryByRole("combobox", { name: "使う AI" })).toBeNull();
-        expect(screen.getByText(/外部エンジンは、エンジン自身の設定/)).toBeTruthy();
+        expect(screen.getByText(/外部エンジンは、そのエンジンに設定されている AI/)).toBeTruthy();
     });
 
     it("解析の設定で、同時に解析する局面の数を選べる", () => {
