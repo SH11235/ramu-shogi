@@ -31,7 +31,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { PageHeading } from "../../components/PageHeading";
 import { Section } from "../../components/Section";
 import { StatusBanner } from "../../components/StatusBanner";
-import { useAuthSession } from "../../hooks/useAuthSession";
+import { dispatchAuthSessionSyncEvent, useAuthSession } from "../../hooks/useAuthSession";
 import { removeStudyCommentDrafts } from "../../lib/studyDrafts";
 import { createStudyFromKifuSource } from "../../lib/studyEntry";
 import { ensureStudySession, getStudySync } from "../../lib/studySync";
@@ -226,7 +226,13 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
 
         // 削除・統合・他のタブでの変更を一覧に反映する。
         const unsubscribe = sync.subscribeEvents((event) => {
-            if (event.type === "unauthorized" || event.type === "pulled") return;
+            if (event.type === "unauthorized") {
+                // セッションが切れた・別のタブでアカウントが変わった。ログイン状態を取り直す
+                // （取り直した結果で、一覧もそのアカウントのものに変わる）。
+                dispatchAuthSessionSyncEvent();
+                return;
+            }
+            if (event.type === "pulled") return;
             if (event.type === "removed") {
                 setRemote((items) => items.filter((item) => item.id !== event.studyId));
             }

@@ -1,4 +1,4 @@
-import type { StudySync } from "@shogi/study-client";
+import { createMemoryStudyStore, createStudySync, type StudySync } from "@shogi/study-client";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +14,7 @@ import {
 const navigate = vi.fn(async () => {});
 let currentSync: StudySync;
 let auth: TestAuthState = AUTH_SIGNED_OUT;
+const dispatchAuthSessionSyncEvent = vi.fn();
 
 vi.mock("@tanstack/react-router", () => ({
     Link: ({
@@ -29,6 +30,7 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 vi.mock("../../hooks/useAuthSession", () => ({
     useAuthSession: () => ({ ...auth, sessionError: null }),
+    dispatchAuthSessionSyncEvent: () => dispatchAuthSessionSyncEvent(),
 }));
 vi.mock("../../components/HeaderNav", () => ({ HeaderNav: () => null }));
 vi.mock("../../components/PageHeader", () => ({ PageHeader: () => null }));
@@ -48,6 +50,7 @@ const CLOUD_ID = "22222222-2222-4222-8222-222222222222";
 describe("StudiesPage", () => {
     beforeEach(() => {
         navigate.mockClear();
+        dispatchAuthSessionSyncEvent.mockClear();
         auth = AUTH_SIGNED_OUT;
         resetStudySyncForTest();
         currentSync = createTestSync();
@@ -97,6 +100,22 @@ describe("StudiesPage", () => {
 
         expect((await screen.findByRole("alert")).textContent).toContain("指し手がありません");
         expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it("同期エンジンがセッションの変化を知らせたら、ログイン状態を取り直す", async () => {
+        auth = authSignedIn("user-1");
+        // 別のタブでログアウトしていた（作成の直前の確認で分かる）。
+        currentSync = createStudySync({
+            store: createMemoryStudyStore(),
+            api: createOfflineApi(),
+            verifySession: async () => null,
+        });
+        render(<StudiesPage api={createOfflineApi()} />);
+        await screen.findByRole("textbox", { name: "棋譜のテキスト" });
+        expect(dispatchAuthSessionSyncEvent).not.toHaveBeenCalled();
+
+        await currentSync.createStudy(createTestDoc(LOCAL_ID, "ブラウザのノート"));
+        await waitFor(() => expect(dispatchAuthSessionSyncEvent).toHaveBeenCalledTimes(1));
     });
 
     it("ブラウザ内のノートとクラウドのノートを 1 つの一覧にする", async () => {

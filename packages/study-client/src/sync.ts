@@ -80,7 +80,11 @@ export type StudySyncEvent =
     | { type: "merged"; studyId: string; into: string }
     /** ノートがローカルから消えた。 */
     | { type: "removed"; studyId: string }
-    /** サーバーが 401 を返した（セッション切れ）。再ログインを案内する。 */
+    /**
+     * サーバーから見たログイン状態が、このエンジンに伝えられたものと違っていた（401 を受けた、
+     * または送信の前後の確認でログアウト・別のアカウントへの切り替えが分かった）。
+     * 受け取った側はログイン状態を取り直して `setSession` で伝え直し、再ログインを案内する。
+     */
     | { type: "unauthorized" }
     /**
      * 開いたあとの最初の取り込みが済んだ（`getPullState` が `done` になった）。
@@ -139,6 +143,8 @@ export interface StudySyncOptions {
      * サーバーから見た現在のログイン状態を取り直す（`/api/auth/session`）。
      * ノートをサーバーに作成する直前に呼び、ノートの持ち主と一致するときだけ作成する
      * （別のタブでアカウントが切り替わっていた場合に、別のアカウントへ作ってしまわないため）。
+     * 削除が 404 だったときにも呼び、持ち主のままのときだけ削除済みとして扱う
+     * （別のアカウントとして送った削除の 404 で、ローカルのノートを消してしまわないため）。
      * 未ログインなら null を返す。取得できなければ例外を投げる（あとで試し直す）。
      * 省略すると確認しない。
      */
@@ -570,6 +576,32 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         emit({ type: "unauthorized" });
     };
 
+    /**
+     * サーバーから見たログイン状態（`verifySession` の結果）が、ノートの持ち主か。
+     *
+     * 違っていたら（別のタブでログアウトした・別のアカウントに切り替えた）、以後はサーバーから
+     * 見たログイン状態に合わせ（保存の状態は `other_account` / `signed_out` になる）、画面にも
+     * ログイン状態の取り直しを促す。知らせないと、画面は前の利用者のまま編集できる表示を続け、
+     * 編集は「見えないノート」として拒否され続ける。
+     */
+    const isVerifiedOwner = (verified: StudySession | null, owner: string | null): boolean => {
+        if ((verified?.userId ?? null) === owner) return true;
+        if ((verified?.userId ?? null) !== (session?.userId ?? null)) {
+            // `setSession` で別のユーザーに変わったときと同じ扱い。
+            authFailures = 0;
+            authHoldUntil = 0;
+            for (const entry of entries.values()) {
+                entry.pulled = false;
+                entry.pullEpoch += 1;
+            }
+        }
+        session = verified ? { userId: verified.userId } : null;
+        unauthorized = false;
+        for (const id of entries.keys()) refreshStatus(id);
+        emit({ type: "unauthorized" });
+        return false;
+    };
+
     const setRemote = (
         studyId: string,
         remote: (lastSeq: number, study: StoredStudy) => StudyRemoteState,
@@ -823,14 +855,8 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                 entryOf(study.id).message = error instanceof Error ? error.message : String(error);
                 return "retry";
             }
-            if (verified?.userId !== study.owner) {
-                // 送らない。以後はサーバーから見たログイン状態に合わせる
-                // （保存の状態は `other_account` / `signed_out` になる）。
-                session = verified ? { userId: verified.userId } : null;
-                unauthorized = false;
-                for (const id of entries.keys()) refreshStatus(id);
-                return "done";
-            }
+            // 持ち主でなければ送らない。
+            if (!isVerifiedOwner(verified, study.owner)) return "done";
         }
         const sentDoc = study.doc;
         const response = await api.create(toCreateRequest(sentDoc));
@@ -1092,8 +1118,22 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         return "continue";
     };
 
-    const deleteRemote = async (studyId: string): Promise<StepOutcome> => {
+    const deleteRemote = async (study: StoredStudy): Promise<StepOutcome> => {
+        const studyId = study.id;
         const response = await api.delete(studyId);
+        if (!response.ok && response.status === 404 && options.verifySession) {
+            // 404 は「既に無い」だけでなく「いまのセッションのノートではない」でも返る。別のタブで
+            // アカウントが切り替わっていたら、持ち主のノートはサーバーに残っている。その場合は
+            // ローカルのレコードを消さず、削除待ちのまま残す（持ち主でログインし直したときに送り直す）。
+            let verified: StudySession | null;
+            try {
+                verified = await options.verifySession();
+            } catch (error) {
+                entryOf(studyId).message = error instanceof Error ? error.message : String(error);
+                return "retry";
+            }
+            if (!isVerifiedOwner(verified, study.owner)) return "done";
+        }
         if (response.ok || response.status === 404 || response.status === 410) {
             await mutate(studyId, () => ({ study: null, result: undefined }));
             emit({ type: "removed", studyId });
@@ -1147,7 +1187,7 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                 // 送るものがあるのに待っているときだけ、待っていることを状態に出す。
                 return pending.length > 0 || study.serverRevision === null ? "hold" : "done";
             }
-            if (study.deleting) return deleteRemote(studyId);
+            if (study.deleting) return deleteRemote(study);
             if (study.remote.state === "deleted") return "done";
             if (study.remote.state === "limit_exceeded" || study.remote.state === "rejected") {
                 // 同じ内容を送り直しても通らない。新しい操作が積まれるか、明示の再試行まで待つ。

@@ -56,6 +56,8 @@ interface Harness {
     events: StudySyncEvent[];
     /** ブラウザのセッション Cookie の持ち主（サーバーから見えるユーザー）。 */
     login(userId: string | null): void;
+    /** 別のタブでのログアウト・アカウントの切り替え（Cookie だけが変わり、このタブには伝わらない）。 */
+    switchCookie(userId: string | null): void;
     /** 時刻を進め、動き出した処理が落ち着くまで待つ。 */
     advance(ms: number): Promise<void>;
     postOpsCalls(): Array<{ status: number; body: StudyOpsRequest }>;
@@ -93,6 +95,9 @@ const createHarness = (
         login(userId) {
             cookieUser = userId;
             sync.setSession(userId === null ? null : { userId });
+        },
+        switchCookie(userId) {
+            cookieUser = userId;
         },
         async advance(ms) {
             // セッションの切り替えなどで動き出した処理が、タイマーを予定し終えるのを待つ。
@@ -2511,6 +2516,111 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             ]);
             expect(harness.postOpsCalls().map((call) => call.body.ops.length)).toEqual([199, 2]);
             await expectSameAsServer(harness);
+        });
+    });
+
+    describe("レビュー 4 巡目の指摘の再現（別のタブでのログアウト・アカウントの切り替え）", () => {
+        /** `verifySession` が、Cookie の持ち主（サーバーから見たユーザー）を返すハーネス。 */
+        const createVerifyingHarness = (): Harness => {
+            let serverSideUser: string | null = null;
+            const harness = createHarness({
+                verifySession: async () => (serverSideUser ? { userId: serverSideUser } : null),
+            });
+            return {
+                ...harness,
+                login(userId) {
+                    serverSideUser = userId;
+                    harness.login(userId);
+                },
+                switchCookie(userId) {
+                    serverSideUser = userId;
+                    harness.switchCookie(userId);
+                },
+            };
+        };
+
+        it.each([
+            { label: "別のアカウントへの切り替え", other: USER_B, reason: "other_account" },
+            { label: "ログアウト", other: null, reason: "signed_out" },
+        ])("作成の直前の確認で $label が分かったら、ログイン状態の取り直しを促す", async ({
+            other,
+            reason,
+        }) => {
+            const harness = createVerifyingHarness();
+            harness.login(USER_A);
+            harness.switchCookie(other);
+            await harness.sync.createStudy(doc);
+            await harness.advance(0);
+            expect(harness.server.calls.filter((call) => call.method === "create")).toEqual([]);
+            expect(harness.sync.getStatus(TEST_STUDY_ID)).toMatchObject({ state: "local", reason });
+            // 画面はこの通知でログイン状態を取り直す（通知が無いと、前の利用者のまま編集できる
+            // 表示を続け、編集は拒否され続ける）。
+            expect(harness.events.filter((event) => event.type === "unauthorized")).toHaveLength(1);
+
+            // 持ち主でログインし直せば、作成する。
+            harness.login(USER_A);
+            await harness.advance(0);
+            expect(harness.server.study(TEST_STUDY_ID)?.revision).toBe(1);
+            expect(harness.sync.getStatus(TEST_STUDY_ID).state).toBe("synced");
+        });
+
+        it("別のアカウントとして送った削除の 404 では、削除済みにしない", async () => {
+            const harness = createVerifyingHarness();
+            harness.login(USER_A);
+            await harness.sync.createStudy(doc);
+            await harness.advance(0);
+            expect(harness.sync.getStatus(TEST_STUDY_ID).state).toBe("synced");
+
+            // 別のタブで B に切り替わった。このタブは A のつもりで削除する。
+            harness.switchCookie(USER_B);
+            await harness.sync.deleteStudy(TEST_STUDY_ID);
+            expect(harness.server.calls.at(-1)).toMatchObject({ method: "delete", status: 404 });
+            // A のノートはサーバーに残っている。ローカルのレコードは削除待ちのまま残す。
+            expect(harness.server.study(TEST_STUDY_ID)).not.toBeNull();
+            expect((await harness.store.read(TEST_STUDY_ID)).study?.deleting).toBe(true);
+            expect(harness.sync.getSession()).toEqual({ userId: USER_B });
+            expect(harness.events).toContainEqual({ type: "unauthorized" });
+            // B からは見えない。
+            expect(await harness.sync.listLocal()).toEqual([]);
+
+            // A でログインし直すと、削除を送り直す。
+            harness.login(USER_A);
+            await harness.advance(0);
+            expect(harness.server.study(TEST_STUDY_ID)).toBeNull();
+            expect((await harness.store.read(TEST_STUDY_ID)).study).toBeNull();
+        });
+
+        it("持ち主のままの 404（既にサーバーに無い）は、従来どおり削除済みにする", async () => {
+            const harness = createVerifyingHarness();
+            harness.login(USER_A);
+            await harness.sync.createStudy(doc);
+            await harness.advance(0);
+            harness.server.forget(TEST_STUDY_ID);
+            await harness.sync.deleteStudy(TEST_STUDY_ID);
+            expect(harness.server.calls.at(-1)).toMatchObject({ method: "delete", status: 404 });
+            expect((await harness.store.read(TEST_STUDY_ID)).study).toBeNull();
+            expect(harness.sync.getSession()).toEqual({ userId: USER_A });
+            expect(harness.events).not.toContainEqual({ type: "unauthorized" });
+        });
+
+        it("削除の 404 のあとにログイン状態を確認できなければ、消さずにあとで試し直す", async () => {
+            let fail = false;
+            const harness = createHarness({
+                verifySession: async () => {
+                    if (fail) throw new Error("ログイン状態を確認できませんでした (503)");
+                    return { userId: USER_A };
+                },
+            });
+            harness.login(USER_A);
+            await harness.sync.createStudy(doc);
+            await harness.advance(0);
+            harness.server.forget(TEST_STUDY_ID);
+            fail = true;
+            await harness.sync.deleteStudy(TEST_STUDY_ID);
+            expect((await harness.store.read(TEST_STUDY_ID)).study?.deleting).toBe(true);
+            fail = false;
+            await harness.advance(2000);
+            expect((await harness.store.read(TEST_STUDY_ID)).study).toBeNull();
         });
     });
 });
