@@ -261,6 +261,20 @@ export function useMoveExecution({
         return true;
     };
 
+    /**
+     * 駒を選んでいる間に、手番側の別の駒があるマスを押したら、その駒へ選び直す。
+     * 自分の駒があるマスへは指せない・打てないので、指し手とは取り違えない。
+     * 選び直したら true。
+     */
+    const reselectOwnPiece = (square: string): boolean => {
+        if (!selection) return false;
+        if (selection.kind === "square" && selection.square === square) return false;
+        const piece = position.board[square as Square];
+        if (!piece || piece.owner !== position.turn) return false;
+        setSelection({ kind: "square", square });
+        return true;
+    };
+
     // 検討モードでのマス選択処理
     const handleSquareSelectReviewMode = async (
         square: string,
@@ -286,6 +300,10 @@ export function useMoveExecution({
             if (piece && piece.owner === position.turn) {
                 setSelection({ kind: "square", square: sq });
             }
+            return true;
+        }
+
+        if (reselectOwnPiece(square)) {
             return true;
         }
 
@@ -422,6 +440,10 @@ export function useMoveExecution({
             if (piece && piece.owner === position.turn) {
                 setSelection({ kind: "square", square: sq });
             }
+            return true;
+        }
+
+        if (reselectOwnPiece(square)) {
             return true;
         }
 
@@ -569,8 +591,15 @@ export function useMoveExecution({
         if (!isReviewMode && isEngineTurn(position.turn)) {
             return;
         }
-        setSelection({ kind: "hand", piece });
+        // 成りの選択中に持ち駒へ移ったら、成りの選択は取り消す。
+        setPromotionSelection(null);
         setMessage(null);
+        // 選択中の持ち駒をもう一度押したら選択を外す（盤上の駒をもう一度押したときと同じ）。
+        if (selection?.kind === "hand" && selection.piece === piece) {
+            setSelection(null);
+            return;
+        }
+        setSelection({ kind: "hand", piece });
     };
 
     const applyUsiMove = async (usiMove: string): Promise<boolean> => {
