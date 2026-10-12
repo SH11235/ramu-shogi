@@ -608,7 +608,9 @@ describe("StudyPage", () => {
 
         // 画面の持ち主も、開き直しでアカウントに変わる（以後の入力は、アカウントの下書きとして置く）。
         await waitFor(() => expect(workspaceProps?.saveStatus.reason).not.toBe("anonymous"));
-        workspaceProps?.onCommentDraftChange?.(nodeC, setDraft("そのあとの入力"));
+        // waitFor の中で読んだあとは null に絞り込まれるので、型を戻して読む。
+        const afterAdoption = workspaceProps as StudyWorkspaceProps | null;
+        afterAdoption?.onCommentDraftChange?.(nodeC, setDraft("そのあとの入力"));
         expect(draftsOf().ownerId).toBe("user-1");
         expect(draftsOf().nodes).toHaveLength(3);
     });

@@ -55,9 +55,10 @@ const authRoute = createRoute({
     path: "/auth",
     // `next` はログイン後の戻り先、`setup=username` は初回のユーザー名設定。
     // 値の検証（戻り先として使ってよいか）は、読む側（lib/loginReturn）で行う。
-    validateSearch: (search: Record<string, unknown>) => ({
-        next: typeof search.next === "string" ? search.next : undefined,
-        setup: typeof search.setup === "string" ? search.setup : undefined,
+    // どちらも省略できる（リンクや遷移で片方だけ渡せるように、キー自体を任意にする）。
+    validateSearch: (search: Record<string, unknown>): { next?: string; setup?: string } => ({
+        ...(typeof search.next === "string" ? { next: search.next } : {}),
+        ...(typeof search.setup === "string" ? { setup: search.setup } : {}),
     }),
     component: lazyRouteComponent(() => import("./pages/auth/AuthPage")),
 });
