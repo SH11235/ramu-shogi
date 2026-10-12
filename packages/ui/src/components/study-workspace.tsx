@@ -602,6 +602,12 @@ export function StudyWorkspaceView({
     if (!legalCacheRef.current) legalCacheRef.current = new LegalMoveCache();
     const legalCache = legalCacheRef.current;
     const turnStartTimeRef = useRef(0);
+    // 「パスを指す」が、パスできるかを確かめている間に変わりうるもの（いまの局面・編集できるか）。
+    const passPendingRef = useRef(false);
+    const latestPassGuardRef = useRef({ nodeId: currentNodeId, locked });
+    useEffect(() => {
+        latestPassGuardRef.current = { nodeId: currentNodeId, locked };
+    }, [currentNodeId, locked]);
     const moveProcessingRef = useRef(false);
 
     /** いまの局面から手を足す（既にある手なら、その手へ移るだけ）。 */
@@ -640,6 +646,9 @@ export function StudyWorkspaceView({
      * 回数（1 つの手順で各側 `STUDY_MAX_PASSES_PER_SIDE` 回まで）は断る。
      */
     const passFromCurrent = async (): Promise<void> => {
+        // 確かめている間の押し直しは受け付けない。
+        if (passPendingRef.current) return;
+        const nodeId = currentNodeId;
         const moves = [...movesToCurrent, STUDY_PASS_MOVE];
         if (!tree.nodes.has(studyChildNodeId(currentNodeId, STUDY_PASS_MOVE))) {
             if (!studyLineFitsPassLimit(tree.startSfen, moves)) {
@@ -653,6 +662,7 @@ export function StudyWorkspaceView({
             const passRights = studyPassRightsForLine(tree.startSfen, moves);
             const options = passRights ? { passRights } : undefined;
             let canPass = false;
+            passPendingRef.current = true;
             try {
                 const legal = fetchLegalMoves
                     ? await fetchLegalMoves(tree.startSfen, movesToCurrent, options)
@@ -663,7 +673,17 @@ export function StudyWorkspaceView({
                       );
                 canPass = legal.includes(STUDY_PASS_MOVE);
             } catch {
-                canPass = false;
+                onMessageChange({
+                    text: "パスできるかを確かめられませんでした。もう一度お試しください。",
+                    type: "error",
+                });
+                return;
+            } finally {
+                passPendingRef.current = false;
+            }
+            // 確かめている間に、別の局面へ移った・編集できなくなったときは、足さない。
+            if (latestPassGuardRef.current.nodeId !== nodeId || latestPassGuardRef.current.locked) {
+                return;
             }
             if (!canPass) {
                 onMessageChange({
@@ -856,8 +876,18 @@ export function StudyWorkspaceView({
             STUDY_LIMITS.lineLength - baseNode.ply,
             STUDY_LIMITS.nodesPerStudy - totalCount,
         );
+        const movesToBase = studyPathTo(tree, request.nodeId)
+            .map((nodeId) => tree.nodes.get(nodeId)?.usiMove ?? null)
+            .filter((move): move is string => move !== null);
         for (const move of request.pv) {
             if (moves.length >= room || !isStudyUsiMove(move)) break;
+            // エンジンが読み込めない回数のパスになる手前で切る。
+            if (
+                isStudyPassMove(move) &&
+                !studyLineFitsPassLimit(tree.startSfen, [...movesToBase, ...moves, move])
+            ) {
+                break;
+            }
             const applied = isStudyPassMove(move)
                 ? applyStudyMoveWithState(cursor, move)
                 : applyMoveWithState(cursor, move, { validateTurn: false });

@@ -290,6 +290,37 @@ describe("useEnginePool", () => {
         unmount();
     });
 
+    it("エンジンが読み込めない回数のパスを含む手順は、エンジンに渡さずに失敗として数え、残りは続ける", async () => {
+        const factory = engineFactory();
+        const onComplete = vi.fn();
+        const onError = vi.fn();
+        const { result, unmount } = renderHook(() =>
+            useEnginePool({
+                createClient: factory.createClient,
+                workerCount: 1,
+                onComplete,
+                onError,
+            }),
+        );
+        // 先手が 15 回パスする手順（後手は玉を往復させる）。
+        const tooManyPasses = Array.from({ length: 15 }, (_, index) => [
+            "pass",
+            index % 2 === 0 ? "5a5b" : "5b5a",
+        ]).flat();
+        act(() =>
+            result.current.start([
+                { ...jobs[0], ply: 30, moves: tooManyPasses },
+                { ...jobs[0], ply: 1, moves: ["7g7f"] },
+            ]),
+        );
+        await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+        expect(onError).toHaveBeenCalledTimes(1);
+        expect(onError.mock.calls[0][0]).toBe(30);
+        const calls = vi.mocked(factory.clients[0].loadPosition).mock.calls;
+        expect(calls).toEqual([["startpos", ["7g7f"], undefined]]);
+        unmount();
+    });
+
     it("キャンセルで止めた探索は、そこまでの結果を aborted で通知する", async () => {
         const factory = infoEngineFactory({ finish: false });
         const onPositionAnalyzed = vi.fn();

@@ -4,6 +4,7 @@ import {
     type StudyAnalysisCollector,
     type StudyAnalysisCompletion,
     type StudyLayerRef,
+    studyLineFitsPassLimit,
     studyPassRightsForLine,
 } from "@shogi/app-core";
 import type {
@@ -287,6 +288,11 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
 
         try {
             // 局面を読み込み
+            // エンジンが読み込めない回数のパスを含む手順は、エンジンに渡さずに失敗として数える
+            // （他の端末から届いたノートや、読み筋から足した変化に含まれうる）。
+            if (!studyLineFitsPassLimit(job.sfen, job.moves)) {
+                throw new Error("パスが多すぎる手順は解析できません");
+            }
             // パスを含む手順は、パス権を有効にしないと読み込めない（回数の決め方は
             // `studyPassRightsForLine`。パスを含まなければ何も渡さない）。
             const passRights = studyPassRightsForLine(job.sfen, job.moves);
