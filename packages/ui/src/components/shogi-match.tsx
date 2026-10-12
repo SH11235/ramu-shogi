@@ -1266,6 +1266,8 @@ export function ShogiMatch({
                 throw new Error("No engine available");
             }),
         clientKey: analysisEngineOption?.id,
+        // 外部の USI エンジンは、変則ルールのパスを解釈できない。
+        supportsPassRights: analysisEngineOption?.kind !== "external",
         workerCount: resolveWorkerCount(analysisSettings.parallelWorkers),
         onProgress: (progress) => {
             setBatchAnalysis({

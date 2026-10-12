@@ -271,6 +271,8 @@ export function useStudyAnalysis({
                 throw new Error("解析に使えるエンジンがありません");
             }),
         clientKey: engineOption?.id,
+        // 外部の USI エンジンは、変則ルールのパスを解釈できない。
+        supportsPassRights: engineOption?.kind !== "external",
         workerCount: resolveWorkerCount(settings.parallelWorkers),
         nnueId: analysisNnueId,
         onPositionAnalyzed: handlePositionAnalyzed,

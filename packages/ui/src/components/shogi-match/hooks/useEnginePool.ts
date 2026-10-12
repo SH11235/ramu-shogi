@@ -1,5 +1,6 @@
 import {
     createStudyAnalysisCollector,
+    isStudyPassMove,
     type Player,
     type StudyAnalysisCollector,
     type StudyAnalysisCompletion,
@@ -52,6 +53,13 @@ interface UseEnginePoolOptions {
     clientKey?: string;
     /** ワーカー数 */
     workerCount: number;
+    /**
+     * エンジンが、パス権つきの局面（パスを含む手順）を読み込めるか（既定は true）。
+     * 外部の USI エンジンは、変則ルールのパスを解釈できないので false にする。false のとき、
+     * パスを含む手順のジョブは、エンジンに渡さずに失敗として数える（解釈できないまま渡すと、
+     * 別の局面を探索した結果が、その局面の結果として残ってしまう）。
+     */
+    supportsPassRights?: boolean;
     /** 進捗更新時のコールバック */
     onProgress?: (progress: BatchAnalysisProgress) => void;
     /** 解析結果のコールバック */
@@ -165,7 +173,12 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         onError,
         onPositionAnalyzed,
         nnueId,
+        supportsPassRights = true,
     } = options;
+    const supportsPassRightsRef = useRef(supportsPassRights);
+    useEffect(() => {
+        supportsPassRightsRef.current = supportsPassRights;
+    }, [supportsPassRights]);
 
     const [isRunning, setIsRunning] = useState(false);
     const [progress, setProgress] = useState<BatchAnalysisProgress | null>(null);
@@ -292,6 +305,9 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             // （他の端末から届いたノートや、読み筋から足した変化に含まれうる）。
             if (!studyLineFitsPassLimit(job.sfen, job.moves)) {
                 throw new Error("パスが多すぎる手順は解析できません");
+            }
+            if (!supportsPassRightsRef.current && job.moves.some((move) => isStudyPassMove(move))) {
+                throw new Error("この解析エンジンは、パスを含む局面を解析できません");
             }
             // パスを含む手順は、パス権を有効にしないと読み込めない（回数の決め方は
             // `studyPassRightsForLine`。パスを含まなければ何も渡さない）。
