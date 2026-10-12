@@ -653,6 +653,16 @@ fn csa_engine_lock_status(lock: State<'_, Arc<engine_lock::EngineLock>>) -> Resu
     Ok(lock.is_locked())
 }
 
+/// NNUE を読み込み済みなら、評価を NNUE へ戻す（駒得の評価を無効にする）。
+///
+/// 駒得の評価はプロセス全体の設定なので、内蔵エンジンを使い始めるところ（`engine_init`、CSA 対局の
+/// 開始）で呼ぶ。NNUE が無いときは何もしない（駒得の評価を切ると、評価する手段が無くなる）。
+pub(crate) fn restore_nnue_eval() {
+    if rshogi_core::nnue::is_nnue_initialized() {
+        rshogi_core::eval::disable_material();
+    }
+}
+
 #[tauri::command]
 fn engine_init(
     lock: State<'_, Arc<engine_lock::EngineLock>>,
@@ -684,9 +694,7 @@ fn engine_init(
     // 駒得の評価（簡易 AI）はプロセス全体の設定で、エンジンは全クライアントで 1 つを共有している。
     // 別の画面が簡易 AI で解析したあとも残るので、クライアントが使い始めるたびに NNUE へ戻す
     // （簡易 AI を使うクライアントは、init のあとに `MaterialLevel` を送り直す）。
-    if rshogi_core::nnue::is_nnue_initialized() {
-        rshogi_core::eval::disable_material();
-    }
+    restore_nnue_eval();
 
     if inner.search.is_none() {
         inner.search = Some(inner.create_search());
