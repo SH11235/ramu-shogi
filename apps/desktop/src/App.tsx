@@ -11,7 +11,7 @@ import {
     getLegalMoves,
     is_nnue_compatible,
 } from "@shogi/engine-tauri";
-import type { EngineOption } from "@shogi/ui";
+import type { EngineOption, PlayFromPosition } from "@shogi/ui";
 import { EngineControlPanel, NnueProvider, ShogiMatch } from "@shogi/ui";
 import { Button } from "@shogi/ui/components/button";
 import { invoke } from "@tauri-apps/api/core";
@@ -94,6 +94,14 @@ type AppMode =
 function App() {
     const [appMode, setAppMode] = useState<AppMode>("local");
     const [rshogiViewerGameId, setRshogiViewerGameId] = useState<string | null>(null);
+    // rshogi viewer の「この局面から対局」で引き継いだ局面。ローカル対局をこの局面を読み込んだ
+    // 検討の状態で開く（対局は始めない）。viewer や CSA 対局へ移るときに忘れる。
+    const [playHandoff, setPlayHandoff] = useState<PlayFromPosition | null>(null);
+
+    const handlePlayFromPosition = (position: PlayFromPosition) => {
+        setPlayHandoff(position);
+        setAppMode("local");
+    };
 
     const handleSwitchToCsa = async () => {
         try {
@@ -105,10 +113,12 @@ function App() {
         } catch {
             // ロック状態確認失敗時はそのまま切り替えを許可
         }
+        setPlayHandoff(null);
         setAppMode("csa");
     };
 
     const handleSwitchToRshogiViewer = () => {
+        setPlayHandoff(null);
         setRshogiViewerGameId(null);
         setAppMode("rshogi-viewer-list");
     };
@@ -236,6 +246,7 @@ function App() {
                         gameId={rshogiViewerGameId}
                         onBackToList={handleBackToRshogiList}
                         onBackToLocal={() => setAppMode("local")}
+                        onPlayFromPosition={handlePlayFromPosition}
                     />
                 </main>
             </NnueProvider>
@@ -250,6 +261,7 @@ function App() {
                         gameId={rshogiViewerGameId}
                         onBackToList={handleBackToRshogiList}
                         onBackToLocal={() => setAppMode("local")}
+                        onPlayFromPosition={handlePlayFromPosition}
                     />
                 </main>
             </NnueProvider>
@@ -278,6 +290,7 @@ function App() {
                     allowAnalysisDuringMatch={true}
                     defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
                     onPositionSnapshot={(snapshot) => setPanelPosition(snapshot)}
+                    initialReview={playHandoff ?? undefined}
                     onOpenEngineManager={() => setIsEngineManagerOpen(true)}
                     onOpenEngineSettings={handleOpenEngineSettings}
                 />

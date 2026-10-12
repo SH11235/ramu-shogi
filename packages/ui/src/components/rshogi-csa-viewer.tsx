@@ -12,9 +12,14 @@
 import { parseCsaGameRecord } from "@shogi/app-core";
 import type { FetchRshogiGameOptions, RshogiGame } from "@shogi/match-client";
 import { fetchRshogiGame, RshogiGameNotFoundError } from "@shogi/match-client";
-import { type ReactElement, type ReactNode, useEffect, useState } from "react";
+import { type ReactElement, type ReactNode, useEffect, useEffectEvent, useState } from "react";
 import { Button } from "./button";
 import { RshogiVenueBadge } from "./rshogi-csa-venue";
+import {
+    type PlayFromPosition,
+    PlayFromPositionButton,
+    useShownPosition,
+} from "./rshogi-play-from-position";
 import { ShogiMatch } from "./shogi-match";
 import { BottomSheet } from "./shogi-match/components/BottomSheet";
 import type { ReviewMoveEval } from "./shogi-match/hooks/useKifuImportExport";
@@ -41,6 +46,12 @@ export interface RshogiCsaViewerProps {
      * PC では左の対局情報の下、モバイルでは対局情報のシートの中に出る。
      */
     renderGameAction?: (game: RshogiGame) => ReactNode;
+    /**
+     * 「この局面から対局」を押したときに、いま表示している局面（本譜の現在の手数まで。分岐を
+     * 見ていればその分岐の手順まで）を受け取る。対局ページへ引き継いで開く。
+     * 指定したときだけボタンを出す（`renderGameAction` の操作のすぐ下）。
+     */
+    onPlayFromPosition?: (position: PlayFromPosition) => void;
 }
 
 interface LoadState {
@@ -202,14 +213,18 @@ export function RshogiCsaViewer({
     onRequestNnueFilePath,
     isDevMode,
     renderGameAction,
+    onPlayFromPosition,
 }: RshogiCsaViewerProps): ReactElement {
     const [state, setState] = useState<LoadState>({ status: "loading" });
     const isMobile = useIsMobile();
     const [isMetaSheetOpen, setIsMetaSheetOpen] = useState(false);
+    const shownPosition = useShownPosition();
+    const resetShownPosition = useEffectEvent(shownPosition.reset);
 
     useEffect(() => {
         const controller = new AbortController();
         setState({ status: "loading" });
+        resetShownPosition();
         void (async () => {
             try {
                 const game = await fetchRshogiGame(gameId, {
@@ -311,7 +326,13 @@ export function RshogiCsaViewer({
     const metaContent = (
         <div className="flex flex-col gap-2">
             <RshogiGameMetaPanel game={game} rates={rates} />
+            {/* 主は「研究ノートで開く」、従は「この局面から対局」。続けて並べる。 */}
             {renderGameAction?.(game)}
+            {onPlayFromPosition && (
+                <PlayFromPositionButton
+                    onClick={() => onPlayFromPosition(shownPosition.getShownPosition(startSfen))}
+                />
+            )}
             <Button type="button" variant="outline" size="sm" onClick={handleDownloadCsa}>
                 CSA ダウンロード
             </Button>
@@ -360,6 +381,9 @@ export function RshogiCsaViewer({
                 }}
                 initialReview={{ sfen: startSfen, moves, moveData }}
                 reviewMode={true}
+                // 棋譜を見るだけの画面なので、対局開始・棋譜読込・局面編集などは出さない。
+                viewerMode={true}
+                onPositionSnapshot={shownPosition.handlePositionSnapshot}
                 // 棋譜に評価値が入っているときは、観戦と同じく評価値の列とグラフを最初から出す。
                 spectateMode={hasRecordedEval}
                 reviewLeftContent={metaContent}

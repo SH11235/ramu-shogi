@@ -34,6 +34,11 @@ import {
     subscribeRshogiLiveGame,
 } from "@shogi/match-client";
 import { type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
+import {
+    type PlayFromPosition,
+    PlayFromPositionButton,
+    useShownPosition,
+} from "./rshogi-play-from-position";
 import { ShogiMatch } from "./shogi-match";
 import type { ReviewMoveEval } from "./shogi-match/hooks/useKifuImportExport";
 import type { EngineOption } from "./shogi-match/types";
@@ -54,6 +59,11 @@ export interface RshogiCsaLiveViewerProps {
     fetchLegalMoves?: React.ComponentProps<typeof ShogiMatch>["fetchLegalMoves"];
     onRequestNnueFilePath?: React.ComponentProps<typeof ShogiMatch>["onRequestNnueFilePath"];
     isDevMode?: boolean;
+    /**
+     * 「この局面から対局」を押したときに、いま表示している局面（現在の手数まで。分岐を見て
+     * いればその分岐の手順まで）を受け取る。指定したときだけ、PC の観戦情報の下にボタンを出す。
+     */
+    onPlayFromPosition?: (position: PlayFromPosition) => void;
 }
 
 /**
@@ -754,8 +764,11 @@ export function RshogiCsaLiveViewer({
     fetchLegalMoves,
     onRequestNnueFilePath,
     isDevMode,
+    onPlayFromPosition,
 }: RshogiCsaLiveViewerProps): ReactElement {
     const [state, setState] = useState<LiveState>(initialLiveState);
+    // 「この局面から対局」で引き継ぐ、いま盤に出ている局面。
+    const shownPosition = useShownPosition();
     /** 現在の購読セッション。終局時に明示 disconnect して再接続を止めるために保持する。 */
     const sessionRef = useRef<RshogiLiveSession | null>(null);
     /** clock countdown 用の現在時刻 (1Hz 更新)。 */
@@ -1022,8 +1035,22 @@ export function RshogiCsaLiveViewer({
                     initialReview={{ sfen: startSfen, moves, moveData }}
                     reviewMode={true}
                     spectateMode={true}
+                    // 棋譜を見るだけの画面なので、対局開始・棋譜読込・局面編集などは出さない。
+                    viewerMode={true}
+                    onPositionSnapshot={shownPosition.handlePositionSnapshot}
                     reviewLeftContent={
-                        <RshogiLiveMetaPanel meta={game.meta} result={game.meta.result} />
+                        <div className="flex flex-col gap-2">
+                            <RshogiLiveMetaPanel meta={game.meta} result={game.meta.result} />
+                            {onPlayFromPosition && (
+                                <PlayFromPositionButton
+                                    onClick={() =>
+                                        onPlayFromPosition(
+                                            shownPosition.getShownPosition(startSfen),
+                                        )
+                                    }
+                                />
+                            )}
+                        </div>
                     }
                 />
             </div>
@@ -1131,12 +1158,24 @@ export function RshogiCsaLiveViewer({
                         lastMoveElapsedSec={state.lastMoveElapsedSec}
                     />
                 }
+                // 観戦は見るだけの画面なので、対局開始・棋譜読込・局面編集などは出さない。
+                viewerMode={true}
+                onPositionSnapshot={shownPosition.handlePositionSnapshot}
                 reviewLeftContent={
-                    <RshogiLiveMetaPanel
-                        meta={meta}
-                        result={state.result}
-                        latestPv={state.latestPv}
-                    />
+                    <div className="flex flex-col gap-2">
+                        <RshogiLiveMetaPanel
+                            meta={meta}
+                            result={state.result}
+                            latestPv={state.latestPv}
+                        />
+                        {onPlayFromPosition && (
+                            <PlayFromPositionButton
+                                onClick={() =>
+                                    onPlayFromPosition(shownPosition.getShownPosition("startpos"))
+                                }
+                            />
+                        )}
+                    </div>
                 }
             />
         </div>

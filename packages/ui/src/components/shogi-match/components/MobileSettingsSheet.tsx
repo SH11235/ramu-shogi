@@ -822,8 +822,8 @@ export function MobileSettingsSheet({
                 </div>
             )}
 
-            {/* アクションボタン（頻繁に使うので上部に配置） */}
-            <div className="flex justify-center gap-3 pt-3 border-t border-border">
+            {/* アクションボタン（頻繁に使うので上部に配置）。出すボタンが無いときは枠ごと出さない */}
+            <div className="flex justify-center gap-3 pt-3 border-t border-border empty:hidden">
                 {isMatchRunning ? (
                     onStopMatch && (
                         <button

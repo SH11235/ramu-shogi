@@ -35,7 +35,7 @@ const indexRoute = createRoute({
 
 // 対局盤。以前は `/` に置いていたが、トップは迎える面(LandingPage)に譲り、
 // 盤そのものは `/play` へ移設した。App は起動時に sessionStorage `ramu_review_kifu`
-// を読んで検討を復元する処理を持つ(書き込み側は現状 repo 内に無く、外部/将来の導線用)
+// を読んで検討を復元する処理を持つ(書き込み側は棋譜ビューアの「この局面から対局」。lib/playHandoff)
 // ため、その読み取りごと App が /play へ移動している。shogi-match chunk(~420KB) を
 // 必要とする唯一の非観戦ページなので lazy のまま。
 const playRoute = createRoute({

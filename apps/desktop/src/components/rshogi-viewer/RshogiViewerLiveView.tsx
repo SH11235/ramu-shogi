@@ -1,5 +1,5 @@
 import { createTauriEngineClient, getLegalMoves } from "@shogi/engine-tauri";
-import type { EngineOption } from "@shogi/ui";
+import type { EngineOption, PlayFromPosition } from "@shogi/ui";
 import { RshogiCsaLiveViewer } from "@shogi/ui";
 import { Button } from "@shogi/ui/components/button";
 import type { ReactElement } from "react";
@@ -24,6 +24,8 @@ interface Props {
     gameId: string;
     onBackToList: () => void;
     onBackToLocal: () => void;
+    /** 「この局面から対局」。いま表示している局面を受け取り、ローカル対局へ引き継ぐ。 */
+    onPlayFromPosition: (position: PlayFromPosition) => void;
 }
 
 /**
@@ -32,7 +34,12 @@ interface Props {
  * Web 側 `RshogiViewerLivePage` と同一の `RshogiCsaLiveViewer` を表示する。
  * gameId は呼出側 (`App.tsx`) で保持し、戻るボタンで一覧 / ローカル対局へ遷移する。
  */
-export function RshogiViewerLiveView({ gameId, onBackToList, onBackToLocal }: Props): ReactElement {
+export function RshogiViewerLiveView({
+    gameId,
+    onBackToList,
+    onBackToLocal,
+    onPlayFromPosition,
+}: Props): ReactElement {
     const apiBaseUrl =
         (import.meta.env.VITE_RSHOGI_API_BASE as string | undefined)?.trim() || undefined;
 
@@ -53,6 +60,7 @@ export function RshogiViewerLiveView({ gameId, onBackToList, onBackToLocal }: Pr
                 engineOptions={ENGINE_OPTIONS}
                 manifestUrl={nnueManifestUrl}
                 apiBaseUrl={apiBaseUrl}
+                onPlayFromPosition={onPlayFromPosition}
                 fetchLegalMoves={(sfen, moves, options) =>
                     getLegalMoves({ sfen, moves, passRights: options?.passRights })
                 }

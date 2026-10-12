@@ -69,6 +69,11 @@ interface MatchControlsProps {
     message: Message | null;
     /** 設定を開くボタンのクリックハンドラ */
     onOpenSettings?: () => void;
+    /**
+     * 棋譜を見るだけの画面か。true のとき、対局を始める・棋譜を読み込む・局面を編集する・
+     * 平手に戻すボタンを出さない。
+     */
+    viewerMode?: boolean;
     /** パス関連のprops（パス機能有効時のみ渡される） */
     passProps?: {
         /** パス可能かどうか */
@@ -97,11 +102,29 @@ export function MatchControls({
     gameMode = "editing",
     message,
     onOpenSettings,
+    viewerMode = false,
     passProps,
 }: MatchControlsProps): ReactElement {
     const isEditMode = gameMode === "editing";
     const isReviewMode = gameMode === "reviewing";
     const isPausedMode = gameMode === "paused";
+
+    // 棋譜を見るだけの画面では、案内とメッセージだけを出す（棋譜の読み込みが済むまでの一瞬は
+    // 編集モードだが、編集の案内も出さない）。
+    if (viewerMode && !isMatchRunning) {
+        return (
+            <div className="flex flex-col gap-2 items-center">
+                {isReviewMode && (
+                    <div className="text-xs text-muted-foreground">
+                        検討モード: 駒を動かして分岐を作成できます
+                    </div>
+                )}
+                {message && (
+                    <div className={`text-sm ${MESSAGE_STYLES[message.type]}`}>{message.text}</div>
+                )}
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col gap-2 items-center">

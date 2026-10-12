@@ -1,10 +1,11 @@
 import type { EngineOption } from "@shogi/ui";
 import { EngineControlPanel, ShogiMatch, useDevMode } from "@shogi/ui";
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { HeaderNav } from "./components/HeaderNav";
 import { PageHeader } from "./components/PageHeader";
 import { useRemotePrivateNnueManager } from "./hooks/useRemotePrivateNnueManager";
+import { clearPlayHandoff, readPlayHandoff } from "./lib/playHandoff";
 import { createWebWasmEngineClient } from "./platform/wasm-engine-client";
 
 const engineOptions: EngineOption[] = [
@@ -21,17 +22,6 @@ const panelEngine = createWebWasmEngineClient();
 // NNUE プリセット manifest.json の URL（環境変数で設定、必須）
 const nnueManifestUrl = import.meta.env.VITE_NNUE_MANIFEST_URL as string;
 
-function readReviewKifuFromSessionStorage(): { sfen: string; moves: string[] } | undefined {
-    try {
-        const raw = sessionStorage.getItem("ramu_review_kifu");
-        if (!raw) return undefined;
-        sessionStorage.removeItem("ramu_review_kifu");
-        return JSON.parse(raw) as { sfen: string; moves: string[] };
-    } catch {
-        return undefined;
-    }
-}
-
 function App() {
     const isDevMode = useDevMode();
     const navigate = useNavigate();
@@ -41,9 +31,14 @@ function App() {
         sfen: string;
         moves?: string[];
     }>({ label: "現在局面", sfen: "startpos", moves: [] });
-    const [initialReview] = useState<{ sfen: string; moves: string[] } | undefined>(
-        readReviewKifuFromSessionStorage,
-    );
+    // 棋譜ビューアの「この局面から対局」などから引き継がれた局面。あれば、その局面を読み込んだ
+    // 検討の状態で開く（対局は始めない。先後・相手・持ち時間を選んでから「対局開始」を押す）。
+    // 読むのは最初の描画の 1 回だけで、消すのは描画が確定してから（描画のやり直しや
+    // StrictMode の二重実行で、読む前に消えてしまわないようにする）。
+    const [initialReview] = useState(readPlayHandoff);
+    useEffect(() => {
+        clearPlayHandoff();
+    }, []);
 
     return (
         <>

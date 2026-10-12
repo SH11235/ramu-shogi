@@ -96,6 +96,7 @@ export { RshogiCsaLiveViewer } from "./components/rshogi-csa-live-viewer";
 export type { RshogiCsaViewerProps } from "./components/rshogi-csa-viewer";
 // rshogi-csa-viewer
 export { RshogiCsaViewer } from "./components/rshogi-csa-viewer";
+export type { PlayFromPosition } from "./components/rshogi-play-from-position";
 // shogi-match
 export { ShogiMatch } from "./components/shogi-match";
 

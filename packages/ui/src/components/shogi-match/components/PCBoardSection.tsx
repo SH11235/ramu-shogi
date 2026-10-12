@@ -8,6 +8,7 @@
 import type { ReactElement } from "react";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
+import { useShogiMatchConfig } from "../ShogiMatchContext";
 import { ClockDisplay } from "./ClockDisplay";
 import { MatchControls } from "./MatchControls";
 import { PCBoardContent } from "./PCBoardContent";
@@ -32,6 +33,7 @@ interface PCBoardSectionProps {
 export function PCBoardSection({ candidateNote, hideClock }: PCBoardSectionProps): ReactElement {
     // 対局設定を取得
     const { timeSettings } = useMatchSettings();
+    const { viewerMode } = useShogiMatchConfig();
 
     // 対局進行状態は Context から取得
     const {
@@ -184,6 +186,7 @@ export function PCBoardSection({ candidateNote, hideClock }: PCBoardSectionProps
                         gameMode={gameMode}
                         message={message}
                         onOpenSettings={onOpenSettings}
+                        viewerMode={viewerMode}
                         passProps={
                             shouldRenderPassButton
                                 ? {

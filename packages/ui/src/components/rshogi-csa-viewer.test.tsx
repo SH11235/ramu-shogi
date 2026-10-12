@@ -13,6 +13,8 @@ vi.mock("@shogi/match-client", () => ({
 interface CapturedShogiMatchProps {
     initialReview?: { sfen: string; moves: string[]; moveData?: unknown[] };
     spectateMode?: boolean;
+    viewerMode?: boolean;
+    onPositionSnapshot?: (snapshot: { sfen: string; moves: string[]; label?: string }) => void;
 }
 
 const capturedProps: CapturedShogiMatchProps[] = [];
@@ -317,6 +319,96 @@ describe("RshogiCsaViewer: 外部から取り込んだ棋譜", () => {
 
         expect(await screen.findByText(/CSA の解析に失敗しました/)).toBeTruthy();
         expect(screen.queryByTestId("shogi-match")).toBeNull();
+    });
+});
+
+describe("RshogiCsaViewer: 見るだけの画面と「この局面から対局」", () => {
+    const renderWithPlay = (onPlayFromPosition = vi.fn()) => {
+        render(
+            <RshogiCsaViewer
+                gameId={GAME_ID}
+                engineOptions={[]}
+                manifestUrl="/nnue-manifest.json"
+                renderGameAction={() => <button type="button">研究ノートで開く</button>}
+                onPlayFromPosition={onPlayFromPosition}
+            />,
+        );
+        return onPlayFromPosition;
+    };
+    /** 盤（ShogiMatch）が「いま出している局面」を知らせる。 */
+    const showPosition = (sfen: string, moves: string[]) => {
+        capturedProps.at(-1)?.onPositionSnapshot?.({ sfen, moves, label: "現在局面" });
+    };
+
+    it("対局開始・棋譜読込・局面編集などを出さない指定で盤を開く", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(WDOOR_GAME);
+        renderViewer();
+        await screen.findByTestId("shogi-match");
+
+        expect(capturedProps.at(-1)?.viewerMode).toBe(true);
+    });
+
+    it("「研究ノートで開く」のすぐ下に「この局面から対局」を出す", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(WDOOR_GAME);
+        renderWithPlay();
+        await screen.findByTestId("shogi-match");
+
+        const labels = screen.getAllByRole("button").map((button) => button.textContent);
+        expect(labels).toEqual(["研究ノートで開く", "この局面から対局", "CSA ダウンロード"]);
+    });
+
+    it("引き継ぎ先を渡さない画面では「この局面から対局」を出さない", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(WDOOR_GAME);
+        renderViewer();
+        await screen.findByTestId("shogi-match");
+
+        expect(screen.queryByRole("button", { name: "この局面から対局" })).toBeNull();
+    });
+
+    it("押すと、いま表示している手数までの手順を渡す（棋譜の最後までではない）", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(WDOOR_GAME);
+        const onPlay = renderWithPlay();
+        await screen.findByTestId("shogi-match");
+        // 棋譜は 3 手。読み込み直後は最後の局面、そのあと 1 手目まで戻した。
+        showPosition("startpos", ["7g7f", "3c3d", "2g2f"]);
+        showPosition("startpos", ["7g7f"]);
+
+        fireEvent.click(screen.getByRole("button", { name: "この局面から対局" }));
+
+        expect(onPlay).toHaveBeenCalledTimes(1);
+        expect(onPlay).toHaveBeenCalledWith({ sfen: "startpos", moves: ["7g7f"] });
+    });
+
+    it("分岐を見ているときは、その分岐の手順を渡す", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(WDOOR_GAME);
+        const onPlay = renderWithPlay();
+        await screen.findByTestId("shogi-match");
+        showPosition("startpos", ["7g7f", "8c8d", "2g2f"]);
+
+        fireEvent.click(screen.getByRole("button", { name: "この局面から対局" }));
+
+        expect(onPlay).toHaveBeenCalledWith({
+            sfen: "startpos",
+            moves: ["7g7f", "8c8d", "2g2f"],
+        });
+    });
+
+    it("平手以外・後手番開始の棋譜は、その開始局面の SFEN ごと渡す", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue({
+            ...GAME,
+            csa: ["V2.2", ...MIDGAME_POSITION, "-", "-0055KA,T3", "+2524FU,T4"].join("\n"),
+        });
+        const onPlay = renderWithPlay();
+        await screen.findByTestId("shogi-match");
+        // 盤が棋譜を読み込む前は平手の開始局面を知らせてくる。これは引き継がない。
+        showPosition("startpos", []);
+
+        fireEvent.click(screen.getByRole("button", { name: "この局面から対局" }));
+        expect(onPlay).toHaveBeenLastCalledWith({ sfen: MIDGAME_SFEN, moves: [] });
+
+        showPosition(MIDGAME_SFEN, ["B*5e"]);
+        fireEvent.click(screen.getByRole("button", { name: "この局面から対局" }));
+        expect(onPlay).toHaveBeenLastCalledWith({ sfen: MIDGAME_SFEN, moves: ["B*5e"] });
     });
 });
 

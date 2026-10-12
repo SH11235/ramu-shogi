@@ -462,6 +462,12 @@ interface ShogiMatchProps {
      * 明示的にトグルした値は観戦用名前空間に永続化され尊重される。
      */
     spectateMode?: boolean;
+    /**
+     * 棋譜を見るだけの画面（棋譜ビューア・観戦）。対局開始・対局再開・棋譜読込・局面編集・
+     * 平手に戻すを出さない（PC・スマホとも）。棋譜の閲覧、駒を動かしての分岐、解析はそのまま使える。
+     * 対局したいときは、ページ側が `onPositionSnapshot` で受けた局面を対局ページへ引き継ぐ。
+     */
+    viewerMode?: boolean;
     /** 棋譜検討モード時に左サイドバー位置に表示するコンテンツ */
     reviewLeftContent?: React.ReactNode;
     /** 棋譜検討モード時に 3 カラムの上部へ全幅で表示するコンテンツ（観戦スコアボード等） */
@@ -511,6 +517,7 @@ export function ShogiMatch({
     initialAnalysisEntries = null,
     reviewMode,
     spectateMode,
+    viewerMode = false,
     reviewLeftContent,
     reviewTopContent,
     onOpenEngineManager,
@@ -2058,6 +2065,7 @@ export function ShogiMatch({
         <ShogiMatchProvider
             config={{
                 kifuImportExtra,
+                viewerMode,
                 aiIconUrl,
                 presetIconUrls: Object.fromEntries(
                     presetConfigs.flatMap((preset) =>
