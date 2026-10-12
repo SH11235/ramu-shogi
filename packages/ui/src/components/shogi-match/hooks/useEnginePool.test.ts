@@ -269,6 +269,27 @@ describe("useEnginePool", () => {
         unmount();
     });
 
+    it("パスを含む手順は、各側が使った回数 + 1 のパス権を有効にして読み込む。含まなければ何も渡さない", async () => {
+        const factory = engineFactory();
+        const onComplete = vi.fn();
+        const { result, unmount } = renderHook(() =>
+            useEnginePool({ createClient: factory.createClient, workerCount: 1, onComplete }),
+        );
+        // 先手が 1 回、後手が 1 回パスしたあとの局面と、パスの無い局面。
+        const withPass = ["pass", "3c3d", "7g7f", "pass"];
+        act(() =>
+            result.current.start([
+                { ...jobs[0], ply: 4, moves: withPass },
+                { ...jobs[0], ply: 1, moves: ["7g7f"] },
+            ]),
+        );
+        await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+        const calls = vi.mocked(factory.clients[0].loadPosition).mock.calls;
+        expect(calls).toContainEqual(["startpos", withPass, { passRights: { sente: 2, gote: 2 } }]);
+        expect(calls).toContainEqual(["startpos", ["7g7f"], undefined]);
+        unmount();
+    });
+
     it("キャンセルで止めた探索は、そこまでの結果を aborted で通知する", async () => {
         const factory = infoEngineFactory({ finish: false });
         const onPositionAnalyzed = vi.fn();

@@ -11,7 +11,9 @@
 
 import {
     applyMoveWithState,
+    applyStudyMoveWithState,
     computeStudyHighlights,
+    isStudyPassMove,
     isStudyUsiMove,
     type KifuTree,
     type LastMove,
@@ -20,10 +22,12 @@ import {
     type PositionState,
     type Square,
     STUDY_LIMITS,
+    STUDY_PASS_MOVE,
     type StudyDocument,
     type StudyHighlightKind,
     type StudyOp,
     studyChildNodeId,
+    studyPassRightsForLine,
     studyScoreToKifuEval,
 } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
@@ -230,7 +234,8 @@ const noop = (): void => {};
 
 /** USI の指し手から、盤上で強調する最終手を作る。 */
 function lastMoveOf(usiMove: string | null): LastMove | undefined {
-    if (!usiMove || usiMove.length < 4) return undefined;
+    // パスには移動元も移動先も無い（`pass` は 4 文字なので、通常の移動として読まないよう先に見る）。
+    if (!usiMove || usiMove.length < 4 || isStudyPassMove(usiMove)) return undefined;
     if (usiMove.includes("*")) {
         return { from: null, to: usiMove.slice(-2) as Square, promotes: false };
     }
@@ -644,7 +649,11 @@ export function StudyWorkspaceView({
             legalCache,
             clearLegalCache: () => legalCache.clear(),
             setCanPassLegal: noop,
-            getPassRightsOption: () => ({}),
+            // パスを含む手順の合法手は、パス権を有効にしないと求められない。
+            getPassRightsOption: () => {
+                const passRights = studyPassRightsForLine(tree.startSfen, movesToCurrent);
+                return passRights ? { passRights } : {};
+            },
             updateClocksForNextTurn: noop,
             turnStartTimeRef,
             isEngineTurn: () => false,
@@ -805,7 +814,9 @@ export function StudyWorkspaceView({
         );
         for (const move of request.pv) {
             if (moves.length >= room || !isStudyUsiMove(move)) break;
-            const applied = applyMoveWithState(cursor, move, { validateTurn: false });
+            const applied = isStudyPassMove(move)
+                ? applyStudyMoveWithState(cursor, move)
+                : applyMoveWithState(cursor, move, { validateTurn: false });
             if (!applied.ok) break;
             moves.push(move);
             cursor = applied.next;
@@ -1254,6 +1265,7 @@ export function StudyWorkspaceView({
                         />
                         <StudyMoreMenu
                             onOpenChange={setIsMoreMenuOpen}
+                            onPass={locked ? undefined : () => addMoveFromCurrent(STUDY_PASS_MOVE)}
                             onCopyKif={copyKif}
                             onCopySfen={copySfen}
                             onPlayFromPosition={

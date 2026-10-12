@@ -16,6 +16,11 @@ interface StudyMoreMenuProps {
     onCopySfen: () => void;
     /** いま見ている局面を対局ページで開く。渡さなければ項目を出さない。 */
     onPlayFromPosition?: () => void;
+    /**
+     * いまの局面でパスを指す（変則ルール「パス権」の棋譜の研究用）。渡さなければ項目を出さない
+     * （編集できないとき）。
+     */
+    onPass?: () => void;
     /** 開いているかどうかを知らせる（開いている間、画面側は矢印キーでの局面の移動を止める）。 */
     onOpenChange?: (open: boolean) => void;
 }
@@ -27,6 +32,7 @@ export function StudyMoreMenu({
     onCopyKif,
     onCopySfen,
     onPlayFromPosition,
+    onPass,
     onOpenChange,
 }: StudyMoreMenuProps): ReactElement {
     const [open, setOpenState] = useState(false);
@@ -47,6 +53,15 @@ export function StudyMoreMenu({
                       label: "この局面から対局",
                       note: "いまの局面までの手順だけを、対局ページへ引き継ぎます",
                       run: onPlayFromPosition,
+                  },
+              ]
+            : []),
+        ...(onPass
+            ? [
+                  {
+                      label: "パスを指す",
+                      note: "手番だけを相手に渡します（パス権のある対局の研究用）",
+                      run: onPass,
                   },
               ]
             : []),

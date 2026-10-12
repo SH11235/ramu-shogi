@@ -720,6 +720,11 @@ function formatMoveForKifFile(
     const cumTime = formatCumulativeTime(cumulativeMs ?? 0);
     const timeStr = `(${moveTime.padStart(5, " ")}/${cumTime})`;
 
+    // パス（変則ルールの手）。`pass` は 4 文字なので、通常の移動として読まないよう先に見る。
+    if (usiMove?.toLowerCase() === "pass") {
+        return `${plyStr} パス     ${timeStr}`;
+    }
+
     if (!usiMove || usiMove.length < 4) {
         return `${plyStr} ${usiMove}`;
     }

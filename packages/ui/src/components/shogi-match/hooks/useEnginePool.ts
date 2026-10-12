@@ -4,6 +4,7 @@ import {
     type StudyAnalysisCollector,
     type StudyAnalysisCompletion,
     type StudyLayerRef,
+    studyPassRightsForLine,
 } from "@shogi/app-core";
 import type {
     EngineClient,
@@ -286,7 +287,14 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
 
         try {
             // 局面を読み込み
-            await worker.client.loadPosition(job.sfen, job.moves);
+            // パスを含む手順は、パス権を有効にしないと読み込めない（回数の決め方は
+            // `studyPassRightsForLine`。パスを含まなければ何も渡さない）。
+            const passRights = studyPassRightsForLine(job.sfen, job.moves);
+            await worker.client.loadPosition(
+                job.sfen,
+                job.moves,
+                passRights ? { passRights } : undefined,
+            );
             // 読み込みを待つ間に中止された・次の実行が始まったら、探索を始めない。
             // （進捗やワーカーの状態は、中止・次の実行の側が持っているので触らない）
             if (!isCurrent()) return;

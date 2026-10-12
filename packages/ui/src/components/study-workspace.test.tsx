@@ -341,6 +341,25 @@ describe("StudyWorkspaceView", () => {
             }
         });
 
+        it("「パスを指す」は、いまの局面にパスの手を足してその手へ移る。編集できないときは出さない", async () => {
+            const { doc, ids } = createTestStudy();
+            const onOps = vi.fn();
+            const view = render(<Harness initialDoc={doc} onOps={onOps} />);
+            openMenu();
+            fireEvent.click(screen.getByRole("button", { name: /パスを指す/ }));
+            expect(onOps).toHaveBeenCalledWith([
+                { type: "addMoves", parentId: ids[0], moves: ["pass"] },
+            ]);
+            await waitFor(() => expect(currentMove()).toContain("パス"));
+            // パスのあとは後手番。
+            expect(screen.getByText("☖後手番")).toBeTruthy();
+            view.unmount();
+
+            render(<Harness initialDoc={doc} locked />);
+            openMenu();
+            expect(screen.queryByRole("button", { name: /パスを指す/ })).toBeNull();
+        });
+
         it("コピーできなかったら、そう知らせる", async () => {
             vi.stubGlobal("navigator", {
                 ...navigator,

@@ -329,6 +329,11 @@ function parseKifLine(line: string, prevTo: string | null): ParsedMoveLine | nul
 
     if (!moveStr) return null;
 
+    // パス（変則ルールの手。書き出し側の「パス」と対）。移動先が無いので、次の「同」は使えない。
+    if (moveStr === "パス") {
+        return { usiMove: "pass", toSquare: "", elapsedMs };
+    }
+
     // ============================================================
     // 駒打ちのパース: "５五角打"
     // 駒名を明示的に列挙して早期にエラー検出
