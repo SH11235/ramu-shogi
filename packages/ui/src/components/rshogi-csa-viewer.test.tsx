@@ -15,6 +15,7 @@ interface CapturedShogiMatchProps {
     spectateMode?: boolean;
     viewerMode?: boolean;
     boardTopContent?: ReactNode;
+    evalGraphPinned?: boolean;
     onPositionSnapshot?: (snapshot: { sfen: string; moves: string[]; label?: string }) => void;
 }
 
@@ -160,7 +161,7 @@ describe("RshogiCsaViewer: 外部から取り込んだ棋譜", () => {
         expect(await screen.findByText("Floodgate")).toBeTruthy();
         expect(screen.getByText("floodgate-300-10F")).toBeTruthy();
         const players = screen.getByRole("region", { name: "対局者" });
-        expect(players.textContent).toBe("☗先手RAMUR3512☖後手SampleEngineR3447");
+        expect(players.textContent).toBe("先手☗RAMUR3512後手☖SampleEngineR3447");
         const link = screen.getByRole("link", { name: "元の棋譜を開く（Floodgate）" });
         expect(link.getAttribute("href")).toBe(WDOOR_GAME.meta.originUrl);
         expect(link.getAttribute("target")).toBe("_blank");
@@ -355,6 +356,17 @@ describe("RshogiCsaViewer: 見るだけの画面と「この局面から対局�
         expect(capturedProps.at(-1)?.viewerMode).toBe(true);
     });
 
+    it.each([
+        ["評価値のある棋譜", WDOOR_GAME],
+        ["評価値の無い棋譜", GAME],
+    ])("評価値グラフを常に出す指定で盤を開く（%s）", async (_label, game) => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(game);
+        renderViewer();
+        await screen.findByTestId("shogi-match");
+
+        expect(capturedProps.at(-1)?.evalGraphPinned).toBe(true);
+    });
+
     it("「研究ノートで開く」のすぐ下に「この局面から対局」を出す", async () => {
         vi.mocked(fetchRshogiGame).mockResolvedValue(WDOOR_GAME);
         renderWithPlay();
@@ -438,10 +450,10 @@ describe("RshogiCsaViewer: 対局者を盤の上に出す", () => {
         const [sente, gote] = Array.from(players.children);
         expect(players.children).toHaveLength(2);
         expect(sente?.getAttribute("data-side")).toBe("sente");
-        expect(sente?.textContent).toBe("☗先手RAMU_TFR3512");
+        expect(sente?.textContent).toBe("先手☗RAMU_TFR3512");
         expect(gote?.getAttribute("data-side")).toBe("gote");
         // 長い名前も省略しない（幅が足りなければ折り返す）。
-        expect(gote?.textContent).toBe("☖後手sinden3_770kai_473stb_10mR3447");
+        expect(gote?.textContent).toBe("後手☖sinden3_770kai_473stb_10mR3447");
         expect(within(players).getByText("sinden3_770kai_473stb_10m").className).not.toContain(
             "truncate",
         );
@@ -458,13 +470,67 @@ describe("RshogiCsaViewer: 対局者を盤の上に出す", () => {
         expect(within(players).getByText("☖").className).toContain("text-wafuu-ai");
     });
 
+    it("見出しなので、背景や枠の付いたカードにしない", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(LONG_NAME_GAME);
+        renderViewer();
+
+        const players = within(await screen.findByTestId("board-top")).getByRole("region", {
+            name: "対局者",
+        });
+        expect(players.className).not.toMatch(/\bbg-|\brounded|\bborder\b/);
+        // 先手・後手の見分けは、見えるラベルと片側の縦線（先手 = 朱、後手 = 藍）で付ける。
+        expect(within(players).getByText("先手").className).not.toContain("sr-only");
+        expect(within(players).getByText("後手").className).not.toContain("sr-only");
+        expect(players.children[0]?.className).toContain("border-l-4 border-wafuu-shu");
+        expect(players.children[1]?.className).toContain("border-r-4 border-wafuu-ai");
+    });
+
+    const withResult = (result: RshogiGame["meta"]["result"]): RshogiGame => ({
+        ...LONG_NAME_GAME,
+        meta: { ...LONG_NAME_GAME.meta, result },
+    });
+    const winnerMarks = async () => {
+        const players = within(await screen.findByTestId("board-top")).getByRole("region", {
+            name: "対局者",
+        });
+        return Array.from(players.children).map(
+            (side) => within(side as HTMLElement).queryByText("勝ち") !== null,
+        );
+    };
+
+    it.each([
+        ["先手", "sente", [true, false]],
+        ["後手", "gote", [false, true]],
+    ] as const)("%sが勝った棋譜では、その側だけに「勝ち」の印を付ける", async (_label, winner, expected) => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(
+            withResult({ kind: "resignation", winner, endReason: "RESIGN" }),
+        );
+        renderViewer();
+
+        expect(await winnerMarks()).toEqual(expected);
+    });
+
+    it.each([
+        ["引き分け（千日手）", { kind: "draw" }],
+        ["中断", { kind: "abort" }],
+        ["異常終了", { kind: "abnormal" }],
+        ["結果不明", undefined],
+    ] as const)("%sでは、どちらにも「勝ち」の印を付けない", async (_label, result) => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(
+            withResult(result as RshogiGame["meta"]["result"]),
+        );
+        renderViewer();
+
+        expect(await winnerMarks()).toEqual([false, false]);
+    });
+
     it("レートの無い棋譜では名前だけを出す", async () => {
         vi.mocked(fetchRshogiGame).mockResolvedValue(GAME);
         renderViewer();
 
         const boardTop = await screen.findByTestId("board-top");
         expect(within(boardTop).getByRole("region", { name: "対局者" }).textContent).toBe(
-            "☗先手alice☖後手bob",
+            "先手☗alice後手☖bob",
         );
     });
 
@@ -503,7 +569,7 @@ describe("RshogiCsaViewer: 対局情報パネル", () => {
         renderViewer();
 
         expect((await screen.findByRole("region", { name: "対局者" })).textContent).toBe(
-            "☗先手alice☖後手bob",
+            "先手☗alice後手☖bob勝ち",
         );
         expect(screen.getByText("持ち時間: 10分 + 秒読み10秒")).toBeTruthy();
         expect(screen.getByText("結果: 後手 (bob) 勝ち (投了)")).toBeTruthy();
@@ -674,7 +740,7 @@ describe("RshogiCsaViewer: モバイル幅", () => {
             .getAllByRole("region", { name: "対局者" })
             .filter((region) => !screen.getByTestId("shogi-match").contains(region));
         expect(players).toHaveLength(1);
-        expect(players[0]?.textContent).toBe("☗先手RAMUR3512☖後手SampleEngineR3447");
+        expect(players[0]?.textContent).toBe("先手☗RAMUR3512後手☖SampleEngineR3447");
 
         fireEvent.click(summary);
 

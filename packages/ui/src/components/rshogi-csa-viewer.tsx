@@ -138,10 +138,12 @@ const formatResult = (meta: RshogiGame["meta"]): string => {
 };
 
 /**
- * 対局者（先手・後手）を左右に分けた 1 行。盤の上の中央に出す。
+ * 対局者（先手・後手）を左右に分けた 1 行。盤の上の中央に出す、盤の見出し。
  *
+ * 見出しなので背景と枠は付けない（背景付きのカードは、脇に置く補足情報のかたまりだけに使う）。
  * 並びは盤を反転しても変えない（先手が左、後手が右。ライブ観戦のスコアボードと同じ）。
  * 色は評価値グラフと同じく先手 = 朱、後手 = 藍。長い名前は省略せず、その側の幅の中で折り返す。
+ * 勝った側には「勝ち」の印を付ける（引き分け・中断・結果不明ではどちらにも付けない）。
  */
 function RshogiPlayersBar({
     meta,
@@ -150,6 +152,7 @@ function RshogiPlayersBar({
     meta: RshogiGame["meta"];
     rates?: PlayerRates;
 }): ReactElement {
+    const winner = meta.result?.winner;
     const renderSide = (side: "sente" | "gote") => {
         const isSente = side === "sente";
         const name = isSente ? meta.senteName : meta.goteName;
@@ -158,39 +161,48 @@ function RshogiPlayersBar({
             <div
                 data-side={side}
                 className={cn(
-                    // 収まらないときは、まずレートを次の行へ送り、名前に幅を譲る。
-                    "flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5 px-3 py-1.5",
+                    "flex min-w-0 flex-col gap-0.5 px-3 py-0.5",
                     isSente
                         ? "border-l-4 border-wafuu-shu"
-                        : "justify-end border-r-4 border-wafuu-ai text-right",
+                        : "items-end border-r-4 border-wafuu-ai text-right",
                 )}
             >
-                <span
+                <span className="text-xs text-muted-foreground">{isSente ? "先手" : "後手"}</span>
+                <div
                     className={cn(
-                        "flex-none text-base leading-none",
-                        isSente ? "text-wafuu-shu" : "text-wafuu-ai",
+                        // 収まらないときは、後ろの要素（勝ちの印・レート）から次の行へ送り、名前に幅を譲る。
+                        "flex min-w-0 max-w-full flex-wrap items-baseline gap-x-1.5 gap-y-0.5",
+                        !isSente && "justify-end",
                     )}
-                    aria-hidden="true"
                 >
-                    {isSente ? "☗" : "☖"}
-                </span>
-                <span className="sr-only">{isSente ? "先手" : "後手"}</span>
-                <span className="min-w-0 max-w-full text-sm font-semibold [overflow-wrap:anywhere]">
-                    {name}
-                </span>
-                {rate !== undefined && (
-                    <span className="flex-none text-xs tabular-nums text-muted-foreground">
-                        R{Math.round(rate)}
+                    <span
+                        className={cn(
+                            "flex-none text-base leading-none",
+                            isSente ? "text-wafuu-shu" : "text-wafuu-ai",
+                        )}
+                        aria-hidden="true"
+                    >
+                        {isSente ? "☗" : "☖"}
                     </span>
-                )}
+                    <span className="min-w-0 max-w-full text-sm font-semibold [overflow-wrap:anywhere]">
+                        {name}
+                    </span>
+                    {rate !== undefined && (
+                        <span className="flex-none text-xs tabular-nums text-muted-foreground">
+                            R{Math.round(rate)}
+                        </span>
+                    )}
+                    {winner === side && (
+                        <span className="flex-none rounded border border-wafuu-kin bg-wafuu-kin/20 px-1.5 text-[11px] font-bold leading-4 text-wafuu-sumi">
+                            勝ち
+                        </span>
+                    )}
+                </div>
             </div>
         );
     };
     return (
-        <section
-            aria-label="対局者"
-            className="grid grid-cols-2 overflow-hidden rounded-lg border border-wafuu-border bg-wafuu-washi-warm text-wafuu-sumi"
-        >
+        <section aria-label="対局者" className="grid grid-cols-2 gap-2 text-wafuu-sumi">
             {renderSide("sente")}
             {renderSide("gote")}
         </section>
@@ -428,6 +440,8 @@ export function RshogiCsaViewer({
                 viewerMode={true}
                 // 盤の上（対局時計の位置）に対局者を出す。スマホは上の行で出している。
                 boardTopContent={playersBar}
+                // 対局中ではないので、評価値グラフは隠さず常に出す（折りたたみの操作も出さない）。
+                evalGraphPinned={true}
                 onPositionSnapshot={shownPosition.handlePositionSnapshot}
                 // 棋譜に評価値が入っているときは、観戦と同じく評価値の列とグラフを最初から出す。
                 spectateMode={hasRecordedEval}
