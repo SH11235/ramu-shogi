@@ -93,9 +93,12 @@ const isCsaPositionOnly = (text: string): boolean => {
 /** KIF の「開始局面：〜」の行で、値が局面だけ（`startpos` か、SFEN の 3〜4 欄）のもの。 */
 const KIF_START_POSITION_LINE =
     /^開始局面[：:]\s*(?:startpos|(?:sfen\s+)?[^\s]+\s+[bw]\s+[^\s]+(?:\s+\d+)?)$/;
-/** KIF の見出しのうち、局面だけの入力に書かれていてよいもの。 */
+/**
+ * KIF の見出しのうち、局面だけの入力に書かれていてよいもの。手合割は「その他」だけを認める
+ * （平手や駒落ちの手合割があると、KIF の解析は開始局面の行よりそちらを優先するため）。
+ */
 const KIF_HEADER_LINE =
-    /^(?:手合割|先手|後手|下手|上手|開始日時|終了日時|棋戦|場所|持ち時間|消費時間|戦型|表題)[：:]/;
+    /^(?:手合割[：:]\s*その他\s*$|(?:先手|後手|下手|上手|開始日時|終了日時|棋戦|場所|持ち時間|消費時間|戦型|表題)[：:])/;
 
 /** KIF の、指し手ではない行（空行・コメント・決まった見出し・手数の区切り・「まで〜」）か。 */
 const isKifNonMoveLine = (line: string): boolean => {
@@ -104,8 +107,8 @@ const isKifNonMoveLine = (line: string): boolean => {
         trimmed === "" ||
         trimmed.startsWith("#") ||
         trimmed.startsWith("*") ||
-        /^手数-+指手-+/.test(trimmed) ||
-        /^まで\d+手で[\S]*$/.test(trimmed) ||
+        /^手数-+指手-+(?:消費時間-+)?$/.test(trimmed) ||
+        /^まで\d+手で(?:中断|(?:先手|後手|下手|上手)の勝ち|千日手|持将棋)$/.test(trimmed) ||
         KIF_HEADER_LINE.test(trimmed) ||
         KIF_START_POSITION_LINE.test(trimmed)
     );

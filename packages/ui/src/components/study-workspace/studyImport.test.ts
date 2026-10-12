@@ -63,7 +63,7 @@ describe("parseKifuTextForStudy", () => {
         // 見出し・コメント・区切りの行があっても、指し手の行が無ければ局面だけ。
         for (const kif of [
             `開始局面：${sfen}`,
-            `#KIF version=2.0\n開始日時：2026/10/12 10:00\n開始局面：${sfen}\n*1 手目が大事\n手数----指手---------消費時間--\nまで0手で中断`,
+            `#KIF version=2.0\n開始日時：2026/10/12 10:00\n手合割：その他\n開始局面：${sfen}\n*1 手目が大事\n手数----指手---------消費時間--\nまで0手で中断`,
         ]) {
             expect(parseKifuTextForStudy(kif)).toEqual({
                 kind: "moves",
@@ -108,6 +108,10 @@ describe("parseKifuTextForStudy", () => {
             "開始局面：startpos\n手順：7g7f 3c3d",
             "開始局面：startpos\n手数1 ７六歩(77)",
             "開始局面：startpos\nまで1手 ７六歩(77)",
+            "開始局面：startpos\nまで1手で７六歩(77)",
+            "開始局面：startpos\n手数----指手---------消費時間-- 1 ７六歩(77) ( 0:05/00:00:05)",
+            // 平手の手合割があると、解析は開始局面の行より手合割を優先する。
+            "手合割：平手\n開始局面：4k4/9/9/9/9/9/9/9/4K4 b - 1",
             "開始局面：lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 7g7f",
         ]) {
             expect(() => parseKifuTextForStudy(kif), kif).toThrow();
