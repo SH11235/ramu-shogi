@@ -26,7 +26,7 @@ export const syncStudySession = (userId: string | null): void => {
 
 let adoption: { userId: string; done: Promise<void> } | null = null;
 
-export interface EnsureStudySessionOptions {
+interface EnsureStudySessionOptions {
     /**
      * `userId` が、直近のログイン状態の確認で得た値か（既定は true）。
      *
