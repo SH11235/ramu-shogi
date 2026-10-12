@@ -140,13 +140,25 @@ describe("studySync", () => {
             const sync = getStudySync();
             await sync.createStudy(createDoc(ANON));
             await sync.createStudy(createDoc(STILL_ANON));
-            applyStudyCommentDraftChange(ANON, null, "n1", draft("読めなかったノートの書きかけ"));
-            applyStudyCommentDraftChange(STILL_ANON, null, "n1", draft("読めたノートの書きかけ"));
+            // 書いた時刻をずらし、あとに書いたノートから先に確かめさせる。
+            applyStudyCommentDraftChange(ANON, null, "n1", draft("読めなかったノートの書きかけ"), {
+                now: 1000,
+            });
+            applyStudyCommentDraftChange(STILL_ANON, null, "n1", draft("読めたノートの書きかけ"), {
+                now: 2000,
+            });
             const failure = vi.spyOn(console, "error").mockImplementation(() => {});
             // 1 回だけ、ノートを読めない（ブラウザ内の保存の一時的な失敗）。
-            const load = vi
-                .spyOn(sync, "load")
-                .mockImplementationOnce(() => Promise.reject(new Error("読み込めない")));
+            // 確かめる順は書いた時刻で変わるので、何回目かではなくノートで決める。
+            const originalLoad = sync.load;
+            let failed = false;
+            const load = vi.spyOn(sync, "load").mockImplementation((studyId) => {
+                if (studyId === ANON && !failed) {
+                    failed = true;
+                    return Promise.reject(new Error("読み込めない"));
+                }
+                return originalLoad(studyId);
+            });
 
             await ensureStudySession("user-1");
 
