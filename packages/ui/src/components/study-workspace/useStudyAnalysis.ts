@@ -321,6 +321,14 @@ export function useStudyAnalysis({
         },
         onError: (ply, error) => {
             console.error(`[study] 解析に失敗しました (ply=${ply}):`, error);
+            // Desktop の内蔵エンジンは、起動してから最初に読み込んだ評価関数しか使えない。
+            if (String(error.cause ?? "").includes("Restart the app to change NNUE")) {
+                setMessage({
+                    text: "この AI に切り替えるには、アプリの再起動が必要です（内蔵エンジンは、起動してから最初に読み込んだ AI だけを使えます）。",
+                    type: "error",
+                });
+                return;
+            }
             setMessage({
                 text: `解析に失敗した局面があります: ${error.message}`,
                 type: "error",

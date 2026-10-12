@@ -315,6 +315,31 @@ describe("useEnginePool", () => {
         expect(await run(undefined)).toEqual([]);
     });
 
+    it("エンジンを 1 つも準備できなかったときは、その理由を添えて知らせる", async () => {
+        const factory = engineFactory();
+        const onError = vi.fn();
+        const failure = "NNUE is already loaded. Restart the app to change NNUE.";
+        const { result, unmount } = renderHook(() =>
+            useEnginePool({
+                createClient: () => {
+                    const client = factory.createClient();
+                    client.init = vi.fn(async () => {
+                        throw failure;
+                    });
+                    return client;
+                },
+                workerCount: 1,
+                onError,
+            }),
+        );
+        act(() => result.current.start([jobs[0]]));
+        await waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+        const error = onError.mock.calls[0][1] as Error;
+        expect(error.message).toBe("No workers could be initialized");
+        expect(error.cause).toBe(failure);
+        unmount();
+    });
+
     it("パスを解釈できないエンジン（外部 USI）には、パスを含む手順を渡さずに失敗として数える", async () => {
         const factory = engineFactory(true);
         const onComplete = vi.fn();

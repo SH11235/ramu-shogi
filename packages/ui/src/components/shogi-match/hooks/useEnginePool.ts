@@ -484,6 +484,8 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         if (state.initialized) return;
 
         const workers: EngineWorker[] = [];
+        // 1 つも準備できなかったときに、理由を呼び出し元へ伝える。
+        let lastInitError: unknown = null;
         for (let i = 0; i < params.workerCount; i++) {
             // 初期化の途中で中止された・次の実行が始まったら、残りは作らない
             // （ここまでに作ったワーカーは、次の実行が条件に合えばそのまま使う）。
@@ -524,13 +526,17 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             } catch (error) {
                 await client?.dispose().catch(() => undefined);
                 console.error(`Failed to initialize worker ${i}:`, error);
+                lastInitError = error;
             }
         }
 
         // 初期化に成功したワーカーが1つもない場合はエラー
         if (workers.length === 0) {
             if (state.runId === runId) {
-                callbacksRef.current.onError?.(0, new Error("No workers could be initialized"));
+                callbacksRef.current.onError?.(
+                    0,
+                    new Error("No workers could be initialized", { cause: lastInitError }),
+                );
                 // アンマウント後は状態を更新しない
                 if (mountedRef.current) {
                     setIsRunning(false);
