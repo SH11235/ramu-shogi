@@ -468,6 +468,11 @@ interface ShogiMatchProps {
      * 対局したいときは、ページ側が `onPositionSnapshot` で受けた局面を対局ページへ引き継ぐ。
      */
     viewerMode?: boolean;
+    /**
+     * PC の盤のすぐ上（対局時計の位置）に、対局時計の代わりに出すコンテンツ
+     * （棋譜ビューアの対局者名など）。スマホのレイアウトには出ない。
+     */
+    boardTopContent?: React.ReactNode;
     /** 棋譜検討モード時に左サイドバー位置に表示するコンテンツ */
     reviewLeftContent?: React.ReactNode;
     /** 棋譜検討モード時に 3 カラムの上部へ全幅で表示するコンテンツ（観戦スコアボード等） */
@@ -518,6 +523,7 @@ export function ShogiMatch({
     reviewMode,
     spectateMode,
     viewerMode = false,
+    boardTopContent,
     reviewLeftContent,
     reviewTopContent,
     onOpenEngineManager,
@@ -2066,6 +2072,7 @@ export function ShogiMatch({
             config={{
                 kifuImportExtra,
                 viewerMode,
+                boardTopContent,
                 aiIconUrl,
                 presetIconUrls: Object.fromEntries(
                     presetConfigs.flatMap((preset) =>

@@ -16,6 +16,11 @@ interface ShogiMatchConfig {
      * 局面編集・平手に戻すを出さない。
      */
     viewerMode: boolean;
+    /**
+     * PC の盤のすぐ上（対局時計の位置）に出す内容。指定すると対局時計の代わりに出る
+     * （棋譜ビューアの対局者名など）。無ければ null
+     */
+    boardTopContent: ReactNode;
 }
 
 const defaultConfig: ShogiMatchConfig = {
@@ -24,6 +29,7 @@ const defaultConfig: ShogiMatchConfig = {
     aiPresetKeys: {},
     kifuImportExtra: null,
     viewerMode: false,
+    boardTopContent: null,
 };
 
 const ShogiMatchContext = createContext<ShogiMatchConfig>(defaultConfig);
@@ -44,6 +50,7 @@ export function ShogiMatchProvider({ config, children }: ShogiMatchProviderProps
         aiPresetKeys: config.aiPresetKeys ?? defaultConfig.aiPresetKeys,
         kifuImportExtra: config.kifuImportExtra ?? defaultConfig.kifuImportExtra,
         viewerMode: config.viewerMode ?? defaultConfig.viewerMode,
+        boardTopContent: config.boardTopContent ?? defaultConfig.boardTopContent,
     };
     return <ShogiMatchContext.Provider value={mergedConfig}>{children}</ShogiMatchContext.Provider>;
 }

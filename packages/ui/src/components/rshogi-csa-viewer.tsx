@@ -10,6 +10,7 @@
  */
 
 import { parseCsaGameRecord } from "@shogi/app-core";
+import { cn } from "@shogi/design-system";
 import type { FetchRshogiGameOptions, RshogiGame } from "@shogi/match-client";
 import { fetchRshogiGame, RshogiGameNotFoundError } from "@shogi/match-client";
 import { type ReactElement, type ReactNode, useEffect, useEffectEvent, useState } from "react";
@@ -75,9 +76,6 @@ interface PlayerRates {
 /** 元棋譜へのリンクにしてよい URL の接頭辞。それ以外の `origin_url` はリンクにしない。 */
 const ORIGIN_URL_PREFIX = "https://wdoor.c.u-tokyo.ac.jp/";
 
-const formatRate = (rate: number | undefined): string =>
-    rate === undefined ? "" : ` (R${Math.round(rate)})`;
-
 const formatTimestampMs = (value: number | undefined): string => {
     if (value === undefined) return "不明";
     const date = new Date(value);
@@ -139,13 +137,67 @@ const formatResult = (meta: RshogiGame["meta"]): string => {
     return `結果: ${winnerLabel} (${reason})`;
 };
 
-function RshogiGameMetaPanel({
-    game,
+/**
+ * 対局者（先手・後手）を左右に分けた 1 行。盤の上の中央に出す。
+ *
+ * 並びは盤を反転しても変えない（先手が左、後手が右。ライブ観戦のスコアボードと同じ）。
+ * 色は評価値グラフと同じく先手 = 朱、後手 = 藍。長い名前は省略せず、その側の幅の中で折り返す。
+ */
+function RshogiPlayersBar({
+    meta,
     rates,
 }: {
-    game: RshogiGame;
+    meta: RshogiGame["meta"];
     rates?: PlayerRates;
 }): ReactElement {
+    const renderSide = (side: "sente" | "gote") => {
+        const isSente = side === "sente";
+        const name = isSente ? meta.senteName : meta.goteName;
+        const rate = isSente ? rates?.sente : rates?.gote;
+        return (
+            <div
+                data-side={side}
+                className={cn(
+                    // 収まらないときは、まずレートを次の行へ送り、名前に幅を譲る。
+                    "flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5 px-3 py-1.5",
+                    isSente
+                        ? "border-l-4 border-wafuu-shu"
+                        : "justify-end border-r-4 border-wafuu-ai text-right",
+                )}
+            >
+                <span
+                    className={cn(
+                        "flex-none text-base leading-none",
+                        isSente ? "text-wafuu-shu" : "text-wafuu-ai",
+                    )}
+                    aria-hidden="true"
+                >
+                    {isSente ? "☗" : "☖"}
+                </span>
+                <span className="sr-only">{isSente ? "先手" : "後手"}</span>
+                <span className="min-w-0 max-w-full text-sm font-semibold [overflow-wrap:anywhere]">
+                    {name}
+                </span>
+                {rate !== undefined && (
+                    <span className="flex-none text-xs tabular-nums text-muted-foreground">
+                        R{Math.round(rate)}
+                    </span>
+                )}
+            </div>
+        );
+    };
+    return (
+        <section
+            aria-label="対局者"
+            className="grid grid-cols-2 overflow-hidden rounded-lg border border-wafuu-border bg-wafuu-washi-warm text-wafuu-sumi"
+        >
+            {renderSide("sente")}
+            {renderSide("gote")}
+        </section>
+    );
+}
+
+function RshogiGameMetaPanel({ game }: { game: RshogiGame }): ReactElement {
     const { meta } = game;
     const originUrl = meta.originUrl?.startsWith(ORIGIN_URL_PREFIX) ? meta.originUrl : undefined;
     return (
@@ -153,18 +205,7 @@ function RshogiGameMetaPanel({
             aria-label="対局情報"
             className="flex flex-col gap-2 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-3 text-sm text-wafuu-sumi"
         >
-            <div className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground">対局 ID</span>
-                <span className="font-mono text-xs text-wafuu-sumi">{meta.gameId}</span>
-            </div>
-            <div className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground">対局者</span>
-                <span className="text-sm font-semibold">
-                    ☗ {meta.senteName}
-                    {formatRate(rates?.sente)} vs ☖ {meta.goteName}
-                    {formatRate(rates?.gote)}
-                </span>
-            </div>
+            {/* 対局 ID はページ上部のパンくずに出ているので、ここには出さない。 */}
             {meta.source && (
                 <div className="flex flex-col gap-1">
                     <span className="text-xs text-muted-foreground">対局場所</span>
@@ -323,9 +364,12 @@ export function RshogiCsaViewer({
         URL.revokeObjectURL(url);
     };
 
+    // 対局者は横に長いので、左の対局情報ではなく盤の上に出す。
+    const playersBar = <RshogiPlayersBar meta={game.meta} rates={rates} />;
+
     const metaContent = (
         <div className="flex flex-col gap-2">
-            <RshogiGameMetaPanel game={game} rates={rates} />
+            <RshogiGameMetaPanel game={game} />
             {/* 主は「研究ノートで開く」、従は「この局面から対局」。続けて並べる。 */}
             {renderGameAction?.(game)}
             {onPlayFromPosition && (
@@ -342,19 +386,18 @@ export function RshogiCsaViewer({
     return (
         <div>
             {header}
-            {/* モバイルのレイアウトには左カラムが無い。盤面を狭めないよう対局者と対局場所だけを
-                1 行で出し、残り (レート・元棋譜へのリンク・CSA ダウンロードなど) はシートで開く。 */}
+            {/* モバイルのレイアウトには左カラムが無い。盤の上に対局者（PC と同じ、先手・後手を
+                分けた行）と、対局場所の 1 行を出し、残り (元棋譜へのリンク・CSA ダウンロードなど)
+                はシートで開く。 */}
             {isMobile && (
                 <>
+                    <div className="px-2 pt-1">{playersBar}</div>
                     <button
                         type="button"
                         onClick={() => setIsMetaSheetOpen(true)}
                         aria-haspopup="dialog"
-                        className="flex w-full items-center gap-2 border-b border-wafuu-border bg-wafuu-washi-warm px-3 py-1.5 text-left text-xs text-wafuu-sumi"
+                        className="flex w-full items-center justify-end gap-2 border-b border-wafuu-border px-3 py-1.5 text-left text-xs text-wafuu-sumi"
                     >
-                        <span className="min-w-0 flex-1 truncate font-semibold">
-                            ☗ {game.meta.senteName} vs ☖ {game.meta.goteName}
-                        </span>
                         <RshogiVenueBadge source={game.meta.source} />
                         <span className="shrink-0 text-wafuu-shu">対局情報</span>
                     </button>
@@ -383,6 +426,8 @@ export function RshogiCsaViewer({
                 reviewMode={true}
                 // 棋譜を見るだけの画面なので、対局開始・棋譜読込・局面編集などは出さない。
                 viewerMode={true}
+                // 盤の上（対局時計の位置）に対局者を出す。スマホは上の行で出している。
+                boardTopContent={playersBar}
                 onPositionSnapshot={shownPosition.handlePositionSnapshot}
                 // 棋譜に評価値が入っているときは、観戦と同じく評価値の列とグラフを最初から出す。
                 spectateMode={hasRecordedEval}

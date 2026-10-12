@@ -307,33 +307,41 @@ export function MobileLayout({
     const shouldShowFloatingSettings =
         !(isReviewMode && (totalPly > 0 || viewerMode)) && !isEditModeActive;
 
+    // ヘッダー中央の「手数・反転・サウンド」。
+    const headerControls = (
+        <>
+            <span className="hidden min-[360px]:inline shrink-0 whitespace-nowrap text-xs text-muted-foreground tabular-nums">
+                {moves.length === 0 ? "開始" : `${moves.length}手`}
+            </span>
+            <button
+                type="button"
+                onClick={handleFlipBoard}
+                className="flex items-center justify-center w-6 h-6 rounded hover:bg-muted text-sm"
+                title="盤面を反転"
+                aria-label="盤面を反転"
+            >
+                🔄
+            </button>
+            <SoundToggle />
+        </>
+    );
+
     return (
         <div className="relative flex flex-col gap-1 w-full min-w-0 px-2 pb-[env(safe-area-inset-bottom)] bg-background text-foreground">
             {/* === ヘッダー: クロック + 手数 + 反転ボタンを1行に統合 === */}
             <header className="flex-shrink-0 pt-1">
-                <ClockDisplay
-                    clocks={clocks}
-                    timeSettings={timeSettings}
-                    isRunning={isMatchRunning}
-                    className="[&>div]:gap-0.5 [&>div]:px-0 [&_.font-mono]:text-xs"
-                    centerContent={
-                        <>
-                            <span className="hidden min-[360px]:inline shrink-0 whitespace-nowrap text-xs text-muted-foreground tabular-nums">
-                                {moves.length === 0 ? "開始" : `${moves.length}手`}
-                            </span>
-                            <button
-                                type="button"
-                                onClick={handleFlipBoard}
-                                className="flex items-center justify-center w-6 h-6 rounded hover:bg-muted text-sm"
-                                title="盤面を反転"
-                                aria-label="盤面を反転"
-                            >
-                                🔄
-                            </button>
-                            <SoundToggle />
-                        </>
-                    }
-                />
+                {viewerMode ? (
+                    // 棋譜を見るだけの画面は対局しないので、時計（∞）は出さない。
+                    <div className="flex items-center justify-end gap-1">{headerControls}</div>
+                ) : (
+                    <ClockDisplay
+                        clocks={clocks}
+                        timeSettings={timeSettings}
+                        isRunning={isMatchRunning}
+                        className="[&>div]:gap-0.5 [&>div]:px-0 [&_.font-mono]:text-xs"
+                        centerContent={headerControls}
+                    />
+                )}
             </header>
 
             {/* === 盤面セクション: 固定サイズ、縮小しない === */}

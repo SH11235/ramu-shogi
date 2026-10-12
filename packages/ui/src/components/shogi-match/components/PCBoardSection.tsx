@@ -33,7 +33,7 @@ interface PCBoardSectionProps {
 export function PCBoardSection({ candidateNote, hideClock }: PCBoardSectionProps): ReactElement {
     // 対局設定を取得
     const { timeSettings } = useMatchSettings();
-    const { viewerMode } = useShogiMatchConfig();
+    const { viewerMode, boardTopContent } = useShogiMatchConfig();
 
     // 対局進行状態は Context から取得
     const {
@@ -92,13 +92,20 @@ export function PCBoardSection({ candidateNote, hideClock }: PCBoardSectionProps
                 <div
                     className={`flex flex-col gap-2 items-center ${isDraggingPiece ? "touch-none" : ""}`}
                 >
-                    {/* 時間管理（将棋盤の上）。観戦/検討モードでは非表示 */}
-                    {!hideClock && (
-                        <ClockDisplay
-                            clocks={clocks}
-                            timeSettings={timeSettings}
-                            isRunning={isMatchRunning}
-                        />
+                    {/* 時間管理（将棋盤の上）。観戦/検討モードでは非表示。棋譜を見るだけの
+                        画面は対局しないので時計（∞）も出さず、代わりの内容があればそれを出す。
+                        w-0 min-w-full: 長い内容でも盤より広げず、盤の幅の中で折り返させる。 */}
+                    {boardTopContent ? (
+                        <div className="w-0 min-w-full">{boardTopContent}</div>
+                    ) : (
+                        !hideClock &&
+                        !viewerMode && (
+                            <ClockDisplay
+                                clocks={clocks}
+                                timeSettings={timeSettings}
+                                isRunning={isMatchRunning}
+                            />
+                        )
                     )}
 
                     {/* ステータス行: [手数] [手番] [反転ボタン] */}

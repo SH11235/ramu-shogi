@@ -14,6 +14,7 @@ interface CapturedShogiMatchProps {
     initialReview?: { sfen: string; moves: string[]; moveData?: unknown[] };
     spectateMode?: boolean;
     viewerMode?: boolean;
+    boardTopContent?: ReactNode;
     onPositionSnapshot?: (snapshot: { sfen: string; moves: string[]; label?: string }) => void;
 }
 
@@ -22,7 +23,12 @@ const capturedProps: CapturedShogiMatchProps[] = [];
 vi.mock("./shogi-match", () => ({
     ShogiMatch: (props: CapturedShogiMatchProps & { reviewLeftContent?: ReactNode }) => {
         capturedProps.push(props);
-        return <div data-testid="shogi-match">{props.reviewLeftContent}</div>;
+        return (
+            <div data-testid="shogi-match">
+                <div data-testid="board-top">{props.boardTopContent}</div>
+                <div data-testid="left-panel">{props.reviewLeftContent}</div>
+            </div>
+        );
     },
 }));
 
@@ -153,7 +159,8 @@ describe("RshogiCsaViewer: 外部から取り込んだ棋譜", () => {
 
         expect(await screen.findByText("Floodgate")).toBeTruthy();
         expect(screen.getByText("floodgate-300-10F")).toBeTruthy();
-        expect(screen.getByText("☗ RAMU (R3512) vs ☖ SampleEngine (R3447)")).toBeTruthy();
+        const players = screen.getByRole("region", { name: "対局者" });
+        expect(players.textContent).toBe("☗先手RAMUR3512☖後手SampleEngineR3447");
         const link = screen.getByRole("link", { name: "元の棋譜を開く（Floodgate）" });
         expect(link.getAttribute("href")).toBe(WDOOR_GAME.meta.originUrl);
         expect(link.getAttribute("target")).toBe("_blank");
@@ -412,6 +419,72 @@ describe("RshogiCsaViewer: 見るだけの画面と「この局面から対局�
     });
 });
 
+describe("RshogiCsaViewer: 対局者を盤の上に出す", () => {
+    const LONG_NAME_GAME: RshogiGame = {
+        ...WDOOR_GAME,
+        meta: {
+            ...WDOOR_GAME.meta,
+            senteName: "RAMU_TF",
+            goteName: "sinden3_770kai_473stb_10m",
+        },
+    };
+
+    it("盤の上（対局時計の位置）に、先手と後手を分けて出す", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(LONG_NAME_GAME);
+        renderViewer();
+
+        const boardTop = await screen.findByTestId("board-top");
+        const players = within(boardTop).getByRole("region", { name: "対局者" });
+        const [sente, gote] = Array.from(players.children);
+        expect(players.children).toHaveLength(2);
+        expect(sente?.getAttribute("data-side")).toBe("sente");
+        expect(sente?.textContent).toBe("☗先手RAMU_TFR3512");
+        expect(gote?.getAttribute("data-side")).toBe("gote");
+        // 長い名前も省略しない（幅が足りなければ折り返す）。
+        expect(gote?.textContent).toBe("☖後手sinden3_770kai_473stb_10mR3447");
+        expect(within(players).getByText("sinden3_770kai_473stb_10m").className).not.toContain(
+            "truncate",
+        );
+    });
+
+    it("先手は朱、後手は藍で色分けする（評価値グラフと同じ）", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(LONG_NAME_GAME);
+        renderViewer();
+
+        const players = within(await screen.findByTestId("board-top")).getByRole("region", {
+            name: "対局者",
+        });
+        expect(within(players).getByText("☗").className).toContain("text-wafuu-shu");
+        expect(within(players).getByText("☖").className).toContain("text-wafuu-ai");
+    });
+
+    it("レートの無い棋譜では名前だけを出す", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(GAME);
+        renderViewer();
+
+        const boardTop = await screen.findByTestId("board-top");
+        expect(within(boardTop).getByRole("region", { name: "対局者" }).textContent).toBe(
+            "☗先手alice☖後手bob",
+        );
+    });
+
+    it("左の対局情報には対局者の行を出さない（残りの項目はそのまま）", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(LONG_NAME_GAME);
+        renderViewer();
+
+        const leftPanel = await screen.findByTestId("left-panel");
+        const info = within(leftPanel).getByRole("region", { name: "対局情報" });
+        expect(within(info).queryByText("対局者")).toBeNull();
+        expect(within(info).queryByText(/sinden3_770kai_473stb_10m/)).toBeNull();
+        expect(within(leftPanel).queryByRole("region", { name: "対局者" })).toBeNull();
+        // 対局 ID はパンくずに出ているので、対局情報には出さない。
+        expect(within(info).queryByText("対局 ID")).toBeNull();
+        expect(within(info).queryByText(GAME_ID)).toBeNull();
+        expect(within(info).getByText("対局場所")).toBeTruthy();
+        expect(within(info).getByText("floodgate-300-10F")).toBeTruthy();
+    });
+});
+
 describe("RshogiCsaViewer: 対局情報パネル", () => {
     it("メタ (対局者・時刻・持ち時間・結果) を表示する", async () => {
         vi.mocked(fetchRshogiGame).mockResolvedValue({
@@ -429,7 +502,9 @@ describe("RshogiCsaViewer: 対局情報パネル", () => {
 
         renderViewer();
 
-        expect(await screen.findByText("☗ alice vs ☖ bob")).toBeTruthy();
+        expect((await screen.findByRole("region", { name: "対局者" })).textContent).toBe(
+            "☗先手alice☖後手bob",
+        );
         expect(screen.getByText("持ち時間: 10分 + 秒読み10秒")).toBeTruthy();
         expect(screen.getByText("結果: 後手 (bob) 勝ち (投了)")).toBeTruthy();
         expect(screen.queryByText(/不明/)).toBeNull();
@@ -591,15 +666,21 @@ describe("RshogiCsaViewer: モバイル幅", () => {
 
         renderViewer();
 
-        // 盤面の上には対局者と対局場所だけを 1 行で出す。
+        // 盤面の上には、対局者（先手・後手を分けた行）と対局場所の 1 行を出す。
         const summary = await screen.findByRole("button", { name: /対局情報/ });
-        expect(within(summary).getByText("☗ RAMU vs ☖ SampleEngine")).toBeTruthy();
         expect(within(summary).getByText("Floodgate")).toBeTruthy();
+        // 盤（ShogiMatch）の外、ページの上部に出る（スマホのレイアウトは盤の上に枠を持たない）。
+        const players = screen
+            .getAllByRole("region", { name: "対局者" })
+            .filter((region) => !screen.getByTestId("shogi-match").contains(region));
+        expect(players).toHaveLength(1);
+        expect(players[0]?.textContent).toBe("☗先手RAMUR3512☖後手SampleEngineR3447");
 
         fireEvent.click(summary);
 
         const sheet = await screen.findByRole("dialog", { name: "対局情報" });
-        expect(within(sheet).getByText("☗ RAMU (R3512) vs ☖ SampleEngine (R3447)")).toBeTruthy();
+        // 対局者は盤の上に出しているので、シートには重ねて出さない。
+        expect(within(sheet).queryByText(/RAMU/)).toBeNull();
         expect(within(sheet).getByText("floodgate-300-10F")).toBeTruthy();
         expect(
             within(sheet)
