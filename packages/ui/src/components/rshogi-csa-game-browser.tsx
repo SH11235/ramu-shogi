@@ -22,6 +22,7 @@ import {
 import { type FormEvent, type ReactElement, useEffect, useRef, useState } from "react";
 import { Input } from "./input";
 import { NativeSelect } from "./native-select";
+import { findRshogiEventMeta, RshogiEventMetaLine } from "./rshogi-csa-event-meta";
 import { RshogiCsaGameList } from "./rshogi-csa-game-list";
 import { RshogiCsaLiveGamesSection } from "./rshogi-csa-live-games-section";
 import { RSHOGI_VENUE_FILTERS, type RshogiVenueFilterKind } from "./rshogi-csa-venue";
@@ -139,7 +140,10 @@ const toSearchOptions = (search: RshogiGameBrowserSearch): FetchRshogiGameSearch
     to: dateEndMs(search.to),
 });
 
-/** 同じイベント名が複数の `source` にまたがる場合は件数を足して 1 つの選択肢にする。 */
+/**
+ * 同じイベント名が複数の `source` にまたがる場合は件数を足して 1 つの選択肢にする。
+ * メタデータがあるイベントは正式名称をラベルにする（値はタグのまま）。
+ */
 const toEventOptions = (
     events: RshogiGameEventSummary[],
     selected: string,
@@ -150,7 +154,7 @@ const toEventOptions = (
     }
     const options = [...counts.entries()].map(([event, games]) => ({
         event,
-        label: `${event}（${games}局）`,
+        label: `${findRshogiEventMeta(events, event)?.title ?? event}（${games}局）`,
     }));
     // イベント一覧に無い値 (一覧の取得失敗時や、リンクで直接指定された場合) も選択肢に出す。
     if (selected && !counts.has(selected)) options.unshift({ event: selected, label: selected });
@@ -380,6 +384,8 @@ export function RshogiCsaGameBrowser({
         : 0;
     const eventOptions = toEventOptions(events, searchForm.event);
     const detailCount = countDetailConditions(formSearch);
+    // イベントで絞り込んでいるときに一覧の上へ出す、そのイベントの正式名称とリンク。
+    const appliedEventMeta = findRshogiEventMeta(events, appliedSearch.event);
 
     return (
         <div className="flex flex-col gap-4">
@@ -550,6 +556,8 @@ export function RshogiCsaGameBrowser({
                         {errorMessage}
                     </div>
                 )}
+
+                {appliedEventMeta && <RshogiEventMetaLine meta={appliedEventMeta} />}
 
                 <RshogiCsaGameList
                     games={displayedGames}

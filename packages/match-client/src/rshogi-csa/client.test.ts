@@ -288,6 +288,108 @@ describe("fetchRshogiGameEvents", () => {
         ]);
     });
 
+    describe("イベントのメタデータ (meta)", () => {
+        const fetchEvents = (events: unknown[]) =>
+            fetchRshogiGameEvents({
+                baseUrl: "https://rshogi.example.com/api/v1",
+                fetchImpl: vi.fn(
+                    async () => new Response(JSON.stringify({ events }), { status: 200 }),
+                ) as unknown as typeof fetch,
+            });
+
+        it("登録されているイベントだけ meta を読み、未登録のイベントには meta のキー自体を付けない", async () => {
+            const events = await fetchEvents([
+                {
+                    event: "WCSC36",
+                    source: "upload",
+                    games: 123,
+                    meta: {
+                        title: "第36回世界コンピュータ将棋選手権",
+                        organizer: "コンピュータ将棋協会",
+                        official_url: "https://example.org/wcsc36/",
+                        kifu_source_url: "http://example.org/wcsc36/kifu/",
+                        terms_note: "対局プログラム名・対局日時・大会名を明記",
+                    },
+                },
+                { event: "floodgate-300-10F", source: "wdoor", games: 40 },
+            ]);
+            expect(events[0].meta).toEqual({
+                title: "第36回世界コンピュータ将棋選手権",
+                organizer: "コンピュータ将棋協会",
+                officialUrl: "https://example.org/wcsc36/",
+                kifuSourceUrl: "http://example.org/wcsc36/kifu/",
+                termsNote: "対局プログラム名・対局日時・大会名を明記",
+            });
+            expect("meta" in events[1]).toBe(false);
+        });
+
+        it("null の項目は無いものとして読む", async () => {
+            const events = await fetchEvents([
+                {
+                    event: "DR5",
+                    games: 1,
+                    meta: {
+                        title: "第5回電竜戦",
+                        organizer: null,
+                        official_url: null,
+                        kifu_source_url: null,
+                        terms_note: null,
+                    },
+                },
+            ]);
+            expect(events[0].meta).toEqual({ title: "第5回電竜戦" });
+        });
+
+        it("http(s):// で始まらない URL はリンクにしない（他の項目は生かす）", async () => {
+            const events = await fetchEvents([
+                {
+                    event: "X",
+                    games: 1,
+                    meta: {
+                        title: "大会 X",
+                        official_url: "javascript:alert(1)",
+                        kifu_source_url: "//example.org/kifu",
+                    },
+                },
+                {
+                    event: "Y",
+                    games: 1,
+                    meta: {
+                        title: "大会 Y",
+                        official_url: "data:text/html,<script>alert(1)</script>",
+                        kifu_source_url: " HTTPS://example.org/kifu ",
+                    },
+                },
+                {
+                    event: "Z",
+                    games: 1,
+                    meta: { title: "大会 Z", official_url: "https://", kifu_source_url: 42 },
+                },
+            ]);
+            expect(events[0].meta).toEqual({ title: "大会 X" });
+            expect(events[1].meta).toEqual({
+                title: "大会 Y",
+                kifuSourceUrl: "HTTPS://example.org/kifu",
+            });
+            expect(events[2].meta).toEqual({ title: "大会 Z" });
+        });
+
+        it("未知の形の meta は捨てて、メタ無しのイベントとして返す", async () => {
+            const events = await fetchEvents([
+                { event: "A", games: 1, meta: null },
+                { event: "B", games: 1, meta: "第1回" },
+                { event: "C", games: 1, meta: ["第1回"] },
+                { event: "D", games: 1, meta: { organizer: "主催だけ" } },
+                { event: "E", games: 1, meta: { title: "   " } },
+                { event: "F", games: 1, meta: { title: 36 } },
+            ]);
+            expect(events.map((entry) => entry.event)).toEqual(["A", "B", "C", "D", "E", "F"]);
+            for (const entry of events) {
+                expect("meta" in entry, entry.event).toBe(false);
+            }
+        });
+    });
+
     it("events 配列の無い応答や HTTP エラーは例外にする", async () => {
         const badShape = vi.fn(
             async () => new Response(JSON.stringify({}), { status: 200 }),

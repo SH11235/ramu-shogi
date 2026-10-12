@@ -11,10 +11,20 @@
 
 import { parseCsaGameRecord } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
-import type { FetchRshogiGameOptions, RshogiGame } from "@shogi/match-client";
-import { fetchRshogiGame, RshogiGameNotFoundError } from "@shogi/match-client";
+import type {
+    FetchRshogiGameOptions,
+    RshogiGame,
+    RshogiGameEventMeta,
+    RshogiGameEventSummary,
+} from "@shogi/match-client";
+import {
+    fetchRshogiGame,
+    fetchRshogiGameEvents,
+    RshogiGameNotFoundError,
+} from "@shogi/match-client";
 import { type ReactElement, type ReactNode, useEffect, useEffectEvent, useState } from "react";
 import { Button } from "./button";
+import { findRshogiEventMeta, RshogiEventMetaDetail } from "./rshogi-csa-event-meta";
 import { RshogiVenueBadge } from "./rshogi-csa-venue";
 import {
     type PlayFromPosition,
@@ -209,7 +219,14 @@ function RshogiPlayersBar({
     );
 }
 
-function RshogiGameMetaPanel({ game }: { game: RshogiGame }): ReactElement {
+function RshogiGameMetaPanel({
+    game,
+    eventMeta,
+}: {
+    game: RshogiGame;
+    /** イベントのメタデータ（大会の正式名称・公式ページなど）。無ければタグだけを出す。 */
+    eventMeta?: RshogiGameEventMeta;
+}): ReactElement {
     const { meta } = game;
     const originUrl = meta.originUrl?.startsWith(ORIGIN_URL_PREFIX) ? meta.originUrl : undefined;
     return (
@@ -229,7 +246,11 @@ function RshogiGameMetaPanel({ game }: { game: RshogiGame }): ReactElement {
             {meta.event && (
                 <div className="flex flex-col gap-1">
                     <span className="text-xs text-muted-foreground">イベント</span>
-                    <span>{meta.event}</span>
+                    {eventMeta ? (
+                        <RshogiEventMetaDetail meta={eventMeta} />
+                    ) : (
+                        <span>{meta.event}</span>
+                    )}
                 </div>
             )}
             {originUrl && (
@@ -271,6 +292,7 @@ export function RshogiCsaViewer({
     const [state, setState] = useState<LoadState>({ status: "loading" });
     const isMobile = useIsMobile();
     const [isMetaSheetOpen, setIsMetaSheetOpen] = useState(false);
+    const [events, setEvents] = useState<RshogiGameEventSummary[]>([]);
     const shownPosition = useShownPosition();
     const resetShownPosition = useEffectEvent(shownPosition.reset);
 
@@ -325,6 +347,29 @@ export function RshogiCsaViewer({
             controller.abort();
         };
     }, [gameId, apiBaseUrl, fetchOverride]);
+
+    // イベントのメタデータ（大会の正式名称・公式ページなど）。棋譜とは別のリクエストで、
+    // 取れなくても棋譜の表示は妨げない（イベントのタグだけを出す）。
+    const eventTag = state.game?.meta.event;
+    useEffect(() => {
+        if (!eventTag) return;
+        const controller = new AbortController();
+        void (async () => {
+            try {
+                const list = await fetchRshogiGameEvents({
+                    baseUrl: apiBaseUrl,
+                    fetchImpl: fetchOverride,
+                    signal: controller.signal,
+                });
+                if (!controller.signal.aborted) setEvents(list);
+            } catch {
+                if (!controller.signal.aborted) setEvents([]);
+            }
+        })();
+        return () => {
+            controller.abort();
+        };
+    }, [eventTag, apiBaseUrl, fetchOverride]);
 
     if (state.status === "loading") {
         return (
@@ -381,7 +426,10 @@ export function RshogiCsaViewer({
 
     const metaContent = (
         <div className="flex flex-col gap-2">
-            <RshogiGameMetaPanel game={game} />
+            <RshogiGameMetaPanel
+                game={game}
+                eventMeta={findRshogiEventMeta(events, game.meta.event, game.meta.source)}
+            />
             {/* 主は「研究ノートで開く」、従は「この局面から対局」。続けて並べる。 */}
             {renderGameAction?.(game)}
             {onPlayFromPosition && (

@@ -1,12 +1,13 @@
 import type { RshogiGame } from "@shogi/match-client";
-import { fetchRshogiGame } from "@shogi/match-client";
+import { fetchRshogiGame, fetchRshogiGameEvents } from "@shogi/match-client";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RshogiCsaViewer } from "./rshogi-csa-viewer";
 
 vi.mock("@shogi/match-client", () => ({
     fetchRshogiGame: vi.fn(),
+    fetchRshogiGameEvents: vi.fn(),
     RshogiGameNotFoundError: class RshogiGameNotFoundError extends Error {},
 }));
 
@@ -48,6 +49,12 @@ const renderViewer = () =>
     render(
         <RshogiCsaViewer gameId={GAME_ID} engineOptions={[]} manifestUrl="/nnue-manifest.json" />,
     );
+
+// イベントのメタデータは、既定では「メタに対応していない古いサーバー」と同じく付かない。
+beforeEach(() => {
+    vi.mocked(fetchRshogiGameEvents).mockReset();
+    vi.mocked(fetchRshogiGameEvents).mockResolvedValue([]);
+});
 
 afterEach(() => {
     vi.restoreAllMocks();
@@ -765,5 +772,141 @@ describe("RshogiCsaViewer: モバイル幅", () => {
         await screen.findByTestId("shogi-match");
         expect(screen.queryByRole("button", { name: /対局情報/ })).toBeNull();
         expect(screen.getByRole("button", { name: "CSA ダウンロード" })).toBeTruthy();
+    });
+});
+
+describe("RshogiCsaViewer: 大会（イベント）のメタデータ", () => {
+    const UPLOAD_GAME: RshogiGame = {
+        meta: { ...GAME.meta, source: "upload", event: "WCSC36" },
+        csa: CSA_TEXT,
+    };
+    const WCSC_META = {
+        title: "第36回世界コンピュータ将棋選手権",
+        organizer: "コンピュータ将棋協会",
+        officialUrl: "https://example.org/wcsc36/",
+        kifuSourceUrl: "https://example.org/wcsc36/kifu/",
+        termsNote: "対局プログラム名と対局日時、大会名を明記",
+    };
+    const stubMobile = (isMobile: boolean) => {
+        vi.spyOn(window, "matchMedia").mockImplementation(
+            (query: string) =>
+                ({
+                    matches: isMobile,
+                    media: query,
+                    addEventListener: () => {},
+                    removeEventListener: () => {},
+                }) as unknown as MediaQueryList,
+        );
+    };
+
+    it("メタがあれば、イベントの欄に正式名称・主催・公式ページ・棋譜の出典を出す", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(UPLOAD_GAME);
+        vi.mocked(fetchRshogiGameEvents).mockResolvedValue([
+            { event: "floodgate-300-10F", source: "wdoor", games: 40 },
+            { event: "WCSC36", source: "upload", games: 120, meta: WCSC_META },
+        ]);
+
+        renderViewer();
+
+        const panel = await screen.findByRole("region", { name: "対局情報" });
+        expect(await within(panel).findByText(WCSC_META.title)).toBeTruthy();
+        // 正式名称を出したら、短いタグは重ねて出さない。
+        expect(within(panel).queryByText("WCSC36")).toBeNull();
+        expect(within(panel).getByText("主催: コンピュータ将棋協会")).toBeTruthy();
+
+        const official = within(panel).getByRole("link", { name: "大会の公式ページ" });
+        expect(official.getAttribute("href")).toBe(WCSC_META.officialUrl);
+        expect(official.getAttribute("target")).toBe("_blank");
+        expect(official.getAttribute("rel")).toBe("noopener noreferrer");
+        const kifuSource = within(panel).getByRole("link", { name: "棋譜の出典" });
+        expect(kifuSource.getAttribute("href")).toBe(WCSC_META.kifuSourceUrl);
+        expect(kifuSource.getAttribute("target")).toBe("_blank");
+        expect(kifuSource.getAttribute("rel")).toBe("noopener noreferrer");
+
+        // 利用条件のメモは利用者向けの文ではないので出さない。
+        expect(screen.queryByText(/大会名を明記/)).toBeNull();
+    });
+
+    it("主催や URL の無いメタでは、ある項目だけを出す", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(UPLOAD_GAME);
+        vi.mocked(fetchRshogiGameEvents).mockResolvedValue([
+            {
+                event: "WCSC36",
+                source: "upload",
+                games: 120,
+                meta: { title: WCSC_META.title, officialUrl: WCSC_META.officialUrl },
+            },
+        ]);
+
+        renderViewer();
+
+        const panel = await screen.findByRole("region", { name: "対局情報" });
+        await within(panel).findByText(WCSC_META.title);
+        expect(within(panel).queryByText(/主催/)).toBeNull();
+        expect(within(panel).getAllByRole("link")).toHaveLength(1);
+        expect(within(panel).getByRole("link", { name: "大会の公式ページ" })).toBeTruthy();
+    });
+
+    it("メタの無いイベント（古いサーバーを含む）では、これまでどおりタグだけを出す", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(UPLOAD_GAME);
+        vi.mocked(fetchRshogiGameEvents).mockResolvedValue([
+            { event: "WCSC36", source: "upload", games: 120 },
+            // 別のイベントのメタを、このイベントに付けない
+            { event: "DR5", source: "upload", games: 3, meta: { title: "第5回電竜戦" } },
+        ]);
+
+        renderViewer();
+
+        const panel = await screen.findByRole("region", { name: "対局情報" });
+        await waitFor(() => expect(fetchRshogiGameEvents).toHaveBeenCalled());
+        expect(within(panel).getByText("WCSC36")).toBeTruthy();
+        expect(within(panel).queryByRole("link")).toBeNull();
+        expect(within(panel).queryByText(/主催/)).toBeNull();
+        expect(screen.queryByText("第5回電竜戦")).toBeNull();
+    });
+
+    it("イベント一覧の取得に失敗しても、棋譜はそのまま表示し、タグだけを出す", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(UPLOAD_GAME);
+        vi.mocked(fetchRshogiGameEvents).mockRejectedValue(new Error("events API down"));
+
+        renderViewer();
+
+        const panel = await screen.findByRole("region", { name: "対局情報" });
+        await waitFor(() => expect(fetchRshogiGameEvents).toHaveBeenCalled());
+        expect(screen.getByTestId("shogi-match")).toBeTruthy();
+        expect(within(panel).getByText("WCSC36")).toBeTruthy();
+        expect(within(panel).queryByRole("link")).toBeNull();
+        expect(screen.queryByText(/events API down/)).toBeNull();
+        expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("イベントの付いていない棋譜では、イベント一覧を取りに行かない", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(GAME);
+
+        renderViewer();
+
+        await screen.findByTestId("shogi-match");
+        expect(fetchRshogiGameEvents).not.toHaveBeenCalled();
+    });
+
+    it("スマホでは、対局情報のシートの中に同じ内容を出す", async () => {
+        stubMobile(true);
+        vi.mocked(fetchRshogiGame).mockResolvedValue(UPLOAD_GAME);
+        vi.mocked(fetchRshogiGameEvents).mockResolvedValue([
+            { event: "WCSC36", source: "upload", games: 120, meta: WCSC_META },
+        ]);
+
+        renderViewer();
+
+        fireEvent.click(await screen.findByRole("button", { name: /対局情報/ }));
+        const sheet = await screen.findByRole("dialog", { name: "対局情報" });
+        expect(await within(sheet).findByText(WCSC_META.title)).toBeTruthy();
+        expect(within(sheet).getByText("主催: コンピュータ将棋協会")).toBeTruthy();
+        expect(
+            within(sheet).getByRole("link", { name: "大会の公式ページ" }).getAttribute("href"),
+        ).toBe(WCSC_META.officialUrl);
+        expect(within(sheet).getByRole("link", { name: "棋譜の出典" }).getAttribute("href")).toBe(
+            WCSC_META.kifuSourceUrl,
+        );
     });
 });

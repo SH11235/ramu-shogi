@@ -1,7 +1,7 @@
 import type { NnueMeta, NnueSelection, PresetWithStatus } from "@shogi/app-core";
 import { NONE_NNUE_SELECTION } from "@shogi/app-core";
-import type { SkillLevelSettings } from "@shogi/engine-client";
 import { cn } from "@shogi/design-system";
+import type { SkillLevelSettings } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 import { useEffect, useState } from "react";
 import { ChevronIcon } from "../../chevron-icon";
