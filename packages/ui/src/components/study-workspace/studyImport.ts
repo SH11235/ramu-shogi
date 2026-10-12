@@ -36,8 +36,9 @@ export type StudyKifuSource =
       };
 
 /**
- * 指し手の無いノートの開始局面が、局面として成り立つかを確かめる（解析エンジンが読み込める
- * 条件と同じ。対局画面の局面編集と同じ基準）。成り立てば null、成り立たなければ理由。
+ * 指し手の無いノートの開始局面が、局面として成り立つかを確かめる。基準は対局画面の局面編集と
+ * 同じ（玉が先手・後手に 1 枚ずつ、駒は一組の枚数まで）。二歩などは見ない。
+ * 成り立てば null、成り立たなければ理由。
  */
 export function studyStartPositionError(startSfen: string): string | null {
     try {
@@ -53,6 +54,17 @@ const positionOnlySource = (startSfen: string): StudyKifuSource => {
     if (reason) throw new Error(`この局面は研究ノートにできません: ${reason}`);
     return { kind: "moves", startSfen: normalizeStudyStartSfen(startSfen), moves: [] };
 };
+
+/** CSA の局面の行（`PI`・`P1`〜`P9`・`P+`・`P-`）があるか。 */
+const hasCsaPositionLine = (text: string): boolean => /^P(?:I|[1-9]|[+-])/m.test(text);
+
+/**
+ * KIF が「開始局面だけ」の入力か。開始局面が明示されていて、指し手の行（手数で始まる行や
+ * ▲△ の行）が 1 つも無いとき。指し手の行があるのに 1 つも読めなかった棋譜は、局面だけの
+ * 入力としては扱わない（指し手を黙って捨てない）。
+ */
+const isKifPositionOnly = (text: string): boolean =>
+    /^\s*開始局面[：:]/m.test(text) && !/^\s*(?:\d+\s+\S|[▲△☗☖])/m.test(text);
 
 const assertStandardMoves = (moves: readonly string[]): void => {
     const index = moves.findIndex((move) => !isStudyUsiMove(move));
@@ -81,13 +93,17 @@ export function parseKifuTextForStudy(text: string): StudyKifuSource {
                 `CSA の解析に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
             );
         }
-        if (record.moves.length === 0) return positionOnlySource(record.startSfen);
+        if (record.moves.length === 0) {
+            // 局面の行も無い（対局者名などの見出しだけ）ものは、棋譜として読めていない。
+            if (!hasCsaPositionLine(text)) throw new Error("指し手がありません");
+            return positionOnlySource(record.startSfen);
+        }
         return { kind: "csa", csa: text };
     }
     if (format === "kif") {
         const result = parseKif(text);
-        // 指し手が無くても、開始局面が書かれていれば、その局面から始めるノートにする。
-        if (result.moves.length === 0 && result.startSfen) {
+        // 開始局面だけが書かれていれば、その局面から始めるノートにする。
+        if (result.moves.length === 0 && result.startSfen && isKifPositionOnly(text)) {
             return positionOnlySource(result.startSfen);
         }
         if (!result.success) {

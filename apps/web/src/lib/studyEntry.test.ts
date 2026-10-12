@@ -268,18 +268,13 @@ describe("貼り付けた棋譜の検証", () => {
                 { sync, api, replayMovesStrict: replayStoppingAt("none") },
             ),
         ).rejects.toThrow("この局面は研究ノートにできません: 後手の玉が盤上にありません");
-        // 局面を読み込む側が断った（エラーを返した・例外を投げた）。
-        for (const replayMovesStrict of [
-            async () => ({ applied: [], error: "invalid sfen" }),
-            async () => Promise.reject("boom"),
-        ]) {
-            await expect(
-                createStudyFromKifuSource(
-                    { kind: "moves", startSfen: "4k4/9/9/9/9/9/9/9/4K4 b G 1", moves: [] },
-                    { sync, api, replayMovesStrict },
-                ),
-            ).rejects.toThrow("この局面は研究ノートにできません（読み込めない局面です）");
-        }
+        // 局面を読み込む側が断った。
+        await expect(
+            createStudyFromKifuSource(
+                { kind: "moves", startSfen: "4k4/9/9/9/9/9/9/9/4K4 b G 1", moves: [] },
+                { sync, api, replayMovesStrict: async () => ({ applied: [], error: "invalid" }) },
+            ),
+        ).rejects.toThrow("この局面は研究ノートにできません（読み込めない局面です）");
         expect(await sync.listLocal()).toEqual([]);
     });
 

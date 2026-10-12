@@ -130,7 +130,7 @@ async function assertLegalLine(
     if (moves.length === 0) {
         const reason = studyStartPositionError(startSfen);
         if (reason) throw new Error(`この局面は研究ノートにできません: ${reason}`);
-        const loaded = await run(startSfen, []).catch(() => ({ applied: [], error: "invalid" }));
+        const loaded = await run(startSfen, []);
         if (loaded.error)
             throw new Error("この局面は研究ノートにできません（読み込めない局面です）。");
         return;

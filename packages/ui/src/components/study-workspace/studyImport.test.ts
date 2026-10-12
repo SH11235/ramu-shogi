@@ -59,6 +59,19 @@ describe("parseKifuTextForStudy", () => {
         });
     });
 
+    it("指し手の行があるのに読めなかった棋譜・見出しだけの棋譜は、局面だけの材料にしない", () => {
+        // KIF: 指し手の行が 1 つも読めない（移動元が無い）。
+        expect(() => parseKifuTextForStudy("開始局面：startpos\n1 ７六歩\n2 ３四歩")).toThrow(
+            "パースできる指し手が見つかりませんでした",
+        );
+        // KIF: 見出しだけ（開始局面の明示なし）。
+        expect(() => parseKifuTextForStudy("手合割：平手\n先手：a\n後手：b")).toThrow(
+            "パースできる指し手が見つかりませんでした",
+        );
+        // CSA: 見出しだけ（局面の行なし）。
+        expect(() => parseKifuTextForStudy("V2.2\nN+a\nN-b")).toThrow("指し手がありません");
+    });
+
     it("指し手が無く、局面として成り立たない入力は断る", () => {
         // 玉が無い。
         expect(() => parseKifuTextForStudy("sfen 9/9/9/9/9/9/9/9/4K4 b - 1")).toThrow(
