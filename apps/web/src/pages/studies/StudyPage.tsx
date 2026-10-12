@@ -43,8 +43,9 @@ type LoadState =
           /** ノートの持ち主（匿名のノートは null）。 */
           ownerId: string | null;
           /**
-           * 開いている間にログインが切れて、ノートが見えなくなった（保存できない）。
-           * 「見つかりません」にはせず、画面を残して編集だけを止める。
+           * 開いている間にログインが切れて、ノートが見えなくなった（保存できない）。または、
+           * サーバーが 401 を返してから、ログイン状態を確かめ直せていない（ブラウザ内には
+           * 書けても、送れない）。「見つかりません」にはせず、画面を残して編集だけを止める。
            */
           locked: boolean;
           /** 前回、保存できないまま残っていたコメントの入力（手ごと）。 */
@@ -234,10 +235,18 @@ export default function StudyPage(): ReactElement {
                 return true;
             }
             const { doc, owner } = stored;
+            // サーバーが 401 を返してから、ログイン状態を確かめ直せるまで（同期エンジンに
+            // 伝え直されるまで）は、アカウントのノートの編集を止めたままにする。確かめ直しに
+            // 失敗すると、認証の状態には前のユーザーが残るので、ノートは読めてしまう。
+            // 読んでいる間に、同期エンジンから見たユーザーが持ち主でなくなっていたとき（別のタブで
+            // ログアウト・アカウントを切り替えていた）も、同じく止める。
+            const locked =
+                owner !== null &&
+                (sync.isUnauthorized() || (sync.getSession()?.userId ?? null) !== owner);
             setState((previous) => {
                 if (previous.status === "ready" && previous.studyId === targetId) {
                     // 開いている画面の更新。表示の状態と書きかけは、画面が持っているものを使う。
-                    return { ...previous, doc, ownerId: owner, locked: false, fresh };
+                    return { ...previous, doc, ownerId: owner, locked, fresh };
                 }
                 if (mode === "refresh") return previous;
                 // 前回、保存できないまま残っていたコメントは、その手のコメント欄に戻す。
@@ -262,7 +271,7 @@ export default function StudyPage(): ReactElement {
                           }
                         : view,
                     ownerId: owner,
-                    locked: false,
+                    locked,
                     drafts,
                     fresh,
                 };
@@ -291,6 +300,17 @@ export default function StudyPage(): ReactElement {
             });
         };
 
+        /** 開いているアカウントのノートの編集を止める（画面は残す）。 */
+        const lockOpenStudy = (): void => {
+            setState((previous) =>
+                previous.status === "ready" &&
+                previous.studyId === studyId &&
+                previous.ownerId !== null
+                    ? { ...previous, locked: true }
+                    : previous,
+            );
+        };
+
         /**
          * 開いていたアカウントのノートが、ログインが切れて見えなくなったか。
          * その場合は「見つかりません」にせず、画面を残して編集を止める。
@@ -301,23 +321,25 @@ export default function StudyPage(): ReactElement {
                 current.status !== "ready" ||
                 current.studyId !== studyId ||
                 current.ownerId === null ||
-                // 別のアカウントでログインした場合は、前のアカウントのノートを画面に残さない。
-                userId !== null
+                // 別のアカウントでログインした場合は、前のアカウントのノートを画面に残さない
+                // （確かめ直しに失敗して前の値が残っているだけのときは、別のアカウントとは言えない）。
+                (userId !== null && sessionConfirmed)
             ) {
                 return false;
             }
-            setState((previous) =>
-                previous.status === "ready" && previous.studyId === studyId
-                    ? { ...previous, locked: true }
-                    : previous,
-            );
+            lockOpenStudy();
             return true;
         };
 
         const unsubscribe = sync.subscribeEvents((event) => {
             if (cancelled) return;
             if (event.type === "unauthorized") {
-                // セッションが切れた。ログイン状態を取り直すと、保存の案内が「ログインすると…」に変わる。
+                // セッションが切れた（401 を受けた、または別のタブでのログアウト・アカウントの切り替えが
+                // 分かった）。確かめ直せるまで、アカウントのノートの編集を止める: 確かめ直しに失敗すると
+                // 認証の状態には前のユーザーが残り、送れない編集を続けられてしまう。
+                // 解くのは、確かめ直せて、同じ持ち主としてノートを読めたとき（`presentFromStore`）。
+                lockOpenStudy();
+                // ログイン状態を取り直すと、保存の案内が「ログインすると…」に変わる。
                 dispatchAuthSessionSyncEvent();
                 return;
             }
@@ -374,11 +396,18 @@ export default function StudyPage(): ReactElement {
                 return;
             }
             if (cancelled || lockIfWasOpen()) return;
-            setState(
-                result.status === "unavailable"
-                    ? { status: "unavailable", message: result.message }
-                    : { status: "not_found" },
-            );
+            if (result.status === "unavailable") {
+                setState({ status: "unavailable", message: result.message });
+            } else if (userId !== null && (!sessionConfirmed || sync.isUnauthorized())) {
+                // ログイン状態を確かめられていない（サーバーが 401 を返した・確かめ直しに失敗した）
+                // ので、「無い」とは言い切れない。確認からやり直せるようにする。
+                setState({
+                    status: "unavailable",
+                    message: "ログイン状態を確認できませんでした。",
+                });
+            } else {
+                setState({ status: "not_found" });
+            }
         })().catch((error: unknown) => {
             if (cancelled) return;
             setState({
@@ -394,7 +423,7 @@ export default function StudyPage(): ReactElement {
             // 画面を離れるときは、間引きを待たずに送る。
             void sync.flush(studyId).catch(() => undefined);
         };
-    }, [studyId, sessionState, userId, sync, navigate, reloadCount]);
+    }, [studyId, sessionState, userId, sessionConfirmed, sync, navigate, reloadCount]);
 
     /**
      * 編集の操作を画面にすぐ反映し、保存層（ブラウザ内 → クラウド）へ流す。
