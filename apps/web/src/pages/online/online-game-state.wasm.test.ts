@@ -19,7 +19,12 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 // pkg と node:fs を式や文字列で指すのは、pkg が無い状態でも通る型検査と、
 // Node の型を持たないアプリ用の tsconfig の両方でモジュール解決をさせないため
 const wasm = await vi.hoisted(async () => {
-    const pkgDir = new URL("../../../../../packages/engine-wasm/pkg/", import.meta.url).pathname;
+    const { fileURLToPath } = await vi.importActual<{
+        fileURLToPath(url: URL): string;
+    }>("node:url");
+    const pkgDir = fileURLToPath(
+        new URL("../../../../../packages/engine-wasm/pkg/", import.meta.url),
+    );
     const { readFileSync } = await vi.importActual<{
         readFileSync(path: string): Uint8Array;
     }>("node:fs");
