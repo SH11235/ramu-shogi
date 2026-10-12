@@ -2,7 +2,9 @@
  * 貼り付け・ファイルの棋譜テキストを、研究ノートを作る材料にする。
  *
  * 形式の判別と解析は既存の棋譜取り込み（`kifuImport` / `kifParser`）と同じものを使う。
- * 指し手の無い入力（局面だけ）も受け付ける（その局面から検討を始めるノートになる）。
+ * 指し手の無い入力（局面だけ）も受け付ける（その局面から検討を始めるノートになる）。指し手が
+ * あれば手順の再生で局面も確かめられるが、局面だけのときは確かめる機会が無いので、ここで
+ * 局面として成り立つこと（`studyStartPositionError`）を確かめる。
  * 変則ルール（パス）の手を含む棋譜は研究ノートにできない。
  */
 
@@ -11,8 +13,10 @@ import {
     kifuEvalToStudyScore,
     normalizeStudyStartSfen,
     parseCsaGameRecord,
+    parseStudySfen,
     type StudyImportAnnotation,
 } from "@shogi/app-core";
+import { validateEditedPosition } from "../shogi-match/utils/boardUtils";
 import { parseKif, parseSfen } from "../shogi-match/utils/kifParser";
 import { detectKifuTextFormat } from "../shogi-match/utils/kifuImport";
 
@@ -30,6 +34,25 @@ export type StudyKifuSource =
           /** `annotations` の出どころ（`source.kind`）。 */
           sourceKind?: string;
       };
+
+/**
+ * 指し手の無いノートの開始局面が、局面として成り立つかを確かめる（解析エンジンが読み込める
+ * 条件と同じ。対局画面の局面編集と同じ基準）。成り立てば null、成り立たなければ理由。
+ */
+export function studyStartPositionError(startSfen: string): string | null {
+    try {
+        return validateEditedPosition(parseStudySfen(normalizeStudyStartSfen(startSfen)));
+    } catch {
+        return "局面を読み取れませんでした。";
+    }
+}
+
+/** 局面だけの入力を、研究ノートの材料にする。局面として成り立たなければ断る。 */
+const positionOnlySource = (startSfen: string): StudyKifuSource => {
+    const reason = studyStartPositionError(startSfen);
+    if (reason) throw new Error(`この局面は研究ノートにできません: ${reason}`);
+    return { kind: "moves", startSfen: normalizeStudyStartSfen(startSfen), moves: [] };
+};
 
 const assertStandardMoves = (moves: readonly string[]): void => {
     const index = moves.findIndex((move) => !isStudyUsiMove(move));
@@ -49,18 +72,24 @@ export function parseKifuTextForStudy(text: string): StudyKifuSource {
     }
     const format = detectKifuTextFormat(text);
     if (format === "csa") {
+        let record: ReturnType<typeof parseCsaGameRecord>;
         try {
-            const record = parseCsaGameRecord(text);
+            record = parseCsaGameRecord(text);
             assertStandardMoves(record.moves);
         } catch (error) {
             throw new Error(
                 `CSA の解析に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
             );
         }
+        if (record.moves.length === 0) return positionOnlySource(record.startSfen);
         return { kind: "csa", csa: text };
     }
     if (format === "kif") {
         const result = parseKif(text);
+        // 指し手が無くても、開始局面が書かれていれば、その局面から始めるノートにする。
+        if (result.moves.length === 0 && result.startSfen) {
+            return positionOnlySource(result.startSfen);
+        }
         if (!result.success) {
             throw new Error(result.error ?? "KIF の解析に失敗しました");
         }
@@ -87,13 +116,14 @@ export function parseKifuTextForStudy(text: string): StudyKifuSource {
     // CSA でも KIF でもない入力は SFEN として読む。開始局面として読めなければ、棋譜ではない。
     let isPosition = false;
     try {
-        isPosition = sfen !== "" && normalizeStudyStartSfen(sfen) !== "";
+        isPosition = sfen !== "" && parseStudySfen(normalizeStudyStartSfen(sfen)) !== null;
     } catch {
         isPosition = false;
     }
     if (!isPosition) {
         throw new Error("棋譜の形式を判別できませんでした（CSA / KIF / SFEN に対応）");
     }
+    if (moves.length === 0) return positionOnlySource(sfen);
     assertStandardMoves(moves);
     return { kind: "moves", startSfen: sfen, moves };
 }

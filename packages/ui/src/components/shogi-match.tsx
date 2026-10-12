@@ -2087,11 +2087,12 @@ export function ShogiMatch({
     };
 
     // 研究ノートにできるのは、変則ルール（パス権）を使っていない棋譜だけ。指し手が無くても
-    // （編集した局面だけでも）、その局面から検討を始めるノートにできる。
+    // （編集した局面だけでも）、その局面から検討を始めるノートにできる。ただし局面の編集中は、
+    // 棋譜のツリーが編集前の局面のままなので、指し手の無い状態では出さない（確定してから）。
     const canOpenAsStudy =
         onOpenAsStudy !== undefined &&
         !isMatchRunning &&
-        !isEditMode &&
+        (!isEditMode || navigation.tree.nodes.size > 1) &&
         !passRightsSettings.enabled &&
         [...navigation.tree.nodes.values()].every(
             (node) => node.usiMove === null || isStudyUsiMove(node.usiMove),

@@ -244,6 +244,45 @@ describe("貼り付けた棋譜の検証", () => {
         expect(Object.keys((await sync.load(studyId))?.doc.tree.nodes ?? {})).toHaveLength(3);
     });
 
+    it("指し手の無い局面は、その局面から始めるノートになる（表題は「局面の研究」）", async () => {
+        const api = createApi();
+        const sync = createSync(api);
+        const replay = vi.fn(replayStoppingAt("none"));
+        const { studyId } = await createStudyFromKifuSource(
+            { kind: "moves", startSfen: "4k4/9/9/9/9/9/9/9/4K4 b G 1", moves: [] },
+            { sync, api, replayMovesStrict: replay },
+        );
+        const stored = await sync.load(studyId);
+        expect(stored?.doc.title).toMatch(/^局面の研究（\d+\/\d+）$/);
+        expect(Object.keys(stored?.doc.tree.nodes ?? {})).toHaveLength(1);
+        // 局面を読み込めることも確かめている。
+        expect(replay).toHaveBeenCalledWith("4k4/9/9/9/9/9/9/9/4K4 b G 1", []);
+    });
+
+    it("指し手が無く、局面として成り立たない（玉が無い・読み込めない）ものは、理由を添えて断る", async () => {
+        const api = createApi();
+        const sync = createSync(api);
+        await expect(
+            createStudyFromKifuSource(
+                { kind: "moves", startSfen: "9/9/9/9/9/9/9/9/4K4 b - 1", moves: [] },
+                { sync, api, replayMovesStrict: replayStoppingAt("none") },
+            ),
+        ).rejects.toThrow("この局面は研究ノートにできません: 後手の玉が盤上にありません");
+        // 局面を読み込む側が断った（エラーを返した・例外を投げた）。
+        for (const replayMovesStrict of [
+            async () => ({ applied: [], error: "invalid sfen" }),
+            async () => Promise.reject("boom"),
+        ]) {
+            await expect(
+                createStudyFromKifuSource(
+                    { kind: "moves", startSfen: "4k4/9/9/9/9/9/9/9/4K4 b G 1", moves: [] },
+                    { sync, api, replayMovesStrict },
+                ),
+            ).rejects.toThrow("この局面は研究ノートにできません（読み込めない局面です）");
+        }
+        expect(await sync.listLocal()).toEqual([]);
+    });
+
     it("長すぎる棋譜は、上限を説明して作らない", async () => {
         const api = createApi();
         const sync = createSync(api);
@@ -287,6 +326,28 @@ describe("/play に読み込んだ棋譜からの入口", () => {
         expect(stored?.doc.title).toBe("RAMU 対 Panda");
         expect(stored?.doc.meta).toEqual({ blackName: "RAMU", whiteName: "Panda" });
         expect(stored?.doc.origin).toEqual({ kind: "paste", ref: null });
+    });
+
+    it("指し手の無い棋譜（編集した局面だけ）は、局面を確かめてから「局面の研究」として作る", async () => {
+        const api = createApi();
+        const sync = createSync(api);
+        const replay = vi.fn(async (_sfen: string, moves: string[]) => ({ applied: moves }));
+        const { studyId } = await createStudyFromKifuTree(
+            buildTree([]),
+            {},
+            { sync, api, replayMovesStrict: replay },
+        );
+        expect(replay).toHaveBeenCalledTimes(1);
+        expect((await sync.load(studyId))?.doc.title).toMatch(/^局面の研究（\d+\/\d+）$/);
+
+        // 玉の無い局面のツリーは断る。
+        const kingless = createKifuTree(
+            parseStudySfen("9/9/9/9/9/9/9/9/9 b - 1"),
+            "9/9/9/9/9/9/9/9/9 b - 1",
+        );
+        await expect(
+            createStudyFromKifuTree(kingless, {}, { sync, api, replayMovesStrict: replay }),
+        ).rejects.toThrow("この局面は研究ノートにできません");
     });
 
     it("対局者名が無ければ、日付つきの表題にする", async () => {
