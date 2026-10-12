@@ -349,9 +349,10 @@ const isLocallyValid = (doc: StudyDocument): boolean => {
 /**
  * 操作を順に適用し、文書を実際に変えた操作だけを残す。
  *
- * 並べ替えは、適用したあとの子の並び（完全な並び）に書き直して残す。作ったときより子が
- * 増減した文書に当て直した並べ替えを、そのまま送り直すと、「現在の子の集合と一致しなければ
- * 読み飛ばす」規則のサーバーでは捨てられ、手元とサーバーで並びが食い違うため。
+ * 並べ替えは、利用者が作ったときの並び（意図）のまま残す。当て直したあとの完全な並びに
+ * 書き直すと、次に当て直すとき、その間に他の端末が並べ替えた兄弟の順まで上書きしてしまう。
+ * 作ったときより子が増減していても、サーバーは同じ規則（`applyStudyOp` の reorderChildren）で
+ * 並べるので、結果は手元と一致する。
  */
 const applyEffectiveOps = (
     doc: StudyDocument,
@@ -362,11 +363,7 @@ const applyEffectiveOps = (
     for (const op of ops) {
         const applied = applyStudyOp(next, op);
         if (applied !== next) {
-            effective.push(
-                op.type === "reorderChildren" && Object.hasOwn(applied.tree.nodes, op.parentId)
-                    ? { ...op, value: [...applied.tree.nodes[op.parentId].children] }
-                    : op,
-            );
+            effective.push(op);
             next = applied;
         }
     }

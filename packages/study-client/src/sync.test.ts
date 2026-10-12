@@ -442,7 +442,7 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             });
         });
 
-        it("並べ替え（本譜との入れ替え）は、他の端末が同じ親に手を足していても捨てず、足された手を含む並びで送り直す", async () => {
+        it("並べ替え（本譜との入れ替え）は、他の端末が同じ親に手を足していても捨てず、足された手を末尾に残して並べる", async () => {
             const harness = await createSyncedHarness();
             // この端末で変化を足して、同期しておく。
             const variation = studyChildNodeId(firstId, "8c8d");
@@ -464,8 +464,9 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
 
             const calls = harness.postOpsCalls().slice(-2);
             expect(calls.map((call) => call.status)).toEqual([409, 200]);
+            // 送り直すのは、利用者が作ったときの並びのまま（サーバーが同じ規則で並べる）。
             expect(calls[1].body.ops).toEqual([
-                { type: "reorderChildren", parentId: firstId, value: [variation, secondId, added] },
+                { type: "reorderChildren", parentId: firstId, value: [variation, secondId] },
             ]);
             const expected = [variation, secondId, added];
             expect((await localDoc(harness)).tree.nodes[firstId].children).toEqual(expected);
