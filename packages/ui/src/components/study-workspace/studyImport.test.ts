@@ -211,6 +211,15 @@ describe("parseKifuTextForStudy", () => {
             kind: "moves",
             moves: ["7g7f", "pass", "2g2f"],
         });
+        // 手順だけ（`moves` の語なし）でも、大文字で書かれていても読む。
+        expect(parseKifuTextForStudy("7g7f pass 3c3d")).toMatchObject({
+            kind: "moves",
+            moves: ["7g7f", "pass", "3c3d"],
+        });
+        expect(parseKifuTextForStudy("startpos moves 7g7f PASS 2g2f")).toMatchObject({
+            kind: "moves",
+            moves: ["7g7f", "pass", "2g2f"],
+        });
         // KIF（このアプリの書き出しは「パス」と書く）。
         const kif = [
             "手合割：平手",

@@ -204,7 +204,10 @@ export function parseKifuTextForStudy(text: string): StudyKifuSource {
                 : {}),
         };
     }
-    const { sfen, moves } = parseSfen(text);
+    const parsed = parseSfen(text);
+    const sfen = parsed.sfen;
+    // パスは、大文字で書かれていても小文字にそろえる（保存できるのは小文字の `pass` だけ）。
+    const moves = parsed.moves.map((move) => (move.toLowerCase() === "pass" ? "pass" : move));
     // CSA でも KIF でもない入力は SFEN として読む。開始局面として読めなければ、棋譜ではない。
     let isPosition = false;
     try {

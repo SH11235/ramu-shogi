@@ -5,7 +5,7 @@
  */
 
 import type { BoardState, Piece, PieceType, Player, PositionState, Square } from "@shogi/app-core";
-import { applyMoveWithState } from "@shogi/app-core";
+import { applyMoveAllowingStudyPass } from "@shogi/app-core";
 import { parseSfen } from "./kifParser";
 
 /** 手数不明の詰みを表す evalMate センチネル。符号は勝つ側を先手視点で表す。 */
@@ -962,7 +962,9 @@ export function convertPvToDisplay(pv: string[], position: PositionState): PvDis
         });
 
         // 次の手のために局面を進める
-        const moveResult = applyMoveWithState(currentPosition, usiMove, { validateTurn: false });
+        const moveResult = applyMoveAllowingStudyPass(currentPosition, usiMove, {
+            validateTurn: false,
+        });
         if (!moveResult.ok) {
             // 無効な手の場合は残りを処理せずに終了
             break;

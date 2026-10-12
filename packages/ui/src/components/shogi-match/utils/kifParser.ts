@@ -329,9 +329,10 @@ function parseKifLine(line: string, prevTo: string | null): ParsedMoveLine | nul
 
     if (!moveStr) return null;
 
-    // パス（変則ルールの手。書き出し側の「パス」と対）。移動先が無いので、次の「同」は使えない。
+    // パス（変則ルールの手。書き出し側の「パス」と対）。移動先が無いので、次の「同」は、
+    // パスの前の手の移動先を指すものとして読む。
     if (moveStr === "パス") {
-        return { usiMove: "pass", toSquare: "", elapsedMs };
+        return { usiMove: "pass", toSquare: prevTo ?? "", elapsedMs };
     }
 
     // ============================================================
@@ -550,7 +551,10 @@ export function parseSfen(sfenText: string): {
     const possibleMoves = text.split(/\s+/).filter((m) => m.length > 0);
     // USI形式の指し手かどうかを簡易チェック
     const looksLikeMoves = possibleMoves.every(
-        (m) => /^[1-9][a-i][1-9][a-i]\+?$/.test(m) || /^[PLNSGBRK]\*[1-9][a-i]$/.test(m),
+        (m) =>
+            /^[1-9][a-i][1-9][a-i]\+?$/.test(m) ||
+            /^[PLNSGBRK]\*[1-9][a-i]$/.test(m) ||
+            m.toLowerCase() === "pass",
     );
 
     if (looksLikeMoves && possibleMoves.length > 0) {

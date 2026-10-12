@@ -19,6 +19,12 @@ export function isStudyPassMove(move: string | null | undefined): boolean {
     return move === STUDY_PASS_MOVE;
 }
 
+/**
+ * 1 つの手順で、片方の側が指せるパスの上限。エンジンが持てるパス権は各側 15 までで、
+ * 渡すのは「使った回数 + 1」なので、使えるのは 14 回まで。
+ */
+export const STUDY_MAX_PASSES_PER_SIDE = 14;
+
 /** 開始局面の手番が後手か（SFEN の 2 欄目。`startpos` は先手）。 */
 const startsWithGote = (startSfen: string): boolean => {
     const fields = startSfen.trim().split(/\s+/);
@@ -47,6 +53,31 @@ export function studyPassRightsForLine(
         senteToMove = !senteToMove;
     }
     return { sente: sente + 1, gote: gote + 1 };
+}
+
+/**
+ * 手順が、エンジンに読み込めるパスの回数に収まっているか（各側 `STUDY_MAX_PASSES_PER_SIDE` 回まで）。
+ * 収まらない手順は、取り込みでも「パスを指す」でも断る。
+ */
+export function studyLineFitsPassLimit(startSfen: string, moves: readonly string[]): boolean {
+    const rights = studyPassRightsForLine(startSfen, moves);
+    const limit = STUDY_MAX_PASSES_PER_SIDE + 1;
+    return rights === undefined || (rights.sente <= limit && rights.gote <= limit);
+}
+
+/**
+ * 読み筋などを 1 手ずつ進めるときの適用。パス権を数えていない局面（研究ノートの局面）では、
+ * パスを指せる手として進める。パス権を数えている局面（対局画面）では、その残りに従う。
+ */
+export function applyMoveAllowingStudyPass(
+    position: PositionState,
+    move: string,
+    options?: Parameters<typeof applyMoveWithState>[2],
+): ReturnType<typeof applyMoveWithState> {
+    if (!position.passRights && move.toLowerCase() === STUDY_PASS_MOVE) {
+        return applyStudyMoveWithState(position, STUDY_PASS_MOVE);
+    }
+    return applyMoveWithState(position, move, options);
 }
 
 /**

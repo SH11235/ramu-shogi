@@ -13,10 +13,12 @@ import {
     getPositionService,
     isStudyUsiMove,
     type KifuTree,
+    STUDY_MAX_PASSES_PER_SIDE,
     type StudyDocument,
     StudyLimitError,
     type StudyMeta,
     type StudyOrigin,
+    studyLineFitsPassLimit,
     studyPassRightsForLine,
     validateStudyDocument,
 } from "@shogi/app-core";
@@ -137,6 +139,11 @@ async function assertLegalLine(
         if (loaded.error)
             throw new Error("この局面は研究ノートにできません（読み込めない局面です）");
         return;
+    }
+    if (!studyLineFitsPassLimit(startSfen, moves)) {
+        throw new Error(
+            `この棋譜はパスが多すぎます（1 つの手順で、先手・後手それぞれ ${STUDY_MAX_PASSES_PER_SIDE} 回まで）。`,
+        );
     }
     // パスを含む手順は、パス権を有効にしないと再生できない（回数の決め方は `studyPassRightsForLine`）。
     const passRights = studyPassRightsForLine(startSfen, moves);

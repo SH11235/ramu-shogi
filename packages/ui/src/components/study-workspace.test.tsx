@@ -344,12 +344,21 @@ describe("StudyWorkspaceView", () => {
         it("「パスを指す」は、いまの局面にパスの手を足してその手へ移る。編集できないときは出さない", async () => {
             const { doc, ids } = createTestStudy();
             const onOps = vi.fn();
-            const view = render(<Harness initialDoc={doc} onOps={onOps} />);
+            const fetchLegalMoves = vi.fn(async () => ["7g7f", "pass"]);
+            const view = render(
+                <Harness initialDoc={doc} onOps={onOps} fetchLegalMoves={fetchLegalMoves} />,
+            );
             openMenu();
             fireEvent.click(screen.getByRole("button", { name: /パスを指す/ }));
-            expect(onOps).toHaveBeenCalledWith([
-                { type: "addMoves", parentId: ids[0], moves: ["pass"] },
-            ]);
+            await waitFor(() =>
+                expect(onOps).toHaveBeenCalledWith([
+                    { type: "addMoves", parentId: ids[0], moves: ["pass"] },
+                ]),
+            );
+            // パスできるかは、パスを足したあとの手順と同じパス権（先手 2・後手 1）で確かめる。
+            expect(fetchLegalMoves).toHaveBeenCalledWith(expect.any(String), [], {
+                passRights: { sente: 2, gote: 1 },
+            });
             await waitFor(() => expect(currentMove()).toContain("パス"));
             // パスのあとは後手番。
             expect(screen.getByText("☖後手番")).toBeTruthy();
@@ -358,6 +367,21 @@ describe("StudyWorkspaceView", () => {
             render(<Harness initialDoc={doc} locked />);
             openMenu();
             expect(screen.queryByRole("button", { name: /パスを指す/ })).toBeNull();
+        });
+
+        it("パスできない局面（合法手にパスが無い。王手がかかっている、など）では、手を足さずに知らせる", async () => {
+            const onOps = vi.fn();
+            render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    onOps={onOps}
+                    fetchLegalMoves={async () => ["7g7f"]}
+                />,
+            );
+            openMenu();
+            fireEvent.click(screen.getByRole("button", { name: /パスを指す/ }));
+            expect(await screen.findByText(/この局面ではパスできません/)).toBeTruthy();
+            expect(onOps).not.toHaveBeenCalled();
         });
 
         it("コピーできなかったら、そう知らせる", async () => {

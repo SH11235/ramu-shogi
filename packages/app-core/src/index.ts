@@ -265,9 +265,12 @@ export {
 } from "./study/ops";
 // study/pass
 export {
+    applyMoveAllowingStudyPass,
     applyStudyMoveWithState,
     isStudyPassMove,
+    STUDY_MAX_PASSES_PER_SIDE,
     STUDY_PASS_MOVE,
+    studyLineFitsPassLimit,
     studyPassRightsForLine,
 } from "./study/pass";
 // study/score

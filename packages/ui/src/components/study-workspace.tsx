@@ -13,6 +13,7 @@ import {
     applyMoveWithState,
     applyStudyMoveWithState,
     computeStudyHighlights,
+    getPositionService,
     isStudyPassMove,
     isStudyUsiMove,
     type KifuTree,
@@ -22,11 +23,13 @@ import {
     type PositionState,
     type Square,
     STUDY_LIMITS,
+    STUDY_MAX_PASSES_PER_SIDE,
     STUDY_PASS_MOVE,
     type StudyDocument,
     type StudyHighlightKind,
     type StudyOp,
     studyChildNodeId,
+    studyLineFitsPassLimit,
     studyPassRightsForLine,
     studyScoreToKifuEval,
 } from "@shogi/app-core";
@@ -630,6 +633,47 @@ export function StudyWorkspaceView({
             );
         }
         navigateTo(childId);
+    };
+
+    /**
+     * いまの局面でパスを指す。パスできない局面（王手がかかっている）と、エンジンが読み込めない
+     * 回数（1 つの手順で各側 `STUDY_MAX_PASSES_PER_SIDE` 回まで）は断る。
+     */
+    const passFromCurrent = async (): Promise<void> => {
+        const moves = [...movesToCurrent, STUDY_PASS_MOVE];
+        if (!tree.nodes.has(studyChildNodeId(currentNodeId, STUDY_PASS_MOVE))) {
+            if (!studyLineFitsPassLimit(tree.startSfen, moves)) {
+                onMessageChange({
+                    text: `1 つの手順で指せるパスは、先手・後手それぞれ ${STUDY_MAX_PASSES_PER_SIDE} 回までです。`,
+                    type: "error",
+                });
+                return;
+            }
+            // パスが合法手にあるかで確かめる（パスを足したあとの手順と同じパス権で調べる）。
+            const passRights = studyPassRightsForLine(tree.startSfen, moves);
+            const options = passRights ? { passRights } : undefined;
+            let canPass = false;
+            try {
+                const legal = fetchLegalMoves
+                    ? await fetchLegalMoves(tree.startSfen, movesToCurrent, options)
+                    : await getPositionService().getLegalMoves(
+                          tree.startSfen,
+                          movesToCurrent,
+                          options,
+                      );
+                canPass = legal.includes(STUDY_PASS_MOVE);
+            } catch {
+                canPass = false;
+            }
+            if (!canPass) {
+                onMessageChange({
+                    text: "この局面ではパスできません（王手がかかっているときは、パスできません）。",
+                    type: "error",
+                });
+                return;
+            }
+        }
+        addMoveFromCurrent(STUDY_PASS_MOVE);
     };
 
     const { handleSquareSelect, handlePromotionChoice, handleHandSelect, getLegalSet } =
@@ -1265,7 +1309,7 @@ export function StudyWorkspaceView({
                         />
                         <StudyMoreMenu
                             onOpenChange={setIsMoreMenuOpen}
-                            onPass={locked ? undefined : () => addMoveFromCurrent(STUDY_PASS_MOVE)}
+                            onPass={locked ? undefined : () => void passFromCurrent()}
                             onCopyKif={copyKif}
                             onCopySfen={copySfen}
                             onPlayFromPosition={
