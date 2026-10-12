@@ -108,7 +108,10 @@ export function StudiesView({
                 <p className="text-sm text-muted-foreground">
                     棋譜を取り込んで全体を解析すると、見直すべき手が自動で並びます。解析結果・変化・コメントは自動で保存されます。
                 </p>
-                <StudyImportForm onImport={handleImport} />
+                <StudyImportForm
+                    onImport={handleImport}
+                    storageNote="読んだ棋譜は、この端末の中で研究ノートになります。"
+                />
             </section>
 
             {loadError && (

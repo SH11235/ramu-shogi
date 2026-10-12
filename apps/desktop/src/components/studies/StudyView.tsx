@@ -266,6 +266,8 @@ export function StudyView({
                         saveStatus={saveStatus}
                         onRetrySave={() => void sync.retry(studyId).catch(() => undefined)}
                         onPlayFromPosition={onPlayFromPosition}
+                        // 保存先はこの端末だけ（ログインの仕組みが無い）。
+                        localOnly
                         fetchLegalMoves={(sfen, moves, options) =>
                             getLegalMoves({ sfen, moves, passRights: options?.passRights })
                         }

@@ -197,33 +197,39 @@ function SettingsBody({
                         ))}
                     </div>
                 </fieldset>
-                <fieldset className="flex flex-col gap-1">
-                    <legend className="pb-1 text-xs text-muted-foreground">
-                        同時に解析する局面の数（多いほど速く終わり、端末の負荷は上がります）
-                    </legend>
-                    <div className="flex flex-wrap gap-1.5">
-                        {PARALLEL_WORKER_OPTIONS.map((option) => (
-                            <button
-                                key={option.value}
-                                type="button"
-                                aria-pressed={form.settings.parallelWorkers === option.value}
-                                onClick={() =>
-                                    form.onSettingsChange({
-                                        ...form.settings,
-                                        parallelWorkers: option.value,
-                                    })
-                                }
-                                className={choiceClass(
-                                    form.settings.parallelWorkers === option.value,
-                                )}
-                            >
-                                {option.value === 0
-                                    ? `自動（${resolveWorkerCount(0)}）`
-                                    : option.label}
-                            </button>
-                        ))}
-                    </div>
-                </fieldset>
+                {/* 1 局面ずつしか解析できないエンジン（Desktop の内蔵エンジン）では、選ぶものが無い。 */}
+                {form.maxParallel !== 1 && (
+                    <fieldset className="flex flex-col gap-1">
+                        <legend className="pb-1 text-xs text-muted-foreground">
+                            同時に解析する局面の数（多いほど速く終わり、端末の負荷は上がります）
+                        </legend>
+                        <div className="flex flex-wrap gap-1.5">
+                            {PARALLEL_WORKER_OPTIONS.filter(
+                                (option) =>
+                                    form.maxParallel === null || option.value <= form.maxParallel,
+                            ).map((option) => (
+                                <button
+                                    key={option.value}
+                                    type="button"
+                                    aria-pressed={form.settings.parallelWorkers === option.value}
+                                    onClick={() =>
+                                        form.onSettingsChange({
+                                            ...form.settings,
+                                            parallelWorkers: option.value,
+                                        })
+                                    }
+                                    className={choiceClass(
+                                        form.settings.parallelWorkers === option.value,
+                                    )}
+                                >
+                                    {option.value === 0
+                                        ? `自動（${Math.min(resolveWorkerCount(0), form.maxParallel ?? Number.POSITIVE_INFINITY)}）`
+                                        : option.label}
+                                </button>
+                            ))}
+                        </div>
+                    </fieldset>
+                )}
                 <p className="text-xs text-muted-foreground">
                     AI・時間・候補手の数のどれかを変えて解析すると、結果は別の解析結果として残り、あとから切り替えて見られます。
                 </p>

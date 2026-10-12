@@ -53,6 +53,7 @@ const createAnalysis = (
         isNnueListLoading: false,
         engines: [{ id: "wasm", label: "内蔵エンジン", kind: "internal" }],
         engineId: "wasm",
+        maxParallel: null,
         onEngineIdChange: vi.fn(),
     },
     ...overrides,

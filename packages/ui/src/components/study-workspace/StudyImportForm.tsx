@@ -18,10 +18,16 @@ import { parseKifuTextForStudy, type StudyKifuSource } from "./studyImport";
 interface StudyImportFormProps {
     /** 取り込んだ棋譜で研究ノートを作る。失敗時は例外を投げると、その文言を表示する。 */
     onImport: (source: StudyKifuSource) => Promise<void>;
+    /** 取り込んだ棋譜がどこに保存されるかの説明（既定は、ブラウザの中）。 */
+    storageNote?: string;
     className?: string;
 }
 
-export function StudyImportForm({ onImport, className }: StudyImportFormProps): ReactElement {
+export function StudyImportForm({
+    onImport,
+    storageNote = "読んだ棋譜は、このブラウザの中で研究ノートになります。",
+    className,
+}: StudyImportFormProps): ReactElement {
     const [text, setText] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [isBusy, setIsBusy] = useState(false);
@@ -110,9 +116,7 @@ export function StudyImportForm({ onImport, className }: StudyImportFormProps): 
                     tabIndex={-1}
                 />
             </div>
-            <p className="text-xs text-muted-foreground">
-                読んだ棋譜は、このブラウザの中で研究ノートになります。
-            </p>
+            <p className="text-xs text-muted-foreground">{storageNote}</p>
         </form>
     );
 }

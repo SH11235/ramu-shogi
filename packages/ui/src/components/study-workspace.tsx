@@ -162,6 +162,11 @@ interface StudyWorkspaceCommonProps {
     /** 元の棋譜へのリンク。無ければ出どころの種別だけを出す。 */
     originLink?: ReactNode;
     /**
+     * 保存先がこの端末だけの環境（ログインの仕組みが無い Desktop）。保存の状態の文言を
+     * 「この端末に保存済み」にし、ログインの案内を出さない。
+     */
+    localOnly?: boolean;
+    /**
      * いま見ている局面を対局ページで開く（開き方は呼び出し側が決める。Web は `/play` へ移動）。
      * 渡さなければ「この局面から対局」を出さない。
      */
@@ -403,6 +408,7 @@ export function StudyWorkspaceView({
     onLogin,
     onDiscard,
     originLink,
+    localOnly = false,
     onPlayFromPosition,
     fetchLegalMoves,
     locked = false,
@@ -1383,6 +1389,7 @@ export function StudyWorkspaceView({
                         <StudySaveIndicator
                             status={saveStatus}
                             onLogin={onLogin}
+                            localOnly={localOnly}
                             className="md:ml-auto"
                         />
                     </div>

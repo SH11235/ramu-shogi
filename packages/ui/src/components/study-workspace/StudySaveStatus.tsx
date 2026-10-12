@@ -69,6 +69,11 @@ interface StudySaveIndicatorProps {
     status: StudyWorkspaceSaveStatus;
     /** ログインへ進む（未ログインのときの案内に使う）。 */
     onLogin?: () => void;
+    /**
+     * 保存先がこの端末だけの環境（ログインの仕組みが無い Desktop）。「この端末に保存済み」と出し、
+     * ログインの案内は出さない。
+     */
+    localOnly?: boolean;
     className?: string;
 }
 
@@ -76,11 +81,14 @@ interface StudySaveIndicatorProps {
 export function StudySaveIndicator({
     status,
     onLogin,
+    localOnly = false,
     className,
 }: StudySaveIndicatorProps): ReactElement {
-    const view = indicatorView(status);
+    const base = indicatorView(status);
+    const view =
+        localOnly && status.state === "local" ? { ...base, text: "この端末に保存済み" } : base;
     const loginText =
-        status.state !== "local"
+        localOnly || status.state !== "local"
             ? null
             : status.reason === "anonymous"
               ? "ログインするとクラウドにも保存できます"

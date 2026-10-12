@@ -90,6 +90,11 @@ export interface StudyAnalysisSettingsForm {
     engines: Array<{ id: string; label: string; kind: "internal" | "external" }>;
     /** いま選んでいる解析エンジン。 */
     engineId: string;
+    /**
+     * いま選んでいるエンジンが、同時に解析できる局面の数の上限（制限が無ければ null）。
+     * Desktop の内蔵エンジンは 1。
+     */
+    maxParallel: number | null;
     onEngineIdChange: (engineId: string) => void;
 }
 
@@ -291,7 +296,12 @@ export function useStudyAnalysis({
         clientKey: engineOption?.id,
         // 外部の USI エンジンは、変則ルールのパスを解釈できない。
         supportsPassRights: engineOption?.kind !== "external",
-        workerCount: resolveWorkerCount(settings.parallelWorkers),
+        materialFallback: engineOption?.kind !== "external",
+        // エンジンが同時に動かせる数に収める（Desktop の内蔵エンジンは 1 つだけ）。
+        workerCount: Math.min(
+            resolveWorkerCount(settings.parallelWorkers),
+            engineOption?.maxParallel ?? Number.POSITIVE_INFINITY,
+        ),
         nnueId: isExternalEngine ? undefined : analysisNnueId,
         onPositionAnalyzed: handlePositionAnalyzed,
         onResult: (_ply: number, event: EngineInfoEvent, nodeId?: string) => {
@@ -629,8 +639,11 @@ export function useStudyAnalysis({
     useEffect(() => {
         if (startedEngineIdRef.current === engineOptionId) return;
         startedEngineIdRef.current = engineOptionId;
-        if (preparingRef.current || isAnalysisRunningRef.current) void cancelRef.current();
-    }, [engineOptionId]);
+        if (preparingRef.current || isAnalysisRunningRef.current) {
+            void cancelRef.current();
+            setMessage({ text: "解析エンジンが変わったため、解析を止めました。", type: "error" });
+        }
+    }, [engineOptionId, setMessage]);
 
     const switchToSimpleAi = (): void => {
         const request = requestRef.current;
@@ -695,6 +708,7 @@ export function useStudyAnalysis({
                         option.kind === "external" ? ("external" as const) : ("internal" as const),
                 })),
                 engineId: engineOption?.id ?? "",
+                maxParallel: engineOption?.maxParallel ?? null,
                 onEngineIdChange: setAnalysisEngineId,
             },
         },
