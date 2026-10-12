@@ -84,6 +84,17 @@ export function SettingsIcon({ className }: IconProps): ReactElement {
     );
 }
 
+/** その他の操作（三点）。 */
+export function MoreIcon({ className }: IconProps): ReactElement {
+    return (
+        <StrokeIcon className={className} filled>
+            <circle cx="5" cy="12" r="1.5" />
+            <circle cx="12" cy="12" r="1.5" />
+            <circle cx="19" cy="12" r="1.5" />
+        </StrokeIcon>
+    );
+}
+
 /** 変化（枝分かれ）。 */
 export function BranchIcon({ className }: IconProps): ReactElement {
     return (

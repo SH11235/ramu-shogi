@@ -189,6 +189,9 @@ function parseEvalComment(
         const evalMate = mateMatch[1] === "詰" ? mateValue : -mateValue;
         return { evalMate, depth };
     }
+    // 手数の分からない詰み: "詰み" / "被詰み"（書き出し側の formatEvalComment と対）。
+    if (content.startsWith("被詰み")) return { evalMate: -Infinity, depth };
+    if (content.startsWith("詰み")) return { evalMate: Infinity, depth };
 
     // 評価値。書式が 2 つあり、小数点の有無で見分ける:
     //   - 小数点なし（"+150" "-80" "+0"）: センチポーンの整数。いまの書き出し（formatEvalComment）。

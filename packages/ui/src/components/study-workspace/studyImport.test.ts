@@ -90,6 +90,18 @@ describe("parseKifuTextForStudy", () => {
         }
     });
 
+    it("「手合割：平手」だけの KIF（このアプリが書き出す、指し手の無い平手の棋譜）は、平手の局面にする", () => {
+        expect(
+            parseKifuTextForStudy(
+                "#KIF version=2.0 encoding=UTF-8\n手合割：平手　　\n先手：a\n後手：b\n手数----指手---------消費時間--\n*開始局面のメモ",
+            ),
+        ).toEqual({
+            kind: "moves",
+            startSfen: "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+            moves: [],
+        });
+    });
+
     it("指し手の行があるのに読めなかった棋譜・見出しだけの棋譜は、局面だけの材料にしない", () => {
         // KIF: 指し手の行が 1 つも読めない（移動元が無い）。
         expect(() => parseKifuTextForStudy("開始局面：startpos\n1 ７六歩\n2 ３四歩")).toThrow(
@@ -105,8 +117,10 @@ describe("parseKifuTextForStudy", () => {
                 "パースできる指し手が見つかりませんでした",
             );
         }
-        // KIF: 見出しだけ（開始局面の明示なし）。
-        expect(() => parseKifuTextForStudy("手合割：平手\n先手：a\n後手：b")).toThrow(
+        // KIF: 見出しだけ（開始局面も手合割も無い）。
+        expect(() => parseKifuTextForStudy("先手：a\n後手：b")).toThrow();
+        // KIF: 「手合割：平手」のあとに、読めない指し手の行がある。
+        expect(() => parseKifuTextForStudy("手合割：平手\n1 ７六歩\n2 ３四歩")).toThrow(
             "パースできる指し手が見つかりませんでした",
         );
         // KIF: 消費時間つきの指し手の行（コロンを含む）、開始局面の行に続けて書いた手順。

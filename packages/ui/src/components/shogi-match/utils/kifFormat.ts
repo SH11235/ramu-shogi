@@ -651,6 +651,24 @@ interface KifExportOptions {
     includeEval?: boolean;
     /** 開始局面（SFEN形式） */
     startSfen?: string;
+    /**
+     * 手ごとのコメント（手数 → コメント。0 は開始局面）。`*` で始まるコメント行として出す。
+     * 空のコメントは出さない。
+     */
+    comments?: ReadonlyMap<number, string>;
+}
+
+/**
+ * コメントを KIF のコメント行（1 行ごとに `*` を付ける）にする。
+ *
+ * 「評価値=」で始まる行は、空白を挟んで出す。そのまま出すと評価値のコメント
+ * （`*評価値=+50`）と同じ形になり、読み込むときに手の評価値として扱われてしまう。
+ */
+function formatCommentLines(comment: string | undefined): string[] {
+    if (!comment || comment.trim() === "") return [];
+    return comment
+        .split(/\r?\n/)
+        .map((line) => (line.startsWith("評価値=") ? `* ${line}` : `*${line}`));
 }
 
 /**
@@ -831,6 +849,7 @@ export function exportToKifString(
 
     // 指し手ヘッダー
     lines.push("手数----指手---------消費時間--");
+    lines.push(...formatCommentLines(options.comments?.get(0)));
 
     // 各手
     let prevTo: Square | undefined;
@@ -872,6 +891,7 @@ export function exportToKifString(
                 lines.push(evalComment);
             }
         }
+        lines.push(...formatCommentLines(options.comments?.get(ply)));
 
         prevTo = parseToSquare(move.usiMove);
     }

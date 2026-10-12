@@ -123,16 +123,22 @@ const isKifNonMoveLine = (line: string): boolean => {
     );
 };
 
+/** KIF の「手合割：平手」の行（平手の開始局面を明示している）。 */
+const KIF_HIRATE_LINE = /^手合割[：:][\s　]*平手[\s　]*$/;
+
 /**
- * KIF が「開始局面だけ」の入力か。開始局面が局面だけの形で明示されていて、指し手ではない行
- * しか無いとき。それ以外の行がある（指し手らしい行があるのに 1 つも読めなかった）棋譜は、
+ * KIF が「開始局面だけ」の入力か。開始局面が局面だけの形で明示されている（「開始局面：〜」、
+ * または「手合割：平手」。両方あるものは、どちらの局面か決められないので認めない）うえで、
+ * 指し手ではない行しか無いとき。それ以外の行がある（指し手らしい行があるのに 1 つも読めなかった）棋譜は、
  * 局面だけの入力としては扱わない（指し手を黙って捨てない）。
  */
 const isKifPositionOnly = (text: string): boolean => {
     const lines = text.split(/\r?\n/);
+    const hasStartPosition = lines.some((line) => KIF_START_POSITION_LINE.test(line.trim()));
+    const hasHirate = lines.some((line) => KIF_HIRATE_LINE.test(line.trim()));
     return (
-        lines.some((line) => KIF_START_POSITION_LINE.test(line.trim())) &&
-        lines.every(isKifNonMoveLine)
+        hasStartPosition !== hasHirate &&
+        lines.every((line) => isKifNonMoveLine(line) || KIF_HIRATE_LINE.test(line.trim()))
     );
 };
 
