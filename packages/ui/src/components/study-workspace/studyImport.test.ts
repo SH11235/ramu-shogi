@@ -101,6 +101,31 @@ describe("parseKifuTextForStudy", () => {
         expect(() => parseKifuTextForStudy("開始局面：startpos moves 7g7f 3c3d")).toThrow(
             "パースできる指し手が見つかりませんでした",
         );
+        // KIF: 開始局面の行や、見出しの形をした行に書かれた指し手。
+        for (const kif of [
+            "開始局面：平手 ▲７六歩(77) △３四歩(33)",
+            "開始局面：startpos\n指し手：▲７六歩(77)",
+            "開始局面：startpos\n手順：7g7f 3c3d",
+            "開始局面：startpos\n手数1 ７六歩(77)",
+            "開始局面：startpos\nまで1手 ７六歩(77)",
+            "開始局面：lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 7g7f",
+        ]) {
+            expect(() => parseKifuTextForStudy(kif), kif).toThrow();
+        }
+        // SFEN: 手数の欄に入った指し手。
+        for (const sfen of [
+            "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 7g7f",
+            "sfen lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 7g7f",
+            "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b -\n7g7f",
+        ]) {
+            expect(() => parseKifuTextForStudy(sfen), sfen).toThrow(
+                "棋譜の形式を判別できませんでした",
+            );
+        }
+        // CSA: 終局の指示に続けて書いた指し手。
+        expect(() => parseKifuTextForStudy("PI\n+\n%TORYO +7776FU -3334FU")).toThrow(
+            "CSA の解析に失敗しました: 指し手を読み取れませんでした",
+        );
         // CSA: 見出しだけ（局面の行なし）、読めない指し手の行、終局の指示や区切りのあとの指し手、
         // コメントの中の `PI`。
         for (const csa of [

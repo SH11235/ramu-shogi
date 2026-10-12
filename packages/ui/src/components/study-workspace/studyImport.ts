@@ -52,13 +52,22 @@ export function studyStartPositionError(startSfen: string): string | null {
 const positionOnlySource = (startSfen: string): StudyKifuSource => {
     const reason = studyStartPositionError(startSfen);
     if (reason) throw new Error(`この局面は研究ノートにできません: ${reason}`);
-    return { kind: "moves", startSfen: normalizeStudyStartSfen(startSfen), moves: [] };
+    const normalized = normalizeStudyStartSfen(startSfen);
+    // 手数の欄が数でないもの（`… b - 7g7f` のように、指し手が手数の欄に入ったもの）は断る。
+    if (!/^[1-9]\d*$/.test(normalized.split(" ")[3] ?? "")) {
+        throw new Error("棋譜の形式を判別できませんでした（CSA / KIF / SFEN に対応）");
+    }
+    return { kind: "moves", startSfen: normalized, moves: [] };
 };
 
 /** CSA の局面の文（`PI`・`P1`〜`P9`・`P+`・`P-`）。 */
 const CSA_POSITION_STATEMENT = /^P(?:I|[1-9]|[+-])/;
-/** CSA の、指し手ではない文（版・対局者名・棋譜情報・局面・手番・消費時間・終局などの指示）。 */
-const CSA_NON_MOVE_STATEMENT = /^(?:V|N[+-]|\$|P(?:I|[1-9]|[+-])|[+-]$|T\d+$|%)/;
+/**
+ * CSA の、指し手ではない文（版・対局者名・棋譜情報・局面・手番・消費時間・終局などの指示）。
+ * 決まった形のものだけを認める（`%TORYO +7776FU` のように、うしろに何か続くものは認めない）。
+ */
+const CSA_NON_MOVE_STATEMENT =
+    /^(?:V[\d.]+|N[+-].*|\$[A-Z_]+:.*|P(?:I|[1-9]|[+-]).*|[+-]|T\d+|%[A-Z_0-9]+)$/;
 
 /**
  * CSA が「局面だけ」の入力か。局面の文があり、指し手ではない文しか無いとき。
@@ -81,38 +90,37 @@ const isCsaPositionOnly = (text: string): boolean => {
     );
 };
 
-/** KIF の「開始局面：〜」の行。値に手順（`moves`）が続くものは、局面だけとは見なさない。 */
-const KIF_START_POSITION_LINE = /^開始局面[：:](?!.*\bmoves\b)/;
+/** KIF の「開始局面：〜」の行で、値が局面だけ（`startpos` か、SFEN の 3〜4 欄）のもの。 */
+const KIF_START_POSITION_LINE =
+    /^開始局面[：:]\s*(?:startpos|(?:sfen\s+)?[^\s]+\s+[bw]\s+[^\s]+(?:\s+\d+)?)$/;
+/** KIF の見出しのうち、局面だけの入力に書かれていてよいもの。 */
+const KIF_HEADER_LINE =
+    /^(?:手合割|先手|後手|下手|上手|開始日時|終了日時|棋戦|場所|持ち時間|消費時間|戦型|表題)[：:]/;
 
-/** KIF の、指し手ではない行（空行・コメント・見出し・手数の区切り・「まで〜」）か。 */
+/** KIF の、指し手ではない行（空行・コメント・決まった見出し・手数の区切り・「まで〜」）か。 */
 const isKifNonMoveLine = (line: string): boolean => {
     const trimmed = line.trim();
     return (
         trimmed === "" ||
         trimmed.startsWith("#") ||
         trimmed.startsWith("*") ||
-        trimmed.startsWith("手数") ||
-        trimmed.startsWith("まで") ||
-        // 見出し（「先手：〜」など）。指し手の行の消費時間（`(0:05/00:00:05)`）を見出しと
-        // 取り違えないよう、見出しの名前には数字・空白・括弧・指し手の記号を認めない。
-        /^[^\d０-９\s()（）▲△▼▽☗☖同：:][^\s()（）：:]*[：:]/.test(trimmed)
+        /^手数-+指手-+/.test(trimmed) ||
+        /^まで\d+手で[\S]*$/.test(trimmed) ||
+        KIF_HEADER_LINE.test(trimmed) ||
+        KIF_START_POSITION_LINE.test(trimmed)
     );
 };
 
 /**
- * KIF が「開始局面だけ」の入力か。開始局面が明示されていて、指し手ではない行しか無いとき。
- * それ以外の行がある（指し手らしい行があるのに 1 つも読めなかった）棋譜は、局面だけの入力と
- * しては扱わない（指し手を黙って捨てない）。
+ * KIF が「開始局面だけ」の入力か。開始局面が局面だけの形で明示されていて、指し手ではない行
+ * しか無いとき。それ以外の行がある（指し手らしい行があるのに 1 つも読めなかった）棋譜は、
+ * 局面だけの入力としては扱わない（指し手を黙って捨てない）。
  */
 const isKifPositionOnly = (text: string): boolean => {
     const lines = text.split(/\r?\n/);
     return (
         lines.some((line) => KIF_START_POSITION_LINE.test(line.trim())) &&
-        lines.every(
-            (line) =>
-                isKifNonMoveLine(line) &&
-                (!line.trim().startsWith("開始局面") || KIF_START_POSITION_LINE.test(line.trim())),
-        )
+        lines.every(isKifNonMoveLine)
     );
 };
 
