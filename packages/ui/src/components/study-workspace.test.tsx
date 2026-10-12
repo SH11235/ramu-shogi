@@ -255,13 +255,13 @@ describe("StudyWorkspaceView", () => {
         ).toBeTruthy();
     });
 
-    it("見ている変化を本譜にすると、子の並びを入れ替える操作が流れ、元の本譜は変化として残る", async () => {
+    it("見ている変化を本譜と入れ替えると、子の並びを入れ替える操作が流れ、元の本譜は変化として残る", async () => {
         const { doc, ids } = createTestStudy();
         const onOps = vi.fn();
         const fetchLegalMoves = vi.fn(async () => ["7g7f", "2g2f", "5g5f"]);
         render(<Harness initialDoc={doc} onOps={onOps} fetchLegalMoves={fetchLegalMoves} />);
         // 本譜の上では出さない。
-        expect(within(moveList()).queryByRole("button", { name: "本譜にする" })).toBeNull();
+        expect(within(moveList()).queryByRole("button", { name: "本譜と入れ替える" })).toBeNull();
 
         fireEvent.click(screen.getByRole("button", { name: /^5g 先手の歩/ }));
         await act(async () => {
@@ -270,10 +270,14 @@ describe("StudyWorkspaceView", () => {
         await waitFor(() => expect(within(moveList()).getByText("変化を表示中")).toBeTruthy());
         onOps.mockClear();
 
-        fireEvent.click(within(moveList()).getByRole("button", { name: "本譜にする" }));
+        fireEvent.click(within(moveList()).getByRole("button", { name: "本譜と入れ替える" }));
 
         expect(onOps).toHaveBeenCalledWith([
-            { type: "reorderChildren", parentId: ids[0], value: [expect.any(String), ids[1]] },
+            {
+                type: "reorderChildren",
+                parentId: ids[0],
+                value: [studyChildNodeId(ids[0], "5g5f"), ids[1]],
+            },
         ]);
         // 見ている手順が本譜になり、元の本譜（☗7六歩）が変化として並ぶ。
         await waitFor(() => expect(within(moveList()).queryByText("変化を表示中")).toBeNull());

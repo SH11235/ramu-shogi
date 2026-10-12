@@ -851,7 +851,12 @@ export function StudyWorkspaceView({
                 value: [childId, ...children.filter((id) => id !== childId)],
             });
         }
-        if (ops.length > 0) void onApplyOps(ops);
+        if (ops.length === 0) return;
+        void onApplyOps(ops);
+        onMessageChange({
+            text: "見ていた変化を本譜にしました。元の本譜は変化として残っています。",
+            type: "success",
+        });
     };
     const confirmDeleteVariation = (): void => {
         const targetId = deleteTargetId;
@@ -1180,6 +1185,20 @@ export function StudyWorkspaceView({
     };
 
     const deleteTarget = deleteTargetId ? tree.nodes.get(deleteTargetId) : undefined;
+    // 消す変化に、取り込んだ棋譜の手（対局時の情報つき）が含まれるか。本譜を入れ替えたあとは、
+    // 元の対局の手順も変化として消せるので、確認の文面で知らせる。
+    const deleteTargetHasSource = ((): boolean => {
+        if (!deleteTargetId) return false;
+        const stack = [deleteTargetId];
+        while (stack.length > 0) {
+            const id = stack.pop() as string;
+            if (!Object.hasOwn(doc.tree.nodes, id)) continue;
+            const stored = doc.tree.nodes[id];
+            if (stored.source !== null) return true;
+            stack.push(...stored.children);
+        }
+        return false;
+    })();
 
     return (
         <TooltipProvider delayDuration={TOOLTIP_DELAY_DURATION_MS}>
@@ -1398,7 +1417,11 @@ export function StudyWorkspaceView({
                         <AlertDialogTitle>この変化を削除しますか？</AlertDialogTitle>
                         <AlertDialogDescription>
                             {deleteTarget && deleteTargetId
-                                ? `${deleteTarget.ply}手目 ${studyMoveLabel(tree, deleteTargetId)} から先の ${studyVariationLength(tree, deleteTargetId)} 手（その先の枝分かれを含めて ${studySubtreeSize(tree, deleteTargetId)} 局面）と、その解析結果・コメント・しおりを削除します。元に戻せません。`
+                                ? `${deleteTarget.ply}手目 ${studyMoveLabel(tree, deleteTargetId)} から先の ${studyVariationLength(tree, deleteTargetId)} 手（その先の枝分かれを含めて ${studySubtreeSize(tree, deleteTargetId)} 局面）と、その解析結果・コメント・しおりを削除します。${
+                                      deleteTargetHasSource
+                                          ? "取り込んだ棋譜の手（対局時の評価値など）も含まれます。"
+                                          : ""
+                                  }元に戻せません。`
                                 : "変化と、その解析結果・コメント・しおりを削除します。"}
                         </AlertDialogDescription>
                     </AlertDialogHeader>

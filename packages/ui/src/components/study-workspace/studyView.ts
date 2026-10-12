@@ -229,7 +229,7 @@ export function studyMainLineIds(tree: KifuTree): Set<string> {
  * いま見ている枝を消すときの対象（直近の分岐点から先の、最初の手のノード）。
  *
  * いま見ているノードからルートへさかのぼり、兄弟のいる最初のノードを返す。それが本譜の上なら
- * 消せないので null（本譜は対局そのものなので、ここからは消さない）。
+ * 消せないので null（本譜は、ほかの手順と入れ替えて変化にしてからでないと消せない）。
  */
 export function studyDeletableBranchHead(tree: KifuTree, nodeId: string): string | null {
     const mainLine = studyMainLineIds(tree);

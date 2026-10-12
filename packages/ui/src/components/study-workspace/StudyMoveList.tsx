@@ -5,9 +5,9 @@
  * 他の枝を出す。各手には表示中の解析の設定での評価値を出し、棋譜に元から付いていた
  * 評価値（対局時の評価値）がある棋譜では、別の列として並べる。
  *
- * 「本譜」は対局の本譜（開始局面から先頭の子をたどった手順）だけを指す。変化の中の
- * 枝分かれは、どの枝も「変化」として個別に消せる。見ている変化は、本譜に入れ替えられる
- * （入れ替えられた元の本譜は、変化として残る）。
+ * 「本譜」は開始局面から先頭の子をたどった手順（取り込んだ直後は、対局の手順）を指す。
+ * 変化の中の枝分かれは、どの枝も「変化」として個別に消せる。見ている変化は本譜と
+ * 入れ替えられ、入れ替えられた元の本譜は変化として残る（ほかの変化と同じく消せる）。
  */
 
 import type { KifuTree, StudyDocument, StudyHighlightKind } from "@shogi/app-core";
@@ -133,7 +133,7 @@ export function StudyMoveList({
                             onClick={onPromoteToMainLine}
                             className="min-h-10 rounded-md px-2 text-xs font-medium text-wafuu-ai underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
-                            本譜にする
+                            本譜と入れ替える
                         </button>
                         {deletableHeadId && (
                             <StudyIconButton
