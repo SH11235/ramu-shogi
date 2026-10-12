@@ -1,6 +1,7 @@
 import type { ListNnueFilesResponse, NnueFileSummary } from "@shogi/api-contract";
 import { type RemoteNnueFile, type RemoteNnueManager, useNnueStorage } from "@shogi/ui";
 import { useEffect, useEffectEvent, useState } from "react";
+import { buildLoginHref, currentReturnPath } from "../lib/loginReturn";
 import { parseApiError, useAuthSession } from "./useAuthSession";
 
 interface UseRemotePrivateNnueManagerOptions {
@@ -116,7 +117,8 @@ export function useRemotePrivateNnueManager(
         refresh,
         importFile,
         clearError: () => setError(null),
-        loginHref: "/auth",
+        // ログイン後は、いま開いている画面（対局・検討）へ戻る。
+        loginHref: buildLoginHref(currentReturnPath()),
         manageHref: "/nnue",
     };
 }

@@ -52,6 +52,7 @@ describe("StudiesPage", () => {
         navigate.mockClear();
         dispatchAuthSessionSyncEvent.mockClear();
         auth = AUTH_SIGNED_OUT;
+        localStorage.clear();
         resetStudySyncForTest();
         currentSync = createTestSync();
     });
@@ -237,6 +238,119 @@ describe("StudiesPage", () => {
         expect(
             await screen.findByRole("heading", { name: "棋譜を取り込んで、研究ノートを作る" }),
         ).toBeTruthy();
+    });
+
+    describe("クラウドにだけあるノートの削除が 404 だったとき", () => {
+        const DRAFTS_KEY = "ramu-study-comment-drafts";
+        const cloudApi = () =>
+            createOfflineApi({
+                list: vi.fn(async () => ({
+                    ok: true as const,
+                    status: 200,
+                    data: {
+                        studies: [
+                            {
+                                id: CLOUD_ID,
+                                title: "クラウドのノート",
+                                origin: { kind: "paste" as const, ref: null },
+                                meta: {},
+                                revision: 1,
+                                nodeCount: 3,
+                                layerCount: 0,
+                                resultCount: 0,
+                                updatedAt: "2026-10-01T00:00:00.000Z",
+                            },
+                        ],
+                        nextCursor: null,
+                    },
+                })),
+                delete: vi.fn(async () => ({ ok: false as const, status: 404, error: {} })),
+            });
+        /** user-1 の一覧からクラウドのノートの削除を確定する。 */
+        const deleteCloudStudy = async (
+            verifySession: () => Promise<{ userId: string } | null>,
+        ): Promise<void> => {
+            auth = authSignedIn("user-1");
+            localStorage.setItem(
+                DRAFTS_KEY,
+                JSON.stringify({
+                    [CLOUD_ID]: { ownerId: "user-1", nodes: [{ nodeId: "n", text: "下書き" }] },
+                }),
+            );
+            render(<StudiesPage api={cloudApi()} verifySession={verifySession} />);
+            fireEvent.click(
+                await screen.findByRole("button", { name: "「クラウドのノート」を削除" }),
+            );
+            const dialog = await screen.findByRole("alertdialog");
+            fireEvent.click(within(dialog).getByRole("button", { name: "削除する" }));
+        };
+        const hasDraft = (): boolean =>
+            Object.hasOwn(JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? "{}"), CLOUD_ID);
+
+        it("サーバーから見たログイン状態が一覧の持ち主のままなら、削除済みとして一覧と下書きから消す", async () => {
+            await deleteCloudStudy(async () => ({ userId: "user-1" }));
+
+            await waitFor(() =>
+                expect(screen.queryByRole("link", { name: /クラウドのノート/ })).toBeNull(),
+            );
+            expect(hasDraft()).toBe(false);
+            expect(dispatchAuthSessionSyncEvent).not.toHaveBeenCalled();
+        });
+
+        it.each([
+            ["別のアカウントに切り替わっていた", async () => ({ userId: "user-2" })],
+            ["ログアウトしていた", async () => null],
+        ])("別のタブで%sら、一覧からも下書きからも消さず、ログイン状態を取り直す", async (_, verifySession) => {
+            await deleteCloudStudy(verifySession);
+
+            expect(
+                (await screen.findByText(/研究ノートを削除できませんでした/)).textContent,
+            ).toContain("ログイン状態が変わっています");
+            expect(screen.getByRole("link", { name: /クラウドのノート/ })).toBeTruthy();
+            expect(hasDraft()).toBe(true);
+            expect(dispatchAuthSessionSyncEvent).toHaveBeenCalledTimes(1);
+        });
+
+        it("削除の確認を開いたあとにアカウントが変わったら、確認を閉じ、前のアカウントのノートも下書きも消さない", async () => {
+            const api = cloudApi();
+            // サーバーから見たログイン状態は、切り替わったあとの user-2。
+            const verifySession = vi.fn(async () => ({ userId: "user-2" }));
+            auth = authSignedIn("user-1");
+            localStorage.setItem(
+                DRAFTS_KEY,
+                JSON.stringify({
+                    [CLOUD_ID]: { ownerId: "user-1", nodes: [{ nodeId: "n", text: "下書き" }] },
+                }),
+            );
+            const view = render(<StudiesPage api={api} verifySession={verifySession} />);
+            fireEvent.click(
+                await screen.findByRole("button", { name: "「クラウドのノート」を削除" }),
+            );
+            await screen.findByRole("alertdialog");
+
+            // 別のタブで user-2 に切り替わり、この画面のログイン状態も user-2 になった。
+            auth = authSignedIn("user-2");
+            view.rerender(<StudiesPage api={api} verifySession={verifySession} />);
+            // 確認が残っていたら、そのまま確定する（user-2 のセッションでは 404 が返る）。
+            await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
+            const confirm = screen.queryByRole("button", { name: "削除する" });
+            if (confirm) fireEvent.click(confirm);
+            await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(hasDraft()).toBe(true);
+            expect(api.delete).not.toHaveBeenCalled();
+        });
+
+        it("ログイン状態を確かめられなければ、消さない", async () => {
+            await deleteCloudStudy(async () => {
+                throw new Error("Failed to fetch");
+            });
+
+            expect(await screen.findByText(/ログイン状態を確認できませんでした/)).toBeTruthy();
+            expect(screen.getByRole("link", { name: /クラウドのノート/ })).toBeTruthy();
+            expect(hasDraft()).toBe(true);
+        });
     });
 
     it("アカウントが変わったら、前のアカウントの一覧と続きの位置を残さない", async () => {

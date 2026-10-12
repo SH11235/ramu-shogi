@@ -581,10 +581,13 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
 
         it("未認証（401）: 送信を止めて知らせ、ログインし直すと再開する", async () => {
             const harness = await createSyncedHarness();
+            expect(harness.sync.isUnauthorized()).toBe(false);
             harness.server.interceptOnce("postOps", { status: 401 });
             await harness.sync.applyOps(TEST_STUDY_ID, [comment("セッション切れ")]);
             await harness.sync.flush(TEST_STUDY_ID);
             expect(harness.events).toContainEqual({ type: "unauthorized" });
+            // 伝え直されるまでは、401 を受けた状態のまま（画面はこの間、編集を止める）。
+            expect(harness.sync.isUnauthorized()).toBe(true);
             expect(harness.sync.getStatus(TEST_STUDY_ID)).toMatchObject({
                 state: "local",
                 reason: "signed_out",
@@ -595,6 +598,7 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
 
             // 同じユーザーでログインし直したら、少し間隔を空けてから送り直す。
             harness.login(USER_A);
+            expect(harness.sync.isUnauthorized()).toBe(false);
             await harness.advance(1999);
             expect(harness.postOpsCalls()).toHaveLength(1);
             await harness.advance(1);

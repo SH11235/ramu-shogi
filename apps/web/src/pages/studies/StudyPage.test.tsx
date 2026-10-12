@@ -1,6 +1,7 @@
 import type { StudyOp } from "@shogi/app-core";
 import {
     createMemoryStudyStore,
+    createStudySync,
     type StoredStudy,
     type StudySync,
     type StudySyncEvent,
@@ -267,6 +268,140 @@ describe("StudyPage", () => {
             );
         });
 
+        /** アカウントのノートを開き、サーバーが 1 度だけ 401 を返した（同期エンジンが送信を止めた）状態にする。 */
+        const openThenUnauthorized = async () => {
+            const store = createMemoryStudyStore();
+            const seed = createTestSync(createOfflineApi(), store);
+            seed.setSession({ userId: "user-1" });
+            await seed.createStudy(createTestDoc(STUDY_ID, "アカウントのノート"));
+            seed.dispose();
+            const create = vi.fn(createOfflineApi().create).mockImplementationOnce(async () => ({
+                ok: false as const,
+                status: 401,
+                error: {},
+            }));
+            currentSync = createTestSync(createOfflineApi({ create }), store);
+            auth = authSignedIn("user-1");
+            const view = render(<StudyPage />);
+            await screen.findByTestId("workspace");
+            await waitFor(() => expect(dispatchAuthSessionSyncEvent).toHaveBeenCalledTimes(1));
+            return view;
+        };
+
+        it("セッション切れ（401）のあと、ログイン状態の取り直しに失敗している間は、編集を止めたままにする", async () => {
+            const view = await openThenUnauthorized();
+            const nodeId = workspaceProps?.doc.tree.rootId ?? "";
+            const edit: StudyOp[] = [{ type: "setComment", nodeId, value: "送れない編集" }];
+
+            // 401 を受けたら、取り直しの結果を待たずに編集を止める（画面は残す）。
+            await waitFor(() => expect(workspaceProps?.locked).toBe(true));
+            workspaceProps?.onCommentDraftChange?.(nodeId, setDraft("送れない編集"));
+
+            // 取り直しが通信エラーで失敗した（認証の状態には前のユーザーが残る）。
+            auth = { ...authSignedIn("user-1"), isLoadingSession: true };
+            view.rerender(<StudyPage />);
+            auth = { ...authSignedIn("user-1"), sessionError: "Failed to fetch" };
+            view.rerender(<StudyPage />);
+            await act(async () => {
+                await new Promise((resolve) => setTimeout(resolve, 30));
+            });
+            expect(screen.getByTestId("workspace")).toBeTruthy();
+            expect(workspaceProps?.locked).toBe(true);
+            // ノートは読めるが、編集は保存層に書かない（送れない編集を積み上げない）。
+            expect(await workspaceProps?.onApplyOps(edit)).toBe(false);
+            expect(workspaceProps?.notice ?? null).toBeNull();
+            expect((await currentSync.load(STUDY_ID))?.doc.tree.nodes[nodeId].comment ?? "").toBe(
+                "",
+            );
+            // 他のタブの変更を取り込み直しても、解かない。
+            await act(async () => {
+                await workspaceProps?.onApplyOps(edit);
+                await new Promise((resolve) => setTimeout(resolve, 10));
+            });
+            expect(workspaceProps?.locked).toBe(true);
+            // 書きかけは、持ち主と一緒に残っている。
+            expect(JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? "{}")[STUDY_ID]).toMatchObject({
+                ownerId: "user-1",
+                nodes: [{ nodeId, text: "送れない編集" }],
+            });
+
+            // 取り直せて、同じユーザーでログイン済みと分かったら、その場で編集できるようになる。
+            auth = { ...authSignedIn("user-1"), isLoadingSession: true };
+            view.rerender(<StudyPage />);
+            auth = authSignedIn("user-1");
+            view.rerender(<StudyPage />);
+            await waitFor(() => expect(workspaceProps?.locked).toBe(false));
+            expect(await workspaceProps?.onApplyOps(edit)).toBe(true);
+        });
+
+        it("セッション切れ（401）のまま、取り直しに失敗した状態でノートを開いても、編集を止めて開く", async () => {
+            const view = await openThenUnauthorized();
+            view.unmount();
+            workspaceProps = null;
+
+            // 取り直しに失敗したまま（前のユーザーが残っている）、ノートを開き直す。
+            auth = { ...authSignedIn("user-1"), sessionError: "Failed to fetch" };
+            render(<StudyPage />);
+            await screen.findByTestId("workspace");
+
+            expect((workspaceProps as StudyWorkspaceProps | null)?.locked).toBe(true);
+        });
+
+        it("401 を受けていなければ、ログイン状態の取り直しに失敗しただけ（オフライン）では編集を止めない", async () => {
+            await prepareOwnedStudy("アカウントのノート");
+            auth = authSignedIn("user-1");
+            const view = render(<StudyPage />);
+            await screen.findByTestId("workspace");
+            const nodeId = workspaceProps?.doc.tree.rootId ?? "";
+
+            auth = { ...authSignedIn("user-1"), isLoadingSession: true };
+            view.rerender(<StudyPage />);
+            auth = { ...authSignedIn("user-1"), sessionError: "Failed to fetch" };
+            view.rerender(<StudyPage />);
+            await act(async () => {
+                await new Promise((resolve) => setTimeout(resolve, 30));
+            });
+
+            expect(workspaceProps?.locked).toBe(false);
+            expect(
+                await workspaceProps?.onApplyOps([
+                    { type: "setComment", nodeId, value: "オフラインの編集" },
+                ]),
+            ).toBe(true);
+        });
+
+        it("別のタブでアカウントが切り替わったと分かったあと、取り直しに失敗しても、「見つかりません」にせず編集を止める", async () => {
+            const store = createMemoryStudyStore();
+            const seed = createTestSync(createOfflineApi(), store);
+            seed.setSession({ userId: "user-1" });
+            await seed.createStudy(createTestDoc(STUDY_ID, "アカウントのノート"));
+            seed.dispose();
+            // 作成の直前の確認で、サーバーから見たログイン状態が別のユーザーだった。
+            currentSync = createStudySync({
+                store,
+                api: createOfflineApi(),
+                verifySession: async () => ({ userId: "user-2" }),
+            });
+            auth = authSignedIn("user-1");
+            const view = render(<StudyPage />);
+            await screen.findByTestId("workspace");
+            await waitFor(() => expect(dispatchAuthSessionSyncEvent).toHaveBeenCalled());
+            await waitFor(() => expect(workspaceProps?.locked).toBe(true));
+
+            // 取り直しが通信エラーで失敗した（認証の状態には前のユーザーが残る）。
+            auth = { ...authSignedIn("user-1"), isLoadingSession: true };
+            view.rerender(<StudyPage />);
+            auth = { ...authSignedIn("user-1"), sessionError: "Failed to fetch" };
+            view.rerender(<StudyPage />);
+            await act(async () => {
+                await new Promise((resolve) => setTimeout(resolve, 30));
+            });
+
+            expect(screen.getByTestId("workspace")).toBeTruthy();
+            expect(screen.queryByText("研究ノートが見つかりません")).toBeNull();
+            expect(workspaceProps?.locked).toBe(true);
+        });
+
         it("別のタブでログインし直してからこのタブに戻ると、セッションを取り直し、その場で編集できるようになる", async () => {
             const view = await openThenLock();
 
@@ -405,6 +540,79 @@ describe("StudyPage", () => {
         ]);
         // 長すぎる下書きのために、開く局面は変えない（棋譜の印で知らせる）。
         expect(reopened?.initialView?.currentNodeId ?? null).toBeNull();
+    });
+
+    it("匿名のノートに残した下書きは、ログインして（ページを開き直して）ノートを引き継いだあとも、その手に戻る", async () => {
+        await currentSync.createStudy(createTestDoc(STUDY_ID, "匿名のノート"));
+        const first = render(<StudyPage />);
+        await screen.findByTestId("workspace");
+        const doc = workspaceProps?.doc;
+        const nodeId = Object.keys(doc?.tree.nodes ?? {}).find((id) => id !== doc?.tree.rootId);
+        const tooLong = "あ".repeat(2000);
+        workspaceProps?.onCommentDraftChange?.(nodeId ?? "", setDraft(tooLong));
+        // ログインのためにページを離れる（OAuth でページが遷移する）。
+        first.unmount();
+        workspaceProps = null;
+
+        // ログインして戻ってきた。引き継ぎを終えてから、ノートを開く。
+        auth = authSignedIn("user-1");
+        render(<StudyPage />);
+        await screen.findByTestId("workspace");
+
+        const reopened = workspaceProps as StudyWorkspaceProps | null;
+        expect((await currentSync.load(STUDY_ID))?.owner).toBe("user-1");
+        expect(reopened?.initialCommentDrafts).toEqual([{ nodeId, text: tooLong, base: "" }]);
+        expect(JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? "{}")[STUDY_ID].ownerId).toBe(
+            "user-1",
+        );
+    });
+
+    it("ページを開き直した順（確認中は匿名のノートとして表示 → 確定して引き継ぎ → その直後の入力）でも、引き継いだ下書きを落とさない", async () => {
+        await currentSync.createStudy(createTestDoc(STUDY_ID, "匿名のノート"));
+        const draftsOf = (): { ownerId: string | null; nodes: Array<{ text: string }> } =>
+            JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? "{}")[STUDY_ID];
+        // ログインする前に、2 つの手に残した下書き（保存できない長さ）。
+        const first = render(<StudyPage />);
+        await screen.findByTestId("workspace");
+        const doc = workspaceProps?.doc;
+        const [nodeA, nodeB, nodeC] = Object.keys(doc?.tree.nodes ?? {}).filter(
+            (id) => id !== doc?.tree.rootId,
+        );
+        const longA = "あ".repeat(2000);
+        const longB = "い".repeat(2000);
+        workspaceProps?.onCommentDraftChange?.(nodeA, setDraft(longA));
+        workspaceProps?.onCommentDraftChange?.(nodeB, setDraft(longB));
+        first.unmount();
+        workspaceProps = null;
+
+        // ログインして戻ってきた。ログイン状態を確認している間は、匿名のノートとして表示する。
+        auth = AUTH_LOADING;
+        const view = render(<StudyPage />);
+        await screen.findByTestId("workspace");
+        const beforeAdoption = workspaceProps as StudyWorkspaceProps | null;
+        expect(beforeAdoption?.initialCommentDrafts).toHaveLength(2);
+
+        // ログイン状態が確定し、ノートと下書きの持ち主がアカウントに移った。
+        auth = authSignedIn("user-1");
+        view.rerender(<StudyPage />);
+        await waitFor(() => expect(draftsOf().ownerId).toBe("user-1"));
+        // その直後、画面がまだ匿名のノートのつもりでいる間に、別の手に書いた。
+        beforeAdoption?.onCommentDraftChange?.(nodeC, setDraft("引き継ぎの直後の入力"));
+
+        expect(draftsOf().ownerId).toBe("user-1");
+        expect(
+            draftsOf()
+                .nodes.map((entry) => entry.text)
+                .sort(),
+        ).toEqual([longA, longB, "引き継ぎの直後の入力"].sort());
+
+        // 画面の持ち主も、開き直しでアカウントに変わる（以後の入力は、アカウントの下書きとして置く）。
+        await waitFor(() => expect(workspaceProps?.saveStatus.reason).not.toBe("anonymous"));
+        // waitFor の中で読んだあとは null に絞り込まれるので、型を戻して読む。
+        const afterAdoption = workspaceProps as StudyWorkspaceProps | null;
+        afterAdoption?.onCommentDraftChange?.(nodeC, setDraft("そのあとの入力"));
+        expect(draftsOf().ownerId).toBe("user-1");
+        expect(draftsOf().nodes).toHaveLength(3);
     });
 
     it("以前の形（1 つのノートに 1 つの手）で残っていた下書きも戻す", async () => {
@@ -801,6 +1009,19 @@ describe("StudyPage", () => {
             `/auth?next=%2Fstudies%2F${STUDY_ID}`,
         );
         expect(screen.getByRole("link", { name: "研究ノートの一覧へ" })).toBeTruthy();
+    });
+
+    it("クラウドへの問い合わせが 401（セッション切れ）だったときは、「見つかりません」と決めつけず、確認からやり直せる", async () => {
+        const unauthorized = async () => ({ ok: false as const, status: 401, error: {} });
+        currentSync = createTestSync(createOfflineApi({ get: vi.fn(unauthorized) }));
+        auth = authSignedIn("user-1");
+        render(<StudyPage />);
+
+        expect(
+            await screen.findByRole("heading", { name: "研究ノートを読み込めませんでした" }),
+        ).toBeTruthy();
+        expect(screen.queryByText("研究ノートが見つかりません")).toBeNull();
+        expect(dispatchAuthSessionSyncEvent).toHaveBeenCalledTimes(1);
     });
 
     it("クラウドに問い合わせられなかったときは、読み込めなかったと伝えて再試行できる", async () => {

@@ -167,6 +167,13 @@ export interface StudySync {
      * （アカウントのノートは `load` / `open` / `listLocal` / `applyOps` に出てこない）。
      */
     getSessionStatus(): "unknown" | "signed_in" | "signed_out";
+    /**
+     * サーバーが 401 を返してから（セッション切れ）、`setSession` で伝え直されるまでの間か。
+     * この間、`getSession` は 401 を受ける前のユーザーを返し続け、そのユーザーのノートは
+     * ローカルでは読み書きできるが、サーバーへは送らない。画面は、これが true の間は
+     * アカウントのノートの編集を止める（送れない編集を積み上げないため）。
+     */
+    isUnauthorized(): boolean;
 
     /**
      * 新しいノートをローカルに作る。持ち主は、ログイン中ならそのユーザー、未ログインなら匿名。
@@ -1492,6 +1499,9 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         getSessionStatus() {
             if (!sessionKnown) return "unknown";
             return session ? "signed_in" : "signed_out";
+        },
+        isUnauthorized() {
+            return unauthorized;
         },
 
         createStudy(doc) {

@@ -1,8 +1,10 @@
 import type { StudyMeta, StudyOrigin } from "@shogi/app-core";
 import {
+    createSessionVerifier,
     createStudyApiClient,
     type StudyApi,
     type StudySaveStatus,
+    type StudySession,
     type StudySummary,
 } from "@shogi/study-client";
 import {
@@ -32,6 +34,7 @@ import { PageHeading } from "../../components/PageHeading";
 import { Section } from "../../components/Section";
 import { StatusBanner } from "../../components/StatusBanner";
 import { dispatchAuthSessionSyncEvent, useAuthSession } from "../../hooks/useAuthSession";
+import { buildLoginHref } from "../../lib/loginReturn";
 import { removeStudyCommentDrafts } from "../../lib/studyDrafts";
 import { createStudyFromKifuSource } from "../../lib/studyEntry";
 import { ensureStudySession, getStudySync } from "../../lib/studySync";
@@ -135,9 +138,11 @@ function ImportSection({
 interface StudiesPageProps {
     /** クラウドの一覧の取得（テストで差し替える）。 */
     api?: StudyApi;
+    /** サーバーから見た現在のログイン状態の確認（テストで差し替える）。 */
+    verifySession?: () => Promise<StudySession | null>;
 }
 
-export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
+export default function StudiesPage({ api, verifySession }: StudiesPageProps): ReactElement {
     const navigate = useNavigate();
     const { session, isLoadingSession, sessionError } = useAuthSession();
     // 取り直しに失敗して前の値が残っているだけのときは、その値を同期エンジンへ伝え直さない。
@@ -147,6 +152,8 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
     const userId = session?.authenticated ? session.user.id : null;
     const sync = getStudySync();
     const [client] = useState<StudyApi>(() => api ?? createStudyApiClient());
+    // 同期エンジンが使うのと同じ確認（`GET /api/auth/session`）。
+    const [verify] = useState(() => verifySession ?? createSessionVerifier());
 
     const [local, setLocal] = useState<StudyListItem[] | null>(null);
     const [remote, setRemote] = useState<StudyListItem[]>([]);
@@ -155,7 +162,14 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
     const [remoteError, setRemoteError] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [isImportOpen, setIsImportOpen] = useState(false);
-    const [deleteTarget, setDeleteTarget] = useState<StudyListItem | null>(null);
+    // 削除の確認中のノートと、そのノートを含む一覧を取得したときのユーザー。確認している間に
+    // アカウントが変わっても、確定のときに「誰の一覧のノートか」を取り違えないよう、一緒に持つ。
+    const [deleteTarget, setDeleteTarget] = useState<{
+        item: StudyListItem;
+        listOwnerId: string | null;
+    } | null>(null);
+    // クラウドの一覧（`remote`）を取得したときのユーザー。
+    const remoteOwnerIdRef = useRef<string | null>(null);
     // いま表示している一覧の持ち主。アカウントが変わったら、前のアカウントの一覧と続きの位置を捨てる。
     const ownerKey = sessionKnown ? (userId ?? "signed-out") : "unknown";
     const ownerKeyRef = useRef(ownerKey);
@@ -168,10 +182,13 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
         if (ownerKeyRef.current !== ownerKey) {
             ownerKeyRef.current = ownerKey;
             setLocal(null);
+            remoteOwnerIdRef.current = null;
             setRemote([]);
             setNextCursor(null);
             setRemoteError(null);
             setIsLoadingMore(false);
+            // 前のアカウントの一覧のノートの削除を、いまのアカウントで確定させない。
+            setDeleteTarget(null);
         }
 
         const loadLocal = async (): Promise<void> => {
@@ -221,6 +238,7 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
             if (cancelled) return;
             if (listed.ok) {
                 listUnauthorizedForRef.current = null;
+                remoteOwnerIdRef.current = userId;
                 setRemote(listed.data.studies.map(fromRemote));
                 setNextCursor(listed.data.nextCursor);
                 setRemoteError(null);
@@ -283,9 +301,11 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
     };
 
     const handleDelete = async (): Promise<void> => {
-        const target = deleteTarget;
+        if (!deleteTarget) return;
+        // `listOwnerId` は、一覧を取得したときのユーザー（クラウドのノートは、そのユーザーのもの）。
+        // 確定した時点の画面のユーザーではない（確認している間に変わっていることがある）。
+        const { item: target, listOwnerId } = deleteTarget;
         setDeleteTarget(null);
-        if (!target) return;
         setError(null);
         try {
             if (target.status === null) {
@@ -297,6 +317,26 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
                     throw new Error(
                         deleted.error.message ?? `削除に失敗しました (${deleted.status})`,
                     );
+                }
+                if (!deleted.ok && deleted.status === 404) {
+                    // 404 は「既に無い」だけでなく「いまのセッションのノートではない」でも返る。
+                    // 別のタブでアカウントが切り替わっていたら、一覧の持ち主のノートはサーバーに
+                    // 残っている。サーバーから見たログイン状態が、一覧を取得したときのユーザーの
+                    // ままのときだけ、削除済みとして扱う（同期エンジンの削除と同じ確認）。
+                    let verified: StudySession | null;
+                    try {
+                        verified = await verify();
+                    } catch {
+                        throw new Error(
+                            "ログイン状態を確認できませんでした。時間をおいてお試しください。",
+                        );
+                    }
+                    if (listOwnerId === null || verified?.userId !== listOwnerId) {
+                        dispatchAuthSessionSyncEvent();
+                        throw new Error(
+                            "ログイン状態が変わっています。ログインし直してからお試しください。",
+                        );
+                    }
                 }
                 setRemote((items) => items.filter((item) => item.id !== target.id));
                 removeStudyCommentDrafts(target.id);
@@ -334,7 +374,7 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
                         <p className="text-xs text-muted-foreground">
                             いまはこのブラウザの中にだけ保存されています。
                             <a
-                                href={`/auth?next=${encodeURIComponent("/studies")}`}
+                                href={buildLoginHref("/studies")}
                                 className="text-wafuu-ai underline underline-offset-2 hover:text-wafuu-ai-light"
                             >
                                 ログインするとクラウドにも保存できます
@@ -419,7 +459,12 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
                                         </Link>
                                         <button
                                             type="button"
-                                            onClick={() => setDeleteTarget(item)}
+                                            onClick={() =>
+                                                setDeleteTarget({
+                                                    item,
+                                                    listOwnerId: remoteOwnerIdRef.current,
+                                                })
+                                            }
                                             aria-label={`「${item.title}」を削除`}
                                             className="min-h-10 shrink-0 self-center rounded-md px-3 text-xs text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                         >
@@ -455,7 +500,7 @@ export default function StudiesPage({ api }: StudiesPageProps): ReactElement {
                     <AlertDialogHeader>
                         <AlertDialogTitle>研究ノートを削除しますか？</AlertDialogTitle>
                         <AlertDialogDescription>
-                            「{deleteTarget?.title}
+                            「{deleteTarget?.item.title}
                             」の解析結果・変化・コメントをすべて削除します。元に戻せません。
                         </AlertDialogDescription>
                     </AlertDialogHeader>

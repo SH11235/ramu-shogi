@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactElement } from "react";
+import { buildLoginHref } from "../lib/loginReturn";
 
 interface AuthRequiredCardProps {
     title: string;
@@ -14,7 +15,7 @@ export function AuthRequiredCard({
     nextPath,
     loginLabel = "Googleでログイン",
 }: AuthRequiredCardProps): ReactElement {
-    const authHref = `/auth?next=${encodeURIComponent(nextPath)}`;
+    const authHref = buildLoginHref(nextPath);
 
     return (
         <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
