@@ -833,6 +833,26 @@ export function StudyWorkspaceView({
             resetLine: true,
         });
     };
+    const promoteLineToMain = (): void => {
+        if (locked) return;
+        // いま見ている手順の各手を、その親の先頭の子にする（先頭の子をたどった手順が本譜）。
+        // 並べ替えは保存されている子の並びに対して行う（盤面を再現できず表示していない
+        // 変化も、並びには含まれているため）。
+        const ops: StudyOp[] = [];
+        for (let index = 1; index < line.length; index++) {
+            const parentId = line[index - 1];
+            const childId = line[index];
+            if (!Object.hasOwn(doc.tree.nodes, parentId)) return;
+            const children = doc.tree.nodes[parentId].children;
+            if (children[0] === childId || !children.includes(childId)) continue;
+            ops.push({
+                type: "reorderChildren",
+                parentId,
+                value: [childId, ...children.filter((id) => id !== childId)],
+            });
+        }
+        if (ops.length > 0) void onApplyOps(ops);
+    };
     const confirmDeleteVariation = (): void => {
         const targetId = deleteTargetId;
         setDeleteTargetId(null);
@@ -1100,6 +1120,7 @@ export function StudyWorkspaceView({
             unsavedComments={unsavedComments}
             onSelect={(nodeId) => navigateTo(nodeId)}
             onBackToMainLine={backToMainLine}
+            onPromoteToMainLine={promoteLineToMain}
             onRequestDeleteVariation={setDeleteTargetId}
             className={isMobile ? "max-h-[60vh]" : "max-h-[26rem] xl:max-h-[calc(100dvh-9rem)]"}
         />

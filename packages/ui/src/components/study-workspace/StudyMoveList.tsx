@@ -6,7 +6,8 @@
  * 評価値（対局時の評価値）がある棋譜では、別の列として並べる。
  *
  * 「本譜」は対局の本譜（開始局面から先頭の子をたどった手順）だけを指す。変化の中の
- * 枝分かれは、どの枝も「変化」として個別に消せる。
+ * 枝分かれは、どの枝も「変化」として個別に消せる。見ている変化は、本譜に入れ替えられる
+ * （入れ替えられた元の本譜は、変化として残る）。
  */
 
 import type { KifuTree, StudyDocument, StudyHighlightKind } from "@shogi/app-core";
@@ -40,6 +41,8 @@ interface StudyMoveListProps {
     onSelect: (nodeId: string) => void;
     /** 本譜の表示に戻す。 */
     onBackToMainLine: () => void;
+    /** いま見ている手順を本譜にする（元の本譜は変化として残る）。 */
+    onPromoteToMainLine: () => void;
     /** 変化（そのノードと配下）の削除を求める。確認は呼び出し側で行う。 */
     onRequestDeleteVariation: (nodeId: string) => void;
     className?: string;
@@ -74,6 +77,7 @@ export function StudyMoveList({
     unsavedComments,
     onSelect,
     onBackToMainLine,
+    onPromoteToMainLine,
     onRequestDeleteVariation,
     className,
 }: StudyMoveListProps): ReactElement {
@@ -123,6 +127,13 @@ export function StudyMoveList({
                             className="min-h-10 rounded-md px-2 text-xs font-medium text-wafuu-ai underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                             本譜に戻る
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onPromoteToMainLine}
+                            className="min-h-10 rounded-md px-2 text-xs font-medium text-wafuu-ai underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                            本譜にする
                         </button>
                         {deletableHeadId && (
                             <StudyIconButton
