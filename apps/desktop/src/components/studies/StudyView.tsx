@@ -122,8 +122,16 @@ export function StudyView({
             let stored: StoredStudy | null;
             try {
                 stored = await sync.load(studyId);
-            } catch {
-                return false;
+            } catch (error) {
+                // 読めなかっただけで、ノートが無いとは限らない。開くときは「読めない」と出す。
+                if (mode !== "open") return false;
+                if (!isCancelled()) {
+                    setState({
+                        status: "unavailable",
+                        message: error instanceof Error ? error.message : String(error),
+                    });
+                }
+                return true;
             }
             if (isCancelled()) return true;
             // 読んでいる間に編集があった。いま読んだ内容は古いので、読み直す。

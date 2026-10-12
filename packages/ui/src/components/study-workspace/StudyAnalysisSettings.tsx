@@ -66,6 +66,11 @@ function SettingsBody({
     });
     const isExternalEngine =
         form.engines.find((engine) => engine.id === form.engineId)?.kind === "external";
+    // 保存してある数がエンジンの上限を超えているときは、実際に使う数（上限）を選んだものとして見せる。
+    const shownParallelWorkers =
+        form.maxParallel === null
+            ? form.settings.parallelWorkers
+            : Math.min(form.settings.parallelWorkers, form.maxParallel);
     return (
         <div className="flex flex-col gap-5">
             {doc.layers.length > 0 && (
@@ -211,16 +216,14 @@ function SettingsBody({
                                 <button
                                     key={option.value}
                                     type="button"
-                                    aria-pressed={form.settings.parallelWorkers === option.value}
+                                    aria-pressed={shownParallelWorkers === option.value}
                                     onClick={() =>
                                         form.onSettingsChange({
                                             ...form.settings,
                                             parallelWorkers: option.value,
                                         })
                                     }
-                                    className={choiceClass(
-                                        form.settings.parallelWorkers === option.value,
-                                    )}
+                                    className={choiceClass(shownParallelWorkers === option.value)}
                                 >
                                     {option.value === 0
                                         ? `自動（${Math.min(resolveWorkerCount(0), form.maxParallel ?? Number.POSITIVE_INFINITY)}）`

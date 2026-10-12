@@ -1400,6 +1400,7 @@ export function StudyWorkspaceView({
                     status={saveStatus}
                     onRetry={locked ? undefined : onRetrySave}
                     onDiscard={locked ? undefined : onDiscard}
+                    localOnly={localOnly}
                 />
 
                 {unrestoredCount > 0 && (

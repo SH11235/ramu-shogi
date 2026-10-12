@@ -566,7 +566,7 @@ export function useStudyAnalysis({
         const selection = selectionOfLayer(target);
         if (selection === null) {
             setMessage({
-                text: `「${target.display.label}」で使った AI がこのブラウザに無いため、続きを解析できません。「設定を変える」から、解析する設定を選び直してください。`,
+                text: `「${target.display.label}」で使った AI がこの端末に無いため、続きを解析できません。「設定を変える」から、解析する設定を選び直してください。`,
                 type: "error",
             });
             return;

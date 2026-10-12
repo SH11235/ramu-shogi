@@ -191,6 +191,8 @@ pub struct EngineStateInner {
     pub(crate) position: Position,
     pub(crate) search: Option<Search>,
     active_search: Option<ActiveSearch>,
+    /// 読み込み済みの NNUE（ID と LayerStacks の設定）。同じものの読み込み直しを見分けるのに使う。
+    loaded_nnue: Option<String>,
 }
 
 impl EngineStateInner {
@@ -204,6 +206,7 @@ impl EngineStateInner {
             position: Position::new(),
             search: Some(search),
             active_search: None,
+            loaded_nnue: None,
         }
     }
 
@@ -355,7 +358,7 @@ fn spawn_search(
     // 前の探索を止めるために立てた停止フラグが残っていると、新しい探索が始まってすぐ打ち切られる。
     // 探索が bestmove を返した直後（スレッドが終わりきる前）に次の探索を頼まれると、前の探索は
     // 「実行中」として止められ、フラグが立ったままになる（連続して解析するときに起きる）。
-    stop_flag.store(false, Ordering::SeqCst);
+    search.reset_flags();
 
     let handle = thread::Builder::new()
         .name("engine-search".into())
@@ -678,6 +681,13 @@ fn engine_init(
         inner.options.update_from_init(opts);
     }
 
+    // 駒得の評価（簡易 AI）はプロセス全体の設定で、エンジンは全クライアントで 1 つを共有している。
+    // 別の画面が簡易 AI で解析したあとも残るので、クライアントが使い始めるたびに NNUE へ戻す
+    // （簡易 AI を使うクライアントは、init のあとに `MaterialLevel` を送り直す）。
+    if rshogi_core::nnue::is_nnue_initialized() {
+        rshogi_core::eval::disable_material();
+    }
+
     if inner.search.is_none() {
         inner.search = Some(inner.create_search());
     }
@@ -986,7 +996,7 @@ fn ensure_path_within_dir(dir: &Path, path: &Path) -> Result<(), String> {
 mod tests {
     use super::{
         Color, EngineOptions, SearchLimitsInput, SearchParamsInput, build_limits,
-        ensure_path_within_dir, validate_nnue_id,
+        ensure_path_within_dir, loaded_nnue_key, nnue_settings, validate_nnue_id,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -1022,6 +1032,33 @@ mod tests {
         assert_eq!(limits.time[Color::Black.index()], 12_000);
         assert_eq!(limits.time[Color::White.index()], 6_500);
         assert_eq!(limits.byoyomi, [1_000; Color::NUM]);
+    }
+
+    #[test]
+    fn loaded_nnue_key_distinguishes_id_and_routing() {
+        let id = "550e8400-e29b-41d4-a716-446655440000";
+        let other = "550e8400-e29b-41d4-a716-446655440001";
+        let routing = |mode: &str| nnue_settings::LayerStacksOptions {
+            bucket_mode: mode.to_string(),
+            progress_buckets: None,
+            progress_coeff_base64: None,
+        };
+        let king = routing("kingrank9");
+        let progress = routing("progress8kpabs");
+
+        // 同じ NNUE・同じ設定は同じ鍵（読み込み直しを成功として扱える）。
+        assert_eq!(loaded_nnue_key(id, None), loaded_nnue_key(id, None));
+        assert_eq!(
+            loaded_nnue_key(id, Some(&king)),
+            loaded_nnue_key(id, Some(&king.clone()))
+        );
+        // ID か設定が違えば別の鍵（別の NNUE への切り替えは断る）。
+        assert_ne!(loaded_nnue_key(id, None), loaded_nnue_key(other, None));
+        assert_ne!(loaded_nnue_key(id, None), loaded_nnue_key(id, Some(&king)));
+        assert_ne!(
+            loaded_nnue_key(id, Some(&king)),
+            loaded_nnue_key(id, Some(&progress))
+        );
     }
 
     #[test]
@@ -1556,18 +1593,25 @@ fn engine_load_nnue(
 
     let _engine_guard = lock.acquire(engine_lock::EngineTarget::Builtin)?;
     stop_active_search(&state)?;
-    let _inner = state
+    let mut inner = state
         .inner
         .lock()
         .map_err(|e| format!("Failed to acquire engine state lock: {e}"))?;
 
-    // 既に NNUE が初期化済みの場合はエラー
+    let normalized_id = validate_nnue_id(&args.nnue_id)?;
+    let nnue_key = loaded_nnue_key(&normalized_id, args.layer_stacks.as_ref());
+
+    // 読み込み済みのとき。同じ NNUE の読み込み直し（別の画面・別のクライアントが使い始めた）は
+    // 成功として扱い、駒得の評価へ切り替わっていれば NNUE へ戻す。別の NNUE への切り替えはできない。
     if is_nnue_initialized() {
+        if inner.loaded_nnue.as_deref() == Some(nnue_key.as_str()) {
+            rshogi_core::eval::disable_material();
+            return Ok(());
+        }
         return Err("NNUE is already loaded. Restart the app to change NNUE.".to_string());
     }
 
     // ID からパスを取得
-    let normalized_id = validate_nnue_id(&args.nnue_id)?;
     let nnue_path = nnue_path_with_id(&app, &normalized_id, "nnue");
 
     if !nnue_path.exists() {
@@ -1597,7 +1641,16 @@ fn engine_load_nnue(
     };
     nnue_settings::apply_routing(routing)?;
     rshogi_core::eval::disable_material();
+    inner.loaded_nnue = Some(nnue_key);
     Ok(())
+}
+
+/// 読み込み済みの NNUE を見分ける鍵（ID と LayerStacks の設定）。
+fn loaded_nnue_key(
+    normalized_id: &str,
+    layer_stacks: Option<&nnue_settings::LayerStacksOptions>,
+) -> String {
+    format!("{normalized_id}|{layer_stacks:?}")
 }
 
 // ── USI Engine IPC Commands ──────────────────────────────────────

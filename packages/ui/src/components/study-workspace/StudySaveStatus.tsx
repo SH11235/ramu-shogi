@@ -130,6 +130,8 @@ interface StudySaveNoticeProps {
     onRetry?: () => void;
     /** このブラウザからもノートを消す（他の端末で削除されたとき）。 */
     onDiscard?: () => void;
+    /** 保存先がこの端末だけの環境（Desktop）。保存に失敗したときの文言を「端末」にする。 */
+    localOnly?: boolean;
 }
 
 /** 対応が要る保存の問題を帯で出す。問題が無ければ何も出さない。 */
@@ -137,6 +139,7 @@ export function StudySaveNotice({
     status,
     onRetry,
     onDiscard,
+    localOnly = false,
 }: StudySaveNoticeProps): ReactElement | null {
     const notice = ((): { text: string; action?: ReactNode; tone: "error" | "warning" } | null => {
         const retry = onRetry ? (
@@ -169,17 +172,19 @@ export function StudySaveNotice({
             case "storage_quota":
                 return {
                     tone: "error",
-                    text: "ブラウザの保存容量が足りず、変更を保存できませんでした。不要なデータを消してから、もう一度操作してください。",
+                    text: `${localOnly ? "端末" : "ブラウザ"}の保存容量が足りず、変更を保存できませんでした。不要なデータを消してから、もう一度操作してください。`,
                 };
             case "storage_unavailable":
                 return {
                     tone: "error",
-                    text: "このブラウザでは保存領域が使えないため、変更を保存できません（プライベートブラウズでは保存できないことがあります）。",
+                    text: localOnly
+                        ? "この端末では保存領域が使えないため、変更を保存できません。"
+                        : "このブラウザでは保存領域が使えないため、変更を保存できません（プライベートブラウズでは保存できないことがあります）。",
                 };
             case "storage_failed":
                 return {
                     tone: "error",
-                    text: "ブラウザへの保存に失敗しました。直前の変更は保存されていない可能性があります。",
+                    text: `${localOnly ? "端末" : "ブラウザ"}への保存に失敗しました。直前の変更は保存されていない可能性があります。`,
                 };
             default:
                 return {

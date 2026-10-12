@@ -20,6 +20,8 @@ const ENGINE_OPTIONS: EngineOption[] = [
                 debug: true,
             }),
         kind: "internal",
+        // ネイティブのエンジンはアプリに 1 つだけなので、局面の並列解析はできない。
+        maxParallel: 1,
     },
 ];
 

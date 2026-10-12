@@ -35,8 +35,9 @@ vi.mock("@shogi/engine-tauri", () => ({ getLegalMoves: vi.fn(async () => []) }))
 
 const { StudyView } = await import("./StudyView");
 
-const unreachable = async () =>
-    ({ ok: false, status: 0, error: { error: "NETWORK_ERROR" } }) as const;
+const unreachable = vi.fn(
+    async () => ({ ok: false, status: 0, error: { error: "NETWORK_ERROR" } }) as const,
+);
 const api: StudyApi = {
     list: unreachable,
     create: unreachable,
@@ -90,6 +91,34 @@ describe("StudyView（Desktop の研究ノートの画面）", () => {
         expect((await screen.findByTestId("title")).textContent).toBe("テストのノート");
         expect(screen.getByTestId("nodes").textContent).toBe("3");
         expect(screen.getByTestId("engines").textContent).toBe("native");
+    });
+
+    it("サーバーへは何も送らない（保存はこの端末の中だけ）", async () => {
+        unreachable.mockClear();
+        const sync = createSync();
+        await sync.createStudy(createDoc());
+        renderView(sync);
+        await screen.findByTestId("title");
+        await act(async () => {
+            await workspace.onApplyOps?.([
+                { type: "addMoves", parentId: createDoc().tree.rootId, moves: ["2g2f"] },
+            ]);
+        });
+        await sync.flush(STUDY_ID).catch(() => undefined);
+
+        expect(unreachable).not.toHaveBeenCalled();
+    });
+
+    it("ノートを読めなかったときは、無いとは言わずに、読めなかったと知らせる", async () => {
+        const sync = createSync();
+        await sync.createStudy(createDoc());
+        sync.load = async () => {
+            throw new Error("保存領域を開けません");
+        };
+        renderView(sync);
+
+        expect((await screen.findByRole("alert")).textContent).toContain("保存領域を開けません");
+        expect(screen.queryByText(/この端末にありません/)).toBeNull();
     });
 
     it("この端末に無いノートは、そう知らせる", async () => {
