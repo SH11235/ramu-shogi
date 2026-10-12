@@ -221,10 +221,17 @@ interface GameRecordForStudy {
 
 /**
  * 自分の対局の棋譜が研究ノートにできるか。
- * 指し手があり、どの手も研究ノートに入れられる書式であること（変則ルールのパスも入れられる）。
+ * 指し手があり、どの手も研究ノートに入れられる書式で（変則ルールのパスも入れられる）、パスの
+ * 回数が解析できる範囲に収まっていること（対局の設定は、パス権の回数に上限を設けていない）。
  */
-export function canOpenGameRecordAsStudy(game: Pick<GameRecordForStudy, "moves">): boolean {
-    return game.moves.length > 0 && game.moves.every((move) => isStudyUsiMove(move));
+export function canOpenGameRecordAsStudy(
+    game: Pick<GameRecordForStudy, "moves" | "initialSfen">,
+): boolean {
+    return (
+        game.moves.length > 0 &&
+        game.moves.every((move) => isStudyUsiMove(move)) &&
+        studyLineFitsPassLimit(game.initialSfen, game.moves)
+    );
 }
 
 /** 自分の対局の詳細から研究ノートを開く。 */

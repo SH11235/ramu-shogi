@@ -195,6 +195,14 @@ describe("自分の対局からの入口", () => {
         expect(canOpenGameRecordAsStudy({ ...game, moves: ["7g7f", "pass"] })).toBe(true);
         expect(canOpenGameRecordAsStudy({ ...game, moves: [] })).toBe(false);
         expect(canOpenGameRecordAsStudy({ ...game, moves: ["7g7f", "resign"] })).toBe(false);
+        // 片方が 15 回パスした対局は、解析できないので入口を出さない（14 回までは出す）。
+        const sentePasses = (count: number): string[] =>
+            Array.from({ length: count }, (_, index) => [
+                "pass",
+                index % 2 === 0 ? "5a5b" : "5b5a",
+            ]).flat();
+        expect(canOpenGameRecordAsStudy({ ...game, moves: sentePasses(14) })).toBe(true);
+        expect(canOpenGameRecordAsStudy({ ...game, moves: sentePasses(15) })).toBe(false);
     });
 
     it("パスを含む対局から作ると、パスも手として取り込む", async () => {
