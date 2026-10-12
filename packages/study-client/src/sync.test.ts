@@ -1067,6 +1067,23 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             });
         });
 
+        it("引き継ぎの途中で別のアカウントに切り替わったら、古いアカウントのものにしない", async () => {
+            const harness = createHarness();
+            await harness.sync.createStudy(createTestDocument());
+            await harness.sync.whenLocalWritesSettled();
+
+            harness.login(USER_A);
+            // 一覧の読み込みを待っている間に、別のアカウントへ切り替わる。
+            const adopting = harness.sync.adoptAnonymousStudies();
+            harness.login(USER_B);
+            expect(await adopting).toEqual([]);
+            expect((await harness.sync.load(TEST_STUDY_ID))?.owner).toBeNull();
+
+            // 切り替え後のアカウントで、あらためて引き継げる。
+            expect(await harness.sync.adoptAnonymousStudies()).toEqual([TEST_STUDY_ID]);
+            expect((await harness.sync.load(TEST_STUDY_ID))?.owner).toBe(USER_B);
+        });
+
         it("あるアカウントのものになったノートは、別のアカウントでログインしても送らない", async () => {
             const harness = await createSyncedHarness();
             // 持ち主のアカウントで編集し、送信される前に別のアカウントに切り替わった。

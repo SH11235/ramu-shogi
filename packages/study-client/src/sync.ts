@@ -16,6 +16,7 @@ import {
     applyStudyOp,
     applyStudyOpsStrict,
     diffStudyDocuments,
+    isStudyUuid,
     STUDY_LIMITS,
     type StudyDocument,
     type StudyLimitName,
@@ -871,7 +872,7 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         }
         if (response.status === 409 && response.error.error === "ORIGIN_EXISTS") {
             const existingStudyId = response.error.existingStudyId;
-            if (typeof existingStudyId === "string" && existingStudyId !== study.id) {
+            if (isStudyUuid(existingStudyId) && existingStudyId !== study.id) {
                 return mergeInto(study, existingStudyId);
             }
         }
@@ -1662,6 +1663,11 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                     mutate(summary.id, (snapshot) => {
                         // 他のタブが先に持ち主を決めていたら、それを変えない。
                         if (!snapshot.study || snapshot.study.owner !== null) {
+                            return { result: false };
+                        }
+                        // 一覧の読み込みや先行する書き込みを待つ間に、ログアウトや別のアカウントへの
+                        // 切り替えが起きていたら、古いアカウントのものにしない。
+                        if (session?.userId !== current.userId) {
                             return { result: false };
                         }
                         return {
