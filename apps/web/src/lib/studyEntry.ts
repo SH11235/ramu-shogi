@@ -252,9 +252,13 @@ export function openStudyFromGameRecord(
     });
 }
 
-/** 対局者名の無い棋譜の表題（例: 「取り込んだ棋譜（10/12）」）。あとから画面で変えられる。 */
-function importedTitle(now: Date = new Date()): string {
-    return `取り込んだ棋譜（${now.getMonth() + 1}/${now.getDate()}）`;
+/**
+ * 対局者名の無い棋譜の表題（例: 「取り込んだ棋譜（10/12）」）。あとから画面で変えられる。
+ * 指し手の無いノート（局面だけ）は「局面の研究（10/12）」にする。
+ */
+function importedTitle(hasMoves: boolean, now: Date = new Date()): string {
+    const date = `${now.getMonth() + 1}/${now.getDate()}`;
+    return hasMoves ? `取り込んだ棋譜（${date}）` : `局面の研究（${date}）`;
 }
 
 /**
@@ -278,7 +282,7 @@ export async function createStudyFromKifuSource(
                 ? createStudyDocumentFromCsa({ id, csa: source.csa, origin })
                 : createStudyDocumentFromMoves({
                       id,
-                      title: importedTitle(),
+                      title: importedTitle(source.moves.length > 0),
                       origin,
                       startSfen: source.startSfen,
                       moves: source.moves,
@@ -311,7 +315,7 @@ export async function createStudyFromKifuTree(
         build: (id) =>
             createStudyDocumentFromKifuTree({
                 id,
-                title: sente && gote ? `${sente} 対 ${gote}` : importedTitle(),
+                title: sente && gote ? `${sente} 対 ${gote}` : importedTitle(tree.nodes.size > 1),
                 origin,
                 tree,
                 sourceKind: "kifu",

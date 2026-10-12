@@ -2,6 +2,7 @@
  * 貼り付け・ファイルの棋譜テキストを、研究ノートを作る材料にする。
  *
  * 形式の判別と解析は既存の棋譜取り込み（`kifuImport` / `kifParser`）と同じものを使う。
+ * 指し手の無い入力（局面だけ）も受け付ける（その局面から検討を始めるノートになる）。
  * 変則ルール（パス）の手を含む棋譜は研究ノートにできない。
  */
 
@@ -50,7 +51,6 @@ export function parseKifuTextForStudy(text: string): StudyKifuSource {
     if (format === "csa") {
         try {
             const record = parseCsaGameRecord(text);
-            if (record.moves.length === 0) throw new Error("指し手がありません");
             assertStandardMoves(record.moves);
         } catch (error) {
             throw new Error(
@@ -64,7 +64,6 @@ export function parseKifuTextForStudy(text: string): StudyKifuSource {
         if (!result.success) {
             throw new Error(result.error ?? "KIF の解析に失敗しました");
         }
-        if (result.moves.length === 0) throw new Error("指し手がありません");
         assertStandardMoves(result.moves);
         const annotations = result.moveData.map((data): StudyImportAnnotation | null => {
             // KIF の評価値コメントは先手視点。
@@ -94,9 +93,6 @@ export function parseKifuTextForStudy(text: string): StudyKifuSource {
     }
     if (!isPosition) {
         throw new Error("棋譜の形式を判別できませんでした（CSA / KIF / SFEN に対応）");
-    }
-    if (moves.length === 0) {
-        throw new Error("指し手がありません（研究ノートにするには、指し手のある棋譜が必要です）");
     }
     assertStandardMoves(moves);
     return { kind: "moves", startSfen: sfen, moves };

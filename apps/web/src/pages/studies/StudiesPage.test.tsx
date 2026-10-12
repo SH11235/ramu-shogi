@@ -95,11 +95,13 @@ describe("StudiesPage", () => {
         render(<StudiesPage api={createOfflineApi()} />);
 
         fireEvent.change(await screen.findByRole("textbox", { name: "棋譜のテキスト" }), {
-            target: { value: "startpos" },
+            target: { value: "こんにちは" },
         });
         fireEvent.click(screen.getByRole("button", { name: "研究ノートにする" }));
 
-        expect((await screen.findByRole("alert")).textContent).toContain("指し手がありません");
+        expect((await screen.findByRole("alert")).textContent).toContain(
+            "棋譜の形式を判別できませんでした",
+        );
         expect(navigate).not.toHaveBeenCalled();
     });
 

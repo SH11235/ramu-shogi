@@ -2086,12 +2086,13 @@ export function ShogiMatch({
         onDisplaySettingsChange: setDisplaySettings,
     };
 
-    // 研究ノートにできるのは、指し手があり、変則ルール（パス権）を使っていない棋譜だけ。
+    // 研究ノートにできるのは、変則ルール（パス権）を使っていない棋譜だけ。指し手が無くても
+    // （編集した局面だけでも）、その局面から検討を始めるノートにできる。
     const canOpenAsStudy =
         onOpenAsStudy !== undefined &&
         !isMatchRunning &&
+        !isEditMode &&
         !passRightsSettings.enabled &&
-        navigation.tree.nodes.size > 1 &&
         [...navigation.tree.nodes.values()].every(
             (node) => node.usiMove === null || isStudyUsiMove(node.usiMove),
         );
@@ -2106,11 +2107,15 @@ export function ShogiMatch({
                     });
                 }}
             >
-                この棋譜を研究ノートにする
+                {navigation.tree.nodes.size > 1
+                    ? "この棋譜を研究ノートにする"
+                    : "この局面を研究ノートにする"}
             </button>
             <p className="text-xs text-muted-foreground">
-                いま開いている棋譜（{navigation.state.totalPly}
-                手）を研究ノートにして、解析結果・変化・コメントを自動で保存します。
+                {navigation.tree.nodes.size > 1
+                    ? `いま開いている棋譜（${navigation.state.totalPly} 手）`
+                    : "いまの局面"}
+                を研究ノートにして、解析結果・変化・コメントを自動で保存します。
             </p>
         </div>
     ) : null;

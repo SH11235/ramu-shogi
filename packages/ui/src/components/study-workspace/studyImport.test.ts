@@ -31,12 +31,25 @@ describe("parseKifuTextForStudy", () => {
         expect(source.annotations?.[0]?.elapsedMs).toBe(5000);
     });
 
-    it("指し手の無い棋譜・空の入力・パスを含む棋譜は、理由つきで断る", () => {
+    it("指し手の無い入力（局面だけ）は、その局面から始めるノートの材料にする", () => {
+        expect(parseKifuTextForStudy("startpos")).toEqual({
+            kind: "moves",
+            startSfen: "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+            moves: [],
+        });
+        const sfen = "4k4/9/9/9/9/9/9/9/4K4 b G 1";
+        expect(parseKifuTextForStudy(`sfen ${sfen}`)).toEqual({
+            kind: "moves",
+            startSfen: sfen,
+            moves: [],
+        });
+    });
+
+    it("空の入力・棋譜でない入力・パスを含む棋譜は、理由つきで断る", () => {
         expect(() => parseKifuTextForStudy("   ")).toThrow("入力が空です");
         expect(() => parseKifuTextForStudy("こんにちは")).toThrow(
             "棋譜の形式を判別できませんでした（CSA / KIF / SFEN に対応）",
         );
-        expect(() => parseKifuTextForStudy("startpos")).toThrow("指し手がありません");
         expect(() => parseKifuTextForStudy("startpos moves 7g7f pass")).toThrow(
             "研究ノートにできない手",
         );
