@@ -367,4 +367,42 @@ describe("useStudyAnalysis", () => {
 
         expect(onMessage.mock.calls.filter(([message]) => message !== null)).toEqual([]);
     });
+    it("外部エンジンを選ぶと、評価関数を用意せずに、そのエンジンの名前の解析結果として解析する", async () => {
+        const { doc, ids } = createTestStudy();
+        const internal = createEngineOption();
+        const externalBase = createEngineOption();
+        const external: EngineOption = {
+            ...externalBase.option,
+            id: "ext-1",
+            label: "MyEngine",
+            kind: "external",
+        };
+        const { result } = renderHook(() => useHarness(doc, [internal.option, external]));
+
+        // 既定は内蔵エンジン。選べるエンジンとして両方が並ぶ。
+        expect(result.current.controller.form.engines).toEqual([
+            { id: "wasm", label: "内蔵エンジン", kind: "internal" },
+            { id: "ext-1", label: "MyEngine", kind: "external" },
+        ]);
+        expect(result.current.controller.form.engineId).toBe("wasm");
+
+        act(() => result.current.controller.form.onEngineIdChange("ext-1"));
+        expect(result.current.controller.form.engineId).toBe("ext-1");
+        expect(result.current.controller.settingsLabel).toBe("MyEngine・0.5 秒");
+
+        await act(async () => {
+            await result.current.controller.startFull();
+        });
+        await waitFor(() => expect(result.current.flushCount).toBe(1));
+
+        const layer = result.current.doc.layers[0];
+        expect(layer.display.label).toBe("MyEngine・0.5 秒");
+        // 外部エンジンの版は分からないので、アプリの版が入る。
+        expect(layer.spec.engine).toMatchObject({ kind: "external", name: "MyEngine" });
+        expect(layer.spec.evaluation.nnueSha256).toBeNull();
+        expect(Object.keys(layer.results).sort()).toEqual([...ids].sort());
+        // 探索したのは外部エンジンだけ。
+        expect(externalBase.searches()).toBe(5);
+        expect(internal.searches()).toBe(0);
+    });
 });

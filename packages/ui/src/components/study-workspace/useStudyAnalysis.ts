@@ -86,6 +86,11 @@ export interface StudyAnalysisSettingsForm {
     presets: PresetConfig[];
     nnueList: NnueMeta[];
     isNnueListLoading: boolean;
+    /** 解析に使えるエンジン（Web は内蔵の 1 つだけ。Desktop は、登録した外部エンジンも並ぶ）。 */
+    engines: Array<{ id: string; label: string; kind: "internal" | "external" }>;
+    /** いま選んでいる解析エンジン。 */
+    engineId: string;
+    onEngineIdChange: (engineId: string) => void;
 }
 
 /** 画面が解析を操作するための窓口。 */
@@ -166,12 +171,14 @@ export function useStudyAnalysis({
         DEFAULT_ANALYSIS_SETTINGS,
     );
     const settings = { ...DEFAULT_ANALYSIS_SETTINGS, ...storedSettings };
-    const [analysisEngineId] = useLocalStorage<string>(
+    const [analysisEngineId, setAnalysisEngineId] = useLocalStorage<string>(
         "shogi-analysis-engine",
         engineOptions[0]?.id ?? "wasm",
     );
     const engineOption =
         engineOptions.find((option) => option.id === analysisEngineId) ?? engineOptions[0];
+    // 外部の USI エンジンは、評価関数（NNUE）をこちらから渡さない（エンジン自身の設定で決まる）。
+    const isExternalEngine = engineOption?.kind === "external";
 
     const nnueContext = useNnueContextOptional();
     const {
@@ -274,7 +281,7 @@ export function useStudyAnalysis({
         // 外部の USI エンジンは、変則ルールのパスを解釈できない。
         supportsPassRights: engineOption?.kind !== "external",
         workerCount: resolveWorkerCount(settings.parallelWorkers),
-        nnueId: analysisNnueId,
+        nnueId: isExternalEngine ? undefined : analysisNnueId,
         onPositionAnalyzed: handlePositionAnalyzed,
         onResult: (_ply: number, event: EngineInfoEvent, nodeId?: string) => {
             if (!nodeId) return;
@@ -332,7 +339,10 @@ export function useStudyAnalysis({
         }
         return MATERIAL_AI_NAME;
     };
-    const settingsLabel = `${nameOf(analysisNnueSelection)}・${formatSeconds(settings.batchAnalysisTimeMs)}`;
+    const aiName = isExternalEngine
+        ? (engineOption?.label ?? "外部エンジン")
+        : nameOf(analysisNnueSelection);
+    const settingsLabel = `${aiName}・${formatSeconds(settings.batchAnalysisTimeMs)}`;
     const fullMultiPv = Math.min(STUDY_LIMITS.multiPv, Math.max(1, settings.multiPv));
     // いまの設定に当たる解析結果が既にあれば、その続きから解析する。レイヤーの ID は AI の
     // ファイルを確かめないと決まらないので、ここでは表示名と探索の条件で見分ける。
@@ -351,13 +361,16 @@ export function useStudyAnalysis({
         limits: { timeMs: number; depth: number },
         multiPv: number,
     ): Promise<{ layer: StudyLayerRef; resolved: ResolvedNnue | null } | null> => {
-        if (!(await download.ensureMatchNnue([selection]))) return null;
-        let resolved: ResolvedNnue | null;
+        let resolved: ResolvedNnue | null = null;
         let meta: NnueMeta | null = null;
         try {
-            resolved = await resolveNnue(selection);
-            if (resolved) {
-                meta = (await nnueContext?.storage.getMeta(resolved.nnueId)) ?? null;
+            // 外部エンジンには評価関数を渡さないので、用意もしない。
+            if (!isExternalEngine) {
+                if (!(await download.ensureMatchNnue([selection]))) return null;
+                resolved = await resolveNnue(selection);
+                if (resolved) {
+                    meta = (await nnueContext?.storage.getMeta(resolved.nnueId)) ?? null;
+                }
             }
         } catch (error) {
             setMessage({
@@ -366,7 +379,7 @@ export function useStudyAnalysis({
             });
             return null;
         }
-        const isInternal = engineOption?.kind !== "external";
+        const isInternal = !isExternalEngine;
         try {
             const layer = buildStudyLayerRefFromNnue({
                 engine: isInternal
@@ -632,6 +645,14 @@ export function useStudyAnalysis({
                 presets: presetConfigs,
                 nnueList,
                 isNnueListLoading,
+                engines: engineOptions.map((option) => ({
+                    id: option.id,
+                    label: option.label,
+                    kind:
+                        option.kind === "external" ? ("external" as const) : ("internal" as const),
+                })),
+                engineId: engineOption?.id ?? "",
+                onEngineIdChange: setAnalysisEngineId,
             },
         },
         download,

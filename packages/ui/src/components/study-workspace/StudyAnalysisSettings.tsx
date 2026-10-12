@@ -64,6 +64,8 @@ function SettingsBody({
         nnueList: form.nnueList,
         isNnueListLoading: form.isNnueListLoading,
     });
+    const isExternalEngine =
+        form.engines.find((engine) => engine.id === form.engineId)?.kind === "external";
     return (
         <div className="flex flex-col gap-5">
             {doc.layers.length > 0 && (
@@ -106,23 +108,47 @@ function SettingsBody({
                 {doc.layers.length > 0 && (
                     <h3 className="text-sm font-medium text-wafuu-sumi">別の設定で解析する</h3>
                 )}
-                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                    使う AI
-                    <NativeSelect
-                        value={toNnueSelectionValue(form.nnueSelection)}
-                        onChange={(event) =>
-                            form.onNnueSelectionChange(parseNnueSelectionValue(event.target.value))
-                        }
-                        className={isMobile ? "text-base" : "text-sm"}
-                    >
-                        <option value="material">簡易AI（駒得）</option>
-                        {nnueOptions.map((option) => (
-                            <option key={toOptionValue(option)} value={toOptionValue(option)}>
-                                {option.label}
-                            </option>
-                        ))}
-                    </NativeSelect>
-                </label>
+                {form.engines.length > 1 && (
+                    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                        解析エンジン
+                        <NativeSelect
+                            value={form.engineId}
+                            onChange={(event) => form.onEngineIdChange(event.target.value)}
+                            className={isMobile ? "text-base" : "text-sm"}
+                        >
+                            {form.engines.map((engine) => (
+                                <option key={engine.id} value={engine.id}>
+                                    {engine.label}
+                                </option>
+                            ))}
+                        </NativeSelect>
+                    </label>
+                )}
+                {isExternalEngine ? (
+                    <p className="text-xs text-muted-foreground">
+                        外部エンジンは、エンジン自身の設定（評価関数など）で解析します。パスを含む局面は解析できません。
+                    </p>
+                ) : (
+                    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                        使う AI
+                        <NativeSelect
+                            value={toNnueSelectionValue(form.nnueSelection)}
+                            onChange={(event) =>
+                                form.onNnueSelectionChange(
+                                    parseNnueSelectionValue(event.target.value),
+                                )
+                            }
+                            className={isMobile ? "text-base" : "text-sm"}
+                        >
+                            <option value="material">簡易AI（駒得）</option>
+                            {nnueOptions.map((option) => (
+                                <option key={toOptionValue(option)} value={toOptionValue(option)}>
+                                    {option.label}
+                                </option>
+                            ))}
+                        </NativeSelect>
+                    </label>
+                )}
                 <fieldset className="flex flex-col gap-1">
                     <legend className="pb-1 text-xs text-muted-foreground">
                         1 局面あたりの時間

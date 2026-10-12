@@ -51,6 +51,9 @@ const createAnalysis = (
         presets: [],
         nnueList: [],
         isNnueListLoading: false,
+        engines: [{ id: "wasm", label: "内蔵エンジン", kind: "internal" }],
+        engineId: "wasm",
+        onEngineIdChange: vi.fn(),
     },
     ...overrides,
 });
@@ -881,6 +884,36 @@ describe("StudyWorkspaceView", () => {
         expect(
             within(candidates).getByText(/指した手 ☗2六歩\(27\) は、1 手前の局面の候補の 1/),
         ).toBeTruthy();
+    });
+
+    it("解析エンジンが 1 つだけなら選ぶ欄を出さない。複数あれば選べて、外部エンジンでは「使う AI」を出さない", () => {
+        const single = render(<Harness initialDoc={createTestStudy().doc} />);
+        fireEvent.click(screen.getByRole("button", { name: "解析の設定" }));
+        expect(screen.queryByRole("combobox", { name: "解析エンジン" })).toBeNull();
+        expect(screen.getByRole("combobox", { name: "使う AI" })).toBeTruthy();
+        single.unmount();
+
+        const engines = [
+            { id: "native", label: "内蔵エンジン", kind: "internal" as const },
+            { id: "ext-1", label: "MyEngine", kind: "external" as const },
+        ];
+        const base = createAnalysis();
+        const analysis = createAnalysis({ form: { ...base.form, engines, engineId: "native" } });
+        const multi = render(<Harness initialDoc={createTestStudy().doc} analysis={analysis} />);
+        fireEvent.click(screen.getByRole("button", { name: "解析の設定" }));
+        fireEvent.change(screen.getByRole("combobox", { name: "解析エンジン" }), {
+            target: { value: "ext-1" },
+        });
+        expect(analysis.form.onEngineIdChange).toHaveBeenCalledWith("ext-1");
+        multi.unmount();
+
+        const externalSelected = createAnalysis({
+            form: { ...base.form, engines, engineId: "ext-1" },
+        });
+        render(<Harness initialDoc={createTestStudy().doc} analysis={externalSelected} />);
+        fireEvent.click(screen.getByRole("button", { name: "解析の設定" }));
+        expect(screen.queryByRole("combobox", { name: "使う AI" })).toBeNull();
+        expect(screen.getByText(/外部エンジンは、エンジン自身の設定/)).toBeTruthy();
     });
 
     it("解析の設定で、同時に解析する局面の数を選べる", () => {
