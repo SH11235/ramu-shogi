@@ -52,7 +52,11 @@ describe("parseKifuTextForStudy", () => {
             moves: [],
         });
         // 局面の行は、字下げやカンマ区切りでも読む（CSA の解析と同じ）。
-        for (const csa of ["V2.2\n PI\n+", "V2.2\nN+a\nN-b\n+,PI"]) {
+        for (const csa of [
+            "V2.2\n PI\n+",
+            "V2.2\nN+a\nN-b\n+,PI",
+            "V2.2\n$EVENT:test\nPI\n+\n'comment\n%TORYO",
+        ]) {
             expect(parseKifuTextForStudy(csa)).toMatchObject({ kind: "moves", moves: [] });
         }
         const sfen = "4k4/9/9/9/9/9/9/9/4K4 b G 1";
@@ -88,8 +92,31 @@ describe("parseKifuTextForStudy", () => {
         expect(() => parseKifuTextForStudy("手合割：平手\n先手：a\n後手：b")).toThrow(
             "パースできる指し手が見つかりませんでした",
         );
-        // CSA: 見出しだけ（局面の行なし）。
-        expect(() => parseKifuTextForStudy("V2.2\nN+a\nN-b")).toThrow("指し手がありません");
+        // KIF: 消費時間つきの指し手の行（コロンを含む）、開始局面の行に続けて書いた手順。
+        for (const body of ["同歩(77)(0:05/00:00:05)", "▽３四歩(33)(0:01/00:00:01)"]) {
+            expect(() => parseKifuTextForStudy(`開始局面：startpos\n${body}`)).toThrow(
+                "パースできる指し手が見つかりませんでした",
+            );
+        }
+        expect(() => parseKifuTextForStudy("開始局面：startpos moves 7g7f 3c3d")).toThrow(
+            "パースできる指し手が見つかりませんでした",
+        );
+        // CSA: 見出しだけ（局面の行なし）、読めない指し手の行、終局の指示や区切りのあとの指し手、
+        // コメントの中の `PI`。
+        for (const csa of [
+            "V2.2\nN+a\nN-b",
+            "PI\n+\n7776FU\n3334FU",
+            "PI\n+\n1 +7776FU",
+            "PI\n+\n7g7f",
+            "PI\n+\n＋7776FU",
+            "PI\n+\n%TORYO\n+7776FU",
+            "/\nPI\n+\n+7776FU",
+            "V2.2\n+,'comment,PI",
+        ]) {
+            expect(() => parseKifuTextForStudy(csa), csa).toThrow(
+                "CSA の解析に失敗しました: 指し手を読み取れませんでした",
+            );
+        }
     });
 
     it("指し手が無く、局面として成り立たない入力は断る", () => {

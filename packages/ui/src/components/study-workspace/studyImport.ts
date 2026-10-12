@@ -55,13 +55,34 @@ const positionOnlySource = (startSfen: string): StudyKifuSource => {
     return { kind: "moves", startSfen: normalizeStudyStartSfen(startSfen), moves: [] };
 };
 
-/** CSA の局面の行（`PI`・`P1`〜`P9`・`P+`・`P-`）があるか。行の分け方は CSA の解析と同じ。 */
-const hasCsaPositionLine = (text: string): boolean =>
-    text
-        .split(/\r?\n/)
-        .filter((line) => !line.trimStart().startsWith("'"))
-        .flatMap((line) => line.split(","))
-        .some((statement) => /^P(?:I|[1-9]|[+-])/.test(statement.trim()));
+/** CSA の局面の文（`PI`・`P1`〜`P9`・`P+`・`P-`）。 */
+const CSA_POSITION_STATEMENT = /^P(?:I|[1-9]|[+-])/;
+/** CSA の、指し手ではない文（版・対局者名・棋譜情報・局面・手番・消費時間・終局などの指示）。 */
+const CSA_NON_MOVE_STATEMENT = /^(?:V|N[+-]|\$|P(?:I|[1-9]|[+-])|[+-]$|T\d+$|%)/;
+
+/**
+ * CSA が「局面だけ」の入力か。局面の文があり、指し手ではない文しか無いとき。
+ * それ以外の文がある（指し手らしい行があるのに読めなかった・終局の指示のあとに指し手が続く、
+ * など）棋譜は、局面だけの入力としては扱わない（指し手を黙って捨てない）。
+ */
+const isCsaPositionOnly = (text: string): boolean => {
+    const statements: string[] = [];
+    for (const line of text.split(/\r?\n/)) {
+        for (const part of line.split(",")) {
+            const statement = part.trim();
+            // `'` から行末まではコメント。
+            if (statement.startsWith("'")) break;
+            if (statement !== "") statements.push(statement);
+        }
+    }
+    return (
+        statements.some((statement) => CSA_POSITION_STATEMENT.test(statement)) &&
+        statements.every((statement) => CSA_NON_MOVE_STATEMENT.test(statement))
+    );
+};
+
+/** KIF の「開始局面：〜」の行。値に手順（`moves`）が続くものは、局面だけとは見なさない。 */
+const KIF_START_POSITION_LINE = /^開始局面[：:](?!.*\bmoves\b)/;
 
 /** KIF の、指し手ではない行（空行・コメント・見出し・手数の区切り・「まで〜」）か。 */
 const isKifNonMoveLine = (line: string): boolean => {
@@ -72,9 +93,9 @@ const isKifNonMoveLine = (line: string): boolean => {
         trimmed.startsWith("*") ||
         trimmed.startsWith("手数") ||
         trimmed.startsWith("まで") ||
-        // 見出し（「先手：〜」など）。指し手の行の消費時間（`0:00`）を見出しと取り違えないよう、
-        // 数字・記号で始まる行と、コロンの前に空白がある行は見出しにしない。
-        /^[^\d０-９\s▲△☗☖][^：:\s]*[：:]/.test(trimmed)
+        // 見出し（「先手：〜」など）。指し手の行の消費時間（`(0:05/00:00:05)`）を見出しと
+        // 取り違えないよう、見出しの名前には数字・空白・括弧・指し手の記号を認めない。
+        /^[^\d０-９\s()（）▲△▼▽☗☖同：:][^\s()（）：:]*[：:]/.test(trimmed)
     );
 };
 
@@ -83,8 +104,17 @@ const isKifNonMoveLine = (line: string): boolean => {
  * それ以外の行がある（指し手らしい行があるのに 1 つも読めなかった）棋譜は、局面だけの入力と
  * しては扱わない（指し手を黙って捨てない）。
  */
-const isKifPositionOnly = (text: string): boolean =>
-    /^\s*開始局面[：:]/m.test(text) && text.split(/\r?\n/).every(isKifNonMoveLine);
+const isKifPositionOnly = (text: string): boolean => {
+    const lines = text.split(/\r?\n/);
+    return (
+        lines.some((line) => KIF_START_POSITION_LINE.test(line.trim())) &&
+        lines.every(
+            (line) =>
+                isKifNonMoveLine(line) &&
+                (!line.trim().startsWith("開始局面") || KIF_START_POSITION_LINE.test(line.trim())),
+        )
+    );
+};
 
 const assertStandardMoves = (moves: readonly string[]): void => {
     const index = moves.findIndex((move) => !isStudyUsiMove(move));
@@ -114,8 +144,10 @@ export function parseKifuTextForStudy(text: string): StudyKifuSource {
             );
         }
         if (record.moves.length === 0) {
-            // 局面の行も無い（対局者名などの見出しだけ）ものは、棋譜として読めていない。
-            if (!hasCsaPositionLine(text)) throw new Error("指し手がありません");
+            // 見出しだけのもの、指し手らしい行を読めなかったものは、棋譜として読めていない。
+            if (!isCsaPositionOnly(text)) {
+                throw new Error("CSA の解析に失敗しました: 指し手を読み取れませんでした");
+            }
             return positionOnlySource(record.startSfen);
         }
         return { kind: "csa", csa: text };
