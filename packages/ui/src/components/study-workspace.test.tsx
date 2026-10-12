@@ -214,7 +214,7 @@ describe("StudyWorkspaceView", () => {
         expect(within(highlights()).getByText("悪手・疑問手 1 手")).toBeTruthy();
         const item = within(highlights()).getByRole("button", { name: /3手目 ☗2六歩\(27\)/ });
         expect(item.textContent).toContain("悪手");
-        expect(item.textContent).toContain("+0.2 → -9.0");
+        expect(item.textContent).toContain("+20 → -900");
         expect(currentMove()).toContain("開始局面");
 
         fireEvent.click(item);

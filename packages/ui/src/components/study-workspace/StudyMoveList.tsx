@@ -21,7 +21,6 @@ import {
     studyDeletableBranchHead,
     studyMainLineIds,
     studyMoveLabel,
-    studyScoreSide,
     studyVariationLength,
 } from "./studyView";
 
@@ -52,12 +51,6 @@ const ROW_GRID_WITH_SOURCE =
 
 const sideClass = (side: "sente" | "gote" | null): string =>
     side === "sente" ? "text-wafuu-shu" : side === "gote" ? "text-wafuu-ai" : "text-foreground";
-
-const evalSide = (scoreCp?: number, scoreMate?: number): "sente" | "gote" | null => {
-    const value = scoreMate ?? scoreCp;
-    if (value === undefined || value === 0) return null;
-    return value > 0 ? "sente" : "gote";
-};
 
 const KIND_MARK: Record<StudyHighlightKind, { text: string; label: string; className: string }> = {
     blunder: {
@@ -173,6 +166,13 @@ export function StudyMoveList({
                         : [];
                     const kind = highlightKinds.get(nodeId);
                     const analysisText = formatEval(node.eval?.scoreCp, node.eval?.scoreMate);
+                    // 評価値の色は符号ではなく、その手を指した側で決める (評価値グラフの線と同じ対応)。
+                    const mover: "sente" | "gote" | null =
+                        node.ply === 0
+                            ? null
+                            : node.positionAfter.turn === "sente"
+                              ? "gote"
+                              : "sente";
                     const sourceScore = stored?.source?.score ?? null;
                     const label = index === 0 ? "開始局面" : studyMoveLabel(tree, nodeId);
                     return (
@@ -241,9 +241,7 @@ export function StudyMoveList({
                                 <span
                                     className={cn(
                                         "text-right font-mono text-xs tabular-nums",
-                                        sideClass(
-                                            evalSide(node.eval?.scoreCp, node.eval?.scoreMate),
-                                        ),
+                                        sideClass(mover),
                                     )}
                                 >
                                     {analysisText || (
@@ -254,7 +252,7 @@ export function StudyMoveList({
                                     <span
                                         className={cn(
                                             "text-right font-mono text-xs tabular-nums opacity-70",
-                                            sideClass(studyScoreSide(sourceScore)),
+                                            sideClass(mover),
                                         )}
                                     >
                                         {formatStudyScore(sourceScore)}

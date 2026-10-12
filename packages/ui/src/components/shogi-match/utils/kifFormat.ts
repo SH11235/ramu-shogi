@@ -70,6 +70,8 @@ export interface PvEvalInfo {
 export interface KifMove {
     /** 手数（1始まり） */
     ply: number;
+    /** その手を指した側。省略時は手数の偶奇で決める (奇数 = 先手)。 */
+    mover?: Player;
     /** KIF形式の指し手文字列（例: "▲７六歩(77)"）- エクスポート用 */
     kifText: string;
     /** 簡易表示用文字列（例: "☗7六歩(77)"）- UI表示用 */
@@ -399,12 +401,9 @@ export function formatEval(evalCp?: number, evalMate?: number, _ply?: number): s
         return "";
     }
 
-    // センチポーンを100で割って表示（小数点1桁）
-    const value = evalCp / 100;
-    if (value >= 0) {
-        return `+${value.toFixed(1)}`;
-    }
-    return value.toFixed(1);
+    // エンジンが出した値 (センチポーン) をそのまま整数で表示する。
+    const value = Math.round(evalCp);
+    return value >= 0 ? `+${value}` : String(value);
 }
 
 /**
@@ -607,6 +606,7 @@ export function convertMovesToKif(
 
         kifMoves.push({
             ply,
+            mover: turn,
             kifText,
             displayText,
             usiMove: moves[i],
@@ -763,8 +763,8 @@ function formatEvalComment(evalCp?: number, evalMate?: number, depth?: number): 
             evalStr = `被詰${Math.abs(evalMate)}手`;
         }
     } else if (evalCp !== undefined && evalCp !== null) {
-        const value = evalCp / 100;
-        evalStr = value >= 0 ? `+${value.toFixed(1)}` : value.toFixed(1);
+        const value = Math.round(evalCp);
+        evalStr = value >= 0 ? `+${value}` : String(value);
     } else {
         return null;
     }

@@ -11,7 +11,7 @@ describe("formatMobileCompactEval", () => {
     it("手数付き詰みと通常評価値は従来表記を維持する", () => {
         expect(formatMobileCompactEval(undefined, 5)).toBe("詰み5手");
         expect(formatMobileCompactEval(undefined, -7)).toBe("詰まされ7手");
-        expect(formatMobileCompactEval(150)).toBe("+1.5");
+        expect(formatMobileCompactEval(150)).toBe("+150");
         expect(formatMobileCompactEval()).toBe("-");
     });
 });

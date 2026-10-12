@@ -292,6 +292,8 @@ export interface FlatTreeNode {
     nodeId: string;
     /** 手数 */
     ply: number;
+    /** その手を指した側。省略時は手数の偶奇で決める (奇数 = 先手)。 */
+    mover?: "sente" | "gote";
     /** 表示テキスト */
     displayText: string;
     /** USI形式の指し手 */
@@ -506,6 +508,7 @@ export function getBranchMoves(tree: KifuTree, branchNodeId: string): FlatTreeNo
         result.push({
             nodeId,
             ply: node.ply,
+            mover: node.positionAfter.turn === "sente" ? "gote" : "sente",
             displayText,
             usiMove: node.usiMove,
             evalCp: normalizedEval.evalCp,

@@ -50,14 +50,14 @@ describe("EvalScoreboard", () => {
     it("先手優勢: 朱の文字色と formatEval 表記で表示する", () => {
         render(<EvalScoreboard entry={{ ply: 6, evalCp: 84, evalMate: null }} />);
         const value = screen.getByTestId("eval-scoreboard-value");
-        expect(value.textContent).toBe("+0.8");
+        expect(value.textContent).toBe("+84");
         expect(value.className).toContain("text-wafuu-shu");
     });
 
     it("後手優勢: 藍の文字色", () => {
         render(<EvalScoreboard entry={{ ply: 2, evalCp: -33, evalMate: null }} />);
         const value = screen.getByTestId("eval-scoreboard-value");
-        expect(value.textContent).toBe("-0.3");
+        expect(value.textContent).toBe("-33");
         expect(value.className).toContain("text-wafuu-ai");
     });
 

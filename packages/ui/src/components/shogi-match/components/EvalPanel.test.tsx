@@ -12,7 +12,7 @@ describe("EvalPanel", () => {
     it("検討/観戦(reviewMode)ではスコアボードを常時表示する", () => {
         render(<EvalPanel evalHistory={evalHistory} currentPly={1} reviewMode />);
         expect(screen.getByTestId("eval-scoreboard")).toBeTruthy();
-        expect(screen.getByTestId("eval-scoreboard-value").textContent).toBe("+0.8");
+        expect(screen.getByTestId("eval-scoreboard-value").textContent).toBe("+84");
     });
 
     it("対局ページ(reviewMode 未指定)ではスコアボードを出さない(チート防止)", () => {

@@ -92,7 +92,7 @@ describe("表示の整形", () => {
         expect(studyMoveLabel(tree, ids[0])).toBe("開始局面");
         expect(studyMoveLabel(tree, ids[1])).toBe("☗7六歩(77)");
         expect(studyMoveLabel(tree, ids[2])).toBe("☖3四歩(33)");
-        expect(formatStudyScore(cp(120))).toBe("+1.2");
+        expect(formatStudyScore(cp(120))).toBe("+120");
         expect(formatStudyScore({ kind: "mate", winner: "gote", plies: 5 })).toBe("-詰5");
         expect(formatStudyScore(null)).toBe("");
         expect(studyPlayersLabel(doc.meta)).toBe("☗先手太郎 対 ☖後手花子");

@@ -209,18 +209,18 @@ describe("formatMoveSimple", () => {
 
 describe("formatEval", () => {
     it("正の評価値をフォーマットする", () => {
-        expect(formatEval(50)).toBe("+0.5");
-        expect(formatEval(150)).toBe("+1.5");
-        expect(formatEval(1000)).toBe("+10.0");
+        expect(formatEval(50)).toBe("+50");
+        expect(formatEval(150)).toBe("+150");
+        expect(formatEval(1000)).toBe("+1000");
     });
 
     it("負の評価値をフォーマットする", () => {
-        expect(formatEval(-50)).toBe("-0.5");
-        expect(formatEval(-150)).toBe("-1.5");
+        expect(formatEval(-50)).toBe("-50");
+        expect(formatEval(-150)).toBe("-150");
     });
 
     it("0の評価値をフォーマットする", () => {
-        expect(formatEval(0)).toBe("+0.0");
+        expect(formatEval(0)).toBe("+0");
     });
 
     it("先手勝ちの詰みをフォーマットする（evalMate > 0）", () => {

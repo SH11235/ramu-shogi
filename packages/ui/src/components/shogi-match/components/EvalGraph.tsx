@@ -252,9 +252,9 @@ export function EvalGraph({
         return { x, y };
     })();
 
-    // Y軸の目盛り値（センチポーン → 表示用）
+    // Y軸の目盛り値（棋譜の評価値と同じく、センチポーンをそのまま出す）
     const yAxisLabels = (() => {
-        const displayMax = scaleMax / 100;
+        const displayMax = scaleMax;
         const halfValue = displayMax / 2;
         return [
             { value: `+${displayMax}`, position: padding.top },
@@ -492,7 +492,7 @@ export function EvalGraph({
     }
 
     // 通常表示
-    const displayMax = scaleMax / 100;
+    const displayMax = scaleMax;
 
     // SVGグラフコンテンツ
     const graphSvg = (
