@@ -1186,7 +1186,8 @@ export function StudyWorkspaceView({
 
     const deleteTarget = deleteTargetId ? tree.nodes.get(deleteTargetId) : undefined;
     // 消す変化に、取り込んだ棋譜の手（対局時の情報つき）が含まれるか。本譜を入れ替えたあとは、
-    // 元の対局の手順も変化として消せるので、確認の文面で知らせる。
+    // 元の対局の手順も変化として消せるので、確認の文面で知らせる。評価値も消費時間も付いて
+    // いない棋譜（`source` が無い）では見分けられないので、知らせない。
     const deleteTargetHasSource = ((): boolean => {
         if (!deleteTargetId) return false;
         const stack = [deleteTargetId];

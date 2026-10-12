@@ -346,7 +346,13 @@ const isLocallyValid = (doc: StudyDocument): boolean => {
     }
 };
 
-/** 操作を順に適用し、文書を実際に変えた操作だけを残す。 */
+/**
+ * 操作を順に適用し、文書を実際に変えた操作だけを残す。
+ *
+ * 並べ替えは、適用したあとの子の並び（完全な並び）に書き直して残す。作ったときより子が
+ * 増減した文書に当て直した並べ替えを、そのまま送り直すと、「現在の子の集合と一致しなければ
+ * 読み飛ばす」規則のサーバーでは捨てられ、手元とサーバーで並びが食い違うため。
+ */
 const applyEffectiveOps = (
     doc: StudyDocument,
     ops: readonly StudyOp[],
@@ -356,7 +362,11 @@ const applyEffectiveOps = (
     for (const op of ops) {
         const applied = applyStudyOp(next, op);
         if (applied !== next) {
-            effective.push(op);
+            effective.push(
+                op.type === "reorderChildren" && Object.hasOwn(applied.tree.nodes, op.parentId)
+                    ? { ...op, value: [...applied.tree.nodes[op.parentId].children] }
+                    : op,
+            );
             next = applied;
         }
     }
