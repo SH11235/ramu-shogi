@@ -91,9 +91,12 @@ describe("イベントのメタデータの表示（API の応答から）", () 
         if (!meta) throw new Error("meta should be decoded");
 
         const { container } = render(<RshogiEventMetaLine meta={meta} />);
-        expect(container.textContent).toBe("第5回電竜戦・大会の公式ページ");
+        expect(container.textContent).toBe("第5回電竜戦・大会の公式ページ ↗（新しいタブで開く）");
         const links = screen.getAllByRole("link");
         expect(links).toHaveLength(1);
+        // 新しいタブで開くことは、矢印（読み上げない）と、画面には出さない文（読み上げる）で伝える。
+        expect(links[0].querySelector('[aria-hidden="true"]')?.textContent).toBe(" ↗");
+        expect(links[0].querySelector(".sr-only")?.textContent).toBe("（新しいタブで開く）");
         expect(links[0].getAttribute("href")).toBe("https://example.org/denryu5/");
         expect(links[0].getAttribute("target")).toBe("_blank");
         expect(links[0].getAttribute("rel")).toBe("noopener noreferrer");

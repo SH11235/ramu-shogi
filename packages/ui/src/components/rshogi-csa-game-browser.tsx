@@ -203,6 +203,8 @@ export function RshogiCsaGameBrowser({
     const [isDetailOpen, setIsDetailOpen] = useState<boolean>(
         () => countDetailConditions(search) > 0,
     );
+    /** 終了日の範囲が逆のまま検索を押したか。押すまでは、入力の途中でメッセージを出さない。 */
+    const [showDateRangeError, setShowDateRangeError] = useState(false);
     const searchControllerRef = useRef<AbortController | null>(null);
     const loadMoreControllerRef = useRef<AbortController | null>(null);
     /** 新着順の一覧をどの接続先について取得済みか。 */
@@ -345,8 +347,18 @@ export function RshogiCsaGameBrowser({
     const formSearch = normalizeRshogiGameBrowserSearch({ ...searchForm });
     const formHasCondition = hasSearchCondition(formSearch);
 
+    // 終了日の範囲が逆（開始 > 終了）。日付は YYYY-MM-DD なので文字列のまま比べられる。
+    const isDateRangeReversed =
+        searchForm.from !== "" && searchForm.to !== "" && searchForm.from > searchForm.to;
+
     const handleSearch = (event: FormEvent<HTMLFormElement>): void => {
         event.preventDefault();
+        if (isDateRangeReversed) {
+            // 詳細条件を畳んだままだと、どの欄が悪いのか分からない。開いて欄のそばに理由を出す。
+            setIsDetailOpen(true);
+            setShowDateRangeError(true);
+            return;
+        }
         if (!formHasCondition) return;
         if (JSON.stringify(formSearch) === searchKey) {
             // 条件が同じままの再検索 (エラー後のやり直しなど)。
@@ -356,8 +368,12 @@ export function RshogiCsaGameBrowser({
         onSearchChange(formSearch);
     };
 
+    // 範囲を直したら、検索を押し直さなくてもメッセージは消える。
+    const dateRangeErrorVisible = showDateRangeError && isDateRangeReversed;
+
     const handleClear = (): void => {
         setSearchForm(toFormValues({}));
+        setShowDateRangeError(false);
         setErrorMessage(null);
         if (isSearchMode) onSearchChange({});
     };
@@ -402,7 +418,17 @@ export function RshogiCsaGameBrowser({
                     終局済みの棋譜
                 </h2>
 
-                <form onSubmit={handleSearch} className="flex flex-col gap-2" aria-label="棋譜検索">
+                {/*
+                    ブラウザの標準の入力検証は使わない (noValidate)。詳細条件を畳んでいると、
+                    非表示の欄の検証に失敗しても何も表示されず、検索できない理由が分からない。
+                    検証は handleSearch で行う。
+                */}
+                <form
+                    onSubmit={handleSearch}
+                    noValidate
+                    className="flex flex-col gap-2"
+                    aria-label="棋譜検索"
+                >
                     <div className="flex flex-wrap items-center gap-2">
                         <NativeSelect
                             aria-label="対局場所"
@@ -539,12 +565,25 @@ export function RshogiCsaGameBrowser({
                                 type="date"
                                 value={searchForm.to}
                                 min={searchForm.from || undefined}
+                                aria-invalid={dateRangeErrorVisible || undefined}
+                                aria-describedby={
+                                    dateRangeErrorVisible ? "rshogi-search-date-error" : undefined
+                                }
                                 onChange={(event) =>
                                     setSearchForm({ ...searchForm, to: event.target.value })
                                 }
                                 className="h-9 text-sm"
                             />
                         </label>
+                        {dateRangeErrorVisible && (
+                            <p
+                                id="rshogi-search-date-error"
+                                role="alert"
+                                className="col-span-full text-xs text-destructive"
+                            >
+                                終了日の範囲が逆です。
+                            </p>
+                        )}
                     </div>
                 </form>
 

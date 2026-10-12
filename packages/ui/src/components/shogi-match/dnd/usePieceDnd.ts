@@ -23,6 +23,11 @@ import { DEFAULT_DND_CONFIG } from "./types";
 const GHOST_SIZE = 48;
 /** ゴースト位置オフセット（中心に配置するため） */
 const GHOST_OFFSET = GHOST_SIZE / 2;
+/**
+ * ドラッグ終了からこの時間 (ms) のうちにドラッグ元へ届いた click を、ドラッグ由来として捨てる。
+ * ブラウザが pointerup の後に click を出すまでの遅れを覆えて、人が続けて押し直すより短い長さ。
+ */
+const DRAG_CLICK_SUPPRESS_MS = 400;
 
 interface UsePieceDndOptions {
     /** ドロップ時のコールバック */
@@ -85,6 +90,10 @@ export function usePieceDnd(options: UsePieceDndOptions): PieceDndController {
     // Mutable runtime（高頻度更新）
     const runtimeRef = useRef<DragRuntime>(createInitialRuntime());
     const ghostRef = useRef<HTMLElement | null>(null);
+    /** いまのドラッグを始めた要素（押した駒のボタン。子要素を押していればそのボタンまで遡る） */
+    const dragElementRef = useRef<Element | null>(null);
+    /** 直近に終えたドラッグ。そのドラッグが引き起こす click を 1 回だけ捨てるために覚えておく */
+    const dragEndRef = useRef<{ at: number; element: Element } | null>(null);
 
     // タッチ操作時のイベントリスナー参照（メモリリーク防止）
     const touchListenersRef = useRef<{
@@ -234,21 +243,37 @@ export function usePieceDnd(options: UsePieceDndOptions): PieceDndController {
 
         cleanup();
 
-        // ドラッグを終えた直後には、ポインタを捕まえていたドラッグ元の要素へ click が届く。
-        // これを通すと「ドラッグ元の駒をクリックで選んだ」扱いになり、ドロップが弾かれたときに
-        // その選択が残って、次の操作で駒が勝手に動く。ドラッグ由来の click は 1 回だけ捨てる。
-        const swallowClick = (clickEvent: MouseEvent) => {
-            clickEvent.stopPropagation();
-            clickEvent.preventDefault();
-        };
-        document.addEventListener("click", swallowClick, { capture: true, once: true });
-        setTimeout(() => {
-            document.removeEventListener("click", swallowClick, { capture: true });
-        }, 0);
+        // このドラッグが引き起こす click を捨てられるよう、終えた時刻とドラッグ元を覚えておく
+        // （捨てる側は handleClickCapture）。
+        dragEndRef.current = dragElementRef.current
+            ? { at: performance.now(), element: dragElementRef.current }
+            : null;
+        dragElementRef.current = null;
 
         if (origin && payload && target && onDrop) {
             onDrop({ origin, payload, target });
         }
+    });
+
+    // ドラッグを終えた直後には、ポインタを捕まえていたドラッグ元の要素へ click が届く。
+    // これを通すと「ドラッグ元の駒をクリックで選んだ」扱いになり、ドロップが弾かれたときに
+    // その選択が残って、次の操作で駒が勝手に動く。ドラッグ由来の click は 1 回だけ捨てる。
+    //
+    // click が pointerup と同じタスクで届くとは限らない（タッチの長押しドラッグの後など）ので、
+    // 「次のタスクまで」ではなく「ドラッグ元の要素へ、ドラッグ終了から短時間のうちに届いた click」で
+    // 見分ける。ドラッグ元以外への click と、時間が経ってからの click は利用者の操作なので通す。
+    const handleClickCapture = useEffectEvent((clickEvent: MouseEvent) => {
+        const dragEnd = dragEndRef.current;
+        if (!dragEnd) return;
+        // 当たっても外れても、覚えておくのは次の click 1 回まで
+        dragEndRef.current = null;
+
+        if (performance.now() - dragEnd.at > DRAG_CLICK_SUPPRESS_MS) return;
+        const target = clickEvent.target;
+        if (!(target instanceof Node) || !dragEnd.element.contains(target)) return;
+
+        clickEvent.stopPropagation();
+        clickEvent.preventDefault();
     });
 
     // PointerCancel / LostPointerCapture ハンドラ
@@ -296,6 +321,7 @@ export function usePieceDnd(options: UsePieceDndOptions): PieceDndController {
 
         document.addEventListener("pointermove", handlePointerMove);
         document.addEventListener("pointerup", handlePointerUp);
+        document.addEventListener("click", handleClickCapture, { capture: true });
         document.addEventListener("pointercancel", handlePointerCancel);
         document.addEventListener("lostpointercapture", handlePointerCancel);
         document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -304,6 +330,7 @@ export function usePieceDnd(options: UsePieceDndOptions): PieceDndController {
         return () => {
             document.removeEventListener("pointermove", handlePointerMove);
             document.removeEventListener("pointerup", handlePointerUp);
+            document.removeEventListener("click", handleClickCapture, { capture: true });
             document.removeEventListener("pointercancel", handlePointerCancel);
             document.removeEventListener("lostpointercapture", handlePointerCancel);
             document.removeEventListener("visibilitychange", handleVisibilityChange);
@@ -353,6 +380,8 @@ export function usePieceDnd(options: UsePieceDndOptions): PieceDndController {
 
             // Pointer capture
             const captureEl = e.target as Element;
+            dragElementRef.current = captureEl.closest?.("button") ?? captureEl;
+            dragEndRef.current = null;
             try {
                 captureEl.setPointerCapture(pointerId);
                 rt.captureTarget = captureEl;

@@ -814,11 +814,15 @@ describe("RshogiCsaViewer: 大会（イベント）のメタデータ", () => {
         expect(within(panel).queryByText("WCSC36")).toBeNull();
         expect(within(panel).getByText("主催: コンピュータ将棋協会")).toBeTruthy();
 
-        const official = within(panel).getByRole("link", { name: "大会の公式ページ" });
+        const official = within(panel).getByRole("link", {
+            name: /^大会の公式ページ\s*（新しいタブで開く）$/,
+        });
         expect(official.getAttribute("href")).toBe(WCSC_META.officialUrl);
         expect(official.getAttribute("target")).toBe("_blank");
         expect(official.getAttribute("rel")).toBe("noopener noreferrer");
-        const kifuSource = within(panel).getByRole("link", { name: "棋譜の出典" });
+        const kifuSource = within(panel).getByRole("link", {
+            name: /^棋譜の出典\s*（新しいタブで開く）$/,
+        });
         expect(kifuSource.getAttribute("href")).toBe(WCSC_META.kifuSourceUrl);
         expect(kifuSource.getAttribute("target")).toBe("_blank");
         expect(kifuSource.getAttribute("rel")).toBe("noopener noreferrer");
@@ -844,7 +848,9 @@ describe("RshogiCsaViewer: 大会（イベント）のメタデータ", () => {
         await within(panel).findByText(WCSC_META.title);
         expect(within(panel).queryByText(/主催/)).toBeNull();
         expect(within(panel).getAllByRole("link")).toHaveLength(1);
-        expect(within(panel).getByRole("link", { name: "大会の公式ページ" })).toBeTruthy();
+        expect(
+            within(panel).getByRole("link", { name: /^大会の公式ページ\s*（新しいタブで開く）$/ }),
+        ).toBeTruthy();
     });
 
     it("メタの無いイベント（古いサーバーを含む）では、これまでどおりタグだけを出す", async () => {
@@ -903,10 +909,14 @@ describe("RshogiCsaViewer: 大会（イベント）のメタデータ", () => {
         expect(await within(sheet).findByText(WCSC_META.title)).toBeTruthy();
         expect(within(sheet).getByText("主催: コンピュータ将棋協会")).toBeTruthy();
         expect(
-            within(sheet).getByRole("link", { name: "大会の公式ページ" }).getAttribute("href"),
+            within(sheet)
+                .getByRole("link", { name: /^大会の公式ページ\s*（新しいタブで開く）$/ })
+                .getAttribute("href"),
         ).toBe(WCSC_META.officialUrl);
-        expect(within(sheet).getByRole("link", { name: "棋譜の出典" }).getAttribute("href")).toBe(
-            WCSC_META.kifuSourceUrl,
-        );
+        expect(
+            within(sheet)
+                .getByRole("link", { name: /^棋譜の出典\s*（新しいタブで開く）$/ })
+                .getAttribute("href"),
+        ).toBe(WCSC_META.kifuSourceUrl);
     });
 });

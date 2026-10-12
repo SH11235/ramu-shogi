@@ -9,7 +9,7 @@ import {
 } from "@shogi/app-core";
 import type { MutableRefObject } from "react";
 import type { Message, PromotionSelection } from "../types";
-import type { LegalMoveCache } from "../utils/legalMoveCache";
+import { buildLegalCacheKey, type LegalMoveCache } from "../utils/legalMoveCache";
 import { determinePromotion } from "../utils/promotionLogic";
 import type { UseKifuNavigationResult } from "./useKifuNavigation";
 
@@ -152,8 +152,8 @@ export function useMoveExecution({
     const getLegalSet = async (): Promise<Set<string> | null> => {
         if (!positionReady) return null;
         const ply = moves.length;
-        const movesKey = moves.join(" ");
         const passRightsOption = getPassRightsOption();
+        const movesKey = buildLegalCacheKey(startSfen, moves, passRightsOption);
         const resolver = async () => {
             if (fetchLegalMoves) {
                 return fetchLegalMoves(startSfen, moves, passRightsOption);

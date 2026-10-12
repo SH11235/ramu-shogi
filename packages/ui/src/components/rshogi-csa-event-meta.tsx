@@ -54,6 +54,9 @@ function RshogiEventLink({ item }: { item: RshogiEventLinkItem }): ReactElement 
     return (
         <a href={item.href} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
             {item.label}
+            {/* 外部サイトを新しいタブで開くことを、見た目（矢印）と読み上げ（文）の両方で伝える */}
+            <span aria-hidden="true"> ↗</span>
+            <span className="sr-only">（新しいタブで開く）</span>
         </a>
     );
 }

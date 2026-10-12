@@ -10,7 +10,7 @@ import { act, renderHook } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { Message, PromotionSelection, Selection } from "../types";
-import { LegalMoveCache } from "../utils/legalMoveCache";
+import { buildLegalCacheKey, LegalMoveCache } from "../utils/legalMoveCache";
 import { useMoveExecution } from "./useMoveExecution";
 
 /** 先手番。先手は 5九玉・2八飛・7七歩と持ち駒の歩・金、後手は 5一玉・3三歩。 */
@@ -35,58 +35,77 @@ const LEGAL_MOVES = ["P*5e", "G*5e", "G*7e", "2h2e", "7g7f"];
 
 type Mode = "review" | "match";
 
-function setup(mode: Mode) {
+const START_SFEN = "sfen-of-test-position";
+
+interface SetupOptions {
+    /** 渡すと、キャッシュを先に埋めずに、合法手をこの関数へ取りに行く */
+    fetchLegalMoves?: (sfen: string, moves: string[]) => Promise<string[]>;
+}
+
+function setup(mode: Mode, options: SetupOptions = {}) {
     const addMove = vi.fn();
     const legalCache = new LegalMoveCache();
-    legalCache.set("", new Set(LEGAL_MOVES));
+    if (!options.fetchLegalMoves) {
+        legalCache.set(buildLegalCacheKey(START_SFEN, [], {}), new Set(LEGAL_MOVES));
+    }
     const position = createPosition();
 
-    const hook = renderHook(() => {
-        const [selection, setSelection] = useState<Selection | null>(null);
-        const [promotionSelection, setPromotionSelection] = useState<PromotionSelection | null>(
-            null,
-        );
-        const [message, setMessage] = useState<Message | null>(null);
-        const execution = useMoveExecution({
-            position,
-            navigation: {
-                addMove,
-                tree: { nodes: new Map(), currentNodeId: "root" } as never,
-            },
-            isEditMode: false,
-            isReviewMode: mode === "review",
-            isPaused: false,
-            positionReady: true,
-            startSfen: "sfen-of-test-position",
-            moves: [],
-            legalCache,
-            clearLegalCache: () => {},
-            setCanPassLegal: () => {},
-            getPassRightsOption: () => ({}),
-            updateClocksForNextTurn: () => {},
-            turnStartTimeRef: { current: 0 },
-            isEngineTurn: () => false,
-            selection,
-            setSelection,
-            promotionSelection,
-            setPromotionSelection,
-            setLastMove: () => {},
-            setMessage,
-            setLastAddedBranchInfo: () => {},
-            editFromSquare: null,
-            setEditFromSquare: () => {},
-            editTool: "place",
-            editPieceType: null,
-            editOwner: "sente",
-            editPromoted: false,
-            placePieceAt: () => false,
-            moveProcessingRef: { current: false },
-        });
-        return { ...execution, selection, message };
-    });
+    const hook = renderHook(
+        ({ startSfen }: { startSfen: string }) => {
+            const [selection, setSelection] = useState<Selection | null>(null);
+            const [promotionSelection, setPromotionSelection] = useState<PromotionSelection | null>(
+                null,
+            );
+            const [message, setMessage] = useState<Message | null>(null);
+            const execution = useMoveExecution({
+                position,
+                navigation: {
+                    addMove,
+                    tree: { nodes: new Map(), currentNodeId: "root" } as never,
+                },
+                isEditMode: false,
+                isReviewMode: mode === "review",
+                isPaused: false,
+                positionReady: true,
+                startSfen,
+                moves: [],
+                fetchLegalMoves: options.fetchLegalMoves,
+                legalCache,
+                clearLegalCache: () => legalCache.clear(),
+                setCanPassLegal: () => {},
+                getPassRightsOption: () => ({}),
+                updateClocksForNextTurn: () => {},
+                turnStartTimeRef: { current: 0 },
+                isEngineTurn: () => false,
+                selection,
+                setSelection,
+                promotionSelection,
+                setPromotionSelection,
+                setLastMove: () => {},
+                setMessage,
+                setLastAddedBranchInfo: () => {},
+                editFromSquare: null,
+                setEditFromSquare: () => {},
+                editTool: "place",
+                editPieceType: null,
+                editOwner: "sente",
+                editPromoted: false,
+                placePieceAt: () => false,
+                moveProcessingRef: { current: false },
+            });
+            return { ...execution, selection, message };
+        },
+        { initialProps: { startSfen: START_SFEN } },
+    );
 
     return {
         addMove,
+        legalCache,
+        /** 開始局面を読み込み直す（呼び出し側と同じく、合法手キャッシュも捨てる） */
+        loadStartSfen: (startSfen: string) => {
+            legalCache.clear();
+            hook.rerender({ startSfen });
+        },
         current: () => hook.result.current,
         selectHand: (piece: "P" | "G") => act(() => hook.result.current.handleHandSelect(piece)),
         selectSquare: (square: string) =>
@@ -186,5 +205,40 @@ describe.each<Mode>(["review", "match"])("useMoveExecution: 持ち駒の選択�
         expect(t.addMove).toHaveBeenCalledTimes(1);
         expect(t.addMove.mock.calls[0]?.[0]).toBe("P*5e");
         expect(t.current().selection).toBeNull();
+    });
+});
+
+describe("useMoveExecution: 合法手キャッシュと局面の入れ替え", () => {
+    it("取得中に別の開始局面へ入れ替えたら、後から届いた前の局面の合法手を使わない", async () => {
+        const pending = new Map<string, (moves: string[]) => void>();
+        const fetchLegalMoves = vi.fn(
+            (sfen: string) =>
+                new Promise<string[]>((resolve) => {
+                    pending.set(sfen, resolve);
+                }),
+        );
+        const t = setup("review", { fetchLegalMoves });
+
+        // 局面 A の合法手を取りに行き、応答が届く前に局面 B を読み込む。
+        const legalOfA = t.current().getLegalSet();
+        t.loadStartSfen("sfen-of-position-b");
+        // A の応答が後から届く。
+        await act(async () => {
+            pending.get(START_SFEN)?.(["7g7f"]);
+            await legalOfA;
+        });
+
+        // B で駒を選ぶと、A の応答ではなく B の合法手を取りに行く。
+        const legalOfB = t.current().getLegalSet();
+        await act(async () => {
+            pending.get("sfen-of-position-b")?.(["2h2e"]);
+            await legalOfB;
+        });
+
+        expect(fetchLegalMoves).toHaveBeenCalledTimes(2);
+        expect([...((await legalOfB) ?? [])]).toEqual(["2h2e"]);
+        // B の合法手はキャッシュに残り、3 回目は取りに行かない。
+        expect([...((await t.current().getLegalSet()) ?? [])]).toEqual(["2h2e"]);
+        expect(fetchLegalMoves).toHaveBeenCalledTimes(2);
     });
 });

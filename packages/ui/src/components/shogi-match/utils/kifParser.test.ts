@@ -106,3 +106,34 @@ describe("parseKif", () => {
         });
     });
 });
+
+describe("parseKif の評価値コメント", () => {
+    const parseEval = (comment: string) => {
+        const result = parseKif(["   1 ７六歩(77)", comment].join("\n"));
+        expect(result.moves).toEqual(["7g7f"]);
+        return result.moveData[0];
+    };
+
+    it("小数点の無い値はセンチポーンとして読む（いまの書き出しの形式）", () => {
+        expect(parseEval("*評価値=+150 (深さ20)")).toMatchObject({ evalCp: 150, depth: 20 });
+        expect(parseEval("*評価値=-80")).toMatchObject({ evalCp: -80 });
+        expect(parseEval("*評価値=1234")).toMatchObject({ evalCp: 1234 });
+    });
+
+    it("0 はどちらの形式でも 0", () => {
+        expect(parseEval("*評価値=+0").evalCp).toBe(0);
+        expect(parseEval("*評価値=+0.0").evalCp).toBe(0);
+    });
+
+    it("小数点のある値は歩 1 枚 = 1.0 の旧形式として 100 倍する", () => {
+        expect(parseEval("*評価値=+1.5 (深さ20)")).toMatchObject({ evalCp: 150, depth: 20 });
+        expect(parseEval("*評価値=-0.8").evalCp).toBe(-80);
+        expect(parseEval("*評価値=+12.0").evalCp).toBe(1200);
+    });
+
+    it("詰みは手数つきで読み、評価値は付けない", () => {
+        expect(parseEval("*評価値=詰3手 (深さ9)")).toMatchObject({ evalMate: 3, depth: 9 });
+        expect(parseEval("*評価値=被詰5手")).toMatchObject({ evalMate: -5 });
+        expect(parseEval("*評価値=詰3手").evalCp).toBeUndefined();
+    });
+});

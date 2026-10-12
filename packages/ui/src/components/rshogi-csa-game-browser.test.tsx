@@ -242,13 +242,17 @@ describe("RshogiCsaGameBrowser", () => {
             await screen.findByText("23件中 1-20件");
             const line = await screen.findByTestId("rshogi-event-meta-line");
             expect(line.textContent).toBe(
-                "第36回世界コンピュータ将棋選手権（コンピュータ将棋協会）・大会の公式ページ・棋譜の出典",
+                "第36回世界コンピュータ将棋選手権（コンピュータ将棋協会）・大会の公式ページ ↗（新しいタブで開く）・棋譜の出典 ↗（新しいタブで開く）",
             );
-            const official = within(line).getByRole("link", { name: "大会の公式ページ" });
+            const official = within(line).getByRole("link", {
+                name: /^大会の公式ページ\s*（新しいタブで開く）$/,
+            });
             expect(official.getAttribute("href")).toBe(WCSC_META.officialUrl);
             expect(official.getAttribute("target")).toBe("_blank");
             expect(official.getAttribute("rel")).toBe("noopener noreferrer");
-            const kifuSource = within(line).getByRole("link", { name: "棋譜の出典" });
+            const kifuSource = within(line).getByRole("link", {
+                name: /^棋譜の出典\s*（新しいタブで開く）$/,
+            });
             expect(kifuSource.getAttribute("href")).toBe(WCSC_META.kifuSourceUrl);
             expect(kifuSource.getAttribute("rel")).toBe("noopener noreferrer");
             // 一覧の上に置く
@@ -368,6 +372,70 @@ describe("RshogiCsaGameBrowser", () => {
                     from: new Date(2026, 9, 1).getTime(),
                     to: new Date(2026, 9, 3).getTime() - 1,
                 }),
+            );
+        });
+    });
+
+    describe("終了日の範囲が逆のとき", () => {
+        const fillReversedRange = () => {
+            fireEvent.change(screen.getByLabelText("終了日（開始）"), {
+                target: { value: "2026-10-05" },
+            });
+            fireEvent.change(screen.getByLabelText("終了日（終了）"), {
+                target: { value: "2026-10-01" },
+            });
+        };
+        const detailToggle = () => screen.getByRole("button", { name: /詳細条件/ });
+        const detailPanel = () => document.getElementById("rshogi-search-detail") as HTMLElement;
+
+        it("詳細条件を畳んだまま検索を押すと、検索せずに詳細条件を開いて理由を出す", async () => {
+            render(<Harness />);
+            await screen.findByText("もっと読み込む");
+
+            fireEvent.click(detailToggle());
+            fillReversedRange();
+            fireEvent.click(detailToggle());
+            expect(detailPanel().hidden).toBe(true);
+            expect(screen.queryByText("終了日の範囲が逆です。")).toBeNull();
+
+            fireEvent.click(screen.getByRole("button", { name: "検索" }));
+
+            expect(detailPanel().hidden).toBe(false);
+            expect(detailToggle().getAttribute("aria-expanded")).toBe("true");
+            const alert = within(detailPanel()).getByRole("alert");
+            expect(alert.textContent).toBe("終了日の範囲が逆です。");
+            const to = screen.getByLabelText("終了日（終了）");
+            expect(to.getAttribute("aria-invalid")).toBe("true");
+            expect(to.getAttribute("aria-describedby")).toBe(alert.id);
+            expect(onSearchChange).not.toHaveBeenCalled();
+            expect(fetchRshogiGameSearch).not.toHaveBeenCalled();
+        });
+
+        it("ブラウザの標準の入力検証には任せない（非表示の欄で黙って止まらないように）", async () => {
+            render(<Harness />);
+            await screen.findByText("もっと読み込む");
+
+            expect(screen.getByRole("form", { name: "棋譜検索" }).hasAttribute("novalidate")).toBe(
+                true,
+            );
+        });
+
+        it("範囲を直すとメッセージが消え、検索できる", async () => {
+            render(<Harness />);
+            await screen.findByText("もっと読み込む");
+            fireEvent.click(detailToggle());
+            fillReversedRange();
+            fireEvent.click(screen.getByRole("button", { name: "検索" }));
+            expect(screen.getByText("終了日の範囲が逆です。")).toBeTruthy();
+
+            fireEvent.change(screen.getByLabelText("終了日（終了）"), {
+                target: { value: "2026-10-06" },
+            });
+            expect(screen.queryByText("終了日の範囲が逆です。")).toBeNull();
+
+            fireEvent.click(screen.getByRole("button", { name: "検索" }));
+            expect(onSearchChange).toHaveBeenCalledWith(
+                expect.objectContaining({ from: "2026-10-05", to: "2026-10-06" }),
             );
         });
     });

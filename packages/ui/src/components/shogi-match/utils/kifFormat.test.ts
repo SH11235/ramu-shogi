@@ -604,6 +604,46 @@ describe("exportToKifString", () => {
         expect(buildSingleMoveExport()).toContain("手合割：平手");
     });
 
+    it("評価値つきで書き出して読み込み直しても、評価値と詰み手数が変わらない", () => {
+        const board = placePiece(createEmptyBoard(), "7g", "sente", "P");
+        const evals = [
+            { evalCp: 150 },
+            { evalCp: -80 },
+            { evalCp: 0 },
+            { evalCp: 5 },
+            { evalCp: 31234, depth: 24 },
+            { evalMate: 3 },
+            { evalMate: -5 },
+        ];
+        const kifMoves = evals.map((entry, index) => ({
+            ply: index + 1,
+            kifText: "dummy",
+            displayText: "dummy",
+            usiMove: "7g7f",
+            elapsedMs: 0,
+            ...entry,
+        }));
+        const text = exportToKifString(
+            kifMoves,
+            kifMoves.map(() => board),
+            { includeEval: true, startSfen: "startpos" },
+        );
+
+        const parsed = parseKif(text);
+
+        expect(parsed.moveData).toHaveLength(evals.length);
+        expect(
+            parsed.moveData.map(({ evalCp, evalMate, depth }) => ({ evalCp, evalMate, depth })),
+        ).toEqual(
+            evals.map((entry) => ({
+                evalCp: undefined,
+                evalMate: undefined,
+                depth: undefined,
+                ...entry,
+            })),
+        );
+    });
+
     it("手数不明の詰みコメントは手数を出力しない", () => {
         const board = placePiece(createEmptyBoard(), "7g", "sente", "P");
         const result = exportToKifString(

@@ -90,7 +90,7 @@ import type {
     PCSpecificProps,
 } from "./shogi-match/types/layoutProps";
 import type { KifMove } from "./shogi-match/utils/kifFormat";
-import { LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
+import { buildLegalCacheKey, LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
 import {
     isSamePassRightsSettings,
     normalizePassRightsSettings,
@@ -415,6 +415,24 @@ export function useInitialReviewSync({
     }, [positionReady, reviewSfen, reviewMoves, reviewMoveDataKey]);
 }
 
+/**
+ * 局面編集の操作（駒のドラッグ、マスを押しての配置、持ち駒の増減、成り・不成の切り替え）を
+ * 受け付けてよいか。
+ *
+ * 棋譜を見るだけの画面（`viewerMode`）は局面編集を出さない。ところが内部の状態は
+ * `initialReview` の取り込みが済むまで「編集モード」のままで、取り込みに失敗すると以後も
+ * そのまま残る。その間に盤を編集できてしまわないよう、ビューアでは常に受け付けない。
+ */
+export function canEditPosition({
+    isEditMode,
+    viewerMode,
+}: {
+    isEditMode: boolean;
+    viewerMode: boolean;
+}): boolean {
+    return isEditMode && !viewerMode;
+}
+
 interface ShogiMatchProps {
     engineOptions: EngineOption[];
     defaultSides?: { sente: SideSetting; gote: SideSetting };
@@ -612,6 +630,7 @@ export function ShogiMatch({
     );
     const [isMatchRunning, setIsMatchRunning] = useState(false);
     const [isEditMode, setIsEditMode] = useState(true);
+    const editAllowed = canEditPosition({ isEditMode, viewerMode });
     const [isPaused, setIsPaused] = useState(false);
     const pendingSearchStatsRef = useRef(new Map<number, MoveSearchStats>());
     const [liveSearchInfo, setLiveSearchInfo] = useState<{
@@ -988,6 +1007,7 @@ export function ShogiMatch({
         setPosition,
         isMatchRunning,
         moves,
+        startSfen,
         legalCache,
         currentTurnRole: sides[position.turn]?.role ?? "human",
         getRemainingTimeMs,
@@ -1058,7 +1078,10 @@ export function ShogiMatch({
                 const resolver = fetchLegalMoves
                     ? () => fetchLegalMoves(startSfen, moves, passRightsOption)
                     : () => getPositionService().getLegalMoves(startSfen, moves, passRightsOption);
-                const legal = await legalCache.getOrResolve(moves.join(" "), resolver);
+                const legal = await legalCache.getOrResolve(
+                    buildLegalCacheKey(startSfen, moves, passRightsOption),
+                    resolver,
+                );
                 if (cancelled || matchEndedRef.current) return;
                 if (legal.size === 0) {
                     const loser: Player = position.turn;
@@ -1406,7 +1429,7 @@ export function ShogiMatch({
                 const resolver = fetchLegalMoves
                     ? () => fetchLegalMoves(startSfen, moves, passRightsOption)
                     : () => getPositionService().getLegalMoves(startSfen, moves, passRightsOption);
-                const movesKey = moves.join(" ");
+                const movesKey = buildLegalCacheKey(startSfen, moves, passRightsOption);
                 let legal = await legalCache.getOrResolve(movesKey, resolver);
                 if (!legal || !legal.has("pass")) {
                     // パス権ありでも合法手に含まれない場合はキャッシュをクリアして再取得（パス権オプション漏れ対策）
@@ -1591,7 +1614,7 @@ export function ShogiMatch({
         positionRef,
         editVersionRef,
         navigation,
-        isEditMode,
+        isEditMode: editAllowed,
         isMatchRunning,
         matchEndedRef,
         clearLegalCache,
@@ -1609,7 +1632,7 @@ export function ShogiMatch({
 
     // DnD ドロップハンドラ
     const handleDndDrop = (result: DropResult) => {
-        if (!isEditMode) return;
+        if (!editAllowed) return;
 
         const applied = applyDropResult(result, positionRef.current);
         if (!applied.ok) {
@@ -1623,7 +1646,7 @@ export function ShogiMatch({
     // DnD コントローラー
     const dndController = usePieceDnd({
         onDrop: handleDndDrop,
-        disabled: !isEditMode,
+        disabled: !editAllowed,
     });
 
     // DnD ドラッグ開始ハンドラ（盤上の駒）
@@ -1670,7 +1693,7 @@ export function ShogiMatch({
         piece: { owner: "sente" | "gote"; type: string; promoted?: boolean },
         _event: React.MouseEvent<HTMLButtonElement>,
     ) => {
-        if (!isEditMode) return;
+        if (!editAllowed) return;
         const sq = square as Square;
         setPiecePromotion(sq, !piece.promoted);
     };
@@ -1833,7 +1856,10 @@ export function ShogiMatch({
     };
 
     const candidateNote = positionReady ? null : "局面を読み込み中です。";
-    const isDraggingPiece = isEditMode && dndController.state.isDragging;
+    const isDraggingPiece = editAllowed && dndController.state.isDragging;
+    // ビューアで内部の状態が編集モードのまま残っている間（取り込み前・取り込み失敗時）は、
+    // マスや持ち駒を押しても局面を書き換えない。
+    const editLockedInViewer = isEditMode && !editAllowed;
     const internalEngineId = engineOptions[0]?.id ?? "wasm";
 
     useEffect(() => {
@@ -1993,15 +2019,15 @@ export function ShogiMatch({
     const boardHandlers: BoardHandlersProps = {
         hideEmptyHandPieces,
         getHandInfo,
-        handleSquareSelect,
+        handleSquareSelect: editLockedInViewer ? async () => {} : handleSquareSelect,
         handlePromotionChoice,
-        handleHandSelect,
+        handleHandSelect: editLockedInViewer ? () => {} : handleHandSelect,
         applyUsiMove,
         handleHandPiecePointerDown,
         handlePiecePointerDown,
         handlePieceTogglePromote,
-        handleIncrementHand,
-        handleDecrementHand,
+        handleIncrementHand: editLockedInViewer ? () => {} : handleIncrementHand,
+        handleDecrementHand: editLockedInViewer ? () => {} : handleDecrementHand,
         handleResetToStartpos,
         pauseAutoPlay,
         resumeAutoPlay,
