@@ -86,6 +86,7 @@ export function isSamePassRightsSettings(
  *
  * @param passRightsSettings - パス権設定
  * @param moves - 棋譜（USI形式の指し手配列）
+ * @param startSfen - 開始局面（手番を見る。省略時は先手番から始まるものとして数える）
  * @returns getLegalMoves 用のオプション
  */
 export function buildPassRightsOptionForLegalMoves(
@@ -93,6 +94,7 @@ export function buildPassRightsOptionForLegalMoves(
         | { enabled: boolean; senteInitialCount: number; goteInitialCount: number }
         | undefined,
     moves: string[],
+    startSfen = "startpos",
 ): { passRights?: { sente: number; gote: number } } {
     // 大文字小文字を区別せずにパス手を検出（parseMoveと同様）
     const hasPassInMoves = moves.some((m) => m.toLowerCase() === "pass");
@@ -112,7 +114,11 @@ export function buildPassRightsOptionForLegalMoves(
         // （各プレイヤーのパス回数を使用）
         let sentePassCount = 0;
         let gotePassCount = 0;
-        let isSenteTurn = true; // 平手初期局面は先手番
+        // 開始局面の手番から数える（後手番から始まる局面では、最初の手は後手の手）。
+        const startFields = startSfen.trim().split(" ").filter(Boolean);
+        if (startFields[0] === "position") startFields.shift();
+        if (startFields[0] === "sfen") startFields.shift();
+        let isSenteTurn = startFields[1] !== "w";
         for (const move of moves) {
             if (move.toLowerCase() === "pass") {
                 if (isSenteTurn) {

@@ -92,7 +92,7 @@ export function usePassRights(deps: {
         passRights?: { sente: number; gote: number };
     } => {
         if (!passRightsSettings) return {};
-        return buildPassRightsOptionForLegalMoves(passRightsSettings, moves);
+        return buildPassRightsOptionForLegalMoves(passRightsSettings, moves, startSfen);
     };
 
     const ensurePassRightsInitializedEvent = useEffectEvent(ensurePassRightsInitialized);

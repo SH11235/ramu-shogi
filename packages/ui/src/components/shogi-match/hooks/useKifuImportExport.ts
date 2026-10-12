@@ -149,7 +149,11 @@ export function useKifuImportExport({
         const filtered = list.filter(Boolean);
         const service = getPositionService();
         // パス入り棋譜の場合はpassRightsを渡す
-        const passRightsOption = buildPassRightsOptionForLegalMoves(passRightsSettings, filtered);
+        const passRightsOption = buildPassRightsOptionForLegalMoves(
+            passRightsSettings,
+            filtered,
+            startSfenToLoad,
+        );
         const result = await service.replayMovesStrict(startSfenToLoad, filtered, passRightsOption);
 
         // 棋譜ナビゲーションをリセット
