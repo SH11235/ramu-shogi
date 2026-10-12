@@ -36,9 +36,6 @@ export function RshogiViewerListView({
                     ← ローカル対局へ戻る
                 </Button>
                 <span className="text-sm font-semibold text-wafuu-sumi">rshogi viewer</span>
-                <span className="text-xs text-muted-foreground">
-                    進行中の対局と、終局した棋譜を新着順で表示します。
-                </span>
             </div>
 
             <RshogiCsaGameBrowser

@@ -127,7 +127,7 @@ describe("RshogiCsaGameBrowser", () => {
 
             const select = screen.getByLabelText("対局場所") as HTMLSelectElement;
             expect([...select.options].map((option) => option.textContent)).toEqual([
-                "すべて",
+                "対局場所: すべて",
                 "rshogi サーバー",
                 "Floodgate",
                 "その他",
