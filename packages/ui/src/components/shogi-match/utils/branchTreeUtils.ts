@@ -292,6 +292,8 @@ export interface FlatTreeNode {
     nodeId: string;
     /** 手数 */
     ply: number;
+    /** その手を指した側。省略時は手数の偶奇で決める (奇数 = 先手)。 */
+    mover?: "sente" | "gote";
     /** 表示テキスト */
     displayText: string;
     /** USI形式の指し手 */
@@ -506,6 +508,7 @@ export function getBranchMoves(tree: KifuTree, branchNodeId: string): FlatTreeNo
         result.push({
             nodeId,
             ply: node.ply,
+            mover: node.positionAfter.turn === "sente" ? "gote" : "sente",
             displayText,
             usiMove: node.usiMove,
             evalCp: normalizedEval.evalCp,
@@ -527,7 +530,7 @@ export function getBranchMoves(tree: KifuTree, branchNodeId: string): FlatTreeNo
 /**
  * 解析ジョブ情報
  */
-interface TreeAnalysisJob {
+export interface TreeAnalysisJob {
     /** ノードID */
     nodeId: string;
     /** 手数 */
@@ -536,7 +539,13 @@ interface TreeAnalysisJob {
     moves: string[];
     /** メインラインかどうか */
     isMainLine: boolean;
+    /** 解析する局面（このノードの手を指した後）の実際の手番 */
+    sideToMove: Player;
 }
+
+/** 解析ジョブの収集で「解析済み」とみなす既定の条件（ノードに評価値がある）。 */
+const hasNodeEval = (node: KifuNode): boolean =>
+    node.eval?.scoreCp !== undefined || node.eval?.scoreMate !== undefined;
 
 /**
  * ツリー全体から解析ジョブを収集する
@@ -553,10 +562,22 @@ export function collectTreeAnalysisJobs(
         onlyWithoutEval?: boolean;
         /** メインラインのみ対象とする */
         mainLineOnly?: boolean;
+        /** 開始局面（ルート）も対象に含める。既定は含めない */
+        includeRoot?: boolean;
+        /**
+         * 「解析済み」の判定。省略時はノードに評価値があるかで判定する。
+         * 研究ノートでは、表示中のレイヤーにそのノードの結果があるかを渡す。
+         */
+        isAnalyzed?: (node: KifuNode) => boolean;
     } = {},
 ): TreeAnalysisJob[] {
     const jobs: TreeAnalysisJob[] = [];
-    const { onlyWithoutEval = true, mainLineOnly = false } = options;
+    const {
+        onlyWithoutEval = true,
+        mainLineOnly = false,
+        includeRoot = false,
+        isAnalyzed = hasNodeEval,
+    } = options;
 
     // スタックを使った反復的な実装
     const stack: Array<{ nodeId: string; moves: string[]; isMainLine: boolean }> = [
@@ -573,7 +594,7 @@ export function collectTreeAnalysisJobs(
         // ルートノード以外を処理
         if (node.usiMove !== null) {
             const currentMoves = [...moves, node.usiMove];
-            const hasEval = node.eval?.scoreCp !== undefined || node.eval?.scoreMate !== undefined;
+            const hasEval = isAnalyzed(node);
 
             if (!onlyWithoutEval || !hasEval) {
                 jobs.push({
@@ -581,6 +602,7 @@ export function collectTreeAnalysisJobs(
                     ply: node.ply,
                     moves: currentMoves,
                     isMainLine,
+                    sideToMove: node.positionAfter.turn,
                 });
             }
 
@@ -598,6 +620,16 @@ export function collectTreeAnalysisJobs(
                 });
             }
         } else {
+            // 開始局面（初手の良し悪しの判定に要る）
+            if (includeRoot && (!onlyWithoutEval || !isAnalyzed(node))) {
+                jobs.push({
+                    nodeId,
+                    ply: node.ply,
+                    moves: [],
+                    isMainLine: true,
+                    sideToMove: node.positionAfter.turn,
+                });
+            }
             // ルートノードの子を処理
             for (let i = node.children.length - 1; i >= 0; i--) {
                 const childId = node.children[i];
@@ -632,10 +664,12 @@ export function collectBranchAnalysisJobs(
     options: {
         /** 評価値がないノードのみ対象とする */
         onlyWithoutEval?: boolean;
+        /** 「解析済み」の判定。省略時はノードに評価値があるかで判定する */
+        isAnalyzed?: (node: KifuNode) => boolean;
     } = {},
 ): TreeAnalysisJob[] {
     const jobs: TreeAnalysisJob[] = [];
-    const { onlyWithoutEval = true } = options;
+    const { onlyWithoutEval = true, isAnalyzed = hasNodeEval } = options;
 
     const branchNode = tree.nodes.get(branchNodeId);
     if (!branchNode) return jobs;
@@ -667,7 +701,7 @@ export function collectBranchAnalysisJobs(
         const node = tree.nodes.get(nodeId);
         if (!node) continue;
 
-        const hasEval = node.eval?.scoreCp !== undefined || node.eval?.scoreMate !== undefined;
+        const hasEval = isAnalyzed(node);
 
         if (!onlyWithoutEval || !hasEval) {
             jobs.push({
@@ -675,6 +709,7 @@ export function collectBranchAnalysisJobs(
                 ply: node.ply,
                 moves: [...moves],
                 isMainLine: false,
+                sideToMove: node.positionAfter.turn,
             });
         }
 

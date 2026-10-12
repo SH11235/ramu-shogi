@@ -7,6 +7,7 @@
 
 import type { ReactElement } from "react";
 import { useKifuTextImport } from "../hooks/useKifuTextImport";
+import { useShogiMatchConfig } from "../ShogiMatchContext";
 import {
     type ImportKifHandler,
     type ImportSfenHandler,
@@ -29,6 +30,7 @@ export function KifuImportPanel({
 }: KifuImportPanelProps): ReactElement {
     const { inputValue, error, success, handleInputChange, handleImport, handleFileChange } =
         useKifuTextImport({ onImportSfen, onImportKif });
+    const { kifuImportExtra } = useShogiMatchConfig();
 
     return (
         // 要素どうしの間隔は親の gap で決める (子に margin を持たせない)。
@@ -90,6 +92,8 @@ export function KifuImportPanel({
                     className="text-sm text-foreground file:mr-2 file:rounded-md file:border file:border-border file:bg-background file:px-3 file:py-1.5 file:text-sm disabled:opacity-50"
                 />
             </label>
+
+            {kifuImportExtra}
         </div>
     );
 }

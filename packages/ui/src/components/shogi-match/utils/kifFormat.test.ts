@@ -209,18 +209,18 @@ describe("formatMoveSimple", () => {
 
 describe("formatEval", () => {
     it("正の評価値をフォーマットする", () => {
-        expect(formatEval(50)).toBe("+0.5");
-        expect(formatEval(150)).toBe("+1.5");
-        expect(formatEval(1000)).toBe("+10.0");
+        expect(formatEval(50)).toBe("+50");
+        expect(formatEval(150)).toBe("+150");
+        expect(formatEval(1000)).toBe("+1000");
     });
 
     it("負の評価値をフォーマットする", () => {
-        expect(formatEval(-50)).toBe("-0.5");
-        expect(formatEval(-150)).toBe("-1.5");
+        expect(formatEval(-50)).toBe("-50");
+        expect(formatEval(-150)).toBe("-150");
     });
 
     it("0の評価値をフォーマットする", () => {
-        expect(formatEval(0)).toBe("+0.0");
+        expect(formatEval(0)).toBe("+0");
     });
 
     it("先手勝ちの詰みをフォーマットする（evalMate > 0）", () => {
@@ -602,6 +602,46 @@ describe("exportToKifString", () => {
     it("開始局面が平手なら手合割は平手のまま", () => {
         expect(buildSingleMoveExport("startpos")).toContain("手合割：平手");
         expect(buildSingleMoveExport()).toContain("手合割：平手");
+    });
+
+    it("評価値つきで書き出して読み込み直しても、評価値と詰み手数が変わらない", () => {
+        const board = placePiece(createEmptyBoard(), "7g", "sente", "P");
+        const evals = [
+            { evalCp: 150 },
+            { evalCp: -80 },
+            { evalCp: 0 },
+            { evalCp: 5 },
+            { evalCp: 31234, depth: 24 },
+            { evalMate: 3 },
+            { evalMate: -5 },
+        ];
+        const kifMoves = evals.map((entry, index) => ({
+            ply: index + 1,
+            kifText: "dummy",
+            displayText: "dummy",
+            usiMove: "7g7f",
+            elapsedMs: 0,
+            ...entry,
+        }));
+        const text = exportToKifString(
+            kifMoves,
+            kifMoves.map(() => board),
+            { includeEval: true, startSfen: "startpos" },
+        );
+
+        const parsed = parseKif(text);
+
+        expect(parsed.moveData).toHaveLength(evals.length);
+        expect(
+            parsed.moveData.map(({ evalCp, evalMate, depth }) => ({ evalCp, evalMate, depth })),
+        ).toEqual(
+            evals.map((entry) => ({
+                evalCp: undefined,
+                evalMate: undefined,
+                depth: undefined,
+                ...entry,
+            })),
+        );
     });
 
     it("手数不明の詰みコメントは手数を出力しない", () => {

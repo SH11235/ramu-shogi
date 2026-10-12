@@ -137,12 +137,32 @@ export interface RshogiGameSummary {
     originUrl?: string;
 }
 
+/**
+ * イベント (大会など) のメタデータ。サーバーに登録されているイベントにだけ付く。
+ *
+ * 大会名や公式ページの URL はアプリに書かず、このデータで管理する。
+ */
+export interface RshogiGameEventMeta {
+    /** 正式名称。 */
+    title: string;
+    /** 主催。 */
+    organizer?: string;
+    /** 大会の公式ページ。`http(s)://` の URL だけを採用する。 */
+    officialUrl?: string;
+    /** 棋譜の出典のページ。`http(s)://` の URL だけを採用する。 */
+    kifuSourceUrl?: string;
+    /** 利用条件についての運用メモ。利用者向けの文ではないので、画面には出さない。 */
+    termsNote?: string;
+}
+
 /** イベント一覧 API (`GET /api/v1/games/events`) の 1 件分。 */
 export interface RshogiGameEventSummary {
     event: string;
     source?: RshogiGameSource;
     /** そのイベント・ソースの対局数。 */
     games: number;
+    /** メタデータ。未登録のイベント (と、メタに対応していない古いサーバー) では付かない。 */
+    meta?: RshogiGameEventMeta;
 }
 
 export interface RshogiGameListPage {
@@ -409,6 +429,8 @@ interface GameEventWire {
     event?: string | null;
     source?: RshogiGameSourceWire | string | null;
     games?: number | null;
+    /** 形を信用せず、`decodeEventMeta` で検証して読む。 */
+    meta?: unknown;
 }
 
 interface GameEventsResponseWire {
@@ -486,6 +508,46 @@ const decodeStringOrUndefined = (value: string | null | undefined): string | und
     if (typeof value !== "string") return undefined;
     if (value.length === 0) return undefined;
     return value;
+};
+
+/** リンクにしてよい URL (`http://` か `https://` で始まり、URL として解釈できるもの) だけを返す。 */
+const decodeHttpUrlOrUndefined = (value: unknown): string | undefined => {
+    if (typeof value !== "string") return undefined;
+    const trimmed = value.trim();
+    if (!/^https?:\/\//i.test(trimmed)) return undefined;
+    try {
+        const url = new URL(trimmed);
+        return url.protocol === "https:" || url.protocol === "http:" ? trimmed : undefined;
+    } catch {
+        return undefined;
+    }
+};
+
+const decodeTrimmedStringOrUndefined = (value: unknown): string | undefined => {
+    if (typeof value !== "string") return undefined;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+};
+
+/**
+ * イベントのメタデータを検証して読む。正式名称 (`title`) の無いもの・オブジェクトでないものは
+ * 未知の形として捨てる (メタ無しと同じ扱いになり、イベントのタグだけが表示される)。
+ */
+const decodeEventMeta = (wire: unknown): RshogiGameEventMeta | undefined => {
+    if (typeof wire !== "object" || wire === null || Array.isArray(wire)) return undefined;
+    const record = wire as Record<string, unknown>;
+    const title = decodeTrimmedStringOrUndefined(record.title);
+    if (title === undefined) return undefined;
+    const meta: RshogiGameEventMeta = { title };
+    const organizer = decodeTrimmedStringOrUndefined(record.organizer);
+    if (organizer !== undefined) meta.organizer = organizer;
+    const officialUrl = decodeHttpUrlOrUndefined(record.official_url);
+    if (officialUrl !== undefined) meta.officialUrl = officialUrl;
+    const kifuSourceUrl = decodeHttpUrlOrUndefined(record.kifu_source_url);
+    if (kifuSourceUrl !== undefined) meta.kifuSourceUrl = kifuSourceUrl;
+    const termsNote = decodeTrimmedStringOrUndefined(record.terms_note);
+    if (termsNote !== undefined) meta.termsNote = termsNote;
+    return meta;
 };
 
 const decodeClock = (clock: ClockWire | null | undefined): RshogiTimeControl | undefined => {
@@ -821,11 +883,14 @@ export async function fetchRshogiGameEvents(
     for (const wire of payload.events) {
         const event = decodeStringOrUndefined(wire.event ?? undefined);
         if (event === undefined) continue;
-        events.push({
+        const summary: RshogiGameEventSummary = {
             event,
             source: decodeStringOrUndefined(wire.source ?? undefined),
             games: decodeNumberOrUndefined(wire.games) ?? 0,
-        });
+        };
+        const meta = decodeEventMeta(wire.meta);
+        if (meta !== undefined) summary.meta = meta;
+        events.push(summary);
     }
     return events;
 }

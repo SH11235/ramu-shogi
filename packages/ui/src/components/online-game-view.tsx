@@ -46,6 +46,7 @@ import { TabHeader } from "./shogi-match/components/TabHeader";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import type { PromotionSelection } from "./shogi-match/types";
 import { formatMoveSimple } from "./shogi-match/utils/kifFormat";
+import { computeMoveShadow } from "./shogi-match/utils/moveShadow";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
 import { determinePromotion } from "./shogi-match/utils/promotionLogic";
 
@@ -806,17 +807,21 @@ export function OnlineGameView({
         dispatchUI({ type: "set_promote_dialog", dialog: null });
     };
 
-    // ハイライト: 選択中マスの合法手先
-    const legalTargets = new Set<string>();
-    if (selectedSquare) {
-        for (const m of legalMoves) {
-            const from = m.slice(0, 2).toLowerCase();
-            const to = m.slice(2, 4).toLowerCase();
-            if (from === selectedSquare.toLowerCase()) {
-                legalTargets.add(to);
-            }
-        }
-    }
+    // 選んでいる駒の影（マウスを乗せた行き先に出す）。合法手は自分の手番のあいだ既に持っている
+    const selection = selectedSquare
+        ? ({ kind: "square", square: selectedSquare } as const)
+        : selectedHand
+          ? ({ kind: "hand", piece: selectedHand } as const)
+          : null;
+    const moveShadow =
+        displayPosition && !isRewound && isMyTurn && !isSpectator
+            ? computeMoveShadow({
+                  selection,
+                  grid,
+                  turn: displayPosition.turn,
+                  legalMoves,
+              })
+            : null;
 
     const playerNames = {
         b: snapshot.players.b?.name ?? "先手",
@@ -944,13 +949,8 @@ export function OnlineGameView({
                             position={displayPosition}
                             flipBoard={flipBoard}
                             lastMove={lastMove}
-                            selection={
-                                selectedSquare
-                                    ? { kind: "square", square: selectedSquare }
-                                    : selectedHand
-                                      ? { kind: "hand", piece: selectedHand }
-                                      : null
-                            }
+                            selection={selection}
+                            moveShadow={moveShadow}
                             promotionSelection={promotionSelection}
                             displaySettings={BOARD_DISPLAY_SETTINGS}
                             isEditModeActive={false}
@@ -980,13 +980,8 @@ export function OnlineGameView({
                             grid={grid}
                             flipBoard={flipBoard}
                             lastMove={lastMove}
-                            selection={
-                                selectedSquare
-                                    ? { kind: "square", square: selectedSquare }
-                                    : selectedHand
-                                      ? { kind: "hand", piece: selectedHand }
-                                      : null
-                            }
+                            selection={selection}
+                            moveShadow={moveShadow}
                             promotionSelection={promotionSelection}
                             displaySettings={BOARD_DISPLAY_SETTINGS}
                             isEditModeActive={false}

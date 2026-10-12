@@ -114,6 +114,7 @@ export function ShogiMatchLayout({
         gameMode,
         message,
         selection,
+        moveShadow,
         promotionSelection,
         lastMove,
         moves,
@@ -241,7 +242,6 @@ export function ShogiMatchLayout({
         reviewMode,
         reviewLeftContent,
         reviewTopContent,
-        evalPanelInitialOpen,
     } = pcSpecificProps;
 
     // グループ化されたpropsを展開: Mobile専用
@@ -396,6 +396,7 @@ export function ShogiMatchLayout({
                             gameMode={gameMode}
                             message={message}
                             selection={selection}
+                            moveShadow={moveShadow}
                             promotionSelection={promotionSelection}
                             lastMove={lastMove}
                             flipBoard={flipBoard}
@@ -530,6 +531,7 @@ export function ShogiMatchLayout({
                             gameMode={gameMode}
                             message={message}
                             selection={selection}
+                            moveShadow={moveShadow}
                             promotionSelection={promotionSelection}
                             lastMove={lastMove}
                             flipBoard={flipBoard}
@@ -615,7 +617,6 @@ export function ShogiMatchLayout({
                                     reviewMode={reviewMode}
                                     reviewLeftContent={reviewLeftContent}
                                     reviewTopContent={reviewTopContent}
-                                    evalPanelInitialOpen={evalPanelInitialOpen}
                                 />
                             </NavigationProvider>
                         </MatchStateProvider>

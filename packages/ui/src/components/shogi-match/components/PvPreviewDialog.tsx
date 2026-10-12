@@ -8,7 +8,7 @@ import type { BoardState, PositionState, Square } from "@shogi/app-core";
 import { applyMoveWithState, boardToMatrix } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../dialog";
 import type { ShogiBoardCell } from "../../shogi-board";
 import { ShogiBoard } from "../../shogi-board";
 import type { SquareNotation } from "../types";
@@ -33,6 +33,13 @@ interface PvPreviewDialogProps {
     squareNotation?: SquareNotation;
     /** 盤外ラベル表示 */
     showBoardLabels?: boolean;
+    /** 読み上げ用の説明（画面には出さない）。渡したときだけ付け、ダイアログに関連付ける。 */
+    description?: string;
+    /**
+     * 読み筋の最初の手の表記の差し替え（直前の手と同じマスへの手を「同」と書く、など、
+     * 開いた画面の表記に揃えるため）。省略時は、これまでどおりの表記。
+     */
+    firstMoveLabel?: string;
 }
 
 function boardToGrid(board: BoardState): ShogiBoardCell[][] {
@@ -60,6 +67,8 @@ export function PvPreviewDialog({
     evalMate,
     squareNotation = "none",
     showBoardLabels = false,
+    description,
+    firstMoveLabel,
 }: PvPreviewDialogProps): ReactElement {
     // 現在のプレビュー位置（0 = 開始局面、1 = PVの1手目後、...）
     const [previewIndex, setPreviewIndex] = useState(0);
@@ -85,7 +94,12 @@ export function PvPreviewDialog({
     })();
 
     // 有効なPVを表示用に変換
-    const pvDisplay: PvDisplayMove[] = convertPvToDisplay(validPv, startPosition);
+    const pvDisplay: PvDisplayMove[] = convertPvToDisplay(validPv, startPosition).map(
+        (move, index) =>
+            index === 0 && firstMoveLabel !== undefined
+                ? { ...move, displayText: firstMoveLabel }
+                : move,
+    );
 
     // 最終手情報
     const lastMove = (() => {
@@ -159,7 +173,11 @@ export function PvPreviewDialog({
 
     return (
         <Dialog defaultOpen onOpenChange={(isOpen) => !isOpen && onClose()}>
-            <DialogContent className="max-w-[500px]">
+            <DialogContent
+                className="max-w-[500px]"
+                // 説明を渡したときだけ関連付ける（渡さない呼び出しは、これまでどおり）。
+                hasDescription={description !== undefined}
+            >
                 <DialogHeader className="flex flex-row items-center justify-between pr-8">
                     <DialogTitle className="text-sm font-medium">
                         {ply}手目の読み筋
@@ -172,6 +190,9 @@ export function PvPreviewDialog({
                             </span>
                         )}
                     </DialogTitle>
+                    {description !== undefined && (
+                        <DialogDescription className="sr-only">{description}</DialogDescription>
+                    )}
                 </DialogHeader>
                 {/* 右上の閉じるボタン */}
                 <button

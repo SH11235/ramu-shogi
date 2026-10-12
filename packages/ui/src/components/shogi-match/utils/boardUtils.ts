@@ -1,4 +1,5 @@
 import type { Hands, PieceType, Player, PositionState } from "@shogi/app-core";
+import { PIECE_CAP, PIECE_LABELS } from "./constants";
 
 /**
  * 持ち駒の状態をクローンする
@@ -99,4 +100,69 @@ export function countPieces(position: PositionState): Record<Player, Record<Piec
     }
 
     return counts;
+}
+
+const INVENTORY_ORDER: PieceType[] = ["R", "B", "G", "S", "N", "L", "P"];
+
+const OWNER_LABELS: Record<Player, string> = { sente: "先手", gote: "後手" };
+
+/**
+ * 局面内の駒数を、先手・後手を合算して数える（盤上＋双方の持ち駒）
+ *
+ * 駒の枚数の上限（歩 18・香桂銀金 4・角飛 2）は一組の駒についてのものなので、
+ * 持ち主ごとではなく、この合計で比べる。
+ */
+export function countTotalPieces(position: PositionState): Record<PieceType, number> {
+    const counts = countPieces(position);
+    const total: Record<PieceType, number> = { K: 0, R: 0, B: 0, G: 0, S: 0, N: 0, L: 0, P: 0 };
+    for (const key of Object.keys(total) as PieceType[]) {
+        total[key] = counts.sente[key] + counts.gote[key];
+    }
+    return total;
+}
+
+/**
+ * 駒の枚数が上限を超えるときのメッセージ
+ */
+export function pieceCapMessage(pieceType: PieceType): string {
+    return `${PIECE_LABELS[pieceType]}は先手・後手あわせて最大${PIECE_CAP[pieceType]}枚までです。`;
+}
+
+/**
+ * 編集した局面が、局面として成り立つかを確かめる
+ *
+ * エンジン側（rshogi の `Position::from_board_state_json`）が受け付ける条件と揃えてある。
+ * ここを通らない局面は SFEN に変換できないので、盤へ反映する前に弾く。
+ *
+ * - 玉は先手・後手それぞれ盤上にちょうど 1 枚（持ち駒にはできない）
+ * - それ以外の駒は、先手・後手の盤上と持ち駒を合わせて一組の枚数まで
+ *
+ * @returns 成り立つなら null、成り立たないなら理由のメッセージ
+ */
+export function validateEditedPosition(position: PositionState): string | null {
+    const kingsOnBoard: Record<Player, number> = { sente: 0, gote: 0 };
+    for (const piece of Object.values(position.board)) {
+        if (piece?.type === "K") kingsOnBoard[piece.owner] += 1;
+    }
+    for (const owner of ["sente", "gote"] as Player[]) {
+        if ((position.hands[owner].K ?? 0) > 0) {
+            return "玉は持ち駒にできません。";
+        }
+    }
+    for (const owner of ["sente", "gote"] as Player[]) {
+        if (kingsOnBoard[owner] === 0) {
+            return `${OWNER_LABELS[owner]}の玉が盤上にありません。玉は盤上に1枚ずつ必要です。`;
+        }
+        if (kingsOnBoard[owner] > PIECE_CAP.K) {
+            return "玉はそれぞれ1枚まで配置できます。";
+        }
+    }
+
+    const total = countTotalPieces(position);
+    for (const pieceType of INVENTORY_ORDER) {
+        if (total[pieceType] > PIECE_CAP[pieceType]) {
+            return pieceCapMessage(pieceType);
+        }
+    }
+    return null;
 }

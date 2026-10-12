@@ -11,7 +11,7 @@ import type {
     PresetWithStatus,
 } from "@shogi/app-core";
 import type { RemoteNnueManager } from "../../nnue/types";
-import type { ShogiBoardCell } from "../../shogi-board";
+import type { ShogiBoardCell, ShogiBoardMoveShadow } from "../../shogi-board";
 import type { SelectionState } from "../contexts/MatchStateContext.types";
 import type { ClockSettings, TickState } from "../hooks/useClockManager";
 import type {
@@ -76,6 +76,8 @@ export interface BoardStateProps {
     gameMode: GameMode;
     message: Message | null;
     selection: SelectionState | null;
+    /** 選んでいる駒の影（マウスを乗せた行き先に出す） */
+    moveShadow: ShogiBoardMoveShadow | null;
     promotionSelection: PromotionSelection | null;
     lastMove?: LastMove;
     moves: string[];
@@ -280,11 +282,6 @@ export interface PCSpecificProps {
     reviewLeftContent?: import("react").ReactNode;
     /** 棋譜検討モード時に 3 カラムの上部へ全幅で表示するコンテンツ（観戦スコアボード等） */
     reviewTopContent?: import("react").ReactNode;
-    /**
-     * 評価値グラフパネルを初期展開するか (ライブ観戦専用、spectateMode 由来)。
-     * 検討/静的 viewer/対局は従来どおり既定で折りたたむ (undefined = false)。
-     */
-    evalPanelInitialOpen?: boolean;
 }
 
 /**

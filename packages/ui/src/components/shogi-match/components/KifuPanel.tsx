@@ -812,17 +812,24 @@ function PvCandidateItem({
 }
 
 /**
- * 評価値のスタイルクラスを決定
+ * 評価値のスタイルクラスを決定する。
+ *
+ * 色は評価値の符号ではなく「その手を指した側」で決める (先手 = 朱、後手 = 藍)。評価値グラフの
+ * 線と同じ対応にして、どちらが出した評価値かを色で読めるようにする。
  */
-function getEvalClassName(evalCp?: number, evalMate?: number): string {
+function getEvalClassName(row: {
+    ply: number;
+    mover?: "sente" | "gote";
+    evalCp?: number;
+    evalMate?: number;
+}): string {
     const baseClass = "text-[11px] text-right min-w-12 font-mono tabular-nums";
-    if (evalMate !== undefined && evalMate !== null) {
-        return evalMate > 0 ? `${baseClass} text-wafuu-shu` : `${baseClass} text-wafuu-ai`;
-    }
-    if (evalCp !== undefined && evalCp !== null) {
-        return evalCp >= 0 ? `${baseClass} text-wafuu-shu` : `${baseClass} text-wafuu-ai`;
-    }
-    return `${baseClass} text-muted-foreground`;
+    const hasEval =
+        (row.evalMate !== undefined && row.evalMate !== null) ||
+        (row.evalCp !== undefined && row.evalCp !== null);
+    if (!hasEval) return `${baseClass} text-muted-foreground`;
+    const mover = row.mover ?? (row.ply % 2 === 1 ? "sente" : "gote");
+    return mover === "sente" ? `${baseClass} text-wafuu-shu` : `${baseClass} text-wafuu-ai`;
 }
 
 /** 解析対象の選択肢 */
@@ -1791,12 +1798,7 @@ export function KifuPanel({
                                                     {node.displayText}
                                                 </span>
                                                 {showEval && evalText && (
-                                                    <span
-                                                        className={getEvalClassName(
-                                                            node.evalCp,
-                                                            node.evalMate,
-                                                        )}
-                                                    >
+                                                    <span className={getEvalClassName(node)}>
                                                         {evalText}
                                                     </span>
                                                 )}
@@ -1873,7 +1875,7 @@ export function KifuPanel({
                                     <Tooltip>
                                         <TooltipTrigger asChild>
                                             <span
-                                                className={`${getEvalClassName(move.evalCp, move.evalMate)} ${isPastCurrent ? "opacity-50" : ""}`}
+                                                className={`${getEvalClassName(move)} ${isPastCurrent ? "opacity-50" : ""}`}
                                             >
                                                 {evalText}
                                             </span>

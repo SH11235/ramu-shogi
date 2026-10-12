@@ -193,4 +193,44 @@ describe("useKifuNavigation", () => {
             normalized: true,
         });
     });
+
+    it("解析結果の統計（seldepth / nodes / timeMs）を KifuEval に保持する。ルートにも記録できる", () => {
+        const { result } = setup();
+        const rootId = result.current.tree.rootId;
+
+        act(() => {
+            result.current.recordEvalByNodeId(rootId, {
+                type: "info",
+                scoreCp: 40,
+                depth: 15,
+                seldepth: 22,
+                nodes: 123456,
+                timeMs: 1002,
+                multipv: 1,
+                pv: ["7g7f"],
+            });
+        });
+        expect(result.current.tree.nodes.get(rootId)?.eval).toEqual({
+            scoreCp: 40,
+            scoreMate: undefined,
+            depth: 15,
+            pv: ["7g7f"],
+            normalized: undefined,
+            seldepth: 22,
+            nodes: 123456,
+            timeMs: 1002,
+        });
+
+        // 統計の無い情報では、統計のキーを増やさない（既存の評価値の形のまま）。
+        act(() => {
+            result.current.addMove("7g7f", createInitialPositionState());
+        });
+        act(() => {
+            result.current.recordEvalByPly(1, { type: "info", scoreCp: -30, depth: 8, multipv: 1 });
+        });
+        const node = [...result.current.tree.nodes.values()].find((n) => n.ply === 1);
+        expect(Object.keys(node?.eval ?? {}).sort()).toEqual(
+            ["depth", "normalized", "pv", "scoreCp", "scoreMate"].sort(),
+        );
+    });
 });

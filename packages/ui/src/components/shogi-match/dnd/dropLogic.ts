@@ -6,7 +6,14 @@
 
 import type { Piece, PositionState } from "@shogi/app-core";
 import { cloneBoard } from "@shogi/app-core";
-import { addToHand, cloneHandsState, consumeFromHand, countPieces } from "../utils/boardUtils";
+import {
+    addToHand,
+    cloneHandsState,
+    consumeFromHand,
+    countPieces,
+    countTotalPieces,
+    pieceCapMessage,
+} from "../utils/boardUtils";
 import { PIECE_CAP } from "../utils/constants";
 import type { DragOrigin, DragPayload, DropResult, DropTarget } from "./types";
 
@@ -53,6 +60,10 @@ export function validateDrop(
         if (origin.type !== "board") {
             return { ok: false, error: "持ち駒から持ち駒への移動はできません" };
         }
+        // 玉は持ち駒にできない（盤上に玉が無い局面は成り立たない）
+        if (payload.pieceType === "K") {
+            return { ok: false, error: "玉は持ち駒にできません" };
+        }
         // 成り駒は生駒に戻る（自動）
         return { ok: true };
     }
@@ -72,26 +83,27 @@ export function validateDrop(
             return { ok: false, error: "自分の駒がある場所には置けません" };
         }
 
-        // 駒数制限チェック
-        const baseType = payload.pieceType;
-        const counts = countPieces(position);
-        const currentCount = counts[payload.owner][baseType];
-
-        // origin が board の場合は移動なのでカウントは変わらない
-        // origin が hand/stock の場合は追加
-        if (origin.type !== "board") {
-            if (currentCount >= PIECE_CAP[baseType]) {
-                return {
-                    ok: false,
-                    error: `${baseType}は最大${PIECE_CAP[baseType]}枚までです`,
-                };
-            }
+        // 相手の玉は取れない（取ると盤上から玉が無くなる）
+        if (existing?.type === "K") {
+            return { ok: false, error: "玉は取れません" };
         }
 
-        // 玉は1枚まで
-        if (baseType === "K" && origin.type !== "board") {
-            if (currentCount >= 1) {
-                return { ok: false, error: "玉は1枚までです" };
+        // 駒数制限チェック
+        // 枚数が増えるのは駒箱（stock）から置くときだけ。盤上の移動と、持ち駒から盤上への
+        // 配置では、局面全体の枚数は変わらない（相手の駒を取っても持ち駒へ移るだけ）。
+        const baseType = payload.pieceType;
+        const addsPiece =
+            origin.type === "stock" ||
+            (origin.type === "hand" && (position.hands[origin.owner][origin.pieceType] ?? 0) <= 0);
+        if (addsPiece) {
+            // 玉は先手・後手それぞれ1枚まで
+            if (baseType === "K") {
+                if (countPieces(position)[payload.owner].K >= PIECE_CAP.K) {
+                    return { ok: false, error: "玉はそれぞれ1枚までです" };
+                }
+            } else if (countTotalPieces(position)[baseType] >= PIECE_CAP[baseType]) {
+                // 上限は一組の駒の枚数なので、先手・後手を合わせた数で比べる
+                return { ok: false, error: pieceCapMessage(baseType) };
             }
         }
 

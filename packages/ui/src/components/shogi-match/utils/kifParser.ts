@@ -162,7 +162,7 @@ function parseTimeNotation(timeStr: string): number | undefined {
 
 /**
  * 評価値コメントをパース
- * @param line "*評価値=+0.5 (深さ20)" 形式
+ * @param line "*評価値=+50 (深さ20)" 形式（センチポーン。小数点つきの旧形式 "+0.5" も読む）
  * @returns { evalCp, evalMate, depth } またはnull
  */
 function parseEvalComment(
@@ -190,12 +190,18 @@ function parseEvalComment(
         return { evalMate, depth };
     }
 
-    // 評価値: "+0.5" or "-1.2"
-    const evalMatch = content.match(/^([+-]?\d+\.?\d*)/);
+    // 評価値。書式が 2 つあり、小数点の有無で見分ける:
+    //   - 小数点なし（"+150" "-80" "+0"）: センチポーンの整数。いまの書き出し（formatEvalComment）。
+    //   - 小数点あり（"+1.5" "-0.8" "+0.0"）: 歩 1 枚 = 1.0 の旧形式。100 倍してセンチポーンにする。
+    // 旧形式は toFixed(1) で書いていたので必ず小数点が付く。だから小数点の無い値を旧形式として
+    // 100 倍してはいけない（書き出して読み直すたびに 100 倍になる）。
+    const evalMatch = content.match(/^([+-]?\d+)(\.\d*)?/);
     if (evalMatch) {
-        const evalValue = parseFloat(evalMatch[1]);
-        // センチポーンに変換（100倍）、極端な値はクランプ（±100000cp = ±1000）
-        const rawCp = Math.round(evalValue * 100);
+        const isLegacyPawnUnit = evalMatch[2] !== undefined;
+        const rawCp = isLegacyPawnUnit
+            ? Math.round(parseFloat(evalMatch[0]) * 100)
+            : parseInt(evalMatch[1], 10);
+        // 極端な値はクランプ
         const evalCp = Math.max(-10000000, Math.min(10000000, rawCp));
         return { evalCp, depth };
     }

@@ -94,14 +94,14 @@ describe("RshogiViewerListPage", () => {
         });
     });
 
-    it("進行中一覧ページへのリンクは無く、レーティングへのリンクは残す", async () => {
+    it("進行中一覧ページへのリンクは無く、一覧の上に説明文やレーティングへのリンクを置かない", async () => {
         render(<RshogiViewerListPage />);
         await screen.findByText("☗ recent-1-sente vs ☖ recent-1-gote");
 
-        expect(
-            screen.getByRole("link", { name: "レーティングを見る →" }).getAttribute("href"),
-        ).toBe("/rshogi-viewer/players");
-        const hrefs = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
+        // 見出しは読み上げ用にだけ残す。レーティングへはメニューから行く。
+        expect(screen.getByRole("heading", { level: 1 }).className).toContain("sr-only");
+        expect(screen.queryByRole("link", { name: /レーティング/ })).toBeNull();
+        const hrefs = screen.queryAllByRole("link").map((link) => link.getAttribute("href"));
         expect(hrefs).not.toContain("/rshogi-viewer/live");
         expect(screen.getByRole("navigation", { name: "パンくず" }).textContent).toBe(
             "ラム将棋 / rshogi viewer",

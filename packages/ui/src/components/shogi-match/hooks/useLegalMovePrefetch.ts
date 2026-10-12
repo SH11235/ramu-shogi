@@ -2,7 +2,7 @@ import type { Player } from "@shogi/app-core";
 import { getPositionService } from "@shogi/app-core";
 import { useEffect } from "react";
 import type { SideSetting } from "../types";
-import type { LegalMoveCache } from "../utils/legalMoveCache";
+import { buildLegalCacheKey, type LegalMoveCache } from "../utils/legalMoveCache";
 import type { UsePassRightsResult } from "./usePassRights";
 
 interface UseLegalMovePrefetchParams {
@@ -42,10 +42,10 @@ export function useLegalMovePrefetch({
         if (!isMatchRunning || !positionReady) return;
         if (sides[positionTurn].role !== "human") return;
         const ply = moves.length;
-        const movesKey = moves.join(" ");
+        const passRightsOption = passRights.getPassRightsOption();
+        const movesKey = buildLegalCacheKey(startSfen, moves, passRightsOption);
         if (legalCache.isCached(movesKey)) return;
 
-        const passRightsOption = passRights.getPassRightsOption();
         const resolver = async () => {
             if (fetchLegalMoves) {
                 return fetchLegalMoves(startSfen, moves, passRightsOption);

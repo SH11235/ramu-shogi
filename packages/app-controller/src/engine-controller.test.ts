@@ -936,6 +936,163 @@ describe("createEngineController", () => {
         expect(controller.getState().isAnalyzing).toBe(false);
     });
 
+    it("解析の 1 局面の探索が終わるごとに、先手視点の結果を 1 回だけ通知する", async () => {
+        const analysisClient = createMockEngineClient();
+        const onAnalysisComplete = vi.fn();
+        const onEvalUpdate = vi.fn();
+        const controller = createEngineController({
+            createClient: (_engineId) => analysisClient.client,
+            getClockState: createClockState,
+            now: () => Date.now(),
+            resolveNnue: async () => null,
+            callbacks: {
+                onMoveFromEngine: vi.fn(),
+                onMatchEnd: vi.fn(),
+                onEvalUpdate,
+                onAnalysisComplete,
+            },
+        });
+        const layer = {
+            layerId: "layer-1",
+            spec: {
+                version: 1 as const,
+                engine: { kind: "wasm" as const, name: "rshogi", version: "0.8.1" },
+                evaluation: {
+                    nnueSha256: null,
+                    fvScale: null,
+                    progressSha256: null,
+                    layerStacks: null,
+                },
+                limits: { timeMs: 1000, depth: 15, nodes: null },
+                multiPv: 2,
+                rules: { variant: "standard" as const },
+            },
+            display: { label: "RAMU・1 秒" },
+        };
+
+        await controller.command.startAnalysis({
+            engineId: "engine1",
+            sfen: "startpos",
+            moves: ["7g7f"],
+            ply: 1,
+            multiPv: 2,
+            nodeId: "node-1",
+            sideToMove: "gote",
+            layer,
+        });
+        await flushPromises();
+
+        analysisClient.emit({ type: "info", depth: 10, scoreCp: 30, multipv: 1, pv: ["3c3d"] });
+        analysisClient.emit({ type: "info", depth: 10, scoreCp: 10, multipv: 2, pv: ["8c8d"] });
+        analysisClient.emit({
+            type: "info",
+            depth: 15,
+            seldepth: 22,
+            scoreCp: -120,
+            multipv: 1,
+            pv: ["3c3d", "2g2f"],
+            nodes: 123456,
+            timeMs: 1002,
+        });
+        // 途中経過では通知しない。
+        expect(onAnalysisComplete).not.toHaveBeenCalled();
+        expect(onEvalUpdate).toHaveBeenCalledTimes(3);
+
+        analysisClient.emit({ type: "bestmove", move: "3c3d" });
+        expect(onAnalysisComplete).toHaveBeenCalledTimes(1);
+        const completion = onAnalysisComplete.mock.calls[0][0];
+        expect(completion).toMatchObject({ runtimeNodeId: "node-1", ply: 1, layer });
+        expect(completion.result).toMatchObject({
+            completion: "completed",
+            depth: 15,
+            nodes: 123456,
+            timeMs: 1002,
+            execution: { parallelWorkers: 1, hashMb: null },
+            candidates: [
+                {
+                    rank: 1,
+                    // 後手番の局面で手番側 -120 = 先手視点 +120。
+                    score: { kind: "cp", value: 120 },
+                    depth: 15,
+                    seldepth: 22,
+                    pv: ["3c3d", "2g2f"],
+                },
+                { rank: 2, score: { kind: "cp", value: -10 }, depth: 10, pv: ["8c8d"] },
+            ],
+        });
+        expect(completion.result.runId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-/);
+
+        // 次の探索は別の runId で、前の探索の候補を継ぎ足さない。
+        await controller.command.startAnalysis({
+            engineId: "engine1",
+            sfen: "startpos",
+            moves: [],
+            ply: 0,
+            sideToMove: "sente",
+        });
+        await flushPromises();
+        analysisClient.emit({ type: "info", depth: 8, scoreCp: 40, multipv: 1, pv: ["7g7f"] });
+        analysisClient.emit({ type: "bestmove", move: "7g7f" });
+        expect(onAnalysisComplete).toHaveBeenCalledTimes(2);
+        const second = onAnalysisComplete.mock.calls[1][0];
+        expect(second).toMatchObject({ runtimeNodeId: null, ply: 0, layer: null });
+        expect(second.result.candidates).toEqual([
+            { rank: 1, score: { kind: "cp", value: 40 }, depth: 8, seldepth: null, pv: ["7g7f"] },
+        ]);
+        expect(second.result.runId).not.toBe(completion.result.runId);
+    });
+
+    it("手番を指定しない解析（既存の画面）では終了を通知せず、中断は aborted で通知する", async () => {
+        const analysisClient = createMockEngineClient();
+        const onAnalysisComplete = vi.fn();
+        const controller = createEngineController({
+            createClient: (_engineId) => analysisClient.client,
+            getClockState: createClockState,
+            now: () => Date.now(),
+            resolveNnue: async () => null,
+            callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn(), onAnalysisComplete },
+        });
+
+        await controller.command.startAnalysis({
+            engineId: "engine1",
+            sfen: "startpos",
+            moves: [],
+            ply: 0,
+        });
+        await flushPromises();
+        analysisClient.emit({ type: "info", depth: 8, scoreCp: 40, multipv: 1 });
+        analysisClient.emit({ type: "bestmove", move: "7g7f" });
+        expect(onAnalysisComplete).not.toHaveBeenCalled();
+
+        await controller.command.startAnalysis({
+            engineId: "engine1",
+            sfen: "startpos",
+            moves: [],
+            ply: 0,
+            sideToMove: "sente",
+        });
+        await flushPromises();
+        analysisClient.emit({ type: "info", depth: 6, scoreCp: 25, multipv: 1 });
+        await controller.command.cancelAnalysis();
+        expect(onAnalysisComplete).toHaveBeenCalledTimes(1);
+        expect(onAnalysisComplete.mock.calls[0][0].result).toMatchObject({
+            completion: "aborted",
+            depth: 6,
+            candidates: [{ rank: 1, score: { kind: "cp", value: 25 } }],
+        });
+        // 評価値が 1 つも届かなかった探索は通知しない。
+        await controller.command.startAnalysis({
+            engineId: "engine1",
+            sfen: "startpos",
+            moves: [],
+            ply: 0,
+            sideToMove: "sente",
+        });
+        await flushPromises();
+        analysisClient.emit({ type: "bestmove", move: "resign" });
+        expect(onAnalysisComplete).toHaveBeenCalledTimes(1);
+    });
+
     it("dispose で破棄が呼ばれ stop は呼ばれない", async () => {
         const mockClient = createMockEngineClient();
         const controller = createEngineController({

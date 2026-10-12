@@ -219,3 +219,39 @@ describe("HandPiecesDisplay", () => {
         });
     });
 });
+
+describe("HandPiecesDisplay: 選択の枠", () => {
+    const hand = { R: 0, B: 0, G: 1, S: 0, N: 0, L: 0, P: 2 };
+    const renderHand = (owner: "sente" | "gote", isActive: boolean) =>
+        render(
+            <HandPiecesDisplay
+                owner={owner}
+                hand={hand}
+                selectedPiece="P"
+                isActive={isActive}
+                onHandSelect={vi.fn()}
+                size="normal"
+                isMatchRunning={true}
+            />,
+        );
+    const pieceButton = (alt: string) => {
+        const button = within(screen.getByTestId("hand-pieces-actual"))
+            .getByAltText(alt)
+            .closest("button");
+        if (!button) throw new Error(`${alt} のボタンが無い`);
+        return button;
+    };
+
+    it("手番側の駒台では、選んでいる駒に枠を出す", () => {
+        renderHand("sente", true);
+        expect(pieceButton("先手の歩").className).toContain("border-wafuu-shu");
+        // 選んでいない駒には出さない
+        expect(pieceButton("先手の金").className).not.toContain("border-wafuu-shu");
+    });
+
+    it("手番でない側の駒台では、同じ種類の駒を選択として渡されても枠を出さない", () => {
+        renderHand("gote", false);
+        expect(pieceButton("後手の歩").className).not.toContain("border-wafuu-shu");
+        expect(pieceButton("後手の歩").className).toContain("border-transparent");
+    });
+});

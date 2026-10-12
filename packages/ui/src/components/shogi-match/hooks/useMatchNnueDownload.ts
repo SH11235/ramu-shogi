@@ -19,10 +19,13 @@ export function useMatchNnueDownload({
     manifestUrl,
     resolveNnue,
     setMessage,
+    cancelReason = "対局を開始できません",
 }: {
     manifestUrl: string;
     resolveNnue: (selection: NnueSelection) => Promise<ResolvedNnue | null>;
     setMessage: (message: Message | null) => void;
+    /** ダウンロードを断ったときの案内の結び（「〜が未ダウンロードのため、<ここ>。」）。 */
+    cancelReason?: string;
 }) {
     const context = useNnueContextOptional();
     const [presets, setPresets] = useState<PresetConfig[]>([]);
@@ -51,8 +54,10 @@ export function useMatchNnueDownload({
     };
     const cancel = () => {
         if (busyRef.current) return;
+        // 確認待ちでなければ、取り消すものが無い（主語の欠けた通知を出さない）。
+        if (presets.length === 0) return;
         setMessage({
-            text: `${presets.map((preset) => preset.displayName).join("・")}が未ダウンロードのため、対局を開始できません。`,
+            text: `${presets.map((preset) => preset.displayName).join("・")}が未ダウンロードのため、${cancelReason}。`,
             type: "error",
         });
         finish(false);

@@ -32,6 +32,7 @@
             "@shogi/engine-tauri/*": ["packages/engine-tauri/src/*"],
             "@shogi/match-client": ["packages/match-client/src/index.ts"],
             "@shogi/match-protocol": ["packages/match-protocol/src/index.ts"],
+            "@shogi/study-client": ["packages/study-client/src/index.ts"],
             "@shogi/api-contract": ["packages/api-contract/src/index.ts"]
         }
     }

@@ -9,9 +9,9 @@ import { AuthBadge } from "./AuthBadge";
 type NavTo =
     | "/play"
     | "/online"
+    | "/studies"
     | "/games"
     | "/public/games"
-    | "/rshogi-viewer/players"
     | "/rshogi-viewer"
     | "/nnue"
     | "/auth";
@@ -50,6 +50,12 @@ function buildNavSections(pathname: string): NavSection[] {
         {
             label: "棋譜",
             items: [
+                // 棋譜を AI で解析して残す。未ログインでも使える（ブラウザ内に保存）。
+                {
+                    to: "/studies",
+                    label: "研究ノート",
+                    active: pathname.startsWith("/studies"),
+                },
                 {
                     to: "/games",
                     label: "マイ棋譜",
@@ -75,7 +81,8 @@ function buildNavSections(pathname: string): NavSection[] {
                         (pathname === "/rshogi-viewer" || pathname.startsWith("/rshogi-viewer/")) &&
                         !isPlayers,
                 },
-                { to: "/rshogi-viewer/players", label: "レーティング", active: isPlayers },
+                // レーティング (`/rshogi-viewer/players`) は運営者向けのページなので、メニューには
+                // 出さない。URL を直接開けば見られる。
             ],
         },
         {

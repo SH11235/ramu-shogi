@@ -236,7 +236,9 @@ export function HandPiecesDisplay({
                     {HAND_ORDER.map((piece) => {
                         const count = hand[piece] ?? 0;
 
-                        const selected = selectedPiece === piece;
+                        // 選択の枠は、選べる側（手番側）の駒台にだけ出す。両方の駒台に同じ
+                        // 選択を渡されても、相手の駒台の同じ種類の駒は光らせない。
+                        const selected = isActive && selectedPiece === piece;
                         // 編集モード時は0個でもドラッグ可能（ストックとして機能）
                         const canDrag = (count > 0 || isEditMode) && Boolean(onPiecePointerDown);
                         const canSelect = count > 0 && isActive;

@@ -51,11 +51,11 @@ describe("NavDrawer", () => {
         for (const link of [
             "対局",
             "オンライン対局",
+            "研究ノート",
             // 要ログイン導線はバッジ「要ログイン」がアクセシブルネームに続く
             "マイ棋譜 要ログイン",
             "公開棋譜",
             "観戦・棋譜一覧",
-            "レーティング",
             "NNUE モデル 要ログイン",
             "ログイン",
         ]) {
@@ -63,7 +63,7 @@ describe("NavDrawer", () => {
         }
     });
 
-    it("観戦ページと棋譜ページは「観戦・棋譜一覧」を現在地にし、レーティングは別扱いにする", () => {
+    it("観戦ページと棋譜ページは「観戦・棋譜一覧」を現在地にし、レーティングはメニューに出さない", () => {
         const findViewerItem = (pathname: string) =>
             buildNavSections(pathname)
                 .flatMap((section) => section.items)
@@ -87,9 +87,8 @@ describe("NavDrawer", () => {
         expect(
             screen.getByRole("link", { name: "観戦・棋譜一覧" }).getAttribute("aria-current"),
         ).toBe("page");
-        expect(
-            screen.getByRole("link", { name: "レーティング" }).getAttribute("aria-current"),
-        ).toBe(null);
+        // レーティングは運営者向けなので、メニューには出さない。
+        expect(screen.queryByRole("link", { name: "レーティング" })).toBeNull();
     });
 
     it("リンククリックでドロワーを閉じる", async () => {

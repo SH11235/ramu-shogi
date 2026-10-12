@@ -1,6 +1,7 @@
 import type {
     BoardState,
     GameResult,
+    KifuTree,
     LastMove,
     MoveSearchStats,
     NnueSelection,
@@ -16,6 +17,7 @@ import {
     DEFAULT_PRESET_KEY,
     getAllSquares,
     getPositionService,
+    isStudyUsiMove,
     resolveWorkerCount,
 } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
@@ -42,6 +44,7 @@ import { useEditModeActions } from "./shogi-match/hooks/useEditModeActions";
 import { useEngineManager } from "./shogi-match/hooks/useEngineManager";
 import { useEnginePool } from "./shogi-match/hooks/useEnginePool";
 import { useGameControls } from "./shogi-match/hooks/useGameControls";
+import { useImportedKifuPlayers } from "./shogi-match/hooks/useImportedKifuPlayers";
 import { type ReviewMoveEval, useKifuImportExport } from "./shogi-match/hooks/useKifuImportExport";
 import { useKifuKeyboardNavigation } from "./shogi-match/hooks/useKifuKeyboardNavigation";
 import {
@@ -53,6 +56,7 @@ import { useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
 import { useMatchNnueDownload } from "./shogi-match/hooks/useMatchNnueDownload";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import { useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
+import { useMoveShadow } from "./shogi-match/hooks/useMoveShadow";
 import { useNnueManager } from "./shogi-match/hooks/useNnueManager";
 import { useNormalizedSettings } from "./shogi-match/hooks/useNormalizedSettings";
 import { usePassRights } from "./shogi-match/hooks/usePassRights";
@@ -86,7 +90,7 @@ import type {
     PCSpecificProps,
 } from "./shogi-match/types/layoutProps";
 import type { KifMove } from "./shogi-match/utils/kifFormat";
-import { LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
+import { buildLegalCacheKey, LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
 import {
     isSamePassRightsSettings,
     normalizePassRightsSettings,
@@ -411,6 +415,24 @@ export function useInitialReviewSync({
     }, [positionReady, reviewSfen, reviewMoves, reviewMoveDataKey]);
 }
 
+/**
+ * 局面編集の操作（駒のドラッグ、マスを押しての配置、持ち駒の増減、成り・不成の切り替え）を
+ * 受け付けてよいか。
+ *
+ * 棋譜を見るだけの画面（`viewerMode`）は局面編集を出さない。ところが内部の状態は
+ * `initialReview` の取り込みが済むまで「編集モード」のままで、取り込みに失敗すると以後も
+ * そのまま残る。その間に盤を編集できてしまわないよう、ビューアでは常に受け付けない。
+ */
+export function canEditPosition({
+    isEditMode,
+    viewerMode,
+}: {
+    isEditMode: boolean;
+    viewerMode: boolean;
+}): boolean {
+    return isEditMode && !viewerMode;
+}
+
 interface ShogiMatchProps {
     engineOptions: EngineOption[];
     defaultSides?: { sente: SideSetting; gote: SideSetting };
@@ -459,6 +481,23 @@ interface ShogiMatchProps {
      * 明示的にトグルした値は観戦用名前空間に永続化され尊重される。
      */
     spectateMode?: boolean;
+    /**
+     * 棋譜を見るだけの画面（棋譜ビューア・観戦）。対局開始・対局再開・棋譜読込・局面編集・
+     * 平手に戻すを出さない（PC・スマホとも）。棋譜の閲覧、駒を動かしての分岐、解析はそのまま使える。
+     * 対局したいときは、ページ側が `onPositionSnapshot` で受けた局面を対局ページへ引き継ぐ。
+     */
+    viewerMode?: boolean;
+    /**
+     * PC の盤のすぐ上（対局時計の位置）に、対局時計の代わりに出すコンテンツ
+     * （棋譜ビューアの対局者名など）。スマホのレイアウトには出ない。
+     */
+    boardTopContent?: React.ReactNode;
+    /**
+     * 評価値グラフを常に出す（PC。折りたたみの操作を出さない）。棋譜ビューアのように、
+     * 対局中ではなくグラフを隠す理由の無い画面で指定する。指定しない画面は、対局中だけ
+     * 既定で閉じ、それ以外（対局前・検討・観戦）は既定で開く（どちらも利用者が開閉できる）。
+     */
+    evalGraphPinned?: boolean;
     /** 棋譜検討モード時に左サイドバー位置に表示するコンテンツ */
     reviewLeftContent?: React.ReactNode;
     /** 棋譜検討モード時に 3 カラムの上部へ全幅で表示するコンテンツ（観戦スコアボード等） */
@@ -471,6 +510,17 @@ interface ShogiMatchProps {
         engineId: string;
         sessionId: string | null;
     }) => void;
+    /**
+     * 読み込んだ棋譜を研究ノートにするコールバック。指定すると、棋譜読込の欄の下に
+     * 「この棋譜を研究ノートにする」を出す（指し手があり、変則ルールでない棋譜のときだけ）。
+     */
+    onOpenAsStudy?: (
+        tree: KifuTree,
+        info: {
+            /** 読み込んだ棋譜に書かれていた対局者名（いま開いている棋譜がその棋譜のままのとき）。 */
+            players?: { sente?: string; gote?: string };
+        },
+    ) => void;
 }
 
 export function ShogiMatch({
@@ -497,10 +547,14 @@ export function ShogiMatch({
     initialAnalysisEntries = null,
     reviewMode,
     spectateMode,
+    viewerMode = false,
+    boardTopContent,
+    evalGraphPinned = false,
     reviewLeftContent,
     reviewTopContent,
     onOpenEngineManager,
     onOpenEngineSettings,
+    onOpenAsStudy,
 }: ShogiMatchProps): ReactElement {
     // デフォルトの NNUE 選択（props のプリセットキーを使用、未指定時は DEFAULT_PRESET_KEY）
     const defaultNnueSelection = createDefaultNnueSelection(
@@ -576,6 +630,7 @@ export function ShogiMatch({
     );
     const [isMatchRunning, setIsMatchRunning] = useState(false);
     const [isEditMode, setIsEditMode] = useState(true);
+    const editAllowed = canEditPosition({ isEditMode, viewerMode });
     const [isPaused, setIsPaused] = useState(false);
     const pendingSearchStatsRef = useRef(new Map<number, MoveSearchStats>());
     const [liveSearchInfo, setLiveSearchInfo] = useState<{
@@ -952,6 +1007,7 @@ export function ShogiMatch({
         setPosition,
         isMatchRunning,
         moves,
+        startSfen,
         legalCache,
         currentTurnRole: sides[position.turn]?.role ?? "human",
         getRemainingTimeMs,
@@ -1022,7 +1078,10 @@ export function ShogiMatch({
                 const resolver = fetchLegalMoves
                     ? () => fetchLegalMoves(startSfen, moves, passRightsOption)
                     : () => getPositionService().getLegalMoves(startSfen, moves, passRightsOption);
-                const legal = await legalCache.getOrResolve(moves.join(" "), resolver);
+                const legal = await legalCache.getOrResolve(
+                    buildLegalCacheKey(startSfen, moves, passRightsOption),
+                    resolver,
+                );
                 if (cancelled || matchEndedRef.current) return;
                 if (legal.size === 0) {
                     const loser: Player = position.turn;
@@ -1370,7 +1429,7 @@ export function ShogiMatch({
                 const resolver = fetchLegalMoves
                     ? () => fetchLegalMoves(startSfen, moves, passRightsOption)
                     : () => getPositionService().getLegalMoves(startSfen, moves, passRightsOption);
-                const movesKey = moves.join(" ");
+                const movesKey = buildLegalCacheKey(startSfen, moves, passRightsOption);
                 let legal = await legalCache.getOrResolve(movesKey, resolver);
                 if (!legal || !legal.has("pass")) {
                     // パス権ありでも合法手に含まれない場合はキャッシュをクリアして再取得（パス権オプション漏れ対策）
@@ -1555,7 +1614,7 @@ export function ShogiMatch({
         positionRef,
         editVersionRef,
         navigation,
-        isEditMode,
+        isEditMode: editAllowed,
         isMatchRunning,
         matchEndedRef,
         clearLegalCache,
@@ -1573,7 +1632,7 @@ export function ShogiMatch({
 
     // DnD ドロップハンドラ
     const handleDndDrop = (result: DropResult) => {
-        if (!isEditMode) return;
+        if (!editAllowed) return;
 
         const applied = applyDropResult(result, positionRef.current);
         if (!applied.ok) {
@@ -1587,7 +1646,7 @@ export function ShogiMatch({
     // DnD コントローラー
     const dndController = usePieceDnd({
         onDrop: handleDndDrop,
-        disabled: !isEditMode,
+        disabled: !editAllowed,
     });
 
     // DnD ドラッグ開始ハンドラ（盤上の駒）
@@ -1634,46 +1693,61 @@ export function ShogiMatch({
         piece: { owner: "sente" | "gote"; type: string; promoted?: boolean },
         _event: React.MouseEvent<HTMLButtonElement>,
     ) => {
-        if (!isEditMode) return;
+        if (!editAllowed) return;
         const sq = square as Square;
         setPiecePromotion(sq, !piece.promoted);
     };
 
     // 指し手実行管理フック
-    const { handleSquareSelect, handlePromotionChoice, handleHandSelect, applyUsiMove } =
-        useMoveExecution({
-            position,
-            navigation,
-            isEditMode,
-            isReviewMode,
-            isPaused,
-            positionReady,
-            fetchLegalMoves,
-            startSfen,
-            moves,
-            legalCache,
-            clearLegalCache,
-            setCanPassLegal: passRights.setCanPassLegal,
-            getPassRightsOption: passRights.getPassRightsOption,
-            updateClocksForNextTurn,
-            turnStartTimeRef,
-            isEngineTurn,
-            selection,
-            setSelection,
-            promotionSelection,
-            setPromotionSelection,
-            setLastMove,
-            setMessage,
-            setLastAddedBranchInfo,
-            editFromSquare,
-            setEditFromSquare,
-            editTool,
-            editPieceType,
-            editOwner,
-            editPromoted,
-            placePieceAt,
-            moveProcessingRef,
-        });
+    const {
+        handleSquareSelect,
+        handlePromotionChoice,
+        handleHandSelect,
+        applyUsiMove,
+        getLegalSet,
+    } = useMoveExecution({
+        position,
+        navigation,
+        isEditMode,
+        isReviewMode,
+        isPaused,
+        positionReady,
+        fetchLegalMoves,
+        startSfen,
+        moves,
+        legalCache,
+        clearLegalCache,
+        setCanPassLegal: passRights.setCanPassLegal,
+        getPassRightsOption: passRights.getPassRightsOption,
+        updateClocksForNextTurn,
+        turnStartTimeRef,
+        isEngineTurn,
+        selection,
+        setSelection,
+        promotionSelection,
+        setPromotionSelection,
+        setLastMove,
+        setMessage,
+        setLastAddedBranchInfo,
+        editFromSquare,
+        setEditFromSquare,
+        editTool,
+        editPieceType,
+        editOwner,
+        editPromoted,
+        placePieceAt,
+        moveProcessingRef,
+    });
+
+    // 選んでいる駒の影（マウスを乗せた行き先に出す）。局面編集中は選択の意味が違うので出さない
+    const moveShadow = useMoveShadow({
+        enabled: !isEditMode,
+        selection,
+        grid,
+        turn: position.turn,
+        positionKey: `${startSfen}|${moves.join(" ")}`,
+        getLegalSet,
+    });
 
     // 棋譜インポート・エクスポート管理フック
     const { handleCopyKif, importSfen, importKif } = useKifuImportExport({
@@ -1698,6 +1772,13 @@ export function ShogiMatch({
     });
 
     const initialAnalysisAppliedRef = useRef<string | null>(null);
+
+    // 棋譜読込で読んだ棋譜の対局者名を覚えておく（研究ノートにするときの表題に使う）。
+    // 別の棋譜（KIF を含む）を読んだら忘れ、同じ棋譜のままかは開始局面と本譜の手順で見分ける。
+    const { importSfenFromPanel, importKifFromPanel, playersFor } = useImportedKifuPlayers({
+        importSfen,
+        importKif,
+    });
 
     // initialReview を取り込む。live 観戦では moves が逐次伸びた場合だけ importSfen で
     // 末尾まで再構築し、コメントだけが遅れて届いた場合は既存ノードへ差分適用する。
@@ -1775,7 +1856,10 @@ export function ShogiMatch({
     };
 
     const candidateNote = positionReady ? null : "局面を読み込み中です。";
-    const isDraggingPiece = isEditMode && dndController.state.isDragging;
+    const isDraggingPiece = editAllowed && dndController.state.isDragging;
+    // ビューアで内部の状態が編集モードのまま残っている間（取り込み前・取り込み失敗時）は、
+    // マスや持ち駒を押しても局面を書き換えない。
+    const editLockedInViewer = isEditMode && !editAllowed;
     const internalEngineId = engineOptions[0]?.id ?? "wasm";
 
     useEffect(() => {
@@ -1837,6 +1921,7 @@ export function ShogiMatch({
         gameMode,
         message,
         selection,
+        moveShadow,
         promotionSelection,
         lastMove,
         moves,
@@ -1934,15 +2019,15 @@ export function ShogiMatch({
     const boardHandlers: BoardHandlersProps = {
         hideEmptyHandPieces,
         getHandInfo,
-        handleSquareSelect,
+        handleSquareSelect: editLockedInViewer ? async () => {} : handleSquareSelect,
         handlePromotionChoice,
-        handleHandSelect,
+        handleHandSelect: editLockedInViewer ? () => {} : handleHandSelect,
         applyUsiMove,
         handleHandPiecePointerDown,
         handlePiecePointerDown,
         handlePieceTogglePromote,
-        handleIncrementHand,
-        handleDecrementHand,
+        handleIncrementHand: editLockedInViewer ? () => {} : handleIncrementHand,
+        handleDecrementHand: editLockedInViewer ? () => {} : handleDecrementHand,
         handleResetToStartpos,
         pauseAutoPlay,
         resumeAutoPlay,
@@ -1966,8 +2051,8 @@ export function ShogiMatch({
         matchLayoutClasses: MATCH_LAYOUT_CLASSES,
         candidateNote,
         isSettingsModalOpen,
-        importSfen,
-        importKif,
+        importSfen: importSfenFromPanel,
+        importKif: importKifFromPanel,
         positionReady,
         isDevMode,
         eventLogs,
@@ -1982,8 +2067,6 @@ export function ShogiMatch({
         reviewMode,
         reviewLeftContent,
         reviewTopContent,
-        // 評価値グラフの初期展開はライブ観戦のみ。検討/静的 viewer/対局は既定閉のまま。
-        evalPanelInitialOpen: spectateMode === true,
     };
 
     // Props グループ化: Mobile専用
@@ -1998,14 +2081,47 @@ export function ShogiMatch({
         isReviewMode,
         reviewMode,
         onOpenAbout: () => setIsAboutOpen(true),
-        onImportSfen: importSfen,
-        onImportKif: importKif,
+        onImportSfen: importSfenFromPanel,
+        onImportKif: importKifFromPanel,
         onDisplaySettingsChange: setDisplaySettings,
     };
+
+    // 研究ノートにできるのは、指し手があり、変則ルール（パス権）を使っていない棋譜だけ。
+    const canOpenAsStudy =
+        onOpenAsStudy !== undefined &&
+        !isMatchRunning &&
+        !passRightsSettings.enabled &&
+        navigation.tree.nodes.size > 1 &&
+        [...navigation.tree.nodes.values()].every(
+            (node) => node.usiMove === null || isStudyUsiMove(node.usiMove),
+        );
+    const kifuImportExtra = canOpenAsStudy ? (
+        <div className="flex flex-col gap-1 border-t border-border pt-3">
+            <button
+                type="button"
+                className="w-full rounded-md border border-wafuu-border bg-wafuu-washi py-2 text-sm font-medium text-wafuu-sumi transition-colors hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => {
+                    onOpenAsStudy?.(navigation.tree, {
+                        players: playersFor(startSfen, navigation.getMainLineMoves()),
+                    });
+                }}
+            >
+                この棋譜を研究ノートにする
+            </button>
+            <p className="text-xs text-muted-foreground">
+                いま開いている棋譜（{navigation.state.totalPly}
+                手）を研究ノートにして、解析結果・変化・コメントを自動で保存します。
+            </p>
+        </div>
+    ) : null;
 
     return (
         <ShogiMatchProvider
             config={{
+                kifuImportExtra,
+                viewerMode,
+                boardTopContent,
+                evalGraphPinned,
                 aiIconUrl,
                 presetIconUrls: Object.fromEntries(
                     presetConfigs.flatMap((preset) =>

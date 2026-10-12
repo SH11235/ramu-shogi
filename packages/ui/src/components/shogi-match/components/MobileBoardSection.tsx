@@ -1,6 +1,6 @@
 import type { LastMove, PieceType, Player, PositionState, Square } from "@shogi/app-core";
 import type { ReactElement, RefObject } from "react";
-import type { ShogiBoardCell, ShogiBoardPiece } from "../../shogi-board";
+import type { ShogiBoardCell, ShogiBoardMoveShadow, ShogiBoardPiece } from "../../shogi-board";
 import { ShogiBoard } from "../../shogi-board";
 import { useMobileCellSize } from "../hooks/useMobileCellSize";
 import type { DisplaySettings, PassRightsSettings, PromotionSelection } from "../types";
@@ -25,6 +25,8 @@ interface MobileBoardSectionProps {
     // === ハイライト（変更頻度: 中） ===
     lastMove?: LastMove;
     selection: Selection | null;
+    /** 選んでいる駒の影（マウスを乗せた行き先に出す）。出さないときは省く */
+    moveShadow?: ShogiBoardMoveShadow | null;
     promotionSelection: PromotionSelection | null;
 
     // === 表示設定（変更頻度: 低） ===
@@ -85,6 +87,7 @@ export function MobileBoardSection({
     flipBoard,
     lastMove,
     selection,
+    moveShadow,
     promotionSelection,
     displaySettings,
     isEditModeActive,
@@ -193,6 +196,7 @@ export function MobileBoardSection({
                 isDraggable={isEditModeActive}
                 squareNotation={displaySettings.squareNotation}
                 showBoardLabels={displaySettings.showBoardLabels}
+                moveShadow={isEditModeActive ? null : moveShadow}
             />
 
             {candidateNote ? (

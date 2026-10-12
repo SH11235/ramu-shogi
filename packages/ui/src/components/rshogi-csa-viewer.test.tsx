@@ -1,18 +1,23 @@
 import type { RshogiGame } from "@shogi/match-client";
-import { fetchRshogiGame } from "@shogi/match-client";
+import { fetchRshogiGame, fetchRshogiGameEvents } from "@shogi/match-client";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RshogiCsaViewer } from "./rshogi-csa-viewer";
 
 vi.mock("@shogi/match-client", () => ({
     fetchRshogiGame: vi.fn(),
+    fetchRshogiGameEvents: vi.fn(),
     RshogiGameNotFoundError: class RshogiGameNotFoundError extends Error {},
 }));
 
 interface CapturedShogiMatchProps {
     initialReview?: { sfen: string; moves: string[]; moveData?: unknown[] };
     spectateMode?: boolean;
+    viewerMode?: boolean;
+    boardTopContent?: ReactNode;
+    evalGraphPinned?: boolean;
+    onPositionSnapshot?: (snapshot: { sfen: string; moves: string[]; label?: string }) => void;
 }
 
 const capturedProps: CapturedShogiMatchProps[] = [];
@@ -20,7 +25,12 @@ const capturedProps: CapturedShogiMatchProps[] = [];
 vi.mock("./shogi-match", () => ({
     ShogiMatch: (props: CapturedShogiMatchProps & { reviewLeftContent?: ReactNode }) => {
         capturedProps.push(props);
-        return <div data-testid="shogi-match">{props.reviewLeftContent}</div>;
+        return (
+            <div data-testid="shogi-match">
+                <div data-testid="board-top">{props.boardTopContent}</div>
+                <div data-testid="left-panel">{props.reviewLeftContent}</div>
+            </div>
+        );
     },
 }));
 
@@ -39,6 +49,12 @@ const renderViewer = () =>
     render(
         <RshogiCsaViewer gameId={GAME_ID} engineOptions={[]} manifestUrl="/nnue-manifest.json" />,
     );
+
+// イベントのメタデータは、既定では「メタに対応していない古いサーバー」と同じく付かない。
+beforeEach(() => {
+    vi.mocked(fetchRshogiGameEvents).mockReset();
+    vi.mocked(fetchRshogiGameEvents).mockResolvedValue([]);
+});
 
 afterEach(() => {
     vi.restoreAllMocks();
@@ -151,7 +167,8 @@ describe("RshogiCsaViewer: 外部から取り込んだ棋譜", () => {
 
         expect(await screen.findByText("Floodgate")).toBeTruthy();
         expect(screen.getByText("floodgate-300-10F")).toBeTruthy();
-        expect(screen.getByText("☗ RAMU (R3512) vs ☖ SampleEngine (R3447)")).toBeTruthy();
+        const players = screen.getByRole("region", { name: "対局者" });
+        expect(players.textContent).toBe("先手☗RAMUR3512後手☖SampleEngineR3447");
         const link = screen.getByRole("link", { name: "元の棋譜を開く（Floodgate）" });
         expect(link.getAttribute("href")).toBe(WDOOR_GAME.meta.originUrl);
         expect(link.getAttribute("target")).toBe("_blank");
@@ -320,6 +337,227 @@ describe("RshogiCsaViewer: 外部から取り込んだ棋譜", () => {
     });
 });
 
+describe("RshogiCsaViewer: 見るだけの画面と「この局面から対局」", () => {
+    const renderWithPlay = (onPlayFromPosition = vi.fn()) => {
+        render(
+            <RshogiCsaViewer
+                gameId={GAME_ID}
+                engineOptions={[]}
+                manifestUrl="/nnue-manifest.json"
+                renderGameAction={() => <button type="button">研究ノートで開く</button>}
+                onPlayFromPosition={onPlayFromPosition}
+            />,
+        );
+        return onPlayFromPosition;
+    };
+    /** 盤（ShogiMatch）が「いま出している局面」を知らせる。 */
+    const showPosition = (sfen: string, moves: string[]) => {
+        capturedProps.at(-1)?.onPositionSnapshot?.({ sfen, moves, label: "現在局面" });
+    };
+
+    it("対局開始・棋譜読込・局面編集などを出さない指定で盤を開く", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(WDOOR_GAME);
+        renderViewer();
+        await screen.findByTestId("shogi-match");
+
+        expect(capturedProps.at(-1)?.viewerMode).toBe(true);
+    });
+
+    it.each([
+        ["評価値のある棋譜", WDOOR_GAME],
+        ["評価値の無い棋譜", GAME],
+    ])("評価値グラフを常に出す指定で盤を開く（%s）", async (_label, game) => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(game);
+        renderViewer();
+        await screen.findByTestId("shogi-match");
+
+        expect(capturedProps.at(-1)?.evalGraphPinned).toBe(true);
+    });
+
+    it("「研究ノートで開く」のすぐ下に「この局面から対局」を出す", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(WDOOR_GAME);
+        renderWithPlay();
+        await screen.findByTestId("shogi-match");
+
+        const labels = screen.getAllByRole("button").map((button) => button.textContent);
+        expect(labels).toEqual(["研究ノートで開く", "この局面から対局", "CSA ダウンロード"]);
+    });
+
+    it("引き継ぎ先を渡さない画面では「この局面から対局」を出さない", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(WDOOR_GAME);
+        renderViewer();
+        await screen.findByTestId("shogi-match");
+
+        expect(screen.queryByRole("button", { name: "この局面から対局" })).toBeNull();
+    });
+
+    it("押すと、いま表示している手数までの手順を渡す（棋譜の最後までではない）", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(WDOOR_GAME);
+        const onPlay = renderWithPlay();
+        await screen.findByTestId("shogi-match");
+        // 棋譜は 3 手。読み込み直後は最後の局面、そのあと 1 手目まで戻した。
+        showPosition("startpos", ["7g7f", "3c3d", "2g2f"]);
+        showPosition("startpos", ["7g7f"]);
+
+        fireEvent.click(screen.getByRole("button", { name: "この局面から対局" }));
+
+        expect(onPlay).toHaveBeenCalledTimes(1);
+        expect(onPlay).toHaveBeenCalledWith({ sfen: "startpos", moves: ["7g7f"] });
+    });
+
+    it("分岐を見ているときは、その分岐の手順を渡す", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(WDOOR_GAME);
+        const onPlay = renderWithPlay();
+        await screen.findByTestId("shogi-match");
+        showPosition("startpos", ["7g7f", "8c8d", "2g2f"]);
+
+        fireEvent.click(screen.getByRole("button", { name: "この局面から対局" }));
+
+        expect(onPlay).toHaveBeenCalledWith({
+            sfen: "startpos",
+            moves: ["7g7f", "8c8d", "2g2f"],
+        });
+    });
+
+    it("平手以外・後手番開始の棋譜は、その開始局面の SFEN ごと渡す", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue({
+            ...GAME,
+            csa: ["V2.2", ...MIDGAME_POSITION, "-", "-0055KA,T3", "+2524FU,T4"].join("\n"),
+        });
+        const onPlay = renderWithPlay();
+        await screen.findByTestId("shogi-match");
+        // 盤が棋譜を読み込む前は平手の開始局面を知らせてくる。これは引き継がない。
+        showPosition("startpos", []);
+
+        fireEvent.click(screen.getByRole("button", { name: "この局面から対局" }));
+        expect(onPlay).toHaveBeenLastCalledWith({ sfen: MIDGAME_SFEN, moves: [] });
+
+        showPosition(MIDGAME_SFEN, ["B*5e"]);
+        fireEvent.click(screen.getByRole("button", { name: "この局面から対局" }));
+        expect(onPlay).toHaveBeenLastCalledWith({ sfen: MIDGAME_SFEN, moves: ["B*5e"] });
+    });
+});
+
+describe("RshogiCsaViewer: 対局者を盤の上に出す", () => {
+    const LONG_NAME_GAME: RshogiGame = {
+        ...WDOOR_GAME,
+        meta: {
+            ...WDOOR_GAME.meta,
+            senteName: "RAMU_TF",
+            goteName: "sinden3_770kai_473stb_10m",
+        },
+    };
+
+    it("盤の上（対局時計の位置）に、先手と後手を分けて出す", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(LONG_NAME_GAME);
+        renderViewer();
+
+        const boardTop = await screen.findByTestId("board-top");
+        const players = within(boardTop).getByRole("region", { name: "対局者" });
+        const [sente, gote] = Array.from(players.children);
+        expect(players.children).toHaveLength(2);
+        expect(sente?.getAttribute("data-side")).toBe("sente");
+        expect(sente?.textContent).toBe("先手☗RAMU_TFR3512");
+        expect(gote?.getAttribute("data-side")).toBe("gote");
+        // 長い名前も省略しない（幅が足りなければ折り返す）。
+        expect(gote?.textContent).toBe("後手☖sinden3_770kai_473stb_10mR3447");
+        expect(within(players).getByText("sinden3_770kai_473stb_10m").className).not.toContain(
+            "truncate",
+        );
+    });
+
+    it("先手は朱、後手は藍で色分けする（評価値グラフと同じ）", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(LONG_NAME_GAME);
+        renderViewer();
+
+        const players = within(await screen.findByTestId("board-top")).getByRole("region", {
+            name: "対局者",
+        });
+        expect(within(players).getByText("☗").className).toContain("text-wafuu-shu");
+        expect(within(players).getByText("☖").className).toContain("text-wafuu-ai");
+    });
+
+    it("見出しなので、背景や枠の付いたカードにしない", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(LONG_NAME_GAME);
+        renderViewer();
+
+        const players = within(await screen.findByTestId("board-top")).getByRole("region", {
+            name: "対局者",
+        });
+        expect(players.className).not.toMatch(/\bbg-|\brounded|\bborder\b/);
+        // 先手・後手の見分けは、見えるラベルと片側の縦線（先手 = 朱、後手 = 藍）で付ける。
+        expect(within(players).getByText("先手").className).not.toContain("sr-only");
+        expect(within(players).getByText("後手").className).not.toContain("sr-only");
+        expect(players.children[0]?.className).toContain("border-l-4 border-wafuu-shu");
+        expect(players.children[1]?.className).toContain("border-r-4 border-wafuu-ai");
+    });
+
+    const withResult = (result: RshogiGame["meta"]["result"]): RshogiGame => ({
+        ...LONG_NAME_GAME,
+        meta: { ...LONG_NAME_GAME.meta, result },
+    });
+    const winnerMarks = async () => {
+        const players = within(await screen.findByTestId("board-top")).getByRole("region", {
+            name: "対局者",
+        });
+        return Array.from(players.children).map(
+            (side) => within(side as HTMLElement).queryByText("勝ち") !== null,
+        );
+    };
+
+    it.each([
+        ["先手", "sente", [true, false]],
+        ["後手", "gote", [false, true]],
+    ] as const)("%sが勝った棋譜では、その側だけに「勝ち」の印を付ける", async (_label, winner, expected) => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(
+            withResult({ kind: "resignation", winner, endReason: "RESIGN" }),
+        );
+        renderViewer();
+
+        expect(await winnerMarks()).toEqual(expected);
+    });
+
+    it.each([
+        ["引き分け（千日手）", { kind: "draw" }],
+        ["中断", { kind: "abort" }],
+        ["異常終了", { kind: "abnormal" }],
+        ["結果不明", undefined],
+    ] as const)("%sでは、どちらにも「勝ち」の印を付けない", async (_label, result) => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(
+            withResult(result as RshogiGame["meta"]["result"]),
+        );
+        renderViewer();
+
+        expect(await winnerMarks()).toEqual([false, false]);
+    });
+
+    it("レートの無い棋譜では名前だけを出す", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(GAME);
+        renderViewer();
+
+        const boardTop = await screen.findByTestId("board-top");
+        expect(within(boardTop).getByRole("region", { name: "対局者" }).textContent).toBe(
+            "先手☗alice後手☖bob",
+        );
+    });
+
+    it("左の対局情報には対局者の行を出さない（残りの項目はそのまま）", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(LONG_NAME_GAME);
+        renderViewer();
+
+        const leftPanel = await screen.findByTestId("left-panel");
+        const info = within(leftPanel).getByRole("region", { name: "対局情報" });
+        expect(within(info).queryByText("対局者")).toBeNull();
+        expect(within(info).queryByText(/sinden3_770kai_473stb_10m/)).toBeNull();
+        expect(within(leftPanel).queryByRole("region", { name: "対局者" })).toBeNull();
+        // 対局 ID はパンくずに出ているので、対局情報には出さない。
+        expect(within(info).queryByText("対局 ID")).toBeNull();
+        expect(within(info).queryByText(GAME_ID)).toBeNull();
+        expect(within(info).getByText("対局場所")).toBeTruthy();
+        expect(within(info).getByText("floodgate-300-10F")).toBeTruthy();
+    });
+});
+
 describe("RshogiCsaViewer: 対局情報パネル", () => {
     it("メタ (対局者・時刻・持ち時間・結果) を表示する", async () => {
         vi.mocked(fetchRshogiGame).mockResolvedValue({
@@ -337,7 +575,9 @@ describe("RshogiCsaViewer: 対局情報パネル", () => {
 
         renderViewer();
 
-        expect(await screen.findByText("☗ alice vs ☖ bob")).toBeTruthy();
+        expect((await screen.findByRole("region", { name: "対局者" })).textContent).toBe(
+            "先手☗alice後手☖bob勝ち",
+        );
         expect(screen.getByText("持ち時間: 10分 + 秒読み10秒")).toBeTruthy();
         expect(screen.getByText("結果: 後手 (bob) 勝ち (投了)")).toBeTruthy();
         expect(screen.queryByText(/不明/)).toBeNull();
@@ -499,15 +739,21 @@ describe("RshogiCsaViewer: モバイル幅", () => {
 
         renderViewer();
 
-        // 盤面の上には対局者と対局場所だけを 1 行で出す。
+        // 盤面の上には、対局者（先手・後手を分けた行）と対局場所の 1 行を出す。
         const summary = await screen.findByRole("button", { name: /対局情報/ });
-        expect(within(summary).getByText("☗ RAMU vs ☖ SampleEngine")).toBeTruthy();
         expect(within(summary).getByText("Floodgate")).toBeTruthy();
+        // 盤（ShogiMatch）の外、ページの上部に出る（スマホのレイアウトは盤の上に枠を持たない）。
+        const players = screen
+            .getAllByRole("region", { name: "対局者" })
+            .filter((region) => !screen.getByTestId("shogi-match").contains(region));
+        expect(players).toHaveLength(1);
+        expect(players[0]?.textContent).toBe("先手☗RAMUR3512後手☖SampleEngineR3447");
 
         fireEvent.click(summary);
 
         const sheet = await screen.findByRole("dialog", { name: "対局情報" });
-        expect(within(sheet).getByText("☗ RAMU (R3512) vs ☖ SampleEngine (R3447)")).toBeTruthy();
+        // 対局者は盤の上に出しているので、シートには重ねて出さない。
+        expect(within(sheet).queryByText(/RAMU/)).toBeNull();
         expect(within(sheet).getByText("floodgate-300-10F")).toBeTruthy();
         expect(
             within(sheet)
@@ -526,5 +772,151 @@ describe("RshogiCsaViewer: モバイル幅", () => {
         await screen.findByTestId("shogi-match");
         expect(screen.queryByRole("button", { name: /対局情報/ })).toBeNull();
         expect(screen.getByRole("button", { name: "CSA ダウンロード" })).toBeTruthy();
+    });
+});
+
+describe("RshogiCsaViewer: 大会（イベント）のメタデータ", () => {
+    const UPLOAD_GAME: RshogiGame = {
+        meta: { ...GAME.meta, source: "upload", event: "WCSC36" },
+        csa: CSA_TEXT,
+    };
+    const WCSC_META = {
+        title: "第36回世界コンピュータ将棋選手権",
+        organizer: "コンピュータ将棋協会",
+        officialUrl: "https://example.org/wcsc36/",
+        kifuSourceUrl: "https://example.org/wcsc36/kifu/",
+        termsNote: "対局プログラム名と対局日時、大会名を明記",
+    };
+    const stubMobile = (isMobile: boolean) => {
+        vi.spyOn(window, "matchMedia").mockImplementation(
+            (query: string) =>
+                ({
+                    matches: isMobile,
+                    media: query,
+                    addEventListener: () => {},
+                    removeEventListener: () => {},
+                }) as unknown as MediaQueryList,
+        );
+    };
+
+    it("メタがあれば、イベントの欄に正式名称・主催・公式ページ・棋譜の出典を出す", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(UPLOAD_GAME);
+        vi.mocked(fetchRshogiGameEvents).mockResolvedValue([
+            { event: "floodgate-300-10F", source: "wdoor", games: 40 },
+            { event: "WCSC36", source: "upload", games: 120, meta: WCSC_META },
+        ]);
+
+        renderViewer();
+
+        const panel = await screen.findByRole("region", { name: "対局情報" });
+        expect(await within(panel).findByText(WCSC_META.title)).toBeTruthy();
+        // 正式名称を出したら、短いタグは重ねて出さない。
+        expect(within(panel).queryByText("WCSC36")).toBeNull();
+        expect(within(panel).getByText("主催: コンピュータ将棋協会")).toBeTruthy();
+
+        const official = within(panel).getByRole("link", {
+            name: /^大会の公式ページ\s*（新しいタブで開く）$/,
+        });
+        expect(official.getAttribute("href")).toBe(WCSC_META.officialUrl);
+        expect(official.getAttribute("target")).toBe("_blank");
+        expect(official.getAttribute("rel")).toBe("noopener noreferrer");
+        const kifuSource = within(panel).getByRole("link", {
+            name: /^棋譜の出典\s*（新しいタブで開く）$/,
+        });
+        expect(kifuSource.getAttribute("href")).toBe(WCSC_META.kifuSourceUrl);
+        expect(kifuSource.getAttribute("target")).toBe("_blank");
+        expect(kifuSource.getAttribute("rel")).toBe("noopener noreferrer");
+
+        // 利用条件のメモは利用者向けの文ではないので出さない。
+        expect(screen.queryByText(/大会名を明記/)).toBeNull();
+    });
+
+    it("主催や URL の無いメタでは、ある項目だけを出す", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(UPLOAD_GAME);
+        vi.mocked(fetchRshogiGameEvents).mockResolvedValue([
+            {
+                event: "WCSC36",
+                source: "upload",
+                games: 120,
+                meta: { title: WCSC_META.title, officialUrl: WCSC_META.officialUrl },
+            },
+        ]);
+
+        renderViewer();
+
+        const panel = await screen.findByRole("region", { name: "対局情報" });
+        await within(panel).findByText(WCSC_META.title);
+        expect(within(panel).queryByText(/主催/)).toBeNull();
+        expect(within(panel).getAllByRole("link")).toHaveLength(1);
+        expect(
+            within(panel).getByRole("link", { name: /^大会の公式ページ\s*（新しいタブで開く）$/ }),
+        ).toBeTruthy();
+    });
+
+    it("メタの無いイベント（古いサーバーを含む）では、これまでどおりタグだけを出す", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(UPLOAD_GAME);
+        vi.mocked(fetchRshogiGameEvents).mockResolvedValue([
+            { event: "WCSC36", source: "upload", games: 120 },
+            // 別のイベントのメタを、このイベントに付けない
+            { event: "DR5", source: "upload", games: 3, meta: { title: "第5回電竜戦" } },
+        ]);
+
+        renderViewer();
+
+        const panel = await screen.findByRole("region", { name: "対局情報" });
+        await waitFor(() => expect(fetchRshogiGameEvents).toHaveBeenCalled());
+        expect(within(panel).getByText("WCSC36")).toBeTruthy();
+        expect(within(panel).queryByRole("link")).toBeNull();
+        expect(within(panel).queryByText(/主催/)).toBeNull();
+        expect(screen.queryByText("第5回電竜戦")).toBeNull();
+    });
+
+    it("イベント一覧の取得に失敗しても、棋譜はそのまま表示し、タグだけを出す", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(UPLOAD_GAME);
+        vi.mocked(fetchRshogiGameEvents).mockRejectedValue(new Error("events API down"));
+
+        renderViewer();
+
+        const panel = await screen.findByRole("region", { name: "対局情報" });
+        await waitFor(() => expect(fetchRshogiGameEvents).toHaveBeenCalled());
+        expect(screen.getByTestId("shogi-match")).toBeTruthy();
+        expect(within(panel).getByText("WCSC36")).toBeTruthy();
+        expect(within(panel).queryByRole("link")).toBeNull();
+        expect(screen.queryByText(/events API down/)).toBeNull();
+        expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("イベントの付いていない棋譜では、イベント一覧を取りに行かない", async () => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue(GAME);
+
+        renderViewer();
+
+        await screen.findByTestId("shogi-match");
+        expect(fetchRshogiGameEvents).not.toHaveBeenCalled();
+    });
+
+    it("スマホでは、対局情報のシートの中に同じ内容を出す", async () => {
+        stubMobile(true);
+        vi.mocked(fetchRshogiGame).mockResolvedValue(UPLOAD_GAME);
+        vi.mocked(fetchRshogiGameEvents).mockResolvedValue([
+            { event: "WCSC36", source: "upload", games: 120, meta: WCSC_META },
+        ]);
+
+        renderViewer();
+
+        fireEvent.click(await screen.findByRole("button", { name: /対局情報/ }));
+        const sheet = await screen.findByRole("dialog", { name: "対局情報" });
+        expect(await within(sheet).findByText(WCSC_META.title)).toBeTruthy();
+        expect(within(sheet).getByText("主催: コンピュータ将棋協会")).toBeTruthy();
+        expect(
+            within(sheet)
+                .getByRole("link", { name: /^大会の公式ページ\s*（新しいタブで開く）$/ })
+                .getAttribute("href"),
+        ).toBe(WCSC_META.officialUrl);
+        expect(
+            within(sheet)
+                .getByRole("link", { name: /^棋譜の出典\s*（新しいタブで開く）$/ })
+                .getAttribute("href"),
+        ).toBe(WCSC_META.kifuSourceUrl);
     });
 });

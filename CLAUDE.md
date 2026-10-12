@@ -17,6 +17,7 @@
 - engine-tauri → engine-client
 - engine-client → (依存なし、インターフェース定義のみ)
 - match-client → (依存なし。通信メッセージ型とクライアント実装のみ)
+- study-client → app-core, api-contract（型のみ）
 - design-system → (依存なし)
 
 設計制約:
@@ -34,6 +35,7 @@
 - rust-core: Rustエンジン本体（探索、評価関数、USIプロトコル）
 - ui: 共通UIコンポーネント、design-system前提、必要なものだけ昇格
 - match-client: WebSocket ルームクライアント、通信プロトコル型定義。外部依存なし
+- study-client: 研究ノートのローカル保存（IndexedDB）、サーバーとの同期、API クライアント。ブラウザ API（IndexedDB / Web Locks / BroadcastChannel / fetch）に依存する層。型と純粋ロジックは app-core の `study/`
 - design-system: テーマ/トークン/Provider、shadcn/ui基盤
 
 ## 実装方針メモ

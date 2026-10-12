@@ -31,9 +31,14 @@ export const DialogContent = forwardRef<
     ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
         overlayClassName?: string;
         overlayStyle?: CSSProperties;
+        /**
+         * 中に `DialogDescription` を置くときに true にする。説明がダイアログに関連付けられ
+         * （`aria-describedby`）、読み上げの対象になる。省略時は、これまでどおり関連付けない。
+         */
+        hasDescription?: boolean;
     }
 >(function DialogContent(
-    { className, children, overlayClassName, overlayStyle, style, ...props },
+    { className, children, overlayClassName, overlayStyle, style, hasDescription, ...props },
     ref,
 ): ReactElement {
     // Portal で body 直下へ出るため、開いた場所の局所テーマ(検討室の墨地等)を
@@ -43,7 +48,8 @@ export const DialogContent = forwardRef<
         <DialogPortal>
             <DialogOverlay className={overlayClassName} style={overlayStyle} />
             <DialogPrimitive.Content
-                aria-describedby={undefined}
+                // 説明があるときは指定しない（Radix が、説明の要素の ID を関連付ける）。
+                {...(hasDescription ? {} : { "aria-describedby": undefined })}
                 style={style}
                 className={cn(
                     surfaceTheme,

@@ -33,6 +33,7 @@ import { SoundToggle } from "../components/SoundToggle";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
+import { useShogiMatchConfig } from "../ShogiMatchContext";
 import type { DisplaySettings } from "../types";
 import { type KifMove as FullKifMove, formatEval } from "../utils/kifFormat";
 import type { ImportKifHandler, ImportSfenHandler } from "../utils/kifuImport";
@@ -97,6 +98,9 @@ export function MobileLayout({
     const matchState = useMatchState();
     const matchSettings = useMatchSettings();
     const navigation = useNavigation();
+    // 棋譜を見るだけの画面（棋譜ビューア・観戦）では、対局を始める・棋譜を読み込む・
+    // 局面を編集する・平手に戻す操作を出さない。
+    const { viewerMode } = useShogiMatchConfig();
 
     // MatchStateContext から取得
     const {
@@ -106,6 +110,7 @@ export function MobileLayout({
         onFlipBoardChange,
         lastMove,
         selection,
+        moveShadow,
         promotionSelection,
         isEditMode,
         isMatchRunning,
@@ -299,35 +304,45 @@ export function MobileLayout({
     const isEditModeActive = isEditMode && !isMatchRunning;
     const hideEmptyHandPieces = gameMode === "playing" || gameMode === "paused";
     // FAB表示条件: 検討モードで棋譜がある場合と編集モードではインライン表示するため非表示
-    const shouldShowFloatingSettings = !(isReviewMode && totalPly > 0) && !isEditModeActive;
+    // （棋譜を見るだけの画面は 0 手の棋譜でも検討モードの並びで出すので、同じく非表示）
+    const shouldShowFloatingSettings =
+        !(isReviewMode && (totalPly > 0 || viewerMode)) && !isEditModeActive;
+
+    // ヘッダー中央の「手数・反転・サウンド」。
+    const headerControls = (
+        <>
+            <span className="hidden min-[360px]:inline shrink-0 whitespace-nowrap text-xs text-muted-foreground tabular-nums">
+                {moves.length === 0 ? "開始" : `${moves.length}手`}
+            </span>
+            <button
+                type="button"
+                onClick={handleFlipBoard}
+                className="flex items-center justify-center w-6 h-6 rounded hover:bg-muted text-sm"
+                title="盤面を反転"
+                aria-label="盤面を反転"
+            >
+                🔄
+            </button>
+            <SoundToggle />
+        </>
+    );
 
     return (
         <div className="relative flex flex-col gap-1 w-full min-w-0 px-2 pb-[env(safe-area-inset-bottom)] bg-background text-foreground">
             {/* === ヘッダー: クロック + 手数 + 反転ボタンを1行に統合 === */}
             <header className="flex-shrink-0 pt-1">
-                <ClockDisplay
-                    clocks={clocks}
-                    timeSettings={timeSettings}
-                    isRunning={isMatchRunning}
-                    className="[&>div]:gap-0.5 [&>div]:px-0 [&_.font-mono]:text-xs"
-                    centerContent={
-                        <>
-                            <span className="hidden min-[360px]:inline shrink-0 whitespace-nowrap text-xs text-muted-foreground tabular-nums">
-                                {moves.length === 0 ? "開始" : `${moves.length}手`}
-                            </span>
-                            <button
-                                type="button"
-                                onClick={handleFlipBoard}
-                                className="flex items-center justify-center w-6 h-6 rounded hover:bg-muted text-sm"
-                                title="盤面を反転"
-                                aria-label="盤面を反転"
-                            >
-                                🔄
-                            </button>
-                            <SoundToggle />
-                        </>
-                    }
-                />
+                {viewerMode ? (
+                    // 棋譜を見るだけの画面は対局しないので、時計（∞）は出さない。
+                    <div className="flex items-center justify-end gap-1">{headerControls}</div>
+                ) : (
+                    <ClockDisplay
+                        clocks={clocks}
+                        timeSettings={timeSettings}
+                        isRunning={isMatchRunning}
+                        className="[&>div]:gap-0.5 [&>div]:px-0 [&_.font-mono]:text-xs"
+                        centerContent={headerControls}
+                    />
+                )}
             </header>
 
             {/* === 盤面セクション: 固定サイズ、縮小しない === */}
@@ -338,6 +353,7 @@ export function MobileLayout({
                     flipBoard={flipBoard}
                     lastMove={lastMove}
                     selection={selection}
+                    moveShadow={moveShadow}
                     promotionSelection={promotionSelection}
                     displaySettings={displaySettings}
                     isEditModeActive={isEditModeActive}
@@ -478,7 +494,7 @@ export function MobileLayout({
                             </button>
                         </div>
                     </div>
-                ) : isReviewMode && totalPly === 0 ? (
+                ) : isReviewMode && totalPly === 0 && !viewerMode ? (
                     /* 対局準備モード: 開始ボタンのみ（棋譜がまだない状態） */
                     <div className="flex justify-center gap-2 py-2 flex-shrink-0">
                         <button
@@ -543,7 +559,7 @@ export function MobileLayout({
                             onNnueManagerClick={onOpenNnueManager}
                         />
                     </div>
-                ) : (
+                ) : viewerMode ? null : (
                     /* 編集モード: 対局開始 + 平手に戻す + 設定ボタン */
                     <div className="flex flex-col gap-1.5 flex-shrink-0">
                         <div className="flex flex-col gap-0.5 text-center text-muted-foreground">
@@ -627,21 +643,30 @@ export function MobileLayout({
                     passRightsSettings={passRightsSettings}
                     onPassRightsSettingsChange={onPassRightsSettingsChange}
                     isMatchRunning={isMatchRunning}
-                    onStartMatch={() => {
-                        resumeAutoPlay();
-                        setIsSettingsOpen(false);
-                    }}
+                    onStartMatch={
+                        viewerMode
+                            ? undefined
+                            : () => {
+                                  resumeAutoPlay();
+                                  setIsSettingsOpen(false);
+                              }
+                    }
                     onStopMatch={pauseAutoPlay}
-                    onResetToStartpos={() => {
-                        handleResetToStartpos();
-                        setIsSettingsOpen(false);
-                    }}
+                    onResetToStartpos={
+                        viewerMode
+                            ? undefined
+                            : () => {
+                                  handleResetToStartpos();
+                                  setIsSettingsOpen(false);
+                              }
+                    }
                     displaySettings={displaySettings}
                     onDisplaySettingsChange={onDisplaySettingsChange}
                     onOpenAbout={onOpenAbout}
-                    onImportSfen={onImportSfen}
-                    onImportKif={onImportKif}
+                    onImportSfen={viewerMode ? undefined : onImportSfen}
+                    onImportKif={viewerMode ? undefined : onImportKif}
                     positionReady={positionReady}
+                    viewerMode={viewerMode}
                 />
             </BottomSheet>
 

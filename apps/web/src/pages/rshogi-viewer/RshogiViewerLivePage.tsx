@@ -4,6 +4,7 @@ import { getRouteApi } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
 import { PageHeader } from "../../components/PageHeader";
+import { usePlayFromPosition } from "../../hooks/usePlayFromPosition";
 import { createWebWasmEngineClient } from "../../platform/wasm-engine-client";
 
 const engineOptions: EngineOption[] = [
@@ -26,6 +27,7 @@ const routeApi = getRouteApi("/rshogi-viewer/live/$gameId");
  */
 export default function RshogiViewerLivePage(): ReactElement {
     const { gameId } = routeApi.useParams();
+    const playFromPosition = usePlayFromPosition();
     const apiBaseUrl =
         (import.meta.env.VITE_RSHOGI_API_BASE as string | undefined)?.trim() || undefined;
 
@@ -44,6 +46,8 @@ export default function RshogiViewerLivePage(): ReactElement {
                 engineOptions={engineOptions}
                 manifestUrl={import.meta.env.VITE_NNUE_MANIFEST_URL as string}
                 apiBaseUrl={apiBaseUrl}
+                // いま表示している局面を `/play` へ引き継ぐ（PC の観戦情報の下に出る）。
+                onPlayFromPosition={playFromPosition}
             />
         </>
     );

@@ -6,6 +6,7 @@ import {
     analysisSnapshotMultiPvToRecordedEvalInfoEvent,
     applyAnalysisSnapshotEntryEvals,
     applyReviewMoveDataDiff,
+    canEditPosition,
     getInitialReviewSyncMode,
     stringifyReviewMoveData,
     useInitialReviewSync,
@@ -372,5 +373,18 @@ describe("useInitialReviewSync", () => {
         expect(importCalls).toHaveLength(2);
         expect(importCalls[1]?.moveData?.[1]).toMatchObject({ evalCp: -88, elapsedMs: 2200 });
         expect(result.current.kifMoves[1]).toMatchObject({ evalCp: -88, elapsedMs: 2200 });
+    });
+});
+
+describe("canEditPosition", () => {
+    it("通常の画面では、編集モードの間だけ局面を編集できる", () => {
+        expect(canEditPosition({ isEditMode: true, viewerMode: false })).toBe(true);
+        expect(canEditPosition({ isEditMode: false, viewerMode: false })).toBe(false);
+    });
+
+    it("ビューアでは、内部の状態が編集モードのまま残っていても編集できない", () => {
+        // initialReview の取り込み前と、取り込みに失敗した後がこの状態。
+        expect(canEditPosition({ isEditMode: true, viewerMode: true })).toBe(false);
+        expect(canEditPosition({ isEditMode: false, viewerMode: true })).toBe(false);
     });
 });

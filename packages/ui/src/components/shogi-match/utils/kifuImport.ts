@@ -14,7 +14,11 @@ import { type KifMoveData, parseKif, parseSfen } from "./kifParser";
 export type ImportSfenHandler = (
     sfen: string,
     moves: string[],
-    options?: { moveData?: (ReviewMoveEval | undefined)[] },
+    options?: {
+        moveData?: (ReviewMoveEval | undefined)[];
+        /** 棋譜に書かれていた対局者名（CSA の `N+` / `N-`）。 */
+        players?: { sente?: string; gote?: string };
+    },
 ) => Promise<void>;
 
 /** KIF を盤面へ取り込むコールバック。 */
@@ -108,6 +112,10 @@ export async function importKifuText(
         // 開始局面は平手なら "startpos"、駒落ち・途中局面ならその SFEN。
         await handlers.onImportSfen(record.startSfen, record.moves, {
             moveData: csaAnnotationsToMoveData(record.annotations),
+            // 対局者名が書かれている棋譜だけ渡す（無い棋譜では、従来と同じ引数のままにする）。
+            ...(record.senteName || record.goteName
+                ? { players: { sente: record.senteName, gote: record.goteName } }
+                : {}),
         });
         return;
     }

@@ -8,7 +8,14 @@
 import { cn } from "@shogi/design-system";
 import type { ReactElement, ReactNode } from "react";
 import { Button } from "../../button";
-import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "../../dialog";
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from "../../dialog";
 
 interface BottomSheetProps {
     /** シートを開くかどうか */
@@ -17,6 +24,8 @@ interface BottomSheetProps {
     onOpenChange: (open: boolean) => void;
     /** タイトル */
     title: string;
+    /** 読み上げ用の説明（画面には出さない）。渡したときだけ付け、シートに関連付ける。 */
+    description?: string;
     /** コンテンツ */
     children: ReactNode;
     /** 高さ: 'half' | 'full' | 'auto' */
@@ -47,6 +56,7 @@ export function BottomSheet({
     open,
     onOpenChange,
     title,
+    description,
     children,
     height = "auto",
     overlay = "dim",
@@ -59,6 +69,8 @@ export function BottomSheet({
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent
+                // 説明を渡したときだけ関連付ける（渡さない呼び出しは、これまでどおり）。
+                hasDescription={description !== undefined}
                 overlayClassName={overlayClassName}
                 onOpenAutoFocus={(event) => event.preventDefault()}
                 data-state={open ? "open" : "closed"}
@@ -85,6 +97,9 @@ export function BottomSheet({
                 {/* ヘッダー */}
                 <DialogHeader className={cn("px-4 pb-3 border-b border-border", surfaceClassName)}>
                     <DialogTitle className="font-semibold text-lg">{title}</DialogTitle>
+                    {description !== undefined && (
+                        <DialogDescription className="sr-only">{description}</DialogDescription>
+                    )}
                 </DialogHeader>
 
                 {/* コンテンツ */}

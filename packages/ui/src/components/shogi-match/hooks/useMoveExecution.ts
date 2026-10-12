@@ -9,7 +9,7 @@ import {
 } from "@shogi/app-core";
 import type { MutableRefObject } from "react";
 import type { Message, PromotionSelection } from "../types";
-import type { LegalMoveCache } from "../utils/legalMoveCache";
+import { buildLegalCacheKey, type LegalMoveCache } from "../utils/legalMoveCache";
 import { determinePromotion } from "../utils/promotionLogic";
 import type { UseKifuNavigationResult } from "./useKifuNavigation";
 
@@ -21,8 +21,8 @@ type Selection = { kind: "square"; square: string } | { kind: "hand"; piece: Pie
 interface UseMoveExecutionProps {
     /** 局面状態 */
     position: PositionState;
-    /** 棋譜ナビゲーション */
-    navigation: UseKifuNavigationResult;
+    /** 棋譜ナビゲーション（手の追加と、分岐ができるかの判定に使う部分だけ） */
+    navigation: Pick<UseKifuNavigationResult, "addMove" | "tree">;
     /** 編集モードかどうか */
     isEditMode: boolean;
     /** 検討モードかどうか */
@@ -103,6 +103,8 @@ interface UseMoveExecutionReturn {
     handleHandSelect: (piece: PieceType) => void;
     /** USI形式の指し手を現在局面に適用する */
     applyUsiMove: (usiMove: string) => Promise<boolean>;
+    /** 現局面の合法手（キャッシュ優先）。局面が未確定なら null */
+    getLegalSet: () => Promise<Set<string> | null>;
 }
 
 /**
@@ -150,8 +152,8 @@ export function useMoveExecution({
     const getLegalSet = async (): Promise<Set<string> | null> => {
         if (!positionReady) return null;
         const ply = moves.length;
-        const movesKey = moves.join(" ");
         const passRightsOption = getPassRightsOption();
+        const movesKey = buildLegalCacheKey(startSfen, moves, passRightsOption);
         const resolver = async () => {
             if (fetchLegalMoves) {
                 return fetchLegalMoves(startSfen, moves, passRightsOption);
@@ -261,6 +263,20 @@ export function useMoveExecution({
         return true;
     };
 
+    /**
+     * 駒を選んでいる間に、手番側の別の駒があるマスを押したら、その駒へ選び直す。
+     * 自分の駒があるマスへは指せない・打てないので、指し手とは取り違えない。
+     * 選び直したら true。
+     */
+    const reselectOwnPiece = (square: string): boolean => {
+        if (!selection) return false;
+        if (selection.kind === "square" && selection.square === square) return false;
+        const piece = position.board[square as Square];
+        if (!piece || piece.owner !== position.turn) return false;
+        setSelection({ kind: "square", square });
+        return true;
+    };
+
     // 検討モードでのマス選択処理
     const handleSquareSelectReviewMode = async (
         square: string,
@@ -286,6 +302,10 @@ export function useMoveExecution({
             if (piece && piece.owner === position.turn) {
                 setSelection({ kind: "square", square: sq });
             }
+            return true;
+        }
+
+        if (reselectOwnPiece(square)) {
             return true;
         }
 
@@ -422,6 +442,10 @@ export function useMoveExecution({
             if (piece && piece.owner === position.turn) {
                 setSelection({ kind: "square", square: sq });
             }
+            return true;
+        }
+
+        if (reselectOwnPiece(square)) {
             return true;
         }
 
@@ -569,8 +593,15 @@ export function useMoveExecution({
         if (!isReviewMode && isEngineTurn(position.turn)) {
             return;
         }
-        setSelection({ kind: "hand", piece });
+        // 成りの選択中に持ち駒へ移ったら、成りの選択は取り消す。
+        setPromotionSelection(null);
         setMessage(null);
+        // 選択中の持ち駒をもう一度押したら選択を外す（盤上の駒をもう一度押したときと同じ）。
+        if (selection?.kind === "hand" && selection.piece === piece) {
+            setSelection(null);
+            return;
+        }
+        setSelection({ kind: "hand", piece });
     };
 
     const applyUsiMove = async (usiMove: string): Promise<boolean> => {
@@ -617,5 +648,6 @@ export function useMoveExecution({
         handlePromotionChoice,
         handleHandSelect,
         applyUsiMove,
+        getLegalSet,
     };
 }

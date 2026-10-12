@@ -8,10 +8,15 @@
 // Hooks
 // ============================================================
 
+// 一括解析（研究ノートの画面でも使う）
+export type { AnalysisJob, EnginePoolHandle } from "./components/shogi-match/hooks/useEnginePool";
+export { useEnginePool } from "./components/shogi-match/hooks/useEnginePool";
 export {
     dispatchLocalStorageSyncEvent,
     LOCAL_STORAGE_SYNC_EVENT,
 } from "./components/shogi-match/hooks/useLocalStorage";
+export type { TreeAnalysisJob } from "./components/shogi-match/utils/branchTreeUtils";
+export { collectTreeAnalysisJobs } from "./components/shogi-match/utils/branchTreeUtils";
 export { useDevMode } from "./hooks/useDevMode";
 export { useNnueStorage } from "./hooks/useNnueStorage";
 export type { UseRoomConnectionOptions, UseRoomConnectionReturn } from "./hooks/useRoomConnection";
@@ -57,6 +62,16 @@ export {
     encodeSnapshotEvalMateReplacer,
 } from "./components/shogi-match/utils/kifFormat";
 export { boardToGrid } from "./components/shogi-match/utils/positionUtils";
+// study-workspace（研究ノートの画面）
+export type {
+    StudyCommentDraft,
+    StudyWorkspaceProps,
+    StudyWorkspaceViewState,
+} from "./components/study-workspace";
+export { StudyWorkspace } from "./components/study-workspace";
+export type { StudyCommentDraftChange } from "./components/study-workspace/StudyCommentBox";
+export type { StudyWorkspaceSaveStatus } from "./components/study-workspace/StudySaveStatus";
+export type { StudyEngineIdentity } from "./components/study-workspace/useStudyAnalysis";
 // surface-theme (Portal 脱出 UI への局所テーマ伝搬)
 export type { SurfaceTheme } from "./components/surface-theme";
 export { SurfaceThemeProvider, useSurfaceTheme } from "./components/surface-theme";
@@ -81,6 +96,7 @@ export { RshogiCsaLiveViewer } from "./components/rshogi-csa-live-viewer";
 export type { RshogiCsaViewerProps } from "./components/rshogi-csa-viewer";
 // rshogi-csa-viewer
 export { RshogiCsaViewer } from "./components/rshogi-csa-viewer";
+export type { PlayFromPosition } from "./components/rshogi-play-from-position";
 // shogi-match
 export { ShogiMatch } from "./components/shogi-match";
 

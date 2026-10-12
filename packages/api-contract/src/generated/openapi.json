@@ -823,7 +823,7 @@
                     },
                     "limitCount": {
                         "type": ["integer", "null"],
-                        "minimum": 1
+                        "minimum": 0
                     }
                 },
                 "required": ["mode", "limitCount"]
@@ -874,6 +874,941 @@
                     }
                 },
                 "required": ["name", "online"]
+            },
+            "ListStudiesResponse": {
+                "type": "object",
+                "properties": {
+                    "studies": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StudySummary"
+                        }
+                    },
+                    "nextCursor": {
+                        "type": ["string", "null"]
+                    }
+                },
+                "required": ["studies", "nextCursor"]
+            },
+            "StudySummary": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "$ref": "#/components/schemas/StudyId"
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "origin": {
+                        "$ref": "#/components/schemas/StudyOrigin"
+                    },
+                    "meta": {
+                        "$ref": "#/components/schemas/StudyMeta"
+                    },
+                    "revision": {
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    "nodeCount": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "layerCount": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "resultCount": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "updatedAt": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "title",
+                    "origin",
+                    "meta",
+                    "revision",
+                    "nodeCount",
+                    "layerCount",
+                    "resultCount",
+                    "updatedAt"
+                ]
+            },
+            "StudyId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+            },
+            "StudyOrigin": {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "$ref": "#/components/schemas/StudyOriginKind"
+                    },
+                    "ref": {
+                        "type": ["string", "null"],
+                        "minLength": 1,
+                        "maxLength": 256
+                    }
+                },
+                "required": ["kind", "ref"],
+                "additionalProperties": false
+            },
+            "StudyOriginKind": {
+                "type": "string",
+                "enum": ["rshogi_csa", "game_record", "paste"]
+            },
+            "StudyMeta": {
+                "type": "object",
+                "additionalProperties": {
+                    "type": "string"
+                }
+            },
+            "GetStudyLimitsResponse": {
+                "type": "object",
+                "properties": {
+                    "limits": {
+                        "$ref": "#/components/schemas/StudyLimits"
+                    },
+                    "usage": {
+                        "type": "object",
+                        "properties": {
+                            "studyCount": {
+                                "type": "integer",
+                                "minimum": 0
+                            }
+                        },
+                        "required": ["studyCount"]
+                    }
+                },
+                "required": ["limits", "usage"]
+            },
+            "StudyLimits": {
+                "type": "object",
+                "properties": {
+                    "studiesPerUser": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "nodesPerStudy": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "lineLength": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "layersPerStudy": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "treeBytes": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "layerResultsBytes": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "layerSpecBytes": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "layerDisplayBytes": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "commentBytes": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "titleLength": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "metaBytes": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "multiPv": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "pvLength": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "opsBatchBytes": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "opsPerBatch": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "createBodyBytes": {
+                        "type": "integer",
+                        "minimum": 0
+                    }
+                },
+                "required": [
+                    "studiesPerUser",
+                    "nodesPerStudy",
+                    "lineLength",
+                    "layersPerStudy",
+                    "treeBytes",
+                    "layerResultsBytes",
+                    "layerSpecBytes",
+                    "layerDisplayBytes",
+                    "commentBytes",
+                    "titleLength",
+                    "metaBytes",
+                    "multiPv",
+                    "pvLength",
+                    "opsBatchBytes",
+                    "opsPerBatch",
+                    "createBodyBytes"
+                ]
+            },
+            "CreateStudyResponse": {
+                "type": "object",
+                "properties": {
+                    "studyId": {
+                        "$ref": "#/components/schemas/StudyId"
+                    },
+                    "revision": {
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    "existing": {
+                        "type": "boolean",
+                        "enum": [true]
+                    }
+                },
+                "required": ["studyId", "revision"]
+            },
+            "StudyConflictResponse": {
+                "type": "object",
+                "properties": {
+                    "error": {
+                        "type": "string",
+                        "enum": ["ID_CONFLICT", "ORIGIN_EXISTS", "REVISION_CONFLICT"]
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "existingStudyId": {
+                        "$ref": "#/components/schemas/StudyId"
+                    },
+                    "currentRevision": {
+                        "type": "integer",
+                        "minimum": 1
+                    }
+                },
+                "required": ["error"]
+            },
+            "StudyLimitExceededResponse": {
+                "type": "object",
+                "properties": {
+                    "error": {
+                        "type": "string",
+                        "enum": ["LIMIT_EXCEEDED"]
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "limit": {
+                        "$ref": "#/components/schemas/StudyLimitName"
+                    }
+                },
+                "required": ["error", "limit"]
+            },
+            "StudyLimitName": {
+                "type": "string",
+                "enum": [
+                    "studiesPerUser",
+                    "nodesPerStudy",
+                    "lineLength",
+                    "layersPerStudy",
+                    "treeBytes",
+                    "layerResultsBytes",
+                    "layerSpecBytes",
+                    "layerDisplayBytes",
+                    "commentBytes",
+                    "titleLength",
+                    "metaBytes",
+                    "multiPv",
+                    "pvLength",
+                    "opsBatchBytes",
+                    "opsPerBatch",
+                    "createBodyBytes"
+                ]
+            },
+            "CreateStudyRequest": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "$ref": "#/components/schemas/StudyId"
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "origin": {
+                        "$ref": "#/components/schemas/StudyOrigin"
+                    },
+                    "startSfen": {
+                        "type": "string",
+                        "maxLength": 512
+                    },
+                    "rules": {
+                        "$ref": "#/components/schemas/StudyRules"
+                    },
+                    "meta": {
+                        "$ref": "#/components/schemas/StudyMeta"
+                    },
+                    "tree": {
+                        "$ref": "#/components/schemas/StudyTree"
+                    },
+                    "layers": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StudyLayerInput"
+                        }
+                    }
+                },
+                "required": ["id", "title", "origin", "startSfen", "rules", "meta", "tree"],
+                "additionalProperties": false
+            },
+            "StudyRules": {
+                "type": "object",
+                "properties": {
+                    "variant": {
+                        "type": "string",
+                        "enum": ["standard"]
+                    }
+                },
+                "required": ["variant"],
+                "additionalProperties": false
+            },
+            "StudyTree": {
+                "type": "object",
+                "properties": {
+                    "version": {
+                        "type": "number",
+                        "enum": [1]
+                    },
+                    "rootId": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{32}$"
+                    },
+                    "nodes": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "$ref": "#/components/schemas/StudyNode"
+                        }
+                    }
+                },
+                "required": ["version", "rootId", "nodes"],
+                "additionalProperties": false
+            },
+            "StudyNode": {
+                "type": "object",
+                "properties": {
+                    "parentId": {
+                        "type": ["string", "null"],
+                        "pattern": "^[0-9a-f]{32}$"
+                    },
+                    "usiMove": {
+                        "type": ["string", "null"],
+                        "pattern": "^(?:[1-9][a-i][1-9][a-i]\\+?|[PLNSBRG]\\*[1-9][a-i])$"
+                    },
+                    "children": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{32}$"
+                        }
+                    },
+                    "comment": {
+                        "type": "string"
+                    },
+                    "bookmarked": {
+                        "type": "boolean"
+                    },
+                    "source": {
+                        "$ref": "#/components/schemas/StudyNodeSource"
+                    }
+                },
+                "required": ["parentId", "usiMove", "children", "comment", "bookmarked", "source"],
+                "additionalProperties": false
+            },
+            "StudyNodeSource": {
+                "type": ["object", "null"],
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                    },
+                    "score": {
+                        "$ref": "#/components/schemas/StudyScore"
+                    },
+                    "pv": {
+                        "type": ["array", "null"],
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "elapsedMs": {
+                        "type": ["integer", "null"],
+                        "minimum": 0
+                    }
+                },
+                "required": ["kind", "score", "pv", "elapsedMs"],
+                "additionalProperties": false
+            },
+            "StudyScore": {
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "kind": {
+                                "type": "string",
+                                "enum": ["cp"]
+                            },
+                            "value": {
+                                "type": "integer"
+                            }
+                        },
+                        "required": ["kind", "value"],
+                        "additionalProperties": false
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "kind": {
+                                "type": "string",
+                                "enum": ["mate"]
+                            },
+                            "winner": {
+                                "type": "string",
+                                "enum": ["sente", "gote"]
+                            },
+                            "plies": {
+                                "type": ["integer", "null"],
+                                "minimum": 0
+                            }
+                        },
+                        "required": ["kind", "winner", "plies"],
+                        "additionalProperties": false
+                    },
+                    {
+                        "type": "null"
+                    }
+                ]
+            },
+            "StudyLayerInput": {
+                "type": "object",
+                "properties": {
+                    "spec": {
+                        "$ref": "#/components/schemas/StudyLayerSpec"
+                    },
+                    "display": {
+                        "$ref": "#/components/schemas/StudyLayerDisplay"
+                    },
+                    "results": {
+                        "$ref": "#/components/schemas/StudyLayerResults"
+                    }
+                },
+                "required": ["spec", "display", "results"],
+                "additionalProperties": false
+            },
+            "StudyLayerSpec": {
+                "type": "object",
+                "properties": {
+                    "version": {
+                        "type": "number",
+                        "enum": [1]
+                    },
+                    "engine": {
+                        "type": "object",
+                        "properties": {
+                            "kind": {
+                                "type": "string",
+                                "enum": ["wasm", "native", "external"]
+                            },
+                            "name": {
+                                "type": "string",
+                                "minLength": 1
+                            },
+                            "version": {
+                                "type": "string",
+                                "minLength": 1
+                            }
+                        },
+                        "required": ["kind", "name", "version"],
+                        "additionalProperties": false
+                    },
+                    "evaluation": {
+                        "type": "object",
+                        "properties": {
+                            "nnueSha256": {
+                                "type": ["string", "null"],
+                                "pattern": "^[0-9a-f]{64}$"
+                            },
+                            "fvScale": {
+                                "type": ["integer", "null"]
+                            },
+                            "progressSha256": {
+                                "type": ["string", "null"],
+                                "pattern": "^[0-9a-f]{64}$"
+                            },
+                            "layerStacks": {}
+                        },
+                        "required": ["nnueSha256", "fvScale", "progressSha256", "layerStacks"],
+                        "additionalProperties": false
+                    },
+                    "limits": {
+                        "type": "object",
+                        "properties": {
+                            "timeMs": {
+                                "type": ["integer", "null"],
+                                "minimum": 0
+                            },
+                            "depth": {
+                                "type": ["integer", "null"],
+                                "minimum": 0
+                            },
+                            "nodes": {
+                                "type": ["integer", "null"],
+                                "minimum": 0
+                            }
+                        },
+                        "required": ["timeMs", "depth", "nodes"],
+                        "additionalProperties": false
+                    },
+                    "multiPv": {
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    "rules": {
+                        "$ref": "#/components/schemas/StudyRules"
+                    }
+                },
+                "required": ["version", "engine", "evaluation", "limits", "multiPv", "rules"],
+                "additionalProperties": false
+            },
+            "StudyLayerDisplay": {
+                "type": "object",
+                "properties": {
+                    "label": {
+                        "type": "string"
+                    }
+                },
+                "required": ["label"],
+                "additionalProperties": {}
+            },
+            "StudyLayerResults": {
+                "type": "object",
+                "additionalProperties": {
+                    "$ref": "#/components/schemas/StudyAnalysisResult"
+                }
+            },
+            "StudyAnalysisResult": {
+                "type": "object",
+                "properties": {
+                    "runId": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                    },
+                    "completion": {
+                        "type": "string",
+                        "enum": ["completed", "aborted"]
+                    },
+                    "depth": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "nodes": {
+                        "type": ["integer", "null"],
+                        "minimum": 0
+                    },
+                    "timeMs": {
+                        "type": ["integer", "null"],
+                        "minimum": 0
+                    },
+                    "execution": {
+                        "type": "object",
+                        "properties": {
+                            "threads": {
+                                "type": ["integer", "null"],
+                                "minimum": 0
+                            },
+                            "hashMb": {
+                                "type": ["integer", "null"],
+                                "minimum": 0
+                            },
+                            "parallelWorkers": {
+                                "type": ["integer", "null"],
+                                "minimum": 0
+                            }
+                        },
+                        "required": ["threads", "hashMb", "parallelWorkers"],
+                        "additionalProperties": false
+                    },
+                    "candidates": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StudyAnalysisCandidate"
+                        },
+                        "minItems": 1
+                    }
+                },
+                "required": [
+                    "runId",
+                    "completion",
+                    "depth",
+                    "nodes",
+                    "timeMs",
+                    "execution",
+                    "candidates"
+                ],
+                "additionalProperties": false
+            },
+            "StudyAnalysisCandidate": {
+                "type": "object",
+                "properties": {
+                    "rank": {
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    "score": {
+                        "$ref": "#/components/schemas/StudyScore"
+                    },
+                    "depth": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "seldepth": {
+                        "type": ["integer", "null"],
+                        "minimum": 0
+                    },
+                    "pv": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "required": ["rank", "score", "depth", "seldepth", "pv"],
+                "additionalProperties": false
+            },
+            "GetStudyResponse": {
+                "type": "object",
+                "properties": {
+                    "study": {
+                        "$ref": "#/components/schemas/StudyDetail"
+                    }
+                },
+                "required": ["study"]
+            },
+            "StudyDetail": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "$ref": "#/components/schemas/StudyId"
+                    },
+                    "revision": {
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "origin": {
+                        "$ref": "#/components/schemas/StudyOrigin"
+                    },
+                    "startSfen": {
+                        "type": "string"
+                    },
+                    "rules": {
+                        "$ref": "#/components/schemas/StudyRules"
+                    },
+                    "meta": {
+                        "$ref": "#/components/schemas/StudyMeta"
+                    },
+                    "tree": {
+                        "$ref": "#/components/schemas/StudyTree"
+                    },
+                    "layers": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StudyLayer"
+                        }
+                    },
+                    "createdAt": {
+                        "type": "string"
+                    },
+                    "updatedAt": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "revision",
+                    "title",
+                    "origin",
+                    "startSfen",
+                    "rules",
+                    "meta",
+                    "tree",
+                    "layers",
+                    "createdAt",
+                    "updatedAt"
+                ]
+            },
+            "StudyLayer": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{32}$"
+                    },
+                    "spec": {
+                        "$ref": "#/components/schemas/StudyLayerSpec"
+                    },
+                    "display": {
+                        "$ref": "#/components/schemas/StudyLayerDisplay"
+                    },
+                    "results": {
+                        "$ref": "#/components/schemas/StudyLayerResults"
+                    }
+                },
+                "required": ["id", "spec", "display", "results"],
+                "additionalProperties": false
+            },
+            "ApplyStudyOpsResponse": {
+                "type": "object",
+                "properties": {
+                    "revision": {
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    "replayed": {
+                        "type": "boolean",
+                        "enum": [true]
+                    }
+                },
+                "required": ["revision"]
+            },
+            "ApplyStudyOpsRequest": {
+                "type": "object",
+                "properties": {
+                    "batchId": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                    },
+                    "expectedRevision": {
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    "ops": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StudyOp"
+                        }
+                    }
+                },
+                "required": ["batchId", "expectedRevision", "ops"],
+                "additionalProperties": false
+            },
+            "StudyOp": {
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": ["addMoves"]
+                            },
+                            "parentId": {
+                                "type": "string",
+                                "pattern": "^[0-9a-f]{32}$"
+                            },
+                            "moves": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string",
+                                    "pattern": "^(?:[1-9][a-i][1-9][a-i]\\+?|[PLNSBRG]\\*[1-9][a-i])$"
+                                },
+                                "minItems": 1
+                            }
+                        },
+                        "required": ["type", "parentId", "moves"],
+                        "additionalProperties": false
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": ["setComment"]
+                            },
+                            "nodeId": {
+                                "type": "string",
+                                "pattern": "^[0-9a-f]{32}$"
+                            },
+                            "value": {
+                                "type": "string"
+                            }
+                        },
+                        "required": ["type", "nodeId", "value"],
+                        "additionalProperties": false
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": ["setBookmark"]
+                            },
+                            "nodeId": {
+                                "type": "string",
+                                "pattern": "^[0-9a-f]{32}$"
+                            },
+                            "value": {
+                                "type": "boolean"
+                            }
+                        },
+                        "required": ["type", "nodeId", "value"],
+                        "additionalProperties": false
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": ["setSource"]
+                            },
+                            "nodeId": {
+                                "type": "string",
+                                "pattern": "^[0-9a-f]{32}$"
+                            },
+                            "value": {
+                                "$ref": "#/components/schemas/StudyNodeSource"
+                            }
+                        },
+                        "required": ["type", "nodeId", "value"],
+                        "additionalProperties": false
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": ["reorderChildren"]
+                            },
+                            "parentId": {
+                                "type": "string",
+                                "pattern": "^[0-9a-f]{32}$"
+                            },
+                            "value": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string",
+                                    "pattern": "^[0-9a-f]{32}$"
+                                }
+                            }
+                        },
+                        "required": ["type", "parentId", "value"],
+                        "additionalProperties": false
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": ["deleteSubtree"]
+                            },
+                            "nodeId": {
+                                "type": "string",
+                                "pattern": "^[0-9a-f]{32}$"
+                            }
+                        },
+                        "required": ["type", "nodeId"],
+                        "additionalProperties": false
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": ["ensureLayer"]
+                            },
+                            "spec": {
+                                "$ref": "#/components/schemas/StudyLayerSpec"
+                            },
+                            "display": {
+                                "$ref": "#/components/schemas/StudyLayerDisplay"
+                            }
+                        },
+                        "required": ["type", "spec", "display"],
+                        "additionalProperties": false
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": ["putAnalysis"]
+                            },
+                            "layerId": {
+                                "type": "string",
+                                "pattern": "^[0-9a-f]{32}$"
+                            },
+                            "nodeId": {
+                                "type": "string",
+                                "pattern": "^[0-9a-f]{32}$"
+                            },
+                            "result": {
+                                "$ref": "#/components/schemas/StudyAnalysisResult"
+                            }
+                        },
+                        "required": ["type", "layerId", "nodeId", "result"],
+                        "additionalProperties": false
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": ["deleteLayer"]
+                            },
+                            "layerId": {
+                                "type": "string",
+                                "pattern": "^[0-9a-f]{32}$"
+                            }
+                        },
+                        "required": ["type", "layerId"],
+                        "additionalProperties": false
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": ["setTitle"]
+                            },
+                            "value": {
+                                "type": "string"
+                            }
+                        },
+                        "required": ["type", "value"],
+                        "additionalProperties": false
+                    }
+                ]
             }
         },
         "parameters": {}
@@ -1503,6 +2438,16 @@
                             }
                         }
                     },
+                    "409": {
+                        "description": "NNUE upload reservation expired or conflicted",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
                     "503": {
                         "description": "NNUE storage is not configured",
                         "content": {
@@ -1574,6 +2519,16 @@
                     },
                     "404": {
                         "description": "NNUE file not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "NNUE upload reservation expired or conflicted",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1660,6 +2615,16 @@
                             }
                         }
                     },
+                    "409": {
+                        "description": "NNUE upload cleanup conflicted",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
                     "503": {
                         "description": "NNUE storage is not configured",
                         "content": {
@@ -1729,6 +2694,16 @@
                             }
                         }
                     },
+                    "409": {
+                        "description": "Pending NNUE upload must be aborted before delete",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
                     "503": {
                         "description": "NNUE storage is not configured",
                         "content": {
@@ -1773,6 +2748,16 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/ListPublicGamesResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid pagination query or cursor",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
                                 }
                             }
                         }
@@ -1949,6 +2934,7 @@
                 "tags": ["Rooms"],
                 "requestBody": {
                     "description": "Create a room",
+                    "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
@@ -2039,6 +3025,533 @@
                     },
                     "500": {
                         "description": "Room binding is not configured",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/studies": {
+            "get": {
+                "operationId": "listStudies",
+                "tags": ["Studies"],
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 50
+                        },
+                        "required": false,
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": false,
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "schema": {
+                            "$ref": "#/components/schemas/StudyOriginKind"
+                        },
+                        "required": false,
+                        "name": "originKind",
+                        "in": "query"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256
+                        },
+                        "required": false,
+                        "name": "originRef",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List own studies, most recently updated first",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ListStudiesResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query or cursor",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Authentication is required",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "operationId": "createStudy",
+                "tags": ["Studies"],
+                "requestBody": {
+                    "required": true,
+                    "description": "Create a study with its initial tree and analysis layers",
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateStudyRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The study already exists (existing: true)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CreateStudyResponse"
+                                }
+                            }
+                        }
+                    },
+                    "201": {
+                        "description": "Created study",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CreateStudyResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Authentication is required",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Request origin is not allowed",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "ID_CONFLICT or ORIGIN_EXISTS",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/StudyConflictResponse"
+                                }
+                            }
+                        }
+                    },
+                    "410": {
+                        "description": "The study with this ID has been deleted",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "413": {
+                        "description": "Request body is too large",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "A study limit is exceeded",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/StudyLimitExceededResponse"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Concurrent changes kept the create from settling; retry after Retry-After",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/studies/limits": {
+            "get": {
+                "operationId": "getStudyLimits",
+                "tags": ["Studies"],
+                "responses": {
+                    "200": {
+                        "description": "Study limits and current usage",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/GetStudyLimitsResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Authentication is required",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/studies/{id}": {
+            "get": {
+                "operationId": "getStudy",
+                "tags": ["Studies"],
+                "parameters": [
+                    {
+                        "schema": {
+                            "$ref": "#/components/schemas/StudyId"
+                        },
+                        "required": true,
+                        "name": "id",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The whole study at one revision",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/GetStudyResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Authentication is required",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Study not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "410": {
+                        "description": "Study has been deleted",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "deleteStudy",
+                "tags": ["Studies"],
+                "parameters": [
+                    {
+                        "schema": {
+                            "$ref": "#/components/schemas/StudyId"
+                        },
+                        "required": true,
+                        "name": "id",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Deleted"
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Authentication is required",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Request origin is not allowed",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Study not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/studies/{id}/ops": {
+            "post": {
+                "operationId": "applyStudyOps",
+                "tags": ["Studies"],
+                "parameters": [
+                    {
+                        "schema": {
+                            "$ref": "#/components/schemas/StudyId"
+                        },
+                        "required": true,
+                        "name": "id",
+                        "in": "path"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "description": "Apply a batch of idempotent operations at the expected revision",
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ApplyStudyOpsRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Accepted batch (or replayed: true)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApplyStudyOpsResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Authentication is required",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Request origin is not allowed",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Study not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "REVISION_CONFLICT",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/StudyConflictResponse"
+                                }
+                            }
+                        }
+                    },
+                    "410": {
+                        "description": "Study has been deleted",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "413": {
+                        "description": "Request body is too large",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "A study limit is exceeded",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/StudyLimitExceededResponse"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited",
                         "content": {
                             "application/json": {
                                 "schema": {

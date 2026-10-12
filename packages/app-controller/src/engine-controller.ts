@@ -4,8 +4,11 @@ import type {
     NnueSelection,
     Player,
     ResolvedNnue,
+    StudyAnalysisCollector,
+    StudyAnalysisCompletion,
+    StudyLayerRef,
 } from "@shogi/app-core";
-import { detectParallelism } from "@shogi/app-core";
+import { createStudyAnalysisCollector, detectParallelism } from "@shogi/app-core";
 import type {
     EngineClient,
     EngineErrorCode,
@@ -66,6 +69,13 @@ type EngineControllerPosition = {
     passRightsSettings?: PassRightsSettings;
 };
 
+interface AnalysisRun {
+    nodeId: string | null;
+    ply: number;
+    layer: StudyLayerRef | null;
+    collector: StudyAnalysisCollector;
+}
+
 export interface AnalysisRequest {
     sfen: string;
     moves: string[];
@@ -74,6 +84,15 @@ export interface AnalysisRequest {
     timeMs?: number;
     multiPv?: number;
     engineId?: string;
+    /** 解析するノードの実行時 ID（探索の終了通知にそのまま載る）。 */
+    nodeId?: string;
+    /**
+     * 解析する局面の実際の手番。指定すると、探索が終わったときに `onAnalysisComplete` で
+     * 先手視点の解析結果を通知する（研究ノートの保存用）。
+     */
+    sideToMove?: Player;
+    /** 解析を始めた時点のレイヤー。探索の終了通知にそのまま載る。 */
+    layer?: StudyLayerRef;
 }
 
 export type EngineControllerEvent = {
@@ -157,6 +176,11 @@ interface EngineControllerCallbacks {
     onEvalUpdate?: (ply: number, event: EngineInfoEvent) => void;
     onSearchComplete?: (ply: number, stats: MoveSearchStats) => void;
     onLiveInfo?: (side: Player, event: EngineInfoEvent) => void;
+    /**
+     * 解析（`startAnalysis`）の 1 局面の探索が終わったときに 1 回だけ呼ばれる。
+     * 途中経過ごとには呼ばれない。`sideToMove` を指定した解析だけが対象。
+     */
+    onAnalysisComplete?: (completion: StudyAnalysisCompletion) => void;
 }
 
 interface EngineControllerDependencies {
@@ -490,6 +514,10 @@ export function createEngineController(
     const engineStates = createInitialEngineStates();
     const searchStates = createInitialSearchStates();
     const analysisState = createInitialAnalysisState();
+    /** 進行中の解析の、結果をまとめるための情報。通知したら null に戻す。 */
+    let analysisRun: AnalysisRun | null = null;
+    /** 解析用エンジンを初期化したときのスレッド数（結果の実行情報に残す）。 */
+    let analysisThreads: number | null = null;
     const liveSearchStats = { sente: {}, gote: {} } as Record<Player, MoveSearchStats>;
     const liveThinkLimitMs = { sente: undefined, gote: undefined } as Record<
         Player,
@@ -1020,6 +1048,21 @@ export function createEngineController(
         });
     };
 
+    /** 進行中の解析の結果をまとめて通知する（1 回の探索につき 1 回だけ）。 */
+    const completeAnalysisRun = (completion: "completed" | "aborted") => {
+        const run = analysisRun;
+        analysisRun = null;
+        if (!run) return;
+        const result = run.collector.finish(completion);
+        if (!result) return;
+        callbacks.onAnalysisComplete?.({
+            runtimeNodeId: run.nodeId,
+            ply: run.ply,
+            layer: run.layer,
+            result,
+        });
+    };
+
     const cancelAnalysis = async () => {
         try {
             if (analysisState.handle) {
@@ -1028,6 +1071,8 @@ export function createEngineController(
         } catch {
             // ignore
         } finally {
+            // 途中で止めた探索も、そこまでの結果を「中断」として通知する。
+            completeAnalysisRun("aborted");
             analysisState.handle = null;
             analysisState.ply = null;
             updateState((prev) => ({ ...prev, isAnalyzing: false }));
@@ -1074,6 +1119,8 @@ export function createEngineController(
 
         updateState((prev) => ({ ...prev, isAnalyzing: true }));
         analysisState.ply = request.ply;
+        // 初期化や局面の読み込みに失敗した場合に、前の探索の情報が残らないようにする。
+        analysisRun = null;
 
         let client = analysisState.client;
         if (!client || analysisState.engineId !== engineId) {
@@ -1086,6 +1133,7 @@ export function createEngineController(
                 analysisState.engineId = engineId;
                 const threadCount = getAnalysisThreadCount(context.engineThreads);
                 await client.init({ threads: threadCount });
+                analysisThreads = threadCount;
 
                 const selection = context.nnueSelections.analysis;
                 if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
@@ -1114,6 +1162,19 @@ export function createEngineController(
             analysisState.subscription();
         }
 
+        const run: AnalysisRun | null = request.sideToMove
+            ? {
+                  nodeId: request.nodeId ?? null,
+                  ply: request.ply,
+                  layer: request.layer ?? null,
+                  collector: createStudyAnalysisCollector({
+                      runId: crypto.randomUUID(),
+                      sideToMove: request.sideToMove,
+                      execution: { threads: analysisThreads, parallelWorkers: 1 },
+                  }),
+              }
+            : null;
+
         const unsub = client.subscribe((event) => {
             pushEventLog({
                 id: ++logId,
@@ -1123,6 +1184,7 @@ export function createEngineController(
             });
 
             if (event.type === "info") {
+                if (run && analysisRun === run) run.collector.push(event);
                 if (
                     callbacks.onEvalUpdate &&
                     (event.scoreCp !== undefined || event.scoreMate !== undefined)
@@ -1153,12 +1215,25 @@ export function createEngineController(
                         });
                     }
                 }
+                if (run && analysisRun === run) {
+                    // bestmove にだけ評価値が載るエンジンでも、最善候補を残す。
+                    if (event.scoreCp !== undefined || event.scoreMate !== undefined) {
+                        run.collector.push({
+                            depth: event.depth,
+                            scoreCp: event.scoreCp,
+                            scoreMate: event.scoreMate,
+                            pv: event.pv,
+                        });
+                    }
+                    completeAnalysisRun("completed");
+                }
                 analysisState.handle = null;
                 analysisState.ply = null;
                 updateState((prev) => ({ ...prev, isAnalyzing: false }));
             }
 
             if (event.type === "error") {
+                if (run && analysisRun === run) analysisRun = null;
                 addErrorLog(event.message, { engineId: analysisState.engineId ?? engineId });
                 analysisState.handle = null;
                 analysisState.ply = null;
@@ -1183,6 +1258,8 @@ export function createEngineController(
         try {
             const timeMs = request.timeMs ?? DEFAULT_ANALYSIS_TIME_MS;
             const depth = request.depth ?? DEFAULT_ANALYSIS_DEPTH;
+            // 探索中の情報はここから届く。局面の読み込みまでに届いた前の探索の情報は拾わない。
+            analysisRun = run;
             const handle = await client.search({
                 limits: {
                     movetimeMs: timeMs,
@@ -1193,6 +1270,7 @@ export function createEngineController(
 
             analysisState.handle = handle;
         } catch (error) {
+            analysisRun = null;
             addErrorLog(`探索開始エラー: ${String(error)}`);
             analysisState.ply = null;
             updateState((prev) => ({ ...prev, isAnalyzing: false }));

@@ -2,7 +2,7 @@ import type { PositionState } from "@shogi/app-core";
 import { useEffect, useEffectEvent, useState } from "react";
 import type { PassDisabledReason } from "../components/PassButton";
 import type { PassRightsSettings } from "../types";
-import type { LegalMoveCache } from "../utils/legalMoveCache";
+import { buildLegalCacheKey, type LegalMoveCache } from "../utils/legalMoveCache";
 import { buildPassRightsOptionForLegalMoves } from "../utils/passRightsSettings";
 
 /**
@@ -41,6 +41,8 @@ export function usePassRights(deps: {
     isMatchRunning: boolean;
     /** 指し手履歴（合法手取得用） */
     moves: string[];
+    /** 開始局面（合法手キャッシュのキー用） */
+    startSfen: string;
     /** 合法手キャッシュ */
     legalCache: LegalMoveCache;
     /** 現在の手番のプレイヤー設定 */
@@ -54,6 +56,7 @@ export function usePassRights(deps: {
         setPosition,
         isMatchRunning,
         moves,
+        startSfen,
         legalCache,
         currentTurnRole,
         getRemainingTimeMs,
@@ -104,7 +107,9 @@ export function usePassRights(deps: {
     const hasPassRights = !!(position?.passRights && position.passRights[position.turn] > 0);
 
     // パス合法可否が計算済みか
-    const passLegalKnown = legalCache.isCached(moves.join(" "));
+    const passLegalKnown = legalCache.isCached(
+        buildLegalCacheKey(startSfen, moves, getPassRightsOption()),
+    );
 
     // パス可能かどうかの判定（合法手キャッシュに"pass"が含まれるかでのみ判定）
     // 判定前は楽観的に true とし、実際の適用時に再チェックする

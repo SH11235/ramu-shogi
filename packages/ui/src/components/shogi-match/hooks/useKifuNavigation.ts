@@ -42,6 +42,15 @@ import { convertMovesToKif } from "../utils/kifFormat";
 
 export type RecordedEvalInfoEvent = EngineInfoEvent & Pick<KifuEval, "normalized">;
 
+/** 探索の統計（選択的深さ・ノード数・時間）。取れた値だけを評価値に残す。 */
+const searchStatsOf = (
+    event: RecordedEvalInfoEvent,
+): Pick<KifuEval, "seldepth" | "nodes" | "timeMs"> => ({
+    ...(event.seldepth !== undefined ? { seldepth: event.seldepth } : {}),
+    ...(event.nodes !== undefined ? { nodes: event.nodes } : {}),
+    ...(event.timeMs !== undefined ? { timeMs: event.timeMs } : {}),
+});
+
 interface MoveEvalUpdate {
     /** 消費時間（ミリ秒）。undefined の場合は既存値を維持する。 */
     elapsedMs?: number;
@@ -472,6 +481,7 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
                 depth: event.depth,
                 pv: event.pv,
                 normalized: event.normalized,
+                ...searchStatsOf(event),
             };
 
             const multipv = event.multipv ?? 1;
@@ -520,6 +530,7 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
                 depth: event.depth,
                 pv: event.pv,
                 normalized: event.normalized,
+                ...searchStatsOf(event),
             };
 
             const multipv = event.multipv ?? 1;

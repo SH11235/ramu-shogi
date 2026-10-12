@@ -1,6 +1,6 @@
 import type { LastMove, PieceType, Player, Square } from "@shogi/app-core";
 import type { ReactElement } from "react";
-import type { ShogiBoardCell, ShogiBoardPiece } from "../../shogi-board";
+import type { ShogiBoardCell, ShogiBoardMoveShadow, ShogiBoardPiece } from "../../shogi-board";
 import { ShogiBoard } from "../../shogi-board";
 import type { DisplaySettings, PassRightsSettings, PromotionSelection } from "../types";
 import { HandPiecesDisplay } from "./HandPiecesDisplay";
@@ -17,6 +17,8 @@ interface PCBoardContentProps {
     // === ハイライト ===
     lastMove?: LastMove;
     selection: Selection | null;
+    /** 選んでいる駒の影（マウスを乗せた行き先に出す）。出さないときは省く */
+    moveShadow?: ShogiBoardMoveShadow | null;
     promotionSelection: PromotionSelection | null;
 
     // === 表示設定 ===
@@ -73,6 +75,7 @@ export function PCBoardContent({
     flipBoard,
     lastMove,
     selection,
+    moveShadow,
     promotionSelection,
     displaySettings,
     isEditModeActive,
@@ -169,6 +172,7 @@ export function PCBoardContent({
                 isDraggable={isEditModeActive}
                 squareNotation={displaySettings.squareNotation}
                 showBoardLabels={displaySettings.showBoardLabels}
+                moveShadow={isEditModeActive ? null : moveShadow}
             />
 
             {candidateNote ? (

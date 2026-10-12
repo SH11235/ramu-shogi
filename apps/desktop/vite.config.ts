@@ -14,10 +14,33 @@ const pkg = JSON.parse(readFileSync(path.join(rootDir, "package.json"), "utf-8")
     version: string;
 };
 
+// 内蔵エンジン（rshogi-core）の版を Cargo.lock から読み、`import.meta.env.VITE_RSHOGI_CORE_VERSION`
+// として literal 置換する。研究ノートの解析レイヤー（どの AI で解析したか）の識別に使う。
+// git 依存は同じ version のまま rev だけ進むことがあるので、`<version>+<rev の先頭 8 文字>` にする。
+// 読めなければ空文字（利用側がアプリの版で代用する）。
+function readRshogiCoreVersion(cargoLockPath: string): string {
+    let lock: string;
+    try {
+        lock = readFileSync(cargoLockPath, "utf-8");
+    } catch {
+        return "";
+    }
+    const block = lock
+        .split("[[package]]")
+        .find((entry) => /^\s*name = "rshogi-core"\s*$/m.test(entry));
+    const version = block?.match(/^version = "([^"]+)"/m)?.[1];
+    if (!version) return "";
+    const rev = block?.match(/^source = "git\+[^"#]*#([0-9a-f]{8})[0-9a-f]*"/m)?.[1];
+    return rev ? `${version}+${rev}` : version;
+}
+
+const rshogiCoreVersion = readRshogiCoreVersion(path.join(rootDir, "src-tauri/Cargo.lock"));
+
 // https://vite.dev/config/
 export default defineConfig(async () => ({
     define: {
         "import.meta.env.VITE_APP_VERSION": JSON.stringify(pkg.version),
+        "import.meta.env.VITE_RSHOGI_CORE_VERSION": JSON.stringify(rshogiCoreVersion),
     },
     plugins: [
         tailwindcss(),

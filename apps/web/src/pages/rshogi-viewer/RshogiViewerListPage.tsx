@@ -2,12 +2,11 @@ import {
     RshogiCsaGameBrowser,
     type RshogiGameBrowserSearch,
 } from "@shogi/ui/components/rshogi-csa-game-browser";
-import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
 import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
-import { PageHeading } from "../../components/PageHeading";
 
 const resolveApiBaseUrl = (): string | undefined => {
     const raw = import.meta.env.VITE_RSHOGI_API_BASE as string | undefined;
@@ -39,19 +38,8 @@ export default function RshogiViewerListPage(): ReactElement {
                 right={<HeaderNav />}
             />
             <PageContainer>
-                <PageHeading
-                    title="rshogi 対局一覧"
-                    description="進行中の対局と、終局した棋譜を新着順で表示します。rshogi サーバーの対局のほか、Floodgate などから取り込んだ棋譜も並びます。クリックすると観戦・再生ページに進みます。"
-                >
-                    <div className="flex flex-wrap gap-x-4 gap-y-2">
-                        <Link
-                            to="/rshogi-viewer/players"
-                            className="text-sm font-medium text-wafuu-shu underline-offset-2 hover:underline"
-                        >
-                            レーティングを見る →
-                        </Link>
-                    </div>
-                </PageHeading>
+                {/* 一覧をすぐ見せるため、見出しは画面には出さない (現在地はパンくずにある)。 */}
+                <h1 className="sr-only">rshogi 対局一覧</h1>
 
                 <RshogiCsaGameBrowser
                     apiBaseUrl={apiBaseUrl}

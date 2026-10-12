@@ -127,7 +127,7 @@ describe("RshogiCsaGameBrowser", () => {
 
             const select = screen.getByLabelText("対局場所") as HTMLSelectElement;
             expect([...select.options].map((option) => option.textContent)).toEqual([
-                "すべて",
+                "対局場所: すべて",
                 "rshogi サーバー",
                 "Floodgate",
                 "その他",
@@ -219,6 +219,131 @@ describe("RshogiCsaGameBrowser", () => {
         });
     });
 
+    describe("大会（イベント）のメタデータ", () => {
+        const WCSC_META = {
+            title: "第36回世界コンピュータ将棋選手権",
+            organizer: "コンピュータ将棋協会",
+            officialUrl: "https://example.org/wcsc36/",
+            kifuSourceUrl: "https://example.org/wcsc36/kifu/",
+            termsNote: "対局プログラム名と対局日時、大会名を明記",
+        };
+        const eventsWithMeta = [
+            { event: "WCSC36", source: "upload", games: 120, meta: WCSC_META },
+            { event: "floodgate-300-10F", source: "wdoor", games: 40 },
+            { event: "floodgate-300-10F", source: "upload", games: 2 },
+        ];
+        const metaLine = () => screen.queryByTestId("rshogi-event-meta-line");
+
+        it("イベントで絞り込んでいるとき、一覧の上に正式名称（主催）・公式ページ・棋譜の出典を 1 行で出す", async () => {
+            fetchRshogiGameEvents.mockResolvedValue(eventsWithMeta);
+
+            render(<Harness initial={{ event: "WCSC36" }} />);
+
+            await screen.findByText("23件中 1-20件");
+            const line = await screen.findByTestId("rshogi-event-meta-line");
+            expect(line.textContent).toBe(
+                "第36回世界コンピュータ将棋選手権（コンピュータ将棋協会）・大会の公式ページ ↗（新しいタブで開く）・棋譜の出典 ↗（新しいタブで開く）",
+            );
+            const official = within(line).getByRole("link", {
+                name: /^大会の公式ページ\s*（新しいタブで開く）$/,
+            });
+            expect(official.getAttribute("href")).toBe(WCSC_META.officialUrl);
+            expect(official.getAttribute("target")).toBe("_blank");
+            expect(official.getAttribute("rel")).toBe("noopener noreferrer");
+            const kifuSource = within(line).getByRole("link", {
+                name: /^棋譜の出典\s*（新しいタブで開く）$/,
+            });
+            expect(kifuSource.getAttribute("href")).toBe(WCSC_META.kifuSourceUrl);
+            expect(kifuSource.getAttribute("rel")).toBe("noopener noreferrer");
+            // 一覧の上に置く
+            const list = screen.getByRole("list", { name: "rshogi 棋譜一覧" });
+            expect(
+                line.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING,
+            ).toBeTruthy();
+            // 利用条件のメモは出さない
+            expect(screen.queryByText(/大会名を明記/)).toBeNull();
+        });
+
+        it("イベント情報の行は見出し扱いで、背景や枠の付いたカードにしない", async () => {
+            fetchRshogiGameEvents.mockResolvedValue(eventsWithMeta);
+
+            render(<Harness initial={{ event: "WCSC36" }} />);
+
+            const line = await screen.findByTestId("rshogi-event-meta-line");
+            expect(line.className).not.toMatch(/(^|\s)(bg-|border|rounded|shadow)/);
+        });
+
+        it("イベントで絞り込んでいないとき・メタの無いイベントで絞り込んだときは、行を出さない", async () => {
+            fetchRshogiGameEvents.mockResolvedValue(eventsWithMeta);
+
+            const first = render(<Harness />);
+            await screen.findByText("☗ recent-1-sente vs ☖ recent-1-gote");
+            await waitFor(() => expect(fetchRshogiGameEvents).toHaveBeenCalled());
+            expect(metaLine()).toBeNull();
+            first.unmount();
+
+            render(<Harness initial={{ event: "floodgate-300-10F" }} />);
+            await screen.findByText("23件中 1-20件");
+            await screen.findByRole("option", { name: /第36回世界コンピュータ将棋選手権/ });
+            expect(metaLine()).toBeNull();
+        });
+
+        it("メタに対応していない古いサーバーでは、これまでと同じ表示になる", async () => {
+            render(<Harness initial={{ event: "WCSC36" }} />);
+
+            await screen.findByText("23件中 1-20件");
+            await screen.findByRole("option", { name: "WCSC36（120局）" });
+            expect(metaLine()).toBeNull();
+            expect(screen.queryByRole("link")).toBeNull();
+        });
+
+        it("イベント一覧の取得に失敗したときは、行を出さず、一覧はそのまま使える", async () => {
+            fetchRshogiGameEvents.mockRejectedValue(new Error("events API down"));
+
+            render(<Harness initial={{ event: "WCSC36" }} />);
+
+            await screen.findByText("23件中 1-20件");
+            expect(metaLine()).toBeNull();
+            expect(screen.queryByRole("alert")).toBeNull();
+        });
+
+        it("詳細条件のイベントの選択肢は正式名称をラベルにし、値はタグのままにする", async () => {
+            fetchRshogiGameEvents.mockResolvedValue(eventsWithMeta);
+
+            render(<Harness initial={{ event: "WCSC36" }} />);
+
+            const option = (await screen.findByRole("option", {
+                name: "第36回世界コンピュータ将棋選手権（120局）",
+            })) as HTMLOptionElement;
+            expect(option.value).toBe("WCSC36");
+            // メタの無いイベントはタグのまま
+            const plain = screen.getByRole("option", {
+                name: "floodgate-300-10F（42局）",
+            }) as HTMLOptionElement;
+            expect(plain.value).toBe("floodgate-300-10F");
+        });
+
+        it("カードのイベントタグは短いタグのままにする", async () => {
+            fetchRshogiGameEvents.mockResolvedValue(eventsWithMeta);
+            fetchRshogiGameSearch.mockResolvedValue({
+                games: [game("search-1", { source: "upload", event: "WCSC36" })],
+                page: 1,
+                pageSize: 20,
+                totalCount: 1,
+            });
+
+            render(<Harness initial={{ event: "WCSC36" }} />);
+
+            await screen.findByTestId("rshogi-event-meta-line");
+            const list = screen.getByRole("list", { name: "rshogi 棋譜一覧" });
+            expect(
+                within(list).getByRole("button", { name: "イベント「WCSC36」で絞り込む" })
+                    .textContent,
+            ).toBe("WCSC36");
+            expect(within(list).queryByText(/第36回/)).toBeNull();
+        });
+    });
+
     describe("外から渡された条件 (URL のクエリなど)", () => {
         it("最初から条件があれば検索結果を出し、フォームにも反映する", async () => {
             render(<Harness initial={{ venue: "floodgate", event: "floodgate-300-10F" }} />);
@@ -247,6 +372,70 @@ describe("RshogiCsaGameBrowser", () => {
                     from: new Date(2026, 9, 1).getTime(),
                     to: new Date(2026, 9, 3).getTime() - 1,
                 }),
+            );
+        });
+    });
+
+    describe("終了日の範囲が逆のとき", () => {
+        const fillReversedRange = () => {
+            fireEvent.change(screen.getByLabelText("終了日（開始）"), {
+                target: { value: "2026-10-05" },
+            });
+            fireEvent.change(screen.getByLabelText("終了日（終了）"), {
+                target: { value: "2026-10-01" },
+            });
+        };
+        const detailToggle = () => screen.getByRole("button", { name: /詳細条件/ });
+        const detailPanel = () => document.getElementById("rshogi-search-detail") as HTMLElement;
+
+        it("詳細条件を畳んだまま検索を押すと、検索せずに詳細条件を開いて理由を出す", async () => {
+            render(<Harness />);
+            await screen.findByText("もっと読み込む");
+
+            fireEvent.click(detailToggle());
+            fillReversedRange();
+            fireEvent.click(detailToggle());
+            expect(detailPanel().hidden).toBe(true);
+            expect(screen.queryByText("終了日の範囲が逆です。")).toBeNull();
+
+            fireEvent.click(screen.getByRole("button", { name: "検索" }));
+
+            expect(detailPanel().hidden).toBe(false);
+            expect(detailToggle().getAttribute("aria-expanded")).toBe("true");
+            const alert = within(detailPanel()).getByRole("alert");
+            expect(alert.textContent).toBe("終了日の範囲が逆です。");
+            const to = screen.getByLabelText("終了日（終了）");
+            expect(to.getAttribute("aria-invalid")).toBe("true");
+            expect(to.getAttribute("aria-describedby")).toBe(alert.id);
+            expect(onSearchChange).not.toHaveBeenCalled();
+            expect(fetchRshogiGameSearch).not.toHaveBeenCalled();
+        });
+
+        it("ブラウザの標準の入力検証には任せない（非表示の欄で黙って止まらないように）", async () => {
+            render(<Harness />);
+            await screen.findByText("もっと読み込む");
+
+            expect(screen.getByRole("form", { name: "棋譜検索" }).hasAttribute("novalidate")).toBe(
+                true,
+            );
+        });
+
+        it("範囲を直すとメッセージが消え、検索できる", async () => {
+            render(<Harness />);
+            await screen.findByText("もっと読み込む");
+            fireEvent.click(detailToggle());
+            fillReversedRange();
+            fireEvent.click(screen.getByRole("button", { name: "検索" }));
+            expect(screen.getByText("終了日の範囲が逆です。")).toBeTruthy();
+
+            fireEvent.change(screen.getByLabelText("終了日（終了）"), {
+                target: { value: "2026-10-06" },
+            });
+            expect(screen.queryByText("終了日の範囲が逆です。")).toBeNull();
+
+            fireEvent.click(screen.getByRole("button", { name: "検索" }));
+            expect(onSearchChange).toHaveBeenCalledWith(
+                expect.objectContaining({ from: "2026-10-05", to: "2026-10-06" }),
             );
         });
     });

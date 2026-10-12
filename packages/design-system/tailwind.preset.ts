@@ -78,6 +78,15 @@ const preset: Omit<Config, "content"> = {
                     "warning-bg": "hsl(var(--status-warning-bg))",
                     "warning-border": "hsl(var(--status-warning-border))",
                 },
+                // 研究ノートの注目局面（悪手・疑問手）
+                study: {
+                    blunder: "hsl(var(--study-blunder))",
+                    "blunder-bg": "hsl(var(--study-blunder-bg))",
+                    "blunder-border": "hsl(var(--study-blunder-border))",
+                    dubious: "hsl(var(--study-dubious))",
+                    "dubious-bg": "hsl(var(--study-dubious-bg))",
+                    "dubious-border": "hsl(var(--study-dubious-border))",
+                },
                 // 将棋盤配色
                 shogi: {
                     border: "hsl(var(--shogi-border))",
