@@ -473,6 +473,12 @@ interface ShogiMatchProps {
      * （棋譜ビューアの対局者名など）。スマホのレイアウトには出ない。
      */
     boardTopContent?: React.ReactNode;
+    /**
+     * 評価値グラフを常に出す（PC。折りたたみの操作を出さない）。棋譜ビューアのように、
+     * 対局中ではなくグラフを隠す理由の無い画面で指定する。指定しない画面は、対局中だけ
+     * 既定で閉じ、それ以外（対局前・検討・観戦）は既定で開く（どちらも利用者が開閉できる）。
+     */
+    evalGraphPinned?: boolean;
     /** 棋譜検討モード時に左サイドバー位置に表示するコンテンツ */
     reviewLeftContent?: React.ReactNode;
     /** 棋譜検討モード時に 3 カラムの上部へ全幅で表示するコンテンツ（観戦スコアボード等） */
@@ -524,6 +530,7 @@ export function ShogiMatch({
     spectateMode,
     viewerMode = false,
     boardTopContent,
+    evalGraphPinned = false,
     reviewLeftContent,
     reviewTopContent,
     onOpenEngineManager,
@@ -2017,8 +2024,6 @@ export function ShogiMatch({
         reviewMode,
         reviewLeftContent,
         reviewTopContent,
-        // 評価値グラフの初期展開はライブ観戦のみ。検討/静的 viewer/対局は既定閉のまま。
-        evalPanelInitialOpen: spectateMode === true,
     };
 
     // Props グループ化: Mobile専用
@@ -2073,6 +2078,7 @@ export function ShogiMatch({
                 kifuImportExtra,
                 viewerMode,
                 boardTopContent,
+                evalGraphPinned,
                 aiIconUrl,
                 presetIconUrls: Object.fromEntries(
                     presetConfigs.flatMap((preset) =>
