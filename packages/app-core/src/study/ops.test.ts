@@ -197,20 +197,43 @@ describe("reorderChildren", () => {
         expect(next.tree.nodes[doc.tree.rootId].children).toEqual([c, a, b]);
     });
 
-    it("現在の子の集合と一致しなければ読み飛ばす", () => {
+    it("現在の子の集合と一致しなくても、指定された順に並べる（子が増減した後の再送）", () => {
         const doc = withBranches();
         const [a, b, c] = doc.tree.nodes[doc.tree.rootId].children;
         const parentId = doc.tree.rootId;
-        expect(applyStudyOp(doc, { type: "reorderChildren", parentId, value: [a, b] })).toBe(doc);
-        expect(applyStudyOp(doc, { type: "reorderChildren", parentId, value: [a, b, b] })).toBe(
-            doc,
-        );
-        expect(applyStudyOp(doc, { type: "reorderChildren", parentId, value: [a, b, "x"] })).toBe(
-            doc,
-        );
-        expect(
-            applyStudyOp(doc, { type: "reorderChildren", parentId, value: [a, b, c, "x"] }),
-        ).toBe(doc);
+        const reordered = (value: string[]): string[] =>
+            applyStudyOp(doc, { type: "reorderChildren", parentId, value }).tree.nodes[parentId]
+                .children;
+        // 指定に無い子は、いまの順のまま末尾に残す。
+        expect(reordered([b])).toEqual([b, a, c]);
+        expect(reordered([c])).toEqual([c, a, b]);
+        // いまは無い子と、重複は読み飛ばす。
+        expect(reordered([c, "x", a])).toEqual([c, a, b]);
+        expect(reordered([b, b, a])).toEqual([b, a, c]);
+    });
+
+    it("並びが変わらなければ何もしない", () => {
+        const doc = withBranches();
+        const [a, b, c] = doc.tree.nodes[doc.tree.rootId].children;
+        const parentId = doc.tree.rootId;
+        for (const value of [[], ["x"], [a], [a, b], [a, b, c], [a, b, c, "x"]]) {
+            expect(applyStudyOp(doc, { type: "reorderChildren", parentId, value })).toBe(doc);
+        }
+    });
+
+    it("本譜にした手は、同期の前に別の端末が同じ親に手を足していても、本譜のまま", () => {
+        const doc = withBranches();
+        const parentId = doc.tree.rootId;
+        const [a, b, c] = doc.tree.nodes[parentId].children;
+        // 別の端末が先に手を足した文書に、手元で作った並べ替え（足す前の子の並び）を当てる。
+        const remote = applyStudyOp(doc, { type: "addMoves", parentId, moves: ["9g9f"] });
+        const d = remote.tree.nodes[parentId].children[3];
+        const merged = applyStudyOp(remote, {
+            type: "reorderChildren",
+            parentId,
+            value: [b, a, c],
+        });
+        expect(merged.tree.nodes[parentId].children).toEqual([b, a, c, d]);
     });
 });
 

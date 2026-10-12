@@ -145,13 +145,23 @@ function applyAddMoves(doc: StudyDocument, parentId: string, moves: readonly str
 function applyReorderChildren(doc: StudyDocument, parentId: string, value: readonly string[]) {
     if (!hasNode(doc, parentId)) return doc;
     const parent = doc.tree.nodes[parentId];
-    // 現在の子の集合と一致しなければ読み飛ばす。
-    if (value.length !== parent.children.length) return doc;
-    const requested = new Set(value);
-    if (requested.size !== value.length) return doc;
-    if (!parent.children.every((childId) => requested.has(childId))) return doc;
-    if (sameStringArray(parent.children, value)) return doc;
-    return withNode(doc, parentId, { ...parent, children: [...value] });
+    // 指定された順に、いまある子を並べる。指定に無い子（他の端末があとから足した子）は、
+    // いまの順のまま末尾に残す。指定にあって、いまは無い子（他の端末が消した子）と、重複は
+    // 読み飛ばす。子が増減した後の再送でも、並べ替えの意図を捨てない（サーバーと同じ規則）。
+    const current = new Set(parent.children);
+    const placed = new Set<string>();
+    const next: string[] = [];
+    for (const childId of value) {
+        if (!current.has(childId) || placed.has(childId)) continue;
+        placed.add(childId);
+        next.push(childId);
+    }
+    if (next.length === 0) return doc;
+    for (const childId of parent.children) {
+        if (!placed.has(childId)) next.push(childId);
+    }
+    if (sameStringArray(parent.children, next)) return doc;
+    return withNode(doc, parentId, { ...parent, children: next });
 }
 
 function applyDeleteSubtree(doc: StudyDocument, nodeId: string) {

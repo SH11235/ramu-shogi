@@ -442,6 +442,41 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             });
         });
 
+        it("並べ替え（本譜との入れ替え）は、他の端末が同じ親に手を足していても捨てず、足された手を末尾に残して並べる", async () => {
+            const harness = await createSyncedHarness();
+            // この端末で変化を足して、同期しておく。
+            const variation = studyChildNodeId(firstId, "8c8d");
+            await harness.sync.applyOps(TEST_STUDY_ID, [
+                { type: "addMoves", parentId: firstId, moves: ["8c8d"] },
+            ]);
+            await harness.sync.flush(TEST_STUDY_ID);
+            // 他の端末が、同じ親に別の手を足した。
+            const added = studyChildNodeId(firstId, "4c4d");
+            harness.server.applyFromOtherDevice(TEST_STUDY_ID, [
+                { type: "addMoves", parentId: firstId, moves: ["4c4d"] },
+            ]);
+
+            // この端末で、変化を本譜と入れ替える（足された手を知らないままの並び）。
+            await harness.sync.applyOps(TEST_STUDY_ID, [
+                { type: "reorderChildren", parentId: firstId, value: [variation, secondId] },
+            ]);
+            await harness.sync.flush(TEST_STUDY_ID);
+
+            const calls = harness.postOpsCalls().slice(-2);
+            expect(calls.map((call) => call.status)).toEqual([409, 200]);
+            // 送り直すのは、利用者が作ったときの並びのまま（サーバーが同じ規則で並べる）。
+            expect(calls[1].body.ops).toEqual([
+                { type: "reorderChildren", parentId: firstId, value: [variation, secondId] },
+            ]);
+            const expected = [variation, secondId, added];
+            expect((await localDoc(harness)).tree.nodes[firstId].children).toEqual(expected);
+            expect(serverDoc(harness).tree.nodes[firstId].children).toEqual(expected);
+            expect(harness.sync.getStatus(TEST_STUDY_ID)).toMatchObject({
+                state: "synced",
+                pendingCount: 0,
+            });
+        });
+
         it("他の端末で消されたノードへの未送信の操作は、読み飛ばされて送信待ちから落ちる", async () => {
             const harness = await createSyncedHarness();
             harness.server.applyFromOtherDevice(TEST_STUDY_ID, [

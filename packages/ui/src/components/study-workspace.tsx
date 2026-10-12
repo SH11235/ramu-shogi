@@ -833,6 +833,31 @@ export function StudyWorkspaceView({
             resetLine: true,
         });
     };
+    const promoteLineToMain = (): void => {
+        if (locked) return;
+        // いま見ている手順の各手を、その親の先頭の子にする（先頭の子をたどった手順が本譜）。
+        // 並べ替えは保存されている子の並びに対して行う（盤面を再現できず表示していない
+        // 変化も、並びには含まれているため）。
+        const ops: StudyOp[] = [];
+        for (let index = 1; index < line.length; index++) {
+            const parentId = line[index - 1];
+            const childId = line[index];
+            if (!Object.hasOwn(doc.tree.nodes, parentId)) return;
+            const children = doc.tree.nodes[parentId].children;
+            if (children[0] === childId || !children.includes(childId)) continue;
+            ops.push({
+                type: "reorderChildren",
+                parentId,
+                value: [childId, ...children.filter((id) => id !== childId)],
+            });
+        }
+        if (ops.length === 0) return;
+        void onApplyOps(ops);
+        onMessageChange({
+            text: "見ていた変化を本譜にしました。元の本譜は変化として残っています。",
+            type: "success",
+        });
+    };
     const confirmDeleteVariation = (): void => {
         const targetId = deleteTargetId;
         setDeleteTargetId(null);
@@ -1100,6 +1125,7 @@ export function StudyWorkspaceView({
             unsavedComments={unsavedComments}
             onSelect={(nodeId) => navigateTo(nodeId)}
             onBackToMainLine={backToMainLine}
+            onPromoteToMainLine={promoteLineToMain}
             onRequestDeleteVariation={setDeleteTargetId}
             className={isMobile ? "max-h-[60vh]" : "max-h-[26rem] xl:max-h-[calc(100dvh-9rem)]"}
         />
@@ -1159,6 +1185,21 @@ export function StudyWorkspaceView({
     };
 
     const deleteTarget = deleteTargetId ? tree.nodes.get(deleteTargetId) : undefined;
+    // 消す変化に、取り込んだ棋譜の手（対局時の情報つき）が含まれるか。本譜を入れ替えたあとは、
+    // 元の対局の手順も変化として消せるので、確認の文面で知らせる。評価値も消費時間も付いて
+    // いない棋譜（`source` が無い）では見分けられないので、知らせない。
+    const deleteTargetHasSource = ((): boolean => {
+        if (!deleteTargetId) return false;
+        const stack = [deleteTargetId];
+        while (stack.length > 0) {
+            const id = stack.pop() as string;
+            if (!Object.hasOwn(doc.tree.nodes, id)) continue;
+            const stored = doc.tree.nodes[id];
+            if (stored.source !== null) return true;
+            stack.push(...stored.children);
+        }
+        return false;
+    })();
 
     return (
         <TooltipProvider delayDuration={TOOLTIP_DELAY_DURATION_MS}>
@@ -1377,7 +1418,11 @@ export function StudyWorkspaceView({
                         <AlertDialogTitle>この変化を削除しますか？</AlertDialogTitle>
                         <AlertDialogDescription>
                             {deleteTarget && deleteTargetId
-                                ? `${deleteTarget.ply}手目 ${studyMoveLabel(tree, deleteTargetId)} から先の ${studyVariationLength(tree, deleteTargetId)} 手（その先の枝分かれを含めて ${studySubtreeSize(tree, deleteTargetId)} 局面）と、その解析結果・コメント・しおりを削除します。元に戻せません。`
+                                ? `${deleteTarget.ply}手目 ${studyMoveLabel(tree, deleteTargetId)} から先の ${studyVariationLength(tree, deleteTargetId)} 手（その先の枝分かれを含めて ${studySubtreeSize(tree, deleteTargetId)} 局面）と、その解析結果・コメント・しおりを削除します。${
+                                      deleteTargetHasSource
+                                          ? "取り込んだ棋譜の手（対局時の評価値など）も含まれます。"
+                                          : ""
+                                  }元に戻せません。`
                                 : "変化と、その解析結果・コメント・しおりを削除します。"}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
