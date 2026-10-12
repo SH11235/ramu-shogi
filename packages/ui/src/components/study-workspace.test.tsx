@@ -863,6 +863,20 @@ describe("StudyWorkspaceView", () => {
         expect(screen.getByRole("alert").textContent).toContain("局面の数が上限に達しました");
     });
 
+    it("打った分をすぐ消して保存済みに戻したら、途中の書きかけを残さない", () => {
+        const { doc, ids } = createTestStudy();
+        const onDraft = vi.fn();
+        render(<Harness initialDoc={doc} onOps={vi.fn()} onCommentDraftChange={onDraft} />);
+        const comment = () => screen.getByRole("textbox", { name: "コメント" });
+        // 「けす」→「け」→「」（保存済みと同じ）と、自動保存の前に打って消す。
+        fireEvent.change(comment(), { target: { value: "けす" } });
+        fireEvent.change(comment(), { target: { value: "け" } });
+        expect(onDraft).toHaveBeenLastCalledWith(ids[0], { type: "set", text: "け", base: "" });
+        fireEvent.change(comment(), { target: { value: "" } });
+        // 途中で置いた「け」は内容が違うので、内容に関わらず消す通知でないと残ってしまう。
+        expect(onDraft).toHaveBeenLastCalledWith(ids[0], { type: "clear", savedText: null });
+    });
+
     describe("ログインが切れて編集できないとき", () => {
         it("画面を残して操作を止め、ログインし直す案内を出す。書きかけのコメントは保存せずに残す", async () => {
             const { doc, ids } = createTestStudy();

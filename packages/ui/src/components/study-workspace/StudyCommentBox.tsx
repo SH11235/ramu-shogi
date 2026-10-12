@@ -174,12 +174,18 @@ export function StudyCommentBox({
         setConflict((current) => current ?? (untouchedRestoreRef.current ? "restored" : "changed"));
     };
 
-    /** いまの入力を、書きかけとして知らせる（保存済みと同じなら、書きかけは要らない）。 */
+    /**
+     * いまの入力を、書きかけとして知らせる。
+     *
+     * 入力が保存済みと同じに戻ったら（打った分を消した、など）、この画面の書きかけは内容に
+     * 関わらず消す。直前の打鍵で置いた書きかけ（「けす」→「け」→「」の「け」）は内容が違うので、
+     * 「保存できた内容と同じものだけ消す」では残ってしまい、あとで戻って保存される。
+     */
     const reportDraft = (): void => {
         const text = draftRef.current;
         callbacksRef.current.onDraftChange?.(
             text === lastSavedRef.current
-                ? { type: "clear", savedText: text }
+                ? { type: "clear", savedText: null }
                 : { type: "set", text, base: baseRef.current },
         );
     };
