@@ -24,6 +24,14 @@ export default defineConfig({
                 replacement: path.resolve(rootDir, "../../packages/ui/src"),
             },
             {
+                find: /^@shogi\/ui\/(.+)$/,
+                replacement: path.resolve(rootDir, "../../packages/ui/src/$1"),
+            },
+            {
+                find: /^@shogi\/study-client$/,
+                replacement: path.resolve(rootDir, "../../packages/study-client/src"),
+            },
+            {
                 find: /^@shogi\/engine-client$/,
                 replacement: path.resolve(rootDir, "../../packages/engine-client/src"),
             },
