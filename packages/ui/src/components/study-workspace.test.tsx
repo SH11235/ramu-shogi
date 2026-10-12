@@ -840,6 +840,28 @@ describe("StudyWorkspaceView", () => {
         ).toBeTruthy();
     });
 
+    it("解析の設定で、同時に解析する局面の数を選べる", () => {
+        const analysis = createAnalysis();
+        render(<Harness initialDoc={createTestStudy().doc} analysis={analysis} />);
+
+        fireEvent.click(screen.getByRole("button", { name: "解析の設定" }));
+        const dialog = screen.getByRole("dialog", { name: "解析の設定" });
+        const group = within(dialog).getByRole("group", { name: /同時に解析する局面の数/ });
+        // 既定は自動（選ばれる数を添える）。
+        expect(
+            within(group)
+                .getByRole("button", { name: /^自動（\d+）$/ })
+                .getAttribute("aria-pressed"),
+        ).toBe("true");
+
+        fireEvent.click(within(group).getByRole("button", { name: "2" }));
+
+        expect(analysis.form.onSettingsChange).toHaveBeenCalledWith({
+            ...DEFAULT_ANALYSIS_SETTINGS,
+            parallelWorkers: 2,
+        });
+    });
+
     it("「残りを解析」は、表示中の設定の未解析分を、その設定で解析する", () => {
         const { doc } = createTestStudy([cp(0), cp(10), cp(20), null, null]);
         // 設定の画面には、表示中とは別の設定（簡易AI・0.5 秒）が残っている。

@@ -6,7 +6,7 @@
  * 設定の値と保存先は既存の検討モードと共通（時間・候補手の数・使う AI）。
  */
 
-import type { StudyDocument } from "@shogi/app-core";
+import { resolveWorkerCount, type StudyDocument } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 import { Button } from "../button";
@@ -19,7 +19,7 @@ import {
     toNnueSelectionValue,
     toOptionValue,
 } from "../shogi-match/utils/nnueSelectionUtils";
-import { ANALYSIS_TIME_OPTIONS } from "../shogi-match/utils/threadOptions";
+import { ANALYSIS_TIME_OPTIONS, PARALLEL_WORKER_OPTIONS } from "../shogi-match/utils/threadOptions";
 import { countStudyLayerResults } from "./studyView";
 import type { StudyAnalysisSettingsForm } from "./useStudyAnalysis";
 
@@ -164,6 +164,33 @@ function SettingsBody({
                                 className={choiceClass(form.settings.multiPv === count)}
                             >
                                 {count}
+                            </button>
+                        ))}
+                    </div>
+                </fieldset>
+                <fieldset className="flex flex-col gap-1">
+                    <legend className="pb-1 text-xs text-muted-foreground">
+                        同時に解析する局面の数（多いほど速く終わり、端末の負荷は上がります）
+                    </legend>
+                    <div className="flex flex-wrap gap-1.5">
+                        {PARALLEL_WORKER_OPTIONS.map((option) => (
+                            <button
+                                key={option.value}
+                                type="button"
+                                aria-pressed={form.settings.parallelWorkers === option.value}
+                                onClick={() =>
+                                    form.onSettingsChange({
+                                        ...form.settings,
+                                        parallelWorkers: option.value,
+                                    })
+                                }
+                                className={choiceClass(
+                                    form.settings.parallelWorkers === option.value,
+                                )}
+                            >
+                                {option.value === 0
+                                    ? `自動（${resolveWorkerCount(0)}）`
+                                    : option.label}
                             </button>
                         ))}
                     </div>
