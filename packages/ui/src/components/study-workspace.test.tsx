@@ -321,6 +321,26 @@ describe("StudyWorkspaceView", () => {
             }
         });
 
+        it("開いている間は、矢印キーで局面が動かない（コピーする局面が変わらない）", async () => {
+            const writeText = vi.fn(async (_text: string) => {});
+            vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+            try {
+                render(<Harness initialDoc={createTestStudy().doc} />);
+                openMenu();
+                const item = screen.getByRole("button", { name: /局面をコピー（SFEN）/ });
+                fireEvent.keyDown(item, { key: "ArrowDown" });
+                fireEvent.keyDown(item, { key: "ArrowRight" });
+                fireEvent.click(item);
+                await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+                expect(writeText.mock.calls[0][0]).toBe("position startpos");
+                // 閉じたあとは、矢印キーで動く。
+                fireEvent.keyDown(document.body, { key: "ArrowRight" });
+                expect(currentMove()).toContain("☗7六歩(77)");
+            } finally {
+                vi.unstubAllGlobals();
+            }
+        });
+
         it("コピーできなかったら、そう知らせる", async () => {
             vi.stubGlobal("navigator", {
                 ...navigator,

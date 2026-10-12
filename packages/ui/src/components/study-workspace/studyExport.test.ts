@@ -35,6 +35,38 @@ describe("exportStudyLineToKif", () => {
         expect(source.moves).toEqual(["7g7f", "3c3d", "2g2f", "8c8d"]);
     });
 
+    it("「評価値=」で始まるコメントは、取り込み直しても手の評価値として扱われない", () => {
+        const base = createTestStudy([cp(0), cp(30), null, null, null]);
+        const doc = applyStudyOps(base.doc, [
+            { type: "setComment", nodeId: base.ids[1], value: "評価値=+9999 (深さ99)" },
+        ]);
+        const { tree } = buildStudyViewTree(doc, TEST_LAYER_ID);
+
+        const kif = exportStudyLineToKif(doc, tree, resolveStudyLine(tree, tree.rootId));
+
+        expect(kif).toContain("* 評価値=+9999 (深さ99)");
+        const source = parseKifuTextForStudy(kif);
+        expect(source.kind === "moves" && source.annotations?.[0]?.score).toEqual(cp(30));
+    });
+
+    it("指し手の無い平手のノートも、書き出したものを取り込み直せる", () => {
+        const doc = createStudyDocumentFromMoves({
+            id: "33333333-3333-4333-8333-333333333333",
+            title: "平手",
+            origin: { kind: "paste", ref: null },
+            startSfen: "startpos",
+            moves: [],
+            meta: {},
+        });
+        const { tree } = buildStudyViewTree(doc, null);
+
+        const source = parseKifuTextForStudy(
+            exportStudyLineToKif(doc, tree, resolveStudyLine(tree, tree.rootId)),
+        );
+
+        expect(source).toMatchObject({ kind: "moves", moves: [] });
+    });
+
     it("変化を見ているときは、その変化の手順を書き出す", () => {
         const base = createTestStudy();
         const doc = applyStudyOps(base.doc, [

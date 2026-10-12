@@ -16,6 +16,8 @@ interface StudyMoreMenuProps {
     onCopySfen: () => void;
     /** いま見ている局面を対局ページで開く。渡さなければ項目を出さない。 */
     onPlayFromPosition?: () => void;
+    /** 開いているかどうかを知らせる（開いている間、画面側は矢印キーでの局面の移動を止める）。 */
+    onOpenChange?: (open: boolean) => void;
 }
 
 const ITEM_CLASS =
@@ -25,12 +27,17 @@ export function StudyMoreMenu({
     onCopyKif,
     onCopySfen,
     onPlayFromPosition,
+    onOpenChange,
 }: StudyMoreMenuProps): ReactElement {
-    const [open, setOpen] = useState(false);
+    const [open, setOpenState] = useState(false);
+    const setOpen = (next: boolean): void => {
+        setOpenState(next);
+        onOpenChange?.(next);
+    };
     const items: Array<{ label: string; note: string; run: () => void }> = [
         {
             label: "棋譜をコピー（KIF）",
-            note: "表示中の手順を、評価値・コメントつきで",
+            note: "表示中の手順を、表示中の解析の評価値とコメントつきで",
             run: onCopyKif,
         },
         { label: "局面をコピー（SFEN）", note: "いま見ている局面までの手順", run: onCopySfen },
@@ -38,7 +45,7 @@ export function StudyMoreMenu({
             ? [
                   {
                       label: "この局面から対局",
-                      note: "先後・相手・持ち時間は対局ページで選べます",
+                      note: "いまの局面までの手順だけを、対局ページへ引き継ぎます",
                       run: onPlayFromPosition,
                   },
               ]
@@ -56,7 +63,7 @@ export function StudyMoreMenu({
                     <MoreIcon />
                 </button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-72 p-1.5">
+            <PopoverContent align="end" className="w-72 p-1.5" aria-label="その他の操作">
                 <ul className="flex flex-col gap-0.5">
                     {items.map((item) => (
                         <li key={item.label}>

@@ -134,6 +134,9 @@ describe("parseKif の評価値コメント", () => {
     it("詰みは手数つきで読み、評価値は付けない", () => {
         expect(parseEval("*評価値=詰3手 (深さ9)")).toMatchObject({ evalMate: 3, depth: 9 });
         expect(parseEval("*評価値=被詰5手")).toMatchObject({ evalMate: -5 });
+        // 手数の分からない詰み（書き出し側は「詰み」「被詰み」と書く）。
+        expect(parseEval("*評価値=詰み (深さ9)")).toMatchObject({ evalMate: Infinity, depth: 9 });
+        expect(parseEval("*評価値=被詰み")).toMatchObject({ evalMate: -Infinity });
         expect(parseEval("*評価値=詰3手").evalCp).toBeUndefined();
     });
 });

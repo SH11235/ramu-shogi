@@ -430,6 +430,9 @@ export function StudyWorkspaceView({
     const [flipBoard, setFlipBoard] = useState(false);
     const [mobileTab, setMobileTab] = useState<MobileTab>("highlights");
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    // 「その他の操作」を開いている間は、矢印キーで局面を動かさない（コピー・対局に渡す局面が、
+    // メニューの中でのキー操作で変わってしまうため）。
+    const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
     const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
     // まだ保存できていないコメントの入力（手ごと）。コメント欄は手を移るたびに作り直すので、
     // 上限を超えていて保存できない入力も、ここに残しておき、その手へ戻ったときに戻す。
@@ -673,7 +676,12 @@ export function StudyWorkspaceView({
         onToStart: goToStart,
         onToEnd: goToEnd,
         // 読み筋の再生・確認ダイアログが開いている間は、そちらのキー操作を優先する。
-        disabled: locked || pvPreview !== null || deleteTargetId !== null || isSettingsOpen,
+        disabled:
+            locked ||
+            pvPreview !== null ||
+            deleteTargetId !== null ||
+            isSettingsOpen ||
+            isMoreMenuOpen,
         containerRef: boardSectionRef,
         enableWheelNavigation: displaySettings.enableWheelNavigation,
     });
@@ -1245,6 +1253,7 @@ export function StudyWorkspaceView({
                             onCommit={(value) => void onApplyOps([{ type: "setTitle", value }])}
                         />
                         <StudyMoreMenu
+                            onOpenChange={setIsMoreMenuOpen}
                             onCopyKif={copyKif}
                             onCopySfen={copySfen}
                             onPlayFromPosition={

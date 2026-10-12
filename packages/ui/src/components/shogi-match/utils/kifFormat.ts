@@ -658,10 +658,17 @@ interface KifExportOptions {
     comments?: ReadonlyMap<number, string>;
 }
 
-/** コメントを KIF のコメント行（1 行ごとに `*` を付ける）にする。 */
+/**
+ * コメントを KIF のコメント行（1 行ごとに `*` を付ける）にする。
+ *
+ * 「評価値=」で始まる行は、空白を挟んで出す。そのまま出すと評価値のコメント
+ * （`*評価値=+50`）と同じ形になり、読み込むときに手の評価値として扱われてしまう。
+ */
 function formatCommentLines(comment: string | undefined): string[] {
     if (!comment || comment.trim() === "") return [];
-    return comment.split(/\r?\n/).map((line) => `*${line}`);
+    return comment
+        .split(/\r?\n/)
+        .map((line) => (line.startsWith("評価値=") ? `* ${line}` : `*${line}`));
 }
 
 /**
