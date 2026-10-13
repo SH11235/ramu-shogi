@@ -60,7 +60,7 @@ export function PlayResultCard({
             aria-live="polite"
             className={cn("flex flex-col", compact ? "gap-2.5" : "gap-4", className)}
         >
-            <ResultSummary result={result} />
+            <ResultSummary result={result} compact={compact} />
             <div className={cn("flex gap-2", compact ? "flex-row" : "flex-col")}>
                 {play.openStudy && (
                     <Button
@@ -105,14 +105,27 @@ export function PlayResultCard({
     );
 }
 
-function ResultSummary({ result }: { result: GameResult }): ReactElement {
+function ResultSummary({
+    result,
+    compact = false,
+}: {
+    result: GameResult;
+    /** 見出しと要約を 1 行に並べる（スマホの下端の帯） */
+    compact?: boolean;
+}): ReactElement {
     const { play } = useShogiMatchConfig();
     const headline = useResultHeadline(result);
     return (
-        <div className="flex flex-col gap-0.5">
+        <div
+            className={cn(
+                "flex",
+                compact ? "flex-wrap items-baseline gap-x-3" : "flex-col gap-0.5",
+            )}
+        >
             <h1
                 className={cn(
-                    "font-display text-2xl font-semibold",
+                    "font-display font-semibold",
+                    compact ? "text-xl" : "text-2xl",
                     // 色は勝敗でなく、勝った側の色（先手 = 朱、後手 = 藍）。
                     result.winner === "sente"
                         ? "text-wafuu-shu"
@@ -123,7 +136,7 @@ function ResultSummary({ result }: { result: GameResult }): ReactElement {
             >
                 {headline.text}
             </h1>
-            <p className="text-sm text-wafuu-sumi-light">
+            <p className={cn("text-wafuu-sumi-light", compact ? "text-xs" : "text-sm")}>
                 {getReasonText(result.reason)} ・ {result.totalMoves}手まで
                 {play && play.hintCount > 0 ? ` ・ ヒント ${play.hintCount} 回` : ""}
             </p>

@@ -11,7 +11,7 @@
  */
 
 import type { ReactElement, ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { BottomSheet } from "../components/BottomSheet";
 import { KifuNavigationToolbar } from "../components/KifuNavigationToolbar";
 import { MobileBoardSection } from "../components/MobileBoardSection";
@@ -32,6 +32,7 @@ import { PlayHintButton, PlayHintLine, usePlayHintMove } from "./PlayHintCard";
 import { PlayMyTime, PlayPlayerBar } from "./PlayPlayerBar";
 import { PlayResultCard } from "./PlayResult";
 import { PlaySetupPanel } from "./PlaySetupPanel";
+import { PLAY_HEADING } from "./playStyles";
 
 interface PlayMobileLayoutProps {
     searchInfo?: ReactNode;
@@ -56,7 +57,6 @@ export function PlayMobileLayout({
         isMatchRunning,
         editFromSquare,
         displaySettings,
-        passRightsSettings,
         getHandInfo,
         boardSectionRef,
         isDraggingPiece,
@@ -79,11 +79,6 @@ export function PlayMobileLayout({
     const isEditing = phase === "editing";
     const inGame = phase === "playing" || phase === "paused" || phase === "finished";
     const barMoves = kifMoves.map((move) => ({ ply: move.ply, displayText: move.displayText }));
-
-    // 終局で画面の上に結果が差し込まれたとき、先頭へ送る（結果と次の一歩を見逃さない）。
-    useEffect(() => {
-        if (phase === "finished") window.scrollTo({ top: 0 });
-    }, [phase]);
 
     const board = (
         // 設定中と終局後は盤を操作できない。フォーカスや読み上げの対象からも外す。
@@ -122,7 +117,8 @@ export function PlayMobileLayout({
                 hintMove={hintMove}
                 boardSectionRef={boardSectionRef}
                 isDraggingPiece={isDraggingPiece}
-                passRightsSettings={passRightsSettings}
+                // パス権の残りは、対局者の帯・パスのボタンに言葉で出す（盤のそばの ● は出さない）。
+                passRightsSettings={undefined}
                 passRights={position.passRights}
                 turn={position.turn}
             />
@@ -153,21 +149,24 @@ export function PlayMobileLayout({
 
             {isEditing && (
                 <>
-                    {/* 編集を終える操作を先に出す（盤の下だと画面の外になる）。 */}
-                    <PlayPositionEditorPanel className="gap-3 px-2 pb-1 pt-3" />
-                    <PlayMessage />
-                    {board}
-                    <div className="flex justify-end">
+                    {/* 盤を先に置き、編集を終える操作は画面の下端に留める。 */}
+                    <div className="flex items-center justify-between gap-2 px-2 pt-2">
+                        <h1 className={PLAY_HEADING}>開始局面を編集</h1>
                         <PlayBoardTools />
                     </div>
+                    {board}
+                    <PlayMessage />
+                    <PlayPositionEditorPanel
+                        hideHeading
+                        stickyPrimary
+                        className="gap-3 px-2 pb-1"
+                    />
                 </>
             )}
 
             {inGame && (
                 <>
-                    {/* 終局後は、結果と次にすること（研究ノートで振り返る・もう一局）を先に出す。 */}
-                    {phase === "finished" && <PlayResultCard compact className="px-2 pt-2" />}
-                    {phase !== "finished" && <h1 className="sr-only">AI と対局中</h1>}
+                    {phase !== "finished" && <h1 className="sr-only">対局中</h1>}
                     {/* 相手の帯と、盤の向き・音。対局中は棋譜の帯を出さない（直前の手は盤に示す。
                         縦を詰めて、盤と操作を 1 画面に収める）。 */}
                     <div className="flex items-center gap-1">
@@ -175,11 +174,13 @@ export function PlayMobileLayout({
                         <PlayBoardTools />
                     </div>
                     {board}
-                    {/* 対局中は、自分の側は手番の表示と残り時間だけを操作の帯に出す（縦を詰めて、盤と
-                        操作を 1 画面に収める）。終局後は帯を出す。 */}
-                    {phase === "finished" && <PlayPlayerBar position="bottom" />}
                     {phase === "finished" ? (
                         <>
+                            {/* 終局の結果と次の一歩は、対局中の操作と同じ位置（画面の下端）に出す。
+                                盤は動かさない。 */}
+                            <div className="sticky bottom-0 z-10 mt-auto border-t border-wafuu-border bg-background pb-1 pt-2">
+                                <PlayResultCard compact className="px-1" />
+                            </div>
                             <div className="flex justify-center">
                                 <KifuNavigationToolbar
                                     currentPly={navigationState.currentPly}

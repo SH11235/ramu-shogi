@@ -21,7 +21,6 @@ import {
 } from "../../dialog";
 import { KifuNavigationToolbar } from "../components/KifuNavigationToolbar";
 import { PCBoardContent } from "../components/PCBoardContent";
-import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
@@ -53,7 +52,6 @@ export function PlayPCLayout({
     setDisplaySettings,
 }: PlayPCLayoutProps): ReactElement {
     const { play } = useShogiMatchConfig();
-    const { passRightsSettings } = useMatchSettings();
     const hintMove = usePlayHintMove();
     const {
         boardSectionRef,
@@ -137,7 +135,8 @@ export function PlayPCLayout({
                                         bottomHand={{ ...getHandInfo("bottom"), isAI: false }}
                                         hintMove={hintMove}
                                         handSize="medium"
-                                        passRightsSettings={passRightsSettings}
+                                        // パス権の残りは、対局者の帯に言葉で出す（盤のそばの ● は出さない）。
+                                        passRightsSettings={undefined}
                                         passRights={position.passRights}
                                         turn={position.turn}
                                     />
@@ -174,7 +173,7 @@ export function PlayPCLayout({
                         {phase === "finished" && <PlayResultCard />}
                         {(phase === "playing" || phase === "paused") && (
                             <div className="flex flex-col">
-                                <h1 className="sr-only">AI と対局中</h1>
+                                <h1 className="sr-only">対局中</h1>
                                 <PlayTurnStatus className="min-h-9 text-lg" />
                                 {/* 知らせ（指せない手など）は手番のそばに出す。高さを確保して下を動かさない。 */}
                                 <div className="min-h-5 text-left [&>p]:text-left">

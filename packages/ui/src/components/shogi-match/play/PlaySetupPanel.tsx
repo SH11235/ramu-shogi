@@ -85,8 +85,14 @@ function Segmented<T extends string>({
     );
 }
 
-const timeOptions = (choices: TimeChoice[]) =>
-    choices.map((choice) => ({ id: choice.id, label: choice.label }));
+/** 詳細設定で秒を指定していて、どの選択肢にも当たらないときの項目。 */
+const CUSTOM_TIME_ID = "custom";
+
+/** 時間の選択肢。いまの時間がどれにも当たらなければ、「秒で指定」を選ばれた状態で足す。 */
+const timeOptions = (choices: TimeChoice[], currentId: string | null = "") => [
+    ...choices.map((choice) => ({ id: choice.id, label: choice.label })),
+    ...(currentId === null ? [{ id: CUSTOM_TIME_ID, label: "秒で指定" }] : []),
+];
 
 const sideLabel = (side: Player): string => (side === "sente" ? "先手" : "後手");
 
@@ -331,9 +337,14 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                 <div className="flex flex-col gap-4 [@media(max-height:760px)]:md:gap-2.5">
                     <Segmented
                         label="AI の考慮時間（1手）"
-                        options={timeOptions(AI_TIME_CHOICES)}
-                        value={setup.aiTimeId}
+                        options={timeOptions(AI_TIME_CHOICES, setup.aiTimeId)}
+                        value={setup.aiTimeId ?? CUSTOM_TIME_ID}
                         onChange={(id) => {
+                            // 「秒で指定」は詳細設定で決める。
+                            if (id === CUSTOM_TIME_ID) {
+                                onOpenAdvanced();
+                                return;
+                            }
                             const choice = AI_TIME_CHOICES.find((item) => item.id === id);
                             if (choice) setup.chooseAiTime(choice);
                         }}
@@ -341,9 +352,14 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                     />
                     <Segmented
                         label="あなたの持ち時間"
-                        options={timeOptions(MY_TIME_CHOICES)}
-                        value={setup.myTimeId}
+                        options={timeOptions(MY_TIME_CHOICES, setup.myTimeId)}
+                        value={setup.myTimeId ?? CUSTOM_TIME_ID}
                         onChange={(id) => {
+                            // 「秒で指定」は詳細設定で決める。
+                            if (id === CUSTOM_TIME_ID) {
+                                onOpenAdvanced();
+                                return;
+                            }
                             const choice = MY_TIME_CHOICES.find((item) => item.id === id);
                             if (choice) setup.chooseMyTime(choice);
                         }}

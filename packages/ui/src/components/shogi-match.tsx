@@ -2328,7 +2328,11 @@ export function ShogiMatch({
     const isHirateStart = startSfen === "startpos" || startSfen.includes(HIRATE_BOARD_SFEN);
     const playerNameFor = (side: Player): string => {
         const setting = sides[side];
-        if (setting.role === "human") return "あなた";
+        if (setting.role === "human") {
+            // 人 対 人では、どちらも「あなた」にならないよう、先手・後手で呼ぶ。
+            const bothHumans = sides.sente.role === "human" && sides.gote.role === "human";
+            return bothHumans ? (side === "sente" ? "先手" : "後手") : "あなた";
+        }
         const engine = engineOptions.find((option) => option.id === setting.engineId);
         if (engine?.kind === "external") return engine.label;
         const selection = side === "sente" ? senteNnueSelection : goteNnueSelection;
@@ -2338,9 +2342,13 @@ export function ShogiMatch({
         return custom?.displayName ?? "簡易AI";
     };
     const openStudyNow = useEffectEvent(() => {
-        onOpenAsStudy?.(navigation.tree, {
-            players: { sente: playerNameFor("sente"), gote: playerNameFor("gote") },
-        });
+        // 対局者の名前を付けるのは、指した対局だけ（局面だけのノートは「取り込んだ局面」として作る）。
+        onOpenAsStudy?.(
+            navigation.tree,
+            navigation.tree.nodes.size > 1
+                ? { players: { sente: playerNameFor("sente"), gote: playerNameFor("gote") } }
+                : {},
+        );
     });
     // 局面の編集中は、棋譜のツリーが編集前の局面のまま。確定（編集モードを抜ける）を待ってから開く。
     useEffect(() => {

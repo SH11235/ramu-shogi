@@ -17,8 +17,25 @@ import { formatTime } from "../utils/timeFormat";
 
 const seconds = (ms: number): number => Math.max(0, Math.ceil(ms / 1000));
 
-/** 対局者の時間を言葉にする（「時間無制限」「1手10秒」「残り 09:32」「秒読み 7秒」）。 */
-function usePlayerTimeText(owner: Player): string {
+/** 対局者の時間の文言と、残りが少ない（人の手番で 10 秒以下）かどうか。 */
+function usePlayerTime(owner: Player): { text: string; urgent: boolean } {
+    const text = usePlayerTimeTextOnly(owner);
+    const { play } = useShogiMatchConfig();
+    const { timeSettings } = useMatchSettings();
+    const { sides, clocks, position } = useMatchState();
+    const rule = timeSettings[owner];
+    const clock = clocks[owner];
+    const urgent =
+        play?.phase === "playing" &&
+        sides[owner].role === "human" &&
+        rule.enabled &&
+        position.turn === owner &&
+        clock.mainMs + clock.byoyomiMs <= 10_000;
+    return { text, urgent };
+}
+
+/** 対局者の時間を言葉にする（「時間無制限」「1手10秒」「残り 09:32」「残り 7秒」）。 */
+function usePlayerTimeTextOnly(owner: Player): string {
     const { play } = useShogiMatchConfig();
     const { timeSettings } = useMatchSettings();
     const { sides, clocks } = useMatchState();
@@ -53,7 +70,17 @@ export function PlayPlayerBar({ position, className }: PlayPlayerBarProps): Reac
     const setting = sides[owner];
     const isAI = setting.role === "engine";
     const phase = play?.phase ?? "setup";
-    const timeText = usePlayerTimeText(owner);
+    const { text: timeText, urgent } = usePlayerTime(owner);
+    const { passRightsSettings } = useMatchSettings();
+    // パス権（変則ルール）の残り。対局が始まる前は、設定した初めの回数を出す。
+    const passText = passRightsSettings.enabled
+        ? `パス残り${
+              board.passRights?.[owner] ??
+              (owner === "sente"
+                  ? passRightsSettings.senteInitialCount
+                  : passRightsSettings.goteInitialCount)
+          }`
+        : null;
 
     const engine = engineOptions?.find((option) => option.id === setting.engineId);
     const levelText =
@@ -79,20 +106,23 @@ export function PlayPlayerBar({ position, className }: PlayPlayerBarProps): Reac
                 {bothHumans ? sideLabel : (play?.playerNames[owner] ?? sideLabel)}
             </span>
             {!bothHumans && (
-                <span className="shrink-0 text-xs text-wafuu-sumi-light">
+                // 幅の狭い端末では、名前が切れないよう先後と強さを省く（先後は駒の向きと印で分かる）。
+                <span className="hidden shrink-0 text-xs text-wafuu-sumi-light min-[400px]:inline">
                     {sideLabel}
-                    {/* 幅の狭い端末では、名前が切れないよう強さを省く。 */}
-                    {levelText ? (
-                        <span className="hidden min-[360px]:inline"> ・ {levelText}</span>
-                    ) : null}
+                    {levelText ? ` ・ ${levelText}` : ""}
                 </span>
             )}
             <span
                 className={cn(
                     "ml-auto shrink-0 whitespace-nowrap text-sm tabular-nums",
-                    isTurn ? "font-semibold text-wafuu-sumi" : "text-wafuu-sumi-light",
+                    urgent
+                        ? "font-semibold text-wafuu-shu"
+                        : isTurn
+                          ? "font-semibold text-wafuu-sumi"
+                          : "text-wafuu-sumi-light",
                 )}
             >
+                {passText ? `${passText} ・ ` : ""}
                 {timeText}
             </span>
         </div>
@@ -104,12 +134,13 @@ export function PlayMyTime({ className }: { className?: string }): ReactElement 
     const { timeSettings } = useMatchSettings();
     const { getHandInfo } = useMatchState();
     const owner = getHandInfo("bottom").owner;
-    const timeText = usePlayerTimeText(owner);
+    const { text: timeText, urgent } = usePlayerTime(owner);
     if (!timeSettings[owner].enabled) return null;
     return (
         <span
             className={cn(
-                "shrink-0 whitespace-nowrap text-sm font-semibold tabular-nums text-wafuu-sumi",
+                "shrink-0 whitespace-nowrap text-sm font-semibold tabular-nums",
+                urgent ? "text-wafuu-shu" : "text-wafuu-sumi",
                 className,
             )}
         >

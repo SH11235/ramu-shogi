@@ -299,17 +299,31 @@ export function PlayBoardTools({ className }: { className?: string }): ReactElem
 }
 
 /** 開始局面の編集中に出す欄（編集を終える操作と、短い説明）。 */
-export function PlayPositionEditorPanel({ className }: { className?: string }): ReactElement {
+export function PlayPositionEditorPanel({
+    className,
+    hideHeading = false,
+    stickyPrimary = false,
+}: {
+    className?: string;
+    /** 見出しを出さない（スマホでは、盤の上に見出しを置く） */
+    hideHeading?: boolean;
+    /** 「この局面に決める」を画面の下端に留める（スマホ） */
+    stickyPrimary?: boolean;
+}): ReactElement {
     const { play } = useShogiMatchConfig();
     return (
-        <section
-            aria-labelledby="play-editor-heading"
-            className={cn("flex flex-col gap-4", className)}
-        >
-            <h1 id="play-editor-heading" className={PLAY_HEADING}>
-                開始局面を編集
-            </h1>
-            <div className="flex flex-col gap-2">
+        <section aria-label="開始局面の編集" className={cn("flex flex-col gap-4", className)}>
+            {!hideHeading && (
+                <h1 id="play-editor-heading" className={PLAY_HEADING}>
+                    開始局面を編集
+                </h1>
+            )}
+            <div
+                className={cn(
+                    "flex flex-col gap-2",
+                    stickyPrimary && "sticky bottom-0 z-10 order-last bg-background pb-2 pt-1",
+                )}
+            >
                 <Button
                     type="button"
                     size="lg"
