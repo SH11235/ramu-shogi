@@ -523,14 +523,19 @@ describe("StudyWorkspaceView", () => {
         ).toBeTruthy();
     });
 
-    it("表題に対局者の名前が入っていれば、対局者の行を重ねて出さない", () => {
+    it("表題が「先手 対 後手」の形のままなら、対局者の行を重ねて出さない", () => {
         const { doc } = createTestStudy();
         const view = render(<Harness initialDoc={doc} />);
         expect(screen.getByText("☗先手太郎 対 ☖後手花子")).toBeTruthy();
         view.unmount();
 
-        render(<Harness initialDoc={{ ...doc, title: "先手太郎 対 後手花子" }} />);
+        const same = render(<Harness initialDoc={{ ...doc, title: "先手太郎 対 後手花子" }} />);
         expect(screen.queryByText("☗先手太郎 対 ☖後手花子")).toBeNull();
+        same.unmount();
+
+        // 名前を含むだけの表題（利用者が書き換えた）では、先後の分かる行を残す。
+        render(<Harness initialDoc={{ ...doc, title: "先手太郎と後手花子の研究" }} />);
+        expect(screen.getByText("☗先手太郎 対 ☖後手花子")).toBeTruthy();
     });
 
     it("しおり・コメント・表題の編集が操作として流れる", async () => {

@@ -1115,12 +1115,12 @@ export function StudyWorkspaceView({
         currentNode.ply === 0
             ? "開始局面"
             : `${currentNode.ply}手目 ${studyMoveLabel(tree, currentNodeId)}`;
-    // 取り込んだ棋譜の表題は「先手 対 後手」になる。表題に両者の名前が入っていれば、対局者の行は
-    // 同じ内容の繰り返しになるので出さない。
+    // 取り込んだ棋譜の表題は「先手 対 後手」になる。表題がその形のままなら、対局者の行は同じ内容の
+    // 繰り返しになるので出さない（利用者が表題を書き換えたら、対局者の行を出す）。
     const playersLabel = ((): string | null => {
         const black = doc.meta.blackName?.trim();
         const white = doc.meta.whiteName?.trim();
-        if (black && white && doc.title.includes(black) && doc.title.includes(white)) return null;
+        if (black && white && doc.title.trim() === `${black} 対 ${white}`) return null;
         return studyPlayersLabel(doc.meta);
     })();
     const savedComment = storedNode?.comment ?? "";
@@ -1362,24 +1362,20 @@ export function StudyWorkspaceView({
 
     // コメント欄は畳んでいる間も描いたままにする（書きかけの保存・別の画面の変更との突き合わせは、
     // 欄が動いていないと進まない）。
-    // 開閉で下の要素を上下させないよう、どの幅でも開いたときだけ下の要素の上に重ねる。
-    // `id="study-comment"` を持つ要素は、幅ごとの分岐で 1 つだけ描かれる（スマホはこれ、
-    // PC・タブレットは下の graphWithComment）。
-    const commentOverlay = (
-        <div
-            id="study-comment"
-            hidden={!showsComment}
-            className="absolute inset-x-0 top-0 z-20 rounded-xl shadow-lg"
-        >
-            {commentBox}
-        </div>
-    );
-    // PC・タブレット: 盤の下にグラフを置き、コメント欄は開いたときだけその上に重ねる
+    // コメント欄は畳んでいる間も描いたままにする（書きかけの保存・別の画面の変更との突き合わせは、
+    // 欄が動いていないと進まない）。
+    // 盤（と操作ボタン）の下にグラフを置き、コメント欄は開いたときだけその上に重ねる
     // （開閉で画面が上下しない）。重ねている間、下のグラフは操作させない。
     const graphWithComment = (
         <div className="relative w-0 min-w-full">
             <div inert={showsComment}>{graphPanel}</div>
-            {commentOverlay}
+            <div
+                id="study-comment"
+                hidden={!showsComment}
+                className="absolute inset-x-0 top-0 z-20 rounded-xl shadow-lg"
+            >
+                {commentBox}
+            </div>
         </div>
     );
     const metaRow = (
@@ -1538,65 +1534,63 @@ export function StudyWorkspaceView({
                                 {fluidBoard}
                                 {navBar}
                             </div>
-                            {/* コメント欄は、開いたときだけ操作ボタンの下の要素に重ねる。 */}
-                            <div className="relative flex flex-col gap-3">
-                                {commentOverlay}
-                                {showsFixedStart && !locked && (
-                                    <div className="flex flex-col">
-                                        <Button
-                                            type="button"
-                                            size="lg"
-                                            className="w-full gap-2"
-                                            onClick={startFull}
-                                            disabled={analysis.isPreparing}
-                                        >
-                                            <AnalyzeIcon />
-                                            {analysis.fullTargetCount === 0
-                                                ? "解析済みの結果を表示"
-                                                : "全体を解析"}
-                                        </Button>
-                                    </div>
-                                )}
-                                <div
-                                    role="tablist"
-                                    aria-label="表示の切り替え"
-                                    className="grid grid-cols-3 gap-1 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-1"
-                                >
-                                    {MOBILE_TABS.map((tab) => (
-                                        <button
-                                            key={tab.id}
-                                            id={`study-tab-${tab.id}`}
-                                            type="button"
-                                            role="tab"
-                                            aria-selected={mobileTab === tab.id}
-                                            aria-controls="study-tabpanel"
-                                            tabIndex={mobileTab === tab.id ? 0 : -1}
-                                            onClick={() => setMobileTab(tab.id)}
-                                            onKeyDown={handleTabKeyDown}
-                                            className={cn(
-                                                "h-10 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                                mobileTab === tab.id
-                                                    ? "bg-card text-wafuu-shu shadow-sm"
-                                                    : "text-wafuu-sumi-light hover:text-wafuu-sumi",
-                                            )}
-                                        >
-                                            {tab.label}
-                                        </button>
-                                    ))}
+                            {/* グラフは操作ボタンのすぐ下に置き、コメント欄は開いたときだけその上に重ねる
+                                （PC と同じ。開閉で下の要素が上下しない）。 */}
+                            {graphWithComment}
+                            {showsFixedStart && !locked && (
+                                <div className="flex flex-col">
+                                    <Button
+                                        type="button"
+                                        size="lg"
+                                        className="w-full gap-2"
+                                        onClick={startFull}
+                                        disabled={analysis.isPreparing}
+                                    >
+                                        <AnalyzeIcon />
+                                        {analysis.fullTargetCount === 0
+                                            ? "解析済みの結果を表示"
+                                            : "全体を解析"}
+                                    </Button>
                                 </div>
-                                <div
-                                    id="study-tabpanel"
-                                    role="tabpanel"
-                                    aria-labelledby={`study-tab-${mobileTab}`}
-                                    className="flex flex-col gap-3"
-                                >
-                                    {mobileTab === "highlights" && highlightsPanel}
-                                    {mobileTab === "moves" && moveList}
-                                    {mobileTab === "candidates" && candidatesPanel}
-                                </div>
-                                {graphPanel}
-                                {metaRow}
+                            )}
+                            <div
+                                role="tablist"
+                                aria-label="表示の切り替え"
+                                className="grid grid-cols-3 gap-1 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-1"
+                            >
+                                {MOBILE_TABS.map((tab) => (
+                                    <button
+                                        key={tab.id}
+                                        id={`study-tab-${tab.id}`}
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={mobileTab === tab.id}
+                                        aria-controls="study-tabpanel"
+                                        tabIndex={mobileTab === tab.id ? 0 : -1}
+                                        onClick={() => setMobileTab(tab.id)}
+                                        onKeyDown={handleTabKeyDown}
+                                        className={cn(
+                                            "h-10 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                            mobileTab === tab.id
+                                                ? "bg-card text-wafuu-shu shadow-sm"
+                                                : "text-wafuu-sumi-light hover:text-wafuu-sumi",
+                                        )}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
                             </div>
+                            <div
+                                id="study-tabpanel"
+                                role="tabpanel"
+                                aria-labelledby={`study-tab-${mobileTab}`}
+                                className="flex flex-col gap-3"
+                            >
+                                {mobileTab === "highlights" && highlightsPanel}
+                                {mobileTab === "moves" && moveList}
+                                {mobileTab === "candidates" && candidatesPanel}
+                            </div>
+                            {metaRow}
                         </div>
                     ) : isTablet ? (
                         // タブレットの縦持ち: 盤を小さくして左に置き、右に注目局面からの列を並べる。
