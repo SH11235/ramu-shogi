@@ -5,6 +5,7 @@
  * 評価値の範囲に応じて自動スケール
  */
 
+import { cn } from "@shogi/design-system";
 import type { MouseEvent, PointerEvent, ReactElement } from "react";
 import { useRef } from "react";
 import type { EvalHistory } from "../utils/kifFormat";
@@ -437,11 +438,18 @@ export function EvalGraph({
                             ).current = el;
                         }}
                         type="button"
-                        className={`ml-8 bg-transparent border-0 p-0 block text-left w-[calc(100%-32px)] cursor-crosshair ${scrubbable ? "touch-none" : ""}`}
+                        className={cn(
+                            "ml-8 bg-transparent border-0 p-0 block text-left w-[calc(100%-32px)] cursor-crosshair",
+                            scrubbable && "touch-none",
+                        )}
                         style={{ height }}
                         onClick={handleGraphClick}
                         {...scrubHandlers}
-                        aria-label="グラフをクリックして手数を選択"
+                        aria-label={
+                            scrubbable
+                                ? "グラフを押す・なぞって手数を選択"
+                                : "グラフをクリックして手数を選択"
+                        }
                     >
                         {compactSvg}
                     </button>

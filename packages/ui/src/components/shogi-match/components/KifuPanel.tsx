@@ -1969,6 +1969,10 @@ export function KifuPanel({
                                                     handleDetailToggle();
                                                 }}
                                                 aria-label={detailToggleLabel}
+                                                // 外部のウィンドウ（読み筋）を開くボタンであることを伝える。
+                                                aria-haspopup={
+                                                    onMoveDetailSelect ? "dialog" : undefined
+                                                }
                                                 aria-expanded={
                                                     onMoveDetailSelect
                                                         ? undefined
