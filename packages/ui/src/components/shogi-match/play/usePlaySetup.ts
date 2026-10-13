@@ -14,7 +14,7 @@ import type { ClockSettings } from "../hooks/useClockManager";
 import type { SideSetting } from "../types";
 
 /** 対局の組み合わせ。 */
-type PlayMatchKind = "vs-ai" | "humans" | "ai-vs-ai";
+export type PlayMatchKind = "vs-ai" | "humans" | "ai-vs-ai";
 
 interface OpponentOption {
     /** "preset:<key>" | "nnue:<id>" | "material" | "ext:<engineId>" */
@@ -60,7 +60,7 @@ const matchesChoice = (setting: ClockSettings[Player], choice: TimeChoice): bool
           setting.byoyomiMs === choice.byoyomiMs
         : !setting.enabled;
 
-export interface PlaySetup {
+interface PlaySetup {
     kind: PlayMatchKind;
     /** 自分の手番（kind が "vs-ai" のときだけ意味を持つ） */
     mySide: Player;
@@ -82,6 +82,15 @@ export interface PlaySetup {
     /** 人 対 人の持ち時間（両者に同じ決まりを当てる）。両者が同じでなければ null */
     bothTimeId: string | null;
     chooseBothTime: (choice: TimeChoice) => void;
+    /** 対局の組み合わせを替える（自分 対 AI ／ 人 対 人 ／ AI 対 AI） */
+    chooseKind: (kind: PlayMatchKind) => void;
+    /** AI 対 AI のときの、それぞれの側の AI（選択欄の値）と強さ */
+    sideAi: Record<Player, { value: string; option: OpponentOption | null; level: number }>;
+    chooseSideAi: (side: Player, value: string) => void;
+    chooseSideLevel: (side: Player, level: number) => void;
+    /** AI 対 AI の考慮時間（両者に同じ決まりを当てる）。両者が同じでなければ null */
+    bothAiTimeId: string | null;
+    chooseBothAiTime: (choice: TimeChoice) => void;
 }
 
 export function usePlaySetup(): PlaySetup {
@@ -161,14 +170,25 @@ export function usePlaySetup(): PlaySetup {
             ? sides[aiSide]
             : { role: "engine", engineId: internalEngineId };
     const aiSelection = selectionOf(aiSide);
-    const opponentValue = externalEngines.some((engine) => engine.id === aiSetting.engineId)
-        ? `ext:${aiSetting.engineId}`
-        : aiSelection.presetKey
-          ? `preset:${aiSelection.presetKey}`
-          : aiSelection.nnueId
-            ? `nnue:${aiSelection.nnueId}`
-            : "material";
+    /** その側の AI を、選択欄の値で表す。 */
+    const aiValueOf = (setting: SideSetting, selection: NnueSelection): string =>
+        externalEngines.some((engine) => engine.id === setting.engineId)
+            ? `ext:${setting.engineId}`
+            : selection.presetKey
+              ? `preset:${selection.presetKey}`
+              : selection.nnueId
+                ? `nnue:${selection.nnueId}`
+                : "material";
+    const opponentValue = aiValueOf(aiSetting, aiSelection);
     const opponent = opponentOptions.find((option) => option.value === opponentValue) ?? null;
+    const sideAiOf = (side: Player) => {
+        const value = aiValueOf(sides[side], selectionOf(side));
+        return {
+            value,
+            option: opponentOptions.find((option) => option.value === value) ?? null,
+            level: sides[side].skillLevel?.skillLevel ?? SKILL_LEVEL_MAX,
+        };
+    };
 
     const aiClock = timeSettings[aiSide];
     const myClock = timeSettings[mySide];
@@ -178,13 +198,14 @@ export function usePlaySetup(): PlaySetup {
     /** 相手の種類（選択欄の値）から、AI の側に入れる設定と評価関数を作る。 */
     const resolveOpponent = (
         value: string,
+        base: SideSetting = aiSetting,
     ): { setting: SideSetting; selection: NnueSelection | null } | null => {
         if (value === "material") {
             return {
                 setting: {
                     role: "engine",
                     engineId: internalEngineId,
-                    skillLevel: aiSetting.skillLevel,
+                    skillLevel: base.skillLevel,
                 },
                 selection: NONE_NNUE_SELECTION,
             };
@@ -194,7 +215,7 @@ export function usePlaySetup(): PlaySetup {
                 setting: {
                     role: "engine",
                     engineId: internalEngineId,
-                    skillLevel: aiSetting.skillLevel,
+                    skillLevel: base.skillLevel,
                 },
                 selection: { presetKey: value.slice("preset:".length), nnueId: null },
             };
@@ -204,7 +225,7 @@ export function usePlaySetup(): PlaySetup {
                 setting: {
                     role: "engine",
                     engineId: internalEngineId,
-                    skillLevel: aiSetting.skillLevel,
+                    skillLevel: base.skillLevel,
                 },
                 selection: { presetKey: null, nnueId: value.slice("nnue:".length) },
             };
@@ -271,6 +292,55 @@ export function usePlaySetup(): PlaySetup {
         });
     };
 
+    const chooseKind = (next: PlayMatchKind) => {
+        if (next === kind) return;
+        if (next === "vs-ai") {
+            chooseSide(mySide);
+            return;
+        }
+        if (next === "humans") {
+            const clock = { ...MY_TIME_CHOICES[0] };
+            onSidesChange({
+                sente: { role: "human", engineId: undefined, skillLevel: undefined },
+                gote: { role: "human", engineId: undefined, skillLevel: undefined },
+            });
+            onTimeSettingsChange({
+                sente: { mainMs: clock.mainMs, byoyomiMs: clock.byoyomiMs, enabled: false },
+                gote: { mainMs: clock.mainMs, byoyomiMs: clock.byoyomiMs, enabled: false },
+            });
+            return;
+        }
+        // AI 対 AI: いまの相手の AI（評価関数・強さ・考慮時間）を、両方の側に置く。
+        const engineClock = aiClock.enabled ? aiClock : { ...AI_TIME_CHOICES[1] };
+        const clock = {
+            mainMs: engineClock.mainMs,
+            byoyomiMs: engineClock.byoyomiMs,
+            enabled: true,
+        };
+        setSelection("sente", aiSelection);
+        setSelection("gote", aiSelection);
+        onSidesChange({ sente: aiSetting, gote: aiSetting });
+        onTimeSettingsChange({ sente: { ...clock }, gote: { ...clock } });
+    };
+
+    const chooseSideAi = (side: Player, value: string) => {
+        const base: SideSetting =
+            sides[side].role === "engine"
+                ? sides[side]
+                : { role: "engine", engineId: internalEngineId };
+        const next = resolveOpponent(value, base);
+        if (!next) return;
+        if (next.selection) setSelection(side, next.selection);
+        onSidesChange({ ...sides, [side]: next.setting });
+    };
+
+    const chooseSideLevel = (side: Player, level: number) => {
+        onSidesChange({
+            ...sides,
+            [side]: { ...sides[side], skillLevel: { skillLevel: level } },
+        });
+    };
+
     const applyClock = (side: Player, choice: TimeChoice) => {
         onTimeSettingsChange({
             ...timeSettings,
@@ -309,6 +379,24 @@ export function usePlaySetup(): PlaySetup {
                 mainMs: choice.mainMs,
                 byoyomiMs: choice.byoyomiMs,
                 enabled: choice.enabled,
+            };
+            onTimeSettingsChange({ sente: { ...clock }, gote: { ...clock } });
+        },
+        chooseKind,
+        sideAi: { sente: sideAiOf("sente"), gote: sideAiOf("gote") },
+        chooseSideAi,
+        chooseSideLevel,
+        bothAiTimeId:
+            AI_TIME_CHOICES.find(
+                (choice) =>
+                    matchesChoice(timeSettings.sente, choice) &&
+                    matchesChoice(timeSettings.gote, choice),
+            )?.id ?? null,
+        chooseBothAiTime: (choice) => {
+            const clock = {
+                mainMs: choice.mainMs,
+                byoyomiMs: choice.byoyomiMs,
+                enabled: true,
             };
             onTimeSettingsChange({ sente: { ...clock }, gote: { ...clock } });
         },

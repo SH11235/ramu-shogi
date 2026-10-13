@@ -198,4 +198,45 @@ describe("usePlaySetup（対局画面のかんたん設定）", () => {
         expect(snapshot.time.gote).toEqual({ mainMs: 600_000, byoyomiMs: 30_000, enabled: true });
         expect(snapshot.time.sente.byoyomiMs).toBe(10_000);
     });
+
+    it("対局の組み合わせを AI 対 AI にすると、いまの相手の AI が両方の側に入る", () => {
+        const { hook, snapshot } = setupHarness({
+            sides: { sente: HUMAN, gote: AI_L5 },
+            time: { sente: UNLIMITED, gote: AI_3S },
+            sente: NONE_NNUE_SELECTION,
+            gote: RAMU,
+        });
+        act(() => hook.result.current.chooseKind("ai-vs-ai"));
+        expect(snapshot.sides).toEqual({ sente: AI_L5, gote: AI_L5 });
+        expect(snapshot.sente).toEqual(RAMU);
+        expect(snapshot.time.sente).toEqual(AI_3S);
+        expect(hook.result.current.kind).toBe("ai-vs-ai");
+        expect(hook.result.current.bothAiTimeId).toBe("3");
+        // それぞれの側の AI を別々に替えられる
+        act(() => hook.result.current.chooseSideAi("sente", "material"));
+        act(() => hook.result.current.chooseSideLevel("gote", 3));
+        expect(snapshot.sente).toEqual(NONE_NNUE_SELECTION);
+        expect(snapshot.gote).toEqual(RAMU);
+        expect(hook.result.current.sideAi.sente.value).toBe("material");
+        expect(hook.result.current.sideAi.gote.level).toBe(3);
+    });
+
+    it("対局の組み合わせを人 対 人にすると、両者とも人・時間無制限になり、持ち時間は両者に当てる", () => {
+        const { hook, snapshot } = setupHarness({
+            sides: { sente: HUMAN, gote: AI_L5 },
+            time: { sente: UNLIMITED, gote: AI_3S },
+        });
+        act(() => hook.result.current.chooseKind("humans"));
+        expect(snapshot.sides.sente.role).toBe("human");
+        expect(snapshot.sides.gote.role).toBe("human");
+        expect(snapshot.time.gote.enabled).toBe(false);
+        expect(hook.result.current.bothTimeId).toBe("none");
+        act(() => hook.result.current.chooseBothTime(MY_TIME_CHOICES[1]));
+        expect(snapshot.time.sente).toEqual({ mainMs: 0, byoyomiMs: 30_000, enabled: true });
+        expect(snapshot.time.gote).toEqual({ mainMs: 0, byoyomiMs: 30_000, enabled: true });
+        // 自分 対 AI に戻すと、後手が内蔵エンジンになる
+        act(() => hook.result.current.chooseKind("vs-ai"));
+        expect(snapshot.sides.gote.role).toBe("engine");
+        expect(hook.result.current.kind).toBe("vs-ai");
+    });
 });

@@ -472,8 +472,6 @@ export function ShogiMatchLayout({
                                     <PlayMobileLayout
                                         searchInfo={mobileSpecificProps.searchInfo}
                                         candidateNote={candidateNote}
-                                        onOpenAbout={onOpenAbout}
-                                        positionReady={positionReady}
                                         onDisplaySettingsChange={onDisplaySettingsChange}
                                     />
                                 ) : (
@@ -617,16 +615,7 @@ export function ShogiMatchLayout({
                                     <PlayPCLayout
                                         matchLayoutClasses={matchLayoutClasses}
                                         candidateNote={candidateNote}
-                                        isDisplaySettingsOpen={isDisplaySettingsOpen}
-                                        onDisplaySettingsOpenChange={onDisplaySettingsOpenChange}
                                         setDisplaySettings={setDisplaySettings}
-                                        isPassRightsSettingsOpen={isPassRightsSettingsOpen}
-                                        onPassRightsSettingsOpenChange={
-                                            onPassRightsSettingsOpenChange
-                                        }
-                                        handlePassRightsSettingsChange={
-                                            handlePassRightsSettingsChange
-                                        }
                                     />
                                 ) : (
                                     <PCLayout

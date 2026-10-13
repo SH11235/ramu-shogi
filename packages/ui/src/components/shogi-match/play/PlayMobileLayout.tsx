@@ -16,12 +16,11 @@ import { BottomSheet } from "../components/BottomSheet";
 import { KifuNavigationToolbar } from "../components/KifuNavigationToolbar";
 import { MobileBoardSection } from "../components/MobileBoardSection";
 import { MobileKifuBar } from "../components/MobileKifuBar";
-import { MobileSettingsSheet } from "../components/MobileSettingsSheet";
-import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import type { DisplaySettings } from "../types";
+import { PlayAdvancedSettings } from "./PlayAdvancedSettings";
 import {
     PlayBoardTools,
     PlayMatchActions,
@@ -37,16 +36,12 @@ import { PlaySetupPanel } from "./PlaySetupPanel";
 interface PlayMobileLayoutProps {
     searchInfo?: ReactNode;
     candidateNote: string | null;
-    onOpenAbout?: () => void;
-    positionReady?: boolean;
     onDisplaySettingsChange: (settings: DisplaySettings) => void;
 }
 
 export function PlayMobileLayout({
     searchInfo,
     candidateNote,
-    onOpenAbout,
-    positionReady = true,
     onDisplaySettingsChange,
 }: PlayMobileLayoutProps): ReactElement {
     const { play } = useShogiMatchConfig();
@@ -74,30 +69,8 @@ export function PlayMobileLayout({
         handleHandPiecePointerDown,
         handleIncrementHand,
         handleDecrementHand,
-        pauseAutoPlay,
         sides,
     } = useMatchState();
-    const {
-        onSidesChange,
-        analysisEngineId,
-        onAnalysisEngineIdChange,
-        timeSettings,
-        onTimeSettingsChange,
-        senteNnueSelection,
-        onSenteNnueSelectionChange,
-        goteNnueSelection,
-        onGoteNnueSelectionChange,
-        nnueList,
-        presets,
-        internalEngineId,
-        engineOptions,
-        isDevMode,
-        engineThreads,
-        onEngineThreadsChange,
-        settingsLocked,
-        onOpenEngineManager,
-        onPassRightsSettingsChange,
-    } = useMatchSettings();
     const { navigationState, navigationHandlers, kifMoves, handlePlySelect } = useNavigation();
     const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
     const hintMove = usePlayHintMove();
@@ -269,35 +242,9 @@ export function PlayMobileLayout({
                 title="詳細設定"
                 height="full"
             >
-                <MobileSettingsSheet
-                    sides={sides}
-                    onSidesChange={onSidesChange}
-                    analysisEngineId={analysisEngineId}
-                    onAnalysisEngineIdChange={onAnalysisEngineIdChange}
-                    timeSettings={timeSettings}
-                    onTimeSettingsChange={onTimeSettingsChange}
-                    internalEngineId={internalEngineId}
-                    engineOptions={engineOptions}
-                    nnueList={nnueList}
-                    presets={presets}
-                    senteNnueSelection={senteNnueSelection}
-                    onSenteNnueSelectionChange={onSenteNnueSelectionChange}
-                    goteNnueSelection={goteNnueSelection}
-                    onGoteNnueSelectionChange={onGoteNnueSelectionChange}
-                    settingsLocked={settingsLocked}
-                    isDevMode={isDevMode}
-                    engineThreads={engineThreads}
-                    onEngineThreadsChange={onEngineThreadsChange}
-                    onOpenEngineManager={onOpenEngineManager}
-                    passRightsSettings={passRightsSettings}
-                    onPassRightsSettingsChange={onPassRightsSettingsChange}
-                    isMatchRunning={isMatchRunning}
-                    onStopMatch={pauseAutoPlay}
-                    displaySettings={displaySettings}
-                    onDisplaySettingsChange={onDisplaySettingsChange}
-                    onOpenAbout={onOpenAbout}
-                    positionReady={positionReady}
-                />
+                <div className="px-1 pb-4">
+                    <PlayAdvancedSettings onDisplaySettingsChange={onDisplaySettingsChange} />
+                </div>
             </BottomSheet>
         </div>
     );

@@ -14,13 +14,7 @@ import { Button } from "../../button";
 import { NativeSelect } from "../../native-select";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import { PLAY_HEADING, PLAY_PRIMARY_BUTTON, PLAY_TEXT_LINK } from "./playStyles";
-import {
-    AI_TIME_CHOICES,
-    MY_TIME_CHOICES,
-    type PlaySetup,
-    type TimeChoice,
-    usePlaySetup,
-} from "./usePlaySetup";
+import { AI_TIME_CHOICES, MY_TIME_CHOICES, type TimeChoice, usePlaySetup } from "./usePlaySetup";
 
 type SideChoice = Player | "random";
 
@@ -99,16 +93,6 @@ const sideLabel = (side: Player): string => (side === "sente" ? "先手" : "後�
 const FIELD_LABEL_CLASS = "text-xs font-medium text-wafuu-sumi-light";
 const TEXT_LINK_CLASS = PLAY_TEXT_LINK;
 
-/** 「対局開始」の下に出す、これから始まる対局の要約。 */
-function describeMatch(setup: PlaySetup, sideChoice: SideChoice): string {
-    if (setup.kind === "humans") return "人 対 人（この端末で交互に指す）";
-    if (setup.kind === "ai-vs-ai") return "AI 対 AI（観戦）";
-    const opponentName = setup.opponent?.label ?? "AI";
-    const levelText = setup.opponent?.supportsLevel === false ? "" : ` レベル${setup.level}`;
-    const mine = sideChoice === "random" ? "振り駒" : `あなたが${sideLabel(sideChoice)}`;
-    return `${mine} ・ 相手 ${opponentName}${levelText}`;
-}
-
 interface PlaySetupPanelProps {
     /** 詳細設定を開く */
     onOpenAdvanced: () => void;
@@ -137,7 +121,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
     // 対局を始める準備の最中・前の対局を片付けている最中は、設定を変えさせない。
     const locked = setup.locked || play?.busy === true;
     const sideChoice: SideChoice = randomSide ? "random" : setup.mySide;
-    const downloadMb = setup.kind === "humans" ? null : (setup.opponent?.downloadMb ?? null);
+    const downloadMb = isVsAi ? (setup.opponent?.downloadMb ?? null) : null;
 
     const startSfen = play?.startSfen ?? "startpos";
     const preset = START_POSITIONS.find((item) => startSfen.includes(item.sfen));
@@ -219,21 +203,79 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                     disabled={locked}
                 />
             ) : (
-                <div className="flex flex-col">
-                    <p className="text-sm text-wafuu-sumi">
-                        {describeMatch(setup, sideChoice)}の設定です（詳細設定で変えられます）。
-                    </p>
-                    <button
-                        type="button"
-                        onClick={() => setup.chooseSide("sente")}
-                        className={cn(
-                            TEXT_LINK_CLASS,
-                            "self-start text-sm text-wafuu-ai hover:text-wafuu-ai-light",
-                        )}
-                    >
-                        自分が AI と指す設定に戻す
-                    </button>
-                </div>
+                <button
+                    type="button"
+                    onClick={() => setup.chooseKind("vs-ai")}
+                    disabled={locked}
+                    className={cn(
+                        TEXT_LINK_CLASS,
+                        "self-start text-sm text-wafuu-ai hover:text-wafuu-ai-light",
+                    )}
+                >
+                    自分が AI と指す設定に戻す
+                </button>
+            )}
+
+            {setup.kind === "ai-vs-ai" && (
+                <>
+                    {(["sente", "gote"] as const).map((side) => (
+                        <div key={side} className="flex flex-col gap-1.5">
+                            <label htmlFor={`play-setup-ai-${side}`} className={FIELD_LABEL_CLASS}>
+                                {side === "sente" ? "☗ 先手の AI" : "☖ 後手の AI"}
+                            </label>
+                            <div className="flex items-center gap-2">
+                                <NativeSelect
+                                    id={`play-setup-ai-${side}`}
+                                    value={setup.sideAi[side].value}
+                                    disabled={locked}
+                                    onChange={(event) =>
+                                        setup.chooseSideAi(side, event.target.value)
+                                    }
+                                    wrapperClassName="flex-1"
+                                    className="min-h-10 text-sm"
+                                >
+                                    {setup.opponentOptions.map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                            {option.label}
+                                            {option.downloadMb !== null
+                                                ? `（初回 約${option.downloadMb}MB）`
+                                                : ""}
+                                        </option>
+                                    ))}
+                                </NativeSelect>
+                                {setup.sideAi[side].option?.supportsLevel !== false && (
+                                    <NativeSelect
+                                        aria-label={`${side === "sente" ? "先手" : "後手"}の AI の強さ`}
+                                        value={String(setup.sideAi[side].level)}
+                                        disabled={locked}
+                                        onChange={(event) =>
+                                            setup.chooseSideLevel(side, Number(event.target.value))
+                                        }
+                                        wrapperClassName="w-32 shrink-0"
+                                        className="min-h-10 text-sm"
+                                    >
+                                        {Array.from({ length: SKILL_LEVEL_MAX + 1 }, (_, level) => (
+                                            // biome-ignore lint/suspicious/noArrayIndexKey: レベルそのものが並びの位置
+                                            <option key={level} value={level}>
+                                                レベル {level}
+                                            </option>
+                                        ))}
+                                    </NativeSelect>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                    <Segmented
+                        label="AI の考慮時間（1手・両者）"
+                        options={timeOptions(AI_TIME_CHOICES)}
+                        value={setup.bothAiTimeId}
+                        onChange={(id) => {
+                            const choice = AI_TIME_CHOICES.find((item) => item.id === id);
+                            if (choice) setup.chooseBothAiTime(choice);
+                        }}
+                        disabled={locked}
+                    />
+                </>
             )}
 
             {isVsAi && (

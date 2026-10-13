@@ -19,16 +19,14 @@ import {
     DialogHeader,
     DialogTitle,
 } from "../../dialog";
-import { DisplaySettingsPanel } from "../components/DisplaySettingsPanel";
 import { KifuNavigationToolbar } from "../components/KifuNavigationToolbar";
-import { LeftSidebar } from "../components/LeftSidebar";
-import { PassRightsSettingsDialog } from "../components/PassRightsSettingsDialog";
 import { PCBoardContent } from "../components/PCBoardContent";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
-import type { DisplaySettings, PassRightsSettings } from "../types";
+import type { DisplaySettings } from "../types";
+import { PlayAdvancedSettings } from "./PlayAdvancedSettings";
 import {
     PlayBoardTools,
     PlayMatchActions,
@@ -46,26 +44,16 @@ import { PLAY_CARD, PLAY_OUTLINE_BUTTON } from "./playStyles";
 interface PlayPCLayoutProps {
     matchLayoutClasses: string;
     candidateNote: string | null;
-    isDisplaySettingsOpen: boolean;
-    onDisplaySettingsOpenChange: (open: boolean) => void;
     setDisplaySettings: Dispatch<SetStateAction<DisplaySettings>>;
-    isPassRightsSettingsOpen: boolean;
-    onPassRightsSettingsOpenChange: (open: boolean) => void;
-    handlePassRightsSettingsChange: (settings: PassRightsSettings) => void;
 }
 
 export function PlayPCLayout({
     matchLayoutClasses,
     candidateNote,
-    isDisplaySettingsOpen,
-    onDisplaySettingsOpenChange,
     setDisplaySettings,
-    isPassRightsSettingsOpen,
-    onPassRightsSettingsOpenChange,
-    handlePassRightsSettingsChange,
 }: PlayPCLayoutProps): ReactElement {
     const { play } = useShogiMatchConfig();
-    const { passRightsSettings, settingsLocked } = useMatchSettings();
+    const { passRightsSettings } = useMatchSettings();
     const hintMove = usePlayHintMove();
     const {
         boardSectionRef,
@@ -223,25 +211,9 @@ export function PlayPCLayout({
                     <div className="flex flex-col gap-4">
                         <DialogHeader>
                             <DialogTitle>詳細設定</DialogTitle>
-                            <DialogDescription>
-                                先手・後手を個別に設定します。ここで変えた内容は、設定の欄にも反映されます。
-                            </DialogDescription>
+                            <DialogDescription>ふだんは変えなくてよい設定です。</DialogDescription>
                         </DialogHeader>
-                        <LeftSidebar
-                            bare
-                            displaySettingsOpen={isDisplaySettingsOpen}
-                            onDisplaySettingsToggle={() =>
-                                onDisplaySettingsOpenChange(!isDisplaySettingsOpen)
-                            }
-                            displaySettingsPanel={
-                                isDisplaySettingsOpen ? (
-                                    <DisplaySettingsPanel
-                                        settings={displaySettings}
-                                        onChange={setDisplaySettings}
-                                    />
-                                ) : null
-                            }
-                        />
+                        <PlayAdvancedSettings onDisplaySettingsChange={setDisplaySettings} />
                         <DialogClose asChild>
                             <Button
                                 type="button"
@@ -254,16 +226,6 @@ export function PlayPCLayout({
                     </div>
                 </DialogContent>
             </Dialog>
-
-            {passRightsSettings && (
-                <PassRightsSettingsDialog
-                    open={isPassRightsSettingsOpen}
-                    onOpenChange={onPassRightsSettingsOpenChange}
-                    passRightsSettings={passRightsSettings}
-                    onChange={handlePassRightsSettingsChange}
-                    settingsLocked={settingsLocked}
-                />
-            )}
         </section>
     );
 }
