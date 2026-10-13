@@ -867,6 +867,202 @@ describe("RoomPage", () => {
                 expect(screen.queryByRole("status")).toBeNull();
             });
 
+            it("観戦者が参加し直そうとして、切断中に終局していたら、すぐに終局を知らせてトップへ戻る導線を出す", async () => {
+                const socket = await reconnect(await watchGame());
+
+                await act(async () => {
+                    socket.receive({
+                        v: 1,
+                        t: "error",
+                        payload: { code: "ROOM_FINISHED", message: "" },
+                    });
+                });
+
+                expect(screen.getByRole("alert").textContent).toContain(
+                    "接続が切れている間に、この対局は終了しました",
+                );
+                expect(screen.queryByRole("status")).toBeNull();
+                expect(screen.queryByRole("button", { name: "再読み込み" })).toBeNull();
+                fireEvent.click(screen.getByRole("button", { name: "トップへ戻る" }));
+                expect(mockNavigate).toHaveBeenCalledWith({ to: "/" });
+            });
+
+            /** 指し手の局面を変換している間に message が届き、変換が終わった後に送られた指し手 */
+            async function movesSentAfter(message: ServerMessage): Promise<unknown[]> {
+                const socket = await openGame();
+                let finishConverting: () => void = () => {};
+                boardToSfen.mockImplementationOnce(
+                    () =>
+                        new Promise((resolve) => {
+                            finishConverting = () => resolve("sfen after move");
+                        }),
+                );
+                await tryToMove();
+                await act(async () => {
+                    socket.receive(message);
+                });
+                await act(async () => {
+                    finishConverting();
+                });
+                return sentMoves();
+            }
+
+            function eventMessage(
+                payload: Extract<ServerMessage, { t: "event" }>["payload"],
+            ): ServerMessage {
+                return { v: 1, t: "event", payload };
+            }
+
+            it.each([
+                [
+                    "待ったの承認",
+                    eventMessage({
+                        kind: "takeback_accepted",
+                        eventId: 6,
+                        serverTs: 0,
+                        sfen: "startpos",
+                        turn: "b",
+                        clock: makeSnapshot().clock,
+                        passRights: null,
+                    }),
+                ],
+                [
+                    "指し手",
+                    eventMessage({
+                        kind: "move",
+                        eventId: 6,
+                        serverTs: 0,
+                        usi: "3c3d",
+                        turn: "b",
+                        clock: makeSnapshot().clock,
+                        passRights: null,
+                    }),
+                ],
+                ["snapshot", snapshotMessage({ eventId: 6 })],
+            ])("指し手の局面を変換している間に%sが届いたら、その指し手は送らない", async (_, message) => {
+                expect(await movesSentAfter(message)).toEqual([]);
+                expect(screen.getByRole("alert").textContent).toBe(
+                    "局面が更新されました。もう一度操作してください。",
+                );
+            });
+
+            it("指し手の局面を変換している間に待ったの取り消しが届いても、その指し手は送る", async () => {
+                expect(
+                    await movesSentAfter(
+                        eventMessage({ kind: "takeback_cancelled", eventId: 6, serverTs: 0 }),
+                    ),
+                ).toEqual([
+                    expect.objectContaining({
+                        payload: { eventId: 6, usi: "1g1f", sfen: "sfen after move" },
+                    }),
+                ]);
+            });
+
+            it("2 回目の切断でも、snapshot の要求を 2 回まで送り直せる", async () => {
+                const first = await openGame();
+                await withFakeTimers(async () => {
+                    await act(async () => {
+                        first.drop();
+                    });
+                    await act(async () => {
+                        vi.advanceTimersByTime(1_000);
+                    });
+                    const firstReconnect = socketFor("test-room");
+                    await act(async () => {
+                        firstReconnect.open();
+                    });
+                    await act(async () => {
+                        vi.advanceTimersByTime(30_000);
+                    });
+                    expect(fullSnapshotRequests(firstReconnect)).toHaveLength(3);
+                    await act(async () => {
+                        firstReconnect.receive(snapshotMessage({ eventId: 6 }));
+                    });
+                    expect(screen.queryByRole("status")).toBeNull();
+
+                    await act(async () => {
+                        firstReconnect.drop();
+                    });
+                    await act(async () => {
+                        vi.advanceTimersByTime(1_000);
+                    });
+                    const socket = socketFor("test-room");
+                    await act(async () => {
+                        socket.open();
+                    });
+                    await act(async () => {
+                        vi.advanceTimersByTime(30_000);
+                    });
+                    expect(fullSnapshotRequests(socket)).toHaveLength(3);
+                    expect(screen.getByRole("status").textContent).toBe(RECONNECTING_TEXT);
+                });
+            });
+
+            it("同期し終えた後は、snapshot の要求を送り直さない", async () => {
+                const first = await openGame();
+                let socket: FakeSocket = first;
+                await withFakeTimers(async () => {
+                    await act(async () => {
+                        first.drop();
+                    });
+                    await act(async () => {
+                        vi.advanceTimersByTime(1_000);
+                    });
+                    socket = socketFor("test-room");
+                    await act(async () => {
+                        socket.open();
+                    });
+                    await act(async () => {
+                        socket.receive(snapshotMessage({ eventId: 6 }));
+                    });
+                    await act(async () => {
+                        vi.advanceTimersByTime(60_000);
+                    });
+                    expect(fullSnapshotRequests(socket)).toHaveLength(1);
+                    expect(screen.queryByRole("alert")).toBeNull();
+                });
+            });
+
+            it("snapshot が届かず再読み込みを案内した後でも、再接続すれば同期をやり直して元に戻る", async () => {
+                const first = await openGame();
+                let socket: FakeSocket = first;
+                await withFakeTimers(async () => {
+                    await act(async () => {
+                        first.drop();
+                    });
+                    await act(async () => {
+                        vi.advanceTimersByTime(1_000);
+                    });
+                    socket = socketFor("test-room");
+                    await act(async () => {
+                        socket.open();
+                    });
+                    await act(async () => {
+                        vi.advanceTimersByTime(45_000);
+                    });
+                    expect(screen.getByRole("alert").textContent).toContain(PLAYER_LOST_TEXT);
+
+                    await act(async () => {
+                        socket.drop();
+                    });
+                    expect(screen.getByRole("status").textContent).toBe(RECONNECTING_TEXT);
+                    await act(async () => {
+                        vi.advanceTimersByTime(1_000);
+                    });
+                });
+                socket = socketFor("test-room");
+                await act(async () => {
+                    socket.open();
+                });
+                expect(fullSnapshotRequests(socket)).toHaveLength(1);
+                await act(async () => {
+                    socket.receive(snapshotMessage({ eventId: 6 }));
+                });
+                expect(screen.queryByRole("status")).toBeNull();
+                expect(screen.queryByRole("alert")).toBeNull();
+                expect(resignButton().disabled).toBe(false);
+            });
+
             it("観戦者には、席へ戻れるとは案内しない", async () => {
                 await exhaustReconnects(await watchGame());
 

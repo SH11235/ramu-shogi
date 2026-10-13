@@ -1,4 +1,10 @@
-import type { GameResult, RoomClient, ServerMessage, SnapshotPayload } from "@shogi/match-client";
+import type {
+    GameResult,
+    RoomClient,
+    RoomClientStatus,
+    ServerMessage,
+    SnapshotPayload,
+} from "@shogi/match-client";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -391,6 +397,42 @@ describe("OnlineGameView", () => {
             expect(client.consumeAnalysis).not.toHaveBeenCalled();
             expect(analysis.startAnalysis).not.toHaveBeenCalled();
         });
+    });
+
+    it("再接続後の同期を待つ間に画面を離れたら、snapshot の要求を送り直さない", () => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        try {
+            const statusHandlers = new Set<(status: RoomClientStatus) => void>();
+            const client = makeMockClient({
+                subscribeStatus: vi.fn((handler: (status: RoomClientStatus) => void) => {
+                    statusHandlers.add(handler);
+                    return () => statusHandlers.delete(handler);
+                }),
+            });
+            const requestFullSnapshot = vi.fn(() => true);
+            const { unmount } = render(
+                <OnlineGameView
+                    client={client}
+                    snapshot={makeSnapshot()}
+                    seat="b"
+                    roomId="test-room"
+                    requestFullSnapshot={requestFullSnapshot}
+                />,
+            );
+            act(() => {
+                for (const status of ["reconnecting", "connected"] as const) {
+                    for (const handler of statusHandlers) handler(status);
+                }
+            });
+            expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+
+            unmount();
+            vi.advanceTimersByTime(60_000);
+
+            expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     describe("終局済みルームの復元", () => {

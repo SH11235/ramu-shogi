@@ -114,23 +114,27 @@ const RESYNC_TIMEOUT_MS = 15_000;
 /** snapshot の要求を送り直す回数の上限。尽きたら再読み込みを案内する */
 const RESYNC_MAX_RETRIES = 2;
 
-/** 同期を待つ間にこれらが返ったら、送り直しても同じ席へは戻れない */
+/**
+ * 同期を待つ間にこれらが返ったら、送り直しても同じ席へは戻れない。ROOM_FINISHED は、切断中に
+ * 終局した部屋へ参加し直そうとした観戦者（と、トークンを持たない対局者）に返る
+ */
 const SEAT_LOST_CODES: ReadonlySet<ErrorCode> = new Set([
     "INVALID_TOKEN",
     "ROOM_NOT_FOUND",
     "ROOM_FULL",
+    "ROOM_FINISHED",
 ]);
 
 /**
  * 対局中の接続。reconnecting は WebSocket を開き直している間と、開いた後に席へ戻って
- * サーバーの snapshot を反映し終えるまで。lost は RoomClient が再接続を諦めた状態、
- * rejected はサーバーが席への復帰を拒んだ状態
+ * サーバーの snapshot を反映し終えるまで。lost は再接続か再同期を諦め、再読み込みを案内する状態。
+ * rejected はサーバーが席への復帰を拒んだ状態で、finished は拒んだ理由が終局だったとき
  */
 type GameConnection =
     | { state: "connected" }
     | { state: "reconnecting" }
     | { state: "lost"; canResume: boolean }
-    | { state: "rejected" };
+    | { state: "rejected"; finished: boolean };
 
 /**
  * 届いた順に反映するサーバーからのメッセージ。initial は画面を開いたときの snapshot。
@@ -558,10 +562,10 @@ export function OnlineGameView({
         waitForResync(resync);
     });
 
-    const rejectResync = useEffectEvent((): void => {
+    const rejectResync = useEffectEvent((code: ErrorCode): void => {
         stopResync();
         rejectedRef.current = true;
-        setConnection({ state: "rejected" });
+        setConnection({ state: "rejected", finished: code === "ROOM_FINISHED" });
     });
 
     const applyStatus = useEffectEvent((status: RoomClientStatus): void => {
@@ -615,7 +619,7 @@ export function OnlineGameView({
                 });
             } else if (msg.t === "error") {
                 if (resyncRef.current !== null && SEAT_LOST_CODES.has(msg.payload.code)) {
-                    rejectResync();
+                    rejectResync(msg.payload.code);
                     return;
                 }
                 showRejection(msg.payload.code);
@@ -1113,7 +1117,10 @@ export function OnlineGameView({
                     <ConnectionLostNotice reason={connection.canResume ? "seat" : "reload"} />
                 )}
                 {!gameResult && connection.state === "rejected" && (
-                    <ConnectionLostNotice reason="session" />
+                    <ConnectionLostNotice
+                        reason={connection.finished ? "finished" : "session"}
+                        onExit={onExit}
+                    />
                 )}
 
                 {/* 奥側プレイヤー情報（上）: 後手視点では先手が奥 */}
