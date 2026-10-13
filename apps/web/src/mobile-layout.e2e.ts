@@ -34,7 +34,7 @@ test("小画面の対局中、操作が画面の中に留まり、探索情報�
     // AI が先に指す（探索情報は AI の考慮中に出る）。
     await page.getByRole("button", { name: "☖ 後手", exact: true }).click();
     await page.getByRole("button", { name: "詳細設定", exact: true }).click();
-    await page.getByLabel("探索情報 (NPS/深さ) を表示").check();
+    await page.getByLabel("AI の探索情報（NPS・深さ）を表示").check();
     await page.getByRole("button", { name: "閉じる", exact: true }).click();
     await page.getByRole("button", { name: "対局開始", exact: true }).click();
     const details = page.getByRole("button", { name: "探索情報の詳細", exact: true });
