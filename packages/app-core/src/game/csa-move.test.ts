@@ -74,9 +74,21 @@ describe("isCheckmate", () => {
         const afterDrop = applyCsaMoveStrict("-0032FU", state).nextState;
         expect(isCheckmate(afterDrop)).toBe(true);
         expect(isCheckmate(state)).toBe(true);
-        // 桂を外すと先手の飛車で合駒の歩を取れるので、打ち歩詰めではなくなる。
-        state.board["2a"] = null;
-        expect(isCheckmate(applyCsaMoveStrict("-0032FU", state).nextState)).toBe(false);
+    });
+
+    it("王手になる歩の合駒でも、相手が取れるなら合法手に数える", () => {
+        // 2 一は先手の金が利いていて玉は逃げられない。3 二の歩は先手玉への王手だが、
+        // 飛車か金で取れるので打ち歩詰めではない。
+        const state = position("42HI33OU45KA43FU44FU24FU31KI", "12OU11KY13FU23KA25GI29FU00FU");
+        expect(isCheckmate(state)).toBe(false);
+        state.hands.gote.P = 0;
+        expect(isCheckmate(state)).toBe(true);
+    });
+
+    it("歩の合駒が王手でなければ、相手玉が元から詰んでいても合法手に数える", () => {
+        // 両玉に王手のある任意の局面。3 二の歩は 3 九の先手玉に届かないので打ち歩詰めではない。
+        const state = position("42HI39OU45KA", "12OU11KY21KE13FU23KA29FU38KI37KI00FU");
+        expect(isCheckmate(applyCsaMoveStrict("-0032FU", state).nextState)).toBe(true);
         expect(isCheckmate(state)).toBe(false);
     });
 });

@@ -165,7 +165,11 @@ const SQUARES = BOARD_RANKS.flatMap((rank) =>
     BOARD_FILES.map((file) => `${file}${rank}` as Square),
 );
 
-/** 成りの有無で自玉への利きは変わらないので、強制成りだけを選べば足りる。 */
+/**
+ * 手番側に、指した後で自玉に利きが残らない盤上の手があるか。
+ * 成りの有無で自玉への利きは変わらないので、1 つの移動につき 1 通りだけ試す
+ * (`applyCsaMoveStrict` で通る手と揃えるため、成るしかない手は成りにする)。
+ */
 const hasBoardEvasion = (position: PositionState): boolean => {
     const { board, turn } = position;
     for (const from of SQUARES) {
@@ -194,13 +198,13 @@ export function isCheckmate(position: PositionState): boolean {
             if (type === "P" && hasUnpromotedPawnOnFile(board, fileOf(to), turn)) continue;
             const applied = applyMoveWithState(position, `${type}*${to}`);
             if (!applied.ok || isKingAttacked(applied.next.board, turn)) continue;
-            // 歩の王手には合駒できないため、打ち歩詰めは盤上の応手だけで判定できる。
-            if (
-                type === "P" &&
-                isKingAttacked(applied.next.board, applied.next.turn) &&
-                !hasBoardEvasion(applied.next)
-            )
-                continue;
+            // 打った歩そのものが相手玉への王手で、相手に応手が無ければ打ち歩詰め。
+            // 歩の王手には合駒できないので、相手の応手は盤上の手だけを見れば足りる。
+            if (type === "P") {
+                const front = board[toSquare(fileOf(to), rankOf(to) + (turn === "sente" ? -1 : 1))];
+                const checksKing = front?.type === "K" && front.owner !== turn;
+                if (checksKing && !hasBoardEvasion(applied.next)) continue;
+            }
             return false;
         }
     }
