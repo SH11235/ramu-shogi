@@ -81,7 +81,10 @@ export function PlayPlayerBar({ position, className }: PlayPlayerBarProps): Reac
             {!bothHumans && (
                 <span className="shrink-0 text-xs text-wafuu-sumi-light">
                     {sideLabel}
-                    {levelText ? ` ・ ${levelText}` : ""}
+                    {/* 幅の狭い端末では、名前が切れないよう強さを省く。 */}
+                    {levelText ? (
+                        <span className="hidden min-[360px]:inline"> ・ {levelText}</span>
+                    ) : null}
                 </span>
             )}
             <span

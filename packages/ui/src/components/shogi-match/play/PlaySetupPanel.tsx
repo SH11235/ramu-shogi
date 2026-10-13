@@ -337,8 +337,9 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                 </NativeSelect>
             </div>
 
-            {/* スマホでは、開始ボタンを画面の下端に留める（設定を全部送らなくても始められる）。 */}
-            <div className="sticky bottom-0 z-10 flex flex-col gap-2 bg-background pb-2 pt-1 md:static md:bg-transparent md:p-0">
+            {/* スマホでは、開始ボタンだけを画面の下端に留める（設定を全部送らなくても始められる。
+                注記や別の道まで留めると、下の項目を隠してしまう）。 */}
+            <div className="sticky bottom-0 z-10 bg-background pb-2 pt-1 md:static md:bg-transparent md:p-0">
                 <Button
                     type="button"
                     size="lg"
@@ -348,34 +349,26 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                 >
                     対局開始
                 </Button>
-                {downloadMb !== null && (
-                    <>
-                        {/* スマホでは、ダウンロードなしで始める道を同じ大きさのボタンで並べる。 */}
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={handleQuickStart}
-                            className="min-h-11 w-full border-wafuu-border bg-background text-wafuu-sumi hover:bg-wafuu-washi-warm md:hidden"
-                        >
-                            ダウンロードせずに簡易AI と指す
-                        </Button>
-                        <p className="text-center text-xs leading-relaxed text-wafuu-sumi-light">
-                            {setup.opponent?.label} は、初回だけ約 {downloadMb}MB
-                            のダウンロードがあります。
-                            <button
-                                type="button"
-                                onClick={handleQuickStart}
-                                className={cn(
-                                    TEXT_LINK_CLASS,
-                                    "hidden font-medium text-wafuu-ai hover:text-wafuu-ai-light md:inline-flex",
-                                )}
-                            >
-                                ダウンロードせずに簡易AI と指す
-                            </button>
-                        </p>
-                    </>
-                )}
             </div>
+            {downloadMb !== null && (
+                // 開始ボタンのすぐ下に寄せる（ボタンを下端に留めるために、同じ並びの別の要素にしている）。
+                <p className="-mt-2 text-center text-xs leading-relaxed text-wafuu-sumi-light">
+                    <span className="inline-block">
+                        {setup.opponent?.label} は、初回だけ約 {downloadMb}MB
+                        のダウンロードがあります。
+                    </span>{" "}
+                    <button
+                        type="button"
+                        onClick={handleQuickStart}
+                        className={cn(
+                            TEXT_LINK_CLASS,
+                            "font-medium text-wafuu-ai hover:text-wafuu-ai-light",
+                        )}
+                    >
+                        ダウンロードせずに簡易AI と指す
+                    </button>
+                </p>
+            )}
 
             <div className="flex items-center justify-end border-t border-wafuu-border pt-3 text-[13px]">
                 <button
