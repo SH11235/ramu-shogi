@@ -277,7 +277,12 @@ export function ShogiBoard({
                                     </button>
                                     {isPromotionSquare && onPromotionChoice && (
                                         <div
-                                            className="absolute inset-0 z-10 flex flex-col gap-[2px] p-[2px]"
+                                            // マス 2 つ分の幅で左右に並べる（1 マスの中に上下で詰めると、指で
+                                            // 押し分けにくい）。盤の端では内側へ伸ばす。
+                                            className={cn(
+                                                "absolute inset-y-0 z-20 flex w-[200%] gap-[2px] p-[2px]",
+                                                columnIndex < 8 ? "left-0" : "right-0",
+                                            )}
                                             role="dialog"
                                             aria-label="成り選択"
                                             aria-live="assertive"
@@ -300,7 +305,7 @@ export function ShogiBoard({
                                                     }
                                                 }}
                                                 aria-label="成る"
-                                                className="flex-1 rounded-t-md bg-gradient-to-b from-wafuu-shu to-wafuu-shu/80 text-[14px] font-bold text-white shadow-lg transition-all hover:scale-105 hover:shadow-xl active:scale-95 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"
+                                                className="flex-1 rounded-md bg-gradient-to-b from-wafuu-shu to-wafuu-shu/80 text-[14px] font-bold text-white shadow-lg transition-all hover:scale-105 hover:shadow-xl active:scale-95 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"
                                             >
                                                 成
                                             </button>
@@ -322,7 +327,7 @@ export function ShogiBoard({
                                                     }
                                                 }}
                                                 aria-label="成らない"
-                                                className="flex-1 rounded-b-md bg-gradient-to-b from-wafuu-ai to-wafuu-ai/80 text-[12px] font-bold text-white shadow-lg transition-all hover:scale-105 hover:shadow-xl active:scale-95 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"
+                                                className="flex-1 rounded-md bg-gradient-to-b from-wafuu-ai to-wafuu-ai/80 text-[13px] font-bold text-white shadow-lg transition-all hover:scale-105 hover:shadow-xl active:scale-95 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"
                                             >
                                                 不成
                                             </button>

@@ -14,6 +14,7 @@ import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import { useCurrentPositionAiHints } from "../hooks/useCurrentPositionAiHints";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
+import { PLAY_CARD, PLAY_OUTLINE_BUTTON } from "./playStyles";
 
 /** ヒントを求めた局面を見ている間だけ、その結果を返す。 */
 function useShownHints(): { moves: AiHintMove[]; isThinking: boolean; isAnalyzing: boolean } {
@@ -97,30 +98,22 @@ export function PlayHintCard({ compact = false, className }: PlayHintCardProps):
     return (
         <section
             aria-label="ヒント"
-            className={cn(
-                "flex flex-col gap-2",
-                !compact && "rounded-xl border border-border bg-card p-3 shadow-card",
-                className,
-            )}
+            className={cn("flex flex-col gap-2", !compact && PLAY_CARD, className)}
         >
             <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold text-foreground">
-                    ヒント
-                    {play && play.hintCount > 0 && (
-                        <span className="pl-2 text-xs font-normal text-muted-foreground">
-                            この対局で {play.hintCount} 回
-                        </span>
-                    )}
-                </h2>
-                <Button
-                    type="button"
-                    variant="outline"
-                    className="min-h-10"
-                    onClick={() => play?.requestHint()}
-                    disabled={!isMyTurn || isAnalyzing}
-                >
-                    {isThinking ? "考え中…" : moves.length > 0 ? "もう一度" : "ヒントを見る"}
-                </Button>
+                <h2 className="text-sm font-semibold text-wafuu-sumi">ヒント</h2>
+                {/* 同じ局面では出し直さない（押すたびに答えが変わると、どれを信じるか迷う）。 */}
+                {moves.length === 0 && (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className={PLAY_OUTLINE_BUTTON}
+                        onClick={() => play?.requestHint()}
+                        disabled={!isMyTurn || isAnalyzing}
+                    >
+                        {isThinking ? "考え中…" : "ヒントを見る"}
+                    </Button>
+                )}
             </div>
             {moves.length > 0 ? (
                 <ol className="flex flex-col gap-1" aria-live="polite">
@@ -131,15 +124,15 @@ export function PlayHintCard({ compact = false, className }: PlayHintCardProps):
                                 key={move.usi}
                                 className={cn(
                                     "flex items-baseline gap-2 rounded-md px-2 py-1 text-sm",
-                                    index === 0 && "bg-wafuu-ai/10",
+                                    index === 0 && "bg-background",
                                 )}
                             >
-                                <span className="w-14 shrink-0 whitespace-nowrap text-xs text-muted-foreground">
+                                <span className="w-14 shrink-0 whitespace-nowrap text-xs text-wafuu-sumi-light">
                                     {index === 0 ? "おすすめ" : `${index + 1}番目`}
                                 </span>
                                 <span
                                     className={cn(
-                                        "flex-1 text-foreground",
+                                        "flex-1 text-wafuu-sumi",
                                         index === 0 && "font-semibold",
                                     )}
                                 >
@@ -150,7 +143,7 @@ export function PlayHintCard({ compact = false, className }: PlayHintCardProps):
                                     {move.scoreText && (
                                         <span
                                             className={cn(
-                                                "pl-1 font-mono tabular-nums",
+                                                "pl-1 tabular-nums",
                                                 position.turn === "sente"
                                                     ? "text-wafuu-shu"
                                                     : "text-wafuu-ai",
@@ -165,12 +158,12 @@ export function PlayHintCard({ compact = false, className }: PlayHintCardProps):
                     })}
                 </ol>
             ) : (
-                <p className="text-xs leading-relaxed text-muted-foreground" aria-live="polite">
+                <p className="text-xs leading-relaxed text-wafuu-sumi-light" aria-live="polite">
                     {isThinking ? "候補手を調べています…" : idleText}
                 </p>
             )}
             {moves.length > 0 && (
-                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                <p className="text-[11px] leading-relaxed text-wafuu-sumi-light">
                     盤の青い枠が、おすすめの手（点線 = 動かす駒、塗り = 行き先）です。
                 </p>
             )}
@@ -182,15 +175,15 @@ export function PlayHintCard({ compact = false, className }: PlayHintCardProps):
 export function PlayHintButton({ className }: { className?: string }): ReactElement {
     const { play } = useShogiMatchConfig();
     const { position, sides, gameMode } = useMatchState();
-    const { isThinking, isAnalyzing } = useShownHints();
+    const { moves, isThinking, isAnalyzing } = useShownHints();
     const isMyTurn = gameMode === "playing" && sides[position.turn].role === "human";
     return (
         <Button
             type="button"
             variant="outline"
-            className={cn("min-h-10", className)}
+            className={cn(PLAY_OUTLINE_BUTTON, className)}
             onClick={() => play?.requestHint()}
-            disabled={!isMyTurn || isAnalyzing}
+            disabled={!isMyTurn || isAnalyzing || moves.length > 0}
         >
             {isThinking ? "考え中…" : "ヒント"}
         </Button>
@@ -215,7 +208,7 @@ export function PlayHintLine({
         return (
             <div className={className} aria-live="polite">
                 {isThinking ? (
-                    <span className="text-sm text-muted-foreground">候補手を調べています…</span>
+                    <span className="text-sm text-wafuu-sumi-light">候補手を調べています…</span>
                 ) : (
                     fallback
                 )}
@@ -228,11 +221,11 @@ export function PlayHintLine({
             <span className="shrink-0 rounded bg-wafuu-ai px-1.5 py-0.5 text-xs font-semibold text-wafuu-ai-fg">
                 ヒント
             </span>
-            <span className="truncate font-semibold text-foreground">{best.displayText}</span>
+            <span className="truncate font-semibold text-wafuu-sumi">{best.displayText}</span>
             <span className="shrink-0 text-xs text-wafuu-sumi">
                 {evaluation.text}
                 {best.scoreText && (
-                    <span className="pl-1 font-mono tabular-nums text-muted-foreground">
+                    <span className="pl-1 tabular-nums text-wafuu-sumi-light">
                         {best.scoreText}
                     </span>
                 )}

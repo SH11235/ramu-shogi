@@ -48,6 +48,9 @@ export function PlayPlayerBar({ position, className }: PlayPlayerBarProps): Reac
             rule.mainMs > 0
                 ? `${Math.round(rule.mainMs / 60_000)}分＋1手${seconds(rule.byoyomiMs)}秒`
                 : `1手${seconds(rule.byoyomiMs)}秒`;
+    } else if (isAI && rule.mainMs === 0) {
+        // AI の 1 手の考慮時間は、設定と同じ言い方で出す（刻々と減る秒は見せない）。
+        timeText = `1手${seconds(rule.byoyomiMs)}秒`;
     } else if (clock.mainMs > 0) {
         timeText = `残り ${formatTime(clock.mainMs)}`;
     } else {
@@ -75,7 +78,7 @@ export function PlayPlayerBar({ position, className }: PlayPlayerBarProps): Reac
             </span>
             <span
                 className={cn(
-                    "ml-auto shrink-0 whitespace-nowrap font-mono text-sm tabular-nums",
+                    "ml-auto shrink-0 whitespace-nowrap text-sm tabular-nums",
                     isTurn ? "font-semibold text-wafuu-sumi" : "text-wafuu-sumi-light",
                 )}
             >

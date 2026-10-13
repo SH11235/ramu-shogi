@@ -29,10 +29,15 @@ export interface PlayScreenConfig {
     loadStartPosition: (sfen: string) => void;
     /** 対局者の名前（人は「あなた」、AI はその名前） */
     playerNames: Record<Player, string>;
+    /** 開始局面の編集中の手番（どちらから指し始めるか）と、その切り替え */
+    editTurn: Player;
+    setEditTurn: (turn: Player) => void;
     /** 手番側に王手がかかっているか（対局中だけ見る） */
     inCheck: boolean;
     /** 終局後・一時停止から、同じ開始局面で設定に戻る */
     newGame: () => void;
+    /** 終局後に、同じ設定・同じ開始局面ですぐもう一局始める */
+    rematch: () => void;
     /** いまの棋譜（指し手が無ければ局面）を研究ノートにする。できないときは null */
     openStudy: (() => void) | null;
     /** いまの局面のヒント（候補手）を求める */

@@ -716,6 +716,7 @@ export function ShogiMatch({
     const [hintCount, setHintCount] = useState(0);
     const [hintPly, setHintPly] = useState<number | null>(null);
     const [pendingOpenStudy, setPendingOpenStudy] = useState(false);
+    const [pendingRematch, setPendingRematch] = useState(false);
     const editAllowed =
         canEditPosition({ isEditMode, viewerMode }) && (!isPlayScreen || positionEditOpen);
     const [isPaused, setIsPaused] = useState(false);
@@ -1100,6 +1101,9 @@ export function ShogiMatch({
             timeSettings,
             isMatchRunning,
             onTimeExpired: async (side) => {
+                // 対局画面では、AI の「考慮時間」は考える長さの目安で、切れても負けにしない
+                // （端末が重いと、AI が制限ぎりぎりまで考えて時計だけ先に 0 になることがある）。
+                if (isPlayScreen && sides[side].role === "engine") return;
                 const winner: Player = side === "sente" ? "gote" : "sente";
                 const result: GameResult = {
                     winner,
@@ -1183,7 +1187,15 @@ export function ShogiMatch({
 
     // 投了処理
     const handleResign = async () => {
-        const currentTurn = positionRef.current.turn;
+        const senteIsHuman = sides.sente.role === "human";
+        const goteIsHuman = sides.gote.role === "human";
+        // 人が片方だけなら、投了するのはその人（相手の AI の手番中に押しても、自分の負けにする）。
+        const currentTurn: Player =
+            senteIsHuman !== goteIsHuman
+                ? senteIsHuman
+                    ? "sente"
+                    : "gote"
+                : positionRef.current.turn;
         const result: GameResult = {
             winner: currentTurn === "sente" ? "gote" : "sente",
             reason: { kind: "resignation", loser: currentTurn },
@@ -2316,6 +2328,33 @@ export function ShogiMatch({
     const treeFitsStudy = [...navigation.tree.nodes.values()].every(
         (node) => node.usiMove === null || isStudyUsiMove(node.usiMove),
     );
+    // 終局後・一時停止から、同じ開始局面の設定の画面に戻す。
+    const resetForNewGame = async () => {
+        matchEndedRef.current = false;
+        setGameResult(null);
+        setShowResultDialog(false);
+        setHintCount(0);
+        setHintPly(null);
+        setIsPaused(false);
+        setPositionEditOpen(false);
+        await stopAllEngines();
+        if (isHirateStart) {
+            await handleResetToStartpos();
+        } else {
+            // 編集した局面・引き継いだ局面から始めた対局は、同じ開始局面に戻す。
+            await importSfen(startSfen, []);
+            resetClocks(false);
+        }
+    };
+    // 「もう一局」は、設定の画面に戻ったのを待ってから始める（戻す処理が行き渡ってから）。
+    const startRematch = useEffectEvent(() => {
+        void resumeAutoPlay();
+    });
+    useEffect(() => {
+        if (!pendingRematch || playPhase !== "setup" || moves.length > 0) return;
+        setPendingRematch(false);
+        startRematch();
+    }, [pendingRematch, playPhase, moves.length]);
     const playConfig: PlayScreenConfig | null = isPlayScreen
         ? {
               phase: playPhase,
@@ -2345,25 +2384,17 @@ export function ShogiMatch({
                   })();
               },
               playerNames: { sente: playerNameFor("sente"), gote: playerNameFor("gote") },
+              editTurn: position.turn,
+              setEditTurn: (turn: Player) => {
+                  if (!editAllowed || turn === positionRef.current.turn) return;
+                  applyEditedPosition({ ...positionRef.current, turn });
+              },
               inCheck: isMatchRunning && isKingInCheck(position),
               newGame: () => {
-                  void (async () => {
-                      matchEndedRef.current = false;
-                      setGameResult(null);
-                      setShowResultDialog(false);
-                      setHintCount(0);
-                      setHintPly(null);
-                      setIsPaused(false);
-                      setPositionEditOpen(false);
-                      await stopAllEngines();
-                      if (isHirateStart) {
-                          await handleResetToStartpos();
-                      } else {
-                          // 編集した局面・引き継いだ局面から始めた対局は、同じ開始局面に戻す。
-                          await importSfen(startSfen, []);
-                          resetClocks(false);
-                      }
-                  })();
+                  void resetForNewGame();
+              },
+              rematch: () => {
+                  void resetForNewGame().then(() => setPendingRematch(true));
               },
               openStudy:
                   onOpenAsStudy === undefined || isMatchRunning || !treeFitsStudy

@@ -42,7 +42,7 @@ export function PlayMoveList({
 
     if (kifMoves.length === 0) {
         return (
-            <p className={cn("px-1 py-2 text-sm text-muted-foreground", className)}>
+            <p className={cn("px-1 py-2 text-sm text-wafuu-sumi-light", className)}>
                 まだ指し手がありません。
             </p>
         );
@@ -61,7 +61,7 @@ export function PlayMoveList({
                 const isCurrent = move.ply === currentPly;
                 const content = (
                     <>
-                        <span className="w-7 shrink-0 text-right font-mono text-[11px] tabular-nums text-muted-foreground">
+                        <span className="w-7 shrink-0 text-right text-[11px] tabular-nums text-wafuu-sumi-light">
                             {move.ply}
                         </span>
                         <span className="truncate">{move.displayText}</span>
@@ -69,7 +69,7 @@ export function PlayMoveList({
                 );
                 const rowClass = cn(
                     "flex min-h-7 w-full items-baseline gap-1.5 rounded px-1 text-left text-sm",
-                    isCurrent ? "bg-wafuu-kin/20 font-semibold text-foreground" : "text-foreground",
+                    isCurrent ? "bg-wafuu-kin/25 font-semibold text-wafuu-sumi" : "text-wafuu-sumi",
                 );
                 return (
                     <li key={move.ply} className="min-w-0">
@@ -80,7 +80,7 @@ export function PlayMoveList({
                                 onClick={() => handlePlySelect(move.ply)}
                                 className={cn(
                                     rowClass,
-                                    "hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                    "hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                 )}
                             >
                                 {content}

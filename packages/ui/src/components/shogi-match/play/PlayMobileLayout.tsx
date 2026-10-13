@@ -17,13 +17,13 @@ import { KifuNavigationToolbar } from "../components/KifuNavigationToolbar";
 import { MobileBoardSection } from "../components/MobileBoardSection";
 import { MobileKifuBar } from "../components/MobileKifuBar";
 import { MobileSettingsSheet } from "../components/MobileSettingsSheet";
-import { SoundToggle } from "../components/SoundToggle";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import type { DisplaySettings } from "../types";
 import {
+    PlayBoardTools,
     PlayMatchActions,
     PlayMessage,
     PlayPositionEditorPanel,
@@ -31,7 +31,7 @@ import {
 } from "./PlayControls";
 import { PlayHintButton, PlayHintLine, usePlayHintMove } from "./PlayHintCard";
 import { PlayPlayerBar } from "./PlayPlayerBar";
-import { PlayResultCard, PlayResultDialog } from "./PlayResult";
+import { PlayResultCard } from "./PlayResult";
 import { PlaySetupPanel } from "./PlaySetupPanel";
 
 interface PlayMobileLayoutProps {
@@ -54,7 +54,6 @@ export function PlayMobileLayout({
         grid,
         position,
         flipBoard,
-        onFlipBoardChange,
         lastMove,
         selection,
         moveShadow,
@@ -66,6 +65,7 @@ export function PlayMobileLayout({
         getHandInfo,
         boardSectionRef,
         isDraggingPiece,
+        message,
         handleSquareSelect,
         handlePromotionChoice,
         handleHandSelect,
@@ -107,27 +107,12 @@ export function PlayMobileLayout({
     const inGame = phase === "playing" || phase === "paused" || phase === "finished";
     const barMoves = kifMoves.map((move) => ({ ply: move.ply, displayText: move.displayText }));
 
-    const flipAndSound = (
-        <div className="flex shrink-0 items-center gap-1">
-            <button
-                type="button"
-                onClick={() => onFlipBoardChange(!flipBoard)}
-                aria-pressed={flipBoard}
-                className="flex h-9 w-9 items-center justify-center rounded-md text-base hover:bg-muted"
-                title="盤面を反転"
-                aria-label="盤面を反転"
-            >
-                🔄
-            </button>
-            <SoundToggle />
-        </div>
-    );
-
     const board = (
         // 設定中と終局後は盤を操作できない。フォーカスや読み上げの対象からも外す。
         <div
             inert={phase === "setup" || phase === "finished"}
-            className="relative flex justify-center"
+            // 持ち駒の欄は、空のときも高さを確保する（駒を取ったときに盤や操作が動かないように）。
+            className="relative flex justify-center [&_[data-zone^=hand-]]:min-h-[34px] [&_[data-zone^=hand-]:empty]:rounded-md [&_[data-zone^=hand-]:empty]:border [&_[data-zone^=hand-]:empty]:border-wafuu-border/50"
         >
             <MobileBoardSection
                 grid={grid}
@@ -165,51 +150,41 @@ export function PlayMobileLayout({
     );
 
     return (
-        <div className="relative flex w-full min-w-0 flex-col gap-2 bg-background px-2 pb-[max(env(safe-area-inset-bottom),12px)] text-foreground">
+        <div className="relative flex w-full min-w-0 flex-col gap-1 bg-background px-2 pb-[max(env(safe-area-inset-bottom),12px)] text-foreground">
             {phase === "setup" && (
                 <>
                     <PlaySetupPanel
                         onOpenAdvanced={() => setIsAdvancedOpen(true)}
-                        className="p-4"
+                        className="px-2 pb-2 pt-3"
                     />
+                    <PlayMessage />
                     <div className="flex items-center justify-between gap-2 px-1">
                         <span className="text-sm text-wafuu-sumi-light">
                             {play?.isCustomStart ? "指定の局面から始めます" : "開始局面（平手）"}
                         </span>
-                        {play?.isCustomStart && (
-                            <button
-                                type="button"
-                                onClick={play.resetToStartpos}
-                                className="min-h-9 rounded-sm px-1 text-sm text-wafuu-sumi-light underline underline-offset-2"
-                            >
-                                平手に戻す
-                            </button>
-                        )}
+                        <PlayBoardTools />
                     </div>
                     {board}
-                    <PlayMessage />
                 </>
             )}
 
             {isEditing && (
                 <>
-                    <div className="flex items-center justify-between gap-2 px-1 pt-1">
-                        <span className="text-sm text-wafuu-sumi-light">
-                            開始局面を編集しています
-                        </span>
-                        {flipAndSound}
-                    </div>
-                    {board}
+                    {/* 編集を終える操作を先に出す（盤の下だと画面の外になる）。 */}
+                    <PlayPositionEditorPanel className="gap-3 px-2 pb-1 pt-3" />
                     <PlayMessage />
-                    <PlayPositionEditorPanel className="p-4" />
+                    {board}
+                    <div className="flex justify-end">
+                        <PlayBoardTools />
+                    </div>
                 </>
             )}
 
             {inGame && (
                 <>
-                    {/* 終局後は、次にすること（研究ノートで振り返る・もう一局）を先に出す。 */}
-                    {phase === "finished" && <PlayResultCard className="gap-3 p-4" />}
-                    <PlayPlayerBar position="top" className="mt-1" />
+                    {/* 終局後は、結果と次にすること（研究ノートで振り返る・もう一局）を先に出す。 */}
+                    {phase === "finished" && <PlayResultCard compact className="px-2 pt-2" />}
+                    <PlayPlayerBar position="top" />
                     {board}
                     <PlayPlayerBar position="bottom" />
                     {phase === "finished" ? (
@@ -234,22 +209,30 @@ export function PlayMobileLayout({
                         </>
                     ) : (
                         <>
-                            {/* 盤のすぐ下: 手番（ヒントを求めたら、その結果）。高さを確保して盤を動かさない。 */}
-                            <PlayHintLine
-                                className="flex min-h-8 items-center justify-center px-1"
-                                fallback={<PlayTurnStatus />}
-                            />
-                            <PlayMatchActions
-                                compact
-                                extra={
-                                    phase === "playing" &&
-                                    (sides.sente.role === "human" ||
-                                        sides.gote.role === "human") ? (
-                                        <PlayHintButton />
-                                    ) : null
-                                }
-                            />
-                            <PlayMessage />
+                            {/* 手番（知らせ・ヒントがあればそれ）と操作。画面の下端に留めて、盤が上へ
+                                送られても押せるようにする。高さは固定して、盤を動かさない。 */}
+                            <div className="sticky bottom-0 z-10 flex flex-col gap-1 bg-background pb-1">
+                                <div className="flex min-h-8 items-center justify-center px-1">
+                                    {message ? (
+                                        <PlayMessage />
+                                    ) : (
+                                        <PlayHintLine
+                                            className="flex min-w-0 items-center justify-center"
+                                            fallback={<PlayTurnStatus />}
+                                        />
+                                    )}
+                                </div>
+                                <PlayMatchActions
+                                    compact
+                                    extra={
+                                        phase === "playing" &&
+                                        (sides.sente.role === "human" ||
+                                            sides.gote.role === "human") ? (
+                                            <PlayHintButton className="flex-1 px-2" />
+                                        ) : null
+                                    }
+                                />
+                            </div>
                             <div className="flex items-center gap-2">
                                 <div className="min-w-0 flex-1">
                                     <MobileKifuBar
@@ -259,7 +242,7 @@ export function PlayMobileLayout({
                                         currentPly={navigationState.currentPly}
                                     />
                                 </div>
-                                {flipAndSound}
+                                <PlayBoardTools />
                             </div>
                         </>
                     )}
@@ -267,8 +250,6 @@ export function PlayMobileLayout({
             )}
 
             {displaySettings.showSearchInfo && <div className="min-h-10 w-full">{searchInfo}</div>}
-
-            <PlayResultDialog />
 
             {/* 詳細設定（先後それぞれの担当・秒数・変則ルール・評価関数の管理・表示） */}
             <BottomSheet

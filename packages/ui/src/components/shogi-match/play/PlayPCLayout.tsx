@@ -3,25 +3,34 @@
  *
  * 2 列: 盤 | 進み具合ごとの欄（設定 → 棋譜とヒント → 結果）。
  * 棋譜の読み込み・駒を動かす検討・棋譜の解析は置かない（研究ノートで行う）。
+ * 盤の位置は、設定 → 対局 → 終局を通して動かさない。
  *
  * Context の前提: MatchSettings / Analysis / MatchState / Navigation を親で Provider 済み。
  */
 
 import type { Dispatch, ReactElement, SetStateAction } from "react";
 import { useState } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../dialog";
+import { Button } from "../../button";
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from "../../dialog";
 import { DisplaySettingsPanel } from "../components/DisplaySettingsPanel";
 import { KifuNavigationToolbar } from "../components/KifuNavigationToolbar";
 import { LeftSidebar } from "../components/LeftSidebar";
 import { PassRightsSettingsDialog } from "../components/PassRightsSettingsDialog";
 import { PCBoardContent } from "../components/PCBoardContent";
-import { SoundToggle } from "../components/SoundToggle";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import type { DisplaySettings, PassRightsSettings } from "../types";
 import {
+    PlayBoardTools,
     PlayMatchActions,
     PlayMessage,
     PlayPositionEditorPanel,
@@ -30,8 +39,9 @@ import {
 import { PlayHintCard, usePlayHintMove } from "./PlayHintCard";
 import { PlayMoveList } from "./PlayMoveList";
 import { PlayPlayerBar } from "./PlayPlayerBar";
-import { PlayResultCard, PlayResultDialog } from "./PlayResult";
+import { PlayResultCard } from "./PlayResult";
 import { PlaySetupPanel } from "./PlaySetupPanel";
+import { PLAY_CARD, PLAY_OUTLINE_BUTTON, PLAY_TEXT_LINK } from "./playStyles";
 
 interface PlayPCLayoutProps {
     matchLayoutClasses: string;
@@ -64,7 +74,6 @@ export function PlayPCLayout({
         sides,
         position,
         flipBoard,
-        onFlipBoardChange,
         selection,
         moveShadow,
         displaySettings,
@@ -96,34 +105,20 @@ export function PlayPCLayout({
     return (
         <section
             // 盤は画面の高さに合わせる（低い画面で縦にはみ出さず、高い画面で小さく残らないように）。
-            className={`${matchLayoutClasses} [--shogi-cell-size:clamp(40px,calc((100dvh-370px)/9),60px)]`}
+            className={`${matchLayoutClasses} [--shogi-cell-size:clamp(40px,calc((100dvh-384px)/9),72px)]`}
         >
             <div className="w-full overflow-x-auto">
-                <div className="mx-auto flex w-max items-start gap-6 px-4 py-2">
-                    {/* 盤の列 */}
+                <div className="mx-auto flex w-max items-start gap-14 px-4 py-2">
+                    {/* 盤の列: 相手の帯 → 持ち駒 → 盤 → 持ち駒 → 自分の帯 → 操作 */}
                     <div className="flex shrink-0 flex-col items-center gap-2">
                         <div ref={boardSectionRef} className="relative flex w-fit flex-col gap-2">
+                            {/* 盤の表示の操作（向き・音）は、盤の右上の角に固定する（どの段階でも同じ位置）。 */}
+                            <PlayBoardTools className="absolute left-full top-0 ml-2 flex-col" />
                             <div
-                                // 持ち駒の欄は、空のときも高さを確保する（駒を取ったときに盤が動かないように）。
-                                className={`flex flex-col items-center gap-2 [&_[data-zone^=hand-]]:min-h-[38px] ${isDraggingPiece ? "touch-none" : ""}`}
+                                // 持ち駒の欄は、空のときも同じ高さで見せる（駒を取ったときに盤や操作が動かないように）。
+                                className={`flex flex-col items-center gap-2 [&_[data-zone^=hand-]]:min-h-[50px] [&_[data-zone^=hand-]:empty]:rounded-md [&_[data-zone^=hand-]:empty]:border [&_[data-zone^=hand-]:empty]:border-wafuu-border/50 ${isDraggingPiece ? "touch-none" : ""}`}
                             >
-                                {/* 盤の上: 相手の帯と、盤の向き・音。 */}
-                                <div className="flex w-full items-center gap-2">
-                                    <PlayPlayerBar position="top" className="min-w-0 flex-1" />
-                                    <button
-                                        type="button"
-                                        onClick={() => onFlipBoardChange(!flipBoard)}
-                                        aria-pressed={flipBoard}
-                                        className={`flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-wafuu-border px-2 text-[13px] ${
-                                            flipBoard ? "bg-wafuu-kin/20" : "bg-card"
-                                        }`}
-                                        title="盤面を反転"
-                                    >
-                                        <span aria-hidden>🔄</span>
-                                        <span>反転</span>
-                                    </button>
-                                    <SoundToggle />
-                                </div>
+                                <PlayPlayerBar position="top" />
 
                                 <div inert={boardInert} className="contents">
                                     <PCBoardContent
@@ -162,7 +157,7 @@ export function PlayPCLayout({
 
                                 <PlayPlayerBar position="bottom" />
 
-                                {/* 盤の下。操作の有無で盤が動かないよう、高さを確保する。 */}
+                                {/* 盤の下。操作の有無で列の高さが変わらないよう、高さを確保する。 */}
                                 <div className="flex min-h-10 w-full flex-col items-center gap-2">
                                     <PlayMatchActions />
                                     {phase === "finished" && (
@@ -176,52 +171,56 @@ export function PlayPCLayout({
                                             canGoForward={navigationState.canGoForward}
                                         />
                                     )}
-                                    {phase === "setup" && play?.isCustomStart && (
-                                        <button
-                                            type="button"
-                                            onClick={play.resetToStartpos}
-                                            className="rounded-sm text-sm text-wafuu-sumi-light underline underline-offset-2 hover:text-wafuu-sumi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                        >
-                                            平手に戻す
-                                        </button>
-                                    )}
-                                    <PlayMessage />
+                                    {phase !== "playing" && phase !== "paused" && <PlayMessage />}
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     {/* 進み具合ごとの欄 */}
-                    <div className="flex w-[var(--panel-width)] shrink-0 flex-col gap-3">
+                    <div className="flex w-[var(--panel-width)] shrink-0 flex-col gap-4 pt-1">
                         {phase === "setup" && (
                             <PlaySetupPanel onOpenAdvanced={() => setIsAdvancedOpen(true)} />
                         )}
                         {isEditing && <PlayPositionEditorPanel />}
                         {phase === "finished" && <PlayResultCard />}
                         {(phase === "playing" || phase === "paused") && (
-                            <PlayTurnStatus className="min-h-9 px-1 text-base" />
+                            <div className="flex flex-col">
+                                <PlayTurnStatus className="min-h-9 text-lg" />
+                                {/* 知らせ（指せない手など）は手番のそばに出す。高さを確保して下を動かさない。 */}
+                                <div className="min-h-5 text-left [&>p]:text-left">
+                                    <PlayMessage />
+                                </div>
+                            </div>
                         )}
                         {inGame && (
                             <section
                                 aria-label="棋譜"
-                                className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3 shadow-card"
+                                className={`flex flex-col gap-2 ${PLAY_CARD}`}
                             >
-                                <h2 className="text-sm font-semibold text-foreground">棋譜</h2>
+                                <h2 className="text-sm font-semibold text-wafuu-sumi">棋譜</h2>
                                 <PlayMoveList
                                     selectable={phase === "finished"}
                                     upToCurrent={phase !== "finished"}
-                                    className="max-h-[min(34vh,300px)]"
+                                    className="max-h-[max(120px,calc(100dvh-520px))]"
                                 />
                             </section>
                         )}
                         {(phase === "playing" || phase === "paused") && hasHumanPlayer && (
                             <PlayHintCard />
                         )}
+                        {phase === "setup" && play?.isCustomStart && (
+                            <button
+                                type="button"
+                                onClick={play.resetToStartpos}
+                                className={`${PLAY_TEXT_LINK} self-start text-[13px] text-wafuu-sumi-light hover:text-wafuu-sumi`}
+                            >
+                                平手に戻す
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
-
-            <PlayResultDialog />
 
             {/* 詳細設定（先後それぞれの担当・秒数・変則ルール・評価関数の管理・表示） */}
             <Dialog open={isAdvancedOpen} onOpenChange={setIsAdvancedOpen}>
@@ -233,11 +232,11 @@ export function PlayPCLayout({
                         <DialogHeader>
                             <DialogTitle>詳細設定</DialogTitle>
                             <DialogDescription>
-                                先手・後手を個別に設定します（AI
-                                同士・人同士、秒数の指定、変則ルール、評価関数、盤の表示）。ここで変えた内容は、設定の欄にも反映されます。
+                                先手・後手を個別に設定します。ここで変えた内容は、設定の欄にも反映されます。
                             </DialogDescription>
                         </DialogHeader>
                         <LeftSidebar
+                            bare
                             displaySettingsOpen={isDisplaySettingsOpen}
                             onDisplaySettingsToggle={() =>
                                 onDisplaySettingsOpenChange(!isDisplaySettingsOpen)
@@ -251,6 +250,15 @@ export function PlayPCLayout({
                                 ) : null
                             }
                         />
+                        <DialogClose asChild>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className={`self-end ${PLAY_OUTLINE_BUTTON}`}
+                            >
+                                閉じる
+                            </Button>
+                        </DialogClose>
                     </div>
                 </DialogContent>
             </Dialog>

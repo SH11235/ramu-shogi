@@ -13,6 +13,7 @@ import { useEffect, useEffectEvent, useState } from "react";
 import { Button } from "../../button";
 import { NativeSelect } from "../../native-select";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
+import { PLAY_HEADING, PLAY_PRIMARY_BUTTON, PLAY_TEXT_LINK } from "./playStyles";
 import {
     AI_TIME_CHOICES,
     MY_TIME_CHOICES,
@@ -92,8 +93,7 @@ const timeOptions = (choices: TimeChoice[]) =>
 const sideLabel = (side: Player): string => (side === "sente" ? "先手" : "後手");
 
 const FIELD_LABEL_CLASS = "text-xs font-medium text-wafuu-sumi-light";
-const TEXT_LINK_CLASS =
-    "inline-flex min-h-10 items-center rounded-sm underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-0";
+const TEXT_LINK_CLASS = PLAY_TEXT_LINK;
 
 /** 「対局開始」の下に出す、これから始まる対局の要約。 */
 function describeMatch(setup: PlaySetup, sideChoice: SideChoice): string {
@@ -163,14 +163,12 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
         <section
             aria-labelledby="play-setup-heading"
             className={cn(
-                "flex flex-col gap-3 rounded-xl border border-wafuu-border bg-card p-5 shadow-card",
+                // 設定はこの画面の主役なので、背景付きの欄にしない（見出しと項目を、地の上に並べる）。
+                "flex flex-col gap-4",
                 className,
             )}
         >
-            <h1
-                id="play-setup-heading"
-                className="font-display text-2xl font-semibold text-wafuu-sumi"
-            >
+            <h1 id="play-setup-heading" className={PLAY_HEADING}>
                 AI と対局する
             </h1>
 
@@ -239,30 +237,29 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
             {setup.kind !== "humans" && setup.opponent?.supportsLevel !== false && (
                 <label className="flex flex-col gap-1.5">
                     <span className={cn("flex items-baseline justify-between", FIELD_LABEL_CLASS)}>
-                        <span>
-                            強さ
-                            <span className="pl-2 font-normal text-muted-foreground">
-                                0 が最も弱く、{SKILL_LEVEL_MAX} が最も強い
-                            </span>
-                        </span>
-                        <span className="font-mono text-sm text-wafuu-sumi">
+                        <span>強さ</span>
+                        <span className="text-sm tabular-nums text-wafuu-sumi">
                             レベル {setup.level}
                         </span>
                     </span>
-                    <input
-                        type="range"
-                        min={0}
-                        max={SKILL_LEVEL_MAX}
-                        value={setup.level}
-                        disabled={setup.locked}
-                        onChange={(event) => setup.chooseLevel(Number(event.target.value))}
-                        className="h-8 w-full accent-wafuu-shu md:h-6"
-                    />
+                    <span className="flex items-center gap-2 text-[11px] text-wafuu-sumi-light">
+                        <span aria-hidden>弱</span>
+                        <input
+                            type="range"
+                            min={0}
+                            max={SKILL_LEVEL_MAX}
+                            value={setup.level}
+                            disabled={setup.locked}
+                            onChange={(event) => setup.chooseLevel(Number(event.target.value))}
+                            className="h-8 min-w-0 flex-1 accent-wafuu-shu md:h-6"
+                        />
+                        <span aria-hidden>強</span>
+                    </span>
                 </label>
             )}
 
             {isVsAi && (
-                <div className="flex flex-col gap-3.5">
+                <div className="flex flex-col gap-4">
                     <Segmented
                         label="AI の考慮時間（1手）"
                         options={timeOptions(AI_TIME_CHOICES)}
@@ -306,8 +303,8 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                     <option value="edit">盤を編集して決める…</option>
                 </NativeSelect>
                 {preset && play?.isCustomStart && (
-                    <p className="text-xs text-muted-foreground">
-                        後手（上手）の駒を落とし、後手から指します。
+                    <p className="text-xs text-wafuu-sumi-light">
+                        後手（上手）の駒を落とします。上手（後手）が先に指します。
                     </p>
                 )}
             </div>
@@ -317,27 +314,35 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                     type="button"
                     size="lg"
                     onClick={handleStart}
-                    className="h-12 w-full text-base font-semibold"
+                    className={cn("h-12 w-full text-base font-semibold", PLAY_PRIMARY_BUTTON)}
                 >
                     {downloadMb !== null ? "ダウンロードして対局開始" : "対局開始"}
                 </Button>
-                <p className="text-center text-xs leading-relaxed text-muted-foreground">
-                    {describeMatch(setup, sideChoice)}
-                </p>
                 {downloadMb !== null && (
-                    <p className="text-center text-xs leading-relaxed text-muted-foreground">
-                        初回だけ約 {downloadMb}MB のダウンロードがあります。
-                        <button
+                    <>
+                        {/* スマホでは、ダウンロードなしで始める道を同じ大きさのボタンで並べる。 */}
+                        <Button
                             type="button"
+                            variant="outline"
                             onClick={handleQuickStart}
-                            className={cn(
-                                TEXT_LINK_CLASS,
-                                "font-medium text-wafuu-ai hover:text-wafuu-ai-light",
-                            )}
+                            className="min-h-11 w-full border-wafuu-border bg-background text-wafuu-sumi hover:bg-wafuu-washi-warm md:hidden"
                         >
                             ダウンロードせずに簡易AI と指す
-                        </button>
-                    </p>
+                        </Button>
+                        <p className="text-center text-xs leading-relaxed text-wafuu-sumi-light">
+                            初回だけ約 {downloadMb}MB のダウンロードがあります。
+                            <button
+                                type="button"
+                                onClick={handleQuickStart}
+                                className={cn(
+                                    TEXT_LINK_CLASS,
+                                    "hidden font-medium text-wafuu-ai hover:text-wafuu-ai-light md:inline-flex",
+                                )}
+                            >
+                                ダウンロードせずに簡易AI と指す
+                            </button>
+                        </p>
+                    </>
                 )}
             </div>
 
