@@ -9,7 +9,10 @@ export interface AiHintMove {
     scoreText: string;
     scoreTone: "sente" | "gote" | "neutral";
     pv?: string[];
+    /** 評価値（先手から見た値） */
     evalCp?: number;
+    /** 詰みの手数（先手から見て、正 = 先手の勝ち） */
+    evalMate?: number;
 }
 
 export interface AiHintSummary {

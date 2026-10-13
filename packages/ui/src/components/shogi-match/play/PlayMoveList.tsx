@@ -12,12 +12,19 @@ import { useNavigation } from "../contexts/NavigationContext";
 interface PlayMoveListProps {
     /** 指し手を押して、その局面へ移れるか（終局後） */
     selectable: boolean;
+    /** いま見ている手までだけ出す（対局中。待ったで取り消した手を並べない） */
+    upToCurrent?: boolean;
     className?: string;
 }
 
-export function PlayMoveList({ selectable, className }: PlayMoveListProps): ReactElement {
-    const { kifMoves, navigationState, handlePlySelect } = useNavigation();
+export function PlayMoveList({
+    selectable,
+    upToCurrent = false,
+    className,
+}: PlayMoveListProps): ReactElement {
+    const { kifMoves: allMoves, navigationState, handlePlySelect } = useNavigation();
     const { currentPly } = navigationState;
+    const kifMoves = upToCurrent ? allMoves.filter((move) => move.ply <= currentPly) : allMoves;
     const listRef = useRef<HTMLOListElement>(null);
 
     // 見ている手（対局中は最新の手）が見える位置へ送る。

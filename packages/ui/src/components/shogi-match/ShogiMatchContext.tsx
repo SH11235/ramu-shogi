@@ -23,6 +23,14 @@ export interface PlayScreenConfig {
     closePositionEditor: () => void;
     /** 平手の開始局面に戻す */
     resetToStartpos: () => void;
+    /** いまの開始局面（SFEN。平手は "startpos" のこともある） */
+    startSfen: string;
+    /** 開始局面を、指定の局面（駒落ちなど）に替える */
+    loadStartPosition: (sfen: string) => void;
+    /** 対局者の名前（人は「あなた」、AI はその名前） */
+    playerNames: Record<Player, string>;
+    /** 手番側に王手がかかっているか（対局中だけ見る） */
+    inCheck: boolean;
     /** 終局後・一時停止から、同じ開始局面で設定に戻る */
     newGame: () => void;
     /** いまの棋譜（指し手が無ければ局面）を研究ノートにする。できないときは null */

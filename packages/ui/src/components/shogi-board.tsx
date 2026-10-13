@@ -67,6 +67,8 @@ interface ShogiBoardProps {
      * ホバーできない端末（タッチ）では出ない。
      */
     moveShadow?: ShogiBoardMoveShadow | null;
+    /** ヒントとして示す手（動かす駒のマスと行き先。打つ手は行き先だけ）。枠で示す。 */
+    hintMove?: { from?: string | null; to: string } | null;
 }
 
 /**
@@ -86,6 +88,7 @@ export function ShogiBoard({
     squareNotation = "none",
     showBoardLabels = false,
     moveShadow = null,
+    hintMove = null,
 }: ShogiBoardProps): ReactElement {
     const lastPointerTypeRef = useRef<"mouse" | "touch" | "pen" | null>(null);
     const { files, ranks } = getBoardLabels(flipBoard);
@@ -142,6 +145,8 @@ export function ShogiBoard({
                                 cell.id === lastMove?.from && lastMove?.from !== null;
                             const isPromotionSquare = promotionSquare === cell.id;
                             const isShadowTarget = shadow?.targets.has(cell.id) ?? false;
+                            const isHintTo = hintMove?.to === cell.id;
+                            const isHintFrom = hintMove?.from === cell.id;
 
                             // 背景色: ハイライト時は上書き、通常時はチェッカーパターン
                             const isHighlighted = isLastMoveTo || isLastMoveFrom || isSelected;
@@ -155,6 +160,18 @@ export function ShogiBoard({
                                     key={cell.id}
                                     className="relative aspect-square w-[var(--shogi-cell-size,48px)] border-b border-r border-shogi-border"
                                 >
+                                    {(isHintTo || isHintFrom) && (
+                                        <span
+                                            aria-hidden
+                                            data-hint={isHintTo ? "to" : "from"}
+                                            className={cn(
+                                                "pointer-events-none absolute inset-0 z-10 rounded-sm",
+                                                isHintTo
+                                                    ? "bg-wafuu-ai/25 ring-[3px] ring-inset ring-wafuu-ai"
+                                                    : "border-2 border-dashed border-wafuu-ai",
+                                            )}
+                                        />
+                                    )}
                                     <button
                                         type="button"
                                         data-square={cell.id}

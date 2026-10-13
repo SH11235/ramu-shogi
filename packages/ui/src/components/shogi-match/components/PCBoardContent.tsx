@@ -61,6 +61,10 @@ interface PCBoardContentProps {
     passRightsSettings?: PassRightsSettings;
     passRights?: { sente: number; gote: number };
     turn?: Player;
+    /** 持ち駒の欄の大きさ（省略時は、編集中は "edit"、それ以外は "normal"） */
+    handSize?: "medium" | "normal";
+    /** ヒントとして盤に示す手（対局画面） */
+    hintMove?: { from?: string | null; to: string } | null;
 }
 
 /**
@@ -96,6 +100,8 @@ export function PCBoardContent({
     passRightsSettings,
     passRights,
     turn,
+    hintMove,
+    handSize = "normal",
 }: PCBoardContentProps): ReactElement {
     return (
         <>
@@ -122,7 +128,7 @@ export function PCBoardContent({
                             : undefined
                     }
                     flipBoard={flipBoard}
-                    size={isEditModeActive ? "edit" : "normal"}
+                    size={isEditModeActive ? "edit" : handSize}
                     isAI={topHand.isAI}
                 />
                 {/* パス権表示（上側プレイヤー） */}
@@ -173,6 +179,7 @@ export function PCBoardContent({
                 squareNotation={displaySettings.squareNotation}
                 showBoardLabels={displaySettings.showBoardLabels}
                 moveShadow={isEditModeActive ? null : moveShadow}
+                hintMove={hintMove}
             />
 
             {candidateNote ? (
@@ -202,7 +209,7 @@ export function PCBoardContent({
                             : undefined
                     }
                     flipBoard={flipBoard}
-                    size={isEditModeActive ? "edit" : "normal"}
+                    size={isEditModeActive ? "edit" : handSize}
                     isAI={bottomHand.isAI}
                 />
                 {/* パス権表示（下側プレイヤー） */}

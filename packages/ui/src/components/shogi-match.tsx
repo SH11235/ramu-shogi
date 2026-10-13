@@ -17,6 +17,7 @@ import {
     DEFAULT_PRESET_KEY,
     getAllSquares,
     getPositionService,
+    isKingInCheck,
     isStudyUsiMove,
     NONE_NNUE_SELECTION,
     resolveWorkerCount,
@@ -553,6 +554,8 @@ interface ShogiMatchProps {
      * いまの局面のヒントだけにする。省略時は、従来の対局・検討を兼ねた画面。
      */
     screen?: "play";
+    /** 対局画面（`screen="play"`）で、進み具合（設定・対局中・終局後など）が変わったときに呼ぶ。 */
+    onPlayPhaseChange?: (phase: PlayPhase) => void;
     /** 対局画面（`screen="play"`）の設定の欄の下に出す、ほかのページへの案内（研究ノートなど）。 */
     playSetupFooter?: React.ReactNode;
     /**
@@ -623,6 +626,7 @@ export function ShogiMatch({
     viewerMode = false,
     screen,
     playSetupFooter,
+    onPlayPhaseChange,
     boardTopContent,
     mobileHeaderContent,
     evalGraphPinned = false,
@@ -1272,6 +1276,8 @@ export function ShogiMatch({
             for (let i = 0; i < undoCount; i++) {
                 navigation.goBack();
             }
+            // 対局画面では、取り消した手を棋譜から消す（終局後の棋譜や研究ノートに残さない）。
+            if (isPlayScreen) navigation.truncate();
 
             // 停止で破棄したエンジンを時計再開前に初期化し直す
             // （初期化時間が秒読みから差し引かれるのを防ぐ）
@@ -2263,6 +2269,26 @@ export function ShogiMatch({
     ) : null;
 
     // ---- 対局画面（screen="play"）の状態と操作 ----
+    const notifyPlayPhase = useEffectEvent((phase: PlayPhase) => onPlayPhaseChange?.(phase));
+    // 進み具合が変わったら、前の段階の選択とメッセージを持ち越さない
+    // （「合法手ではありません」や駒の選択の枠が、一時停止中・終局後まで残らないようにする）。
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 進み具合が変わったときだけ
+    useEffect(() => {
+        if (!isPlayScreen) return;
+        notifyPlayPhase(playPhase);
+        setSelection(null);
+        if (playPhase !== "setup") setMessage(null);
+    }, [isPlayScreen, playPhase]);
+    // 指せない手を選んだ知らせは、しばらくしたら消す（次の手を考える邪魔にしない）。
+    const illegalMoveMessage = isPlayScreen && message?.text === "合法手ではありません";
+    useEffect(() => {
+        if (!illegalMoveMessage) return;
+        const timer = setTimeout(() => {
+            setMessage(null);
+            setSelection(null);
+        }, 2500);
+        return () => clearTimeout(timer);
+    }, [illegalMoveMessage, setMessage, setSelection]);
     const HIRATE_BOARD_SFEN = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
     const isHirateStart = startSfen === "startpos" || startSfen.includes(HIRATE_BOARD_SFEN);
     const playerNameFor = (side: Player): string => {
@@ -2310,6 +2336,16 @@ export function ShogiMatch({
               resetToStartpos: () => {
                   void handleResetToStartpos();
               },
+              startSfen,
+              loadStartPosition: (sfen: string) => {
+                  void (async () => {
+                      setPositionEditOpen(false);
+                      await importSfen(sfen, []);
+                      resetClocks(false);
+                  })();
+              },
+              playerNames: { sente: playerNameFor("sente"), gote: playerNameFor("gote") },
+              inCheck: isMatchRunning && isKingInCheck(position),
               newGame: () => {
                   void (async () => {
                       matchEndedRef.current = false;

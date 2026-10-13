@@ -13,7 +13,6 @@
 import type { ReactElement, ReactNode } from "react";
 import { useState } from "react";
 import { BottomSheet } from "../components/BottomSheet";
-import { ClockDisplay } from "../components/ClockDisplay";
 import { KifuNavigationToolbar } from "../components/KifuNavigationToolbar";
 import { MobileBoardSection } from "../components/MobileBoardSection";
 import { MobileKifuBar } from "../components/MobileKifuBar";
@@ -30,7 +29,8 @@ import {
     PlayPositionEditorPanel,
     PlayTurnStatus,
 } from "./PlayControls";
-import { PlayHintCard } from "./PlayHintCard";
+import { PlayHintButton, PlayHintLine, usePlayHintMove } from "./PlayHintCard";
+import { PlayPlayerBar } from "./PlayPlayerBar";
 import { PlayResultCard, PlayResultDialog } from "./PlayResult";
 import { PlaySetupPanel } from "./PlaySetupPanel";
 
@@ -63,7 +63,6 @@ export function PlayMobileLayout({
         editFromSquare,
         displaySettings,
         passRightsSettings,
-        clocks,
         getHandInfo,
         boardSectionRef,
         isDraggingPiece,
@@ -101,6 +100,7 @@ export function PlayMobileLayout({
     } = useMatchSettings();
     const { navigationState, navigationHandlers, kifMoves, handlePlySelect } = useNavigation();
     const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+    const hintMove = usePlayHintMove();
 
     const phase = play?.phase ?? "setup";
     const isEditing = phase === "editing";
@@ -124,7 +124,11 @@ export function PlayMobileLayout({
     );
 
     const board = (
-        <div className="relative flex justify-center">
+        // 設定中と終局後は盤を操作できない。フォーカスや読み上げの対象からも外す。
+        <div
+            inert={phase === "setup" || phase === "finished"}
+            className="relative flex justify-center"
+        >
             <MobileBoardSection
                 grid={grid}
                 position={position}
@@ -147,8 +151,10 @@ export function PlayMobileLayout({
                 onHandPiecePointerDown={isEditing ? handleHandPiecePointerDown : undefined}
                 onIncrementHand={handleIncrementHand}
                 onDecrementHand={handleDecrementHand}
-                topHand={getHandInfo("top")}
-                bottomHand={getHandInfo("bottom")}
+                // 対局者は帯に出すので、駒台には AI のアイコンを出さない。
+                topHand={{ ...getHandInfo("top"), isAI: false }}
+                bottomHand={{ ...getHandInfo("bottom"), isAI: false }}
+                hintMove={hintMove}
                 boardSectionRef={boardSectionRef}
                 isDraggingPiece={isDraggingPiece}
                 passRightsSettings={passRightsSettings}
@@ -201,24 +207,13 @@ export function PlayMobileLayout({
 
             {inGame && (
                 <>
-                    <header className="flex flex-col gap-1 pt-1">
-                        <ClockDisplay
-                            clocks={clocks}
-                            timeSettings={timeSettings}
-                            isRunning={isMatchRunning}
-                            className="[&>div]:gap-0.5 [&>div]:px-0 [&_.font-mono]:text-xs"
-                            centerContent={flipAndSound}
-                        />
-                        <PlayTurnStatus className="justify-center" />
-                    </header>
+                    {/* 終局後は、次にすること（研究ノートで振り返る・もう一局）を先に出す。 */}
+                    {phase === "finished" && <PlayResultCard className="gap-3 p-4" />}
+                    <PlayPlayerBar position="top" className="mt-1" />
                     {board}
+                    <PlayPlayerBar position="bottom" />
                     {phase === "finished" ? (
                         <>
-                            <MobileKifuBar
-                                moves={barMoves}
-                                currentPly={navigationState.currentPly}
-                                onPlySelect={handlePlySelect}
-                            />
                             <div className="flex justify-center">
                                 <KifuNavigationToolbar
                                     currentPly={navigationState.currentPly}
@@ -230,18 +225,42 @@ export function PlayMobileLayout({
                                     canGoForward={navigationState.canGoForward}
                                 />
                             </div>
-                            <PlayMessage />
-                            <PlayResultCard className="p-4" />
-                        </>
-                    ) : (
-                        <>
                             <MobileKifuBar
                                 moves={barMoves}
                                 currentPly={navigationState.currentPly}
+                                onPlySelect={handlePlySelect}
                             />
-                            <PlayMatchActions compact />
                             <PlayMessage />
-                            <PlayHintCard compact className="px-1" />
+                        </>
+                    ) : (
+                        <>
+                            {/* 盤のすぐ下: 手番（ヒントを求めたら、その結果）。高さを確保して盤を動かさない。 */}
+                            <PlayHintLine
+                                className="flex min-h-8 items-center justify-center px-1"
+                                fallback={<PlayTurnStatus />}
+                            />
+                            <PlayMatchActions
+                                compact
+                                extra={
+                                    phase === "playing" &&
+                                    (sides.sente.role === "human" ||
+                                        sides.gote.role === "human") ? (
+                                        <PlayHintButton />
+                                    ) : null
+                                }
+                            />
+                            <PlayMessage />
+                            <div className="flex items-center gap-2">
+                                <div className="min-w-0 flex-1">
+                                    <MobileKifuBar
+                                        moves={barMoves.filter(
+                                            (move) => move.ply <= navigationState.currentPly,
+                                        )}
+                                        currentPly={navigationState.currentPly}
+                                    />
+                                </div>
+                                {flipAndSound}
+                            </div>
                         </>
                     )}
                 </>

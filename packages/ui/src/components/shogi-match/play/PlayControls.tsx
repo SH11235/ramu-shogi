@@ -4,7 +4,7 @@
  */
 
 import { cn } from "@shogi/design-system";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -56,6 +56,7 @@ export function PlayTurnStatus({ className }: { className?: string }): ReactElem
 
     let text: string;
     let tone: "mine" | "theirs" | "plain" = "plain";
+    const checkText = play?.inCheck ? "王手がかかっています" : null;
     if (phase === "paused") {
         text = "一時停止中";
     } else if (phase === "finished") {
@@ -82,6 +83,11 @@ export function PlayTurnStatus({ className }: { className?: string }): ReactElem
             )}
         >
             {text}
+            {checkText && (
+                <span className="rounded bg-wafuu-shu px-1.5 py-0.5 text-xs font-semibold text-wafuu-shu-fg">
+                    {checkText}
+                </span>
+            )}
             {phase === "playing" || phase === "paused" || phase === "finished" ? (
                 <span className="text-xs font-normal tabular-nums text-muted-foreground">
                     {moves.length === 0 ? "開始局面" : `${moves.length}手目`}
@@ -98,6 +104,7 @@ function ConfirmButton({
     actionLabel,
     onConfirm,
     size,
+    className,
 }: {
     label: string;
     title: string;
@@ -105,11 +112,12 @@ function ConfirmButton({
     actionLabel: string;
     onConfirm: () => void;
     size?: "default" | "sm";
+    className?: string;
 }): ReactElement {
     return (
         <AlertDialog>
             <AlertDialogTrigger asChild>
-                <Button type="button" variant="outline" size={size}>
+                <Button type="button" variant="outline" size={size} className={className}>
                     {label}
                 </Button>
             </AlertDialogTrigger>
@@ -130,10 +138,13 @@ function ConfirmButton({
 /** 対局中・一時停止中の操作（待った・投了・一時停止／再開・やめる）。 */
 export function PlayMatchActions({
     compact = false,
+    extra,
     className,
 }: {
     /** スマホ向けに詰める */
     compact?: boolean;
+    /** 「待った」の隣に足す操作（スマホのヒントのボタン） */
+    extra?: ReactNode;
     className?: string;
 }): ReactElement | null {
     const { play } = useShogiMatchConfig();
@@ -151,60 +162,53 @@ export function PlayMatchActions({
         shouldShowPassConfirm,
     } = useMatchState();
     if (!play) return null;
-    const size = compact ? "sm" : "default";
     const bothEngines = sides.sente.role === "engine" && sides.gote.role === "engine";
     const canUndo = moves.length > 0 && !bothEngines && sides[position.turn].role === "human";
 
     if (play.phase === "paused") {
         return (
             <div className={cn("flex flex-wrap items-center justify-center gap-2", className)}>
-                <Button type="button" size={size} onClick={play.startMatch}>
+                <Button type="button" className="min-h-10" onClick={play.startMatch}>
                     対局を再開
                 </Button>
-                <ConfirmButton
-                    label="投了"
-                    title="投了しますか？"
-                    description="対局を終了します。"
-                    actionLabel="投了する"
-                    onConfirm={handleResign}
-                    size={size}
-                />
+                {!bothEngines && (
+                    <ConfirmButton
+                        label="投了"
+                        title="投了しますか？"
+                        description="対局を終了します。"
+                        actionLabel="投了する"
+                        onConfirm={handleResign}
+                        className="min-h-10"
+                    />
+                )}
                 <ConfirmButton
                     label="対局をやめる"
                     title="対局をやめますか？"
                     description="この対局の棋譜は残りません。設定の画面に戻ります。"
                     actionLabel="やめる"
                     onConfirm={play.newGame}
-                    size={size}
+                    className="min-h-10"
                 />
             </div>
         );
     }
     if (play.phase !== "playing") return null;
 
+    // 並び: 待った ・（ヒント）・ パス ・ 一時停止 …… 投了。取り返しのつかない投了は端に離す。
     return (
-        <div className={cn("flex flex-wrap items-center justify-center gap-2", className)}>
+        <div className={cn("flex w-full flex-wrap items-center gap-2", className)}>
             {!bothEngines && (
                 <Button
                     type="button"
                     variant="outline"
-                    size={size}
+                    className="min-h-10"
                     onClick={handleUndo}
                     disabled={!canUndo}
                 >
                     待った
                 </Button>
             )}
-            {!bothEngines && (
-                <ConfirmButton
-                    label="投了"
-                    title="投了しますか？"
-                    description="対局を終了します。"
-                    actionLabel="投了する"
-                    onConfirm={handleResign}
-                    size={size}
-                />
-            )}
+            {extra}
             {shouldRenderPassButton && position.passRights && (
                 <PassButton
                     canPass={canMakePassMove}
@@ -215,9 +219,19 @@ export function PlayMatchActions({
                     compact={compact}
                 />
             )}
-            <Button type="button" variant="ghost" size={size} onClick={pauseAutoPlay}>
+            <Button type="button" variant="outline" className="min-h-10" onClick={pauseAutoPlay}>
                 一時停止
             </Button>
+            {!bothEngines && (
+                <ConfirmButton
+                    label="投了"
+                    title="投了しますか？"
+                    description="対局を終了します。"
+                    actionLabel="投了する"
+                    onConfirm={handleResign}
+                    className="ml-auto min-h-10"
+                />
+            )}
         </div>
     );
 }
@@ -241,7 +255,7 @@ export function PlayPositionEditorPanel({ className }: { className?: string }): 
                     開始局面を編集
                 </h1>
                 <p className="text-[13px] leading-relaxed text-wafuu-sumi-light">
-                    この局面から対局を始めます。
+                    決めたら設定に戻り、相手と手番を選んで対局を始めます。
                 </p>
             </div>
             <ul className="flex list-disc flex-col gap-1 pl-5 text-[13px] leading-relaxed text-wafuu-sumi">
@@ -256,7 +270,7 @@ export function PlayPositionEditorPanel({ className }: { className?: string }): 
                     className="h-12 w-full text-base font-semibold"
                     onClick={() => play?.closePositionEditor()}
                 >
-                    この局面で対局する
+                    この局面に決める
                 </Button>
                 <div className="flex flex-wrap gap-2">
                     <Button

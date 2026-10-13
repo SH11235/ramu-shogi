@@ -24,6 +24,8 @@ export interface OpponentOption {
     downloadMb: number | null;
     /** 強さ（レベル）を選べるか。外部エンジンは選べない */
     supportsLevel: boolean;
+    /** 用途の短い案内（「軽量」「棋力重視」など）。無ければ null */
+    description: string | null;
 }
 
 export interface TimeChoice {
@@ -123,6 +125,8 @@ export function usePlaySetup(): PlaySetup {
                       )
                     : null,
             supportsLevel: true,
+            // 一覧では「RAMU ・ 棋力重視」のように、用途の短い案内を名前に添える。
+            description: preset.config.usageLabel ?? null,
         })),
         ...nnueList
             .filter((nnue) => nnue.source !== "preset")
@@ -131,13 +135,21 @@ export function usePlaySetup(): PlaySetup {
                 label: nnue.displayName,
                 downloadMb: null,
                 supportsLevel: true,
+                description: null,
             })),
-        { value: "material", label: "簡易AI（駒得）", downloadMb: null, supportsLevel: true },
+        {
+            value: "material",
+            label: "簡易AI（駒得）",
+            downloadMb: null,
+            supportsLevel: true,
+            description: "ダウンロード不要",
+        },
         ...externalEngines.map((engine) => ({
             value: `ext:${engine.id}`,
             label: engine.label,
             downloadMb: null,
             supportsLevel: false,
+            description: null,
         })),
     ];
 

@@ -23,6 +23,28 @@ import {
 
 type SideChoice = Player | "random";
 
+/**
+ * 選べる開始局面。駒落ちは後手（上手）の駒を落とし、上手から指す
+ * （オンライン対局の開始局面と同じ SFEN）。
+ */
+const START_POSITIONS: Array<{ id: string; label: string; sfen: string }> = [
+    {
+        id: "bishop",
+        label: "角落ち",
+        sfen: "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+    },
+    {
+        id: "rook",
+        label: "飛車落ち",
+        sfen: "lnsgkgsnl/7b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+    },
+    {
+        id: "rook-bishop",
+        label: "飛車角落ち（二枚落ち）",
+        sfen: "lnsgkgsnl/9/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+    },
+];
+
 function Segmented<T extends string>({
     label,
     options,
@@ -37,7 +59,7 @@ function Segmented<T extends string>({
     disabled?: boolean;
 }): ReactElement {
     return (
-        <fieldset className="flex min-w-0 flex-col gap-1.5" disabled={disabled}>
+        <fieldset className="flex min-w-0 flex-col" disabled={disabled}>
             <legend className="pb-1.5 text-xs font-medium text-wafuu-sumi-light">{label}</legend>
             <div className="flex flex-wrap gap-1.5">
                 {options.map((option) => {
@@ -49,7 +71,7 @@ function Segmented<T extends string>({
                             aria-pressed={selected}
                             onClick={() => onChange(option.id)}
                             className={cn(
-                                "min-h-9 flex-1 whitespace-nowrap rounded-md border px-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+                                "min-h-10 flex-1 whitespace-nowrap rounded-md border px-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 md:min-h-9",
                                 selected
                                     ? "border-wafuu-shu bg-wafuu-shu/10 text-wafuu-shu"
                                     : "border-wafuu-border bg-background text-wafuu-sumi hover:bg-muted/50",
@@ -68,6 +90,10 @@ const timeOptions = (choices: TimeChoice[]) =>
     choices.map((choice) => ({ id: choice.id, label: choice.label }));
 
 const sideLabel = (side: Player): string => (side === "sente" ? "先手" : "後手");
+
+const FIELD_LABEL_CLASS = "text-xs font-medium text-wafuu-sumi-light";
+const TEXT_LINK_CLASS =
+    "inline-flex min-h-10 items-center rounded-sm underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-0";
 
 /** 「対局開始」の下に出す、これから始まる対局の要約。 */
 function describeMatch(setup: PlaySetup, sideChoice: SideChoice): string {
@@ -92,7 +118,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
     const [randomSide, setRandomSide] = useState(false);
     const [pendingStart, setPendingStart] = useState(false);
     const startMatch = useEffectEvent(() => play?.startMatch());
-    // 振り駒で先後を書き換えた直後は、その設定が行き渡ってから始める。
+    // 先後や相手を書き換えた直後は、その設定が行き渡ってから始める。
     useEffect(() => {
         if (!pendingStart) return;
         setPendingStart(false);
@@ -103,6 +129,10 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
     const sideChoice: SideChoice = randomSide ? "random" : setup.mySide;
     const downloadMb = setup.kind === "humans" ? null : (setup.opponent?.downloadMb ?? null);
 
+    const startSfen = play?.startSfen ?? "startpos";
+    const preset = START_POSITIONS.find((item) => startSfen.includes(item.sfen));
+    const startValue = !play?.isCustomStart ? "hirate" : (preset?.id ?? "custom");
+
     const handleStart = () => {
         if (isVsAi && randomSide) {
             setup.chooseSide(Math.random() < 0.5 ? "sente" : "gote");
@@ -112,11 +142,28 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
         play?.startMatch();
     };
 
+    const handleQuickStart = () => {
+        setup.chooseOpponent("material");
+        if (isVsAi && randomSide) setup.chooseSide(Math.random() < 0.5 ? "sente" : "gote");
+        setPendingStart(true);
+    };
+
+    const handleStartPositionChange = (value: string) => {
+        if (value === "hirate") {
+            play?.resetToStartpos();
+        } else if (value === "edit") {
+            play?.openPositionEditor();
+        } else {
+            const next = START_POSITIONS.find((item) => item.id === value);
+            if (next) play?.loadStartPosition(next.sfen);
+        }
+    };
+
     return (
         <section
             aria-labelledby="play-setup-heading"
             className={cn(
-                "flex flex-col gap-4 rounded-xl border border-wafuu-border bg-card p-5 shadow-card",
+                "flex flex-col gap-3 rounded-xl border border-wafuu-border bg-card p-5 shadow-card",
                 className,
             )}
         >
@@ -147,14 +194,17 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                     disabled={setup.locked}
                 />
             ) : (
-                <div className="flex flex-col gap-2 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-3">
+                <div className="flex flex-col gap-1 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-3">
                     <p className="text-sm text-wafuu-sumi">
                         いまの設定は「{describeMatch(setup, sideChoice)}」です。
                     </p>
                     <button
                         type="button"
                         onClick={() => setup.chooseSide("sente")}
-                        className="self-start rounded-sm text-sm text-wafuu-ai underline underline-offset-2 hover:text-wafuu-ai-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className={cn(
+                            TEXT_LINK_CLASS,
+                            "self-start text-sm text-wafuu-ai hover:text-wafuu-ai-light",
+                        )}
                     >
                         自分が AI と指す設定に戻す
                     </button>
@@ -163,10 +213,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
 
             {setup.kind !== "humans" && (
                 <div className="flex flex-col gap-1.5">
-                    <label
-                        htmlFor="play-setup-opponent"
-                        className="text-xs font-medium text-wafuu-sumi-light"
-                    >
+                    <label htmlFor="play-setup-opponent" className={FIELD_LABEL_CLASS}>
                         相手
                     </label>
                     <NativeSelect
@@ -179,8 +226,9 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                         {setup.opponentOptions.map((option) => (
                             <option key={option.value} value={option.value}>
                                 {option.label}
+                                {option.description ? ` ・ ${option.description}` : ""}
                                 {option.downloadMb !== null
-                                    ? `（初回のみ約${option.downloadMb}MBのダウンロード）`
+                                    ? `（初回 約${option.downloadMb}MB）`
                                     : ""}
                             </option>
                         ))}
@@ -190,7 +238,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
 
             {setup.kind !== "humans" && setup.opponent?.supportsLevel !== false && (
                 <label className="flex flex-col gap-1.5">
-                    <span className="flex items-baseline justify-between text-xs font-medium text-wafuu-sumi-light">
+                    <span className={cn("flex items-baseline justify-between", FIELD_LABEL_CLASS)}>
                         <span>
                             強さ
                             <span className="pl-2 font-normal text-muted-foreground">
@@ -208,13 +256,13 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                         value={setup.level}
                         disabled={setup.locked}
                         onChange={(event) => setup.chooseLevel(Number(event.target.value))}
-                        className="h-6 w-full accent-wafuu-shu"
+                        className="h-8 w-full accent-wafuu-shu md:h-6"
                     />
                 </label>
             )}
 
             {isVsAi && (
-                <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-3.5">
                     <Segmented
                         label="AI の考慮時間（1手）"
                         options={timeOptions(AI_TIME_CHOICES)}
@@ -238,6 +286,32 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                 </div>
             )}
 
+            <div className="flex flex-col gap-1.5">
+                <label htmlFor="play-setup-start-position" className={FIELD_LABEL_CLASS}>
+                    開始局面
+                </label>
+                <NativeSelect
+                    id="play-setup-start-position"
+                    value={startValue}
+                    onChange={(event) => handleStartPositionChange(event.target.value)}
+                    className="min-h-10 text-sm"
+                >
+                    <option value="hirate">平手</option>
+                    {START_POSITIONS.map((item) => (
+                        <option key={item.id} value={item.id}>
+                            {item.label}
+                        </option>
+                    ))}
+                    {startValue === "custom" && <option value="custom">指定の局面</option>}
+                    <option value="edit">盤を編集して決める…</option>
+                </NativeSelect>
+                {preset && play?.isCustomStart && (
+                    <p className="text-xs text-muted-foreground">
+                        後手（上手）の駒を落とし、後手から指します。
+                    </p>
+                )}
+            </div>
+
             <div className="flex flex-col gap-2">
                 <Button
                     type="button"
@@ -249,35 +323,37 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                 </Button>
                 <p className="text-center text-xs leading-relaxed text-muted-foreground">
                     {describeMatch(setup, sideChoice)}
-                    {play?.isCustomStart ? " ・ 指定の局面から" : ""}
-                    {downloadMb !== null && (
-                        <>
-                            <br />
-                            初回だけ約 {downloadMb}MB のダウンロードがあります（すぐ指すなら相手を
-                            「簡易AI」に）
-                        </>
-                    )}
                 </p>
+                {downloadMb !== null && (
+                    <p className="text-center text-xs leading-relaxed text-muted-foreground">
+                        初回だけ約 {downloadMb}MB のダウンロードがあります。
+                        <button
+                            type="button"
+                            onClick={handleQuickStart}
+                            className={cn(
+                                TEXT_LINK_CLASS,
+                                "font-medium text-wafuu-ai hover:text-wafuu-ai-light",
+                            )}
+                        >
+                            ダウンロードせずに簡易AI と指す
+                        </button>
+                    </p>
+                )}
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-wafuu-border pt-4 text-sm">
-                <button
-                    type="button"
-                    onClick={() => play?.openPositionEditor()}
-                    className="rounded-sm text-wafuu-sumi underline underline-offset-2 hover:text-wafuu-shu focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                    局面を変えて指す（駒落ちなど）
-                </button>
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-wafuu-border pt-3 text-[13px]">
+                {play?.setupFooter}
                 <button
                     type="button"
                     onClick={onOpenAdvanced}
-                    className="rounded-sm text-wafuu-sumi-light underline underline-offset-2 hover:text-wafuu-sumi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className={cn(
+                        TEXT_LINK_CLASS,
+                        "ml-auto whitespace-nowrap text-wafuu-sumi-light hover:text-wafuu-sumi",
+                    )}
                 >
                     詳細設定
                 </button>
             </div>
-
-            {play?.setupFooter}
         </section>
     );
 }

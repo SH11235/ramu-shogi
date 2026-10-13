@@ -189,6 +189,11 @@ const hasBoardEvasion = (position: PositionState): boolean => {
 };
 
 /** 手番側が王手を受け、盤上の移動でも持ち駒の合駒でも逃れられないか。 */
+/** 手番側の玉に王手がかかっているか（玉の無い局面では false）。 */
+export function isKingInCheck(position: PositionState): boolean {
+    return isKingAttacked(position.board, position.turn);
+}
+
 export function isCheckmate(position: PositionState): boolean {
     const { board, hands, turn } = position;
     if (!isKingAttacked(board, turn) || hasBoardEvasion(position)) return false;

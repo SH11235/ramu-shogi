@@ -10,7 +10,6 @@
 import type { Dispatch, ReactElement, SetStateAction } from "react";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../dialog";
-import { ClockDisplay } from "../components/ClockDisplay";
 import { DisplaySettingsPanel } from "../components/DisplaySettingsPanel";
 import { KifuNavigationToolbar } from "../components/KifuNavigationToolbar";
 import { LeftSidebar } from "../components/LeftSidebar";
@@ -28,8 +27,9 @@ import {
     PlayPositionEditorPanel,
     PlayTurnStatus,
 } from "./PlayControls";
-import { PlayHintCard } from "./PlayHintCard";
+import { PlayHintCard, usePlayHintMove } from "./PlayHintCard";
 import { PlayMoveList } from "./PlayMoveList";
+import { PlayPlayerBar } from "./PlayPlayerBar";
 import { PlayResultCard, PlayResultDialog } from "./PlayResult";
 import { PlaySetupPanel } from "./PlaySetupPanel";
 
@@ -55,12 +55,13 @@ export function PlayPCLayout({
     handlePassRightsSettingsChange,
 }: PlayPCLayoutProps): ReactElement {
     const { play } = useShogiMatchConfig();
-    const { timeSettings, passRightsSettings, settingsLocked } = useMatchSettings();
+    const { passRightsSettings, settingsLocked } = useMatchSettings();
+    const hintMove = usePlayHintMove();
     const {
         boardSectionRef,
         isDraggingPiece,
-        clocks,
         isMatchRunning,
+        sides,
         position,
         flipBoard,
         onFlipBoardChange,
@@ -88,83 +89,78 @@ export function PlayPCLayout({
     const phase = play?.phase ?? "setup";
     const isEditing = phase === "editing";
     const inGame = phase === "playing" || phase === "paused" || phase === "finished";
+    // 設定中と終局後は盤を操作できない。フォーカスや読み上げの対象からも外す。
+    const boardInert = phase === "setup" || phase === "finished";
+    const hasHumanPlayer = sides.sente.role === "human" || sides.gote.role === "human";
 
     return (
-        <section className={matchLayoutClasses}>
+        <section
+            // 盤は画面の高さに合わせる（低い画面で縦にはみ出さず、高い画面で小さく残らないように）。
+            className={`${matchLayoutClasses} [--shogi-cell-size:clamp(40px,calc((100dvh-370px)/9),60px)]`}
+        >
             <div className="w-full overflow-x-auto">
                 <div className="mx-auto flex w-max items-start gap-6 px-4 py-2">
                     {/* 盤の列 */}
                     <div className="flex shrink-0 flex-col items-center gap-2">
                         <div ref={boardSectionRef} className="relative flex w-fit flex-col gap-2">
                             <div
-                                className={`flex flex-col items-center gap-2 ${isDraggingPiece ? "touch-none" : ""}`}
+                                // 持ち駒の欄は、空のときも高さを確保する（駒を取ったときに盤が動かないように）。
+                                className={`flex flex-col items-center gap-2 [&_[data-zone^=hand-]]:min-h-[38px] ${isDraggingPiece ? "touch-none" : ""}`}
                             >
-                                {/* 盤の上の行。対局が始まるまでは時計を出さない（高さは確保して、
-                                    対局開始で盤の位置が動かないようにする）。 */}
-                                <div className="flex min-h-8 w-full items-center justify-between gap-3">
-                                    {inGame ? (
-                                        <ClockDisplay
-                                            clocks={clocks}
-                                            timeSettings={timeSettings}
-                                            isRunning={isMatchRunning}
-                                            className="flex-1"
-                                            centerContent={<PlayTurnStatus />}
-                                        />
-                                    ) : (
-                                        <span className="text-sm text-wafuu-sumi-light">
-                                            {isEditing
-                                                ? "開始局面を編集しています"
-                                                : play?.isCustomStart
-                                                  ? "指定の局面から始めます"
-                                                  : "平手"}
-                                        </span>
-                                    )}
-                                    <div className="flex shrink-0 items-center gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => onFlipBoardChange(!flipBoard)}
-                                            aria-pressed={flipBoard}
-                                            className={`flex h-8 items-center gap-1 whitespace-nowrap rounded-md border border-wafuu-border px-2 text-[13px] ${
-                                                flipBoard ? "bg-wafuu-kin/20" : "bg-card"
-                                            }`}
-                                            title="盤面を反転"
-                                        >
-                                            <span aria-hidden>🔄</span>
-                                            <span>反転</span>
-                                        </button>
-                                        <SoundToggle />
-                                    </div>
+                                {/* 盤の上: 相手の帯と、盤の向き・音。 */}
+                                <div className="flex w-full items-center gap-2">
+                                    <PlayPlayerBar position="top" className="min-w-0 flex-1" />
+                                    <button
+                                        type="button"
+                                        onClick={() => onFlipBoardChange(!flipBoard)}
+                                        aria-pressed={flipBoard}
+                                        className={`flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-wafuu-border px-2 text-[13px] ${
+                                            flipBoard ? "bg-wafuu-kin/20" : "bg-card"
+                                        }`}
+                                        title="盤面を反転"
+                                    >
+                                        <span aria-hidden>🔄</span>
+                                        <span>反転</span>
+                                    </button>
+                                    <SoundToggle />
                                 </div>
 
-                                <PCBoardContent
-                                    grid={grid}
-                                    flipBoard={flipBoard}
-                                    lastMove={lastMove}
-                                    selection={selection}
-                                    moveShadow={moveShadow}
-                                    promotionSelection={promotionSelection}
-                                    displaySettings={displaySettings}
-                                    isEditModeActive={isEditing}
-                                    isMatchRunning={isMatchRunning}
-                                    hideEmptyHandPieces={hideEmptyHandPieces || !isEditing}
-                                    editFromSquare={editFromSquare}
-                                    candidateNote={candidateNote}
-                                    onSquareSelect={(sq, shiftKey) => {
-                                        void handleSquareSelect(sq, shiftKey);
-                                    }}
-                                    onPromotionChoice={handlePromotionChoice}
-                                    onHandSelect={handleHandSelect}
-                                    onPiecePointerDown={handlePiecePointerDown}
-                                    onPieceTogglePromote={handlePieceTogglePromote}
-                                    onHandPiecePointerDown={handleHandPiecePointerDown}
-                                    onIncrementHand={handleIncrementHand}
-                                    onDecrementHand={handleDecrementHand}
-                                    topHand={getHandInfo("top")}
-                                    bottomHand={getHandInfo("bottom")}
-                                    passRightsSettings={passRightsSettings}
-                                    passRights={position.passRights}
-                                    turn={position.turn}
-                                />
+                                <div inert={boardInert} className="contents">
+                                    <PCBoardContent
+                                        grid={grid}
+                                        flipBoard={flipBoard}
+                                        lastMove={lastMove}
+                                        selection={selection}
+                                        moveShadow={moveShadow}
+                                        promotionSelection={promotionSelection}
+                                        displaySettings={displaySettings}
+                                        isEditModeActive={isEditing}
+                                        isMatchRunning={isMatchRunning}
+                                        hideEmptyHandPieces={hideEmptyHandPieces || !isEditing}
+                                        editFromSquare={editFromSquare}
+                                        candidateNote={candidateNote}
+                                        onSquareSelect={(sq, shiftKey) => {
+                                            void handleSquareSelect(sq, shiftKey);
+                                        }}
+                                        onPromotionChoice={handlePromotionChoice}
+                                        onHandSelect={handleHandSelect}
+                                        onPiecePointerDown={handlePiecePointerDown}
+                                        onPieceTogglePromote={handlePieceTogglePromote}
+                                        onHandPiecePointerDown={handleHandPiecePointerDown}
+                                        onIncrementHand={handleIncrementHand}
+                                        onDecrementHand={handleDecrementHand}
+                                        // 対局者は帯に出すので、駒台には AI のアイコンを出さない。
+                                        topHand={{ ...getHandInfo("top"), isAI: false }}
+                                        bottomHand={{ ...getHandInfo("bottom"), isAI: false }}
+                                        hintMove={hintMove}
+                                        handSize="medium"
+                                        passRightsSettings={passRightsSettings}
+                                        passRights={position.passRights}
+                                        turn={position.turn}
+                                    />
+                                </div>
+
+                                <PlayPlayerBar position="bottom" />
 
                                 {/* 盤の下。操作の有無で盤が動かないよう、高さを確保する。 */}
                                 <div className="flex min-h-10 w-full flex-col items-center gap-2">
@@ -202,6 +198,9 @@ export function PlayPCLayout({
                         )}
                         {isEditing && <PlayPositionEditorPanel />}
                         {phase === "finished" && <PlayResultCard />}
+                        {(phase === "playing" || phase === "paused") && (
+                            <PlayTurnStatus className="min-h-9 px-1 text-base" />
+                        )}
                         {inGame && (
                             <section
                                 aria-label="棋譜"
@@ -210,11 +209,14 @@ export function PlayPCLayout({
                                 <h2 className="text-sm font-semibold text-foreground">棋譜</h2>
                                 <PlayMoveList
                                     selectable={phase === "finished"}
-                                    className="max-h-[min(38vh,320px)]"
+                                    upToCurrent={phase !== "finished"}
+                                    className="max-h-[min(34vh,300px)]"
                                 />
                             </section>
                         )}
-                        {(phase === "playing" || phase === "paused") && <PlayHintCard />}
+                        {(phase === "playing" || phase === "paused") && hasHumanPlayer && (
+                            <PlayHintCard />
+                        )}
                     </div>
                 </div>
             </div>
@@ -231,7 +233,8 @@ export function PlayPCLayout({
                         <DialogHeader>
                             <DialogTitle>詳細設定</DialogTitle>
                             <DialogDescription>
-                                先手・後手それぞれの担当（人・AI）、秒数、変則ルール、評価関数、盤の表示を変えられます。
+                                先手・後手を個別に設定します（AI
+                                同士・人同士、秒数の指定、変則ルール、評価関数、盤の表示）。ここで変えた内容は、設定の欄にも反映されます。
                             </DialogDescription>
                         </DialogHeader>
                         <LeftSidebar
