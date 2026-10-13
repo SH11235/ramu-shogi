@@ -74,7 +74,7 @@ export interface PlaySetup {
     myTimeId: string | null;
     locked: boolean;
     /** 自分の手番を決めて、人 対 AI の組み合わせにする（`opponentValue` を渡すと相手も同時に替える） */
-    chooseSide: (side: Player, opponentValue?: string) => void;
+    chooseSide: (side: Player, opponentValue?: string, aiTime?: TimeChoice) => void;
     chooseOpponent: (value: string) => void;
     chooseLevel: (level: number) => void;
     chooseAiTime: (choice: TimeChoice) => void;
@@ -221,10 +221,10 @@ export function usePlaySetup(): PlaySetup {
     };
 
     /**
-     * 自分の手番を決めて、人 対 AI の組み合わせにする。`opponentValue` を渡すと、相手も同時に替える
-     * （別々に替えると、あとの更新が前の更新を古い値で上書きする）。
+     * 自分の手番を決めて、人 対 AI の組み合わせにする。`opponentValue`・`aiTime` を渡すと、相手と
+     * AI の考慮時間も同時に替える（別々に替えると、あとの更新が前の更新を古い値で上書きする）。
      */
-    const chooseSide = (side: Player, opponentValue?: string) => {
+    const chooseSide = (side: Player, opponentValue?: string, aiTime?: TimeChoice) => {
         const next = opponentValue === undefined ? null : resolveOpponent(opponentValue);
         if (kind === "vs-ai" && side === mySide && !next) return;
         const other = opposite(side);
@@ -232,7 +232,7 @@ export function usePlaySetup(): PlaySetup {
         const nextSelection = next ? next.selection : aiSelection;
         // いまの AI の設定（評価関数・強さ・考慮時間）は、そのまま相手の側へ持っていく。
         const humanClock = kind === "vs-ai" ? myClock : { ...MY_TIME_CHOICES[0] };
-        const engineClock = aiClock.enabled ? aiClock : { ...AI_TIME_CHOICES[1] };
+        const engineClock = aiTime ?? (aiClock.enabled ? aiClock : { ...AI_TIME_CHOICES[1] });
         if (nextSelection) setSelection(other, nextSelection);
         onSidesChange({
             ...sides,

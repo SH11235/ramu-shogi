@@ -11,7 +11,7 @@
  */
 
 import type { ReactElement, ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BottomSheet } from "../components/BottomSheet";
 import { KifuNavigationToolbar } from "../components/KifuNavigationToolbar";
 import { MobileBoardSection } from "../components/MobileBoardSection";
@@ -30,7 +30,7 @@ import {
     PlayTurnStatus,
 } from "./PlayControls";
 import { PlayHintButton, PlayHintLine, usePlayHintMove } from "./PlayHintCard";
-import { PlayPlayerBar } from "./PlayPlayerBar";
+import { PlayMyTime, PlayPlayerBar } from "./PlayPlayerBar";
 import { PlayResultCard } from "./PlayResult";
 import { PlaySetupPanel } from "./PlaySetupPanel";
 
@@ -107,12 +107,19 @@ export function PlayMobileLayout({
     const inGame = phase === "playing" || phase === "paused" || phase === "finished";
     const barMoves = kifMoves.map((move) => ({ ply: move.ply, displayText: move.displayText }));
 
+    // 終局で画面の上に結果が差し込まれたとき、先頭へ送る（結果と次の一歩を見逃さない）。
+    useEffect(() => {
+        if (phase === "finished") window.scrollTo({ top: 0 });
+    }, [phase]);
+
     const board = (
         // 設定中と終局後は盤を操作できない。フォーカスや読み上げの対象からも外す。
         <div
             inert={phase === "setup" || phase === "finished"}
             // 持ち駒の欄は、空のときも高さを確保する（駒を取ったときに盤や操作が動かないように）。
-            className="relative flex justify-center [&_[data-zone^=hand-]]:min-h-[34px] [&_[data-zone^=hand-]:empty]:rounded-md [&_[data-zone^=hand-]:empty]:border [&_[data-zone^=hand-]:empty]:border-wafuu-border/50"
+            // 盤は幅だけでなく高さにも合わせる（横向きなどの低い画面で、盤が画面に入らないのを避ける）。
+            // 持ち駒の欄は、駒が出たときの高さを最初から確保する（駒を取ったときに盤が動かないように）。
+            className="relative mx-auto flex w-full max-w-[max(280px,calc(100dvh-230px))] justify-center [&_[data-zone^=hand-]]:min-h-[44px]"
         >
             <MobileBoardSection
                 grid={grid}
@@ -187,7 +194,9 @@ export function PlayMobileLayout({
                     {phase !== "finished" && <h1 className="sr-only">AI と対局中</h1>}
                     <PlayPlayerBar position="top" />
                     {board}
-                    <PlayPlayerBar position="bottom" />
+                    {/* 対局中は、自分の側は手番の表示と残り時間だけを操作の帯に出す（縦を詰めて、盤と
+                        操作を 1 画面に収める）。終局後は帯を出す。 */}
+                    {phase === "finished" && <PlayPlayerBar position="bottom" />}
                     {phase === "finished" ? (
                         <>
                             <div className="flex justify-center">
@@ -213,15 +222,18 @@ export function PlayMobileLayout({
                             {/* 手番（知らせ・ヒントがあればそれ）と操作。画面の下端に留めて、盤が上へ
                                 送られても押せるようにする。高さは固定して、盤を動かさない。 */}
                             <div className="sticky bottom-0 z-10 flex flex-col gap-1 bg-background pb-1">
-                                <div className="flex min-h-8 items-center justify-center px-1">
-                                    {message ? (
-                                        <PlayMessage />
-                                    ) : (
-                                        <PlayHintLine
-                                            className="flex min-w-0 items-center justify-center"
-                                            fallback={<PlayTurnStatus />}
-                                        />
-                                    )}
+                                <div className="flex min-h-8 items-center gap-2 px-1">
+                                    <div className="flex min-w-0 flex-1 items-center">
+                                        {message ? (
+                                            <PlayMessage className="text-left" />
+                                        ) : (
+                                            <PlayHintLine
+                                                className="flex min-w-0 items-center"
+                                                fallback={<PlayTurnStatus />}
+                                            />
+                                        )}
+                                    </div>
+                                    <PlayMyTime />
                                 </div>
                                 <PlayMatchActions
                                     compact

@@ -41,7 +41,7 @@ import { PlayMoveList } from "./PlayMoveList";
 import { PlayPlayerBar } from "./PlayPlayerBar";
 import { PlayResultCard } from "./PlayResult";
 import { PlaySetupPanel } from "./PlaySetupPanel";
-import { PLAY_CARD, PLAY_OUTLINE_BUTTON, PLAY_TEXT_LINK } from "./playStyles";
+import { PLAY_CARD, PLAY_OUTLINE_BUTTON } from "./playStyles";
 
 interface PlayPCLayoutProps {
     matchLayoutClasses: string;
@@ -105,7 +105,7 @@ export function PlayPCLayout({
     return (
         <section
             // 盤は画面の高さに合わせる（低い画面で縦にはみ出さず、高い画面で小さく残らないように）。
-            className={`${matchLayoutClasses} [--shogi-cell-size:clamp(40px,calc((100dvh-384px)/9),72px)]`}
+            className={`${matchLayoutClasses} [--shogi-cell-size:clamp(34px,calc((100dvh-384px)/9),72px)]`}
         >
             <div className="w-full overflow-x-auto">
                 <div className="mx-auto flex w-max items-start gap-14 px-4 py-2">
@@ -116,7 +116,7 @@ export function PlayPCLayout({
                             <PlayBoardTools className="absolute left-full top-0 ml-2 flex-col" />
                             <div
                                 // 持ち駒の欄は、空のときも同じ高さで見せる（駒を取ったときに盤や操作が動かないように）。
-                                className={`flex flex-col items-center gap-2 [&_[data-zone^=hand-]]:min-h-[50px] [&_[data-zone^=hand-]:empty]:rounded-md [&_[data-zone^=hand-]:empty]:border [&_[data-zone^=hand-]:empty]:border-wafuu-border/50 ${isDraggingPiece ? "touch-none" : ""}`}
+                                className={`flex flex-col items-center gap-2 [&_[data-zone^=hand-]]:min-h-[50px] ${isDraggingPiece ? "touch-none" : ""}`}
                             >
                                 <PlayPlayerBar position="top" />
 
@@ -194,6 +194,9 @@ export function PlayPCLayout({
                                 </div>
                             </div>
                         )}
+                        {(phase === "playing" || phase === "paused") && hasHumanPlayer && (
+                            <PlayHintCard />
+                        )}
                         {inGame && (
                             <section
                                 aria-label="棋譜"
@@ -206,18 +209,6 @@ export function PlayPCLayout({
                                     className="max-h-[max(120px,calc(100dvh-520px))]"
                                 />
                             </section>
-                        )}
-                        {(phase === "playing" || phase === "paused") && hasHumanPlayer && (
-                            <PlayHintCard />
-                        )}
-                        {phase === "setup" && play?.isCustomStart && (
-                            <button
-                                type="button"
-                                onClick={play.resetToStartpos}
-                                className={`${PLAY_TEXT_LINK} self-start text-[13px] text-wafuu-sumi-light hover:text-wafuu-sumi`}
-                            >
-                                平手に戻す
-                            </button>
                         )}
                     </div>
                 </div>

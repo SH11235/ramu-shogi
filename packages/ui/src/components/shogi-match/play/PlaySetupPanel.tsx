@@ -46,6 +46,9 @@ const START_POSITIONS: Array<{ id: string; label: string; sfen: string }> = [
     },
 ];
 
+/** 「簡易AI とすぐ指す」ときの考慮時間（1 秒）。 */
+const QUICK_AI_TIME = AI_TIME_CHOICES[0];
+
 function Segmented<T extends string>({
     label,
     options,
@@ -117,7 +120,11 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
     // 振り駒は、始めるときに先後を決める（設定としては保存しない）。
     const [randomSide, setRandomSide] = useState(false);
     const [pendingStart, setPendingStart] = useState(false);
-    const startMatch = useEffectEvent(() => play?.startMatch());
+    const [pendingNotice, setPendingNotice] = useState<string | undefined>(undefined);
+    const startMatch = useEffectEvent(() => {
+        play?.startMatch(pendingNotice);
+        setPendingNotice(undefined);
+    });
     // 先後や相手を書き換えた直後は、その設定が行き渡ってから始める。
     useEffect(() => {
         if (!pendingStart) return;
@@ -135,7 +142,9 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
 
     const handleStart = () => {
         if (isVsAi && randomSide) {
-            setup.chooseSide(Math.random() < 0.5 ? "sente" : "gote");
+            const side = Math.random() < 0.5 ? "sente" : "gote";
+            setup.chooseSide(side);
+            setPendingNotice(`振り駒の結果、あなたは${sideLabel(side)}です`);
             setPendingStart(true);
             return;
         }
@@ -145,9 +154,13 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
     const handleQuickStart = () => {
         if (isVsAi && randomSide) {
             // 先後と相手は 1 回の更新で決める（別々に替えると、あとの更新が相手を元に戻す）。
-            setup.chooseSide(Math.random() < 0.5 ? "sente" : "gote", "material");
+            const side = Math.random() < 0.5 ? "sente" : "gote";
+            setup.chooseSide(side, "material", QUICK_AI_TIME);
+            setPendingNotice(`振り駒の結果、あなたは${sideLabel(side)}です`);
         } else {
             setup.chooseOpponent("material");
+            // 「すぐ指す」ので、簡易AI の考慮時間も短くする（駒得だけの AI を 10 秒待たせない）。
+            if (isVsAi) setup.chooseAiTime(QUICK_AI_TIME);
         }
         setPendingStart(true);
     };
@@ -173,7 +186,11 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
             )}
         >
             <h1 id="play-setup-heading" className={PLAY_HEADING}>
-                AI と対局する
+                {setup.kind === "vs-ai"
+                    ? "AI と対局する"
+                    : setup.kind === "humans"
+                      ? "人と人で対局する"
+                      : "AI 同士の対局を見る"}
             </h1>
 
             {isVsAi ? (
@@ -198,7 +215,8 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
             ) : (
                 <div className="flex flex-col gap-1 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-3">
                     <p className="text-sm text-wafuu-sumi">
-                        いまの設定は「{describeMatch(setup, sideChoice)}」です。
+                        いまの設定は「{describeMatch(setup, sideChoice)}
+                        」です。先手・後手それぞれの設定は「詳細設定」で変えられます。
                     </p>
                     <button
                         type="button"
@@ -213,7 +231,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                 </div>
             )}
 
-            {setup.kind !== "humans" && (
+            {isVsAi && (
                 <div className="flex flex-col gap-1.5">
                     <label htmlFor="play-setup-opponent" className={FIELD_LABEL_CLASS}>
                         相手
@@ -238,7 +256,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                 </div>
             )}
 
-            {setup.kind !== "humans" && setup.opponent?.supportsLevel !== false && (
+            {isVsAi && setup.opponent?.supportsLevel !== false && (
                 <label className="flex flex-col gap-1.5">
                     <span className={cn("flex items-baseline justify-between", FIELD_LABEL_CLASS)}>
                         <span>強さ</span>
@@ -288,9 +306,18 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
             )}
 
             <div className="flex flex-col gap-1.5">
-                <label htmlFor="play-setup-start-position" className={FIELD_LABEL_CLASS}>
-                    開始局面
-                </label>
+                <div className="flex items-baseline justify-between gap-2">
+                    <label htmlFor="play-setup-start-position" className={FIELD_LABEL_CLASS}>
+                        開始局面
+                    </label>
+                    {/* どちらから指し始めるか（平手以外は、先手からとは限らない）。 */}
+                    {play?.isCustomStart && (
+                        <span className="text-xs text-wafuu-sumi-light">
+                            {preset ? "上手（後手）の駒落ち ・ " : ""}
+                            {play.editTurn === "sente" ? "先手" : "後手"}から指し始めます
+                        </span>
+                    )}
+                </div>
                 <NativeSelect
                     id="play-setup-start-position"
                     value={startValue}
@@ -306,14 +333,10 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                     {startValue === "custom" && <option value="custom">指定の局面</option>}
                     <option value="edit">盤を編集して決める…</option>
                 </NativeSelect>
-                {preset && play?.isCustomStart && (
-                    <p className="text-xs text-wafuu-sumi-light">
-                        後手（上手）の駒を落とします。上手（後手）が先に指します。
-                    </p>
-                )}
             </div>
 
-            <div className="flex flex-col gap-2">
+            {/* スマホでは、開始ボタンを画面の下端に留める（設定を全部送らなくても始められる）。 */}
+            <div className="sticky bottom-0 z-10 flex flex-col gap-2 bg-background pb-2 pt-1 md:static md:bg-transparent md:p-0">
                 <Button
                     type="button"
                     size="lg"

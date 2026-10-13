@@ -91,6 +91,11 @@ export function PlayTurnStatus({ className }: { className?: string }): ReactElem
             )}
         >
             {text}
+            {play?.startNotice && (
+                <span className="text-xs font-normal text-wafuu-sumi-light">
+                    {play.startNotice}
+                </span>
+            )}
             {checkText && (
                 <span className="rounded bg-wafuu-shu px-1.5 py-0.5 text-xs font-semibold text-wafuu-shu-fg">
                     {checkText}
@@ -191,7 +196,7 @@ export function PlayMatchActions({
                 <Button
                     type="button"
                     className={cn("min-h-10", PLAY_PRIMARY_BUTTON, itemClass)}
-                    onClick={play.startMatch}
+                    onClick={() => play.startMatch()}
                 >
                     対局を再開
                 </Button>
@@ -203,16 +208,6 @@ export function PlayMatchActions({
                     onConfirm={play.newGame}
                     className={cn(!compact && "ml-auto", itemClass)}
                 />
-                {!bothEngines && (
-                    <ConfirmButton
-                        label="投了"
-                        title="投了しますか？"
-                        description="対局を終了します。"
-                        actionLabel="投了する"
-                        onConfirm={handleResign}
-                        className={itemClass}
-                    />
-                )}
             </div>
         );
     }
@@ -371,8 +366,8 @@ export function PlayPositionEditorPanel({ className }: { className?: string }): 
                 </div>
             </fieldset>
             <p className="text-[13px] leading-relaxed text-wafuu-sumi-light">
-                駒はドラッグで動かし、盤の外へ出すと取り除けます。成・不成は 2
-                回続けて押すと切り替わります。持ち駒は「＋」「−」で増減します。
+                駒はドラッグ（または、押して選んでから行き先を押す）で動かし、盤の外へ出すと取り除けます。成・不成は
+                2 回続けて押すと切り替わります。持ち駒は「＋」「−」で増減します。
             </p>
         </section>
     );

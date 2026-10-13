@@ -733,6 +733,8 @@ export function ShogiMatch({
               : "setup";
     // 終局後・一時停止から設定の画面へ戻している最中か（戻し終えるまで、対局を始めさせない）。
     const [isPlayResetting, setIsPlayResetting] = useState(false);
+    // 対局の始めに 1 度だけ出す知らせ（振り駒の結果など）。
+    const [playStartNotice, setPlayStartNotice] = useState<string | null>(null);
     const pendingSearchStatsRef = useRef(new Map<number, MoveSearchStats>());
     const [liveSearchInfo, setLiveSearchInfo] = useState<{
         side: Player;
@@ -1286,7 +1288,9 @@ export function ShogiMatch({
 
             // 2手戻す（自分の前の手まで戻る）
             // ただし、1手しかない場合は1手だけ戻す
-            const undoCount = moveCount >= 2 ? 2 : 1;
+            // 対局画面の人 対 人では、直前の 1 手だけ戻す（交互に指しているので、2 手戻すと相手の手まで消える）。
+            const bothHumans = sides.sente.role === "human" && sides.gote.role === "human";
+            const undoCount = isPlayScreen && bothHumans ? 1 : moveCount >= 2 ? 2 : 1;
 
             // 待った後の手番を明示的に計算
             // React のバッチ処理により navigation.goBack() 後の positionRef.current は
@@ -2295,6 +2299,7 @@ export function ShogiMatch({
         if (!isPlayScreen) return;
         notifyPlayPhase(playPhase);
         setSelection(null);
+        setPromotionSelection(null);
         if (playPhase !== "setup") setMessage(null);
     }, [isPlayScreen, playPhase]);
     // 指せない手を選んだ知らせは、しばらくしたら消す（次の手を考える邪魔にしない）。
@@ -2377,8 +2382,10 @@ export function ShogiMatch({
               phase: playPhase,
               isCustomStart: !isHirateStart || (playPhase === "setup" && moves.length > 0),
               busy: isPlayResetting || pendingRematch,
-              startMatch: () => {
+              startNotice: playPhase === "playing" && moves.length < 2 ? playStartNotice : null,
+              startMatch: (notice?: string) => {
                   if (isPlayResetting) return;
+                  if (!isPaused) setPlayStartNotice(notice ?? null);
                   setPositionEditOpen(false);
                   if (!isPaused) {
                       setHintCount(0);

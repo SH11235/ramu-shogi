@@ -277,11 +277,20 @@ export function ShogiBoard({
                                     </button>
                                     {isPromotionSquare && onPromotionChoice && (
                                         <div
-                                            // マス 2 つ分の幅で左右に並べる（1 マスの中に上下で詰めると、指で
-                                            // 押し分けにくい）。盤の端では内側へ伸ばす。
+                                            // マス 3 つ分の幅・1.5 マスの高さで左右に並べる（1 マスの中に上下で
+                                            // 詰めると、指で押し分けにくい）。盤の端では内側へ伸ばす。
                                             className={cn(
-                                                "absolute inset-y-0 z-20 flex w-[200%] gap-[2px] p-[2px]",
-                                                columnIndex < 8 ? "left-0" : "right-0",
+                                                "absolute z-20 flex h-[150%] w-[300%] gap-1 p-[2px]",
+                                                columnIndex === 0
+                                                    ? "left-0"
+                                                    : columnIndex === 8
+                                                      ? "right-0"
+                                                      : "-left-full",
+                                                rowIndex === 0
+                                                    ? "top-0"
+                                                    : rowIndex === 8
+                                                      ? "bottom-0"
+                                                      : "-top-1/4",
                                             )}
                                             role="dialog"
                                             aria-label="成り選択"
