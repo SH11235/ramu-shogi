@@ -11,11 +11,15 @@
     }
 
     /* iOS Safari は、文字が 16px 未満の入力欄にフォーカスすると画面を拡大し、戻さない。
-       指で操作する端末では、入力欄の文字を 16px にする。 */
+       指で操作する端末では、入力欄の文字を 16px にする（もっと大きい文字を指定した欄はそのまま）。 */
     @media (pointer: coarse) {
-        input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
-        textarea,
-        select {
+        :is(
+                input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(
+                        [type="file"]
+                    ),
+                textarea,
+                select
+            ):not(.text-lg):not(.text-xl):not(.text-2xl) {
             font-size: 16px !important;
         }
     }
