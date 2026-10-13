@@ -2,7 +2,7 @@
 // 送る snapshot の組を、記録元の backend の commit と一緒に
 // apps/web/src/pages/online/fixtures/backend-game-start.json へ記録する。
 //
-//   pnpm --filter web dev:workers          # ROOM_BACKEND=backend（既定）で起動しておく
+//   pnpm --filter web dev:workers          # 先に起動しておく
 //   pnpm --filter web record:room-game-start
 //   pnpm exec biome format --write apps/web/src/pages/online/fixtures
 //

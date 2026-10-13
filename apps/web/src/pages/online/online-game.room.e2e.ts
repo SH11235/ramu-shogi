@@ -1,7 +1,6 @@
 // オンライン対局を 2 つのブラウザ（+ 観戦者）で最後まで進める E2E テスト
 //
-// 対象の環境は E2E_BASE_URL、その環境でルーム API を処理している側は E2E_ROOM_BACKEND
-// （legacy / backend）で指定する。処理する側で挙動が変わるシナリオは、どちらの期待値も明記する。
+// 対象の環境は E2E_BASE_URL で指定する。
 
 import {
     type APIRequestContext,
@@ -13,11 +12,8 @@ import {
     test,
 } from "@playwright/test";
 
-type RoomBackend = "legacy" | "backend";
 type PlayerSeat = "b" | "w";
 
-const roomBackendEnv = process.env.E2E_ROOM_BACKEND;
-const roomBackend: RoomBackend = roomBackendEnv === "legacy" ? "legacy" : "backend";
 const useDevLogin = process.env.E2E_DEV_LOGIN === "true";
 
 const SEAT_LABEL: Record<PlayerSeat | "s", string> = {
@@ -199,15 +195,7 @@ async function closeAll(...contexts: BrowserContext[]): Promise<void> {
 
 // ─── テスト ───────────────────────────────────────────────────────────────────
 
-test.describe(`オンライン対局（ルーム API: ${roomBackend}）`, () => {
-    test.beforeAll(() => {
-        if (roomBackendEnv !== "legacy" && roomBackendEnv !== "backend") {
-            throw new Error(
-                "E2E_ROOM_BACKEND に、対象環境でルーム API を処理している側（legacy / backend）を指定してください",
-            );
-        }
-    });
-
+test.describe("オンライン対局", () => {
     test("対局設定画面で作成したルームに 2 人が参加すると対局が始まる", async ({ browser }) => {
         const contextB = await newContext(browser, 1);
         const contextW = await newContext(browser, 2);
@@ -309,29 +297,9 @@ test.describe(`オンライン対局（ルーム API: ${roomBackend}）`, () => 
         await b.getByRole("combobox", { name: "開始局面を選択" }).click();
         await b.getByRole("option", { name: "SFEN 直接入力" }).click();
 
-        // 選んだだけでは何も送らないので、どちらの処理先でも接続は保たれる
+        // 選んだだけでは何も送らないので、接続は保たれる
         await expect(b.getByPlaceholder(/^例: lnsgkgsnl/)).toBeVisible();
         await expect(b.getByText("接続しました。対局開始を待っています...")).toBeVisible();
-
-        if (roomBackend === "legacy") {
-            // legacy は入力途中の、手数まで届いていない SFEN をエラーで返し、待機中の接続は
-            // そこで切れる。変更した側には再読み込みの案内が出て、変更は届かず平手のまま始まる
-            await b
-                .getByPlaceholder(/^例: lnsgkgsnl/)
-                .pressSequentially("4k4/9/4p4/9/9/9/4P4/9/4K4 b -");
-            await expect(b.getByRole("alert")).toHaveText(LOST_CONNECTION_NOTICE);
-            await joinRoom(w, roomId, "w", NAMES.w);
-            await expectBoard(w);
-            await expectSquare(w, "7g", "先手の歩");
-
-            // 再読み込みすると元の席に戻り、始まっている対局を続けられる
-            await b.getByRole("button", { name: "再読み込み" }).click();
-            await expectBoard(b);
-            const resumed: Match = { roomId, b, w, contexts: { b: contextB, w: contextW } };
-            await playMoveOnBoth(resumed, "b", "7g", "7f", "先手の歩");
-            await closeAll(contextB, contextW);
-            return;
-        }
 
         // 入力途中の不正な SFEN は無視されて接続は保たれ、入力し終えた局面で始まる
         await b
@@ -709,23 +677,11 @@ test.describe(`オンライン対局（ルーム API: ${roomBackend}）`, () => 
         await expectSquare(match.w, "8d", "後手の歩");
         await expectPly(match.w, 4, 4);
 
-        if (roomBackend === "backend") {
-            await expect(resultDialogHeading(match.w, "w")).toHaveCount(1);
-            await expect(match.w.getByText("投了", { exact: true })).toBeVisible();
-            await match.w.getByRole("button", { name: "棋譜を検討する" }).click();
-            // 棋譜が保存されるのはログイン中の対局者がいる対局だけ
-            await expect(match.w).toHaveURL(useDevLogin ? /\/games\/[^/]+$/ : /\/play$/);
-        } else {
-            // legacy は終局済みルームの結果を再接続時に返さないので、盤面だけが表示される
-            await expectUnchangedFor(match.w, 2_000, async () => {
-                await expect(
-                    match.w.getByRole("heading", { name: /の勝ち$|^引き分け$/ }),
-                ).toHaveCount(0);
-                await expect(match.w.getByRole("button", { name: "棋譜を検討する" })).toHaveCount(
-                    0,
-                );
-            });
-        }
+        await expect(resultDialogHeading(match.w, "w")).toHaveCount(1);
+        await expect(match.w.getByText("投了", { exact: true })).toBeVisible();
+        await match.w.getByRole("button", { name: "棋譜を検討する" }).click();
+        // 棋譜が保存されるのはログイン中の対局者がいる対局だけ
+        await expect(match.w).toHaveURL(useDevLogin ? /\/games\/[^/]+$/ : /\/play$/);
 
         await closeAll(match.contexts.b, match.contexts.w);
     });
@@ -786,29 +742,15 @@ test.describe(`オンライン対局（ルーム API: ${roomBackend}）`, () => 
         await expectBoard(secondTab);
         await expectSquare(secondTab, "3d", "後手の歩");
 
-        if (roomBackend === "backend") {
-            // 操作権は後から開いたタブへ移り、先に開いていたタブの指し手は受け付けられない
-            await square(match.b, "2g").click();
-            await square(match.b, "2f").click();
-            await expect(match.b.getByRole("alert")).toHaveText(SECOND_TAB_NOTICE);
-            await expectSquare(match.w, "2f", null);
+        // 操作権は後から開いたタブへ移り、先に開いていたタブの指し手は受け付けられない
+        await square(match.b, "2g").click();
+        await square(match.b, "2f").click();
+        await expect(match.b.getByRole("alert")).toHaveText(SECOND_TAB_NOTICE);
+        await expectSquare(match.w, "2f", null);
 
-            await playMove(secondTab, "2g", "2f", "先手の歩");
-            for (const page of [match.b, match.w, secondTab]) {
-                await expectSquare(page, "2f", "先手の歩");
-            }
-        } else {
-            // legacy は席ごとの操作権を持たず、どちらのタブからも指せる
-            await playMove(match.b, "2g", "2f", "先手の歩");
-            for (const page of [match.w, secondTab]) {
-                await expectSquare(page, "2f", "先手の歩");
-            }
-            await playMoveOnBoth(match, "w", "8c", "8d", "後手の歩");
-            await playMove(secondTab, "2f", "2e", "先手の歩");
-            for (const page of [match.b, match.w]) {
-                await expectSquare(page, "2e", "先手の歩");
-            }
-            await expect(match.b.getByRole("alert")).toHaveCount(0);
+        await playMove(secondTab, "2g", "2f", "先手の歩");
+        for (const page of [match.b, match.w, secondTab]) {
+            await expectSquare(page, "2f", "先手の歩");
         }
 
         await closeAll(match.contexts.b, match.contexts.w);

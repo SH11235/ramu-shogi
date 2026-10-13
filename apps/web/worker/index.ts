@@ -1,18 +1,15 @@
-import {
-    enforceRoomCreateRateLimit,
-    handleLegacyRoomRequest,
-    type Env as LegacyRoomEnv,
-    type RoomBackend,
-    resolveRoomBackend,
-} from "./api";
+// Cloudflare Workers Rate Limiting API の型定義
+interface RateLimiter {
+    limit(options: { key: string }): Promise<{ success: boolean }>;
+}
 
-export { RoomDO } from "./room-do";
-
-interface Env extends LegacyRoomEnv {
+interface Env {
+    ASSETS: Fetcher;
+    NNUE_BUCKET: R2Bucket;
     BACKEND?: Fetcher;
     BACKEND_ORIGIN?: string;
-    /** ルーム API の処理先。"legacy" = この Worker の RoomDO、"backend" = backend Worker */
-    ROOM_BACKEND?: string;
+    /** POST /api/rooms の IP ごとのレート制限。wrangler.toml で設定 */
+    ROOM_RATE_LIMITER?: RateLimiter;
 }
 
 const NNUE_MANIFEST_PATH = "/nnue/manifest.json";
@@ -153,7 +150,7 @@ function apiNotFoundResponse(): Response {
 }
 
 type RoomRoute = "create" | "info" | "ws" | "other";
-type RoomServedBy = RoomBackend | "rate_limiter" | "none";
+type RoomServedBy = "backend" | "rate_limiter" | "none";
 type RoomRequestOutcome = { servedBy: RoomServedBy; response: Response; backendFailed?: true };
 
 function classifyRoomRoute(method: string, pathname: string): RoomRoute {
@@ -163,30 +160,35 @@ function classifyRoomRoute(method: string, pathname: string): RoomRoute {
     return "other";
 }
 
+/** POST /api/rooms の IP ごとのレート制限。超過時は 429 を返し、通過時は null を返す */
+async function enforceRoomCreateRateLimit(request: Request, env: Env): Promise<Response | null> {
+    if (!env.ROOM_RATE_LIMITER) return null;
+    const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+    const { success } = await env.ROOM_RATE_LIMITER.limit({ key: ip });
+    if (success) return null;
+    return apiErrorResponse(
+        429,
+        "RATE_LIMITED",
+        "Too many room creation requests. Please try again later.",
+    );
+}
+
 async function serveRoomRequest(
     request: Request,
     env: Env,
-    roomBackend: RoomBackend,
     route: RoomRoute,
 ): Promise<RoomRequestOutcome> {
-    // backend Worker にはレート制限の binding が無いので、処理先によらずここで掛ける
+    // backend Worker にはレート制限の binding が無いので、ここで掛ける
     if (route === "create") {
         const rateLimited = await enforceRoomCreateRateLimit(request, env);
         if (rateLimited) return { servedBy: "rate_limiter", response: rateLimited };
-    }
-
-    if (roomBackend === "legacy") {
-        const legacyResponse = await handleLegacyRoomRequest(request, env);
-        if (legacyResponse) return { servedBy: "legacy", response: legacyResponse };
     }
 
     try {
         const proxiedResponse = await handleApiProxyRequest(request, env);
         if (proxiedResponse) return { servedBy: "backend", response: proxiedResponse };
         return { servedBy: "none", response: apiNotFoundResponse() };
-    } catch (error) {
-        // legacy でここに来るのは RoomDO が扱わないルーム API だけなので、失敗の扱いは他の API と揃えておく
-        if (roomBackend === "legacy") throw error;
+    } catch {
         return {
             servedBy: "backend",
             backendFailed: true,
@@ -205,21 +207,14 @@ async function handleRoomRequest(request: Request, env: Env): Promise<Response |
         return null;
     }
 
-    const roomBackend = resolveRoomBackend(env.ROOM_BACKEND);
     const route = classifyRoomRoute(request.method, pathname);
-    const { servedBy, response, backendFailed } = await serveRoomRequest(
-        request,
-        env,
-        roomBackend,
-        route,
-    );
+    const { servedBy, response, backendFailed } = await serveRoomRequest(request, env, route);
     // ルーム ID は知っていれば参加できる値なので、パスやクエリは記録しない。
     // 転送に失敗したときの例外の文言も URL を含み得るので記録しない
     console.log(
         JSON.stringify({
             event: "room_request",
             served_by: servedBy,
-            room_backend: roomBackend,
             route,
             method: request.method,
             status: response.status,
@@ -321,7 +316,7 @@ export default {
             );
         }
 
-        // /api/rooms/* は ROOM_BACKEND に従い、この Worker の RoomDO か backend Worker で処理
+        // /api/rooms/* はレート制限と記録を挟んで backend Worker へ転送する
         const roomResponse = await handleRoomRequest(request, env);
         if (roomResponse) return roomResponse;
 

@@ -117,9 +117,6 @@ importers:
       '@shogi/match-client':
         specifier: workspace:*
         version: link:../../packages/match-client
-      '@shogi/match-protocol':
-        specifier: workspace:*
-        version: link:../../packages/match-protocol
       '@shogi/study-client':
         specifier: workspace:*
         version: link:../../packages/study-client

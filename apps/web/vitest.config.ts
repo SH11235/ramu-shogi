@@ -14,12 +14,7 @@ export default defineConfig({
             VITE_DEFAULT_NNUE_PRESET: "standard",
             VITE_RSHOGI_API_BASE: "https://example.test/rshogi",
         },
-        exclude: [
-            "**/node_modules/**",
-            "**/worker/**/*.integration.test.ts", // 統合テストは test:integration スクリプトで実行
-            "**/e2e/**",
-            "**/*.e2e.*",
-        ],
+        exclude: ["**/node_modules/**", "**/e2e/**", "**/*.e2e.*"],
     },
     resolve: {
         alias: [

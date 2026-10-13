@@ -8,6 +8,5 @@
         "noEmit": true,
         "jsx": "preserve"
     },
-    "include": ["worker"],
-    "exclude": ["worker/**/*.integration.test.ts"]
+    "include": ["worker"]
 }

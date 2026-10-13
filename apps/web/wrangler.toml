@@ -17,16 +17,10 @@ preview_urls = false
 binding = "BACKEND"
 service = "ramu-shogi-backend"
 
-# ルーム API (/api/rooms/*) の処理先。"legacy" = この Worker の RoomDO、
-# "backend" = backend Worker の RoomDO。vars は named env に継承されないので env ごとに書く。
-# 未設定・想定外の値は "legacy" として扱う
-[vars]
-ROOM_BACKEND = "backend"
-
-# Workers Logs。Worker が console に出した行（ルーム API の処理先を記録する 1 行など）を全件残す。
+# Workers Logs。Worker が console に出した行（ルーム API の転送結果を記録する 1 行など）を全件残す。
 # invocation log はリクエストの URL をそのまま記録する。この Worker は静的アセットを含む全リクエストを
 # 受け、URL にはルーム ID も載るので無効にする。observability は named env に継承されるが、
-# vars と並べて env ごとに明記する
+# env ごとに明記する
 [observability.logs]
 enabled = true
 head_sampling_rate = 1
@@ -44,14 +38,15 @@ run_worker_first = true
 binding = "NNUE_BUCKET"
 bucket_name = "shogi-nnue"
 
-# Durable Objects バインディング
-[[durable_objects.bindings]]
-name = "ROOM"
-class_name = "RoomDO"
-
+# 適用済みの migration は消さずに追記する。ルームは backend Worker の RoomDO が持ち、
+# この Worker の RoomDO は v2 で storage ごと削除する
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["RoomDO"]
+
+[[migrations]]
+tag = "v2"
+deleted_classes = ["RoomDO"]
 
 # Rate Limiting: POST /api/rooms への IP ごとのレート制限
 # namespace_id は Cloudflare Dashboard > Workers > Rate Limiting で作成し設定する
@@ -68,9 +63,6 @@ period = 60
 name = "ramu-shogi-stg"
 # Custom Domain binding。DNS record (AAAA 100:: proxied) は iac repo (Pulumi) が正典
 routes = [{ pattern = "stg.ramu-shogi.sh11235.com", custom_domain = true }]
-[env.stg.vars]
-ROOM_BACKEND = "backend"
-
 [env.stg.observability.logs]
 enabled = true
 head_sampling_rate = 1
@@ -91,13 +83,13 @@ service = "ramu-shogi-backend-stg"
 binding = "NNUE_BUCKET"
 bucket_name = "shogi-nnue"
 
-[[env.stg.durable_objects.bindings]]
-name = "ROOM"
-class_name = "RoomDO"
-
 [[env.stg.migrations]]
 tag = "v1"
 new_sqlite_classes = ["RoomDO"]
+
+[[env.stg.migrations]]
+tag = "v2"
+deleted_classes = ["RoomDO"]
 
 [[env.stg.unsafe.bindings]]
 name = "ROOM_RATE_LIMITER"
