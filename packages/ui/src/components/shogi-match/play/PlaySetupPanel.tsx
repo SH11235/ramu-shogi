@@ -419,9 +419,10 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                     <button
                         type="button"
                         onClick={handleQuickStart}
+                        disabled={locked}
                         className={cn(
                             TEXT_LINK_CLASS,
-                            "font-medium text-wafuu-ai hover:text-wafuu-ai-light",
+                            "font-medium text-wafuu-ai hover:text-wafuu-ai-light disabled:opacity-50",
                         )}
                     >
                         ダウンロードせずに簡易AI と指す

@@ -30,7 +30,9 @@ export function PassRightsSettingsDialog({
                     {/* パス権セクション */}
                     <div className="flex flex-col gap-3 p-3 rounded-lg border border-wafuu-border bg-wafuu-washi/50">
                         <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium">パス権</span>
+                            <label htmlFor="pass-rights-toggle" className="text-sm font-medium">
+                                パス権
+                            </label>
                             <Switch
                                 id="pass-rights-toggle"
                                 checked={passRightsSettings.enabled}
@@ -67,6 +69,7 @@ export function PassRightsSettingsDialog({
                                 <div className="flex items-center justify-center gap-1">
                                     <button
                                         type="button"
+                                        aria-label="先手の初期パス権数を減らす"
                                         onClick={() =>
                                             onChange({
                                                 ...passRightsSettings,
@@ -90,6 +93,7 @@ export function PassRightsSettingsDialog({
                                     </span>
                                     <button
                                         type="button"
+                                        aria-label="先手の初期パス権数を増やす"
                                         onClick={() =>
                                             onChange({
                                                 ...passRightsSettings,
@@ -113,6 +117,7 @@ export function PassRightsSettingsDialog({
                                 <div className="flex items-center justify-center gap-1">
                                     <button
                                         type="button"
+                                        aria-label="後手の初期パス権数を減らす"
                                         onClick={() =>
                                             onChange({
                                                 ...passRightsSettings,
@@ -136,6 +141,7 @@ export function PassRightsSettingsDialog({
                                     </span>
                                     <button
                                         type="button"
+                                        aria-label="後手の初期パス権数を増やす"
                                         onClick={() =>
                                             onChange({
                                                 ...passRightsSettings,
@@ -162,9 +168,12 @@ export function PassRightsSettingsDialog({
                         <div
                             className={`flex flex-col gap-2 ${!passRightsSettings.enabled ? "opacity-50" : ""}`}
                         >
-                            <span className="text-sm">パス確認ダイアログしきい値（ms）</span>
+                            <label htmlFor="pass-rights-confirm-threshold" className="text-sm">
+                                パス確認ダイアログしきい値（ms）
+                            </label>
                             <div className="flex items-center gap-2">
                                 <input
+                                    id="pass-rights-confirm-threshold"
                                     type="number"
                                     min={0}
                                     step={500}

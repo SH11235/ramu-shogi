@@ -8,11 +8,12 @@
 import type { Player } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement, ReactNode } from "react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { NativeSelect } from "../../native-select";
 import { PassRightsSettingsDialog } from "../components/PassRightsSettingsDialog";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
+import { useShogiMatchConfig } from "../ShogiMatchContext";
 import type { DisplaySettings } from "../types";
 import { buildThreadOptions } from "../utils/threadOptions";
 import { PLAY_OUTLINE_BUTTON } from "./playStyles";
@@ -28,6 +29,7 @@ const DISPLAY_TOGGLES: Array<{ key: keyof DisplaySettings; label: string }> = [
     { key: "showBoardLabels", label: "盤の外に筋・段を表示" },
     { key: "highlightLastMove", label: "直前の手を強調" },
     { key: "showSearchInfo", label: "AI の探索情報（NPS・深さ）を表示" },
+    { key: "enableWheelNavigation", label: "終局後、盤の上のホイールで棋譜を送る" },
 ];
 
 const MAX_SECONDS = 86_400;
@@ -63,7 +65,7 @@ export function PlayAdvancedSettings({
         onTimeSettingsChange,
         passRightsSettings,
         onPassRightsSettingsChange,
-        settingsLocked,
+        settingsLocked: matchLocked,
         isDevMode,
         engineThreads,
         onEngineThreadsChange,
@@ -71,6 +73,10 @@ export function PlayAdvancedSettings({
         onOpenEngineManager,
     } = useMatchSettings();
     const { displaySettings } = useMatchState();
+    const { play } = useShogiMatchConfig();
+    // 対局中に加えて、対局を始める準備の間・前の対局を片付けている間も、設定を変えさせない。
+    const settingsLocked = matchLocked || play?.busy === true;
+    const passRightsButtonRef = useRef<HTMLButtonElement>(null);
     const [isPassRightsOpen, setIsPassRightsOpen] = useState(false);
 
     const sideName = (side: Player): string => {
@@ -123,9 +129,12 @@ export function PlayAdvancedSettings({
                     const clock = timeSettings[side];
                     const isAi = sides[side].role === "engine";
                     return (
-                        <div key={side} className="flex flex-col gap-1.5">
+                        <fieldset key={side} className="flex min-w-0 flex-col gap-1.5">
+                            <legend className="sr-only">{sideName(side)}の時間</legend>
                             <div className="flex items-center justify-between gap-3">
-                                <span className="text-sm font-medium">{sideName(side)}</span>
+                                <span aria-hidden className="text-sm font-medium">
+                                    {sideName(side)}
+                                </span>
                                 {/* AI は必ず考慮時間を持つ。人は時間無制限にできる。 */}
                                 {!isAi && (
                                     <label className="flex min-h-8 items-center gap-1.5 text-sm">
@@ -182,13 +191,14 @@ export function PlayAdvancedSettings({
                                     秒
                                 </label>
                             </div>
-                        </div>
+                        </fieldset>
                     );
                 })}
             </Group>
 
             <Group title="ルール・評価関数">
                 <button
+                    ref={passRightsButtonRef}
                     type="button"
                     disabled={settingsLocked}
                     onClick={() => setIsPassRightsOpen(true)}
@@ -295,7 +305,11 @@ export function PlayAdvancedSettings({
 
             <PassRightsSettingsDialog
                 open={isPassRightsOpen}
-                onOpenChange={setIsPassRightsOpen}
+                onOpenChange={(open) => {
+                    setIsPassRightsOpen(open);
+                    // 閉じたら、開いたボタンへフォーカスを戻す（ダイアログの中のダイアログ）。
+                    if (!open) requestAnimationFrame(() => passRightsButtonRef.current?.focus());
+                }}
                 passRightsSettings={passRightsSettings}
                 onChange={onPassRightsSettingsChange}
                 settingsLocked={settingsLocked}
