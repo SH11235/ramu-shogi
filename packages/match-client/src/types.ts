@@ -21,8 +21,10 @@ export interface RoomClient {
 
     subscribe(handler: (msg: ServerMessage) => void): () => void;
     disconnect(): void;
-    getStatus(): "connecting" | "connected" | "reconnecting" | "disconnected";
+    getStatus(): RoomClientStatus;
 }
+
+export type RoomClientStatus = "connecting" | "connected" | "reconnecting" | "disconnected";
 
 export interface RoomClientOpenEvent {
     reconnect: boolean;
@@ -32,5 +34,7 @@ export interface RoomClientOptions {
     wsUrl: string;
     onOpen?: (event: RoomClientOpenEvent) => void;
     onReconnect?: () => void;
+    /** 接続状態が変わるたびに、変わった後の状態で呼ばれる */
+    onStatusChange?: (status: RoomClientStatus) => void;
     autoReconnect?: boolean;
 }

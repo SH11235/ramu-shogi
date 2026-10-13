@@ -20,7 +20,11 @@ export type { TreeAnalysisJob } from "./components/shogi-match/utils/branchTreeU
 export { collectTreeAnalysisJobs } from "./components/shogi-match/utils/branchTreeUtils";
 export { useDevMode } from "./hooks/useDevMode";
 export { useNnueStorage } from "./hooks/useNnueStorage";
-export type { UseRoomConnectionOptions, UseRoomConnectionReturn } from "./hooks/useRoomConnection";
+export type {
+    GameConnection,
+    UseRoomConnectionOptions,
+    UseRoomConnectionReturn,
+} from "./hooks/useRoomConnection";
 export { useRoomConnection } from "./hooks/useRoomConnection";
 
 // ============================================================
@@ -83,6 +87,7 @@ export { SurfaceThemeProvider, useSurfaceTheme } from "./components/surface-them
 // shogi-board
 
 export { listMockRshogiGameIds } from "@shogi/match-client";
+export { ConnectionLostNotice } from "./components/connection-lost-notice";
 export type { RemoteNnueFile, RemoteNnueManager } from "./components/nnue/types";
 export type { AnalysisMoveResult, OnlineAnalysis } from "./components/online-game-view";
 // online-game-view

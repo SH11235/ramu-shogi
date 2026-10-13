@@ -355,6 +355,128 @@ describe("RoomPage", () => {
                 params: { gameId: "record-b" },
             });
         });
+
+        describe("対局中の接続", () => {
+            const RECONNECTING_TEXT = "再接続中...";
+            const PLAYER_LOST_TEXT = "接続が切れました。再読み込みすると元の席に戻れます";
+            const SPECTATOR_LOST_TEXT = "接続が切れました。再読み込みしてください";
+
+            async function openGame(): Promise<FakeSocket> {
+                render(<RoomPage />);
+                await deliverOnOpen("test-room", [
+                    { v: 1, t: "snapshot", payload: makeSnapshot() },
+                ]);
+                expect(screen.getByRole("button", { name: /^1g / })).toBeTruthy();
+                return socketFor("test-room");
+            }
+
+            /** 切断から、RoomClient が再接続を 5 回試みて諦めるまで */
+            async function exhaustReconnects(first: FakeSocket): Promise<void> {
+                let socket = first;
+                vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+                try {
+                    for (const delayMs of [1_000, 2_000, 4_000, 8_000, 16_000]) {
+                        const dropped = socket;
+                        await act(async () => {
+                            dropped.drop();
+                        });
+                        expect(screen.getByRole("status").textContent).toBe(RECONNECTING_TEXT);
+                        await act(async () => {
+                            vi.advanceTimersByTime(delayMs);
+                        });
+                        socket = socketFor("test-room");
+                        expect(socket).not.toBe(dropped);
+                    }
+                    const lastAttempt = socket;
+                    await act(async () => {
+                        lastAttempt.drop();
+                    });
+                } finally {
+                    vi.useRealTimers();
+                }
+                expect(sockets).toHaveLength(6);
+            }
+
+            async function tryToMove(): Promise<void> {
+                await act(async () => {
+                    fireEvent.click(screen.getByRole("button", { name: /^1g / }));
+                });
+                await act(async () => {
+                    fireEvent.click(screen.getByRole("button", { name: /^1f / }));
+                });
+            }
+
+            it("再接続を諦めたら、盤面を残したまま再読み込みを案内し、着手も投了も送ろうとしない", async () => {
+                const reload = vi.fn();
+                vi.stubGlobal("location", { ...window.location, reload });
+                const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+                try {
+                    await exhaustReconnects(await openGame());
+
+                    expect(screen.getByRole("alert").textContent).toContain(PLAYER_LOST_TEXT);
+                    expect(screen.queryByRole("status")).toBeNull();
+                    expect(screen.getByRole("button", { name: /^7g 先手の歩/ })).toBeTruthy();
+                    const resign = screen.getByRole("button", {
+                        name: "投了",
+                    }) as HTMLButtonElement;
+                    expect(resign.disabled).toBe(true);
+
+                    await tryToMove();
+                    fireEvent.click(resign);
+                    expect(
+                        warn.mock.calls.filter(([text]) =>
+                            String(text).startsWith("[RoomClient] Cannot send"),
+                        ),
+                    ).toEqual([]);
+
+                    fireEvent.click(screen.getByRole("button", { name: "再読み込み" }));
+                    expect(reload).toHaveBeenCalledTimes(1);
+                } finally {
+                    warn.mockRestore();
+                }
+            });
+
+            it("再接続して resume し直せたら、案内を出さずにそのまま指せる", async () => {
+                const first = await openGame();
+                vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+                try {
+                    await act(async () => {
+                        first.drop();
+                    });
+                    expect(screen.getByRole("status").textContent).toBe(RECONNECTING_TEXT);
+                    expect(
+                        (screen.getByRole("button", { name: "投了" }) as HTMLButtonElement)
+                            .disabled,
+                    ).toBe(true);
+                    await act(async () => {
+                        vi.advanceTimersByTime(1_000);
+                    });
+                } finally {
+                    vi.useRealTimers();
+                }
+                const socket = socketFor("test-room");
+                expect(socket).not.toBe(first);
+                await deliverOnOpen("test-room", []);
+
+                expect(socket.sent.filter((message) => message.t === "resume")).toHaveLength(1);
+                expect(screen.queryByRole("status")).toBeNull();
+                expect(screen.queryByRole("alert")).toBeNull();
+                await tryToMove();
+                expect(socket.sent.filter((message) => message.t === "move")).toEqual([
+                    expect.objectContaining({ payload: expect.objectContaining({ usi: "1g1f" }) }),
+                ]);
+            });
+
+            it("観戦者には、席へ戻れるとは案内しない", async () => {
+                localStorage.setItem("ramu_seat_test-room", "s");
+
+                await exhaustReconnects(await openGame());
+
+                expect(screen.getByRole("alert").textContent).toContain(SPECTATOR_LOST_TEXT);
+                expect(screen.queryByText(PLAYER_LOST_TEXT)).toBeNull();
+                expect(screen.getByRole("button", { name: "再読み込み" })).toBeTruthy();
+            });
+        });
     });
 
     describe("待機中の参加者の対局開始", () => {

@@ -1,7 +1,11 @@
 import { createReconnectManager, getStoredResumeToken, storeResumeToken } from "./reconnect";
-import type { ClientMessageType, RoomClient, RoomClientOptions, ServerMessage } from "./types";
-
-type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "disconnected";
+import type {
+    ClientMessageType,
+    RoomClient,
+    RoomClientOptions,
+    RoomClientStatus,
+    ServerMessage,
+} from "./types";
 
 // WebSocket コンストラクタの型（テスト時のインジェクション対応）
 type WebSocketFactory = (url: string) => WebSocket;
@@ -20,7 +24,7 @@ export function createRoomClient(
     const wsFactory: WebSocketFactory =
         _wsFactory ?? ((url: string) => new (globalThis.WebSocket as typeof WebSocket)(url));
 
-    let status: ConnectionStatus = "connecting";
+    let status: RoomClientStatus = "connecting";
     let ws: WebSocket | null = null;
     let msgId = 0;
     let lastKnownEventId = 0;
@@ -38,13 +42,19 @@ export function createRoomClient(
     const roomIdMatch = options.wsUrl.match(/\/rooms\/([^/]+)\/ws/);
     const roomId = roomIdMatch?.[1] ?? null;
 
+    function setStatus(next: RoomClientStatus): void {
+        if (status === next) return;
+        status = next;
+        options.onStatusChange?.(next);
+    }
+
     const reconnectManager = createReconnectManager({
         maxRetries: 5,
         onAttempt: (_attempt, _delayMs) => {
-            status = "reconnecting";
+            setStatus("reconnecting");
         },
         onMaxRetriesReached: () => {
-            status = "disconnected";
+            setStatus("disconnected");
             options.onReconnect?.();
         },
     });
@@ -99,17 +109,17 @@ export function createRoomClient(
             if (isReconnect && roomId) {
                 const token = getStoredResumeToken(roomId);
                 if (token) {
-                    status = "connected";
+                    setStatus("connected");
                     reconnectManager.reset();
                     send("resume", { resumeToken: token, lastEventId: lastKnownEventId });
                     options.onReconnect?.();
                     didResume = true;
                 } else {
-                    status = "connected";
+                    setStatus("connected");
                     reconnectManager.reset();
                 }
             } else {
-                status = "connected";
+                setStatus("connected");
                 reconnectManager.reset();
             }
             // resumeToken がない再接続は新規接続として扱う（reconnect: false）
@@ -144,7 +154,7 @@ export function createRoomClient(
             if (status !== "disconnected" && options.autoReconnect !== false) {
                 reconnectManager.schedule(connect);
             } else {
-                status = "disconnected";
+                setStatus("disconnected");
             }
         });
 
@@ -221,7 +231,7 @@ export function createRoomClient(
 
         disconnect() {
             reconnectManager.cancel();
-            status = "disconnected";
+            setStatus("disconnected");
             if (pingIntervalId !== null) {
                 clearInterval(pingIntervalId);
                 pingIntervalId = null;

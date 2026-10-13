@@ -8,6 +8,14 @@ import {
 import { useEffect, useEffectEvent, useReducer, useRef } from "react";
 import { type GameStartSnapshot, snapshotAtGameStart } from "../components/online-game-state";
 
+/** 対局画面へ引き継いだ後の接続。lost は RoomClient が再接続を諦めた状態 */
+export type GameConnection =
+    | { state: "connected" }
+    | { state: "reconnecting" }
+    | { state: "lost"; canResume: boolean };
+
+const GAME_CONNECTED: GameConnection = { state: "connected" };
+
 function errorCodeToMessage(code: ErrorCode): string {
     switch (code) {
         case "ROOM_FULL":
@@ -78,6 +86,7 @@ interface RoomState {
     connectionLost: boolean;
     localStartSfen: string | null;
     gamePhase: "waiting" | "playing";
+    gameConnection: GameConnection;
     client: RoomClient | null;
 }
 
@@ -87,6 +96,7 @@ type RoomAction =
     | { type: "settings_updated"; startSfen: string }
     | { type: "game_start"; snapshot: SnapshotPayload | GameStartSnapshot }
     | { type: "connection_failed"; canResume: boolean }
+    | { type: "game_connection_changed"; connection: GameConnection }
     | { type: "client_set"; client: RoomClient }
     | { type: "client_cleared" }
     | { type: "room_changed" };
@@ -97,6 +107,7 @@ const INITIAL_ROOM_STATE: RoomState = {
     connectionLost: false,
     localStartSfen: null,
     gamePhase: "waiting",
+    gameConnection: GAME_CONNECTED,
     client: null,
 };
 
@@ -127,6 +138,8 @@ function roomReducer(state: RoomState, action: RoomAction): RoomState {
                 snapshot: null,
                 connectionLost: state.joined && action.canResume,
             };
+        case "game_connection_changed":
+            return { ...state, gameConnection: action.connection };
         case "client_set":
             return { ...state, client: action.client };
         case "client_cleared":
@@ -270,6 +283,7 @@ export interface UseRoomConnectionReturn {
     connectionLost: boolean;
     localStartSfen: string | null;
     gamePhase: "waiting" | "playing";
+    gameConnection: GameConnection;
     client: RoomClient | null;
 
     // アクション
@@ -294,6 +308,12 @@ export function useRoomConnection({
 
     const clientRef = useRef<RoomClient | null>(null);
     const disposeConnectionRef = useRef<(() => void) | null>(null);
+
+    /** 再読み込みすると、保存済みのトークンで対局者の席へ戻れるか */
+    const canResumeSeat = (): boolean => {
+        const storedSeat = getStoredSeat(roomId);
+        return getStoredResumeToken(roomId) !== null && (storedSeat === "b" || storedSeat === "w");
+    };
 
     const connectClient = ({
         timeoutMessage,
@@ -322,6 +342,25 @@ export function useRoomConnection({
                     fail(timeoutMessage);
                 }
             },
+            onStatusChange: (status) => {
+                // 待機中の接続の失敗は onReconnect で扱う。ここは対局画面へ引き継いだ後だけ
+                if (isDisposed || isListening) {
+                    return;
+                }
+                if (status === "reconnecting") {
+                    dispatchRoom({
+                        type: "game_connection_changed",
+                        connection: { state: "reconnecting" },
+                    });
+                } else if (status === "connected") {
+                    dispatchRoom({ type: "game_connection_changed", connection: GAME_CONNECTED });
+                } else if (status === "disconnected") {
+                    dispatchRoom({
+                        type: "game_connection_changed",
+                        connection: { state: "lost", canResume: canResumeSeat() },
+                    });
+                }
+            },
             onOpen: ({ reconnect }) => {
                 if (isDisposed) {
                     return;
@@ -346,13 +385,7 @@ export function useRoomConnection({
                 return;
             }
             dispatchJoin({ type: "error", message: messageText });
-            const storedSeat = getStoredSeat(roomId);
-            dispatchRoom({
-                type: "connection_failed",
-                canResume:
-                    getStoredResumeToken(roomId) !== null &&
-                    (storedSeat === "b" || storedSeat === "w"),
-            });
+            dispatchRoom({ type: "connection_failed", canResume: canResumeSeat() });
             cleanup();
         };
 
@@ -510,6 +543,7 @@ export function useRoomConnection({
         connectionLost: roomState.connectionLost,
         localStartSfen: roomState.localStartSfen,
         gamePhase: roomState.gamePhase,
+        gameConnection: roomState.gameConnection,
         client: roomState.client,
 
         handleJoin,

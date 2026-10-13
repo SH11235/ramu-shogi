@@ -212,6 +212,33 @@ describe("createRoomClient", () => {
         client.disconnect();
     });
 
+    it("接続状態が変わるたびに onStatusChange を呼び、再接続を諦めると disconnected を通知する", () => {
+        const { factory, instances } = createMockWsFactory();
+        const statuses: string[] = [];
+        const client = createRoomClient(
+            {
+                wsUrl: "ws://localhost/api/rooms/room1/ws",
+                onStatusChange: (status) => statuses.push(status),
+            },
+            factory as unknown as (url: string) => WebSocket,
+        );
+        instances[0].emitOpen();
+        instances[0].close();
+        vi.advanceTimersByTime(1000);
+        instances[1].emitOpen();
+        expect(statuses).toEqual(["connected", "reconnecting", "connected"]);
+
+        statuses.length = 0;
+        instances[1].close();
+        for (const delayMs of [1000, 2000, 4000, 8000, 16000]) {
+            vi.advanceTimersByTime(delayMs);
+            instances.at(-1)?.close();
+        }
+        expect(statuses).toEqual(["reconnecting", "disconnected"]);
+        expect(client.getStatus()).toBe("disconnected");
+        expect(instances).toHaveLength(7);
+    });
+
     it("autoReconnect: false のとき再接続しない", () => {
         const { factory, instances } = createMockWsFactory();
         const client = createRoomClient(

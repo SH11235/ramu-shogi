@@ -24,7 +24,9 @@ import type {
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
 import { useLazyNnueLoader } from "../hooks/useLazyNnueLoader";
+import type { GameConnection } from "../hooks/useRoomConnection";
 import { useShogiSound } from "../hooks/useShogiSound";
+import { ConnectionLostNotice } from "./connection-lost-notice";
 import { NnueManagerDialog } from "./nnue/NnueManagerDialog";
 import type { RemoteNnueManager } from "./nnue/types";
 import {
@@ -201,6 +203,7 @@ interface OnlineGameViewProps {
     snapshot: SnapshotPayload;
     seat: Seat;
     roomId: string;
+    connection?: GameConnection;
     analysis?: OnlineAnalysis;
     manifestUrl?: string;
     remoteNnueManager?: RemoteNnueManager;
@@ -218,6 +221,7 @@ export function OnlineGameView({
     snapshot,
     seat,
     roomId,
+    connection = { state: "connected" },
     analysis,
     manifestUrl,
     remoteNnueManager,
@@ -283,6 +287,9 @@ export function OnlineGameView({
         myPlayer !== null &&
         ((turn === "b" && myPlayer === "sente") || (turn === "w" && myPlayer === "gote"));
     const isSpectator = seat === "s";
+    // つながっていない間に送った操作は RoomClient が捨てるので、操作自体を受け付けない
+    const canSend = connection.state === "connected";
+    const canPlay = isMyTurn && canSend;
 
     const totalPly = Math.max(0, positionHistory.length - 1);
     // 自分の手番になったら巻き戻しを解除してライブ追従（effect 不要、レンダー時に派生）
@@ -498,7 +505,7 @@ export function OnlineGameView({
         void (async () => {
             // position に依存させる: 手番が変わらないまま局面だけ変わる再同期でも、
             // 反映し終えた局面の合法手を取り直す
-            if (position && isMyTurn && !gameResult && !isRewound) {
+            if (position && canPlay && !gameResult && !isRewound) {
                 try {
                     const moves = await getPositionService().getLegalMoves(
                         startSfenRef.current,
@@ -523,7 +530,7 @@ export function OnlineGameView({
         return () => {
             cancelled = true;
         };
-    }, [isMyTurn, gameResult, isRewound, passRights, client, position]);
+    }, [canPlay, gameResult, isRewound, passRights, client, position]);
 
     // ─── 棋譜ナビゲーションハンドラ ───────────────────────────────────────────
 
@@ -565,7 +572,7 @@ export function OnlineGameView({
     // ─── 盤面クリック処理 ────────────────────────────────────────────────────
 
     function handleBoardSelect(squareId: string): void {
-        if (!isMyTurn || gameResult || !position) return;
+        if (!canPlay || gameResult || !position) return;
 
         // 持ち駒を選択中の場合 → ドロップ
         if (selectedHand !== null) {
@@ -635,7 +642,7 @@ export function OnlineGameView({
     }
 
     function handleHandSelect(pieceType: PieceType): void {
-        if (!isMyTurn || gameResult || isRewound) return;
+        if (!canPlay || gameResult || isRewound) return;
         dispatchUI({
             type: "select_hand",
             pieceType: selectedHand === pieceType ? null : pieceType,
@@ -646,7 +653,7 @@ export function OnlineGameView({
     // ─── 投了 ────────────────────────────────────────────────────────────────
 
     function handleResign(): void {
-        if (!isMyTurn || !position) return;
+        if (!canPlay || !position) return;
         client.resign({ eventId: appliedEventIdRef.current });
     }
 
@@ -716,7 +723,7 @@ export function OnlineGameView({
     // ─── AI 手の盤面適用 ──────────────────────────────────────────────────────
 
     function handleApplyAiMove(usiMove: string): void {
-        if (!position || !isMyTurn || gameResult) return;
+        if (!position || !canPlay || gameResult) return;
         void sendMove(usiMove);
     }
 
@@ -774,7 +781,7 @@ export function OnlineGameView({
 
     // 成り選択状態（MobileBoardSection へ渡す用）
     const promotionSelection: PromotionSelection | null = (() => {
-        if (!promoteDialog || !displayPosition) return null;
+        if (!promoteDialog || !displayPosition || !canSend) return null;
         const piece =
             displayPosition.board[promoteDialog.from as keyof typeof displayPosition.board];
         if (!piece) return null;
@@ -791,16 +798,16 @@ export function OnlineGameView({
     const topHand: HandInfo = {
         owner: topOwner,
         hand: displayPosition?.hands[topOwner] ?? ({} as PositionState["hands"]["sente"]),
-        isActive: !isRewound && isMyTurn && myPlayer === topOwner,
+        isActive: !isRewound && canPlay && myPlayer === topOwner,
         isAI: false,
     };
     const bottomHand: HandInfo = {
         owner: bottomOwner,
         hand: displayPosition?.hands[bottomOwner] ?? ({} as PositionState["hands"]["sente"]),
-        isActive: !isRewound && isMyTurn && myPlayer === bottomOwner,
+        isActive: !isRewound && canPlay && myPlayer === bottomOwner,
         isAI: false,
     };
-    const onSquareSelect = !isRewound && isMyTurn && !isSpectator ? handleBoardSelect : () => {};
+    const onSquareSelect = !isRewound && canPlay && !isSpectator ? handleBoardSelect : () => {};
     const onPromotionChoiceForMobile = (promote: boolean) => {
         if (!promoteDialog) return;
         void sendMove(promote ? `${promoteDialog.usi}+` : promoteDialog.usi, promoteDialog.to);
@@ -814,7 +821,7 @@ export function OnlineGameView({
           ? ({ kind: "hand", piece: selectedHand } as const)
           : null;
     const moveShadow =
-        displayPosition && !isRewound && isMyTurn && !isSpectator
+        displayPosition && !isRewound && canPlay && !isSpectator
             ? computeMoveShadow({
                   selection,
                   grid,
@@ -831,8 +838,16 @@ export function OnlineGameView({
     // KIF テキスト（対局終了後のダウンロード・コピー用）
     const generatedKif = exportGameKif(gameState, snapshot.settings.startSfen, playerNames);
 
+    // 画面全体を覆うので、つながっていない間に出すと再読み込みの案内を押せなくなる
+    const showTakebackApproval =
+        pendingTakeback !== null &&
+        pendingTakeback.seat !== seat &&
+        !isSpectator &&
+        !gameResult &&
+        canSend;
+
     // PC サイドバーとモバイル BottomSheet で共通利用するコンテンツ
-    const canAnalyzeNow = !gameResult && (isMyTurn || isSpectator);
+    const canAnalyzeNow = !gameResult && (canPlay || isSpectator);
     const analyzeHintText =
         !gameResult && !isMyTurn && !isSpectator
             ? "相手の手番中は解析できません。自分の手番になってから使用してください。"
@@ -854,7 +869,7 @@ export function OnlineGameView({
                 onNnueSelectionChange={setNnueSelection}
                 onOpenNnueManager={() => setNnueManagerOpen(true)}
                 onApplyMove={
-                    isMyTurn && !gameResult && !isSpectator
+                    canPlay && !gameResult && !isSpectator
                         ? (usiMove) => Promise.resolve(handleApplyAiMove(usiMove))
                         : undefined
                 }
@@ -928,6 +943,13 @@ export function OnlineGameView({
 
             {/* メインコンテンツ */}
             <div className={`flex flex-col gap-3 ${isMobile ? "items-center" : "flex-1"}`}>
+                {!gameResult && connection.state === "reconnecting" && (
+                    <output className="text-sm text-muted-foreground">再接続中...</output>
+                )}
+                {!gameResult && connection.state === "lost" && (
+                    <ConnectionLostNotice canResume={!isSpectator && connection.canResume} />
+                )}
+
                 {/* 奥側プレイヤー情報（上）: 後手視点では先手が奥 */}
                 <PlayerHeader
                     name={flipBoard ? playerNames.b : playerNames.w}
@@ -1041,7 +1063,8 @@ export function OnlineGameView({
                         <button
                             type="button"
                             onClick={handleTakebackCancel}
-                            className="ml-3 text-xs text-muted-foreground underline hover:text-foreground"
+                            disabled={!canSend}
+                            className="ml-3 text-xs text-muted-foreground underline hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             取り消す
                         </button>
@@ -1062,7 +1085,7 @@ export function OnlineGameView({
                         <button
                             type="button"
                             onClick={() => void sendMove("pass")}
-                            disabled={!legalMoves.includes("pass")}
+                            disabled={!canSend || !legalMoves.includes("pass")}
                             className="rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             パス
@@ -1077,7 +1100,8 @@ export function OnlineGameView({
                             <button
                                 type="button"
                                 onClick={handleTakebackRequest}
-                                className="rounded-md border border-wafuu-kincha/40 bg-wafuu-kincha/10 px-4 py-2 text-sm font-medium text-wafuu-kincha hover:bg-wafuu-kincha/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                disabled={!canSend}
+                                className="rounded-md border border-wafuu-kincha/40 bg-wafuu-kincha/10 px-4 py-2 text-sm font-medium text-wafuu-kincha hover:bg-wafuu-kincha/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 待った
                             </button>
@@ -1086,7 +1110,8 @@ export function OnlineGameView({
                         <button
                             type="button"
                             onClick={handleResign}
-                            className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            disabled={!canSend}
+                            className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             投了
                         </button>
@@ -1165,7 +1190,7 @@ export function OnlineGameView({
             </div>
 
             {/* 待った: 承認ダイアログ（相手向け） */}
-            {pendingTakeback && pendingTakeback.seat !== seat && !isSpectator && !gameResult && (
+            {showTakebackApproval && (
                 <div className="fixed inset-0 z-40 flex items-end justify-center pb-8 md:items-center md:pb-0">
                     <div className="rounded-xl border border-border bg-card p-5 shadow-xl w-[300px]">
                         <p className="mb-1 text-center font-semibold text-foreground">

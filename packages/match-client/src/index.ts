@@ -102,4 +102,5 @@ export type {
     RoomClient,
     RoomClientOpenEvent,
     RoomClientOptions,
+    RoomClientStatus,
 } from "./types";

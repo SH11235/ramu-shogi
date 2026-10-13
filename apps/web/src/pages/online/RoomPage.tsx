@@ -7,7 +7,12 @@ import {
     type Seat,
     type SnapshotPayload,
 } from "@shogi/match-client";
-import { OnlineGameView, PositionPresetSelector, useRoomConnection } from "@shogi/ui";
+import {
+    ConnectionLostNotice,
+    OnlineGameView,
+    PositionPresetSelector,
+    useRoomConnection,
+} from "@shogi/ui";
 import { getRouteApi, useNavigate, useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -293,6 +298,7 @@ export default function RoomPage(): ReactElement {
         connectionLost,
         localStartSfen,
         gamePhase,
+        gameConnection,
         client,
         handleJoin,
         handleUpdateStartSfen,
@@ -379,6 +385,7 @@ export default function RoomPage(): ReactElement {
                 client={client}
                 snapshot={snapshot}
                 seat={joinSeat as Seat}
+                connection={gameConnection}
                 roomId={roomId}
                 analysis={analysis}
                 manifestUrl={nnueManifestUrl}
@@ -418,21 +425,7 @@ export default function RoomPage(): ReactElement {
                 />
                 <div className="mx-auto flex max-w-[480px] flex-col gap-5 px-4 py-8">
                     <h1 className="text-xl font-bold text-foreground">対局ルーム</h1>
-                    <div
-                        role="alert"
-                        className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
-                    >
-                        <p className="text-sm text-foreground">
-                            接続が切れました。再読み込みすると元の席に戻れます
-                        </p>
-                        <button
-                            type="button"
-                            onClick={() => window.location.reload()}
-                            className="rounded-md bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground shadow-sm hover:bg-secondary/80 transition-colors"
-                        >
-                            再読み込み
-                        </button>
-                    </div>
+                    <ConnectionLostNotice canResume />
                 </div>
             </>
         );
