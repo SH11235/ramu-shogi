@@ -11,6 +11,7 @@ import { useEffect, useEffectEvent, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../dialog";
 import type { ShogiBoardCell } from "../../shogi-board";
 import { ShogiBoard } from "../../shogi-board";
+import { cellSizeForWidth } from "../hooks/useMobileCellSize";
 import type { SquareNotation } from "../types";
 import type { PvDisplayMove } from "../utils/kifFormat";
 import { convertPvToDisplay } from "../utils/kifFormat";
@@ -42,6 +43,11 @@ interface PvPreviewDialogProps {
     firstMoveLabel?: string;
 }
 
+/** PC の広いダイアログでも、盤をこれ以上大きくしない（読み筋の一覧まで 1 画面に収める）。 */
+const MAX_PREVIEW_CELL_SIZE = 40;
+/** マスがこれより小さいとき（スマホ）は、持ち駒も小さい表示にする。 */
+const COMPACT_HAND_CELL_SIZE = 38;
+
 function boardToGrid(board: BoardState): ShogiBoardCell[][] {
     const matrix = boardToMatrix(board);
     return matrix.map((row) =>
@@ -70,6 +76,27 @@ export function PvPreviewDialog({
     description,
     firstMoveLabel,
 }: PvPreviewDialogProps): ReactElement {
+    // 盤のマスの大きさは、ダイアログの中身の幅に合わせる。ダイアログは body 直下へ出るので、
+    // 開いた画面の `--shogi-cell-size` は届かない。合わせないと、狭い画面で盤が既定の大きさの
+    // まま押しつぶされ、マスが縦長になって駒が欠ける。
+    // ダイアログの中身は開いたあとに現れるので、要素を state で受けてから幅を測る。
+    const [boardArea, setBoardArea] = useState<HTMLDivElement | null>(null);
+    const [boardAreaWidth, setBoardAreaWidth] = useState<number | null>(null);
+    useEffect(() => {
+        if (!boardArea) return;
+        const update = () => setBoardAreaWidth(boardArea.clientWidth);
+        update();
+        const observer = new ResizeObserver(update);
+        observer.observe(boardArea);
+        return () => observer.disconnect();
+    }, [boardArea]);
+    const cellSize = Math.min(
+        // 測る前は、画面の幅からダイアログの余白を引いた見積もりで描く。
+        cellSizeForWidth(boardAreaWidth ?? document.documentElement.clientWidth - 50),
+        MAX_PREVIEW_CELL_SIZE,
+    );
+    const handSize = cellSize < COMPACT_HAND_CELL_SIZE ? "medium" : "normal";
+
     // 現在のプレビュー位置（0 = 開始局面、1 = PVの1手目後、...）
     const [previewIndex, setPreviewIndex] = useState(0);
 
@@ -177,7 +204,7 @@ export function PvPreviewDialog({
     return (
         <Dialog defaultOpen onOpenChange={(isOpen) => !isOpen && onClose()}>
             <DialogContent
-                className="max-w-[500px]"
+                className="max-w-[500px] p-3 sm:p-6"
                 // 説明を渡したときだけ関連付ける（渡さない呼び出しは、これまでどおり）。
                 hasDescription={description !== undefined}
             >
@@ -222,22 +249,22 @@ export function PvPreviewDialog({
                 </button>
 
                 <div className="flex flex-col gap-1.5">
-                    {/* 将棋盤と持ち駒（コンパクト表示） */}
-                    <div className="flex flex-col items-center origin-top scale-[0.85] -mb-20">
+                    {/* 将棋盤と持ち駒 */}
+                    <div
+                        ref={setBoardArea}
+                        className="flex w-full flex-col items-center gap-1"
+                        style={{ "--shogi-cell-size": `${cellSize}px` } as React.CSSProperties}
+                    >
                         {/* 後手の持ち駒 */}
-                        <div className="w-full flex justify-center">
-                            <div className="text-base text-muted-foreground mr-2 self-center">
-                                ☖
-                            </div>
-                            <HandPiecesDisplay
-                                owner="gote"
-                                hand={currentPosition.hands.gote}
-                                selectedPiece={null}
-                                isActive={false}
-                                onHandSelect={() => {}}
-                                flipBoard={false}
-                            />
-                        </div>
+                        <HandPiecesDisplay
+                            owner="gote"
+                            hand={currentPosition.hands.gote}
+                            selectedPiece={null}
+                            isActive={false}
+                            onHandSelect={() => {}}
+                            flipBoard={false}
+                            size={handSize}
+                        />
 
                         {/* 将棋盤 */}
                         <ShogiBoard
@@ -252,19 +279,15 @@ export function PvPreviewDialog({
                         />
 
                         {/* 先手の持ち駒 */}
-                        <div className="w-full flex justify-center">
-                            <div className="text-base text-muted-foreground mr-2 self-center">
-                                ☗
-                            </div>
-                            <HandPiecesDisplay
-                                owner="sente"
-                                hand={currentPosition.hands.sente}
-                                selectedPiece={null}
-                                isActive={false}
-                                onHandSelect={() => {}}
-                                flipBoard={false}
-                            />
-                        </div>
+                        <HandPiecesDisplay
+                            owner="sente"
+                            hand={currentPosition.hands.sente}
+                            selectedPiece={null}
+                            isActive={false}
+                            onHandSelect={() => {}}
+                            flipBoard={false}
+                            size={handSize}
+                        />
                     </div>
 
                     {/* ナビゲーション: 手数表示とボタンを1行に */}
@@ -273,7 +296,7 @@ export function PvPreviewDialog({
                             type="button"
                             onClick={() => setPreviewIndex(0)}
                             disabled={previewIndex === 0}
-                            className="px-2 py-1 text-xs bg-muted hover:bg-muted/80 rounded border border-border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            className="min-w-10 px-3 py-2 text-sm bg-muted hover:bg-muted/80 rounded border border-border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         >
                             |&lt;
                         </button>
@@ -281,7 +304,7 @@ export function PvPreviewDialog({
                             type="button"
                             onClick={() => setPreviewIndex((prev) => Math.max(0, prev - 1))}
                             disabled={previewIndex === 0}
-                            className="px-2 py-1 text-xs bg-muted hover:bg-muted/80 rounded border border-border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            className="min-w-10 px-3 py-2 text-sm bg-muted hover:bg-muted/80 rounded border border-border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         >
                             &lt;
                         </button>
@@ -296,7 +319,7 @@ export function PvPreviewDialog({
                                 setPreviewIndex((prev) => Math.min(positions.length - 1, prev + 1))
                             }
                             disabled={previewIndex >= positions.length - 1}
-                            className="px-2 py-1 text-xs bg-muted hover:bg-muted/80 rounded border border-border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            className="min-w-10 px-3 py-2 text-sm bg-muted hover:bg-muted/80 rounded border border-border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         >
                             &gt;
                         </button>
@@ -304,14 +327,14 @@ export function PvPreviewDialog({
                             type="button"
                             onClick={() => setPreviewIndex(positions.length - 1)}
                             disabled={previewIndex >= positions.length - 1}
-                            className="px-2 py-1 text-xs bg-muted hover:bg-muted/80 rounded border border-border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            className="min-w-10 px-3 py-2 text-sm bg-muted hover:bg-muted/80 rounded border border-border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         >
                             &gt;|
                         </button>
                     </div>
 
                     {/* 読み筋リスト */}
-                    <div className="flex flex-wrap gap-0.5 text-[11px] font-mono tabular-nums justify-center">
+                    <div className="flex flex-wrap gap-0.5 text-xs font-mono tabular-nums justify-center">
                         {pvDisplay.map((move, index) => {
                             const moveNumber = index + 1;
                             return (
