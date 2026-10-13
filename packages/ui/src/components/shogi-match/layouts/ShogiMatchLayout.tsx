@@ -21,6 +21,8 @@ import { MatchStateProvider } from "../contexts/MatchStateContext";
 import { NavigationProvider } from "../contexts/NavigationContext";
 import { DragGhost } from "../dnd/DragGhost";
 import type { PieceDndController as DndController } from "../dnd/usePieceDnd";
+import { PlayMobileLayout } from "../play/PlayMobileLayout";
+import { PlayPCLayout } from "../play/PlayPCLayout";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import type {
     AnalysisProps,
@@ -82,7 +84,9 @@ export function ShogiMatchLayout({
     isMatchRunning,
     isPaused,
 }: ShogiMatchLayoutProps): ReactElement {
-    const { viewerMode } = useShogiMatchConfig();
+    const { viewerMode, play } = useShogiMatchConfig();
+    // 対局専用の画面（screen="play"）。レイアウトごと差し替える（終局の表示・読み筋のウィンドウも持たない）。
+    const isPlayScreen = play !== null;
     // グループ化されたpropsを展開: 対局設定
     const {
         sides,
@@ -267,12 +271,14 @@ export function ShogiMatchLayout({
 
             <EngineRestartingOverlay visible={isEngineRestarting} />
 
-            {/* 勝敗表示ダイアログ */}
-            <GameResultDialog
-                result={gameResult}
-                open={showResultDialog}
-                onClose={() => setShowResultDialog(false)}
-            />
+            {/* 勝敗表示ダイアログ（対局画面は、次の操作つきの専用の表示を自分で出す） */}
+            {!isPlayScreen && (
+                <GameResultDialog
+                    result={gameResult}
+                    open={showResultDialog}
+                    onClose={() => setShowResultDialog(false)}
+                />
+            )}
 
             {/* PVプレビューダイアログ */}
             {pvPreview && (
@@ -307,7 +313,7 @@ export function ShogiMatchLayout({
             />
 
             {/* 手の詳細ウィンドウ（ドラッグ移動可能） */}
-            {selectedMoveDetail && (
+            {selectedMoveDetail && !isPlayScreen && (
                 <MoveDetailWindow
                     move={selectedMoveDetail.move}
                     position={selectedMoveDetail.position}
@@ -462,17 +468,27 @@ export function ShogiMatchLayout({
                                 handleMoveDetailSelect={handleMoveDetailSelect}
                                 isMatchRunning={isMatchRunning}
                             >
-                                <MobileLayout
-                                    searchInfo={mobileSpecificProps.searchInfo}
-                                    candidateNote={candidateNote}
-                                    isReviewMode={isReviewMode}
-                                    reviewMode={mobileReviewMode}
-                                    onOpenAbout={onOpenAbout}
-                                    onImportSfen={onImportSfen}
-                                    onImportKif={onImportKif}
-                                    positionReady={positionReady}
-                                    onDisplaySettingsChange={onDisplaySettingsChange}
-                                />
+                                {isPlayScreen ? (
+                                    <PlayMobileLayout
+                                        searchInfo={mobileSpecificProps.searchInfo}
+                                        candidateNote={candidateNote}
+                                        onOpenAbout={onOpenAbout}
+                                        positionReady={positionReady}
+                                        onDisplaySettingsChange={onDisplaySettingsChange}
+                                    />
+                                ) : (
+                                    <MobileLayout
+                                        searchInfo={mobileSpecificProps.searchInfo}
+                                        candidateNote={candidateNote}
+                                        isReviewMode={isReviewMode}
+                                        reviewMode={mobileReviewMode}
+                                        onOpenAbout={onOpenAbout}
+                                        onImportSfen={onImportSfen}
+                                        onImportKif={onImportKif}
+                                        positionReady={positionReady}
+                                        onDisplaySettingsChange={onDisplaySettingsChange}
+                                    />
+                                )}
                             </NavigationProvider>
                         </MatchStateProvider>
                     </AnalysisProvider>
@@ -597,30 +613,51 @@ export function ShogiMatchLayout({
                                 handleMoveDetailSelect={handleMoveDetailSelect}
                                 isMatchRunning={isMatchRunning}
                             >
-                                <PCLayout
-                                    matchLayoutClasses={matchLayoutClasses}
-                                    candidateNote={candidateNote}
-                                    isSettingsModalOpen={isSettingsModalOpen}
-                                    onSettingsModalOpenChange={setIsSettingsModalOpen}
-                                    importSfen={importSfen}
-                                    importKif={importKif}
-                                    positionReady={positionReady}
-                                    isDevMode={isDevMode}
-                                    eventLogs={eventLogs}
-                                    errorLogs={errorLogs}
-                                    engineErrorDetails={engineErrorDetails}
-                                    retryEngine={retryEngine}
-                                    isRetrying={isRetrying}
-                                    isDisplaySettingsOpen={isDisplaySettingsOpen}
-                                    onDisplaySettingsOpenChange={onDisplaySettingsOpenChange}
-                                    setDisplaySettings={setDisplaySettings}
-                                    isPassRightsSettingsOpen={isPassRightsSettingsOpen}
-                                    onPassRightsSettingsOpenChange={onPassRightsSettingsOpenChange}
-                                    handlePassRightsSettingsChange={handlePassRightsSettingsChange}
-                                    reviewMode={reviewMode}
-                                    reviewLeftContent={reviewLeftContent}
-                                    reviewTopContent={reviewTopContent}
-                                />
+                                {isPlayScreen ? (
+                                    <PlayPCLayout
+                                        matchLayoutClasses={matchLayoutClasses}
+                                        candidateNote={candidateNote}
+                                        isDisplaySettingsOpen={isDisplaySettingsOpen}
+                                        onDisplaySettingsOpenChange={onDisplaySettingsOpenChange}
+                                        setDisplaySettings={setDisplaySettings}
+                                        isPassRightsSettingsOpen={isPassRightsSettingsOpen}
+                                        onPassRightsSettingsOpenChange={
+                                            onPassRightsSettingsOpenChange
+                                        }
+                                        handlePassRightsSettingsChange={
+                                            handlePassRightsSettingsChange
+                                        }
+                                    />
+                                ) : (
+                                    <PCLayout
+                                        matchLayoutClasses={matchLayoutClasses}
+                                        candidateNote={candidateNote}
+                                        isSettingsModalOpen={isSettingsModalOpen}
+                                        onSettingsModalOpenChange={setIsSettingsModalOpen}
+                                        importSfen={importSfen}
+                                        importKif={importKif}
+                                        positionReady={positionReady}
+                                        isDevMode={isDevMode}
+                                        eventLogs={eventLogs}
+                                        errorLogs={errorLogs}
+                                        engineErrorDetails={engineErrorDetails}
+                                        retryEngine={retryEngine}
+                                        isRetrying={isRetrying}
+                                        isDisplaySettingsOpen={isDisplaySettingsOpen}
+                                        onDisplaySettingsOpenChange={onDisplaySettingsOpenChange}
+                                        setDisplaySettings={setDisplaySettings}
+                                        isPassRightsSettingsOpen={isPassRightsSettingsOpen}
+                                        onPassRightsSettingsOpenChange={
+                                            onPassRightsSettingsOpenChange
+                                        }
+                                        handlePassRightsSettingsChange={
+                                            handlePassRightsSettingsChange
+                                        }
+                                        reviewMode={reviewMode}
+                                        reviewLeftContent={reviewLeftContent}
+                                        reviewTopContent={reviewTopContent}
+                                    />
+                                )}
                             </NavigationProvider>
                         </MatchStateProvider>
                     </AnalysisProvider>

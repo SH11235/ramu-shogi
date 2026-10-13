@@ -18,6 +18,7 @@ import {
     getAllSquares,
     getPositionService,
     isStudyUsiMove,
+    NONE_NNUE_SELECTION,
     resolveWorkerCount,
 } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
@@ -62,7 +63,11 @@ import { useNormalizedSettings } from "./shogi-match/hooks/useNormalizedSettings
 import { usePassRights } from "./shogi-match/hooks/usePassRights";
 import { useUIState } from "./shogi-match/hooks/useUIState";
 import { ShogiMatchLayout } from "./shogi-match/layouts/ShogiMatchLayout";
-import { ShogiMatchProvider } from "./shogi-match/ShogiMatchContext";
+import {
+    type PlayPhase,
+    type PlayScreenConfig,
+    ShogiMatchProvider,
+} from "./shogi-match/ShogiMatchContext";
 import type {
     AnalysisSettings,
     AnalysisSnapshotDraft,
@@ -543,6 +548,14 @@ interface ShogiMatchProps {
      */
     viewerMode?: boolean;
     /**
+     * 画面の種類。`"play"` は対局専用の画面（AI と指す）で、対局の設定 → 対局 → 終局の流れだけを
+     * 出す。棋譜の読み込み・駒を動かす検討・棋譜の解析は出さず（研究ノートで行う）、対局中の解析は
+     * いまの局面のヒントだけにする。省略時は、従来の対局・検討を兼ねた画面。
+     */
+    screen?: "play";
+    /** 対局画面（`screen="play"`）の設定の欄の下に出す、ほかのページへの案内（研究ノートなど）。 */
+    playSetupFooter?: React.ReactNode;
+    /**
      * PC の盤のすぐ上（対局時計の位置）に、対局時計の代わりに出すコンテンツ
      * （棋譜ビューアの対局者名など）。スマホのレイアウトには出ない。
      */
@@ -608,6 +621,8 @@ export function ShogiMatch({
     reviewMode,
     spectateMode,
     viewerMode = false,
+    screen,
+    playSetupFooter,
     boardTopContent,
     mobileHeaderContent,
     evalGraphPinned = false,
@@ -691,7 +706,14 @@ export function ShogiMatch({
     );
     const [isMatchRunning, setIsMatchRunning] = useState(false);
     const [isEditMode, setIsEditMode] = useState(true);
-    const editAllowed = canEditPosition({ isEditMode, viewerMode });
+    const isPlayScreen = screen === "play";
+    // 対局画面では、利用者が「局面を変えて指す」を開いている間だけ盤を編集できる。
+    const [positionEditOpen, setPositionEditOpen] = useState(false);
+    const [hintCount, setHintCount] = useState(0);
+    const [hintPly, setHintPly] = useState<number | null>(null);
+    const [pendingOpenStudy, setPendingOpenStudy] = useState(false);
+    const editAllowed =
+        canEditPosition({ isEditMode, viewerMode }) && (!isPlayScreen || positionEditOpen);
     const [isPaused, setIsPaused] = useState(false);
     const pendingSearchStatsRef = useRef(new Map<number, MoveSearchStats>());
     const [liveSearchInfo, setLiveSearchInfo] = useState<{
@@ -836,6 +858,44 @@ export function ShogiMatch({
         restartEngineForNnue: (side, selection) =>
             restartEngineForNnueRef.current?.(side, selection) ?? Promise.resolve(),
     });
+
+    // 対局画面のヒントに使う評価関数。利用者には選ばせず、準備の済んでいるものを使う:
+    // 相手の AI（内蔵エンジン）の評価関数、無ければ解析用に選んであるもの。どちらも未ダウンロードなら
+    // 簡易 AI（駒得）で出す（ヒントのためだけにダウンロードを求めない）。
+    const [playHintSelection, setPlayHintSelection] = useState<NnueSelection>(NONE_NNUE_SELECTION);
+    const hintCandidate: NnueSelection = (() => {
+        for (const side of ["gote", "sente"] as const) {
+            const setting = sides[side];
+            if (setting.role !== "engine") continue;
+            const engine =
+                engineOptions.find((option) => option.id === setting.engineId) ?? engineOptions[0];
+            if (engine && engine.kind !== "external") {
+                return side === "sente" ? senteNnueSelection : goteNnueSelection;
+            }
+        }
+        return analysisNnueSelection;
+    })();
+    const hintCandidateKey = `${hintCandidate.presetKey ?? ""}|${hintCandidate.nnueId ?? ""}`;
+    const resolveHintCandidate = useEffectEvent(async () => {
+        try {
+            await resolveNnue(hintCandidate);
+            return hintCandidate;
+        } catch {
+            return NONE_NNUE_SELECTION;
+        }
+    });
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 候補が変わったとき・評価関数の一覧が変わったとき（ダウンロード完了）に確かめ直す
+    useEffect(() => {
+        if (!isPlayScreen) return;
+        let cancelled = false;
+        void resolveHintCandidate().then((selection) => {
+            if (!cancelled) setPlayHintSelection(selection);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [isPlayScreen, hintCandidateKey, nnueList.length]);
+    const effectiveAnalysisNnueSelection = isPlayScreen ? playHintSelection : analysisNnueSelection;
 
     // 分析用 NNUE 変更時に一括解析をリセット（プール破棄に伴う UI 同期）
     const prevAnalysisNnueSelectionRef = useRef(analysisNnueSelection);
@@ -1291,7 +1351,7 @@ export function ShogiMatch({
         maxLogs,
         senteNnueSelection,
         goteNnueSelection,
-        analysisNnueSelection,
+        analysisNnueSelection: effectiveAnalysisNnueSelection,
         resolveNnue,
         allowAnalysisDuringMatch,
         engineThreads,
@@ -1380,7 +1440,7 @@ export function ShogiMatch({
         analysisSettings,
         enginePool,
         resolveNnue,
-        analysisNnueSelection,
+        analysisNnueSelection: effectiveAnalysisNnueSelection,
         recordEvalByPly,
         recordEvalByNodeId,
         clearEvalByPly,
@@ -1929,7 +1989,19 @@ export function ShogiMatch({
     const isDraggingPiece = editAllowed && dndController.state.isDragging;
     // 棋譜を見るだけの画面（ビューア）は、盤を操作させない。局面の編集も、駒を動かして変化を
     // 作ることもできない（調べたいときは、研究ノートで開く）。
-    const boardLockedInViewer = viewerMode;
+    // 対局画面も、設定中（局面編集を開いていないとき）と終局後は盤を操作させない
+    // （駒を動かして調べるのは研究ノート）。
+    const playPhase: PlayPhase = isMatchRunning
+        ? "playing"
+        : isPaused
+          ? "paused"
+          : gameResult
+            ? "finished"
+            : positionEditOpen
+              ? "editing"
+              : "setup";
+    const boardLockedInViewer =
+        viewerMode || (isPlayScreen && (playPhase === "setup" || playPhase === "finished"));
     const internalEngineId = engineOptions[0]?.id ?? "wasm";
 
     useEffect(() => {
@@ -2190,9 +2262,102 @@ export function ShogiMatch({
         </div>
     ) : null;
 
+    // ---- 対局画面（screen="play"）の状態と操作 ----
+    const HIRATE_BOARD_SFEN = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
+    const isHirateStart = startSfen === "startpos" || startSfen.includes(HIRATE_BOARD_SFEN);
+    const playerNameFor = (side: Player): string => {
+        const setting = sides[side];
+        if (setting.role === "human") return "あなた";
+        const engine = engineOptions.find((option) => option.id === setting.engineId);
+        if (engine?.kind === "external") return engine.label;
+        const selection = side === "sente" ? senteNnueSelection : goteNnueSelection;
+        const preset = presetConfigs.find((config) => config.presetKey === selection.presetKey);
+        if (preset) return preset.displayName;
+        const custom = nnueList.find((nnue) => nnue.id === selection.nnueId);
+        return custom?.displayName ?? "簡易AI";
+    };
+    const openStudyNow = useEffectEvent(() => {
+        onOpenAsStudy?.(navigation.tree, {
+            players: { sente: playerNameFor("sente"), gote: playerNameFor("gote") },
+        });
+    });
+    // 局面の編集中は、棋譜のツリーが編集前の局面のまま。確定（編集モードを抜ける）を待ってから開く。
+    useEffect(() => {
+        if (!pendingOpenStudy || isEditMode) return;
+        setPendingOpenStudy(false);
+        openStudyNow();
+    }, [pendingOpenStudy, isEditMode]);
+    const treeFitsStudy = [...navigation.tree.nodes.values()].every(
+        (node) => node.usiMove === null || isStudyUsiMove(node.usiMove),
+    );
+    const playConfig: PlayScreenConfig | null = isPlayScreen
+        ? {
+              phase: playPhase,
+              isCustomStart: !isHirateStart || (playPhase === "setup" && moves.length > 0),
+              startMatch: () => {
+                  setPositionEditOpen(false);
+                  if (!isPaused) {
+                      setHintCount(0);
+                      setHintPly(null);
+                  }
+                  void resumeAutoPlay();
+              },
+              openPositionEditor: () => {
+                  setPositionEditOpen(true);
+                  if (!isEditMode) void handleEnterEditMode();
+              },
+              closePositionEditor: () => setPositionEditOpen(false),
+              resetToStartpos: () => {
+                  void handleResetToStartpos();
+              },
+              newGame: () => {
+                  void (async () => {
+                      matchEndedRef.current = false;
+                      setGameResult(null);
+                      setShowResultDialog(false);
+                      setHintCount(0);
+                      setHintPly(null);
+                      setIsPaused(false);
+                      setPositionEditOpen(false);
+                      await stopAllEngines();
+                      if (isHirateStart) {
+                          await handleResetToStartpos();
+                      } else {
+                          // 編集した局面・引き継いだ局面から始めた対局は、同じ開始局面に戻す。
+                          await importSfen(startSfen, []);
+                          resetClocks(false);
+                      }
+                  })();
+              },
+              openStudy:
+                  onOpenAsStudy === undefined || isMatchRunning || !treeFitsStudy
+                      ? null
+                      : () => {
+                            if (isEditMode) {
+                                setPendingOpenStudy(true);
+                                void handleStartReview();
+                            } else {
+                                openStudyNow();
+                            }
+                        },
+              requestHint: () => {
+                  setHintCount((count) => count + 1);
+                  setHintPly(navigation.state.currentPly);
+                  void handleAnalyzeHintPly(navigation.state.currentPly);
+              },
+              hintCount,
+              hintPly,
+              setupFooter: playSetupFooter ?? null,
+              gameResult,
+              resultDialogOpen: showResultDialog,
+              closeResultDialog: () => setShowResultDialog(false),
+          }
+        : null;
+
     return (
         <ShogiMatchProvider
             config={{
+                play: playConfig,
                 kifuImportExtra,
                 viewerMode,
                 boardTopContent,

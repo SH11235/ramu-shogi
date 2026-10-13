@@ -1,6 +1,6 @@
 import type { EngineOption } from "@shogi/ui";
 import { EngineControlPanel, ShogiMatch, useDevMode } from "@shogi/ui";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { HeaderNav } from "./components/HeaderNav";
 import { PageHeader } from "./components/PageHeader";
@@ -59,6 +59,25 @@ function App() {
                     aiIconUrl={`${import.meta.env.BASE_URL}ramu.jpeg`}
                     onPositionSnapshot={(snapshot) => setPanelPosition(snapshot)}
                     initialReview={initialReview}
+                    // 対局専用の画面。棋譜を調べる・検討するのは研究ノートで行う。
+                    screen="play"
+                    // はじめての人は「自分（先手）対 AI」から始める（保存済みの設定があればそれを使う）。
+                    defaultSides={{
+                        sente: { role: "human" },
+                        gote: { role: "engine", engineId: engineOptions[0]?.id },
+                    }}
+                    playSetupFooter={
+                        <p className="rounded-lg bg-wafuu-washi-warm px-3 py-2.5 text-[13px] leading-relaxed text-wafuu-sumi">
+                            棋譜を読み込んで調べたいとき・駒を動かして検討したいときは{" "}
+                            <Link
+                                to="/studies"
+                                className="font-medium text-wafuu-ai underline underline-offset-2 hover:text-wafuu-ai-light"
+                            >
+                                研究ノート
+                            </Link>{" "}
+                            へ。
+                        </p>
+                    }
                     // 読み込んだ棋譜（分岐・コメントごと）を研究ノートにして、その画面へ移る。
                     // 研究ノートの保存層は使うときだけ読み込む（対局だけの人には要らない）。
                     onOpenAsStudy={(tree, info) => {
@@ -78,9 +97,6 @@ function App() {
                                 );
                             });
                     }}
-                    {...(initialReview
-                        ? { defaultSides: { sente: { role: "human" }, gote: { role: "human" } } }
-                        : {})}
                 />
                 {isDevMode && <EngineControlPanel engine={panelEngine} position={panelPosition} />}
             </main>

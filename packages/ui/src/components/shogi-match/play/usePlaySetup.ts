@@ -1,0 +1,243 @@
+/**
+ * 対局画面（`screen="play"`）の「かんたん設定」。
+ *
+ * 対局の設定は内部では「先手・後手それぞれの担当・評価関数・時間」で持っている。この画面では
+ * 「自分の手番・相手・強さ・時間」の 4 つに絞って見せ、内部の設定へ書き戻す。
+ * AI 同士・人同士のような組み合わせは、詳細設定（従来の設定欄）で作る。
+ */
+
+import type { NnueSelection, Player } from "@shogi/app-core";
+import { NONE_NNUE_SELECTION } from "@shogi/app-core";
+import { SKILL_LEVEL_MAX } from "@shogi/engine-client";
+import { useMatchSettings } from "../contexts/MatchSettingsContext";
+import type { ClockSettings } from "../hooks/useClockManager";
+import type { SideSetting } from "../types";
+
+/** 対局の組み合わせ。 */
+export type PlayMatchKind = "vs-ai" | "humans" | "ai-vs-ai";
+
+export interface OpponentOption {
+    /** "preset:<key>" | "nnue:<id>" | "material" | "ext:<engineId>" */
+    value: string;
+    label: string;
+    /** 初回にダウンロードが要るときの大きさ（MB）。要らなければ null */
+    downloadMb: number | null;
+    /** 強さ（レベル）を選べるか。外部エンジンは選べない */
+    supportsLevel: boolean;
+}
+
+export interface TimeChoice {
+    id: string;
+    label: string;
+    mainMs: number;
+    byoyomiMs: number;
+    enabled: boolean;
+}
+
+/** AI の 1 手の考慮時間（秒読み）。 */
+export const AI_TIME_CHOICES: TimeChoice[] = [
+    { id: "1", label: "1秒", mainMs: 0, byoyomiMs: 1_000, enabled: true },
+    { id: "3", label: "3秒", mainMs: 0, byoyomiMs: 3_000, enabled: true },
+    { id: "10", label: "10秒", mainMs: 0, byoyomiMs: 10_000, enabled: true },
+    { id: "30", label: "30秒", mainMs: 0, byoyomiMs: 30_000, enabled: true },
+];
+
+/** 自分の持ち時間。 */
+export const MY_TIME_CHOICES: TimeChoice[] = [
+    { id: "none", label: "なし", mainMs: 0, byoyomiMs: 10_000, enabled: false },
+    { id: "30", label: "1手30秒", mainMs: 0, byoyomiMs: 30_000, enabled: true },
+    { id: "10+30", label: "10分＋30秒", mainMs: 600_000, byoyomiMs: 30_000, enabled: true },
+];
+
+const opposite = (side: Player): Player => (side === "sente" ? "gote" : "sente");
+
+const matchesChoice = (setting: ClockSettings[Player], choice: TimeChoice): boolean =>
+    choice.enabled
+        ? setting.enabled &&
+          setting.mainMs === choice.mainMs &&
+          setting.byoyomiMs === choice.byoyomiMs
+        : !setting.enabled;
+
+export interface PlaySetup {
+    kind: PlayMatchKind;
+    /** 自分の手番（kind が "vs-ai" のときだけ意味を持つ） */
+    mySide: Player;
+    /** AI の側（"vs-ai" では相手、それ以外では後手を代表にする） */
+    aiSide: Player;
+    opponentOptions: OpponentOption[];
+    opponentValue: string;
+    opponent: OpponentOption | null;
+    level: number;
+    aiTimeId: string | null;
+    myTimeId: string | null;
+    locked: boolean;
+    /** 自分の手番を決めて、人 対 AI の組み合わせにする */
+    chooseSide: (side: Player) => void;
+    chooseOpponent: (value: string) => void;
+    chooseLevel: (level: number) => void;
+    chooseAiTime: (choice: TimeChoice) => void;
+    chooseMyTime: (choice: TimeChoice) => void;
+}
+
+export function usePlaySetup(): PlaySetup {
+    const {
+        sides,
+        onSidesChange,
+        timeSettings,
+        onTimeSettingsChange,
+        settingsLocked,
+        senteNnueSelection,
+        onSenteNnueSelectionChange,
+        goteNnueSelection,
+        onGoteNnueSelectionChange,
+        nnueList,
+        presets,
+        internalEngineId,
+        engineOptions,
+    } = useMatchSettings();
+
+    const senteIsHuman = sides.sente.role === "human";
+    const goteIsHuman = sides.gote.role === "human";
+    const kind: PlayMatchKind =
+        senteIsHuman && goteIsHuman ? "humans" : senteIsHuman || goteIsHuman ? "vs-ai" : "ai-vs-ai";
+    const mySide: Player = goteIsHuman && !senteIsHuman ? "gote" : "sente";
+    const aiSide: Player = kind === "vs-ai" ? opposite(mySide) : "gote";
+
+    const selectionOf = (side: Player): NnueSelection =>
+        side === "sente" ? senteNnueSelection : goteNnueSelection;
+    const setSelection = (side: Player, selection: NnueSelection) => {
+        if (side === "sente") onSenteNnueSelectionChange(selection);
+        else onGoteNnueSelectionChange(selection);
+    };
+
+    const externalEngines = (engineOptions ?? []).filter((engine) => engine.kind === "external");
+    const opponentOptions: OpponentOption[] = [
+        ...presets.map((preset) => ({
+            value: `preset:${preset.config.presetKey}`,
+            label: preset.config.displayName,
+            downloadMb:
+                preset.status === "not-downloaded"
+                    ? Math.round(
+                          (preset.config.size + (preset.config.progressCoefficients?.size ?? 0)) /
+                              1_000_000,
+                      )
+                    : null,
+            supportsLevel: true,
+        })),
+        ...nnueList
+            .filter((nnue) => nnue.source !== "preset")
+            .map((nnue) => ({
+                value: `nnue:${nnue.id}`,
+                label: nnue.displayName,
+                downloadMb: null,
+                supportsLevel: true,
+            })),
+        { value: "material", label: "簡易AI（駒得）", downloadMb: null, supportsLevel: true },
+        ...externalEngines.map((engine) => ({
+            value: `ext:${engine.id}`,
+            label: engine.label,
+            downloadMb: null,
+            supportsLevel: false,
+        })),
+    ];
+
+    const aiSetting: SideSetting =
+        sides[aiSide].role === "engine"
+            ? sides[aiSide]
+            : { role: "engine", engineId: internalEngineId };
+    const aiSelection = selectionOf(aiSide);
+    const opponentValue = externalEngines.some((engine) => engine.id === aiSetting.engineId)
+        ? `ext:${aiSetting.engineId}`
+        : aiSelection.presetKey
+          ? `preset:${aiSelection.presetKey}`
+          : aiSelection.nnueId
+            ? `nnue:${aiSelection.nnueId}`
+            : "material";
+    const opponent = opponentOptions.find((option) => option.value === opponentValue) ?? null;
+
+    const aiClock = timeSettings[aiSide];
+    const myClock = timeSettings[mySide];
+    const aiTimeId = AI_TIME_CHOICES.find((choice) => matchesChoice(aiClock, choice))?.id ?? null;
+    const myTimeId = MY_TIME_CHOICES.find((choice) => matchesChoice(myClock, choice))?.id ?? null;
+
+    const chooseSide = (side: Player) => {
+        if (kind === "vs-ai" && side === mySide) return;
+        const other = opposite(side);
+        // いまの AI の設定（評価関数・強さ・考慮時間）は、そのまま相手の側へ持っていく。
+        const humanClock = kind === "vs-ai" ? myClock : { ...MY_TIME_CHOICES[0] };
+        const engineClock = aiClock.enabled ? aiClock : { ...AI_TIME_CHOICES[1] };
+        setSelection(other, aiSelection);
+        onSidesChange({
+            ...sides,
+            [side]: { role: "human", engineId: undefined, skillLevel: undefined },
+            [other]: aiSetting,
+        });
+        onTimeSettingsChange({
+            ...timeSettings,
+            [side]: {
+                mainMs: humanClock.mainMs,
+                byoyomiMs: humanClock.byoyomiMs,
+                enabled: humanClock.enabled,
+            },
+            [other]: {
+                mainMs: engineClock.mainMs,
+                byoyomiMs: engineClock.byoyomiMs,
+                enabled: true,
+            },
+        });
+    };
+
+    const chooseOpponent = (value: string) => {
+        let engineId = internalEngineId;
+        let skillLevel = aiSetting.skillLevel;
+        if (value === "material") {
+            setSelection(aiSide, NONE_NNUE_SELECTION);
+        } else if (value.startsWith("preset:")) {
+            setSelection(aiSide, { presetKey: value.slice("preset:".length), nnueId: null });
+        } else if (value.startsWith("nnue:")) {
+            setSelection(aiSide, { presetKey: null, nnueId: value.slice("nnue:".length) });
+        } else if (value.startsWith("ext:")) {
+            engineId = value.slice("ext:".length);
+            skillLevel = undefined;
+        } else {
+            return;
+        }
+        onSidesChange({ ...sides, [aiSide]: { role: "engine", engineId, skillLevel } });
+    };
+
+    const chooseLevel = (level: number) => {
+        onSidesChange({
+            ...sides,
+            [aiSide]: { ...aiSetting, skillLevel: { skillLevel: level } },
+        });
+    };
+
+    const applyClock = (side: Player, choice: TimeChoice) => {
+        onTimeSettingsChange({
+            ...timeSettings,
+            [side]: {
+                mainMs: choice.mainMs,
+                byoyomiMs: choice.byoyomiMs,
+                enabled: choice.enabled,
+            },
+        });
+    };
+
+    return {
+        kind,
+        mySide,
+        aiSide,
+        opponentOptions,
+        opponentValue,
+        opponent,
+        level: aiSetting.skillLevel?.skillLevel ?? SKILL_LEVEL_MAX,
+        aiTimeId,
+        myTimeId,
+        locked: settingsLocked,
+        chooseSide,
+        chooseOpponent,
+        chooseLevel,
+        chooseAiTime: (choice) => applyClock(aiSide, choice),
+        chooseMyTime: (choice) => applyClock(mySide, choice),
+    };
+}
