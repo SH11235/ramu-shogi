@@ -83,7 +83,10 @@ describe("MatchControls", () => {
                     viewerMode={viewerMode}
                 />,
             );
-            const classes = screen.getByText(/解析を開始できません/).className.split(" ");
+            const messageElement = screen.getByText(/解析を開始できません/);
+            // 外側が盤の列の幅を受け取らないと、メッセージが案内文の幅（無ければ 0）で折り返される。
+            expect(messageElement.parentElement?.className.split(" ")).toContain("w-full");
+            const classes = messageElement.className.split(" ");
             expect(classes).toEqual(
                 expect.arrayContaining(["w-0", "min-w-full", "whitespace-pre-line"]),
             );
