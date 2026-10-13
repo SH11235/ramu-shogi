@@ -98,6 +98,29 @@ function rejectedCommandNotice(code: ErrorCode, seat: Seat): string | null {
     return null;
 }
 
+/** 局面も手番も終局も変えないイベント。指し手を送る準備の途中に届いても、その指し手は有効 */
+const POSITION_KEEPING_EVENTS: ReadonlySet<RoomEvent["kind"]> = new Set([
+    "player_offline",
+    "player_online",
+    "analysis_used",
+    "settings_updated",
+    "takeback_requested",
+    "takeback_rejected",
+    "takeback_cancelled",
+]);
+
+/** 再接続後、席へ戻った結果の snapshot を待つ上限。過ぎたら要求を送り直す */
+const RESYNC_TIMEOUT_MS = 15_000;
+/** snapshot の要求を送り直す回数の上限。尽きたら再読み込みを案内する */
+const RESYNC_MAX_RETRIES = 2;
+
+/** 同期を待つ間にこれらが返ったら、送り直しても同じ席へは戻れない */
+const SEAT_LOST_CODES: ReadonlySet<ErrorCode> = new Set([
+    "INVALID_TOKEN",
+    "ROOM_NOT_FOUND",
+    "ROOM_FULL",
+]);
+
 /**
  * 対局中の接続。reconnecting は WebSocket を開き直している間と、開いた後に席へ戻って
  * サーバーの snapshot を反映し終えるまで。lost は RoomClient が再接続を諦めた状態、
@@ -228,6 +251,8 @@ interface OnlineGameViewProps {
         gameRecordId: string | null;
     }) => void;
     onExit?: () => void;
+    /** 参加した席のまま、サーバーが必ず snapshot を返す要求を送る。送る手段が無ければ false */
+    requestFullSnapshot?: () => boolean;
 }
 
 export function OnlineGameView({
@@ -240,6 +265,7 @@ export function OnlineGameView({
     remoteNnueManager,
     onStartReview,
     onExit,
+    requestFullSnapshot,
 }: OnlineGameViewProps): ReactElement {
     // ─── AI サポート設定（makeInitialGameState の引数として使用するため先に定義） ──
     const aiSupport = snapshot.settings.aiSupport as AiSupportSettings | null;
@@ -308,6 +334,10 @@ export function OnlineGameView({
     const connectionEpochRef = useRef(0);
     // 再接続後、席へ戻った結果の snapshot を待っている間だけ、その再接続の番号を持つ
     const resyncRef = useRef<number | null>(null);
+    const resyncRetriesRef = useRef(0);
+    const resyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // 局面を変えるイベントや snapshot を反映するたびに進む
+    const positionVersionRef = useRef(0);
     // 復帰を拒まれた後に開き直しても、同じトークンでは席へ戻れない
     const rejectedRef = useRef(false);
     const canPlay = isMyTurn && canSend;
@@ -376,8 +406,9 @@ export function OnlineGameView({
                         dispatch({ type: "init", ...restored });
                         return;
                     }
+                    positionVersionRef.current += 1;
                     if (incoming.resync !== undefined && incoming.resync === resyncRef.current) {
-                        resyncRef.current = null;
+                        stopResync();
                         setConnection({ state: "connected" });
                     }
                     dispatch({
@@ -396,6 +427,11 @@ export function OnlineGameView({
                         setLoadFailed(true);
                         return;
                     }
+                    // sync の応答は差分イベントだけのことがあるので、同期待ちなら snapshot を求め直す
+                    if (incoming.resync !== undefined && incoming.resync === resyncRef.current) {
+                        retryResync(incoming.resync);
+                        return;
+                    }
                     // サーバーに再同期リクエストを送信して最新状態を取得する
                     client.sync({ sinceEventId: appliedEventIdRef.current });
                 },
@@ -409,6 +445,9 @@ export function OnlineGameView({
         // サーバーは指し手以外のイベントでもイベント番号を増やすので、すべてのイベントで更新する
         const markApplied = (): void => {
             appliedEventIdRef.current = Math.max(appliedEventIdRef.current, e.eventId);
+            if (!POSITION_KEEPING_EVENTS.has(e.kind)) {
+                positionVersionRef.current += 1;
+            }
         };
 
         if (e.kind === "game_end") {
@@ -488,25 +527,62 @@ export function OnlineGameView({
 
     // ─── 接続状態 ────────────────────────────────────────────────────────────
 
+    const stopResync = (): void => {
+        resyncRef.current = null;
+        if (resyncTimerRef.current !== null) {
+            clearTimeout(resyncTimerRef.current);
+            resyncTimerRef.current = null;
+        }
+    };
+
+    const showConnectionLost = (): void => {
+        setConnection({
+            state: "lost",
+            canResume: seat !== "s" && getStoredResumeToken(roomId) !== null,
+        });
+    };
+
+    const waitForResync = (resync: number): void => {
+        if (resyncTimerRef.current !== null) clearTimeout(resyncTimerRef.current);
+        resyncTimerRef.current = setTimeout(() => retryResync(resync), RESYNC_TIMEOUT_MS);
+    };
+
+    const retryResync = useEffectEvent((resync: number): void => {
+        if (resyncRef.current !== resync) return;
+        if (resyncRetriesRef.current >= RESYNC_MAX_RETRIES || !requestFullSnapshot?.()) {
+            stopResync();
+            showConnectionLost();
+            return;
+        }
+        resyncRetriesRef.current += 1;
+        waitForResync(resync);
+    });
+
+    const rejectResync = useEffectEvent((): void => {
+        stopResync();
+        rejectedRef.current = true;
+        setConnection({ state: "rejected" });
+    });
+
     const applyStatus = useEffectEvent((status: RoomClientStatus): void => {
         connectionEpochRef.current += 1;
-        resyncRef.current = null;
+        stopResync();
         if (rejectedRef.current) return;
         if (status === "reconnecting") {
             setConnection({ state: "reconnecting" });
         } else if (status === "disconnected") {
-            setConnection({
-                state: "lost",
-                canResume: seat !== "s" && getStoredResumeToken(roomId) !== null,
-            });
+            showConnectionLost();
         } else if (status === "connected") {
-            // WebSocket が開いても、席へ戻れたかは分からない。RoomClient の resume は差分が無いと
-            // 何も返さないので、必ず snapshot が返る要求を送り、その snapshot を反映し終えたら戻す。
-            // 観戦者は useRoomConnection が参加し直し、その応答に snapshot が含まれる
-            resyncRef.current = connectionEpochRef.current;
-            const resumeToken = seat === "s" ? null : getStoredResumeToken(roomId);
-            if (resumeToken) {
-                client.resume({ resumeToken, lastEventId: 0 });
+            // WebSocket が開いても、席へ戻れたかは分からない。RoomClient の resume の応答は
+            // 差分イベントだけのことがあり、どこまでで終わりかを判別できないので、必ず snapshot が
+            // 返る要求を送り、その snapshot を反映し終えたら戻す。観戦者は useRoomConnection が
+            // 開き直した接続で参加し直し、その応答に snapshot が含まれる
+            const resync = connectionEpochRef.current;
+            resyncRef.current = resync;
+            resyncRetriesRef.current = 0;
+            waitForResync(resync);
+            if (!isSpectator) {
+                requestFullSnapshot?.();
             }
         }
     });
@@ -538,11 +614,8 @@ export function OnlineGameView({
                     resync: resyncRef.current ?? undefined,
                 });
             } else if (msg.t === "error") {
-                if (resyncRef.current !== null) {
-                    // 同期を待つ間に送っているのは、席へ戻る resume / join だけ
-                    resyncRef.current = null;
-                    rejectedRef.current = true;
-                    setConnection({ state: "rejected" });
+                if (resyncRef.current !== null && SEAT_LOST_CODES.has(msg.payload.code)) {
+                    rejectResync();
                     return;
                 }
                 showRejection(msg.payload.code);
@@ -556,6 +629,11 @@ export function OnlineGameView({
         return () => {
             unsub();
             unsubStatus();
+            resyncRef.current = null;
+            if (resyncTimerRef.current !== null) {
+                clearTimeout(resyncTimerRef.current);
+                resyncTimerRef.current = null;
+            }
             // 解析の途中で画面を離れたら、その結果も残りのメッセージも反映しない
             isListeningRef.current = false;
         };
@@ -624,7 +702,7 @@ export function OnlineGameView({
 
     const sendMove = async (usi: string, _toSquare?: string): Promise<void> => {
         if (!position || !canSend) return;
-        const eventId = appliedEventIdRef.current;
+        const positionVersion = positionVersionRef.current;
         const epoch = connectionEpochRef.current;
         // パス手は局面変化なし（手番のみ交代）。PositionState に passRights がないため
         // applyMoveWithState は使わず、手番を反転した局面の SFEN を生成する
@@ -641,11 +719,12 @@ export function OnlineGameView({
             setCommandNotice({ text: "指し手を送れませんでした。もう一度操作してください。" });
             return;
         }
-        if (appliedEventIdRef.current !== eventId) {
+        if (positionVersionRef.current !== positionVersion) {
             setCommandNotice({ text: "局面が更新されました。もう一度操作してください。" });
             return;
         }
-        client.move({ eventId, usi, sfen: nextSfen });
+        // 局面が変わっていなければ、その間に進んだイベント番号で送っても同じ局面を指す
+        client.move({ eventId: appliedEventIdRef.current, usi, sfen: nextSfen });
     };
 
     // ─── 盤面クリック処理 ────────────────────────────────────────────────────

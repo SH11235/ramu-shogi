@@ -681,6 +681,192 @@ describe("RoomPage", () => {
                 expect(screen.queryByRole("alert")).toBeNull();
             });
 
+            function fullSnapshotRequests(socket: FakeSocket): unknown[] {
+                return socket.sent.filter(
+                    (message) =>
+                        message.t === "resume" &&
+                        (message.payload as { lastEventId: number }).lastEventId === 0,
+                );
+            }
+
+            it("再接続後の snapshot を解釈できなければ snapshot を求め直し、次の snapshot で元に戻る", async () => {
+                const socket = await reconnect(await openGame());
+                expect(fullSnapshotRequests(socket)).toHaveLength(1);
+                const error = vi.spyOn(console, "error").mockImplementation(() => {});
+                parseSfen.mockRejectedValueOnce(new Error("parse failed"));
+                try {
+                    await act(async () => {
+                        socket.receive(snapshotMessage({ eventId: 6 }));
+                    });
+                } finally {
+                    error.mockRestore();
+                }
+                expect(fullSnapshotRequests(socket)).toHaveLength(2);
+                expect(screen.getByRole("status").textContent).toBe(RECONNECTING_TEXT);
+
+                await act(async () => {
+                    socket.receive(snapshotMessage({ eventId: 6 }));
+                });
+                expect(screen.queryByRole("status")).toBeNull();
+                expect(resignButton().disabled).toBe(false);
+            });
+
+            it("再接続後の snapshot が届かなければ 15 秒ごとに 2 回まで求め直し、それでも届かなければ再読み込みを案内する", async () => {
+                const first = await openGame();
+                await withFakeTimers(async () => {
+                    await act(async () => {
+                        first.drop();
+                    });
+                    await act(async () => {
+                        vi.advanceTimersByTime(1_000);
+                    });
+                    const socket = socketFor("test-room");
+                    await act(async () => {
+                        socket.open();
+                    });
+                    expect(fullSnapshotRequests(socket)).toHaveLength(1);
+                    for (const requests of [2, 3]) {
+                        await act(async () => {
+                            vi.advanceTimersByTime(15_000);
+                        });
+                        expect(fullSnapshotRequests(socket)).toHaveLength(requests);
+                        expect(screen.getByRole("status").textContent).toBe(RECONNECTING_TEXT);
+                    }
+                    await act(async () => {
+                        vi.advanceTimersByTime(15_000);
+                    });
+                    expect(fullSnapshotRequests(socket)).toHaveLength(3);
+                });
+
+                expect(screen.getByRole("alert").textContent).toContain(PLAYER_LOST_TEXT);
+                expect(screen.queryByRole("status")).toBeNull();
+                expect(resignButton().disabled).toBe(true);
+            });
+
+            it("同期を待つ間に席と関係の無いエラーが返っても、復帰を拒まれたとは扱わず、snapshot で元に戻る", async () => {
+                const socket = await reconnect(await openGame());
+
+                await act(async () => {
+                    socket.receive({
+                        v: 1,
+                        t: "error",
+                        payload: { code: "RATE_LIMITED", message: "" },
+                    });
+                });
+                expect(screen.queryByText(REJECTED_TEXT)).toBeNull();
+                expect(screen.getByRole("status").textContent).toBe(RECONNECTING_TEXT);
+
+                await act(async () => {
+                    socket.receive(snapshotMessage({ eventId: 6 }));
+                });
+                expect(screen.queryByRole("status")).toBeNull();
+                expect(resignButton().disabled).toBe(false);
+            });
+
+            it("前の再接続で届いた snapshot を反映し終えても、今の再接続の snapshot を待ち続ける", async () => {
+                const firstReconnect = await reconnect(await openGame());
+                let finishParsing: () => void = () => {};
+                parseSfen.mockImplementationOnce(
+                    () =>
+                        new Promise((resolve) => {
+                            finishParsing = () => resolve(createInitialPositionState());
+                        }),
+                );
+                await act(async () => {
+                    firstReconnect.receive(snapshotMessage({ eventId: 6 }));
+                });
+
+                const socket = await reconnect(firstReconnect);
+                await act(async () => {
+                    finishParsing();
+                });
+                expect(screen.getByRole("status").textContent).toBe(RECONNECTING_TEXT);
+                expect(resignButton().disabled).toBe(true);
+
+                await act(async () => {
+                    socket.receive(snapshotMessage({ eventId: 7 }));
+                });
+                expect(screen.queryByRole("status")).toBeNull();
+            });
+
+            it("復帰を拒まれた後に切断・再接続しても、再度参加する案内のまま変えない", async () => {
+                const socket = await reconnect(await openGame());
+                await act(async () => {
+                    socket.receive({
+                        v: 1,
+                        t: "error",
+                        payload: { code: "INVALID_TOKEN", message: "" },
+                    });
+                });
+                expect(screen.getByRole("alert").textContent).toContain(REJECTED_TEXT);
+
+                await withFakeTimers(async () => {
+                    await act(async () => {
+                        socket.drop();
+                    });
+                    expect(screen.getByRole("alert").textContent).toContain(REJECTED_TEXT);
+                    expect(screen.queryByRole("status")).toBeNull();
+                    await act(async () => {
+                        vi.advanceTimersByTime(1_000);
+                    });
+                });
+                await act(async () => {
+                    socketFor("test-room").open();
+                });
+
+                expect(screen.getByRole("alert").textContent).toContain(REJECTED_TEXT);
+                expect(screen.queryByRole("status")).toBeNull();
+                expect(resignButton().disabled).toBe(true);
+            });
+
+            it("指し手の局面を変換している間に局面を変えないイベントが届いても、その指し手を最新のイベント番号で送る", async () => {
+                const socket = await openGame();
+                let finishConverting: () => void = () => {};
+                boardToSfen.mockImplementationOnce(
+                    () =>
+                        new Promise((resolve) => {
+                            finishConverting = () => resolve("sfen after move");
+                        }),
+                );
+                await tryToMove();
+
+                await act(async () => {
+                    socket.receive({
+                        v: 1,
+                        t: "event",
+                        payload: { kind: "player_online", eventId: 6, serverTs: 0, seat: "w" },
+                    });
+                });
+                await act(async () => {
+                    finishConverting();
+                });
+
+                expect(sentMoves()).toEqual([
+                    expect.objectContaining({
+                        payload: { eventId: 6, usi: "1g1f", sfen: "sfen after move" },
+                    }),
+                ]);
+            });
+
+            it("観戦者は、参加し直した snapshot を解釈できなければ参加し直す", async () => {
+                const socket = await reconnect(await watchGame());
+                const error = vi.spyOn(console, "error").mockImplementation(() => {});
+                parseSfen.mockRejectedValueOnce(new Error("parse failed"));
+                try {
+                    await act(async () => {
+                        socket.receive(snapshotMessage({ eventId: 6 }));
+                    });
+                } finally {
+                    error.mockRestore();
+                }
+
+                expect(socket.sent.map((message) => message.t)).toEqual(["join", "join"]);
+                await act(async () => {
+                    socket.receive(snapshotMessage({ eventId: 6 }));
+                });
+                expect(screen.queryByRole("status")).toBeNull();
+            });
+
             it("観戦者には、席へ戻れるとは案内しない", async () => {
                 await exhaustReconnects(await watchGame());
 

@@ -300,6 +300,7 @@ export default function RoomPage(): ReactElement {
         gamePhase,
         client,
         handleJoin,
+        requestFullSnapshot,
         handleUpdateStartSfen,
     } = useRoomConnection({ roomId });
 
@@ -384,6 +385,7 @@ export default function RoomPage(): ReactElement {
                 client={client}
                 snapshot={snapshot}
                 seat={joinSeat as Seat}
+                requestFullSnapshot={requestFullSnapshot}
                 roomId={roomId}
                 analysis={analysis}
                 manifestUrl={nnueManifestUrl}
