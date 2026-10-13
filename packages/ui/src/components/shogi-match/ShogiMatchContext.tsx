@@ -20,6 +20,8 @@ export interface PlayScreenConfig {
     busy: boolean;
     /** 対局を始める（設定・編集から）／再開する（一時停止から）。`notice` は始めに 1 度だけ出す知らせ */
     startMatch: (notice?: string) => void;
+    /** この対局が何手目の局面から始まったか（平手・編集した局面は 0。引き継いだ棋譜はその手数） */
+    startPly: number;
     /** 対局の始めに出す知らせ（振り駒の結果など）。無ければ null */
     startNotice: string | null;
     /** 開始局面の編集を開く・閉じる */

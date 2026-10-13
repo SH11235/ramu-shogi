@@ -20,6 +20,7 @@ import { Button } from "../../button";
 import { PassButton } from "../components/PassButton";
 import { SoundToggle } from "../components/SoundToggle";
 import { useMatchState } from "../contexts/MatchStateContext";
+import { ILLEGAL_MOVE_MESSAGE } from "../hooks/useMoveExecution";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import type { Message } from "../types";
 import { PLAY_HEADING, PLAY_OUTLINE_BUTTON, PLAY_PRIMARY_BUTTON } from "./playStyles";
@@ -32,7 +33,7 @@ const MESSAGE_STYLES: Record<Message["type"], string> = {
 
 /** 対局画面では、硬い言い回しをやさしい言葉に言い換える。 */
 const MESSAGE_REWORDS: Record<string, string> = {
-    合法手ではありません: "そこには動かせません",
+    [ILLEGAL_MOVE_MESSAGE]: "そこには動かせません",
 };
 
 /** エラーなどの知らせ。盤の列を横に広げないよう、幅の計算には加えず列の幅で折り返す。 */
@@ -184,7 +185,9 @@ export function PlayMatchActions({
     const bothEngines = sides.sente.role === "engine" && sides.gote.role === "engine";
     const bothHumans = sides.sente.role === "human" && sides.gote.role === "human";
     // 待ったは「自分の指した手」を取り消す操作。自分がまだ指していない（相手の初手だけ）なら使えない。
-    const hasOwnMove = bothHumans ? moves.length >= 1 : moves.length >= 2;
+    // 数えるのは、この対局で指した手だけ（引き継いだ棋譜の手は戻さない）。
+    const playedMoves = moves.length - play.startPly;
+    const hasOwnMove = bothHumans ? playedMoves >= 1 : playedMoves >= 2;
     const canUndo = hasOwnMove && !bothEngines && sides[position.turn].role === "human";
     // スマホでは等幅で 1 段に収める（狭い幅で投了だけ 2 段目に落ちないように）。
     const itemClass = compact ? "flex-1 px-2" : "";

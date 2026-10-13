@@ -57,7 +57,7 @@ import { useLegalMovePrefetch } from "./shogi-match/hooks/useLegalMovePrefetch";
 import { useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
 import { useMatchNnueDownload } from "./shogi-match/hooks/useMatchNnueDownload";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
-import { useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
+import { ILLEGAL_MOVE_MESSAGE, useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
 import { useMoveShadow } from "./shogi-match/hooks/useMoveShadow";
 import { useNnueManager } from "./shogi-match/hooks/useNnueManager";
 import { useNormalizedSettings } from "./shogi-match/hooks/useNormalizedSettings";
@@ -106,6 +106,13 @@ import { isSameTimeSettings, normalizeTimeSettings } from "./shogi-match/utils/t
 import { TooltipProvider } from "./tooltip";
 
 const EMPTY_ANALYSIS_MARKERS: Array<{ seat: "b" | "w"; ply: number }> = [];
+
+/** 平手の開始局面の盤・手番・持ち駒（SFEN）。 */
+const HIRATE_BOARD_SFEN = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
+
+/** 開始局面が平手か（`startpos` と、同じ局面の SFEN の両方を平手とみなす）。 */
+const isHirateSfen = (sfen: string): boolean =>
+    sfen === "startpos" || sfen.includes(HIRATE_BOARD_SFEN);
 
 /** 対局用の表示設定 localStorage キー。 */
 const DISPLAY_SETTINGS_KEY = "shogi-display-settings";
@@ -738,6 +745,10 @@ export function ShogiMatch({
     const [isPlayStarting, setIsPlayStarting] = useState(false);
     // 対局の始めに 1 度だけ出す知らせ（振り駒の結果など）。
     const [playStartNotice, setPlayStartNotice] = useState<string | null>(null);
+    // この対局の始まりの局面（開始局面と、そこまでの手順）。別のページから引き継いだ棋譜の途中から
+    // 始めた対局では、手順が空でない。「もう一局」「設定を変える」で戻す先と、待ったで戻せる範囲に使う。
+    const playStartRef = useRef<{ sfen: string; moves: string[] } | null>(null);
+    const [playStartPly, setPlayStartPly] = useState(0);
     const pendingSearchStatsRef = useRef(new Map<number, MoveSearchStats>());
     const [liveSearchInfo, setLiveSearchInfo] = useState<{
         side: Player;
@@ -1293,7 +1304,12 @@ export function ShogiMatch({
             // ただし、1手しかない場合は1手だけ戻す
             // 対局画面の人 対 人では、直前の 1 手だけ戻す（交互に指しているので、2 手戻すと相手の手まで消える）。
             const bothHumans = sides.sente.role === "human" && sides.gote.role === "human";
-            const undoCount = isPlayScreen && bothHumans ? 1 : moveCount >= 2 ? 2 : 1;
+            const wantedUndoCount = isPlayScreen && bothHumans ? 1 : moveCount >= 2 ? 2 : 1;
+            // 対局画面では、この対局で指した手だけを戻す（引き継いだ棋譜の手は戻さない）。
+            const undoCount = isPlayScreen
+                ? Math.min(wantedUndoCount, moveCount - playStartPly)
+                : wantedUndoCount;
+            if (undoCount <= 0) return;
 
             // 待った後の手番を明示的に計算
             // React のバッチ処理により navigation.goBack() 後の positionRef.current は
@@ -1697,13 +1713,9 @@ export function ShogiMatch({
     const matchNnueDownload = useMatchNnueDownload({
         manifestUrl,
         resolveNnue,
+        setMessage,
         // 対局画面では、ダウンロードを断っても知らせを出さない（自分でやめただけで、エラーではない）。
-        setMessage: isPlayScreen
-            ? (next) => {
-                  if (next?.text.includes("が未ダウンロードのため")) return;
-                  setMessage(next);
-              }
-            : setMessage,
+        silentOnDecline: isPlayScreen,
     });
 
     // 対局制御フック
@@ -2305,6 +2317,10 @@ export function ShogiMatch({
 
     // ---- 対局画面（screen="play"）の状態と操作 ----
     const notifyPlayPhase = useEffectEvent((phase: PlayPhase) => onPlayPhaseChange?.(phase));
+    // 消すのは「指せない手」の知らせだけ（進み具合の変化と同じ更新で出たエラーは残す）。
+    const clearIllegalMoveMessage = useEffectEvent(() => {
+        if (message?.text === ILLEGAL_MOVE_MESSAGE) setMessage(null);
+    });
     // 進み具合が変わったら、前の段階の選択とメッセージを持ち越さない
     // （「合法手ではありません」や駒の選択の枠が、一時停止中・終局後まで残らないようにする）。
     // biome-ignore lint/correctness/useExhaustiveDependencies: 進み具合が変わったときだけ
@@ -2313,19 +2329,18 @@ export function ShogiMatch({
         notifyPlayPhase(playPhase);
         setSelection(null);
         setPromotionSelection(null);
-        if (playPhase !== "setup") setMessage(null);
+        clearIllegalMoveMessage();
     }, [isPlayScreen, playPhase]);
     // 指せない手を選んだ知らせは、しばらくしたら消す（次の手を考える邪魔にしない）。
-    const illegalMoveMessage = isPlayScreen && message?.text === "合法手ではありません";
     // 選んでいた駒の枠は、すぐ外す（知らせだけが先に消えて、枠が残るのを避ける）。
+    // 依存は知らせそのもの（続けてもう一度指せない手を選んだときも、枠を外して数え直す）。
     useEffect(() => {
-        if (!illegalMoveMessage) return;
+        if (!isPlayScreen || message?.text !== ILLEGAL_MOVE_MESSAGE) return;
         setSelection(null);
         const timer = setTimeout(() => setMessage(null), 2500);
         return () => clearTimeout(timer);
-    }, [illegalMoveMessage, setMessage, setSelection]);
-    const HIRATE_BOARD_SFEN = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
-    const isHirateStart = startSfen === "startpos" || startSfen.includes(HIRATE_BOARD_SFEN);
+    }, [isPlayScreen, message, setMessage, setSelection]);
+    const isHirateStart = isHirateSfen(startSfen);
     const playerNameFor = (side: Player): string => {
         const setting = sides[side];
         if (setting.role === "human") {
@@ -2377,13 +2392,14 @@ export function ShogiMatch({
         setHintPly(null);
         setIsPaused(false);
         setPositionEditOpen(false);
+        setPlayStartNotice(null);
         await stopAllEngines();
-        if (isHirateStart) {
+        const start = playStartRef.current ?? { sfen: startSfen, moves: [] };
+        if (isHirateSfen(start.sfen) && start.moves.length === 0) {
             await handleResetToStartpos();
         } else {
-            // 編集した局面・引き継いだ局面から始めた対局は、同じ開始局面に戻す。
-            await importSfen(startSfen, []);
-            resetClocks(false);
+            // 編集した局面・引き継いだ棋譜の途中から始めた対局は、同じ始まりの局面に戻す。
+            await importSfen(start.sfen, start.moves);
         }
     };
     // 「もう一局」は、設定の画面に戻ったのを待ってから始める（戻す処理が行き渡ってから）。
@@ -2403,7 +2419,9 @@ export function ShogiMatch({
         if (!pendingRematch || isPlayResetting) return;
         setPendingRematch(false);
         // 設定の画面へ戻せなかった（開始局面の取得に失敗した）ときは、始めない。
-        if (playPhase !== "setup" || moves.length > 0) return;
+        if (playPhase !== "setup" || moves.length !== (playStartRef.current?.moves.length ?? 0)) {
+            return;
+        }
         startRematch();
     }, [pendingRematch, isPlayResetting, playPhase, moves.length]);
     const playConfig: PlayScreenConfig | null = isPlayScreen
@@ -2412,11 +2430,15 @@ export function ShogiMatch({
               isCustomStart: !isHirateStart || (playPhase === "setup" && moves.length > 0),
               busy: isPlayResetting || pendingRematch || isPlayStarting,
               startNotice: playPhase === "playing" && moves.length < 2 ? playStartNotice : null,
+              startPly: playStartPly,
               startMatch: (notice?: string) => {
                   if (isPlayResetting || isPlayStarting) return;
-                  if (!isPaused) setPlayStartNotice(notice ?? null);
                   setPositionEditOpen(false);
                   if (!isPaused) {
+                      // 新しい対局の始まり。始まりの局面を控える（「もう一局」で戻す先）。
+                      playStartRef.current = { sfen: startSfen, moves: [...moves] };
+                      setPlayStartPly(moves.length);
+                      setPlayStartNotice(notice ?? null);
                       setHintCount(0);
                       setHintPly(null);
                   }
@@ -2435,7 +2457,6 @@ export function ShogiMatch({
                   void (async () => {
                       setPositionEditOpen(false);
                       await importSfen(sfen, []);
-                      resetClocks(false);
                   })();
               },
               playerNames: { sente: playerNameFor("sente"), gote: playerNameFor("gote") },
@@ -2457,7 +2478,9 @@ export function ShogiMatch({
                       : () => {
                             if (isEditMode) {
                                 setPendingOpenStudy(true);
-                                void handleStartReview();
+                                // 編集の確定に失敗したら、待ちを残さない（あとで対局を始めたときに
+                                // 研究ノートへ移ってしまわないように）。
+                                void handleStartReview().catch(() => setPendingOpenStudy(false));
                             } else {
                                 openStudyNow();
                             }

@@ -31,10 +31,7 @@ export function LeftSidebar({
     displaySettingsOpen = false,
     onDisplaySettingsToggle,
     displaySettingsPanel,
-    bare = false,
 }: {
-    /** 枠・背景・幅を付けずに出す（ダイアログの中に置くとき） */
-    bare?: boolean;
     displaySettingsOpen?: boolean;
     onDisplaySettingsToggle?: () => void;
     displaySettingsPanel?: ReactNode;
@@ -367,13 +364,7 @@ export function LeftSidebar({
     };
 
     return (
-        <div
-            className={
-                bare
-                    ? "flex w-full flex-col gap-6"
-                    : "w-96 max-h-[calc(100dvh-5rem)] self-center overflow-y-auto bg-wafuu-washi-warm border border-wafuu-border rounded-xl p-4 flex flex-col gap-6"
-            }
-        >
+        <div className="w-96 max-h-[calc(100dvh-5rem)] self-center overflow-y-auto bg-wafuu-washi-warm border border-wafuu-border rounded-xl p-4 flex flex-col gap-6">
             {/* 対局設定 */}
             <div className={sectionClassName}>
                 {/* 先手/後手ラベル + 入替ボタン */}

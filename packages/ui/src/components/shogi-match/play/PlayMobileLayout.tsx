@@ -32,7 +32,7 @@ import { PlayHintButton, PlayHintLine, usePlayHintMove } from "./PlayHintCard";
 import { PlayMyTime, PlayPlayerBar } from "./PlayPlayerBar";
 import { PlayResultCard } from "./PlayResult";
 import { PlaySetupPanel } from "./PlaySetupPanel";
-import { PLAY_HEADING } from "./playStyles";
+import { PLAY_HAND_ZONES, PLAY_HEADING } from "./playStyles";
 
 interface PlayMobileLayoutProps {
     searchInfo?: ReactNode;
@@ -87,7 +87,7 @@ export function PlayMobileLayout({
             // 持ち駒の欄は、空のときも高さを確保する（駒を取ったときに盤や操作が動かないように）。
             // 盤は幅だけでなく高さにも合わせる（横向きなどの低い画面で、盤が画面に入らないのを避ける）。
             // 持ち駒の欄は、駒が出たときの高さを最初から確保する（駒を取ったときに盤が動かないように）。
-            className="relative mx-auto flex w-full max-w-[max(280px,calc(100dvh-230px))] justify-center [&_[data-zone^=hand-]]:min-h-[calc(var(--shogi-cell-size)*0.8+16px)] [&_[data-zone^=hand-]:empty]:rounded-md [&_[data-zone^=hand-]:empty]:border [&_[data-zone^=hand-]:empty]:border-dashed [&_[data-zone^=hand-]:empty]:border-wafuu-border [&_[data-zone^=hand-]>div]:border-wafuu-border [&_[data-zone^=hand-]>div]:bg-transparent"
+            className={`relative mx-auto flex w-full max-w-[max(280px,calc(100dvh-230px))] justify-center ${PLAY_HAND_ZONES}`}
         >
             <MobileBoardSection
                 grid={grid}
