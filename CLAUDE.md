@@ -16,7 +16,7 @@
 - engine-wasm → engine-client, rust-core
 - engine-tauri → engine-client
 - engine-client → (依存なし、インターフェース定義のみ)
-- match-client → (依存なし。通信メッセージ型とクライアント実装のみ)
+- match-client → app-core（rshogi の CSA 中継で、局面・指し手を復元するのに使う。ルームの通信は依存なし）
 - study-client → app-core, api-contract（型のみ）
 - design-system → (依存なし)
 
@@ -34,7 +34,7 @@
 - engine-tauri: Tauri IPCエンジン実装（invoke/listen）
 - rust-core: Rustエンジン本体（探索、評価関数、USIプロトコル）
 - ui: 共通UIコンポーネント、design-system前提、必要なものだけ昇格
-- match-client: WebSocket ルームクライアント、通信プロトコル型定義。外部依存なし
+- match-client: WebSocket ルームクライアント、通信プロトコル型定義、rshogi の CSA 中継（棋譜・ライブ観戦）のクライアント。外部依存なし（CSA の復元だけ app-core を使う）
 - study-client: 研究ノートのローカル保存（IndexedDB）、サーバーとの同期、API クライアント。ブラウザ API（IndexedDB / Web Locks / BroadcastChannel / fetch）に依存する層。型と純粋ロジックは app-core の `study/`
 - design-system: テーマ/トークン/Provider、shadcn/ui基盤
 
