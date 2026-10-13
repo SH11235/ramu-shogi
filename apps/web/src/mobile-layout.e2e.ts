@@ -51,3 +51,38 @@ test("小画面の対局中、操作が画面の中に留まり、探索情報�
     await pause.click();
     await expect(page.getByRole("button", { name: "対局を再開", exact: true })).toBeVisible();
 });
+
+test("対局 → 投了 → 結果 → もう一局まで、盤が動かず操作に届く", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto("/play");
+    await page.getByRole("button", { name: /対局開始$/ }).waitFor();
+    await page.getByLabel("相手", { exact: true }).selectOption("material");
+    await page.getByRole("button", { name: "1秒", exact: true }).click();
+    await page.getByRole("button", { name: "対局開始", exact: true }).click();
+
+    // 対局中: 盤と操作が 1 画面に収まり、縦にも横にもはみ出さない。
+    const resign = page.getByRole("button", { name: "投了", exact: true });
+    await expect(resign).toBeInViewport();
+    const square = page.locator('[data-square="5e"]');
+    const boardTop = (await square.boundingBox())?.y;
+    await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollHeight))
+        .toBeLessThanOrEqual(667);
+
+    // 1 手指して、AI の応手を待つ。
+    await page.locator('[data-square="7g"]').click();
+    await page.locator('[data-square="7f"]').click();
+    await expect(page.getByText("あなたの番です")).toBeVisible();
+
+    // 投了すると、結果と次の一歩が下端に出る。盤は動かない。
+    await resign.click();
+    await page.getByRole("button", { name: "投了する", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "あなたの負け" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "研究ノートで振り返る" })).toBeInViewport();
+    expect((await square.boundingBox())?.y).toBe(boardTop);
+
+    // もう一局は、同じ設定ですぐ始まる。
+    await page.getByRole("button", { name: "もう一局", exact: true }).click();
+    await expect(page.getByText("あなたの番です")).toBeVisible();
+    expect((await square.boundingBox())?.y).toBe(boardTop);
+});
