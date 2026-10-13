@@ -294,8 +294,15 @@ export function useGameControls({
                 };
                 setPosition(updatedPosition);
                 positionRef.current = updatedPosition;
-                // ナビゲーションのルートノードをパス権付きの局面で更新
-                navigation.reset(updatedPosition, startSfen);
+                // ナビゲーションのルートノードをパス権付きの局面で更新する。
+                // 棋譜の途中の局面から始めるとき（読み込んだ・引き継いだ棋譜）は、いまの局面を
+                // 新しい開始局面にする。開始局面を元のままにすると、棋譜の手順を捨てたあとの
+                // ルート（いまの局面）と食い違い、合法手の判定が元の開始局面から行われてしまう。
+                const rootSfen =
+                    navigation.state.currentPly > 0
+                        ? await refreshStartSfen(updatedPosition)
+                        : startSfen;
+                navigation.reset(updatedPosition, rootSfen);
             }
 
             // 時計を動かす前にエンジンを初期化しておく

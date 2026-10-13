@@ -749,6 +749,8 @@ export function ShogiMatch({
     // 始めた対局では、手順が空でない。「もう一局」「設定を変える」で戻す先と、待ったで戻せる範囲に使う。
     const playStartRef = useRef<{ sfen: string; moves: string[] } | null>(null);
     const [playStartPly, setPlayStartPly] = useState(0);
+    // 新しい対局を始めようとしている（始まったら、その時点の開始局面と手順を控える）。
+    const [pendingPlayStartCapture, setPendingPlayStartCapture] = useState(false);
     const pendingSearchStatsRef = useRef(new Map<number, MoveSearchStats>());
     const [liveSearchInfo, setLiveSearchInfo] = useState<{
         side: Player;
@@ -1290,6 +1292,9 @@ export function ShogiMatch({
 
         const moveCount = moves.length;
         if (moveCount === 0) return;
+        // 対局画面では、この対局で指した手だけを戻す（引き継いだ棋譜の手は戻さない）。戻せる手が
+        // 無ければ、時計やエンジンを止める前に何もせず戻る。
+        if (isPlayScreen && moveCount - playStartPly <= 0) return;
 
         moveProcessingRef.current = true;
 
@@ -1309,7 +1314,6 @@ export function ShogiMatch({
             const undoCount = isPlayScreen
                 ? Math.min(wantedUndoCount, moveCount - playStartPly)
                 : wantedUndoCount;
-            if (undoCount <= 0) return;
 
             // 待った後の手番を明示的に計算
             // React のバッチ処理により navigation.goBack() 後の positionRef.current は
@@ -2406,6 +2410,8 @@ export function ShogiMatch({
     const startPlayMatch = async () => {
         if (isPlayStarting) return;
         setIsPlayStarting(true);
+        // 前に出ていた知らせ（前回の開始の失敗など）を、始め直すときに持ち越さない。
+        setMessage(null);
         try {
             await resumeAutoPlay();
         } finally {
@@ -2424,6 +2430,14 @@ export function ShogiMatch({
         }
         startRematch();
     }, [pendingRematch, isPlayResetting, playPhase, moves.length]);
+    // 対局が実際に始まった時点の開始局面と手順を、この対局の始まりとして控える
+    // （「もう一局」で戻す先と、待ったで戻せる範囲に使う）。
+    useEffect(() => {
+        if (!pendingPlayStartCapture || !isMatchRunning) return;
+        setPendingPlayStartCapture(false);
+        playStartRef.current = { sfen: startSfen, moves: [...moves] };
+        setPlayStartPly(moves.length);
+    }, [pendingPlayStartCapture, isMatchRunning, startSfen, moves]);
     const playConfig: PlayScreenConfig | null = isPlayScreen
         ? {
               phase: playPhase,
@@ -2435,9 +2449,10 @@ export function ShogiMatch({
                   if (isPlayResetting || isPlayStarting) return;
                   setPositionEditOpen(false);
                   if (!isPaused) {
-                      // 新しい対局の始まり。始まりの局面を控える（「もう一局」で戻す先）。
-                      playStartRef.current = { sfen: startSfen, moves: [...moves] };
-                      setPlayStartPly(moves.length);
+                      // 新しい対局の始まり。始まりの局面は、実際に始まった時点で控える
+                      // （開始の処理が、編集した局面の確定やパス権の初期化で開始局面・手順を
+                      // 作り直すことがあるので、押した時点の値は使わない）。
+                      setPendingPlayStartCapture(true);
                       setPlayStartNotice(notice ?? null);
                       setHintCount(0);
                       setHintPly(null);
@@ -2493,10 +2508,10 @@ export function ShogiMatch({
                       ? null
                       : () => {
                             if (isEditMode) {
+                                // 局面の準備が済んでいなければ、確定できない（待ちだけが残るのを避ける）。
+                                if (!positionReady) return;
                                 setPendingOpenStudy(true);
-                                // 編集の確定に失敗したら、待ちを残さない（あとで対局を始めたときに
-                                // 研究ノートへ移ってしまわないように）。
-                                void handleStartReview().catch(() => setPendingOpenStudy(false));
+                                void handleStartReview();
                             } else {
                                 openStudyNow();
                             }

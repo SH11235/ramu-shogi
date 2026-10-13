@@ -56,6 +56,19 @@ function usePlayerTimeTextOnly(owner: Player): string {
     return `残り ${seconds(clock.byoyomiMs)}秒`;
 }
 
+/** パス権（変則ルール）の残りの文言。対局が始まる前は、設定した初めの回数を出す。無効なら null。 */
+function usePassRightsText(owner: Player): string | null {
+    const { passRightsSettings } = useMatchSettings();
+    const { position } = useMatchState();
+    if (!passRightsSettings.enabled) return null;
+    const remaining =
+        position.passRights?.[owner] ??
+        (owner === "sente"
+            ? passRightsSettings.senteInitialCount
+            : passRightsSettings.goteInitialCount);
+    return `パス残り${remaining}`;
+}
+
 interface PlayPlayerBarProps {
     /** 盤の上か下か（盤の向きに合わせて、どちらの対局者かが決まる） */
     position: "top" | "bottom";
@@ -71,16 +84,7 @@ export function PlayPlayerBar({ position, className }: PlayPlayerBarProps): Reac
     const isAI = setting.role === "engine";
     const phase = play?.phase ?? "setup";
     const { text: timeText, urgent } = usePlayerTime(owner);
-    const { passRightsSettings } = useMatchSettings();
-    // パス権（変則ルール）の残り。対局が始まる前は、設定した初めの回数を出す。
-    const passText = passRightsSettings.enabled
-        ? `パス残り${
-              board.passRights?.[owner] ??
-              (owner === "sente"
-                  ? passRightsSettings.senteInitialCount
-                  : passRightsSettings.goteInitialCount)
-          }`
-        : null;
+    const passText = usePassRightsText(owner);
 
     const engine = engineOptions?.find((option) => option.id === setting.engineId);
     const levelText =
@@ -134,18 +138,11 @@ export function PlayPlayerBar({ position, className }: PlayPlayerBarProps): Reac
  * 自分の側の帯を出さないため）。どちらも無ければ何も出さない。
  */
 export function PlayMyStatus({ className }: { className?: string }): ReactElement | null {
-    const { timeSettings, passRightsSettings } = useMatchSettings();
-    const { getHandInfo, position: board } = useMatchState();
+    const { timeSettings } = useMatchSettings();
+    const { getHandInfo } = useMatchState();
     const owner = getHandInfo("bottom").owner;
     const { text: timeText, urgent } = usePlayerTime(owner);
-    const passText = passRightsSettings.enabled
-        ? `パス残り${
-              board.passRights?.[owner] ??
-              (owner === "sente"
-                  ? passRightsSettings.senteInitialCount
-                  : passRightsSettings.goteInitialCount)
-          }`
-        : null;
+    const passText = usePassRightsText(owner);
     const showTime = timeSettings[owner].enabled;
     if (!showTime && !passText) return null;
     return (
