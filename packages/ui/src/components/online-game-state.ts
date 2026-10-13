@@ -224,8 +224,8 @@ const STARTPOS_SFEN = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL
 export type GameStartSnapshot = Omit<SnapshotPayload, "spectators">;
 
 /**
- * game_start から対局開始時点の snapshot を組み立てる。空白の読み方と省かれた手数の補い方は RoomDO の
- * 実装ごとに違うので、どの実装でも同じ局面・手番になる開始局面以外は null を返す。
+ * game_start から対局開始時点の snapshot を組み立てる。空白の読み方と省かれた手数の補い方はサーバーの
+ * 解釈を再現しないので、空白 1 つ区切りの 4 フィールドの開始局面以外は null を返す。
  */
 export function snapshotAtGameStart(event: GameStartEvent): GameStartSnapshot | null {
     const { settings } = event;

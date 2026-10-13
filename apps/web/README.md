@@ -74,10 +74,7 @@ export default defineConfig([
 
 ## オンライン対局のローカル起動と E2E テスト
 
-ルーム API（`/api/rooms/*`）の処理先は `wrangler.toml` の `ROOM_BACKEND` で切り替わる。
-
-- `legacy`: この Worker（`worker/`）の RoomDO
-- `backend`: backend Worker（ramu-shogi-backend）の RoomDO
+ルーム API（`/api/rooms/*`）は backend Worker（ramu-shogi-backend）の RoomDO が処理する。この Worker（`worker/`）は、ルーム作成にレート制限を掛けてから backend へ転送する。
 
 ### frontend / backend の両 Worker を起動する
 
@@ -94,20 +91,14 @@ VITE_BASE_PATH=/ VITE_NNUE_MANIFEST_URL=/nnue/manifest.json pnpm --filter web bu
 起動:
 
 ```bash
-# backend の RoomDO で処理する（既定）
 pnpm --filter web dev:workers
-
-# この Worker の RoomDO で処理する
-ROOM_BACKEND=legacy pnpm --filter web dev:workers
 ```
 
 | 環境変数 | 既定値 | 内容 |
 | --- | --- | --- |
 | `BACKEND_DIR` | `../ramu-shogi-backend`（この repo の隣） | backend の checkout |
-| `ROOM_BACKEND` | `backend` | ルーム API の処理先（`backend` / `legacy`） |
 | `PORT` | `8787` | 待ち受けポート |
 
-- `wrangler.toml` は書き換えず、`ROOM_BACKEND` は起動時の `--var` で渡す。
 - backend の checkout には書き込まない。backend 用の wrangler 設定、`.dev.vars`（backend の `.dev.vars`、無ければ `.dev.vars.example` を複製）、ローカルの D1 / Durable Object の状態は `apps/web/.wrangler/room-dev/<PORT>/`（git 管理外）に置く。状態を消したいときはこのディレクトリを削除する。
 - wrangler はこの repo のものを使う。backend が要求する `compatibility_date` のほうが新しいと、起動時に警告が出て古い日付で動く。
 - ローカルではログインできない（backend のログインは別サービスに依存する）。対局はゲスト同士になり、棋譜は保存されない。
@@ -119,27 +110,16 @@ ROOM_BACKEND=legacy pnpm --filter web dev:workers
 ```bash
 pnpm --filter web exec playwright install chromium   # 初回のみ
 
-# 上の手順で起動したローカル環境（起動時の ROOM_BACKEND と同じ値を渡す）
-E2E_ROOM_BACKEND=backend pnpm --filter web test:e2e:rooms
-E2E_ROOM_BACKEND=legacy pnpm --filter web test:e2e:rooms
+# 上の手順で起動したローカル環境
+pnpm --filter web test:e2e:rooms
 
 # デプロイ済みの環境
-E2E_BASE_URL=https://stg.example.com E2E_ROOM_BACKEND=legacy E2E_DEV_LOGIN=true \
-    pnpm --filter web test:e2e:rooms
+E2E_BASE_URL=https://stg.example.com E2E_DEV_LOGIN=true pnpm --filter web test:e2e:rooms
 ```
 
 | 環境変数 | 既定値 | 内容 |
 | --- | --- | --- |
-| `E2E_ROOM_BACKEND` | （必須） | 対象環境でルーム API を処理している側（`backend` / `legacy`） |
 | `E2E_BASE_URL` | `http://localhost:8787` | 対象環境の URL |
 | `E2E_DEV_LOGIN` | 未設定 | `true` にすると `/api/auth/dev-login` でログインしてから対局し、終局後に棋譜の検討画面へ進めることも確かめる。dev-login が有効な環境でだけ使う |
 
 ルーム作成のレート制限（IP ごとに 60 秒 10 回）に掛かったときは、枠が空くまで待ってやり直す。
-
-処理先によって挙動が違うシナリオは、テストの中にそれぞれの期待値を書いてある。
-
-| シナリオ | `backend` | `legacy` |
-| --- | --- | --- |
-| 待機中に開始局面を SFEN 直接入力へ変更 | 入力し終えた局面で対局が始まる | 入力途中の、手数まで届いていない SFEN がエラーになって待機中の接続が切れ、変更した側には再読み込みの案内が出る（貼り付けで一度に入力すれば切れない） |
-| 終局後の再読み込み | 結果ダイアログと「棋譜を検討する」が復元される | 盤面だけが表示され、結果は出ない |
-| 同じ席を 2 つ目のタブで開く | 操作権が後から開いたタブへ移り、先のタブには案内が出る | どちらのタブからも指せる |

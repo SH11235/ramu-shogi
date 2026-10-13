@@ -251,11 +251,4 @@ describe("オンライン対局の状態（実物の Wasm 局面サービス）"
         expect(state.usiMoveLog).toHaveLength(2);
         expect(state.positionHistory).toHaveLength(3);
     });
-
-    // Worker の RoomDO を廃止するときは、この照合も一緒に消す
-    it.each(PRESETS)("%s の展開先は Worker の RoomDO の定義と一致する", async (preset) => {
-        const { default: roomDoSource } = await import("../../../worker/room-do.ts?raw");
-
-        expect(roomDoSource).toContain(`"${preset}": "${resolveStartSfen(preset)}"`);
-    });
 });

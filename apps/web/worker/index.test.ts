@@ -1,46 +1,28 @@
 // @vitest-environment node
 
 import { beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
+import worker from "./index";
 
-type WorkerModule = typeof import("./index");
-type WorkerEnv = Parameters<WorkerModule["default"]["fetch"]>[1];
+type WorkerEnv = Parameters<typeof worker.fetch>[1];
 type BackendCall = { url: string; init: RequestInit };
 type ConsoleSpy = MockInstance<(...args: unknown[]) => void>;
 
 const ORIGIN = "https://app.example.test";
 const CREATE_BODY = JSON.stringify({ settings: { startSfen: "startpos" } });
 
-// ROOM_BACKEND の警告は Worker の起動ごとに 1 回だけ出すので、テストごとにモジュールを読み直す
-async function loadWorker(): Promise<WorkerModule["default"]> {
-    vi.resetModules();
-    return (await import("./index")).default;
-}
-
 function createEnv({
-    roomBackend,
     rateLimitAllowed = true,
     backendResponse = () => Response.json({ from: "backend" }),
 }: {
-    roomBackend?: string;
     rateLimitAllowed?: boolean;
     backendResponse?: () => Response;
 } = {}) {
     const backendCalls: BackendCall[] = [];
-    const legacyRequests: Request[] = [];
     const rateLimitKeys: string[] = [];
 
     const env = {
         ASSETS: { fetch: async () => new Response("asset") },
         NNUE_BUCKET: {},
-        ROOM: {
-            idFromName: (name: string) => name,
-            get: () => ({
-                fetch: async (request: Request) => {
-                    legacyRequests.push(request);
-                    return Response.json({ from: "legacy" });
-                },
-            }),
-        },
         BACKEND: {
             fetch: async (url: string, init: RequestInit) => {
                 backendCalls.push({ url, init });
@@ -53,10 +35,9 @@ function createEnv({
                 return { success: rateLimitAllowed };
             },
         },
-        ...(roomBackend === undefined ? {} : { ROOM_BACKEND: roomBackend }),
     } as unknown as WorkerEnv;
 
-    return { env, backendCalls, legacyRequests, rateLimitKeys };
+    return { env, backendCalls, rateLimitKeys };
 }
 
 function createRoomRequest(): Request {
@@ -103,97 +84,9 @@ describe("ルーム API の振り分け", () => {
         warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     });
 
-    describe("ROOM_BACKEND=legacy", () => {
-        it("ルーム作成はレート制限を通したあと Worker 内の RoomDO で処理する", async () => {
-            const worker = await loadWorker();
-            const { env, backendCalls, legacyRequests, rateLimitKeys } = createEnv({
-                roomBackend: "legacy",
-            });
-
-            const response = await worker.fetch(
-                new Request(`${ORIGIN}/api/rooms`, {
-                    method: "POST",
-                    headers: { "CF-Connecting-IP": "203.0.113.7" },
-                    body: JSON.stringify({
-                        settings: {
-                            startSfen: "startpos",
-                            timeControl: { type: "byoyomi", initialMs: 0, byoyomiMs: 30_000 },
-                        },
-                    }),
-                }),
-                env,
-            );
-
-            expect(response.status).toBe(200);
-            const body = (await response.json()) as { roomId: string; shareUrl: string };
-            expect(body.shareUrl).toBe(`${ORIGIN}/online/${body.roomId}`);
-            expect(rateLimitKeys).toEqual(["203.0.113.7"]);
-            expect(legacyRequests.map((request) => request.url)).toEqual(["https://room.do/init"]);
-            expect(backendCalls).toEqual([]);
-            expect(roomRequestLogs(logSpy)).toEqual([
-                {
-                    event: "room_request",
-                    served_by: "legacy",
-                    room_backend: "legacy",
-                    route: "create",
-                    method: "POST",
-                    status: 200,
-                },
-            ]);
-        });
-
-        it("レート制限を超えたルーム作成は RoomDO を呼ばずに 429 を返す", async () => {
-            const worker = await loadWorker();
-            const { env, backendCalls, legacyRequests } = createEnv({
-                roomBackend: "legacy",
-                rateLimitAllowed: false,
-            });
-
-            const response = await worker.fetch(createRoomRequest(), env);
-
-            expect(response.status).toBe(429);
-            expect(await response.json()).toEqual({
-                error: "RATE_LIMITED",
-                message: "Too many room creation requests. Please try again later.",
-            });
-            expect(legacyRequests).toEqual([]);
-            expect(backendCalls).toEqual([]);
-        });
-
-        it("ルーム情報の取得と WebSocket 接続を RoomDO に渡す", async () => {
-            const worker = await loadWorker();
-            const { env, backendCalls, legacyRequests } = createEnv({ roomBackend: "legacy" });
-            const infoRequest = new Request(`${ORIGIN}/api/rooms/room01`);
-            const wsRequest = webSocketUpgradeRequest();
-
-            const infoResponse = await worker.fetch(infoRequest, env);
-            await worker.fetch(wsRequest, env);
-
-            expect(await infoResponse.json()).toEqual({ from: "legacy" });
-            expect(infoResponse.headers.has("cache-control")).toBe(false);
-            expect(legacyRequests).toEqual([infoRequest, wsRequest]);
-            expect(backendCalls).toEqual([]);
-        });
-
-        it("RoomDO が扱わないルーム API は backend へ転送する", async () => {
-            const worker = await loadWorker();
-            const { env, backendCalls, legacyRequests } = createEnv({ roomBackend: "legacy" });
-
-            await worker.fetch(new Request(`${ORIGIN}/api/rooms/room01/ws`), env);
-
-            expect(legacyRequests).toEqual([]);
-            expect(backendCalls.map((call) => call.url)).toEqual([`${ORIGIN}/api/rooms/room01/ws`]);
-            expect(roomRequestLogs(logSpy)).toMatchObject([
-                { served_by: "backend", room_backend: "legacy", route: "ws" },
-            ]);
-        });
-    });
-
-    describe("ROOM_BACKEND=backend", () => {
+    describe("backend への転送", () => {
         it("ルーム作成をレート制限のあと backend へ転送し、応答をそのまま返す", async () => {
-            const worker = await loadWorker();
-            const { env, backendCalls, legacyRequests, rateLimitKeys } = createEnv({
-                roomBackend: "backend",
+            const { env, backendCalls, rateLimitKeys } = createEnv({
                 backendResponse: () =>
                     Response.json(
                         { error: "INVALID_REQUEST", message: "Invalid input" },
@@ -209,7 +102,6 @@ describe("ルーム API の振り分け", () => {
                 message: "Invalid input",
             });
             expect(rateLimitKeys).toEqual(["203.0.113.7"]);
-            expect(legacyRequests).toEqual([]);
             expect(backendCalls).toHaveLength(1);
 
             const [{ url, init }] = backendCalls;
@@ -227,7 +119,6 @@ describe("ルーム API の振り分け", () => {
                 {
                     event: "room_request",
                     served_by: "backend",
-                    room_backend: "backend",
                     route: "create",
                     method: "POST",
                     status: 400,
@@ -235,10 +126,8 @@ describe("ルーム API の振り分け", () => {
             ]);
         });
 
-        it("レート制限を超えたルーム作成は backend を呼ばずに legacy と同じ 429 を返す", async () => {
-            const worker = await loadWorker();
+        it("レート制限を超えたルーム作成は backend を呼ばずに 429 を返す", async () => {
             const { env, backendCalls, rateLimitKeys } = createEnv({
-                roomBackend: "backend",
                 rateLimitAllowed: false,
             });
 
@@ -253,13 +142,12 @@ describe("ルーム API の振り分け", () => {
             expect(rateLimitKeys).toEqual(["203.0.113.7"]);
             expect(backendCalls).toEqual([]);
             expect(roomRequestLogs(logSpy)).toMatchObject([
-                { served_by: "rate_limiter", room_backend: "backend", status: 429 },
+                { served_by: "rate_limiter", status: 429 },
             ]);
         });
 
-        it("CF-Connecting-IP が無いルーム作成は legacy と同じキーでレート制限する", async () => {
-            const worker = await loadWorker();
-            const { env, rateLimitKeys } = createEnv({ roomBackend: "backend" });
+        it("CF-Connecting-IP が無いルーム作成は共通のキーでレート制限する", async () => {
+            const { env, rateLimitKeys } = createEnv();
 
             await worker.fetch(
                 new Request(`${ORIGIN}/api/rooms`, { method: "POST", body: CREATE_BODY }),
@@ -270,9 +158,7 @@ describe("ルーム API の振り分け", () => {
         });
 
         it("ルーム情報の取得を backend へ転送し、存在しないルームの 404 をそのまま返す", async () => {
-            const worker = await loadWorker();
-            const { env, backendCalls, legacyRequests, rateLimitKeys } = createEnv({
-                roomBackend: "backend",
+            const { env, backendCalls, rateLimitKeys } = createEnv({
                 backendResponse: () =>
                     Response.json(
                         { error: "ROOM_NOT_FOUND", message: "Room not found" },
@@ -290,7 +176,6 @@ describe("ルーム API の振り分け", () => {
                 error: "ROOM_NOT_FOUND",
                 message: "Room not found",
             });
-            expect(legacyRequests).toEqual([]);
             expect(rateLimitKeys).toEqual([]);
             expect(backendCalls).toHaveLength(1);
             expect(backendCalls[0].url).toBe(`${ORIGIN}/api/rooms/room01`);
@@ -300,18 +185,15 @@ describe("ルーム API の振り分け", () => {
         });
 
         it("WebSocket 接続を backend へ転送し、101 応答を作り直さずに返す", async () => {
-            const worker = await loadWorker();
             // Node の Response は 101 を生成できないため、同一性だけを確かめる代役を使う
             const upgradeResponse = { status: 101, headers: new Headers() } as unknown as Response;
-            const { env, backendCalls, legacyRequests, rateLimitKeys } = createEnv({
-                roomBackend: "backend",
+            const { env, backendCalls, rateLimitKeys } = createEnv({
                 backendResponse: () => upgradeResponse,
             });
 
             const response = await worker.fetch(webSocketUpgradeRequest(), env);
 
             expect(response).toBe(upgradeResponse);
-            expect(legacyRequests).toEqual([]);
             expect(rateLimitKeys).toEqual([]);
             expect(backendCalls).toHaveLength(1);
 
@@ -333,7 +215,6 @@ describe("ルーム API の振り分け", () => {
                 {
                     event: "room_request",
                     served_by: "backend",
-                    room_backend: "backend",
                     route: "ws",
                     method: "GET",
                     status: 101,
@@ -342,9 +223,7 @@ describe("ルーム API の振り分け", () => {
         });
 
         it("WebSocket 接続を backend が拒否したときは、その応答をそのまま返す", async () => {
-            const worker = await loadWorker();
             const { env } = createEnv({
-                roomBackend: "backend",
                 backendResponse: () =>
                     Response.json(
                         {
@@ -365,8 +244,7 @@ describe("ルーム API の振り分け", () => {
         });
 
         it("BACKEND binding が無いときは BACKEND_ORIGIN へ転送する", async () => {
-            const worker = await loadWorker();
-            const { env } = createEnv({ roomBackend: "backend" });
+            const { env } = createEnv();
             const fetchSpy = vi
                 .spyOn(globalThis, "fetch")
                 .mockResolvedValue(Response.json({ from: "origin" }));
@@ -384,8 +262,7 @@ describe("ルーム API の振り分け", () => {
         });
 
         it("転送先が無いときは 404 を返す", async () => {
-            const worker = await loadWorker();
-            const { env, legacyRequests } = createEnv({ roomBackend: "backend" });
+            const { env } = createEnv();
 
             const response = await worker.fetch(new Request(`${ORIGIN}/api/rooms/room01`), {
                 ...env,
@@ -393,13 +270,11 @@ describe("ルーム API の振り分け", () => {
             });
 
             expect(response.status).toBe(404);
-            expect(legacyRequests).toEqual([]);
             expect(roomRequestLogs(logSpy)).toMatchObject([{ served_by: "none", status: 404 }]);
         });
 
         it("ログにルーム ID・クエリ・Cookie を含めない", async () => {
-            const worker = await loadWorker();
-            const { env } = createEnv({ roomBackend: "backend" });
+            const { env } = createEnv();
 
             await worker.fetch(
                 new Request(`${ORIGIN}/api/rooms/secretRoom?token=secretQuery`, {
@@ -414,43 +289,7 @@ describe("ルーム API の振り分け", () => {
         });
     });
 
-    describe("ROOM_BACKEND が legacy / backend 以外", () => {
-        it.each([
-            ["未設定", undefined],
-            ["空文字", ""],
-            ["想定外の値", "Backend"],
-        ])("%s のときは legacy として処理し、警告は 1 回だけ出す", async (_label, roomBackend) => {
-            const worker = await loadWorker();
-            const { env, backendCalls, legacyRequests } = createEnv({ roomBackend });
-
-            await worker.fetch(new Request(`${ORIGIN}/api/rooms/room01`), env);
-            await worker.fetch(new Request(`${ORIGIN}/api/rooms/room02`), env);
-
-            expect(legacyRequests).toHaveLength(2);
-            expect(backendCalls).toEqual([]);
-            expect(warnSpy.mock.calls.map(([line]) => JSON.parse(String(line)))).toEqual([
-                {
-                    event: "room_backend_invalid",
-                    value: roomBackend ?? null,
-                    fallback: "legacy",
-                },
-            ]);
-        });
-
-        it("正しい値のときは警告を出さない", async () => {
-            const worker = await loadWorker();
-            const { env } = createEnv({ roomBackend: "legacy" });
-
-            await worker.fetch(new Request(`${ORIGIN}/api/rooms/room01`), env);
-
-            expect(warnSpy).not.toHaveBeenCalled();
-        });
-    });
-
-    describe.each([
-        "legacy",
-        "backend",
-    ])("percent-encode されたパス（ROOM_BACKEND=%s）", (roomBackend) => {
+    describe("percent-encode されたパス", () => {
         // backend のルーターが /api/rooms として解釈するもの、しないものの両方を含む
         it.each([
             ["rooms の 1 文字目", "/api/%72ooms"],
@@ -463,8 +302,7 @@ describe("ルーム API の振り分け", () => {
             ["不正なエンコード", "/api/%ZZrooms"],
             ["途中で切れたエンコード", "/api/rooms%"],
         ])("POST %s (%s) はレート制限も転送もせず 400 を返す", async (_label, path) => {
-            const worker = await loadWorker();
-            const { env, backendCalls, legacyRequests, rateLimitKeys } = createEnv({ roomBackend });
+            const { env, backendCalls, rateLimitKeys } = createEnv();
 
             const response = await worker.fetch(
                 new Request(`${ORIGIN}${path}`, { method: "POST", body: CREATE_BODY }),
@@ -483,7 +321,6 @@ describe("ルーム API の振り分け", () => {
                 });
             }
             expect(backendCalls).toEqual([]);
-            expect(legacyRequests).toEqual([]);
             expect(rateLimitKeys).toEqual([]);
         });
 
@@ -493,15 +330,13 @@ describe("ルーム API の振り分け", () => {
             ["WebSocket", "/api/rooms/room01/%77s", { Upgrade: "websocket" }],
             ["WebSocket（rooms 側）", "/api/room%73/room01/ws", { Upgrade: "websocket" }],
             ["ルーム以外の API", "/api/auth/se%73sion", {}],
-        ])("GET %s (%s) は RoomDO にも backend にも渡さない", async (_label, path, headers) => {
-            const worker = await loadWorker();
-            const { env, backendCalls, legacyRequests } = createEnv({ roomBackend });
+        ])("GET %s (%s) は backend に渡さない", async (_label, path, headers) => {
+            const { env, backendCalls } = createEnv();
 
             const response = await worker.fetch(new Request(`${ORIGIN}${path}`, { headers }), env);
 
             expect(response.status).toBe(400);
             expect(backendCalls).toEqual([]);
-            expect(legacyRequests).toEqual([]);
             const warned = warnSpy.mock.calls.map(([line]) => JSON.parse(String(line)));
             expect(warned).toContainEqual({
                 event: "api_path_rejected",
@@ -511,8 +346,7 @@ describe("ルーム API の振り分け", () => {
         });
 
         it("クエリ文字列の percent-encode は拒否しない", async () => {
-            const worker = await loadWorker();
-            const { env, backendCalls } = createEnv({ roomBackend });
+            const { env, backendCalls } = createEnv();
 
             const response = await worker.fetch(
                 new Request(`${ORIGIN}/api/nnue/uploads/f1/parts/1?uploadId=a%2Fb%3D`),
@@ -536,8 +370,7 @@ describe("ルーム API の振り分け", () => {
             ["大文字", "/api/Rooms", "/api/Rooms", false],
             ["パスパラメータ", "/api/rooms;x=1", "/api/rooms;x=1", false],
         ])("POST %s (%s) は %s として扱う", async (_label, path, normalizedPath, isCreate) => {
-            const worker = await loadWorker();
-            const { env, backendCalls, legacyRequests, rateLimitKeys } = createEnv({ roomBackend });
+            const { env, backendCalls, rateLimitKeys } = createEnv();
 
             await worker.fetch(
                 new Request(`${ORIGIN}${path}`, {
@@ -555,23 +388,13 @@ describe("ルーム API の振り分け", () => {
 
             // ルーム作成として扱うものは必ずレート制限を通り、それ以外は backend で作成にならないパスのまま転送する
             expect(rateLimitKeys).toHaveLength(isCreate ? 1 : 0);
-            if (isCreate && roomBackend === "legacy") {
-                expect(legacyRequests.map((request) => request.url)).toEqual([
-                    "https://room.do/init",
-                ]);
-                expect(backendCalls).toEqual([]);
-            } else {
-                expect(legacyRequests).toEqual([]);
-                expect(backendCalls.map((call) => call.url)).toEqual([
-                    `${ORIGIN}${normalizedPath}`,
-                ]);
-            }
+            expect(backendCalls.map((call) => call.url)).toEqual([`${ORIGIN}${normalizedPath}`]);
         });
     });
 
     describe("backend への転送が例外になったとき", () => {
-        function createFailingEnv(roomBackend: string) {
-            const created = createEnv({ roomBackend });
+        function createFailingEnv() {
+            const created = createEnv();
             const env = {
                 ...created.env,
                 BACKEND: {
@@ -587,9 +410,8 @@ describe("ルーム API の振り分け", () => {
             ["ルーム作成", () => createRoomRequest(), "create"],
             ["ルーム情報", () => new Request(`${ORIGIN}/api/rooms/secretRoom`), "info"],
             ["WebSocket", () => webSocketUpgradeRequest(), "ws"],
-        ])("ROOM_BACKEND=backend の%sは 502 を返し、失敗を 1 行で記録する", async (_label, makeRequest, route) => {
-            const worker = await loadWorker();
-            const { env } = createFailingEnv("backend");
+        ])("%sは 502 を返し、失敗を 1 行で記録する", async (_label, makeRequest, route) => {
+            const { env } = createFailingEnv();
 
             const response = await worker.fetch(makeRequest(), env);
 
@@ -604,7 +426,6 @@ describe("ルーム API の振り分け", () => {
                 {
                     event: "room_request",
                     served_by: "backend",
-                    room_backend: "backend",
                     route,
                     method: route === "create" ? "POST" : "GET",
                     status: 502,
@@ -614,29 +435,17 @@ describe("ルーム API の振り分け", () => {
             expect(logSpy.mock.calls.flat().join("\n")).not.toMatch(/secretRoom|fetch failed/);
         });
 
-        it("ルーム以外の API は従来どおり例外をそのまま伝える", async () => {
-            const worker = await loadWorker();
-            const { env } = createFailingEnv("backend");
+        it("ルーム以外の API は例外をそのまま伝える", async () => {
+            const { env } = createFailingEnv();
 
             await expect(
                 worker.fetch(new Request(`${ORIGIN}/api/auth/session`), env),
             ).rejects.toThrow("fetch failed");
         });
-
-        it("ROOM_BACKEND=legacy で backend に回るルーム API は従来どおり例外をそのまま伝える", async () => {
-            const worker = await loadWorker();
-            const { env } = createFailingEnv("legacy");
-
-            await expect(
-                worker.fetch(new Request(`${ORIGIN}/api/rooms/room01/ws`), env),
-            ).rejects.toThrow("fetch failed");
-            expect(roomRequestLogs(logSpy)).toEqual([]);
-        });
     });
 
     it("ルーム以外の API はレート制限もログも無しで backend へ転送する", async () => {
-        const worker = await loadWorker();
-        const { env, backendCalls, rateLimitKeys } = createEnv({ roomBackend: "backend" });
+        const { env, backendCalls, rateLimitKeys } = createEnv();
 
         await worker.fetch(new Request(`${ORIGIN}/api/auth/session`), env);
         await worker.fetch(new Request(`${ORIGIN}/api/roomsfoo`, { method: "POST" }), env);

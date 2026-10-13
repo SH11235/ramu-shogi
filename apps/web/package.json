@@ -18,7 +18,6 @@
         "preview": "vite preview",
         "typecheck": "tsc -p tsconfig.json --noEmit",
         "test": "vitest run",
-        "test:integration": "vitest run --reporter verbose worker/room-do.integration.test.ts",
         "test:e2e": "playwright test",
         "test:e2e:rooms": "playwright test -c playwright.room.config.ts"
     },
@@ -29,7 +28,6 @@
         "@shogi/engine-client": "workspace:*",
         "@shogi/engine-wasm": "workspace:*",
         "@shogi/match-client": "workspace:*",
-        "@shogi/match-protocol": "workspace:*",
         "@shogi/study-client": "workspace:*",
         "@shogi/ui": "workspace:*",
         "@tanstack/react-router": "^1.162.6",

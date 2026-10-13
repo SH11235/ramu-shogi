@@ -1222,7 +1222,7 @@
                     },
                     "usiMove": {
                         "type": ["string", "null"],
-                        "pattern": "^(?:[1-9][a-i][1-9][a-i]\\+?|[PLNSBRG]\\*[1-9][a-i])$"
+                        "pattern": "^(?:[1-9][a-i][1-9][a-i]\\+?|[PLNSBRG]\\*[1-9][a-i]|pass)$"
                     },
                     "children": {
                         "type": "array",
@@ -1641,7 +1641,7 @@
                                 "type": "array",
                                 "items": {
                                     "type": "string",
-                                    "pattern": "^(?:[1-9][a-i][1-9][a-i]\\+?|[PLNSBRG]\\*[1-9][a-i])$"
+                                    "pattern": "^(?:[1-9][a-i][1-9][a-i]\\+?|[PLNSBRG]\\*[1-9][a-i]|pass)$"
                                 },
                                 "minItems": 1
                             }

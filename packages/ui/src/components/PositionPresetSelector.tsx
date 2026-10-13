@@ -62,7 +62,7 @@ function validateCustomSfen(sfen: string): string | null {
 }
 
 // サーバーには前後の空白を除き、フィールドの間を 1 つの空白にそろえて渡す。
-// 空白の読み方は RoomDO の実装によって違い、余分な空白があると手番を読み違えるものがある
+// クライアントは空白 1 つ区切りの開始局面でないと、対局開始時の局面を自分で組み立てられない
 function normalizeSfenSpacing(sfen: string): string {
     return sfen.trim().replace(/\s+/g, " ");
 }

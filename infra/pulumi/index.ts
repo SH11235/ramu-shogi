@@ -2,8 +2,7 @@
 //
 // Phase 1.5 (issue #50) スコープ:
 // - R2 bucket (`shogi-nnue`) のみ宣言する。
-// - Worker script (`ramu-shogi` / `ramu-shogi-stg`) と Durable Object
-//   (`RoomDO`) / vars / secrets / Service binding (`BACKEND` →
+// - Worker script (`ramu-shogi` / `ramu-shogi-stg`) と Service binding (`BACKEND` →
 //   `ramu-shogi-backend(-stg)`) / Rate limit binding (`ROOM_RATE_LIMITER`) /
 //   R2 binding (`NNUE_BUCKET`) / Assets binding / SPA 設定 / migrations は
 //   **`apps/web/wrangler.toml` による管理を継続** する。

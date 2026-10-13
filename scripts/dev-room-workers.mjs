@@ -4,7 +4,6 @@
 //
 // 環境変数:
 //   BACKEND_DIR   ramu-shogi-backend の checkout（既定: この repo の隣の ../ramu-shogi-backend）
-//   ROOM_BACKEND  ルーム API の処理先 "backend"（既定）または "legacy"
 //   PORT          待ち受けポート（既定: 8787）
 //
 // backend の checkout には何も書き込まない。backend 用の wrangler 設定・.dev.vars・ローカル D1 は
@@ -18,7 +17,6 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const webDir = path.join(repoRoot, "apps", "web");
 
-const ROOM_BACKENDS = ["backend", "legacy"];
 const WEB_BUILD_COMMAND =
     "VITE_BASE_PATH=/ VITE_NNUE_MANIFEST_URL=/nnue/manifest.json pnpm --filter web build";
 // backend が招待 URL やログイン後の戻り先に使う origin。ローカルの待ち受け先に合わせて上書きする
@@ -65,12 +63,6 @@ function parseJsonc(text) {
 }
 
 function resolveSettings() {
-    const roomBackend = process.env.ROOM_BACKEND ?? "backend";
-    if (!ROOM_BACKENDS.includes(roomBackend)) {
-        fail(
-            `ROOM_BACKEND は ${ROOM_BACKENDS.join(" / ")} のどちらかにしてください（指定値: ${roomBackend}）`,
-        );
-    }
     const port = Number(process.env.PORT ?? "8787");
     if (!Number.isInteger(port) || port <= 0 || port > 65535) {
         fail(`PORT が不正です（指定値: ${process.env.PORT}）`);
@@ -79,7 +71,7 @@ function resolveSettings() {
         repoRoot,
         process.env.BACKEND_DIR ?? path.join("..", "ramu-shogi-backend"),
     );
-    return { roomBackend, port, backendDir };
+    return { port, backendDir };
 }
 
 function checkPrerequisites(backendWorkerDir) {
@@ -185,7 +177,7 @@ function applyMigrations(wranglerBin, configPath, databaseName) {
     }
 }
 
-function startWorkers(wranglerBin, backendConfigPath, { roomBackend, port }) {
+function startWorkers(wranglerBin, backendConfigPath, { port }) {
     const child = spawn(
         wranglerBin,
         [
@@ -198,8 +190,6 @@ function startWorkers(wranglerBin, backendConfigPath, { roomBackend, port }) {
             String(port),
             "--persist-to",
             stateDir,
-            "--var",
-            `ROOM_BACKEND:${roomBackend}`,
         ],
         { cwd: webDir, stdio: "inherit" },
     );
@@ -229,7 +219,7 @@ const devVarsSource = writeBackendDevVars(backendWorkerDir);
 console.log(
     `[dev-room-workers] backend: ${settings.backendDir}\n` +
         `[dev-room-workers] backend のシークレット: ${devVarsSource} から複製\n` +
-        `[dev-room-workers] ROOM_BACKEND=${settings.roomBackend}  http://localhost:${settings.port}`,
+        `[dev-room-workers] http://localhost:${settings.port}`,
 );
 applyMigrations(wranglerBin, configPath, databaseName);
 startWorkers(wranglerBin, configPath, settings);

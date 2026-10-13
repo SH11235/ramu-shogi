@@ -1139,7 +1139,7 @@ describe("RoomPage", () => {
             });
         }
 
-        // legacy / backend どちらの RoomDO も、対局開始時は snapshot を送らず、
+        // backend の RoomDO は、対局開始時は snapshot を送らず、
         // 設定の全体と対局者名を持つ game_start だけを送る
         function gameStart(eventId: number, startSfen: string): ServerMessage {
             return eventMessage({
@@ -1301,7 +1301,7 @@ describe("RoomPage", () => {
         });
 
         it("開始局面を解釈できず snapshot を待つ間に切断されても、再接続後の snapshot から開き、その間の指し手を 1 度だけ反映する", async () => {
-            // 手数を省いた SFEN は backend の RoomDO だけが受け付け、1 手目として補って対局を始める
+            // 手数を省いた SFEN は、backend の RoomDO が 1 手目として補って対局を始める
             const startSfen = "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w -";
             const firstSocket = await joinAndWait("b");
             await receive(firstSocket, [settingsUpdated(1, startSfen), gameStart(2, startSfen)]);
@@ -1477,7 +1477,7 @@ describe("RoomPage", () => {
 
         describe("待機中に再読み込みした対局者", () => {
             // 再読み込み後は保存済みのトークンで resume する。lastEventId 0 の resume には、
-            // legacy / backend どちらの RoomDO も snapshot を返す
+            // backend の RoomDO は snapshot を返す
             async function reloadAndWait(startSfen: string): Promise<FakeSocket> {
                 rememberSeat("test-room");
                 render(<RoomPage />);
