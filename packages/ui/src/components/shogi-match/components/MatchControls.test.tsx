@@ -51,7 +51,7 @@ describe("MatchControls", () => {
         }
     });
 
-    it("棋譜を見るだけの画面でも、検討の案内とメッセージは出す", () => {
+    it("棋譜を見るだけの画面は、メッセージだけを出す（盤を操作できないので、検討の案内は出さない）", () => {
         render(
             <MatchControls
                 onResetToStartpos={noop}
@@ -63,7 +63,7 @@ describe("MatchControls", () => {
                 viewerMode
             />,
         );
-        expect(screen.getByText("検討モード: 駒を動かして分岐を作成できます")).toBeTruthy();
+        expect(screen.queryByText(/検討モード/)).toBeNull();
         expect(screen.getByText("合法手ではありません")).toBeTruthy();
     });
 

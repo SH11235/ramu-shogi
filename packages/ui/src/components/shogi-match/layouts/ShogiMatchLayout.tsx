@@ -21,6 +21,7 @@ import { MatchStateProvider } from "../contexts/MatchStateContext";
 import { NavigationProvider } from "../contexts/NavigationContext";
 import { DragGhost } from "../dnd/DragGhost";
 import type { PieceDndController as DndController } from "../dnd/usePieceDnd";
+import { useShogiMatchConfig } from "../ShogiMatchContext";
 import type {
     AnalysisProps,
     BoardHandlersProps,
@@ -81,6 +82,7 @@ export function ShogiMatchLayout({
     isMatchRunning,
     isPaused,
 }: ShogiMatchLayoutProps): ReactElement {
+    const { viewerMode } = useShogiMatchConfig();
     // グループ化されたpropsを展開: 対局設定
     const {
         sides,
@@ -309,9 +311,10 @@ export function ShogiMatchLayout({
                 <MoveDetailWindow
                     move={selectedMoveDetail.move}
                     position={selectedMoveDetail.position}
-                    onAddBranch={handleAddPvAsBranch}
+                    // 棋譜を見るだけの画面では、解析も変化の追加もさせない（読み筋の再生は残す）。
+                    onAddBranch={viewerMode ? undefined : handleAddPvAsBranch}
                     onPreview={handlePreviewPv}
-                    onAnalyze={handleAnalyzePly}
+                    onAnalyze={viewerMode ? undefined : handleAnalyzePly}
                     isAnalyzing={isAnalyzing}
                     analyzingPly={
                         analyzingState.type !== "none" && analyzingState.type !== "error"

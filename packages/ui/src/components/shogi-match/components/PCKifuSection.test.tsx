@@ -32,12 +32,21 @@ vi.mock("../contexts/NavigationContext", () => ({
 }));
 vi.mock("./EvalGraph", () => ({ EvalGraph: () => <div data-testid="eval-graph" /> }));
 vi.mock("./EvalGraphModal", () => ({ EvalGraphModal: () => null }));
-vi.mock("./KifuPanel", () => ({ KifuPanel: () => null }));
+let kifuPanelProps: Record<string, unknown> = {};
+vi.mock("./KifuPanel", () => ({
+    KifuPanel: (props: Record<string, unknown>) => {
+        kifuPanelProps = props;
+        return null;
+    },
+}));
 vi.mock("./CurrentPositionAiHintPanel", () => ({ CurrentPositionAiHintPanel: () => null }));
 
 afterEach(cleanup);
 
-function renderSection(mode: GameMode, config: { evalGraphPinned?: boolean } = {}) {
+function renderSection(
+    mode: GameMode,
+    config: { evalGraphPinned?: boolean; viewerMode?: boolean } = {},
+) {
     gameMode = mode;
     const ui = () => (
         <ShogiMatchProvider config={config}>
@@ -91,5 +100,31 @@ describe("PCKifuSection: 評価値グラフを最初に開いておくか", () =
         expect(screen.getByTestId("eval-graph")).toBeTruthy();
         expect(screen.queryByRole("button", { name: /評価値グラフ/ })).toBeNull();
         expect(screen.queryByText("（クリックで展開）")).toBeNull();
+    });
+});
+
+describe("PCKifuSection: 棋譜を見るだけの画面（ビューア）", () => {
+    const ANALYSIS_PROPS = [
+        "onAnalyzePly",
+        "onStartBatchAnalysis",
+        "onAnalyzeNode",
+        "onAnalyzeBranch",
+        "onStartTreeBatchAnalysis",
+        "onAddPvAsBranch",
+    ];
+
+    it("解析のタブを出さず、棋譜の欄にも解析・変化の追加の操作を渡さない", () => {
+        renderSection("reviewing", { viewerMode: true });
+
+        expect(screen.queryByText("AI解析")).toBeNull();
+        for (const name of ANALYSIS_PROPS) {
+            expect(kifuPanelProps[name], name).toBeUndefined();
+        }
+    });
+
+    it("対局の画面では、これまでどおり解析のタブを出す", () => {
+        renderSection("reviewing");
+
+        expect(screen.getByText("AI解析")).toBeTruthy();
     });
 });

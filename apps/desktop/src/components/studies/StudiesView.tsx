@@ -95,7 +95,8 @@ export function StudiesView({
                 <Button variant="outline" size="sm" onClick={onBackToLocal}>
                     ← ローカル対局へ戻る
                 </Button>
-                <h1 className="text-sm font-semibold text-wafuu-sumi">研究ノート</h1>
+                {/* 「（整備中）」は、研究ノートの本格実装が済んだら外す。 */}
+                <h1 className="text-sm font-semibold text-wafuu-sumi">研究ノート（整備中）</h1>
                 <span className="text-xs text-muted-foreground">
                     ノートは、この端末の中に保存されます。
                 </span>

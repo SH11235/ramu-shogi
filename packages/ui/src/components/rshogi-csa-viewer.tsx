@@ -432,6 +432,12 @@ export function RshogiCsaViewer({
             />
             {/* 主は「研究ノートで開く」、従は「この局面から対局」。続けて並べる。 */}
             {renderGameAction?.(game)}
+            {renderGameAction && (
+                // この画面は棋譜を見るだけ。「（整備中）」は、研究ノートの本格実装が済んだら外す。
+                <p className="text-xs text-muted-foreground">
+                    解析や変化の検討は、研究ノート（整備中）でできます。
+                </p>
+            )}
             {onPlayFromPosition && (
                 <PlayFromPositionButton
                     onClick={() => onPlayFromPosition(shownPosition.getShownPosition(startSfen))}

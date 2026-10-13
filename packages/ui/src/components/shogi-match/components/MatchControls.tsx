@@ -116,16 +116,11 @@ export function MatchControls({
     const isReviewMode = gameMode === "reviewing";
     const isPausedMode = gameMode === "paused";
 
-    // 棋譜を見るだけの画面では、案内とメッセージだけを出す（棋譜の読み込みが済むまでの一瞬は
-    // 編集モードだが、編集の案内も出さない）。
+    // 棋譜を見るだけの画面では、メッセージだけを出す（盤は操作できないので、検討や編集の案内は
+    // 出さない）。
     if (viewerMode && !isMatchRunning) {
         return (
             <div className="flex w-full flex-col items-center gap-2">
-                {isReviewMode && (
-                    <div className="text-xs text-muted-foreground">
-                        検討モード: 駒を動かして分岐を作成できます
-                    </div>
-                )}
                 {message && (
                     <div className={`${MESSAGE_CLASS} ${MESSAGE_STYLES[message.type]}`}>
                         {message.text}

@@ -367,7 +367,8 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
             />
             <PageContainer>
                 <PageHeading
-                    title="研究ノート"
+                    // 「（整備中）」は、研究ノートの本格実装が済んだら外す。
+                    title="研究ノート（整備中）"
                     description="棋譜を AI で解析して、悪手の見直しや変化の研究を残しておけます。"
                 >
                     {!isLoading && !isAuthenticated && items.length > 0 && (

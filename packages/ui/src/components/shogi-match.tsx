@@ -482,9 +482,11 @@ interface ShogiMatchProps {
      */
     spectateMode?: boolean;
     /**
-     * 棋譜を見るだけの画面（棋譜ビューア・観戦）。対局開始・対局再開・棋譜読込・局面編集・
-     * 平手に戻すを出さない（PC・スマホとも）。棋譜の閲覧、駒を動かしての分岐、解析はそのまま使える。
-     * 対局したいときは、ページ側が `onPositionSnapshot` で受けた局面を対局ページへ引き継ぐ。
+     * 棋譜を見るだけの画面（棋譜ビューア・ライブ観戦・公開棋譜）。対局開始・対局再開・棋譜読込・
+     * 局面編集・平手に戻すを出さない（PC・スマホとも）。盤は操作できず（駒を動かして変化を作れない）、
+     * 解析もできない。できるのは、棋譜の再生、評価値グラフ、読み筋の再生、棋譜にある分岐の閲覧。
+     * 調べたいときは研究ノートで開く。対局したいときは、ページ側が `onPositionSnapshot` で受けた
+     * 局面を対局ページへ引き継ぐ。
      */
     viewerMode?: boolean;
     /**
@@ -932,8 +934,8 @@ export function ShogiMatch({
     const getHandInfo = (pos: "top" | "bottom") => {
         const owner: Player =
             pos === "top" ? (flipBoard ? "sente" : "gote") : flipBoard ? "gote" : "sente";
-        // 検討モードでは手番の持ち駒を選択可能（対局設定に関係なく）
-        const isActiveInReview = isReviewMode && position.turn === owner;
+        // 検討モードでは手番の持ち駒を選択可能（対局設定に関係なく）。ビューアでは選ばせない。
+        const isActiveInReview = isReviewMode && !viewerMode && position.turn === owner;
         const isActiveInMatch =
             !isEditMode &&
             !isReviewMode &&
@@ -1864,9 +1866,9 @@ export function ShogiMatch({
 
     const candidateNote = positionReady ? null : "局面を読み込み中です。";
     const isDraggingPiece = editAllowed && dndController.state.isDragging;
-    // ビューアで内部の状態が編集モードのまま残っている間（取り込み前・取り込み失敗時）は、
-    // マスや持ち駒を押しても局面を書き換えない。
-    const editLockedInViewer = isEditMode && !editAllowed;
+    // 棋譜を見るだけの画面（ビューア）は、盤を操作させない。局面の編集も、駒を動かして変化を
+    // 作ることもできない（調べたいときは、研究ノートで開く）。
+    const boardLockedInViewer = viewerMode;
     const internalEngineId = engineOptions[0]?.id ?? "wasm";
 
     useEffect(() => {
@@ -2026,15 +2028,15 @@ export function ShogiMatch({
     const boardHandlers: BoardHandlersProps = {
         hideEmptyHandPieces,
         getHandInfo,
-        handleSquareSelect: editLockedInViewer ? async () => {} : handleSquareSelect,
+        handleSquareSelect: boardLockedInViewer ? async () => {} : handleSquareSelect,
         handlePromotionChoice,
-        handleHandSelect: editLockedInViewer ? () => {} : handleHandSelect,
-        applyUsiMove,
+        handleHandSelect: boardLockedInViewer ? () => {} : handleHandSelect,
+        applyUsiMove: boardLockedInViewer ? async () => false : applyUsiMove,
         handleHandPiecePointerDown,
         handlePiecePointerDown,
         handlePieceTogglePromote,
-        handleIncrementHand: editLockedInViewer ? () => {} : handleIncrementHand,
-        handleDecrementHand: editLockedInViewer ? () => {} : handleDecrementHand,
+        handleIncrementHand: boardLockedInViewer ? () => {} : handleIncrementHand,
+        handleDecrementHand: boardLockedInViewer ? () => {} : handleDecrementHand,
         handleResetToStartpos,
         pauseAutoPlay,
         resumeAutoPlay,
