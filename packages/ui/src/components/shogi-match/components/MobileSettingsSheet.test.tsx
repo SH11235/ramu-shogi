@@ -98,10 +98,10 @@ describe("MobileSettingsSheet", () => {
         expect(screen.queryByText("対局中は設定を変更できません")).toBeNull();
     });
 
-    it("棋譜ビューアでも、解析と表示の設定は残す", () => {
+    it("棋譜ビューアでは、表示の設定だけを残す（解析しないので、解析の設定は出さない）", () => {
         renderSheet({ viewerMode: true });
-        expect(screen.getByText("解析エンジン")).toBeTruthy();
-        expect(screen.getByRole("button", { name: "外部エンジンを管理" })).toBeTruthy();
+        expect(screen.queryByText("解析エンジン")).toBeNull();
+        expect(screen.queryByRole("button", { name: "外部エンジンを管理" })).toBeNull();
         expect(screen.getByText("表示設定")).toBeTruthy();
         expect(screen.getByText("座標表示")).toBeTruthy();
         expect(screen.getByText("盤外ラベル（筋・段）を表示")).toBeTruthy();
