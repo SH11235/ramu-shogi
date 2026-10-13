@@ -7,15 +7,7 @@ import { useAuthSession } from "../hooks/useAuthSession";
 import { loginSearch } from "../lib/loginReturn";
 import { AuthBadge } from "./AuthBadge";
 
-type NavTo =
-    | "/play"
-    | "/online"
-    | "/studies"
-    | "/games"
-    | "/public/games"
-    | "/rshogi-viewer"
-    | "/nnue"
-    | "/auth";
+type NavTo = "/play" | "/online" | "/studies" | "/games" | "/rshogi-viewer" | "/nnue" | "/auth";
 
 interface NavItem {
     to: NavTo;
@@ -63,11 +55,6 @@ function buildNavSections(pathname: string): NavSection[] {
                     label: "マイ棋譜",
                     active: pathname.startsWith("/games"),
                     requiresAuth: true,
-                },
-                {
-                    to: "/public/games",
-                    label: "公開棋譜",
-                    active: pathname.startsWith("/public/games"),
                 },
             ],
         },

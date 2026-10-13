@@ -54,13 +54,14 @@ describe("NavDrawer", () => {
             "研究ノート（整備中）",
             // 要ログイン導線はバッジ「要ログイン」がアクセシブルネームに続く
             "マイ棋譜 要ログイン",
-            "公開棋譜",
             "観戦・棋譜一覧",
             "NNUE モデル 要ログイン",
             "ログイン",
         ]) {
             expect(screen.getByRole("link", { name: link })).toBeTruthy();
         }
+        // 公開棋譜の一覧への入口は出さない。
+        expect(screen.queryByRole("link", { name: "公開棋譜" })).toBeNull();
     });
 
     it("観戦ページと棋譜ページは「観戦・棋譜一覧」を現在地にし、レーティングはメニューに出さない", () => {
