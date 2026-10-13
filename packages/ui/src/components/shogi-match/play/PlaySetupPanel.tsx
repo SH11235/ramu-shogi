@@ -134,6 +134,8 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
     }, [pendingStart]);
 
     const isVsAi = setup.kind === "vs-ai";
+    // 対局を始める準備の最中・前の対局を片付けている最中は、設定を変えさせない。
+    const locked = setup.locked || play?.busy === true;
     const sideChoice: SideChoice = randomSide ? "random" : setup.mySide;
     const downloadMb = setup.kind === "humans" ? null : (setup.opponent?.downloadMb ?? null);
 
@@ -213,7 +215,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                         setRandomSide(false);
                         setup.chooseSide(id);
                     }}
-                    disabled={setup.locked}
+                    disabled={locked}
                 />
             ) : (
                 <div className="flex flex-col">
@@ -241,7 +243,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                     <NativeSelect
                         id="play-setup-opponent"
                         value={setup.opponentValue}
-                        disabled={setup.locked}
+                        disabled={locked}
                         onChange={(event) => setup.chooseOpponent(event.target.value)}
                         className="min-h-10 text-sm"
                     >
@@ -273,7 +275,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                             min={0}
                             max={SKILL_LEVEL_MAX}
                             value={setup.level}
-                            disabled={setup.locked}
+                            disabled={locked}
                             onChange={(event) => setup.chooseLevel(Number(event.target.value))}
                             className="h-8 min-w-0 flex-1 accent-wafuu-shu md:h-6"
                         />
@@ -292,7 +294,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                             const choice = AI_TIME_CHOICES.find((item) => item.id === id);
                             if (choice) setup.chooseAiTime(choice);
                         }}
-                        disabled={setup.locked}
+                        disabled={locked}
                     />
                     <Segmented
                         label="あなたの持ち時間"
@@ -302,7 +304,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                             const choice = MY_TIME_CHOICES.find((item) => item.id === id);
                             if (choice) setup.chooseMyTime(choice);
                         }}
-                        disabled={setup.locked}
+                        disabled={locked}
                     />
                 </div>
             )}
@@ -323,6 +325,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                 <NativeSelect
                     id="play-setup-start-position"
                     value={startValue}
+                    disabled={locked}
                     onChange={(event) => handleStartPositionChange(event.target.value)}
                     className="min-h-10 text-sm"
                 >

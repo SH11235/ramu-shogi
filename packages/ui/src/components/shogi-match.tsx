@@ -733,6 +733,9 @@ export function ShogiMatch({
               : "setup";
     // 終局後・一時停止から設定の画面へ戻している最中か（戻し終えるまで、対局を始めさせない）。
     const [isPlayResetting, setIsPlayResetting] = useState(false);
+    // 対局を始める準備（評価関数の確認・エンジンの初期化）をしている最中か。その間は、設定や開始局面を
+    // 変えさせない（準備の途中で局面が変わると、始まった対局の手番と時計が食い違う）。
+    const [isPlayStarting, setIsPlayStarting] = useState(false);
     // 対局の始めに 1 度だけ出す知らせ（振り駒の結果など）。
     const [playStartNotice, setPlayStartNotice] = useState<string | null>(null);
     const pendingSearchStatsRef = useRef(new Map<number, MoveSearchStats>());
@@ -2377,31 +2380,40 @@ export function ShogiMatch({
         }
     };
     // 「もう一局」は、設定の画面に戻ったのを待ってから始める（戻す処理が行き渡ってから）。
+    const startPlayMatch = async () => {
+        if (isPlayStarting) return;
+        setIsPlayStarting(true);
+        try {
+            await resumeAutoPlay();
+        } finally {
+            setIsPlayStarting(false);
+        }
+    };
     const startRematch = useEffectEvent(() => {
-        void resumeAutoPlay();
+        void startPlayMatch();
     });
     useEffect(() => {
-        if (!pendingRematch || isPlayResetting || playPhase !== "setup" || moves.length > 0) {
-            return;
-        }
+        if (!pendingRematch || isPlayResetting) return;
         setPendingRematch(false);
+        // 設定の画面へ戻せなかった（開始局面の取得に失敗した）ときは、始めない。
+        if (playPhase !== "setup" || moves.length > 0) return;
         startRematch();
     }, [pendingRematch, isPlayResetting, playPhase, moves.length]);
     const playConfig: PlayScreenConfig | null = isPlayScreen
         ? {
               phase: playPhase,
               isCustomStart: !isHirateStart || (playPhase === "setup" && moves.length > 0),
-              busy: isPlayResetting || pendingRematch,
+              busy: isPlayResetting || pendingRematch || isPlayStarting,
               startNotice: playPhase === "playing" && moves.length < 2 ? playStartNotice : null,
               startMatch: (notice?: string) => {
-                  if (isPlayResetting) return;
+                  if (isPlayResetting || isPlayStarting) return;
                   if (!isPaused) setPlayStartNotice(notice ?? null);
                   setPositionEditOpen(false);
                   if (!isPaused) {
                       setHintCount(0);
                       setHintPly(null);
                   }
-                  void resumeAutoPlay();
+                  void startPlayMatch();
               },
               openPositionEditor: () => {
                   setPositionEditOpen(true);
