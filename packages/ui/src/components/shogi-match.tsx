@@ -1189,11 +1189,15 @@ export function ShogiMatch({
     // 対局前に timeSettings が変更されたら clocks を同期
     // （resetClocks は timeSettings に依存しているため、resetClocks の変更で検知可能）
     // 一時停止中は戻さない（戻すと、止めるたびに持ち時間・秒読みが元に戻ってしまう）。
+    // ただし、一時停止中に時間設定そのものを変えたときは、新しい設定に合わせ直す。
+    const syncedTimeSettingsRef = useRef(timeSettings);
     useEffect(() => {
-        if (!isMatchRunning && !isPaused) {
+        const settingsChanged = syncedTimeSettingsRef.current !== timeSettings;
+        syncedTimeSettingsRef.current = timeSettings;
+        if (!isMatchRunning && (!isPaused || settingsChanged)) {
             resetClocks(false);
         }
-    }, [isMatchRunning, isPaused, resetClocks]);
+    }, [isMatchRunning, isPaused, resetClocks, timeSettings]);
 
     // 対局終了処理（エンジン管理フックから呼ばれる）
     const endMatch = async (result: GameResult) => {

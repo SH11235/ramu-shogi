@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeTimeRule } from "./PlayPlayerBar";
+import { describeRemaining, describeTimeRule } from "./PlayPlayerBar";
 
 describe("describeTimeRule", () => {
     it("持ち時間が分ちょうどなら「分＋1手◯秒」", () => {
@@ -20,5 +20,38 @@ describe("describeTimeRule", () => {
 
     it("秒読みなしは持ち時間だけ", () => {
         expect(describeTimeRule(300_000, 0)).toBe("5分");
+        expect(describeTimeRule(20_000, 0)).toBe("20秒");
+    });
+
+    it("1 分の境目（秒は切り上げ）", () => {
+        expect(describeTimeRule(59_001, 0)).toBe("1分");
+        expect(describeTimeRule(60_000, 0)).toBe("1分");
+        expect(describeTimeRule(60_001, 0)).toBe("1分1秒");
+    });
+
+    it("どちらも 0 なら「1手0秒」", () => {
+        expect(describeTimeRule(0, 0)).toBe("1手0秒");
+    });
+});
+
+describe("describeRemaining", () => {
+    it("1 分以上は分:秒", () => {
+        expect(describeRemaining(572_000, 30_000)).toBe("残り 09:32");
+        expect(describeRemaining(60_000, 30_000)).toBe("残り 01:00");
+    });
+
+    it("1 分の境目で表示が止まらない（切り上げに揃える）", () => {
+        expect(describeRemaining(60_500, 0)).toBe("残り 01:01");
+        expect(describeRemaining(59_500, 0)).toBe("残り 01:00");
+        expect(describeRemaining(59_000, 0)).toBe("残り 59秒");
+    });
+
+    it("1 分を切ったら秒", () => {
+        expect(describeRemaining(17_200, 30_000)).toBe("残り 18秒");
+    });
+
+    it("持ち時間が尽きたら秒読みの残り", () => {
+        expect(describeRemaining(0, 4_100)).toBe("残り 5秒");
+        expect(describeRemaining(0, 0)).toBe("残り 0秒");
     });
 });

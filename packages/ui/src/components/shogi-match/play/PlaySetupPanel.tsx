@@ -414,7 +414,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                 </NativeSelect>
             </div>
 
-            {/* スマホでは、開始ボタンだけを画面の下端に留める（設定を全部送らなくても始められる。
+            {/* スマホでは、開始ボタン（と、変則ルールの知らせ 1 行）だけを画面の下端に留める（設定を全部送らなくても始められる。
                 注記や別の道まで留めると、下の項目を隠してしまう）。 */}
             <div className="sticky bottom-0 z-10 bg-background pb-2 pt-1 md:static md:bg-transparent md:p-0">
                 {passRightsSettings.enabled && (

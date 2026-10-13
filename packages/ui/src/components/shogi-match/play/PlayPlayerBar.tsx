@@ -50,10 +50,18 @@ function usePlayerTimeTextOnly(owner: Player): string {
     }
     // AI の 1 手の考慮時間は、設定と同じ言い方で出す（刻々と減る秒は見せない）。
     if (isAI && rule.mainMs === 0) return `1手${seconds(rule.byoyomiMs)}秒`;
-    // 1 分を切ったら秒で出す（秒読みに入ったときと書き方を揃える）。
-    if (clock.mainMs >= 60_000) return `残り ${formatTime(clock.mainMs)}`;
-    if (clock.mainMs > 0) return `残り ${seconds(clock.mainMs)}秒`;
-    return `残り ${seconds(clock.byoyomiMs)}秒`;
+    return describeRemaining(clock.mainMs, clock.byoyomiMs);
+}
+
+/**
+ * 残り時間を言葉にする（「残り 09:32」「残り 18秒」）。1 分を切ったら秒で出す
+ * （秒読みに入ったときと書き方を揃える）。秒は切り上げに揃える（境目で表示が止まらないように）。
+ */
+export function describeRemaining(mainMs: number, byoyomiMs: number): string {
+    const main = seconds(mainMs);
+    if (main >= 60) return `残り ${formatTime(main * 1000)}`;
+    if (main > 0) return `残り ${main}秒`;
+    return `残り ${seconds(byoyomiMs)}秒`;
 }
 
 /** 時間の決まりを言葉にする（「10分＋1手30秒」「1分30秒＋1手5秒」「20秒」「1手10秒」）。 */
