@@ -37,6 +37,12 @@ function SettingsButton({ onClick }: { onClick: () => void }): ReactElement {
     );
 }
 
+/**
+ * メッセージの置き方。盤の列は中身の幅に合わせて決まる（w-fit）ので、長い文をそのまま置くと列ごと
+ * 横に広がって、左右の欄に重なる。幅の計算には加えず（w-0）、列の幅いっぱいで折り返す（min-w-full）。
+ */
+const MESSAGE_CLASS = "w-0 min-w-full whitespace-pre-line break-words text-center text-sm";
+
 /** メッセージ種類に応じたスタイルクラス */
 const MESSAGE_STYLES: Record<Message["type"], string> = {
     error: "text-destructive",
@@ -120,7 +126,9 @@ export function MatchControls({
                     </div>
                 )}
                 {message && (
-                    <div className={`text-sm ${MESSAGE_STYLES[message.type]}`}>{message.text}</div>
+                    <div className={`${MESSAGE_CLASS} ${MESSAGE_STYLES[message.type]}`}>
+                        {message.text}
+                    </div>
                 )}
             </div>
         );
@@ -227,7 +235,9 @@ export function MatchControls({
 
             {/* メッセージ */}
             {message && (
-                <div className={`text-sm ${MESSAGE_STYLES[message.type]}`}>{message.text}</div>
+                <div className={`${MESSAGE_CLASS} ${MESSAGE_STYLES[message.type]}`}>
+                    {message.text}
+                </div>
             )}
         </div>
     );
