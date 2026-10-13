@@ -1,0 +1,201 @@
+import type { NnueSelection, PresetWithStatus } from "@shogi/app-core";
+import { NONE_NNUE_SELECTION } from "@shogi/app-core";
+import { act, renderHook } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { useState } from "react";
+import { describe, expect, it } from "vitest";
+import { MatchSettingsProvider } from "../contexts/MatchSettingsContext";
+import type { ClockSettings } from "../hooks/useClockManager";
+import type { SideSetting } from "../types";
+import { DEFAULT_PASS_RIGHTS_SETTINGS } from "../types";
+import { AI_TIME_CHOICES, MY_TIME_CHOICES, usePlaySetup } from "./usePlaySetup";
+
+type Sides = { sente: SideSetting; gote: SideSetting };
+
+const RAMU: NnueSelection = { presetKey: "ramu", nnueId: null };
+const PRESETS = [
+    {
+        config: {
+            presetKey: "ramu",
+            displayName: "RAMU",
+            description: "",
+            url: "https://example.com/ramu",
+            size: 119_000_000,
+            sha256: "hash",
+            license: "MIT",
+            releasedAt: "2026-10-11",
+        },
+        status: "not-downloaded",
+        localMetas: [],
+    },
+] as unknown as PresetWithStatus[];
+
+interface Initial {
+    sides: Sides;
+    time: ClockSettings;
+    sente?: NnueSelection;
+    gote?: NnueSelection;
+}
+
+/** 設定を持つだけの親（対局画面の `ShogiMatch` の代わり）。いまの値を `snapshot` で読む。 */
+function setupHarness(initial: Initial) {
+    const snapshot: {
+        sides: Sides;
+        time: ClockSettings;
+        sente: NnueSelection;
+        gote: NnueSelection;
+    } = {
+        sides: initial.sides,
+        time: initial.time,
+        sente: initial.sente ?? RAMU,
+        gote: initial.gote ?? RAMU,
+    };
+    function Wrapper({ children }: { children: ReactNode }) {
+        const [sides, setSides] = useState(snapshot.sides);
+        const [time, setTime] = useState(snapshot.time);
+        const [sente, setSente] = useState(snapshot.sente);
+        const [gote, setGote] = useState(snapshot.gote);
+        Object.assign(snapshot, { sides, time, sente, gote });
+        return (
+            <MatchSettingsProvider
+                sides={sides}
+                onSidesChange={setSides}
+                timeSettings={time}
+                onTimeSettingsChange={setTime}
+                passRightsSettings={DEFAULT_PASS_RIGHTS_SETTINGS}
+                onPassRightsSettingsChange={() => {}}
+                settingsLocked={false}
+                isDevMode={false}
+                engineThreads={{ sente: 0, gote: 0 }}
+                onEngineThreadsChange={() => {}}
+                senteNnueSelection={sente}
+                onSenteNnueSelectionChange={setSente}
+                goteNnueSelection={gote}
+                onGoteNnueSelectionChange={setGote}
+                nnueList={[]}
+                presets={PRESETS}
+                internalEngineId="wasm"
+                engineOptions={[
+                    {
+                        id: "wasm",
+                        label: "内蔵エンジン",
+                        kind: "internal",
+                        createClient: () => {
+                            throw new Error("テストではエンジンを作らない");
+                        },
+                    },
+                ]}
+                onOpenNnueManager={() => {}}
+                onOpenDisplaySettings={() => {}}
+                onOpenPassRightsSettings={() => {}}
+            >
+                {children}
+            </MatchSettingsProvider>
+        );
+    }
+    const hook = renderHook(() => usePlaySetup(), { wrapper: Wrapper });
+    return { hook, snapshot };
+}
+
+const HUMAN: SideSetting = { role: "human" };
+const AI_L5: SideSetting = { role: "engine", engineId: "wasm", skillLevel: { skillLevel: 5 } };
+const UNLIMITED = { mainMs: 0, byoyomiMs: 10_000, enabled: false };
+const AI_3S = { mainMs: 0, byoyomiMs: 3_000, enabled: true };
+
+describe("usePlaySetup（対局画面のかんたん設定）", () => {
+    it("人 対 AI の設定を、自分の手番・相手・強さ・時間として読む", () => {
+        const { hook } = setupHarness({
+            sides: { sente: HUMAN, gote: AI_L5 },
+            time: { sente: UNLIMITED, gote: AI_3S },
+        });
+        expect(hook.result.current.kind).toBe("vs-ai");
+        expect(hook.result.current.mySide).toBe("sente");
+        expect(hook.result.current.opponentValue).toBe("preset:ramu");
+        expect(hook.result.current.opponent?.downloadMb).toBe(119);
+        expect(hook.result.current.level).toBe(5);
+        expect(hook.result.current.aiTimeId).toBe("3");
+        expect(hook.result.current.myTimeId).toBe("none");
+    });
+
+    it("後手を選ぶと、AI の評価関数・強さ・考慮時間が先手の側へ移る", () => {
+        const { hook, snapshot } = setupHarness({
+            sides: { sente: HUMAN, gote: AI_L5 },
+            time: { sente: UNLIMITED, gote: AI_3S },
+            sente: NONE_NNUE_SELECTION,
+            gote: RAMU,
+        });
+        act(() => hook.result.current.chooseSide("gote"));
+        expect(snapshot.sides.gote.role).toBe("human");
+        expect(snapshot.sides.sente).toEqual(AI_L5);
+        expect(snapshot.sente).toEqual(RAMU);
+        expect(snapshot.time.sente).toEqual(AI_3S);
+        expect(snapshot.time.gote.enabled).toBe(false);
+        expect(hook.result.current.mySide).toBe("gote");
+        expect(hook.result.current.level).toBe(5);
+    });
+
+    it("手番と相手を同時に替えても、相手が元に戻らない（振り駒 + 簡易AI とすぐ指す）", () => {
+        const { hook, snapshot } = setupHarness({
+            sides: { sente: HUMAN, gote: AI_L5 },
+            time: { sente: UNLIMITED, gote: AI_3S },
+        });
+        act(() => hook.result.current.chooseSide("gote", "material", AI_TIME_CHOICES[0]));
+        expect(snapshot.sides.sente.role).toBe("engine");
+        expect(snapshot.sente).toEqual(NONE_NNUE_SELECTION);
+        expect(snapshot.time.sente.byoyomiMs).toBe(1_000);
+        expect(hook.result.current.opponentValue).toBe("material");
+        expect(hook.result.current.aiTimeId).toBe("1");
+    });
+
+    it("同じ手番のまま相手だけ替えられる", () => {
+        const { hook, snapshot } = setupHarness({
+            sides: { sente: HUMAN, gote: AI_L5 },
+            time: { sente: UNLIMITED, gote: AI_3S },
+        });
+        act(() => hook.result.current.chooseSide("sente", "material"));
+        expect(snapshot.sides.sente.role).toBe("human");
+        expect(snapshot.gote).toEqual(NONE_NNUE_SELECTION);
+        // 強さは引き継ぐ
+        expect(snapshot.sides.gote.skillLevel).toEqual({ skillLevel: 5 });
+    });
+
+    it("AI 同士の設定から「自分が AI と指す」に戻せる", () => {
+        const { hook, snapshot } = setupHarness({
+            sides: { sente: AI_L5, gote: AI_L5 },
+            time: { sente: AI_3S, gote: AI_3S },
+        });
+        expect(hook.result.current.kind).toBe("ai-vs-ai");
+        act(() => hook.result.current.chooseSide("sente"));
+        expect(snapshot.sides.sente.role).toBe("human");
+        expect(snapshot.sides.gote.role).toBe("engine");
+        expect(snapshot.time.sente.enabled).toBe(false);
+        expect(hook.result.current.kind).toBe("vs-ai");
+    });
+
+    it("人同士の設定から戻すと、相手は内蔵エンジンになり、AI に考慮時間が付く", () => {
+        const { hook, snapshot } = setupHarness({
+            sides: { sente: HUMAN, gote: HUMAN },
+            time: { sente: UNLIMITED, gote: UNLIMITED },
+        });
+        expect(hook.result.current.kind).toBe("humans");
+        act(() => hook.result.current.chooseSide("sente"));
+        expect(snapshot.sides.gote).toEqual({ role: "engine", engineId: "wasm" });
+        expect(snapshot.time.gote.enabled).toBe(true);
+    });
+
+    it("強さ・AI の考慮時間・自分の持ち時間は、それぞれの側だけを書き換える", () => {
+        const { hook, snapshot } = setupHarness({
+            sides: { sente: AI_L5, gote: HUMAN },
+            time: { sente: AI_3S, gote: UNLIMITED },
+        });
+        act(() => hook.result.current.chooseLevel(12));
+        expect(snapshot.sides.sente.skillLevel).toEqual({ skillLevel: 12 });
+        expect(snapshot.sides.gote).toEqual(HUMAN);
+        act(() => hook.result.current.chooseAiTime(AI_TIME_CHOICES[2]));
+        expect(snapshot.time.sente.byoyomiMs).toBe(10_000);
+        expect(snapshot.time.gote).toEqual(UNLIMITED);
+        act(() => hook.result.current.chooseMyTime(MY_TIME_CHOICES[2]));
+        expect(snapshot.time.gote).toEqual({ mainMs: 600_000, byoyomiMs: 30_000, enabled: true });
+        expect(snapshot.time.sente.byoyomiMs).toBe(10_000);
+    });
+});
