@@ -423,6 +423,32 @@ export function useInitialReviewSync({
 }
 
 /**
+ * 読み筋のウィンドウ（PC）に出す手と、その手が指された後の局面。
+ *
+ * ウィンドウを開いている間は、見ている手に追従する。指し手と局面は、いま見ている手順の同じ手数
+ * から引く（別の変化へ移っても、手と局面が食い違わない）。開始局面（0 手目）には出す手が無い
+ * ので、その間だけウィンドウを出さない（手を進めるとまた出る）。
+ */
+export function resolveMoveDetail({
+    isOpen,
+    currentPly,
+    kifMoves,
+    positionHistory,
+}: {
+    isOpen: boolean;
+    currentPly: number;
+    kifMoves: readonly KifMove[];
+    /** 「その手が指された後の局面」を 0 始まりで持つ（手数 ply の局面は `ply - 1`）。 */
+    positionHistory: readonly PositionState[];
+}): { move: KifMove; position: PositionState } | null {
+    if (!isOpen || currentPly < 1) return null;
+    const move = kifMoves.find((m) => m.ply === currentPly);
+    const position = positionHistory[currentPly - 1];
+    if (!move || !position) return null;
+    return { move, position };
+}
+
+/**
  * 局面編集の操作（駒のドラッグ、マスを押しての配置、持ち駒の増減、成り・不成の切り替え）を
  * 受け付けてよいか。
  *
@@ -946,13 +972,13 @@ export function ShogiMatch({
         onAnalysisSnapshotChange?.(analysisSnapshotDraft);
     }, [analysisSnapshotDraft, onAnalysisSnapshotChange]);
 
-    // 選択中の手の詳細を最新のkifMovesから取得
-    const selectedMoveDetail = (() => {
-        if (!selectedMoveDetailPly) return null;
-        const move = kifMoves.find((m) => m.ply === selectedMoveDetailPly.ply);
-        if (!move) return null;
-        return { move, position: selectedMoveDetailPly.position };
-    })();
+    // 読み筋のウィンドウ（PC）に出す手。開いている間は、見ている手に追従する。
+    const selectedMoveDetail = resolveMoveDetail({
+        isOpen: selectedMoveDetailPly !== null,
+        currentPly: navigation.state.currentPly,
+        kifMoves,
+        positionHistory,
+    });
 
     // 後手が人間の場合は盤面を反転して手前側に表示
     useEffect(() => {
@@ -1898,18 +1924,6 @@ export function ShogiMatch({
             setSelectedMoveDetailPly(null);
         }
     };
-
-    // 読み筋のウィンドウ（PC）を開いている間は、見ている手に追従する。
-    const currentPlyForMoveDetail = navigation.state.currentPly;
-    const followMoveDetail = useEffectEvent((ply: number) => {
-        if (!selectedMoveDetailPly || selectedMoveDetailPly.ply === ply) return;
-        const pos = positionHistory[ply - 1];
-        if (ply < 1 || !pos) return;
-        setSelectedMoveDetailPly({ ply, position: pos });
-    });
-    useEffect(() => {
-        followMoveDetail(currentPlyForMoveDetail);
-    }, [currentPlyForMoveDetail]);
 
     const candidateNote = positionReady ? null : "局面を読み込み中です。";
     const isDraggingPiece = editAllowed && dndController.state.isDragging;

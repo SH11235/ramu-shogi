@@ -162,7 +162,7 @@ export function EvalGraph({
     const padding = { top: 4, bottom: 4, left: 0, right: 0 };
     const graphHeight = height - padding.top - padding.bottom;
     const graphContainerRef = useRef<HTMLElement>(null);
-    const isScrubbingRef = useRef(false);
+    const scrubPointerIdRef = useRef<number | null>(null);
 
     // 横位置から手数を計算して選ぶ
     const selectPlyAt = (clientX: number) => {
@@ -183,28 +183,32 @@ export function EvalGraph({
     };
 
     const handleGraphClick = (e: MouseEvent<HTMLDivElement | HTMLButtonElement>) => {
+        // キーボード（Enter / Space）からの click は位置を持たない（左端 = 開始局面へ飛んでしまう）。
+        if (e.detail === 0) return;
         selectPlyAt(e.clientX);
     };
 
-    // なぞって選ぶ（scrubbable のとき）。押している間、指の位置の手数を選び続ける。
+    // なぞって選ぶ（scrubbable のとき）。押している間、その指の位置の手数を選び続ける。
+    // 受け付けるのは最初の 1 本の指（マウスは主ボタン）だけ。
+    const endScrub = (e: PointerEvent<HTMLButtonElement>) => {
+        if (scrubPointerIdRef.current === e.pointerId) scrubPointerIdRef.current = null;
+    };
     const scrubHandlers = scrubbable
         ? {
               onPointerDown: (e: PointerEvent<HTMLButtonElement>) => {
-                  isScrubbingRef.current = true;
-                  // 指がグラフの外へ出ても追い続ける。
-                  e.currentTarget.setPointerCapture(e.pointerId);
+                  if (e.button !== 0 || scrubPointerIdRef.current !== null) return;
+                  scrubPointerIdRef.current = e.pointerId;
+                  // 指がグラフの外へ出ても追い続ける（対応していない環境では、外へ出たら止まるだけ）。
+                  e.currentTarget.setPointerCapture?.(e.pointerId);
                   selectPlyAt(e.clientX);
               },
               onPointerMove: (e: PointerEvent<HTMLButtonElement>) => {
-                  if (!isScrubbingRef.current) return;
+                  if (scrubPointerIdRef.current !== e.pointerId) return;
                   selectPlyAt(e.clientX);
               },
-              onPointerUp: () => {
-                  isScrubbingRef.current = false;
-              },
-              onPointerCancel: () => {
-                  isScrubbingRef.current = false;
-              },
+              onPointerUp: endScrub,
+              onPointerCancel: endScrub,
+              onLostPointerCapture: endScrub,
           }
         : undefined;
 

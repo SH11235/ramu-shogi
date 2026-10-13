@@ -8,6 +8,7 @@ import {
     applyReviewMoveDataDiff,
     canEditPosition,
     getInitialReviewSyncMode,
+    resolveMoveDetail,
     shouldFlipBoardForSides,
     stringifyReviewMoveData,
     useInitialReviewSync,
@@ -223,6 +224,7 @@ const setupInitialReviewSyncHarness = (
         sfen: string;
         moves: string[];
         moveData?: (ReviewMoveEval | undefined)[];
+        openAt?: "start";
     },
     harnessOptions?: { beforeImportApply?: () => Promise<void> },
 ) => {
@@ -230,6 +232,7 @@ const setupInitialReviewSyncHarness = (
         sfen: string;
         moves: string[];
         moveData?: (ReviewMoveEval | undefined)[];
+        gotoPly?: number;
     }> = [];
 
     const hook = renderHook(
@@ -248,7 +251,12 @@ const setupInitialReviewSyncHarness = (
                     isStale?: () => boolean;
                 },
             ) => {
-                importCalls.push({ sfen, moves: [...moves], moveData: options?.moveData });
+                importCalls.push({
+                    sfen,
+                    moves: [...moves],
+                    moveData: options?.moveData,
+                    gotoPly: options?.gotoPly,
+                });
                 await harnessOptions?.beforeImportApply?.();
                 if (options?.isStale?.()) return;
 
@@ -374,6 +382,76 @@ describe("useInitialReviewSync", () => {
         expect(importCalls).toHaveLength(2);
         expect(importCalls[1]?.moveData?.[1]).toMatchObject({ evalCp: -88, elapsedMs: 2200 });
         expect(result.current.kifMoves[1]).toMatchObject({ evalCp: -88, elapsedMs: 2200 });
+    });
+});
+
+describe("useInitialReviewSync: 最初に開く局面", () => {
+    it("openAt: start は、最初の取り込みだけ開始局面を開く（手が伸びたあとは従来どおり）", async () => {
+        const { result, rerender, importCalls } = setupInitialReviewSyncHarness({
+            sfen: "startpos",
+            moves: ["7g7f"],
+            openAt: "start",
+        });
+
+        await waitFor(() => expect(result.current.kifMoves).toHaveLength(1));
+        expect(importCalls).toHaveLength(1);
+        expect(importCalls[0]?.gotoPly).toBe(0);
+
+        await act(async () => {
+            rerender({
+                review: { sfen: "startpos", moves: ["7g7f", "3c3d"], openAt: "start" },
+            });
+        });
+
+        await waitFor(() => expect(importCalls).toHaveLength(2));
+        // このハーネスの取り込みは末尾で終わるので、2 回目は「末尾を追う」（gotoPly なし）。
+        expect(importCalls[1]?.gotoPly).toBeUndefined();
+    });
+
+    it("openAt を渡さなければ、最終手を開く（観戦など）", async () => {
+        const { result, importCalls } = setupInitialReviewSyncHarness({
+            sfen: "startpos",
+            moves: ["7g7f"],
+        });
+
+        await waitFor(() => expect(result.current.kifMoves).toHaveLength(1));
+        expect(importCalls[0]?.gotoPly).toBeUndefined();
+    });
+});
+
+describe("resolveMoveDetail", () => {
+    const move = (ply: number) => ({ ply, kifText: "", displayText: `m${ply}`, usiMove: "" });
+    const positions = [createInitialPositionState(), createInitialPositionState()];
+    const kifMoves = [move(1), move(2)];
+
+    it("開いている間は、見ている手と、その手数の局面を返す", () => {
+        const detail = resolveMoveDetail({
+            isOpen: true,
+            currentPly: 2,
+            kifMoves,
+            positionHistory: positions,
+        });
+        expect(detail?.move.ply).toBe(2);
+        expect(detail?.position).toBe(positions[1]);
+    });
+
+    it("閉じている間と、開始局面（0 手目）では出さない", () => {
+        expect(
+            resolveMoveDetail({
+                isOpen: false,
+                currentPly: 2,
+                kifMoves,
+                positionHistory: positions,
+            }),
+        ).toBeNull();
+        expect(
+            resolveMoveDetail({
+                isOpen: true,
+                currentPly: 0,
+                kifMoves,
+                positionHistory: positions,
+            }),
+        ).toBeNull();
     });
 });
 

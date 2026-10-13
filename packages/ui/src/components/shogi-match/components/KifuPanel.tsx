@@ -1963,12 +1963,11 @@ export function KifuPanel({
                                         {canExpand && (
                                             <button
                                                 type="button"
-                                                className={`-my-0.5 cursor-pointer rounded border-none bg-transparent px-1.5 py-0.5 text-[10px] hover:bg-accent hover:text-foreground ${isPastCurrent ? "text-muted-foreground/30" : "text-muted-foreground/60"}`}
+                                                className={`cursor-pointer rounded border-none bg-transparent px-1.5 text-[10px] leading-4 hover:bg-accent hover:text-foreground ${isPastCurrent ? "text-muted-foreground/30" : "text-muted-foreground/60"}`}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     handleDetailToggle();
                                                 }}
-                                                onKeyDown={(e) => e.stopPropagation()}
                                                 aria-label={detailToggleLabel}
                                                 aria-expanded={
                                                     onMoveDetailSelect
@@ -2045,6 +2044,9 @@ export function KifuPanel({
                                             className={`${rowClassName} w-full text-left cursor-pointer hover:bg-accent/50`}
                                             onClick={handleRowClick}
                                             onKeyDown={(e) => {
+                                                // 行の中のボタン（▾・分岐）での操作は、そのボタンに任せる。
+                                                // 伝播は止めない（矢印キーでの手送りや Esc が document で受ける）。
+                                                if (e.target !== e.currentTarget) return;
                                                 if (e.key === "Enter" || e.key === " ") {
                                                     e.preventDefault();
                                                     handleRowClick();
