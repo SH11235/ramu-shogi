@@ -84,6 +84,7 @@ describe("createRoomClient", () => {
 
     afterEach(() => {
         vi.useRealTimers();
+        vi.unstubAllGlobals();
     });
 
     it("初期状態は 'connecting'", () => {
@@ -212,16 +213,14 @@ describe("createRoomClient", () => {
         client.disconnect();
     });
 
-    it("接続状態が変わるたびに onStatusChange を呼び、再接続を諦めると disconnected を通知する", () => {
+    it("接続状態が変わるたびに subscribeStatus の購読者へ通知し、再接続を諦めると disconnected を通知する", () => {
         const { factory, instances } = createMockWsFactory();
         const statuses: string[] = [];
         const client = createRoomClient(
-            {
-                wsUrl: "ws://localhost/api/rooms/room1/ws",
-                onStatusChange: (status) => statuses.push(status),
-            },
+            { wsUrl: "ws://localhost/api/rooms/room1/ws" },
             factory as unknown as (url: string) => WebSocket,
         );
+        client.subscribeStatus((status) => statuses.push(status));
         instances[0].emitOpen();
         instances[0].close();
         vi.advanceTimersByTime(1000);
@@ -237,6 +236,44 @@ describe("createRoomClient", () => {
         expect(statuses).toEqual(["reconnecting", "disconnected"]);
         expect(client.getStatus()).toBe("disconnected");
         expect(instances).toHaveLength(7);
+    });
+
+    it("再接続して resume するとき、connected の通知は resume を送った後に届く", () => {
+        const stored = new Map([["ramu_resume_token_room1", "token-1"]]);
+        vi.stubGlobal("localStorage", { getItem: (key: string) => stored.get(key) ?? null });
+        const { factory, instances } = createMockWsFactory();
+        const client = createRoomClient(
+            { wsUrl: "ws://localhost/api/rooms/room1/ws" },
+            factory as unknown as (url: string) => WebSocket,
+        );
+        instances[0].emitOpen();
+        instances[0].close();
+        vi.advanceTimersByTime(1000);
+        const sentWhenConnected: string[] = [];
+        client.subscribeStatus((status) => {
+            if (status === "connected") {
+                sentWhenConnected.push(...instances[1].sentMessages.map((m) => JSON.parse(m).t));
+            }
+        });
+        instances[1].emitOpen();
+
+        expect(sentWhenConnected).toEqual(["resume"]);
+        client.disconnect();
+    });
+
+    it("disconnect() による切断は購読者へ通知しない", () => {
+        const { factory, instances } = createMockWsFactory();
+        const client = createRoomClient(
+            { wsUrl: "ws://localhost/api/rooms/room1/ws" },
+            factory as unknown as (url: string) => WebSocket,
+        );
+        instances[0].emitOpen();
+        const statuses: string[] = [];
+        client.subscribeStatus((status) => statuses.push(status));
+
+        client.disconnect();
+
+        expect(statuses).toEqual([]);
     });
 
     it("autoReconnect: false のとき再接続しない", () => {

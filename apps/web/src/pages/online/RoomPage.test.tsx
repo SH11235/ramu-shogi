@@ -54,6 +54,7 @@ const mockClient = {
     ping: vi.fn(),
     subscribe: mockSubscribe,
     disconnect: vi.fn(),
+    subscribeStatus: vi.fn(() => () => {}),
     getStatus: vi.fn(() => "connected" as const),
 };
 vi.mock("@shogi/match-client", async () => {
@@ -360,6 +361,26 @@ describe("RoomPage", () => {
             const RECONNECTING_TEXT = "再接続中...";
             const PLAYER_LOST_TEXT = "接続が切れました。再読み込みすると元の席に戻れます";
             const SPECTATOR_LOST_TEXT = "接続が切れました。再読み込みしてください";
+            const REJECTED_TEXT = "セッションが切れました。再読み込みして、再度参加してください";
+
+            const parseSfen = vi.fn<(sfen: string) => Promise<PositionState>>();
+            const boardToSfen = vi.fn<() => Promise<string>>();
+
+            beforeEach(() => {
+                parseSfen.mockReset();
+                parseSfen.mockImplementation(async () => createInitialPositionState());
+                boardToSfen.mockReset();
+                boardToSfen.mockResolvedValue("sfen after move");
+                setPositionServiceFactory(() => ({
+                    getInitialBoard: async () => createInitialPositionState(),
+                    parseSfen,
+                    boardToSfen,
+                    getLegalMoves: async () => ["1g1f"],
+                    replayMovesStrict: async () => {
+                        throw new Error("not used");
+                    },
+                }));
+            });
 
             async function openGame(): Promise<FakeSocket> {
                 render(<RoomPage />);
@@ -370,11 +391,58 @@ describe("RoomPage", () => {
                 return socketFor("test-room");
             }
 
+            /** 観戦者として参加し、対局中のルームを開く */
+            async function watchGame(): Promise<FakeSocket> {
+                localStorage.clear();
+                render(<RoomPage />);
+                fireEvent.change(screen.getByLabelText(/名前/), { target: { value: "Carol" } });
+                await act(async () => {
+                    fireEvent.click(screen.getByRole("button", { name: "観戦者として参加する" }));
+                });
+                await deliverOnOpen("test-room", [
+                    {
+                        v: 1,
+                        t: "joined",
+                        payload: { roomId: "test-room", seat: "s", youAre: "spectator" },
+                    },
+                    { v: 1, t: "snapshot", payload: makeSnapshot() },
+                ]);
+                expect(screen.getByRole("button", { name: /^1g / })).toBeTruthy();
+                return socketFor("test-room");
+            }
+
+            async function withFakeTimers(run: () => Promise<void>): Promise<void> {
+                vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+                try {
+                    await run();
+                } finally {
+                    vi.useRealTimers();
+                }
+            }
+
+            /** 切断され、1 回目の再接続で WebSocket が開くまで */
+            async function reconnect(dropped: FakeSocket): Promise<FakeSocket> {
+                await withFakeTimers(async () => {
+                    await act(async () => {
+                        dropped.drop();
+                    });
+                    expect(screen.getByRole("status").textContent).toBe(RECONNECTING_TEXT);
+                    await act(async () => {
+                        vi.advanceTimersByTime(1_000);
+                    });
+                });
+                const socket = socketFor("test-room");
+                expect(socket).not.toBe(dropped);
+                await act(async () => {
+                    socket.open();
+                });
+                return socket;
+            }
+
             /** 切断から、RoomClient が再接続を 5 回試みて諦めるまで */
             async function exhaustReconnects(first: FakeSocket): Promise<void> {
                 let socket = first;
-                vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-                try {
+                await withFakeTimers(async () => {
                     for (const delayMs of [1_000, 2_000, 4_000, 8_000, 16_000]) {
                         const dropped = socket;
                         await act(async () => {
@@ -391,9 +459,7 @@ describe("RoomPage", () => {
                     await act(async () => {
                         lastAttempt.drop();
                     });
-                } finally {
-                    vi.useRealTimers();
-                }
+                });
                 expect(sockets).toHaveLength(6);
             }
 
@@ -406,6 +472,34 @@ describe("RoomPage", () => {
                 });
             }
 
+            function resignButton(): HTMLButtonElement {
+                return screen.getByRole("button", { name: "投了" }) as HTMLButtonElement;
+            }
+
+            function sentMoves(): unknown[] {
+                return (sockets ?? []).flatMap((socket) =>
+                    socket.sent.filter((message) => message.t === "move"),
+                );
+            }
+
+            function snapshotMessage(overrides: Partial<SnapshotPayload> = {}): ServerMessage {
+                return { v: 1, t: "snapshot", payload: makeSnapshot(overrides) };
+            }
+
+            function takebackRequested(eventId: number): ServerMessage {
+                return {
+                    v: 1,
+                    t: "event",
+                    payload: {
+                        kind: "takeback_requested",
+                        eventId,
+                        serverTs: 0,
+                        seat: "w",
+                        ply: 2,
+                    },
+                };
+            }
+
             it("再接続を諦めたら、盤面を残したまま再読み込みを案内し、着手も投了も送ろうとしない", async () => {
                 const reload = vi.fn();
                 vi.stubGlobal("location", { ...window.location, reload });
@@ -416,13 +510,10 @@ describe("RoomPage", () => {
                     expect(screen.getByRole("alert").textContent).toContain(PLAYER_LOST_TEXT);
                     expect(screen.queryByRole("status")).toBeNull();
                     expect(screen.getByRole("button", { name: /^7g 先手の歩/ })).toBeTruthy();
-                    const resign = screen.getByRole("button", {
-                        name: "投了",
-                    }) as HTMLButtonElement;
-                    expect(resign.disabled).toBe(true);
+                    expect(resignButton().disabled).toBe(true);
 
                     await tryToMove();
-                    fireEvent.click(resign);
+                    fireEvent.click(resignButton());
                     expect(
                         warn.mock.calls.filter(([text]) =>
                             String(text).startsWith("[RoomClient] Cannot send"),
@@ -436,41 +527,162 @@ describe("RoomPage", () => {
                 }
             });
 
-            it("再接続して resume し直せたら、案内を出さずにそのまま指せる", async () => {
-                const first = await openGame();
-                vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-                try {
-                    await act(async () => {
-                        first.drop();
-                    });
-                    expect(screen.getByRole("status").textContent).toBe(RECONNECTING_TEXT);
-                    expect(
-                        (screen.getByRole("button", { name: "投了" }) as HTMLButtonElement)
-                            .disabled,
-                    ).toBe(true);
-                    await act(async () => {
-                        vi.advanceTimersByTime(1_000);
-                    });
-                } finally {
-                    vi.useRealTimers();
-                }
-                const socket = socketFor("test-room");
-                expect(socket).not.toBe(first);
-                await deliverOnOpen("test-room", []);
+            it("WebSocket が開き直しても、席へ戻った結果の snapshot が届くまでは操作を受け付けない", async () => {
+                const socket = await reconnect(await openGame());
 
-                expect(socket.sent.filter((message) => message.t === "resume")).toHaveLength(1);
+                expect(socket.sent.filter((message) => message.t === "resume")).toEqual([
+                    expect.objectContaining({
+                        payload: { resumeToken: "token-test-room", lastEventId: 5 },
+                    }),
+                    expect.objectContaining({
+                        payload: { resumeToken: "token-test-room", lastEventId: 0 },
+                    }),
+                ]);
+                expect(screen.getByRole("status").textContent).toBe(RECONNECTING_TEXT);
+                expect(resignButton().disabled).toBe(true);
+                await tryToMove();
+                expect(sentMoves()).toEqual([]);
+            });
+
+            it("再接続後の snapshot を反映し終えるまでは操作を受け付けず、反映し終えたら指せる", async () => {
+                const socket = await reconnect(await openGame());
+                let finishParsing: () => void = () => {};
+                parseSfen.mockImplementationOnce(
+                    () =>
+                        new Promise((resolve) => {
+                            finishParsing = () => resolve(createInitialPositionState());
+                        }),
+                );
+
+                await act(async () => {
+                    socket.receive(snapshotMessage({ eventId: 6 }));
+                });
+                expect(screen.getByRole("status").textContent).toBe(RECONNECTING_TEXT);
+                expect(resignButton().disabled).toBe(true);
+
+                await act(async () => {
+                    finishParsing();
+                });
                 expect(screen.queryByRole("status")).toBeNull();
                 expect(screen.queryByRole("alert")).toBeNull();
                 await tryToMove();
-                expect(socket.sent.filter((message) => message.t === "move")).toEqual([
-                    expect.objectContaining({ payload: expect.objectContaining({ usi: "1g1f" }) }),
+                expect(sentMoves()).toEqual([
+                    expect.objectContaining({
+                        payload: { eventId: 6, usi: "1g1f", sfen: "sfen after move" },
+                    }),
                 ]);
             });
 
-            it("観戦者には、席へ戻れるとは案内しない", async () => {
-                localStorage.setItem("ramu_seat_test-room", "s");
+            it("再接続後にサーバーが席への復帰を拒んだら、再度参加するよう案内し、操作を受け付けない", async () => {
+                const socket = await reconnect(await openGame());
 
-                await exhaustReconnects(await openGame());
+                await act(async () => {
+                    socket.receive({
+                        v: 1,
+                        t: "error",
+                        payload: { code: "INVALID_TOKEN", message: "" },
+                    });
+                });
+
+                expect(screen.getByRole("alert").textContent).toContain(REJECTED_TEXT);
+                expect(screen.queryByRole("status")).toBeNull();
+                expect(resignButton().disabled).toBe(true);
+                await tryToMove();
+                expect(sentMoves()).toEqual([]);
+            });
+
+            it("待ったの申請は、再接続して同期し終えるまで隠し、同期し終えたら再び出す", async () => {
+                const first = await openGame();
+                await act(async () => {
+                    first.receive(takebackRequested(6));
+                });
+                expect(screen.getByText("待ったの申請")).toBeTruthy();
+
+                const socket = await reconnect(first);
+                expect(screen.queryByText("待ったの申請")).toBeNull();
+
+                await act(async () => {
+                    socket.receive(snapshotMessage({ eventId: 6 }));
+                });
+                expect(screen.getByText("待ったの申請")).toBeTruthy();
+            });
+
+            it("指し手の局面を変換している間に切断されたら、変換が終わっても送らない", async () => {
+                const first = await openGame();
+                let finishConverting: () => void = () => {};
+                boardToSfen.mockImplementationOnce(
+                    () =>
+                        new Promise((resolve) => {
+                            finishConverting = () => resolve("sfen after move");
+                        }),
+                );
+                await tryToMove();
+
+                await withFakeTimers(async () => {
+                    await act(async () => {
+                        first.drop();
+                    });
+                });
+                const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+                try {
+                    await act(async () => {
+                        finishConverting();
+                    });
+                    expect(
+                        warn.mock.calls.filter(([text]) =>
+                            String(text).startsWith("[RoomClient] Cannot send"),
+                        ),
+                    ).toEqual([]);
+                } finally {
+                    warn.mockRestore();
+                }
+
+                expect(sentMoves()).toEqual([]);
+                expect(screen.getByRole("alert").textContent).toBe(
+                    "指し手を送れませんでした。もう一度操作してください。",
+                );
+            });
+
+            it("指し手の局面を変換している間に再接続して同期し終えても、変換が終わった古い指し手は送らない", async () => {
+                const first = await openGame();
+                let finishConverting: () => void = () => {};
+                boardToSfen.mockImplementationOnce(
+                    () =>
+                        new Promise((resolve) => {
+                            finishConverting = () => resolve("sfen after move");
+                        }),
+                );
+                await tryToMove();
+
+                const socket = await reconnect(first);
+                await act(async () => {
+                    socket.receive(snapshotMessage({ eventId: 9 }));
+                });
+                expect(screen.queryByRole("status")).toBeNull();
+                await act(async () => {
+                    finishConverting();
+                });
+
+                expect(sentMoves()).toEqual([]);
+                expect(screen.getByRole("alert").textContent).toBe(
+                    "指し手を送れませんでした。もう一度操作してください。",
+                );
+            });
+
+            it("観戦者は、再接続すると参加し直し、その snapshot を反映し終えたら元に戻る", async () => {
+                const socket = await reconnect(await watchGame());
+
+                expect(socket.sent.map((message) => message.t)).toEqual(["join"]);
+                expect(screen.getByRole("status").textContent).toBe(RECONNECTING_TEXT);
+                await act(async () => {
+                    socket.receive(snapshotMessage({ eventId: 6 }));
+                });
+                expect(screen.queryByRole("status")).toBeNull();
+                expect(screen.queryByRole("alert")).toBeNull();
+            });
+
+            it("観戦者には、席へ戻れるとは案内しない", async () => {
+                await exhaustReconnects(await watchGame());
 
                 expect(screen.getByRole("alert").textContent).toContain(SPECTATOR_LOST_TEXT);
                 expect(screen.queryByText(PLAYER_LOST_TEXT)).toBeNull();

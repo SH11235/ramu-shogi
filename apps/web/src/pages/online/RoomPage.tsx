@@ -298,7 +298,6 @@ export default function RoomPage(): ReactElement {
         connectionLost,
         localStartSfen,
         gamePhase,
-        gameConnection,
         client,
         handleJoin,
         handleUpdateStartSfen,
@@ -385,7 +384,6 @@ export default function RoomPage(): ReactElement {
                 client={client}
                 snapshot={snapshot}
                 seat={joinSeat as Seat}
-                connection={gameConnection}
                 roomId={roomId}
                 analysis={analysis}
                 manifestUrl={nnueManifestUrl}
@@ -425,7 +423,7 @@ export default function RoomPage(): ReactElement {
                 />
                 <div className="mx-auto flex max-w-[480px] flex-col gap-5 px-4 py-8">
                     <h1 className="text-xl font-bold text-foreground">対局ルーム</h1>
-                    <ConnectionLostNotice canResume />
+                    <ConnectionLostNotice reason="seat" />
                 </div>
             </>
         );

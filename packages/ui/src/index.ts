@@ -20,11 +20,7 @@ export type { TreeAnalysisJob } from "./components/shogi-match/utils/branchTreeU
 export { collectTreeAnalysisJobs } from "./components/shogi-match/utils/branchTreeUtils";
 export { useDevMode } from "./hooks/useDevMode";
 export { useNnueStorage } from "./hooks/useNnueStorage";
-export type {
-    GameConnection,
-    UseRoomConnectionOptions,
-    UseRoomConnectionReturn,
-} from "./hooks/useRoomConnection";
+export type { UseRoomConnectionOptions, UseRoomConnectionReturn } from "./hooks/useRoomConnection";
 export { useRoomConnection } from "./hooks/useRoomConnection";
 
 // ============================================================

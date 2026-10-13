@@ -111,6 +111,7 @@ function makeMockClient(overrides: Partial<RoomClient> = {}): RoomClient {
         takebackResponse: vi.fn(),
         takebackCancel: vi.fn(),
         subscribe: vi.fn(() => () => {}),
+        subscribeStatus: vi.fn(() => () => {}),
         disconnect: vi.fn(),
         getStatus: vi.fn(() => "connected" as const),
         ...overrides,
@@ -337,6 +338,59 @@ describe("OnlineGameView", () => {
         fireEvent.click(screen.getByLabelText("AI解析"));
 
         expect(screen.queryByTestId("bottom-sheet")).toBeNull();
+    });
+
+    describe("接続が切れている間の解析", () => {
+        function renderWhileReconnecting(mode: "limited" | "unlimited") {
+            const analysis = {
+                isAnalyzing: false,
+                topMoves: [],
+                startAnalysis: vi.fn().mockResolvedValue(undefined),
+                cancelAnalysis: vi.fn().mockResolvedValue(undefined),
+            };
+            const client = makeMockClient({ getStatus: vi.fn(() => "reconnecting" as const) });
+            const settings = makeSnapshot().settings;
+            render(
+                <OnlineGameView
+                    client={client}
+                    snapshot={makeSnapshot({
+                        settings: {
+                            ...settings,
+                            aiSupport: {
+                                b: { mode, limitCount: mode === "limited" ? 5 : null },
+                                w: { mode, limitCount: mode === "limited" ? 5 : null },
+                                searchDepth: null,
+                                searchTimeMs: 1000,
+                            },
+                        },
+                    })}
+                    seat="b"
+                    roomId="test-room"
+                    analysis={analysis}
+                />,
+            );
+            return { analysis, client };
+        }
+
+        it("サーバーへ送らない無制限モードの解析は、再接続中も手元で使える", async () => {
+            const { analysis } = renderWhileReconnecting("unlimited");
+            await act(async () => {});
+
+            fireEvent.click(screen.getByRole("button", { name: "解析する" }));
+
+            expect(analysis.startAnalysis).toHaveBeenCalledTimes(1);
+        });
+
+        it("使用回数をサーバーへ送る制限モードの解析は、再接続中は理由を示して止める", async () => {
+            const { analysis, client } = renderWhileReconnecting("limited");
+            await act(async () => {});
+
+            expect(screen.getByText("接続が戻るまで解析できません。")).toBeTruthy();
+            fireEvent.click(screen.getByRole("button", { name: "解析する" }));
+
+            expect(client.consumeAnalysis).not.toHaveBeenCalled();
+            expect(analysis.startAnalysis).not.toHaveBeenCalled();
+        });
     });
 
     describe("終局済みルームの復元", () => {

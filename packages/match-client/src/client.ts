@@ -30,6 +30,7 @@ export function createRoomClient(
     let lastKnownEventId = 0;
     let pingIntervalId: ReturnType<typeof setInterval> | null = null;
     const handlers = new Set<(msg: ServerMessage) => void>();
+    const statusHandlers = new Set<(status: RoomClientStatus) => void>();
     // 購読者がいない間に届いた event / snapshot。待機画面から対局画面へ購読者が
     // 入れ替わる間にも対局は進むので、捨てずに次の購読者へ届いた順に渡す。
     // 件数に上限は設けない: 捨てた分を取り直す手段がサーバーに無い（sync は差分が少ないと
@@ -45,7 +46,9 @@ export function createRoomClient(
     function setStatus(next: RoomClientStatus): void {
         if (status === next) return;
         status = next;
-        options.onStatusChange?.(next);
+        for (const handler of statusHandlers) {
+            handler(next);
+        }
     }
 
     const reconnectManager = createReconnectManager({
@@ -109,9 +112,10 @@ export function createRoomClient(
             if (isReconnect && roomId) {
                 const token = getStoredResumeToken(roomId);
                 if (token) {
-                    setStatus("connected");
                     reconnectManager.reset();
                     send("resume", { resumeToken: token, lastEventId: lastKnownEventId });
+                    // 購読者が送るものは、席へ戻る resume より後にサーバーへ届ける
+                    setStatus("connected");
                     options.onReconnect?.();
                     didResume = true;
                 } else {
@@ -229,8 +233,14 @@ export function createRoomClient(
             return () => handlers.delete(handler);
         },
 
+        subscribeStatus(handler) {
+            statusHandlers.add(handler);
+            return () => statusHandlers.delete(handler);
+        },
+
         disconnect() {
             reconnectManager.cancel();
+            statusHandlers.clear();
             setStatus("disconnected");
             if (pingIntervalId !== null) {
                 clearInterval(pingIntervalId);
