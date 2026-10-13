@@ -1519,7 +1519,7 @@ function PlayerHeader({
                 )}
             </div>
             <span
-                className={`shrink-0 font-mono text-base tabular-nums ${isMyTurn ? "text-primary font-bold" : "text-muted-foreground"}`}
+                className={`shrink-0 font-mono text-base tabular-nums md:text-sm ${isMyTurn ? "text-primary font-bold" : "text-muted-foreground"}`}
             >
                 {formatMs(remainMs)}
             </span>

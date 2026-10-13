@@ -16,6 +16,13 @@ import { boardToGrid } from "../shogi-match/utils/positionUtils";
 const DEFAULT_CELL_SIZE = 48;
 /** 320px 幅の画面でも盤がはみ出さない下限。 */
 const MIN_CELL_SIZE = 22;
+/** 幅を測る前の見積もりに使う、ページの左右の余白。 */
+const PAGE_PADDING_WIDTH = 32;
+/** 画面の幅が分からないとき（サーバー側など）の見積もり。既定の大きさの盤が収まる幅。 */
+const DEFAULT_BOARD_WIDTH = 560;
+/** 持ち駒を medium / normal で 7 種類並べられる幅。これより狭ければ 1 段小さくする。 */
+const MEDIUM_HAND_MIN_WIDTH = 330;
+const NORMAL_HAND_MIN_WIDTH = 560;
 
 export function BookPositionDetails({
     position,
@@ -55,21 +62,26 @@ export function BookPositionDetails({
         observer.observe(boardArea);
         return () => observer.disconnect();
     }, [boardArea]);
-    const cellSize =
-        boardAreaWidth === null
-            ? undefined
-            : Math.min(cellSizeForWidth(boardAreaWidth, MIN_CELL_SIZE), DEFAULT_CELL_SIZE);
-    const handSize = cellSize !== undefined && cellSize < DEFAULT_CELL_SIZE ? "medium" : "normal";
+    // 測る前は、画面の幅からの見積もりで描く（測るまでの 1 コマ、盤がはみ出さないように）。
+    const areaWidth =
+        boardAreaWidth ??
+        (typeof document === "undefined"
+            ? DEFAULT_BOARD_WIDTH
+            : document.documentElement.clientWidth - PAGE_PADDING_WIDTH);
+    const cellSize = Math.min(cellSizeForWidth(areaWidth, MIN_CELL_SIZE), DEFAULT_CELL_SIZE);
+    // 持ち駒は 7 種類を常に並べるので、幅が足りないときは小さい表示にする。
+    const handSize =
+        areaWidth < MEDIUM_HAND_MIN_WIDTH
+            ? "compact"
+            : areaWidth < NORMAL_HAND_MIN_WIDTH
+              ? "medium"
+              : "normal";
     return (
         <>
             <div
                 ref={setBoardArea}
                 className="flex min-w-0 flex-col gap-2"
-                style={
-                    cellSize === undefined
-                        ? undefined
-                        : ({ "--shogi-cell-size": `${cellSize}px` } as CSSProperties)
-                }
+                style={{ "--shogi-cell-size": `${cellSize}px` } as CSSProperties}
             >
                 <HandPiecesDisplay
                     owner={topOwner}

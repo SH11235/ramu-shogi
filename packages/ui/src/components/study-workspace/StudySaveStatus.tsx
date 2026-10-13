@@ -113,7 +113,7 @@ export function StudySaveIndicator({
                     <button
                         type="button"
                         onClick={onLogin}
-                        className="relative rounded-sm text-wafuu-ai underline underline-offset-2 after:absolute after:inset-x-0 after:-inset-y-2.5 hover:text-wafuu-ai-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="relative rounded-sm text-wafuu-ai underline underline-offset-2 after:absolute after:inset-x-0 after:-bottom-2.5 after:-top-1 hover:text-wafuu-ai-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                         {loginText}
                     </button>

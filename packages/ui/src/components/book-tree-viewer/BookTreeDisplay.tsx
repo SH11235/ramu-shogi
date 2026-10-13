@@ -164,7 +164,7 @@ export function BookTreeDisplay({
             </div>
             <div
                 ref={container}
-                className="max-h-[60dvh] overflow-auto rounded border border-border p-2 lg:h-[36rem]"
+                className="max-h-[60dvh] overflow-auto rounded border border-border p-2 lg:h-[36rem] lg:max-h-none"
                 data-revision={revision}
             >
                 <ul aria-label="木の行" className="flex flex-col gap-1">

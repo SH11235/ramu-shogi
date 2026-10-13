@@ -48,14 +48,21 @@ test("小画面の探索情報が停止ボタンを覆わず、タップで詳�
 });
 
 // 入力欄とボタンを横に並べた行・盤・パンくずが、いちばん狭い幅でも横にはみ出さないこと。
-for (const path of ["/online", "/online/create", "/book-viewer", "/studies", "/privacy"]) {
+for (const [path, settled] of [
+    ["/online", "ルームID を入力して参加"],
+    ["/online/create", "部屋を作成する"],
+    ["/book-viewer", "定跡ファイルを選ぶ"],
+    ["/studies", "研究ノートにする"],
+    ["/privacy", "9. ポリシーの変更"],
+] as const) {
     test(`320px 幅で横にはみ出さない ${path}`, async ({ page }) => {
         await page.setViewportSize({ width: 320, height: 568 });
         await page.goto(path);
-        await page.getByRole("button", { name: "メニュー", exact: true }).waitFor();
-        await expect
-            .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
-            .toBeLessThanOrEqual(320);
+        // 本文が出そろってから測る（出る前は、はみ出していなくて当たり前なので）。
+        await page.getByText(settled, { exact: true }).waitFor();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+            320,
+        );
     });
 }
 

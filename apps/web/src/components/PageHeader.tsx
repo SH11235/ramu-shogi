@@ -27,12 +27,11 @@ export function PageHeader({ items, right }: PageHeaderProps): ReactElement {
                             const firstOnMobile = i === Math.max(items.length - 2, 0);
                             return (
                                 <span
-                                    key={item.label}
+                                    // 表示名は重なりうる（表題が上の階層と同じ名前のノートなど）ので、リンク先を鍵にする。
+                                    key={item.to ?? item.label}
                                     className={cn(
                                         "min-w-0 items-center gap-1",
                                         hiddenOnMobile ? "hidden sm:flex" : "flex",
-                                        // 上の階層は縮めず、長くなりうる現在地のほうを切り詰める。
-                                        item.to && "shrink-0",
                                     )}
                                 >
                                     {i > 0 && (
@@ -48,7 +47,7 @@ export function PageHeader({ items, right }: PageHeaderProps): ReactElement {
                                     {item.to ? (
                                         <Link
                                             to={item.to}
-                                            className="inline-flex h-10 items-center whitespace-nowrap text-wafuu-sumi-light transition-colors hover:text-wafuu-sumi"
+                                            className="block truncate leading-10 text-wafuu-sumi-light transition-colors hover:text-wafuu-sumi"
                                         >
                                             {item.label}
                                         </Link>
