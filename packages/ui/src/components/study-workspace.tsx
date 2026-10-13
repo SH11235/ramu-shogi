@@ -1362,9 +1362,15 @@ export function StudyWorkspaceView({
 
     // コメント欄は畳んでいる間も描いたままにする（書きかけの保存・別の画面の変更との突き合わせは、
     // 欄が動いていないと進まない）。
-    // スマホ: 操作ボタンの下に、通常の流れで出す。
-    const commentPanel = (
-        <div id="study-comment" hidden={!showsComment}>
+    // 開閉で下の要素を上下させないよう、どの幅でも開いたときだけ下の要素の上に重ねる。
+    // `id="study-comment"` を持つ要素は、幅ごとの分岐で 1 つだけ描かれる（スマホはこれ、
+    // PC・タブレットは下の graphWithComment）。
+    const commentOverlay = (
+        <div
+            id="study-comment"
+            hidden={!showsComment}
+            className="absolute inset-x-0 top-0 z-20 rounded-xl shadow-lg"
+        >
             {commentBox}
         </div>
     );
@@ -1373,13 +1379,7 @@ export function StudyWorkspaceView({
     const graphWithComment = (
         <div className="relative w-0 min-w-full">
             <div inert={showsComment}>{graphPanel}</div>
-            <div
-                id="study-comment"
-                hidden={!showsComment}
-                className="absolute inset-x-0 top-0 z-20 rounded-xl shadow-lg"
-            >
-                {commentBox}
-            </div>
+            {commentOverlay}
         </div>
     );
     const metaRow = (
@@ -1538,62 +1538,65 @@ export function StudyWorkspaceView({
                                 {fluidBoard}
                                 {navBar}
                             </div>
-                            {commentPanel}
-                            {showsFixedStart && !locked && (
-                                <div className="flex flex-col">
-                                    <Button
-                                        type="button"
-                                        size="lg"
-                                        className="w-full gap-2"
-                                        onClick={startFull}
-                                        disabled={analysis.isPreparing}
-                                    >
-                                        <AnalyzeIcon />
-                                        {analysis.fullTargetCount === 0
-                                            ? "解析済みの結果を表示"
-                                            : "全体を解析"}
-                                    </Button>
+                            {/* コメント欄は、開いたときだけ操作ボタンの下の要素に重ねる。 */}
+                            <div className="relative flex flex-col gap-3">
+                                {commentOverlay}
+                                {showsFixedStart && !locked && (
+                                    <div className="flex flex-col">
+                                        <Button
+                                            type="button"
+                                            size="lg"
+                                            className="w-full gap-2"
+                                            onClick={startFull}
+                                            disabled={analysis.isPreparing}
+                                        >
+                                            <AnalyzeIcon />
+                                            {analysis.fullTargetCount === 0
+                                                ? "解析済みの結果を表示"
+                                                : "全体を解析"}
+                                        </Button>
+                                    </div>
+                                )}
+                                <div
+                                    role="tablist"
+                                    aria-label="表示の切り替え"
+                                    className="grid grid-cols-3 gap-1 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-1"
+                                >
+                                    {MOBILE_TABS.map((tab) => (
+                                        <button
+                                            key={tab.id}
+                                            id={`study-tab-${tab.id}`}
+                                            type="button"
+                                            role="tab"
+                                            aria-selected={mobileTab === tab.id}
+                                            aria-controls="study-tabpanel"
+                                            tabIndex={mobileTab === tab.id ? 0 : -1}
+                                            onClick={() => setMobileTab(tab.id)}
+                                            onKeyDown={handleTabKeyDown}
+                                            className={cn(
+                                                "h-10 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                                mobileTab === tab.id
+                                                    ? "bg-card text-wafuu-shu shadow-sm"
+                                                    : "text-wafuu-sumi-light hover:text-wafuu-sumi",
+                                            )}
+                                        >
+                                            {tab.label}
+                                        </button>
+                                    ))}
                                 </div>
-                            )}
-                            <div
-                                role="tablist"
-                                aria-label="表示の切り替え"
-                                className="grid grid-cols-3 gap-1 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-1"
-                            >
-                                {MOBILE_TABS.map((tab) => (
-                                    <button
-                                        key={tab.id}
-                                        id={`study-tab-${tab.id}`}
-                                        type="button"
-                                        role="tab"
-                                        aria-selected={mobileTab === tab.id}
-                                        aria-controls="study-tabpanel"
-                                        tabIndex={mobileTab === tab.id ? 0 : -1}
-                                        onClick={() => setMobileTab(tab.id)}
-                                        onKeyDown={handleTabKeyDown}
-                                        className={cn(
-                                            "h-10 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                            mobileTab === tab.id
-                                                ? "bg-card text-wafuu-shu shadow-sm"
-                                                : "text-wafuu-sumi-light hover:text-wafuu-sumi",
-                                        )}
-                                    >
-                                        {tab.label}
-                                    </button>
-                                ))}
+                                <div
+                                    id="study-tabpanel"
+                                    role="tabpanel"
+                                    aria-labelledby={`study-tab-${mobileTab}`}
+                                    className="flex flex-col gap-3"
+                                >
+                                    {mobileTab === "highlights" && highlightsPanel}
+                                    {mobileTab === "moves" && moveList}
+                                    {mobileTab === "candidates" && candidatesPanel}
+                                </div>
+                                {graphPanel}
+                                {metaRow}
                             </div>
-                            <div
-                                id="study-tabpanel"
-                                role="tabpanel"
-                                aria-labelledby={`study-tab-${mobileTab}`}
-                                className="flex flex-col gap-3"
-                            >
-                                {mobileTab === "highlights" && highlightsPanel}
-                                {mobileTab === "moves" && moveList}
-                                {mobileTab === "candidates" && candidatesPanel}
-                            </div>
-                            {graphPanel}
-                            {metaRow}
                         </div>
                     ) : isTablet ? (
                         // タブレットの縦持ち: 盤を小さくして左に置き、右に注目局面からの列を並べる。
@@ -1618,7 +1621,8 @@ export function StudyWorkspaceView({
                                 <div
                                     ref={boardSectionRef}
                                     // 盤・操作・グラフが 1 画面に収まるよう、画面が低いときはマスを小さくする
-                                    // （盤以外の縦の合計が約 530px）。
+                                    // （盤以外の縦の合計が約 530px。表題の行・操作ボタン・グラフの高さを変えたら、
+                                    // この値も見直すこと）。
                                     className="flex flex-col items-center gap-2 [--shogi-cell-size:clamp(32px,calc((100dvh-530px)/9),44px)]"
                                 >
                                     {boardStatus}
