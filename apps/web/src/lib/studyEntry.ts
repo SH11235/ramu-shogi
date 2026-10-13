@@ -69,3 +69,25 @@ export function createStudyFromKifuTree(
 ): Promise<OpenOrCreateStudyResult> {
     return createFromKifuTree(tree, info, withDefaults(deps));
 }
+
+/**
+ * ノートを開いたときに、本譜の最後の手の局面から見始めるようにする（このブラウザだけの表示の状態）。
+ * 指した対局を研究ノートにしたとき（振り返りは終局の局面から）に使う。失敗しても、開くこと自体は妨げない。
+ */
+export async function openStudyAtLastMove(studyId: string): Promise<void> {
+    try {
+        const sync = getStudySync();
+        const stored = await sync.load(studyId);
+        if (!stored) return;
+        const { tree } = stored.doc;
+        let nodeId = tree.rootId;
+        for (;;) {
+            const next = tree.nodes[nodeId]?.children[0];
+            if (next === undefined) break;
+            nodeId = next;
+        }
+        if (nodeId !== tree.rootId) await sync.setViewState(studyId, { currentNodeId: nodeId });
+    } catch {
+        // 表示の状態を置けなくても、ノートは開始局面から開ける。
+    }
+}

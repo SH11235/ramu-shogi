@@ -76,9 +76,10 @@ function Segmented<T extends string>({
                             onClick={() => onChange(option.id)}
                             className={cn(
                                 "min-h-10 flex-1 whitespace-nowrap rounded-md border px-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 md:min-h-9",
+                                // 選んでいる項目は墨の枠で示す（朱・藍は、先手・後手の色に取っておく）。
                                 selected
-                                    ? "border-wafuu-shu bg-wafuu-shu/10 text-wafuu-shu"
-                                    : "border-wafuu-border bg-background text-wafuu-sumi hover:bg-muted/50",
+                                    ? "border-wafuu-sumi bg-wafuu-washi-warm font-semibold text-wafuu-sumi ring-1 ring-inset ring-wafuu-sumi"
+                                    : "border-wafuu-border bg-background text-wafuu-sumi hover:bg-wafuu-washi-warm",
                             )}
                         >
                             {option.label}
@@ -192,6 +193,8 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                       ? "人と人で対局する"
                       : "AI 同士の対局を見る"}
             </h1>
+            {/* 棋譜を調べたくて来た人が、最初に気づける位置に置く。 */}
+            {play?.setupFooter}
 
             {isVsAi ? (
                 <Segmented<SideChoice>
@@ -213,10 +216,9 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                     disabled={setup.locked}
                 />
             ) : (
-                <div className="flex flex-col gap-1 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-3">
+                <div className="flex flex-col">
                     <p className="text-sm text-wafuu-sumi">
-                        いまの設定は「{describeMatch(setup, sideChoice)}
-                        」です。先手・後手それぞれの設定は「詳細設定」で変えられます。
+                        {describeMatch(setup, sideChoice)}の設定です（詳細設定で変えられます）。
                     </p>
                     <button
                         type="button"
@@ -344,7 +346,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                     disabled={play?.busy}
                     className={cn("h-12 w-full text-base font-semibold", PLAY_PRIMARY_BUTTON)}
                 >
-                    {downloadMb !== null ? "ダウンロードして対局開始" : "対局開始"}
+                    対局開始
                 </Button>
                 {downloadMb !== null && (
                     <>
@@ -358,7 +360,8 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                             ダウンロードせずに簡易AI と指す
                         </Button>
                         <p className="text-center text-xs leading-relaxed text-wafuu-sumi-light">
-                            初回だけ約 {downloadMb}MB のダウンロードがあります。
+                            {setup.opponent?.label} は、初回だけ約 {downloadMb}MB
+                            のダウンロードがあります。
                             <button
                                 type="button"
                                 onClick={handleQuickStart}
@@ -374,8 +377,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                 )}
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-wafuu-border pt-3 text-[13px]">
-                {play?.setupFooter}
+            <div className="flex items-center justify-end border-t border-wafuu-border pt-3 text-[13px]">
                 <button
                     type="button"
                     onClick={onOpenAdvanced}

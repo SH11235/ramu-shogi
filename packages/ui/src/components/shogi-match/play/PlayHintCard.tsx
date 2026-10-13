@@ -32,13 +32,15 @@ function useShownHints(): { moves: AiHintMove[]; isThinking: boolean; isAnalyzin
 }
 
 /** 盤に示すヒントの手（いちばんの候補）。無ければ null。 */
-export function usePlayHintMove(): { from: string | null; to: string } | null {
+export function usePlayHintMove(): { from: string | null; to: string; side: Player } | null {
+    const { position } = useMatchState();
     const { moves } = useShownHints();
+    const side = position.turn;
     const usi = moves[0]?.usi;
     if (!usi) return null;
     // 打つ手は "P*5e"、動かす手は "7g7f" / "7g7f+"
-    if (usi[1] === "*") return { from: null, to: usi.slice(2, 4) };
-    return { from: usi.slice(0, 2), to: usi.slice(2, 4) };
+    if (usi[1] === "*") return { from: null, to: usi.slice(2, 4), side };
+    return { from: usi.slice(0, 2), to: usi.slice(2, 4), side };
 }
 
 /** 評価値を、手番の人から見た言葉にする。 */
@@ -92,7 +94,7 @@ export function PlayHintCard({ compact = false, className }: PlayHintCardProps):
         gameMode === "paused"
             ? "一時停止中は使えません。"
             : isMyTurn
-              ? "いまの局面で AI が勧める手を、盤に示します。"
+              ? "AI が勧める手を、盤に枠で示します。"
               : "あなたの手番で使えます。";
 
     return (
@@ -162,11 +164,6 @@ export function PlayHintCard({ compact = false, className }: PlayHintCardProps):
                     {isThinking ? "候補手を調べています…" : idleText}
                 </p>
             )}
-            {moves.length > 0 && (
-                <p className="text-[11px] leading-relaxed text-wafuu-sumi-light">
-                    盤の青い枠が、おすすめの手（点線 = 動かす駒、塗り = 行き先）です。
-                </p>
-            )}
         </section>
     );
 }
@@ -218,14 +215,19 @@ export function PlayHintLine({
     const evaluation = describeEval(best, position.turn);
     return (
         <output className={cn("flex items-baseline gap-2 text-sm", className)} aria-live="polite">
-            <span className="shrink-0 rounded bg-wafuu-ai px-1.5 py-0.5 text-xs font-semibold text-wafuu-ai-fg">
+            <span className="shrink-0 rounded border border-wafuu-sumi px-1.5 py-0.5 text-xs font-semibold text-wafuu-sumi">
                 ヒント
             </span>
             <span className="truncate font-semibold text-wafuu-sumi">{best.displayText}</span>
             <span className="shrink-0 text-xs text-wafuu-sumi">
                 {evaluation.text}
                 {best.scoreText && (
-                    <span className="pl-1 tabular-nums text-wafuu-sumi-light">
+                    <span
+                        className={cn(
+                            "pl-1 tabular-nums",
+                            position.turn === "sente" ? "text-wafuu-shu" : "text-wafuu-ai",
+                        )}
+                    >
                         {best.scoreText}
                     </span>
                 )}

@@ -64,7 +64,7 @@ interface PCBoardContentProps {
     /** 持ち駒の欄の大きさ（省略時は、編集中は "edit"、それ以外は "normal"） */
     handSize?: "medium" | "normal";
     /** ヒントとして盤に示す手（対局画面） */
-    hintMove?: { from?: string | null; to: string } | null;
+    hintMove?: { from?: string | null; to: string; side?: Player } | null;
 }
 
 /**

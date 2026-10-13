@@ -96,9 +96,12 @@ function App() {
                     // 研究ノートの保存層は使うときだけ読み込む（対局だけの人には要らない）。
                     onOpenAsStudy={(tree, info) => {
                         void import("./lib/studyEntry")
-                            .then(({ createStudyFromKifuTree }) =>
-                                createStudyFromKifuTree(tree, info),
-                            )
+                            .then(async ({ createStudyFromKifuTree, openStudyAtLastMove }) => {
+                                const created = await createStudyFromKifuTree(tree, info);
+                                // 指した対局の振り返りは、終局の局面から見始める。
+                                await openStudyAtLastMove(created.studyId);
+                                return created;
+                            })
                             .then(({ studyId }) =>
                                 navigate({ to: "/studies/$studyId", params: { studyId } }),
                             )

@@ -105,7 +105,7 @@ export function PlayPCLayout({
     return (
         <section
             // 盤は画面の高さに合わせる（低い画面で縦にはみ出さず、高い画面で小さく残らないように）。
-            className={`${matchLayoutClasses} [--shogi-cell-size:clamp(34px,calc((100dvh-384px)/9),72px)]`}
+            className={`${matchLayoutClasses} [--shogi-cell-size:clamp(34px,calc((100dvh-392px)/9),72px)] min-[1700px]:[--panel-width:460px]`}
         >
             <div className="w-full overflow-x-auto">
                 <div className="mx-auto flex w-max items-start gap-14 px-4 py-2">
@@ -116,7 +116,7 @@ export function PlayPCLayout({
                             <PlayBoardTools className="absolute left-full top-0 ml-2 flex-col" />
                             <div
                                 // 持ち駒の欄は、空のときも同じ高さで見せる（駒を取ったときに盤や操作が動かないように）。
-                                className={`flex flex-col items-center gap-2 [&_[data-zone^=hand-]]:min-h-[50px] ${isDraggingPiece ? "touch-none" : ""}`}
+                                className={`flex flex-col items-center gap-2 [&_[data-zone^=hand-]]:min-h-[calc(var(--shogi-cell-size)*0.8+16px)] [&_[data-zone^=hand-]:empty]:rounded-md [&_[data-zone^=hand-]:empty]:border [&_[data-zone^=hand-]:empty]:border-dashed [&_[data-zone^=hand-]:empty]:border-wafuu-border [&_[data-zone^=hand-]>div]:border-wafuu-border [&_[data-zone^=hand-]>div]:bg-transparent ${isDraggingPiece ? "touch-none" : ""}`}
                             >
                                 <PlayPlayerBar position="top" />
 

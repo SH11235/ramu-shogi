@@ -11,27 +11,19 @@ import { PageHeader } from "../components/PageHeader";
 interface EntryCardProps {
     to: "/play" | "/online" | "/rshogi-viewer" | "/studies";
     heading: string;
-    tone: "shu" | "ai";
     children: ReactNode;
 }
 
-function EntryCard({ to, heading, tone, children }: EntryCardProps): ReactElement {
+// 入口は主な導線なので、背景付きのカードにしない（上の罫線と見出しで区切る）。
+function EntryCard({ to, heading, children }: EntryCardProps): ReactElement {
     return (
         <Link
             to={to}
-            className="group flex flex-col gap-2 rounded-xl border border-wafuu-border bg-wafuu-washi-warm p-4 transition-colors hover:border-wafuu-shu/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="group flex flex-col gap-2 border-t-2 border-wafuu-border pt-4 transition-colors hover:border-wafuu-shu focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background"
         >
-            <span className="flex items-center gap-2">
-                <h2
-                    className={
-                        tone === "shu"
-                            ? "font-display text-xl font-semibold text-wafuu-shu"
-                            : "font-display text-xl font-semibold text-wafuu-ai"
-                    }
-                >
-                    {heading}
-                </h2>
-            </span>
+            <h2 className="font-display text-xl font-semibold text-wafuu-sumi transition-colors group-hover:text-wafuu-shu">
+                {heading}
+            </h2>
             <span className="text-[13px] leading-relaxed text-wafuu-sumi-light">{children}</span>
         </Link>
     );
@@ -86,18 +78,18 @@ export default function LandingPage(): ReactElement {
 
                 <section
                     aria-label="できること"
-                    className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+                    className="grid gap-x-6 gap-y-6 sm:grid-cols-2 lg:grid-cols-4"
                 >
-                    <EntryCard to="/play" heading="AI と対局" tone="shu">
+                    <EntryCard to="/play" heading="AI と対局">
                         内蔵の NNUE エンジンと指す。強さと持ち時間を選べる。ログイン不要。
                     </EntryCard>
-                    <EntryCard to="/studies" heading="棋譜を調べる" tone="ai">
+                    <EntryCard to="/studies" heading="棋譜を調べる">
                         棋譜を貼り付けて AI で解析。変化やコメントを研究ノートに残せる。
                     </EntryCard>
-                    <EntryCard to="/online" heading="オンライン対局" tone="shu">
+                    <EntryCard to="/online" heading="オンライン対局">
                         部屋を作り、招待リンクで人と指す。名前を入れるだけで参加できる。
                     </EntryCard>
-                    <EntryCard to="/rshogi-viewer" heading="観戦" tone="ai">
+                    <EntryCard to="/rshogi-viewer" heading="観戦">
                         進行中のエンジン対局をリアルタイムで見る。終局した棋譜も再生できる。
                     </EntryCard>
                 </section>

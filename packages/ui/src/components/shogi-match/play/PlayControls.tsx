@@ -355,7 +355,7 @@ export function PlayPositionEditorPanel({ className }: { className?: string }): 
                                 className={cn(
                                     "min-h-10 flex-1 rounded-md border px-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-9",
                                     selected
-                                        ? "border-wafuu-shu bg-wafuu-shu/10 text-wafuu-shu"
+                                        ? "border-wafuu-sumi bg-wafuu-washi-warm font-semibold text-wafuu-sumi ring-1 ring-inset ring-wafuu-sumi"
                                         : "border-wafuu-border bg-background text-wafuu-sumi hover:bg-wafuu-washi-warm",
                                 )}
                             >
@@ -366,8 +366,7 @@ export function PlayPositionEditorPanel({ className }: { className?: string }): 
                 </div>
             </fieldset>
             <p className="text-[13px] leading-relaxed text-wafuu-sumi-light">
-                駒はドラッグ（または、押して選んでから行き先を押す）で動かし、盤の外へ出すと取り除けます。成・不成は
-                2 回続けて押すと切り替わります。持ち駒は「＋」「−」で増減します。
+                駒はドラッグで動かし、盤の外へ出すと取り除けます（成・不成は 2 回押し）。
             </p>
         </section>
     );

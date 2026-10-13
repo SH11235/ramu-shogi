@@ -1691,7 +1691,17 @@ export function ShogiMatch({
         }
     };
 
-    const matchNnueDownload = useMatchNnueDownload({ manifestUrl, resolveNnue, setMessage });
+    const matchNnueDownload = useMatchNnueDownload({
+        manifestUrl,
+        resolveNnue,
+        // 対局画面では、ダウンロードを断っても知らせを出さない（自分でやめただけで、エラーではない）。
+        setMessage: isPlayScreen
+            ? (next) => {
+                  if (next?.text.includes("が未ダウンロードのため")) return;
+                  setMessage(next);
+              }
+            : setMessage,
+    });
 
     // 対局制御フック
     const {

@@ -77,7 +77,7 @@ interface MobileBoardSectionProps {
     /** 現在の手番 */
     turn?: Player;
     /** ヒントとして盤に示す手（対局画面） */
-    hintMove?: { from?: string | null; to: string } | null;
+    hintMove?: { from?: string | null; to: string; side?: Player } | null;
 }
 
 /**

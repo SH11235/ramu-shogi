@@ -68,7 +68,7 @@ interface ShogiBoardProps {
      */
     moveShadow?: ShogiBoardMoveShadow | null;
     /** ヒントとして示す手（動かす駒のマスと行き先。打つ手は行き先だけ）。枠で示す。 */
-    hintMove?: { from?: string | null; to: string } | null;
+    hintMove?: { from?: string | null; to: string; side?: ShogiBoardOwner } | null;
 }
 
 /**
@@ -166,9 +166,14 @@ export function ShogiBoard({
                                             data-hint={isHintTo ? "to" : "from"}
                                             className={cn(
                                                 "pointer-events-none absolute inset-0 z-10 rounded-sm",
-                                                isHintTo
-                                                    ? "bg-wafuu-ai/25 ring-[3px] ring-inset ring-wafuu-ai"
-                                                    : "border-2 border-dashed border-wafuu-ai",
+                                                // 色は指す側の色（先手 = 朱、後手 = 藍）。
+                                                hintMove?.side === "sente"
+                                                    ? isHintTo
+                                                        ? "bg-wafuu-shu/20 ring-[3px] ring-inset ring-wafuu-shu"
+                                                        : "border-2 border-dashed border-wafuu-shu"
+                                                    : isHintTo
+                                                      ? "bg-wafuu-ai/25 ring-[3px] ring-inset ring-wafuu-ai"
+                                                      : "border-2 border-dashed border-wafuu-ai",
                                             )}
                                         />
                                     )}
@@ -277,20 +282,16 @@ export function ShogiBoard({
                                     </button>
                                     {isPromotionSquare && onPromotionChoice && (
                                         <div
-                                            // マス 3 つ分の幅・1.5 マスの高さで左右に並べる（1 マスの中に上下で
-                                            // 詰めると、指で押し分けにくい）。盤の端では内側へ伸ばす。
+                                            // 行き先のマスの外（盤の内側へ寄せた上か下）に、マス 3 つ分の幅で左右に
+                                            // 並べる。行き先の駒を隠さず、指で押し分けられる大きさにする。
                                             className={cn(
-                                                "absolute z-20 flex h-[150%] w-[300%] gap-1 p-[2px]",
+                                                "absolute z-20 flex h-[150%] w-[300%] gap-1.5 p-1",
                                                 columnIndex === 0
                                                     ? "left-0"
                                                     : columnIndex === 8
                                                       ? "right-0"
                                                       : "-left-full",
-                                                rowIndex === 0
-                                                    ? "top-0"
-                                                    : rowIndex === 8
-                                                      ? "bottom-0"
-                                                      : "-top-1/4",
+                                                rowIndex <= 4 ? "top-full" : "bottom-full",
                                             )}
                                             role="dialog"
                                             aria-label="成り選択"
@@ -314,7 +315,7 @@ export function ShogiBoard({
                                                     }
                                                 }}
                                                 aria-label="成る"
-                                                className="flex-1 rounded-md bg-gradient-to-b from-wafuu-shu to-wafuu-shu/80 text-[14px] font-bold text-white shadow-lg transition-all hover:scale-105 hover:shadow-xl active:scale-95 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"
+                                                className="flex-1 rounded-md border-2 border-wafuu-sumi bg-wafuu-kin text-[15px] font-bold text-wafuu-sumi shadow-lg transition-transform hover:scale-105 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                             >
                                                 成
                                             </button>
@@ -336,7 +337,7 @@ export function ShogiBoard({
                                                     }
                                                 }}
                                                 aria-label="成らない"
-                                                className="flex-1 rounded-md bg-gradient-to-b from-wafuu-ai to-wafuu-ai/80 text-[13px] font-bold text-white shadow-lg transition-all hover:scale-105 hover:shadow-xl active:scale-95 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"
+                                                className="flex-1 rounded-md border-2 border-wafuu-sumi bg-background text-[15px] font-bold text-wafuu-sumi shadow-lg transition-transform hover:scale-105 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                             >
                                                 不成
                                             </button>

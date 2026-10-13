@@ -36,7 +36,7 @@ function usePlayerTimeText(owner: Player): string {
     // AI の 1 手の考慮時間は、設定と同じ言い方で出す（刻々と減る秒は見せない）。
     if (isAI && rule.mainMs === 0) return `1手${seconds(rule.byoyomiMs)}秒`;
     if (clock.mainMs > 0) return `残り ${formatTime(clock.mainMs)}`;
-    return `秒読み ${seconds(clock.byoyomiMs)}秒`;
+    return `残り ${seconds(clock.byoyomiMs)}秒`;
 }
 
 interface PlayPlayerBarProps {

@@ -119,7 +119,7 @@ export function PlayMobileLayout({
             // 持ち駒の欄は、空のときも高さを確保する（駒を取ったときに盤や操作が動かないように）。
             // 盤は幅だけでなく高さにも合わせる（横向きなどの低い画面で、盤が画面に入らないのを避ける）。
             // 持ち駒の欄は、駒が出たときの高さを最初から確保する（駒を取ったときに盤が動かないように）。
-            className="relative mx-auto flex w-full max-w-[max(280px,calc(100dvh-230px))] justify-center [&_[data-zone^=hand-]]:min-h-[44px]"
+            className="relative mx-auto flex w-full max-w-[max(280px,calc(100dvh-230px))] justify-center [&_[data-zone^=hand-]]:min-h-[calc(var(--shogi-cell-size)*0.8+16px)] [&_[data-zone^=hand-]:empty]:rounded-md [&_[data-zone^=hand-]:empty]:border [&_[data-zone^=hand-]:empty]:border-dashed [&_[data-zone^=hand-]:empty]:border-wafuu-border [&_[data-zone^=hand-]>div]:border-wafuu-border [&_[data-zone^=hand-]>div]:bg-transparent"
         >
             <MobileBoardSection
                 grid={grid}
@@ -157,7 +157,10 @@ export function PlayMobileLayout({
     );
 
     return (
-        <div className="relative flex w-full min-w-0 flex-col gap-1 bg-background px-2 pb-[max(env(safe-area-inset-bottom),12px)] text-foreground">
+        <div
+            // 画面の高さいっぱいを使う（背の高い端末でも、対局の操作が親指の届く下端に来るように）。
+            className="relative flex min-h-[calc(100dvh-53px)] w-full min-w-0 flex-col gap-1 bg-background px-2 pb-[max(env(safe-area-inset-bottom),8px)] text-foreground"
+        >
             {phase === "setup" && (
                 <>
                     <PlaySetupPanel
@@ -192,7 +195,12 @@ export function PlayMobileLayout({
                     {/* 終局後は、結果と次にすること（研究ノートで振り返る・もう一局）を先に出す。 */}
                     {phase === "finished" && <PlayResultCard compact className="px-2 pt-2" />}
                     {phase !== "finished" && <h1 className="sr-only">AI と対局中</h1>}
-                    <PlayPlayerBar position="top" />
+                    {/* 相手の帯と、盤の向き・音。対局中は棋譜の帯を出さない（直前の手は盤に示す。
+                        縦を詰めて、盤と操作を 1 画面に収める）。 */}
+                    <div className="flex items-center gap-1">
+                        <PlayPlayerBar position="top" className="min-w-0 flex-1" />
+                        <PlayBoardTools />
+                    </div>
                     {board}
                     {/* 対局中は、自分の側は手番の表示と残り時間だけを操作の帯に出す（縦を詰めて、盤と
                         操作を 1 画面に収める）。終局後は帯を出す。 */}
@@ -214,6 +222,7 @@ export function PlayMobileLayout({
                                 moves={barMoves}
                                 currentPly={navigationState.currentPly}
                                 onPlySelect={handlePlySelect}
+                                tone="wafuu"
                             />
                             <PlayMessage />
                         </>
@@ -221,7 +230,7 @@ export function PlayMobileLayout({
                         <>
                             {/* 手番（知らせ・ヒントがあればそれ）と操作。画面の下端に留めて、盤が上へ
                                 送られても押せるようにする。高さは固定して、盤を動かさない。 */}
-                            <div className="sticky bottom-0 z-10 flex flex-col gap-1 bg-background pb-1">
+                            <div className="sticky bottom-0 z-10 mt-auto flex flex-col gap-1 bg-background pb-1">
                                 <div className="flex min-h-8 items-center gap-2 px-1">
                                     <div className="flex min-w-0 flex-1 items-center">
                                         {message ? (
@@ -245,17 +254,6 @@ export function PlayMobileLayout({
                                         ) : null
                                     }
                                 />
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="min-w-0 flex-1">
-                                    <MobileKifuBar
-                                        moves={barMoves.filter(
-                                            (move) => move.ply <= navigationState.currentPly,
-                                        )}
-                                        currentPly={navigationState.currentPly}
-                                    />
-                                </div>
-                                <PlayBoardTools />
                             </div>
                         </>
                     )}
