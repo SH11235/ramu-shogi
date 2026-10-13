@@ -8,6 +8,7 @@ import {
     applyReviewMoveDataDiff,
     canEditPosition,
     getInitialReviewSyncMode,
+    shouldFlipBoardForSides,
     stringifyReviewMoveData,
     useInitialReviewSync,
 } from "./shogi-match";
@@ -386,5 +387,22 @@ describe("canEditPosition", () => {
         // initialReview の取り込み前と、取り込みに失敗した後がこの状態。
         expect(canEditPosition({ isEditMode: true, viewerMode: true })).toBe(false);
         expect(canEditPosition({ isEditMode: false, viewerMode: true })).toBe(false);
+    });
+});
+
+describe("shouldFlipBoardForSides", () => {
+    it("対局画面では、後手だけが人間のときに盤を反転する", () => {
+        const flip = (senteRole: "human" | "engine", goteRole: "human" | "engine") =>
+            shouldFlipBoardForSides({ reviewMode: false, senteRole, goteRole });
+        expect(flip("engine", "human")).toBe(true);
+        expect(flip("human", "human")).toBe(false);
+        expect(flip("human", "engine")).toBe(false);
+        expect(flip("engine", "engine")).toBe(false);
+    });
+
+    it("棋譜を見る画面では、保存されている先後の設定にかかわらず先手を手前にする", () => {
+        expect(
+            shouldFlipBoardForSides({ reviewMode: true, senteRole: "engine", goteRole: "human" }),
+        ).toBe(false);
     });
 });

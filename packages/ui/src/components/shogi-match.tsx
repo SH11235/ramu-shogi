@@ -433,6 +433,26 @@ export function canEditPosition({
     return isEditMode && !viewerMode;
 }
 
+/**
+ * 盤を反転して（後手を手前にして）出すか。対局画面で、後手だけが人間のときに反転する。
+ *
+ * 先後の担当は対局画面の設定としてブラウザに保存されていて、棋譜を見る画面（棋譜ビューア・
+ * 観戦・公開棋譜）もそれを読む。そこで反転すると、対局と関係のない棋譜が後手視点で開いて
+ * しまうので、棋譜を見る画面では常に先手を手前にする（利用者は反転ボタンで切り替えられる）。
+ */
+export function shouldFlipBoardForSides({
+    reviewMode,
+    senteRole,
+    goteRole,
+}: {
+    reviewMode: boolean;
+    senteRole: SideSetting["role"];
+    goteRole: SideSetting["role"];
+}): boolean {
+    if (reviewMode) return false;
+    return goteRole === "human" && senteRole !== "human";
+}
+
 interface ShogiMatchProps {
     engineOptions: EngineOption[];
     defaultSides?: { sente: SideSetting; gote: SideSetting };
@@ -923,12 +943,14 @@ export function ShogiMatch({
 
     // 後手が人間の場合は盤面を反転して手前側に表示
     useEffect(() => {
-        const goteIsHuman = sides.gote.role === "human";
-        const senteIsHuman = sides.sente.role === "human";
-        // 後手のみ人間、または両方人間で後手優先の場合は反転
-        // （後手が人間かつ先手がエンジンの場合に反転）
-        setFlipBoard(goteIsHuman && !senteIsHuman);
-    }, [setFlipBoard, sides.gote.role, sides.sente.role]);
+        setFlipBoard(
+            shouldFlipBoardForSides({
+                reviewMode: reviewMode === true,
+                senteRole: sides.sente.role,
+                goteRole: sides.gote.role,
+            }),
+        );
+    }, [reviewMode, setFlipBoard, sides.gote.role, sides.sente.role]);
 
     // 持ち駒表示用のヘルパー関数（メモ化してMobileBoardSectionの再レンダリングを防ぐ）
     const getHandInfo = (pos: "top" | "bottom") => {
