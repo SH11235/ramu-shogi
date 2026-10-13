@@ -191,6 +191,8 @@ pub struct EngineStateInner {
     pub(crate) position: Position,
     pub(crate) search: Option<Search>,
     active_search: Option<ActiveSearch>,
+    /// 読み込み済みの NNUE（ID と LayerStacks の設定）。同じものの読み込み直しを見分けるのに使う。
+    loaded_nnue: Option<String>,
 }
 
 impl EngineStateInner {
@@ -204,6 +206,7 @@ impl EngineStateInner {
             position: Position::new(),
             search: Some(search),
             active_search: None,
+            loaded_nnue: None,
         }
     }
 
@@ -352,6 +355,10 @@ fn spawn_search(
     }
 
     let stop_flag = search.stop_flag();
+    // 前の探索を止めるために立てた停止フラグが残っていると、新しい探索が始まってすぐ打ち切られる。
+    // 探索が bestmove を返した直後（スレッドが終わりきる前）に次の探索を頼まれると、前の探索は
+    // 「実行中」として止められ、フラグが立ったままになる（連続して解析するときに起きる）。
+    search.reset_flags();
 
     let handle = thread::Builder::new()
         .name("engine-search".into())
@@ -587,6 +594,17 @@ fn apply_engine_option(
                 set_fv_scale_override(v);
             }
         }
+        "MaterialLevel" => {
+            // 評価関数（NNUE）を読み込まずに探索するときの、駒得の評価（簡易 AI）。
+            // NNUE を読み込むと無効になる（`engine_load_nnue` が `disable_material` を呼ぶ）。
+            if let Some(v) = value_as_i32(value) {
+                let level = u8::try_from(v)
+                    .ok()
+                    .and_then(rshogi_core::eval::MaterialLevel::from_value)
+                    .ok_or_else(|| format!("Invalid MaterialLevel value {v}"))?;
+                rshogi_core::eval::set_material_level(level);
+            }
+        }
         _ => {
             // Unknown options are ignored for now.
         }
@@ -635,6 +653,16 @@ fn csa_engine_lock_status(lock: State<'_, Arc<engine_lock::EngineLock>>) -> Resu
     Ok(lock.is_locked())
 }
 
+/// NNUE を読み込み済みなら、評価を NNUE へ戻す（駒得の評価を無効にする）。
+///
+/// 駒得の評価はプロセス全体の設定なので、内蔵エンジンを使い始めるところ（`engine_init`、CSA 対局の
+/// 開始）で呼ぶ。NNUE が無いときは何もしない（駒得の評価を切ると、評価する手段が無くなる）。
+pub(crate) fn restore_nnue_eval() {
+    if rshogi_core::nnue::is_nnue_initialized() {
+        rshogi_core::eval::disable_material();
+    }
+}
+
 #[tauri::command]
 fn engine_init(
     lock: State<'_, Arc<engine_lock::EngineLock>>,
@@ -662,6 +690,11 @@ fn engine_init(
     if let Some(opts) = parsed_opts.as_ref() {
         inner.options.update_from_init(opts);
     }
+
+    // 駒得の評価（簡易 AI）はプロセス全体の設定で、エンジンは全クライアントで 1 つを共有している。
+    // 別の画面が簡易 AI で解析したあとも残るので、クライアントが使い始めるたびに NNUE へ戻す
+    // （簡易 AI を使うクライアントは、init のあとに `MaterialLevel` を送り直す）。
+    restore_nnue_eval();
 
     if inner.search.is_none() {
         inner.search = Some(inner.create_search());
@@ -971,7 +1004,7 @@ fn ensure_path_within_dir(dir: &Path, path: &Path) -> Result<(), String> {
 mod tests {
     use super::{
         Color, EngineOptions, SearchLimitsInput, SearchParamsInput, build_limits,
-        ensure_path_within_dir, validate_nnue_id,
+        ensure_path_within_dir, loaded_nnue_key, nnue_settings, validate_nnue_id,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -1007,6 +1040,33 @@ mod tests {
         assert_eq!(limits.time[Color::Black.index()], 12_000);
         assert_eq!(limits.time[Color::White.index()], 6_500);
         assert_eq!(limits.byoyomi, [1_000; Color::NUM]);
+    }
+
+    #[test]
+    fn loaded_nnue_key_distinguishes_id_and_routing() {
+        let id = "550e8400-e29b-41d4-a716-446655440000";
+        let other = "550e8400-e29b-41d4-a716-446655440001";
+        let routing = |mode: &str| nnue_settings::LayerStacksOptions {
+            bucket_mode: mode.to_string(),
+            progress_buckets: None,
+            progress_coeff_base64: None,
+        };
+        let king = routing("kingrank9");
+        let progress = routing("progress8kpabs");
+
+        // 同じ NNUE・同じ設定は同じ鍵（読み込み直しを成功として扱える）。
+        assert_eq!(loaded_nnue_key(id, None), loaded_nnue_key(id, None));
+        assert_eq!(
+            loaded_nnue_key(id, Some(&king)),
+            loaded_nnue_key(id, Some(&king.clone()))
+        );
+        // ID か設定が違えば別の鍵（別の NNUE への切り替えは断る）。
+        assert_ne!(loaded_nnue_key(id, None), loaded_nnue_key(other, None));
+        assert_ne!(loaded_nnue_key(id, None), loaded_nnue_key(id, Some(&king)));
+        assert_ne!(
+            loaded_nnue_key(id, Some(&king)),
+            loaded_nnue_key(id, Some(&progress))
+        );
     }
 
     #[test]
@@ -1541,18 +1601,25 @@ fn engine_load_nnue(
 
     let _engine_guard = lock.acquire(engine_lock::EngineTarget::Builtin)?;
     stop_active_search(&state)?;
-    let _inner = state
+    let mut inner = state
         .inner
         .lock()
         .map_err(|e| format!("Failed to acquire engine state lock: {e}"))?;
 
-    // 既に NNUE が初期化済みの場合はエラー
+    let normalized_id = validate_nnue_id(&args.nnue_id)?;
+    let nnue_key = loaded_nnue_key(&normalized_id, args.layer_stacks.as_ref());
+
+    // 読み込み済みのとき。同じ NNUE の読み込み直し（別の画面・別のクライアントが使い始めた）は
+    // 成功として扱い、駒得の評価へ切り替わっていれば NNUE へ戻す。別の NNUE への切り替えはできない。
     if is_nnue_initialized() {
+        if inner.loaded_nnue.as_deref() == Some(nnue_key.as_str()) {
+            rshogi_core::eval::disable_material();
+            return Ok(());
+        }
         return Err("NNUE is already loaded. Restart the app to change NNUE.".to_string());
     }
 
     // ID からパスを取得
-    let normalized_id = validate_nnue_id(&args.nnue_id)?;
     let nnue_path = nnue_path_with_id(&app, &normalized_id, "nnue");
 
     if !nnue_path.exists() {
@@ -1582,7 +1649,25 @@ fn engine_load_nnue(
     };
     nnue_settings::apply_routing(routing)?;
     rshogi_core::eval::disable_material();
+    inner.loaded_nnue = Some(nnue_key);
     Ok(())
+}
+
+/// 読み込み済みの NNUE を見分ける鍵（ID と LayerStacks の設定）。
+fn loaded_nnue_key(
+    normalized_id: &str,
+    layer_stacks: Option<&nnue_settings::LayerStacksOptions>,
+) -> String {
+    // 比べる項目を明示して並べる（Debug の出力は、型の作りが変わると変わりうる）。
+    match layer_stacks {
+        None => normalized_id.to_string(),
+        Some(options) => format!(
+            "{normalized_id}|{}|{:?}|{}",
+            options.bucket_mode,
+            options.progress_buckets,
+            options.progress_coeff_base64.as_deref().unwrap_or(""),
+        ),
+    }
 }
 
 // ── USI Engine IPC Commands ──────────────────────────────────────

@@ -51,6 +51,10 @@ const createAnalysis = (
         presets: [],
         nnueList: [],
         isNnueListLoading: false,
+        engines: [{ id: "wasm", label: "内蔵エンジン", kind: "internal" }],
+        engineId: "wasm",
+        maxParallel: null,
+        onEngineIdChange: vi.fn(),
     },
     ...overrides,
 });
@@ -61,6 +65,7 @@ interface HarnessProps {
     saveStatus?: StudyWorkspaceSaveStatus;
     onOps?: (ops: StudyOp[]) => void;
     onLogin?: () => void;
+    localOnly?: boolean;
     onRetrySave?: () => void;
     onDiscard?: () => void;
     fetchLegalMoves?: (sfen: string, moves: string[]) => Promise<string[]>;
@@ -91,6 +96,7 @@ function Harness({
     saveStatus = LOCAL_STATUS,
     onOps,
     onLogin,
+    localOnly,
     onRetrySave,
     onDiscard,
     fetchLegalMoves,
@@ -117,6 +123,7 @@ function Harness({
         <StudyWorkspaceView
             doc={doc}
             tree={tree}
+            localOnly={localOnly}
             onApplyOps={(ops) => {
                 onOps?.(ops);
                 const intercepted = interceptOps?.(ops);
@@ -883,6 +890,36 @@ describe("StudyWorkspaceView", () => {
         ).toBeTruthy();
     });
 
+    it("解析エンジンが 1 つだけなら選ぶ欄を出さない。複数あれば選べて、外部エンジンでは「使う AI」を出さない", () => {
+        const single = render(<Harness initialDoc={createTestStudy().doc} />);
+        fireEvent.click(screen.getByRole("button", { name: "解析の設定" }));
+        expect(screen.queryByRole("combobox", { name: "解析エンジン" })).toBeNull();
+        expect(screen.getByRole("combobox", { name: "使う AI" })).toBeTruthy();
+        single.unmount();
+
+        const engines = [
+            { id: "native", label: "内蔵エンジン", kind: "internal" as const },
+            { id: "ext-1", label: "MyEngine", kind: "external" as const },
+        ];
+        const base = createAnalysis();
+        const analysis = createAnalysis({ form: { ...base.form, engines, engineId: "native" } });
+        const multi = render(<Harness initialDoc={createTestStudy().doc} analysis={analysis} />);
+        fireEvent.click(screen.getByRole("button", { name: "解析の設定" }));
+        fireEvent.change(screen.getByRole("combobox", { name: "解析エンジン" }), {
+            target: { value: "ext-1" },
+        });
+        expect(analysis.form.onEngineIdChange).toHaveBeenCalledWith("ext-1");
+        multi.unmount();
+
+        const externalSelected = createAnalysis({
+            form: { ...base.form, engines, engineId: "ext-1" },
+        });
+        render(<Harness initialDoc={createTestStudy().doc} analysis={externalSelected} />);
+        fireEvent.click(screen.getByRole("button", { name: "解析の設定" }));
+        expect(screen.queryByRole("combobox", { name: "使う AI" })).toBeNull();
+        expect(screen.getByText(/外部エンジンは、そのエンジンに設定されている AI/)).toBeTruthy();
+    });
+
     it("解析の設定で、同時に解析する局面の数を選べる", () => {
         const analysis = createAnalysis();
         render(<Harness initialDoc={createTestStudy().doc} analysis={analysis} />);
@@ -903,6 +940,39 @@ describe("StudyWorkspaceView", () => {
             ...DEFAULT_ANALYSIS_SETTINGS,
             parallelWorkers: 2,
         });
+    });
+
+    it("同時に解析できる数に上限のあるエンジンでは、上限までの選択肢だけを出す", () => {
+        const base = createAnalysis();
+        const limited = createAnalysis({
+            form: {
+                ...base.form,
+                maxParallel: 2,
+                settings: { ...DEFAULT_ANALYSIS_SETTINGS, parallelWorkers: 4 },
+            },
+        });
+        const view = render(<Harness initialDoc={createTestStudy().doc} analysis={limited} />);
+        fireEvent.click(screen.getByRole("button", { name: "解析の設定" }));
+        const group = within(screen.getByRole("dialog", { name: "解析の設定" })).getByRole(
+            "group",
+            { name: /同時に解析する局面の数/ },
+        );
+        expect(within(group).queryByRole("button", { name: "4" })).toBeNull();
+        // 保存してある 4 は使えないので、実際に使う 2 を選んだものとして見せる。
+        expect(within(group).getByRole("button", { name: "2" }).getAttribute("aria-pressed")).toBe(
+            "true",
+        );
+        view.unmount();
+
+        // 1 局面ずつしか解析できないエンジン（Desktop の内蔵エンジン）では、欄ごと出さない。
+        const single = createAnalysis({ form: { ...base.form, maxParallel: 1 } });
+        render(<Harness initialDoc={createTestStudy().doc} analysis={single} />);
+        fireEvent.click(screen.getByRole("button", { name: "解析の設定" }));
+        expect(
+            within(screen.getByRole("dialog", { name: "解析の設定" })).queryByRole("group", {
+                name: /同時に解析する局面の数/,
+            }),
+        ).toBeNull();
     });
 
     it("「残りを解析」は、表示中の設定の未解析分を、その設定で解析する", () => {
@@ -1734,6 +1804,19 @@ describe("StudyWorkspaceView", () => {
             render(
                 <Harness initialDoc={createTestStudy().doc} saveStatus={saveStatus} {...extra} />,
             );
+
+        it("保存先がこの端末だけの環境（Desktop）では、端末と言い、ログインの案内を出さない", () => {
+            const view = renderWith(LOCAL_STATUS, { onLogin: vi.fn(), localOnly: true });
+            expect(screen.getByText("この端末に保存済み")).toBeTruthy();
+            expect(screen.queryByText(/ログインすると/)).toBeNull();
+            view.unmount();
+
+            renderWith(
+                { state: "error", reason: "storage_failed", limit: null, retrying: false },
+                { localOnly: true },
+            );
+            expect(screen.getByRole("alert").textContent).toContain("端末への保存に失敗しました");
+        });
 
         it("未ログインでは「ログインするとクラウドにも保存できます」を出し、押すとログインへ進む", () => {
             const onLogin = vi.fn();

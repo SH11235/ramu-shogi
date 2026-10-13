@@ -16,6 +16,9 @@ import type {
 } from "@shogi/engine-client";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
+/** 評価関数を使わないときの、駒得の評価の強さ（Wasm のエンジンが自分で選ぶ値と同じ）。 */
+const MATERIAL_FALLBACK_LEVEL = 9;
+
 /**
  * 解析ジョブ
  */
@@ -53,6 +56,13 @@ interface UseEnginePoolOptions {
     clientKey?: string;
     /** ワーカー数 */
     workerCount: number;
+    /**
+     * 評価関数（NNUE）を読み込まずに探索するとき、駒得の評価（簡易 AI）を明示的に有効にするか
+     * （既定は false）。内蔵エンジンは、評価関数も駒得の評価も無いと探索できない。Wasm は
+     * 初期化のときに自分で有効にするが、Desktop のネイティブのエンジンはしないので、内蔵エンジンを
+     * 使う呼び出し側が true にする。外部の USI エンジンには送らない（知らないオプションなので）。
+     */
+    materialFallback?: boolean;
     /**
      * エンジンが、パス権つきの局面（パスを含む手順）を読み込めるか（既定は true）。
      * 外部の USI エンジンは、変則ルールのパスを解釈できないので false にする。false のとき、
@@ -174,6 +184,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         onPositionAnalyzed,
         nnueId,
         supportsPassRights = true,
+        materialFallback = false,
     } = options;
     const supportsPassRightsRef = useRef(supportsPassRights);
     useEffect(() => {
@@ -445,6 +456,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         clientKey: string | undefined;
         workerCount: number;
         createClient: () => EngineClient;
+        materialFallback: boolean;
     }
 
     /** いまあるワーカーをすべて破棄する。 */
@@ -472,6 +484,8 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         if (state.initialized) return;
 
         const workers: EngineWorker[] = [];
+        // 1 つも準備できなかったときに、理由を呼び出し元へ伝える。
+        let lastInitError: unknown = null;
         for (let i = 0; i < params.workerCount; i++) {
             // 初期化の途中で中止された・次の実行が始まったら、残りは作らない
             // （ここまでに作ったワーカーは、次の実行が条件に合えばそのまま使う）。
@@ -497,6 +511,8 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                         );
                         throw error;
                     }
+                } else if (params.materialFallback) {
+                    await client.setOption("MaterialLevel", MATERIAL_FALLBACK_LEVEL);
                 }
 
                 workers.push({
@@ -510,13 +526,17 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             } catch (error) {
                 await client?.dispose().catch(() => undefined);
                 console.error(`Failed to initialize worker ${i}:`, error);
+                lastInitError = error;
             }
         }
 
         // 初期化に成功したワーカーが1つもない場合はエラー
         if (workers.length === 0) {
             if (state.runId === runId) {
-                callbacksRef.current.onError?.(0, new Error("No workers could be initialized"));
+                callbacksRef.current.onError?.(
+                    0,
+                    new Error("No workers could be initialized", { cause: lastInitError }),
+                );
                 // アンマウント後は状態を更新しない
                 if (mountedRef.current) {
                     setIsRunning(false);
@@ -585,6 +605,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             clientKey,
             workerCount,
             createClient,
+            materialFallback,
         };
         const multiPv = state.multiPv;
 

@@ -375,6 +375,9 @@ impl UsiEngineDriver for BuiltinEngineDriver {
         // 既存探索があれば確実に停止 (idempotent)
         self.signal_stop();
         self.drain_and_join();
+        // 駒得の評価（簡易 AI）はプロセス全体の設定で、研究ノートの解析が有効にしたまま残ることがある。
+        // CSA 対局は `engine_init` を通らないので、ここで NNUE へ戻す。
+        crate::restore_nnue_eval();
         let mut inner = self
             .engine_state
             .inner

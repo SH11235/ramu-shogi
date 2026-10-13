@@ -331,6 +331,34 @@ describe("getLegalMoves", () => {
         expect(result).toEqual(["3c3d", "8c8d"]);
     });
 
+    it("パス権は、Tauri のコマンドの引数名（camelCase の passRights）で渡す", async () => {
+        // Rust 側の引数は `pass_rights` だが、Tauri は JS 側の camelCase の名前から対応づける。
+        // snake_case で渡すと無視され、パス権が無いものとして扱われる。
+        mockInvoke.mockResolvedValue(["pass"]);
+        await getLegalMoves({
+            sfen: "startpos",
+            moves: ["7g7f"],
+            passRights: { sente: 1, gote: 2 },
+            ipc: mockIpc,
+        });
+        expect(mockInvoke).toHaveBeenCalledWith("engine_legal_moves", {
+            sfen: "startpos",
+            moves: ["7g7f"],
+            passRights: { sente: 1, gote: 2 },
+        });
+
+        mockInvoke.mockResolvedValue(undefined);
+        const client = createTauriEngineClient({ ipc: mockIpc });
+        await client.loadPosition("startpos", ["7g7f", "pass"], {
+            passRights: { sente: 1, gote: 2 },
+        });
+        expect(mockInvoke).toHaveBeenCalledWith("engine_position", {
+            sfen: "startpos",
+            moves: ["7g7f", "pass"],
+            passRights: { sente: 1, gote: 2 },
+        });
+    });
+
     it("エラー時は空配列を返す", async () => {
         mockInvoke.mockRejectedValue(new Error("Failed to get legal moves"));
 
