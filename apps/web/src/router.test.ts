@@ -81,15 +81,13 @@ describe("router: ログイン後の戻り先", () => {
         );
     };
 
-    it("未ログインで要ログインのページを開くと、そのページを戻り先にしてログインの画面へ送る", async () => {
+    it("以前の検討ページの URL は棋譜の詳細へ送り、未ログインならそこを戻り先にしてログインへ送る", async () => {
         stubUnauthorized();
 
-        const location = await load(`/games/${GAME_ID}/review?ply=12#comment`);
+        const location = await load(`/games/${GAME_ID}/review`);
 
         expect(location.pathname).toBe("/auth");
-        expect(readReturnPathFromSearch(location.searchStr)).toBe(
-            `/games/${GAME_ID}/review?ply=12#comment`,
-        );
+        expect(readReturnPathFromSearch(location.searchStr)).toBe(`/games/${GAME_ID}`);
     });
 
     it("棋譜の詳細ページも同じ", async () => {

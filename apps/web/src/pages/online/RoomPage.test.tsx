@@ -266,7 +266,7 @@ describe("RoomPage", () => {
             fireEvent.click(screen.getByRole("button", { name: "棋譜を検討する" }));
 
             expect(mockNavigate).toHaveBeenCalledWith({
-                to: "/games/$gameId/review",
+                to: "/games/$gameId",
                 params: { gameId: "record-1" },
             });
         });
@@ -289,7 +289,7 @@ describe("RoomPage", () => {
             fireEvent.click(screen.getByRole("button", { name: "棋譜を検討する" }));
 
             expect(mockNavigate).toHaveBeenCalledWith({
-                to: "/games/$gameId/review",
+                to: "/games/$gameId",
                 params: { gameId: "record-1" },
             });
         });
@@ -351,7 +351,7 @@ describe("RoomPage", () => {
             fireEvent.click(screen.getByRole("button", { name: "棋譜を検討する" }));
 
             expect(mockNavigate).toHaveBeenCalledWith({
-                to: "/games/$gameId/review",
+                to: "/games/$gameId",
                 params: { gameId: "record-b" },
             });
         });

@@ -3,7 +3,6 @@ import type {
     GameRecordSummary,
     GetGameResponse,
     GetPublicGameResponse,
-    ListAnalysisSnapshotsResponse,
     ListGamesResponse,
     ListPublicGamesResponse,
     RoomInfo,
@@ -135,39 +134,12 @@ const gameDetailRoute = createRoute({
     },
 });
 
+// 以前の「検討」ページ（解析結果の保存つき）。解析は研究ノートへ移したので、棋譜の詳細へ送る。
 const gameReviewRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/games/$gameId/review",
-    component: lazyRouteComponent(() => import("./pages/games/GameReviewPage")),
-    loader: async ({ params: { gameId }, location }) => {
-        const [gameResponse, snapshotsResponse] = await Promise.all([
-            fetch(`/api/games/${gameId}`, {
-                credentials: "same-origin",
-            }),
-            fetch(`/api/games/${gameId}/analysis-snapshots`, {
-                credentials: "same-origin",
-            }),
-        ]);
-
-        handleLoaderResponse(gameResponse, {
-            errorMessage: "検討データの取得に失敗しました",
-            notFoundMessage: "棋譜が見つかりません",
-            onUnauthorized: "redirect_to_auth",
-            returnTo: location.href,
-        });
-        handleLoaderResponse(snapshotsResponse, {
-            errorMessage: "検討データの取得に失敗しました",
-            onUnauthorized: "redirect_to_auth",
-            returnTo: location.href,
-        });
-
-        const gamePayload = (await gameResponse.json()) as GetGameResponse;
-        const snapshotsPayload = (await snapshotsResponse.json()) as ListAnalysisSnapshotsResponse;
-
-        return {
-            game: gamePayload.game,
-            snapshots: snapshotsPayload.snapshots,
-        };
+    beforeLoad: ({ params: { gameId } }) => {
+        throw redirect({ to: "/games/$gameId", params: { gameId }, replace: true });
     },
 });
 

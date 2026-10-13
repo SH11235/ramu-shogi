@@ -714,7 +714,7 @@ test.describe(`オンライン対局（ルーム API: ${roomBackend}）`, () => 
             await expect(match.w.getByText("投了", { exact: true })).toBeVisible();
             await match.w.getByRole("button", { name: "棋譜を検討する" }).click();
             // 棋譜が保存されるのはログイン中の対局者がいる対局だけ
-            await expect(match.w).toHaveURL(useDevLogin ? /\/games\/[^/]+\/review$/ : /\/play$/);
+            await expect(match.w).toHaveURL(useDevLogin ? /\/games\/[^/]+$/ : /\/play$/);
         } else {
             // legacy は終局済みルームの結果を再接続時に返さないので、盤面だけが表示される
             await expectUnchangedFor(match.w, 2_000, async () => {

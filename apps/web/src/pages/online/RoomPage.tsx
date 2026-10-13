@@ -387,8 +387,9 @@ export default function RoomPage(): ReactElement {
                     removeStoredResumeToken(roomId);
                     removeStoredSeat(roomId);
                     if (data.gameRecordId) {
+                        // 保存された棋譜のページへ。解析や検討は、そこから研究ノートで行う。
                         void navigate({
-                            to: "/games/$gameId/review",
+                            to: "/games/$gameId",
                             params: { gameId: data.gameRecordId },
                         });
                     } else {
