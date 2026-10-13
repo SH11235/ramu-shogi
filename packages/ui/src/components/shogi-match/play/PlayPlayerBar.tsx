@@ -18,7 +18,7 @@ import { formatTime } from "../utils/timeFormat";
 const seconds = (ms: number): number => Math.max(0, Math.ceil(ms / 1000));
 
 /** 対局者の時間を言葉にする（「時間無制限」「1手10秒」「残り 09:32」「秒読み 7秒」）。 */
-export function usePlayerTimeText(owner: Player): string {
+function usePlayerTimeText(owner: Player): string {
     const { play } = useShogiMatchConfig();
     const { timeSettings } = useMatchSettings();
     const { sides, clocks } = useMatchState();

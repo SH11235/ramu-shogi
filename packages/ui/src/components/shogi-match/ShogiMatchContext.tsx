@@ -54,9 +54,6 @@ export interface PlayScreenConfig {
     setupFooter: ReactNode;
     /** 終局の結果（終局後だけ） */
     gameResult: GameResult | null;
-    /** 終局を知らせるダイアログを出しているか、と閉じる操作 */
-    resultDialogOpen: boolean;
-    closeResultDialog: () => void;
 }
 
 interface ShogiMatchConfig {

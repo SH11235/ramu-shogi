@@ -2442,8 +2442,6 @@ export function ShogiMatch({
               hintPly,
               setupFooter: playSetupFooter ?? null,
               gameResult,
-              resultDialogOpen: showResultDialog,
-              closeResultDialog: () => setShowResultDialog(false),
           }
         : null;
 

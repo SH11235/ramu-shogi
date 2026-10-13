@@ -14,9 +14,9 @@ import type { ClockSettings } from "../hooks/useClockManager";
 import type { SideSetting } from "../types";
 
 /** 対局の組み合わせ。 */
-export type PlayMatchKind = "vs-ai" | "humans" | "ai-vs-ai";
+type PlayMatchKind = "vs-ai" | "humans" | "ai-vs-ai";
 
-export interface OpponentOption {
+interface OpponentOption {
     /** "preset:<key>" | "nnue:<id>" | "material" | "ext:<engineId>" */
     value: string;
     label: string;
