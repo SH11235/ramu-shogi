@@ -1185,7 +1185,10 @@ export function StudyWorkspaceView({
                             aria-hidden="true"
                             className={cn(
                                 "absolute right-1.5 top-1.5 h-2 w-2 rounded-full ring-2 ring-background",
-                                hasCommentDraft ? "bg-status-warning" : "bg-wafuu-shu",
+                                // 開いて入力している間は、保存待ちで色を変えない（ちらつかせない）。
+                                hasCommentDraft && !showsComment
+                                    ? "bg-status-warning"
+                                    : "bg-wafuu-shu",
                             )}
                         />
                     )}
