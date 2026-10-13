@@ -14,6 +14,10 @@ import {
 import type { EngineOption, PlayFromPosition } from "@shogi/ui";
 import { EngineControlPanel, NnueProvider, ShogiMatch } from "@shogi/ui";
 import { Button } from "@shogi/ui/components/button";
+import {
+    createStudyFromKifuTree,
+    openStudyFromRshogiGame,
+} from "@shogi/ui/components/study-workspace/studyEntry";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useRef, useState } from "react";
@@ -24,6 +28,9 @@ import { EngineManagerPanel } from "./components/EngineManagerPanel";
 import { RshogiViewerListView } from "./components/rshogi-viewer/RshogiViewerListView";
 import { RshogiViewerLiveView } from "./components/rshogi-viewer/RshogiViewerLiveView";
 import { RshogiViewerView } from "./components/rshogi-viewer/RshogiViewerView";
+import { StudiesView } from "./components/studies/StudiesView";
+import { StudyView } from "./components/studies/StudyView";
+import { getDesktopStudySync } from "./studies/desktopStudySync";
 
 const createEngineClient = () =>
     createTauriEngineClient({
@@ -37,6 +44,8 @@ const INTERNAL_ENGINE_OPTION: EngineOption = {
     label: "内蔵エンジン",
     createClient: createEngineClient,
     kind: "internal",
+    // ネイティブのエンジンはアプリに 1 つだけなので、局面の並列解析はできない。
+    maxParallel: 1,
 };
 
 const panelEngine = createEngineClient();
@@ -91,7 +100,9 @@ type AppMode =
     | "csa"
     | "rshogi-viewer-list"
     | "rshogi-viewer-detail"
-    | "rshogi-viewer-live";
+    | "rshogi-viewer-live"
+    | "studies"
+    | "study";
 
 function App() {
     const [appMode, setAppMode] = useState<AppMode>("local");
@@ -99,6 +110,38 @@ function App() {
     // rshogi viewer の「この局面から対局」で引き継いだ局面。ローカル対局をこの局面を読み込んだ
     // 検討の状態で開く（対局は始めない）。viewer や CSA 対局へ移るときに忘れる。
     const [playHandoff, setPlayHandoff] = useState<PlayFromPosition | null>(null);
+
+    // 開いている研究ノート。
+    const [studyId, setStudyId] = useState<string | null>(null);
+    const [studyError, setStudyError] = useState<string | null>(null);
+
+    const handleOpenStudies = () => {
+        setPlayHandoff(null);
+        setStudyError(null);
+        setStudyId(null);
+        setAppMode("studies");
+    };
+
+    const handleOpenStudy = (id: string) => {
+        setPlayHandoff(null);
+        setStudyError(null);
+        setStudyId(id);
+        setAppMode("study");
+    };
+
+    /** 研究ノートを作って開く。作れなかったら、理由を出す（画面はそのまま）。 */
+    const openCreatedStudy = (creating: Promise<{ studyId: string }>) => {
+        setStudyError(null);
+        creating.then(
+            (created) => handleOpenStudy(created.studyId),
+            (error: unknown) => {
+                console.error("[study] 研究ノートを作れませんでした", error);
+                setStudyError(
+                    `研究ノートを作れませんでした: ${error instanceof Error ? error.message : String(error)}`,
+                );
+            },
+        );
+    };
 
     const handlePlayFromPosition = (position: PlayFromPosition) => {
         setPlayHandoff(position);
@@ -257,6 +300,46 @@ function App() {
                         onBackToList={handleBackToRshogiList}
                         onBackToLocal={() => setAppMode("local")}
                         onPlayFromPosition={handlePlayFromPosition}
+                        onOpenAsStudy={(game) =>
+                            openCreatedStudy(
+                                openStudyFromRshogiGame(game, { sync: getDesktopStudySync() }),
+                            )
+                        }
+                    />
+                    {studyError && (
+                        <div className="text-xs text-destructive bg-destructive/10 p-2 rounded">
+                            {studyError}
+                        </div>
+                    )}
+                </main>
+            </NnueProvider>
+        );
+    }
+
+    if (appMode === "studies") {
+        return (
+            <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
+                <main className="mx-auto flex max-w-[1100px] flex-col gap-3 p-4 md:px-5">
+                    <StudiesView
+                        onBackToLocal={() => setAppMode("local")}
+                        onOpenStudy={handleOpenStudy}
+                    />
+                </main>
+            </NnueProvider>
+        );
+    }
+
+    if (appMode === "study" && studyId) {
+        return (
+            <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
+                {/* 研究ノートの画面は幅を使うので、ここでは幅を絞らない（中央寄せは画面側が行う）。 */}
+                <main className="flex flex-col">
+                    <StudyView
+                        studyId={studyId}
+                        engineOptions={engineOptions}
+                        onBackToList={handleOpenStudies}
+                        onBackToLocal={() => setAppMode("local")}
+                        onPlayFromPosition={handlePlayFromPosition}
                     />
                 </main>
             </NnueProvider>
@@ -292,6 +375,9 @@ function App() {
                     >
                         定跡ビュアー
                     </Button>
+                    <Button variant="outline" size="sm" onClick={handleOpenStudies}>
+                        研究ノート
+                    </Button>
                     <Button variant="outline" size="sm" onClick={handleSwitchToRshogiViewer}>
                         rshogi viewer
                     </Button>
@@ -311,9 +397,20 @@ function App() {
                     defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
                     onPositionSnapshot={(snapshot) => setPanelPosition(snapshot)}
                     initialReview={playHandoff ?? undefined}
+                    // 読み込んだ棋譜・編集した局面（分岐・コメントごと）を研究ノートにして、その画面へ移る。
+                    onOpenAsStudy={(tree, info) =>
+                        openCreatedStudy(
+                            createStudyFromKifuTree(tree, info, { sync: getDesktopStudySync() }),
+                        )
+                    }
                     onOpenEngineManager={() => setIsEngineManagerOpen(true)}
                     onOpenEngineSettings={handleOpenEngineSettings}
                 />
+                {studyError && (
+                    <div className="text-xs text-destructive bg-destructive/10 p-2 rounded">
+                        {studyError}
+                    </div>
+                )}
                 {storeError && (
                     <div className="text-xs text-destructive bg-destructive/10 p-2 rounded">
                         {storeError}

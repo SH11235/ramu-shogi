@@ -8,8 +8,8 @@
 レイヤー構成: UI層 → アプリケーション層 → ドメイン層 / インフラ層
 
 パッケージ依存関係（`→` は依存方向）:
-- apps/web → ui, design-system, app-controller, engine-wasm
-- apps/desktop → ui, design-system, app-controller, engine-tauri
+- apps/web → ui, design-system, app-controller, engine-wasm, study-client
+- apps/desktop → ui, design-system, app-controller, engine-tauri, study-client
 - ui → app-core, app-controller, design-system, engine-client, match-client
 - app-controller → app-core, engine-client
 - app-core → (依存なし)

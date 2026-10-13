@@ -290,6 +290,56 @@ describe("useEnginePool", () => {
         unmount();
     });
 
+    it("評価関数を使わないとき、頼まれていれば駒得の評価（簡易 AI）を明示的に有効にする", async () => {
+        const run = async (materialFallback: boolean | undefined) => {
+            const factory = engineFactory();
+            const onComplete = vi.fn();
+            const { result, unmount } = renderHook(() =>
+                useEnginePool({
+                    createClient: factory.createClient,
+                    workerCount: 1,
+                    onComplete,
+                    materialFallback,
+                }),
+            );
+            act(() => result.current.start([jobs[0]]));
+            await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+            unmount();
+            return vi
+                .mocked(factory.clients[0].setOption)
+                .mock.calls.filter(([name]) => name === "MaterialLevel");
+        };
+        // 内蔵エンジン（呼び出し側が頼む）: 探索の前に有効にする。
+        expect(await run(true)).toEqual([["MaterialLevel", 9]]);
+        // 既定（外部エンジンなど）: 知らないオプションを送らない。
+        expect(await run(undefined)).toEqual([]);
+    });
+
+    it("エンジンを 1 つも準備できなかったときは、その理由を添えて知らせる", async () => {
+        const factory = engineFactory();
+        const onError = vi.fn();
+        const failure = "NNUE is already loaded. Restart the app to change NNUE.";
+        const { result, unmount } = renderHook(() =>
+            useEnginePool({
+                createClient: () => {
+                    const client = factory.createClient();
+                    client.init = vi.fn(async () => {
+                        throw failure;
+                    });
+                    return client;
+                },
+                workerCount: 1,
+                onError,
+            }),
+        );
+        act(() => result.current.start([jobs[0]]));
+        await waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+        const error = onError.mock.calls[0][1] as Error;
+        expect(error.message).toBe("No workers could be initialized");
+        expect(error.cause).toBe(failure);
+        unmount();
+    });
+
     it("パスを解釈できないエンジン（外部 USI）には、パスを含む手順を渡さずに失敗として数える", async () => {
         const factory = engineFactory(true);
         const onComplete = vi.fn();

@@ -137,7 +137,7 @@ interface MobileSettingsSheetProps {
     /**
      * 棋譜ビューア（対局しない画面）で開いているか。
      * true のとき、対局にしか関係しない項目（先後の担当と強さ、持ち時間、パス権、
-     * 対局の開始・停止）を出さず、解析と表示の設定だけにする。
+     * 対局の開始・停止）と解析の設定を出さず、表示の設定だけにする。
      */
     viewerMode?: boolean;
 }
@@ -651,28 +651,32 @@ export function MobileSettingsSheet({
                 </div>
             )}
 
-            {onAnalysisEngineIdChange && engineOptions && engineOptions.length > 1 && (
-                <div className={sectionClassName("space-y-2")}>
-                    <div className="font-medium text-sm">解析エンジン</div>
-                    <label className={labelClassName}>
-                        <span className="text-xs text-muted-foreground">使用エンジン</span>
-                        <NativeSelect
-                            value={resolvedAnalysisEngineId}
-                            disabled={settingsLocked}
-                            onChange={(e) => onAnalysisEngineIdChange(e.target.value)}
-                            className="text-base"
-                        >
-                            {engineOptions.map((engine) => (
-                                <option key={engine.id} value={engine.id}>
-                                    {engine.label}
-                                </option>
-                            ))}
-                        </NativeSelect>
-                    </label>
-                </div>
-            )}
+            {/* 棋譜を見るだけの画面は解析しないので、解析エンジンの設定は出さない。 */}
+            {!viewerMode &&
+                onAnalysisEngineIdChange &&
+                engineOptions &&
+                engineOptions.length > 1 && (
+                    <div className={sectionClassName("space-y-2")}>
+                        <div className="font-medium text-sm">解析エンジン</div>
+                        <label className={labelClassName}>
+                            <span className="text-xs text-muted-foreground">使用エンジン</span>
+                            <NativeSelect
+                                value={resolvedAnalysisEngineId}
+                                disabled={settingsLocked}
+                                onChange={(e) => onAnalysisEngineIdChange(e.target.value)}
+                                className="text-base"
+                            >
+                                {engineOptions.map((engine) => (
+                                    <option key={engine.id} value={engine.id}>
+                                        {engine.label}
+                                    </option>
+                                ))}
+                            </NativeSelect>
+                        </label>
+                    </div>
+                )}
 
-            {onOpenEngineManager && (
+            {!viewerMode && onOpenEngineManager && (
                 <div className={sectionClassName("space-y-2")}>
                     <button
                         type="button"

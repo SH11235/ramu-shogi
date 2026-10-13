@@ -31,7 +31,9 @@ interface PCKifuSectionProps {
 export function PCKifuSection({ reviewMode }: PCKifuSectionProps): ReactElement {
     const [activeTab, setActiveTab] = useState<"kifu" | "ai">("kifu");
     const { gameMode } = useMatchState();
-    const { evalGraphPinned } = useShogiMatchConfig();
+    const { evalGraphPinned, viewerMode } = useShogiMatchConfig();
+    // 棋譜を見るだけの画面（ビューア）は、解析も変化の追加もさせない（研究ノートで行う）。
+    const readOnly = viewerMode;
     // いま対局している間（一時停止を含む）。この間だけ、評価値グラフを既定で閉じておく。
     const isInMatch = gameMode === "playing" || gameMode === "paused";
 
@@ -83,14 +85,16 @@ export function PCKifuSection({ reviewMode }: PCKifuSectionProps): ReactElement 
         <div
             className={`flex flex-col shrink-0 w-[var(--panel-width)] ${reviewMode ? "" : "pt-16"}`}
         >
-            <TabHeader
-                tabs={[
-                    { id: "kifu", label: "棋譜" },
-                    { id: "ai", label: "AI解析" },
-                ]}
-                activeTab={activeTab}
-                onChange={setActiveTab}
-            />
+            {!readOnly && (
+                <TabHeader
+                    tabs={[
+                        { id: "kifu", label: "棋譜" },
+                        { id: "ai", label: "AI解析" },
+                    ]}
+                    activeTab={activeTab}
+                    onChange={setActiveTab}
+                />
+            )}
 
             {/* 棋譜タブ */}
             <div className={`flex flex-col gap-2 ${activeTab !== "kifu" ? "hidden" : ""}`}>
@@ -147,13 +151,13 @@ export function PCKifuSection({ reviewMode }: PCKifuSectionProps): ReactElement 
                         branchMarkers={branchMarkers}
                         analysisMarkers={analysisMarkers}
                         positionHistory={positionHistory}
-                        onAddPvAsBranch={handleAddPvAsBranch}
+                        onAddPvAsBranch={readOnly ? undefined : handleAddPvAsBranch}
                         onPreviewPv={handlePreviewPv}
                         lastAddedBranchInfo={lastAddedBranchInfo}
                         onLastAddedBranchHandled={onLastAddedBranchHandled}
                         onSelectedBranchChange={onSelectedBranchChange}
                         onViewModeChange={onViewModeChange}
-                        onAnalyzePly={handleAnalyzePly}
+                        onAnalyzePly={readOnly ? undefined : handleAnalyzePly}
                         isAnalyzing={isAnalyzing}
                         analyzingPly={
                             analyzingState.type !== "none" && analyzingState.type !== "error"
@@ -178,7 +182,7 @@ export function PCKifuSection({ reviewMode }: PCKifuSectionProps): ReactElement 
                                   }
                                 : undefined
                         }
-                        onStartBatchAnalysis={handleStartBatchAnalysis}
+                        onStartBatchAnalysis={readOnly ? undefined : handleStartBatchAnalysis}
                         onCancelBatchAnalysis={handleCancelBatchAnalysis}
                         analysisSettings={analysisSettings}
                         onAnalysisSettingsChange={onAnalysisSettingsChange}
@@ -190,9 +194,11 @@ export function PCKifuSection({ reviewMode }: PCKifuSectionProps): ReactElement 
                         kifuTree={kifuTree}
                         onNodeClick={navigationHandlers.goToNodeById}
                         onBranchSwitch={navigationHandlers.switchBranchAtNode}
-                        onAnalyzeNode={handleAnalyzeNode}
-                        onAnalyzeBranch={handleAnalyzeBranch}
-                        onStartTreeBatchAnalysis={handleStartTreeBatchAnalysis}
+                        onAnalyzeNode={readOnly ? undefined : handleAnalyzeNode}
+                        onAnalyzeBranch={readOnly ? undefined : handleAnalyzeBranch}
+                        onStartTreeBatchAnalysis={
+                            readOnly ? undefined : handleStartTreeBatchAnalysis
+                        }
                         isOnMainLine={navigationState.isOnMainLine}
                         onMoveDetailSelect={handleMoveDetailSelect}
                     />
@@ -200,7 +206,9 @@ export function PCKifuSection({ reviewMode }: PCKifuSectionProps): ReactElement 
             </div>
 
             {/* AI解析タブ */}
-            <div className={`flex flex-col gap-3 ${activeTab !== "ai" ? "hidden" : ""}`}>
+            <div
+                className={`flex flex-col gap-3 ${activeTab !== "ai" || readOnly ? "hidden" : ""}`}
+            >
                 {/* 現在局面のAIヒント（playing/reviewing 両モードで利用可能） */}
                 <CurrentPositionAiHintPanel title="AI解析" />
 

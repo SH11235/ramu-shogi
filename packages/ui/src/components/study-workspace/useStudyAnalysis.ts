@@ -86,6 +86,16 @@ export interface StudyAnalysisSettingsForm {
     presets: PresetConfig[];
     nnueList: NnueMeta[];
     isNnueListLoading: boolean;
+    /** 解析に使えるエンジン（Web は内蔵の 1 つだけ。Desktop は、登録した外部エンジンも並ぶ）。 */
+    engines: Array<{ id: string; label: string; kind: "internal" | "external" }>;
+    /** いま選んでいる解析エンジン。 */
+    engineId: string;
+    /**
+     * いま選んでいるエンジンが、同時に解析できる局面の数の上限（制限が無ければ null）。
+     * Desktop の内蔵エンジンは 1。
+     */
+    maxParallel: number | null;
+    onEngineIdChange: (engineId: string) => void;
 }
 
 /** 画面が解析を操作するための窓口。 */
@@ -166,12 +176,25 @@ export function useStudyAnalysis({
         DEFAULT_ANALYSIS_SETTINGS,
     );
     const settings = { ...DEFAULT_ANALYSIS_SETTINGS, ...storedSettings };
-    const [analysisEngineId] = useLocalStorage<string>(
+    const [analysisEngineId, setAnalysisEngineId] = useLocalStorage<string>(
         "shogi-analysis-engine",
         engineOptions[0]?.id ?? "wasm",
     );
     const engineOption =
         engineOptions.find((option) => option.id === analysisEngineId) ?? engineOptions[0];
+    // 外部の USI エンジンは、評価関数（NNUE）をこちらから渡さない（エンジン自身の設定で決まる）。
+    const isExternalEngine = engineOption?.kind === "external";
+    /**
+     * 解析結果（レイヤー）に残す、エンジンの識別情報。外部エンジンは、表示名が同じ別のエンジンと
+     * 結果が混ざらないよう、登録の ID を版の欄に入れる（外部エンジンの版は分からない）。
+     */
+    const layerEngine = isExternalEngine
+        ? {
+              kind: "external" as const,
+              name: engineOption?.label ?? "external",
+              version: engineOption?.id ?? null,
+          }
+        : { kind: engine.kind, name: engine.name, version: engine.version };
 
     const nnueContext = useNnueContextOptional();
     const {
@@ -273,8 +296,13 @@ export function useStudyAnalysis({
         clientKey: engineOption?.id,
         // 外部の USI エンジンは、変則ルールのパスを解釈できない。
         supportsPassRights: engineOption?.kind !== "external",
-        workerCount: resolveWorkerCount(settings.parallelWorkers),
-        nnueId: analysisNnueId,
+        materialFallback: engineOption?.kind !== "external",
+        // エンジンが同時に動かせる数に収める（Desktop の内蔵エンジンは 1 つだけ）。
+        workerCount: Math.min(
+            resolveWorkerCount(settings.parallelWorkers),
+            engineOption?.maxParallel ?? Number.POSITIVE_INFINITY,
+        ),
+        nnueId: isExternalEngine ? undefined : analysisNnueId,
         onPositionAnalyzed: handlePositionAnalyzed,
         onResult: (_ply: number, event: EngineInfoEvent, nodeId?: string) => {
             if (!nodeId) return;
@@ -293,6 +321,14 @@ export function useStudyAnalysis({
         },
         onError: (ply, error) => {
             console.error(`[study] 解析に失敗しました (ply=${ply}):`, error);
+            // Desktop の内蔵エンジンは、起動してから最初に読み込んだ評価関数しか使えない。
+            if (String(error.cause ?? "").includes("Restart the app to change NNUE")) {
+                setMessage({
+                    text: "この AI に切り替えるには、アプリの再起動が必要です（内蔵エンジンは、起動してから最初に読み込んだ AI だけを使えます）。",
+                    type: "error",
+                });
+                return;
+            }
             setMessage({
                 text: `解析に失敗した局面があります: ${error.message}`,
                 type: "error",
@@ -332,12 +368,19 @@ export function useStudyAnalysis({
         }
         return MATERIAL_AI_NAME;
     };
-    const settingsLabel = `${nameOf(analysisNnueSelection)}・${formatSeconds(settings.batchAnalysisTimeMs)}`;
+    const aiName = isExternalEngine
+        ? (engineOption?.label ?? "外部エンジン")
+        : nameOf(analysisNnueSelection);
+    const settingsLabel = `${aiName}・${formatSeconds(settings.batchAnalysisTimeMs)}`;
     const fullMultiPv = Math.min(STUDY_LIMITS.multiPv, Math.max(1, settings.multiPv));
     // いまの設定に当たる解析結果が既にあれば、その続きから解析する。レイヤーの ID は AI の
     // ファイルを確かめないと決まらないので、ここでは表示名と探索の条件で見分ける。
     const fullTargetLayer = doc.layers.find(
         (layer) =>
+            // 表示名が同じでも、エンジンの種類が違えば別の結果（外部エンジンの名前が、
+            // 評価関数の名前と同じことがある）。外部エンジンどうしは、登録の ID でも見分ける。
+            layer.spec.engine.kind === layerEngine.kind &&
+            (!isExternalEngine || layer.spec.engine.version === layerEngine.version) &&
             layer.display.label === settingsLabel &&
             layer.spec.limits.timeMs === settings.batchAnalysisTimeMs &&
             layer.spec.limits.depth === settings.batchAnalysisDepth &&
@@ -351,13 +394,16 @@ export function useStudyAnalysis({
         limits: { timeMs: number; depth: number },
         multiPv: number,
     ): Promise<{ layer: StudyLayerRef; resolved: ResolvedNnue | null } | null> => {
-        if (!(await download.ensureMatchNnue([selection]))) return null;
-        let resolved: ResolvedNnue | null;
+        let resolved: ResolvedNnue | null = null;
         let meta: NnueMeta | null = null;
         try {
-            resolved = await resolveNnue(selection);
-            if (resolved) {
-                meta = (await nnueContext?.storage.getMeta(resolved.nnueId)) ?? null;
+            // 外部エンジンには評価関数を渡さないので、用意もしない。
+            if (!isExternalEngine) {
+                if (!(await download.ensureMatchNnue([selection]))) return null;
+                resolved = await resolveNnue(selection);
+                if (resolved) {
+                    meta = (await nnueContext?.storage.getMeta(resolved.nnueId)) ?? null;
+                }
             }
         } catch (error) {
             setMessage({
@@ -366,12 +412,10 @@ export function useStudyAnalysis({
             });
             return null;
         }
-        const isInternal = engineOption?.kind !== "external";
+        const isInternal = !isExternalEngine;
         try {
             const layer = buildStudyLayerRefFromNnue({
-                engine: isInternal
-                    ? { kind: engine.kind, name: engine.name, version: engine.version }
-                    : { kind: "external", name: engineOption?.label ?? "external", version: null },
+                engine: layerEngine,
                 appVersion: engine.appVersion,
                 resolved,
                 meta,
@@ -512,10 +556,25 @@ export function useStudyAnalysis({
         if (lockedRef.current) return;
         const target = latestRef.current.doc.layers.find((layer) => layer.id === layerId);
         if (!target) return;
+        // 続きは、その結果を作ったエンジンで解析する。いま選んでいるエンジンが違うときは、
+        // 黙って別のエンジンで試さず、選び直してもらう。
+        const targetIsExternal = target.spec.engine.kind === "external";
+        const sameEngine = targetIsExternal
+            ? isExternalEngine && target.spec.engine.version === layerEngine.version
+            : !isExternalEngine;
+        if (!sameEngine) {
+            setMessage({
+                text: targetIsExternal
+                    ? `「${target.display.label}」は外部エンジン「${target.spec.engine.name}」の結果です。解析の設定でそのエンジンを選んでから、もう一度お試しください。`
+                    : `「${target.display.label}」は内蔵エンジンの結果です。解析の設定で内蔵エンジンを選んでから、もう一度お試しください。`,
+                type: "error",
+            });
+            return;
+        }
         const selection = selectionOfLayer(target);
         if (selection === null) {
             setMessage({
-                text: `「${target.display.label}」で使った AI がこのブラウザに無いため、続きを解析できません。「設定を変える」から、解析する設定を選び直してください。`,
+                text: `「${target.display.label}」で使った AI がこの端末に無いため、続きを解析できません。「設定を変える」から、解析する設定を選び直してください。`,
                 type: "error",
             });
             return;
@@ -576,6 +635,24 @@ export function useStudyAnalysis({
     };
     cancelRef.current = cancel;
 
+    // 解析エンジンを切り替えたら（別のタブ・画面での切り替えも含む）、準備中・実行中の解析は止める。
+    // 続けると、古いエンジンで探索しているのに、新しいエンジンの条件（パスを解釈できるか、など）で
+    // 扱うことになる。
+    const isAnalysisRunningRef = useRef(pool.isRunning);
+    useEffect(() => {
+        isAnalysisRunningRef.current = pool.isRunning;
+    }, [pool.isRunning]);
+    const engineOptionId = engineOption?.id;
+    const startedEngineIdRef = useRef(engineOptionId);
+    useEffect(() => {
+        if (startedEngineIdRef.current === engineOptionId) return;
+        startedEngineIdRef.current = engineOptionId;
+        if (preparingRef.current || isAnalysisRunningRef.current) {
+            void cancelRef.current();
+            setMessage({ text: "解析エンジンが変わったため、解析を止めました。", type: "error" });
+        }
+    }, [engineOptionId, setMessage]);
+
     const switchToSimpleAi = (): void => {
         const request = requestRef.current;
         // 確認ダイアログを閉じる（待っていた準備は「ダウンロードしない」で終わる）。
@@ -632,6 +709,15 @@ export function useStudyAnalysis({
                 presets: presetConfigs,
                 nnueList,
                 isNnueListLoading,
+                engines: engineOptions.map((option) => ({
+                    id: option.id,
+                    label: option.label,
+                    kind:
+                        option.kind === "external" ? ("external" as const) : ("internal" as const),
+                })),
+                engineId: engineOption?.id ?? "",
+                maxParallel: engineOption?.maxParallel ?? null,
+                onEngineIdChange: setAnalysisEngineId,
             },
         },
         download,

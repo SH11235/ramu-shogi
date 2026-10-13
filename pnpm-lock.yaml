@@ -38,6 +38,9 @@ importers:
       '@shogi/engine-tauri':
         specifier: workspace:*
         version: link:../../packages/engine-tauri
+      '@shogi/study-client':
+        specifier: workspace:*
+        version: link:../../packages/study-client
       '@shogi/ui':
         specifier: workspace:*
         version: link:../../packages/ui

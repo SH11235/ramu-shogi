@@ -12,7 +12,6 @@ type NavTo =
     | "/online"
     | "/studies"
     | "/games"
-    | "/public/games"
     | "/rshogi-viewer"
     | "/book-viewer"
     | "/nnue"
@@ -56,7 +55,8 @@ function buildNavSections(pathname: string): NavSection[] {
                 // 棋譜を AI で解析して残す。未ログインでも使える（ブラウザ内に保存）。
                 {
                     to: "/studies",
-                    label: "研究ノート",
+                    // 「（整備中）」は、研究ノートの本格実装が済んだら外す。
+                    label: "研究ノート（整備中）",
                     active: pathname.startsWith("/studies"),
                 },
                 {
@@ -64,11 +64,6 @@ function buildNavSections(pathname: string): NavSection[] {
                     label: "マイ棋譜",
                     active: pathname.startsWith("/games"),
                     requiresAuth: true,
-                },
-                {
-                    to: "/public/games",
-                    label: "公開棋譜",
-                    active: pathname.startsWith("/public/games"),
                 },
             ],
         },

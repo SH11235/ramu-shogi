@@ -64,6 +64,13 @@ function SettingsBody({
         nnueList: form.nnueList,
         isNnueListLoading: form.isNnueListLoading,
     });
+    const isExternalEngine =
+        form.engines.find((engine) => engine.id === form.engineId)?.kind === "external";
+    // 保存してある数がエンジンの上限を超えているときは、実際に使う数（上限）を選んだものとして見せる。
+    const shownParallelWorkers =
+        form.maxParallel === null
+            ? form.settings.parallelWorkers
+            : Math.min(form.settings.parallelWorkers, form.maxParallel);
     return (
         <div className="flex flex-col gap-5">
             {doc.layers.length > 0 && (
@@ -106,23 +113,50 @@ function SettingsBody({
                 {doc.layers.length > 0 && (
                     <h3 className="text-sm font-medium text-wafuu-sumi">別の設定で解析する</h3>
                 )}
-                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                    使う AI
-                    <NativeSelect
-                        value={toNnueSelectionValue(form.nnueSelection)}
-                        onChange={(event) =>
-                            form.onNnueSelectionChange(parseNnueSelectionValue(event.target.value))
-                        }
-                        className={isMobile ? "text-base" : "text-sm"}
-                    >
-                        <option value="material">簡易AI（駒得）</option>
-                        {nnueOptions.map((option) => (
-                            <option key={toOptionValue(option)} value={toOptionValue(option)}>
-                                {option.label}
-                            </option>
-                        ))}
-                    </NativeSelect>
-                </label>
+                {form.engines.length > 1 && (
+                    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                        解析エンジン
+                        <NativeSelect
+                            value={form.engineId}
+                            // 解析の準備中・実行中は切り替えさせない（切り替えると、その解析は止まる）。
+                            disabled={!canStart}
+                            onChange={(event) => form.onEngineIdChange(event.target.value)}
+                            className={isMobile ? "text-base" : "text-sm"}
+                        >
+                            {form.engines.map((engine) => (
+                                <option key={engine.id} value={engine.id}>
+                                    {engine.label}
+                                </option>
+                            ))}
+                        </NativeSelect>
+                    </label>
+                )}
+                {isExternalEngine ? (
+                    <p className="text-xs text-muted-foreground">
+                        外部エンジンは、そのエンジンに設定されている
+                        AI（評価関数）で解析します。結果は、エンジンの名前で残ります。
+                    </p>
+                ) : (
+                    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                        使う AI
+                        <NativeSelect
+                            value={toNnueSelectionValue(form.nnueSelection)}
+                            onChange={(event) =>
+                                form.onNnueSelectionChange(
+                                    parseNnueSelectionValue(event.target.value),
+                                )
+                            }
+                            className={isMobile ? "text-base" : "text-sm"}
+                        >
+                            <option value="material">簡易AI（駒得）</option>
+                            {nnueOptions.map((option) => (
+                                <option key={toOptionValue(option)} value={toOptionValue(option)}>
+                                    {option.label}
+                                </option>
+                            ))}
+                        </NativeSelect>
+                    </label>
+                )}
                 <fieldset className="flex flex-col gap-1">
                     <legend className="pb-1 text-xs text-muted-foreground">
                         1 局面あたりの時間
@@ -168,33 +202,37 @@ function SettingsBody({
                         ))}
                     </div>
                 </fieldset>
-                <fieldset className="flex flex-col gap-1">
-                    <legend className="pb-1 text-xs text-muted-foreground">
-                        同時に解析する局面の数（多いほど速く終わり、端末の負荷は上がります）
-                    </legend>
-                    <div className="flex flex-wrap gap-1.5">
-                        {PARALLEL_WORKER_OPTIONS.map((option) => (
-                            <button
-                                key={option.value}
-                                type="button"
-                                aria-pressed={form.settings.parallelWorkers === option.value}
-                                onClick={() =>
-                                    form.onSettingsChange({
-                                        ...form.settings,
-                                        parallelWorkers: option.value,
-                                    })
-                                }
-                                className={choiceClass(
-                                    form.settings.parallelWorkers === option.value,
-                                )}
-                            >
-                                {option.value === 0
-                                    ? `自動（${resolveWorkerCount(0)}）`
-                                    : option.label}
-                            </button>
-                        ))}
-                    </div>
-                </fieldset>
+                {/* 1 局面ずつしか解析できないエンジン（Desktop の内蔵エンジン）では、選ぶものが無い。 */}
+                {form.maxParallel !== 1 && (
+                    <fieldset className="flex flex-col gap-1">
+                        <legend className="pb-1 text-xs text-muted-foreground">
+                            同時に解析する局面の数（多いほど速く終わり、端末の負荷は上がります）
+                        </legend>
+                        <div className="flex flex-wrap gap-1.5">
+                            {PARALLEL_WORKER_OPTIONS.filter(
+                                (option) =>
+                                    form.maxParallel === null || option.value <= form.maxParallel,
+                            ).map((option) => (
+                                <button
+                                    key={option.value}
+                                    type="button"
+                                    aria-pressed={shownParallelWorkers === option.value}
+                                    onClick={() =>
+                                        form.onSettingsChange({
+                                            ...form.settings,
+                                            parallelWorkers: option.value,
+                                        })
+                                    }
+                                    className={choiceClass(shownParallelWorkers === option.value)}
+                                >
+                                    {option.value === 0
+                                        ? `自動（${Math.min(resolveWorkerCount(0), form.maxParallel ?? Number.POSITIVE_INFINITY)}）`
+                                        : option.label}
+                                </button>
+                            ))}
+                        </div>
+                    </fieldset>
+                )}
                 <p className="text-xs text-muted-foreground">
                     AI・時間・候補手の数のどれかを変えて解析すると、結果は別の解析結果として残り、あとから切り替えて見られます。
                 </p>

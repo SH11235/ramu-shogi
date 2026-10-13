@@ -80,6 +80,8 @@ export default function PublicGamePage(): ReactElement {
                         moves,
                     }}
                     reviewMode={true}
+                    // 棋譜を見るだけの画面。盤の操作と解析はさせない。
+                    viewerMode={true}
                     reviewLeftContent={<GameInfoPanel game={game} />}
                 />
             </div>
