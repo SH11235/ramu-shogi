@@ -177,6 +177,7 @@ const hasBoardEvasion = (position: PositionState): boolean => {
         if (!piece || piece.owner !== turn) continue;
         for (const to of SQUARES) {
             const target = board[to];
+            // 自分の駒や相手玉のいるマスには移動できない。
             if (target && (target.owner === turn || target.type === "K")) continue;
             if (!canReach(board, from, to, piece)) continue;
             const promote = !piece.promoted && isDeadEnd(piece.type, to, turn);

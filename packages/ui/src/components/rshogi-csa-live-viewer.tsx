@@ -109,6 +109,8 @@ interface LiveState {
     moveEvals: (ReviewMoveEval | undefined)[];
     /** 表示中の対局結果 (終局後)。 */
     result?: RshogiGameResult;
+    /** 終局結果の確定時に判定した、詰まされた側。 */
+    checkmatedSide?: Player;
     /**
      * snapshot 適用ごとに増えるカウンタ。`<ShogiMatch>` の key に使う。
      * snapshot は全置換 (接続/再接続時のみ) なので remount してよいが、broadcast
@@ -162,6 +164,20 @@ const initialLiveState: LiveState = {
     clockAnchorAtMs: null,
     connectionState: "connecting",
 };
+
+/** snapshot の局面に受信済みの増分手を適用し、詰まされた側を求める。 */
+export function deriveLiveCheckmatedSide(
+    snapshot: RshogiLiveSnapshot | null,
+    moves: string[],
+): Player | undefined {
+    if (!snapshot) return undefined;
+    const replay = replayMoves(
+        moves.slice(snapshot.moves.length),
+        { validateTurn: true },
+        snapshot.state,
+    );
+    return replay.errors.length === 0 && isCheckmate(replay.state) ? replay.state.turn : undefined;
+}
 
 /**
  * 詰みを表すセンチネル (サーバ `build_floodgate_comment` は詰みを ±100000 で符号化)。
@@ -887,6 +903,10 @@ export function RshogiCsaLiveViewer({
                     // snapshot は全置換。全手分の付随情報 (moveData) も moveDetails から再導出。
                     moveEvals: moveDetailsToEvals(snapshot.moveDetails),
                     result: snapshot.finalResult ?? prev.result,
+                    checkmatedSide:
+                        (snapshot.finalResult ?? prev.result)
+                            ? deriveLiveCheckmatedSide(snapshot, snapshot.moves)
+                            : undefined,
                     snapshotEpoch: prev.snapshotEpoch + 1,
                     // 本体残 0 かつ秒読み方式なら、遅れて参加した観戦者にも
                     // 秒読み表示を即座に出せるよう inByoyomi を派生する。
@@ -959,7 +979,14 @@ export function RshogiCsaLiveViewer({
                 });
             },
             onEnd(result) {
-                setState((prev) => ({ ...prev, result }));
+                setState((prev) => ({
+                    ...prev,
+                    result,
+                    // terminal snapshot で判定済みなら、その結果を再利用する。
+                    checkmatedSide: prev.result
+                        ? prev.checkmatedSide
+                        : deriveLiveCheckmatedSide(prev.snapshot, prev.moves),
+                }));
             },
             onConnectionState(connState) {
                 setState((prev) => ({ ...prev, connectionState: connState }));
@@ -1071,14 +1098,7 @@ export function RshogiCsaLiveViewer({
         );
     }
 
-    let checkmatedSide: Player | undefined;
-    if (state.result) {
-        const replay = replayMoves(state.moves, { validateTurn: true });
-        if (replay.errors.length === 0 && isCheckmate(replay.state)) {
-            checkmatedSide = replay.state.turn;
-        }
-    }
-    const displayedResult = resolveDisplayedResult(state.result, checkmatedSide);
+    const displayedResult = resolveDisplayedResult(state.result, state.checkmatedSide);
     // not-found 文言は「初期 snapshot 待機中」と「snapshot 取得済み」の両ブランチで
     // 表示するため、一度だけ組み立てて使い回す。
     const staticFallbackNotFoundText =
