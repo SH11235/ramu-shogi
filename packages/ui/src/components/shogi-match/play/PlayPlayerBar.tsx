@@ -46,14 +46,25 @@ function usePlayerTimeTextOnly(owner: Player): string {
     if (!rule.enabled) return "時間無制限";
     if (phase !== "playing" && phase !== "paused") {
         // 対局の前後は、残り時間でなく決まり（持ち時間・秒読み）を出す。
-        return rule.mainMs > 0
-            ? `${Math.round(rule.mainMs / 60_000)}分＋1手${seconds(rule.byoyomiMs)}秒`
-            : `1手${seconds(rule.byoyomiMs)}秒`;
+        return describeTimeRule(rule.mainMs, rule.byoyomiMs);
     }
     // AI の 1 手の考慮時間は、設定と同じ言い方で出す（刻々と減る秒は見せない）。
     if (isAI && rule.mainMs === 0) return `1手${seconds(rule.byoyomiMs)}秒`;
-    if (clock.mainMs > 0) return `残り ${formatTime(clock.mainMs)}`;
+    // 1 分を切ったら秒で出す（秒読みに入ったときと書き方を揃える）。
+    if (clock.mainMs >= 60_000) return `残り ${formatTime(clock.mainMs)}`;
+    if (clock.mainMs > 0) return `残り ${seconds(clock.mainMs)}秒`;
     return `残り ${seconds(clock.byoyomiMs)}秒`;
+}
+
+/** 時間の決まりを言葉にする（「10分＋1手30秒」「1分30秒＋1手5秒」「20秒」「1手10秒」）。 */
+export function describeTimeRule(mainMs: number, byoyomiMs: number): string {
+    const byoyomi = byoyomiMs > 0 ? `1手${seconds(byoyomiMs)}秒` : null;
+    if (mainMs <= 0) return byoyomi ?? "1手0秒";
+    const total = seconds(mainMs);
+    const minutes = Math.floor(total / 60);
+    const rest = total % 60;
+    const main = `${minutes > 0 ? `${minutes}分` : ""}${rest > 0 || minutes === 0 ? `${rest}秒` : ""}`;
+    return byoyomi ? `${main}＋${byoyomi}` : main;
 }
 
 /** パス権（変則ルール）の残りの文言。対局が始まる前は、設定した初めの回数を出す。無効なら null。 */

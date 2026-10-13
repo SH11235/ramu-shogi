@@ -32,27 +32,20 @@ function useResultHeadline(result: GameResult): { text: string; tone: "win" | "l
 interface PlayResultCardProps {
     /** スマホ向けに詰める（見出しと操作を小さくまとめる） */
     compact?: boolean;
+    /** 「設定を変える」「棋譜をコピー」を出さない（`PlayResultLinks` を別の場所に置くとき） */
+    hideLinks?: boolean;
     className?: string;
 }
 
 /** 終局後の欄。結果を見出しとして出し、次の一歩を並べる。 */
 export function PlayResultCard({
     compact = false,
+    hideLinks = false,
     className,
 }: PlayResultCardProps): ReactElement | null {
     const { play } = useShogiMatchConfig();
-    const { handleCopyKif } = useNavigation();
-    const [copied, setCopied] = useState(false);
     const result = play?.gameResult;
     if (!play || !result) return null;
-
-    const copyKif = () => {
-        const text = handleCopyKif();
-        void navigator.clipboard
-            ?.writeText(text)
-            .then(() => setCopied(true))
-            .catch(() => setCopied(false));
-    };
 
     return (
         <section
@@ -85,23 +78,48 @@ export function PlayResultCard({
                     もう一局
                 </Button>
             </div>
-            <div className="flex flex-wrap items-center gap-x-4 text-[13px] text-wafuu-sumi-light">
-                <button
-                    type="button"
-                    onClick={play.newGame}
-                    className={cn(PLAY_TEXT_LINK, "hover:text-wafuu-sumi")}
-                >
-                    設定を変える
-                </button>
-                <button
-                    type="button"
-                    onClick={copyKif}
-                    className={cn(PLAY_TEXT_LINK, "hover:text-wafuu-sumi")}
-                >
-                    {copied ? "コピーしました" : "棋譜をコピー"}
-                </button>
-            </div>
+            {!hideLinks && <PlayResultLinks />}
         </section>
+    );
+}
+
+/** 終局後の、主でない操作（設定を変える・棋譜をコピー）。 */
+export function PlayResultLinks({ className }: { className?: string }): ReactElement | null {
+    const { play } = useShogiMatchConfig();
+    const { handleCopyKif } = useNavigation();
+    const [copied, setCopied] = useState(false);
+    if (!play?.gameResult) return null;
+
+    const copyKif = () => {
+        const text = handleCopyKif();
+        void navigator.clipboard
+            ?.writeText(text)
+            .then(() => setCopied(true))
+            .catch(() => setCopied(false));
+    };
+
+    return (
+        <div
+            className={cn(
+                "flex flex-wrap items-center gap-x-4 text-[13px] text-wafuu-sumi-light",
+                className,
+            )}
+        >
+            <button
+                type="button"
+                onClick={play.newGame}
+                className={cn(PLAY_TEXT_LINK, "hover:text-wafuu-sumi")}
+            >
+                設定を変える
+            </button>
+            <button
+                type="button"
+                onClick={copyKif}
+                className={cn(PLAY_TEXT_LINK, "hover:text-wafuu-sumi")}
+            >
+                {copied ? "コピーしました" : "棋譜をコピー"}
+            </button>
+        </div>
     );
 }
 

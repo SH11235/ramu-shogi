@@ -12,6 +12,7 @@ import type { ReactElement, ReactNode } from "react";
 import { useEffect, useEffectEvent, useState } from "react";
 import { Button } from "../../button";
 import { NativeSelect } from "../../native-select";
+import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import { PLAY_HEADING, PLAY_PRIMARY_BUTTON, PLAY_TEXT_LINK } from "./playStyles";
 import { AI_TIME_CHOICES, MY_TIME_CHOICES, type TimeChoice, usePlaySetup } from "./usePlaySetup";
@@ -108,6 +109,7 @@ interface PlaySetupPanelProps {
 export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProps): ReactElement {
     const { play } = useShogiMatchConfig();
     const setup = usePlaySetup();
+    const { passRightsSettings } = useMatchSettings();
     // 振り駒は、始めるときに先後を決める（設定としては保存しない）。
     const [randomSide, setRandomSide] = useState(false);
     const [pendingStart, setPendingStart] = useState(false);
@@ -415,6 +417,13 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
             {/* スマホでは、開始ボタンだけを画面の下端に留める（設定を全部送らなくても始められる。
                 注記や別の道まで留めると、下の項目を隠してしまう）。 */}
             <div className="sticky bottom-0 z-10 bg-background pb-2 pt-1 md:static md:bg-transparent md:p-0">
+                {passRightsSettings.enabled && (
+                    // 変則ルールが効いていることを、開始ボタンのそばで知らせる（スマホでは盤も対局者の帯も下にある）。
+                    <p className="pb-1 text-center text-xs text-wafuu-sumi-light md:hidden">
+                        変則ルール: パス権あり（先手 {passRightsSettings.senteInitialCount} 回・後手{" "}
+                        {passRightsSettings.goteInitialCount} 回）
+                    </p>
+                )}
                 <Button
                     type="button"
                     size="lg"

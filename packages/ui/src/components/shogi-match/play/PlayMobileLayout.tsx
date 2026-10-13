@@ -31,7 +31,7 @@ import {
 } from "./PlayControls";
 import { PlayHintButton, PlayHintLine, usePlayHintMove } from "./PlayHintCard";
 import { PlayMyStatus, PlayPlayerBar } from "./PlayPlayerBar";
-import { PlayResultCard } from "./PlayResult";
+import { PlayResultCard, PlayResultLinks } from "./PlayResult";
 import { PlaySetupPanel } from "./PlaySetupPanel";
 import { PLAY_HAND_ZONES, PLAY_HEADING } from "./playStyles";
 
@@ -87,7 +87,7 @@ export function PlayMobileLayout({
         <div
             inert={phase === "setup" || phase === "finished"}
             // 盤は幅だけでなく高さにも合わせる（横向きなどの低い画面で、盤が画面に入らないのを避ける）。
-            className={`relative mx-auto flex w-full max-w-[max(280px,calc(100dvh-230px))] justify-center ${PLAY_HAND_ZONES}`}
+            className={`relative mx-auto flex w-full max-w-[max(280px,calc(100dvh-285px))] justify-center ${PLAY_HAND_ZONES}`}
         >
             <MobileBoardSection
                 grid={grid}
@@ -191,7 +191,8 @@ export function PlayMobileLayout({
                     {/* 終局の結果と次の一歩は、対局中の操作と同じ位置（画面の下端）に出す。
                         盤は動かさない。 */}
                     <div className="sticky bottom-0 z-10 mt-auto border-t border-wafuu-border bg-background pb-1 pt-2">
-                        <PlayResultCard compact className="px-1" />
+                        {/* 下端に留めるのは結果と主な操作だけ（小さい画面で盤の下の段を隠さないように）。 */}
+                        <PlayResultCard compact hideLinks className="px-1" />
                     </div>
                     <div className="flex justify-center">
                         <KifuNavigationToolbar
@@ -210,6 +211,7 @@ export function PlayMobileLayout({
                         onPlySelect={handlePlySelect}
                         tone="wafuu"
                     />
+                    <PlayResultLinks className="justify-center" />
                     <PlayMessage />
                 </>
             )}
