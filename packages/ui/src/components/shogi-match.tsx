@@ -720,6 +720,19 @@ export function ShogiMatch({
     const editAllowed =
         canEditPosition({ isEditMode, viewerMode }) && (!isPlayScreen || positionEditOpen);
     const [isPaused, setIsPaused] = useState(false);
+    // 対局画面の進み具合。終局の結果があれば、一時停止より優先する（一時停止中に投了したときも
+    // 結果の画面へ移る）。
+    const playPhase: PlayPhase = isMatchRunning
+        ? "playing"
+        : gameResult
+          ? "finished"
+          : isPaused
+            ? "paused"
+            : positionEditOpen
+              ? "editing"
+              : "setup";
+    // 終局後・一時停止から設定の画面へ戻している最中か（戻し終えるまで、対局を始めさせない）。
+    const [isPlayResetting, setIsPlayResetting] = useState(false);
     const pendingSearchStatsRef = useRef(new Map<number, MoveSearchStats>());
     const [liveSearchInfo, setLiveSearchInfo] = useState<{
         side: Player;
@@ -1170,6 +1183,7 @@ export function ShogiMatch({
         setGameResult(result);
         setShowResultDialog(true);
         setIsMatchRunning(false);
+        setIsPaused(false);
         stopTicking();
         try {
             await stopAllEnginesRef.current();
@@ -1189,9 +1203,9 @@ export function ShogiMatch({
     const handleResign = async () => {
         const senteIsHuman = sides.sente.role === "human";
         const goteIsHuman = sides.gote.role === "human";
-        // 人が片方だけなら、投了するのはその人（相手の AI の手番中に押しても、自分の負けにする）。
+        // 対局画面で人が片方だけなら、投了するのはその人（相手の AI の手番中に押しても、自分の負けにする）。
         const currentTurn: Player =
-            senteIsHuman !== goteIsHuman
+            isPlayScreen && senteIsHuman !== goteIsHuman
                 ? senteIsHuman
                     ? "sente"
                     : "gote"
@@ -1521,7 +1535,8 @@ export function ShogiMatch({
         onBack: navigation.goBack,
         onToStart: navigation.goToStart,
         onToEnd: navigation.goToEnd,
-        disabled: isMatchRunning,
+        // 対局画面では、終局後だけ棋譜を送れる（設定中・一時停止中に局面を動かさせない）。
+        disabled: isMatchRunning || (isPlayScreen && playPhase !== "finished"),
         containerRef: boardSectionRef,
         enableWheelNavigation: displaySettings.enableWheelNavigation,
     });
@@ -2009,15 +2024,6 @@ export function ShogiMatch({
     // 作ることもできない（調べたいときは、研究ノートで開く）。
     // 対局画面も、設定中（局面編集を開いていないとき）と終局後は盤を操作させない
     // （駒を動かして調べるのは研究ノート）。
-    const playPhase: PlayPhase = isMatchRunning
-        ? "playing"
-        : isPaused
-          ? "paused"
-          : gameResult
-            ? "finished"
-            : positionEditOpen
-              ? "editing"
-              : "setup";
     const boardLockedInViewer =
         viewerMode || (isPlayScreen && (playPhase === "setup" || playPhase === "finished"));
     const internalEngineId = engineOptions[0]?.id ?? "wasm";
@@ -2330,6 +2336,15 @@ export function ShogiMatch({
     );
     // 終局後・一時停止から、同じ開始局面の設定の画面に戻す。
     const resetForNewGame = async () => {
+        if (isPlayResetting) return;
+        setIsPlayResetting(true);
+        try {
+            await resetForNewGameUnguarded();
+        } finally {
+            setIsPlayResetting(false);
+        }
+    };
+    const resetForNewGameUnguarded = async () => {
         matchEndedRef.current = false;
         setGameResult(null);
         setShowResultDialog(false);
@@ -2351,15 +2366,19 @@ export function ShogiMatch({
         void resumeAutoPlay();
     });
     useEffect(() => {
-        if (!pendingRematch || playPhase !== "setup" || moves.length > 0) return;
+        if (!pendingRematch || isPlayResetting || playPhase !== "setup" || moves.length > 0) {
+            return;
+        }
         setPendingRematch(false);
         startRematch();
-    }, [pendingRematch, playPhase, moves.length]);
+    }, [pendingRematch, isPlayResetting, playPhase, moves.length]);
     const playConfig: PlayScreenConfig | null = isPlayScreen
         ? {
               phase: playPhase,
               isCustomStart: !isHirateStart || (playPhase === "setup" && moves.length > 0),
+              busy: isPlayResetting || pendingRematch,
               startMatch: () => {
+                  if (isPlayResetting) return;
                   setPositionEditOpen(false);
                   if (!isPaused) {
                       setHintCount(0);

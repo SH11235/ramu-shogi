@@ -73,8 +73,8 @@ export interface PlaySetup {
     aiTimeId: string | null;
     myTimeId: string | null;
     locked: boolean;
-    /** 自分の手番を決めて、人 対 AI の組み合わせにする */
-    chooseSide: (side: Player) => void;
+    /** 自分の手番を決めて、人 対 AI の組み合わせにする（`opponentValue` を渡すと相手も同時に替える） */
+    chooseSide: (side: Player, opponentValue?: string) => void;
     chooseOpponent: (value: string) => void;
     chooseLevel: (level: number) => void;
     chooseAiTime: (choice: TimeChoice) => void;
@@ -172,17 +172,72 @@ export function usePlaySetup(): PlaySetup {
     const aiTimeId = AI_TIME_CHOICES.find((choice) => matchesChoice(aiClock, choice))?.id ?? null;
     const myTimeId = MY_TIME_CHOICES.find((choice) => matchesChoice(myClock, choice))?.id ?? null;
 
-    const chooseSide = (side: Player) => {
-        if (kind === "vs-ai" && side === mySide) return;
+    /** 相手の種類（選択欄の値）から、AI の側に入れる設定と評価関数を作る。 */
+    const resolveOpponent = (
+        value: string,
+    ): { setting: SideSetting; selection: NnueSelection | null } | null => {
+        if (value === "material") {
+            return {
+                setting: {
+                    role: "engine",
+                    engineId: internalEngineId,
+                    skillLevel: aiSetting.skillLevel,
+                },
+                selection: NONE_NNUE_SELECTION,
+            };
+        }
+        if (value.startsWith("preset:")) {
+            return {
+                setting: {
+                    role: "engine",
+                    engineId: internalEngineId,
+                    skillLevel: aiSetting.skillLevel,
+                },
+                selection: { presetKey: value.slice("preset:".length), nnueId: null },
+            };
+        }
+        if (value.startsWith("nnue:")) {
+            return {
+                setting: {
+                    role: "engine",
+                    engineId: internalEngineId,
+                    skillLevel: aiSetting.skillLevel,
+                },
+                selection: { presetKey: null, nnueId: value.slice("nnue:".length) },
+            };
+        }
+        if (value.startsWith("ext:")) {
+            return {
+                setting: {
+                    role: "engine",
+                    engineId: value.slice("ext:".length),
+                    skillLevel: undefined,
+                },
+                // 外部エンジンは内蔵 AI の評価関数を使わない（選択は変えない）
+                selection: null,
+            };
+        }
+        return null;
+    };
+
+    /**
+     * 自分の手番を決めて、人 対 AI の組み合わせにする。`opponentValue` を渡すと、相手も同時に替える
+     * （別々に替えると、あとの更新が前の更新を古い値で上書きする）。
+     */
+    const chooseSide = (side: Player, opponentValue?: string) => {
+        const next = opponentValue === undefined ? null : resolveOpponent(opponentValue);
+        if (kind === "vs-ai" && side === mySide && !next) return;
         const other = opposite(side);
+        const nextSetting = next?.setting ?? aiSetting;
+        const nextSelection = next ? next.selection : aiSelection;
         // いまの AI の設定（評価関数・強さ・考慮時間）は、そのまま相手の側へ持っていく。
         const humanClock = kind === "vs-ai" ? myClock : { ...MY_TIME_CHOICES[0] };
         const engineClock = aiClock.enabled ? aiClock : { ...AI_TIME_CHOICES[1] };
-        setSelection(other, aiSelection);
+        if (nextSelection) setSelection(other, nextSelection);
         onSidesChange({
             ...sides,
             [side]: { role: "human", engineId: undefined, skillLevel: undefined },
-            [other]: aiSetting,
+            [other]: nextSetting,
         });
         onTimeSettingsChange({
             ...timeSettings,
@@ -200,21 +255,10 @@ export function usePlaySetup(): PlaySetup {
     };
 
     const chooseOpponent = (value: string) => {
-        let engineId = internalEngineId;
-        let skillLevel = aiSetting.skillLevel;
-        if (value === "material") {
-            setSelection(aiSide, NONE_NNUE_SELECTION);
-        } else if (value.startsWith("preset:")) {
-            setSelection(aiSide, { presetKey: value.slice("preset:".length), nnueId: null });
-        } else if (value.startsWith("nnue:")) {
-            setSelection(aiSide, { presetKey: null, nnueId: value.slice("nnue:".length) });
-        } else if (value.startsWith("ext:")) {
-            engineId = value.slice("ext:".length);
-            skillLevel = undefined;
-        } else {
-            return;
-        }
-        onSidesChange({ ...sides, [aiSide]: { role: "engine", engineId, skillLevel } });
+        const next = resolveOpponent(value);
+        if (!next) return;
+        if (next.selection) setSelection(aiSide, next.selection);
+        onSidesChange({ ...sides, [aiSide]: next.setting });
     };
 
     const chooseLevel = (level: number) => {

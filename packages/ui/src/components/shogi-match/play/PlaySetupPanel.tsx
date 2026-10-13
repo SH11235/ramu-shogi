@@ -143,8 +143,12 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
     };
 
     const handleQuickStart = () => {
-        setup.chooseOpponent("material");
-        if (isVsAi && randomSide) setup.chooseSide(Math.random() < 0.5 ? "sente" : "gote");
+        if (isVsAi && randomSide) {
+            // 先後と相手は 1 回の更新で決める（別々に替えると、あとの更新が相手を元に戻す）。
+            setup.chooseSide(Math.random() < 0.5 ? "sente" : "gote", "material");
+        } else {
+            setup.chooseOpponent("material");
+        }
         setPendingStart(true);
     };
 
@@ -314,6 +318,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                     type="button"
                     size="lg"
                     onClick={handleStart}
+                    disabled={play?.busy}
                     className={cn("h-12 w-full text-base font-semibold", PLAY_PRIMARY_BUTTON)}
                 >
                     {downloadMb !== null ? "ダウンロードして対局開始" : "対局開始"}

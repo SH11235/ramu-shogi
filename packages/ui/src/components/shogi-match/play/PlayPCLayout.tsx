@@ -186,6 +186,7 @@ export function PlayPCLayout({
                         {phase === "finished" && <PlayResultCard />}
                         {(phase === "playing" || phase === "paused") && (
                             <div className="flex flex-col">
+                                <h1 className="sr-only">AI と対局中</h1>
                                 <PlayTurnStatus className="min-h-9 text-lg" />
                                 {/* 知らせ（指せない手など）は手番のそばに出す。高さを確保して下を動かさない。 */}
                                 <div className="min-h-5 text-left [&>p]:text-left">

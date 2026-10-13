@@ -184,6 +184,7 @@ export function PlayMobileLayout({
                 <>
                     {/* 終局後は、結果と次にすること（研究ノートで振り返る・もう一局）を先に出す。 */}
                     {phase === "finished" && <PlayResultCard compact className="px-2 pt-2" />}
+                    {phase !== "finished" && <h1 className="sr-only">AI と対局中</h1>}
                     <PlayPlayerBar position="top" />
                     {board}
                     <PlayPlayerBar position="bottom" />
