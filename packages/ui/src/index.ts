@@ -15,6 +15,7 @@ export {
     dispatchLocalStorageSyncEvent,
     LOCAL_STORAGE_SYNC_EVENT,
 } from "./components/shogi-match/hooks/useLocalStorage";
+export { useIsMobile } from "./components/shogi-match/hooks/useMediaQuery";
 export type { TreeAnalysisJob } from "./components/shogi-match/utils/branchTreeUtils";
 export { collectTreeAnalysisJobs } from "./components/shogi-match/utils/branchTreeUtils";
 export { useDevMode } from "./hooks/useDevMode";

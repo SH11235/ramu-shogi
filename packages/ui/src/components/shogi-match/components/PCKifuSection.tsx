@@ -200,68 +200,70 @@ export function PCKifuSection(): ReactElement {
                 </div>
             </div>
 
-            {/* AI解析タブ */}
-            <div
-                className={`flex flex-col gap-3 ${activeTab !== "ai" || readOnly ? "hidden" : ""}`}
-            >
-                {/* 現在局面のAIヒント（playing/reviewing 両モードで利用可能） */}
-                <CurrentPositionAiHintPanel title="AI解析" />
+            {/* AI解析タブ（棋譜を見るだけの画面では描かない） */}
+            {!readOnly && (
+                <div className={`flex flex-col gap-3 ${activeTab !== "ai" ? "hidden" : ""}`}>
+                    {/* 現在局面のAIヒント（playing/reviewing 両モードで利用可能） */}
+                    <CurrentPositionAiHintPanel title="AI解析" />
 
-                {/* 一括解析設定 */}
-                <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
-                    <span className="text-xs font-semibold text-muted-foreground">
-                        一括解析設定
-                    </span>
-                    <div className="flex flex-col gap-1">
-                        <span className="text-xs text-muted-foreground">並列数</span>
-                        <div className="flex gap-1 flex-wrap">
-                            {PARALLEL_WORKER_OPTIONS.map((opt) => (
-                                <button
-                                    key={opt.value}
-                                    type="button"
-                                    onClick={() =>
-                                        onAnalysisSettingsChange({
-                                            ...analysisSettings,
-                                            parallelWorkers: opt.value,
-                                        })
-                                    }
-                                    className={`px-2 py-1 rounded text-xs transition-colors ${
-                                        analysisSettings.parallelWorkers === opt.value
-                                            ? "bg-wafuu-kincha text-white"
-                                            : "bg-wafuu-washi text-wafuu-sumi hover:bg-wafuu-border"
-                                    }`}
-                                >
-                                    {opt.value === 0 ? `自動(${resolveWorkerCount(0)})` : opt.label}
-                                </button>
-                            ))}
+                    {/* 一括解析設定 */}
+                    <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+                        <span className="text-xs font-semibold text-muted-foreground">
+                            一括解析設定
+                        </span>
+                        <div className="flex flex-col gap-1">
+                            <span className="text-xs text-muted-foreground">並列数</span>
+                            <div className="flex gap-1 flex-wrap">
+                                {PARALLEL_WORKER_OPTIONS.map((opt) => (
+                                    <button
+                                        key={opt.value}
+                                        type="button"
+                                        onClick={() =>
+                                            onAnalysisSettingsChange({
+                                                ...analysisSettings,
+                                                parallelWorkers: opt.value,
+                                            })
+                                        }
+                                        className={`px-2 py-1 rounded text-xs transition-colors ${
+                                            analysisSettings.parallelWorkers === opt.value
+                                                ? "bg-wafuu-kincha text-white"
+                                                : "bg-wafuu-washi text-wafuu-sumi hover:bg-wafuu-border"
+                                        }`}
+                                    >
+                                        {opt.value === 0
+                                            ? `自動(${resolveWorkerCount(0)})`
+                                            : opt.label}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                        <span className="text-xs text-muted-foreground">解析時間</span>
-                        <div className="flex gap-1 flex-wrap">
-                            {ANALYSIS_TIME_OPTIONS.map((opt) => (
-                                <button
-                                    key={opt.value}
-                                    type="button"
-                                    onClick={() =>
-                                        onAnalysisSettingsChange({
-                                            ...analysisSettings,
-                                            batchAnalysisTimeMs: opt.value,
-                                        })
-                                    }
-                                    className={`px-2 py-1 rounded text-xs transition-colors ${
-                                        analysisSettings.batchAnalysisTimeMs === opt.value
-                                            ? "bg-wafuu-kincha text-white"
-                                            : "bg-wafuu-washi text-wafuu-sumi hover:bg-wafuu-border"
-                                    }`}
-                                >
-                                    {opt.label}
-                                </button>
-                            ))}
+                        <div className="flex flex-col gap-1">
+                            <span className="text-xs text-muted-foreground">解析時間</span>
+                            <div className="flex gap-1 flex-wrap">
+                                {ANALYSIS_TIME_OPTIONS.map((opt) => (
+                                    <button
+                                        key={opt.value}
+                                        type="button"
+                                        onClick={() =>
+                                            onAnalysisSettingsChange({
+                                                ...analysisSettings,
+                                                batchAnalysisTimeMs: opt.value,
+                                            })
+                                        }
+                                        className={`px-2 py-1 rounded text-xs transition-colors ${
+                                            analysisSettings.batchAnalysisTimeMs === opt.value
+                                                ? "bg-wafuu-kincha text-white"
+                                                : "bg-wafuu-washi text-wafuu-sumi hover:bg-wafuu-border"
+                                        }`}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 }

@@ -1,11 +1,13 @@
 import type { GameRecordDetail } from "@shogi/api-contract";
 import { parseCsaMoves } from "@shogi/app-core";
 import type { EngineOption } from "@shogi/ui";
-import { ShogiMatch } from "@shogi/ui";
+import { ShogiMatch, useIsMobile } from "@shogi/ui";
 import { getRouteApi } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
+import { OpenStudyButton } from "../../components/OpenStudyButton";
 import { PageHeader } from "../../components/PageHeader";
+import { createStudyFromKifuSource } from "../../lib/studyEntry";
 import { createWebWasmEngineClient } from "../../platform/wasm-engine-client";
 import { formatGameResult } from "./gameResultUtils";
 
@@ -20,7 +22,7 @@ const engineOptions: EngineOption[] = [
 
 const routeApi = getRouteApi("/public/games/$publicId");
 
-function GameInfoPanel({ game }: { game: GameRecordDetail }): ReactElement {
+function GameInfoPanel({ game, moves }: { game: GameRecordDetail; moves: string[] }): ReactElement {
     return (
         <div className="flex flex-col gap-3">
             <div className="text-sm font-semibold text-wafuu-sumi">
@@ -37,6 +39,38 @@ function GameInfoPanel({ game }: { game: GameRecordDetail }): ReactElement {
                     {game.finishedAt ? new Date(game.finishedAt).toLocaleString("ja-JP") : "不明"}
                 </span>
             </div>
+            <OpenAsStudy game={game} moves={moves} />
+        </div>
+    );
+}
+
+/**
+ * 「研究ノートで開く」と案内。この画面は棋譜を見るだけなので、調べたいときは研究ノートにして
+ * 開く（自分のノートになる）。指し手の無い棋譜では出さない。
+ */
+function OpenAsStudy({
+    game,
+    moves,
+}: {
+    game: GameRecordDetail;
+    moves: string[];
+}): ReactElement | null {
+    if (moves.length === 0) return null;
+    return (
+        <div className="flex flex-col gap-1">
+            <OpenStudyButton
+                open={() =>
+                    createStudyFromKifuSource({
+                        kind: "moves",
+                        startSfen: game.initialSfen,
+                        moves,
+                    })
+                }
+            />
+            {/* 「（整備中）」は、研究ノートの本格実装が済んだら外す。 */}
+            <p className="text-xs text-muted-foreground">
+                解析や変化の検討は、研究ノート（整備中）でできます。
+            </p>
         </div>
     );
 }
@@ -60,6 +94,8 @@ export function resolveMoves(game: GameRecordDetail): string[] {
 export default function PublicGamePage(): ReactElement {
     const game = routeApi.useLoaderData() as GameRecordDetail;
     const moves = resolveMoves(game);
+    // スマホのレイアウトには左の欄（対局情報）が無いので、研究ノートへの入口は盤の上に出す。
+    const isMobile = useIsMobile();
 
     return (
         <>
@@ -68,6 +104,11 @@ export default function PublicGamePage(): ReactElement {
                 right={<HeaderNav />}
             />
             <div>
+                {isMobile && (
+                    <div className="px-2 pt-2">
+                        <OpenAsStudy game={game} moves={moves} />
+                    </div>
+                )}
                 <ShogiMatch
                     engineOptions={engineOptions}
                     manifestUrl={import.meta.env.VITE_NNUE_MANIFEST_URL as string}
@@ -82,7 +123,7 @@ export default function PublicGamePage(): ReactElement {
                     reviewMode={true}
                     // 棋譜を見るだけの画面。盤の操作と解析はさせない。
                     viewerMode={true}
-                    reviewLeftContent={<GameInfoPanel game={game} />}
+                    reviewLeftContent={<GameInfoPanel game={game} moves={moves} />}
                 />
             </div>
         </>
