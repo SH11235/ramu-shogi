@@ -37,6 +37,7 @@
  */
 
 import {
+    buildCsaStartPosition,
     createInitialPositionState,
     type PositionState,
     parseCsaEvalComment,
@@ -102,6 +103,11 @@ export interface RshogiLiveMove {
 export interface RshogiLiveSnapshot {
     /** 対局メタデータ (sente/gote 名、clock spec、開始時刻、event 等)。 */
     meta: RshogiGameMeta;
+    /**
+     * 開始局面の SFEN。平手・先手番なら `"startpos"`。`moves` はこの局面からの手順
+     * (後手番開始・駒落ち・途中局面からの対局では `"startpos"` にならない)。
+     */
+    startSfen: string;
     /** これまでの手 (USI 文字列、`parseCsaMoves` 由来)。 */
     moves: string[];
     /**
@@ -138,10 +144,10 @@ export interface RshogiLiveMoveEvent {
  *
  * live stream ではコメント行が対応する move 行の直後に別行で届くため、`onMove` を
  * 即時発火する既存タイミングを崩さず、コメントは本コールバックで ply 紐付きで
- * 後追い配信する (設計案 (b))。`ply` は 1 始まりで、奇数=先手手番・偶数=後手手番。
+ * 後追い配信する (設計案 (b))。`ply` は 1 始まりで、先手番開始なら奇数=先手手番・偶数=後手手番 (後手番開始なら逆)。
  */
 export interface RshogiLiveMoveCommentEvent {
-    /** コメントが属する手の ply (1 始まり)。奇数=先手・偶数=後手の指し手。 */
+    /** コメントが属する手の ply (1 始まり)。先手番開始なら奇数=先手・偶数=後手の指し手。 */
     ply: number;
     /** 解析済みコメント (raw + eval + pv)。 */
     comment: RshogiLiveComment;
@@ -448,9 +454,25 @@ const decodeSnapshotBlock = (
               ? "gote"
               : (summary.toMove ?? "sente");
 
+    // 開始局面は `BEGIN Position` の局面の行 (`PI` / `P1`〜`P9` / `P+` / `P-`) から組み立てる。
+    // 局面の行が無い (旧サーバー) ときは平手。読めない記述のときも平手にして、warning で知らせる
+    // (手番だけは上で読めているので引き継ぐ)。
+    const setupLines = summaryLines.filter((line) => /^P(?:I|[1-9]|[+-])/.test(line));
+    let start: ReturnType<typeof buildCsaStartPosition>;
+    try {
+        start = buildCsaStartPosition(setupLines, initialTurn);
+    } catch (error) {
+        warnings.push(
+            new Error(
+                `invalid start position in snapshot: ${error instanceof Error ? error.message : String(error)}`,
+            ),
+        );
+        start = buildCsaStartPosition([], initialTurn);
+    }
+
     // 消費秒とコメントの対応を保つため、moves と moveDetails を同じ entry から構築する。
     // 不整合な部分局面を公開しないため、適用不能な手は snapshot 全体の失敗にする。
-    let state: PositionState = { ...createInitialPositionState(), turn: initialTurn };
+    let state: PositionState = start.position;
     const moves: string[] = [];
     const moveDetails: RshogiLiveMove[] = [];
     for (const entry of moveEntries) {
@@ -486,6 +508,7 @@ const decodeSnapshotBlock = (
 
     const snapshot: RshogiLiveSnapshot = {
         meta,
+        startSfen: start.sfen,
         moves,
         moveDetails,
         state,
