@@ -1,26 +1,40 @@
 /**
- * スマホ向け指し手詳細BottomSheet
+ * スマホ向けの「グラフ・読み筋」シート
  *
- * 手をタップした時に表示される詳細パネル
- * 複数PV（読み筋）の表示と操作が可能
+ * 評価値の行のボタンから開く。評価値グラフと、いま見ている手の読み筋を 1 枚にまとめる。
+ * 指し手を押しただけでは開かない（局面が移るだけ）。開いている間は、見ている手に追従する。
  */
 
 import type { PositionState } from "@shogi/app-core";
 import type { ReactElement } from "react";
-import type { KifMove, PvDisplayMove, PvEvalInfo } from "../utils/kifFormat";
+import type { EvalHistory, KifMove, PvDisplayMove, PvEvalInfo } from "../utils/kifFormat";
 import { convertPvToDisplay, formatEval, getEvalTooltipInfo } from "../utils/kifFormat";
 import { formatElapsedTime } from "../utils/timeFormat";
 import { BottomSheet } from "./BottomSheet";
+import { EvalGraph } from "./EvalGraph";
+import { MobileNavigation } from "./MobileNavigation";
 
-interface MoveDetailBottomSheetProps {
+interface MobileAnalysisSheetProps {
     /** シートを開くかどうか */
     open: boolean;
     /** 開閉状態変更時のコールバック */
     onOpenChange: (open: boolean) => void;
-    /** 表示する手の情報 */
+    /** 評価値の履歴（グラフ用） */
+    evalHistory: EvalHistory[];
+    /** いま見ている手数 */
+    currentPly: number;
+    /** 総手数 */
+    totalPly: number;
+    /** いま見ている手（開始局面では null） */
     move: KifMove | null;
-    /** 対応する局面（手が指された後の局面） */
+    /** その手が指された後の局面 */
     position: PositionState | null;
+    /** グラフで手数を選んだとき */
+    onPlySelect: (ply: number) => void;
+    onBack: () => void;
+    onForward: () => void;
+    onToStart: () => void;
+    onToEnd: () => void;
     /** PVを分岐として追加するコールバック */
     onAddBranch?: (ply: number, pv: string[]) => void;
     /** PVを盤面で確認するコールバック */
@@ -147,99 +161,110 @@ function MobilePvCandidateItem({
     );
 }
 
+/** 複数PVがあればそのリスト、なければ単一PVを 1 件のリストにする。 */
+function collectPvList(move: KifMove | null): PvEvalInfo[] {
+    if (!move) return [];
+    const multiPv = (move.multiPvEvals ?? []).filter((pv) => pv?.pv && pv.pv.length > 0);
+    if (multiPv.length > 0) return multiPv;
+    if (move.pv && move.pv.length > 0) {
+        return [
+            {
+                multipv: 1,
+                evalCp: move.evalCp,
+                evalMate: move.evalMate,
+                depth: move.depth,
+                pv: move.pv,
+            },
+        ];
+    }
+    return [];
+}
+
 /**
- * スマホ向け指し手詳細BottomSheet
+ * スマホ向けの「グラフ・読み筋」シート
  */
-export function MoveDetailBottomSheet({
+export function MobileAnalysisSheet({
     open,
     onOpenChange,
+    evalHistory,
+    currentPly,
+    totalPly,
     move,
     position,
+    onPlySelect,
+    onBack,
+    onForward,
+    onToStart,
+    onToEnd,
     onAddBranch,
     onPreview,
     isOnMainLine = true,
-}: MoveDetailBottomSheetProps): ReactElement | null {
+}: MobileAnalysisSheetProps): ReactElement {
     const handleClose = () => onOpenChange(false);
-    // 複数PVがある場合はリストで表示、なければ従来の単一PVを使用
-    const pvList: PvEvalInfo[] = (() => {
-        if (!move) return [];
-
-        const multiPv = (move.multiPvEvals ?? []).filter((pv) => pv?.pv && pv.pv.length > 0);
-        if (multiPv.length > 0) {
-            return multiPv;
-        }
-        if (move.pv && move.pv.length > 0) {
-            return [
-                {
-                    multipv: 1,
-                    evalCp: move.evalCp,
-                    evalMate: move.evalMate,
-                    depth: move.depth,
-                    pv: move.pv,
-                },
-            ];
-        }
-        return [];
-    })();
-
-    // 評価値の詳細情報（ヘッダー用、最良の候補=multipv1のもの）
-    const evalInfo = (() => {
-        if (!move) return null;
-        const bestPv = pvList[0];
-        return getEvalTooltipInfo(
-            bestPv?.evalCp ?? move.evalCp,
-            bestPv?.evalMate ?? move.evalMate,
-            move.ply,
-            bestPv?.depth ?? move.depth,
-        );
-    })();
-
-    if (!move || !position) return null;
-
-    const hasPv = pvList.length > 0;
-    const hasMultiplePv = pvList.length > 1;
+    const pvList = collectPvList(move);
+    const evalText = move ? formatEval(move.evalCp, move.evalMate, move.ply) : "";
+    // 評価値の色は符号ではなく指した側（先手 = 朱、後手 = 藍。グラフと一致）。
+    const mover = move ? (move.mover ?? (move.ply % 2 === 1 ? "sente" : "gote")) : null;
 
     return (
         <BottomSheet
             open={open}
             onOpenChange={onOpenChange}
-            title={`${move.ply}手目の候補`}
+            title="グラフ・読み筋"
             height="auto"
+            // 盤を見ながらグラフをなぞれるよう、背後を暗くしない。
+            overlay="transparent"
         >
-            <div className="space-y-4">
-                {/* 指し手表示 */}
-                <div className="flex flex-col items-center gap-1 py-2 text-center">
-                    <span className="text-2xl font-bold">{move.displayText}</span>
-                    {move.elapsedMs !== undefined && (
-                        <div className="text-xs text-muted-foreground">
-                            消費 {formatElapsedTime(move.elapsedMs)}
-                        </div>
-                    )}
-                    {evalInfo && (
-                        <div>
-                            <span
-                                className={`text-lg font-semibold ${
-                                    evalInfo.advantage === "sente"
-                                        ? "text-wafuu-shu"
-                                        : evalInfo.advantage === "gote"
-                                          ? "text-wafuu-ai"
-                                          : "text-muted-foreground"
-                                }`}
-                            >
-                                {evalInfo.description}
-                            </span>
-                            {hasMultiplePv && (
-                                <span className="ml-2 text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                                    {pvList.length}候補
+            <div className="flex flex-col gap-3">
+                {/* グラフ。押す・なぞると、その辺りの局面へ移る（シートは閉じない）。 */}
+                <EvalGraph
+                    evalHistory={evalHistory}
+                    currentPly={currentPly}
+                    compact
+                    height={96}
+                    // 詰みや大差の値で全体が平らにならないよう、縦軸に上限を置く（研究ノートと同じ）。
+                    minScale={1000}
+                    axisCap={3000}
+                    onPlySelect={onPlySelect}
+                    scrubbable
+                />
+
+                {/* いま見ている手。グラフでは 1 手単位に合わせにくいので、ここで前後に送る。 */}
+                <div className="flex items-baseline justify-center gap-2 text-sm">
+                    {move ? (
+                        <>
+                            <span className="font-semibold">{move.displayText}</span>
+                            {evalText !== "" && (
+                                <span
+                                    className={`font-mono font-semibold tabular-nums ${
+                                        mover === "sente" ? "text-wafuu-shu" : "text-wafuu-ai"
+                                    }`}
+                                >
+                                    {evalText}
                                 </span>
                             )}
-                        </div>
+                            {move.elapsedMs !== undefined && (
+                                <span className="text-xs text-muted-foreground">
+                                    消費 {formatElapsedTime(move.elapsedMs)}
+                                </span>
+                            )}
+                        </>
+                    ) : (
+                        <span className="text-muted-foreground">開始局面</span>
                     )}
                 </div>
+                <MobileNavigation
+                    currentPly={currentPly}
+                    totalPly={totalPly}
+                    onBack={onBack}
+                    onForward={onForward}
+                    onToStart={onToStart}
+                    onToEnd={onToEnd}
+                />
 
-                {/* 候補リスト */}
-                {hasPv ? (
-                    <div className="space-y-3">
+                {/* 読み筋 */}
+                {move && position && pvList.length > 0 ? (
+                    <div className="flex flex-col gap-3">
                         {pvList.map((pv) => (
                             <MobilePvCandidateItem
                                 key={pv.multipv}
@@ -254,7 +279,9 @@ export function MoveDetailBottomSheet({
                         ))}
                     </div>
                 ) : (
-                    <div className="text-center text-muted-foreground py-6">読み筋がありません</div>
+                    <div className="py-3 text-center text-sm text-muted-foreground">
+                        この手の読み筋はありません
+                    </div>
                 )}
             </div>
         </BottomSheet>

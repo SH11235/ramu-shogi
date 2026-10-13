@@ -221,6 +221,45 @@ function RshogiPlayersBar({
     );
 }
 
+/**
+ * 対局者を 1 行に詰めた表示（スマホ）。盤の上の「手数・反転・サウンド」の行に小さく出す。
+ * 縦を取らないよう、長い名前は省略する（全文とレートは「対局情報」のシートで見られる）。
+ */
+function RshogiPlayersInline({ meta }: { meta: RshogiGame["meta"] }): ReactElement {
+    const winner = meta.result?.winner;
+    const renderSide = (side: "sente" | "gote") => {
+        const isSente = side === "sente";
+        return (
+            <span data-side={side} className="flex min-w-0 items-center gap-0.5">
+                <span
+                    className={cn("flex-none", isSente ? "text-wafuu-shu" : "text-wafuu-ai")}
+                    aria-hidden="true"
+                >
+                    {isSente ? "☗" : "☖"}
+                </span>
+                <span className="sr-only">{isSente ? "先手" : "後手"}</span>
+                <span className="truncate font-semibold">
+                    {isSente ? meta.senteName : meta.goteName}
+                </span>
+                {winner === side && (
+                    <span className="flex-none rounded border border-wafuu-kin bg-wafuu-kin/20 px-1 text-[10px] font-bold leading-4">
+                        勝
+                    </span>
+                )}
+            </span>
+        );
+    };
+    return (
+        <section
+            aria-label="対局者"
+            className="flex min-w-0 items-center gap-2 text-xs text-wafuu-sumi"
+        >
+            {renderSide("sente")}
+            {renderSide("gote")}
+        </section>
+    );
+}
+
 function RshogiGameMetaPanel({
     game,
     eventMeta,
@@ -431,7 +470,7 @@ export function RshogiCsaViewer({
         URL.revokeObjectURL(url);
     };
 
-    // 対局者は横に長いので、左の対局情報ではなく盤の上に出す。
+    // 対局者は横に長いので、左の対局情報ではなく盤の上に出す（スマホは対局情報のシートの中）。
     const playersBar = <RshogiPlayersBar meta={game.meta} rates={rates} />;
 
     const metaContent = (
@@ -463,31 +502,6 @@ export function RshogiCsaViewer({
     return (
         <div>
             {header}
-            {/* モバイルのレイアウトには左カラムが無い。盤の上に対局者（PC と同じ、先手・後手を
-                分けた行）と、対局場所の 1 行を出し、残り (元棋譜へのリンク・CSA ダウンロードなど)
-                はシートで開く。 */}
-            {isMobile && (
-                <>
-                    <div className="px-2 pt-1">{playersBar}</div>
-                    <button
-                        type="button"
-                        onClick={() => setIsMetaSheetOpen(true)}
-                        aria-haspopup="dialog"
-                        className="flex w-full items-center justify-end gap-2 border-b border-wafuu-border px-3 py-1.5 text-left text-xs text-wafuu-sumi"
-                    >
-                        <RshogiVenueBadge source={game.meta.source} />
-                        <span className="shrink-0 text-wafuu-shu">対局情報</span>
-                    </button>
-                    <BottomSheet
-                        open={isMetaSheetOpen}
-                        onOpenChange={setIsMetaSheetOpen}
-                        title="対局情報"
-                        height="auto"
-                    >
-                        {metaContent}
-                    </BottomSheet>
-                </>
-            )}
             <ShogiMatch
                 engineOptions={engineOptions}
                 manifestUrl={manifestUrl}
@@ -499,12 +513,15 @@ export function RshogiCsaViewer({
                     sente: { role: "human" },
                     gote: { role: "human" },
                 }}
-                initialReview={{ sfen: startSfen, moves, moveData }}
+                // 棋譜は最初から並べて見るので、開始局面から開く（最終手ではなく）。
+                initialReview={{ sfen: startSfen, moves, moveData, openAt: "start" }}
                 reviewMode={true}
                 // 棋譜を見るだけの画面なので、対局開始・棋譜読込・局面編集などは出さない。
                 viewerMode={true}
-                // 盤の上（対局時計の位置）に対局者を出す。スマホは上の行で出している。
+                // 盤の上（対局時計の位置）に対局者を出す。スマホは、手数・反転の行に小さく出す
+                // （上に別の行を取ると、盤が最初の画面に収まらない）。
                 boardTopContent={playersBar}
+                mobileHeaderContent={<RshogiPlayersInline meta={game.meta} />}
                 // 対局中ではないので、評価値グラフは隠さず常に出す（折りたたみの操作も出さない）。
                 evalGraphPinned={true}
                 onPositionSnapshot={shownPosition.handlePositionSnapshot}
@@ -512,6 +529,32 @@ export function RshogiCsaViewer({
                 spectateMode={hasRecordedEval}
                 reviewLeftContent={metaContent}
             />
+            {/* モバイルのレイアウトには左カラムが無い。対局場所の 1 行を操作欄の下に出し、
+                残り（対局者の全文・レート・元棋譜へのリンク・CSA ダウンロードなど）はシートで開く。 */}
+            {isMobile && (
+                <>
+                    <button
+                        type="button"
+                        onClick={() => setIsMetaSheetOpen(true)}
+                        aria-haspopup="dialog"
+                        className="flex w-full items-center justify-end gap-2 border-t border-wafuu-border px-3 py-2 text-left text-xs text-wafuu-sumi"
+                    >
+                        <RshogiVenueBadge source={game.meta.source} />
+                        <span className="shrink-0 text-wafuu-shu">対局情報</span>
+                    </button>
+                    <BottomSheet
+                        open={isMetaSheetOpen}
+                        onOpenChange={setIsMetaSheetOpen}
+                        title="対局情報"
+                        height="auto"
+                    >
+                        <div className="flex flex-col gap-3">
+                            {playersBar}
+                            {metaContent}
+                        </div>
+                    </BottomSheet>
+                </>
+            )}
         </div>
     );
 }

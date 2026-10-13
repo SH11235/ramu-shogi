@@ -22,6 +22,11 @@ interface ShogiMatchConfig {
      */
     boardTopContent: ReactNode;
     /**
+     * スマホの盤の上の 1 行（手数・反転・サウンドの行）の左側に出す内容
+     * （棋譜ビューアの対局者名など）。無ければ null
+     */
+    mobileHeaderContent: ReactNode;
+    /**
      * 評価値グラフを常に出すか（折りたたみの操作を出さない）。棋譜ビューアのように、
      * グラフを隠す理由の無い画面で true にする。
      */
@@ -35,6 +40,7 @@ const defaultConfig: ShogiMatchConfig = {
     kifuImportExtra: null,
     viewerMode: false,
     boardTopContent: null,
+    mobileHeaderContent: null,
     evalGraphPinned: false,
 };
 
@@ -57,6 +63,7 @@ export function ShogiMatchProvider({ config, children }: ShogiMatchProviderProps
         kifuImportExtra: config.kifuImportExtra ?? defaultConfig.kifuImportExtra,
         viewerMode: config.viewerMode ?? defaultConfig.viewerMode,
         boardTopContent: config.boardTopContent ?? defaultConfig.boardTopContent,
+        mobileHeaderContent: config.mobileHeaderContent ?? defaultConfig.mobileHeaderContent,
         evalGraphPinned: config.evalGraphPinned ?? defaultConfig.evalGraphPinned,
     };
     return <ShogiMatchContext.Provider value={mergedConfig}>{children}</ShogiMatchContext.Provider>;

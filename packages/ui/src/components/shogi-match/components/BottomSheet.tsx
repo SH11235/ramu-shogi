@@ -43,11 +43,6 @@ const heightClassName: Record<NonNullable<BottomSheetProps["height"]>, string> =
     // コンテンツが少ない場合は min-content で縮み、多い場合は 85vh でスクロール
     auto: "h-auto max-h-[85vh]",
 };
-// Glass surface tuning for mobile overlays/sheets.
-// Lower opacity + lower blur makes the board more visible behind the surface.
-export const GLASS_SURFACE_OPACITY = 0.05;
-export const GLASS_SURFACE_BLUR_PX = 1;
-
 /**
  * スマホ向けボトムシートコンポーネント
  * 設定パネルなどを下からスライドして表示する
@@ -63,7 +58,7 @@ export function BottomSheet({
     surface = "solid",
 }: BottomSheetProps): ReactElement {
     const overlayClassName =
-        overlay === "transparent" ? "bg-transparent backdrop-blur-0" : undefined;
+        overlay === "transparent" ? "bg-transparent backdrop-blur-none" : undefined;
     const surfaceClassName =
         surface === "glass" ? "bg-background/[0.05] backdrop-blur-[1px]" : "bg-background";
     return (

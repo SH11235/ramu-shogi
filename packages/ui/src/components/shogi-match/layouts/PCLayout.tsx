@@ -132,7 +132,9 @@ export function PCLayout({
                 // 一致させてはみ出しを防ぐ。情報列の minmax は盤幅の変動を吸収する。
                 // 情報パネルが無いときは盤を狭い列へ押し込まないよう 2 列にし、
                 // justify-center で盤+棋譜の対を中央へ寄せる。
-                <div className="flex w-full max-w-[1240px] flex-col gap-4 rounded-xl bg-background p-4 text-foreground shadow-card">
+                // 全体を白地のカードで囲まない（中の評価値グラフ・棋譜・対局情報がそれぞれ枠を持つ。
+                // 外側まで囲むと、ページの中で中央だけが浮いて見える）。
+                <div className="flex w-full max-w-[1240px] flex-col gap-4 p-4 text-foreground">
                     {reviewTopContent}
                     <div
                         className={`grid grid-cols-1 gap-4 min-[1280px]:items-start min-[1280px]:justify-center ${

@@ -146,6 +146,11 @@ interface InitialReviewInput {
     sfen: string;
     moves: string[];
     moveData?: (ReviewMoveEval | undefined)[];
+    /**
+     * 最初に取り込んだときに開く局面。`"start"` は開始局面、省略時は最終手（観戦は最新手を追う）。
+     * 取り込んだ後の更新（手が伸びた・評価値が届いた）には効かない。
+     */
+    openAt?: "start";
 }
 
 type InitialReviewSyncMode = "skip" | "import" | "diff";
@@ -342,6 +347,8 @@ export function useInitialReviewSync({
         const navState = navigationRef.current.state;
         const wasFollowingTip = navState.currentPly === navState.totalPly;
         const restorePly = navState.currentPly;
+        // 最初の取り込みだけ、開始局面から開く指定に従う。
+        const openAtStart = loaded === null && getLatestReview()?.openAt === "start";
 
         // await 前に確定して StrictMode の二重実行を冪等化する。連続着手で先行 import が
         // 後着 import に追い越されたら、isStale で古い import の state 適用を中止する。
@@ -350,7 +357,7 @@ export function useInitialReviewSync({
         loadedReviewMoveDataRef.current = importMoveData;
         void importSfenRef
             .current(reviewSfen, reviewMoves, {
-                gotoPly: wasFollowingTip ? undefined : restorePly,
+                gotoPly: openAtStart ? 0 : wasFollowingTip ? undefined : restorePly,
                 moveData: importMoveData,
                 isStale: () =>
                     loadedReviewRef.current?.sfen !== reviewSfen ||
@@ -413,6 +420,32 @@ export function useInitialReviewSync({
                 console.error("[rshogi] initialReview の取り込みに失敗しました", err);
             });
     }, [positionReady, reviewSfen, reviewMoves, reviewMoveDataKey]);
+}
+
+/**
+ * 読み筋のウィンドウ（PC）に出す手と、その手が指された後の局面。
+ *
+ * ウィンドウを開いている間は、見ている手に追従する。指し手と局面は、いま見ている手順の同じ手数
+ * から引く（別の変化へ移っても、手と局面が食い違わない）。開始局面（0 手目）には出す手が無い
+ * ので、その間だけウィンドウを出さない（手を進めるとまた出る）。
+ */
+export function resolveMoveDetail({
+    isOpen,
+    currentPly,
+    kifMoves,
+    positionHistory,
+}: {
+    isOpen: boolean;
+    currentPly: number;
+    kifMoves: readonly KifMove[];
+    /** 「その手が指された後の局面」を 0 始まりで持つ（手数 ply の局面は `ply - 1`）。 */
+    positionHistory: readonly PositionState[];
+}): { move: KifMove; position: PositionState } | null {
+    if (!isOpen || currentPly < 1) return null;
+    const move = kifMoves.find((m) => m.ply === currentPly);
+    const position = positionHistory[currentPly - 1];
+    if (!move || !position) return null;
+    return { move, position };
 }
 
 /**
@@ -515,6 +548,11 @@ interface ShogiMatchProps {
      */
     boardTopContent?: React.ReactNode;
     /**
+     * スマホの盤の上の 1 行（手数・反転・サウンドの行）の左側に出すコンテンツ
+     * （棋譜ビューアの対局者名など）。PC のレイアウトには出ない。
+     */
+    mobileHeaderContent?: React.ReactNode;
+    /**
      * 評価値グラフを常に出す（PC。折りたたみの操作を出さない）。棋譜ビューアのように、
      * 対局中ではなくグラフを隠す理由の無い画面で指定する。指定しない画面は、対局中だけ
      * 既定で閉じ、それ以外（対局前・検討・観戦）は既定で開く（どちらも利用者が開閉できる）。
@@ -571,6 +609,7 @@ export function ShogiMatch({
     spectateMode,
     viewerMode = false,
     boardTopContent,
+    mobileHeaderContent,
     evalGraphPinned = false,
     reviewLeftContent,
     reviewTopContent,
@@ -933,13 +972,13 @@ export function ShogiMatch({
         onAnalysisSnapshotChange?.(analysisSnapshotDraft);
     }, [analysisSnapshotDraft, onAnalysisSnapshotChange]);
 
-    // 選択中の手の詳細を最新のkifMovesから取得
-    const selectedMoveDetail = (() => {
-        if (!selectedMoveDetailPly) return null;
-        const move = kifMoves.find((m) => m.ply === selectedMoveDetailPly.ply);
-        if (!move) return null;
-        return { move, position: selectedMoveDetailPly.position };
-    })();
+    // 読み筋のウィンドウ（PC）に出す手。開いている間は、見ている手に追従する。
+    const selectedMoveDetail = resolveMoveDetail({
+        isOpen: selectedMoveDetailPly !== null,
+        currentPly: navigation.state.currentPly,
+        kifMoves,
+        positionHistory,
+    });
 
     // 後手が人間の場合は盤面を反転して手前側に表示
     useEffect(() => {
@@ -2157,6 +2196,7 @@ export function ShogiMatch({
                 kifuImportExtra,
                 viewerMode,
                 boardTopContent,
+                mobileHeaderContent,
                 evalGraphPinned,
                 aiIconUrl,
                 presetIconUrls: Object.fromEntries(
