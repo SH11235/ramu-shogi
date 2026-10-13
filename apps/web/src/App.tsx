@@ -67,15 +67,15 @@ function App() {
                         gote: { role: "engine", engineId: engineOptions[0]?.id },
                     }}
                     playSetupFooter={
-                        <p className="rounded-lg bg-wafuu-washi-warm px-3 py-2.5 text-[13px] leading-relaxed text-wafuu-sumi">
-                            棋譜を読み込んで調べたいとき・駒を動かして検討したいときは{" "}
+                        <p className="text-[13px] leading-relaxed text-wafuu-sumi-light">
+                            棋譜を調べる・駒を動かして検討するなら{" "}
                             <Link
                                 to="/studies"
                                 className="font-medium text-wafuu-ai underline underline-offset-2 hover:text-wafuu-ai-light"
                             >
                                 研究ノート
                             </Link>{" "}
-                            へ。
+                            へ
                         </p>
                     }
                     // 読み込んだ棋譜（分岐・コメントごと）を研究ノートにして、その画面へ移る。

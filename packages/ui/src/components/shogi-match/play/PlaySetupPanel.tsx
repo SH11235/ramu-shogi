@@ -49,7 +49,7 @@ function Segmented<T extends string>({
                             aria-pressed={selected}
                             onClick={() => onChange(option.id)}
                             className={cn(
-                                "min-h-10 flex-1 whitespace-nowrap rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+                                "min-h-9 flex-1 whitespace-nowrap rounded-md border px-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
                                 selected
                                     ? "border-wafuu-shu bg-wafuu-shu/10 text-wafuu-shu"
                                     : "border-wafuu-border bg-background text-wafuu-sumi hover:bg-muted/50",
@@ -116,21 +116,16 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
         <section
             aria-labelledby="play-setup-heading"
             className={cn(
-                "flex flex-col gap-5 rounded-xl border border-wafuu-border bg-card p-5 shadow-card",
+                "flex flex-col gap-4 rounded-xl border border-wafuu-border bg-card p-5 shadow-card",
                 className,
             )}
         >
-            <div className="flex flex-col gap-1">
-                <h1
-                    id="play-setup-heading"
-                    className="font-display text-2xl font-semibold text-wafuu-sumi"
-                >
-                    AI と対局する
-                </h1>
-                <p className="text-[13px] leading-relaxed text-wafuu-sumi-light">
-                    相手と手番を選んで「対局開始」を押してください。
-                </p>
-            </div>
+            <h1
+                id="play-setup-heading"
+                className="font-display text-2xl font-semibold text-wafuu-sumi"
+            >
+                AI と対局する
+            </h1>
 
             {isVsAi ? (
                 <Segmented<SideChoice>
@@ -196,13 +191,14 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
             {setup.kind !== "humans" && setup.opponent?.supportsLevel !== false && (
                 <label className="flex flex-col gap-1.5">
                     <span className="flex items-baseline justify-between text-xs font-medium text-wafuu-sumi-light">
-                        <span>強さ</span>
+                        <span>
+                            強さ
+                            <span className="pl-2 font-normal text-muted-foreground">
+                                0 が最も弱く、{SKILL_LEVEL_MAX} が最も強い
+                            </span>
+                        </span>
                         <span className="font-mono text-sm text-wafuu-sumi">
                             レベル {setup.level}
-                            <span className="text-xs text-muted-foreground">
-                                {" "}
-                                / {SKILL_LEVEL_MAX}
-                            </span>
                         </span>
                     </span>
                     <input
@@ -214,15 +210,11 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                         onChange={(event) => setup.chooseLevel(Number(event.target.value))}
                         className="h-6 w-full accent-wafuu-shu"
                     />
-                    <span className="flex justify-between text-[11px] text-muted-foreground">
-                        <span>弱い</span>
-                        <span>強い</span>
-                    </span>
                 </label>
             )}
 
             {isVsAi && (
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-4">
                     <Segmented
                         label="AI の考慮時間（1手）"
                         options={timeOptions(AI_TIME_CHOICES)}
@@ -255,16 +247,17 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                 >
                     {downloadMb !== null ? "ダウンロードして対局開始" : "対局開始"}
                 </Button>
-                <p className="text-center text-xs text-muted-foreground">
+                <p className="text-center text-xs leading-relaxed text-muted-foreground">
                     {describeMatch(setup, sideChoice)}
                     {play?.isCustomStart ? " ・ 指定の局面から" : ""}
+                    {downloadMb !== null && (
+                        <>
+                            <br />
+                            初回だけ約 {downloadMb}MB のダウンロードがあります（すぐ指すなら相手を
+                            「簡易AI」に）
+                        </>
+                    )}
                 </p>
-                {downloadMb !== null && (
-                    <p className="text-center text-xs leading-relaxed text-muted-foreground">
-                        {setup.opponent?.label} は初回だけ約 {downloadMb}MB
-                        のダウンロードが必要です。すぐ指すなら「簡易AI（駒得）」を選べます。
-                    </p>
-                )}
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-wafuu-border pt-4 text-sm">

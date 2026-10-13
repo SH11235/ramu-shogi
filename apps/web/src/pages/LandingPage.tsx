@@ -1,6 +1,5 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactElement, ReactNode } from "react";
-import { AuthBadge } from "../components/AuthBadge";
 import { HeaderNav } from "../components/HeaderNav";
 import { HeroBoard } from "../components/HeroBoard";
 import { PageHeader } from "../components/PageHeader";
@@ -10,14 +9,13 @@ import { PageHeader } from "../components/PageHeader";
 // 色はすべて design-system の wafuu-*/shogi-* トークン経由（ハードコード禁止）。
 
 interface EntryCardProps {
-    to: "/play" | "/online" | "/rshogi-viewer" | "/games";
+    to: "/play" | "/online" | "/rshogi-viewer" | "/studies";
     heading: string;
     tone: "shu" | "ai";
-    requiresAuth?: boolean;
     children: ReactNode;
 }
 
-function EntryCard({ to, heading, tone, requiresAuth, children }: EntryCardProps): ReactElement {
+function EntryCard({ to, heading, tone, children }: EntryCardProps): ReactElement {
     return (
         <Link
             to={to}
@@ -33,7 +31,6 @@ function EntryCard({ to, heading, tone, requiresAuth, children }: EntryCardProps
                 >
                     {heading}
                 </h2>
-                {requiresAuth && <AuthBadge />}
             </span>
             <span className="text-[13px] leading-relaxed text-wafuu-sumi-light">{children}</span>
         </Link>
@@ -44,11 +41,13 @@ export default function LandingPage(): ReactElement {
     return (
         <>
             <PageHeader items={[{ label: "ラム将棋" }]} right={<HeaderNav />} />
-            <main className="mx-auto flex w-full max-w-[1100px] flex-col gap-10 px-4 py-10">
+            {/* 盤の後ろの光彩が画面の外へはみ出しても、ページが横にスクロールしないようにする。 */}
+            <main className="mx-auto flex w-full max-w-[1100px] flex-col gap-10 overflow-x-clip px-4 py-10">
                 <section className="grid items-center gap-8 md:grid-cols-[1.05fr_0.95fr]">
                     <div className="flex flex-col gap-5">
                         <h1 className="text-balance font-display text-4xl leading-tight text-wafuu-sumi sm:text-5xl">
-                            セットアップなしで、<span className="text-wafuu-shu">NNUE 検討</span>。
+                            ブラウザだけで、
+                            <span className="text-wafuu-shu">AI と指す・調べる</span>。
                         </h1>
                         {/* 折返しは文単位に限定する（inline-block）。字数依存の ch 幅だと
                             NNUE/GUI など欧文混じりで語の途中に改行が落ちるため使わない。 */}
@@ -57,10 +56,7 @@ export default function LandingPage(): ReactElement {
                                 NNUE エンジンがブラウザ内で動きます。
                             </span>
                             <span className="inline-block">
-                                評価関数の導入も GUI の設定も不要。
-                            </span>
-                            <span className="inline-block">
-                                人との対局、棋譜の再生もこの画面から。
+                                インストールも GUI の設定も不要です。
                             </span>
                         </p>
                         <div className="flex flex-wrap gap-3">
@@ -69,7 +65,13 @@ export default function LandingPage(): ReactElement {
                                 className="inline-flex items-center gap-2 rounded-lg bg-wafuu-shu px-5 py-3 text-sm font-semibold text-wafuu-shu-fg shadow-card transition-colors hover:bg-wafuu-shu-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                             >
                                 <span aria-hidden>▲</span>
-                                対局をはじめる
+                                AI と対局する
+                            </Link>
+                            <Link
+                                to="/studies"
+                                className="inline-flex items-center gap-2 rounded-lg border border-wafuu-border bg-background px-5 py-3 text-sm font-semibold text-wafuu-sumi transition-colors hover:border-wafuu-ai/50 hover:text-wafuu-ai focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                            >
+                                棋譜を調べる
                             </Link>
                         </div>
                     </div>
@@ -82,9 +84,15 @@ export default function LandingPage(): ReactElement {
                     </div>
                 </section>
 
-                <section aria-label="はじめ方" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    <EntryCard to="/play" heading="対局・検討" tone="shu">
-                        内蔵 NNUE エンジンと指す。検討モードに切り替えられる。ログイン不要。
+                <section
+                    aria-label="できること"
+                    className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+                >
+                    <EntryCard to="/play" heading="AI と対局" tone="shu">
+                        内蔵の NNUE エンジンと指す。強さと持ち時間を選べる。ログイン不要。
+                    </EntryCard>
+                    <EntryCard to="/studies" heading="棋譜を調べる" tone="ai">
+                        棋譜を貼り付けて AI で解析。変化やコメントを研究ノートに残せる。
                     </EntryCard>
                     <EntryCard to="/online" heading="オンライン対局" tone="shu">
                         部屋を作り、招待リンクで人と指す。名前を入れるだけで参加できる。
@@ -92,10 +100,18 @@ export default function LandingPage(): ReactElement {
                     <EntryCard to="/rshogi-viewer" heading="観戦" tone="ai">
                         進行中のエンジン対局をリアルタイムで見る。終局した棋譜も再生できる。
                     </EntryCard>
-                    <EntryCard to="/games" heading="マイ棋譜" tone="ai" requiresAuth>
-                        指した対局を保存して振り返る。
-                    </EntryCard>
                 </section>
+
+                <p className="text-sm text-wafuu-sumi-light">
+                    指した対局は{" "}
+                    <Link
+                        to="/games"
+                        className="font-medium text-wafuu-sumi underline underline-offset-2 hover:text-wafuu-shu"
+                    >
+                        マイ棋譜
+                    </Link>{" "}
+                    に保存できます（要ログイン）。
+                </p>
             </main>
         </>
     );
