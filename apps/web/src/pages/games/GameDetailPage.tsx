@@ -3,7 +3,7 @@ import type {
     GameRecordVisibility,
     UpdateGameVisibilityResponse,
 } from "@shogi/api-contract";
-import { getRouteApi, Link, useParams } from "@tanstack/react-router";
+import { getRouteApi, Link } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
@@ -23,7 +23,6 @@ function buildPublicUrl(publicId: string): string {
 const routeApi = getRouteApi("/games/$gameId");
 
 export default function GameDetailPage(): ReactElement {
-    const { gameId } = useParams({ from: "/games/$gameId" });
     const loaderGame = routeApi.useLoaderData() as GameRecordDetail;
     const [game, setGame] = useState(loaderGame);
     const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
@@ -115,6 +114,24 @@ export default function GameDetailPage(): ReactElement {
                     </div>
                 </Section>
 
+                {/* 盤で見直す入口。研究ノートにできない棋譜（指し手が無い、パスが多すぎるなど）では出さない。 */}
+                {canOpenGameRecordAsStudy(game) && (
+                    <Section>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <h2 className="text-lg font-semibold text-foreground">
+                                    研究ノート
+                                </h2>
+                                <p className="text-sm text-muted-foreground">
+                                    この対局を AI
+                                    で解析して、見直すべき手を調べます。解析結果・変化・コメントは自動で保存されます。
+                                </p>
+                            </div>
+                            <OpenStudyButton open={() => openStudyFromGameRecord(game)} />
+                        </div>
+                    </Section>
+                )}
+
                 <Section>
                     <div>
                         <h2 className="text-lg font-semibold text-foreground">公開設定</h2>
@@ -199,42 +216,6 @@ export default function GameDetailPage(): ReactElement {
                         </div>
                     </Section>
                 )}
-
-                {/* 変則ルール（パスなど）の棋譜は研究ノートにできないので、入口を出さない。 */}
-                {canOpenGameRecordAsStudy(game) && (
-                    <Section>
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                                <h2 className="text-lg font-semibold text-foreground">
-                                    研究ノート
-                                </h2>
-                                <p className="text-sm text-muted-foreground">
-                                    この対局を AI
-                                    で解析して、見直すべき手を調べます。解析結果・変化・コメントは自動で保存されます。
-                                </p>
-                            </div>
-                            <OpenStudyButton open={() => openStudyFromGameRecord(game)} />
-                        </div>
-                    </Section>
-                )}
-
-                <Section>
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                            <h2 className="text-lg font-semibold text-foreground">検討</h2>
-                            <p className="text-sm text-muted-foreground">
-                                この棋譜を検討室で開き、解析結果 snapshot を保存できます。
-                            </p>
-                        </div>
-                        <Link
-                            to="/games/$gameId/review"
-                            params={{ gameId }}
-                            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90"
-                        >
-                            棋譜を検討する
-                        </Link>
-                    </div>
-                </Section>
 
                 <Section>
                     <h2 className="text-lg font-semibold text-foreground">指し手</h2>
