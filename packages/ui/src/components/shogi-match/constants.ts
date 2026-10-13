@@ -19,7 +19,7 @@ export const TOOLTIP_DELAY_DURATION_MS = 120;
  * ページ全体が縦にスクロールしないようにする。
  */
 export const MATCH_LAYOUT_CLASSES =
-    "flex flex-col gap-2 items-center py-2 [--kifu-panel-max-h:min(60vh,calc(100dvh-430px))] [--kifu-panel-branch-max-h:calc(var(--kifu-panel-max-h)-40px)] [--shogi-cell-size:44px]";
+    "flex flex-col gap-2 items-center py-2 [--kifu-panel-max-h:min(60vh,max(0px,calc(100dvh-430px)))] [--kifu-panel-branch-max-h:calc(var(--kifu-panel-max-h)-40px)] [--shogi-cell-size:44px]";
 
 /** localStorage マイグレーション用の旧キー */
 export const LEGACY_STORAGE_KEYS = {

@@ -5,7 +5,9 @@ import { ShogiMatch } from "@shogi/ui";
 import { getRouteApi } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
+import { OpenStudyButton } from "../../components/OpenStudyButton";
 import { PageHeader } from "../../components/PageHeader";
+import { createStudyFromKifuSource } from "../../lib/studyEntry";
 import { createWebWasmEngineClient } from "../../platform/wasm-engine-client";
 import { formatGameResult } from "./gameResultUtils";
 
@@ -20,7 +22,7 @@ const engineOptions: EngineOption[] = [
 
 const routeApi = getRouteApi("/public/games/$publicId");
 
-function GameInfoPanel({ game }: { game: GameRecordDetail }): ReactElement {
+function GameInfoPanel({ game, moves }: { game: GameRecordDetail; moves: string[] }): ReactElement {
     return (
         <div className="flex flex-col gap-3">
             <div className="text-sm font-semibold text-wafuu-sumi">
@@ -37,6 +39,24 @@ function GameInfoPanel({ game }: { game: GameRecordDetail }): ReactElement {
                     {game.finishedAt ? new Date(game.finishedAt).toLocaleString("ja-JP") : "不明"}
                 </span>
             </div>
+            {/* この画面は棋譜を見るだけ。調べたいときは、研究ノートにして開く（自分のノートになる）。 */}
+            {moves.length > 0 && (
+                <div className="flex flex-col gap-1">
+                    <OpenStudyButton
+                        open={() =>
+                            createStudyFromKifuSource({
+                                kind: "moves",
+                                startSfen: game.initialSfen,
+                                moves,
+                            })
+                        }
+                    />
+                    {/* 「（整備中）」は、研究ノートの本格実装が済んだら外す。 */}
+                    <p className="text-xs text-muted-foreground">
+                        解析や変化の検討は、研究ノート（整備中）でできます。
+                    </p>
+                </div>
+            )}
         </div>
     );
 }
@@ -82,7 +102,7 @@ export default function PublicGamePage(): ReactElement {
                     reviewMode={true}
                     // 棋譜を見るだけの画面。盤の操作と解析はさせない。
                     viewerMode={true}
-                    reviewLeftContent={<GameInfoPanel game={game} />}
+                    reviewLeftContent={<GameInfoPanel game={game} moves={moves} />}
                 />
             </div>
         </>
