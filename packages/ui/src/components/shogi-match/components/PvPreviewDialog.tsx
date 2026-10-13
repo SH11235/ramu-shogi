@@ -45,8 +45,6 @@ interface PvPreviewDialogProps {
 
 /** PC の広いダイアログでも、盤をこれ以上大きくしない（読み筋の一覧まで 1 画面に収める）。 */
 const MAX_PREVIEW_CELL_SIZE = 40;
-/** マスがこれより小さいとき（スマホ）は、持ち駒も小さい表示にする。 */
-const COMPACT_HAND_CELL_SIZE = 38;
 
 function boardToGrid(board: BoardState): ShogiBoardCell[][] {
     const matrix = boardToMatrix(board);
@@ -91,11 +89,13 @@ export function PvPreviewDialog({
         return () => observer.disconnect();
     }, [boardArea]);
     const cellSize = Math.min(
-        // 測る前は、画面の幅からダイアログの余白を引いた見積もりで描く。
-        cellSizeForWidth(boardAreaWidth ?? document.documentElement.clientWidth - 50),
+        // 測る前は、画面の幅からダイアログの外側の余白 24・枠 2・内側の余白 24 を引いた見積もりで描く。
+        cellSizeForWidth(
+            boardAreaWidth ??
+                (typeof document === "undefined" ? 0 : document.documentElement.clientWidth - 50),
+        ),
         MAX_PREVIEW_CELL_SIZE,
     );
-    const handSize = cellSize < COMPACT_HAND_CELL_SIZE ? "medium" : "normal";
 
     // 現在のプレビュー位置（0 = 開始局面、1 = PVの1手目後、...）
     const [previewIndex, setPreviewIndex] = useState(0);
@@ -208,7 +208,7 @@ export function PvPreviewDialog({
                 // 説明を渡したときだけ関連付ける（渡さない呼び出しは、これまでどおり）。
                 hasDescription={description !== undefined}
             >
-                <DialogHeader className="flex flex-row items-center justify-between pr-8">
+                <DialogHeader className="flex min-h-8 flex-row items-center justify-between pr-8">
                     <DialogTitle className="text-sm font-medium">
                         {ply}手目の読み筋
                         <span className="text-muted-foreground font-normal">
@@ -263,7 +263,8 @@ export function PvPreviewDialog({
                             isActive={false}
                             onHandSelect={() => {}}
                             flipBoard={false}
-                            size={handSize}
+                            // PC 用の大きさ（normal）は 7 種で約 540px になり、ダイアログの幅に収まらない。
+                            size="medium"
                         />
 
                         {/* 将棋盤 */}
@@ -286,7 +287,8 @@ export function PvPreviewDialog({
                             isActive={false}
                             onHandSelect={() => {}}
                             flipBoard={false}
-                            size={handSize}
+                            // PC 用の大きさ（normal）は 7 種で約 540px になり、ダイアログの幅に収まらない。
+                            size="medium"
                         />
                     </div>
 
