@@ -22,13 +22,7 @@ import { EvalPanel } from "./EvalPanel";
 import { KifuPanel } from "./KifuPanel";
 import { TabHeader } from "./TabHeader";
 
-interface PCKifuSectionProps {
-    /** 観戦/検討モード。対局モードは盤上に時計があり pt-16 でその分を空けて
-     *  棋譜パネルの頭を盤面と揃えるが、検討モードは時計が無いので頭詰めにする。 */
-    reviewMode?: boolean;
-}
-
-export function PCKifuSection({ reviewMode }: PCKifuSectionProps): ReactElement {
+export function PCKifuSection(): ReactElement {
     const [activeTab, setActiveTab] = useState<"kifu" | "ai">("kifu");
     const { gameMode } = useMatchState();
     const { evalGraphPinned, viewerMode } = useShogiMatchConfig();
@@ -83,7 +77,8 @@ export function PCKifuSection({ reviewMode }: PCKifuSectionProps): ReactElement 
 
     return (
         <div
-            className={`flex flex-col shrink-0 w-[var(--panel-width)] ${reviewMode ? "" : "pt-16"}`}
+            // 左の設定パネルと上端を揃える（盤の上の時計の分だけ下げる、ということはしない）。
+            className="flex flex-col shrink-0 w-[var(--panel-width)]"
         >
             {!readOnly && (
                 <TabHeader

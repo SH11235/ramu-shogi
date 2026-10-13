@@ -158,7 +158,7 @@ export function PCLayout({
                         {/* 縦積み時は固定幅の棋譜パネルを中央へ。横並び時は列幅に一致する
                             ので justify-self は既定へ戻す。 */}
                         <div className="order-2 min-w-0 justify-self-center min-[1280px]:order-none min-[1280px]:justify-self-auto">
-                            <PCKifuSection reviewMode />
+                            <PCKifuSection />
                         </div>
                     </div>
                 </div>
