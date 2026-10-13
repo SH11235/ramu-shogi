@@ -21,7 +21,7 @@
  */
 
 import type { Player, PositionState } from "./board";
-import { applyCsaMoveStrict } from "./csa-move";
+import { applyCsaMoveStrict, isCheckmate } from "./csa-move";
 import { buildCsaStartPosition } from "./csa-position";
 
 /**
@@ -79,6 +79,8 @@ export interface CsaMoveAnnotation {
 }
 
 export interface CsaGameRecord {
+    /** 最終局面で詰まされた側。詰みでなければ undefined。終局理由とは独立。 */
+    checkmatedSide?: Player;
     /**
      * 開始局面の SFEN。平手・先手番のときは `"startpos"`。
      * 駒落ち・途中局面 (持ち駒あり、後手番開始を含む) はその局面の SFEN。
@@ -295,7 +297,8 @@ export function parseCsaGameRecord(contents: string): CsaGameRecord {
         }
     }
 
-    if (state === null) resolveStart();
+    state ??= resolveStart();
+    if (isCheckmate(state)) record.checkmatedSide = state.turn;
     for (const pending of pendingMoves) {
         record.moves.push(pending.usi);
         record.annotations.push(toAnnotation(pending));

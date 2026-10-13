@@ -13,7 +13,13 @@
  * - 終局時に最終結果を表示する。
  */
 
-import { CSA_MATE_EVAL_THRESHOLD, parseCsaGameRecord } from "@shogi/app-core";
+import {
+    CSA_MATE_EVAL_THRESHOLD,
+    isCheckmate,
+    type Player,
+    parseCsaGameRecord,
+    replayMoves,
+} from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import {
     type FetchRshogiGameOptions,
@@ -34,6 +40,7 @@ import {
     subscribeRshogiLiveGame,
 } from "@shogi/match-client";
 import { type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
+import { resolveDisplayedResult } from "./rshogi-csa-result";
 import {
     type PlayFromPosition,
     PlayFromPositionButton,
@@ -134,6 +141,7 @@ type StaticFallbackState =
     | { status: "loading"; reason: RshogiLiveStaticFallbackReason }
     | {
           status: "ready";
+          checkmatedSide?: Player;
           reason: RshogiLiveStaticFallbackReason;
           game: RshogiGame;
           /** 保存済み棋譜の開始局面の SFEN。平手なら `"startpos"`。 */
@@ -799,11 +807,13 @@ export function RshogiCsaLiveViewer({
                     });
                     if (controller.signal.aborted) return;
                     let startSfen: string;
+                    let checkmatedSide: Player | undefined;
                     let moves: string[];
                     let moveData: (ReviewMoveEval | undefined)[];
                     try {
                         const record = parseCsaGameRecord(game.csa);
                         startSfen = record.startSfen;
+                        checkmatedSide = record.checkmatedSide;
                         moves = record.moves;
                         moveData = csaAnnotationsToMoveData(record.annotations);
                     } catch (parseError) {
@@ -827,6 +837,7 @@ export function RshogiCsaLiveViewer({
                             reason,
                             game,
                             startSfen,
+                            checkmatedSide,
                             moves,
                             moveData,
                         },
@@ -1012,7 +1023,7 @@ export function RshogiCsaLiveViewer({
         state.clockAnchorAtMs !== null ? Math.max(0, tickMs - state.clockAnchorAtMs) : 0;
 
     if (state.staticFallback?.status === "ready") {
-        const { game, startSfen, moves, moveData } = state.staticFallback;
+        const { game, startSfen, moves, moveData, checkmatedSide } = state.staticFallback;
         return (
             <div className="flex flex-col gap-2">
                 {header}
@@ -1040,7 +1051,10 @@ export function RshogiCsaLiveViewer({
                     onPositionSnapshot={shownPosition.handlePositionSnapshot}
                     reviewLeftContent={
                         <div className="flex flex-col gap-2">
-                            <RshogiLiveMetaPanel meta={game.meta} result={game.meta.result} />
+                            <RshogiLiveMetaPanel
+                                meta={game.meta}
+                                result={resolveDisplayedResult(game.meta.result, checkmatedSide)}
+                            />
                             {onPlayFromPosition && (
                                 <PlayFromPositionButton
                                     onClick={() =>
@@ -1057,6 +1071,14 @@ export function RshogiCsaLiveViewer({
         );
     }
 
+    let checkmatedSide: Player | undefined;
+    if (state.result) {
+        const replay = replayMoves(state.moves, { validateTurn: true });
+        if (replay.errors.length === 0 && isCheckmate(replay.state)) {
+            checkmatedSide = replay.state.turn;
+        }
+    }
+    const displayedResult = resolveDisplayedResult(state.result, checkmatedSide);
     // not-found 文言は「初期 snapshot 待機中」と「snapshot 取得済み」の両ブランチで
     // 表示するため、一度だけ組み立てて使い回す。
     const staticFallbackNotFoundText =
@@ -1165,7 +1187,7 @@ export function RshogiCsaLiveViewer({
                     <div className="flex flex-col gap-2">
                         <RshogiLiveMetaPanel
                             meta={meta}
-                            result={state.result}
+                            result={displayedResult}
                             latestPv={state.latestPv}
                         />
                         {onPlayFromPosition && (

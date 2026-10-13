@@ -9,7 +9,7 @@
  * 変換される。本コンポーネントは decode 後の TS 型のみを扱う。
  */
 
-import { parseCsaGameRecord } from "@shogi/app-core";
+import { type Player, parseCsaGameRecord } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type {
     FetchRshogiGameOptions,
@@ -25,6 +25,7 @@ import {
 import { type ReactElement, type ReactNode, useEffect, useEffectEvent, useState } from "react";
 import { Button } from "./button";
 import { findRshogiEventMeta, RshogiEventMetaDetail } from "./rshogi-csa-event-meta";
+import { resolveDisplayedResult } from "./rshogi-csa-result";
 import { RshogiVenueBadge } from "./rshogi-csa-venue";
 import {
     type PlayFromPosition,
@@ -66,6 +67,7 @@ export interface RshogiCsaViewerProps {
 }
 
 interface LoadState {
+    checkmatedSide?: Player;
     status: "loading" | "ready" | "not-found" | "error";
     game?: RshogiGame;
     /** 開始局面の SFEN。平手なら `"startpos"`。 */
@@ -222,8 +224,10 @@ function RshogiPlayersBar({
 function RshogiGameMetaPanel({
     game,
     eventMeta,
+    checkmatedSide,
 }: {
     game: RshogiGame;
+    checkmatedSide?: Player;
     /** イベントのメタデータ（大会の正式名称・公式ページなど）。無ければタグだけを出す。 */
     eventMeta?: RshogiGameEventMeta;
 }): ReactElement {
@@ -270,7 +274,12 @@ function RshogiGameMetaPanel({
             <div className="text-xs text-muted-foreground">
                 {formatTimeControl(meta.timeControl)}
             </div>
-            <div className="text-sm">{formatResult(meta)}</div>
+            <div className="text-sm">
+                {formatResult({
+                    ...meta,
+                    result: resolveDisplayedResult(meta.result, checkmatedSide),
+                })}
+            </div>
         </section>
     );
 }
@@ -324,6 +333,7 @@ export function RshogiCsaViewer({
                     status: "ready",
                     game,
                     startSfen: record.startSfen,
+                    checkmatedSide: record.checkmatedSide,
                     moves: record.moves,
                     moveData: csaAnnotationsToMoveData(record.annotations),
                     rates: { sente: record.senteRate, gote: record.goteRate },
@@ -427,6 +437,7 @@ export function RshogiCsaViewer({
     const metaContent = (
         <div className="flex flex-col gap-2">
             <RshogiGameMetaPanel
+                checkmatedSide={state.checkmatedSide}
                 game={game}
                 eventMeta={findRshogiEventMeta(events, game.meta.event, game.meta.source)}
             />

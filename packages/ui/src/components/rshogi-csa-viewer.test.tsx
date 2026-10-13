@@ -50,6 +50,24 @@ const renderViewer = () =>
         <RshogiCsaViewer gameId={GAME_ID} engineOptions={[]} manifestUrl="/nnue-manifest.json" />,
     );
 
+describe("RshogiCsaViewer: 詰みの表示", () => {
+    it.each([
+        ["P+53KI00KI\nP-51OU\n+\n+0052KI\n%TORYO", "詰み"],
+        ["PI\n+\n+7776FU\n%TORYO", "投了"],
+    ])("最終局面から終局理由を表示する: %s", async (csa, label) => {
+        vi.mocked(fetchRshogiGame).mockResolvedValue({
+            ...GAME,
+            csa,
+            meta: {
+                ...GAME.meta,
+                result: { kind: "resignation", endReason: "RESIGN", winner: "sente" },
+            },
+        });
+        renderViewer();
+        expect(await screen.findByText(`結果: 先手 (alice) 勝ち (${label})`)).toBeTruthy();
+    });
+});
+
 // イベントのメタデータは、既定では「メタに対応していない古いサーバー」と同じく付かない。
 beforeEach(() => {
     vi.mocked(fetchRshogiGameEvents).mockReset();

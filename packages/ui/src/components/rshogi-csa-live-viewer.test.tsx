@@ -1,3 +1,4 @@
+import { isCheckmate, parseCsaGameRecord, replayMoves } from "@shogi/app-core";
 import type { RshogiGameMeta, RshogiLiveMove, RshogiTimeControl } from "@shogi/match-client";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -147,7 +148,10 @@ const buildTimedLiveSnapshot = (moves: string[] = []): string[] => {
     return [...lines, ...moves, "##[MONITOR2] END"];
 };
 
-const createStaticGameFetch = (csa = "V2.2\nN+alice\nN-bob\nPI\n+\n+7776FU\n%TORYO\n") =>
+const createStaticGameFetch = (
+    csa = "V2.2\nN+alice\nN-bob\nPI\n+\n+7776FU\n%TORYO\n",
+    resultKind = "WIN_WHITE",
+) =>
     vi.fn(
         async () =>
             new Response(
@@ -158,7 +162,7 @@ const createStaticGameFetch = (csa = "V2.2\nN+alice\nN-bob\nPI\n+\n+7776FU\n%TOR
                         game_id: "game-1",
                         black_handle: "alice",
                         white_handle: "bob",
-                        result_kind: "WIN_WHITE",
+                        result_kind: resultKind,
                         end_reason: "RESIGN",
                     },
                 }),
@@ -201,6 +205,58 @@ describe("RshogiCsaLiveViewer: static fallback", () => {
 
     afterEach(() => {
         vi.unstubAllGlobals();
+    });
+
+    // 後手の金を一枚取り、もう一枚を 7 二へ動かして、5 三の馬で支えた頭金で詰ます。
+    const checkmateMoves = [
+        "+7776FU",
+        "-3334FU",
+        "+8822UM",
+        "-9394FU",
+        "+2233UM",
+        "-5152OU",
+        "+3343UM",
+        "-5251OU",
+        "+2726FU",
+        "-4132KI",
+        "+4332UM",
+        "-6152KI",
+        "+3243UM",
+        "-5262KI",
+        "+4353UM",
+        "-6272KI",
+        "+0052KI",
+    ];
+
+    it.each([false, true])("詰みの終局を表示する (保存済み棋譜: %s)", async (saved) => {
+        const csa = ["PI", "+", ...checkmateMoves, "%TORYO"].join("\n");
+        // 厳密な CSA 検証を通し、平手からの USI 再生でも同じ詰みになることを確認する。
+        const record = parseCsaGameRecord(csa);
+        expect(record.checkmatedSide).toBe("gote");
+        const replay = replayMoves(record.moves, { validateTurn: true });
+        expect(replay.errors).toEqual([]);
+        expect(isCheckmate(replay.state)).toBe(true);
+        const fetchOverride = saved
+            ? createStaticGameFetch(csa, "WIN_BLACK")
+            : createStaticGameNotFoundFetch();
+        render(
+            <RshogiCsaLiveViewer
+                gameId="game-1"
+                engineOptions={[]}
+                manifestUrl="/nnue/manifest.json"
+                apiBaseUrl="https://example.com/api/v1"
+                fetchOverride={fetchOverride}
+            />,
+        );
+        act(() => {
+            const ws = MockWebSocket.instances[0];
+            ws.fireOpen();
+            ws.fireLines(buildLiveSnapshot(checkmateMoves, "#RESIGN"));
+        });
+        await waitFor(() => expect(fetchOverride).toHaveBeenCalled());
+        if (saved)
+            await screen.findByText("ライブ接続は終了済みのため、保存済み棋譜を表示しています。");
+        expect(await screen.findByText("先手 (alice) 勝ち (詰み)")).toBeTruthy();
     });
 
     it("terminal snapshot を受けたら GET /games/<id> の静的終局表示へ切り替える", async () => {
