@@ -47,6 +47,8 @@ interface PvPreviewDialogProps {
 const MAX_PREVIEW_CELL_SIZE = 40;
 /** 画面の幅のうち、盤に使えない分。ダイアログの外側の余白 24 + 枠 2 + 内側の余白 24（スマホ）。 */
 const DIALOG_CHROME_WIDTH = 50;
+/** 持ち駒をスマホ用の大きさ（medium）で 1 行に出せる幅。これより狭ければ compact にする。 */
+const MEDIUM_HAND_MIN_WIDTH = 330;
 
 function boardToGrid(board: BoardState): ShogiBoardCell[][] {
     const matrix = boardToMatrix(board);
@@ -91,16 +93,16 @@ export function PvPreviewDialog({
         observer.observe(boardArea);
         return () => observer.disconnect();
     }, [boardArea]);
-    const cellSize = Math.min(
-        // 測る前は、画面の幅からの見積もりで描く。
-        cellSizeForWidth(
-            boardAreaWidth ??
-                (typeof document === "undefined"
-                    ? 0
-                    : document.documentElement.clientWidth - DIALOG_CHROME_WIDTH),
-        ),
-        MAX_PREVIEW_CELL_SIZE,
-    );
+    // 測る前は、画面の幅からの見積もりで描く。
+    const areaWidth =
+        boardAreaWidth ??
+        (typeof document === "undefined"
+            ? 0
+            : document.documentElement.clientWidth - DIALOG_CHROME_WIDTH);
+    const cellSize = Math.min(cellSizeForWidth(areaWidth), MAX_PREVIEW_CELL_SIZE);
+    // 持ち駒は 7 種すべてを 1 行に出す。PC 用の大きさ（normal）は約 540px、スマホ用（medium）でも
+    // 約 320px になるので、幅が足りない端末（360px 幅など）ではさらに小さい表示にする。
+    const handSize = areaWidth < MEDIUM_HAND_MIN_WIDTH ? "compact" : "medium";
 
     // 現在のプレビュー位置（0 = 開始局面、1 = PVの1手目後、...）
     const [previewIndex, setPreviewIndex] = useState(0);
@@ -268,8 +270,7 @@ export function PvPreviewDialog({
                             isActive={false}
                             onHandSelect={() => {}}
                             flipBoard={false}
-                            // PC 用の大きさ（normal）は 7 種で約 540px になり、ダイアログの幅に収まらない。
-                            size="medium"
+                            size={handSize}
                         />
 
                         {/* 将棋盤 */}
@@ -292,8 +293,7 @@ export function PvPreviewDialog({
                             isActive={false}
                             onHandSelect={() => {}}
                             flipBoard={false}
-                            // PC 用の大きさ（normal）は 7 種で約 540px になり、ダイアログの幅に収まらない。
-                            size="medium"
+                            size={handSize}
                         />
                     </div>
 
