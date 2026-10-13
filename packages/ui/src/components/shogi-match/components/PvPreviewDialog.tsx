@@ -45,6 +45,11 @@ interface PvPreviewDialogProps {
 
 /** PC の広いダイアログでも、盤をこれ以上大きくしない（読み筋の一覧まで 1 画面に収める）。 */
 const MAX_PREVIEW_CELL_SIZE = 40;
+/**
+ * マスの下限。盤面の本体（28px）より小さくまで許す。ダイアログは余白の分だけ盤に使える幅が狭く、
+ * 320px 幅の端末では 28px だと盤がはみ出す。
+ */
+const MIN_PREVIEW_CELL_SIZE = 22;
 /** 画面の幅のうち、盤に使えない分。ダイアログの外側の余白 24 + 枠 2 + 内側の余白 24（スマホ）。 */
 const DIALOG_CHROME_WIDTH = 50;
 /** 持ち駒をスマホ用の大きさ（medium）で 1 行に出せる幅。これより狭ければ compact にする。 */
@@ -99,7 +104,10 @@ export function PvPreviewDialog({
         (typeof document === "undefined"
             ? 0
             : document.documentElement.clientWidth - DIALOG_CHROME_WIDTH);
-    const cellSize = Math.min(cellSizeForWidth(areaWidth), MAX_PREVIEW_CELL_SIZE);
+    const cellSize = Math.min(
+        cellSizeForWidth(areaWidth, MIN_PREVIEW_CELL_SIZE),
+        MAX_PREVIEW_CELL_SIZE,
+    );
     // 持ち駒は 7 種すべてを 1 行に出す。PC 用の大きさ（normal）は約 540px、スマホ用（medium）でも
     // 約 320px になるので、幅が足りない端末（360px 幅など）ではさらに小さい表示にする。
     const handSize = areaWidth < MEDIUM_HAND_MIN_WIDTH ? "compact" : "medium";

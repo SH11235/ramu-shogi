@@ -7,10 +7,10 @@ const BOARD_DECORATION_WIDTH = 33;
 const MIN_CELL_SIZE = 28;
 const MAX_CELL_SIZE = 52;
 
-/** 盤を置く幅（px）に収まるマスの大きさ。 */
-export function cellSizeForWidth(width: number): number {
+/** 盤を置く幅（px）に収まるマスの大きさ。`minCellSize` より小さくはしない（幅が足りなければはみ出す）。 */
+export function cellSizeForWidth(width: number, minCellSize = MIN_CELL_SIZE): number {
     return Math.max(
-        MIN_CELL_SIZE,
+        minCellSize,
         Math.min(MAX_CELL_SIZE, Math.floor((width - BOARD_DECORATION_WIDTH) / BOARD_CELLS)),
     );
 }
