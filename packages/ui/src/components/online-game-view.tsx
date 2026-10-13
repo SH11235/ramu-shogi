@@ -531,13 +531,13 @@ export function OnlineGameView({
 
     // ─── 接続状態 ────────────────────────────────────────────────────────────
 
-    const stopResync = (): void => {
+    const stopResync = useEffectEvent((): void => {
         resyncRef.current = null;
         if (resyncTimerRef.current !== null) {
             clearTimeout(resyncTimerRef.current);
             resyncTimerRef.current = null;
         }
-    };
+    });
 
     const showConnectionLost = (): void => {
         setConnection({
@@ -633,11 +633,7 @@ export function OnlineGameView({
         return () => {
             unsub();
             unsubStatus();
-            resyncRef.current = null;
-            if (resyncTimerRef.current !== null) {
-                clearTimeout(resyncTimerRef.current);
-                resyncTimerRef.current = null;
-            }
+            stopResync();
             // 解析の途中で画面を離れたら、その結果も残りのメッセージも反映しない
             isListeningRef.current = false;
         };
@@ -1099,30 +1095,45 @@ export function OnlineGameView({
             {/* 左サイドバー: 対局後検討・NNUE設定など（PC のみ表示） */}
             <div className="hidden md:flex w-64 flex-col gap-3" />
 
-            {/* 切断バナー */}
-            {offlineSeats.size > 0 && (
-                <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-destructive px-4 py-2 text-sm text-destructive-foreground shadow-lg">
-                    {Array.from(offlineSeats).map((s) => (
-                        <span key={s}>{s === "b" ? "先手" : "後手"}が切断しました</span>
+            {/* 接続の通知: 盤面の上に重ね、出し入れで盤面が動かないようにする */}
+            <div className="pointer-events-none fixed top-4 left-1/2 -translate-x-1/2 z-50 flex w-[min(90vw,420px)] flex-col items-center gap-2">
+                {offlineSeats.size > 0 && (
+                    <div className="rounded-lg bg-destructive px-4 py-2 text-sm text-destructive-foreground shadow-lg">
+                        {Array.from(offlineSeats).map((s) => (
+                            <span key={s}>{s === "b" ? "先手" : "後手"}が切断しました</span>
+                        ))}
+                    </div>
+                )}
+                {!gameResult && connection.state === "reconnecting" && (
+                    <output className="rounded-lg border border-border bg-card px-4 py-2 text-sm text-muted-foreground shadow-lg">
+                        再接続中...
+                    </output>
+                )}
+                {!gameResult && connection.state === "lost" && (
+                    <ConnectionLostNotice
+                        reason={connection.canResume ? "seat" : "reload"}
+                        className="pointer-events-auto w-full shadow-lg"
+                    />
+                )}
+                {!gameResult &&
+                    connection.state === "rejected" &&
+                    (connection.finished && onExit ? (
+                        <ConnectionLostNotice
+                            reason="finished"
+                            onExit={onExit}
+                            className="pointer-events-auto w-full shadow-lg"
+                        />
+                    ) : (
+                        // 戻り先を渡されていなければ、終局していても再読み込みで画面を出し直してもらう
+                        <ConnectionLostNotice
+                            reason={connection.finished ? "reload" : "session"}
+                            className="pointer-events-auto w-full shadow-lg"
+                        />
                     ))}
-                </div>
-            )}
+            </div>
 
             {/* メインコンテンツ */}
             <div className={`flex flex-col gap-3 ${isMobile ? "items-center" : "flex-1"}`}>
-                {!gameResult && connection.state === "reconnecting" && (
-                    <output className="text-sm text-muted-foreground">再接続中...</output>
-                )}
-                {!gameResult && connection.state === "lost" && (
-                    <ConnectionLostNotice reason={connection.canResume ? "seat" : "reload"} />
-                )}
-                {!gameResult && connection.state === "rejected" && (
-                    <ConnectionLostNotice
-                        reason={connection.finished ? "finished" : "session"}
-                        onExit={onExit}
-                    />
-                )}
-
                 {/* 奥側プレイヤー情報（上）: 後手視点では先手が奥 */}
                 <PlayerHeader
                     name={flipBoard ? playerNames.b : playerNames.w}

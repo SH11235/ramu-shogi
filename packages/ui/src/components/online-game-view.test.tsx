@@ -435,6 +435,36 @@ describe("OnlineGameView", () => {
         }
     });
 
+    it("切断中に終局していたと分かっても、戻り先を渡されていなければ再読み込みを案内する", async () => {
+        const statusHandlers = new Set<(status: RoomClientStatus) => void>();
+        const { client, emit } = makeSubscribableClient();
+        client.subscribeStatus = vi.fn((handler: (status: RoomClientStatus) => void) => {
+            statusHandlers.add(handler);
+            return () => statusHandlers.delete(handler);
+        });
+        render(
+            <OnlineGameView
+                client={client}
+                snapshot={makeSnapshot()}
+                seat="s"
+                roomId="test-room"
+                requestFullSnapshot={() => true}
+            />,
+        );
+        act(() => {
+            for (const status of ["reconnecting", "connected"] as const) {
+                for (const handler of statusHandlers) handler(status);
+            }
+        });
+
+        await emit({ v: 1, t: "error", payload: { code: "ROOM_FINISHED", message: "" } });
+
+        expect(screen.getByRole("alert").textContent).toContain(
+            "接続が切れました。再読み込みしてください",
+        );
+        expect(screen.getByRole("button", { name: "再読み込み" })).toBeTruthy();
+    });
+
     describe("終局済みルームの復元", () => {
         it("snapshot の result と gameRecordId から終局表示と棋譜 ID を復元する", () => {
             const onStartReview = vi.fn();
