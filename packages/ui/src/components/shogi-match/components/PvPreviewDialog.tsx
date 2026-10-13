@@ -45,6 +45,8 @@ interface PvPreviewDialogProps {
 
 /** PC の広いダイアログでも、盤をこれ以上大きくしない（読み筋の一覧まで 1 画面に収める）。 */
 const MAX_PREVIEW_CELL_SIZE = 40;
+/** 画面の幅のうち、盤に使えない分。ダイアログの外側の余白 24 + 枠 2 + 内側の余白 24（スマホ）。 */
+const DIALOG_CHROME_WIDTH = 50;
 
 function boardToGrid(board: BoardState): ShogiBoardCell[][] {
     const matrix = boardToMatrix(board);
@@ -77,7 +79,8 @@ export function PvPreviewDialog({
     // 盤のマスの大きさは、ダイアログの中身の幅に合わせる。ダイアログは body 直下へ出るので、
     // 開いた画面の `--shogi-cell-size` は届かない。合わせないと、狭い画面で盤が既定の大きさの
     // まま押しつぶされ、マスが縦長になって駒が欠ける。
-    // ダイアログの中身は開いたあとに現れるので、要素を state で受けてから幅を測る。
+    // ダイアログの中身は開いたあとに現れる。ref だと現れても effect が走り直さないので、
+    // 要素を state で受けて、現れたときに幅を測り始める。
     const [boardArea, setBoardArea] = useState<HTMLDivElement | null>(null);
     const [boardAreaWidth, setBoardAreaWidth] = useState<number | null>(null);
     useEffect(() => {
@@ -89,10 +92,12 @@ export function PvPreviewDialog({
         return () => observer.disconnect();
     }, [boardArea]);
     const cellSize = Math.min(
-        // 測る前は、画面の幅からダイアログの外側の余白 24・枠 2・内側の余白 24 を引いた見積もりで描く。
+        // 測る前は、画面の幅からの見積もりで描く。
         cellSizeForWidth(
             boardAreaWidth ??
-                (typeof document === "undefined" ? 0 : document.documentElement.clientWidth - 50),
+                (typeof document === "undefined"
+                    ? 0
+                    : document.documentElement.clientWidth - DIALOG_CHROME_WIDTH),
         ),
         MAX_PREVIEW_CELL_SIZE,
     );
@@ -298,7 +303,7 @@ export function PvPreviewDialog({
                             type="button"
                             onClick={() => setPreviewIndex(0)}
                             disabled={previewIndex === 0}
-                            className="min-w-10 px-3 py-2 text-sm bg-muted hover:bg-muted/80 rounded border border-border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            className="min-w-10 px-3 py-2.5 text-sm bg-muted hover:bg-muted/80 rounded border border-border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         >
                             |&lt;
                         </button>
@@ -306,7 +311,7 @@ export function PvPreviewDialog({
                             type="button"
                             onClick={() => setPreviewIndex((prev) => Math.max(0, prev - 1))}
                             disabled={previewIndex === 0}
-                            className="min-w-10 px-3 py-2 text-sm bg-muted hover:bg-muted/80 rounded border border-border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            className="min-w-10 px-3 py-2.5 text-sm bg-muted hover:bg-muted/80 rounded border border-border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         >
                             &lt;
                         </button>
@@ -321,7 +326,7 @@ export function PvPreviewDialog({
                                 setPreviewIndex((prev) => Math.min(positions.length - 1, prev + 1))
                             }
                             disabled={previewIndex >= positions.length - 1}
-                            className="min-w-10 px-3 py-2 text-sm bg-muted hover:bg-muted/80 rounded border border-border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            className="min-w-10 px-3 py-2.5 text-sm bg-muted hover:bg-muted/80 rounded border border-border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         >
                             &gt;
                         </button>
@@ -329,7 +334,7 @@ export function PvPreviewDialog({
                             type="button"
                             onClick={() => setPreviewIndex(positions.length - 1)}
                             disabled={previewIndex >= positions.length - 1}
-                            className="min-w-10 px-3 py-2 text-sm bg-muted hover:bg-muted/80 rounded border border-border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            className="min-w-10 px-3 py-2.5 text-sm bg-muted hover:bg-muted/80 rounded border border-border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         >
                             &gt;|
                         </button>
