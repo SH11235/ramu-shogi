@@ -475,6 +475,54 @@ describe("StudyWorkspaceView", () => {
         expect(screen.queryByRole("textbox", { name: "コメント" })).toBeNull();
     });
 
+    it("保存できていない書きかけがある手では、畳んでいてもコメント欄を開いて見せ、直している間も開いたままにする", () => {
+        const { doc, ids } = createTestStudy();
+        const tooLong = "あ".repeat(2000);
+        render(
+            <Harness
+                initialDoc={doc}
+                initialCommentDrafts={[{ nodeId: ids[1], text: tooLong, base: "" }]}
+            />,
+        );
+
+        // 書きかけの無い手では、畳んだまま。
+        expect(screen.queryByRole("textbox", { name: "コメント" })).toBeNull();
+
+        // 長すぎる書きかけのある手へ移ると、ボタンを押さなくても欄が開く（閉じることはできない）。
+        fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+        const comment = () =>
+            screen.getByRole("textbox", { name: "コメント" }) as HTMLTextAreaElement;
+        expect(comment().value).toBe(tooLong);
+        expect(
+            (
+                screen.getByRole("button", {
+                    name: "コメント（保存できていない書きかけがあります）",
+                }) as HTMLButtonElement
+            ).disabled,
+        ).toBe(true);
+
+        // 短くして上限に収まっても、入力中の欄は閉じない。
+        fireEvent.change(comment(), { target: { value: "短くした" } });
+        expect(comment().value).toBe("短くした");
+        expect(screen.getByRole("button", { name: "コメントを閉じる" })).toBeTruthy();
+    });
+
+    it("保存できなかった書きかけがある手は、欄を畳んでもボタンの名前で分かる", async () => {
+        const { doc } = createTestStudy();
+        render(<Harness initialDoc={doc} rejectOps />);
+
+        fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+        const comment = commentTextbox();
+        fireEvent.change(comment, { target: { value: "保存できない" } });
+        fireEvent.blur(comment);
+        await act(async () => {});
+
+        fireEvent.click(screen.getByRole("button", { name: "コメントを閉じる" }));
+        expect(
+            screen.getByRole("button", { name: "コメントを開く（保存していない書きかけあり）" }),
+        ).toBeTruthy();
+    });
+
     it("表題に対局者の名前が入っていれば、対局者の行を重ねて出さない", () => {
         const { doc } = createTestStudy();
         const view = render(<Harness initialDoc={doc} />);

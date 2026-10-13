@@ -469,6 +469,10 @@ export function StudyWorkspaceView({
         );
     }
     const commentDrafts = commentDraftsRef.current;
+    // 保存できていない書きかけがある手（コメントのボタンに印を付ける。欄を畳んでいても気づけるように）。
+    const [draftCommentIds, setDraftCommentIds] = useState<ReadonlySet<string>>(
+        () => new Set(commentDrafts.keys()),
+    );
     // コメントが長すぎて保存できていない手（棋譜に印を付ける）。
     const [overLimitCommentIds, setOverLimitCommentIds] = useState<ReadonlySet<string>>(
         () =>
@@ -1053,6 +1057,13 @@ export function StudyWorkspaceView({
             commentDrafts.delete(nodeId);
         }
         const held = commentDrafts.get(nodeId);
+        setDraftCommentIds((previous) => {
+            if (previous.has(nodeId) === (held !== undefined)) return previous;
+            const next = new Set(previous);
+            if (held !== undefined) next.add(nodeId);
+            else next.delete(nodeId);
+            return next;
+        });
         const isOver = held !== undefined && isStudyCommentOverLimit(held.text);
         setOverLimitCommentIds((previous) => {
             if (previous.has(nodeId) === isOver) return previous;
@@ -1116,7 +1127,11 @@ export function StudyWorkspaceView({
     // 書きかけが保存できていない手（長すぎる・別の画面の変更とぶつかった）では、利用者の対応が
     // 要るので、畳んでいても開いて見せる。
     const commentNeedsAttention = unsavedComments.has(currentNodeId);
+    // 開いて見せたら、開いたままにする（対応が済んだ瞬間に、入力中の欄が閉じてしまわないように）。
+    if (commentNeedsAttention && !isCommentOpen) setIsCommentOpen(true);
     const showsComment = isCommentOpen || commentNeedsAttention;
+    // 保存できていない書きかけ（保存を待っている・保存に失敗した、など）がこの手にあるか。
+    const hasCommentDraft = draftCommentIds.has(currentNodeId);
     const settingsButtonLabel =
         doc.layers.length > 1 && displayLayer ? displayLayer.display.label : null;
     // スマートフォンでは、未解析のあいだ「全体を解析」を盤と移動ボタンのすぐ下（切り替えタブの
@@ -1145,26 +1160,33 @@ export function StudyWorkspaceView({
                 </StudyIconButton>
                 <StudyIconButton
                     label={
-                        showsComment
-                            ? "コメントを閉じる"
-                            : savedComment !== ""
-                              ? "コメントを開く（コメントあり）"
-                              : "コメントを開く"
+                        commentNeedsAttention
+                            ? "コメント（保存できていない書きかけがあります）"
+                            : showsComment
+                              ? "コメントを閉じる"
+                              : hasCommentDraft
+                                ? "コメントを開く（保存していない書きかけあり）"
+                                : savedComment !== ""
+                                  ? "コメントを開く（コメントあり）"
+                                  : "コメントを開く"
                     }
                     pressed={showsComment}
                     aria-expanded={showsComment}
                     aria-controls="study-comment"
                     // 対応が要る書きかけがある間は、閉じられない。
-                    disabled={commentNeedsAttention && !isCommentOpen}
+                    disabled={commentNeedsAttention}
                     onClick={() => setIsCommentOpen(!showsComment)}
                     className="relative"
                 >
                     <CommentIcon />
-                    {savedComment !== "" && (
-                        // この手にコメントがある印。
+                    {(savedComment !== "" || hasCommentDraft) && (
+                        // この手にコメントがある印。保存していない書きかけは、注意の色にする。
                         <span
                             aria-hidden="true"
-                            className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-wafuu-shu ring-2 ring-background"
+                            className={cn(
+                                "absolute right-1.5 top-1.5 h-2 w-2 rounded-full ring-2 ring-background",
+                                hasCommentDraft ? "bg-status-warning" : "bg-wafuu-shu",
+                            )}
                         />
                     )}
                 </StudyIconButton>
@@ -1337,22 +1359,23 @@ export function StudyWorkspaceView({
 
     // コメント欄は畳んでいる間も描いたままにする（書きかけの保存・別の画面の変更との突き合わせは、
     // 欄が動いていないと進まない）。
+    // スマホ: 操作ボタンの下に、通常の流れで出す。
     const commentPanel = (
         <div id="study-comment" hidden={!showsComment}>
             {commentBox}
         </div>
     );
-    // 盤の下にグラフを置き、コメント欄は開いたときだけその上に重ねる（開閉で画面が上下しない）。
+    // PC・タブレット: 盤の下にグラフを置き、コメント欄は開いたときだけその上に重ねる
+    // （開閉で画面が上下しない）。重ねている間、下のグラフは操作させない。
     const graphWithComment = (
         <div className="relative w-0 min-w-full">
-            {graphPanel}
+            <div inert={showsComment}>{graphPanel}</div>
             <div
-                className={cn(
-                    "absolute inset-x-0 top-0 z-20 rounded-xl shadow-lg",
-                    !showsComment && "hidden",
-                )}
+                id="study-comment"
+                hidden={!showsComment}
+                className="absolute inset-x-0 top-0 z-20 rounded-xl shadow-lg"
             >
-                {commentPanel}
+                {commentBox}
             </div>
         </div>
     );
@@ -1360,7 +1383,8 @@ export function StudyWorkspaceView({
         <div
             className={cn(
                 "flex items-center gap-x-3 gap-y-1 px-1.5 text-xs text-muted-foreground",
-                isWide ? "shrink-0" : "flex-wrap",
+                // 表題の行に入れるときは、長い出典で表題を潰さないよう幅に上限を置く。
+                isWide ? "min-w-0 max-w-[55%]" : "flex-wrap",
             )}
         >
             {playersLabel && <span className="truncate">{playersLabel}</span>}
