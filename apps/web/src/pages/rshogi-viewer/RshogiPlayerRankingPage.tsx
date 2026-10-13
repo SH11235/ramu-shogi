@@ -112,7 +112,7 @@ export default function RshogiPlayerRankingPage(): ReactElement {
                         </div>
                         <Link
                             to="/rshogi-viewer"
-                            className="w-fit border-b border-wafuu-kincha pb-1 text-sm text-wafuu-washi-warm transition-colors hover:text-wafuu-kincha"
+                            className="w-fit border-b border-wafuu-kincha pb-1 pt-2 text-sm text-wafuu-washi-warm transition-colors hover:text-wafuu-kincha"
                         >
                             棋譜一覧を見る ↗
                         </Link>
@@ -126,7 +126,7 @@ export default function RshogiPlayerRankingPage(): ReactElement {
                     aria-label="レーティング概要"
                 >
                     <div className="flex flex-col gap-1 border-r border-wafuu-border px-3 py-4 text-center sm:px-6">
-                        <span className="text-[10px] tracking-widest text-muted-foreground sm:text-xs">
+                        <span className="text-[11px] tracking-widest text-muted-foreground sm:text-xs">
                             集計対象
                         </span>
                         <strong className="font-serif text-xl text-wafuu-sumi sm:text-2xl">
@@ -134,7 +134,7 @@ export default function RshogiPlayerRankingPage(): ReactElement {
                         </strong>
                     </div>
                     <div className="flex flex-col gap-1 border-r border-wafuu-border px-3 py-4 text-center sm:px-6">
-                        <span className="text-[10px] tracking-widest text-muted-foreground sm:text-xs">
+                        <span className="text-[11px] tracking-widest text-muted-foreground sm:text-xs">
                             集計対局
                         </span>
                         <strong className="font-serif text-xl text-wafuu-sumi sm:text-2xl">
@@ -142,7 +142,7 @@ export default function RshogiPlayerRankingPage(): ReactElement {
                         </strong>
                     </div>
                     <div className="flex min-w-0 flex-col gap-1 px-3 py-4 text-center sm:px-6">
-                        <span className="text-[10px] tracking-widest text-muted-foreground sm:text-xs">
+                        <span className="text-[11px] tracking-widest text-muted-foreground sm:text-xs">
                             首位
                         </span>
                         <strong className="truncate font-serif text-base text-wafuu-shu sm:text-xl">
@@ -202,7 +202,7 @@ export default function RshogiPlayerRankingPage(): ReactElement {
                                                         {player.displayName}
                                                     </strong>
                                                     {player.legacy && (
-                                                        <span className="shrink-0 rounded-sm border border-wafuu-border px-1.5 py-0.5 text-[9px] tracking-wider text-muted-foreground">
+                                                        <span className="shrink-0 rounded-sm border border-wafuu-border px-1.5 py-0.5 text-[10px] tracking-wider text-muted-foreground">
                                                             LEGACY
                                                         </span>
                                                     )}

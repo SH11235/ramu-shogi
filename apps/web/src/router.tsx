@@ -311,7 +311,7 @@ function DefaultErrorComponent({ error }: { error: unknown }) {
             <button
                 type="button"
                 onClick={() => window.location.reload()}
-                className="self-start text-sm text-muted-foreground hover:text-foreground"
+                className="inline-flex min-h-10 items-center self-start text-sm text-muted-foreground hover:text-foreground"
             >
                 再読み込み
             </button>
@@ -327,7 +327,7 @@ function RoomErrorComponent({ error }: { error: Error }) {
             <button
                 type="button"
                 onClick={() => void navigate({ to: "/online", search: undefined })}
-                className="text-sm text-muted-foreground hover:text-foreground"
+                className="inline-flex min-h-10 items-center self-start text-sm text-muted-foreground hover:text-foreground"
             >
                 ← オンライン対局に戻る
             </button>

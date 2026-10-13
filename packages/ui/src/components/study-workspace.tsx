@@ -1207,7 +1207,7 @@ export function StudyWorkspaceView({
             hideHeading={isMobile}
             hideStartButton={showsFixedStart}
             // 主役なので、PC では画面の高さに合わせて伸ばす（下に候補手の欄が見える分は残す）。
-            className={isMobile ? "max-h-[70vh]" : "max-h-[max(17rem,calc(100dvh-24rem))]"}
+            className={isMobile ? "max-h-[70dvh]" : "max-h-[max(17rem,calc(100dvh-24rem))]"}
         />
     );
     const graphPanel = (
@@ -1258,7 +1258,9 @@ export function StudyWorkspaceView({
             onBackToMainLine={backToMainLine}
             onPromoteToMainLine={promoteLineToMain}
             onRequestDeleteVariation={setDeleteTargetId}
-            className={isMobile ? "max-h-[60vh]" : "max-h-[26rem] xl:max-h-[calc(100dvh-9rem)]"}
+            className={
+                isMobile ? "max-h-[max(60dvh,18rem)]" : "max-h-[26rem] xl:max-h-[calc(100dvh-9rem)]"
+            }
         />
     );
     const candidatesPanel = (

@@ -37,11 +37,15 @@ interface BottomSheetProps {
 }
 
 const heightClassName: Record<NonNullable<BottomSheetProps["height"]>, string> = {
-    half: "h-[50vh]",
-    full: "h-[85vh]",
+    // 高さは dvh で決める。vh はアドレスバーを畳んだときの高さなので、アドレスバーが出ている間は
+    // シートの上端（見出し）が画面の外へ出る。
+    half: "h-[50dvh]",
+    full: "h-[85dvh]",
     // auto の場合も height を設定し、内部の flex レイアウトを機能させる
-    // コンテンツが少ない場合は min-content で縮み、多い場合は 85vh でスクロール
-    auto: "h-auto max-h-[85vh]",
+    // コンテンツが少ない場合は min-content で縮み、多い場合は 85dvh でスクロール。
+    // 横向きなど高さの無い画面では、見出しと「閉じる」で中身の欄がほとんど残らないので、
+    // 画面いっぱいまで使う。
+    auto: "h-auto max-h-[85dvh] [@media(max-height:480px)]:max-h-[100dvh]",
 };
 /**
  * スマホ向けボトムシートコンポーネント
@@ -100,7 +104,7 @@ export function BottomSheet({
                 {/* コンテンツ */}
                 <div
                     className={cn(
-                        "px-4 pt-4 max-w-full flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y",
+                        "px-4 py-4 max-w-full flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y",
                         surfaceClassName,
                         "[webkit-overflow-scrolling:touch]",
                     )}
@@ -111,7 +115,7 @@ export function BottomSheet({
                 {/* 閉じるボタン */}
                 <div
                     className={cn(
-                        "px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-border",
+                        "px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-border [@media(max-height:480px)]:pt-2 [@media(max-height:480px)]:pb-[calc(0.5rem+env(safe-area-inset-bottom))]",
                         surfaceClassName,
                     )}
                 >

@@ -4,11 +4,18 @@ import {
     type PositionState,
     positionToBookKey,
 } from "@shogi/app-core";
+import { type CSSProperties, useEffect, useState } from "react";
 import { Button } from "../button";
 import { ShogiBoard } from "../shogi-board";
 import { HandPiecesDisplay } from "../shogi-match/components/HandPiecesDisplay";
+import { cellSizeForWidth } from "../shogi-match/hooks/useMobileCellSize";
 import { formatMoveSimple } from "../shogi-match/utils/kifFormat";
 import { boardToGrid } from "../shogi-match/utils/positionUtils";
+
+/** 盤の既定のマスの大きさ（`--shogi-cell-size` を指定しないときの値）。 */
+const DEFAULT_CELL_SIZE = 48;
+/** 320px 幅の画面でも盤がはみ出さない下限。 */
+const MIN_CELL_SIZE = 22;
 
 export function BookPositionDetails({
     position,
@@ -36,9 +43,34 @@ export function BookPositionDetails({
     const key = positionToBookKey(position);
     const topOwner = flip ? "sente" : "gote";
     const bottomOwner = flip ? "gote" : "sente";
+    // 盤のマスは、置き場所の幅に合わせる。合わせないと、スマホの幅では既定の大きさ（48px）の
+    // 盤が右へはみ出して欠ける。広い画面では既定の大きさを上限にする。
+    const [boardArea, setBoardArea] = useState<HTMLDivElement | null>(null);
+    const [boardAreaWidth, setBoardAreaWidth] = useState<number | null>(null);
+    useEffect(() => {
+        if (!boardArea) return;
+        const update = () => setBoardAreaWidth(boardArea.clientWidth);
+        update();
+        const observer = new ResizeObserver(update);
+        observer.observe(boardArea);
+        return () => observer.disconnect();
+    }, [boardArea]);
+    const cellSize =
+        boardAreaWidth === null
+            ? undefined
+            : Math.min(cellSizeForWidth(boardAreaWidth, MIN_CELL_SIZE), DEFAULT_CELL_SIZE);
+    const handSize = cellSize !== undefined && cellSize < DEFAULT_CELL_SIZE ? "medium" : "normal";
     return (
         <>
-            <div className="flex min-w-0 flex-col gap-2">
+            <div
+                ref={setBoardArea}
+                className="flex min-w-0 flex-col gap-2"
+                style={
+                    cellSize === undefined
+                        ? undefined
+                        : ({ "--shogi-cell-size": `${cellSize}px` } as CSSProperties)
+                }
+            >
                 <HandPiecesDisplay
                     owner={topOwner}
                     hand={position.hands[topOwner]}
@@ -46,6 +78,7 @@ export function BookPositionDetails({
                     isActive={false}
                     onHandSelect={() => {}}
                     flipBoard={flip}
+                    size={handSize}
                 />
                 <ShogiBoard
                     grid={boardToGrid(position.board)}
@@ -61,6 +94,7 @@ export function BookPositionDetails({
                     isActive={false}
                     onHandSelect={() => {}}
                     flipBoard={flip}
+                    size={handSize}
                 />
                 <Button variant="outline" aria-pressed={flip} onClick={() => onFlip()}>
                     盤を反転
