@@ -13,7 +13,13 @@
  * - 終局時に最終結果を表示する。
  */
 
-import { CSA_MATE_EVAL_THRESHOLD, parseCsaGameRecord } from "@shogi/app-core";
+import {
+    CSA_MATE_EVAL_THRESHOLD,
+    isCheckmate,
+    type Player,
+    parseCsaGameRecord,
+    replayMoves,
+} from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import {
     type FetchRshogiGameOptions,
@@ -34,6 +40,7 @@ import {
     subscribeRshogiLiveGame,
 } from "@shogi/match-client";
 import { type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
+import { resolveDisplayedResult } from "./rshogi-csa-result";
 import {
     type PlayFromPosition,
     PlayFromPositionButton,
@@ -102,6 +109,8 @@ interface LiveState {
     moveEvals: (ReviewMoveEval | undefined)[];
     /** 表示中の対局結果 (終局後)。 */
     result?: RshogiGameResult;
+    /** 終局結果の確定時に判定した、詰まされた側。 */
+    checkmatedSide?: Player;
     /**
      * snapshot 適用ごとに増えるカウンタ。`<ShogiMatch>` の key に使う。
      * snapshot は全置換 (接続/再接続時のみ) なので remount してよいが、broadcast
@@ -134,6 +143,7 @@ type StaticFallbackState =
     | { status: "loading"; reason: RshogiLiveStaticFallbackReason }
     | {
           status: "ready";
+          checkmatedSide?: Player;
           reason: RshogiLiveStaticFallbackReason;
           game: RshogiGame;
           /** 保存済み棋譜の開始局面の SFEN。平手なら `"startpos"`。 */
@@ -154,6 +164,20 @@ const initialLiveState: LiveState = {
     clockAnchorAtMs: null,
     connectionState: "connecting",
 };
+
+/** snapshot の局面に受信済みの増分手を適用し、詰まされた側を求める。 */
+export function deriveLiveCheckmatedSide(
+    snapshot: RshogiLiveSnapshot | null,
+    moves: string[],
+): Player | undefined {
+    if (!snapshot) return undefined;
+    const replay = replayMoves(
+        moves.slice(snapshot.moves.length),
+        { validateTurn: true },
+        snapshot.state,
+    );
+    return replay.errors.length === 0 && isCheckmate(replay.state) ? replay.state.turn : undefined;
+}
 
 /**
  * 詰みを表すセンチネル (サーバ `build_floodgate_comment` は詰みを ±100000 で符号化)。
@@ -799,11 +823,13 @@ export function RshogiCsaLiveViewer({
                     });
                     if (controller.signal.aborted) return;
                     let startSfen: string;
+                    let checkmatedSide: Player | undefined;
                     let moves: string[];
                     let moveData: (ReviewMoveEval | undefined)[];
                     try {
                         const record = parseCsaGameRecord(game.csa);
                         startSfen = record.startSfen;
+                        checkmatedSide = record.checkmatedSide;
                         moves = record.moves;
                         moveData = csaAnnotationsToMoveData(record.annotations);
                     } catch (parseError) {
@@ -827,6 +853,7 @@ export function RshogiCsaLiveViewer({
                             reason,
                             game,
                             startSfen,
+                            checkmatedSide,
                             moves,
                             moveData,
                         },
@@ -876,6 +903,10 @@ export function RshogiCsaLiveViewer({
                     // snapshot は全置換。全手分の付随情報 (moveData) も moveDetails から再導出。
                     moveEvals: moveDetailsToEvals(snapshot.moveDetails),
                     result: snapshot.finalResult ?? prev.result,
+                    checkmatedSide:
+                        (snapshot.finalResult ?? prev.result)
+                            ? deriveLiveCheckmatedSide(snapshot, snapshot.moves)
+                            : undefined,
                     snapshotEpoch: prev.snapshotEpoch + 1,
                     // 本体残 0 かつ秒読み方式なら、遅れて参加した観戦者にも
                     // 秒読み表示を即座に出せるよう inByoyomi を派生する。
@@ -948,7 +979,14 @@ export function RshogiCsaLiveViewer({
                 });
             },
             onEnd(result) {
-                setState((prev) => ({ ...prev, result }));
+                setState((prev) => ({
+                    ...prev,
+                    result,
+                    // terminal snapshot で判定済みなら、その結果を再利用する。
+                    checkmatedSide: prev.result
+                        ? prev.checkmatedSide
+                        : deriveLiveCheckmatedSide(prev.snapshot, prev.moves),
+                }));
             },
             onConnectionState(connState) {
                 setState((prev) => ({ ...prev, connectionState: connState }));
@@ -1012,7 +1050,7 @@ export function RshogiCsaLiveViewer({
         state.clockAnchorAtMs !== null ? Math.max(0, tickMs - state.clockAnchorAtMs) : 0;
 
     if (state.staticFallback?.status === "ready") {
-        const { game, startSfen, moves, moveData } = state.staticFallback;
+        const { game, startSfen, moves, moveData, checkmatedSide } = state.staticFallback;
         return (
             <div className="flex flex-col gap-2">
                 {header}
@@ -1040,7 +1078,10 @@ export function RshogiCsaLiveViewer({
                     onPositionSnapshot={shownPosition.handlePositionSnapshot}
                     reviewLeftContent={
                         <div className="flex flex-col gap-2">
-                            <RshogiLiveMetaPanel meta={game.meta} result={game.meta.result} />
+                            <RshogiLiveMetaPanel
+                                meta={game.meta}
+                                result={resolveDisplayedResult(game.meta.result, checkmatedSide)}
+                            />
                             {onPlayFromPosition && (
                                 <PlayFromPositionButton
                                     onClick={() =>
@@ -1057,6 +1098,7 @@ export function RshogiCsaLiveViewer({
         );
     }
 
+    const displayedResult = resolveDisplayedResult(state.result, state.checkmatedSide);
     // not-found 文言は「初期 snapshot 待機中」と「snapshot 取得済み」の両ブランチで
     // 表示するため、一度だけ組み立てて使い回す。
     const staticFallbackNotFoundText =
@@ -1165,7 +1207,7 @@ export function RshogiCsaLiveViewer({
                     <div className="flex flex-col gap-2">
                         <RshogiLiveMetaPanel
                             meta={meta}
-                            result={state.result}
+                            result={displayedResult}
                             latestPv={state.latestPv}
                         />
                         {onPlayFromPosition && (

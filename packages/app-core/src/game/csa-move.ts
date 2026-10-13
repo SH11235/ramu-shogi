@@ -14,7 +14,7 @@
  * - 行き所のない駒になる不成でないこと
  * - 自玉への王手を放置していないこと
  *
- * 打ち歩詰めと千日手は見ない (詰みの判定が要るため)。
+ * applyCsaMoveStrict は打ち歩詰めと千日手は見ない。
  */
 
 import {
@@ -160,6 +160,57 @@ const isKingAttacked = (board: BoardState, owner: Player): boolean => {
 };
 
 const CSA_MOVE_PATTERN = /^([+-])(\d{2})(\d{2})([A-Z]{2})$/;
+
+const SQUARES = BOARD_RANKS.flatMap((rank) =>
+    BOARD_FILES.map((file) => `${file}${rank}` as Square),
+);
+
+/**
+ * 手番側に、指した後で自玉に利きが残らない盤上の手があるか。
+ * 成りの有無で自玉への利きは変わらないので、1 つの移動につき 1 通りだけ試す
+ * (`applyCsaMoveStrict` で通る手と揃えるため、成るしかない手は成りにする)。
+ */
+const hasBoardEvasion = (position: PositionState): boolean => {
+    const { board, turn } = position;
+    for (const from of SQUARES) {
+        const piece = board[from];
+        if (!piece || piece.owner !== turn) continue;
+        for (const to of SQUARES) {
+            const target = board[to];
+            // 自分の駒や相手玉のいるマスには移動できない。
+            if (target && (target.owner === turn || target.type === "K")) continue;
+            if (!canReach(board, from, to, piece)) continue;
+            const promote = !piece.promoted && isDeadEnd(piece.type, to, turn);
+            const applied = applyMoveWithState(position, `${from}${to}${promote ? "+" : ""}`);
+            if (applied.ok && !isKingAttacked(applied.next.board, turn)) return true;
+        }
+    }
+    return false;
+};
+
+/** 手番側が王手を受け、盤上の移動でも持ち駒の合駒でも逃れられないか。 */
+export function isCheckmate(position: PositionState): boolean {
+    const { board, hands, turn } = position;
+    if (!isKingAttacked(board, turn) || hasBoardEvasion(position)) return false;
+    for (const type of ["P", "L", "N", "S", "G", "B", "R"] as const) {
+        if ((hands[turn][type] ?? 0) <= 0) continue;
+        for (const to of SQUARES) {
+            if (board[to] || isDeadEnd(type, to, turn)) continue;
+            if (type === "P" && hasUnpromotedPawnOnFile(board, fileOf(to), turn)) continue;
+            const applied = applyMoveWithState(position, `${type}*${to}`);
+            if (!applied.ok || isKingAttacked(applied.next.board, turn)) continue;
+            // 打った歩そのものが相手玉への王手で、相手に応手が無ければ打ち歩詰め。
+            // 歩の王手には合駒できないので、相手の応手は盤上の手だけを見れば足りる。
+            if (type === "P") {
+                const front = board[toSquare(fileOf(to), rankOf(to) + (turn === "sente" ? -1 : 1))];
+                const checksKing = front?.type === "K" && front.owner !== turn;
+                if (checksKing && !hasBoardEvasion(applied.next)) continue;
+            }
+            return false;
+        }
+    }
+    return true;
+}
 
 /**
  * CSA の指し手 (`+7776FU` / `-0055KA`) を検証して適用し、USI と適用後の局面を返す。

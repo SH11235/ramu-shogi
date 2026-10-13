@@ -3,6 +3,22 @@ import { parseCsaMoves } from "./csa";
 import { REAL_GAME_CSA_MOVES } from "./csa-real-game.fixture";
 import { parseCsaEvalComment, parseCsaGameRecord } from "./csa-record";
 
+describe("parseCsaGameRecord: 最終局面の詰み", () => {
+    it("頭金の一手で詰んだ側を返す", () => {
+        const record = parseCsaGameRecord("P+53KI00KI\nP-51OU\n+\n+0052KI\n%TORYO");
+        expect(record.checkmatedSide).toBe("gote");
+        expect(record.moves).toEqual(["G*5b"]);
+    });
+
+    it("0 手なら開始局面で判定する", () => {
+        expect(parseCsaGameRecord("P+52KI53KI\nP-51OU\n-\n%TORYO").checkmatedSide).toBe("gote");
+    });
+
+    it("詰みでない投了は詰まされた側を持たない", () => {
+        expect(parseCsaGameRecord("PI\n+\n+7776FU\n%TORYO").checkmatedSide).toBeUndefined();
+    });
+});
+
 const HIRATE_POSITION = [
     "P1-KY-KE-GI-KI-OU-KI-GI-KE-KY",
     "P2 * -HI *  *  *  *  * -KA * ",

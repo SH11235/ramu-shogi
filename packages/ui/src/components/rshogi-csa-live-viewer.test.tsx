@@ -1,4 +1,10 @@
-import type { RshogiGameMeta, RshogiLiveMove, RshogiTimeControl } from "@shogi/match-client";
+import { isCheckmate, parseCsaGameRecord, replayMoves } from "@shogi/app-core";
+import type {
+    RshogiGameMeta,
+    RshogiLiveMove,
+    RshogiLiveSnapshot,
+    RshogiTimeControl,
+} from "@shogi/match-client";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +14,7 @@ import {
     applyMoveToClocks,
     computeRemaining,
     deriveInByoyomi,
+    deriveLiveCheckmatedSide,
     formatByoyomiClock,
     formatLiveTimeControl,
     formatOwnEval,
@@ -147,7 +154,10 @@ const buildTimedLiveSnapshot = (moves: string[] = []): string[] => {
     return [...lines, ...moves, "##[MONITOR2] END"];
 };
 
-const createStaticGameFetch = (csa = "V2.2\nN+alice\nN-bob\nPI\n+\n+7776FU\n%TORYO\n") =>
+const createStaticGameFetch = (
+    csa = "V2.2\nN+alice\nN-bob\nPI\n+\n+7776FU\n%TORYO\n",
+    resultKind = "WIN_WHITE",
+) =>
     vi.fn(
         async () =>
             new Response(
@@ -158,7 +168,7 @@ const createStaticGameFetch = (csa = "V2.2\nN+alice\nN-bob\nPI\n+\n+7776FU\n%TOR
                         game_id: "game-1",
                         black_handle: "alice",
                         white_handle: "bob",
-                        result_kind: "WIN_WHITE",
+                        result_kind: resultKind,
                         end_reason: "RESIGN",
                     },
                 }),
@@ -201,6 +211,142 @@ describe("RshogiCsaLiveViewer: static fallback", () => {
 
     afterEach(() => {
         vi.unstubAllGlobals();
+    });
+
+    // 後手の金を一枚取り、もう一枚を 7 二へ動かして、5 三の馬で支えた頭金で詰ます。
+    const checkmateMoves = [
+        "+7776FU",
+        "-3334FU",
+        "+8822UM",
+        "-9394FU",
+        "+2233UM",
+        "-5152OU",
+        "+3343UM",
+        "-5251OU",
+        "+2726FU",
+        "-4132KI",
+        "+4332UM",
+        "-6152KI",
+        "+3243UM",
+        "-5262KI",
+        "+4353UM",
+        "-6272KI",
+        "+0052KI",
+    ];
+
+    it.each([false, true])("詰みの終局を表示する (保存済み棋譜: %s)", async (saved) => {
+        const csa = ["PI", "+", ...checkmateMoves, "%TORYO"].join("\n");
+        // 厳密な CSA 検証を通し、平手からの USI 再生でも同じ詰みになることを確認する。
+        const record = parseCsaGameRecord(csa);
+        expect(record.checkmatedSide).toBe("gote");
+        const replay = replayMoves(record.moves, { validateTurn: true });
+        expect(replay.errors).toEqual([]);
+        expect(isCheckmate(replay.state)).toBe(true);
+        const fetchOverride = saved
+            ? createStaticGameFetch(csa, "WIN_BLACK")
+            : createStaticGameNotFoundFetch();
+        render(
+            <RshogiCsaLiveViewer
+                gameId="game-1"
+                engineOptions={[]}
+                manifestUrl="/nnue/manifest.json"
+                apiBaseUrl="https://example.com/api/v1"
+                fetchOverride={fetchOverride}
+            />,
+        );
+        act(() => {
+            const ws = MockWebSocket.instances[0];
+            ws.fireOpen();
+            ws.fireLines(buildLiveSnapshot(checkmateMoves, "#RESIGN"));
+        });
+        await waitFor(() => expect(fetchOverride).toHaveBeenCalled());
+        if (saved)
+            await screen.findByText("ライブ接続は終了済みのため、保存済み棋譜を表示しています。");
+        expect(await screen.findByText("先手 (alice) 勝ち (詰み)")).toBeTruthy();
+    });
+
+    it.each([
+        false,
+        true,
+    ])("後手番開始の詰みを表示する (terminal snapshot: %s)", async (terminalSnapshot) => {
+        // 先後と盤を反転し、後手番開始で先手玉を詰ます手順にする。
+        const moves = checkmateMoves.map(
+            (move) =>
+                `${move[0] === "+" ? "-" : "+"}${move
+                    .slice(1, 5)
+                    .replace(/[1-9]/g, (digit) => String(10 - Number(digit)))}${move.slice(5)}`,
+        );
+        expect(parseCsaGameRecord(["PI", "-", ...moves, "%TORYO"].join("\n")).checkmatedSide).toBe(
+            "sente",
+        );
+        const fetchOverride = createStaticGameNotFoundFetch();
+        const view = render(
+            <RshogiCsaLiveViewer
+                gameId="game-1"
+                engineOptions={[]}
+                manifestUrl="/nnue/manifest.json"
+                apiBaseUrl="https://example.com/api/v1"
+                fetchOverride={fetchOverride}
+            />,
+        );
+        const ws = MockWebSocket.instances[0];
+        act(() => {
+            ws.fireOpen();
+            ws.fireLines(
+                buildLiveSnapshot(
+                    terminalSnapshot ? moves : moves.slice(0, -1),
+                    terminalSnapshot ? "#RESIGN" : undefined,
+                ).map((line) => (line === "To_Move:+" ? "To_Move:-" : line)),
+            );
+        });
+        if (terminalSnapshot) {
+            await waitFor(() => expect(fetchOverride).toHaveBeenCalled());
+        } else {
+            expect(screen.queryByText(/勝ち/)).toBeNull();
+            act(() => ws.fireLines([moves[moves.length - 1]]));
+            expect(screen.queryByText(/勝ち/)).toBeNull();
+            act(() => ws.fireLines(["#RESIGN"]));
+        }
+        expect(await screen.findByText("後手 (bob) 勝ち (詰み)")).toBeTruthy();
+
+        // 別の対局への切り替えで、以前の終局結果を残さない。
+        view.rerender(
+            <RshogiCsaLiveViewer
+                gameId="game-2"
+                engineOptions={[]}
+                manifestUrl="/nnue/manifest.json"
+                apiBaseUrl="https://example.com/api/v1"
+                fetchOverride={fetchOverride}
+            />,
+        );
+        expect(screen.queryByText(/勝ち/)).toBeNull();
+        act(() => {
+            const nextWs = MockWebSocket.instances[1];
+            nextWs.fireOpen();
+            nextWs.fireLines(
+                buildLiveSnapshot([], "#RESIGN").map((line) => line.replace("game-1", "game-2")),
+            );
+        });
+        expect(await screen.findByText("後手 (bob) 勝ち (投了)")).toBeTruthy();
+    });
+
+    it("deriveLiveCheckmatedSide は snapshot なし・再生エラー・非詰みで undefined を返す", () => {
+        const moves = parseCsaGameRecord(["PI", "+", ...checkmateMoves].join("\n")).moves;
+        const snapshot: RshogiLiveSnapshot = {
+            meta: META,
+            moves,
+            moveDetails: [],
+            state: replayMoves(moves, { validateTurn: true }).state,
+            clocks: { sente: 0, gote: 0, sideToMove: "gote" },
+        };
+        const before = structuredClone(snapshot);
+        expect(deriveLiveCheckmatedSide(snapshot, moves)).toBe("gote");
+        expect(deriveLiveCheckmatedSide(null, moves)).toBeUndefined();
+        expect(deriveLiveCheckmatedSide(snapshot, [...moves, "invalid"])).toBeUndefined();
+        expect(
+            deriveLiveCheckmatedSide({ ...snapshot, moves: [], state: replayMoves([]).state }, []),
+        ).toBeUndefined();
+        expect(snapshot).toEqual(before);
     });
 
     it("terminal snapshot を受けたら GET /games/<id> の静的終局表示へ切り替える", async () => {
