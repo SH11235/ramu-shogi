@@ -154,6 +154,7 @@ interface ConnectionHandlers {
     /** 切断後に RoomClient が resume し直したとき */
     onReconnect: (client: RoomClient) => void;
     onMessage: (context: MessageContext) => void;
+    requestFullSnapshot: (client: RoomClient) => boolean;
 }
 
 /**
@@ -179,6 +180,7 @@ function createWaitingRoomHandlers({
     let needsFullSnapshot = false;
 
     return {
+        requestFullSnapshot,
         onReconnect: (client) => {
             // RoomClient は再接続すると、最後に受け取ったイベントより後の差分だけを求める。
             // サーバーは差分に snapshot を含めないので、待っている間に切れたら要求を送り直す
@@ -274,6 +276,8 @@ export interface UseRoomConnectionReturn {
 
     // アクション
     handleJoin: (seatToJoin: "b" | "w" | "s") => void;
+    /** 参加した席のまま、サーバーが必ず snapshot を返す要求を送る。送る手段が無ければ false */
+    requestFullSnapshot: () => boolean;
     handleUpdateStartSfen: (startSfen: string) => void;
 }
 
@@ -294,12 +298,14 @@ export function useRoomConnection({
 
     const clientRef = useRef<RoomClient | null>(null);
     const disposeConnectionRef = useRef<(() => void) | null>(null);
+    const requestFullSnapshotRef = useRef<(() => boolean) | null>(null);
 
     const connectClient = ({
         timeoutMessage,
         onOpen,
         onReconnect,
         onMessage,
+        requestFullSnapshot,
     }: {
         timeoutMessage: string;
         onOpen: (client: RoomClient) => void;
@@ -339,6 +345,7 @@ export function useRoomConnection({
         });
 
         clientRef.current = newClient;
+        requestFullSnapshotRef.current = () => requestFullSnapshot(newClient);
         dispatchRoom({ type: "client_set", client: newClient });
 
         const fail = (messageText: string): void => {
@@ -396,6 +403,7 @@ export function useRoomConnection({
             newClient.disconnect();
             if (clientRef.current === newClient) {
                 clientRef.current = null;
+                requestFullSnapshotRef.current = null;
                 dispatchRoom({ type: "client_cleared" });
             }
         };
@@ -513,6 +521,7 @@ export function useRoomConnection({
         client: roomState.client,
 
         handleJoin,
+        requestFullSnapshot: () => requestFullSnapshotRef.current?.() ?? false,
         handleUpdateStartSfen,
     };
 }

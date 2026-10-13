@@ -83,6 +83,7 @@ export { SurfaceThemeProvider, useSurfaceTheme } from "./components/surface-them
 // shogi-board
 
 export { listMockRshogiGameIds } from "@shogi/match-client";
+export { ConnectionLostNotice } from "./components/connection-lost-notice";
 export type { RemoteNnueFile, RemoteNnueManager } from "./components/nnue/types";
 export type { AnalysisMoveResult, OnlineAnalysis } from "./components/online-game-view";
 // online-game-view

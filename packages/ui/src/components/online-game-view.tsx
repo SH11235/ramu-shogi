@@ -17,14 +17,17 @@ import type {
     ErrorCode,
     GameResult,
     RoomClient,
+    RoomClientStatus,
     RoomEvent,
     Seat,
     SnapshotPayload,
 } from "@shogi/match-client";
+import { getStoredResumeToken } from "@shogi/match-client";
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
 import { useLazyNnueLoader } from "../hooks/useLazyNnueLoader";
 import { useShogiSound } from "../hooks/useShogiSound";
+import { ConnectionLostNotice } from "./connection-lost-notice";
 import { NnueManagerDialog } from "./nnue/NnueManagerDialog";
 import type { RemoteNnueManager } from "./nnue/types";
 import {
@@ -95,9 +98,50 @@ function rejectedCommandNotice(code: ErrorCode, seat: Seat): string | null {
     return null;
 }
 
-/** 届いた順に反映するサーバーからのメッセージ。initial は画面を開いたときの snapshot */
+/** 局面も手番も終局も変えないイベント。指し手を送る準備の途中に届いても、その指し手は有効 */
+const POSITION_KEEPING_EVENTS: ReadonlySet<RoomEvent["kind"]> = new Set([
+    "player_offline",
+    "player_online",
+    "analysis_used",
+    "settings_updated",
+    "takeback_requested",
+    "takeback_rejected",
+    "takeback_cancelled",
+]);
+
+/** 再接続後、席へ戻った結果の snapshot を待つ上限。過ぎたら要求を送り直す */
+const RESYNC_TIMEOUT_MS = 15_000;
+/** snapshot の要求を送り直す回数の上限。尽きたら再読み込みを案内する */
+const RESYNC_MAX_RETRIES = 2;
+
+/**
+ * 同期を待つ間にこれらが返ったら、送り直しても同じ席へは戻れない。ROOM_FINISHED は、切断中に
+ * 終局した部屋へ参加し直そうとした観戦者（と、トークンを持たない対局者）に返る
+ */
+const SEAT_LOST_CODES: ReadonlySet<ErrorCode> = new Set([
+    "INVALID_TOKEN",
+    "ROOM_NOT_FOUND",
+    "ROOM_FULL",
+    "ROOM_FINISHED",
+]);
+
+/**
+ * 対局中の接続。reconnecting は WebSocket を開き直している間と、開いた後に席へ戻って
+ * サーバーの snapshot を反映し終えるまで。lost は再接続か再同期を諦め、再読み込みを案内する状態。
+ * rejected はサーバーが席への復帰を拒んだ状態で、finished は拒んだ理由が終局だったとき
+ */
+type GameConnection =
+    | { state: "connected" }
+    | { state: "reconnecting" }
+    | { state: "lost"; canResume: boolean }
+    | { state: "rejected"; finished: boolean };
+
+/**
+ * 届いた順に反映するサーバーからのメッセージ。initial は画面を開いたときの snapshot。
+ * resync は、再接続後の同期を待っている間に届いた snapshot に付く、その再接続の番号
+ */
 type Incoming =
-    | { t: "snapshot"; payload: SnapshotPayload; initial: boolean }
+    | { t: "snapshot"; payload: SnapshotPayload; initial: boolean; resync?: number }
     | { t: "event"; payload: RoomEvent };
 
 // ─── UI インタラクション状態管理 ───────────────────────────────────────────────
@@ -211,6 +255,8 @@ interface OnlineGameViewProps {
         gameRecordId: string | null;
     }) => void;
     onExit?: () => void;
+    /** 参加した席のまま、サーバーが必ず snapshot を返す要求を送る。送る手段が無ければ false */
+    requestFullSnapshot?: () => boolean;
 }
 
 export function OnlineGameView({
@@ -223,6 +269,7 @@ export function OnlineGameView({
     remoteNnueManager,
     onStartReview,
     onExit,
+    requestFullSnapshot,
 }: OnlineGameViewProps): ReactElement {
     // ─── AI サポート設定（makeInitialGameState の引数として使用するため先に定義） ──
     const aiSupport = snapshot.settings.aiSupport as AiSupportSettings | null;
@@ -283,6 +330,21 @@ export function OnlineGameView({
         myPlayer !== null &&
         ((turn === "b" && myPlayer === "sente") || (turn === "w" && myPlayer === "gote"));
     const isSpectator = seat === "s";
+    const [connection, setConnection] = useState<GameConnection>({ state: "connected" });
+    // つながっていない間に送った操作は RoomClient が捨てる。再接続した直後も、サーバーの
+    // 局面を反映し終えるまでは古い局面を見て選んだ操作になるので受け付けない
+    const canSend = connection.state === "connected";
+    // 切断・再接続のたびに進む。非同期処理の前後で比べ、その間に接続が替わったかを知る
+    const connectionEpochRef = useRef(0);
+    // 再接続後、席へ戻った結果の snapshot を待っている間だけ、その再接続の番号を持つ
+    const resyncRef = useRef<number | null>(null);
+    const resyncRetriesRef = useRef(0);
+    const resyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // 局面を変えるイベントや snapshot を反映するたびに進む
+    const positionVersionRef = useRef(0);
+    // 復帰を拒まれた後に開き直しても、同じトークンでは席へ戻れない
+    const rejectedRef = useRef(false);
+    const canPlay = isMyTurn && canSend;
 
     const totalPly = Math.max(0, positionHistory.length - 1);
     // 自分の手番になったら巻き戻しを解除してライブ追従（effect 不要、レンダー時に派生）
@@ -348,6 +410,11 @@ export function OnlineGameView({
                         dispatch({ type: "init", ...restored });
                         return;
                     }
+                    positionVersionRef.current += 1;
+                    if (incoming.resync !== undefined && incoming.resync === resyncRef.current) {
+                        stopResync();
+                        setConnection({ state: "connected" });
+                    }
                     dispatch({
                         type: "resync",
                         ...restored,
@@ -364,6 +431,11 @@ export function OnlineGameView({
                         setLoadFailed(true);
                         return;
                     }
+                    // sync の応答は差分イベントだけのことがあるので、同期待ちなら snapshot を求め直す
+                    if (incoming.resync !== undefined && incoming.resync === resyncRef.current) {
+                        retryResync(incoming.resync);
+                        return;
+                    }
                     // サーバーに再同期リクエストを送信して最新状態を取得する
                     client.sync({ sinceEventId: appliedEventIdRef.current });
                 },
@@ -377,6 +449,9 @@ export function OnlineGameView({
         // サーバーは指し手以外のイベントでもイベント番号を増やすので、すべてのイベントで更新する
         const markApplied = (): void => {
             appliedEventIdRef.current = Math.max(appliedEventIdRef.current, e.eventId);
+            if (!POSITION_KEEPING_EVENTS.has(e.kind)) {
+                positionVersionRef.current += 1;
+            }
         };
 
         if (e.kind === "game_end") {
@@ -454,6 +529,68 @@ export function OnlineGameView({
         markApplied();
     });
 
+    // ─── 接続状態 ────────────────────────────────────────────────────────────
+
+    const stopResync = useEffectEvent((): void => {
+        resyncRef.current = null;
+        if (resyncTimerRef.current !== null) {
+            clearTimeout(resyncTimerRef.current);
+            resyncTimerRef.current = null;
+        }
+    });
+
+    const showConnectionLost = (): void => {
+        setConnection({
+            state: "lost",
+            canResume: seat !== "s" && getStoredResumeToken(roomId) !== null,
+        });
+    };
+
+    const waitForResync = (resync: number): void => {
+        if (resyncTimerRef.current !== null) clearTimeout(resyncTimerRef.current);
+        resyncTimerRef.current = setTimeout(() => retryResync(resync), RESYNC_TIMEOUT_MS);
+    };
+
+    const retryResync = useEffectEvent((resync: number): void => {
+        if (resyncRef.current !== resync) return;
+        if (resyncRetriesRef.current >= RESYNC_MAX_RETRIES || !requestFullSnapshot?.()) {
+            stopResync();
+            showConnectionLost();
+            return;
+        }
+        resyncRetriesRef.current += 1;
+        waitForResync(resync);
+    });
+
+    const rejectResync = useEffectEvent((code: ErrorCode): void => {
+        stopResync();
+        rejectedRef.current = true;
+        setConnection({ state: "rejected", finished: code === "ROOM_FINISHED" });
+    });
+
+    const applyStatus = useEffectEvent((status: RoomClientStatus): void => {
+        connectionEpochRef.current += 1;
+        stopResync();
+        if (rejectedRef.current) return;
+        if (status === "reconnecting") {
+            setConnection({ state: "reconnecting" });
+        } else if (status === "disconnected") {
+            showConnectionLost();
+        } else if (status === "connected") {
+            // WebSocket が開いても、席へ戻れたかは分からない。RoomClient の resume の応答は
+            // 差分イベントだけのことがあり、どこまでで終わりかを判別できないので、必ず snapshot が
+            // 返る要求を送り、その snapshot を反映し終えたら戻す。観戦者は useRoomConnection が
+            // 開き直した接続で参加し直し、その応答に snapshot が含まれる
+            const resync = connectionEpochRef.current;
+            resyncRef.current = resync;
+            resyncRetriesRef.current = 0;
+            waitForResync(resync);
+            if (!isSpectator) {
+                requestFullSnapshot?.();
+            }
+        }
+    });
+
     useEffect(() => {
         isListeningRef.current = true;
         if (!incomingRef.current) {
@@ -474,13 +611,29 @@ export function OnlineGameView({
             if (msg.t === "event") {
                 incoming.push(msg);
             } else if (msg.t === "snapshot") {
-                incoming.push({ t: "snapshot", payload: msg.payload, initial: false });
+                incoming.push({
+                    t: "snapshot",
+                    payload: msg.payload,
+                    initial: false,
+                    resync: resyncRef.current ?? undefined,
+                });
             } else if (msg.t === "error") {
+                if (resyncRef.current !== null && SEAT_LOST_CODES.has(msg.payload.code)) {
+                    rejectResync(msg.payload.code);
+                    return;
+                }
                 showRejection(msg.payload.code);
             }
         });
+        const initialStatus = client.getStatus();
+        if (initialStatus === "reconnecting" || initialStatus === "disconnected") {
+            applyStatus(initialStatus);
+        }
+        const unsubStatus = client.subscribeStatus(applyStatus);
         return () => {
             unsub();
+            unsubStatus();
+            stopResync();
             // 解析の途中で画面を離れたら、その結果も残りのメッセージも反映しない
             isListeningRef.current = false;
         };
@@ -498,7 +651,7 @@ export function OnlineGameView({
         void (async () => {
             // position に依存させる: 手番が変わらないまま局面だけ変わる再同期でも、
             // 反映し終えた局面の合法手を取り直す
-            if (position && isMyTurn && !gameResult && !isRewound) {
+            if (position && canPlay && !gameResult && !isRewound) {
                 try {
                     const moves = await getPositionService().getLegalMoves(
                         startSfenRef.current,
@@ -523,7 +676,7 @@ export function OnlineGameView({
         return () => {
             cancelled = true;
         };
-    }, [isMyTurn, gameResult, isRewound, passRights, client, position]);
+    }, [canPlay, gameResult, isRewound, passRights, client, position]);
 
     // ─── 棋譜ナビゲーションハンドラ ───────────────────────────────────────────
 
@@ -548,7 +701,9 @@ export function OnlineGameView({
     // ─── 指し手送信 ──────────────────────────────────────────────────────────
 
     const sendMove = async (usi: string, _toSquare?: string): Promise<void> => {
-        if (!position) return;
+        if (!position || !canSend) return;
+        const positionVersion = positionVersionRef.current;
+        const epoch = connectionEpochRef.current;
         // パス手は局面変化なし（手番のみ交代）。PositionState に passRights がないため
         // applyMoveWithState は使わず、手番を反転した局面の SFEN を生成する
         const nextPos =
@@ -559,13 +714,23 @@ export function OnlineGameView({
                   }
                 : applyMoveWithState(position, usi).next;
         const nextSfen = await getPositionService().boardToSfen(nextPos);
+        // 変換を待つ間に切断や局面の更新があると、古い局面の SFEN を送ることになる
+        if (connectionEpochRef.current !== epoch) {
+            setCommandNotice({ text: "指し手を送れませんでした。もう一度操作してください。" });
+            return;
+        }
+        if (positionVersionRef.current !== positionVersion) {
+            setCommandNotice({ text: "局面が更新されました。もう一度操作してください。" });
+            return;
+        }
+        // 局面が変わっていなければ、その間に進んだイベント番号で送っても同じ局面を指す
         client.move({ eventId: appliedEventIdRef.current, usi, sfen: nextSfen });
     };
 
     // ─── 盤面クリック処理 ────────────────────────────────────────────────────
 
     function handleBoardSelect(squareId: string): void {
-        if (!isMyTurn || gameResult || !position) return;
+        if (!canPlay || gameResult || !position) return;
 
         // 持ち駒を選択中の場合 → ドロップ
         if (selectedHand !== null) {
@@ -635,7 +800,7 @@ export function OnlineGameView({
     }
 
     function handleHandSelect(pieceType: PieceType): void {
-        if (!isMyTurn || gameResult || isRewound) return;
+        if (!canPlay || gameResult || isRewound) return;
         dispatchUI({
             type: "select_hand",
             pieceType: selectedHand === pieceType ? null : pieceType,
@@ -646,7 +811,7 @@ export function OnlineGameView({
     // ─── 投了 ────────────────────────────────────────────────────────────────
 
     function handleResign(): void {
-        if (!isMyTurn || !position) return;
+        if (!canPlay || !position) return;
         client.resign({ eventId: appliedEventIdRef.current });
     }
 
@@ -675,10 +840,12 @@ export function OnlineGameView({
     // PVプレビューダイアログ
     const [pvPreviewMove, setPvPreviewMove] = useState<AiHintMove | null>(null);
 
+    // 制限モードは use_analysis を先送信してからエンジン解析（観戦者はスキップ）
+    const analysisNeedsServer = myAiSettings?.mode === "limited" && seat !== "s";
+
     const handleAnalyze = async () => {
-        if (!position) return;
-        // 制限モードは use_analysis を先送信してからエンジン解析（観戦者はスキップ）
-        if (myAiSettings?.mode === "limited" && seat !== "s") {
+        if (!position || (analysisNeedsServer && !canSend)) return;
+        if (analysisNeedsServer) {
             const ply = movesRef.current.length;
             client.consumeAnalysis({ eventId: appliedEventIdRef.current, ply });
             // analysis_used 受信後に自動で残り回数が更新される
@@ -716,7 +883,7 @@ export function OnlineGameView({
     // ─── AI 手の盤面適用 ──────────────────────────────────────────────────────
 
     function handleApplyAiMove(usiMove: string): void {
-        if (!position || !isMyTurn || gameResult) return;
+        if (!position || !canPlay || gameResult) return;
         void sendMove(usiMove);
     }
 
@@ -774,7 +941,7 @@ export function OnlineGameView({
 
     // 成り選択状態（MobileBoardSection へ渡す用）
     const promotionSelection: PromotionSelection | null = (() => {
-        if (!promoteDialog || !displayPosition) return null;
+        if (!promoteDialog || !displayPosition || !canSend) return null;
         const piece =
             displayPosition.board[promoteDialog.from as keyof typeof displayPosition.board];
         if (!piece) return null;
@@ -791,16 +958,16 @@ export function OnlineGameView({
     const topHand: HandInfo = {
         owner: topOwner,
         hand: displayPosition?.hands[topOwner] ?? ({} as PositionState["hands"]["sente"]),
-        isActive: !isRewound && isMyTurn && myPlayer === topOwner,
+        isActive: !isRewound && canPlay && myPlayer === topOwner,
         isAI: false,
     };
     const bottomHand: HandInfo = {
         owner: bottomOwner,
         hand: displayPosition?.hands[bottomOwner] ?? ({} as PositionState["hands"]["sente"]),
-        isActive: !isRewound && isMyTurn && myPlayer === bottomOwner,
+        isActive: !isRewound && canPlay && myPlayer === bottomOwner,
         isAI: false,
     };
-    const onSquareSelect = !isRewound && isMyTurn && !isSpectator ? handleBoardSelect : () => {};
+    const onSquareSelect = !isRewound && canPlay && !isSpectator ? handleBoardSelect : () => {};
     const onPromotionChoiceForMobile = (promote: boolean) => {
         if (!promoteDialog) return;
         void sendMove(promote ? `${promoteDialog.usi}+` : promoteDialog.usi, promoteDialog.to);
@@ -814,7 +981,7 @@ export function OnlineGameView({
           ? ({ kind: "hand", piece: selectedHand } as const)
           : null;
     const moveShadow =
-        displayPosition && !isRewound && isMyTurn && !isSpectator
+        displayPosition && !isRewound && canPlay && !isSpectator
             ? computeMoveShadow({
                   selection,
                   grid,
@@ -831,12 +998,23 @@ export function OnlineGameView({
     // KIF テキスト（対局終了後のダウンロード・コピー用）
     const generatedKif = exportGameKif(gameState, snapshot.settings.startSfen, playerNames);
 
+    // 画面全体を覆うので、つながっていない間に出すと再読み込みの案内を押せなくなる
+    const showTakebackApproval =
+        pendingTakeback !== null &&
+        pendingTakeback.seat !== seat &&
+        !isSpectator &&
+        !gameResult &&
+        canSend;
+
     // PC サイドバーとモバイル BottomSheet で共通利用するコンテンツ
-    const canAnalyzeNow = !gameResult && (isMyTurn || isSpectator);
+    const canAnalyzeNow =
+        !gameResult && (isMyTurn || isSpectator) && (canSend || !analysisNeedsServer);
     const analyzeHintText =
         !gameResult && !isMyTurn && !isSpectator
             ? "相手の手番中は解析できません。自分の手番になってから使用してください。"
-            : "「解析する」を押すと現在の局面をAIが分析します";
+            : !gameResult && !canSend && analysisNeedsServer
+              ? "接続が戻るまで解析できません。"
+              : "「解析する」を押すと現在の局面をAIが分析します";
     const aiPanelContent =
         aiSupport || analysis ? (
             <OnlineAiPanel
@@ -854,7 +1032,7 @@ export function OnlineGameView({
                 onNnueSelectionChange={setNnueSelection}
                 onOpenNnueManager={() => setNnueManagerOpen(true)}
                 onApplyMove={
-                    isMyTurn && !gameResult && !isSpectator
+                    canPlay && !gameResult && !isSpectator
                         ? (usiMove) => Promise.resolve(handleApplyAiMove(usiMove))
                         : undefined
                 }
@@ -917,14 +1095,42 @@ export function OnlineGameView({
             {/* 左サイドバー: 対局後検討・NNUE設定など（PC のみ表示） */}
             <div className="hidden md:flex w-64 flex-col gap-3" />
 
-            {/* 切断バナー */}
-            {offlineSeats.size > 0 && (
-                <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-destructive px-4 py-2 text-sm text-destructive-foreground shadow-lg">
-                    {Array.from(offlineSeats).map((s) => (
-                        <span key={s}>{s === "b" ? "先手" : "後手"}が切断しました</span>
+            {/* 接続の通知: 盤面の上に重ね、出し入れで盤面が動かないようにする */}
+            <div className="pointer-events-none fixed top-4 left-1/2 -translate-x-1/2 z-50 flex w-[min(90vw,420px)] flex-col items-center gap-2">
+                {offlineSeats.size > 0 && (
+                    <div className="rounded-lg bg-destructive px-4 py-2 text-sm text-destructive-foreground shadow-lg">
+                        {Array.from(offlineSeats).map((s) => (
+                            <span key={s}>{s === "b" ? "先手" : "後手"}が切断しました</span>
+                        ))}
+                    </div>
+                )}
+                {!gameResult && connection.state === "reconnecting" && (
+                    <output className="rounded-lg border border-border bg-card px-4 py-2 text-sm text-muted-foreground shadow-lg">
+                        再接続中...
+                    </output>
+                )}
+                {!gameResult && connection.state === "lost" && (
+                    <ConnectionLostNotice
+                        reason={connection.canResume ? "seat" : "reload"}
+                        className="pointer-events-auto w-full shadow-lg"
+                    />
+                )}
+                {!gameResult &&
+                    connection.state === "rejected" &&
+                    (connection.finished && onExit ? (
+                        <ConnectionLostNotice
+                            reason="finished"
+                            onExit={onExit}
+                            className="pointer-events-auto w-full shadow-lg"
+                        />
+                    ) : (
+                        // 戻り先を渡されていなければ、終局していても再読み込みで画面を出し直してもらう
+                        <ConnectionLostNotice
+                            reason={connection.finished ? "reload" : "session"}
+                            className="pointer-events-auto w-full shadow-lg"
+                        />
                     ))}
-                </div>
-            )}
+            </div>
 
             {/* メインコンテンツ */}
             <div className={`flex flex-col gap-3 ${isMobile ? "items-center" : "flex-1"}`}>
@@ -1041,7 +1247,8 @@ export function OnlineGameView({
                         <button
                             type="button"
                             onClick={handleTakebackCancel}
-                            className="ml-3 text-xs text-muted-foreground underline hover:text-foreground"
+                            disabled={!canSend}
+                            className="ml-3 text-xs text-muted-foreground underline hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             取り消す
                         </button>
@@ -1062,7 +1269,7 @@ export function OnlineGameView({
                         <button
                             type="button"
                             onClick={() => void sendMove("pass")}
-                            disabled={!legalMoves.includes("pass")}
+                            disabled={!canSend || !legalMoves.includes("pass")}
                             className="rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             パス
@@ -1077,7 +1284,8 @@ export function OnlineGameView({
                             <button
                                 type="button"
                                 onClick={handleTakebackRequest}
-                                className="rounded-md border border-wafuu-kincha/40 bg-wafuu-kincha/10 px-4 py-2 text-sm font-medium text-wafuu-kincha hover:bg-wafuu-kincha/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                disabled={!canSend}
+                                className="rounded-md border border-wafuu-kincha/40 bg-wafuu-kincha/10 px-4 py-2 text-sm font-medium text-wafuu-kincha hover:bg-wafuu-kincha/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 待った
                             </button>
@@ -1086,7 +1294,8 @@ export function OnlineGameView({
                         <button
                             type="button"
                             onClick={handleResign}
-                            className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            disabled={!canSend}
+                            className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             投了
                         </button>
@@ -1165,7 +1374,7 @@ export function OnlineGameView({
             </div>
 
             {/* 待った: 承認ダイアログ（相手向け） */}
-            {pendingTakeback && pendingTakeback.seat !== seat && !isSpectator && !gameResult && (
+            {showTakebackApproval && (
                 <div className="fixed inset-0 z-40 flex items-end justify-center pb-8 md:items-center md:pb-0">
                     <div className="rounded-xl border border-border bg-card p-5 shadow-xl w-[300px]">
                         <p className="mb-1 text-center font-semibold text-foreground">

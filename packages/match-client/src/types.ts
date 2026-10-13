@@ -20,9 +20,13 @@ export interface RoomClient {
     takebackCancel(params: { eventId: number }): void;
 
     subscribe(handler: (msg: ServerMessage) => void): () => void;
+    /** 接続状態が変わるたびに、変わった後の状態で呼ばれる。disconnect() による切断は通知しない */
+    subscribeStatus(handler: (status: RoomClientStatus) => void): () => void;
     disconnect(): void;
-    getStatus(): "connecting" | "connected" | "reconnecting" | "disconnected";
+    getStatus(): RoomClientStatus;
 }
+
+export type RoomClientStatus = "connecting" | "connected" | "reconnecting" | "disconnected";
 
 export interface RoomClientOpenEvent {
     reconnect: boolean;
