@@ -37,6 +37,13 @@ function SettingsButton({ onClick }: { onClick: () => void }): ReactElement {
     );
 }
 
+/**
+ * メッセージの置き方。盤の列は中身の幅に合わせて決まる（w-fit）ので、長い文をそのまま置くと列ごと
+ * 横に広がって、左右の欄に重なる。幅の計算には加えず（w-0）、列の幅いっぱいで折り返す（min-w-full。
+ * 外側の要素を w-full にして、盤の列の幅を受け取る）。
+ */
+const MESSAGE_CLASS = "w-0 min-w-full whitespace-pre-line break-words text-center text-sm";
+
 /** メッセージ種類に応じたスタイルクラス */
 const MESSAGE_STYLES: Record<Message["type"], string> = {
     error: "text-destructive",
@@ -113,21 +120,23 @@ export function MatchControls({
     // 編集モードだが、編集の案内も出さない）。
     if (viewerMode && !isMatchRunning) {
         return (
-            <div className="flex flex-col gap-2 items-center">
+            <div className="flex w-full flex-col items-center gap-2">
                 {isReviewMode && (
                     <div className="text-xs text-muted-foreground">
                         検討モード: 駒を動かして分岐を作成できます
                     </div>
                 )}
                 {message && (
-                    <div className={`text-sm ${MESSAGE_STYLES[message.type]}`}>{message.text}</div>
+                    <div className={`${MESSAGE_CLASS} ${MESSAGE_STYLES[message.type]}`}>
+                        {message.text}
+                    </div>
                 )}
             </div>
         );
     }
 
     return (
-        <div className="flex flex-col gap-2 items-center">
+        <div className="flex w-full flex-col items-center gap-2">
             {/* ボタン行 */}
             <div className="flex gap-2 flex-wrap justify-center min-h-[36px] items-center">
                 {/* 対局中: 停止・投了・待った・パスボタン */}
@@ -227,7 +236,9 @@ export function MatchControls({
 
             {/* メッセージ */}
             {message && (
-                <div className={`text-sm ${MESSAGE_STYLES[message.type]}`}>{message.text}</div>
+                <div className={`${MESSAGE_CLASS} ${MESSAGE_STYLES[message.type]}`}>
+                    {message.text}
+                </div>
             )}
         </div>
     );
