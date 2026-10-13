@@ -247,6 +247,43 @@ describe("subscribeRshogiLiveGame: snapshot → broadcast → end → close", ()
         );
         expect(handicap.state.board["8h"]).toBeNull();
         expect(handicap.state.board["3d"]).toEqual({ owner: "gote", type: "P" });
+
+        // 持ち駒つきの開始局面。先手が歩を 1 枚持っていて、それを打つ。
+        const withHand = decode(
+            buildSnapshotLines(["+0055FU,T1"]).flatMap((line) => {
+                if (line.startsWith("P7")) return ["P7 * +FU+FU+FU+FU+FU+FU+FU+FU"];
+                return line === "+" ? ["P+00FU", "+"] : [line];
+            }),
+        );
+        expect(withHand.startSfen).toBe(
+            "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/1PPPPPPPP/1B5R1/LNSGKGSNL b P 1",
+        );
+        expect(withHand.moves).toEqual(["P*5e"]);
+        expect(withHand.state.hands.sente.P ?? 0).toBe(0);
+    });
+
+    it("開始局面を読めないときは平手にして、warning で知らせる（手番は引き継ぐ）", () => {
+        const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+        subscribeRshogiLiveGame(
+            "game-1",
+            { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+            callbacks,
+        );
+        wsInstances[0].fireOpen();
+        // P9 の段が欠けている。
+        wsInstances[0].fireLines(
+            buildSnapshotLines(["-3334FU,T7"])
+                .filter((line) => !line.startsWith("P9"))
+                .map((line) => (line === "+" ? "-" : line)),
+        );
+
+        expect(events.errors.map((error) => error.message)).toEqual([
+            expect.stringContaining("invalid start position in snapshot"),
+        ]);
+        expect(events.snapshot[0].startSfen).toBe(
+            "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+        );
+        expect(events.snapshot[0].moves).toEqual(["3c3d"]);
     });
 
     it("position 開始手番マーカーを To_Move より優先する", () => {

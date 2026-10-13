@@ -24,6 +24,7 @@ import {
     RshogiLiveMetaPanel,
     RshogiLiveScoreboard,
     setMoveEvalAtPly,
+    startTurnOfSfen,
     summarizeMoveDetails,
 } from "./rshogi-csa-live-viewer";
 import { formatEval, MATE_WITHOUT_PLY } from "./shogi-match/utils/kifFormat";
@@ -987,6 +988,37 @@ describe("applyMoveComment (onMoveComment reducer)", () => {
     it("eval/pv の無いコメントは前の値を据え置く", () => {
         const prev = { senteEvalCp: 50, goteEvalCp: -10, latestPv: ["+2726FU"] };
         expect(applyMoveComment(prev, 3, {})).toEqual(prev);
+    });
+});
+
+describe("後手番開始の対局の評価値", () => {
+    it("開始局面の SFEN から、最初に指す側を求める", () => {
+        expect(startTurnOfSfen("startpos")).toBe("sente");
+        expect(
+            startTurnOfSfen("lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1"),
+        ).toBe("gote");
+        expect(
+            startTurnOfSfen("lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/7R1/LNSGKGSNL b - 1"),
+        ).toBe("sente");
+    });
+
+    it("1 手目（後手の指し手）の評価値は、後手のものとして持つ", () => {
+        const afterFirst = applyMoveComment({}, 1, { evalCp: -120 }, "gote");
+        expect(afterFirst).toMatchObject({ goteEvalCp: -120 });
+        expect(afterFirst.senteEvalCp).toBeUndefined();
+        expect(applyMoveComment(afterFirst, 2, { evalCp: 90 }, "gote")).toMatchObject({
+            senteEvalCp: 90,
+            goteEvalCp: -120,
+        });
+
+        const summary = summarizeMoveDetails(
+            [
+                { csaMove: "3c3d", elapsedSec: 7, comment: { raw: "* -120", evalCp: -120 } },
+                { csaMove: "7g7f", elapsedSec: 3, comment: { raw: "* 90", evalCp: 90 } },
+            ],
+            "gote",
+        );
+        expect(summary).toMatchObject({ senteEvalCp: 90, goteEvalCp: -120 });
     });
 });
 

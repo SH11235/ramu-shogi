@@ -144,10 +144,10 @@ export interface RshogiLiveMoveEvent {
  *
  * live stream ではコメント行が対応する move 行の直後に別行で届くため、`onMove` を
  * 即時発火する既存タイミングを崩さず、コメントは本コールバックで ply 紐付きで
- * 後追い配信する (設計案 (b))。`ply` は 1 始まりで、奇数=先手手番・偶数=後手手番。
+ * 後追い配信する (設計案 (b))。`ply` は 1 始まりで、先手番開始なら奇数=先手手番・偶数=後手手番 (後手番開始なら逆)。
  */
 export interface RshogiLiveMoveCommentEvent {
-    /** コメントが属する手の ply (1 始まり)。奇数=先手・偶数=後手の指し手。 */
+    /** コメントが属する手の ply (1 始まり)。先手番開始なら奇数=先手・偶数=後手の指し手。 */
     ply: number;
     /** 解析済みコメント (raw + eval + pv)。 */
     comment: RshogiLiveComment;
@@ -472,12 +472,7 @@ const decodeSnapshotBlock = (
 
     // 消費秒とコメントの対応を保つため、moves と moveDetails を同じ entry から構築する。
     // 不整合な部分局面を公開しないため、適用不能な手は snapshot 全体の失敗にする。
-    let state: PositionState = {
-        ...createInitialPositionState(),
-        board: start.position.board,
-        hands: start.position.hands,
-        turn: initialTurn,
-    };
+    let state: PositionState = start.position;
     const moves: string[] = [];
     const moveDetails: RshogiLiveMove[] = [];
     for (const entry of moveEntries) {

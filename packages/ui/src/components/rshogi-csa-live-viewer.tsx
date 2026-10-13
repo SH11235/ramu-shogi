@@ -202,17 +202,23 @@ interface LiveEvalState {
     latestPv?: string[];
 }
 
+/** 開始局面の SFEN から、最初に指す側を求める (`"startpos"` は先手)。 */
+export function startTurnOfSfen(sfen: string): "sente" | "gote" {
+    return sfen.trim().split(/\s+/)[1] === "w" ? "gote" : "sente";
+}
+
 /**
  * 1 件の move コメント (ply + eval/pv) を eval 部分状態に畳み込む。
- * ply 奇数 = 先手の指し手・偶数 = 後手の指し手。コメントは指した側のエンジンが
- * 付けるので、その手番側の eval として保持する。eval/pv が無ければ据え置く。
+ * 先手番開始なら ply 奇数 = 先手の指し手・偶数 = 後手の指し手 (後手番開始なら逆)。コメントは
+ * 指した側のエンジンが付けるので、その手番側の eval として保持する。eval/pv が無ければ据え置く。
  */
 export function applyMoveComment(
     prev: LiveEvalState,
     ply: number,
     comment: { evalCp?: number; pv?: string[] },
+    startTurn: "sente" | "gote" = "sente",
 ): LiveEvalState {
-    const isSenteMove = ply % 2 !== 0;
+    const isSenteMove = (ply % 2 !== 0) === (startTurn === "sente");
     return {
         senteEvalCp:
             isSenteMove && comment.evalCp !== undefined ? comment.evalCp : prev.senteEvalCp,
@@ -225,12 +231,16 @@ export function applyMoveComment(
  * snapshot の `moveDetails` を畳み込み、各手番の最新 eval・最新 PV・直近消費秒を求める。
  * eval は wire 値 (先手視点) のまま保持し、表示側で後手のみ符号反転する。
  */
-export function summarizeMoveDetails(moveDetails: RshogiLiveMove[]): LiveEvalState & {
+export function summarizeMoveDetails(
+    moveDetails: RshogiLiveMove[],
+    startTurn: "sente" | "gote" = "sente",
+): LiveEvalState & {
     lastMoveElapsedSec?: number;
 } {
-    // ply = i + 1。奇数 = 先手の指し手、偶数 = 後手の指し手。
+    // ply = i + 1。先手番開始なら奇数 = 先手の指し手、偶数 = 後手の指し手。
     const evalState = moveDetails.reduce<LiveEvalState>(
-        (acc, detail, i) => (detail.comment ? applyMoveComment(acc, i + 1, detail.comment) : acc),
+        (acc, detail, i) =>
+            detail.comment ? applyMoveComment(acc, i + 1, detail.comment, startTurn) : acc,
         {},
     );
     const last = moveDetails[moveDetails.length - 1];
@@ -894,7 +904,10 @@ export function RshogiCsaLiveViewer({
         };
         const callbacks: RshogiLiveCallbacks = {
             onSnapshot(snapshot) {
-                const summary = summarizeMoveDetails(snapshot.moveDetails);
+                const summary = summarizeMoveDetails(
+                    snapshot.moveDetails,
+                    startTurnOfSfen(snapshot.startSfen),
+                );
                 const timeControl = snapshot.meta.timeControl;
                 setState((prev) => ({
                     ...prev,
@@ -953,7 +966,12 @@ export function RshogiCsaLiveViewer({
             onMoveComment({ ply, comment }) {
                 setState((prev) => ({
                     ...prev,
-                    ...applyMoveComment(prev, ply, comment),
+                    ...applyMoveComment(
+                        prev,
+                        ply,
+                        comment,
+                        startTurnOfSfen(prev.snapshot?.startSfen ?? "startpos"),
+                    ),
                     // 該当 ply の付随情報へ eval を後追いで書き込む (scoreboard とは独立)。
                     moveEvals: setMoveEvalAtPly(prev.moveEvals, ply, comment),
                 }));
