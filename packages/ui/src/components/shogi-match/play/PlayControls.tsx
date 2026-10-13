@@ -4,7 +4,8 @@
  */
 
 import { cn } from "@shogi/design-system";
-import type { ReactElement, ReactNode } from "react";
+import type { ReactElement, ReactNode, RefObject } from "react";
+import { useEffect, useRef } from "react";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -35,6 +36,22 @@ const MESSAGE_STYLES: Record<Message["type"], string> = {
 const MESSAGE_REWORDS: Record<string, string> = {
     [ILLEGAL_MOVE_MESSAGE]: "そこには動かせません",
 };
+
+/**
+ * 進み具合（設定 → 対局 → 終局など）が変わったら、その画面の見出しへフォーカスを移す。
+ * 「対局開始」や投了の確認のように、押したボタンが画面から消える操作のあとに、キーボードや
+ * 読み上げの利用者が現在地を失わないようにする。返す ref を、レイアウトの外側の要素に付ける。
+ */
+export function usePlayPhaseFocus<T extends HTMLElement>(phase: string): RefObject<T | null> {
+    const rootRef = useRef<T>(null);
+    const previousPhase = useRef(phase);
+    useEffect(() => {
+        if (previousPhase.current === phase) return;
+        previousPhase.current = phase;
+        rootRef.current?.querySelector<HTMLElement>("h1")?.focus({ preventScroll: true });
+    }, [phase]);
+    return rootRef;
+}
 
 /** エラーなどの知らせ。盤の列を横に広げないよう、幅の計算には加えず列の幅で折り返す。 */
 export function PlayMessage({ className }: { className?: string }): ReactElement | null {
@@ -314,48 +331,56 @@ export function PlayPositionEditorPanel({
     stickyPrimary?: boolean;
 }): ReactElement {
     const { play } = useShogiMatchConfig();
-    return (
-        <section aria-label="開始局面の編集" className={cn("flex flex-col gap-4", className)}>
-            {!hideHeading && (
-                <h1 id="play-editor-heading" className={PLAY_HEADING}>
-                    開始局面を編集
-                </h1>
+    const actions = (
+        <div
+            className={cn(
+                "flex flex-col gap-2",
+                stickyPrimary && "sticky bottom-0 z-10 bg-background pb-2 pt-1",
             )}
-            <div
-                className={cn(
-                    "flex flex-col gap-2",
-                    stickyPrimary && "sticky bottom-0 z-10 order-last bg-background pb-2 pt-1",
-                )}
+        >
+            <Button
+                type="button"
+                size="lg"
+                className={cn("h-12 w-full text-base font-semibold", PLAY_PRIMARY_BUTTON)}
+                onClick={() => play?.closePositionEditor()}
             >
+                この局面に決める
+            </Button>
+            <div className="flex flex-wrap gap-2">
                 <Button
                     type="button"
-                    size="lg"
-                    className={cn("h-12 w-full text-base font-semibold", PLAY_PRIMARY_BUTTON)}
-                    onClick={() => play?.closePositionEditor()}
+                    variant="outline"
+                    className={cn("flex-1", PLAY_OUTLINE_BUTTON)}
+                    onClick={() => play?.resetToStartpos()}
                 >
-                    この局面に決める
+                    平手に戻す
                 </Button>
-                <div className="flex flex-wrap gap-2">
+                {play?.openStudy && (
                     <Button
                         type="button"
                         variant="outline"
                         className={cn("flex-1", PLAY_OUTLINE_BUTTON)}
-                        onClick={() => play?.resetToStartpos()}
+                        onClick={() => play.openStudy?.()}
                     >
-                        平手に戻す
+                        研究ノートで調べる
                     </Button>
-                    {play?.openStudy && (
-                        <Button
-                            type="button"
-                            variant="outline"
-                            className={cn("flex-1", PLAY_OUTLINE_BUTTON)}
-                            onClick={() => play.openStudy?.()}
-                        >
-                            研究ノートで調べる
-                        </Button>
-                    )}
-                </div>
+                )}
             </div>
+        </div>
+    );
+
+    return (
+        <section aria-label="開始局面の編集" className={cn("flex flex-col gap-4", className)}>
+            {!hideHeading && (
+                <h1
+                    id="play-editor-heading"
+                    tabIndex={-1}
+                    className={cn(PLAY_HEADING, "outline-none")}
+                >
+                    開始局面を編集
+                </h1>
+            )}
+            {!stickyPrimary && actions}
             <fieldset className="flex flex-col">
                 <legend className="pb-1.5 text-xs font-medium text-wafuu-sumi-light">
                     どちらから指し始めるか
@@ -385,6 +410,8 @@ export function PlayPositionEditorPanel({
             <p className="text-[13px] leading-relaxed text-wafuu-sumi-light">
                 駒はドラッグで動かし、盤の外へ出すと取り除けます（成・不成は 2 回押し）。
             </p>
+            {/* 下端に留めるときは、操作を最後に置く（見た目と Tab の順を合わせる）。 */}
+            {stickyPrimary && actions}
         </section>
     );
 }

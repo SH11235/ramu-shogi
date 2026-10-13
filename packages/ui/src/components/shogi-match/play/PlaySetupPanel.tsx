@@ -179,7 +179,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                 className,
             )}
         >
-            <h1 id="play-setup-heading" className={PLAY_HEADING}>
+            <h1 id="play-setup-heading" tabIndex={-1} className={cn(PLAY_HEADING, "outline-none")}>
                 {setup.kind === "vs-ai"
                     ? "AI と対局する"
                     : setup.kind === "humans"

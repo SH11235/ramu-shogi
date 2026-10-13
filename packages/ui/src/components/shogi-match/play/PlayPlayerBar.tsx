@@ -129,13 +129,25 @@ export function PlayPlayerBar({ position, className }: PlayPlayerBarProps): Reac
     );
 }
 
-/** 自分（盤の下の側）の時間だけを出す（スマホの操作の帯に置く）。時間無制限なら何も出さない。 */
-export function PlayMyTime({ className }: { className?: string }): ReactElement | null {
-    const { timeSettings } = useMatchSettings();
-    const { getHandInfo } = useMatchState();
+/**
+ * 自分（盤の下の側）のパス権の残りと時間を出す（スマホの操作の帯に置く。スマホの対局中は、
+ * 自分の側の帯を出さないため）。どちらも無ければ何も出さない。
+ */
+export function PlayMyStatus({ className }: { className?: string }): ReactElement | null {
+    const { timeSettings, passRightsSettings } = useMatchSettings();
+    const { getHandInfo, position: board } = useMatchState();
     const owner = getHandInfo("bottom").owner;
     const { text: timeText, urgent } = usePlayerTime(owner);
-    if (!timeSettings[owner].enabled) return null;
+    const passText = passRightsSettings.enabled
+        ? `パス残り${
+              board.passRights?.[owner] ??
+              (owner === "sente"
+                  ? passRightsSettings.senteInitialCount
+                  : passRightsSettings.goteInitialCount)
+          }`
+        : null;
+    const showTime = timeSettings[owner].enabled;
+    if (!showTime && !passText) return null;
     return (
         <span
             className={cn(
@@ -144,7 +156,9 @@ export function PlayMyTime({ className }: { className?: string }): ReactElement 
                 className,
             )}
         >
-            {timeText}
+            {passText}
+            {passText && showTime ? " ・ " : ""}
+            {showTime ? timeText : ""}
         </span>
     );
 }

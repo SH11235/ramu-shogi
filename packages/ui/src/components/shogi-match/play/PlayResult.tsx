@@ -123,8 +123,9 @@ function ResultSummary({
             )}
         >
             <h1
+                tabIndex={-1}
                 className={cn(
-                    "font-display font-semibold",
+                    "font-display font-semibold outline-none",
                     compact ? "text-xl" : "text-2xl",
                     // 色は勝敗でなく、勝った側の色（先手 = 朱、後手 = 藍）。
                     result.winner === "sente"

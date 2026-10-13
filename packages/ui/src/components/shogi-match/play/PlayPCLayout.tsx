@@ -32,6 +32,7 @@ import {
     PlayMessage,
     PlayPositionEditorPanel,
     PlayTurnStatus,
+    usePlayPhaseFocus,
 } from "./PlayControls";
 import { PlayHintCard, usePlayHintMove } from "./PlayHintCard";
 import { PlayMoveList } from "./PlayMoveList";
@@ -53,6 +54,7 @@ export function PlayPCLayout({
 }: PlayPCLayoutProps): ReactElement {
     const { play } = useShogiMatchConfig();
     const hintMove = usePlayHintMove();
+    const rootRef = usePlayPhaseFocus<HTMLElement>(play?.phase ?? "setup");
     const {
         boardSectionRef,
         isDraggingPiece,
@@ -90,6 +92,7 @@ export function PlayPCLayout({
 
     return (
         <section
+            ref={rootRef}
             // 盤は画面の高さに合わせる（低い画面で縦にはみ出さず、高い画面で小さく残らないように）。
             className={`${matchLayoutClasses} [--shogi-cell-size:clamp(34px,calc((100dvh-400px)/9),72px)] min-[1700px]:[--panel-width:460px]`}
         >
@@ -173,7 +176,9 @@ export function PlayPCLayout({
                         {phase === "finished" && <PlayResultCard />}
                         {(phase === "playing" || phase === "paused") && (
                             <div className="flex flex-col">
-                                <h1 className="sr-only">対局中</h1>
+                                <h1 tabIndex={-1} className="sr-only">
+                                    対局中
+                                </h1>
                                 <PlayTurnStatus className="min-h-9 text-lg" />
                                 {/* 知らせ（指せない手など）は手番のそばに出す。高さを確保して下を動かさない。 */}
                                 <div className="min-h-5 text-left [&>p]:text-left">

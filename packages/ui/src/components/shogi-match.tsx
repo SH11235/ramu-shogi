@@ -2450,13 +2450,29 @@ export function ShogiMatch({
               },
               closePositionEditor: () => setPositionEditOpen(false),
               resetToStartpos: () => {
-                  void handleResetToStartpos();
+                  if (isPlayResetting || isPlayStarting) return;
+                  void (async () => {
+                      setIsPlayResetting(true);
+                      try {
+                          await handleResetToStartpos();
+                      } finally {
+                          setIsPlayResetting(false);
+                      }
+                  })();
               },
               startSfen,
               loadStartPosition: (sfen: string) => {
+                  if (isPlayResetting || isPlayStarting) return;
                   void (async () => {
-                      setPositionEditOpen(false);
-                      await importSfen(sfen, []);
+                      // 読み込みが済むまで、対局を始めさせない（読み込みがあとから完了すると、
+                      // 始まった対局の局面を置き換えて止めてしまう）。
+                      setIsPlayResetting(true);
+                      try {
+                          setPositionEditOpen(false);
+                          await importSfen(sfen, []);
+                      } finally {
+                          setIsPlayResetting(false);
+                      }
                   })();
               },
               playerNames: { sente: playerNameFor("sente"), gote: playerNameFor("gote") },
