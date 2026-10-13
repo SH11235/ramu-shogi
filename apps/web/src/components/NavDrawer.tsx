@@ -7,7 +7,15 @@ import { useAuthSession } from "../hooks/useAuthSession";
 import { loginSearch } from "../lib/loginReturn";
 import { AuthBadge } from "./AuthBadge";
 
-type NavTo = "/play" | "/online" | "/studies" | "/games" | "/rshogi-viewer" | "/nnue" | "/auth";
+type NavTo =
+    | "/play"
+    | "/online"
+    | "/studies"
+    | "/games"
+    | "/rshogi-viewer"
+    | "/book-viewer"
+    | "/nnue"
+    | "/auth";
 
 interface NavItem {
     to: NavTo;
@@ -43,6 +51,7 @@ function buildNavSections(pathname: string): NavSection[] {
         {
             label: "棋譜",
             items: [
+                { to: "/book-viewer", label: "定跡ビュアー", active: pathname === "/book-viewer" },
                 // 棋譜を AI で解析して残す。未ログインでも使える（ブラウザ内に保存）。
                 {
                     to: "/studies",

@@ -41,6 +41,17 @@ describe("NavDrawer", () => {
         mockPathname = "/";
     });
 
+    it("棋譜の節から定跡ビュアーへ移動できる", () => {
+        const section = buildNavSections("/book-viewer").find(
+            (section) => section.label === "棋譜",
+        );
+        expect(section?.items.find((item) => item.to === "/book-viewer")).toEqual({
+            to: "/book-viewer",
+            label: "定跡ビュアー",
+            active: true,
+        });
+    });
+
     it("セクション構造でナビゲーションを表示する", () => {
         render(<NavDrawer />);
         fireEvent.click(screen.getByRole("button", { name: "メニュー" }));

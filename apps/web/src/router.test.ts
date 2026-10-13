@@ -9,6 +9,14 @@ const load = async (url: string) => {
     return router.state.location;
 };
 
+describe("router: 定跡ビュアー", () => {
+    it("定跡ビュアーは loader なしで開ける", async () => {
+        expect((await load("/book-viewer")).pathname).toBe("/book-viewer");
+        expect(router.state.matches.at(-1)?.routeId).toBe("/book-viewer");
+        expect(router.routesByPath["/book-viewer"].options.loader).toBeUndefined();
+    });
+});
+
 describe("router: rshogi viewer", () => {
     it("廃止した進行中一覧 /rshogi-viewer/live は /rshogi-viewer へ送る", async () => {
         const location = await load("/rshogi-viewer/live");

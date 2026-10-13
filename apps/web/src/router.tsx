@@ -255,6 +255,12 @@ const rshogiViewerLiveRoute = createRoute({
     component: lazyRouteComponent(() => import("./pages/rshogi-viewer/RshogiViewerLivePage")),
 });
 
+const bookViewerRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/book-viewer",
+    component: lazyRouteComponent(() => import("./pages/book-viewer/BookViewerPage")),
+});
+
 const rshogiViewerRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/rshogi-viewer/$gameId",
@@ -372,6 +378,7 @@ const routeTree = rootRoute.addChildren([
     rshogiViewerLiveListRoute,
     rshogiViewerLiveRoute,
     rshogiViewerRoute,
+    bookViewerRoute,
 ]);
 
 export const router = createRouter({

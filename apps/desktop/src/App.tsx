@@ -22,6 +22,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useRef, useState } from "react";
 import { ActiveEngineSettingsPanel } from "./components/ActiveEngineSettingsPanel";
+import { BookViewerView } from "./components/book-viewer/BookViewerView";
 import { CsaGameView } from "./components/csa/CsaGameView";
 import { EngineManagerPanel } from "./components/EngineManagerPanel";
 import { RshogiViewerListView } from "./components/rshogi-viewer/RshogiViewerListView";
@@ -94,6 +95,7 @@ interface EngineSettingsTarget {
 }
 
 type AppMode =
+    | "book-viewer"
     | "local"
     | "csa"
     | "rshogi-viewer-list"
@@ -257,6 +259,14 @@ function App() {
         });
     };
 
+    if (appMode === "book-viewer") {
+        return (
+            <main className="mx-auto flex max-w-[1100px] flex-col gap-3 p-4 md:px-5">
+                <BookViewerView onBackToLocal={() => setAppMode("local")} />
+            </main>
+        );
+    }
+
     if (appMode === "csa") {
         return (
             <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
@@ -355,6 +365,16 @@ function App() {
         <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
             <main className="mx-auto flex max-w-[1100px] flex-col gap-3 md:px-5">
                 <div className="flex justify-end gap-2 pt-2 px-1">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                            setPlayHandoff(null);
+                            setAppMode("book-viewer");
+                        }}
+                    >
+                        定跡ビュアー
+                    </Button>
                     <Button variant="outline" size="sm" onClick={handleOpenStudies}>
                         研究ノート
                     </Button>
