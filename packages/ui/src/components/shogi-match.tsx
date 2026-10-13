@@ -932,8 +932,8 @@ export function ShogiMatch({
     const getHandInfo = (pos: "top" | "bottom") => {
         const owner: Player =
             pos === "top" ? (flipBoard ? "sente" : "gote") : flipBoard ? "gote" : "sente";
-        // 検討モードでは手番の持ち駒を選択可能（対局設定に関係なく）
-        const isActiveInReview = isReviewMode && position.turn === owner;
+        // 検討モードでは手番の持ち駒を選択可能（対局設定に関係なく）。ビューアでは選ばせない。
+        const isActiveInReview = isReviewMode && !viewerMode && position.turn === owner;
         const isActiveInMatch =
             !isEditMode &&
             !isReviewMode &&
@@ -1864,9 +1864,9 @@ export function ShogiMatch({
 
     const candidateNote = positionReady ? null : "局面を読み込み中です。";
     const isDraggingPiece = editAllowed && dndController.state.isDragging;
-    // ビューアで内部の状態が編集モードのまま残っている間（取り込み前・取り込み失敗時）は、
-    // マスや持ち駒を押しても局面を書き換えない。
-    const editLockedInViewer = isEditMode && !editAllowed;
+    // 棋譜を見るだけの画面（ビューア）は、盤を操作させない。局面の編集も、駒を動かして変化を
+    // 作ることもできない（調べたいときは、研究ノートで開く）。
+    const boardLockedInViewer = viewerMode;
     const internalEngineId = engineOptions[0]?.id ?? "wasm";
 
     useEffect(() => {
@@ -2026,15 +2026,15 @@ export function ShogiMatch({
     const boardHandlers: BoardHandlersProps = {
         hideEmptyHandPieces,
         getHandInfo,
-        handleSquareSelect: editLockedInViewer ? async () => {} : handleSquareSelect,
+        handleSquareSelect: boardLockedInViewer ? async () => {} : handleSquareSelect,
         handlePromotionChoice,
-        handleHandSelect: editLockedInViewer ? () => {} : handleHandSelect,
-        applyUsiMove,
+        handleHandSelect: boardLockedInViewer ? () => {} : handleHandSelect,
+        applyUsiMove: boardLockedInViewer ? async () => false : applyUsiMove,
         handleHandPiecePointerDown,
         handlePiecePointerDown,
         handlePieceTogglePromote,
-        handleIncrementHand: editLockedInViewer ? () => {} : handleIncrementHand,
-        handleDecrementHand: editLockedInViewer ? () => {} : handleDecrementHand,
+        handleIncrementHand: boardLockedInViewer ? () => {} : handleIncrementHand,
+        handleDecrementHand: boardLockedInViewer ? () => {} : handleDecrementHand,
         handleResetToStartpos,
         pauseAutoPlay,
         resumeAutoPlay,

@@ -54,7 +54,8 @@ function buildNavSections(pathname: string): NavSection[] {
                 // 棋譜を AI で解析して残す。未ログインでも使える（ブラウザ内に保存）。
                 {
                     to: "/studies",
-                    label: "研究ノート",
+                    // 「（整備中）」は、研究ノートの本格実装が済んだら外す。
+                    label: "研究ノート（整備中）",
                     active: pathname.startsWith("/studies"),
                 },
                 {

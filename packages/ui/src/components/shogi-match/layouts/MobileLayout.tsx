@@ -538,13 +538,16 @@ export function MobileLayout({
                             >
                                 📊 グラフ
                             </button>
-                            <button
-                                type="button"
-                                onClick={() => setIsAiHintOpen(true)}
-                                className="px-2 py-0.5 text-xs rounded bg-muted hover:bg-muted/80 active:scale-95 transition-all"
-                            >
-                                🤖 ヒント
-                            </button>
+                            {/* 棋譜を見るだけの画面では、解析（ヒント）は出さない。 */}
+                            {!viewerMode && (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAiHintOpen(true)}
+                                    className="px-2 py-0.5 text-xs rounded bg-muted hover:bg-muted/80 active:scale-95 transition-all"
+                                >
+                                    🤖 ヒント
+                                </button>
+                            )}
                         </div>
 
                         {/* ナビゲーションボタン */}
@@ -556,7 +559,7 @@ export function MobileLayout({
                             onToStart={goToStart}
                             onToEnd={goToEnd}
                             onSettingsClick={() => setIsSettingsOpen(true)}
-                            onNnueManagerClick={onOpenNnueManager}
+                            onNnueManagerClick={viewerMode ? undefined : onOpenNnueManager}
                         />
                     </div>
                 ) : viewerMode ? null : (
@@ -687,7 +690,7 @@ export function MobileLayout({
                 }}
                 move={selectedMoveForDetail}
                 position={selectedMovePosition}
-                onAddBranch={handleAddPvAsBranch}
+                onAddBranch={viewerMode ? undefined : handleAddPvAsBranch}
                 onPreview={handlePreviewPv}
                 isOnMainLine={isOnMainLine}
             />
