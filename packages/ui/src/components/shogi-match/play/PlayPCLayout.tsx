@@ -105,7 +105,7 @@ export function PlayPCLayout({
     return (
         <section
             // 盤は画面の高さに合わせる（低い画面で縦にはみ出さず、高い画面で小さく残らないように）。
-            className={`${matchLayoutClasses} [--shogi-cell-size:clamp(34px,calc((100dvh-392px)/9),72px)] min-[1700px]:[--panel-width:460px]`}
+            className={`${matchLayoutClasses} [--shogi-cell-size:clamp(34px,calc((100dvh-400px)/9),72px)] min-[1700px]:[--panel-width:460px]`}
         >
             <div className="w-full overflow-x-auto">
                 <div className="mx-auto flex w-max items-start gap-14 px-4 py-2">

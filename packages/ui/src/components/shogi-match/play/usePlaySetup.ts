@@ -79,6 +79,9 @@ export interface PlaySetup {
     chooseLevel: (level: number) => void;
     chooseAiTime: (choice: TimeChoice) => void;
     chooseMyTime: (choice: TimeChoice) => void;
+    /** 人 対 人の持ち時間（両者に同じ決まりを当てる）。両者が同じでなければ null */
+    bothTimeId: string | null;
+    chooseBothTime: (choice: TimeChoice) => void;
 }
 
 export function usePlaySetup(): PlaySetup {
@@ -295,5 +298,19 @@ export function usePlaySetup(): PlaySetup {
         chooseLevel,
         chooseAiTime: (choice) => applyClock(aiSide, choice),
         chooseMyTime: (choice) => applyClock(mySide, choice),
+        bothTimeId:
+            MY_TIME_CHOICES.find(
+                (choice) =>
+                    matchesChoice(timeSettings.sente, choice) &&
+                    matchesChoice(timeSettings.gote, choice),
+            )?.id ?? null,
+        chooseBothTime: (choice) => {
+            const clock = {
+                mainMs: choice.mainMs,
+                byoyomiMs: choice.byoyomiMs,
+                enabled: choice.enabled,
+            };
+            onTimeSettingsChange({ sente: { ...clock }, gote: { ...clock } });
+        },
     };
 }

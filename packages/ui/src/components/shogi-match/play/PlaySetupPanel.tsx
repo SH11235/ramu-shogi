@@ -75,7 +75,7 @@ function Segmented<T extends string>({
                             aria-pressed={selected}
                             onClick={() => onChange(option.id)}
                             className={cn(
-                                "min-h-10 flex-1 whitespace-nowrap rounded-md border px-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 md:min-h-9",
+                                "min-h-10 flex-1 whitespace-nowrap rounded-md border px-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 md:min-h-9 [@media(max-height:760px)]:md:min-h-8",
                                 // 選んでいる項目は墨の枠で示す（朱・藍は、先手・後手の色に取っておく）。
                                 selected
                                     ? "border-wafuu-sumi bg-wafuu-washi-warm font-semibold text-wafuu-sumi ring-1 ring-inset ring-wafuu-sumi"
@@ -184,7 +184,8 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
             aria-labelledby="play-setup-heading"
             className={cn(
                 // 設定はこの画面の主役なので、背景付きの欄にしない（見出しと項目を、地の上に並べる）。
-                "flex flex-col gap-4",
+                // 高さの低い画面（1280x720 など）では、行の間を詰めて 1 画面に収める。
+                "flex flex-col gap-4 [@media(max-height:760px)]:md:gap-2.5",
                 className,
             )}
         >
@@ -285,7 +286,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
             )}
 
             {isVsAi && (
-                <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-4 [@media(max-height:760px)]:md:gap-2.5">
                     <Segmented
                         label="AI の考慮時間（1手）"
                         options={timeOptions(AI_TIME_CHOICES)}
@@ -307,6 +308,19 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                         disabled={locked}
                     />
                 </div>
+            )}
+
+            {setup.kind === "humans" && (
+                <Segmented
+                    label="持ち時間（両者）"
+                    options={timeOptions(MY_TIME_CHOICES)}
+                    value={setup.bothTimeId}
+                    onChange={(id) => {
+                        const choice = MY_TIME_CHOICES.find((item) => item.id === id);
+                        if (choice) setup.chooseBothTime(choice);
+                    }}
+                    disabled={locked}
+                />
             )}
 
             <div className="flex flex-col gap-1.5">

@@ -2317,12 +2317,11 @@ export function ShogiMatch({
     }, [isPlayScreen, playPhase]);
     // 指せない手を選んだ知らせは、しばらくしたら消す（次の手を考える邪魔にしない）。
     const illegalMoveMessage = isPlayScreen && message?.text === "合法手ではありません";
+    // 選んでいた駒の枠は、すぐ外す（知らせだけが先に消えて、枠が残るのを避ける）。
     useEffect(() => {
         if (!illegalMoveMessage) return;
-        const timer = setTimeout(() => {
-            setMessage(null);
-            setSelection(null);
-        }, 2500);
+        setSelection(null);
+        const timer = setTimeout(() => setMessage(null), 2500);
         return () => clearTimeout(timer);
     }, [illegalMoveMessage, setMessage, setSelection]);
     const HIRATE_BOARD_SFEN = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
