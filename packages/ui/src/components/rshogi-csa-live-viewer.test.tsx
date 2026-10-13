@@ -303,6 +303,8 @@ describe("RshogiCsaLiveViewer: static fallback", () => {
             await waitFor(() => expect(fetchOverride).toHaveBeenCalled());
         } else {
             expect(screen.queryByText(/勝ち/)).toBeNull();
+            // 盤は平手・先手番からではなく、snapshot の開始局面（後手番）から再生する。
+            expect(screen.getByTestId("shogi-match").getAttribute("data-sfen")).toMatch(/ w - 1$/);
             act(() => ws.fireLines([moves[moves.length - 1]]));
             expect(screen.queryByText(/勝ち/)).toBeNull();
             act(() => ws.fireLines(["#RESIGN"]));
@@ -334,6 +336,7 @@ describe("RshogiCsaLiveViewer: static fallback", () => {
         const moves = parseCsaGameRecord(["PI", "+", ...checkmateMoves].join("\n")).moves;
         const snapshot: RshogiLiveSnapshot = {
             meta: META,
+            startSfen: "startpos",
             moves,
             moveDetails: [],
             state: replayMoves(moves, { validateTurn: true }).state,

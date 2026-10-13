@@ -1139,6 +1139,7 @@ export function RshogiCsaLiveViewer({
     }
 
     const meta = state.snapshot.meta;
+    const liveStartSfen = state.snapshot.startSfen;
     // key は snapshotEpoch のみ。broadcast move では key を変えず初期 review prop の
     // 更新で反映するため、`<ShogiMatch>` を毎手 remount せずちらつきが起きない。
     const matchKey = String(state.snapshotEpoch);
@@ -1179,7 +1180,8 @@ export function RshogiCsaLiveViewer({
                     gote: { role: "human" },
                 }}
                 initialReview={{
-                    sfen: "startpos",
+                    // 後手番開始・駒落ち・途中局面からの対局では、平手ではない。
+                    sfen: liveStartSfen,
                     moves: state.moves,
                     // 各手の評価値・消費秒。棋譜評価値カラム・評価値グラフを点灯させる。
                     moveData: state.moveEvals,
@@ -1213,7 +1215,9 @@ export function RshogiCsaLiveViewer({
                         {onPlayFromPosition && (
                             <PlayFromPositionButton
                                 onClick={() =>
-                                    onPlayFromPosition(shownPosition.getShownPosition("startpos"))
+                                    onPlayFromPosition(
+                                        shownPosition.getShownPosition(liveStartSfen),
+                                    )
                                 }
                             />
                         )}
