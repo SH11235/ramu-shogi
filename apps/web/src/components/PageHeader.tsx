@@ -47,6 +47,7 @@ export function PageHeader({ items, right }: PageHeaderProps): ReactElement {
                                     {item.to ? (
                                         <Link
                                             to={item.to}
+                                            // 行の高さをヘッダーの高さに合わせ、帯のどこを押しても届くようにする。
                                             className="block truncate leading-10 text-wafuu-sumi-light transition-colors hover:text-wafuu-sumi"
                                         >
                                             {item.label}

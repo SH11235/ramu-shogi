@@ -16,7 +16,7 @@ import { boardToGrid } from "../shogi-match/utils/positionUtils";
 const DEFAULT_CELL_SIZE = 48;
 /** 320px 幅の画面でも盤がはみ出さない下限。 */
 const MIN_CELL_SIZE = 22;
-/** 幅を測る前の見積もりに使う、ページの左右の余白。 */
+/** 幅を測る前の見積もりに使う、ページの左右の余白（ページ本文の px-4 × 2）。測ったあとは使わない。 */
 const PAGE_PADDING_WIDTH = 32;
 /** 画面の幅が分からないとき（サーバー側など）の見積もり。既定の大きさの盤が収まる幅。 */
 const DEFAULT_BOARD_WIDTH = 560;

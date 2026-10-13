@@ -38,14 +38,14 @@ interface BottomSheetProps {
 
 const heightClassName: Record<NonNullable<BottomSheetProps["height"]>, string> = {
     // 高さは dvh で決める。vh はアドレスバーを畳んだときの高さなので、アドレスバーが出ている間は
-    // シートの上端（見出し）が画面の外へ出る。
-    half: "h-[50dvh]",
-    full: "h-[85dvh]",
+    // シートの上端（見出し）が画面の外へ出る。dvh の無いブラウザ（Safari 15.3 以前）では vh のまま。
+    half: "h-[50vh] supports-[height:1dvh]:h-[50dvh]",
+    full: "h-[85vh] supports-[height:1dvh]:h-[85dvh]",
     // auto の場合も height を設定し、内部の flex レイアウトを機能させる
     // コンテンツが少ない場合は min-content で縮み、多い場合は 85dvh でスクロール。
-    // 横向きなど高さの無い画面では、見出しと「閉じる」で中身の欄がほとんど残らないので、
-    // 画面いっぱいまで使う。
-    auto: "h-auto max-h-[85dvh] [@media(max-height:480px)]:max-h-[100dvh]",
+    // 高さ 480px 以下の画面（スマホの横向き。667x375 など）では、見出しと「閉じる」で中身の欄が
+    // ほとんど残らないので、画面いっぱいまで使う。
+    auto: "h-auto max-h-[85vh] supports-[height:1dvh]:max-h-[85dvh] [@media(max-height:480px)]:max-h-[100vh] supports-[height:1dvh]:[@media(max-height:480px)]:max-h-[100dvh]",
 };
 /**
  * スマホ向けボトムシートコンポーネント

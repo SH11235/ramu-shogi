@@ -113,6 +113,7 @@ export function StudySaveIndicator({
                     <button
                         type="button"
                         onClick={onLogin}
+                        // 押せる範囲を上下に広げる。上は、すぐ上の段のボタンに重ならない分（4px）だけ。
                         className="relative rounded-sm text-wafuu-ai underline underline-offset-2 after:absolute after:inset-x-0 after:-bottom-2.5 after:-top-1 hover:text-wafuu-ai-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                         {loginText}
