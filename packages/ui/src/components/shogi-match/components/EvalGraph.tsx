@@ -5,7 +5,7 @@
  * 評価値の範囲に応じて自動スケール
  */
 
-import type { MouseEvent, ReactElement } from "react";
+import type { MouseEvent, PointerEvent, ReactElement } from "react";
 import { useRef } from "react";
 import type { EvalHistory } from "../utils/kifFormat";
 
@@ -24,6 +24,11 @@ interface EvalGraphProps {
     onClick?: () => void;
     /** 手数選択時のコールバック */
     onPlySelect?: (ply: number) => void;
+    /**
+     * グラフをなぞって手数を選べるようにする（コンパクト表示で `onPlySelect` だけを渡したとき）。
+     * 指では狙った 1 手を押せないので、スマホではなぞりながら局面を送る。
+     */
+    scrubbable?: boolean;
     /**
      * 縦軸の上限（センチポーン）。指定すると、詰みや大差の評価値は上端・下端に張り付けて描き、
      * 縦軸はこの値までの通常の評価値の範囲で決める（最終手の詰みで全体が平らに見えるのを防ぐ）。
@@ -148,6 +153,7 @@ export function EvalGraph({
     minScale = 500,
     onClick,
     onPlySelect,
+    scrubbable = false,
     axisCap,
     markers,
     onMarkerSelect,
@@ -156,25 +162,51 @@ export function EvalGraph({
     const padding = { top: 4, bottom: 4, left: 0, right: 0 };
     const graphHeight = height - padding.top - padding.bottom;
     const graphContainerRef = useRef<HTMLElement>(null);
+    const isScrubbingRef = useRef(false);
 
-    // グラフクリック時に手数を計算
-    const handleGraphClick = (e: MouseEvent<HTMLDivElement | HTMLButtonElement>) => {
+    // 横位置から手数を計算して選ぶ
+    const selectPlyAt = (clientX: number) => {
         if (!onPlySelect || evalHistory.length <= 1) return;
 
         const container = graphContainerRef.current;
         if (!container) return;
 
         const rect = container.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const width = rect.width;
+        if (rect.width <= 0) return;
+        const x = clientX - rect.left;
 
-        // クリック位置から手数を計算
         const maxPly = evalHistory.length - 1;
-        const clickedPly = Math.round((x / width) * maxPly);
+        const clickedPly = Math.round((x / rect.width) * maxPly);
         const clampedPly = Math.max(0, Math.min(maxPly, clickedPly));
 
         onPlySelect(clampedPly);
     };
+
+    const handleGraphClick = (e: MouseEvent<HTMLDivElement | HTMLButtonElement>) => {
+        selectPlyAt(e.clientX);
+    };
+
+    // なぞって選ぶ（scrubbable のとき）。押している間、指の位置の手数を選び続ける。
+    const scrubHandlers = scrubbable
+        ? {
+              onPointerDown: (e: PointerEvent<HTMLButtonElement>) => {
+                  isScrubbingRef.current = true;
+                  // 指がグラフの外へ出ても追い続ける。
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  selectPlyAt(e.clientX);
+              },
+              onPointerMove: (e: PointerEvent<HTMLButtonElement>) => {
+                  if (!isScrubbingRef.current) return;
+                  selectPlyAt(e.clientX);
+              },
+              onPointerUp: () => {
+                  isScrubbingRef.current = false;
+              },
+              onPointerCancel: () => {
+                  isScrubbingRef.current = false;
+              },
+          }
+        : undefined;
 
     const scaleMax = computeEvalGraphScale(evalHistory, minScale, axisCap);
 
@@ -401,9 +433,10 @@ export function EvalGraph({
                             ).current = el;
                         }}
                         type="button"
-                        className="ml-8 bg-transparent border-0 p-0 block text-left w-[calc(100%-32px)] cursor-crosshair"
+                        className={`ml-8 bg-transparent border-0 p-0 block text-left w-[calc(100%-32px)] cursor-crosshair ${scrubbable ? "touch-none" : ""}`}
                         style={{ height }}
                         onClick={handleGraphClick}
+                        {...scrubHandlers}
                         aria-label="グラフをクリックして手数を選択"
                     >
                         {compactSvg}

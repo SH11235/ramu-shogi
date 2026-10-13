@@ -1867,8 +1867,9 @@ export function KifuPanel({
                                 const hasPv = (move.pv && move.pv.length > 0) || hasMultiPv;
                                 // 詳細を展開するか（PVがあるか、解析機能がある場合）
                                 const canExpand = position && (hasPv || onAnalyzePly);
-                                // この行が詳細展開中か
-                                const isDetailExpanded = expandedMoveDetail === move.ply;
+                                // この行が詳細展開中か（外部のウィンドウに出すときは、行では持たない）
+                                const isDetailExpanded =
+                                    !onMoveDetailSelect && expandedMoveDetail === move.ply;
 
                                 // 評価値表示コンポーネント
                                 const evalSpan = (
@@ -1893,35 +1894,23 @@ export function KifuPanel({
                                     </Tooltip>
                                 );
 
-                                // 行クリックハンドラ（ply選択 + 詳細展開/外部通知）
+                                // 行を押したら、その局面へ移るだけ（読み筋は開かない）。
                                 const handleRowClick = () => {
-                                    // まず局面を選択
                                     onPlySelect?.(move.ply);
+                                };
 
-                                    // 外部コールバックがある場合は詳細を右パネルに表示
-                                    if (onMoveDetailSelect && canExpand && position) {
-                                        // 同じ手をもう一度クリックしたら選択解除
-                                        if (isDetailExpanded) {
-                                            onMoveDetailSelect(null, null);
-                                            setExpandState((prev) => ({
-                                                ...prev,
-                                                expandedMoveDetail: null,
-                                            }));
-                                        } else {
-                                            onMoveDetailSelect(move, position);
-                                            setExpandState((prev) => ({
-                                                ...prev,
-                                                expandedMoveDetail: move.ply,
-                                            }));
-                                        }
+                                // 読み筋・解析の詳細を開く（行の右端の ▾）。その局面へも移る。
+                                const handleDetailToggle = () => {
+                                    if (!canExpand || !position) return;
+                                    onPlySelect?.(move.ply);
+                                    if (onMoveDetailSelect) {
+                                        // 外部のウィンドウに出す。閉じるのはウィンドウ側で行う。
+                                        onMoveDetailSelect(move, position);
                                         return;
                                     }
-
-                                    // 外部コールバックがない場合は従来のインライン展開
-                                    if (canExpand) {
-                                        toggleMoveDetailExpansion(move.ply);
-                                    }
+                                    toggleMoveDetailExpansion(move.ply);
                                 };
+                                const detailToggleLabel = `${move.ply}手目の読み筋を${isDetailExpanded ? "閉じる" : "開く"}`;
 
                                 const content = (
                                     <>
@@ -1972,11 +1961,28 @@ export function KifuPanel({
                                         {showEval && evalText && evalSpan}
                                         {/* 展開可能インジケータ */}
                                         {canExpand && (
-                                            <span
-                                                className={`text-[10px] transition-transform duration-150 ${isDetailExpanded ? "rotate-180" : ""} ${isPastCurrent ? "text-muted-foreground/30" : "text-muted-foreground/60"}`}
+                                            <button
+                                                type="button"
+                                                className={`-my-0.5 cursor-pointer rounded border-none bg-transparent px-1.5 py-0.5 text-[10px] hover:bg-accent hover:text-foreground ${isPastCurrent ? "text-muted-foreground/30" : "text-muted-foreground/60"}`}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDetailToggle();
+                                                }}
+                                                onKeyDown={(e) => e.stopPropagation()}
+                                                aria-label={detailToggleLabel}
+                                                aria-expanded={
+                                                    onMoveDetailSelect
+                                                        ? undefined
+                                                        : isDetailExpanded
+                                                }
+                                                title={detailToggleLabel}
                                             >
-                                                ▾
-                                            </span>
+                                                <span
+                                                    className={`inline-block transition-transform duration-150 ${isDetailExpanded ? "rotate-180" : ""}`}
+                                                >
+                                                    ▾
+                                                </span>
+                                            </button>
                                         )}
                                     </>
                                 );

@@ -12,10 +12,11 @@ vi.mock("@shogi/match-client", () => ({
 }));
 
 interface CapturedShogiMatchProps {
-    initialReview?: { sfen: string; moves: string[]; moveData?: unknown[] };
+    initialReview?: { sfen: string; moves: string[]; moveData?: unknown[]; openAt?: "start" };
     spectateMode?: boolean;
     viewerMode?: boolean;
     boardTopContent?: ReactNode;
+    mobileHeaderContent?: ReactNode;
     evalGraphPinned?: boolean;
     onPositionSnapshot?: (snapshot: { sfen: string; moves: string[]; label?: string }) => void;
 }
@@ -28,6 +29,7 @@ vi.mock("./shogi-match", () => ({
         return (
             <div data-testid="shogi-match">
                 <div data-testid="board-top">{props.boardTopContent}</div>
+                <div data-testid="mobile-header">{props.mobileHeaderContent}</div>
                 <div data-testid="left-panel">{props.reviewLeftContent}</div>
             </div>
         );
@@ -158,6 +160,7 @@ describe("RshogiCsaViewer: 外部から取り込んだ棋譜", () => {
                 // ±100000 は手数不明の詰み (後手勝ち)。
                 { elapsedMs: 2000, evalMate: Number.NEGATIVE_INFINITY },
             ],
+            openAt: "start",
         });
         // 評価値つきの棋譜は、評価値の列とグラフを最初から出す。
         expect(props?.spectateMode).toBe(true);
@@ -174,6 +177,7 @@ describe("RshogiCsaViewer: 外部から取り込んだ棋譜", () => {
             sfen: "startpos",
             moves: ["7g7f"],
             moveData: [undefined],
+            openAt: "start",
         });
         expect(props?.spectateMode).toBe(false);
     });
@@ -185,7 +189,9 @@ describe("RshogiCsaViewer: 外部から取り込んだ棋譜", () => {
 
         expect(await screen.findByText("Floodgate")).toBeTruthy();
         expect(screen.getByText("floodgate-300-10F")).toBeTruthy();
-        const players = screen.getByRole("region", { name: "対局者" });
+        const players = within(screen.getByTestId("board-top")).getByRole("region", {
+            name: "対局者",
+        });
         expect(players.textContent).toBe("先手☗RAMUR3512後手☖SampleEngineR3447");
         const link = screen.getByRole("link", { name: "元の棋譜を開く（Floodgate）" });
         expect(link.getAttribute("href")).toBe(WDOOR_GAME.meta.originUrl);
@@ -245,6 +251,7 @@ describe("RshogiCsaViewer: 外部から取り込んだ棋譜", () => {
             sfen: MIDGAME_SFEN,
             moves: ["B*5e", "2e2d"],
             moveData: [{ elapsedMs: 3000, evalCp: -35, pv: ["2e2d"] }, { elapsedMs: 4000 }],
+            openAt: "start",
         });
     });
 
@@ -261,6 +268,7 @@ describe("RshogiCsaViewer: 外部から取り込んだ棋譜", () => {
             sfen: "lnsgkgsnl/9/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
             moves: ["3c3d"],
             moveData: [undefined],
+            openAt: "start",
         });
     });
 
@@ -291,6 +299,7 @@ describe("RshogiCsaViewer: 外部から取り込んだ棋譜", () => {
             sfen: "4k4/9/4P4/9/9/9/9/9/9 b 2R2B4G4S4N4L17P 1",
             moves: ["G*5b"],
             moveData: [undefined],
+            openAt: "start",
         });
     });
 
@@ -593,9 +602,18 @@ describe("RshogiCsaViewer: 対局情報パネル", () => {
 
         renderViewer();
 
-        expect((await screen.findByRole("region", { name: "対局者" })).textContent).toBe(
-            "先手☗alice後手☖bob勝ち",
-        );
+        expect(
+            (
+                await within(await screen.findByTestId("board-top")).findByRole("region", {
+                    name: "対局者",
+                })
+            ).textContent,
+        ).toBe("先手☗alice後手☖bob勝ち");
+        // スマホの 1 行表示では「勝」と詰めて出す。
+        expect(
+            within(screen.getByTestId("mobile-header")).getByRole("region", { name: "対局者" })
+                .textContent,
+        ).toBe("☗先手alice☖後手bob勝");
         expect(screen.getByText("持ち時間: 10分 + 秒読み10秒")).toBeTruthy();
         expect(screen.getByText("結果: 後手 (bob) 勝ち (投了)")).toBeTruthy();
         expect(screen.queryByText(/不明/)).toBeNull();
@@ -757,21 +775,26 @@ describe("RshogiCsaViewer: モバイル幅", () => {
 
         renderViewer();
 
-        // 盤面の上には、対局者（先手・後手を分けた行）と対局場所の 1 行を出す。
+        // 盤の上に別の行は取らない。対局者は、盤の上の「手数・反転」の行に小さく出す。
         const summary = await screen.findByRole("button", { name: /対局情報/ });
         expect(within(summary).getByText("Floodgate")).toBeTruthy();
-        // 盤（ShogiMatch）の外、ページの上部に出る（スマホのレイアウトは盤の上に枠を持たない）。
-        const players = screen
-            .getAllByRole("region", { name: "対局者" })
-            .filter((region) => !screen.getByTestId("shogi-match").contains(region));
-        expect(players).toHaveLength(1);
-        expect(players[0]?.textContent).toBe("先手☗RAMUR3512後手☖SampleEngineR3447");
+        const inline = within(screen.getByTestId("mobile-header")).getByRole("region", {
+            name: "対局者",
+        });
+        expect(inline.textContent).toBe("☗先手RAMU☖後手SampleEngine");
+        // 対局場所の 1 行は、盤（操作欄）の下に出す。
+        expect(
+            screen.getByTestId("shogi-match").compareDocumentPosition(summary) &
+                Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
 
         fireEvent.click(summary);
 
         const sheet = await screen.findByRole("dialog", { name: "対局情報" });
-        // 対局者は盤の上に出しているので、シートには重ねて出さない。
-        expect(within(sheet).queryByText(/RAMU/)).toBeNull();
+        // 盤の上では名前を省略しうるので、シートには対局者の全文とレートを出す。
+        expect(within(sheet).getByRole("region", { name: "対局者" }).textContent).toBe(
+            "先手☗RAMUR3512後手☖SampleEngineR3447",
+        );
         expect(within(sheet).getByText("floodgate-300-10F")).toBeTruthy();
         expect(
             within(sheet)
