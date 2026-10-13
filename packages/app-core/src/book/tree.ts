@@ -1,5 +1,6 @@
 import { applyMoveWithState, createInitialPositionState, type PositionState } from "../game/board";
 import { type BookData, positionToBookKey } from "./book";
+import { applyUsiMoveStrict } from "./usi-move";
 import { yieldTask } from "./yieldTask";
 
 export const BOOK_TREE_AUTO_LIMIT = 20_000;
@@ -64,7 +65,9 @@ export function createBookTreeBuilder({
                 : await legalMoves(`${node.key} 1`);
             if (cancelled) return;
             for (const move of moves) {
-                const result = applyMoveWithState(node.position, move);
+                const result = own
+                    ? applyUsiMoveStrict(node.position, move)
+                    : applyMoveWithState(node.position, move);
                 if (!result.ok) {
                     if (own) node.error = "指せない定跡の手があります";
                     continue;
@@ -102,7 +105,7 @@ export function createBookTreeBuilder({
         onChange();
         await yieldTask();
         if (cancelled) return;
-        let started = performance.now();
+        let sliceStart = performance.now();
         const queue = [root];
         let head = 0;
         let count = 0;
@@ -116,28 +119,28 @@ export function createBookTreeBuilder({
             }
             if (cancelled) return;
             queue.push(...tree.nodes[node.id].children);
-            if (performance.now() - started >= 12) {
+            if (performance.now() - sliceStart >= 12) {
                 onChange();
                 await yieldTask();
                 if (cancelled) return;
-                started = performance.now();
+                sliceStart = performance.now();
             }
         }
         if (cancelled) return;
         if (automatic)
             tree.capped = queue.slice(head).some((id) => tree.nodes[id].status === "pending");
         if (automatic && !tree.capped && !tree.legalMovesFailed) {
-            started = performance.now();
+            sliceStart = performance.now();
             for (const entry of book.positions.keys()) {
                 if (
                     entry.split(" ")[1] === (side === "sente" ? "b" : "w") &&
                     !tree.firstByKey.has(entry)
                 )
                     tree.unreachable.push(entry);
-                if (performance.now() - started >= 12) {
+                if (performance.now() - sliceStart >= 12) {
                     await yieldTask();
                     if (cancelled) return;
-                    started = performance.now();
+                    sliceStart = performance.now();
                 }
             }
             tree.complete = true;

@@ -198,6 +198,7 @@ export function parseBookExplore(text: string): {
         if (!line || line.startsWith("#")) return;
         try {
             const [prefix, ...fields] = line.split(/\s+/);
+            // フィールドは盤・手番・持ち駒・省略可能な手数・指し手…の順に並ぶ。
             const offset = /^\d+$/.test(fields[3] ?? "") ? 4 : 3;
             const moves = fields.slice(offset);
             if (prefix !== "sfen" || !moves.length || moves.some((move) => !USI.test(move)))

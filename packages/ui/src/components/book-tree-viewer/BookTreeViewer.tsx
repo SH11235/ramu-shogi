@@ -1,5 +1,6 @@
 import {
     applyMoveWithState,
+    applyUsiMoveStrict,
     type BookData,
     type BookTree,
     bookTreePath,
@@ -41,7 +42,7 @@ export function BookTreeViewer({
     fetchLegalMoves: PositionService["getLegalMoves"];
 }) {
     const [book, setBook] = useState<LoadedBook | null>(null);
-    const [selection, setSteps] = useState<Step[]>(() => [
+    const [steps, setSteps] = useState<Step[]>(() => [
         { position: createInitialPositionState(), label: "初期局面", root: true },
     ]);
     const [flip, setFlip] = useState(false);
@@ -62,8 +63,7 @@ export function BookTreeViewer({
     const fileRef = useRef<HTMLInputElement>(null);
     const boardRef = useRef<HTMLDivElement>(null);
     const readId = useRef(0);
-    const key = positionToBookKey(selection[selection.length - 1].position);
-    const steps = selection;
+    const key = positionToBookKey(steps[steps.length - 1].position);
     let selected: number | undefined = tree && steps[0].root ? 0 : undefined;
     for (const step of steps.slice(1)) {
         if (tree && selected !== undefined) {
@@ -75,10 +75,10 @@ export function BookTreeViewer({
                 : tree?.nodes[selected].children.find((id) => tree.nodes[id].move === step.move);
     }
     useEffect(() => {
-        if (selection[0].root || !tree) return;
+        if (steps[0].root || !tree) return;
         const id = tree.firstByKey.get(key);
         if (id !== undefined) setSteps(nodeSteps(tree, id));
-    }, [selection, tree, key]);
+    }, [steps, tree, key]);
     const position = steps[steps.length - 1].position;
     const bookMoves = book?.data.positions.get(key);
     const ownTurn = position.turn === viewSide;
@@ -143,8 +143,9 @@ export function BookTreeViewer({
             setLimit(PAGE_SIZE);
         } catch {
             if (id === readId.current) setError("ファイルを読み込めませんでした");
+        } finally {
+            if (id === readId.current) setBusy(false);
         }
-        if (id === readId.current) setBusy(false);
     }
     function selectNode(id: number) {
         if (!tree) return;
@@ -177,7 +178,7 @@ export function BookTreeViewer({
         boardRef.current?.scrollIntoView({ block: "nearest" });
     }
     function advance(move: string) {
-        const result = applyMoveWithState(position, move);
+        const result = applyUsiMoveStrict(position, move);
         if (!result.ok) {
             setError("この局面では指せない手です");
             return;

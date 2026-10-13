@@ -23,6 +23,40 @@ function fixture() {
 }
 
 describe("book tree", () => {
+    it.each([
+        { moves: [], side: "sente" as const, illegal: "7g7e", legal: "7g7f" },
+        {
+            moves: ["7g7f", "7c7d", "7f7e", "7d7e", "2g2f"],
+            side: "gote" as const,
+            illegal: "P*3d",
+            legal: "8c8d",
+        },
+    ])("違法手 $illegal を除外して合法な子を残す", async ({ moves, side, illegal, legal }) => {
+        const entries = moves.map(
+            (move, index) => `sfen ${key(...moves.slice(0, index))}\n${move}`,
+        );
+        entries.push(`sfen ${key(...moves)}\n${illegal}\n${legal}`);
+        const responses = new Map(
+            moves.map((move, index) => [`${key(...moves.slice(0, index))} 1`, [move]]),
+        );
+        const legalMoves = vi.fn(async (sfen: string) => responses.get(sfen) ?? []);
+        const builder = createBookTreeBuilder({
+            book: parseBook(entries.join("\n")),
+            side,
+            legalMoves,
+        });
+        await builder.start();
+        const node = builder.tree.nodes.find((node) => node.key === key(...moves));
+        expect(node).toMatchObject({ status: "error", error: "指せない定跡の手があります" });
+        expect(node?.children.map((id) => builder.tree.nodes[id].move)).toEqual([legal]);
+        expect(builder.tree.nodes.some((node) => node.move === illegal)).toBe(false);
+        expect(builder.tree.legalMovesFailed).toBe(false);
+        expect(
+            legalMoves.mock.calls.every(
+                ([sfen]) => sfen.split(" ")[1] === (side === "sente" ? "w" : "b"),
+            ),
+        ).toBe(true);
+    });
     it("中止後は予約済みの展開も通知も木の変更もしない", async () => {
         let finish: (moves: string[]) => void = () => {};
         const legalMoves = vi.fn(

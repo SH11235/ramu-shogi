@@ -23,6 +23,18 @@ async function upload(text: string, name = "sample.db") {
     await screen.findByText(name);
 }
 describe("BookTreeViewer", () => {
+    it("駒の動きとして違法な定跡の手では局面も手順も進めない", async () => {
+        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
+        await upload(`sfen ${key}\n7g7e\n7g7f`);
+        const list = within(screen.getByRole("region", { name: "指し手一覧" }));
+        fireEvent.click(list.getByRole("button", { name: /7五歩/ }));
+        expect(screen.getByRole("alert").textContent).toBe("この局面では指せない手です");
+        expect(screen.getByText(key)).toBeTruthy();
+        expect(within(screen.getByRole("navigation")).getAllByRole("button")).toHaveLength(1);
+        fireEvent.click(list.getByRole("button", { name: /7六歩/ }));
+        expect(screen.queryByRole("alert")).toBeNull();
+        expect(screen.getByText(positionToBookKey(first))).toBeTruthy();
+    });
     it("合流を越えても木を選択し、手の一覧で辿った手順を保つ", async () => {
         const lines = [
             ["7g7f", "8c8d", "2g2f", "3c3d", "6g6f"],

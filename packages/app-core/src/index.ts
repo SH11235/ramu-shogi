@@ -201,6 +201,7 @@ export {
     bookTreeRow,
     createBookTreeBuilder,
 } from "./book/tree";
+export { applyUsiMoveStrict } from "./book/usi-move";
 export { yieldTask } from "./book/yieldTask";
 
 // ============================================================

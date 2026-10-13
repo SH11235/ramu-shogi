@@ -172,6 +172,16 @@ export function BookTreeDisplay({
                         const first = ids[0];
                         const last = ids[ids.length - 1];
                         const expandable = last.children.length > 0 || last.status === "pending";
+                        const expanded = open && last.status !== "pending";
+                        const moveName =
+                            first.move && first.parent !== null
+                                ? formatMoveSimple(
+                                      first.move,
+                                      tree.nodes[first.parent].position.turn,
+                                      tree.nodes[first.parent].position.board,
+                                  )
+                                : "平手初期局面";
+                        const action = expanded ? "閉じる" : "開く";
                         return (
                             <li
                                 key={first.id}
@@ -181,8 +191,8 @@ export function BookTreeDisplay({
                                 {expandable && (
                                     <button
                                         type="button"
-                                        aria-label={`${first.move && first.parent !== null ? formatMoveSimple(first.move, tree.nodes[first.parent].position.turn, tree.nodes[first.parent].position.board) : "平手初期局面"} の枝を${open && last.status !== "pending" ? "閉じる" : "開く"}`}
-                                        aria-expanded={open && last.status !== "pending"}
+                                        aria-label={`${moveName} の枝を${action}`}
+                                        aria-expanded={expanded}
                                         className="shrink-0 rounded p-1 hover:bg-muted"
                                         onClick={() => {
                                             const next = last.status === "pending" || !open;
@@ -191,7 +201,7 @@ export function BookTreeDisplay({
                                                 onExpand(last.id);
                                         }}
                                     >
-                                        {open && last.status !== "pending" ? "▾" : "▸"}
+                                        {expanded ? "▾" : "▸"}
                                     </button>
                                 )}
                                 <div className="flex min-w-0 flex-wrap items-center gap-1">
