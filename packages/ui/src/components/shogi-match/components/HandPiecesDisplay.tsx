@@ -23,7 +23,10 @@ const SIZE_CONFIG = {
         badgePosRotated: "-left-0.5 -top-0.5 rotate-180",
     },
     medium: {
-        imageSize: "h-8 w-8",
+        // 盤のマスに合わせる（マスが大きい画面で、持ち駒だけ小さく見えないように）。
+        // 既定のマス 40px で、これまでと同じ 32px 相当になる。
+        imageSize:
+            "h-[calc(var(--shogi-cell-size,40px)*0.8)] w-[calc(var(--shogi-cell-size,40px)*0.8)]",
         badgeSize: "min-w-[12px] text-[9px]",
         badgePos: "-bottom-0.5 -right-0.5",
         badgePosRotated: "-left-0.5 -top-0.5 rotate-180",
