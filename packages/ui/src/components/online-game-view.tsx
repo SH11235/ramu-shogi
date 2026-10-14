@@ -38,6 +38,7 @@ import {
     resolveStartSfen,
     restorePosition,
     type SerialQueue,
+    snapshotAnalysisRemaining,
 } from "./online-game-state";
 import { type AiHintMove, AiHintPanel } from "./shogi-match/components/AiHintPanel";
 import { BottomSheet } from "./shogi-match/components/BottomSheet";
@@ -277,7 +278,7 @@ export function OnlineGameView({
 
     // ─── ゲーム状態（useReducer） ─────────────────────────────────────────────
     const [gameState, dispatch] = useReducer(gameReducer, undefined, () =>
-        makeInitialGameState(snapshot, myAiSettings),
+        makeInitialGameState(snapshot, myAiSettings, seat),
     );
     const {
         position,
@@ -421,6 +422,8 @@ export function OnlineGameView({
                         turn: payload.turn,
                         clock: payload.clock,
                         passRights: payload.passRights,
+                        pendingTakeback: payload.pendingTakeback,
+                        myAnalysisRemaining: snapshotAnalysisRemaining(payload, seat),
                     });
                     dispatchUI({ type: "resync_received" }); // 再接続後は最新局面に戻す
                 },

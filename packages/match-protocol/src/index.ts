@@ -214,6 +214,10 @@ export interface SnapshotPayload {
     result?: GameResult;
     /** 棋譜が保存済みの場合のみ付く */
     gameRecordId?: string;
+    /** 申請中の待った。申請が無ければ null。旧サーバーは送らない */
+    pendingTakeback?: { seat: "b" | "w"; ply: number } | null;
+    /** 席ごとの AI サポートの残り回数（null は無制限）。AI サポートの無い部屋と旧サーバーでは付かない */
+    analysisRemaining?: { b: number | null; w: number | null };
 }
 
 // ─── エラーコード ─────────────────────────────────────────────────────────
