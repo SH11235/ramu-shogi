@@ -7,6 +7,7 @@ import type {
     GameResult,
     GameStartEvent,
     PassRightsState,
+    Seat,
     SnapshotPayload,
 } from "@shogi/match-client";
 import { exportToKifString } from "./shogi-match/utils/kifFormat";
@@ -58,6 +59,9 @@ type GameAction =
           turn: "b" | "w";
           clock: ClockState;
           passRights: PassRightsState | null;
+          /** undefined は snapshot に無い（旧サーバー）ので、今の状態を保つ */
+          pendingTakeback?: GameState["pendingTakeback"];
+          myAnalysisRemaining?: number | null;
       } & RestoredPosition)
     | { type: "takeback_requested"; seat: "b" | "w"; ply: number }
     | {
@@ -70,10 +74,20 @@ type GameAction =
     | { type: "takeback_rejected" }
     | { type: "takeback_cancelled" };
 
+/** snapshot が自分の席の残り回数を持たなければ（旧サーバー・観戦者）undefined */
+export function snapshotAnalysisRemaining(
+    snapshot: SnapshotPayload,
+    seat: Seat,
+): number | null | undefined {
+    return seat === "s" ? undefined : snapshot.analysisRemaining?.[seat];
+}
+
 export function makeInitialGameState(
     snapshot: SnapshotPayload,
     myAiSettings: AiSupportPlayerSettings | null,
+    seat: Seat,
 ): GameState {
+    const remaining = snapshotAnalysisRemaining(snapshot, seat);
     return {
         position: null,
         positionHistory: [],
@@ -83,10 +97,14 @@ export function makeInitialGameState(
         offlineSeats: new Set(),
         passRights: snapshot.passRights,
         myAnalysisRemaining:
-            myAiSettings?.mode === "limited" ? (myAiSettings.limitCount ?? 0) : null,
+            remaining !== undefined
+                ? remaining
+                : myAiSettings?.mode === "limited"
+                  ? (myAiSettings.limitCount ?? 0)
+                  : null,
         analysisLog: [],
         usiMoveLog: [],
-        pendingTakeback: null,
+        pendingTakeback: snapshot.pendingTakeback ?? null,
     };
 }
 
@@ -173,6 +191,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 turn: action.turn,
                 clockState: action.clock,
                 passRights: action.passRights,
+                pendingTakeback:
+                    action.pendingTakeback === undefined
+                        ? state.pendingTakeback
+                        : action.pendingTakeback,
+                myAnalysisRemaining:
+                    action.myAnalysisRemaining === undefined
+                        ? state.myAnalysisRemaining
+                        : action.myAnalysisRemaining,
             };
         case "takeback_requested":
             return { ...state, pendingTakeback: { seat: action.seat, ply: action.ply } };

@@ -110,7 +110,7 @@ describe("オンライン対局の状態（実物の Wasm 局面サービス）"
     }
 
     async function restore(snapshot: SnapshotPayload): Promise<GameState> {
-        return gameReducer(makeInitialGameState(snapshot, null), {
+        return gameReducer(makeInitialGameState(snapshot, null, "s"), {
             type: "init",
             ...(await restorePosition(snapshot)),
         });

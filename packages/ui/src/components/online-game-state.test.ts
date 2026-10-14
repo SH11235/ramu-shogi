@@ -70,7 +70,7 @@ function useFakePositionService(played: string[]): void {
 }
 
 async function restoredState(snapshot: SnapshotPayload): Promise<GameState> {
-    return gameReducer(makeInitialGameState(snapshot, null), {
+    return gameReducer(makeInitialGameState(snapshot, null, "s"), {
         type: "init",
         ...(await restorePosition(snapshot)),
     });
@@ -174,6 +174,68 @@ describe("gameReducer", () => {
         });
         expect(broken.usiMoveLog).toEqual([]);
         expect(broken.positionHistory).toEqual([broken.position]);
+    });
+
+    it("再同期の snapshot が持つ待ったの申請と残り回数で置き換え、持たなければ今の状態を保つ", async () => {
+        const restored = await restoredState(makeSnapshot(MOVES));
+        const requested = gameReducer(
+            gameReducer(restored, { type: "takeback_requested", seat: "w", ply: 3 }),
+            { type: "analysis_used", isMySeat: true, seat: "b", analysisRemaining: 2, ply: 3 },
+        );
+        const position = await restorePosition(makeSnapshot(MOVES));
+        const resync = {
+            type: "resync" as const,
+            ...position,
+            turn: "w" as const,
+            clock: CLOCK,
+            passRights: null,
+        };
+
+        const fromOldServer = gameReducer(requested, resync);
+        expect(fromOldServer.pendingTakeback).toEqual({ seat: "w", ply: 3 });
+        expect(fromOldServer.myAnalysisRemaining).toBe(2);
+
+        const cleared = gameReducer(requested, {
+            ...resync,
+            pendingTakeback: null,
+            myAnalysisRemaining: 1,
+        });
+        expect(cleared.pendingTakeback).toBeNull();
+        expect(cleared.myAnalysisRemaining).toBe(1);
+
+        const pending = gameReducer(restored, {
+            ...resync,
+            pendingTakeback: { seat: "b", ply: 3 },
+            myAnalysisRemaining: null,
+        });
+        expect(pending.pendingTakeback).toEqual({ seat: "b", ply: 3 });
+        expect(pending.myAnalysisRemaining).toBeNull();
+    });
+});
+
+describe("makeInitialGameState", () => {
+    const LIMITED = { mode: "limited" as const, limitCount: 3 };
+
+    it("snapshot が持つ待ったの申請と自分の席の残り回数から始める", () => {
+        const snapshot: SnapshotPayload = {
+            ...makeSnapshot([]),
+            pendingTakeback: { seat: "w", ply: 4 },
+            analysisRemaining: { b: 1, w: null },
+        };
+
+        expect(makeInitialGameState(snapshot, LIMITED, "b")).toMatchObject({
+            pendingTakeback: { seat: "w", ply: 4 },
+            myAnalysisRemaining: 1,
+        });
+        expect(makeInitialGameState(snapshot, null, "w").myAnalysisRemaining).toBeNull();
+        expect(makeInitialGameState(snapshot, null, "s").myAnalysisRemaining).toBeNull();
+    });
+
+    it("snapshot に無ければ、申請なし・設定の上限回数から始める", () => {
+        expect(makeInitialGameState(makeSnapshot([]), LIMITED, "b")).toMatchObject({
+            pendingTakeback: null,
+            myAnalysisRemaining: 3,
+        });
     });
 });
 
