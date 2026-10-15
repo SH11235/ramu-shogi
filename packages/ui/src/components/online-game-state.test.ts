@@ -242,6 +242,7 @@ describe("gameReducer", () => {
             { seat: "b", ply: 1 },
             { seat: "w", ply: 2 },
         ]);
+        expect(gameReducer(used, { ...resync, analysisLog: [] }).analysisLog).toEqual([]);
     });
 });
 
