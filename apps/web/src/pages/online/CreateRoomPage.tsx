@@ -64,7 +64,7 @@ function buildCreateRoomRequest(settings: RoomFormState): CreateRoomRequest {
 
     return {
         settings: {
-            startSfen: settings.startSfen || "startpos",
+            startSfen: settings.startSfen,
             timeControl,
             passRights:
                 settings.passRightsCount !== null
@@ -121,9 +121,12 @@ export default function CreateRoomPage(): ReactElement {
         });
     }, [session]);
 
+    // 開始局面の選択欄は、SFEN 直接入力が空か入力途中のあいだ "" を通知する
+    const startSfenMissing = settings.startSfen === "";
+
     async function handleSubmit(): Promise<void> {
         const trimmedName = settings.name.trim();
-        if (!trimmedName) return;
+        if (!trimmedName || startSfenMissing) return;
         setIsCreating(true);
         setError(null);
         if (!session?.authenticated) saveLocalPlayerName(trimmedName);
@@ -202,6 +205,11 @@ export default function CreateRoomPage(): ReactElement {
                         value={settings.startSfen}
                         onChange={(v) => set("startSfen", v)}
                     />
+                    {startSfenMissing && (
+                        <p className="text-xs text-muted-foreground">
+                            局面（SFEN）を入力すると部屋を作成できます
+                        </p>
+                    )}
                 </div>
 
                 {/* 時間設定 */}
@@ -446,7 +454,7 @@ export default function CreateRoomPage(): ReactElement {
                 <button
                     type="button"
                     onClick={() => void handleSubmit()}
-                    disabled={isCreating || !settings.name.trim()}
+                    disabled={isCreating || !settings.name.trim() || startSfenMissing}
                     className="w-full rounded-lg bg-primary py-3 text-base font-semibold text-primary-foreground shadow hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                     {isCreating ? "作成中..." : "部屋を作成する"}

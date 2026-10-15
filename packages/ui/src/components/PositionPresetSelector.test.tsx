@@ -109,6 +109,33 @@ describe("PositionPresetSelector の SFEN 直接入力", () => {
         expect(screen.getByText(/^有効な局面ではありません/)).toBeTruthy();
     });
 
+    it("別の SFEN が value に届いたら、入力欄をその SFEN に置き換える", () => {
+        const other = "4k4/9/9/9/9/9/9/9/4K4 b 2P 1";
+        const { rerender } = render(<PositionPresetSelector value={SFEN} onChange={vi.fn()} />);
+        const input = screen.getByPlaceholderText(/^例: lnsgkgsnl/) as HTMLInputElement;
+
+        rerender(<PositionPresetSelector value={other} onChange={vi.fn()} />);
+
+        expect(input.value).toBe(other);
+    });
+
+    it("自分の入力を通知した結果の value や、入力途中を表す空の value では、打った文字列を残す", () => {
+        const onChange = vi.fn();
+        render(<Controlled onChange={onChange} />);
+        const input = screen.getByPlaceholderText(/^例: lnsgkgsnl/) as HTMLInputElement;
+        const typed = "  4k4/9/9/9/9/9/9/9/4K4  b 2P 1";
+
+        fireEvent.change(input, { target: { value: typed } });
+        expect(onChange).toHaveBeenLastCalledWith("4k4/9/9/9/9/9/9/9/4K4 b 2P 1");
+        expect(input.value).toBe(typed);
+
+        choose("平手");
+        choose("SFEN 直接入力");
+        expect((screen.getByPlaceholderText(/^例: lnsgkgsnl/) as HTMLInputElement).value).toBe(
+            typed,
+        );
+    });
+
     it("入力欄が空のまま SFEN 直接入力へ切り替えても、入力を促すエラーはまだ出さない", () => {
         render(<PositionPresetSelector value="startpos" onChange={vi.fn()} />);
 

@@ -90,6 +90,16 @@ export function PositionPresetSelector({
     const selectValue = isPreset ? value : CUSTOM_VALUE;
     const [customSfen, setCustomSfen] = useState(isPreset ? "" : value);
     const [sfenError, setSfenError] = useState<string | null>(null);
+    // 待機中の部屋では、相手が設定した別の局面が value に届く。自分の入力を通知した結果の
+    // value (空白をそろえたもの) と、入力途中を表す "" では、打っている文字列を残す
+    const [prevValue, setPrevValue] = useState(value);
+    if (value !== prevValue) {
+        setPrevValue(value);
+        if (!isPreset && value !== "" && value !== normalizeSfenSpacing(customSfen)) {
+            setCustomSfen(value);
+            setSfenError(null);
+        }
+    }
     const selectedPreset = POSITION_PRESETS.find((p) => p.value === selectValue);
 
     function handleSelectChange(selected: string): void {
