@@ -18,7 +18,7 @@ vi.mock("../../hooks/useAuthSession", () => ({
     syncProfileDisplayNameIfNeeded: () => Promise.resolve(),
 }));
 
-// 選択欄は、SFEN 直接入力が空のあいだ "" を通知する
+// 本物の選択欄が SFEN 直接入力へ切り替えて入力欄が空のときに通知する "" を、選択肢として出す
 vi.mock("@shogi/ui", () => ({
     PositionPresetSelector: ({
         value,

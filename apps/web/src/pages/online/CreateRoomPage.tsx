@@ -121,7 +121,8 @@ export default function CreateRoomPage(): ReactElement {
         });
     }, [session]);
 
-    // 開始局面の選択欄は、SFEN 直接入力に切り替えた時点で入力欄が空か入力途中なら "" を通知する
+    // "" は SFEN 直接入力の局面がまだ決まっていない印で、サーバーへ送れる開始局面ではない。
+    // 平手などに置き換えて作ると、選んだ覚えの無い局面の部屋ができる
     const startSfenMissing = settings.startSfen === "";
 
     async function handleSubmit(): Promise<void> {
