@@ -1228,6 +1228,24 @@ describe("RoomPage", () => {
             ]);
         });
 
+        it("SFEN 入力待ちの間に相手が開始局面を変更したら、その局面を出して入力待ちを外す", async () => {
+            const socket = await joinAndWait("b");
+            const settingsRow = (): string =>
+                screen.getByText("開始局面", { selector: "span" }).parentElement
+                    ?.textContent as string;
+            fireEvent.keyDown(screen.getByRole("combobox", { name: "開始局面を選択" }), {
+                key: "ArrowDown",
+            });
+            fireEvent.keyDown(screen.getByRole("option", { name: "SFEN 直接入力" }), {
+                key: "Enter",
+            });
+            expect(settingsRow()).toBe("開始局面平手（SFEN 入力待ち）");
+
+            await receive(socket, [settingsUpdated(1, "handicap:rook")]);
+
+            expect(settingsRow()).toBe("開始局面飛車落ち");
+        });
+
         it("開始局面を変更した後に届いた待機中の snapshot の開始局面を、対局設定に出す", async () => {
             const socket = await joinAndWait("b");
             const settingsRow = (): string =>
