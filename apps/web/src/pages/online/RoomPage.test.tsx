@@ -1487,10 +1487,27 @@ describe("RoomPage", () => {
                 expect(screen.getByText(WAITING_TEXT)).toBeTruthy();
 
                 await receive(socket, [
-                    { v: 1, t: "error", payload: { code: "INVALID_TOKEN", message: "" } },
+                    { v: 1, t: "error", payload: { code: "UNKNOWN", message: "" } },
                 ]);
 
                 expectReloadGuidanceOnly();
+            });
+
+            it("開始局面を解釈できない対局開始の後、snapshot の代わりに INVALID_TOKEN が返ったら、席を捨てて参加フォームへ戻す", async () => {
+                const socket = await joinAndWait("b");
+                await receive(socket, [gameStart(1, UNKNOWN_PRESET)]);
+                expect(localStorage.getItem("ramu_resume_token_test-room")).toBe("token");
+
+                await receive(socket, [
+                    { v: 1, t: "error", payload: { code: "INVALID_TOKEN", message: "" } },
+                ]);
+
+                expect(
+                    screen.getByText("セッションが切れました。再度参加してください"),
+                ).toBeTruthy();
+                expect(screen.getByLabelText(/名前/)).toBeTruthy();
+                expect(screen.queryByRole("button", { name: "再読み込み" })).toBeNull();
+                expect(localStorage.getItem("ramu_resume_token_test-room")).toBeNull();
             });
 
             it("相手を待つ間にエラーが返ったら、再読み込みを案内し、ボタンで再読み込みする", async () => {

@@ -1427,6 +1427,46 @@ describe("OnlineGameView", () => {
             }
         });
 
+        it.each([
+            "INVALID_TOKEN",
+            "ROOM_NOT_FOUND",
+            "ROOM_EXPIRED",
+        ] as const)("取り寄せた snapshot の代わりに %s が返ったら、保存済みの席とトークンを捨て、送り直さない", async (code) => {
+            vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+            try {
+                localStorage.setItem("ramu_resume_token_test-room", "token");
+                localStorage.setItem("ramu_seat_test-room", "b");
+                const requestFullSnapshot = vi.fn(() => true);
+                const { emit } = await renderUnrestored(requestFullSnapshot);
+
+                await emit({ v: 1, t: "error", payload: { code, message: "" } });
+                act(() => {
+                    vi.advanceTimersByTime(60_000);
+                });
+
+                expect(localStorage.getItem("ramu_resume_token_test-room")).toBeNull();
+                expect(localStorage.getItem("ramu_seat_test-room")).toBeNull();
+                expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+                expect(screen.getByText(/セッションが切れました/)).toBeTruthy();
+            } finally {
+                vi.useRealTimers();
+                localStorage.clear();
+            }
+        });
+
+        it("取り寄せた snapshot の代わりに一時的なエラーが返っても、保存済みの席とトークンは残す", async () => {
+            localStorage.setItem("ramu_resume_token_test-room", "token");
+            try {
+                const { emit } = await renderUnrestored(vi.fn(() => true));
+
+                await emit({ v: 1, t: "error", payload: { code: "RATE_LIMITED", message: "" } });
+
+                expect(localStorage.getItem("ramu_resume_token_test-room")).toBe("token");
+            } finally {
+                localStorage.clear();
+            }
+        });
+
         it("読み込めない間に届いた待ったの申請は、復帰後に承認ダイアログとして出る", async () => {
             const { client, emit } = await renderUnrestored();
 

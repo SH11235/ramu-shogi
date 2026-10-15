@@ -11,7 +11,10 @@ const mockStoreSeat = vi.fn();
 const mockRemoveStoredResumeToken = vi.fn();
 const mockRemoveStoredSeat = vi.fn();
 
-vi.mock("@shogi/match-client", () => ({
+vi.mock("@shogi/match-client", async () => ({
+    isResumeTokenRejected: (
+        await vi.importActual<typeof import("@shogi/match-client")>("@shogi/match-client")
+    ).isResumeTokenRejected,
     createRoomClient: (...args: Parameters<typeof mockCreateRoomClient>) =>
         mockCreateRoomClient(...args),
     getStoredResumeToken: (...args: Parameters<typeof mockGetStoredResumeToken>) =>

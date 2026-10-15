@@ -40,6 +40,7 @@ export { createRoomClient } from "./client";
 export {
     getStoredResumeToken,
     getStoredSeat,
+    isResumeTokenRejected,
     removeStoredResumeToken,
     removeStoredSeat,
     storeResumeToken,

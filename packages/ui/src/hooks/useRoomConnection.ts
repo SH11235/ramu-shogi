@@ -3,6 +3,7 @@ import {
     createRoomClient,
     getStoredResumeToken,
     getStoredSeat,
+    isResumeTokenRejected,
     removeStoredResumeToken,
     removeStoredSeat,
     storeSeat,
@@ -156,19 +157,9 @@ function roomReducer(state: RoomState, action: RoomAction): RoomState {
 
 // ─── 待機中の参加者が受け取るメッセージの処理 ─────────────────────────────────
 
-/**
- * resume にこれらが返ったら、保存済みのトークンでは二度と席へ戻れない。残すと再読み込みのたびに
- * 同じトークンで resume し直して同じエラーになり、参加フォームへも戻れない
- */
-const RESUME_TOKEN_REJECTED_CODES: ReadonlySet<ErrorCode> = new Set([
-    "INVALID_TOKEN",
-    "ROOM_NOT_FOUND",
-    "ROOM_EXPIRED",
-]);
-
 function forgetRejectedResumeToken(roomId: string): (code: ErrorCode) => void {
     return (code) => {
-        if (RESUME_TOKEN_REJECTED_CODES.has(code)) {
+        if (isResumeTokenRejected(code)) {
             removeStoredResumeToken(roomId);
             removeStoredSeat(roomId);
         }
