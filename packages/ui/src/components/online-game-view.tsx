@@ -1254,8 +1254,9 @@ export function OnlineGameView({
                     }
                 />
 
-                {gameResult && endDialogClosed && (
+                {gameResult && (
                     <GameResultStrip
+                        shown={endDialogClosed}
                         text={`${formatGameResultTitle(gameResult, playerNames)}（${formatGameEndReason(gameResult)}）`}
                         onReopen={() =>
                             dispatchUI({ type: "set_end_dialog_closed", closed: false })
@@ -1596,15 +1597,27 @@ interface GameEndDialogProps {
     onDismiss: () => void;
 }
 
-// 帯は「盤面を見る」で閉じたときにだけ現れる。押したボタンはダイアログごと消えるので、
-// キーボード操作が続けられるよう開き直すボタンへフォーカスを移す
-function GameResultStrip({ text, onReopen }: { text: string; onReopen: () => void }): ReactElement {
+// ダイアログを閉じた瞬間に下の棋譜ナビがずれないよう、終局したら高さを確保しておき、
+// 閉じたときだけ見せる。押したボタンはダイアログごと消えるので、開き直すボタンへ
+// フォーカスを移す。スクロールさせると見ようとした盤が画面の外へ押し出される
+function GameResultStrip({
+    shown,
+    text,
+    onReopen,
+}: {
+    shown: boolean;
+    text: string;
+    onReopen: () => void;
+}): ReactElement {
     const buttonRef = useRef<HTMLButtonElement>(null);
     useEffect(() => {
-        buttonRef.current?.focus();
-    }, []);
+        if (shown) buttonRef.current?.focus({ preventScroll: true });
+    }, [shown]);
     return (
-        <div className="flex w-full max-w-md items-center justify-between gap-3 self-center rounded-lg border border-border bg-card px-3 py-2">
+        <div
+            aria-hidden={!shown}
+            className={`flex w-full max-w-md items-center justify-between gap-3 self-center rounded-lg border border-border bg-card px-3 py-2 ${shown ? "" : "invisible"}`}
+        >
             <p className="text-sm font-semibold text-foreground">{text}</p>
             <button
                 ref={buttonRef}
@@ -1645,7 +1658,7 @@ function GameEndDialog({
     const wAnalysisCount = analysisLog.filter((e) => e.seat === "w").length;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
             <div
                 ref={dialogRef}
                 role="dialog"
@@ -1655,7 +1668,7 @@ function GameEndDialog({
                 onKeyDown={(e) => {
                     if (e.key === "Escape") onDismiss();
                 }}
-                className="rounded-xl border border-border bg-card p-6 shadow-xl min-w-[280px] max-w-sm focus-visible:outline-none"
+                className="max-h-full min-w-[280px] max-w-sm overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-xl focus-visible:outline-none"
             >
                 <h2
                     id="game-end-dialog-title"

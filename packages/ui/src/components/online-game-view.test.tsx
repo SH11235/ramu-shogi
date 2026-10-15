@@ -500,11 +500,15 @@ describe("OnlineGameView", () => {
                 />,
             );
 
+            // 帯は高さだけ確保し、ダイアログを開いている間は操作できない
+            expect(screen.queryByRole("button", { name: "結果を表示" })).toBeNull();
+
             fireEvent.click(screen.getByRole("button", { name: "盤面を見る" }));
 
             expect(screen.queryByRole("heading", { name: "Alice の勝ち" })).toBeNull();
             expect(screen.queryByRole("button", { name: "棋譜を検討する" })).toBeNull();
             expect(screen.getByText("Alice の勝ち（投了）")).toBeTruthy();
+            expect(screen.getByRole("button", { name: "結果を表示" })).toBeTruthy();
 
             expect(document.activeElement).toBe(screen.getByRole("button", { name: "結果を表示" }));
 
@@ -513,7 +517,7 @@ describe("OnlineGameView", () => {
             expect(document.activeElement).toBe(screen.getByRole("dialog"));
             expect(screen.getByRole("heading", { name: "Alice の勝ち" })).toBeTruthy();
             expect(screen.getByRole("button", { name: "棋譜を検討する" })).toBeTruthy();
-            expect(screen.queryByText("Alice の勝ち（投了）")).toBeNull();
+            expect(screen.queryByRole("button", { name: "結果を表示" })).toBeNull();
         });
 
         it("結果ダイアログは Escape でも閉じられる", () => {
@@ -532,6 +536,7 @@ describe("OnlineGameView", () => {
 
             expect(screen.queryByRole("dialog")).toBeNull();
             expect(screen.getByText("Alice の勝ち（投了）")).toBeTruthy();
+            expect(screen.getByRole("button", { name: "結果を表示" })).toBeTruthy();
         });
 
         it("結果ダイアログを閉じた後に同じ結果の game_end が届いても開き直さない", async () => {
@@ -550,6 +555,7 @@ describe("OnlineGameView", () => {
 
             expect(screen.queryByRole("heading", { name: "Alice の勝ち" })).toBeNull();
             expect(screen.getByText("Alice の勝ち（投了）")).toBeTruthy();
+            expect(screen.getByRole("button", { name: "結果を表示" })).toBeTruthy();
         });
 
         it("result と gameRecordId が無い snapshot では終局表示を出さない", () => {
