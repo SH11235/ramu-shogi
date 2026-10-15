@@ -121,7 +121,7 @@ export default function CreateRoomPage(): ReactElement {
         });
     }, [session]);
 
-    // 開始局面の選択欄は、SFEN 直接入力が空か入力途中のあいだ "" を通知する
+    // 開始局面の選択欄は、SFEN 直接入力に切り替えた時点で入力欄が空か入力途中なら "" を通知する
     const startSfenMissing = settings.startSfen === "";
 
     async function handleSubmit(): Promise<void> {

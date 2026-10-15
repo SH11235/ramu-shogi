@@ -134,6 +134,18 @@ describe("PositionPresetSelector の SFEN 直接入力", () => {
         expect(input.value).toBe(stale);
     });
 
+    it("入力欄を離れても、打ちかけの不正な文字列を直前に通知した局面へ戻さない", () => {
+        render(<Controlled onChange={vi.fn()} />);
+        const input = screen.getByPlaceholderText(/^例: lnsgkgsnl/) as HTMLInputElement;
+
+        fireEvent.focus(input);
+        fireEvent.change(input, { target: { value: "4k4/9/4p4" } });
+        fireEvent.blur(input);
+
+        expect(input.value).toBe("4k4/9/4p4");
+        expect(screen.getByText(/^有効な局面ではありません/)).toBeTruthy();
+    });
+
     it("打っている間に外からプリセットへ切り替わっても、次に届いた SFEN を入力欄に反映する", () => {
         const other = "4k4/9/9/9/9/9/9/9/4K4 b 2P 1";
         const { rerender } = render(<PositionPresetSelector value={SFEN} onChange={vi.fn()} />);
