@@ -8,14 +8,23 @@ const mockCreateRoomClient = vi.fn();
 const mockGetStoredResumeToken = vi.fn();
 const mockGetStoredSeat = vi.fn();
 const mockStoreSeat = vi.fn();
+const mockRemoveStoredResumeToken = vi.fn();
+const mockRemoveStoredSeat = vi.fn();
 
-vi.mock("@shogi/match-client", () => ({
+vi.mock("@shogi/match-client", async () => ({
+    isResumeTokenRejected: (
+        await vi.importActual<typeof import("@shogi/match-client")>("@shogi/match-client")
+    ).isResumeTokenRejected,
     createRoomClient: (...args: Parameters<typeof mockCreateRoomClient>) =>
         mockCreateRoomClient(...args),
     getStoredResumeToken: (...args: Parameters<typeof mockGetStoredResumeToken>) =>
         mockGetStoredResumeToken(...args),
     getStoredSeat: (...args: Parameters<typeof mockGetStoredSeat>) => mockGetStoredSeat(...args),
     storeSeat: (...args: Parameters<typeof mockStoreSeat>) => mockStoreSeat(...args),
+    removeStoredResumeToken: (...args: Parameters<typeof mockRemoveStoredResumeToken>) =>
+        mockRemoveStoredResumeToken(...args),
+    removeStoredSeat: (...args: Parameters<typeof mockRemoveStoredSeat>) =>
+        mockRemoveStoredSeat(...args),
 }));
 
 function createMockClient() {
@@ -114,8 +123,14 @@ describe("useRoomConnection", () => {
         mockGetStoredResumeToken.mockReset();
         mockGetStoredSeat.mockReset();
         mockStoreSeat.mockReset();
+        mockRemoveStoredResumeToken.mockReset();
+        mockRemoveStoredSeat.mockReset();
         mockGetStoredResumeToken.mockReturnValue(null);
         mockGetStoredSeat.mockReturnValue(null);
+        mockRemoveStoredResumeToken.mockImplementation(() =>
+            mockGetStoredResumeToken.mockReturnValue(null),
+        );
+        mockRemoveStoredSeat.mockImplementation(() => mockGetStoredSeat.mockReturnValue(null));
     });
 
     afterEach(() => {
@@ -654,6 +669,24 @@ describe("useRoomConnection", () => {
                 expect(result.current.snapshot).toEqual(playingSnapshot.payload);
             });
 
+            it("取り直しの resume が INVALID_TOKEN で拒まれたら、保存済みの席とトークンを捨てる", () => {
+                const { connection, result } = joinAndWait("b");
+                mockGetStoredResumeToken.mockReturnValue("token-1");
+
+                act(() => {
+                    connection.emit(gameStart(2, UNKNOWN_PRESET));
+                    connection.emit({
+                        v: 1,
+                        t: "error",
+                        payload: { code: "INVALID_TOKEN", message: "" },
+                    });
+                });
+
+                expect(mockRemoveStoredResumeToken).toHaveBeenCalledWith("room-1");
+                expect(mockRemoveStoredSeat).toHaveBeenCalledWith("room-1");
+                expect(result.current).toMatchObject({ joined: false, connectionLost: false });
+            });
+
             it("観戦者は参加し直して取り直した snapshot から開く", () => {
                 const { connection, result } = joinAndWait("s");
                 connection.client.join.mockClear();
@@ -911,12 +944,29 @@ describe("useRoomConnection", () => {
                 connection.emit({
                     v: 1,
                     t: "error",
-                    payload: { code: "INVALID_TOKEN", message: "" },
+                    payload: { code: "UNKNOWN", message: "" },
                 });
             });
 
             expect(result.current.joinError).toBe("セッションが切れました。再度参加してください。");
             expect(result.current).toMatchObject({ joined: false, connectionLost: true });
+            expect(mockRemoveStoredResumeToken).not.toHaveBeenCalled();
+        });
+
+        it.each([
+            "INVALID_TOKEN",
+            "ROOM_NOT_FOUND",
+            "ROOM_EXPIRED",
+        ] as const)("待機中に %s が返ったら、保存済みの席とトークンを捨てて参加フォームへ戻す", (code) => {
+            const { connection, result } = resumeAndWait("b");
+
+            act(() => {
+                connection.emit({ v: 1, t: "error", payload: { code, message: "" } });
+            });
+
+            expect(mockRemoveStoredResumeToken).toHaveBeenCalledWith("room-1");
+            expect(mockRemoveStoredSeat).toHaveBeenCalledWith("room-1");
+            expect(result.current).toMatchObject({ joined: false, connectionLost: false });
         });
 
         it("resume がエラーで拒否されたら、参加フォームへ戻す", () => {
@@ -940,6 +990,24 @@ describe("useRoomConnection", () => {
                 isJoining: false,
                 joinError: "セッションが切れました。再度参加してください。",
             });
+            expect(mockRemoveStoredResumeToken).toHaveBeenCalledWith("room-1");
+            expect(mockRemoveStoredSeat).toHaveBeenCalledWith("room-1");
+        });
+
+        it("resume に応答が無いまま時間切れになっても、保存済みの席とトークンは残す", () => {
+            const connection = createMockClient();
+            mockGetStoredResumeToken.mockReturnValue("token-1");
+            mockGetStoredSeat.mockReturnValue("b");
+            mockCreateRoomClient.mockReturnValue(connection.client);
+            const { result } = renderHook(() => useRoomConnection({ roomId: "room-1" }));
+
+            act(() => {
+                vi.advanceTimersByTime(5_000);
+            });
+
+            expect(result.current.joinError).toBe("接続タイムアウト。再度参加してください。");
+            expect(mockRemoveStoredResumeToken).not.toHaveBeenCalled();
+            expect(mockRemoveStoredSeat).not.toHaveBeenCalled();
         });
     });
 });

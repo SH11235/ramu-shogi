@@ -22,7 +22,12 @@ import type {
     Seat,
     SnapshotPayload,
 } from "@shogi/match-client";
-import { getStoredResumeToken } from "@shogi/match-client";
+import {
+    getStoredResumeToken,
+    isResumeTokenRejected,
+    removeStoredResumeToken,
+    removeStoredSeat,
+} from "@shogi/match-client";
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
 import { useLazyNnueLoader } from "../hooks/useLazyNnueLoader";
@@ -122,6 +127,7 @@ const RESYNC_MAX_RETRIES = 2;
 const SEAT_LOST_CODES: ReadonlySet<ErrorCode> = new Set([
     "INVALID_TOKEN",
     "ROOM_NOT_FOUND",
+    "ROOM_EXPIRED",
     "ROOM_FULL",
     "ROOM_FINISHED",
 ]);
@@ -432,6 +438,18 @@ export function OnlineGameView({
                     if (!isListeningRef.current) return;
                     if (initial) {
                         setLoadFailed(true);
+                        // 局面が無いままでは指せず、snapshot が届くまで待つしかないので取り寄せる。
+                        // 届いた snapshot も読めなければ、再接続後の同期と同じく回数を区切って諦める。
+                        // 再接続後の同期が既に待っていれば、その snapshot で作り直せるので引き継ぐ
+                        const resync = connectionEpochRef.current;
+                        if (resyncRef.current === resync) return;
+                        resyncRef.current = resync;
+                        resyncRetriesRef.current = 0;
+                        if (requestFullSnapshot?.()) {
+                            waitForResync(resync);
+                        } else {
+                            stopResync();
+                        }
                         return;
                     }
                     // sync の応答は差分イベントだけのことがあるので、同期待ちなら snapshot を求め直す
@@ -567,6 +585,12 @@ export function OnlineGameView({
 
     const rejectResync = useEffectEvent((code: ErrorCode): void => {
         stopResync();
+        // useRoomConnection は対局開始で購読をやめていて、この応答を見ない。二度と使えない
+        // トークンをここで捨てないと、再読み込みのたびに同じ resume が拒まれる
+        if (isResumeTokenRejected(code)) {
+            removeStoredResumeToken(roomId);
+            removeStoredSeat(roomId);
+        }
         rejectedRef.current = true;
         setConnection({ state: "rejected", finished: code === "ROOM_FINISHED" });
     });

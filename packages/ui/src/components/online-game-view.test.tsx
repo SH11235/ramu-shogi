@@ -1267,7 +1267,9 @@ describe("OnlineGameView", () => {
         });
 
         /** 画面を開いたときの読み込みを 2 回とも失敗させた状態で、後手からのメッセージを待つ */
-        async function renderUnrestored(): Promise<ReturnType<typeof makeSubscribableClient>> {
+        async function renderUnrestored(
+            requestFullSnapshot?: () => boolean,
+        ): Promise<ReturnType<typeof makeSubscribableClient>> {
             mockParseSfen.mockRejectedValue(new Error("parse failed"));
             const connection = makeSubscribableClient();
             await act(async () => {
@@ -1277,6 +1279,7 @@ describe("OnlineGameView", () => {
                         snapshot={makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" })}
                         seat="b"
                         roomId="test-room"
+                        requestFullSnapshot={requestFullSnapshot}
                     />,
                 );
             });
@@ -1311,6 +1314,157 @@ describe("OnlineGameView", () => {
             await recoverWith(emit, makeSnapshot({ eventId: 6, moves: FINAL_MOVES, turn: "w" }));
 
             expect(screen.getByText("3.")).toBeTruthy();
+        });
+
+        it("やり直しても読み込めなければ snapshot を取り寄せ、届いたら復帰する", async () => {
+            const requestFullSnapshot = vi.fn(() => true);
+            const { emit } = await renderUnrestored(requestFullSnapshot);
+            expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+
+            await recoverWith(emit, makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" }));
+
+            expect(screen.getByText("3.")).toBeTruthy();
+        });
+
+        it("取り寄せた snapshot が届かなければ回数を区切って送り直し、尽きたら接続切れを案内する", async () => {
+            vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+            try {
+                const requestFullSnapshot = vi.fn(() => true);
+                await renderUnrestored(requestFullSnapshot);
+
+                for (const calls of [2, 3]) {
+                    act(() => {
+                        vi.advanceTimersByTime(15_000);
+                    });
+                    expect(requestFullSnapshot).toHaveBeenCalledTimes(calls);
+                }
+                act(() => {
+                    vi.advanceTimersByTime(15_000);
+                });
+
+                expect(requestFullSnapshot).toHaveBeenCalledTimes(3);
+                expect(screen.getByText("接続が切れました。再読み込みしてください")).toBeTruthy();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it("取り寄せた snapshot より先に待ったの承認が届いても、snapshot で記録ごと作り直す", async () => {
+            vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+            try {
+                const requestFullSnapshot = vi.fn(() => true);
+                const { emit } = await renderUnrestored(requestFullSnapshot);
+                mockParseSfen.mockImplementation(async () => structuredClone(PARSED_POSITION));
+
+                await emit(
+                    eventMessage({
+                        kind: "takeback_accepted",
+                        eventId: 6,
+                        serverTs: 0,
+                        sfen: "lnsgkgsnl/1r5b1/ppppppppp/9/9/2P6/PP1PPPPPP/1B5R1/LNSGKGSNL w - 2",
+                        turn: "w",
+                        clock: makeSnapshot().clock,
+                        passRights: null,
+                    }),
+                );
+                // 盤面は出ても指し手の記録が欠けているので、snapshot が届くまで案内を残す
+                expect(screen.getByText(LOAD_FAILED)).toBeTruthy();
+
+                await recoverWith(emit, makeSnapshot({ eventId: 6, moves: ["7g7f"], turn: "w" }));
+                expect(screen.getByText("1.")).toBeTruthy();
+
+                act(() => {
+                    vi.advanceTimersByTime(60_000);
+                });
+                expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+                expect(screen.queryByText(/接続が切れました/)).toBeNull();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it("読み込み中に再接続して同期が始まっていれば、読み込みに失敗しても要求を重ねない", async () => {
+            vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+            try {
+                const parsing = holdParsing();
+                const snapshot = makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" });
+                const statusHandlers = new Set<(status: RoomClientStatus) => void>();
+                const { client } = makeSubscribableClient();
+                client.subscribeStatus = vi.fn((handler: (status: RoomClientStatus) => void) => {
+                    statusHandlers.add(handler);
+                    return () => statusHandlers.delete(handler);
+                });
+                const requestFullSnapshot = vi.fn(() => true);
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={snapshot}
+                        seat="b"
+                        roomId="test-room"
+                        requestFullSnapshot={requestFullSnapshot}
+                    />,
+                );
+                act(() => {
+                    for (const status of ["reconnecting", "connected"] as const) {
+                        for (const handler of statusHandlers) handler(status);
+                    }
+                });
+                expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+
+                await parsing.fail(snapshot.sfen);
+                expect(screen.getByText(LOAD_FAILED)).toBeTruthy();
+                expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+
+                for (let i = 0; i < 4; i += 1) {
+                    act(() => {
+                        vi.advanceTimersByTime(15_000);
+                    });
+                }
+                expect(requestFullSnapshot).toHaveBeenCalledTimes(3);
+                expect(screen.getByText("接続が切れました。再読み込みしてください")).toBeTruthy();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it.each([
+            "INVALID_TOKEN",
+            "ROOM_NOT_FOUND",
+            "ROOM_EXPIRED",
+        ] as const)("取り寄せた snapshot の代わりに %s が返ったら、保存済みの席とトークンを捨て、送り直さない", async (code) => {
+            vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+            try {
+                localStorage.setItem("ramu_resume_token_test-room", "token");
+                localStorage.setItem("ramu_seat_test-room", "b");
+                const requestFullSnapshot = vi.fn(() => true);
+                const { emit } = await renderUnrestored(requestFullSnapshot);
+
+                await emit({ v: 1, t: "error", payload: { code, message: "" } });
+                act(() => {
+                    vi.advanceTimersByTime(60_000);
+                });
+
+                expect(localStorage.getItem("ramu_resume_token_test-room")).toBeNull();
+                expect(localStorage.getItem("ramu_seat_test-room")).toBeNull();
+                expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+                expect(screen.getByText(/セッションが切れました/)).toBeTruthy();
+            } finally {
+                vi.useRealTimers();
+                localStorage.clear();
+            }
+        });
+
+        it("取り寄せた snapshot の代わりに一時的なエラーが返っても、保存済みの席とトークンは残す", async () => {
+            localStorage.setItem("ramu_resume_token_test-room", "token");
+            try {
+                const { emit } = await renderUnrestored(vi.fn(() => true));
+
+                await emit({ v: 1, t: "error", payload: { code: "RATE_LIMITED", message: "" } });
+
+                expect(localStorage.getItem("ramu_resume_token_test-room")).toBe("token");
+            } finally {
+                localStorage.clear();
+            }
         });
 
         it("読み込めない間に届いた待ったの申請は、復帰後に承認ダイアログとして出る", async () => {
