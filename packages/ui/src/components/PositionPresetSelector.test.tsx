@@ -106,5 +106,14 @@ describe("PositionPresetSelector の SFEN 直接入力", () => {
         choose("SFEN 直接入力");
 
         expect(onChange.mock.calls).toEqual([["startpos"], [""]]);
+        expect(screen.getByText(/^有効な局面ではありません/)).toBeTruthy();
+    });
+
+    it("入力欄が空のまま SFEN 直接入力へ切り替えても、入力を促すエラーはまだ出さない", () => {
+        render(<PositionPresetSelector value="startpos" onChange={vi.fn()} />);
+
+        choose("SFEN 直接入力");
+
+        expect(screen.queryByText("局面（SFEN）を入力してください")).toBeNull();
     });
 });

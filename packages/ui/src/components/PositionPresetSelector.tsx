@@ -93,7 +93,10 @@ export function PositionPresetSelector({
     const selectedPreset = POSITION_PRESETS.find((p) => p.value === selectValue);
 
     function handleSelectChange(selected: string): void {
-        setSfenError(null);
+        // 戻ったときに入力欄に残っている不正な文字列は通知しないので、その理由を出し直す
+        setSfenError(
+            selected === CUSTOM_VALUE && customSfen !== "" ? validateCustomSfen(customSfen) : null,
+        );
         if (selected === CUSTOM_VALUE) {
             // カスタム入力モードへ切り替え（現在のカスタム SFEN を維持）
             // 入力欄が空や入力途中のままなら、局面としては通知しない

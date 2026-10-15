@@ -1198,6 +1198,36 @@ describe("RoomPage", () => {
                 .getAttribute("aria-label") as string;
         }
 
+        it("SFEN 直接入力に切り替えただけでは、対局設定の開始局面は送った局面のまま入力待ちと出す", async () => {
+            const socket = await joinAndWait("b");
+            const settingsRow = (): string =>
+                screen.getByText("開始局面", { selector: "span" }).parentElement
+                    ?.textContent as string;
+            const chooseStart = (label: string): void => {
+                fireEvent.keyDown(screen.getByRole("combobox", { name: "開始局面を選択" }), {
+                    key: "ArrowDown",
+                });
+                fireEvent.keyDown(screen.getByRole("option", { name: label }), { key: "Enter" });
+            };
+
+            chooseStart("角落ち");
+            chooseStart("SFEN 直接入力");
+            expect(settingsRow()).toBe("開始局面角落ち（SFEN 入力待ち）");
+
+            fireEvent.change(screen.getByPlaceholderText(/^例: lnsgkgsnl/), {
+                target: { value: "4k4/9/9/9/9/9/9/9/4K4 b - 1" },
+            });
+            expect(settingsRow()).toBe("開始局面カスタム局面");
+            expect(
+                socket.sent
+                    .filter((message) => message.t === "update_settings")
+                    .map((message) => message.payload),
+            ).toEqual([
+                { startSfen: "handicap:bishop" },
+                { startSfen: "4k4/9/9/9/9/9/9/9/4K4 b - 1" },
+            ]);
+        });
+
         it("開始局面が変更されなければ、平手の先手番で始まり、先手は平手の合法手を取得する", async () => {
             const socket = await joinAndWait("b");
 

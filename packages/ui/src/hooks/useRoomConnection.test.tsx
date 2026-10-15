@@ -549,7 +549,22 @@ describe("useRoomConnection", () => {
             });
 
             expect(result.current.localStartSfen).toBe("");
+            expect(result.current.appliedStartSfen).toBeNull();
             expect(connection.client.updateSettings).not.toHaveBeenCalled();
+        });
+
+        it("空の開始局面に切り替えても、サーバーへ送った開始局面は前のまま持つ", () => {
+            const { result } = joinAndWait("b");
+
+            act(() => {
+                result.current.handleUpdateStartSfen("handicap:bishop");
+                result.current.handleUpdateStartSfen("");
+            });
+
+            expect(result.current).toMatchObject({
+                localStartSfen: "",
+                appliedStartSfen: "handicap:bishop",
+            });
         });
 
         it("対局開始の後は購読をやめ、続くメッセージを対局画面に残す", () => {
