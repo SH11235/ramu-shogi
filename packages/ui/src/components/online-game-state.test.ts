@@ -211,6 +211,38 @@ describe("gameReducer", () => {
         expect(pending.pendingTakeback).toEqual({ seat: "b", ply: 3 });
         expect(pending.myAnalysisRemaining).toBeNull();
     });
+
+    it("再同期の snapshot が持つ解析の使用記録で置き換え、持たなければ今の記録を保つ", async () => {
+        const restored = await restoredState(makeSnapshot(MOVES));
+        const used = gameReducer(restored, {
+            type: "analysis_used",
+            isMySeat: true,
+            seat: "b",
+            analysisRemaining: 2,
+            ply: 1,
+        });
+        const resync = {
+            type: "resync" as const,
+            ...(await restorePosition(makeSnapshot(MOVES))),
+            turn: "w" as const,
+            clock: CLOCK,
+            passRights: null,
+        };
+
+        expect(gameReducer(used, resync).analysisLog).toEqual([{ seat: "b", ply: 1 }]);
+        expect(
+            gameReducer(used, {
+                ...resync,
+                analysisLog: [
+                    { seat: "b", ply: 1 },
+                    { seat: "w", ply: 2 },
+                ],
+            }).analysisLog,
+        ).toEqual([
+            { seat: "b", ply: 1 },
+            { seat: "w", ply: 2 },
+        ]);
+    });
 });
 
 describe("makeInitialGameState", () => {
@@ -229,6 +261,17 @@ describe("makeInitialGameState", () => {
         });
         expect(makeInitialGameState(snapshot, null, "w").myAnalysisRemaining).toBeNull();
         expect(makeInitialGameState(snapshot, null, "s").myAnalysisRemaining).toBeNull();
+    });
+
+    it("snapshot が持つ解析の使用記録から始める", () => {
+        const snapshot: SnapshotPayload = {
+            ...makeSnapshot([]),
+            analysisLog: [{ seat: "w", ply: 0 }],
+        };
+        expect(makeInitialGameState(snapshot, null, "b").analysisLog).toEqual([
+            { seat: "w", ply: 0 },
+        ]);
+        expect(makeInitialGameState(makeSnapshot([]), null, "b").analysisLog).toEqual([]);
     });
 
     it("snapshot に無ければ、申請なし・設定の上限回数から始める", () => {

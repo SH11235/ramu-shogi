@@ -218,6 +218,11 @@ export interface SnapshotPayload {
     pendingTakeback?: { seat: "b" | "w"; ply: number } | null;
     /** 席ごとの AI サポートの残り回数（null は無制限）。AI サポートの無い部屋と旧サーバーでは付かない */
     analysisRemaining?: { b: number | null; w: number | null };
+    /**
+     * AI サポートを使った席と、使った時点の指し手の数。使った順に並ぶ。
+     * 旧サーバーと、旧サーバーが開始した対局では付かない
+     */
+    analysisLog?: Array<{ seat: "b" | "w"; ply: number }>;
 }
 
 // ─── エラーコード ─────────────────────────────────────────────────────────
