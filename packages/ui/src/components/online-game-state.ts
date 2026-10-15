@@ -62,6 +62,7 @@ type GameAction =
           /** undefined は snapshot に無い（旧サーバー）ので、今の状態を保つ */
           pendingTakeback?: GameState["pendingTakeback"];
           myAnalysisRemaining?: number | null;
+          analysisLog?: GameState["analysisLog"];
       } & RestoredPosition)
     | { type: "takeback_requested"; seat: "b" | "w"; ply: number }
     | {
@@ -102,7 +103,7 @@ export function makeInitialGameState(
                 : myAiSettings?.mode === "limited"
                   ? (myAiSettings.limitCount ?? 0)
                   : null,
-        analysisLog: [],
+        analysisLog: snapshot.analysisLog ?? [],
         usiMoveLog: [],
         pendingTakeback: snapshot.pendingTakeback ?? null,
     };
@@ -199,6 +200,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                     action.myAnalysisRemaining === undefined
                         ? state.myAnalysisRemaining
                         : action.myAnalysisRemaining,
+                analysisLog: action.analysisLog ?? state.analysisLog,
             };
         case "takeback_requested":
             return { ...state, pendingTakeback: { seat: action.seat, ply: action.ply } };
