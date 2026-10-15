@@ -90,15 +90,20 @@ export function PositionPresetSelector({
     const selectValue = isPreset ? value : CUSTOM_VALUE;
     const [customSfen, setCustomSfen] = useState(isPreset ? "" : value);
     const [sfenError, setSfenError] = useState<string | null>(null);
-    // 待機中の部屋では、相手が設定した別の局面が value に届く。自分の入力を通知した結果の
-    // value (空白をそろえたもの) と、入力途中を表す "" では、打っている文字列を残す
+    // 待機中の部屋では、相手が設定した別の局面が value に届く。ただし自分が前に送った局面の
+    // 返信も遅れて届くので、打っている間は置き換えず、入力欄を離れたときに今の value へ合わせる
+    const [editing, setEditing] = useState(false);
     const [prevValue, setPrevValue] = useState(value);
     if (value !== prevValue) {
         setPrevValue(value);
-        if (!isPreset && value !== "" && value !== normalizeSfenSpacing(customSfen)) {
-            setCustomSfen(value);
-            setSfenError(null);
-        }
+        if (!editing) syncCustomSfen(value);
+    }
+
+    // 自分の入力を通知した結果 (空白をそろえたもの) と、入力途中を表す "" では打った文字列を残す
+    function syncCustomSfen(next: string): void {
+        if (isPreset || next === "" || next === normalizeSfenSpacing(customSfen)) return;
+        setCustomSfen(next);
+        setSfenError(null);
     }
     const selectedPreset = POSITION_PRESETS.find((p) => p.value === selectValue);
 
@@ -148,6 +153,11 @@ export function PositionPresetSelector({
                         placeholder="例: lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1"
                         value={customSfen}
                         onChange={(e) => handleCustomInput(e.target.value)}
+                        onFocus={() => setEditing(true)}
+                        onBlur={() => {
+                            setEditing(false);
+                            syncCustomSfen(value);
+                        }}
                         className={`font-mono text-xs ${sfenError ? "border-destructive focus-visible:ring-destructive" : ""}`}
                         aria-invalid={sfenError !== null}
                     />

@@ -119,7 +119,22 @@ describe("PositionPresetSelector の SFEN 直接入力", () => {
         expect(input.value).toBe(other);
     });
 
-    it("自分の入力を通知した結果の value や、入力途中を表す空の value では、打った文字列を残す", () => {
+    it("打っている間に届いた value では置き換えず、入力欄を離れたときに合わせる", () => {
+        const stale = "4k4/9/9/9/9/9/9/9/4K4 b 2P 1";
+        const typed = "4k4/9/9/9/9/9/9/9/4K4 b 2P 12";
+        const { rerender } = render(<PositionPresetSelector value={SFEN} onChange={vi.fn()} />);
+        const input = screen.getByPlaceholderText(/^例: lnsgkgsnl/) as HTMLInputElement;
+
+        fireEvent.focus(input);
+        fireEvent.change(input, { target: { value: typed } });
+        rerender(<PositionPresetSelector value={stale} onChange={vi.fn()} />);
+        expect(input.value).toBe(typed);
+
+        fireEvent.blur(input);
+        expect(input.value).toBe(stale);
+    });
+
+    it("自分の入力を通知した結果の value では、打った文字列を残す", () => {
         const onChange = vi.fn();
         render(<Controlled onChange={onChange} />);
         const input = screen.getByPlaceholderText(/^例: lnsgkgsnl/) as HTMLInputElement;
