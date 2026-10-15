@@ -77,6 +77,7 @@ interface RoomState {
     joined: boolean;
     connectionLost: boolean;
     localStartSfen: string | null;
+    appliedStartSfen: string | null;
     gamePhase: "waiting" | "playing";
     client: RoomClient | null;
 }
@@ -96,6 +97,7 @@ const INITIAL_ROOM_STATE: RoomState = {
     joined: false,
     connectionLost: false,
     localStartSfen: null,
+    appliedStartSfen: null,
     gamePhase: "waiting",
     client: null,
 };
@@ -105,9 +107,23 @@ function roomReducer(state: RoomState, action: RoomAction): RoomState {
         case "joined":
             return { ...state, joined: true };
         case "snapshot_received":
-            return { ...state, snapshot: action.snapshot };
+            // snapshot の開始局面がサーバーの今の設定。切れている間に届かなかった変更や、
+            // まだ送っていない「SFEN 直接入力」の空はここで捨てる。打ちかけの文字列は
+            // 局面選択が持ち続けるので、SFEN 直接入力を選び直せば戻る
+            return {
+                ...state,
+                snapshot: action.snapshot,
+                localStartSfen: action.snapshot.settings.startSfen,
+                appliedStartSfen: action.snapshot.settings.startSfen,
+            };
         case "settings_updated":
-            return { ...state, localStartSfen: action.startSfen };
+            return {
+                ...state,
+                localStartSfen: action.startSfen,
+                // 空はサーバーへ送らないので、サーバーの開始局面は前のまま
+                appliedStartSfen:
+                    action.startSfen === "" ? state.appliedStartSfen : action.startSfen,
+            };
         case "game_start":
             // 待機中の snapshot から引き継ぐのは観戦者数だけ。局面・手番・時計・設定は、
             // 待機中に開始局面が変更されると食い違うので引き継がない
@@ -271,6 +287,8 @@ export interface UseRoomConnectionReturn {
     /** 席を持ったまま接続に失敗した。再読み込みすると保存済みのトークンで席へ戻れる */
     connectionLost: boolean;
     localStartSfen: string | null;
+    /** 待機中に変更された開始局面のうち、サーバーへ送ったか、サーバーから届いた最後のもの */
+    appliedStartSfen: string | null;
     gamePhase: "waiting" | "playing";
     client: RoomClient | null;
 
@@ -517,6 +535,7 @@ export function useRoomConnection({
         joined: roomState.joined,
         connectionLost: roomState.connectionLost,
         localStartSfen: roomState.localStartSfen,
+        appliedStartSfen: roomState.appliedStartSfen,
         gamePhase: roomState.gamePhase,
         client: roomState.client,
 

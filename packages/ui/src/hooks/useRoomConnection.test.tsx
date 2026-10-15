@@ -201,6 +201,7 @@ describe("useRoomConnection", () => {
                     status: "finished",
                     result: { winner: "b", reason: "resign" },
                     gameRecordId: "record-1",
+                    settings: SETTINGS,
                 },
             });
         });
@@ -231,7 +232,7 @@ describe("useRoomConnection", () => {
             roomA.emit({
                 v: 1,
                 t: "snapshot",
-                payload: { eventId: 7, status: "finished" },
+                payload: { eventId: 7, status: "finished", settings: SETTINGS },
             });
         });
         expect(result.current.gamePhase).toBe("playing");
@@ -549,7 +550,46 @@ describe("useRoomConnection", () => {
             });
 
             expect(result.current.localStartSfen).toBe("");
+            expect(result.current.appliedStartSfen).toBe("startpos");
             expect(connection.client.updateSettings).not.toHaveBeenCalled();
+        });
+
+        it("空の開始局面に切り替えても、サーバーへ送った開始局面は前のまま持つ", () => {
+            const { result } = joinAndWait("b");
+
+            act(() => {
+                result.current.handleUpdateStartSfen("handicap:bishop");
+                result.current.handleUpdateStartSfen("");
+            });
+
+            expect(result.current).toMatchObject({
+                localStartSfen: "",
+                appliedStartSfen: "handicap:bishop",
+            });
+        });
+
+        it("待機中の snapshot が届いたら、その開始局面を送った局面と選択中の局面の両方にする", () => {
+            const { connection, result } = joinAndWait("b");
+            const waiting = waitingSnapshot("b");
+            if (waiting.t !== "snapshot") throw new Error("unreachable");
+
+            act(() => {
+                result.current.handleUpdateStartSfen("handicap:bishop");
+                result.current.handleUpdateStartSfen("");
+                connection.emit({
+                    ...waiting,
+                    payload: {
+                        ...waiting.payload,
+                        eventId: 2,
+                        settings: { ...SETTINGS, startSfen: "handicap:rook" },
+                    },
+                });
+            });
+
+            expect(result.current).toMatchObject({
+                localStartSfen: "handicap:rook",
+                appliedStartSfen: "handicap:rook",
+            });
         });
 
         it("対局開始の後は購読をやめ、続くメッセージを対局画面に残す", () => {
@@ -560,7 +600,7 @@ describe("useRoomConnection", () => {
                 connection.emit(settingsUpdated(2, "handicap:rook"));
             });
 
-            expect(result.current.localStartSfen).toBeNull();
+            expect(result.current.localStartSfen).toBe("startpos");
             expect(result.current.snapshot).toMatchObject({ eventId: 1, sfen: STARTPOS_SFEN });
         });
 

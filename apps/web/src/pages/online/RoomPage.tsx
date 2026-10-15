@@ -297,6 +297,7 @@ export default function RoomPage(): ReactElement {
         joined,
         connectionLost,
         localStartSfen,
+        appliedStartSfen,
         gamePhase,
         client,
         handleJoin,
@@ -445,12 +446,16 @@ export default function RoomPage(): ReactElement {
 
     const displayStartSfen = localStartSfen ?? roomInfo.settings.startSfen;
     const startSfenLabel = (() => {
-        const s = displayStartSfen;
-        if (s === "startpos") return "平手";
-        if (s === "handicap:bishop") return "角落ち";
-        if (s === "handicap:rook") return "飛車落ち";
-        if (s === "handicap:rook-bishop") return "飛車角落ち";
-        return "カスタム局面";
+        const s = appliedStartSfen ?? roomInfo.settings.startSfen;
+        const label = (() => {
+            if (s === "startpos") return "平手";
+            if (s === "handicap:bishop") return "角落ち";
+            if (s === "handicap:rook") return "飛車落ち";
+            if (s === "handicap:rook-bishop") return "飛車角落ち";
+            return "カスタム局面";
+        })();
+        // SFEN 直接入力に切り替えただけではサーバーの開始局面は変わらない
+        return displayStartSfen === "" ? `${label}（SFEN 入力待ち）` : label;
     })();
     const currentStatus = snapshot?.status ?? roomInfo.status;
 
