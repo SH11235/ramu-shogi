@@ -92,18 +92,20 @@ export function PositionPresetSelector({
     const [sfenError, setSfenError] = useState<string | null>(null);
     // 待機中の部屋では、相手が設定した別の局面が value に届く。ただし自分が前に送った局面の
     // 返信も遅れて届くので、打っている間は置き換えず、入力欄を離れたときに今の value へ合わせる。
-    // 離れたときの value が自分の最後に通知したものなら、打ちかけの不正な文字列を残す
+    // 離れたときの value が、入力欄を最後にそろえた (通知した・合わせた) ものなら、打ちかけの
+    // 不正な文字列を残す
     const [editing, setEditing] = useState(false);
     const [prevValue, setPrevValue] = useState(value);
-    const [lastNotified, setLastNotified] = useState(value);
+    const [syncedValue, setSyncedValue] = useState(value);
 
     function notify(next: string): void {
-        setLastNotified(next);
+        setSyncedValue(next);
         onChange(next);
     }
 
     // 自分の入力を通知した結果 (空白をそろえたもの) と、入力途中を表す "" では打った文字列を残す
     function syncCustomSfen(next: string): void {
+        setSyncedValue(next);
         if (isPreset || next === "" || next === normalizeSfenSpacing(customSfen)) return;
         setCustomSfen(next);
         setSfenError(null);
@@ -166,7 +168,7 @@ export function PositionPresetSelector({
                         onFocus={() => setEditing(true)}
                         onBlur={() => {
                             setEditing(false);
-                            if (value !== lastNotified) syncCustomSfen(value);
+                            if (value !== syncedValue) syncCustomSfen(value);
                         }}
                         className={`font-mono text-xs ${sfenError ? "border-destructive focus-visible:ring-destructive" : ""}`}
                         aria-invalid={sfenError !== null}
