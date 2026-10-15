@@ -134,6 +134,19 @@ describe("PositionPresetSelector の SFEN 直接入力", () => {
         expect(input.value).toBe(stale);
     });
 
+    it("打っている間に外からプリセットへ切り替わっても、次に届いた SFEN を入力欄に反映する", () => {
+        const other = "4k4/9/9/9/9/9/9/9/4K4 b 2P 1";
+        const { rerender } = render(<PositionPresetSelector value={SFEN} onChange={vi.fn()} />);
+        fireEvent.focus(screen.getByPlaceholderText(/^例: lnsgkgsnl/));
+
+        rerender(<PositionPresetSelector value="startpos" onChange={vi.fn()} />);
+        rerender(<PositionPresetSelector value={other} onChange={vi.fn()} />);
+
+        expect((screen.getByPlaceholderText(/^例: lnsgkgsnl/) as HTMLInputElement).value).toBe(
+            other,
+        );
+    });
+
     it("自分の入力を通知した結果の value では、打った文字列を残す", () => {
         const onChange = vi.fn();
         render(<Controlled onChange={onChange} />);

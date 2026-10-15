@@ -94,16 +94,19 @@ export function PositionPresetSelector({
     // 返信も遅れて届くので、打っている間は置き換えず、入力欄を離れたときに今の value へ合わせる
     const [editing, setEditing] = useState(false);
     const [prevValue, setPrevValue] = useState(value);
-    if (value !== prevValue) {
-        setPrevValue(value);
-        if (!editing) syncCustomSfen(value);
-    }
 
     // 自分の入力を通知した結果 (空白をそろえたもの) と、入力途中を表す "" では打った文字列を残す
     function syncCustomSfen(next: string): void {
         if (isPreset || next === "" || next === normalizeSfenSpacing(customSfen)) return;
         setCustomSfen(next);
         setSfenError(null);
+    }
+
+    if (value !== prevValue) {
+        setPrevValue(value);
+        // プリセットに切り替わると入力欄は blur を出さずに消えるので、編集中の印もここで外す
+        if (isPreset) setEditing(false);
+        else if (!editing) syncCustomSfen(value);
     }
     const selectedPreset = POSITION_PRESETS.find((p) => p.value === selectValue);
 
