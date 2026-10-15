@@ -179,8 +179,6 @@ interface MessageContext {
 }
 
 interface ConnectionHandlers {
-    /** 切断後に RoomClient が resume し直したとき */
-    onReconnect: (client: RoomClient) => void;
     onMessage: (context: MessageContext) => void;
     requestFullSnapshot: (client: RoomClient) => boolean;
 }
@@ -207,18 +205,10 @@ function createWaitingRoomHandlers({
     /** fail より前に呼ぶ。fail は保存済みのトークンの有無で再読み込みの案内を決める */
     onError?: (code: ErrorCode) => void;
 }): ConnectionHandlers {
-    // 開始局面を解釈できない game_start を受けてから、サーバーの snapshot で盤面を開くまで真
-    let needsFullSnapshot = false;
-
+    // snapshot を待つ間に切れても求め直さない。対局者は RoomClient が snapshot の返る resume で
+    // 席へ戻り、観戦者は onOpen で参加し直すので、どちらも応答に snapshot が含まれる
     return {
         requestFullSnapshot,
-        onReconnect: (client) => {
-            // RoomClient は再接続すると、最後に受け取ったイベントより後の差分だけを求める。
-            // サーバーは差分に snapshot を含めないので、待っている間に切れたら要求を送り直す
-            if (needsFullSnapshot) {
-                requestFullSnapshot(client);
-            }
-        },
         onMessage: ({ client, message, stopListening, fail, failAfter }) => {
             switch (message.t) {
                 case "joined": {
@@ -232,7 +222,6 @@ function createWaitingRoomHandlers({
                     dispatchRoom({ type: "joined" });
                     dispatchJoin({ type: "joined" });
                     if (message.payload.status !== "waiting") {
-                        needsFullSnapshot = false;
                         stopListening();
                         dispatchRoom({ type: "game_start", snapshot: message.payload });
                     }
@@ -254,7 +243,6 @@ function createWaitingRoomHandlers({
                         }
                         // 開始局面を組み立てられないまま盤面を開くと、サーバーと違う局面から
                         // 指せてしまう。サーバーの snapshot を待ち、届いたらそこから開く
-                        needsFullSnapshot = true;
                         if (requestFullSnapshot(client)) {
                             failAfter(FULL_SNAPSHOT_TIMEOUT_MS, errorCodeToMessage("DESYNC"));
                         } else {
@@ -337,7 +325,6 @@ export function useRoomConnection({
     const connectClient = ({
         timeoutMessage,
         onOpen,
-        onReconnect,
         onMessage,
         requestFullSnapshot,
     }: {
@@ -367,7 +354,6 @@ export function useRoomConnection({
                     return;
                 }
                 if (reconnect) {
-                    onReconnect(newClient);
                     return;
                 }
                 if (timeoutId !== null) {

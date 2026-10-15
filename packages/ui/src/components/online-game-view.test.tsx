@@ -399,7 +399,7 @@ describe("OnlineGameView", () => {
         });
     });
 
-    it("再接続後の同期を待つ間に画面を離れたら、snapshot の要求を送り直さない", () => {
+    it("再接続しても snapshot を自分では求めず、同期を待つ間に画面を離れたら送り直さない", () => {
         vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
         try {
             const statusHandlers = new Set<(status: RoomClientStatus) => void>();
@@ -424,12 +424,13 @@ describe("OnlineGameView", () => {
                     for (const handler of statusHandlers) handler(status);
                 }
             });
-            expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+            // 対局者の席へ戻る resume は RoomClient が snapshot の返る形で送る
+            expect(requestFullSnapshot).not.toHaveBeenCalled();
 
             unmount();
             vi.advanceTimersByTime(60_000);
 
-            expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+            expect(requestFullSnapshot).not.toHaveBeenCalled();
         } finally {
             vi.useRealTimers();
         }
@@ -1409,18 +1410,18 @@ describe("OnlineGameView", () => {
                         for (const handler of statusHandlers) handler(status);
                     }
                 });
-                expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+                expect(requestFullSnapshot).not.toHaveBeenCalled();
 
                 await parsing.fail(snapshot.sfen);
                 expect(screen.getByText(LOAD_FAILED)).toBeTruthy();
-                expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+                expect(requestFullSnapshot).not.toHaveBeenCalled();
 
                 for (let i = 0; i < 4; i += 1) {
                     act(() => {
                         vi.advanceTimersByTime(15_000);
                     });
                 }
-                expect(requestFullSnapshot).toHaveBeenCalledTimes(3);
+                expect(requestFullSnapshot).toHaveBeenCalledTimes(2);
                 expect(screen.getByText("接続が切れました。再読み込みしてください")).toBeTruthy();
             } finally {
                 vi.useRealTimers();
