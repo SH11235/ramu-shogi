@@ -3,6 +3,8 @@ import {
     createRoomClient,
     getStoredResumeToken,
     getStoredSeat,
+    removeStoredResumeToken,
+    removeStoredSeat,
     storeSeat,
 } from "@shogi/match-client";
 import { useEffect, useEffectEvent, useReducer, useRef } from "react";
@@ -154,6 +156,16 @@ function roomReducer(state: RoomState, action: RoomAction): RoomState {
 
 // ─── 待機中の参加者が受け取るメッセージの処理 ─────────────────────────────────
 
+/**
+ * resume にこれらが返ったら、保存済みのトークンでは二度と席へ戻れない。残すと再読み込みのたびに
+ * 同じトークンで resume し直して同じエラーになり、参加フォームへも戻れない
+ */
+const RESUME_TOKEN_REJECTED_CODES: ReadonlySet<ErrorCode> = new Set([
+    "INVALID_TOKEN",
+    "ROOM_NOT_FOUND",
+    "ROOM_EXPIRED",
+]);
+
 /** 開始局面を解釈できない game_start を受けてから、サーバーの snapshot を待つ上限 */
 const FULL_SNAPSHOT_TIMEOUT_MS = 15_000;
 
@@ -184,6 +196,7 @@ function createWaitingRoomHandlers({
     dispatchJoin,
     requestFullSnapshot,
     errorMessage,
+    onError,
 }: {
     roomId: string;
     seat: "b" | "w" | "s";
@@ -191,6 +204,8 @@ function createWaitingRoomHandlers({
     dispatchJoin: (action: JoinFormAction) => void;
     requestFullSnapshot: (client: RoomClient) => boolean;
     errorMessage: (code: ErrorCode) => string;
+    /** fail より前に呼ぶ。fail は保存済みのトークンの有無で再読み込みの案内を決める */
+    onError?: (code: ErrorCode) => void;
 }): ConnectionHandlers {
     // 開始局面を解釈できない game_start を受けてから、サーバーの snapshot で盤面を開くまで真
     let needsFullSnapshot = false;
@@ -249,6 +264,7 @@ function createWaitingRoomHandlers({
                     break;
                 }
                 case "error": {
+                    onError?.(message.payload.code);
                     fail(errorMessage(message.payload.code));
                     break;
                 }
@@ -508,6 +524,12 @@ export function useRoomConnection({
                     return true;
                 },
                 errorMessage: () => "セッションが切れました。再度参加してください。",
+                onError: (code) => {
+                    if (RESUME_TOKEN_REJECTED_CODES.has(code)) {
+                        removeStoredResumeToken(roomId);
+                        removeStoredSeat(roomId);
+                    }
+                },
             }),
         });
         return leaveRoom;

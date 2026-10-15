@@ -1267,7 +1267,9 @@ describe("OnlineGameView", () => {
         });
 
         /** 画面を開いたときの読み込みを 2 回とも失敗させた状態で、後手からのメッセージを待つ */
-        async function renderUnrestored(): Promise<ReturnType<typeof makeSubscribableClient>> {
+        async function renderUnrestored(
+            requestFullSnapshot?: () => boolean,
+        ): Promise<ReturnType<typeof makeSubscribableClient>> {
             mockParseSfen.mockRejectedValue(new Error("parse failed"));
             const connection = makeSubscribableClient();
             await act(async () => {
@@ -1277,6 +1279,7 @@ describe("OnlineGameView", () => {
                         snapshot={makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" })}
                         seat="b"
                         roomId="test-room"
+                        requestFullSnapshot={requestFullSnapshot}
                     />,
                 );
             });
@@ -1311,6 +1314,59 @@ describe("OnlineGameView", () => {
             await recoverWith(emit, makeSnapshot({ eventId: 6, moves: FINAL_MOVES, turn: "w" }));
 
             expect(screen.getByText("3.")).toBeTruthy();
+        });
+
+        it("やり直しても読み込めなければ snapshot を取り寄せ、届いたら復帰する", async () => {
+            const requestFullSnapshot = vi.fn(() => true);
+            const { emit } = await renderUnrestored(requestFullSnapshot);
+            expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+
+            await recoverWith(emit, makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" }));
+
+            expect(screen.getByText("3.")).toBeTruthy();
+        });
+
+        it("取り寄せた snapshot が届かなければ回数を区切って送り直し、尽きたら接続切れを案内する", async () => {
+            vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+            try {
+                const requestFullSnapshot = vi.fn(() => true);
+                await renderUnrestored(requestFullSnapshot);
+
+                for (const calls of [2, 3]) {
+                    act(() => {
+                        vi.advanceTimersByTime(15_000);
+                    });
+                    expect(requestFullSnapshot).toHaveBeenCalledTimes(calls);
+                }
+                act(() => {
+                    vi.advanceTimersByTime(15_000);
+                });
+
+                expect(requestFullSnapshot).toHaveBeenCalledTimes(3);
+                expect(screen.getByText("接続が切れました。再読み込みしてください")).toBeTruthy();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it("待ったの承認で局面が届いたら、snapshot を待たずに読み込み失敗の案内を消す", async () => {
+            const { emit } = await renderUnrestored();
+            mockParseSfen.mockImplementation(async () => structuredClone(PARSED_POSITION));
+
+            await emit(
+                eventMessage({
+                    kind: "takeback_accepted",
+                    eventId: 6,
+                    serverTs: 0,
+                    sfen: "lnsgkgsnl/1r5b1/ppppppppp/9/9/2P6/PP1PPPPPP/1B5R1/LNSGKGSNL w - 2",
+                    turn: "w",
+                    clock: makeSnapshot().clock,
+                    passRights: null,
+                }),
+            );
+
+            expect(screen.queryByText(LOAD_FAILED)).toBeNull();
+            expect(screen.getByTestId("shogi-board")).toBeTruthy();
         });
 
         it("読み込めない間に届いた待ったの申請は、復帰後に承認ダイアログとして出る", async () => {
