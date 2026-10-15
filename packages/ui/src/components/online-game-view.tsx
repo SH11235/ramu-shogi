@@ -161,6 +161,7 @@ interface UIState {
     navIndex: number | null;
     aiSheetOpen: boolean;
     kifuSheetOpen: boolean;
+    endDialogClosed: boolean;
 }
 
 type UIAction =
@@ -173,7 +174,8 @@ type UIAction =
     | { type: "set_promote_dialog"; dialog: { from: string; to: string; usi: string } | null }
     | { type: "set_nav_index"; index: number | null }
     | { type: "set_ai_sheet_open"; open: boolean }
-    | { type: "set_kifu_sheet_open"; open: boolean };
+    | { type: "set_kifu_sheet_open"; open: boolean }
+    | { type: "set_end_dialog_closed"; closed: boolean };
 
 const INITIAL_UI_STATE: UIState = {
     selectedSquare: null,
@@ -183,6 +185,7 @@ const INITIAL_UI_STATE: UIState = {
     navIndex: null,
     aiSheetOpen: false,
     kifuSheetOpen: false,
+    endDialogClosed: false,
 };
 
 function uiReducer(state: UIState, action: UIAction): UIState {
@@ -214,6 +217,8 @@ function uiReducer(state: UIState, action: UIAction): UIState {
             return { ...state, aiSheetOpen: action.open };
         case "set_kifu_sheet_open":
             return { ...state, kifuSheetOpen: action.open };
+        case "set_end_dialog_closed":
+            return { ...state, endDialogClosed: action.closed };
     }
 }
 
@@ -310,6 +315,7 @@ export function OnlineGameView({
         navIndex,
         aiSheetOpen,
         kifuSheetOpen,
+        endDialogClosed,
     } = uiState;
 
     // 右パネルのアクティブタブ
@@ -1248,6 +1254,16 @@ export function OnlineGameView({
                     }
                 />
 
+                {gameResult && (
+                    <GameResultStrip
+                        shown={endDialogClosed}
+                        text={`${formatGameResultTitle(gameResult, playerNames)}（${formatGameEndReason(gameResult)}）`}
+                        onReopen={() =>
+                            dispatchUI({ type: "set_end_dialog_closed", closed: false })
+                        }
+                    />
+                )}
+
                 {/* 棋譜ナビゲーション */}
                 {positionHistory.length > 0 && (
                     <KifuNavigationToolbar
@@ -1428,7 +1444,7 @@ export function OnlineGameView({
             )}
 
             {/* 対局結果ダイアログ */}
-            {gameResult && (
+            {gameResult && !endDialogClosed && (
                 <GameEndDialog
                     result={gameResult}
                     kifu={generatedKif}
@@ -1447,6 +1463,7 @@ export function OnlineGameView({
                             : undefined
                     }
                     onExit={onExit}
+                    onDismiss={() => dispatchUI({ type: "set_end_dialog_closed", closed: true })}
                 />
             )}
 
@@ -1559,6 +1576,16 @@ const GAME_END_REASONS: Record<string, string> = {
     disconnect: "切断不戦敗",
 };
 
+function formatGameResultTitle(result: GameResult, playerNames: { b: string; w: string }): string {
+    const winnerName =
+        result.winner === "b" ? playerNames.b : result.winner === "w" ? playerNames.w : null;
+    return winnerName ? `${winnerName} の勝ち` : "引き分け";
+}
+
+function formatGameEndReason(result: GameResult): string {
+    return GAME_END_REASONS[result.reason] ?? result.reason;
+}
+
 interface GameEndDialogProps {
     result: GameResult;
     kifu: string;
@@ -1567,6 +1594,41 @@ interface GameEndDialogProps {
     analysisLog: Array<{ seat: "b" | "w"; ply: number }>;
     onStartReview?: () => void;
     onExit?: () => void;
+    onDismiss: () => void;
+}
+
+// ダイアログを閉じた瞬間に下の棋譜ナビがずれないよう、終局したら高さを確保しておき、
+// 閉じたときだけ見せる。押したボタンはダイアログごと消えるので、開き直すボタンへ
+// フォーカスを移す。スクロールさせると見ようとした盤が画面の外へ押し出される
+function GameResultStrip({
+    shown,
+    text,
+    onReopen,
+}: {
+    shown: boolean;
+    text: string;
+    onReopen: () => void;
+}): ReactElement {
+    const buttonRef = useRef<HTMLButtonElement>(null);
+    useEffect(() => {
+        if (shown) buttonRef.current?.focus({ preventScroll: true });
+    }, [shown]);
+    return (
+        <div
+            aria-hidden={!shown}
+            className={`flex w-full max-w-md items-center justify-between gap-3 self-center rounded-lg border border-border bg-card px-3 py-2 ${shown ? "" : "invisible"}`}
+        >
+            <p className="text-sm font-semibold text-foreground">{text}</p>
+            <button
+                ref={buttonRef}
+                type="button"
+                onClick={onReopen}
+                className="shrink-0 rounded-md bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+                結果を表示
+            </button>
+        </div>
+    );
 }
 
 function GameEndDialog({
@@ -1577,6 +1639,7 @@ function GameEndDialog({
     analysisLog,
     onStartReview,
     onExit,
+    onDismiss,
 }: GameEndDialogProps): ReactElement {
     const [kifuCopied, setKifuCopied] = useState(false);
     useEffect(() => {
@@ -1585,20 +1648,36 @@ function GameEndDialog({
         return () => clearTimeout(timerId);
     }, [kifuCopied]);
 
-    const winnerName =
-        result.winner === "b" ? playerNames.b : result.winner === "w" ? playerNames.w : null;
+    // 背景の盤を操作できないモーダルなので、開いたらフォーカスをダイアログの中へ移す
+    const dialogRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        dialogRef.current?.focus();
+    }, []);
 
     const bAnalysisCount = analysisLog.filter((e) => e.seat === "b").length;
     const wAnalysisCount = analysisLog.filter((e) => e.seat === "w").length;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-            <div className="rounded-xl border border-border bg-card p-6 shadow-xl min-w-[280px] max-w-sm">
-                <h2 className="mb-3 text-center text-xl font-bold text-foreground">
-                    {winnerName ? `${winnerName} の勝ち` : "引き分け"}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+            <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="game-end-dialog-title"
+                tabIndex={-1}
+                onKeyDown={(e) => {
+                    if (e.key === "Escape") onDismiss();
+                }}
+                className="max-h-full min-w-[280px] max-w-sm overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-xl focus-visible:outline-none"
+            >
+                <h2
+                    id="game-end-dialog-title"
+                    className="mb-3 text-center text-xl font-bold text-foreground"
+                >
+                    {formatGameResultTitle(result, playerNames)}
                 </h2>
                 <p className="mb-5 text-center text-sm text-muted-foreground">
-                    {GAME_END_REASONS[result.reason] ?? result.reason}
+                    {formatGameEndReason(result)}
                 </p>
 
                 {/* 解析ログ開示 */}
@@ -1660,6 +1739,13 @@ function GameEndDialog({
                             トップへ戻る
                         </button>
                     )}
+                    <button
+                        type="button"
+                        onClick={onDismiss}
+                        className="w-full rounded-lg border border-border bg-card py-2 text-sm font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                        盤面を見る
+                    </button>
                 </div>
             </div>
         </div>
