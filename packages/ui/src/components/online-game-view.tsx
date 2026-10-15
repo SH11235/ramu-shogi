@@ -1255,20 +1255,12 @@ export function OnlineGameView({
                 />
 
                 {gameResult && endDialogClosed && (
-                    <div className="flex w-full max-w-md items-center justify-between gap-3 self-center rounded-lg border border-border bg-card px-3 py-2">
-                        <p className="text-sm font-semibold text-foreground">
-                            {`${formatGameResultTitle(gameResult, playerNames)}（${formatGameEndReason(gameResult)}）`}
-                        </p>
-                        <button
-                            type="button"
-                            onClick={() =>
-                                dispatchUI({ type: "set_end_dialog_closed", closed: false })
-                            }
-                            className="shrink-0 rounded-md bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                            結果を表示
-                        </button>
-                    </div>
+                    <GameResultStrip
+                        text={`${formatGameResultTitle(gameResult, playerNames)}（${formatGameEndReason(gameResult)}）`}
+                        onReopen={() =>
+                            dispatchUI({ type: "set_end_dialog_closed", closed: false })
+                        }
+                    />
                 )}
 
                 {/* 棋譜ナビゲーション */}
@@ -1604,6 +1596,28 @@ interface GameEndDialogProps {
     onDismiss: () => void;
 }
 
+// 帯は「盤面を見る」で閉じたときにだけ現れる。押したボタンはダイアログごと消えるので、
+// キーボード操作が続けられるよう開き直すボタンへフォーカスを移す
+function GameResultStrip({ text, onReopen }: { text: string; onReopen: () => void }): ReactElement {
+    const buttonRef = useRef<HTMLButtonElement>(null);
+    useEffect(() => {
+        buttonRef.current?.focus();
+    }, []);
+    return (
+        <div className="flex w-full max-w-md items-center justify-between gap-3 self-center rounded-lg border border-border bg-card px-3 py-2">
+            <p className="text-sm font-semibold text-foreground">{text}</p>
+            <button
+                ref={buttonRef}
+                type="button"
+                onClick={onReopen}
+                className="shrink-0 rounded-md bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+                結果を表示
+            </button>
+        </div>
+    );
+}
+
 function GameEndDialog({
     result,
     kifu,
@@ -1621,13 +1635,32 @@ function GameEndDialog({
         return () => clearTimeout(timerId);
     }, [kifuCopied]);
 
+    // 背景の盤を操作できないモーダルなので、開いたらフォーカスをダイアログの中へ移す
+    const dialogRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        dialogRef.current?.focus();
+    }, []);
+
     const bAnalysisCount = analysisLog.filter((e) => e.seat === "b").length;
     const wAnalysisCount = analysisLog.filter((e) => e.seat === "w").length;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-            <div className="rounded-xl border border-border bg-card p-6 shadow-xl min-w-[280px] max-w-sm">
-                <h2 className="mb-3 text-center text-xl font-bold text-foreground">
+            <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="game-end-dialog-title"
+                tabIndex={-1}
+                onKeyDown={(e) => {
+                    if (e.key === "Escape") onDismiss();
+                }}
+                className="rounded-xl border border-border bg-card p-6 shadow-xl min-w-[280px] max-w-sm focus-visible:outline-none"
+            >
+                <h2
+                    id="game-end-dialog-title"
+                    className="mb-3 text-center text-xl font-bold text-foreground"
+                >
                     {formatGameResultTitle(result, playerNames)}
                 </h2>
                 <p className="mb-5 text-center text-sm text-muted-foreground">
@@ -1696,7 +1729,7 @@ function GameEndDialog({
                     <button
                         type="button"
                         onClick={onDismiss}
-                        className="w-full rounded-lg border border-border bg-card py-2 text-sm font-semibold text-foreground hover:bg-muted"
+                        className="w-full rounded-lg border border-border bg-card py-2 text-sm font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                         盤面を見る
                     </button>

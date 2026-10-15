@@ -506,11 +506,32 @@ describe("OnlineGameView", () => {
             expect(screen.queryByRole("button", { name: "棋譜を検討する" })).toBeNull();
             expect(screen.getByText("Alice の勝ち（投了）")).toBeTruthy();
 
+            expect(document.activeElement).toBe(screen.getByRole("button", { name: "結果を表示" }));
+
             fireEvent.click(screen.getByRole("button", { name: "結果を表示" }));
 
+            expect(document.activeElement).toBe(screen.getByRole("dialog"));
             expect(screen.getByRole("heading", { name: "Alice の勝ち" })).toBeTruthy();
             expect(screen.getByRole("button", { name: "棋譜を検討する" })).toBeTruthy();
             expect(screen.queryByText("Alice の勝ち（投了）")).toBeNull();
+        });
+
+        it("結果ダイアログは Escape でも閉じられる", () => {
+            render(
+                <OnlineGameView
+                    client={makeMockClient()}
+                    snapshot={makeFinishedSnapshot({ result: RESIGN_RESULT })}
+                    seat="s"
+                    roomId="test-room"
+                />,
+            );
+
+            fireEvent.keyDown(screen.getByRole("dialog", { name: "Alice の勝ち" }), {
+                key: "Escape",
+            });
+
+            expect(screen.queryByRole("dialog")).toBeNull();
+            expect(screen.getByText("Alice の勝ち（投了）")).toBeTruthy();
         });
 
         it("結果ダイアログを閉じた後に同じ結果の game_end が届いても開き直さない", async () => {
