@@ -532,9 +532,6 @@ describe("RoomPage", () => {
 
                 expect(socket.sent.filter((message) => message.t === "resume")).toEqual([
                     expect.objectContaining({
-                        payload: { resumeToken: "token-test-room", lastEventId: 5 },
-                    }),
-                    expect.objectContaining({
                         payload: { resumeToken: "token-test-room", lastEventId: 0 },
                     }),
                 ]);
@@ -1406,18 +1403,8 @@ describe("RoomPage", () => {
             }
             const socket = socketFor("test-room");
             expect(socket).not.toBe(firstSocket);
-            const move = eventMessage({
-                kind: "move",
-                eventId: 3,
-                serverTs: 0,
-                usi: "3c3d",
-                turn: "b",
-                clock: makeSnapshot().clock,
-                passRights: null,
-            });
-            // RoomClient 自身の resume には差分（指し手）だけが返り、snapshot は取り直しの要求に返る
+            // 席へ戻る resume は lastEventId 0 なので、切断中の指し手は snapshot に含まれて返る
             await deliverOnOpen("test-room", [
-                move,
                 {
                     v: 1,
                     t: "snapshot",
@@ -1432,7 +1419,6 @@ describe("RoomPage", () => {
             ]);
 
             expect(socket.sent.filter((message) => message.t === "resume")).toEqual([
-                expect.objectContaining({ payload: { resumeToken: "token", lastEventId: 2 } }),
                 expect.objectContaining({ payload: { resumeToken: "token", lastEventId: 0 } }),
             ]);
             expect(squareLabel("2b")).toBe("2b 空マス");

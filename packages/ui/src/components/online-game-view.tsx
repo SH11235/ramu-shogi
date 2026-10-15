@@ -605,17 +605,13 @@ export function OnlineGameView({
         } else if (status === "disconnected") {
             showConnectionLost();
         } else if (status === "connected") {
-            // WebSocket が開いても、席へ戻れたかは分からない。RoomClient の resume の応答は
-            // 差分イベントだけのことがあり、どこまでで終わりかを判別できないので、必ず snapshot が
-            // 返る要求を送り、その snapshot を反映し終えたら戻す。観戦者は useRoomConnection が
-            // 開き直した接続で参加し直し、その応答に snapshot が含まれる
+            // WebSocket が開いても、席へ戻れたかは分からない。対局者は RoomClient が必ず snapshot の
+            // 返る resume を送り、観戦者は useRoomConnection が開き直した接続で参加し直すので、
+            // どちらも応答の snapshot を反映し終えたら戻す
             const resync = connectionEpochRef.current;
             resyncRef.current = resync;
             resyncRetriesRef.current = 0;
             waitForResync(resync);
-            if (!isSpectator) {
-                requestFullSnapshot?.();
-            }
         }
     });
 

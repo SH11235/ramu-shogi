@@ -707,7 +707,7 @@ describe("useRoomConnection", () => {
                 expect(result.current.snapshot).toEqual(playingSnapshot.payload);
             });
 
-            it("snapshot を待つ間に接続し直したら、対局者は差分でなく snapshot を求め直す", () => {
+            it("snapshot を待つ間に接続し直したら、対局者は RoomClient の resume が返す snapshot を待ち、重ねて求めない", () => {
                 const { connection, result, reopen } = joinAndWait("b");
                 mockGetStoredResumeToken.mockReturnValue("token-1");
                 act(() => {
@@ -717,11 +717,7 @@ describe("useRoomConnection", () => {
 
                 reopen(true);
 
-                expect(connection.client.resume).toHaveBeenCalledTimes(2);
-                expect(connection.client.resume).toHaveBeenLastCalledWith({
-                    resumeToken: "token-1",
-                    lastEventId: 0,
-                });
+                expect(connection.client.resume).toHaveBeenCalledTimes(1);
 
                 // 差分として届く指し手では開かず、snapshot が届いてから開く
                 act(() => {
