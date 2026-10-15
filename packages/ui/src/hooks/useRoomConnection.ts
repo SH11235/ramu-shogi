@@ -107,7 +107,15 @@ function roomReducer(state: RoomState, action: RoomAction): RoomState {
         case "joined":
             return { ...state, joined: true };
         case "snapshot_received":
-            return { ...state, snapshot: action.snapshot };
+            // snapshot の開始局面がサーバーの今の設定。切れている間に届かなかった変更や、
+            // まだ送っていない「SFEN 直接入力」の空はここで捨てる。打ちかけの文字列は
+            // 局面選択が持ち続けるので、SFEN 直接入力を選び直せば戻る
+            return {
+                ...state,
+                snapshot: action.snapshot,
+                localStartSfen: action.snapshot.settings.startSfen,
+                appliedStartSfen: action.snapshot.settings.startSfen,
+            };
         case "settings_updated":
             return {
                 ...state,

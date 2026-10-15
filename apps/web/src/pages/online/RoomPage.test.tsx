@@ -1228,6 +1228,42 @@ describe("RoomPage", () => {
             ]);
         });
 
+        it("開始局面を変更した後に届いた待機中の snapshot の開始局面を、対局設定に出す", async () => {
+            const socket = await joinAndWait("b");
+            const settingsRow = (): string =>
+                screen.getByText("開始局面", { selector: "span" }).parentElement
+                    ?.textContent as string;
+            fireEvent.keyDown(screen.getByRole("combobox", { name: "開始局面を選択" }), {
+                key: "ArrowDown",
+            });
+            fireEvent.keyDown(screen.getByRole("option", { name: "角落ち" }), { key: "Enter" });
+            expect(settingsRow()).toBe("開始局面角落ち");
+
+            const waiting = makeSnapshot({
+                eventId: 2,
+                status: "waiting",
+                sfen: "lnsgkgsnl/7b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+                moves: [],
+                turn: "w",
+                players: { b: { name: "Alice", online: true }, w: null },
+            });
+            await receive(socket, [
+                {
+                    v: 1,
+                    t: "snapshot",
+                    payload: {
+                        ...waiting,
+                        settings: { ...waiting.settings, startSfen: "handicap:rook" },
+                    },
+                },
+            ]);
+
+            expect(settingsRow()).toBe("開始局面飛車落ち");
+            expect(screen.getByRole("combobox", { name: "開始局面を選択" }).textContent).toBe(
+                "飛車落ち",
+            );
+        });
+
         it("開始局面が変更されなければ、平手の先手番で始まり、先手は平手の合法手を取得する", async () => {
             const socket = await joinAndWait("b");
 
