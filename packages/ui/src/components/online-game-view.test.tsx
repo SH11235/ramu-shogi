@@ -1349,24 +1349,82 @@ describe("OnlineGameView", () => {
             }
         });
 
-        it("待ったの承認で局面が届いたら、snapshot を待たずに読み込み失敗の案内を消す", async () => {
-            const { emit } = await renderUnrestored();
-            mockParseSfen.mockImplementation(async () => structuredClone(PARSED_POSITION));
+        it("取り寄せた snapshot より先に待ったの承認が届いても、snapshot で記録ごと作り直す", async () => {
+            vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+            try {
+                const requestFullSnapshot = vi.fn(() => true);
+                const { emit } = await renderUnrestored(requestFullSnapshot);
+                mockParseSfen.mockImplementation(async () => structuredClone(PARSED_POSITION));
 
-            await emit(
-                eventMessage({
-                    kind: "takeback_accepted",
-                    eventId: 6,
-                    serverTs: 0,
-                    sfen: "lnsgkgsnl/1r5b1/ppppppppp/9/9/2P6/PP1PPPPPP/1B5R1/LNSGKGSNL w - 2",
-                    turn: "w",
-                    clock: makeSnapshot().clock,
-                    passRights: null,
-                }),
-            );
+                await emit(
+                    eventMessage({
+                        kind: "takeback_accepted",
+                        eventId: 6,
+                        serverTs: 0,
+                        sfen: "lnsgkgsnl/1r5b1/ppppppppp/9/9/2P6/PP1PPPPPP/1B5R1/LNSGKGSNL w - 2",
+                        turn: "w",
+                        clock: makeSnapshot().clock,
+                        passRights: null,
+                    }),
+                );
+                // 盤面は出ても指し手の記録が欠けているので、snapshot が届くまで案内を残す
+                expect(screen.getByText(LOAD_FAILED)).toBeTruthy();
 
-            expect(screen.queryByText(LOAD_FAILED)).toBeNull();
-            expect(screen.getByTestId("shogi-board")).toBeTruthy();
+                await recoverWith(emit, makeSnapshot({ eventId: 6, moves: ["7g7f"], turn: "w" }));
+                expect(screen.getByText("1.")).toBeTruthy();
+
+                act(() => {
+                    vi.advanceTimersByTime(60_000);
+                });
+                expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+                expect(screen.queryByText(/接続が切れました/)).toBeNull();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it("読み込み中に再接続して同期が始まっていれば、読み込みに失敗しても要求を重ねない", async () => {
+            vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+            try {
+                const parsing = holdParsing();
+                const snapshot = makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" });
+                const statusHandlers = new Set<(status: RoomClientStatus) => void>();
+                const { client } = makeSubscribableClient();
+                client.subscribeStatus = vi.fn((handler: (status: RoomClientStatus) => void) => {
+                    statusHandlers.add(handler);
+                    return () => statusHandlers.delete(handler);
+                });
+                const requestFullSnapshot = vi.fn(() => true);
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={snapshot}
+                        seat="b"
+                        roomId="test-room"
+                        requestFullSnapshot={requestFullSnapshot}
+                    />,
+                );
+                act(() => {
+                    for (const status of ["reconnecting", "connected"] as const) {
+                        for (const handler of statusHandlers) handler(status);
+                    }
+                });
+                expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+
+                await parsing.fail(snapshot.sfen);
+                expect(screen.getByText(LOAD_FAILED)).toBeTruthy();
+                expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+
+                for (let i = 0; i < 4; i += 1) {
+                    act(() => {
+                        vi.advanceTimersByTime(15_000);
+                    });
+                }
+                expect(requestFullSnapshot).toHaveBeenCalledTimes(3);
+                expect(screen.getByText("接続が切れました。再読み込みしてください")).toBeTruthy();
+            } finally {
+                vi.useRealTimers();
+            }
         });
 
         it("読み込めない間に届いた待ったの申請は、復帰後に承認ダイアログとして出る", async () => {

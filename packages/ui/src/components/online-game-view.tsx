@@ -433,8 +433,10 @@ export function OnlineGameView({
                     if (initial) {
                         setLoadFailed(true);
                         // 局面が無いままでは指せず、snapshot が届くまで待つしかないので取り寄せる。
-                        // 届いた snapshot も読めなければ、再接続後の同期と同じく回数を区切って諦める
+                        // 届いた snapshot も読めなければ、再接続後の同期と同じく回数を区切って諦める。
+                        // 再接続後の同期が既に待っていれば、その snapshot で作り直せるので引き継ぐ
                         const resync = connectionEpochRef.current;
+                        if (resyncRef.current === resync) return;
                         resyncRef.current = resync;
                         resyncRetriesRef.current = 0;
                         if (requestFullSnapshot?.()) {
@@ -497,7 +499,6 @@ export function OnlineGameView({
                         passRights: e.passRights,
                     });
                     dispatchUI({ type: "resync_received" });
-                    setLoadFailed(false);
                     markApplied();
                 });
         } else if (e.kind === "move") {

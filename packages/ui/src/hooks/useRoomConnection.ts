@@ -166,6 +166,15 @@ const RESUME_TOKEN_REJECTED_CODES: ReadonlySet<ErrorCode> = new Set([
     "ROOM_EXPIRED",
 ]);
 
+function forgetRejectedResumeToken(roomId: string): (code: ErrorCode) => void {
+    return (code) => {
+        if (RESUME_TOKEN_REJECTED_CODES.has(code)) {
+            removeStoredResumeToken(roomId);
+            removeStoredSeat(roomId);
+        }
+    };
+}
+
 /** 開始局面を解釈できない game_start を受けてから、サーバーの snapshot を待つ上限 */
 const FULL_SNAPSHOT_TIMEOUT_MS = 15_000;
 
@@ -485,6 +494,7 @@ export function useRoomConnection({
                     return true;
                 },
                 errorMessage: errorCodeToMessage,
+                onError: forgetRejectedResumeToken(roomId),
             }),
         });
     };
@@ -524,12 +534,7 @@ export function useRoomConnection({
                     return true;
                 },
                 errorMessage: () => "セッションが切れました。再度参加してください。",
-                onError: (code) => {
-                    if (RESUME_TOKEN_REJECTED_CODES.has(code)) {
-                        removeStoredResumeToken(roomId);
-                        removeStoredSeat(roomId);
-                    }
-                },
+                onError: forgetRejectedResumeToken(roomId),
             }),
         });
         return leaveRoom;

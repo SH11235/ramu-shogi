@@ -666,6 +666,24 @@ describe("useRoomConnection", () => {
                 expect(result.current.snapshot).toEqual(playingSnapshot.payload);
             });
 
+            it("取り直しの resume が INVALID_TOKEN で拒まれたら、保存済みの席とトークンを捨てる", () => {
+                const { connection, result } = joinAndWait("b");
+                mockGetStoredResumeToken.mockReturnValue("token-1");
+
+                act(() => {
+                    connection.emit(gameStart(2, UNKNOWN_PRESET));
+                    connection.emit({
+                        v: 1,
+                        t: "error",
+                        payload: { code: "INVALID_TOKEN", message: "" },
+                    });
+                });
+
+                expect(mockRemoveStoredResumeToken).toHaveBeenCalledWith("room-1");
+                expect(mockRemoveStoredSeat).toHaveBeenCalledWith("room-1");
+                expect(result.current).toMatchObject({ joined: false, connectionLost: false });
+            });
+
             it("観戦者は参加し直して取り直した snapshot から開く", () => {
                 const { connection, result } = joinAndWait("s");
                 connection.client.join.mockClear();
