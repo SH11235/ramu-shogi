@@ -90,6 +90,33 @@ export function PositionPresetSelector({
     const selectValue = isPreset ? value : CUSTOM_VALUE;
     const [customSfen, setCustomSfen] = useState(isPreset ? "" : value);
     const [sfenError, setSfenError] = useState<string | null>(null);
+    // 待機中の部屋では、相手が設定した別の局面が value に届く。ただし自分が前に送った局面の
+    // 返信も遅れて届くので、打っている間は置き換えず、入力欄を離れたときに今の value へ合わせる。
+    // 離れたときの value が、入力欄を最後にそろえた (通知した・合わせた) ものなら、打ちかけの
+    // 不正な文字列を残す
+    const [editing, setEditing] = useState(false);
+    const [prevValue, setPrevValue] = useState(value);
+    const [syncedValue, setSyncedValue] = useState(value);
+
+    function notify(next: string): void {
+        setSyncedValue(next);
+        onChange(next);
+    }
+
+    // 自分の入力を通知した結果 (空白をそろえたもの) と、入力途中を表す "" では打った文字列を残す
+    function syncCustomSfen(next: string): void {
+        setSyncedValue(next);
+        if (isPreset || next === "" || next === normalizeSfenSpacing(customSfen)) return;
+        setCustomSfen(next);
+        setSfenError(null);
+    }
+
+    if (value !== prevValue) {
+        setPrevValue(value);
+        // プリセットに切り替わると入力欄は blur を出さずに消えるので、編集中の印もここで外す
+        if (isPreset) setEditing(false);
+        else if (!editing) syncCustomSfen(value);
+    }
     const selectedPreset = POSITION_PRESETS.find((p) => p.value === selectValue);
 
     function handleSelectChange(selected: string): void {
@@ -100,9 +127,9 @@ export function PositionPresetSelector({
         if (selected === CUSTOM_VALUE) {
             // カスタム入力モードへ切り替え（現在のカスタム SFEN を維持）
             // 入力欄が空や入力途中のままなら、局面としては通知しない
-            onChange(validateCustomSfen(customSfen) ? "" : normalizeSfenSpacing(customSfen));
+            notify(validateCustomSfen(customSfen) ? "" : normalizeSfenSpacing(customSfen));
         } else {
-            onChange(selected);
+            notify(selected);
         }
     }
 
@@ -111,7 +138,7 @@ export function PositionPresetSelector({
         const error = validateCustomSfen(input);
         setSfenError(error);
         if (!error) {
-            onChange(normalizeSfenSpacing(input));
+            notify(normalizeSfenSpacing(input));
         }
     }
 
@@ -138,6 +165,11 @@ export function PositionPresetSelector({
                         placeholder="例: lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1"
                         value={customSfen}
                         onChange={(e) => handleCustomInput(e.target.value)}
+                        onFocus={() => setEditing(true)}
+                        onBlur={() => {
+                            setEditing(false);
+                            if (value !== syncedValue) syncCustomSfen(value);
+                        }}
                         className={`font-mono text-xs ${sfenError ? "border-destructive focus-visible:ring-destructive" : ""}`}
                         aria-invalid={sfenError !== null}
                     />
