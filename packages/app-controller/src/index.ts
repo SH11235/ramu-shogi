@@ -25,4 +25,10 @@ export type {
 // Functions
 // ============================================================
 
+export type {
+    AnalysisTarget,
+    InteractiveAnalysisOptions,
+    InteractiveAnalysisState,
+} from "./analysis-controller";
+export { createAnalysisController } from "./analysis-controller";
 export { createEngineController } from "./engine-controller";
