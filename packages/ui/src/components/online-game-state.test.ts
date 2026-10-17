@@ -179,6 +179,77 @@ describe("gameReducer", () => {
         expect(broken.positionHistory).toEqual([broken.position]);
     });
 
+    it("snapshot の消費時間を各手に付け、指し手と数が合わなければ付けない", async () => {
+        const timed = await restoredState({
+            ...makeSnapshot(MOVES),
+            moveElapsedMs: [1_000, 2_500, 0],
+        });
+        expect(timed.usiMoveLog).toEqual([
+            { usi: "7g7f", elapsedMs: 1_000 },
+            { usi: "3c3d", elapsedMs: 2_500 },
+            { usi: "8h2b+", elapsedMs: 0 },
+        ]);
+
+        const atLimit = await restoredState({
+            ...makeSnapshot(MOVES),
+            moveElapsedMs: [2_592_000_000, 0, 0],
+        });
+        expect(atLimit.usiMoveLog[0]).toEqual({ usi: "7g7f", elapsedMs: 2_592_000_000 });
+
+        for (const moveElapsedMs of [
+            [1_000, 2_500],
+            [1_000, Number.NaN, 0],
+            [1e308, 0, 1e308],
+            [1_000, 2.5, 0],
+            [2_592_000_001, 0, 0],
+        ]) {
+            const untimed = await restoredState({ ...makeSnapshot(MOVES), moveElapsedMs });
+            expect(untimed.usiMoveLog).toEqual(MOVES.map((usi) => ({ usi })));
+        }
+    });
+
+    it("指し手のイベントが持つ消費時間を使い、無いか壊れていれば残り時間の差分で代える", async () => {
+        const restored = await restoredState(makeSnapshot(MOVES));
+        const move = (elapsedMs?: number) =>
+            gameReducer(restored, {
+                type: "move",
+                usi: "3a2b",
+                turn: "b",
+                clock: { ...CLOCK, w: { remainMs: 600_000 } },
+                passRights: null,
+                elapsedMs,
+            }).usiMoveLog[3];
+
+        expect(move(31_000)).toEqual({ usi: "3a2b", elapsedMs: 31_000 });
+        expect(move(undefined)).toEqual({ usi: "3a2b", elapsedMs: 0 });
+        expect(move(1e308)).toEqual({ usi: "3a2b", elapsedMs: 0 });
+    });
+
+    it("再同期では snapshot の消費時間を手元で測った時間より優先する", async () => {
+        const moved = gameReducer(await restoredState(makeSnapshot(MOVES)), {
+            type: "move",
+            usi: "3a2b",
+            turn: "b",
+            clock: { ...CLOCK, w: { remainMs: 590_000 } },
+            passRights: null,
+        });
+
+        const resynced = gameReducer(moved, {
+            type: "resync",
+            ...(await restorePosition({
+                ...makeSnapshot([...MOVES, "3a2b"]),
+                moveElapsedMs: [1_000, 2_000, 3_000, 9_000],
+            })),
+            turn: "b",
+            clock: CLOCK,
+            passRights: null,
+        });
+
+        expect(resynced.usiMoveLog.map((entry) => entry.elapsedMs)).toEqual([
+            1_000, 2_000, 3_000, 9_000,
+        ]);
+    });
+
     it("再同期の snapshot が持つ待ったの申請と残り回数で置き換え、持たなければ今の状態を保つ", async () => {
         const restored = await restoredState(makeSnapshot(MOVES));
         const requested = gameReducer(
@@ -367,6 +438,52 @@ describe("KIF の終局", () => {
         );
 
         expect(endingLines(kif ?? "", 1)).toEqual(["   2 投了", "まで1手で後手の勝ち", ""]);
+    });
+
+    it("保存された消費時間を各手と指した側の累計に書き、指し手と数が合わなければ書かない", async () => {
+        useFakePositionService([]);
+        const moves = ["7g7f", "3c3d", "2g2f"];
+        const timedLines = async (moveElapsedMs: unknown) =>
+            (await exportGameRecordKif({ initialSfen: "startpos", moves, moveElapsedMs }, NAMES))
+                ?.split("\n")
+                .filter((line) => /^ +\d+ /.test(line));
+
+        expect(await timedLines([65_000, 3_000, 1_500])).toEqual([
+            "   1 ７六歩(77)   ( 1:05/00:01:05)",
+            "   2 ３四歩(33)   ( 0:03/00:00:03)",
+            "   3 ２六歩(27)   ( 0:01/00:01:06)",
+        ]);
+        for (const broken of [
+            [65_000, 3_000],
+            ["65000", 3_000, 1_500],
+            { 0: 1 },
+            [1e308, 0, 1e308],
+            [65_000, 3_000.5, 1_500],
+        ]) {
+            expect(
+                (await timedLines(broken))?.every((line) => line.includes("( 0:00/00:00:00)")),
+            ).toBe(true);
+        }
+    });
+
+    it("パスも 1 手として、パスの前後で指した側ごとの累計を続ける", async () => {
+        useFakePositionService([]);
+
+        const kif = await exportGameRecordKif(
+            {
+                initialSfen: "startpos",
+                moves: ["7g7f", "pass", "2g2f", "3c3d"],
+                moveElapsedMs: [65_000, 3_000, 1_500, 7_000],
+            },
+            NAMES,
+        );
+
+        expect(kif?.split("\n").filter((line) => /^ +\d+ /.test(line))).toEqual([
+            "   1 ７六歩(77)   ( 1:05/00:01:05)",
+            "   2 パス     ( 0:03/00:00:03)",
+            "   3 ２六歩(27)   ( 0:01/00:01:06)",
+            "   4 ３四歩(33)   ( 0:07/00:00:10)",
+        ]);
     });
 
     it("千日手以外の引き分けは中断と書く", async () => {

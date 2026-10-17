@@ -258,6 +258,48 @@ describe("オンライン対局の状態（実物の Wasm 局面サービス）"
                 await exportGameRecordKif({ initialSfen, moves, result: RESULT }, PLAYER_NAMES),
             ).toBe(exportGameKif(state, startSfen, PLAYER_NAMES));
         });
+
+        it("snapshot から復元した対局と保存された棋譜に、同じ各手の消費時間を書く", async () => {
+            const moveElapsedMs = moves.map((_, i) => (i + 1) * 61_000);
+            const state = await restore({
+                ...(await makeSnapshot(startSfen, moves, passRights)),
+                status: "finished",
+                result: RESULT,
+                moveElapsedMs,
+            });
+            const initialSfen =
+                startSfen === "startpos" ? STARTPOS_SFEN : resolveStartSfen(startSfen);
+
+            const kif = exportGameKif(state, startSfen, PLAYER_NAMES);
+
+            const moveLines = kif.split("\n").filter((line) => /^ +\d+ .*\(/.test(line));
+            expect(moveLines.map((line) => /\( *(\d+:\d\d)\//.exec(line)?.[1])).toEqual(
+                moves.map((_, i) => `${i + 1}:${String(i + 1).padStart(2, "0")}`),
+            );
+            expect(
+                await exportGameRecordKif(
+                    { initialSfen, moves, result: RESULT, moveElapsedMs },
+                    PLAYER_NAMES,
+                ),
+            ).toBe(kif);
+        });
+    });
+
+    it("上手から指す駒落ちの累計時間は、上手と下手それぞれの手を足す", async () => {
+        const kif = await exportGameRecordKif(
+            {
+                initialSfen: resolveStartSfen("handicap:bishop"),
+                moves: ["3c3d", "7g7f", "8c8d"],
+                moveElapsedMs: [10_000, 1_000, 20_000],
+            },
+            PLAYER_NAMES,
+        );
+
+        expect(kif?.split("\n").filter((line) => /^ +\d+ /.test(line))).toEqual([
+            "   1 ３四歩(33)   ( 0:10/00:00:10)",
+            "   2 ７六歩(77)   ( 0:01/00:00:01)",
+            "   3 ８四歩(83)   ( 0:20/00:00:30)",
+        ]);
     });
 
     const PRESETS = ["handicap:bishop", "handicap:rook", "handicap:rook-bishop"];

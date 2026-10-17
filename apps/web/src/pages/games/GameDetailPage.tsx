@@ -1,6 +1,7 @@
 import type {
     GameRecordDetail,
     GameRecordVisibility,
+    JsonValue,
     UpdateGameVisibilityResponse,
 } from "@shogi/api-contract";
 import { exportGameRecordKif } from "@shogi/ui/components/online-game-state";
@@ -23,6 +24,14 @@ function buildPublicUrl(publicId: string): string {
 
 const routeApi = getRouteApi("/games/$gameId");
 
+/** 消費時間を記録しないサーバーが保存した棋譜の metadata には無い。中身の検証は KIF を作る側で行う */
+function savedMoveElapsedMs(metadata: JsonValue): JsonValue | undefined {
+    if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) {
+        return undefined;
+    }
+    return metadata.moveElapsedMs;
+}
+
 /**
  * サーバーは盤を持たず kifuText に USI を並べるだけなので、対局ルームの棋譜は開始局面と指し手から
  * KIF を作る。作り終えるまでは null、作れなければ kifuText
@@ -30,6 +39,7 @@ const routeApi = getRouteApi("/games/$gameId");
 function useGameRecordKif(game: GameRecordDetail): string | null {
     const [generated, setGenerated] = useState<{ id: string; kif: string | null } | null>(null);
     const { id, source, initialSfen, moves, result, participants } = game;
+    const moveElapsedMs = savedMoveElapsedMs(game.metadata);
 
     useEffect(() => {
         if (source !== "online_room") return;
@@ -37,7 +47,7 @@ function useGameRecordKif(game: GameRecordDetail): string | null {
             participants.find((p) => p.seat === seat)?.displayNameSnapshot ?? "";
         let cancelled = false;
         void exportGameRecordKif(
-            { initialSfen, moves, result },
+            { initialSfen, moves, result, moveElapsedMs },
             { b: nameOf("b"), w: nameOf("w") },
         ).then((kif) => {
             if (!cancelled) setGenerated({ id, kif });
@@ -45,7 +55,7 @@ function useGameRecordKif(game: GameRecordDetail): string | null {
         return () => {
             cancelled = true;
         };
-    }, [id, source, initialSfen, moves, result, participants]);
+    }, [id, source, initialSfen, moves, result, participants, moveElapsedMs]);
 
     if (source !== "online_room") return game.kifuText;
     if (generated?.id !== id) return null;

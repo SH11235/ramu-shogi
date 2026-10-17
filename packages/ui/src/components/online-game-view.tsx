@@ -595,6 +595,7 @@ export function OnlineGameView({
                 turn: e.turn,
                 clock: e.clock,
                 passRights: e.passRights,
+                elapsedMs: e.elapsedMs,
             });
             movesRef.current = [...movesRef.current, e.usi];
             dispatchUI({ type: "move_received" });
