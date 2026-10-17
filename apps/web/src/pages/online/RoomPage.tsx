@@ -21,6 +21,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { syncProfileDisplayNameIfNeeded, useAuthSession } from "../../hooks/useAuthSession";
 import { getLocalPlayerName, saveLocalPlayerName } from "../../hooks/useLocalPlayerName";
 import { useOnlineAnalysis } from "../../hooks/useOnlineAnalysis";
+import { usePlayFromPosition } from "../../hooks/usePlayFromPosition";
 import { useRemotePrivateNnueManager } from "../../hooks/useRemotePrivateNnueManager";
 
 const nnueManifestUrl: string = (() => {
@@ -282,6 +283,7 @@ export default function RoomPage(): ReactElement {
     const remoteNnueManager = useRemotePrivateNnueManager();
 
     const navigate = useNavigate();
+    const playFromPosition = usePlayFromPosition();
     const didAutofillNameRef = useRef(false);
     const [joinActionError, setJoinActionError] = useState<string | null>(null);
     const [isPreparingJoin, setIsPreparingJoin] = useState(false);
@@ -394,14 +396,16 @@ export default function RoomPage(): ReactElement {
                 onStartReview={(data) => {
                     removeStoredResumeToken(roomId);
                     removeStoredSeat(roomId);
-                    if (data.gameRecordId) {
+                    // 棋譜のページを開けるのはログイン中の対局者だけ（ゲストはログインへ、
+                    // 観戦者は「見つかりません」になる）。それ以外は手元の棋譜を検討画面で開く
+                    if (data.gameRecordId && session?.authenticated && joinSeat !== "s") {
                         // 保存された棋譜のページへ。解析や検討は、そこから研究ノートで行う。
                         void navigate({
                             to: "/games/$gameId",
                             params: { gameId: data.gameRecordId },
                         });
                     } else {
-                        void navigate({ to: "/play" });
+                        playFromPosition({ sfen: data.sfen, moves: data.moves });
                     }
                 }}
                 onExit={() => {

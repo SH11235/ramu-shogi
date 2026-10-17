@@ -178,9 +178,10 @@ async function deliverOnOpen(roomId: string, messages: ServerMessage[]): Promise
     });
 }
 
+let currentSession: { authenticated: true; user: { displayName: string } } | null = null;
 vi.mock("../../hooks/useAuthSession", () => ({
     useAuthSession: () => ({
-        session: null,
+        session: currentSession,
     }),
     syncProfileDisplayNameIfNeeded: vi.fn().mockResolvedValue(undefined),
 }));
@@ -200,6 +201,7 @@ const ROOM_INFO = {
 };
 
 const { default: RoomPage } = await import("./RoomPage");
+const { readPlayHandoff } = await import("../../lib/playHandoff");
 
 describe("RoomPage", () => {
     beforeEach(() => {
@@ -208,8 +210,10 @@ describe("RoomPage", () => {
         mockSubscribe.mockClear();
         vi.unstubAllGlobals();
         currentRoomId = "test-room";
+        currentSession = null;
         sockets = null;
         localStorage.clear();
+        sessionStorage.clear();
     });
 
     // ローディング中・エラー表示は TanStack Router の pendingComponent / errorComponent に移動済み
@@ -249,6 +253,7 @@ describe("RoomPage", () => {
         });
 
         it("終局直後の再読み込みで、購読開始前に届いた棋譜 ID 付き game_end から検討画面へ進める", async () => {
+            currentSession = { authenticated: true, user: { displayName: "Alice" } };
             render(<RoomPage />);
             await deliverOnOpen("test-room", [
                 {
@@ -273,6 +278,7 @@ describe("RoomPage", () => {
         });
 
         it("snapshot の棋譜 ID だけでも検討画面へ進める", async () => {
+            currentSession = { authenticated: true, user: { displayName: "Alice" } };
             render(<RoomPage />);
             await deliverOnOpen("test-room", [
                 {
@@ -295,7 +301,7 @@ describe("RoomPage", () => {
             });
         });
 
-        it("棋譜 ID を得られなかった対局は検討の入口へ進む", async () => {
+        it("棋譜 ID を得られなかった対局は、手元の棋譜を検討画面で開く", async () => {
             render(<RoomPage />);
             await deliverOnOpen("test-room", [{ v: 1, t: "snapshot", payload: makeSnapshot() }]);
             await act(async () => {
@@ -306,6 +312,36 @@ describe("RoomPage", () => {
             fireEvent.click(screen.getByRole("button", { name: "棋譜を検討する" }));
 
             expect(mockNavigate).toHaveBeenCalledWith({ to: "/play" });
+            expect(readPlayHandoff()).toEqual({ sfen: expect.any(String), moves: MOVES });
+        });
+
+        it.each([
+            ["ゲストの対局者", null, "b"],
+            ["ログイン中の観戦者", { authenticated: true, user: { displayName: "Carol" } }, "s"],
+        ] as const)("%sは、保存された棋譜があっても手元の棋譜を検討画面で開く", async (_label, session, seat) => {
+            currentSession = session;
+            localStorage.setItem("ramu_seat_test-room", seat);
+            render(<RoomPage />);
+            await deliverOnOpen("test-room", [
+                {
+                    v: 1,
+                    t: "snapshot",
+                    payload: makeSnapshot({
+                        eventId: 8,
+                        status: "finished",
+                        result: { winner: "b", reason: "resign" },
+                        gameRecordId: "record-1",
+                    }),
+                },
+            ]);
+
+            fireEvent.click(screen.getByRole("button", { name: "棋譜を検討する" }));
+
+            expect(mockNavigate).toHaveBeenCalledWith({ to: "/play" });
+            expect(mockNavigate).not.toHaveBeenCalledWith(
+                expect.objectContaining({ to: "/games/$gameId" }),
+            );
+            expect(readPlayHandoff()).toEqual({ sfen: expect.any(String), moves: MOVES });
         });
 
         it("結果を持たない終局済み snapshot だけでは終局表示を出さない", async () => {
@@ -324,6 +360,7 @@ describe("RoomPage", () => {
         });
 
         it("別のルームへ移ると前のルームの結果を持ち越さず、移動先の結果を表示する", async () => {
+            currentSession = { authenticated: true, user: { displayName: "Alice" } };
             rememberSeat("room-b");
             const { rerender } = render(<RoomPage />);
             await deliverOnOpen("test-room", [
