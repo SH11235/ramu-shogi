@@ -1,10 +1,13 @@
 import { NNUE_DB_NAME, NNUE_DB_VERSION, NNUE_PROGRESS_THROTTLE_MS } from "@shogi/app-core";
 import type {
+    AnalysisBudget,
+    AnalysisFinished,
     EngineEvent,
     EngineInitOptions,
     LayerStacksOptions,
     SearchParams,
 } from "@shogi/engine-client";
+import type { AnalysisCommand } from "./analysisProtocol";
 
 type WasmModuleSource = WebAssembly.Module | ArrayBuffer | Uint8Array | string | URL;
 type WasmInitInput =
@@ -18,6 +21,12 @@ type WasmInitInput =
 type PassRightsInput = { sente: number; gote: number };
 
 type WasmWorkerBindings = {
+    prepareAnalysis?: (
+        resume: boolean,
+        budget: AnalysisBudget,
+    ) => { runId: number; address: number };
+    runAnalysis?: (runId: number) => Omit<AnalysisFinished, "sessionId">;
+    releaseAnalysis?: () => void;
     initWasm: (input?: WasmInitInput) => Promise<unknown>;
     applyMoves: (moves: string[]) => Promise<void> | void;
     disposeEngine: () => void;
@@ -68,6 +77,7 @@ type NnueLoadSource =
     | { type: "bytes"; bytes: Uint8Array }; // 直接バイト列（transferable）
 
 type WorkerCommand =
+    | AnalysisCommand
     | InitCommand
     | (CommandBase & {
           type: "loadPosition";
@@ -348,6 +358,8 @@ export function createEngineWorker(bindings: WasmWorkerBindings) {
         onmessage: ((msg: { data: WorkerCommand }) => void) | null;
     };
 
+    let analysisRun: { sessionId: string; runId: number } | null = null;
+    let analysisSession: string | null = null;
     let engineInitialized = false;
     let cachedModel: ModelCache | null = null;
     let lastInit: InitCommand | null = null;
@@ -432,7 +444,13 @@ export function createEngineWorker(bindings: WasmWorkerBindings) {
                 new URL("../pkg/engine_wasm_bg.wasm", import.meta.url);
             moduleReady = bindings.initWasm({ module_or_path: input }).then((exports) => {
                 wasmExports = exports as DirectWriteWasmExports;
-                bindings.setEventHandler((event: EngineEvent) => postEvent(event));
+                bindings.setEventHandler((event: EngineEvent) => {
+                    if (analysisRun && event.type === "info") {
+                        ctx.postMessage({ type: "analysisInfo", ...analysisRun, info: event });
+                    } else {
+                        postEvent(event);
+                    }
+                });
             });
         }
         await moduleReady;
@@ -556,9 +574,11 @@ export function createEngineWorker(bindings: WasmWorkerBindings) {
     let commandQueue: Promise<void> = Promise.resolve();
 
     async function handleCommand(command: WorkerCommand) {
-        const requestId = command.requestId;
+        const requestId = "requestId" in command ? command.requestId : undefined;
 
         try {
+            if (!["prepareAnalysis", "runAnalysis", "releaseAnalysis"].includes(command.type))
+                analysisSession = null;
             switch (command.type) {
                 case "init":
                     lastInit = command;
@@ -577,6 +597,47 @@ export function createEngineWorker(bindings: WasmWorkerBindings) {
                 case "applyMoves":
                     await ensureEngineReady();
                     await bindings.applyMoves(command.moves);
+                    postAck(requestId);
+                    break;
+                case "prepareAnalysis": {
+                    await ensureEngineReady();
+                    if (
+                        !bindings.prepareAnalysis ||
+                        !(wasmExports?.memory?.buffer instanceof SharedArrayBuffer)
+                    )
+                        throw new Error("共有メモリ解析は利用できません");
+                    if (command.resume && analysisSession !== command.sessionId)
+                        throw new Error("解析セッションが一致しません");
+                    const descriptor = bindings.prepareAnalysis(command.resume, command.budget);
+                    analysisSession = command.sessionId;
+                    ctx.postMessage({
+                        type: "analysisPrepared",
+                        requestId,
+                        sessionId: command.sessionId,
+                        ...descriptor,
+                        buffer: wasmExports.memory.buffer,
+                    });
+                    break;
+                }
+                case "runAnalysis": {
+                    if (!bindings.runAnalysis || analysisSession !== command.sessionId)
+                        throw new Error("解析セッションが一致しません");
+                    analysisRun = { sessionId: command.sessionId, runId: command.runId };
+                    try {
+                        const result = bindings.runAnalysis(command.runId);
+                        ctx.postMessage({
+                            type: "analysisFinished",
+                            result: { ...result, sessionId: command.sessionId },
+                        });
+                        if (!result.resumable) analysisSession = null;
+                    } finally {
+                        analysisRun = null;
+                    }
+                    break;
+                }
+                case "releaseAnalysis":
+                    bindings.releaseAnalysis?.();
+                    analysisSession = null;
                     postAck(requestId);
                     break;
                 case "search":
@@ -613,6 +674,10 @@ export function createEngineWorker(bindings: WasmWorkerBindings) {
                     break;
             }
         } catch (error) {
+            if (command.type === "prepareAnalysis" || command.type === "runAnalysis") {
+                analysisSession = null;
+                ctx.postMessage({ type: "analysisError", requestId, message: String(error) });
+            }
             postAck(requestId, error);
             postEvent({ type: "error", message: String(error) });
         }
