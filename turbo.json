@@ -48,6 +48,7 @@
             "dependsOn": ["transit"],
             "inputs": [
                 "src/**/*.{ts,tsx}",
+                "worker/**/*.{ts,tsx}",
                 "*.{ts,tsx}",
                 "tsconfig*.json",
                 "$TURBO_ROOT$/tsconfig.base.json"
