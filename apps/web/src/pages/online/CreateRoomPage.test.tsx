@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { RATE_LIMITED_MESSAGE } from "../../lib/rateLimitMessage";
 
 vi.mock("@tanstack/react-router", () => ({
     Link: ({ children }: { children: ReactNode }) => <a href="/">{children}</a>,
@@ -65,5 +66,75 @@ describe("CreateRoomPage", () => {
         expect(screen.getByText("局面（SFEN）を入力すると部屋を作成できます")).toBeTruthy();
         fireEvent.click(submit);
         expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("ルーム作成がレート制限で拒まれたら、本文の英語ではなく日本語の文言を出す", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () =>
+                Response.json(
+                    {
+                        error: "RATE_LIMITED",
+                        message: "Too many room creation requests. Please try again later.",
+                    },
+                    { status: 429 },
+                ),
+            ),
+        );
+        render(<CreateRoomPage />);
+        fireEvent.change(screen.getByPlaceholderText("プレイヤー名"), {
+            target: { value: "Alice" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "部屋を作成する" }));
+
+        expect(await screen.findByText(RATE_LIMITED_MESSAGE)).toBeTruthy();
+    });
+
+    it("zone のレート制限で本文が HTML の 429 でも、日本語の文言を出す", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(
+                async () =>
+                    new Response("<!DOCTYPE html><title>Error 1015</title>", {
+                        status: 429,
+                        headers: { "Content-Type": "text/html" },
+                    }),
+            ),
+        );
+        render(<CreateRoomPage />);
+        fireEvent.change(screen.getByPlaceholderText("プレイヤー名"), {
+            target: { value: "Alice" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "部屋を作成する" }));
+
+        expect(await screen.findByText(RATE_LIMITED_MESSAGE)).toBeTruthy();
+    });
+
+    it("本文が JSON でない失敗でも、JSON の読み取りエラーの英語を出さない", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => new Response("<html>Bad Gateway</html>", { status: 502 })),
+        );
+        render(<CreateRoomPage />);
+        fireEvent.change(screen.getByPlaceholderText("プレイヤー名"), {
+            target: { value: "Alice" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "部屋を作成する" }));
+
+        expect(await screen.findByText("ルームの作成に失敗しました")).toBeTruthy();
+    });
+
+    it("429 以外で本文に message が無い失敗は、エラーコードではなくルーム作成の失敗と伝える", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => Response.json({ error: "INVALID_REQUEST" }, { status: 400 })),
+        );
+        render(<CreateRoomPage />);
+        fireEvent.change(screen.getByPlaceholderText("プレイヤー名"), {
+            target: { value: "Alice" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "部屋を作成する" }));
+
+        expect(await screen.findByText("ルームの作成に失敗しました")).toBeTruthy();
     });
 });
