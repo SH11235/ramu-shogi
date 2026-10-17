@@ -3,9 +3,10 @@ import type {
     GameRecordVisibility,
     UpdateGameVisibilityResponse,
 } from "@shogi/api-contract";
+import { exportGameRecordKif } from "@shogi/ui/components/online-game-state";
 import { getRouteApi, Link } from "@tanstack/react-router";
 import type { ReactElement } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
 import { OpenStudyButton } from "../../components/OpenStudyButton";
 import { PageContainer } from "../../components/PageContainer";
@@ -22,12 +23,40 @@ function buildPublicUrl(publicId: string): string {
 
 const routeApi = getRouteApi("/games/$gameId");
 
+/**
+ * 表示とコピーに使う KIF。対局ルームの棋譜はサーバーが盤を持たず、USI の指し手を並べただけの
+ * kifuText しか保存できないので、開始局面と指し手から作り直す。作るまでと作れなかったときは kifuText
+ */
+function useGameRecordKif(game: GameRecordDetail): string {
+    const [generated, setGenerated] = useState<{ id: string; kif: string } | null>(null);
+    const { id, source, initialSfen, moves, participants } = game;
+
+    useEffect(() => {
+        if (source !== "online_room") return;
+        const nameOf = (seat: "b" | "w") =>
+            participants.find((p) => p.seat === seat)?.displayNameSnapshot ?? "";
+        let cancelled = false;
+        void exportGameRecordKif({ initialSfen, moves }, { b: nameOf("b"), w: nameOf("w") }).then(
+            (kif) => {
+                if (!cancelled && kif) setGenerated({ id, kif });
+            },
+        );
+        return () => {
+            cancelled = true;
+        };
+    }, [id, source, initialSfen, moves, participants]);
+
+    return generated?.id === id ? generated.kif : game.kifuText;
+}
+
 export default function GameDetailPage(): ReactElement {
     const loaderGame = routeApi.useLoaderData() as GameRecordDetail;
     const [game, setGame] = useState(loaderGame);
     const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
     const [status, setStatus] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    const kifText = useGameRecordKif(game);
 
     const publicUrl =
         game.publicId && game.visibility !== "private" ? buildPublicUrl(game.publicId) : null;
@@ -241,7 +270,7 @@ export default function GameDetailPage(): ReactElement {
                             type="button"
                             onClick={() => {
                                 navigator.clipboard
-                                    .writeText(game.kifuText)
+                                    .writeText(kifText)
                                     .then(() => {
                                         setStatus("棋譜をコピーしました。");
                                     })
@@ -255,7 +284,7 @@ export default function GameDetailPage(): ReactElement {
                         </button>
                     </div>
                     <pre className="overflow-x-auto rounded-md bg-muted/40 p-4 text-xs text-foreground">
-                        {game.kifuText}
+                        {kifText}
                     </pre>
                 </Section>
             </PageContainer>

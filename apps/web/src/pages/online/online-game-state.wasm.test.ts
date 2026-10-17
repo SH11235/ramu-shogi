@@ -6,6 +6,7 @@ import { type PositionService, setPositionServiceFactory } from "@shogi/app-core
 import type { SnapshotPayload } from "@shogi/match-client";
 import {
     exportGameKif,
+    exportGameRecordKif,
     type GameState,
     gameReducer,
     makeInitialGameState,
@@ -240,6 +241,30 @@ describe("オンライン対局の状態（実物の Wasm 局面サービス）"
             await expect(service.getLegalMoves(preset, [])).rejects.toBeDefined();
             await expect(service.parseSfen(preset)).rejects.toBeDefined();
         }
+    });
+
+    it.each([
+        ["handicap:bishop", "角落ち"],
+        ["handicap:rook", "飛車落ち"],
+        ["handicap:rook-bishop", "飛車角落ち"],
+    ])("保存された %s の棋譜を、手合割と開始局面の入った読み込める KIF にする", async (preset, name) => {
+        const initialSfen = resolveStartSfen(preset);
+        const moves = ["3c3d", "7g7f", "8c8d"];
+
+        const kif = await exportGameRecordKif({ initialSfen, moves }, PLAYER_NAMES);
+
+        expect(kif).toContain(`手合割：${name}`);
+        const parsed = parseKif(kif ?? "");
+        expect(parsed.moves).toEqual(moves);
+        expect(parsed.startSfen).toBe(parseSfen(initialSfen).sfen);
+    });
+
+    it("保存された棋譜を再生できなければ null を返す", async () => {
+        const initialSfen = resolveStartSfen("handicap:bishop");
+
+        expect(
+            await exportGameRecordKif({ initialSfen, moves: ["7g7f"] }, PLAYER_NAMES),
+        ).toBeNull();
     });
 
     it.each(PRESETS)("%s は展開した局面から上手（後手）が指し始められる", async (preset) => {
