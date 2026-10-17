@@ -882,7 +882,7 @@ export function exportToKifString(
 
         if (!board) continue;
 
-        // 累計時間を計算（奇数手=先手、偶数手=後手）
+        // 手番は 1 手ごとに替わるので、同じ偶奇の手を足せば後手から始まる局面でも指した側の累計になる
         const isSenteMove = ply % 2 !== 0;
         const elapsedMs = move.elapsedMs ?? 0;
         if (isSenteMove) {

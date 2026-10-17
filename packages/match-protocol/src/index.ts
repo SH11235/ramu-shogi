@@ -223,6 +223,11 @@ export interface SnapshotPayload {
      * 旧サーバーと、旧サーバーが開始した対局では付かない
      */
     analysisLog?: Array<{ seat: "b" | "w"; ply: number }>;
+    /**
+     * moves と同じ並びの各手の消費時間 (ms)。パスも 1 手に数える。
+     * 旧サーバーと、旧サーバーが開始した対局では付かない
+     */
+    moveElapsedMs?: number[];
 }
 
 // ─── エラーコード ─────────────────────────────────────────────────────────

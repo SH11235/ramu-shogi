@@ -78,6 +78,22 @@ describe("GameDetailPage の KIF テキスト", () => {
         );
     });
 
+    it("保存時の metadata にある各手の消費時間を KIF の作成に渡す", async () => {
+        exportGameRecordKif.mockResolvedValue("#KIF version=2.0");
+        useLoaderData.mockReturnValue(
+            game({ metadata: { roomSettings: {}, moveElapsedMs: [1_000, 2_000] } }),
+        );
+
+        render(<GameDetailPage />);
+
+        await waitFor(() =>
+            expect(exportGameRecordKif).toHaveBeenCalledWith(
+                expect.objectContaining({ moveElapsedMs: [1_000, 2_000] }),
+                { b: "下手", w: "上手" },
+            ),
+        );
+    });
+
     it("KIF を作り終えるまでは、読み込めない kifuText をコピーさせない", async () => {
         let finish: (kif: string) => void = () => {};
         exportGameRecordKif.mockReturnValue(

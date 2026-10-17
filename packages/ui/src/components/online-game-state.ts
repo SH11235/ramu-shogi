@@ -23,7 +23,7 @@ export interface GameState {
     passRights: PassRightsState | null;
     myAnalysisRemaining: number | null;
     analysisLog: Array<{ seat: "b" | "w"; ply: number }>;
-    /** elapsedMs は対局中に受信した指し手にだけ付く（snapshot は消費時間を持たない） */
+    /** elapsedMs は対局中に受信した指し手と、消費時間を持つ snapshot から復元した指し手にだけ付く */
     usiMoveLog: Array<{ usi: string; elapsedMs?: number }>;
     pendingTakeback: { seat: "b" | "w"; ply: number } | null;
 }
@@ -33,6 +33,8 @@ interface RestoredPosition {
     position: PositionState;
     history: PositionState[] | null;
     moves: string[];
+    /** moves と同じ並びの各手の消費時間。旧サーバーの snapshot には無い */
+    moveElapsedMs?: number[];
 }
 
 type GameAction =
@@ -131,6 +133,8 @@ function restoredRecord(
         position: restored.position,
         positionHistory: restored.history,
         usiMoveLog: restored.moves.map((usi, i) => {
+            const elapsedMs = restored.moveElapsedMs?.[i];
+            if (elapsedMs !== undefined) return { usi, elapsedMs };
             const known = knownLog[i];
             return known?.usi === usi ? known : { usi };
         }),
@@ -323,14 +327,27 @@ async function positionsBeforeMoves(
 }
 
 export async function restorePosition(
-    snapshot: Pick<SnapshotPayload, "sfen" | "moves" | "settings">,
+    snapshot: Pick<SnapshotPayload, "sfen" | "moves" | "settings" | "moveElapsedMs">,
 ): Promise<RestoredPosition> {
     const position = await getPositionService().parseSfen(snapshot.sfen);
+    const moveElapsedMs = matchingMoveElapsedMs(snapshot.moveElapsedMs, snapshot.moves);
     return {
         position,
         history: await replayPositions(snapshot.settings.startSfen, snapshot.moves, position),
         moves: snapshot.moves,
+        ...(moveElapsedMs ? { moveElapsedMs } : {}),
     };
+}
+
+/** 数が指し手と合わない消費時間は、どの手のものか決められないので使わない */
+function matchingMoveElapsedMs(
+    moveElapsedMs: unknown,
+    moves: readonly string[],
+): number[] | undefined {
+    if (!Array.isArray(moveElapsedMs) || moveElapsedMs.length !== moves.length) return undefined;
+    return moveElapsedMs.every((ms) => typeof ms === "number" && Number.isFinite(ms) && ms >= 0)
+        ? moveElapsedMs
+        : undefined;
 }
 
 /** 終局の結果。保存された棋譜の reason はサーバーが書いた文字列のまま届く */
@@ -361,7 +378,13 @@ export function exportGameKif(
  * 展開後の局面から引く。指し手が無くても手合割と開始局面は書き、再生できなければ null
  */
 export async function exportGameRecordKif(
-    record: { initialSfen: string; moves: string[]; result?: KifGameResult | null },
+    record: {
+        initialSfen: string;
+        moves: string[];
+        result?: KifGameResult | null;
+        /** 保存時の metadata の値をそのまま渡してよい。指し手と合わなければ消費時間を書かない */
+        moveElapsedMs?: unknown;
+    },
     playerNames: { b: string; w: string },
 ): Promise<string | null> {
     const startSfen = resolveStartSfen(record.initialSfen);
@@ -370,8 +393,9 @@ export async function exportGameRecordKif(
     const preset =
         HANDICAP_PRESETS[record.initialSfen] ??
         Object.values(HANDICAP_PRESETS).find((p) => p.sfen === startSfen);
+    const moveElapsedMs = matchingMoveElapsedMs(record.moveElapsedMs, record.moves);
     return formatKif(
-        record.moves.map((usi) => ({ usi })),
+        record.moves.map((usi, i) => ({ usi, elapsedMs: moveElapsedMs?.[i] })),
         history,
         preset?.kifName,
         startSfen,
