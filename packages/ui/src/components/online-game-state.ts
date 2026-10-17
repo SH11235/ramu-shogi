@@ -339,13 +339,13 @@ interface KifGameResult {
     reason: string;
 }
 
-/** 対局終了後のダウンロード・コピー用の KIF。指し手の記録が無ければ空文字 */
+/** 対局終了後のダウンロード・コピー用の KIF。指し手も終局の結果も無ければ空文字 */
 export function exportGameKif(
     state: Pick<GameState, "usiMoveLog" | "positionHistory" | "gameResult">,
     startSfen: string,
     playerNames: { b: string; w: string },
 ): string {
-    if (state.usiMoveLog.length === 0) return "";
+    if (state.usiMoveLog.length === 0 && !state.gameResult) return "";
     return formatKif(
         state.usiMoveLog,
         state.positionHistory.slice(0, state.usiMoveLog.length),

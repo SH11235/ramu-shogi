@@ -322,6 +322,20 @@ describe("KIF の終局", () => {
         expect(parseKif(exportGameKif(state, "startpos", NAMES)).moves).toEqual(["7g7f"]);
     });
 
+    it("指し手の無いまま終わった対局にも、開始局面と終局の行を書く", () => {
+        const kif = exportGameKif(
+            finishedState([], { winner: "w", reason: "resign" }),
+            "startpos",
+            NAMES,
+        );
+
+        expect(endingLines(kif, 0)).toEqual(["   1 投了", "まで0手で後手の勝ち", ""]);
+    });
+
+    it("指し手も終局の結果も無ければ空文字を返す", () => {
+        expect(exportGameKif(finishedState([], null), "startpos", NAMES)).toBe("");
+    });
+
     it("対局中は終局の行を書かない", () => {
         const kif = exportGameKif(finishedState(["7g7f"], null), "startpos", NAMES);
 
