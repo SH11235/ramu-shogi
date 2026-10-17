@@ -388,6 +388,80 @@ export function OnlineGameView({
         }
     });
 
+    // ─── 接続状態 ────────────────────────────────────────────────────────────
+
+    const stopResync = useEffectEvent((): void => {
+        resyncRef.current = null;
+        if (resyncTimerRef.current !== null) {
+            clearTimeout(resyncTimerRef.current);
+            resyncTimerRef.current = null;
+        }
+    });
+
+    const showConnectionLost = (): void => {
+        setConnection({
+            state: "lost",
+            canResume: seat !== "s" && getStoredResumeToken(roomId) !== null,
+        });
+    };
+
+    // snapshot を求め直せたら true。待ちが終わっていれば何もせず、回数を使い切ったら諦める
+    const requestResyncSnapshot = useEffectEvent((resync: number): boolean => {
+        if (resyncRef.current !== resync) return false;
+        if (resyncRetriesRef.current >= RESYNC_MAX_RETRIES || !requestFullSnapshot?.()) {
+            stopResync();
+            showConnectionLost();
+            return false;
+        }
+        resyncRetriesRef.current += 1;
+        return true;
+    });
+
+    const waitForResync = (resync: number): void => {
+        if (resyncTimerRef.current !== null) clearTimeout(resyncTimerRef.current);
+        resyncTimerRef.current = setTimeout(() => {
+            if (requestResyncSnapshot(resync)) waitForResync(resync);
+        }, RESYNC_TIMEOUT_MS);
+    };
+
+    const retryResync = useEffectEvent((resync: number): void => {
+        if (requestResyncSnapshot(resync)) waitForResync(resync);
+    });
+
+    const rejectResync = useEffectEvent((code: ErrorCode): void => {
+        stopResync();
+        // useRoomConnection は対局開始で購読をやめていて、この応答を見ない。二度と使えない
+        // トークンをここで捨てないと、再読み込みのたびに同じ resume が拒まれる
+        if (isResumeTokenRejected(code)) {
+            removeStoredResumeToken(roomId);
+            removeStoredSeat(roomId);
+        }
+        rejectedRef.current = true;
+        setConnection({ state: "rejected", finished: code === "ROOM_FINISHED" });
+    });
+
+    const applyStatus = useEffectEvent((status: RoomClientStatus): void => {
+        connectionEpochRef.current += 1;
+        stopResync();
+        if (rejectedRef.current) return;
+        if (status === "reconnecting") {
+            setConnection({ state: "reconnecting" });
+        } else if (status === "disconnected") {
+            showConnectionLost();
+        } else if (status === "connected") {
+            // WebSocket が開いても、席へ戻れたかは分からない。対局者は RoomClient が必ず snapshot の
+            // 返る resume を送り、観戦者は useRoomConnection が開き直した接続で参加し直すので、
+            // どちらも応答の snapshot を反映し終えたら戻す
+            const resync = connectionEpochRef.current;
+            resyncRef.current = resync;
+            resyncRetriesRef.current = 0;
+            waitForResync(resync);
+        }
+    });
+
+    const { playSound } = useShogiSound();
+    const playSoundEvent = useEffectEvent(playSound);
+
     // ─── サーバーからのメッセージの反映 ──────────────────────────────────────
 
     // 局面の解析は非同期なので、メッセージごとに別々に進めると、後から届いたものが先に
@@ -555,70 +629,6 @@ export function OnlineGameView({
             dispatch({ type: "takeback_cancelled" });
         }
         markApplied();
-    });
-
-    // ─── 接続状態 ────────────────────────────────────────────────────────────
-
-    const stopResync = useEffectEvent((): void => {
-        resyncRef.current = null;
-        if (resyncTimerRef.current !== null) {
-            clearTimeout(resyncTimerRef.current);
-            resyncTimerRef.current = null;
-        }
-    });
-
-    const showConnectionLost = (): void => {
-        setConnection({
-            state: "lost",
-            canResume: seat !== "s" && getStoredResumeToken(roomId) !== null,
-        });
-    };
-
-    const waitForResync = (resync: number): void => {
-        if (resyncTimerRef.current !== null) clearTimeout(resyncTimerRef.current);
-        resyncTimerRef.current = setTimeout(() => retryResync(resync), RESYNC_TIMEOUT_MS);
-    };
-
-    const retryResync = useEffectEvent((resync: number): void => {
-        if (resyncRef.current !== resync) return;
-        if (resyncRetriesRef.current >= RESYNC_MAX_RETRIES || !requestFullSnapshot?.()) {
-            stopResync();
-            showConnectionLost();
-            return;
-        }
-        resyncRetriesRef.current += 1;
-        waitForResync(resync);
-    });
-
-    const rejectResync = useEffectEvent((code: ErrorCode): void => {
-        stopResync();
-        // useRoomConnection は対局開始で購読をやめていて、この応答を見ない。二度と使えない
-        // トークンをここで捨てないと、再読み込みのたびに同じ resume が拒まれる
-        if (isResumeTokenRejected(code)) {
-            removeStoredResumeToken(roomId);
-            removeStoredSeat(roomId);
-        }
-        rejectedRef.current = true;
-        setConnection({ state: "rejected", finished: code === "ROOM_FINISHED" });
-    });
-
-    const applyStatus = useEffectEvent((status: RoomClientStatus): void => {
-        connectionEpochRef.current += 1;
-        stopResync();
-        if (rejectedRef.current) return;
-        if (status === "reconnecting") {
-            setConnection({ state: "reconnecting" });
-        } else if (status === "disconnected") {
-            showConnectionLost();
-        } else if (status === "connected") {
-            // WebSocket が開いても、席へ戻れたかは分からない。対局者は RoomClient が必ず snapshot の
-            // 返る resume を送り、観戦者は useRoomConnection が開き直した接続で参加し直すので、
-            // どちらも応答の snapshot を反映し終えたら戻す
-            const resync = connectionEpochRef.current;
-            resyncRef.current = resync;
-            resyncRetriesRef.current = 0;
-            waitForResync(resync);
-        }
     });
 
     useEffect(() => {
@@ -895,8 +905,6 @@ export function OnlineGameView({
     const [nnueManagerOpen, setNnueManagerOpen] = useState(false);
     const { resolveNnue } = useLazyNnueLoader();
     const isMobile = useIsMobile();
-    const { playSound } = useShogiSound();
-    const playSoundEvent = useEffectEvent(playSound);
 
     const loadNnueEvent = useEffectEvent((sel: NnueSelection) => {
         if (!analysis?.loadNnue) return;
@@ -962,8 +970,8 @@ export function OnlineGameView({
 
     // 最後の指し手（ハイライト用）
     const lastMoveUsi = isRewound
-        ? movesRef.current[(effectiveNavIndex ?? 0) - 1]
-        : movesRef.current.at(-1);
+        ? usiMoveLog[(effectiveNavIndex ?? 0) - 1]?.usi
+        : usiMoveLog.at(-1)?.usi;
     const lastMove = deriveLastMove(lastMoveUsi);
 
     // モバイル用 ref（MobileBoardSection の必須 props のため）
