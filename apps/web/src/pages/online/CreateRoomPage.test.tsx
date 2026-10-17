@@ -1,7 +1,7 @@
-import { RATE_LIMITED_MESSAGE } from "@shogi/app-core";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { RATE_LIMITED_MESSAGE } from "../../lib/rateLimitMessage";
 
 vi.mock("@tanstack/react-router", () => ({
     Link: ({ children }: { children: ReactNode }) => <a href="/">{children}</a>,
@@ -9,9 +9,7 @@ vi.mock("@tanstack/react-router", () => ({
     useLocation: () => ({ pathname: "/online/create" }),
 }));
 
-vi.mock("../../hooks/useAuthSession", async (importOriginal) => ({
-    parseApiError: (await importOriginal<typeof import("../../hooks/useAuthSession")>())
-        .parseApiError,
+vi.mock("../../hooks/useAuthSession", () => ({
     useAuthSession: () => ({
         session: null,
         sessionError: null,
@@ -123,6 +121,20 @@ describe("CreateRoomPage", () => {
         });
         fireEvent.click(screen.getByRole("button", { name: "部屋を作成する" }));
 
-        expect(await screen.findByText("リクエストに失敗しました (502)")).toBeTruthy();
+        expect(await screen.findByText("ルームの作成に失敗しました")).toBeTruthy();
+    });
+
+    it("429 以外で本文に message が無い失敗は、エラーコードではなくルーム作成の失敗と伝える", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => Response.json({ error: "INVALID_REQUEST" }, { status: 400 })),
+        );
+        render(<CreateRoomPage />);
+        fireEvent.change(screen.getByPlaceholderText("プレイヤー名"), {
+            target: { value: "Alice" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "部屋を作成する" }));
+
+        expect(await screen.findByText("ルームの作成に失敗しました")).toBeTruthy();
     });
 });

@@ -1,5 +1,5 @@
-import { RATE_LIMITED_MESSAGE } from "@shogi/app-core";
 import { describe, expect, it, vi } from "vitest";
+import { RATE_LIMITED_MESSAGE } from "./lib/rateLimitMessage";
 import { handleLoaderResponse } from "./router-loader-utils";
 
 describe("handleLoaderResponse", () => {

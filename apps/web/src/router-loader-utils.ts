@@ -1,7 +1,7 @@
-import { RATE_LIMITED_MESSAGE } from "@shogi/app-core";
 import { redirect } from "@tanstack/react-router";
 import { dispatchAuthSessionSyncEvent } from "./hooks/useAuthSession";
 import { sanitizeReturnPath } from "./lib/loginReturn";
+import { RATE_LIMITED_MESSAGE } from "./lib/rateLimitMessage";
 
 type LoaderResponseStatus = "ok" | "needs_auth";
 

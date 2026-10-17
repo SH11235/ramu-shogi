@@ -1,4 +1,3 @@
-import { RATE_LIMITED_MESSAGE } from "@shogi/app-core";
 import { describe, expect, it } from "vitest";
 import { createStudyApiClient } from "./api-client";
 import type { CreateStudyRequest } from "./api-types";
@@ -17,6 +16,8 @@ const createFetch = (respond: () => Response | Promise<Response>) => {
     }) as typeof fetch;
     return { fetchMock, requests };
 };
+
+const RATE_LIMITED_MESSAGE = "操作が多すぎます。しばらく待ってからお試しください";
 
 const json = (status: number, body: unknown): Response =>
     new Response(JSON.stringify(body), {

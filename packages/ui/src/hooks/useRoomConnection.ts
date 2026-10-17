@@ -1,4 +1,3 @@
-import { RATE_LIMITED_MESSAGE } from "@shogi/app-core";
 import type { ErrorCode, RoomClient, ServerMessage, SnapshotPayload } from "@shogi/match-client";
 import {
     createRoomClient,
@@ -31,7 +30,7 @@ function errorCodeToMessage(code: ErrorCode): string {
         case "NOT_YOUR_TURN":
             return "あなたの手番ではありません";
         case "RATE_LIMITED":
-            return RATE_LIMITED_MESSAGE;
+            return "操作が多すぎます。しばらく待ってからお試しください";
         case "SPECTATOR_FORBIDDEN":
             return "観戦者はこの操作を行えません";
         case "ANALYSIS_LIMIT_EXCEEDED":

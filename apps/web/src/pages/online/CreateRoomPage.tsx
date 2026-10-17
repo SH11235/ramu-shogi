@@ -1,4 +1,4 @@
-import type { CreateRoomRequest, CreateRoomResponse } from "@shogi/api-contract";
+import type { ApiErrorResponse, CreateRoomRequest, CreateRoomResponse } from "@shogi/api-contract";
 import { PositionPresetSelector } from "@shogi/ui";
 import { useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
@@ -7,12 +7,9 @@ import { HeaderNav } from "../../components/HeaderNav";
 import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
 import { PageHeading } from "../../components/PageHeading";
-import {
-    parseApiError,
-    syncProfileDisplayNameIfNeeded,
-    useAuthSession,
-} from "../../hooks/useAuthSession";
+import { syncProfileDisplayNameIfNeeded, useAuthSession } from "../../hooks/useAuthSession";
 import { getLocalPlayerName, saveLocalPlayerName } from "../../hooks/useLocalPlayerName";
+import { RATE_LIMITED_MESSAGE } from "../../lib/rateLimitMessage";
 
 // ─── ルーム設定の型 ───────────────────────────────────────────────────────────
 
@@ -95,6 +92,17 @@ function buildCreateRoomRequest(settings: RoomFormState): CreateRoomRequest {
     };
 }
 
+async function describeCreateRoomError(res: Response): Promise<string> {
+    if (res.status === 429) return RATE_LIMITED_MESSAGE;
+    try {
+        const err = (await res.json()) as ApiErrorResponse | null;
+        if (err?.message) return err.message;
+    } catch {
+        // 本文が JSON でない失敗（プロキシの 502 など）は、parse エラーの英語を出さずに既定の文言にする
+    }
+    return "ルームの作成に失敗しました";
+}
+
 // ─── ページコンポーネント ─────────────────────────────────────────────────────
 
 export default function CreateRoomPage(): ReactElement {
@@ -147,7 +155,7 @@ export default function CreateRoomPage(): ReactElement {
             )
             .then(async (res) => {
                 if (!res.ok) {
-                    setError(await parseApiError(res));
+                    setError(await describeCreateRoomError(res));
                     setIsCreating(false);
                     return;
                 }

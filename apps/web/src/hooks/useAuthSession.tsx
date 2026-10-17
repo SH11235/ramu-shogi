@@ -4,9 +4,9 @@ import type {
     AuthSessionUser,
     UpdateProfileRequest,
 } from "@shogi/api-contract";
-import { RATE_LIMITED_MESSAGE } from "@shogi/app-core";
 import type { ReactElement, ReactNode } from "react";
 import { createContext, useContext, useEffect, useEffectEvent, useState } from "react";
+import { RATE_LIMITED_MESSAGE } from "../lib/rateLimitMessage";
 
 const AUTH_SESSION_SYNC_EVENT = "ramu-auth-session-sync";
 

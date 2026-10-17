@@ -1,5 +1,5 @@
-import { RATE_LIMITED_MESSAGE } from "@shogi/app-core";
 import { describe, expect, it } from "vitest";
+import { RATE_LIMITED_MESSAGE } from "../lib/rateLimitMessage";
 import { parseApiError } from "./useAuthSession";
 
 describe("parseApiError", () => {

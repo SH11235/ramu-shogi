@@ -6,7 +6,6 @@
  * 本文は `Content-Type: application/json`。
  */
 
-import { RATE_LIMITED_MESSAGE } from "@shogi/app-core";
 import type {
     CreateStudyRequest,
     CreateStudyResponse,
@@ -27,6 +26,9 @@ export interface StudyApiClientOptions {
     /** API のオリジン。既定は空文字（同一オリジン）。 */
     baseUrl?: string;
 }
+
+/** zone のレート制限は本文が JSON でない HTML なので、本文の message ではなくステータス 429 で判断して出す。 */
+const RATE_LIMITED_MESSAGE = "操作が多すぎます。しばらく待ってからお試しください";
 
 const readErrorBody = async (response: Response): Promise<StudyApiErrorBody> => {
     try {
@@ -73,9 +75,12 @@ export function createStudyApiClient(options: StudyApiClientOptions = {}): Study
         }
         if (!response.ok) {
             const error = await readErrorBody(response);
-            // 本文の message は英語で、zone のレート制限では本文が HTML で message も無いので、画面に出す文言に差し替える
-            if (response.status === 429) error.message = RATE_LIMITED_MESSAGE;
-            return { ok: false, status: response.status, error };
+            return {
+                ok: false,
+                status: response.status,
+                error:
+                    response.status === 429 ? { ...error, message: RATE_LIMITED_MESSAGE } : error,
+            };
         }
         if (response.status === 204) {
             return { ok: true, status: 204, data: null as T };
