@@ -350,8 +350,8 @@ export function exportGameKif(
 }
 
 /**
- * 保存された棋譜の KIF。保存される開始局面はサーバーがプリセットを展開した SFEN なので、
- * 手合割の名前は展開後の局面から引く。指し手が無くても手合割と開始局面は書く。再生できなければ null
+ * 保存された棋譜の KIF。保存される開始局面はサーバーがプリセットを展開した SFEN なので、手合割の名前は
+ * 展開後の局面から引く。指し手が無くても手合割と開始局面は書き、再生できなければ null
  */
 export async function exportGameRecordKif(
     record: { initialSfen: string; moves: string[] },

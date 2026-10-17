@@ -24,9 +24,8 @@ function buildPublicUrl(publicId: string): string {
 const routeApi = getRouteApi("/games/$gameId");
 
 /**
- * 表示とコピーに使う KIF。対局ルームの棋譜はサーバーが盤を持たず、USI の指し手を並べただけの
- * kifuText しか保存できないので、開始局面と指し手から作り直す。作り終えるまでは null を返し、
- * 作れなかったときは kifuText を使う
+ * サーバーは盤を持たず kifuText に USI を並べるだけなので、対局ルームの棋譜は開始局面と指し手から
+ * KIF を作る。作り終えるまでは null、作れなければ kifuText
  */
 function useGameRecordKif(game: GameRecordDetail): string | null {
     const [generated, setGenerated] = useState<{ id: string; kif: string | null } | null>(null);
