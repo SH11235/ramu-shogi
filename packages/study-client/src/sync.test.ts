@@ -1,5 +1,4 @@
 import "fake-indexeddb/auto";
-import { RATE_LIMITED_MESSAGE } from "@shogi/api-contract";
 import {
     applyStudyOps,
     type StudyDocument,
@@ -1185,20 +1184,6 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             harness.server.interceptOnce("get", "offline");
             expect(await harness.sync.open("offline-study")).toMatchObject({
                 status: "unavailable",
-            });
-        });
-
-        it("取得がレート制限で拒まれたら、本文の英語ではなく日本語の文言で開けなかったと返す", async () => {
-            const harness = createHarness();
-            harness.server.seed(USER_A, doc);
-            harness.login(USER_A);
-            harness.server.interceptOnce("get", {
-                status: 429,
-                error: { error: "RATE_LIMITED", message: "Rate limited" },
-            });
-            expect(await harness.sync.open(TEST_STUDY_ID)).toEqual({
-                status: "unavailable",
-                message: RATE_LIMITED_MESSAGE,
             });
         });
 

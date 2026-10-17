@@ -7,12 +7,6 @@ export const USER_SETTINGS_DOCUMENT_KEYS = [
     "match.pass-rights-settings",
 ] as const;
 
-/**
- * HTTP 429 を受けたときに画面へ出す文言。zone のレート制限は本文が JSON でない HTML なので、
- * 本文の message ではなくステータスで判断して出す。
- */
-export const RATE_LIMITED_MESSAGE = "操作が多すぎます。しばらく待ってからお試しください";
-
 export type ApiPaths = paths;
 export type ApiOperations = operations;
 

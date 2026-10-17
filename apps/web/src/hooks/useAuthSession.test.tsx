@@ -1,4 +1,4 @@
-import { RATE_LIMITED_MESSAGE } from "@shogi/api-contract";
+import { RATE_LIMITED_MESSAGE } from "@shogi/app-core";
 import { describe, expect, it } from "vitest";
 import { parseApiError } from "./useAuthSession";
 

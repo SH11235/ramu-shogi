@@ -1,9 +1,4 @@
-import {
-    type ApiErrorResponse,
-    type CreateRoomRequest,
-    type CreateRoomResponse,
-    RATE_LIMITED_MESSAGE,
-} from "@shogi/api-contract";
+import type { CreateRoomRequest, CreateRoomResponse } from "@shogi/api-contract";
 import { PositionPresetSelector } from "@shogi/ui";
 import { useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
@@ -12,7 +7,11 @@ import { HeaderNav } from "../../components/HeaderNav";
 import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
 import { PageHeading } from "../../components/PageHeading";
-import { syncProfileDisplayNameIfNeeded, useAuthSession } from "../../hooks/useAuthSession";
+import {
+    parseApiError,
+    syncProfileDisplayNameIfNeeded,
+    useAuthSession,
+} from "../../hooks/useAuthSession";
 import { getLocalPlayerName, saveLocalPlayerName } from "../../hooks/useLocalPlayerName";
 
 // ─── ルーム設定の型 ───────────────────────────────────────────────────────────
@@ -147,14 +146,8 @@ export default function CreateRoomPage(): ReactElement {
                 }),
             )
             .then(async (res) => {
-                if (res.status === 429) {
-                    setError(RATE_LIMITED_MESSAGE);
-                    setIsCreating(false);
-                    return;
-                }
                 if (!res.ok) {
-                    const err = (await res.json()) as ApiErrorResponse;
-                    setError(err.message ?? "ルームの作成に失敗しました");
+                    setError(await parseApiError(res));
                     setIsCreating(false);
                     return;
                 }

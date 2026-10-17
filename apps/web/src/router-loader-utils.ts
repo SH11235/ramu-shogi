@@ -1,4 +1,4 @@
-import { RATE_LIMITED_MESSAGE } from "@shogi/api-contract";
+import { RATE_LIMITED_MESSAGE } from "@shogi/app-core";
 import { redirect } from "@tanstack/react-router";
 import { dispatchAuthSessionSyncEvent } from "./hooks/useAuthSession";
 import { sanitizeReturnPath } from "./lib/loginReturn";

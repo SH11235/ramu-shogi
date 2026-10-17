@@ -1,10 +1,10 @@
-import {
-    type ApiErrorResponse,
-    type AuthSessionResponse,
-    type AuthSessionUser,
-    RATE_LIMITED_MESSAGE,
-    type UpdateProfileRequest,
+import type {
+    ApiErrorResponse,
+    AuthSessionResponse,
+    AuthSessionUser,
+    UpdateProfileRequest,
 } from "@shogi/api-contract";
+import { RATE_LIMITED_MESSAGE } from "@shogi/app-core";
 import type { ReactElement, ReactNode } from "react";
 import { createContext, useContext, useEffect, useEffectEvent, useState } from "react";
 

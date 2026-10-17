@@ -6,6 +6,7 @@
  * 本文は `Content-Type: application/json`。
  */
 
+import { RATE_LIMITED_MESSAGE } from "@shogi/app-core";
 import type {
     CreateStudyRequest,
     CreateStudyResponse,
@@ -71,7 +72,10 @@ export function createStudyApiClient(options: StudyApiClientOptions = {}): Study
             };
         }
         if (!response.ok) {
-            return { ok: false, status: response.status, error: await readErrorBody(response) };
+            const error = await readErrorBody(response);
+            // 本文の message は英語で、zone のレート制限では本文が HTML で message も無いので、画面に出す文言に差し替える
+            if (response.status === 429) error.message = RATE_LIMITED_MESSAGE;
+            return { ok: false, status: response.status, error };
         }
         if (response.status === 204) {
             return { ok: true, status: 204, data: null as T };

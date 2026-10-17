@@ -1,4 +1,4 @@
-import { RATE_LIMITED_MESSAGE } from "@shogi/api-contract";
+import { RATE_LIMITED_MESSAGE } from "@shogi/app-core";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -9,7 +9,9 @@ vi.mock("@tanstack/react-router", () => ({
     useLocation: () => ({ pathname: "/online/create" }),
 }));
 
-vi.mock("../../hooks/useAuthSession", () => ({
+vi.mock("../../hooks/useAuthSession", async (importOriginal) => ({
+    parseApiError: (await importOriginal<typeof import("../../hooks/useAuthSession")>())
+        .parseApiError,
     useAuthSession: () => ({
         session: null,
         sessionError: null,
@@ -108,5 +110,19 @@ describe("CreateRoomPage", () => {
         fireEvent.click(screen.getByRole("button", { name: "部屋を作成する" }));
 
         expect(await screen.findByText(RATE_LIMITED_MESSAGE)).toBeTruthy();
+    });
+
+    it("本文が JSON でない失敗でも、JSON の読み取りエラーの英語を出さない", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => new Response("<html>Bad Gateway</html>", { status: 502 })),
+        );
+        render(<CreateRoomPage />);
+        fireEvent.change(screen.getByPlaceholderText("プレイヤー名"), {
+            target: { value: "Alice" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "部屋を作成する" }));
+
+        expect(await screen.findByText("リクエストに失敗しました (502)")).toBeTruthy();
     });
 });

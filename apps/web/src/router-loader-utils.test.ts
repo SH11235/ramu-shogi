@@ -1,4 +1,4 @@
-import { RATE_LIMITED_MESSAGE } from "@shogi/api-contract";
+import { RATE_LIMITED_MESSAGE } from "@shogi/app-core";
 import { describe, expect, it, vi } from "vitest";
 import { handleLoaderResponse } from "./router-loader-utils";
 
