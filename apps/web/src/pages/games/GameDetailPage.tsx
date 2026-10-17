@@ -25,10 +25,11 @@ const routeApi = getRouteApi("/games/$gameId");
 
 /**
  * 表示とコピーに使う KIF。対局ルームの棋譜はサーバーが盤を持たず、USI の指し手を並べただけの
- * kifuText しか保存できないので、開始局面と指し手から作り直す。作るまでと作れなかったときは kifuText
+ * kifuText しか保存できないので、開始局面と指し手から作り直す。作り終えるまでは null を返し、
+ * 作れなかったときは kifuText を使う
  */
-function useGameRecordKif(game: GameRecordDetail): string {
-    const [generated, setGenerated] = useState<{ id: string; kif: string } | null>(null);
+function useGameRecordKif(game: GameRecordDetail): string | null {
+    const [generated, setGenerated] = useState<{ id: string; kif: string | null } | null>(null);
     const { id, source, initialSfen, moves, participants } = game;
 
     useEffect(() => {
@@ -38,7 +39,7 @@ function useGameRecordKif(game: GameRecordDetail): string {
         let cancelled = false;
         void exportGameRecordKif({ initialSfen, moves }, { b: nameOf("b"), w: nameOf("w") }).then(
             (kif) => {
-                if (!cancelled && kif) setGenerated({ id, kif });
+                if (!cancelled) setGenerated({ id, kif });
             },
         );
         return () => {
@@ -46,7 +47,9 @@ function useGameRecordKif(game: GameRecordDetail): string {
         };
     }, [id, source, initialSfen, moves, participants]);
 
-    return generated?.id === id ? generated.kif : game.kifuText;
+    if (source !== "online_room") return game.kifuText;
+    if (generated?.id !== id) return null;
+    return generated.kif ?? game.kifuText;
 }
 
 export default function GameDetailPage(): ReactElement {
@@ -268,7 +271,9 @@ export default function GameDetailPage(): ReactElement {
                         <h2 className="text-lg font-semibold text-foreground">KIF テキスト</h2>
                         <button
                             type="button"
+                            disabled={kifText === null}
                             onClick={() => {
+                                if (kifText === null) return;
                                 navigator.clipboard
                                     .writeText(kifText)
                                     .then(() => {
@@ -278,13 +283,13 @@ export default function GameDetailPage(): ReactElement {
                                         setError("棋譜のコピーに失敗しました。");
                                     });
                             }}
-                            className="rounded-md border border-input px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
+                            className="rounded-md border border-input px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted/50 disabled:opacity-50"
                         >
                             コピー
                         </button>
                     </div>
                     <pre className="overflow-x-auto rounded-md bg-muted/40 p-4 text-xs text-foreground">
-                        {kifText}
+                        {kifText ?? "KIF を作成中..."}
                     </pre>
                 </Section>
             </PageContainer>

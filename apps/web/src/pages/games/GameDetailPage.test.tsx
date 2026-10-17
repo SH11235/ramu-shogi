@@ -1,5 +1,5 @@
 import type { GameRecordDetail } from "@shogi/api-contract";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -74,14 +74,35 @@ describe("GameDetailPage の KIF テキスト", () => {
         );
     });
 
+    it("KIF を作り終えるまでは、読み込めない kifuText をコピーさせない", async () => {
+        let finish: (kif: string) => void = () => {};
+        exportGameRecordKif.mockReturnValue(
+            new Promise<string>((resolve) => {
+                finish = resolve;
+            }),
+        );
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+        useLoaderData.mockReturnValue(game());
+
+        render(<GameDetailPage />);
+        const copy = screen.getByRole("button", { name: "コピー" });
+
+        expect(copy).toHaveProperty("disabled", true);
+        expect(screen.queryByText(game().kifuText)).toBeNull();
+        finish("#KIF version=2.0\n手合割：角落ち");
+        await waitFor(() => expect(copy).toHaveProperty("disabled", false));
+        fireEvent.click(copy);
+        expect(writeText).toHaveBeenCalledWith("#KIF version=2.0\n手合割：角落ち");
+    });
+
     it("KIF を作れなければ保存された kifuText を出す", async () => {
         exportGameRecordKif.mockResolvedValue(null);
         useLoaderData.mockReturnValue(game());
 
         render(<GameDetailPage />);
 
-        await waitFor(() => expect(exportGameRecordKif).toHaveBeenCalled());
-        expect(kifText()).toBe(game().kifuText);
+        await waitFor(() => expect(kifText()).toBe(game().kifuText));
     });
 
     it("対局ルーム以外の棋譜は保存された kifuText をそのまま出す", () => {

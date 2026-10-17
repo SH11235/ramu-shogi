@@ -351,21 +351,23 @@ export function exportGameKif(
 
 /**
  * 保存された棋譜の KIF。保存される開始局面はサーバーがプリセットを展開した SFEN なので、
- * 手合割の名前は展開後の局面から引く。指し手が無ければ空文字、再生できなければ null
+ * 手合割の名前は展開後の局面から引く。指し手が無くても手合割と開始局面は書く。再生できなければ null
  */
 export async function exportGameRecordKif(
     record: { initialSfen: string; moves: string[] },
     playerNames: { b: string; w: string },
 ): Promise<string | null> {
-    if (record.moves.length === 0) return "";
-    const history = await positionsBeforeMoves(record.initialSfen, record.moves);
+    const startSfen = resolveStartSfen(record.initialSfen);
+    const history = await positionsBeforeMoves(startSfen, record.moves);
     if (!history) return null;
-    const preset = Object.values(HANDICAP_PRESETS).find((p) => p.sfen === record.initialSfen);
+    const preset =
+        HANDICAP_PRESETS[record.initialSfen] ??
+        Object.values(HANDICAP_PRESETS).find((p) => p.sfen === startSfen);
     return formatKif(
         record.moves.map((usi) => ({ usi })),
         history,
         preset?.kifName,
-        record.initialSfen,
+        startSfen,
         playerNames,
     );
 }
