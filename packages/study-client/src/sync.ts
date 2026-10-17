@@ -12,6 +12,7 @@
  * 送信役になっても続きから送れる。
  */
 
+import { RATE_LIMITED_MESSAGE } from "@shogi/api-contract";
 import {
     applyStudyOp,
     applyStudyOpsStrict,
@@ -307,7 +308,7 @@ const isTransient = (status: number): boolean =>
     status === 0 || status === 408 || status === 429 || status >= 500;
 
 const describeError = (status: number, error: StudyApiErrorBody): string =>
-    error.message ?? error.error ?? `HTTP ${status}`;
+    status === 429 ? RATE_LIMITED_MESSAGE : (error.message ?? error.error ?? `HTTP ${status}`);
 
 const toDocument = (detail: StudyDetail): StudyDocument => ({
     id: detail.id,

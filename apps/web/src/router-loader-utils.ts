@@ -1,3 +1,4 @@
+import { RATE_LIMITED_MESSAGE } from "@shogi/api-contract";
 import { redirect } from "@tanstack/react-router";
 import { dispatchAuthSessionSyncEvent } from "./hooks/useAuthSession";
 import { sanitizeReturnPath } from "./lib/loginReturn";
@@ -34,6 +35,10 @@ export function handleLoaderResponse(
             });
         }
         throw new Error(options.unauthorizedMessage ?? "ログインが必要です");
+    }
+
+    if (response.status === 429) {
+        throw new Error(RATE_LIMITED_MESSAGE);
     }
 
     if (response.status === 404 && options.notFoundMessage) {

@@ -1,4 +1,9 @@
-import type { ApiErrorResponse, CreateRoomRequest, CreateRoomResponse } from "@shogi/api-contract";
+import {
+    type ApiErrorResponse,
+    type CreateRoomRequest,
+    type CreateRoomResponse,
+    RATE_LIMITED_MESSAGE,
+} from "@shogi/api-contract";
 import { PositionPresetSelector } from "@shogi/ui";
 import { useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
@@ -142,6 +147,11 @@ export default function CreateRoomPage(): ReactElement {
                 }),
             )
             .then(async (res) => {
+                if (res.status === 429) {
+                    setError(RATE_LIMITED_MESSAGE);
+                    setIsCreating(false);
+                    return;
+                }
                 if (!res.ok) {
                     const err = (await res.json()) as ApiErrorResponse;
                     setError(err.message ?? "ルームの作成に失敗しました");

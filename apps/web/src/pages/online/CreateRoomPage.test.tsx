@@ -1,3 +1,4 @@
+import { RATE_LIMITED_MESSAGE } from "@shogi/api-contract";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -65,5 +66,47 @@ describe("CreateRoomPage", () => {
         expect(screen.getByText("局面（SFEN）を入力すると部屋を作成できます")).toBeTruthy();
         fireEvent.click(submit);
         expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("ルーム作成がレート制限で拒まれたら、本文の英語ではなく日本語の文言を出す", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () =>
+                Response.json(
+                    {
+                        error: "RATE_LIMITED",
+                        message: "Too many room creation requests. Please try again later.",
+                    },
+                    { status: 429 },
+                ),
+            ),
+        );
+        render(<CreateRoomPage />);
+        fireEvent.change(screen.getByPlaceholderText("プレイヤー名"), {
+            target: { value: "Alice" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "部屋を作成する" }));
+
+        expect(await screen.findByText(RATE_LIMITED_MESSAGE)).toBeTruthy();
+    });
+
+    it("zone のレート制限で本文が HTML の 429 でも、日本語の文言を出す", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(
+                async () =>
+                    new Response("<!DOCTYPE html><title>Error 1015</title>", {
+                        status: 429,
+                        headers: { "Content-Type": "text/html" },
+                    }),
+            ),
+        );
+        render(<CreateRoomPage />);
+        fireEvent.change(screen.getByPlaceholderText("プレイヤー名"), {
+            target: { value: "Alice" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "部屋を作成する" }));
+
+        expect(await screen.findByText(RATE_LIMITED_MESSAGE)).toBeTruthy();
     });
 });
