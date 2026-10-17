@@ -363,6 +363,7 @@ describe("RoomPage", () => {
 
         it.each([
             ["セッションが切れていた（401）", () => Promise.resolve({ ok: false, status: 401 })],
+            ["棋譜を開く権限が無い（403）", () => Promise.resolve({ ok: false, status: 403 })],
             [
                 "参加したときと別のアカウント（404）",
                 () => Promise.resolve({ ok: false, status: 404 }),

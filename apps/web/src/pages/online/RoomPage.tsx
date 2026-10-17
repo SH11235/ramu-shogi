@@ -280,7 +280,7 @@ function GameSettingsSection({
  */
 async function canOpenGameRecord(gameRecordId: string, signal: AbortSignal): Promise<boolean> {
     try {
-        const response = await fetch(`/api/games/${gameRecordId}`, {
+        const response = await fetch(`/api/games/${encodeURIComponent(gameRecordId)}`, {
             credentials: "same-origin",
             signal,
         });
