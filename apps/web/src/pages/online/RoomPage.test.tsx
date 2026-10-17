@@ -250,10 +250,42 @@ describe("RoomPage", () => {
                 },
             }));
             rememberSeat("test-room");
+            stubGameRecordFetch(() => Promise.resolve({ ok: false, status: 404 }));
         });
 
+        /** 棋譜のページを開けるか確かめる `/api/games/:id` の応答を差し替える */
+        function stubGameRecordFetch(
+            respond: () => Promise<Pick<Response, "ok" | "status">>,
+        ): ReturnType<typeof vi.fn> {
+            const fetchMock = vi.fn((url: string) => {
+                if (!url.startsWith("/api/games/")) throw new Error(`unexpected fetch: ${url}`);
+                return respond();
+            });
+            vi.stubGlobal("fetch", fetchMock);
+            return fetchMock;
+        }
+
+        async function clickStartReview(): Promise<void> {
+            await act(async () => {
+                fireEvent.click(screen.getByRole("button", { name: "棋譜を検討する" }));
+            });
+        }
+
+        function finishedSnapshot(overrides: Partial<SnapshotPayload> = {}): ServerMessage {
+            return {
+                v: 1,
+                t: "snapshot",
+                payload: makeSnapshot({
+                    eventId: 8,
+                    status: "finished",
+                    result: { winner: "b", reason: "resign" },
+                    gameRecordId: "record-1",
+                    ...overrides,
+                }),
+            };
+        }
+
         it("終局直後の再読み込みで、購読開始前に届いた棋譜 ID 付き game_end から検討画面へ進める", async () => {
-            currentSession = { authenticated: true, user: { displayName: "Alice" } };
             render(<RoomPage />);
             await deliverOnOpen("test-room", [
                 {
@@ -269,16 +301,20 @@ describe("RoomPage", () => {
             ]);
 
             expect(screen.getAllByText("Alice の勝ち")).toHaveLength(1);
-            fireEvent.click(screen.getByRole("button", { name: "棋譜を検討する" }));
+            const fetchMock = stubGameRecordFetch(() => Promise.resolve({ ok: true, status: 200 }));
+            await clickStartReview();
 
+            expect(fetchMock).toHaveBeenCalledWith("/api/games/record-1", {
+                credentials: "same-origin",
+            });
             expect(mockNavigate).toHaveBeenCalledWith({
                 to: "/games/$gameId",
                 params: { gameId: "record-1" },
             });
+            expect(localStorage.getItem("ramu_resume_token_test-room")).toBeNull();
         });
 
         it("snapshot の棋譜 ID だけでも検討画面へ進める", async () => {
-            currentSession = { authenticated: true, user: { displayName: "Alice" } };
             render(<RoomPage />);
             await deliverOnOpen("test-room", [
                 {
@@ -293,15 +329,21 @@ describe("RoomPage", () => {
                 },
             ]);
 
-            fireEvent.click(screen.getByRole("button", { name: "棋譜を検討する" }));
+            const fetchMock = stubGameRecordFetch(() => Promise.resolve({ ok: true, status: 200 }));
+            await clickStartReview();
 
+            expect(fetchMock).toHaveBeenCalledWith("/api/games/record-1", {
+                credentials: "same-origin",
+            });
             expect(mockNavigate).toHaveBeenCalledWith({
                 to: "/games/$gameId",
                 params: { gameId: "record-1" },
             });
+            expect(localStorage.getItem("ramu_resume_token_test-room")).toBeNull();
         });
 
         it("棋譜 ID を得られなかった対局は、手元の棋譜を検討画面で開く", async () => {
+            const fetchMock = stubGameRecordFetch(() => Promise.resolve({ ok: true, status: 200 }));
             render(<RoomPage />);
             await deliverOnOpen("test-room", [{ v: 1, t: "snapshot", payload: makeSnapshot() }]);
             await act(async () => {
@@ -309,39 +351,115 @@ describe("RoomPage", () => {
             });
 
             expect(screen.getAllByText("Bob の勝ち")).toHaveLength(1);
-            fireEvent.click(screen.getByRole("button", { name: "棋譜を検討する" }));
+            await clickStartReview();
 
+            expect(fetchMock).not.toHaveBeenCalled();
             expect(mockNavigate).toHaveBeenCalledWith({ to: "/play" });
-            expect(readPlayHandoff()).toEqual({ sfen: expect.any(String), moves: MOVES });
+            expect(readPlayHandoff()).toEqual({ sfen: "startpos", moves: MOVES });
+            expect(localStorage.getItem("ramu_resume_token_test-room")).toBeNull();
         });
 
         it.each([
-            ["ゲストの対局者", null, "b"],
-            ["ログイン中の観戦者", { authenticated: true, user: { displayName: "Carol" } }, "s"],
-        ] as const)("%sは、保存された棋譜があっても手元の棋譜を検討画面で開く", async (_label, session, seat) => {
-            currentSession = session;
-            localStorage.setItem("ramu_seat_test-room", seat);
+            ["セッションが切れていた（401）", () => Promise.resolve({ ok: false, status: 401 })],
+            [
+                "参加したときと別のアカウント（404）",
+                () => Promise.resolve({ ok: false, status: 404 }),
+            ],
+            ["通信に失敗した", () => Promise.reject(new TypeError("network"))],
+        ] as const)("棋譜のページを開けない対局者は、手元の棋譜を駒落ちの開始局面ごと検討画面で開く: %s", async (_label, respond) => {
+            // 画面にはログイン中と出ていても、サーバーが棋譜を見せるとは限らない
+            currentSession = { authenticated: true, user: { displayName: "Alice" } };
+            stubGameRecordFetch(respond);
             render(<RoomPage />);
+            await deliverOnOpen("test-room", [
+                finishedSnapshot({
+                    settings: {
+                        ...(ROOM_INFO.settings as SnapshotPayload["settings"]),
+                        startSfen: "handicap:bishop",
+                    },
+                }),
+            ]);
+
+            await clickStartReview();
+
+            expect(mockNavigate).toHaveBeenCalledTimes(1);
+            expect(mockNavigate).toHaveBeenCalledWith({ to: "/play" });
+            expect(readPlayHandoff()).toEqual({
+                sfen: "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+                moves: MOVES,
+            });
+            expect(localStorage.getItem("ramu_resume_token_test-room")).toBeNull();
+        });
+
+        it("観戦者は、棋譜のページを確かめずに手元の棋譜を検討画面で開く", async () => {
+            const fetchMock = stubGameRecordFetch(() => Promise.resolve({ ok: true, status: 200 }));
+            localStorage.clear();
+            render(<RoomPage />);
+            fireEvent.change(screen.getByLabelText(/名前/), { target: { value: "Carol" } });
+            await act(async () => {
+                fireEvent.click(screen.getByRole("button", { name: "観戦者として参加する" }));
+            });
             await deliverOnOpen("test-room", [
                 {
                     v: 1,
-                    t: "snapshot",
-                    payload: makeSnapshot({
-                        eventId: 8,
-                        status: "finished",
-                        result: { winner: "b", reason: "resign" },
-                        gameRecordId: "record-1",
-                    }),
+                    t: "joined",
+                    payload: { roomId: "test-room", seat: "s", youAre: "spectator" },
                 },
+                finishedSnapshot(),
             ]);
 
-            fireEvent.click(screen.getByRole("button", { name: "棋譜を検討する" }));
+            await clickStartReview();
 
+            expect(fetchMock).not.toHaveBeenCalled();
             expect(mockNavigate).toHaveBeenCalledWith({ to: "/play" });
-            expect(mockNavigate).not.toHaveBeenCalledWith(
-                expect.objectContaining({ to: "/games/$gameId" }),
+            expect(readPlayHandoff()).toEqual({ sfen: "startpos", moves: MOVES });
+        });
+
+        it("確かめている間に何度押しても、遷移は 1 回だけ", async () => {
+            let respond: (response: Pick<Response, "ok" | "status">) => void = () => {};
+            const fetchMock = stubGameRecordFetch(
+                () =>
+                    new Promise((resolve) => {
+                        respond = resolve;
+                    }),
             );
-            expect(readPlayHandoff()).toEqual({ sfen: expect.any(String), moves: MOVES });
+            render(<RoomPage />);
+            await deliverOnOpen("test-room", [finishedSnapshot()]);
+
+            await clickStartReview();
+            await clickStartReview();
+            await act(async () => {
+                respond({ ok: true, status: 200 });
+            });
+
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+            expect(mockNavigate).toHaveBeenCalledTimes(1);
+            expect(mockNavigate).toHaveBeenCalledWith({
+                to: "/games/$gameId",
+                params: { gameId: "record-1" },
+            });
+        });
+
+        it("局面を引き継げなかったら、遷移せず席の記憶も残す", async () => {
+            stubGameRecordFetch(() => Promise.resolve({ ok: false, status: 401 }));
+            const alert = vi.fn();
+            vi.stubGlobal("alert", alert);
+            render(<RoomPage />);
+            await deliverOnOpen("test-room", [finishedSnapshot()]);
+
+            const setItem = vi.spyOn(window.sessionStorage, "setItem").mockImplementation(() => {
+                throw new Error("QuotaExceededError");
+            });
+            try {
+                await clickStartReview();
+            } finally {
+                setItem.mockRestore();
+            }
+
+            expect(alert).toHaveBeenCalledTimes(1);
+            expect(mockNavigate).not.toHaveBeenCalled();
+            expect(localStorage.getItem("ramu_resume_token_test-room")).toBe("token-test-room");
+            expect(localStorage.getItem("ramu_seat_test-room")).toBe("b");
         });
 
         it("結果を持たない終局済み snapshot だけでは終局表示を出さない", async () => {
@@ -360,7 +478,6 @@ describe("RoomPage", () => {
         });
 
         it("別のルームへ移ると前のルームの結果を持ち越さず、移動先の結果を表示する", async () => {
-            currentSession = { authenticated: true, user: { displayName: "Alice" } };
             rememberSeat("room-b");
             const { rerender } = render(<RoomPage />);
             await deliverOnOpen("test-room", [
@@ -386,7 +503,8 @@ describe("RoomPage", () => {
                 socketFor("room-b").receive(gameEnd(6, "w", "record-b"));
             });
             expect(screen.getAllByText("Bob の勝ち")).toHaveLength(1);
-            fireEvent.click(screen.getByRole("button", { name: "棋譜を検討する" }));
+            stubGameRecordFetch(() => Promise.resolve({ ok: true, status: 200 }));
+            await clickStartReview();
 
             expect(mockNavigate).toHaveBeenCalledWith({
                 to: "/games/$gameId",

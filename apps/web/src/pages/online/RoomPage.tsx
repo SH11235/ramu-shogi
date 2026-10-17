@@ -274,6 +274,19 @@ function GameSettingsSection({
     );
 }
 
+/**
+ * 棋譜のページ（/games/$gameId）をいま開けるか。開けるのは参加したときのアカウントでログイン中の
+ * 対局者だけで、画面のログイン状態は失効やアカウントの切り替えを映さないので、サーバーに聞く。
+ */
+async function canOpenGameRecord(gameRecordId: string): Promise<boolean> {
+    try {
+        const response = await fetch(`/api/games/${gameRecordId}`, { credentials: "same-origin" });
+        return response.ok;
+    } catch {
+        return false;
+    }
+}
+
 // ─── ページコンポーネント ──────────────────────────────────────────────────────
 
 export default function RoomPage(): ReactElement {
@@ -284,6 +297,7 @@ export default function RoomPage(): ReactElement {
 
     const navigate = useNavigate();
     const playFromPosition = usePlayFromPosition();
+    const isOpeningReviewRef = useRef(false);
     const didAutofillNameRef = useRef(false);
     const [joinActionError, setJoinActionError] = useState<string | null>(null);
     const [isPreparingJoin, setIsPreparingJoin] = useState(false);
@@ -352,6 +366,33 @@ export default function RoomPage(): ReactElement {
         }
     }
 
+    async function handleStartReview(data: {
+        sfen: string;
+        moves: string[];
+        gameRecordId: string | null;
+    }): Promise<void> {
+        // 確かめている間にもう一度押されても、遷移を 2 回起こさない
+        if (isOpeningReviewRef.current) return;
+        isOpeningReviewRef.current = true;
+        const forgetSeat = (): void => {
+            removeStoredResumeToken(roomId);
+            removeStoredSeat(roomId);
+        };
+        try {
+            const { gameRecordId } = data;
+            if (gameRecordId && joinSeat !== "s" && (await canOpenGameRecord(gameRecordId))) {
+                // 保存された棋譜のページへ。解析や検討は、そこから研究ノートで行う。
+                forgetSeat();
+                void navigate({ to: "/games/$gameId", params: { gameId: gameRecordId } });
+                return;
+            }
+            // 引き継げずに留まるなら、席へ戻れるように席の記憶は消さない
+            if (playFromPosition({ sfen: data.sfen, moves: data.moves })) forgetSeat();
+        } finally {
+            isOpeningReviewRef.current = false;
+        }
+    }
+
     const aiSupport = roomInfo.settings.aiSupport;
     const analysis = useOnlineAnalysis(
         aiSupport?.searchDepth ?? null,
@@ -393,21 +434,7 @@ export default function RoomPage(): ReactElement {
                 analysis={analysis}
                 manifestUrl={nnueManifestUrl}
                 remoteNnueManager={remoteNnueManager}
-                onStartReview={(data) => {
-                    removeStoredResumeToken(roomId);
-                    removeStoredSeat(roomId);
-                    // 棋譜のページを開けるのはログイン中の対局者だけ（ゲストはログインへ、
-                    // 観戦者は「見つかりません」になる）。それ以外は手元の棋譜を検討画面で開く
-                    if (data.gameRecordId && session?.authenticated && joinSeat !== "s") {
-                        // 保存された棋譜のページへ。解析や検討は、そこから研究ノートで行う。
-                        void navigate({
-                            to: "/games/$gameId",
-                            params: { gameId: data.gameRecordId },
-                        });
-                    } else {
-                        playFromPosition({ sfen: data.sfen, moves: data.moves });
-                    }
-                }}
+                onStartReview={(data) => void handleStartReview(data)}
                 onExit={() => {
                     removeStoredResumeToken(roomId);
                     removeStoredSeat(roomId);
