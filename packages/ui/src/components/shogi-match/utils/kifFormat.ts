@@ -871,9 +871,8 @@ export function exportToKifString(
 
     // 各手
     let prevTo: Square | undefined;
-    // 先手・後手の累計時間を追跡
-    let senteCumulativeMs = 0;
-    let goteCumulativeMs = 0;
+    let oddPlyCumulativeMs = 0;
+    let evenPlyCumulativeMs = 0;
 
     for (let i = 0; i < kifMoves.length; i++) {
         const move = kifMoves[i];
@@ -883,14 +882,14 @@ export function exportToKifString(
         if (!board) continue;
 
         // 手番は 1 手ごとに替わるので、同じ偶奇の手を足せば後手から始まる局面でも指した側の累計になる
-        const isSenteMove = ply % 2 !== 0;
+        const isOddPly = ply % 2 !== 0;
         const elapsedMs = move.elapsedMs ?? 0;
-        if (isSenteMove) {
-            senteCumulativeMs += elapsedMs;
+        if (isOddPly) {
+            oddPlyCumulativeMs += elapsedMs;
         } else {
-            goteCumulativeMs += elapsedMs;
+            evenPlyCumulativeMs += elapsedMs;
         }
-        const cumulativeMs = isSenteMove ? senteCumulativeMs : goteCumulativeMs;
+        const cumulativeMs = isOddPly ? oddPlyCumulativeMs : evenPlyCumulativeMs;
 
         const moveLine = formatMoveForKifFile(
             ply,
