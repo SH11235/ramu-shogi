@@ -45,6 +45,8 @@ type GameAction =
           turn: "b" | "w";
           clock: ClockState;
           passRights: PassRightsState | null;
+          /** サーバーが測ったこの手の消費時間。旧サーバーは送らない */
+          elapsedMs?: number;
       }
     | { type: "result"; result: GameResult }
     | { type: "player_offline"; seat: string }
@@ -147,12 +149,15 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             return { ...state, ...restoredRecord(action, []) };
         case "move": {
             if (!state.position) return state;
-            // 消費時間: 動いた側の残り時間の差分（手番交代前の turn が動いた側）
+            // サーバーの値が無ければ動いた側の残り時間の差分で代える。秒読み中は 0、
+            // フィッシャーでは加算分を引いた値になり、snapshot や保存された棋譜の時間とずれる
             const movedSeat = state.turn;
-            const elapsedMs = Math.max(
-                0,
-                state.clockState[movedSeat].remainMs - action.clock[movedSeat].remainMs,
-            );
+            const elapsedMs = isValidMoveElapsedMs(action.elapsedMs)
+                ? action.elapsedMs
+                : Math.max(
+                      0,
+                      state.clockState[movedSeat].remainMs - action.clock[movedSeat].remainMs,
+                  );
             const next =
                 action.usi === "pass"
                     ? passTurn(state.position)
@@ -339,15 +344,22 @@ export async function restorePosition(
     };
 }
 
-/** 数が指し手と合わない消費時間は、どの手のものか決められないので使わない */
+// 1 手に 30 日かける対局は無い。それを超える値は壊れており、KIF の時間表記を指数表記や NaN にする
+const MAX_MOVE_ELAPSED_MS = 30 * 24 * 60 * 60 * 1000;
+
+function isValidMoveElapsedMs(ms: unknown): ms is number {
+    return (
+        typeof ms === "number" && Number.isSafeInteger(ms) && ms >= 0 && ms <= MAX_MOVE_ELAPSED_MS
+    );
+}
+
+/** 数が指し手と合わないか 1 手でも壊れた値を含む消費時間は、どの手の時間も信用できないので使わない */
 function matchingMoveElapsedMs(
     moveElapsedMs: unknown,
     moves: readonly string[],
 ): number[] | undefined {
     if (!Array.isArray(moveElapsedMs) || moveElapsedMs.length !== moves.length) return undefined;
-    return moveElapsedMs.every((ms) => typeof ms === "number" && Number.isFinite(ms) && ms >= 0)
-        ? moveElapsedMs
-        : undefined;
+    return moveElapsedMs.every(isValidMoveElapsedMs) ? moveElapsedMs : undefined;
 }
 
 /** 終局の結果。保存された棋譜の reason はサーバーが書いた文字列のまま届く */

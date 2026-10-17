@@ -88,6 +88,8 @@ export interface MoveEvent extends RoomEventBase {
     turn: "b" | "w";
     clock: ClockState;
     passRights: PassRightsState | null;
+    /** この手の消費時間 (ms)。snapshot の moveElapsedMs と同じ値。旧サーバーは送らない */
+    elapsedMs?: number;
 }
 
 export interface ResignEvent extends RoomEventBase {
