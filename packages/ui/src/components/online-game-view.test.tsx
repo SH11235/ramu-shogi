@@ -70,12 +70,18 @@ vi.mock("@shogi/app-core", async () => {
 vi.mock("./shogi-board", () => ({
     ShogiBoard: ({
         selectedSquare,
+        lastMove,
         onSelect,
     }: {
         selectedSquare?: string | null;
+        lastMove?: { to?: string | null };
         onSelect?: (square: string) => void;
     }) => (
-        <div data-testid="shogi-board" data-selected={selectedSquare ?? ""}>
+        <div
+            data-testid="shogi-board"
+            data-selected={selectedSquare ?? ""}
+            data-last-move={lastMove?.to ?? ""}
+        >
             {["7g", "7f"].map((square) => (
                 <button key={square} type="button" onClick={() => onSelect?.(square)}>
                     {`マス ${square}`}
@@ -234,6 +240,7 @@ function startReview(onStartReview: ReturnType<typeof vi.fn>): {
 }
 
 const { OnlineGameView } = await import("./online-game-view");
+const { applyMoveWithState } = await import("@shogi/app-core");
 
 describe("OnlineGameView", () => {
     beforeEach(() => {
@@ -893,6 +900,43 @@ describe("OnlineGameView", () => {
             });
 
             expect(screen.getByText("4.")).toBeTruthy();
+        });
+
+        it("snapshot と届いた指し手のうち最後の手をハイライトする", async () => {
+            const { client, emit } = makeSubscribableClient();
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" })}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                );
+            });
+            expect(screen.getByTestId("shogi-board").dataset.lastMove).toBe("2b");
+
+            await emit(moveMessage(6, "9c9d", "b"));
+            expect(screen.getByTestId("shogi-board").dataset.lastMove).toBe("9d");
+        });
+
+        it("指し手を再生できない snapshot では、棋譜と同じく最後の手もハイライトしない", async () => {
+            vi.mocked(applyMoveWithState).mockReturnValueOnce({
+                ok: false,
+                next: { board: {}, hands: { sente: {}, gote: {} } } as never,
+            });
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={makeMockClient()}
+                        snapshot={makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" })}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                );
+            });
+            expect(screen.getByText("まだ指し手がありません")).toBeTruthy();
+            expect(screen.getByTestId("shogi-board").dataset.lastMove).toBe("");
         });
     });
 

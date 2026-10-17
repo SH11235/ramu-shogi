@@ -970,8 +970,8 @@ export function OnlineGameView({
 
     // 最後の指し手（ハイライト用）
     const lastMoveUsi = isRewound
-        ? movesRef.current[(effectiveNavIndex ?? 0) - 1]
-        : movesRef.current.at(-1);
+        ? usiMoveLog[(effectiveNavIndex ?? 0) - 1]?.usi
+        : usiMoveLog.at(-1)?.usi;
     const lastMove = deriveLastMove(lastMoveUsi);
 
     // モバイル用 ref（MobileBoardSection の必須 props のため）
