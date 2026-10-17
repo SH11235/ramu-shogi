@@ -3,13 +3,11 @@
 import assert from "node:assert/strict";
 import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
-import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { chromium } from "@playwright/test";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-const require = createRequire(path.join(root, "apps/web/package.json"));
-const { chromium } = require("@playwright/test");
 const model = process.argv[2];
 const workerSource = `
 import initWasm, * as engine from '/packages/engine-wasm/pkg-threaded/engine_wasm.js';

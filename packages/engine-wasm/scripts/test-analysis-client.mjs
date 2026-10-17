@@ -1,12 +1,10 @@
 // 製品の createWasmEngineClient と Worker キューを実ブラウザで通す。
-import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
+import { chromium } from "@playwright/test";
+import { createServer } from "vite";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-const require = createRequire(path.join(root, "apps/web/package.json"));
-const { chromium } = require("@playwright/test");
-const { createServer } = await import(pathToFileURL(require.resolve("vite")).href);
 const server = await createServer({
     configFile: false,
     root,

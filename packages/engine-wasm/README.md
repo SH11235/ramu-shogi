@@ -164,12 +164,12 @@ NNUE と TT の容量によって必要メモリが増える。
 ### 再現テスト
 
 リポジトリ root で依存パッケージと Wasm／TypeScript をビルドしてから実行する。
-Playwright の Chromium が必要（`pnpm --filter web exec playwright install chromium`）。
+Playwright の Chromium が必要（`pnpm --filter @shogi/engine-wasm exec playwright install chromium`）。
 
 ```bash
-node packages/engine-wasm/scripts/test-resume.mjs
-node packages/engine-wasm/scripts/test-resume.mjs "$SHOGI_DATA/nnue/suisho5.bin"
-node packages/engine-wasm/scripts/test-analysis-client.mjs
+pnpm --filter @shogi/engine-wasm test:resume
+pnpm --filter @shogi/engine-wasm test:resume "$SHOGI_DATA/nnue/suisho5.bin"
+pnpm --filter @shogi/engine-wasm test:analysis-client
 ```
 
 前者は生成した共有 Wasm と実 Rayon helper、後者は製品クライアントと Worker キューを通す。
