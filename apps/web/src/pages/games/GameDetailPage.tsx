@@ -29,22 +29,23 @@ const routeApi = getRouteApi("/games/$gameId");
  */
 function useGameRecordKif(game: GameRecordDetail): string | null {
     const [generated, setGenerated] = useState<{ id: string; kif: string | null } | null>(null);
-    const { id, source, initialSfen, moves, participants } = game;
+    const { id, source, initialSfen, moves, result, participants } = game;
 
     useEffect(() => {
         if (source !== "online_room") return;
         const nameOf = (seat: "b" | "w") =>
             participants.find((p) => p.seat === seat)?.displayNameSnapshot ?? "";
         let cancelled = false;
-        void exportGameRecordKif({ initialSfen, moves }, { b: nameOf("b"), w: nameOf("w") }).then(
-            (kif) => {
-                if (!cancelled) setGenerated({ id, kif });
-            },
-        );
+        void exportGameRecordKif(
+            { initialSfen, moves, result },
+            { b: nameOf("b"), w: nameOf("w") },
+        ).then((kif) => {
+            if (!cancelled) setGenerated({ id, kif });
+        });
         return () => {
             cancelled = true;
         };
-    }, [id, source, initialSfen, moves, participants]);
+    }, [id, source, initialSfen, moves, result, participants]);
 
     if (source !== "online_room") return game.kifuText;
     if (generated?.id !== id) return null;

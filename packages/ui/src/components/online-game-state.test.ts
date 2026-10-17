@@ -8,6 +8,8 @@ import type { GameStartEvent, RoomSettings, SnapshotPayload } from "@shogi/match
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     createSerialQueue,
+    exportGameKif,
+    exportGameRecordKif,
     type GameState,
     gameReducer,
     makeInitialGameState,
@@ -15,6 +17,7 @@ import {
     restorePosition,
     snapshotAtGameStart,
 } from "./online-game-state";
+import { parseKif } from "./shogi-match/utils/kifParser";
 
 const CLOCK = {
     b: { remainMs: 600_000 },
@@ -243,6 +246,164 @@ describe("gameReducer", () => {
             { seat: "w", ply: 2 },
         ]);
         expect(gameReducer(used, { ...resync, analysisLog: [] }).analysisLog).toEqual([]);
+    });
+});
+
+describe("KIF の終局", () => {
+    const NAMES = { b: "Alice", w: "Bob" };
+
+    /** どの開始局面も、平手の配置で後手の番として解釈する局面サービス */
+    function useGoteToMoveService(): void {
+        setPositionServiceFactory(() => ({
+            getInitialBoard: async () => createInitialPositionState(),
+            parseSfen: async () => ({ ...createInitialPositionState(), turn: "gote" }),
+            boardToSfen: async () => "",
+            getLegalMoves: async () => [],
+            replayMovesStrict: async () => {
+                throw new Error("not used");
+            },
+        }));
+    }
+
+    /** 平手から指した後の対局画面の状態。指し手の後は手番の側が指す番 */
+    function finishedState(moves: string[], gameResult: GameState["gameResult"]) {
+        const positionHistory = moves.map((_, i) => positionAfter(moves.slice(0, i + 1)));
+        positionHistory.unshift(createInitialPositionState());
+        return { usiMoveLog: moves.map((usi) => ({ usi })), positionHistory, gameResult };
+    }
+
+    /** 指し手の行より後ろ（終局語・「まで」の行・コメント・末尾の改行） */
+    const endingLines = (kif: string, moveCount: number) => {
+        const lines = kif.split("\n");
+        return lines.slice(lines.findIndex((line) => line.startsWith("手数----")) + 1 + moveCount);
+    };
+
+    it.each([
+        // 2 手の後は先手の番
+        { moves: 2, winner: "w", reason: "resign", lines: ["   3 投了", "まで2手で後手の勝ち"] },
+        { moves: 2, winner: "w", reason: "checkmate", lines: ["   3 詰み", "まで2手で後手の勝ち"] },
+        {
+            moves: 2,
+            winner: "w",
+            reason: "timeout",
+            lines: ["   3 切れ負け", "まで2手で時間切れにより後手の勝ち"],
+        },
+        {
+            moves: 2,
+            winner: "w",
+            reason: "illegal_move",
+            lines: ["   3 反則負け", "まで2手で先手の反則負け"],
+        },
+        {
+            moves: 1,
+            winner: "w",
+            reason: "illegal_move",
+            lines: ["   2 反則勝ち", "まで1手で先手の反則負け"],
+        },
+        { moves: 1, winner: "b", reason: "resign", lines: ["   2 投了", "まで1手で先手の勝ち"] },
+        // 手番でない側の投了・切断負けには終局語が無い
+        { moves: 2, winner: "b", reason: "resign", lines: ["まで2手で先手の勝ち"] },
+        { moves: 1, winner: "w", reason: "disconnect", lines: ["まで1手で後手の勝ち", "*切断"] },
+        { moves: 2, winner: null, reason: "sennichite", lines: ["   3 千日手", "まで2手で千日手"] },
+    ] as const)("$reason で $winner が勝った $moves 手の対局に、終局語と「まで」の行を書く", ({
+        moves,
+        winner,
+        reason,
+        lines,
+    }) => {
+        const state = finishedState(["7g7f", "3c3d"].slice(0, moves), { winner, reason });
+
+        expect(endingLines(exportGameKif(state, "startpos", NAMES), moves)).toEqual([...lines, ""]);
+    });
+
+    it("終局のコメントは読み込むときに指し手にならない", () => {
+        const state = finishedState(["7g7f"], { winner: "w", reason: "disconnect" });
+
+        expect(parseKif(exportGameKif(state, "startpos", NAMES)).moves).toEqual(["7g7f"]);
+    });
+
+    it("指し手の無いまま終わった対局にも、開始局面と終局の行を書く", () => {
+        const kif = exportGameKif(
+            finishedState([], { winner: "w", reason: "resign" }),
+            "startpos",
+            NAMES,
+        );
+
+        expect(endingLines(kif, 0)).toEqual(["   1 投了", "まで0手で後手の勝ち", ""]);
+    });
+
+    it("指し手も終局の結果も無ければ空文字を返す", () => {
+        expect(exportGameKif(finishedState([], null), "startpos", NAMES)).toBe("");
+    });
+
+    it("対局中は終局の行を書かない", () => {
+        const kif = exportGameKif(finishedState(["7g7f"], null), "startpos", NAMES);
+
+        expect(kif).not.toContain("まで");
+    });
+
+    it("駒落ちは上手（後手）から指すので、上手が 1 手指した後の投了は下手（先手）の負け", async () => {
+        const handicap = "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1";
+        useGoteToMoveService();
+
+        const kif = await exportGameRecordKif(
+            { initialSfen: handicap, moves: ["3c3d"], result: { winner: "w", reason: "resign" } },
+            NAMES,
+        );
+
+        expect(endingLines(kif ?? "", 1)).toEqual(["   2 投了", "まで1手で後手の勝ち", ""]);
+    });
+
+    it.each([
+        "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL  w  -  1",
+        "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL\tw\t-\t1",
+        " lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+    ])("開始局面の区切りが空白 1 つでなくても手番を読む: %j", async (initialSfen) => {
+        useGoteToMoveService();
+
+        const kif = await exportGameRecordKif(
+            { initialSfen, moves: ["3c3d"], result: { winner: "w", reason: "resign" } },
+            NAMES,
+        );
+
+        expect(endingLines(kif ?? "", 1)).toEqual(["   2 投了", "まで1手で後手の勝ち", ""]);
+    });
+
+    it("千日手以外の引き分けは中断と書く", async () => {
+        useFakePositionService([]);
+
+        const kif = await exportGameRecordKif(
+            {
+                initialSfen: "startpos",
+                moves: ["7g7f"],
+                result: { winner: null, reason: "aborted" },
+            },
+            NAMES,
+        );
+
+        expect(endingLines(kif ?? "", 1)).toEqual(["   2 中断", "まで1手で中断", ""]);
+    });
+
+    it("指し手の無い保存された棋譜も、終局の後の改行は指し手がある場合と同じ", async () => {
+        useFakePositionService([]);
+
+        const kif = await exportGameRecordKif(
+            { initialSfen: "startpos", moves: [], result: { winner: "w", reason: "resign" } },
+            NAMES,
+        );
+
+        expect(endingLines(kif ?? "", 0)).toEqual(["   1 投了", "まで0手で後手の勝ち", ""]);
+    });
+
+    it("保存された棋譜の結果が無ければ終局の行を書かない", async () => {
+        useFakePositionService([]);
+
+        const kif = await exportGameRecordKif(
+            { initialSfen: "startpos", moves: ["7g7f"], result: null },
+            NAMES,
+        );
+
+        expect(kif).not.toContain("まで");
     });
 });
 

@@ -838,7 +838,10 @@ describe("OnlineGameView", () => {
 
             fireEvent.click(screen.getByRole("button", { name: "棋譜をコピー" }));
             const kif: string = writeText.mock.lastCall?.[0];
-            expect(kif.split("\n").filter((line) => /^ +\d+ /.test(line))).toHaveLength(3);
+            const numberedLines = kif.split("\n").filter((line) => /^ +\d+ /.test(line));
+            expect(numberedLines).toHaveLength(4);
+            expect(numberedLines[3]).toBe("   4 投了");
+            expect(kif).toContain("まで3手で先手の勝ち");
             vi.unstubAllGlobals();
         });
 

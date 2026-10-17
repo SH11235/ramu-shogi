@@ -656,6 +656,19 @@ interface KifExportOptions {
      * 空のコメントは出さない。
      */
     comments?: ReadonlyMap<number, string>;
+    /** 終局。無ければ指し手だけを書く */
+    ending?: KifEnding;
+}
+
+/**
+ * 終局の書き方。specialMove は最終手の次の手数に書く終局語（投了・詰み等）で、終局語が局面と
+ * 合わないときは省く。summary は「まで N手で」に続く文（例: 「先手の勝ち」「千日手」）。
+ * comment は「まで」の行の後に書くコメント
+ */
+export interface KifEnding {
+    specialMove?: string;
+    summary: string;
+    comment?: string;
 }
 
 /**
@@ -901,8 +914,18 @@ export function exportToKifString(
         prevTo = parseToSquare(move.usiMove);
     }
 
-    // 終局表示（手数がある場合）
-    if (kifMoves.length > 0) {
+    if (options.ending) {
+        const lastPly = kifMoves.at(-1)?.ply ?? 0;
+        if (options.ending.specialMove) {
+            lines.push(
+                `${(lastPly + 1).toString().padStart(4, " ")} ${options.ending.specialMove}`,
+            );
+        }
+        lines.push(`まで${lastPly}手で${options.ending.summary}`);
+        lines.push(...formatCommentLines(options.ending.comment));
+    }
+
+    if (kifMoves.length > 0 || options.ending) {
         lines.push("");
     }
 

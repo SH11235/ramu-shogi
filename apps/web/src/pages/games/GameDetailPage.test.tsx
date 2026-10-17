@@ -69,7 +69,11 @@ describe("GameDetailPage の KIF テキスト", () => {
 
         await waitFor(() => expect(kifText()).toContain("手合割：角落ち"));
         expect(exportGameRecordKif).toHaveBeenCalledWith(
-            { initialSfen: HANDICAP_SFEN, moves: ["3c3d", "7g7f"] },
+            {
+                initialSfen: HANDICAP_SFEN,
+                moves: ["3c3d", "7g7f"],
+                result: { winner: "w", reason: "resign" },
+            },
             { b: "下手", w: "上手" },
         );
     });

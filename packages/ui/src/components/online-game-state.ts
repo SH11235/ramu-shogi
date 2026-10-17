@@ -10,7 +10,7 @@ import type {
     Seat,
     SnapshotPayload,
 } from "@shogi/match-client";
-import { exportToKifString } from "./shogi-match/utils/kifFormat";
+import { exportToKifString, type KifEnding } from "./shogi-match/utils/kifFormat";
 
 export interface GameState {
     position: PositionState | null;
@@ -333,19 +333,26 @@ export async function restorePosition(
     };
 }
 
-/** 対局終了後のダウンロード・コピー用の KIF。指し手の記録が無ければ空文字 */
+/** 終局の結果。保存された棋譜の reason はサーバーが書いた文字列のまま届く */
+interface KifGameResult {
+    winner: "b" | "w" | null;
+    reason: string;
+}
+
+/** 対局終了後のダウンロード・コピー用の KIF。指し手も終局の結果も無ければ空文字 */
 export function exportGameKif(
-    state: Pick<GameState, "usiMoveLog" | "positionHistory">,
+    state: Pick<GameState, "usiMoveLog" | "positionHistory" | "gameResult">,
     startSfen: string,
     playerNames: { b: string; w: string },
 ): string {
-    if (state.usiMoveLog.length === 0) return "";
+    if (state.usiMoveLog.length === 0 && !state.gameResult) return "";
     return formatKif(
         state.usiMoveLog,
         state.positionHistory.slice(0, state.usiMoveLog.length),
         HANDICAP_PRESETS[startSfen]?.kifName,
         resolveStartSfen(startSfen),
         playerNames,
+        state.gameResult,
     );
 }
 
@@ -354,7 +361,7 @@ export function exportGameKif(
  * 展開後の局面から引く。指し手が無くても手合割と開始局面は書き、再生できなければ null
  */
 export async function exportGameRecordKif(
-    record: { initialSfen: string; moves: string[] },
+    record: { initialSfen: string; moves: string[]; result?: KifGameResult | null },
     playerNames: { b: string; w: string },
 ): Promise<string | null> {
     const startSfen = resolveStartSfen(record.initialSfen);
@@ -369,7 +376,49 @@ export async function exportGameRecordKif(
         preset?.kifName,
         startSfen,
         playerNames,
+        record.result,
     );
+}
+
+/** 開始局面の手番から、パスも 1 手として数えて最後の手の後の手番を求める */
+function sideToMoveAfter(startSfen: string, moveCount: number): "b" | "w" {
+    const startTurn = startSfen.trim().split(/\s+/)[1] === "w" ? "w" : "b";
+    return moveCount % 2 === 0 ? startTurn : startTurn === "b" ? "w" : "b";
+}
+
+/**
+ * 終局語と「まで」の行は Kifu for Windows が書く形に合わせる。投了・詰み・切れ負けは手番の側が
+ * 負けたことを表すので、手番でない側が負けた（手番外の投了など）ときは終局語を書かない。
+ * 切断に当たる語は無いので、他のソフトが勝敗を読める標準の形にして理由はコメントに残す
+ */
+function kifEnding(result: KifGameResult, sideToMove: "b" | "w"): KifEnding {
+    const { winner, reason } = result;
+    if (winner === null) {
+        return reason === "sennichite"
+            ? { specialMove: "千日手", summary: "千日手" }
+            : { specialMove: "中断", summary: "中断" };
+    }
+    const winnerLabel = winner === "b" ? "先手" : "後手";
+    const loserLabel = winner === "b" ? "後手" : "先手";
+    const loserToMove = winner !== sideToMove;
+    const onLoserTurn = (specialMove: string) => (loserToMove ? { specialMove } : {});
+    switch (reason) {
+        case "resign":
+            return { ...onLoserTurn("投了"), summary: `${winnerLabel}の勝ち` };
+        case "checkmate":
+            return { ...onLoserTurn("詰み"), summary: `${winnerLabel}の勝ち` };
+        case "timeout":
+            return { ...onLoserTurn("切れ負け"), summary: `時間切れにより${winnerLabel}の勝ち` };
+        case "illegal_move":
+            return {
+                specialMove: loserToMove ? "反則負け" : "反則勝ち",
+                summary: `${loserLabel}の反則負け`,
+            };
+        case "disconnect":
+            return { summary: `${winnerLabel}の勝ち`, comment: "切断" };
+        default:
+            return { summary: `${winnerLabel}の勝ち` };
+    }
 }
 
 function formatKif(
@@ -378,6 +427,7 @@ function formatKif(
     handicap: string | undefined,
     startSfen: string,
     playerNames: { b: string; w: string },
+    result: KifGameResult | null | undefined,
 ): string {
     return exportToKifString(
         moves.map((entry, i) => ({
@@ -388,7 +438,15 @@ function formatKif(
             displayText: "",
         })),
         positionsBefore.map((p) => p.board),
-        { senteName: playerNames.b, goteName: playerNames.w, handicap, startSfen },
+        {
+            senteName: playerNames.b,
+            goteName: playerNames.w,
+            handicap,
+            startSfen,
+            ending: result
+                ? kifEnding(result, sideToMoveAfter(startSfen, moves.length))
+                : undefined,
+        },
     );
 }
 
