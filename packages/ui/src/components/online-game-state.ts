@@ -382,13 +382,14 @@ export async function exportGameRecordKif(
 
 /** 開始局面の手番から、パスも 1 手として数えて最後の手の後の手番を求める */
 function sideToMoveAfter(startSfen: string, moveCount: number): "b" | "w" {
-    const startTurn = startSfen.split(" ")[1] === "w" ? "w" : "b";
+    const startTurn = startSfen.trim().split(/\s+/)[1] === "w" ? "w" : "b";
     return moveCount % 2 === 0 ? startTurn : startTurn === "b" ? "w" : "b";
 }
 
 /**
- * 終局語は柿木形式の語に合わせる。投了・詰み・切れ負けは手番の側が負けたことを表すので、
- * 手番でない側が負けた（手番外の投了など）ときは終局語を書かず「まで」の行だけにする
+ * 終局語と「まで」の行は Kifu for Windows が書く形に合わせる。投了・詰み・切れ負けは手番の側が
+ * 負けたことを表すので、手番でない側が負けた（手番外の投了など）ときは終局語を書かない。
+ * 切断に当たる語は無いので、他のソフトが勝敗を読める標準の形にして理由はコメントに残す
  */
 function kifEnding(result: KifGameResult, sideToMove: "b" | "w"): KifEnding {
     const { winner, reason } = result;
@@ -398,6 +399,7 @@ function kifEnding(result: KifGameResult, sideToMove: "b" | "w"): KifEnding {
             : { specialMove: "中断", summary: "中断" };
     }
     const winnerLabel = winner === "b" ? "先手" : "後手";
+    const loserLabel = winner === "b" ? "後手" : "先手";
     const loserToMove = winner !== sideToMove;
     const onLoserTurn = (specialMove: string) => (loserToMove ? { specialMove } : {});
     switch (reason) {
@@ -410,10 +412,10 @@ function kifEnding(result: KifGameResult, sideToMove: "b" | "w"): KifEnding {
         case "illegal_move":
             return {
                 specialMove: loserToMove ? "反則負け" : "反則勝ち",
-                summary: `反則により${winnerLabel}の勝ち`,
+                summary: `${loserLabel}の反則負け`,
             };
         case "disconnect":
-            return { summary: `切断により${winnerLabel}の勝ち` };
+            return { summary: `${winnerLabel}の勝ち`, comment: "切断" };
         default:
             return { summary: `${winnerLabel}の勝ち` };
     }
