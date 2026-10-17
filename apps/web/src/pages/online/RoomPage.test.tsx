@@ -257,7 +257,7 @@ describe("RoomPage", () => {
         function stubGameRecordFetch(
             respond: () => Promise<Pick<Response, "ok" | "status">>,
         ): ReturnType<typeof vi.fn> {
-            const fetchMock = vi.fn((url: string) => {
+            const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
                 if (!url.startsWith("/api/games/")) throw new Error(`unexpected fetch: ${url}`);
                 return respond();
             });
@@ -306,6 +306,7 @@ describe("RoomPage", () => {
 
             expect(fetchMock).toHaveBeenCalledWith("/api/games/record-1", {
                 credentials: "same-origin",
+                signal: expect.any(AbortSignal),
             });
             expect(mockNavigate).toHaveBeenCalledWith({
                 to: "/games/$gameId",
@@ -334,6 +335,7 @@ describe("RoomPage", () => {
 
             expect(fetchMock).toHaveBeenCalledWith("/api/games/record-1", {
                 credentials: "same-origin",
+                signal: expect.any(AbortSignal),
             });
             expect(mockNavigate).toHaveBeenCalledWith({
                 to: "/games/$gameId",
@@ -438,6 +440,63 @@ describe("RoomPage", () => {
                 to: "/games/$gameId",
                 params: { gameId: "record-1" },
             });
+        });
+
+        it.each([
+            ["画面を閉じた", ({ unmount }: { unmount: () => void }) => unmount()],
+            [
+                "別のルームへ移った",
+                ({ rerender }: { rerender: (ui: ReactNode) => void }) => {
+                    currentRoomId = "room-b";
+                    rerender(<RoomPage />);
+                },
+            ],
+        ] as const)("確かめている間に%sら、応答が来ても遷移せず、引き継ぎも席の記憶の削除もしない", async (_label, leave) => {
+            let respond: (response: Pick<Response, "ok" | "status">) => void = () => {};
+            const fetchMock = stubGameRecordFetch(
+                () =>
+                    new Promise((resolve) => {
+                        respond = resolve;
+                    }),
+            );
+            const view = render(<RoomPage />);
+            await deliverOnOpen("test-room", [finishedSnapshot()]);
+
+            await clickStartReview();
+            const { signal } = fetchMock.mock.calls[0][1] as RequestInit;
+            await act(async () => {
+                leave(view);
+            });
+            expect(signal?.aborted).toBe(true);
+            await act(async () => {
+                respond({ ok: true, status: 200 });
+            });
+
+            expect(mockNavigate).not.toHaveBeenCalled();
+            expect(readPlayHandoff()).toBeUndefined();
+            expect(localStorage.getItem("ramu_resume_token_test-room")).toBe("token-test-room");
+        });
+
+        it("確かめている間に「トップへ戻る」を押したら、応答が来てもトップへの遷移だけにする", async () => {
+            let respond: (response: Pick<Response, "ok" | "status">) => void = () => {};
+            stubGameRecordFetch(
+                () =>
+                    new Promise((resolve) => {
+                        respond = resolve;
+                    }),
+            );
+            render(<RoomPage />);
+            await deliverOnOpen("test-room", [finishedSnapshot()]);
+
+            await clickStartReview();
+            fireEvent.click(screen.getByRole("button", { name: "トップへ戻る" }));
+            await act(async () => {
+                respond({ ok: false, status: 401 });
+            });
+
+            expect(mockNavigate).toHaveBeenCalledTimes(1);
+            expect(mockNavigate).toHaveBeenCalledWith({ to: "/" });
+            expect(readPlayHandoff()).toBeUndefined();
         });
 
         it("局面を引き継げなかったら、遷移せず席の記憶も残す", async () => {
