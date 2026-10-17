@@ -45,7 +45,13 @@
             "cache": false
         },
         "typecheck": {
-            "inputs": ["src/**/*.{ts,tsx}", "*.{ts,tsx}", "tsconfig*.json"],
+            "dependsOn": ["transit"],
+            "inputs": [
+                "src/**/*.{ts,tsx}",
+                "*.{ts,tsx}",
+                "tsconfig*.json",
+                "$TURBO_ROOT$/tsconfig.base.json"
+            ],
             "outputs": []
         },
         "format": {
