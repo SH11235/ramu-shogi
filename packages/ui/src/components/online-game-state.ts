@@ -294,6 +294,15 @@ async function replayPositions(
     current: PositionState,
 ): Promise<PositionState[] | null> {
     if (moves.length === 0) return [current];
+    const history = await positionsBeforeMoves(startSfen, moves);
+    return history ? [...history, current] : null;
+}
+
+/** 各手を指す直前の局面。再生できない指し手があれば null */
+async function positionsBeforeMoves(
+    startSfen: string,
+    moves: string[],
+): Promise<PositionState[] | null> {
     try {
         let position = await getPositionService().parseSfen(resolveStartSfen(startSfen));
         const history: PositionState[] = [];
@@ -307,7 +316,7 @@ async function replayPositions(
             if (!applied.ok) return null;
             position = applied.next;
         }
-        return [...history, current];
+        return history;
     } catch {
         return null;
     }
@@ -331,21 +340,55 @@ export function exportGameKif(
     playerNames: { b: string; w: string },
 ): string {
     if (state.usiMoveLog.length === 0) return "";
+    return formatKif(
+        state.usiMoveLog,
+        state.positionHistory.slice(0, state.usiMoveLog.length),
+        HANDICAP_PRESETS[startSfen]?.kifName,
+        resolveStartSfen(startSfen),
+        playerNames,
+    );
+}
+
+/**
+ * 保存された棋譜の KIF。保存される開始局面はサーバーがプリセットを展開した SFEN なので、手合割の名前は
+ * 展開後の局面から引く。指し手が無くても手合割と開始局面は書き、再生できなければ null
+ */
+export async function exportGameRecordKif(
+    record: { initialSfen: string; moves: string[] },
+    playerNames: { b: string; w: string },
+): Promise<string | null> {
+    const startSfen = resolveStartSfen(record.initialSfen);
+    const history = await positionsBeforeMoves(startSfen, record.moves);
+    if (!history) return null;
+    const preset =
+        HANDICAP_PRESETS[record.initialSfen] ??
+        Object.values(HANDICAP_PRESETS).find((p) => p.sfen === startSfen);
+    return formatKif(
+        record.moves.map((usi) => ({ usi })),
+        history,
+        preset?.kifName,
+        startSfen,
+        playerNames,
+    );
+}
+
+function formatKif(
+    moves: ReadonlyArray<{ usi: string; elapsedMs?: number }>,
+    positionsBefore: PositionState[],
+    handicap: string | undefined,
+    startSfen: string,
+    playerNames: { b: string; w: string },
+): string {
     return exportToKifString(
-        state.usiMoveLog.map((entry, i) => ({
+        moves.map((entry, i) => ({
             ply: i + 1,
             usiMove: entry.usi,
             elapsedMs: entry.elapsedMs,
             kifText: "",
             displayText: "",
         })),
-        state.positionHistory.slice(0, state.usiMoveLog.length).map((p) => p.board),
-        {
-            senteName: playerNames.b,
-            goteName: playerNames.w,
-            handicap: HANDICAP_PRESETS[startSfen]?.kifName,
-            startSfen: resolveStartSfen(startSfen),
-        },
+        positionsBefore.map((p) => p.board),
+        { senteName: playerNames.b, goteName: playerNames.w, handicap, startSfen },
     );
 }
 

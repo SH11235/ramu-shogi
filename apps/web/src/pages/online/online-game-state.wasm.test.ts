@@ -6,6 +6,7 @@ import { type PositionService, setPositionServiceFactory } from "@shogi/app-core
 import type { SnapshotPayload } from "@shogi/match-client";
 import {
     exportGameKif,
+    exportGameRecordKif,
     type GameState,
     gameReducer,
     makeInitialGameState,
@@ -52,6 +53,7 @@ const CLOCK = {
     lastTickTs: 0,
 };
 const PLAYER_NAMES = { b: "Alice", w: "Bob" };
+const STARTPOS_SFEN = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
 
 /** 手数は実装ごとに数え方が違い得るので、盤面・手番・持ち駒だけを比べる */
 const withoutMoveNumber = (sfen: string): string => sfen.split(" ").slice(0, 3).join(" ");
@@ -231,6 +233,17 @@ describe("オンライン対局の状態（実物の Wasm 局面サービス）"
                 expect(parsed.startSfen).toBe(exportedStart ?? "startpos");
             }
         });
+
+        it("保存された棋譜からも、対局画面と同じ KIF を作る", async () => {
+            const state = await restore(await makeSnapshot(startSfen, moves, passRights));
+            // サーバーは開始局面を展開して保存する
+            const initialSfen =
+                startSfen === "startpos" ? STARTPOS_SFEN : resolveStartSfen(startSfen);
+
+            expect(await exportGameRecordKif({ initialSfen, moves }, PLAYER_NAMES)).toBe(
+                exportGameKif(state, startSfen, PLAYER_NAMES),
+            );
+        });
     });
 
     const PRESETS = ["handicap:bishop", "handicap:rook", "handicap:rook-bishop"];
@@ -240,6 +253,51 @@ describe("オンライン対局の状態（実物の Wasm 局面サービス）"
             await expect(service.getLegalMoves(preset, [])).rejects.toBeDefined();
             await expect(service.parseSfen(preset)).rejects.toBeDefined();
         }
+    });
+
+    it.each([
+        ["handicap:bishop", "角落ち"],
+        ["handicap:rook", "飛車落ち"],
+        ["handicap:rook-bishop", "飛車角落ち"],
+    ])("保存された %s の棋譜を、手合割と開始局面の入った読み込める KIF にする", async (preset, name) => {
+        const initialSfen = resolveStartSfen(preset);
+        const moves = ["3c3d", "7g7f", "8c8d"];
+
+        const kif = await exportGameRecordKif({ initialSfen, moves }, PLAYER_NAMES);
+
+        expect(kif).toContain(`手合割：${name}`);
+        const parsed = parseKif(kif ?? "");
+        expect(parsed.moves).toEqual(moves);
+        expect(parsed.startSfen).toBe(parseSfen(initialSfen).sfen);
+    });
+
+    it("指し手の無い保存された棋譜にも手合割と開始局面を書く", async () => {
+        const initialSfen = resolveStartSfen("handicap:bishop");
+
+        const kif = await exportGameRecordKif({ initialSfen, moves: [] }, PLAYER_NAMES);
+
+        expect(kif).toContain("手合割：角落ち");
+        expect(kif).toContain(`開始局面：${parseSfen(initialSfen).sfen}`);
+    });
+
+    it("展開されていないプリセットの名前で保存されていても、展開した局面で書く", async () => {
+        const kif = await exportGameRecordKif(
+            { initialSfen: "handicap:rook", moves: ["3c3d"] },
+            PLAYER_NAMES,
+        );
+
+        expect(kif).toContain("手合割：飛車落ち");
+        expect(parseKif(kif ?? "").startSfen).toBe(
+            parseSfen(resolveStartSfen("handicap:rook")).sfen,
+        );
+    });
+
+    it("保存された棋譜を再生できなければ null を返す", async () => {
+        const initialSfen = resolveStartSfen("handicap:bishop");
+
+        expect(
+            await exportGameRecordKif({ initialSfen, moves: ["7g7f"] }, PLAYER_NAMES),
+        ).toBeNull();
     });
 
     it.each(PRESETS)("%s は展開した局面から上手（後手）が指し始められる", async (preset) => {
