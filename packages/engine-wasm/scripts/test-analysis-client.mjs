@@ -103,6 +103,60 @@ try {
         }
         return results;
     });
+    const controllerResult = await page.evaluate(async () => {
+        const { createWasmEngineClient } = await import("/packages/engine-wasm/dist/index.js");
+        const { createAnalysisController } = await import("/packages/app-controller/dist/index.js");
+        let complete;
+        let pauseRequested = false;
+        const controller = createAnalysisController({
+            createClient: () => createWasmEngineClient(),
+            prepare: async (client) => {
+                await client.init({ threads: 2, multiPv: 3, ttSizeMb: 4 });
+                await client.setOption("MaterialLevel", 1);
+            },
+            onState: (state) => {
+                if (state.phase === "error") throw new Error(state.error);
+            },
+            onInfo: (_target, _session, info) => {
+                if (info.depth >= 2 && !pauseRequested) {
+                    pauseRequested = true;
+                    void controller.pause();
+                }
+            },
+            onFinished: (_target, result) => complete(result),
+        });
+        try {
+            const a = { nodeId: "A", sfen: "startpos", moves: [] };
+            await controller.select(a);
+            const firstDone = new Promise((resolve) => {
+                complete = resolve;
+            });
+            await controller.start();
+            const first = await firstDone;
+            await controller.select({ nodeId: "B", sfen: "startpos", moves: ["7g7f"] });
+            if (controller.getState().retained?.nodeId !== "A")
+                throw new Error("lost retained position");
+            await controller.select(a);
+            if (!controller.getState().canResume) throw new Error("cannot resume A");
+            const nextDone = new Promise((resolve) => {
+                complete = resolve;
+            });
+            await controller.start({ type: "nodes", nodes: 5000 });
+            const next = await nextDone;
+            if (
+                next.sessionId !== first.sessionId ||
+                next.totalNodes !== first.totalNodes + next.nodes
+            )
+                throw new Error("controller did not preserve session");
+            return {
+                depth: first.completedDepth,
+                resumedDepth: next.completedDepth,
+                totalNodes: next.totalNodes,
+            };
+        } finally {
+            await controller.dispose();
+        }
+    });
     await page.goto(`${base}/nonisolated`);
     const fallback = await page.evaluate(async () => {
         const { createWasmEngineClient } = await import("/packages/engine-wasm/dist/index.js");
@@ -116,7 +170,7 @@ try {
     });
     if (fallback.isolated || fallback.analysis)
         throw new Error("nonshared capability is incorrect");
-    console.log(JSON.stringify({ results, fallback }, null, 2));
+    console.log(JSON.stringify({ results, controllerResult, fallback }, null, 2));
 } finally {
     await browser?.close();
     await server.close();

@@ -10,7 +10,7 @@ description = "Wasm bindings for the shogi engine core"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-rshogi-core = { git = "https://github.com/SH11235/rshogi.git", rev = "711b839f1a1e07c4c1e034aead894faf5552146d", default-features = false, features = ["edition-universal", "search-pass-rules"] }
+rshogi-core = { git = "https://github.com/SH11235/rshogi.git", rev = "27ca00ed0380a7d662395bc71276f444699d6523", default-features = false, features = ["edition-universal", "search-pass-rules"] }
 wasm-bindgen = { version = "0.2.106", features = ["serde-serialize"] }
 wasm-bindgen-rayon = { version = "1.2", optional = true }
 js-sys = "0.3.83"
