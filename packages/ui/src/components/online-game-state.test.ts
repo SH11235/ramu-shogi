@@ -8,6 +8,8 @@ import type { GameStartEvent, RoomSettings, SnapshotPayload } from "@shogi/match
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     createSerialQueue,
+    exportGameKif,
+    exportGameRecordKif,
     type GameState,
     gameReducer,
     makeInitialGameState,
@@ -243,6 +245,111 @@ describe("gameReducer", () => {
             { seat: "w", ply: 2 },
         ]);
         expect(gameReducer(used, { ...resync, analysisLog: [] }).analysisLog).toEqual([]);
+    });
+});
+
+describe("KIF の終局", () => {
+    const NAMES = { b: "Alice", w: "Bob" };
+
+    /** 平手から指した後の対局画面の状態。指し手の後は手番の側が指す番 */
+    function finishedState(moves: string[], gameResult: GameState["gameResult"]) {
+        const positionHistory = moves.map((_, i) => positionAfter(moves.slice(0, i + 1)));
+        positionHistory.unshift(createInitialPositionState());
+        return { usiMoveLog: moves.map((usi) => ({ usi })), positionHistory, gameResult };
+    }
+
+    const lastLines = (kif: string) => kif.trimEnd().split("\n").slice(-2);
+
+    it.each([
+        // 2 手の後は先手の番
+        { moves: 2, winner: "w", reason: "resign", lines: ["   3 投了", "まで2手で後手の勝ち"] },
+        { moves: 2, winner: "w", reason: "checkmate", lines: ["   3 詰み", "まで2手で後手の勝ち"] },
+        {
+            moves: 2,
+            winner: "w",
+            reason: "timeout",
+            lines: ["   3 切れ負け", "まで2手で時間切れにより後手の勝ち"],
+        },
+        {
+            moves: 2,
+            winner: "w",
+            reason: "illegal_move",
+            lines: ["   3 反則負け", "まで2手で反則により後手の勝ち"],
+        },
+        {
+            moves: 1,
+            winner: "w",
+            reason: "illegal_move",
+            lines: ["   2 反則勝ち", "まで1手で反則により後手の勝ち"],
+        },
+        { moves: 1, winner: "b", reason: "resign", lines: ["   2 投了", "まで1手で先手の勝ち"] },
+        { moves: 2, winner: null, reason: "sennichite", lines: ["   3 千日手", "まで2手で千日手"] },
+    ] as const)("$reason で $winner が勝った $moves 手の対局に、終局語と「まで」の行を書く", ({
+        moves,
+        winner,
+        reason,
+        lines,
+    }) => {
+        const state = finishedState(["7g7f", "3c3d"].slice(0, moves), { winner, reason });
+
+        expect(lastLines(exportGameKif(state, "startpos", NAMES))).toEqual(lines);
+    });
+
+    it("手番でない側が投了したら、投了の行を書かず勝った側だけを書く", () => {
+        const state = finishedState(["7g7f", "3c3d"], { winner: "b", reason: "resign" });
+
+        const kif = exportGameKif(state, "startpos", NAMES);
+
+        expect(kif).not.toContain("投了");
+        expect(lastLines(kif)).toEqual([
+            "   2 ３四歩(33)   ( 0:00/00:00:00)",
+            "まで2手で先手の勝ち",
+        ]);
+    });
+
+    it("切断負けは終局語を書かず、理由を「まで」の行に書く", () => {
+        const state = finishedState(["7g7f"], { winner: "w", reason: "disconnect" });
+
+        expect(lastLines(exportGameKif(state, "startpos", NAMES))[1]).toBe(
+            "まで1手で切断により後手の勝ち",
+        );
+    });
+
+    it("対局中は終局の行を書かない", () => {
+        const kif = exportGameKif(finishedState(["7g7f"], null), "startpos", NAMES);
+
+        expect(kif).not.toContain("まで");
+    });
+
+    it("駒落ちは上手（後手）から指すので、上手が 1 手指した後の投了は下手（先手）の負け", async () => {
+        const handicap = "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1";
+        setPositionServiceFactory(() => ({
+            getInitialBoard: async () => createInitialPositionState(),
+            parseSfen: async () => ({ ...createInitialPositionState(), turn: "gote" }),
+            boardToSfen: async () => "",
+            getLegalMoves: async () => [],
+            replayMovesStrict: async () => {
+                throw new Error("not used");
+            },
+        }));
+
+        const kif = await exportGameRecordKif(
+            { initialSfen: handicap, moves: ["3c3d"], result: { winner: "w", reason: "resign" } },
+            NAMES,
+        );
+
+        expect(lastLines(kif ?? "")).toEqual(["   2 投了", "まで1手で後手の勝ち"]);
+    });
+
+    it("保存された棋譜の結果が無ければ終局の行を書かない", async () => {
+        useFakePositionService([]);
+
+        const kif = await exportGameRecordKif(
+            { initialSfen: "startpos", moves: ["7g7f"], result: null },
+            NAMES,
+        );
+
+        expect(kif).not.toContain("まで");
     });
 });
 

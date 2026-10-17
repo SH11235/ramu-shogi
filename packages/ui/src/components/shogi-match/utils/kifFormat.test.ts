@@ -676,6 +676,47 @@ describe("exportToKifString", () => {
     });
 });
 
+describe("exportToKifString の終局", () => {
+    const board = placePiece(placePiece(createEmptyBoard(), "7g", "sente", "P"), "3c", "gote", "P");
+    const kifMoves = [
+        { ply: 1, kifText: "", displayText: "", usiMove: "7g7f", elapsedMs: 0 },
+        { ply: 2, kifText: "", displayText: "", usiMove: "3c3d", elapsedMs: 0 },
+    ];
+
+    it("最終手の次の手数に終局語を書き、続けて「まで N手で」の行を書く", () => {
+        const text = exportToKifString(kifMoves, [board, board], {
+            ending: { specialMove: "投了", summary: "後手の勝ち" },
+        });
+
+        expect(text.split("\n").slice(-3)).toEqual(["   3 投了", "まで2手で後手の勝ち", ""]);
+    });
+
+    it("終局語が無ければ「まで」の行だけを書く", () => {
+        const text = exportToKifString(kifMoves, [board, board], {
+            ending: { summary: "切断により先手の勝ち" },
+        });
+
+        expect(text.split("\n").slice(-2)).toEqual(["まで2手で切断により先手の勝ち", ""]);
+    });
+
+    it.each([
+        "投了",
+        "詰み",
+        "切れ負け",
+        "千日手",
+        "中断",
+        "反則勝ち",
+        "反則負け",
+    ])("終局語「%s」と「まで」の行は読み込むときに指し手にならない", (specialMove) => {
+        const text = exportToKifString(kifMoves, [board, board], {
+            startSfen: "startpos",
+            ending: { specialMove, summary: "先手の勝ち" },
+        });
+
+        expect(parseKif(text).moves).toEqual(["7g7f", "3c3d"]);
+    });
+});
+
 describe("evalMate wire encode/decode", () => {
     it("手数なし詰み ±Infinity を有限センチネル ±MATE_WITHOUT_PLY_WIRE に符号化する", () => {
         expect(encodeEvalMateForWire(MATE_WITHOUT_PLY)).toBe(MATE_WITHOUT_PLY_WIRE);
