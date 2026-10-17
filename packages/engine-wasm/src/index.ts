@@ -14,6 +14,8 @@ import type {
 } from "@shogi/engine-client";
 import { createMockEngineClient } from "@shogi/engine-client";
 import initWasmModule from "../pkg/engine_wasm.js";
+import { createAnalysisBridge } from "./analysisBridge";
+import type { AnalysisCommand, AnalysisMessage } from "./analysisProtocol";
 
 type WasmModuleSource = WebAssembly.Module | ArrayBuffer | Uint8Array | string | URL;
 
@@ -123,6 +125,7 @@ type NnueLoadSource =
     | { type: "bytes"; bytes: Uint8Array }; // 直接バイト列（transferable）
 
 type WorkerCommand =
+    | AnalysisCommand
     | {
           type: "init";
           opts?: WasmEngineInitOptions;
@@ -149,6 +152,7 @@ type WorkerCommand =
       };
 
 type WorkerCommandPayload =
+    | { type: "releaseAnalysis" }
     | { type: "init"; opts?: WasmEngineInitOptions; wasmModule?: WasmModuleSource }
     | {
           type: "loadPosition";
@@ -239,7 +243,8 @@ const DEFAULT_WORKER_TIMEOUT_MS = 30_000; // Worker リクエストのタイム�
 // Maximum threads for wasm: limited by browser implementation and memory constraints.
 // - Higher values may cause memory allocation failures or performance degradation
 // - Developer override: allow up to 32
-const MAX_WASM_THREADS = 32;
+// 30 workers は 2 GiB の線形メモリ上限を超える。実ブラウザ検証の対応上限。
+const MAX_WASM_THREADS = 8;
 
 /**
  * NNUE ロード進捗イベント
@@ -292,6 +297,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
     let backend: BackendKind = options.useMock ? "mock" : "single";
     let worker: Worker | null = null;
     let workerGen = 0;
+    let normalSearchActive = false;
     let initialized = false;
     let initInFlight: Promise<void> | null = null;
     let lastInitOpts: WasmEngineInitOptions | undefined = rememberInitOpts(
@@ -318,6 +324,8 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
     };
 
     const emit = (event: EngineEvent) => {
+        if (event.type === "bestmove" || (event.type === "error" && event.severity !== "warning"))
+            normalSearchActive = false;
         if (event.type === "error" && event.severity !== "warning") {
             lastPosition = null;
         }
@@ -450,7 +458,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         return { effective, threadedAvailable: true };
     };
 
-    const shouldUseThreadedWorker = (effectiveThreads: number) => effectiveThreads > 1;
+    const shouldUseThreadedWorker = () => getThreadedAvailability();
 
     const postToWorker = (command: WorkerCommand) => {
         if (!worker) {
@@ -505,6 +513,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
     };
 
     const replaceWorker = (reason: string) => {
+        normalSearchActive = false;
         if (worker) {
             try {
                 worker.terminate();
@@ -516,6 +525,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         workerGen += 1;
         initialized = false;
         activeThreads = null;
+        analysisBridge.invalidate(reason);
         rejectAllPending(new Error(reason));
     };
 
@@ -542,6 +552,10 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
 
         worker.onmessage = (msg: MessageEvent) => {
             if (gen !== workerGen) return;
+            if (typeof msg.data?.type === "string" && msg.data.type.startsWith("analysis")) {
+                analysisBridge.receive(msg.data as AnalysisMessage);
+                return;
+            }
             const data = msg.data as WorkerMessage;
             if (data?.type === "ack" && data.requestId) {
                 const pending = pendingAcks.get(data.requestId);
@@ -679,7 +693,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         const { effective } = computeEffectiveThreads(requestedThreads);
         const payload = buildInitPayload(effective);
         const module = getInitWasmModule(opts);
-        const desiredKind = shouldUseThreadedWorker(effective) ? "threaded" : "single";
+        const desiredKind = shouldUseThreadedWorker() ? "threaded" : "single";
         const forceReplace =
             backend !== "mock" &&
             worker != null &&
@@ -747,6 +761,17 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         }
     };
 
+    const analysisBridge = createAnalysisBridge({
+        available: () => initialized && backend === "threaded",
+        ready: async () => {
+            if (normalSearchActive) throw new Error("通常探索を停止してから解析を開始してください");
+            await ensureReady();
+        },
+        send: (command) => postToWorker(command),
+        release: () => postToWorkerAwait({ type: "releaseAnalysis" }),
+        fail: () => enterErrorState("解析状態が失われました", "TIMEOUT"),
+    });
+
     const terminateAndRecover = () => {
         if (backend === "mock") return;
         replaceWorker("engine worker terminated");
@@ -792,7 +817,10 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
     };
 
     return {
+        analysis: analysisBridge.client,
         async init(opts?: WasmEngineInitOptions) {
+            if (analysisBridge.busy()) throw new Error("解析を停止してから操作してください");
+            analysisBridge.invalidate("新しい局面・設定・探索が指定されました");
             if (backend === "mock") {
                 await mock.init(opts);
                 return;
@@ -817,6 +845,8 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             }
         },
         async loadPosition(sfen: string, moves?: string[], options?: LoadPositionOptions) {
+            if (analysisBridge.busy()) throw new Error("解析を停止してから操作してください");
+            analysisBridge.invalidate("新しい局面・設定・探索が指定されました");
             if (backend === "mock") {
                 return mock.loadPosition(sfen, moves, options);
             }
@@ -857,6 +887,8 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             lastPosition = { sfen, moves: normalizedMoves.slice(), passRights };
         },
         async search(params: SearchParams): Promise<SearchHandle> {
+            if (analysisBridge.busy()) throw new Error("解析を停止してから操作してください");
+            analysisBridge.invalidate("新しい局面・設定・探索が指定されました");
             if (backend === "mock") {
                 return mock.search(params);
             }
@@ -877,6 +909,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             if (!worker) {
                 return mock.search(params);
             }
+            normalSearchActive = true;
             postToWorker({ type: "search", params });
             return {
                 async cancel() {
@@ -911,6 +944,8 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             }
         },
         async setOption(name: string, value: string | number | boolean) {
+            if (analysisBridge.busy()) throw new Error("解析を停止してから操作してください");
+            analysisBridge.invalidate("新しい局面・設定・探索が指定されました");
             const normalized = normalizeOptionName(name);
             if (normalized === "Threads") {
                 const parsed = parseThreadsValue(value);
@@ -1036,6 +1071,8 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             };
         },
         async loadNnue(nnueId: string, layerStacks?: LayerStacksOptions): Promise<void> {
+            if (analysisBridge.busy()) throw new Error("解析を停止してから操作してください");
+            analysisBridge.invalidate("新しい局面・設定・探索が指定されました");
             if (backend === "mock") {
                 // モックではNNUEロードは no-op
                 return;

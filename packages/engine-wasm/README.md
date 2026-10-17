@@ -108,7 +108,7 @@ Material評価のみを計測する場合は `--material` を指定します。
 ## パフォーマンスチューニング
 
 - **推奨スレッド数**: CPU コア数の 50-75%（例: 8コアなら 4スレッド）
-- **メモリ使用量**: ベース + (threads - 1) × 2MB + TT サイズ
+- **メモリ使用量**: スタックだけでなく、worker ごとの探索履歴・評価器を含む。下記の実測を参照。
 - **最大スレッド数**: 4（安定性のため上限を設定）
 
 ## 実モデルでの動作確認
@@ -125,3 +125,53 @@ node scripts/smoke-nnue.mjs /path/to/yo-progress-nn.bin progresskpabsq16 8 /path
 Rust 側にも外部モデルを使う ignored test があります。`NNUE_TEST_FILE`、必要なら
 `NNUE_TEST_ROUTING`（例: `{"bucketMode":"progresskpabs","progressBuckets":8}`）と
 `NNUE_TEST_PROGRESS_FILE` を設定し、`cargo test real_model_load_and_search -- --ignored --nocapture` で実行します。
+
+## 局面解析の協調停止・再開
+
+初期化後の `client.analysis.available()` が true の場合に解析用 API を使える。
+共有メモリが使える場合は探索 1 スレッドでも threaded ビルドを使用する（helper pool は不要）。
+通常の `search` / `stop` の停止方式は従来どおりで、解析は専用 API を使う。
+
+```ts
+await client.init({ threads: 1, multiPv: 3, ttSizeMb: 64 });
+// モデル／評価設定を適用してから局面をロードする。
+await client.loadPosition("startpos", []);
+const sessionId = crypto.randomUUID();
+const run = await client.analysis!.start(sessionId, { type: "unlimited" }, onInfo);
+const paused = await run.pause(); // 全 worker の停止完了を待つ
+if (paused.resumable) {
+    const continued = await client.analysis!.resume(sessionId, { type: "time", milliseconds: 10_000 }, onInfo);
+    const finished = await continued.finished;
+}
+```
+
+- `start` は現在ロード済みの局面・設定で新規セッションを開始する。`resume` の前に設定や局面を送り直さない。
+- 設定・局面・通常探索・初期化・Worker の再作成は再開状態を失効させる。
+- `info` はその実行のコールバックにだけ届く。古い session/run の通知と cancel は破棄する。
+- `finished` に main の完了深さ、今回／累積の時間・ノード、終了理由、再開可否を返す。
+- 停止は専用 AtomicU32 への世代付き CAS。停止完了まで 5 秒を超えた場合は Worker を破棄し、再開可能とは報告しない。
+- `release` は停止済みの再開状態を失効させる。エンジンの作業用メモリも解放するには `client.dispose()` を呼ぶ。
+- 非共有環境では `available()` は false。結果保持と通常の新規探索を使い、続行を偽装しない。
+
+### メモリとスレッド数
+
+既定は 1、Web の選択上限は 8（CPU 数でも制限）。30 worker は Wasm の 2 GiB 上限に収まらない。
+2026-10-17 の Chromium 145 / Windows の実測では、TT 4 MiB・評価 hash 1 MiB・suisho5 約 61 MiB の場合、
+Wasm 線形メモリは 1/2/4/8 worker で約 233/336/543/956 MiB。10 回の追加再開で同値だった。
+これはプロセス RSS や全モデル・全局面の最大値ではない。低メモリ端末へ 8 worker を推奨しない。
+NNUE と TT の容量によって必要メモリが増える。
+
+### 再現テスト
+
+リポジトリ root で依存パッケージと Wasm／TypeScript をビルドしてから実行する。
+Playwright の Chromium が必要（`pnpm --filter web exec playwright install chromium`）。
+
+```bash
+node packages/engine-wasm/scripts/test-resume.mjs
+node packages/engine-wasm/scripts/test-resume.mjs "$SHOGI_DATA/nnue/suisho5.bin"
+node packages/engine-wasm/scripts/test-analysis-client.mjs
+```
+
+前者は生成した共有 Wasm と実 Rayon helper、後者は製品クライアントと Worker キューを通す。
+1/2/4/8 threads × MultiPV 1/3、追加ノード、古い cancel、10 回の再開、非共有環境の能力表示を確認する。
+UI の追従・保存・区間解析や Desktop の試験とは区別する。
