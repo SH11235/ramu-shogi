@@ -5,6 +5,25 @@
     html {
         /* スクロールバーの出入りによるレイアウトシフトを防止 */
         scrollbar-gutter: stable;
+        /* 手を送るボタンなどを続けて押したときに、ダブルタップとして画面が拡大されないようにする
+           （スクロールとピンチでの拡大はそのまま使える）。 */
+        touch-action: manipulation;
+    }
+
+    /* iOS Safari は、文字が 16px 未満の入力欄にフォーカスすると画面を拡大し、戻さない。
+       指で操作する端末では、入力欄の文字を 16px にする。もっと大きい文字にしたい欄は、欄そのものに text-lg / text-xl /
+       text-2xl を付ける（それ以外の指定や、親からの継承では 16px になる）。 */
+    @media (pointer: coarse) {
+        :is(
+                input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(
+                        [type="file"]
+                    ),
+                textarea,
+                select
+            ):not(.text-lg):not(.text-xl):not(.text-2xl) {
+            /* biome-ignore lint/complexity/noImportantStyles: 各欄のユーティリティ（text-sm など）より優先させる */
+            font-size: 16px !important;
+        }
     }
 
     :root {

@@ -202,7 +202,7 @@ export function BookTreeViewer({
     return (
         <div className="flex flex-col gap-4 text-foreground">
             <h1 className="text-xl font-semibold">定跡ビュアー</h1>
-            <fieldset className="flex gap-2" aria-label="見る側">
+            <fieldset className="flex flex-wrap gap-2" aria-label="見る側">
                 {(["sente", "gote"] as const).map((side) => (
                     <Button
                         key={side}

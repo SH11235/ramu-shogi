@@ -218,7 +218,10 @@ export default function CreateRoomPage(): ReactElement {
                     <span className={labelClass}>時間設定</span>
                     <div className="flex gap-3">
                         {(["byoyomi", "fischer"] as const).map((type) => (
-                            <label key={type} className="flex cursor-pointer items-center gap-2">
+                            <label
+                                key={type}
+                                className="flex min-h-9 cursor-pointer items-center gap-2"
+                            >
                                 <input
                                     type="radio"
                                     name="time-type"
@@ -302,8 +305,8 @@ export default function CreateRoomPage(): ReactElement {
                 {/* パス権設定 */}
                 <div className="flex flex-col gap-2">
                     <span className={labelClass}>パス権</span>
-                    <div className="flex gap-3">
-                        <label className="flex cursor-pointer items-center gap-2">
+                    <div className="flex gap-5">
+                        <label className="flex min-h-9 cursor-pointer items-center gap-2">
                             <input
                                 type="radio"
                                 name="pass-rights"
@@ -313,7 +316,7 @@ export default function CreateRoomPage(): ReactElement {
                             />
                             <span className="text-sm text-foreground">なし</span>
                         </label>
-                        <label className="flex cursor-pointer items-center gap-2">
+                        <label className="flex min-h-9 cursor-pointer items-center gap-2">
                             <input
                                 type="radio"
                                 name="pass-rights"
@@ -344,7 +347,7 @@ export default function CreateRoomPage(): ReactElement {
                 {/* 待った設定 */}
                 <div className="flex flex-col gap-2">
                     <span className={labelClass}>待った</span>
-                    <label className="flex cursor-pointer items-center gap-2">
+                    <label className="flex min-h-9 cursor-pointer items-center gap-2">
                         <input
                             type="checkbox"
                             checked={settings.takeback}
@@ -360,7 +363,7 @@ export default function CreateRoomPage(): ReactElement {
                 {/* AI サポート設定 */}
                 <div className="flex flex-col gap-2">
                     <span className={labelClass}>AI サポート</span>
-                    <label className="flex cursor-pointer items-center gap-2">
+                    <label className="flex min-h-9 cursor-pointer items-center gap-2">
                         <input
                             type="checkbox"
                             checked={settings.aiSupportEnabled}
