@@ -79,11 +79,13 @@ interface CachedAsset {
 }
 
 // 静的アセットは max-age=0 で配信され、ブラウザごと・再読み込みごとに取り直しになる。1 ページで 30 件ほどあり、
-// 参加者 3 人と再読み込みで stg の 10 秒あたりのリクエスト上限に届くので、テスト内で使い回す
+// 参加者 3 人と再読み込みで stg の 10 秒あたりのリクエスト上限に届くので、同じ実行のテスト間で使い回す
 const staticAssets = new Map<string, Promise<CachedAsset>>();
 
 async function serveStaticAssetsFromMemory(context: BrowserContext): Promise<void> {
     await context.route(/\/(assets|pieces)\//, async (route) => {
+        // 古い deploy を見分ける HEAD の空の応答を覚えると、後の GET に空の本文を返してしまう
+        if (route.request().method() !== "GET") return route.continue();
         const url = route.request().url();
         let asset = staticAssets.get(url);
         if (!asset) {
