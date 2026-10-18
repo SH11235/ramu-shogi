@@ -316,6 +316,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "shogi-rules-wasm"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "js-sys",
+ "rshogi-core",
+ "serde_json",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "syn"
 version = "2.0.111"
 source = "registry+https://github.com/rust-lang/crates.io-index"
