@@ -83,7 +83,7 @@ interface CachedAsset {
 const staticAssets = new Map<string, Promise<CachedAsset>>();
 
 async function serveStaticAssetsFromMemory(context: BrowserContext): Promise<void> {
-    await context.route(/\/(assets|pieces)\//, async (route) => {
+    await context.route(/^https?:\/\/[^/]+\/(assets|pieces)\//, async (route) => {
         // 古い deploy を見分ける HEAD の空の応答を覚えると、後の GET に空の本文を返してしまう
         if (route.request().method() !== "GET") return route.continue();
         const url = route.request().url();
@@ -93,7 +93,10 @@ async function serveStaticAssetsFromMemory(context: BrowserContext): Promise<voi
                 // body() は展開済みなので、圧縮を示すヘッダーを残すとブラウザが展開に失敗する
                 const headers = Object.fromEntries(
                     Object.entries(response.headers()).filter(
-                        ([name]) => name !== "content-encoding" && name !== "content-length",
+                        ([name]) =>
+                            name !== "content-encoding" &&
+                            name !== "content-length" &&
+                            name !== "transfer-encoding",
                     ),
                 );
                 return { status: response.status(), headers, body: await response.body() };
