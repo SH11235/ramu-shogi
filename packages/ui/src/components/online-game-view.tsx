@@ -1376,7 +1376,8 @@ export function OnlineGameView({
                                 <AlertDialogHeader>
                                     <AlertDialogTitle>投了しますか？</AlertDialogTitle>
                                     <AlertDialogDescription>
-                                        {canPlay
+                                        {/* 切れている間（自分の手番でも押せない）は、上の接続の案内に任せる。 */}
+                                        {isMyTurn
                                             ? "対局を終了します。取り消せません。"
                                             : "相手の手番の間は投了できません。自分の手番になってから投了してください。"}
                                     </AlertDialogDescription>
