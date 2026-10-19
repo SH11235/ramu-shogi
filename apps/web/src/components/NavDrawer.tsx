@@ -1,5 +1,5 @@
 import { cn } from "@shogi/design-system";
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@shogi/ui";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@shogi/ui/components/sheet";
 import { Link, useLocation } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useState } from "react";

@@ -41,6 +41,24 @@ const rshogiCoreVersion = readRshogiCoreVersion(
     path.join(rootDir, "../../packages/rust-core/Cargo.lock"),
 );
 
+/** 他の部品に依存しない、小さな部品（packages/ui/src/components 直下）。 */
+const UI_PRIMITIVES = [
+    "alert-dialog",
+    "button",
+    "chevron-icon",
+    "dialog",
+    "input",
+    "native-select",
+    "popover",
+    "progress",
+    "select",
+    "sheet",
+    "spinner",
+    "surface-theme",
+    "switch",
+    "tooltip",
+];
+
 function manualChunks(id: string): string | undefined {
     const normalizedId = id.split(path.sep).join("/");
 
@@ -67,6 +85,17 @@ function manualChunks(id: string): string | undefined {
     // 引くため、小さな専用 chunk に切り出す(shogi-match ルールより前に判定する)。
     if (normalizedId.endsWith("/packages/ui/src/components/shogi-match/hooks/useLocalStorage.ts")) {
         return "ui-storage";
+    }
+
+    // ボタン・入力欄・ダイアログなどの小さな部品。どの画面も使うが、放置すると rollup が先に参照した
+    // 重い chunk（shogi-match）へ同梱する。起動時に読む棋譜一覧の検索欄（rshogi-csa-game-browser）が
+    // 入力欄を使うため、どの画面でも shogi-match（~400KB）を丸ごと読み込んでいた。
+    if (
+        UI_PRIMITIVES.some((name) =>
+            normalizedId.endsWith(`/packages/ui/src/components/${name}.tsx`),
+        )
+    ) {
+        return "ui-base";
     }
 
     // ShogiMatch は本体ファイル `shogi-match.tsx` と `shogi-match/` 配下(hooks/utils
