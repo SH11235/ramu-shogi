@@ -1323,7 +1323,9 @@ export function StudyWorkspaceView({
             onBackToMainLine={backToMainLine}
             onPromoteToMainLine={promoteLineToMain}
             onRequestDeleteVariation={setDeleteTargetId}
-            className={isMobile ? "max-h-[60vh]" : "max-h-[26rem] xl:max-h-[calc(100dvh-9rem)]"}
+            className={
+                isMobile ? "max-h-[max(60vh,18rem)]" : "max-h-[26rem] xl:max-h-[calc(100dvh-9rem)]"
+            }
         />
     );
     const candidatesPanel = (

@@ -209,7 +209,7 @@ export default function GameDetailPage(): ReactElement {
                                 disabled={isUpdatingVisibility || game.visibility === value}
                                 className="flex items-start gap-3 rounded-md border border-input px-4 py-3 text-left transition-colors hover:bg-muted/50 disabled:pointer-events-none disabled:opacity-50"
                             >
-                                <span className="mt-0.5 text-sm font-medium text-foreground">
+                                <span className="mt-0.5 shrink-0 text-sm font-medium text-foreground">
                                     {label}
                                 </span>
                                 <span className="text-sm text-muted-foreground">{description}</span>

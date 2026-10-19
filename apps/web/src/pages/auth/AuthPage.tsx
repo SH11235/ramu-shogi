@@ -243,7 +243,7 @@ export default function AuthPage(): ReactElement {
                             ログインすることで{" "}
                             <Link
                                 to="/privacy"
-                                className="underline underline-offset-2 hover:text-foreground"
+                                className="relative underline underline-offset-2 after:absolute after:inset-x-0 after:-inset-y-2.5 hover:text-foreground"
                             >
                                 プライバシーポリシー
                             </Link>
