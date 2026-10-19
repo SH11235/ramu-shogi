@@ -33,6 +33,16 @@ import { useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
 import { useLazyNnueLoader } from "../hooks/useLazyNnueLoader";
 import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
 import { useShogiSound } from "../hooks/useShogiSound";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "./alert-dialog";
 import { ConnectionLostNotice } from "./connection-lost-notice";
 import { NnueManagerDialog } from "./nnue/NnueManagerDialog";
 import type { RemoteNnueManager } from "./nnue/types";
@@ -860,6 +870,9 @@ export function OnlineGameView({
         client.resign({ eventId: appliedEventIdRef.current });
     }
 
+    // 投了は取り消せないので、確かめてから送る（スマホでは隣の「棋譜」「待った」と押し間違えやすい）。
+    const [isResignConfirmOpen, setIsResignConfirmOpen] = useState(false);
+
     // ─── 待った ───────────────────────────────────────────────────────────────
 
     function handleTakebackRequest(): void {
@@ -1346,13 +1359,34 @@ export function OnlineGameView({
                     {!isSpectator && !gameResult && (
                         <button
                             type="button"
-                            onClick={handleResign}
+                            onClick={() => setIsResignConfirmOpen(true)}
+                            aria-haspopup="dialog"
                             disabled={!canSend}
                             className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             投了
                         </button>
                     )}
+                    <AlertDialog
+                        // 確かめている間に終局したら（相手の投了・時間切れ）、閉じる。
+                        open={isResignConfirmOpen && !gameResult && !isSpectator}
+                        onOpenChange={setIsResignConfirmOpen}
+                    >
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>投了しますか？</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    対局を終了します。取り消せません。
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                                <AlertDialogAction onClick={handleResign} disabled={!canSend}>
+                                    投了する
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
                     <button
                         type="button"
                         onClick={() => dispatchUI({ type: "set_kifu_sheet_open", open: true })}
