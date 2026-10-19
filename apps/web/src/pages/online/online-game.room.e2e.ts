@@ -688,6 +688,7 @@ test.describe("オンライン対局", () => {
         await playOpening(match);
 
         await match.b.getByRole("button", { name: "投了" }).click();
+        await match.b.getByRole("button", { name: "投了する" }).click();
 
         for (const page of [match.b, match.w]) {
             await expect(resultDialogHeading(page, "w")).toBeVisible();
@@ -711,6 +712,7 @@ test.describe("オンライン対局", () => {
         const match = await startMatch(browser, request);
         await playOpening(match);
         await match.b.getByRole("button", { name: "投了" }).click();
+        await match.b.getByRole("button", { name: "投了する" }).click();
         await expect(resultDialogHeading(match.w, "w")).toBeVisible();
 
         await match.w.reload();

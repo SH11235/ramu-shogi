@@ -31,7 +31,19 @@ import {
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
 import { useLazyNnueLoader } from "../hooks/useLazyNnueLoader";
+import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
 import { useShogiSound } from "../hooks/useShogiSound";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "./alert-dialog";
 import { ConnectionLostNotice } from "./connection-lost-notice";
 import { NnueManagerDialog } from "./nnue/NnueManagerDialog";
 import type { RemoteNnueManager } from "./nnue/types";
@@ -347,6 +359,11 @@ export function OnlineGameView({
     // つながっていない間に送った操作は RoomClient が捨てる。再接続した直後も、サーバーの
     // 局面を反映し終えるまでは古い局面を見て選んだ操作になるので受け付けない
     const canSend = connection.state === "connected";
+    // 対局中（観戦中も）は、相手の手を待つ間に画面が消えてロックされないようにする。つながり直せない
+    // （再読み込みやトップへ戻る案内を出している）間は、消灯を止めない。
+    useScreenWakeLock(
+        !gameResult && (connection.state === "connected" || connection.state === "reconnecting"),
+    );
     // 切断・再接続のたびに進む。非同期処理の前後で比べ、その間に接続が替わったかを知る
     const connectionEpochRef = useRef(0);
     // 再接続後、席へ戻った結果の snapshot を待っている間だけ、その再接続の番号を持つ
@@ -856,6 +873,9 @@ export function OnlineGameView({
         client.resign({ eventId: appliedEventIdRef.current });
     }
 
+    // 投了は取り消せないので、確かめてから送る（スマホでは隣の「棋譜」「待った」と押し間違えやすい）。
+    const [isResignConfirmOpen, setIsResignConfirmOpen] = useState(false);
+
     // ─── 待った ───────────────────────────────────────────────────────────────
 
     function handleTakebackRequest(): void {
@@ -1340,14 +1360,41 @@ export function OnlineGameView({
                             </button>
                         )}
                     {!isSpectator && !gameResult && (
-                        <button
-                            type="button"
-                            onClick={handleResign}
-                            disabled={!canSend}
-                            className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                        <AlertDialog
+                            // 終局したらボタンごと消えるので、確かめている途中でも閉じる（相手の投了・時間切れ）。
+                            open={isResignConfirmOpen}
+                            onOpenChange={setIsResignConfirmOpen}
                         >
-                            投了
-                        </button>
+                            <AlertDialogTrigger asChild>
+                                <button
+                                    type="button"
+                                    disabled={!canSend}
+                                    className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    投了
+                                </button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>投了しますか？</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        {/* 切れている間（自分の手番でも押せない）は、上の接続の案内に任せる。 */}
+                                        {isMyTurn
+                                            ? "対局を終了します。取り消せません。"
+                                            : "相手の手番の間は投了できません。自分の手番になってから投了してください。"}
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                                    <AlertDialogAction
+                                        onClick={handleResign}
+                                        disabled={!canPlay || !position}
+                                    >
+                                        投了する
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
                     )}
                     <button
                         type="button"

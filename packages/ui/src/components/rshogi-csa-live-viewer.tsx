@@ -40,6 +40,7 @@ import {
     subscribeRshogiLiveGame,
 } from "@shogi/match-client";
 import { type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
+import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
 import { resolveDisplayedResult } from "./rshogi-csa-result";
 import {
     type PlayFromPosition,
@@ -1052,6 +1053,15 @@ export function RshogiCsaLiveViewer({
             sessionRef.current?.disconnect();
         }
     }, [state.result]);
+
+    // 進行中の対局を見ている間は、画面が消えてロックされないようにする。つながらなかった
+    // （局面を一度も受け取れずに閉じた）ときは、エラーの画面なので消灯を止めない。
+    useScreenWakeLock(
+        !state.result &&
+            !state.staticFallback &&
+            state.snapshot !== null &&
+            state.connectionState !== "closed",
+    );
 
     // clock countdown 用の 1Hz tick。終局後・clock 未取得時は止めて無駄な再描画を抑える。
     useEffect(() => {

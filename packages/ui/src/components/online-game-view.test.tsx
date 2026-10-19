@@ -288,6 +288,7 @@ describe("OnlineGameView", () => {
             />,
         );
         fireEvent.click(screen.getByRole("button", { name: "投了" }));
+        fireEvent.click(screen.getByRole("button", { name: "投了する" }));
         // position の読み込みは非同期のため、resign が呼ばれないことを確認
         // (position=null の間は || チェックで return するはず)
         // ここでは "position がない状態では resign を呼ばない" ことを検証
@@ -306,7 +307,51 @@ describe("OnlineGameView", () => {
             />,
         );
         fireEvent.click(screen.getByRole("button", { name: "投了" }));
+        fireEvent.click(screen.getByRole("button", { name: "投了する" }));
         expect(client.resign).not.toHaveBeenCalled();
+    });
+
+    it("投了は確認してから送り、キャンセルすれば送らない", async () => {
+        const { client, emit } = makeSubscribableClient();
+        await act(async () => {
+            render(
+                <OnlineGameView
+                    client={client}
+                    snapshot={makeSnapshot({ eventId: 3, turn: "b" })}
+                    seat="b"
+                    roomId="test-room"
+                />,
+            );
+        });
+        await emit({ v: 1, t: "snapshot", payload: makeSnapshot({ eventId: 3, turn: "b" }) });
+
+        fireEvent.click(screen.getByRole("button", { name: "投了" }));
+        expect(client.resign).not.toHaveBeenCalled();
+        expect(screen.getByRole("alertdialog", { name: "投了しますか？" })).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "キャンセル" }));
+        expect(screen.queryByRole("alertdialog")).toBeNull();
+        expect(client.resign).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole("button", { name: "投了" }));
+        fireEvent.click(screen.getByRole("button", { name: "投了する" }));
+        expect(client.resign).toHaveBeenCalledWith({ eventId: 3 });
+    });
+
+    it("相手の手番では、確認の「投了する」を押せず、そのわけを出す", () => {
+        const client = makeMockClient();
+        render(
+            <OnlineGameView
+                client={client}
+                snapshot={makeSnapshot({ turn: "w" })}
+                seat="b"
+                roomId="test-room"
+            />,
+        );
+        fireEvent.click(screen.getByRole("button", { name: "投了" }));
+        expect(screen.getByText(/相手の手番の間は投了できません/)).toBeTruthy();
+        expect(
+            (screen.getByRole("button", { name: "投了する" }) as HTMLButtonElement).disabled,
+        ).toBe(true);
     });
 
     it("プレイヤー名が表示される", () => {
@@ -1339,6 +1384,7 @@ describe("OnlineGameView", () => {
                 payload: makeSnapshot({ eventId: 10, turn: "b" }),
             });
             fireEvent.click(screen.getByRole("button", { name: "投了" }));
+            fireEvent.click(screen.getByRole("button", { name: "投了する" }));
 
             expect(client.resign).toHaveBeenCalledWith({ eventId: 10 });
         });
@@ -1358,6 +1404,7 @@ describe("OnlineGameView", () => {
 
             await emit(takebackAccepted(12));
             fireEvent.click(screen.getByRole("button", { name: "投了" }));
+            fireEvent.click(screen.getByRole("button", { name: "投了する" }));
 
             expect(client.resign).toHaveBeenCalledWith({ eventId: 12 });
         });

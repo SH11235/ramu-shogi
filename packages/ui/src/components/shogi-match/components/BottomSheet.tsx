@@ -79,6 +79,8 @@ export function BottomSheet({
                     "rounded-t-2xl",
                     "overflow-hidden",
                     "border-0 p-0",
+                    // 横向きの iPhone では左右にノッチがあるので、中身をその内側に置く。
+                    "pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]",
                     "flex flex-col",
                     "translate-x-0 translate-y-0",
                     heightClassName[height],
@@ -88,13 +90,23 @@ export function BottomSheet({
                     "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
                 )}
             >
-                {/* ドラッグハンドル（装飾） */}
-                <div className={cn("flex justify-center py-2", surfaceClassName)}>
+                {/* ドラッグハンドル（装飾）。高さの無い画面では、中身の欄を広く取るために出さない。 */}
+                <div
+                    className={cn(
+                        "flex justify-center py-2 [@media(max-height:480px)]:hidden",
+                        surfaceClassName,
+                    )}
+                >
                     <div className="w-10 h-1 bg-muted rounded-full" />
                 </div>
 
                 {/* ヘッダー */}
-                <DialogHeader className={cn("px-4 pb-3 border-b border-border", surfaceClassName)}>
+                <DialogHeader
+                    className={cn(
+                        "px-4 pb-3 border-b border-border [@media(max-height:480px)]:py-2",
+                        surfaceClassName,
+                    )}
+                >
                     <DialogTitle className="font-semibold text-lg">{title}</DialogTitle>
                     {description !== undefined && (
                         <DialogDescription className="sr-only">{description}</DialogDescription>

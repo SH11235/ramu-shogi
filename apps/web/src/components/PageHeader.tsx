@@ -1,6 +1,7 @@
 import { cn } from "@shogi/design-system";
 import { Link } from "@tanstack/react-router";
 import type { ReactElement, ReactNode } from "react";
+import { useEffect } from "react";
 import { NavDrawer } from "./NavDrawer";
 
 interface BreadcrumbItem {
@@ -13,9 +14,28 @@ interface PageHeaderProps {
     right?: ReactNode;
 }
 
+const SITE_NAME = "ラム将棋";
+
+/**
+ * タブの名前を「現在地 | ラム将棋」にする（タブの一覧や履歴で、どの画面か見分けられるように）。
+ * 外したら元に戻す（見出しを持たない画面へ移ったとき、前の画面の名前が残らないように）。
+ */
+function useDocumentTitle(current: string | undefined): void {
+    useEffect(() => {
+        if (!current) return;
+        const previous = document.title;
+        document.title = current === SITE_NAME ? SITE_NAME : `${current} | ${SITE_NAME}`;
+        return () => {
+            document.title = previous;
+        };
+    }, [current]);
+}
+
 export function PageHeader({ items, right }: PageHeaderProps): ReactElement {
+    useDocumentTitle(items.at(-1)?.label);
     return (
-        <header className="border-b border-wafuu-border bg-wafuu-washi-warm px-4">
+        // 横向きの iPhone では本文（#root）が左右のノッチを避けているので、帯の背景だけは画面の端まで伸ばす。
+        <header className="-ml-[env(safe-area-inset-left)] -mr-[env(safe-area-inset-right)] border-b border-wafuu-border bg-wafuu-washi-warm pr-[calc(1rem+env(safe-area-inset-right))] pl-[calc(1rem+env(safe-area-inset-left))]">
             <div className="flex h-10 items-center justify-between gap-2 text-sm">
                 <div className="flex min-w-0 items-center gap-2">
                     <NavDrawer />
