@@ -41,7 +41,12 @@ const rshogiCoreVersion = readRshogiCoreVersion(
     path.join(rootDir, "../../packages/rust-core/Cargo.lock"),
 );
 
-/** 他の部品に依存しない、小さな部品（packages/ui/src/components 直下）。 */
+/**
+ * 小さな部品（packages/ui/src/components 直下）。ここに並べる部品は、react・radix・
+ * class-variance-authority・design-system と、この一覧の部品だけを import すること。
+ * 対局画面の部品（shogi-match/ 配下）などを import すると、ui-base から重い chunk を引き、
+ * どの画面でも最初に読み込むようになる（ビルドは通るので気づきにくい）。
+ */
 const UI_PRIMITIVES = [
     "alert-dialog",
     "button",
@@ -90,6 +95,11 @@ function manualChunks(id: string): string | undefined {
     // ボタン・入力欄・ダイアログなどの小さな部品。どの画面も使うが、放置すると rollup が先に参照した
     // 重い chunk（shogi-match）へ同梱する。起動時に読む棋譜一覧の検索欄（rshogi-csa-game-browser）が
     // 入力欄を使うため、どの画面でも shogi-match（~400KB）を丸ごと読み込んでいた。
+    // design-system（cn・テーマ）は ui-base の部品が使う。ui-base に入れないと rollup が app-shell に
+    // 入れ、ui-base と app-shell が互いを読み込む（初期化の順によっては本番だけ落ちうる）。
+    if (normalizedId.includes("/packages/design-system/src/")) {
+        return "ui-base";
+    }
     if (
         UI_PRIMITIVES.some((name) =>
             normalizedId.endsWith(`/packages/ui/src/components/${name}.tsx`),
