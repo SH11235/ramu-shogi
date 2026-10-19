@@ -13,10 +13,17 @@ export function useScreenWakeLock(active: boolean): void {
         if (!active || typeof navigator === "undefined" || !("wakeLock" in navigator)) return;
         let sentinel: WakeLockSentinel | null = null;
         let requesting = false;
+        // 取りに行っている間に画面へ戻ってきた。いまの取り込みが（隠れていたせいで）断られても、
+        // 終わったあとにもう一度取りに行く。
+        let retryWhenSettled = false;
         let disposed = false;
         const request = async (): Promise<void> => {
-            if (disposed || requesting || document.visibilityState !== "visible") return;
+            if (disposed || document.visibilityState !== "visible") return;
             if (sentinel && !sentinel.released) return;
+            if (requesting) {
+                retryWhenSettled = true;
+                return;
+            }
             requesting = true;
             try {
                 const next = await navigator.wakeLock.request("screen");
@@ -25,20 +32,31 @@ export function useScreenWakeLock(active: boolean): void {
                     return;
                 }
                 sentinel = next;
+                // 見えたまま解除されたとき（省電力モードになった、など）も取り直す。
+                next.addEventListener("release", handleRelease);
             } catch {
                 // 省電力モードなどで断られた。画面が消えるだけなので、そのまま続ける。
             } finally {
                 requesting = false;
             }
+            if (retryWhenSettled) {
+                retryWhenSettled = false;
+                await request();
+            }
         };
         const handleVisibilityChange = (): void => {
             void request();
         };
+        // request の中から参照するので、巻き上げられる function で書く。
+        function handleRelease(): void {
+            void request();
+        }
         void request();
         document.addEventListener("visibilitychange", handleVisibilityChange);
         return () => {
             disposed = true;
             document.removeEventListener("visibilitychange", handleVisibilityChange);
+            if (sentinel) sentinel.removeEventListener("release", handleRelease);
             if (sentinel && !sentinel.released) void sentinel.release().catch(() => {});
             sentinel = null;
         };

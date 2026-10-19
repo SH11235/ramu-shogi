@@ -42,6 +42,7 @@ import {
     AlertDialogFooter,
     AlertDialogHeader,
     AlertDialogTitle,
+    AlertDialogTrigger,
 } from "./alert-dialog";
 import { ConnectionLostNotice } from "./connection-lost-notice";
 import { NnueManagerDialog } from "./nnue/NnueManagerDialog";
@@ -1357,36 +1358,41 @@ export function OnlineGameView({
                             </button>
                         )}
                     {!isSpectator && !gameResult && (
-                        <button
-                            type="button"
-                            onClick={() => setIsResignConfirmOpen(true)}
-                            aria-haspopup="dialog"
-                            disabled={!canSend}
-                            className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                        <AlertDialog
+                            // 終局したらボタンごと消えるので、確かめている途中でも閉じる（相手の投了・時間切れ）。
+                            open={isResignConfirmOpen}
+                            onOpenChange={setIsResignConfirmOpen}
                         >
-                            投了
-                        </button>
+                            <AlertDialogTrigger asChild>
+                                <button
+                                    type="button"
+                                    disabled={!canSend}
+                                    className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    投了
+                                </button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>投了しますか？</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        {canPlay
+                                            ? "対局を終了します。取り消せません。"
+                                            : "相手の手番の間は投了できません。自分の手番になってから投了してください。"}
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                                    <AlertDialogAction
+                                        onClick={handleResign}
+                                        disabled={!canPlay || !position}
+                                    >
+                                        投了する
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
                     )}
-                    <AlertDialog
-                        // 確かめている間に終局したら（相手の投了・時間切れ）、閉じる。
-                        open={isResignConfirmOpen && !gameResult && !isSpectator}
-                        onOpenChange={setIsResignConfirmOpen}
-                    >
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                                <AlertDialogTitle>投了しますか？</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                    対局を終了します。取り消せません。
-                                </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                                <AlertDialogCancel>キャンセル</AlertDialogCancel>
-                                <AlertDialogAction onClick={handleResign} disabled={!canSend}>
-                                    投了する
-                                </AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
                     <button
                         type="button"
                         onClick={() => dispatchUI({ type: "set_kifu_sheet_open", open: true })}

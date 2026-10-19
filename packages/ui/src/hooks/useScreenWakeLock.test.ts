@@ -5,6 +5,28 @@ import { useScreenWakeLock } from "./useScreenWakeLock";
 interface FakeSentinel {
     released: boolean;
     release: ReturnType<typeof vi.fn>;
+    addEventListener: (type: "release", listener: () => void) => void;
+    removeEventListener: (type: "release", listener: () => void) => void;
+    /** ブラウザが解除したことにする（release イベントを送る）。 */
+    revoke: () => void;
+}
+
+function makeSentinel(): FakeSentinel {
+    const listeners = new Set<() => void>();
+    const sentinel: FakeSentinel = {
+        released: false,
+        release: vi.fn(async () => {
+            sentinel.revoke();
+        }),
+        addEventListener: (_type, listener) => listeners.add(listener),
+        removeEventListener: (_type, listener) => listeners.delete(listener),
+        revoke: () => {
+            if (sentinel.released) return;
+            sentinel.released = true;
+            for (const listener of [...listeners]) listener();
+        },
+    };
+    return sentinel;
 }
 
 let sentinels: FakeSentinel[];
@@ -17,12 +39,7 @@ beforeEach(() => {
     sentinels = [];
     visibility = "visible";
     request = vi.fn(async () => {
-        const sentinel: FakeSentinel = {
-            released: false,
-            release: vi.fn(async () => {
-                sentinel.released = true;
-            }),
-        };
+        const sentinel = makeSentinel();
         sentinels.push(sentinel);
         return sentinel;
     });
@@ -63,7 +80,7 @@ describe("useScreenWakeLock", () => {
 
         // 隠れている間にブラウザが解除する。
         visibility = "hidden";
-        sentinels[0].released = true;
+        sentinels[0].revoke();
         document.dispatchEvent(new Event("visibilitychange"));
         await flush();
         expect(sentinels).toHaveLength(1);
@@ -72,6 +89,24 @@ describe("useScreenWakeLock", () => {
         document.dispatchEvent(new Event("visibilitychange"));
         await flush();
         expect(sentinels).toHaveLength(2);
+    });
+
+    it("見えたまま解除されたら（省電力モードなど）取り直す", async () => {
+        renderHook(() => useScreenWakeLock(true));
+        await flush();
+        await act(async () => {
+            sentinels[0].revoke();
+        });
+        await flush();
+        expect(sentinels).toHaveLength(2);
+    });
+
+    it("自分で手放したときは取り直さない", async () => {
+        const { unmount } = renderHook(() => useScreenWakeLock(true));
+        await flush();
+        unmount();
+        await flush();
+        expect(request).toHaveBeenCalledTimes(1);
     });
 
     it("まだ持っている間は取り直さない", async () => {
@@ -92,11 +127,40 @@ describe("useScreenWakeLock", () => {
         );
         const { unmount } = renderHook(() => useScreenWakeLock(true));
         unmount();
-        const late: FakeSentinel = { released: false, release: vi.fn(async () => {}) };
+        const late = makeSentinel();
         await act(async () => {
             resolve(late);
         });
         expect(late.release).toHaveBeenCalled();
+    });
+
+    it("取りに行っている間に隠れて戻り、その取り込みが断られたら、もう一度取りに行く", async () => {
+        let reject: (error: Error) => void = () => {};
+        request.mockImplementationOnce(
+            () =>
+                new Promise<FakeSentinel>((_, r) => {
+                    reject = r;
+                }),
+        );
+        renderHook(() => useScreenWakeLock(true));
+        visibility = "hidden";
+        document.dispatchEvent(new Event("visibilitychange"));
+        visibility = "visible";
+        document.dispatchEvent(new Event("visibilitychange"));
+        await act(async () => {
+            reject(new Error("NotAllowedError: hidden"));
+        });
+        await flush();
+        expect(request).toHaveBeenCalledTimes(2);
+        expect(sentinels).toHaveLength(1);
+    });
+
+    it("見えている間に断られたら、取り直しを繰り返さない", async () => {
+        request.mockRejectedValue(new Error("NotAllowedError"));
+        renderHook(() => useScreenWakeLock(true));
+        await flush();
+        await flush();
+        expect(request).toHaveBeenCalledTimes(1);
     });
 
     it("断られても例外を外へ出さない", async () => {

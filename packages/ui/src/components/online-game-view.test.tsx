@@ -337,6 +337,23 @@ describe("OnlineGameView", () => {
         expect(client.resign).toHaveBeenCalledWith({ eventId: 3 });
     });
 
+    it("相手の手番では、確認の「投了する」を押せず、そのわけを出す", () => {
+        const client = makeMockClient();
+        render(
+            <OnlineGameView
+                client={client}
+                snapshot={makeSnapshot({ turn: "w" })}
+                seat="b"
+                roomId="test-room"
+            />,
+        );
+        fireEvent.click(screen.getByRole("button", { name: "投了" }));
+        expect(screen.getByText(/相手の手番の間は投了できません/)).toBeTruthy();
+        expect(
+            (screen.getByRole("button", { name: "投了する" }) as HTMLButtonElement).disabled,
+        ).toBe(true);
+    });
+
     it("プレイヤー名が表示される", () => {
         const client = makeMockClient();
         render(
