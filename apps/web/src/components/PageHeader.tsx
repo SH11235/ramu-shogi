@@ -30,8 +30,14 @@ export function PageHeader({ items, right }: PageHeaderProps): ReactElement {
                                     // 表示名は重なりうる（表題が上の階層と同じ名前のノートなど）ので、リンク先を鍵にする。
                                     key={item.to ?? item.label}
                                     className={cn(
-                                        "min-w-0 items-center gap-1",
+                                        "items-center gap-1",
                                         hiddenOnMobile ? "hidden sm:flex" : "flex",
+                                        // 幅が足りないときは現在地から切り詰める。上の階層は、現在地が 3 文字分まで
+                                        // 縮んでから縮める（名前の長い利用者がログインしているときなど）。縮み方は
+                                        // flex-shrink の比で決まるので、上の階層はほぼ 0 にしておく。
+                                        i === items.length - 1
+                                            ? "min-w-[3em]"
+                                            : "min-w-0 shrink-[0.001]",
                                     )}
                                 >
                                     {i > 0 && (
