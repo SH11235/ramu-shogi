@@ -88,6 +88,8 @@ export interface MoveEvent extends RoomEventBase {
     turn: "b" | "w";
     clock: ClockState;
     passRights: PassRightsState | null;
+    /** この手の消費時間 (ms)。snapshot の moveElapsedMs と同じ値。旧サーバーは送らない */
+    elapsedMs?: number;
 }
 
 export interface ResignEvent extends RoomEventBase {
@@ -214,6 +216,20 @@ export interface SnapshotPayload {
     result?: GameResult;
     /** 棋譜が保存済みの場合のみ付く */
     gameRecordId?: string;
+    /** 申請中の待った。申請が無ければ null。旧サーバーは送らない */
+    pendingTakeback?: { seat: "b" | "w"; ply: number } | null;
+    /** 席ごとの AI サポートの残り回数（null は無制限）。AI サポートの無い部屋と旧サーバーでは付かない */
+    analysisRemaining?: { b: number | null; w: number | null };
+    /**
+     * AI サポートを使った席と、使った時点の指し手の数。使った順に並ぶ。
+     * 旧サーバーと、旧サーバーが開始した対局では付かない
+     */
+    analysisLog?: Array<{ seat: "b" | "w"; ply: number }>;
+    /**
+     * moves と同じ並びの各手の消費時間 (ms)。パスも 1 手に数える。
+     * 旧サーバーと、旧サーバーが開始した対局では付かない
+     */
+    moveElapsedMs?: number[];
 }
 
 // ─── エラーコード ─────────────────────────────────────────────────────────

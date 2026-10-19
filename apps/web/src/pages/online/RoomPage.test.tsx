@@ -178,9 +178,10 @@ async function deliverOnOpen(roomId: string, messages: ServerMessage[]): Promise
     });
 }
 
+let currentSession: { authenticated: true; user: { displayName: string } } | null = null;
 vi.mock("../../hooks/useAuthSession", () => ({
     useAuthSession: () => ({
-        session: null,
+        session: currentSession,
     }),
     syncProfileDisplayNameIfNeeded: vi.fn().mockResolvedValue(undefined),
 }));
@@ -200,6 +201,7 @@ const ROOM_INFO = {
 };
 
 const { default: RoomPage } = await import("./RoomPage");
+const { readPlayHandoff } = await import("../../lib/playHandoff");
 
 describe("RoomPage", () => {
     beforeEach(() => {
@@ -208,8 +210,10 @@ describe("RoomPage", () => {
         mockSubscribe.mockClear();
         vi.unstubAllGlobals();
         currentRoomId = "test-room";
+        currentSession = null;
         sockets = null;
         localStorage.clear();
+        sessionStorage.clear();
     });
 
     // ローディング中・エラー表示は TanStack Router の pendingComponent / errorComponent に移動済み
@@ -246,7 +250,40 @@ describe("RoomPage", () => {
                 },
             }));
             rememberSeat("test-room");
+            stubGameRecordFetch(() => Promise.resolve({ ok: false, status: 404 }));
         });
+
+        /** 棋譜のページを開けるか確かめる `/api/games/:id` の応答を差し替える */
+        function stubGameRecordFetch(
+            respond: () => Promise<Pick<Response, "ok" | "status">>,
+        ): ReturnType<typeof vi.fn> {
+            const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
+                if (!url.startsWith("/api/games/")) throw new Error(`unexpected fetch: ${url}`);
+                return respond();
+            });
+            vi.stubGlobal("fetch", fetchMock);
+            return fetchMock;
+        }
+
+        async function clickStartReview(): Promise<void> {
+            await act(async () => {
+                fireEvent.click(screen.getByRole("button", { name: "棋譜を検討する" }));
+            });
+        }
+
+        function finishedSnapshot(overrides: Partial<SnapshotPayload> = {}): ServerMessage {
+            return {
+                v: 1,
+                t: "snapshot",
+                payload: makeSnapshot({
+                    eventId: 8,
+                    status: "finished",
+                    result: { winner: "b", reason: "resign" },
+                    gameRecordId: "record-1",
+                    ...overrides,
+                }),
+            };
+        }
 
         it("終局直後の再読み込みで、購読開始前に届いた棋譜 ID 付き game_end から検討画面へ進める", async () => {
             render(<RoomPage />);
@@ -264,12 +301,18 @@ describe("RoomPage", () => {
             ]);
 
             expect(screen.getAllByText("Alice の勝ち")).toHaveLength(1);
-            fireEvent.click(screen.getByRole("button", { name: "棋譜を検討する" }));
+            const fetchMock = stubGameRecordFetch(() => Promise.resolve({ ok: true, status: 200 }));
+            await clickStartReview();
 
+            expect(fetchMock).toHaveBeenCalledWith("/api/games/record-1", {
+                credentials: "same-origin",
+                signal: expect.any(AbortSignal),
+            });
             expect(mockNavigate).toHaveBeenCalledWith({
                 to: "/games/$gameId",
                 params: { gameId: "record-1" },
             });
+            expect(localStorage.getItem("ramu_resume_token_test-room")).toBeNull();
         });
 
         it("snapshot の棋譜 ID だけでも検討画面へ進める", async () => {
@@ -287,15 +330,22 @@ describe("RoomPage", () => {
                 },
             ]);
 
-            fireEvent.click(screen.getByRole("button", { name: "棋譜を検討する" }));
+            const fetchMock = stubGameRecordFetch(() => Promise.resolve({ ok: true, status: 200 }));
+            await clickStartReview();
 
+            expect(fetchMock).toHaveBeenCalledWith("/api/games/record-1", {
+                credentials: "same-origin",
+                signal: expect.any(AbortSignal),
+            });
             expect(mockNavigate).toHaveBeenCalledWith({
                 to: "/games/$gameId",
                 params: { gameId: "record-1" },
             });
+            expect(localStorage.getItem("ramu_resume_token_test-room")).toBeNull();
         });
 
-        it("棋譜 ID を得られなかった対局は検討の入口へ進む", async () => {
+        it("棋譜 ID を得られなかった対局は、手元の棋譜を検討画面で開く", async () => {
+            const fetchMock = stubGameRecordFetch(() => Promise.resolve({ ok: true, status: 200 }));
             render(<RoomPage />);
             await deliverOnOpen("test-room", [{ v: 1, t: "snapshot", payload: makeSnapshot() }]);
             await act(async () => {
@@ -303,9 +353,173 @@ describe("RoomPage", () => {
             });
 
             expect(screen.getAllByText("Bob の勝ち")).toHaveLength(1);
-            fireEvent.click(screen.getByRole("button", { name: "棋譜を検討する" }));
+            await clickStartReview();
 
+            expect(fetchMock).not.toHaveBeenCalled();
             expect(mockNavigate).toHaveBeenCalledWith({ to: "/play" });
+            expect(readPlayHandoff()).toEqual({ sfen: "startpos", moves: MOVES });
+            expect(localStorage.getItem("ramu_resume_token_test-room")).toBeNull();
+        });
+
+        it.each([
+            ["セッションが切れていた（401）", () => Promise.resolve({ ok: false, status: 401 })],
+            ["棋譜を開く権限が無い（403）", () => Promise.resolve({ ok: false, status: 403 })],
+            [
+                "参加したときと別のアカウント（404）",
+                () => Promise.resolve({ ok: false, status: 404 }),
+            ],
+            ["通信に失敗した", () => Promise.reject(new TypeError("network"))],
+        ] as const)("棋譜のページを開けない対局者は、手元の棋譜を駒落ちの開始局面ごと検討画面で開く: %s", async (_label, respond) => {
+            // 画面にはログイン中と出ていても、サーバーが棋譜を見せるとは限らない
+            currentSession = { authenticated: true, user: { displayName: "Alice" } };
+            stubGameRecordFetch(respond);
+            render(<RoomPage />);
+            await deliverOnOpen("test-room", [
+                finishedSnapshot({
+                    settings: {
+                        ...(ROOM_INFO.settings as SnapshotPayload["settings"]),
+                        startSfen: "handicap:bishop",
+                    },
+                }),
+            ]);
+
+            await clickStartReview();
+
+            expect(mockNavigate).toHaveBeenCalledTimes(1);
+            expect(mockNavigate).toHaveBeenCalledWith({ to: "/play" });
+            expect(readPlayHandoff()).toEqual({
+                sfen: "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+                moves: MOVES,
+            });
+            expect(localStorage.getItem("ramu_resume_token_test-room")).toBeNull();
+        });
+
+        it("観戦者は、棋譜のページを確かめずに手元の棋譜を検討画面で開く", async () => {
+            const fetchMock = stubGameRecordFetch(() => Promise.resolve({ ok: true, status: 200 }));
+            localStorage.clear();
+            render(<RoomPage />);
+            fireEvent.change(screen.getByLabelText(/名前/), { target: { value: "Carol" } });
+            await act(async () => {
+                fireEvent.click(screen.getByRole("button", { name: "観戦者として参加する" }));
+            });
+            await deliverOnOpen("test-room", [
+                {
+                    v: 1,
+                    t: "joined",
+                    payload: { roomId: "test-room", seat: "s", youAre: "spectator" },
+                },
+                finishedSnapshot(),
+            ]);
+
+            await clickStartReview();
+
+            expect(fetchMock).not.toHaveBeenCalled();
+            expect(mockNavigate).toHaveBeenCalledWith({ to: "/play" });
+            expect(readPlayHandoff()).toEqual({ sfen: "startpos", moves: MOVES });
+        });
+
+        it("確かめている間に何度押しても、遷移は 1 回だけ", async () => {
+            let respond: (response: Pick<Response, "ok" | "status">) => void = () => {};
+            const fetchMock = stubGameRecordFetch(
+                () =>
+                    new Promise((resolve) => {
+                        respond = resolve;
+                    }),
+            );
+            render(<RoomPage />);
+            await deliverOnOpen("test-room", [finishedSnapshot()]);
+
+            await clickStartReview();
+            await clickStartReview();
+            await act(async () => {
+                respond({ ok: true, status: 200 });
+            });
+
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+            expect(mockNavigate).toHaveBeenCalledTimes(1);
+            expect(mockNavigate).toHaveBeenCalledWith({
+                to: "/games/$gameId",
+                params: { gameId: "record-1" },
+            });
+        });
+
+        it.each([
+            ["画面を閉じた", ({ unmount }: { unmount: () => void }) => unmount()],
+            [
+                "別のルームへ移った",
+                ({ rerender }: { rerender: (ui: ReactNode) => void }) => {
+                    currentRoomId = "room-b";
+                    rerender(<RoomPage />);
+                },
+            ],
+        ] as const)("確かめている間に%sら、応答が来ても遷移せず、引き継ぎも席の記憶の削除もしない", async (_label, leave) => {
+            let respond: (response: Pick<Response, "ok" | "status">) => void = () => {};
+            const fetchMock = stubGameRecordFetch(
+                () =>
+                    new Promise((resolve) => {
+                        respond = resolve;
+                    }),
+            );
+            const view = render(<RoomPage />);
+            await deliverOnOpen("test-room", [finishedSnapshot()]);
+
+            await clickStartReview();
+            const { signal } = fetchMock.mock.calls[0][1] as RequestInit;
+            await act(async () => {
+                leave(view);
+            });
+            expect(signal?.aborted).toBe(true);
+            await act(async () => {
+                respond({ ok: true, status: 200 });
+            });
+
+            expect(mockNavigate).not.toHaveBeenCalled();
+            expect(readPlayHandoff()).toBeUndefined();
+            expect(localStorage.getItem("ramu_resume_token_test-room")).toBe("token-test-room");
+        });
+
+        it("確かめている間に「トップへ戻る」を押したら、応答が来てもトップへの遷移だけにする", async () => {
+            let respond: (response: Pick<Response, "ok" | "status">) => void = () => {};
+            stubGameRecordFetch(
+                () =>
+                    new Promise((resolve) => {
+                        respond = resolve;
+                    }),
+            );
+            render(<RoomPage />);
+            await deliverOnOpen("test-room", [finishedSnapshot()]);
+
+            await clickStartReview();
+            fireEvent.click(screen.getByRole("button", { name: "トップへ戻る" }));
+            await act(async () => {
+                respond({ ok: false, status: 401 });
+            });
+
+            expect(mockNavigate).toHaveBeenCalledTimes(1);
+            expect(mockNavigate).toHaveBeenCalledWith({ to: "/" });
+            expect(readPlayHandoff()).toBeUndefined();
+        });
+
+        it("局面を引き継げなかったら、遷移せず席の記憶も残す", async () => {
+            stubGameRecordFetch(() => Promise.resolve({ ok: false, status: 401 }));
+            const alert = vi.fn();
+            vi.stubGlobal("alert", alert);
+            render(<RoomPage />);
+            await deliverOnOpen("test-room", [finishedSnapshot()]);
+
+            const setItem = vi.spyOn(window.sessionStorage, "setItem").mockImplementation(() => {
+                throw new Error("QuotaExceededError");
+            });
+            try {
+                await clickStartReview();
+            } finally {
+                setItem.mockRestore();
+            }
+
+            expect(alert).toHaveBeenCalledTimes(1);
+            expect(mockNavigate).not.toHaveBeenCalled();
+            expect(localStorage.getItem("ramu_resume_token_test-room")).toBe("token-test-room");
+            expect(localStorage.getItem("ramu_seat_test-room")).toBe("b");
         });
 
         it("結果を持たない終局済み snapshot だけでは終局表示を出さない", async () => {
@@ -349,7 +563,8 @@ describe("RoomPage", () => {
                 socketFor("room-b").receive(gameEnd(6, "w", "record-b"));
             });
             expect(screen.getAllByText("Bob の勝ち")).toHaveLength(1);
-            fireEvent.click(screen.getByRole("button", { name: "棋譜を検討する" }));
+            stubGameRecordFetch(() => Promise.resolve({ ok: true, status: 200 }));
+            await clickStartReview();
 
             expect(mockNavigate).toHaveBeenCalledWith({
                 to: "/games/$gameId",
@@ -531,9 +746,6 @@ describe("RoomPage", () => {
                 const socket = await reconnect(await openGame());
 
                 expect(socket.sent.filter((message) => message.t === "resume")).toEqual([
-                    expect.objectContaining({
-                        payload: { resumeToken: "token-test-room", lastEventId: 5 },
-                    }),
                     expect.objectContaining({
                         payload: { resumeToken: "token-test-room", lastEventId: 0 },
                     }),
@@ -1198,6 +1410,90 @@ describe("RoomPage", () => {
                 .getAttribute("aria-label") as string;
         }
 
+        it("SFEN 直接入力に切り替えただけでは、対局設定の開始局面は送った局面のまま入力待ちと出す", async () => {
+            const socket = await joinAndWait("b");
+            const settingsRow = (): string =>
+                screen.getByText("開始局面", { selector: "span" }).parentElement
+                    ?.textContent as string;
+            const chooseStart = (label: string): void => {
+                fireEvent.keyDown(screen.getByRole("combobox", { name: "開始局面を選択" }), {
+                    key: "ArrowDown",
+                });
+                fireEvent.keyDown(screen.getByRole("option", { name: label }), { key: "Enter" });
+            };
+
+            chooseStart("角落ち");
+            chooseStart("SFEN 直接入力");
+            expect(settingsRow()).toBe("開始局面角落ち（SFEN 入力待ち）");
+
+            fireEvent.change(screen.getByPlaceholderText(/^例: lnsgkgsnl/), {
+                target: { value: "4k4/9/9/9/9/9/9/9/4K4 b - 1" },
+            });
+            expect(settingsRow()).toBe("開始局面カスタム局面");
+            expect(
+                socket.sent
+                    .filter((message) => message.t === "update_settings")
+                    .map((message) => message.payload),
+            ).toEqual([
+                { startSfen: "handicap:bishop" },
+                { startSfen: "4k4/9/9/9/9/9/9/9/4K4 b - 1" },
+            ]);
+        });
+
+        it("SFEN 入力待ちの間に相手が開始局面を変更したら、その局面を出して入力待ちを外す", async () => {
+            const socket = await joinAndWait("b");
+            const settingsRow = (): string =>
+                screen.getByText("開始局面", { selector: "span" }).parentElement
+                    ?.textContent as string;
+            fireEvent.keyDown(screen.getByRole("combobox", { name: "開始局面を選択" }), {
+                key: "ArrowDown",
+            });
+            fireEvent.keyDown(screen.getByRole("option", { name: "SFEN 直接入力" }), {
+                key: "Enter",
+            });
+            expect(settingsRow()).toBe("開始局面平手（SFEN 入力待ち）");
+
+            await receive(socket, [settingsUpdated(1, "handicap:rook")]);
+
+            expect(settingsRow()).toBe("開始局面飛車落ち");
+        });
+
+        it("開始局面を変更した後に届いた待機中の snapshot の開始局面を、対局設定に出す", async () => {
+            const socket = await joinAndWait("b");
+            const settingsRow = (): string =>
+                screen.getByText("開始局面", { selector: "span" }).parentElement
+                    ?.textContent as string;
+            fireEvent.keyDown(screen.getByRole("combobox", { name: "開始局面を選択" }), {
+                key: "ArrowDown",
+            });
+            fireEvent.keyDown(screen.getByRole("option", { name: "角落ち" }), { key: "Enter" });
+            expect(settingsRow()).toBe("開始局面角落ち");
+
+            const waiting = makeSnapshot({
+                eventId: 2,
+                status: "waiting",
+                sfen: "lnsgkgsnl/7b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+                moves: [],
+                turn: "w",
+                players: { b: { name: "Alice", online: true }, w: null },
+            });
+            await receive(socket, [
+                {
+                    v: 1,
+                    t: "snapshot",
+                    payload: {
+                        ...waiting,
+                        settings: { ...waiting.settings, startSfen: "handicap:rook" },
+                    },
+                },
+            ]);
+
+            expect(settingsRow()).toBe("開始局面飛車落ち");
+            expect(screen.getByRole("combobox", { name: "開始局面を選択" }).textContent).toBe(
+                "飛車落ち",
+            );
+        });
+
         it("開始局面が変更されなければ、平手の先手番で始まり、先手は平手の合法手を取得する", async () => {
             const socket = await joinAndWait("b");
 
@@ -1322,18 +1618,8 @@ describe("RoomPage", () => {
             }
             const socket = socketFor("test-room");
             expect(socket).not.toBe(firstSocket);
-            const move = eventMessage({
-                kind: "move",
-                eventId: 3,
-                serverTs: 0,
-                usi: "3c3d",
-                turn: "b",
-                clock: makeSnapshot().clock,
-                passRights: null,
-            });
-            // RoomClient 自身の resume には差分（指し手）だけが返り、snapshot は取り直しの要求に返る
+            // 席へ戻る resume は lastEventId 0 なので、切断中の指し手は snapshot に含まれて返る
             await deliverOnOpen("test-room", [
-                move,
                 {
                     v: 1,
                     t: "snapshot",
@@ -1348,7 +1634,6 @@ describe("RoomPage", () => {
             ]);
 
             expect(socket.sent.filter((message) => message.t === "resume")).toEqual([
-                expect.objectContaining({ payload: { resumeToken: "token", lastEventId: 2 } }),
                 expect.objectContaining({ payload: { resumeToken: "token", lastEventId: 0 } }),
             ]);
             expect(squareLabel("2b")).toBe("2b 空マス");
@@ -1403,10 +1688,27 @@ describe("RoomPage", () => {
                 expect(screen.getByText(WAITING_TEXT)).toBeTruthy();
 
                 await receive(socket, [
-                    { v: 1, t: "error", payload: { code: "INVALID_TOKEN", message: "" } },
+                    { v: 1, t: "error", payload: { code: "UNKNOWN", message: "" } },
                 ]);
 
                 expectReloadGuidanceOnly();
+            });
+
+            it("開始局面を解釈できない対局開始の後、snapshot の代わりに INVALID_TOKEN が返ったら、席を捨てて参加フォームへ戻す", async () => {
+                const socket = await joinAndWait("b");
+                await receive(socket, [gameStart(1, UNKNOWN_PRESET)]);
+                expect(localStorage.getItem("ramu_resume_token_test-room")).toBe("token");
+
+                await receive(socket, [
+                    { v: 1, t: "error", payload: { code: "INVALID_TOKEN", message: "" } },
+                ]);
+
+                expect(
+                    screen.getByText("セッションが切れました。再度参加してください"),
+                ).toBeTruthy();
+                expect(screen.getByLabelText(/名前/)).toBeTruthy();
+                expect(screen.queryByRole("button", { name: "再読み込み" })).toBeNull();
+                expect(localStorage.getItem("ramu_resume_token_test-room")).toBeNull();
             });
 
             it("相手を待つ間にエラーが返ったら、再読み込みを案内し、ボタンで再読み込みする", async () => {

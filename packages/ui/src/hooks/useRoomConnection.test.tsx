@@ -8,14 +8,23 @@ const mockCreateRoomClient = vi.fn();
 const mockGetStoredResumeToken = vi.fn();
 const mockGetStoredSeat = vi.fn();
 const mockStoreSeat = vi.fn();
+const mockRemoveStoredResumeToken = vi.fn();
+const mockRemoveStoredSeat = vi.fn();
 
-vi.mock("@shogi/match-client", () => ({
+vi.mock("@shogi/match-client", async () => ({
+    isResumeTokenRejected: (
+        await vi.importActual<typeof import("@shogi/match-client")>("@shogi/match-client")
+    ).isResumeTokenRejected,
     createRoomClient: (...args: Parameters<typeof mockCreateRoomClient>) =>
         mockCreateRoomClient(...args),
     getStoredResumeToken: (...args: Parameters<typeof mockGetStoredResumeToken>) =>
         mockGetStoredResumeToken(...args),
     getStoredSeat: (...args: Parameters<typeof mockGetStoredSeat>) => mockGetStoredSeat(...args),
     storeSeat: (...args: Parameters<typeof mockStoreSeat>) => mockStoreSeat(...args),
+    removeStoredResumeToken: (...args: Parameters<typeof mockRemoveStoredResumeToken>) =>
+        mockRemoveStoredResumeToken(...args),
+    removeStoredSeat: (...args: Parameters<typeof mockRemoveStoredSeat>) =>
+        mockRemoveStoredSeat(...args),
 }));
 
 function createMockClient() {
@@ -114,8 +123,14 @@ describe("useRoomConnection", () => {
         mockGetStoredResumeToken.mockReset();
         mockGetStoredSeat.mockReset();
         mockStoreSeat.mockReset();
+        mockRemoveStoredResumeToken.mockReset();
+        mockRemoveStoredSeat.mockReset();
         mockGetStoredResumeToken.mockReturnValue(null);
         mockGetStoredSeat.mockReturnValue(null);
+        mockRemoveStoredResumeToken.mockImplementation(() =>
+            mockGetStoredResumeToken.mockReturnValue(null),
+        );
+        mockRemoveStoredSeat.mockImplementation(() => mockGetStoredSeat.mockReturnValue(null));
     });
 
     afterEach(() => {
@@ -201,6 +216,7 @@ describe("useRoomConnection", () => {
                     status: "finished",
                     result: { winner: "b", reason: "resign" },
                     gameRecordId: "record-1",
+                    settings: SETTINGS,
                 },
             });
         });
@@ -231,7 +247,7 @@ describe("useRoomConnection", () => {
             roomA.emit({
                 v: 1,
                 t: "snapshot",
-                payload: { eventId: 7, status: "finished" },
+                payload: { eventId: 7, status: "finished", settings: SETTINGS },
             });
         });
         expect(result.current.gamePhase).toBe("playing");
@@ -549,7 +565,46 @@ describe("useRoomConnection", () => {
             });
 
             expect(result.current.localStartSfen).toBe("");
+            expect(result.current.appliedStartSfen).toBe("startpos");
             expect(connection.client.updateSettings).not.toHaveBeenCalled();
+        });
+
+        it("空の開始局面に切り替えても、サーバーへ送った開始局面は前のまま持つ", () => {
+            const { result } = joinAndWait("b");
+
+            act(() => {
+                result.current.handleUpdateStartSfen("handicap:bishop");
+                result.current.handleUpdateStartSfen("");
+            });
+
+            expect(result.current).toMatchObject({
+                localStartSfen: "",
+                appliedStartSfen: "handicap:bishop",
+            });
+        });
+
+        it("待機中の snapshot が届いたら、その開始局面を送った局面と選択中の局面の両方にする", () => {
+            const { connection, result } = joinAndWait("b");
+            const waiting = waitingSnapshot("b");
+            if (waiting.t !== "snapshot") throw new Error("unreachable");
+
+            act(() => {
+                result.current.handleUpdateStartSfen("handicap:bishop");
+                result.current.handleUpdateStartSfen("");
+                connection.emit({
+                    ...waiting,
+                    payload: {
+                        ...waiting.payload,
+                        eventId: 2,
+                        settings: { ...SETTINGS, startSfen: "handicap:rook" },
+                    },
+                });
+            });
+
+            expect(result.current).toMatchObject({
+                localStartSfen: "handicap:rook",
+                appliedStartSfen: "handicap:rook",
+            });
         });
 
         it("対局開始の後は購読をやめ、続くメッセージを対局画面に残す", () => {
@@ -560,7 +615,7 @@ describe("useRoomConnection", () => {
                 connection.emit(settingsUpdated(2, "handicap:rook"));
             });
 
-            expect(result.current.localStartSfen).toBeNull();
+            expect(result.current.localStartSfen).toBe("startpos");
             expect(result.current.snapshot).toMatchObject({ eventId: 1, sfen: STARTPOS_SFEN });
         });
 
@@ -614,6 +669,24 @@ describe("useRoomConnection", () => {
                 expect(result.current.snapshot).toEqual(playingSnapshot.payload);
             });
 
+            it("取り直しの resume が INVALID_TOKEN で拒まれたら、保存済みの席とトークンを捨てる", () => {
+                const { connection, result } = joinAndWait("b");
+                mockGetStoredResumeToken.mockReturnValue("token-1");
+
+                act(() => {
+                    connection.emit(gameStart(2, UNKNOWN_PRESET));
+                    connection.emit({
+                        v: 1,
+                        t: "error",
+                        payload: { code: "INVALID_TOKEN", message: "" },
+                    });
+                });
+
+                expect(mockRemoveStoredResumeToken).toHaveBeenCalledWith("room-1");
+                expect(mockRemoveStoredSeat).toHaveBeenCalledWith("room-1");
+                expect(result.current).toMatchObject({ joined: false, connectionLost: false });
+            });
+
             it("観戦者は参加し直して取り直した snapshot から開く", () => {
                 const { connection, result } = joinAndWait("s");
                 connection.client.join.mockClear();
@@ -634,7 +707,7 @@ describe("useRoomConnection", () => {
                 expect(result.current.snapshot).toEqual(playingSnapshot.payload);
             });
 
-            it("snapshot を待つ間に接続し直したら、対局者は差分でなく snapshot を求め直す", () => {
+            it("snapshot を待つ間に接続し直したら、対局者は RoomClient の resume が返す snapshot を待ち、重ねて求めない", () => {
                 const { connection, result, reopen } = joinAndWait("b");
                 mockGetStoredResumeToken.mockReturnValue("token-1");
                 act(() => {
@@ -644,11 +717,7 @@ describe("useRoomConnection", () => {
 
                 reopen(true);
 
-                expect(connection.client.resume).toHaveBeenCalledTimes(2);
-                expect(connection.client.resume).toHaveBeenLastCalledWith({
-                    resumeToken: "token-1",
-                    lastEventId: 0,
-                });
+                expect(connection.client.resume).toHaveBeenCalledTimes(1);
 
                 // 差分として届く指し手では開かず、snapshot が届いてから開く
                 act(() => {
@@ -871,12 +940,29 @@ describe("useRoomConnection", () => {
                 connection.emit({
                     v: 1,
                     t: "error",
-                    payload: { code: "INVALID_TOKEN", message: "" },
+                    payload: { code: "UNKNOWN", message: "" },
                 });
             });
 
             expect(result.current.joinError).toBe("セッションが切れました。再度参加してください。");
             expect(result.current).toMatchObject({ joined: false, connectionLost: true });
+            expect(mockRemoveStoredResumeToken).not.toHaveBeenCalled();
+        });
+
+        it.each([
+            "INVALID_TOKEN",
+            "ROOM_NOT_FOUND",
+            "ROOM_EXPIRED",
+        ] as const)("待機中に %s が返ったら、保存済みの席とトークンを捨てて参加フォームへ戻す", (code) => {
+            const { connection, result } = resumeAndWait("b");
+
+            act(() => {
+                connection.emit({ v: 1, t: "error", payload: { code, message: "" } });
+            });
+
+            expect(mockRemoveStoredResumeToken).toHaveBeenCalledWith("room-1");
+            expect(mockRemoveStoredSeat).toHaveBeenCalledWith("room-1");
+            expect(result.current).toMatchObject({ joined: false, connectionLost: false });
         });
 
         it("resume がエラーで拒否されたら、参加フォームへ戻す", () => {
@@ -900,6 +986,24 @@ describe("useRoomConnection", () => {
                 isJoining: false,
                 joinError: "セッションが切れました。再度参加してください。",
             });
+            expect(mockRemoveStoredResumeToken).toHaveBeenCalledWith("room-1");
+            expect(mockRemoveStoredSeat).toHaveBeenCalledWith("room-1");
+        });
+
+        it("resume に応答が無いまま時間切れになっても、保存済みの席とトークンは残す", () => {
+            const connection = createMockClient();
+            mockGetStoredResumeToken.mockReturnValue("token-1");
+            mockGetStoredSeat.mockReturnValue("b");
+            mockCreateRoomClient.mockReturnValue(connection.client);
+            const { result } = renderHook(() => useRoomConnection({ roomId: "room-1" }));
+
+            act(() => {
+                vi.advanceTimersByTime(5_000);
+            });
+
+            expect(result.current.joinError).toBe("接続タイムアウト。再度参加してください。");
+            expect(mockRemoveStoredResumeToken).not.toHaveBeenCalled();
+            expect(mockRemoveStoredSeat).not.toHaveBeenCalled();
         });
     });
 });

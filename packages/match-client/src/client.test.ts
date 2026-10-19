@@ -261,6 +261,35 @@ describe("createRoomClient", () => {
         client.disconnect();
     });
 
+    it("再接続の resume は、受け取ったイベントの番号によらず snapshot が返る lastEventId 0 で送る", () => {
+        const stored = new Map([["ramu_resume_token_room1", "token-1"]]);
+        vi.stubGlobal("localStorage", { getItem: (key: string) => stored.get(key) ?? null });
+        const { factory, instances } = createMockWsFactory();
+        const client = createRoomClient(
+            { wsUrl: "ws://localhost/api/rooms/room1/ws" },
+            factory as unknown as (url: string) => WebSocket,
+        );
+        instances[0].emitOpen();
+        instances[0].emitMessage({
+            v: 1,
+            t: "event",
+            payload: { kind: "player_online", eventId: 7, seat: "w", serverTs: 0 },
+        });
+        instances[0].close();
+        vi.advanceTimersByTime(1000);
+        instances[1].emitOpen();
+
+        expect(instances[1].sentMessages.map((m) => JSON.parse(m))).toEqual([
+            {
+                v: 1,
+                t: "resume",
+                clientMsgId: expect.any(Number),
+                payload: { resumeToken: "token-1", lastEventId: 0 },
+            },
+        ]);
+        client.disconnect();
+    });
+
     it("disconnect() による切断は購読者へ通知しない", () => {
         const { factory, instances } = createMockWsFactory();
         const client = createRoomClient(

@@ -160,6 +160,15 @@ const moveList = () => screen.getByRole("region", { name: "棋譜と変化" });
 const currentMove = () =>
     within(moveList()).getAllByRole("button", { current: true })[0]?.textContent ?? "";
 
+/**
+ * コメントの入力欄。コメント欄は普段は畳んであるので、閉じていれば盤の上のボタンで開いてから返す。
+ */
+const commentTextbox = (): HTMLElement => {
+    const open = screen.queryByRole("button", { name: /^コメントを開く/ });
+    if (open && !(open as HTMLButtonElement).disabled) fireEvent.click(open);
+    return screen.getByRole("textbox", { name: "コメント" });
+};
+
 describe("StudyWorkspaceView", () => {
     beforeEach(() => {
         localStorage.clear();
@@ -443,6 +452,92 @@ describe("StudyWorkspaceView", () => {
         expect(onOps).not.toHaveBeenCalled();
     });
 
+    it("コメント欄は畳んでおき、盤の上のボタンで開く。コメントのある手ではボタンに印を付ける", () => {
+        const { doc, ids } = createTestStudy();
+        doc.tree.nodes[ids[1]].comment = "角道を開ける";
+        render(<Harness initialDoc={doc} />);
+
+        // 畳んでいる間も欄は描いたまま（書きかけの保存が進むように）、見えないだけにする。
+        expect(screen.queryByRole("textbox", { name: "コメント" })).toBeNull();
+        expect(screen.getByRole("button", { name: "コメントを開く" })).toBeTruthy();
+
+        fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+        const open = screen.getByRole("button", { name: "コメントを開く（コメントあり）" });
+        fireEvent.click(open);
+        expect(
+            (screen.getByRole("textbox", { name: "コメント" }) as HTMLTextAreaElement).value,
+        ).toBe("角道を開ける");
+
+        // 開いたままにすれば、手を送っても出続ける。
+        fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+        expect(screen.getByRole("textbox", { name: "コメント" })).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "コメントを閉じる" }));
+        expect(screen.queryByRole("textbox", { name: "コメント" })).toBeNull();
+    });
+
+    it("保存できていない書きかけがある手では、畳んでいてもコメント欄を開いて見せ、直している間も開いたままにする", () => {
+        const { doc, ids } = createTestStudy();
+        const tooLong = "あ".repeat(2000);
+        render(
+            <Harness
+                initialDoc={doc}
+                initialCommentDrafts={[{ nodeId: ids[1], text: tooLong, base: "" }]}
+            />,
+        );
+
+        // 書きかけの無い手では、畳んだまま。
+        expect(screen.queryByRole("textbox", { name: "コメント" })).toBeNull();
+
+        // 長すぎる書きかけのある手へ移ると、ボタンを押さなくても欄が開く（閉じることはできない）。
+        fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+        const comment = () =>
+            screen.getByRole("textbox", { name: "コメント" }) as HTMLTextAreaElement;
+        expect(comment().value).toBe(tooLong);
+        expect(
+            (
+                screen.getByRole("button", {
+                    name: "コメント（保存できていない書きかけがあります）",
+                }) as HTMLButtonElement
+            ).disabled,
+        ).toBe(true);
+
+        // 短くして上限に収まっても、入力中の欄は閉じない。
+        fireEvent.change(comment(), { target: { value: "短くした" } });
+        expect(comment().value).toBe("短くした");
+        expect(screen.getByRole("button", { name: "コメントを閉じる" })).toBeTruthy();
+    });
+
+    it("保存できなかった書きかけがある手は、欄を畳んでもボタンの名前で分かる", async () => {
+        const { doc } = createTestStudy();
+        render(<Harness initialDoc={doc} rejectOps />);
+
+        fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+        const comment = commentTextbox();
+        fireEvent.change(comment, { target: { value: "保存できない" } });
+        fireEvent.blur(comment);
+        await act(async () => {});
+
+        fireEvent.click(screen.getByRole("button", { name: "コメントを閉じる" }));
+        expect(
+            screen.getByRole("button", { name: "コメントを開く（保存していない書きかけあり）" }),
+        ).toBeTruthy();
+    });
+
+    it("表題が「先手 対 後手」の形のままなら、対局者の行を重ねて出さない", () => {
+        const { doc } = createTestStudy();
+        const view = render(<Harness initialDoc={doc} />);
+        expect(screen.getByText("☗先手太郎 対 ☖後手花子")).toBeTruthy();
+        view.unmount();
+
+        const same = render(<Harness initialDoc={{ ...doc, title: "先手太郎 対 後手花子" }} />);
+        expect(screen.queryByText("☗先手太郎 対 ☖後手花子")).toBeNull();
+        same.unmount();
+
+        // 名前を含むだけの表題（利用者が書き換えた）では、先後の分かる行を残す。
+        render(<Harness initialDoc={{ ...doc, title: "先手太郎と後手花子の研究" }} />);
+        expect(screen.getByText("☗先手太郎 対 ☖後手花子")).toBeTruthy();
+    });
+
     it("しおり・コメント・表題の編集が操作として流れる", async () => {
         const { doc, ids } = createTestStudy();
         const onOps = vi.fn();
@@ -459,7 +554,7 @@ describe("StudyWorkspaceView", () => {
             within(highlights()).getByRole("button", { name: /1手目 ☗7六歩\(77\)/ }),
         ).toBeTruthy();
 
-        const comment = screen.getByRole("textbox", { name: "コメント" });
+        const comment = commentTextbox();
         fireEvent.change(comment, { target: { value: "角道を開ける" } });
         fireEvent.blur(comment);
         expect(onOps).toHaveBeenLastCalledWith([
@@ -997,8 +1092,7 @@ describe("StudyWorkspaceView", () => {
         const onOps = vi.fn();
         const onDraft = vi.fn();
         render(<Harness initialDoc={doc} onOps={onOps} onCommentDraftChange={onDraft} />);
-        const comment = () =>
-            screen.getByRole("textbox", { name: "コメント" }) as HTMLTextAreaElement;
+        const comment = () => commentTextbox() as HTMLTextAreaElement;
         const tooLong = "あ".repeat(2000);
 
         fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
@@ -1126,7 +1220,7 @@ describe("StudyWorkspaceView", () => {
         const { doc, ids } = createTestStudy();
         const onDraft = vi.fn();
         render(<Harness initialDoc={doc} onOps={vi.fn()} onCommentDraftChange={onDraft} />);
-        const comment = () => screen.getByRole("textbox", { name: "コメント" });
+        const comment = () => commentTextbox();
         // 「けす」→「け」→「」（保存済みと同じ）と、自動保存の前に打って消す。
         fireEvent.change(comment(), { target: { value: "けす" } });
         fireEvent.change(comment(), { target: { value: "け" } });
@@ -1145,7 +1239,7 @@ describe("StudyWorkspaceView", () => {
             const view = render(
                 <Harness initialDoc={doc} onOps={onOps} onCommentDraftChange={onDraft} />,
             );
-            const comment = () => screen.getByRole("textbox", { name: "コメント" });
+            const comment = () => commentTextbox();
             fireEvent.change(comment(), { target: { value: "書きかけ" } });
             expect(onDraft).toHaveBeenLastCalledWith(ids[0], {
                 type: "set",
@@ -1239,9 +1333,7 @@ describe("StudyWorkspaceView", () => {
             for (const name of ["この局面を深く解析", "残りを解析", "この手にしおりを付ける"]) {
                 expect(screen.getByRole("button", { name }).closest("[inert]")).toBeTruthy();
             }
-            expect(
-                screen.getByRole("textbox", { name: "コメント" }).closest("[inert]"),
-            ).toBeTruthy();
+            expect(commentTextbox().closest("[inert]")).toBeTruthy();
             // キーボードでも動かない。
             const before = currentMove();
             fireEvent.keyDown(window, { key: "ArrowRight" });
@@ -1268,9 +1360,7 @@ describe("StudyWorkspaceView", () => {
                 />,
             );
 
-            expect(
-                (screen.getByRole("textbox", { name: "コメント" }) as HTMLTextAreaElement).value,
-            ).toBe("戻ってきた下書き");
+            expect((commentTextbox() as HTMLTextAreaElement).value).toBe("戻ってきた下書き");
             await waitFor(
                 () =>
                     expect(onOps).toHaveBeenCalledWith([
@@ -1291,7 +1381,7 @@ describe("StudyWorkspaceView", () => {
             const onDraft = vi.fn();
             render(<Harness initialDoc={doc} onCommentDraftChange={onDraft} rejectOps />);
 
-            const comment = screen.getByRole("textbox", { name: "コメント" });
+            const comment = commentTextbox();
             fireEvent.change(comment, { target: { value: "保存できない" } });
             fireEvent.blur(comment);
 
@@ -1307,8 +1397,7 @@ describe("StudyWorkspaceView", () => {
     });
 
     describe("コメントの下書きと、あとから届く保存の結果・他の端末の変更", () => {
-        const comment = () =>
-            screen.getByRole("textbox", { name: "コメント" }) as HTMLTextAreaElement;
+        const comment = () => commentTextbox() as HTMLTextAreaElement;
         const next = () => fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
         const back = () => fireEvent.click(screen.getByRole("button", { name: "1 手戻る（←）" }));
         const wait = (ms: number) =>
@@ -1619,8 +1708,7 @@ describe("StudyWorkspaceView", () => {
     });
 
     describe("開いた直後（サーバーの最新のコメントを取り込む前）の書きかけ", () => {
-        const comment = () =>
-            screen.getByRole("textbox", { name: "コメント" }) as HTMLTextAreaElement;
+        const comment = () => commentTextbox() as HTMLTextAreaElement;
         const prompt = () => screen.getByRole("group", { name: "書きかけの扱い" });
         const queryPrompt = () => screen.queryByRole("group", { name: "書きかけの扱い" });
         const wait = (ms: number) =>

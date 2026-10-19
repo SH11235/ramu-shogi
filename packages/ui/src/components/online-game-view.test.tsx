@@ -70,12 +70,18 @@ vi.mock("@shogi/app-core", async () => {
 vi.mock("./shogi-board", () => ({
     ShogiBoard: ({
         selectedSquare,
+        lastMove,
         onSelect,
     }: {
         selectedSquare?: string | null;
+        lastMove?: { to?: string | null };
         onSelect?: (square: string) => void;
     }) => (
-        <div data-testid="shogi-board" data-selected={selectedSquare ?? ""}>
+        <div
+            data-testid="shogi-board"
+            data-selected={selectedSquare ?? ""}
+            data-last-move={lastMove?.to ?? ""}
+        >
             {["7g", "7f"].map((square) => (
                 <button key={square} type="button" onClick={() => onSelect?.(square)}>
                     {`マス ${square}`}
@@ -234,6 +240,7 @@ function startReview(onStartReview: ReturnType<typeof vi.fn>): {
 }
 
 const { OnlineGameView } = await import("./online-game-view");
+const { applyMoveWithState } = await import("@shogi/app-core");
 
 describe("OnlineGameView", () => {
     beforeEach(() => {
@@ -399,7 +406,7 @@ describe("OnlineGameView", () => {
         });
     });
 
-    it("再接続後の同期を待つ間に画面を離れたら、snapshot の要求を送り直さない", () => {
+    it("再接続しても snapshot を自分では求めず、同期を待つ間に画面を離れたら送り直さない", () => {
         vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
         try {
             const statusHandlers = new Set<(status: RoomClientStatus) => void>();
@@ -424,12 +431,13 @@ describe("OnlineGameView", () => {
                     for (const handler of statusHandlers) handler(status);
                 }
             });
-            expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+            // 対局者の席へ戻る resume は RoomClient が snapshot の返る形で送る
+            expect(requestFullSnapshot).not.toHaveBeenCalled();
 
             unmount();
             vi.advanceTimersByTime(60_000);
 
-            expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+            expect(requestFullSnapshot).not.toHaveBeenCalled();
         } finally {
             vi.useRealTimers();
         }
@@ -486,6 +494,75 @@ describe("OnlineGameView", () => {
                 moves: FINAL_MOVES,
                 gameRecordId: "record-1",
             });
+        });
+
+        it("結果ダイアログを閉じると盤面下に結果を出し、「結果を表示」で開き直せる", () => {
+            render(
+                <OnlineGameView
+                    client={makeMockClient()}
+                    snapshot={makeFinishedSnapshot({ result: RESIGN_RESULT })}
+                    seat="w"
+                    roomId="test-room"
+                    onStartReview={vi.fn()}
+                />,
+            );
+
+            // 帯は高さだけ確保し、ダイアログを開いている間は操作できない
+            expect(screen.queryByRole("button", { name: "結果を表示" })).toBeNull();
+
+            fireEvent.click(screen.getByRole("button", { name: "盤面を見る" }));
+
+            expect(screen.queryByRole("heading", { name: "Alice の勝ち" })).toBeNull();
+            expect(screen.queryByRole("button", { name: "棋譜を検討する" })).toBeNull();
+            expect(screen.getByText("Alice の勝ち（投了）")).toBeTruthy();
+            expect(screen.getByRole("button", { name: "結果を表示" })).toBeTruthy();
+
+            expect(document.activeElement).toBe(screen.getByRole("button", { name: "結果を表示" }));
+
+            fireEvent.click(screen.getByRole("button", { name: "結果を表示" }));
+
+            expect(document.activeElement).toBe(screen.getByRole("dialog"));
+            expect(screen.getByRole("heading", { name: "Alice の勝ち" })).toBeTruthy();
+            expect(screen.getByRole("button", { name: "棋譜を検討する" })).toBeTruthy();
+            expect(screen.queryByRole("button", { name: "結果を表示" })).toBeNull();
+        });
+
+        it("結果ダイアログは Escape でも閉じられる", () => {
+            render(
+                <OnlineGameView
+                    client={makeMockClient()}
+                    snapshot={makeFinishedSnapshot({ result: RESIGN_RESULT })}
+                    seat="s"
+                    roomId="test-room"
+                />,
+            );
+
+            fireEvent.keyDown(screen.getByRole("dialog", { name: "Alice の勝ち" }), {
+                key: "Escape",
+            });
+
+            expect(screen.queryByRole("dialog")).toBeNull();
+            expect(screen.getByText("Alice の勝ち（投了）")).toBeTruthy();
+            expect(screen.getByRole("button", { name: "結果を表示" })).toBeTruthy();
+        });
+
+        it("結果ダイアログを閉じた後に同じ結果の game_end が届いても開き直さない", async () => {
+            const { client, emit } = makeSubscribableClient();
+            render(
+                <OnlineGameView
+                    client={client}
+                    snapshot={makeFinishedSnapshot({ eventId: 6, result: RESIGN_RESULT })}
+                    seat="b"
+                    roomId="test-room"
+                />,
+            );
+
+            fireEvent.click(screen.getByRole("button", { name: "盤面を見る" }));
+            await emit(gameEndMessage(7, "record-1"));
+
+            expect(screen.queryByRole("heading", { name: "Alice の勝ち" })).toBeNull();
+            expect(screen.getByText("Alice の勝ち（投了）")).toBeTruthy();
+            expect(screen.getByRole("button", { name: "結果を表示" })).toBeTruthy();
         });
 
         it("result と gameRecordId が無い snapshot では終局表示を出さない", () => {
@@ -768,7 +845,10 @@ describe("OnlineGameView", () => {
 
             fireEvent.click(screen.getByRole("button", { name: "棋譜をコピー" }));
             const kif: string = writeText.mock.lastCall?.[0];
-            expect(kif.split("\n").filter((line) => /^ +\d+ /.test(line))).toHaveLength(3);
+            const numberedLines = kif.split("\n").filter((line) => /^ +\d+ /.test(line));
+            expect(numberedLines).toHaveLength(4);
+            expect(numberedLines[3]).toBe("   4 投了");
+            expect(kif).toContain("まで3手で先手の勝ち");
             vi.unstubAllGlobals();
         });
 
@@ -820,6 +900,43 @@ describe("OnlineGameView", () => {
             });
 
             expect(screen.getByText("4.")).toBeTruthy();
+        });
+
+        it("snapshot と届いた指し手のうち最後の手をハイライトする", async () => {
+            const { client, emit } = makeSubscribableClient();
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" })}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                );
+            });
+            expect(screen.getByTestId("shogi-board").dataset.lastMove).toBe("2b");
+
+            await emit(moveMessage(6, "9c9d", "b"));
+            expect(screen.getByTestId("shogi-board").dataset.lastMove).toBe("9d");
+        });
+
+        it("指し手を再生できない snapshot では、棋譜と同じく最後の手もハイライトしない", async () => {
+            vi.mocked(applyMoveWithState).mockReturnValueOnce({
+                ok: false,
+                next: { board: {}, hands: { sente: {}, gote: {} } } as never,
+            });
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={makeMockClient()}
+                        snapshot={makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" })}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                );
+            });
+            expect(screen.getByText("まだ指し手がありません")).toBeTruthy();
+            expect(screen.getByTestId("shogi-board").dataset.lastMove).toBe("");
         });
     });
 
@@ -1267,7 +1384,9 @@ describe("OnlineGameView", () => {
         });
 
         /** 画面を開いたときの読み込みを 2 回とも失敗させた状態で、後手からのメッセージを待つ */
-        async function renderUnrestored(): Promise<ReturnType<typeof makeSubscribableClient>> {
+        async function renderUnrestored(
+            requestFullSnapshot?: () => boolean,
+        ): Promise<ReturnType<typeof makeSubscribableClient>> {
             mockParseSfen.mockRejectedValue(new Error("parse failed"));
             const connection = makeSubscribableClient();
             await act(async () => {
@@ -1277,6 +1396,7 @@ describe("OnlineGameView", () => {
                         snapshot={makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" })}
                         seat="b"
                         roomId="test-room"
+                        requestFullSnapshot={requestFullSnapshot}
                     />,
                 );
             });
@@ -1311,6 +1431,157 @@ describe("OnlineGameView", () => {
             await recoverWith(emit, makeSnapshot({ eventId: 6, moves: FINAL_MOVES, turn: "w" }));
 
             expect(screen.getByText("3.")).toBeTruthy();
+        });
+
+        it("やり直しても読み込めなければ snapshot を取り寄せ、届いたら復帰する", async () => {
+            const requestFullSnapshot = vi.fn(() => true);
+            const { emit } = await renderUnrestored(requestFullSnapshot);
+            expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+
+            await recoverWith(emit, makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" }));
+
+            expect(screen.getByText("3.")).toBeTruthy();
+        });
+
+        it("取り寄せた snapshot が届かなければ回数を区切って送り直し、尽きたら接続切れを案内する", async () => {
+            vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+            try {
+                const requestFullSnapshot = vi.fn(() => true);
+                await renderUnrestored(requestFullSnapshot);
+
+                for (const calls of [2, 3]) {
+                    act(() => {
+                        vi.advanceTimersByTime(15_000);
+                    });
+                    expect(requestFullSnapshot).toHaveBeenCalledTimes(calls);
+                }
+                act(() => {
+                    vi.advanceTimersByTime(15_000);
+                });
+
+                expect(requestFullSnapshot).toHaveBeenCalledTimes(3);
+                expect(screen.getByText("接続が切れました。再読み込みしてください")).toBeTruthy();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it("取り寄せた snapshot より先に待ったの承認が届いても、snapshot で記録ごと作り直す", async () => {
+            vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+            try {
+                const requestFullSnapshot = vi.fn(() => true);
+                const { emit } = await renderUnrestored(requestFullSnapshot);
+                mockParseSfen.mockImplementation(async () => structuredClone(PARSED_POSITION));
+
+                await emit(
+                    eventMessage({
+                        kind: "takeback_accepted",
+                        eventId: 6,
+                        serverTs: 0,
+                        sfen: "lnsgkgsnl/1r5b1/ppppppppp/9/9/2P6/PP1PPPPPP/1B5R1/LNSGKGSNL w - 2",
+                        turn: "w",
+                        clock: makeSnapshot().clock,
+                        passRights: null,
+                    }),
+                );
+                // 盤面は出ても指し手の記録が欠けているので、snapshot が届くまで案内を残す
+                expect(screen.getByText(LOAD_FAILED)).toBeTruthy();
+
+                await recoverWith(emit, makeSnapshot({ eventId: 6, moves: ["7g7f"], turn: "w" }));
+                expect(screen.getByText("1.")).toBeTruthy();
+
+                act(() => {
+                    vi.advanceTimersByTime(60_000);
+                });
+                expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+                expect(screen.queryByText(/接続が切れました/)).toBeNull();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it("読み込み中に再接続して同期が始まっていれば、読み込みに失敗しても要求を重ねない", async () => {
+            vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+            try {
+                const parsing = holdParsing();
+                const snapshot = makeSnapshot({ eventId: 5, moves: FINAL_MOVES, turn: "w" });
+                const statusHandlers = new Set<(status: RoomClientStatus) => void>();
+                const { client } = makeSubscribableClient();
+                client.subscribeStatus = vi.fn((handler: (status: RoomClientStatus) => void) => {
+                    statusHandlers.add(handler);
+                    return () => statusHandlers.delete(handler);
+                });
+                const requestFullSnapshot = vi.fn(() => true);
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={snapshot}
+                        seat="b"
+                        roomId="test-room"
+                        requestFullSnapshot={requestFullSnapshot}
+                    />,
+                );
+                act(() => {
+                    for (const status of ["reconnecting", "connected"] as const) {
+                        for (const handler of statusHandlers) handler(status);
+                    }
+                });
+                expect(requestFullSnapshot).not.toHaveBeenCalled();
+
+                await parsing.fail(snapshot.sfen);
+                expect(screen.getByText(LOAD_FAILED)).toBeTruthy();
+                expect(requestFullSnapshot).not.toHaveBeenCalled();
+
+                for (let i = 0; i < 4; i += 1) {
+                    act(() => {
+                        vi.advanceTimersByTime(15_000);
+                    });
+                }
+                expect(requestFullSnapshot).toHaveBeenCalledTimes(2);
+                expect(screen.getByText("接続が切れました。再読み込みしてください")).toBeTruthy();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it.each([
+            "INVALID_TOKEN",
+            "ROOM_NOT_FOUND",
+            "ROOM_EXPIRED",
+        ] as const)("取り寄せた snapshot の代わりに %s が返ったら、保存済みの席とトークンを捨て、送り直さない", async (code) => {
+            vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+            try {
+                localStorage.setItem("ramu_resume_token_test-room", "token");
+                localStorage.setItem("ramu_seat_test-room", "b");
+                const requestFullSnapshot = vi.fn(() => true);
+                const { emit } = await renderUnrestored(requestFullSnapshot);
+
+                await emit({ v: 1, t: "error", payload: { code, message: "" } });
+                act(() => {
+                    vi.advanceTimersByTime(60_000);
+                });
+
+                expect(localStorage.getItem("ramu_resume_token_test-room")).toBeNull();
+                expect(localStorage.getItem("ramu_seat_test-room")).toBeNull();
+                expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+                expect(screen.getByText(/セッションが切れました/)).toBeTruthy();
+            } finally {
+                vi.useRealTimers();
+                localStorage.clear();
+            }
+        });
+
+        it("取り寄せた snapshot の代わりに一時的なエラーが返っても、保存済みの席とトークンは残す", async () => {
+            localStorage.setItem("ramu_resume_token_test-room", "token");
+            try {
+                const { emit } = await renderUnrestored(vi.fn(() => true));
+
+                await emit({ v: 1, t: "error", payload: { code: "RATE_LIMITED", message: "" } });
+
+                expect(localStorage.getItem("ramu_resume_token_test-room")).toBe("token");
+            } finally {
+                localStorage.clear();
+            }
         });
 
         it("読み込めない間に届いた待ったの申請は、復帰後に承認ダイアログとして出る", async () => {

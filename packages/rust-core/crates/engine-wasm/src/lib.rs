@@ -17,7 +17,10 @@ use rshogi_core::eval::{
 use rshogi_core::movegen::{MoveList, generate_legal_all_with_pass};
 use rshogi_core::nnue::{init_nnue_from_bytes, set_fv_scale_override};
 use rshogi_core::position::{Position, SFEN_HIRATE};
-use rshogi_core::search::{LimitsType, Search, SearchInfo, SearchResult, SkillOptions};
+use rshogi_core::search::{
+    AnalysisBudget, AnalysisRunHandle, AnalysisSession, LimitsType, Search, SearchInfo,
+    SearchResult, SkillOptions,
+};
 use rshogi_core::types::json::BoardStateJson;
 use rshogi_core::types::{Color, Move, Value};
 use serde::{Deserialize, Serialize};
@@ -113,7 +116,9 @@ fn install_panic_hook() {
 fn install_panic_hook() {}
 
 struct EngineState {
-    search: Search,
+    search: Option<Search>,
+    analysis: Option<AnalysisSession>,
+    analysis_run: Option<AnalysisRunHandle>,
     position: Position,
     default_multi_pv: usize,
 }
@@ -124,7 +129,9 @@ impl EngineState {
         position.set_sfen(SFEN_HIRATE).unwrap();
 
         Self {
-            search: Search::new(tt_size_mb),
+            search: Some(Search::new(tt_size_mb)),
+            analysis: None,
+            analysis_run: None,
             position,
             default_multi_pv: 1,
         }
@@ -418,6 +425,19 @@ fn with_engine_mut<R, F>(f: F) -> Result<R, JsValue>
 where
     F: FnOnce(&mut EngineState) -> Result<R, JsValue>,
 {
+    with_analysis_engine(|engine| {
+        if let Some(session) = engine.analysis.take() {
+            engine.search = Some(session.into_search());
+        }
+        engine.analysis_run = None;
+        f(engine)
+    })
+}
+
+fn with_analysis_engine<R, F>(f: F) -> Result<R, JsValue>
+where
+    F: FnOnce(&mut EngineState) -> Result<R, JsValue>,
+{
     install_panic_hook();
     ENGINE.with(|cell| {
         let mut guard = cell.borrow_mut();
@@ -534,12 +554,24 @@ pub fn init(opts: Option<JsValue>) -> Result<(), JsValue> {
             engine.default_multi_pv = mpv.max(1);
         }
         if let Some(threads) = opts.threads {
-            engine.search.set_num_threads(threads);
+            engine
+                .search
+                .as_mut()
+                .expect("normal engine owns search")
+                .set_num_threads(threads);
         }
         if let Some(size) = opts.eval_hash_size_mb {
-            engine.search.resize_eval_hash(size);
+            engine
+                .search
+                .as_mut()
+                .expect("normal engine owns search")
+                .resize_eval_hash(size);
         } else {
-            engine.search.resize_eval_hash(DEFAULT_EVAL_HASH_SIZE_MB);
+            engine
+                .search
+                .as_mut()
+                .expect("normal engine owns search")
+                .resize_eval_hash(DEFAULT_EVAL_HASH_SIZE_MB);
         }
         set_eval_hash_enabled(opts.use_eval_hash.unwrap_or(DEFAULT_USE_EVAL_HASH));
         *state.borrow_mut() = Some(engine);
@@ -804,13 +836,104 @@ pub fn apply_moves(moves: JsValue) -> Result<(), JsValue> {
     })
 }
 
+/// 同期探索の開始前に停止ハンドルを公開する。
+#[wasm_bindgen]
+pub fn prepare_analysis(resume: bool, budget: JsValue) -> Result<JsValue, JsValue> {
+    #[derive(Deserialize)]
+    #[serde(tag = "type", rename_all = "camelCase")]
+    enum Budget {
+        Unlimited,
+        Time { milliseconds: u64 },
+        Nodes { nodes: u64 },
+    }
+    let budget =
+        match swb::from_value::<Budget>(budget).map_err(|e| JsValue::from_str(&e.to_string()))? {
+            Budget::Unlimited => AnalysisBudget::Unlimited,
+            Budget::Time { milliseconds } => AnalysisBudget::Time(milliseconds),
+            Budget::Nodes { nodes } => AnalysisBudget::Nodes(nodes),
+        };
+    with_analysis_engine(|engine| {
+        if !resume {
+            if let Some(old) = engine.analysis.take() {
+                engine.search = Some(old.into_search());
+            }
+            let search = engine
+                .search
+                .take()
+                .ok_or_else(|| JsValue::from_str("search state missing"))?;
+            engine.analysis = Some(
+                AnalysisSession::new(search, engine.position.clone(), engine.default_multi_pv)
+                    .map_err(|e| JsValue::from_str(&e.to_string()))?,
+            );
+        }
+        let session = engine
+            .analysis
+            .as_mut()
+            .ok_or_else(|| JsValue::from_str("analysis session missing"))?;
+        let handle = session
+            .prepare(budget)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        #[cfg(target_arch = "wasm32")]
+        let address = handle.control_address();
+        #[cfg(not(target_arch = "wasm32"))]
+        let address = 0usize;
+        let descriptor = serde_json::json!({ "runId": handle.run_id(), "address": address });
+        engine.analysis_run = Some(handle);
+        descriptor
+            .serialize(&swb::Serializer::json_compatible())
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    })
+}
+
+/// 準備済みの解析を実行し、全 worker 停止後に完了情報を返す。
+#[wasm_bindgen]
+pub fn run_analysis(run_id: u32) -> Result<JsValue, JsValue> {
+    with_analysis_engine(|engine| {
+        let handle = engine
+            .analysis_run
+            .as_ref()
+            .filter(|handle| handle.run_id() == run_id)
+            .ok_or_else(|| JsValue::from_str("invalid analysis run"))?;
+        let session = engine
+            .analysis
+            .as_mut()
+            .ok_or_else(|| JsValue::from_str("analysis session missing"))?;
+        let finished = session
+            .run(handle, Some(|info: &SearchInfo| emit_info(info)))
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let reason = match finished.reason {
+            rshogi_core::search::AnalysisEndReason::Paused => "paused",
+            rshogi_core::search::AnalysisEndReason::BudgetReached => "budgetReached",
+            rshogi_core::search::AnalysisEndReason::DepthReached => "depthReached",
+            rshogi_core::search::AnalysisEndReason::Terminal => "terminal",
+        };
+        let value = serde_json::json!({ "runId": run_id, "reason": reason, "resumable": finished.resumable,
+            "completedDepth": finished.result.depth, "nodes": finished.result.nodes,
+            "timeMs": finished.time_ms, "totalNodes": finished.total_nodes, "totalTimeMs": finished.total_time_ms,
+            "workerDepths": finished.worker_depths });
+        value
+            .serialize(&swb::Serializer::json_compatible())
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    })
+}
+
+/// 停止済み解析の状態を解放する。
+#[wasm_bindgen]
+pub fn release_analysis() -> Result<(), JsValue> {
+    with_engine_mut(|_| Ok(()))
+}
+
 #[wasm_bindgen]
 pub fn search(params: Option<JsValue>) -> Result<(), JsValue> {
     let params = parse_search_params(params)?;
 
     with_engine_mut(|engine| {
         // stop/ponderhitフラグをリセット（go()呼び出し前に必須）
-        engine.search.reset_flags();
+        engine
+            .search
+            .as_mut()
+            .expect("normal engine owns search")
+            .reset_flags();
 
         let mut limits = LimitsType::new();
         limits.set_start_time();
@@ -838,11 +961,15 @@ pub fn search(params: Option<JsValue>) -> Result<(), JsValue> {
             }
         }
 
-        let result = engine.search.go(
-            &mut engine.position,
-            limits,
-            Some(|info: &SearchInfo| emit_info(info)),
-        );
+        let result = engine
+            .search
+            .as_mut()
+            .expect("normal engine owns search")
+            .go(
+                &mut engine.position,
+                limits,
+                Some(|info: &SearchInfo| emit_info(info)),
+            );
         emit_bestmove(result);
         Ok(())
     })
@@ -851,7 +978,11 @@ pub fn search(params: Option<JsValue>) -> Result<(), JsValue> {
 #[wasm_bindgen]
 pub fn stop() {
     let _ = with_engine_mut(|engine| {
-        engine.search.stop();
+        engine
+            .search
+            .as_mut()
+            .expect("normal engine owns search")
+            .stop();
         Ok(())
     });
 }
@@ -864,49 +995,101 @@ pub fn set_option(name: &str, value: Option<JsValue>) -> Result<(), JsValue> {
         match name {
             "USI_Hash" => {
                 if let Some(size) = as_usize(&value) {
-                    engine.search.resize_tt(size.max(1));
+                    engine
+                        .search
+                        .as_mut()
+                        .expect("normal engine owns search")
+                        .resize_tt(size.max(1));
                 }
             }
             "NetworkDelay" => {
                 if let Some(v) = as_i64(&value) {
-                    let mut opts = engine.search.time_options();
+                    let mut opts = engine
+                        .search
+                        .as_mut()
+                        .expect("normal engine owns search")
+                        .time_options();
                     opts.network_delay = v;
-                    engine.search.set_time_options(opts);
+                    engine
+                        .search
+                        .as_mut()
+                        .expect("normal engine owns search")
+                        .set_time_options(opts);
                 }
             }
             "NetworkDelay2" => {
                 if let Some(v) = as_i64(&value) {
-                    let mut opts = engine.search.time_options();
+                    let mut opts = engine
+                        .search
+                        .as_mut()
+                        .expect("normal engine owns search")
+                        .time_options();
                     opts.network_delay2 = v;
-                    engine.search.set_time_options(opts);
+                    engine
+                        .search
+                        .as_mut()
+                        .expect("normal engine owns search")
+                        .set_time_options(opts);
                 }
             }
             "MinimumThinkingTime" => {
                 if let Some(v) = as_i64(&value) {
-                    let mut opts = engine.search.time_options();
+                    let mut opts = engine
+                        .search
+                        .as_mut()
+                        .expect("normal engine owns search")
+                        .time_options();
                     opts.minimum_thinking_time = v;
-                    engine.search.set_time_options(opts);
+                    engine
+                        .search
+                        .as_mut()
+                        .expect("normal engine owns search")
+                        .set_time_options(opts);
                 }
             }
             "SlowMover" => {
                 if let Some(v) = as_i64(&value) {
-                    let mut opts = engine.search.time_options();
+                    let mut opts = engine
+                        .search
+                        .as_mut()
+                        .expect("normal engine owns search")
+                        .time_options();
                     opts.slow_mover = v as i32;
-                    engine.search.set_time_options(opts);
+                    engine
+                        .search
+                        .as_mut()
+                        .expect("normal engine owns search")
+                        .set_time_options(opts);
                 }
             }
             "USI_Ponder" => {
                 if let Some(v) = as_bool(&value) {
-                    let mut opts = engine.search.time_options();
+                    let mut opts = engine
+                        .search
+                        .as_mut()
+                        .expect("normal engine owns search")
+                        .time_options();
                     opts.usi_ponder = v;
-                    engine.search.set_time_options(opts);
+                    engine
+                        .search
+                        .as_mut()
+                        .expect("normal engine owns search")
+                        .set_time_options(opts);
                 }
             }
             "Stochastic_Ponder" => {
                 if let Some(v) = as_bool(&value) {
-                    let mut opts = engine.search.time_options();
+                    let mut opts = engine
+                        .search
+                        .as_mut()
+                        .expect("normal engine owns search")
+                        .time_options();
                     opts.stochastic_ponder = v;
-                    engine.search.set_time_options(opts);
+                    engine
+                        .search
+                        .as_mut()
+                        .expect("normal engine owns search")
+                        .set_time_options(opts);
                 }
             }
             "MultiPV" => {
@@ -916,28 +1099,56 @@ pub fn set_option(name: &str, value: Option<JsValue>) -> Result<(), JsValue> {
             }
             "Skill Level" => {
                 if let Some(v) = as_i64(&value) {
-                    let mut opts: SkillOptions = engine.search.skill_options();
+                    let mut opts: SkillOptions = engine
+                        .search
+                        .as_mut()
+                        .expect("normal engine owns search")
+                        .skill_options();
                     opts.skill_level = v as i32;
-                    engine.search.set_skill_options(opts);
+                    engine
+                        .search
+                        .as_mut()
+                        .expect("normal engine owns search")
+                        .set_skill_options(opts);
                 }
             }
             "UCI_LimitStrength" => {
                 if let Some(v) = as_bool(&value) {
-                    let mut opts: SkillOptions = engine.search.skill_options();
+                    let mut opts: SkillOptions = engine
+                        .search
+                        .as_mut()
+                        .expect("normal engine owns search")
+                        .skill_options();
                     opts.uci_limit_strength = v;
-                    engine.search.set_skill_options(opts);
+                    engine
+                        .search
+                        .as_mut()
+                        .expect("normal engine owns search")
+                        .set_skill_options(opts);
                 }
             }
             "UCI_Elo" => {
                 if let Some(v) = as_i64(&value) {
-                    let mut opts: SkillOptions = engine.search.skill_options();
+                    let mut opts: SkillOptions = engine
+                        .search
+                        .as_mut()
+                        .expect("normal engine owns search")
+                        .skill_options();
                     opts.uci_elo = v as i32;
-                    engine.search.set_skill_options(opts);
+                    engine
+                        .search
+                        .as_mut()
+                        .expect("normal engine owns search")
+                        .set_skill_options(opts);
                 }
             }
             "MaxMovesToDraw" => {
                 if let Some(v) = as_i64(&value) {
-                    engine.search.set_max_moves_to_draw(v as i32);
+                    engine
+                        .search
+                        .as_mut()
+                        .expect("normal engine owns search")
+                        .set_max_moves_to_draw(v as i32);
                 }
             }
             "MaterialLevel" => {

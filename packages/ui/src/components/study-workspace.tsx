@@ -81,6 +81,7 @@ import { StudyIconButton } from "./study-workspace/StudyIconButton";
 import {
     AnalyzeIcon,
     BookmarkIcon,
+    CommentIcon,
     FirstIcon,
     FlipIcon,
     LastIcon,
@@ -427,6 +428,8 @@ export function StudyWorkspaceView({
     const isMobile = useIsMobile();
     // 768〜1023px（タブレットの縦持ち）: 盤を小さくして 2 列にする。
     const isTablet = useMediaQuery("(min-width: 768px) and (max-width: 1023px)");
+    // 3 列で並ぶ幅。表題の行に余裕があるので、保存の状態なども同じ行に入れる（縦を取らない）。
+    const isWide = useMediaQuery("(min-width: 1280px)");
     const [storedDisplaySettings] = useLocalStorage<DisplaySettings>(
         DISPLAY_SETTINGS_KEY,
         DEFAULT_DISPLAY_SETTINGS,
@@ -443,6 +446,8 @@ export function StudyWorkspaceView({
     const [promotionSelection, setPromotionSelection] = useState<PromotionSelection | null>(null);
     const [flipBoard, setFlipBoard] = useState(false);
     const [mobileTab, setMobileTab] = useState<MobileTab>("highlights");
+    // コメント欄は普段は畳んでおき、盤の上のボタンで開く（開いたままにすれば、手を送っても出続ける）。
+    const [isCommentOpen, setIsCommentOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     // 「その他の操作」を開いている間は、矢印キーで局面を動かさない（コピー・対局に渡す局面が、
     // メニューの中でのキー操作で変わってしまうため）。
@@ -464,6 +469,10 @@ export function StudyWorkspaceView({
         );
     }
     const commentDrafts = commentDraftsRef.current;
+    // 保存できていない書きかけがある手（コメントのボタンに印を付ける。欄を畳んでいても気づけるように）。
+    const [draftCommentIds, setDraftCommentIds] = useState<ReadonlySet<string>>(
+        () => new Set(commentDrafts.keys()),
+    );
     // コメントが長すぎて保存できていない手（棋譜に印を付ける）。
     const [overLimitCommentIds, setOverLimitCommentIds] = useState<ReadonlySet<string>>(
         () =>
@@ -1048,6 +1057,13 @@ export function StudyWorkspaceView({
             commentDrafts.delete(nodeId);
         }
         const held = commentDrafts.get(nodeId);
+        setDraftCommentIds((previous) => {
+            if (previous.has(nodeId) === (held !== undefined)) return previous;
+            const next = new Set(previous);
+            if (held !== undefined) next.add(nodeId);
+            else next.delete(nodeId);
+            return next;
+        });
         const isOver = held !== undefined && isStudyCommentOverLimit(held.text);
         setOverLimitCommentIds((previous) => {
             if (previous.has(nodeId) === isOver) return previous;
@@ -1099,7 +1115,23 @@ export function StudyWorkspaceView({
         currentNode.ply === 0
             ? "開始局面"
             : `${currentNode.ply}手目 ${studyMoveLabel(tree, currentNodeId)}`;
-    const playersLabel = studyPlayersLabel(doc.meta);
+    // 取り込んだ棋譜の表題は「先手 対 後手」になる。表題がその形のままなら、対局者の行は同じ内容の
+    // 繰り返しになるので出さない（利用者が表題を書き換えたら、対局者の行を出す）。
+    const playersLabel = ((): string | null => {
+        const black = doc.meta.blackName?.trim();
+        const white = doc.meta.whiteName?.trim();
+        if (black && white && doc.title.trim() === `${black} 対 ${white}`) return null;
+        return studyPlayersLabel(doc.meta);
+    })();
+    const savedComment = storedNode?.comment ?? "";
+    // 書きかけが保存できていない手（長すぎる・別の画面の変更とぶつかった）では、利用者の対応が
+    // 要るので、畳んでいても開いて見せる。
+    const commentNeedsAttention = unsavedComments.has(currentNodeId);
+    // 開いて見せたら、開いたままにする（対応が済んだ瞬間に、入力中の欄が閉じてしまわないように）。
+    if (commentNeedsAttention && !isCommentOpen) setIsCommentOpen(true);
+    const showsComment = isCommentOpen || commentNeedsAttention;
+    // 保存できていない書きかけ（保存を待っている・保存に失敗した、など）がこの手にあるか。
+    const hasCommentDraft = draftCommentIds.has(currentNodeId);
     const settingsButtonLabel =
         doc.layers.length > 1 && displayLayer ? displayLayer.display.label : null;
     // スマートフォンでは、未解析のあいだ「全体を解析」を盤と移動ボタンのすぐ下（切り替えタブの
@@ -1125,6 +1157,41 @@ export function StudyWorkspaceView({
                         filled={storedNode?.bookmarked ?? false}
                         className={storedNode?.bookmarked ? "text-wafuu-kin" : undefined}
                     />
+                </StudyIconButton>
+                <StudyIconButton
+                    label={
+                        commentNeedsAttention
+                            ? "コメント（保存できていない書きかけがあります）"
+                            : showsComment
+                              ? "コメントを閉じる"
+                              : hasCommentDraft
+                                ? "コメントを開く（保存していない書きかけあり）"
+                                : savedComment !== ""
+                                  ? "コメントを開く（コメントあり）"
+                                  : "コメントを開く"
+                    }
+                    pressed={showsComment}
+                    aria-expanded={showsComment}
+                    aria-controls="study-comment"
+                    // 対応が要る書きかけがある間は、閉じられない。
+                    disabled={commentNeedsAttention}
+                    onClick={() => setIsCommentOpen(!showsComment)}
+                    className="relative"
+                >
+                    <CommentIcon />
+                    {(savedComment !== "" || hasCommentDraft) && (
+                        // この手にコメントがある印。保存していない書きかけは、注意の色にする。
+                        <span
+                            aria-hidden="true"
+                            className={cn(
+                                "absolute right-1.5 top-1.5 h-2 w-2 rounded-full ring-2 ring-background",
+                                // 開いて入力している間は、保存待ちで色を変えない（ちらつかせない）。
+                                hasCommentDraft && !showsComment
+                                    ? "bg-status-warning"
+                                    : "bg-wafuu-shu",
+                            )}
+                        />
+                    )}
                 </StudyIconButton>
                 <StudyIconButton
                     label="盤面を反転"
@@ -1213,12 +1280,10 @@ export function StudyWorkspaceView({
     const graphPanel = (
         <section
             aria-label="評価値グラフ"
-            className="flex flex-col gap-1.5 rounded-xl border border-wafuu-border bg-card p-3 shadow-sm"
+            className="flex flex-col gap-1 rounded-xl border border-wafuu-border bg-card px-3 py-2 shadow-sm"
         >
             <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                <h2 className="font-display text-base font-semibold text-wafuu-sumi">
-                    評価値グラフ
-                </h2>
+                <h2 className="font-display text-sm font-semibold text-wafuu-sumi">評価値グラフ</h2>
                 <span className="text-xs text-muted-foreground">
                     {showsSourceGraph
                         ? "対局時の評価値（解析前）"
@@ -1231,7 +1296,7 @@ export function StudyWorkspaceView({
                 compact
                 evalHistory={graphHistory}
                 currentPly={currentIndex}
-                height={isMobile ? 64 : 88}
+                height={isMobile ? 64 : 72}
                 minScale={GRAPH_MIN_SCALE}
                 axisCap={GRAPH_AXIS_CAP}
                 onPlySelect={(ply) => {
@@ -1287,7 +1352,7 @@ export function StudyWorkspaceView({
     const commentBox = (
         <StudyCommentBox
             key={currentNodeId}
-            value={storedNode?.comment ?? ""}
+            value={savedComment}
             onChange={(value) => changeComment(currentNodeId, value)}
             initialDraft={commentDrafts.get(currentNodeId)}
             onDraftChange={(change) => changeCommentDraft(currentNodeId, change)}
@@ -1295,6 +1360,43 @@ export function StudyWorkspaceView({
             disabled={locked}
             baseConfirmed={commentBaseConfirmed}
         />
+    );
+
+    // コメント欄は畳んでいる間も描いたままにする（書きかけの保存・別の画面の変更との突き合わせは、
+    // 欄が動いていないと進まない）。
+    // コメント欄は畳んでいる間も描いたままにする（書きかけの保存・別の画面の変更との突き合わせは、
+    // 欄が動いていないと進まない）。
+    // 盤（と操作ボタン）の下にグラフを置き、コメント欄は開いたときだけその上に重ねる
+    // （開閉で画面が上下しない）。重ねている間、下のグラフは操作させない。
+    const graphWithComment = (
+        <div className="relative w-0 min-w-full">
+            <div inert={showsComment}>{graphPanel}</div>
+            <div
+                id="study-comment"
+                hidden={!showsComment}
+                className="absolute inset-x-0 top-0 z-20 rounded-xl shadow-lg"
+            >
+                {commentBox}
+            </div>
+        </div>
+    );
+    const metaRow = (
+        <div
+            className={cn(
+                "flex items-center gap-x-3 gap-y-1 px-1.5 text-xs text-muted-foreground",
+                // 表題の行に入れるときは、長い出典で表題を潰さないよう幅に上限を置く。
+                isWide ? "min-w-0 max-w-[55%]" : "flex-wrap",
+            )}
+        >
+            {playersLabel && <span className="truncate">{playersLabel}</span>}
+            <span className="truncate">{originLink ?? studyOriginLabel(doc.origin)}</span>
+            <StudySaveIndicator
+                status={saveStatus}
+                onLogin={onLogin}
+                localOnly={localOnly}
+                className="md:ml-auto"
+            />
+        </div>
     );
 
     const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>): void => {
@@ -1336,7 +1438,7 @@ export function StudyWorkspaceView({
 
     return (
         <TooltipProvider delayDuration={TOOLTIP_DELAY_DURATION_MS}>
-            <div className="flex w-full max-w-[1320px] flex-col gap-3 self-center px-3 py-3 md:px-4">
+            <div className="flex w-full max-w-[1320px] flex-col gap-2 self-center px-3 py-1.5 md:gap-3 md:px-4 md:py-3">
                 <header className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
                         <TitleInput
@@ -1345,6 +1447,7 @@ export function StudyWorkspaceView({
                             disabled={locked}
                             onCommit={(value) => void onApplyOps([{ type: "setTitle", value }])}
                         />
+                        {isWide && metaRow}
                         <StudyMoreMenu
                             onOpenChange={setIsMoreMenuOpen}
                             onPass={locked ? undefined : () => void passFromCurrent()}
@@ -1383,18 +1486,8 @@ export function StudyWorkspaceView({
                             </StudyIconButton>
                         )}
                     </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1.5 text-xs text-muted-foreground">
-                        {playersLabel && <span className="truncate">{playersLabel}</span>}
-                        <span className="truncate">
-                            {originLink ?? studyOriginLabel(doc.origin)}
-                        </span>
-                        <StudySaveIndicator
-                            status={saveStatus}
-                            onLogin={onLogin}
-                            localOnly={localOnly}
-                            className="md:ml-auto"
-                        />
-                    </div>
+                    {/* スマホでは、盤と操作を最初の画面に収めるため、この行は画面の下へ回す。 */}
+                    {!isMobile && !isWide && metaRow}
                 </header>
 
                 {/* 編集できない間は、再送とノートの破棄も止める（残すのは「ログインし直す」だけ）。 */}
@@ -1438,11 +1531,14 @@ export function StudyWorkspaceView({
                 <div inert={locked} className={cn("flex flex-col gap-3", locked && "opacity-70")}>
                     {isMobile ? (
                         <div className="flex flex-col gap-3">
-                            <div className="flex flex-col items-center gap-2">
+                            <div className="flex flex-col items-center gap-1.5">
                                 {boardStatus}
                                 {fluidBoard}
                                 {navBar}
                             </div>
+                            {/* グラフは操作ボタンのすぐ下に置き、コメント欄は開いたときだけその上に重ねる
+                                （PC と同じ。開閉で下の要素が上下しない）。 */}
+                            {graphWithComment}
                             {showsFixedStart && !locked && (
                                 <div className="flex flex-col">
                                     <Button
@@ -1495,9 +1591,8 @@ export function StudyWorkspaceView({
                                 {mobileTab === "highlights" && highlightsPanel}
                                 {mobileTab === "moves" && moveList}
                                 {mobileTab === "candidates" && candidatesPanel}
-                                {mobileTab === "candidates" && commentBox}
                             </div>
-                            {graphPanel}
+                            {metaRow}
                         </div>
                     ) : isTablet ? (
                         // タブレットの縦持ち: 盤を小さくして左に置き、右に注目局面からの列を並べる。
@@ -1508,8 +1603,7 @@ export function StudyWorkspaceView({
                                     {fluidBoard}
                                     {navBar}
                                 </div>
-                                {commentBox}
-                                {graphPanel}
+                                {graphWithComment}
                             </div>
                             <div className="flex min-w-0 flex-col gap-3">
                                 {highlightsPanel}
@@ -1522,19 +1616,21 @@ export function StudyWorkspaceView({
                             <div className="flex w-fit flex-col gap-3 lg:row-span-2 xl:row-span-1">
                                 <div
                                     ref={boardSectionRef}
-                                    className="flex flex-col items-center gap-2 [--shogi-cell-size:44px]"
+                                    // 盤・操作・グラフが 1 画面に収まるよう、画面が低いときはマスを小さくする
+                                    // （盤以外の縦の合計が約 530px。表題の行・操作ボタン・グラフの高さを変えたら、
+                                    // この値も見直すこと）。
+                                    className="flex flex-col items-center gap-2 [--shogi-cell-size:clamp(32px,calc((100dvh-530px)/9),44px)]"
                                 >
                                     {boardStatus}
                                     <PCBoardContent {...boardProps} />
                                     {navBar}
                                 </div>
-                                {/* コメント欄の幅は盤に合わせる。 */}
-                                <div className="w-0 min-w-full">{commentBox}</div>
+                                {/* グラフ（と、開いたときのコメント欄）の幅は盤に合わせる。 */}
+                                {graphWithComment}
                             </div>
                             <div className="flex min-w-0 flex-col gap-3">
                                 {highlightsPanel}
                                 {candidatesPanel}
-                                {graphPanel}
                             </div>
                             <div className="min-w-0 lg:col-start-2 xl:col-start-3">{moveList}</div>
                         </div>

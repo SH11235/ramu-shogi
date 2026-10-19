@@ -9,6 +9,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { PageHeading } from "../../components/PageHeading";
 import { syncProfileDisplayNameIfNeeded, useAuthSession } from "../../hooks/useAuthSession";
 import { getLocalPlayerName, saveLocalPlayerName } from "../../hooks/useLocalPlayerName";
+import { RATE_LIMITED_MESSAGE } from "../../lib/rateLimitMessage";
 
 // ─── ルーム設定の型 ───────────────────────────────────────────────────────────
 
@@ -64,7 +65,7 @@ function buildCreateRoomRequest(settings: RoomFormState): CreateRoomRequest {
 
     return {
         settings: {
-            startSfen: settings.startSfen || "startpos",
+            startSfen: settings.startSfen,
             timeControl,
             passRights:
                 settings.passRightsCount !== null
@@ -89,6 +90,17 @@ function buildCreateRoomRequest(settings: RoomFormState): CreateRoomRequest {
                 : null,
         },
     };
+}
+
+async function describeCreateRoomError(res: Response): Promise<string> {
+    if (res.status === 429) return RATE_LIMITED_MESSAGE;
+    try {
+        const err = (await res.json()) as ApiErrorResponse | null;
+        if (err?.message) return err.message;
+    } catch {
+        // 本文が JSON でない失敗（プロキシの 502 など）は、parse エラーの英語を出さずに既定の文言にする
+    }
+    return "ルームの作成に失敗しました";
 }
 
 // ─── ページコンポーネント ─────────────────────────────────────────────────────
@@ -121,9 +133,13 @@ export default function CreateRoomPage(): ReactElement {
         });
     }, [session]);
 
+    // "" は SFEN 直接入力の局面がまだ決まっていない印で、サーバーへ送れる開始局面ではない。
+    // 平手などに置き換えて作ると、選んだ覚えの無い局面の部屋ができる
+    const startSfenMissing = settings.startSfen === "";
+
     async function handleSubmit(): Promise<void> {
         const trimmedName = settings.name.trim();
-        if (!trimmedName) return;
+        if (!trimmedName || startSfenMissing) return;
         setIsCreating(true);
         setError(null);
         if (!session?.authenticated) saveLocalPlayerName(trimmedName);
@@ -139,8 +155,7 @@ export default function CreateRoomPage(): ReactElement {
             )
             .then(async (res) => {
                 if (!res.ok) {
-                    const err = (await res.json()) as ApiErrorResponse;
-                    setError(err.message ?? "ルームの作成に失敗しました");
+                    setError(await describeCreateRoomError(res));
                     setIsCreating(false);
                     return;
                 }
@@ -202,6 +217,11 @@ export default function CreateRoomPage(): ReactElement {
                         value={settings.startSfen}
                         onChange={(v) => set("startSfen", v)}
                     />
+                    {startSfenMissing && (
+                        <p className="text-xs text-muted-foreground">
+                            局面（SFEN）を入力すると部屋を作成できます
+                        </p>
+                    )}
                 </div>
 
                 {/* 時間設定 */}
@@ -449,7 +469,7 @@ export default function CreateRoomPage(): ReactElement {
                 <button
                     type="button"
                     onClick={() => void handleSubmit()}
-                    disabled={isCreating || !settings.name.trim()}
+                    disabled={isCreating || !settings.name.trim() || startSfenMissing}
                     className="w-full rounded-lg bg-primary py-3 text-base font-semibold text-primary-foreground shadow hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                     {isCreating ? "作成中..." : "部屋を作成する"}

@@ -22,7 +22,12 @@ import type {
     Seat,
     SnapshotPayload,
 } from "@shogi/match-client";
-import { getStoredResumeToken } from "@shogi/match-client";
+import {
+    getStoredResumeToken,
+    isResumeTokenRejected,
+    removeStoredResumeToken,
+    removeStoredSeat,
+} from "@shogi/match-client";
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
 import { useLazyNnueLoader } from "../hooks/useLazyNnueLoader";
@@ -38,6 +43,7 @@ import {
     resolveStartSfen,
     restorePosition,
     type SerialQueue,
+    snapshotAnalysisRemaining,
 } from "./online-game-state";
 import { type AiHintMove, AiHintPanel } from "./shogi-match/components/AiHintPanel";
 import { BottomSheet } from "./shogi-match/components/BottomSheet";
@@ -121,6 +127,7 @@ const RESYNC_MAX_RETRIES = 2;
 const SEAT_LOST_CODES: ReadonlySet<ErrorCode> = new Set([
     "INVALID_TOKEN",
     "ROOM_NOT_FOUND",
+    "ROOM_EXPIRED",
     "ROOM_FULL",
     "ROOM_FINISHED",
 ]);
@@ -154,6 +161,7 @@ interface UIState {
     navIndex: number | null;
     aiSheetOpen: boolean;
     kifuSheetOpen: boolean;
+    endDialogClosed: boolean;
 }
 
 type UIAction =
@@ -166,7 +174,8 @@ type UIAction =
     | { type: "set_promote_dialog"; dialog: { from: string; to: string; usi: string } | null }
     | { type: "set_nav_index"; index: number | null }
     | { type: "set_ai_sheet_open"; open: boolean }
-    | { type: "set_kifu_sheet_open"; open: boolean };
+    | { type: "set_kifu_sheet_open"; open: boolean }
+    | { type: "set_end_dialog_closed"; closed: boolean };
 
 const INITIAL_UI_STATE: UIState = {
     selectedSquare: null,
@@ -176,6 +185,7 @@ const INITIAL_UI_STATE: UIState = {
     navIndex: null,
     aiSheetOpen: false,
     kifuSheetOpen: false,
+    endDialogClosed: false,
 };
 
 function uiReducer(state: UIState, action: UIAction): UIState {
@@ -207,6 +217,8 @@ function uiReducer(state: UIState, action: UIAction): UIState {
             return { ...state, aiSheetOpen: action.open };
         case "set_kifu_sheet_open":
             return { ...state, kifuSheetOpen: action.open };
+        case "set_end_dialog_closed":
+            return { ...state, endDialogClosed: action.closed };
     }
 }
 
@@ -277,7 +289,7 @@ export function OnlineGameView({
 
     // ─── ゲーム状態（useReducer） ─────────────────────────────────────────────
     const [gameState, dispatch] = useReducer(gameReducer, undefined, () =>
-        makeInitialGameState(snapshot, myAiSettings),
+        makeInitialGameState(snapshot, myAiSettings, seat),
     );
     const {
         position,
@@ -303,6 +315,7 @@ export function OnlineGameView({
         navIndex,
         aiSheetOpen,
         kifuSheetOpen,
+        endDialogClosed,
     } = uiState;
 
     // 右パネルのアクティブタブ
@@ -375,6 +388,80 @@ export function OnlineGameView({
         }
     });
 
+    // ─── 接続状態 ────────────────────────────────────────────────────────────
+
+    const stopResync = useEffectEvent((): void => {
+        resyncRef.current = null;
+        if (resyncTimerRef.current !== null) {
+            clearTimeout(resyncTimerRef.current);
+            resyncTimerRef.current = null;
+        }
+    });
+
+    const showConnectionLost = (): void => {
+        setConnection({
+            state: "lost",
+            canResume: seat !== "s" && getStoredResumeToken(roomId) !== null,
+        });
+    };
+
+    // snapshot を求め直せたら true。待ちが終わっていれば何もせず、回数を使い切ったら諦める
+    const requestResyncSnapshot = useEffectEvent((resync: number): boolean => {
+        if (resyncRef.current !== resync) return false;
+        if (resyncRetriesRef.current >= RESYNC_MAX_RETRIES || !requestFullSnapshot?.()) {
+            stopResync();
+            showConnectionLost();
+            return false;
+        }
+        resyncRetriesRef.current += 1;
+        return true;
+    });
+
+    const waitForResync = (resync: number): void => {
+        if (resyncTimerRef.current !== null) clearTimeout(resyncTimerRef.current);
+        resyncTimerRef.current = setTimeout(() => {
+            if (requestResyncSnapshot(resync)) waitForResync(resync);
+        }, RESYNC_TIMEOUT_MS);
+    };
+
+    const retryResync = useEffectEvent((resync: number): void => {
+        if (requestResyncSnapshot(resync)) waitForResync(resync);
+    });
+
+    const rejectResync = useEffectEvent((code: ErrorCode): void => {
+        stopResync();
+        // useRoomConnection は対局開始で購読をやめていて、この応答を見ない。二度と使えない
+        // トークンをここで捨てないと、再読み込みのたびに同じ resume が拒まれる
+        if (isResumeTokenRejected(code)) {
+            removeStoredResumeToken(roomId);
+            removeStoredSeat(roomId);
+        }
+        rejectedRef.current = true;
+        setConnection({ state: "rejected", finished: code === "ROOM_FINISHED" });
+    });
+
+    const applyStatus = useEffectEvent((status: RoomClientStatus): void => {
+        connectionEpochRef.current += 1;
+        stopResync();
+        if (rejectedRef.current) return;
+        if (status === "reconnecting") {
+            setConnection({ state: "reconnecting" });
+        } else if (status === "disconnected") {
+            showConnectionLost();
+        } else if (status === "connected") {
+            // WebSocket が開いても、席へ戻れたかは分からない。対局者は RoomClient が必ず snapshot の
+            // 返る resume を送り、観戦者は useRoomConnection が開き直した接続で参加し直すので、
+            // どちらも応答の snapshot を反映し終えたら戻す
+            const resync = connectionEpochRef.current;
+            resyncRef.current = resync;
+            resyncRetriesRef.current = 0;
+            waitForResync(resync);
+        }
+    });
+
+    const { playSound } = useShogiSound();
+    const playSoundEvent = useEffectEvent(playSound);
+
     // ─── サーバーからのメッセージの反映 ──────────────────────────────────────
 
     // 局面の解析は非同期なので、メッセージごとに別々に進めると、後から届いたものが先に
@@ -421,6 +508,9 @@ export function OnlineGameView({
                         turn: payload.turn,
                         clock: payload.clock,
                         passRights: payload.passRights,
+                        pendingTakeback: payload.pendingTakeback,
+                        myAnalysisRemaining: snapshotAnalysisRemaining(payload, seat),
+                        analysisLog: payload.analysisLog,
                     });
                     dispatchUI({ type: "resync_received" }); // 再接続後は最新局面に戻す
                 },
@@ -429,6 +519,18 @@ export function OnlineGameView({
                     if (!isListeningRef.current) return;
                     if (initial) {
                         setLoadFailed(true);
+                        // 局面が無いままでは指せず、snapshot が届くまで待つしかないので取り寄せる。
+                        // 届いた snapshot も読めなければ、再接続後の同期と同じく回数を区切って諦める。
+                        // 再接続後の同期が既に待っていれば、その snapshot で作り直せるので引き継ぐ
+                        const resync = connectionEpochRef.current;
+                        if (resyncRef.current === resync) return;
+                        resyncRef.current = resync;
+                        resyncRetriesRef.current = 0;
+                        if (requestFullSnapshot?.()) {
+                            waitForResync(resync);
+                        } else {
+                            stopResync();
+                        }
                         return;
                     }
                     // sync の応答は差分イベントだけのことがあるので、同期待ちなら snapshot を求め直す
@@ -493,6 +595,7 @@ export function OnlineGameView({
                 turn: e.turn,
                 clock: e.clock,
                 passRights: e.passRights,
+                elapsedMs: e.elapsedMs,
             });
             movesRef.current = [...movesRef.current, e.usi];
             dispatchUI({ type: "move_received" });
@@ -527,68 +630,6 @@ export function OnlineGameView({
             dispatch({ type: "takeback_cancelled" });
         }
         markApplied();
-    });
-
-    // ─── 接続状態 ────────────────────────────────────────────────────────────
-
-    const stopResync = useEffectEvent((): void => {
-        resyncRef.current = null;
-        if (resyncTimerRef.current !== null) {
-            clearTimeout(resyncTimerRef.current);
-            resyncTimerRef.current = null;
-        }
-    });
-
-    const showConnectionLost = (): void => {
-        setConnection({
-            state: "lost",
-            canResume: seat !== "s" && getStoredResumeToken(roomId) !== null,
-        });
-    };
-
-    const waitForResync = (resync: number): void => {
-        if (resyncTimerRef.current !== null) clearTimeout(resyncTimerRef.current);
-        resyncTimerRef.current = setTimeout(() => retryResync(resync), RESYNC_TIMEOUT_MS);
-    };
-
-    const retryResync = useEffectEvent((resync: number): void => {
-        if (resyncRef.current !== resync) return;
-        if (resyncRetriesRef.current >= RESYNC_MAX_RETRIES || !requestFullSnapshot?.()) {
-            stopResync();
-            showConnectionLost();
-            return;
-        }
-        resyncRetriesRef.current += 1;
-        waitForResync(resync);
-    });
-
-    const rejectResync = useEffectEvent((code: ErrorCode): void => {
-        stopResync();
-        rejectedRef.current = true;
-        setConnection({ state: "rejected", finished: code === "ROOM_FINISHED" });
-    });
-
-    const applyStatus = useEffectEvent((status: RoomClientStatus): void => {
-        connectionEpochRef.current += 1;
-        stopResync();
-        if (rejectedRef.current) return;
-        if (status === "reconnecting") {
-            setConnection({ state: "reconnecting" });
-        } else if (status === "disconnected") {
-            showConnectionLost();
-        } else if (status === "connected") {
-            // WebSocket が開いても、席へ戻れたかは分からない。RoomClient の resume の応答は
-            // 差分イベントだけのことがあり、どこまでで終わりかを判別できないので、必ず snapshot が
-            // 返る要求を送り、その snapshot を反映し終えたら戻す。観戦者は useRoomConnection が
-            // 開き直した接続で参加し直し、その応答に snapshot が含まれる
-            const resync = connectionEpochRef.current;
-            resyncRef.current = resync;
-            resyncRetriesRef.current = 0;
-            waitForResync(resync);
-            if (!isSpectator) {
-                requestFullSnapshot?.();
-            }
-        }
     });
 
     useEffect(() => {
@@ -865,8 +906,6 @@ export function OnlineGameView({
     const [nnueManagerOpen, setNnueManagerOpen] = useState(false);
     const { resolveNnue } = useLazyNnueLoader();
     const isMobile = useIsMobile();
-    const { playSound } = useShogiSound();
-    const playSoundEvent = useEffectEvent(playSound);
 
     const loadNnueEvent = useEffectEvent((sel: NnueSelection) => {
         if (!analysis?.loadNnue) return;
@@ -932,8 +971,8 @@ export function OnlineGameView({
 
     // 最後の指し手（ハイライト用）
     const lastMoveUsi = isRewound
-        ? movesRef.current[(effectiveNavIndex ?? 0) - 1]
-        : movesRef.current.at(-1);
+        ? usiMoveLog[(effectiveNavIndex ?? 0) - 1]?.usi
+        : usiMoveLog.at(-1)?.usi;
     const lastMove = deriveLastMove(lastMoveUsi);
 
     // モバイル用 ref（MobileBoardSection の必須 props のため）
@@ -1224,6 +1263,16 @@ export function OnlineGameView({
                     }
                 />
 
+                {gameResult && (
+                    <GameResultStrip
+                        shown={endDialogClosed}
+                        text={`${formatGameResultTitle(gameResult, playerNames)}（${formatGameEndReason(gameResult)}）`}
+                        onReopen={() =>
+                            dispatchUI({ type: "set_end_dialog_closed", closed: false })
+                        }
+                    />
+                )}
+
                 {/* 棋譜ナビゲーション */}
                 {positionHistory.length > 0 && (
                     <KifuNavigationToolbar
@@ -1404,7 +1453,7 @@ export function OnlineGameView({
             )}
 
             {/* 対局結果ダイアログ */}
-            {gameResult && (
+            {gameResult && !endDialogClosed && (
                 <GameEndDialog
                     result={gameResult}
                     kifu={generatedKif}
@@ -1423,6 +1472,7 @@ export function OnlineGameView({
                             : undefined
                     }
                     onExit={onExit}
+                    onDismiss={() => dispatchUI({ type: "set_end_dialog_closed", closed: true })}
                 />
             )}
 
@@ -1536,6 +1586,16 @@ const GAME_END_REASONS: Record<string, string> = {
     disconnect: "切断不戦敗",
 };
 
+function formatGameResultTitle(result: GameResult, playerNames: { b: string; w: string }): string {
+    const winnerName =
+        result.winner === "b" ? playerNames.b : result.winner === "w" ? playerNames.w : null;
+    return winnerName ? `${winnerName} の勝ち` : "引き分け";
+}
+
+function formatGameEndReason(result: GameResult): string {
+    return GAME_END_REASONS[result.reason] ?? result.reason;
+}
+
 interface GameEndDialogProps {
     result: GameResult;
     kifu: string;
@@ -1544,6 +1604,41 @@ interface GameEndDialogProps {
     analysisLog: Array<{ seat: "b" | "w"; ply: number }>;
     onStartReview?: () => void;
     onExit?: () => void;
+    onDismiss: () => void;
+}
+
+// ダイアログを閉じた瞬間に下の棋譜ナビがずれないよう、終局したら高さを確保しておき、
+// 閉じたときだけ見せる。押したボタンはダイアログごと消えるので、開き直すボタンへ
+// フォーカスを移す。スクロールさせると見ようとした盤が画面の外へ押し出される
+function GameResultStrip({
+    shown,
+    text,
+    onReopen,
+}: {
+    shown: boolean;
+    text: string;
+    onReopen: () => void;
+}): ReactElement {
+    const buttonRef = useRef<HTMLButtonElement>(null);
+    useEffect(() => {
+        if (shown) buttonRef.current?.focus({ preventScroll: true });
+    }, [shown]);
+    return (
+        <div
+            aria-hidden={!shown}
+            className={`flex w-full max-w-md items-center justify-between gap-3 self-center rounded-lg border border-border bg-card px-3 py-2 ${shown ? "" : "invisible"}`}
+        >
+            <p className="text-sm font-semibold text-foreground">{text}</p>
+            <button
+                ref={buttonRef}
+                type="button"
+                onClick={onReopen}
+                className="shrink-0 rounded-md bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+                結果を表示
+            </button>
+        </div>
+    );
 }
 
 function GameEndDialog({
@@ -1554,6 +1649,7 @@ function GameEndDialog({
     analysisLog,
     onStartReview,
     onExit,
+    onDismiss,
 }: GameEndDialogProps): ReactElement {
     const [kifuCopied, setKifuCopied] = useState(false);
     useEffect(() => {
@@ -1562,20 +1658,36 @@ function GameEndDialog({
         return () => clearTimeout(timerId);
     }, [kifuCopied]);
 
-    const winnerName =
-        result.winner === "b" ? playerNames.b : result.winner === "w" ? playerNames.w : null;
+    // 背景の盤を操作できないモーダルなので、開いたらフォーカスをダイアログの中へ移す
+    const dialogRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        dialogRef.current?.focus();
+    }, []);
 
     const bAnalysisCount = analysisLog.filter((e) => e.seat === "b").length;
     const wAnalysisCount = analysisLog.filter((e) => e.seat === "w").length;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-            <div className="rounded-xl border border-border bg-card p-6 shadow-xl min-w-[280px] max-w-sm">
-                <h2 className="mb-3 text-center text-xl font-bold text-foreground">
-                    {winnerName ? `${winnerName} の勝ち` : "引き分け"}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+            <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="game-end-dialog-title"
+                tabIndex={-1}
+                onKeyDown={(e) => {
+                    if (e.key === "Escape") onDismiss();
+                }}
+                className="max-h-full min-w-[280px] max-w-sm overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-xl focus-visible:outline-none"
+            >
+                <h2
+                    id="game-end-dialog-title"
+                    className="mb-3 text-center text-xl font-bold text-foreground"
+                >
+                    {formatGameResultTitle(result, playerNames)}
                 </h2>
                 <p className="mb-5 text-center text-sm text-muted-foreground">
-                    {GAME_END_REASONS[result.reason] ?? result.reason}
+                    {formatGameEndReason(result)}
                 </p>
 
                 {/* 解析ログ開示 */}
@@ -1637,6 +1749,13 @@ function GameEndDialog({
                             トップへ戻る
                         </button>
                     )}
+                    <button
+                        type="button"
+                        onClick={onDismiss}
+                        className="w-full rounded-lg border border-border bg-card py-2 text-sm font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                        盤面を見る
+                    </button>
                 </div>
             </div>
         </div>

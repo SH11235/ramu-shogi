@@ -27,6 +27,8 @@
         "build:wasm:production": "node ./scripts/build-wasm.mjs --production",
         "bench:wasm": "node ./scripts/bench-wasm.mjs",
         "smoke:nnue": "node ./scripts/smoke-nnue.mjs",
+        "test:resume": "node ./scripts/test-resume.mjs",
+        "test:analysis-client": "node ./scripts/test-analysis-client.mjs",
         "dev": "tsc -p tsconfig.build.json --watch",
         "format": "pnpm --workspace-root exec biome format --write .",
         "format:check": "pnpm --workspace-root exec biome format .",
@@ -42,7 +44,9 @@
         "idb": "^8.0.3"
     },
     "devDependencies": {
+        "@playwright/test": "^1.58.2",
         "typescript": "~5.9.3",
+        "vite": "^7.3.0",
         "vitest": "^4.0.15",
         "wasm-opt": "^1.4.0"
     }

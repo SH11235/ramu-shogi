@@ -9,7 +9,11 @@
             "cache": false,
             "persistent": true
         },
+        "transit": {
+            "dependsOn": ["^transit"]
+        },
         "test": {
+            "dependsOn": ["transit"],
             "inputs": [
                 "src/**/*.{ts,tsx,js,jsx}",
                 "worker/**/*.{ts,tsx,js,jsx}",
@@ -18,6 +22,7 @@
             ]
         },
         "test:unit": {
+            "dependsOn": ["transit"],
             "inputs": ["src/**/*.{ts,tsx,js,jsx}", "src/**/*.test.{ts,tsx,js,jsx}"]
         },
         "lint": {
@@ -40,7 +45,14 @@
             "cache": false
         },
         "typecheck": {
-            "inputs": ["src/**/*.{ts,tsx}", "*.{ts,tsx}", "tsconfig*.json"],
+            "dependsOn": ["transit"],
+            "inputs": [
+                "src/**/*.{ts,tsx}",
+                "worker/**/*.{ts,tsx}",
+                "*.{ts,tsx}",
+                "tsconfig*.json",
+                "$TURBO_ROOT$/tsconfig.base.json"
+            ],
             "outputs": []
         },
         "format": {

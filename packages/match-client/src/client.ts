@@ -27,7 +27,6 @@ export function createRoomClient(
     let status: RoomClientStatus = "connecting";
     let ws: WebSocket | null = null;
     let msgId = 0;
-    let lastKnownEventId = 0;
     let pingIntervalId: ReturnType<typeof setInterval> | null = null;
     const handlers = new Set<(msg: ServerMessage) => void>();
     const statusHandlers = new Set<(status: RoomClientStatus) => void>();
@@ -78,13 +77,6 @@ export function createRoomClient(
     }
 
     function notifyHandlers(msg: ServerMessage): void {
-        // 最新 eventId を追跡（再接続時の差分送信に使用）
-        if (msg.t === "event") {
-            lastKnownEventId = msg.payload.eventId;
-        } else if (msg.t === "snapshot") {
-            lastKnownEventId = msg.payload.eventId;
-        }
-
         // joined メッセージの resumeToken を sessionStorage に保存
         if (msg.t === "joined" && msg.payload.resumeToken && roomId) {
             storeResumeToken(roomId, msg.payload.resumeToken);
@@ -113,7 +105,10 @@ export function createRoomClient(
                 const token = getStoredResumeToken(roomId);
                 if (token) {
                     reconnectManager.reset();
-                    send("resume", { resumeToken: token, lastEventId: lastKnownEventId });
+                    // 差分だけの応答は、どこまでで終わりかを購読者が判別できない。購読者が snapshot を
+                    // 求め直すと resume が 2 通になり、切断中の終局イベントが 2 回届くので、ここで
+                    // 必ず snapshot が返る 0 を送る
+                    send("resume", { resumeToken: token, lastEventId: 0 });
                     // 購読者が送るものは、席へ戻る resume より後にサーバーへ届ける
                     setStatus("connected");
                     options.onReconnect?.();
