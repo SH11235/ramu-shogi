@@ -32,12 +32,13 @@ export function PageHeader({ items, right }: PageHeaderProps): ReactElement {
                                     className={cn(
                                         "items-center gap-1",
                                         hiddenOnMobile ? "hidden sm:flex" : "flex",
-                                        // 幅が足りないときは現在地から切り詰める。上の階層は、現在地が 3 文字分まで
-                                        // 縮んでから縮める（名前の長い利用者がログインしているときなど）。縮み方は
-                                        // flex-shrink の比で決まるので、上の階層はほぼ 0 にしておく。
+                                        // 幅が足りないときは現在地から切り詰める。上の階層は、現在地が区切りを含めて
+                                        // 4 文字分（現在地の文字は 3 文字ほど）まで縮んでから縮める（名前の長い利用者がログインしているときなど）。縮み方は
+                                        // flex-shrink の比で決まるので、現在地の比をずっと大きくしておく（上の階層を 0
+                                        // にすると、現在地が縮みきったあとに誰も縮まず、右の欄に重なる）。
                                         i === items.length - 1
-                                            ? "min-w-[3em]"
-                                            : "min-w-0 shrink-[0.001]",
+                                            ? "min-w-[4em] shrink-[10000]"
+                                            : "min-w-0",
                                     )}
                                 >
                                     {i > 0 && (
