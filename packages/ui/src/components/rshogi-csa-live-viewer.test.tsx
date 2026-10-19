@@ -1250,6 +1250,38 @@ describe("RshogiLiveMobileHeader: スマホの盤の上の対局者と残り時�
         expect(screen.getByText("対局終了")).toBeDefined();
     });
 
+    it("秒読み中の手番側は「秒読み」と残秒を出す", () => {
+        render(
+            <RshogiLiveMobileHeader
+                meta={{ ...META, timeControl: COUNTDOWN }}
+                clocks={mkClocks({
+                    sente: 0,
+                    gote: 30_000,
+                    sideToMove: "sente",
+                    senteInByoyomi: true,
+                })}
+                elapsedSinceAnchor={3_000}
+                connectionState="connected"
+            />,
+        );
+        expect(screen.getByText(/秒読み 0:07/)).toBeDefined();
+    });
+
+    it("時計が無ければ（保存済み棋譜）残り時間を出さず、名前と結果だけにする", () => {
+        render(
+            <RshogiLiveMobileHeader
+                meta={META}
+                clocks={null}
+                elapsedSinceAnchor={0}
+                connectionState="closed"
+                result={{ kind: "resignation", winner: "sente" }}
+            />,
+        );
+        const header = screen.getByRole("region", { name: "対局者と残り時間" });
+        expect(header.textContent).not.toMatch(/\d\d:\d\d/);
+        expect(screen.getByText("対局終了")).toBeDefined();
+    });
+
     it("つながり直している間は、その状態を出す", () => {
         render(
             <RshogiLiveMobileHeader

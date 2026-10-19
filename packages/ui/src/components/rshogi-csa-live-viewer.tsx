@@ -746,6 +746,7 @@ export function RshogiLiveMobileHeader({
     result,
 }: {
     meta: RshogiGameMeta;
+    /** 無ければ（保存済み棋譜に切り替えたあとなど）残り時間を出さない。 */
     clocks: LiveState["clocks"];
     elapsedSinceAnchor: number;
     connectionState: RshogiLiveConnectionState;
@@ -753,6 +754,8 @@ export function RshogiLiveMobileHeader({
 }): ReactElement {
     const remaining = computeRemaining(clocks, elapsedSinceAnchor, meta.timeControl);
     const isLive = connectionState === "connected" && !result;
+    // 状態は行を足さずに先手の行へ添える（つながり直すたびに盤が上下に動かないように）。
+    const status = isLive ? null : result ? "対局終了" : CONNECTION_LABEL[connectionState];
     const renderSide = (side: "sente" | "gote") => {
         const isSente = side === "sente";
         const own = remaining[side];
@@ -775,17 +778,25 @@ export function RshogiLiveMobileHeader({
                         勝
                     </span>
                 )}
-                <span
-                    className={cn(
-                        "ml-auto flex-none tabular-nums",
-                        active ? "font-bold text-wafuu-shu" : "text-muted-foreground",
-                    )}
-                >
-                    {active && <span className="sr-only">手番 </span>}
-                    {showByoyomi
-                        ? `秒読み ${formatByoyomiClock(own.byoyomiMs ?? 0)}`
-                        : formatMs(own.mainMs)}
-                </span>
+                {isSente && status && (
+                    <span className="ml-auto flex-none text-[11px] text-muted-foreground">
+                        {status}
+                    </span>
+                )}
+                {clocks && (
+                    <span
+                        className={cn(
+                            "flex-none tabular-nums",
+                            isSente && status ? "ml-2" : "ml-auto",
+                            active ? "font-bold text-wafuu-shu" : "text-muted-foreground",
+                        )}
+                    >
+                        {active && <span className="sr-only">手番 </span>}
+                        {showByoyomi
+                            ? `秒読み ${formatByoyomiClock(own.byoyomiMs ?? 0)}`
+                            : formatMs(own.mainMs)}
+                    </span>
+                )}
             </span>
         );
     };
@@ -796,11 +807,6 @@ export function RshogiLiveMobileHeader({
         >
             {renderSide("sente")}
             {renderSide("gote")}
-            {!isLive && (
-                <span className="text-[11px] text-muted-foreground">
-                    {result ? "対局終了" : CONNECTION_LABEL[connectionState]}
-                </span>
-            )}
         </section>
     );
 }
@@ -1175,6 +1181,16 @@ export function RshogiCsaLiveViewer({
                     // 棋譜を見るだけの画面なので、対局開始・棋譜読込・局面編集などは出さない。
                     viewerMode={true}
                     onPositionSnapshot={shownPosition.handlePositionSnapshot}
+                    // スマホでは左の欄が出ないので、対局者と結果を盤の上に出す（時計はもう無い）。
+                    mobileHeaderContent={
+                        <RshogiLiveMobileHeader
+                            meta={game.meta}
+                            clocks={null}
+                            elapsedSinceAnchor={0}
+                            connectionState="closed"
+                            result={resolveDisplayedResult(game.meta.result, checkmatedSide)}
+                        />
+                    }
                     reviewLeftContent={
                         <div className="flex flex-col gap-2">
                             <RshogiLiveMetaPanel
