@@ -22,6 +22,7 @@ import {
     moveDetailsToEvals,
     RshogiCsaLiveViewer,
     RshogiLiveMetaPanel,
+    RshogiLiveMobileHeader,
     RshogiLiveScoreboard,
     setMoveEvalAtPly,
     startTurnOfSfen,
@@ -1211,6 +1212,54 @@ describe("RshogiLiveScoreboard: 評価値 / 消費時間の表示", () => {
         expect(screen.getByText("0:07")).toBeDefined();
         // 後手は本体表示のまま (秒読みラベルは 1 件のみ)
         expect(screen.getByText("00:30")).toBeDefined();
+    });
+});
+
+describe("RshogiLiveMobileHeader: スマホの盤の上の対局者と残り時間", () => {
+    it("両対局者の名前と残り時間を出し、観戦中は接続の状態を出さない", () => {
+        render(
+            <RshogiLiveMobileHeader
+                meta={META}
+                clocks={mkClocks({ sente: 125_000, gote: 30_000, sideToMove: "gote" })}
+                elapsedSinceAnchor={0}
+                connectionState="connected"
+            />,
+        );
+        const header = screen.getByRole("region", { name: "対局者と残り時間" });
+        expect(header.textContent).toContain(META.senteName);
+        expect(header.textContent).toContain(META.goteName);
+        expect(screen.getByText("02:05")).toBeDefined();
+        // 手番（後手）の時計には、読み上げ用に「手番」を添える。
+        expect(screen.getByText("00:30").textContent).toContain("手番");
+        expect(screen.queryByText("観戦中")).toBeNull();
+    });
+
+    it("終局したら勝った側に「勝」を付け、対局終了と出す", () => {
+        render(
+            <RshogiLiveMobileHeader
+                meta={META}
+                clocks={mkClocks({ sideToMove: "sente" })}
+                elapsedSinceAnchor={0}
+                connectionState="closed"
+                result={{ kind: "resignation", winner: "gote" }}
+            />,
+        );
+        expect(screen.getByText("勝").closest("[data-side]")?.getAttribute("data-side")).toBe(
+            "gote",
+        );
+        expect(screen.getByText("対局終了")).toBeDefined();
+    });
+
+    it("つながり直している間は、その状態を出す", () => {
+        render(
+            <RshogiLiveMobileHeader
+                meta={META}
+                clocks={mkClocks({ sideToMove: "sente" })}
+                elapsedSinceAnchor={0}
+                connectionState="reconnecting"
+            />,
+        );
+        expect(screen.getByText("再接続中...")).toBeDefined();
     });
 });
 

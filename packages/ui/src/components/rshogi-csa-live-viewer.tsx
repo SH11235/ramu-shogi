@@ -734,6 +734,77 @@ export function RshogiLiveScoreboard({
     );
 }
 
+/**
+ * スマホの盤の上に出す、対局者と残り時間。スマホのレイアウトにはスコアボード（reviewTopContent）の
+ * 場所が無いので、対局者・時計・接続の状態をここに詰める（盤を最初の画面に収めるため小さく）。
+ */
+export function RshogiLiveMobileHeader({
+    meta,
+    clocks,
+    elapsedSinceAnchor,
+    connectionState,
+    result,
+}: {
+    meta: RshogiGameMeta;
+    clocks: LiveState["clocks"];
+    elapsedSinceAnchor: number;
+    connectionState: RshogiLiveConnectionState;
+    result?: RshogiGameResult;
+}): ReactElement {
+    const remaining = computeRemaining(clocks, elapsedSinceAnchor, meta.timeControl);
+    const isLive = connectionState === "connected" && !result;
+    const renderSide = (side: "sente" | "gote") => {
+        const isSente = side === "sente";
+        const own = remaining[side];
+        const active = !result && clocks?.sideToMove === side;
+        const showByoyomi = own.inByoyomi && own.byoyomiMs !== undefined;
+        return (
+            <span data-side={side} className="flex min-w-0 items-center gap-1">
+                <span
+                    className={cn("flex-none", isSente ? "text-wafuu-shu" : "text-wafuu-ai")}
+                    aria-hidden="true"
+                >
+                    {isSente ? "☗" : "☖"}
+                </span>
+                <span className="sr-only">{isSente ? "先手" : "後手"}</span>
+                <span className="min-w-0 truncate font-semibold">
+                    {(isSente ? meta.senteName : meta.goteName) || (isSente ? "先手" : "後手")}
+                </span>
+                {result?.winner === side && (
+                    <span className="flex-none rounded border border-wafuu-kin bg-wafuu-kin/20 px-1 text-[10px] font-bold leading-4">
+                        勝
+                    </span>
+                )}
+                <span
+                    className={cn(
+                        "ml-auto flex-none tabular-nums",
+                        active ? "font-bold text-wafuu-shu" : "text-muted-foreground",
+                    )}
+                >
+                    {active && <span className="sr-only">手番 </span>}
+                    {showByoyomi
+                        ? `秒読み ${formatByoyomiClock(own.byoyomiMs ?? 0)}`
+                        : formatMs(own.mainMs)}
+                </span>
+            </span>
+        );
+    };
+    return (
+        <section
+            aria-label="対局者と残り時間"
+            className="flex min-w-0 flex-col text-xs leading-5 text-wafuu-sumi"
+        >
+            {renderSide("sente")}
+            {renderSide("gote")}
+            {!isLive && (
+                <span className="text-[11px] text-muted-foreground">
+                    {result ? "対局終了" : CONNECTION_LABEL[connectionState]}
+                </span>
+            )}
+        </section>
+    );
+}
+
 /** PV 表示の最大トークン数 (これを超えたら末尾を省略する)。 */
 const MAX_PV_TOKENS = 12;
 
@@ -1217,6 +1288,15 @@ export function RshogiCsaLiveViewer({
                 reviewMode={true}
                 // 観戦は表示設定を別名前空間で扱い、棋譜評価値カラムを既定 ON にする。
                 spectateMode={true}
+                mobileHeaderContent={
+                    <RshogiLiveMobileHeader
+                        meta={meta}
+                        clocks={state.clocks}
+                        elapsedSinceAnchor={elapsedSinceAnchor}
+                        connectionState={state.connectionState}
+                        result={state.result}
+                    />
+                }
                 reviewTopContent={
                     <RshogiLiveScoreboard
                         meta={meta}
