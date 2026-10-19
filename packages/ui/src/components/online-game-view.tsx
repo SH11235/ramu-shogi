@@ -317,9 +317,6 @@ export function OnlineGameView({
         pendingTakeback,
     } = gameState;
 
-    // 対局中（観戦中も）は、相手の手を待つ間に画面が消えてロックされないようにする。
-    useScreenWakeLock(!gameResult);
-
     // ─── UI インタラクション状態（useReducer） ───────────────────────────────
     const [uiState, dispatchUI] = useReducer(uiReducer, INITIAL_UI_STATE);
     const {
@@ -362,6 +359,11 @@ export function OnlineGameView({
     // つながっていない間に送った操作は RoomClient が捨てる。再接続した直後も、サーバーの
     // 局面を反映し終えるまでは古い局面を見て選んだ操作になるので受け付けない
     const canSend = connection.state === "connected";
+    // 対局中（観戦中も）は、相手の手を待つ間に画面が消えてロックされないようにする。つながり直せない
+    // （再読み込みやトップへ戻る案内を出している）間は、消灯を止めない。
+    useScreenWakeLock(
+        !gameResult && (connection.state === "connected" || connection.state === "reconnecting"),
+    );
     // 切断・再接続のたびに進む。非同期処理の前後で比べ、その間に接続が替わったかを知る
     const connectionEpochRef = useRef(0);
     // 再接続後、席へ戻った結果の snapshot を待っている間だけ、その再接続の番号を持つ
