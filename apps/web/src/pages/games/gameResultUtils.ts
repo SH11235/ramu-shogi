@@ -1,4 +1,23 @@
-import type { GameRecordSummary } from "@shogi/api-contract";
+import type {
+    GameRecordSource,
+    GameRecordSummary,
+    GameRecordVisibility,
+} from "@shogi/api-contract";
+
+/** 公開設定の表示名（API の値をそのまま見せない）。 */
+export const VISIBILITY_LABELS: Record<GameRecordVisibility, string> = {
+    private: "非公開",
+    unlisted: "限定公開",
+    public: "公開",
+};
+
+/** 棋譜の出どころの表示名。 */
+export const SOURCE_LABELS: Record<GameRecordSource, string> = {
+    online_room: "オンライン対局",
+    local_app: "アプリでの対局",
+    import: "取り込み",
+    csa_relay: "CSA 中継",
+};
 
 const RESULT_REASON_LABELS: Record<string, string> = {
     resign: "投了",

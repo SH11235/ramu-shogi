@@ -16,7 +16,7 @@ import { Section } from "../../components/Section";
 import { StatusBanner } from "../../components/StatusBanner";
 import { parseApiError } from "../../hooks/useAuthSession";
 import { canOpenGameRecordAsStudy, openStudyFromGameRecord } from "../../lib/studyEntry";
-import { formatGameResult } from "./gameResultUtils";
+import { formatGameResult, SOURCE_LABELS, VISIBILITY_LABELS } from "./gameResultUtils";
 
 function buildPublicUrl(publicId: string): string {
     return `${window.location.origin}/public/games/${publicId}`;
@@ -121,10 +121,10 @@ export default function GameDetailPage(): ReactElement {
                     <div className="flex flex-col gap-3">
                         <div className="flex flex-wrap items-center gap-2 text-xs">
                             <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
-                                {game.visibility}
+                                {VISIBILITY_LABELS[game.visibility]}
                             </span>
                             <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
-                                {game.source}
+                                {SOURCE_LABELS[game.source]}
                             </span>
                         </div>
 
@@ -258,23 +258,6 @@ export default function GameDetailPage(): ReactElement {
                         </div>
                     </Section>
                 )}
-
-                <Section>
-                    <h2 className="text-lg font-semibold text-foreground">指し手</h2>
-                    <ol className="grid gap-2 text-sm text-foreground">
-                        {game.moves.map((move, index) => {
-                            const ply = index + 1;
-                            return (
-                                <li
-                                    key={`${game.id}:${ply}:${move}`}
-                                    className="rounded-md border border-border px-3 py-2"
-                                >
-                                    {ply}. {move}
-                                </li>
-                            );
-                        })}
-                    </ol>
-                </Section>
 
                 <Section>
                     <div className="flex items-center justify-between gap-3">
