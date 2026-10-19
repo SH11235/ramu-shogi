@@ -31,6 +31,7 @@ import {
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
 import { useLazyNnueLoader } from "../hooks/useLazyNnueLoader";
+import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
 import { useShogiSound } from "../hooks/useShogiSound";
 import { ConnectionLostNotice } from "./connection-lost-notice";
 import { NnueManagerDialog } from "./nnue/NnueManagerDialog";
@@ -304,6 +305,9 @@ export function OnlineGameView({
         usiMoveLog,
         pendingTakeback,
     } = gameState;
+
+    // 対局中（観戦中も）は、相手の手を待つ間に画面が消えてロックされないようにする。
+    useScreenWakeLock(!gameResult);
 
     // ─── UI インタラクション状態（useReducer） ───────────────────────────────
     const [uiState, dispatchUI] = useReducer(uiReducer, INITIAL_UI_STATE);
