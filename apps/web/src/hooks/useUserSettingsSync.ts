@@ -5,7 +5,8 @@ import type {
     UserSettingsDocumentKey,
 } from "@shogi/api-contract";
 // `@shogi/ui` の入口から読むと、入口が書き出す部品（対局画面の一式）まで最初の読み込みに載る。
-// このフックは起動時に必ず動くので、ファイルを直接指す。
+// このフックは起動時に必ず動くので、ファイルを直接指す（shogi-match/ 配下のファイルだが、
+// vite.config.ts で ui-storage という小さな chunk に分けてあり、対局画面の chunk は引かない）。
 import {
     dispatchLocalStorageSyncEvent,
     LOCAL_STORAGE_SYNC_EVENT,
