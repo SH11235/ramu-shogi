@@ -28,8 +28,8 @@ import { PLAY_HEADING, PLAY_OUTLINE_BUTTON, PLAY_PRIMARY_BUTTON } from "./playSt
 
 const MESSAGE_STYLES: Record<Message["type"], string> = {
     error: "text-destructive",
-    warning: "text-yellow-600 dark:text-yellow-500",
-    success: "text-green-600 dark:text-green-500",
+    warning: "text-status-warning",
+    success: "text-status-success",
 };
 
 /** 対局画面では、硬い言い回しをやさしい言葉に言い換える。 */
@@ -48,7 +48,9 @@ export function usePlayPhaseFocus<T extends HTMLElement>(phase: string): RefObje
     useEffect(() => {
         if (previousPhase.current === phase) return;
         previousPhase.current = phase;
-        rootRef.current?.querySelector<HTMLElement>("h1")?.focus({ preventScroll: true });
+        rootRef.current
+            ?.querySelector<HTMLElement>("[data-play-heading]")
+            ?.focus({ preventScroll: true });
     }, [phase]);
     return rootRef;
 }
@@ -374,6 +376,7 @@ export function PlayPositionEditorPanel({
             {!hideHeading && (
                 <h1
                     id="play-editor-heading"
+                    data-play-heading
                     tabIndex={-1}
                     className={cn(PLAY_HEADING, "outline-none")}
                 >

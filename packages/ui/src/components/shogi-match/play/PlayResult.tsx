@@ -141,6 +141,7 @@ function ResultSummary({
             )}
         >
             <h1
+                data-play-heading
                 tabIndex={-1}
                 className={cn(
                     "font-display font-semibold outline-none",

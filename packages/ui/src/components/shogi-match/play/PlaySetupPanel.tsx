@@ -181,7 +181,12 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                 className,
             )}
         >
-            <h1 id="play-setup-heading" tabIndex={-1} className={cn(PLAY_HEADING, "outline-none")}>
+            <h1
+                id="play-setup-heading"
+                data-play-heading
+                tabIndex={-1}
+                className={cn(PLAY_HEADING, "outline-none")}
+            >
                 {setup.kind === "vs-ai"
                     ? "AI と対局する"
                     : setup.kind === "humans"
@@ -442,26 +447,32 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                     対局開始
                 </Button>
             </div>
-            {downloadMb !== null && (
-                // 開始ボタンのすぐ下に寄せる（ボタンを下端に留めるために、同じ並びの別の要素にしている）。
-                <p className="-mt-2 text-center text-xs leading-relaxed text-wafuu-sumi-light">
-                    <span className="inline-block">
-                        {setup.opponent?.label} は、初回だけ約 {downloadMb}MB
-                        のダウンロードがあります。
-                    </span>{" "}
-                    <button
-                        type="button"
-                        onClick={handleQuickStart}
-                        disabled={locked}
-                        className={cn(
-                            TEXT_LINK_CLASS,
-                            "font-medium text-wafuu-ai hover:text-wafuu-ai-light disabled:opacity-50",
-                        )}
-                    >
-                        ダウンロードせずに簡易AI と指す
-                    </button>
-                </p>
-            )}
+            {/* 開始ボタンのすぐ下に寄せる（ボタンを下端に留めるために、同じ並びの別の要素にしている）。
+                注記が無い相手でも 2 行ぶんの高さを取り、相手を選び直したときに下の「詳細設定」が動かないようにする。 */}
+            <p
+                aria-hidden={downloadMb === null}
+                className="-mt-2 min-h-10 text-center text-xs leading-relaxed text-wafuu-sumi-light"
+            >
+                {downloadMb !== null && (
+                    <>
+                        <span className="inline-block">
+                            {setup.opponent?.label} は、初回だけ約 {downloadMb}MB
+                            のダウンロードがあります。
+                        </span>{" "}
+                        <button
+                            type="button"
+                            onClick={handleQuickStart}
+                            disabled={locked}
+                            className={cn(
+                                TEXT_LINK_CLASS,
+                                "font-medium text-wafuu-ai hover:text-wafuu-ai-light disabled:opacity-50",
+                            )}
+                        >
+                            ダウンロードせずに簡易AI と指す
+                        </button>
+                    </>
+                )}
+            </p>
 
             <div className="flex items-center justify-end border-t border-wafuu-border pt-3 text-[13px]">
                 <button

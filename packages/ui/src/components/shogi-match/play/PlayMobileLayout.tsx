@@ -152,7 +152,7 @@ export function PlayMobileLayout({
             )}
             {isEditing && (
                 <div className="flex items-center justify-between gap-2 px-2 pt-2">
-                    <h1 tabIndex={-1} className={`${PLAY_HEADING} outline-none`}>
+                    <h1 data-play-heading tabIndex={-1} className={`${PLAY_HEADING} outline-none`}>
                         開始局面を編集
                     </h1>
                     <PlayBoardTools />
@@ -161,7 +161,7 @@ export function PlayMobileLayout({
             {inGame && (
                 <>
                     {phase !== "finished" && (
-                        <h1 tabIndex={-1} className="sr-only">
+                        <h1 data-play-heading tabIndex={-1} className="sr-only">
                             対局中
                         </h1>
                     )}

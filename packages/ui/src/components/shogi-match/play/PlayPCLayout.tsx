@@ -178,7 +178,7 @@ export function PlayPCLayout({
                         {phase === "finished" && <PlayResultCard />}
                         {(phase === "playing" || phase === "paused") && (
                             <div className="flex flex-col">
-                                <h1 tabIndex={-1} className="sr-only">
+                                <h1 data-play-heading tabIndex={-1} className="sr-only">
                                     対局中
                                 </h1>
                                 <PlayTurnStatus className="min-h-9 text-lg" />
