@@ -914,13 +914,20 @@ export function RshogiCsaLiveViewer({
         // 終わった対局のライブ URL を開いた場合などは、保存済み棋譜を出す。無ければ開始を待つ
         // （対局者が入る前の部屋を先に開いている場合があるので、見つからなくても誤りとは出さない）。
         let notStartedProbe: AbortController | null = null;
+        // 局面か指し手が届いた（ライブの対局が始まっている）。確認中なら、その結果は捨てる。
+        let liveStarted = false;
+        const markLiveStarted = () => {
+            liveStarted = true;
+            notStartedProbe?.abort();
+        };
         const probeArchivedGame = () => {
-            if (notStartedProbe || staticFallbackController) return;
+            if (notStartedProbe || staticFallbackController || liveStarted) return;
             const controller = new AbortController();
             notStartedProbe = controller;
             void (async () => {
+                let game: RshogiGame;
                 try {
-                    await fetchRshogiGame(gameId, {
+                    game = await fetchRshogiGame(gameId, {
                         baseUrl: apiBaseUrl,
                         fetchImpl: fetchOverride,
                         signal: controller.signal,
@@ -928,9 +935,52 @@ export function RshogiCsaLiveViewer({
                 } catch {
                     return;
                 }
-                if (controller.signal.aborted) return;
-                loadStaticFallback("not-started");
+                if (controller.signal.aborted || liveStarted || staticFallbackController) return;
+                // 中継していない対局の棋譜。ライブの接続は閉じ、保存済み棋譜を出す。
+                staticFallbackController = controller;
+                session?.disconnect();
+                setState((prev) => ({ ...prev, connectionState: "closed", lastError: undefined }));
+                showStaticGame("not-started", game);
             })();
+        };
+        // 取得した保存済み棋譜を読み、静的表示へ切り替える。
+        const showStaticGame = (reason: RshogiLiveStaticFallbackReason, game: RshogiGame) => {
+            let startSfen: string;
+            let checkmatedSide: Player | undefined;
+            let moves: string[];
+            let moveData: (ReviewMoveEval | undefined)[];
+            try {
+                const record = parseCsaGameRecord(game.csa);
+                startSfen = record.startSfen;
+                checkmatedSide = record.checkmatedSide;
+                moves = record.moves;
+                moveData = csaAnnotationsToMoveData(record.annotations);
+            } catch (parseError) {
+                setState((prev) => ({
+                    ...prev,
+                    staticFallback:
+                        prev.snapshot && reason === "terminal-snapshot"
+                            ? undefined
+                            : {
+                                  status: "error",
+                                  reason,
+                                  errorMessage: `終局済み棋譜の解析に失敗しました: ${String(parseError)}`,
+                              },
+                }));
+                return;
+            }
+            setState((prev) => ({
+                ...prev,
+                staticFallback: {
+                    status: "ready",
+                    reason,
+                    game,
+                    startSfen,
+                    checkmatedSide,
+                    moves,
+                    moveData,
+                },
+            }));
         };
         const loadStaticFallback = (reason: RshogiLiveStaticFallbackReason) => {
             if (staticFallbackController) return;
@@ -951,42 +1001,7 @@ export function RshogiCsaLiveViewer({
                         signal: controller.signal,
                     });
                     if (controller.signal.aborted) return;
-                    let startSfen: string;
-                    let checkmatedSide: Player | undefined;
-                    let moves: string[];
-                    let moveData: (ReviewMoveEval | undefined)[];
-                    try {
-                        const record = parseCsaGameRecord(game.csa);
-                        startSfen = record.startSfen;
-                        checkmatedSide = record.checkmatedSide;
-                        moves = record.moves;
-                        moveData = csaAnnotationsToMoveData(record.annotations);
-                    } catch (parseError) {
-                        setState((prev) => ({
-                            ...prev,
-                            staticFallback:
-                                prev.snapshot && reason === "terminal-snapshot"
-                                    ? undefined
-                                    : {
-                                          status: "error",
-                                          reason,
-                                          errorMessage: `終局済み棋譜の解析に失敗しました: ${String(parseError)}`,
-                                      },
-                        }));
-                        return;
-                    }
-                    setState((prev) => ({
-                        ...prev,
-                        staticFallback: {
-                            status: "ready",
-                            reason,
-                            game,
-                            startSfen,
-                            checkmatedSide,
-                            moves,
-                            moveData,
-                        },
-                    }));
+                    showStaticGame(reason, game);
                 } catch (error) {
                     if (controller.signal.aborted) return;
                     if (error instanceof RshogiGameNotFoundError) {
@@ -1024,6 +1039,7 @@ export function RshogiCsaLiveViewer({
         const callbacks: RshogiLiveCallbacks = {
             onSnapshot(snapshot) {
                 if (snapshot.notStarted) probeArchivedGame();
+                else markLiveStarted();
                 const summary = summarizeMoveDetails(
                     snapshot.moveDetails,
                     startTurnOfSfen(snapshot.startSfen),
@@ -1060,6 +1076,7 @@ export function RshogiCsaLiveViewer({
                 }));
             },
             onMove({ csaMove, elapsedSec }) {
+                markLiveStarted();
                 setState((prev) => {
                     const timeControl = prev.snapshot?.meta.timeControl;
                     return {

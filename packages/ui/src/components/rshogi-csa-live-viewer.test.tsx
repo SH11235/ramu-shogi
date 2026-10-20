@@ -235,6 +235,46 @@ describe("RshogiCsaLiveViewer: static fallback", () => {
         expect(
             await screen.findByText("この対局は中継していないため、保存済み棋譜を表示しています。"),
         ).toBeTruthy();
+        // 確かめたときに取った棋譜をそのまま使い、2 度は取りに行かない。
+        expect(fetchOverride).toHaveBeenCalledTimes(1);
+    });
+
+    it("保存済み棋譜を確かめている間にライブの対局が始まったら、ライブのまま表示する", async () => {
+        const csa = ["PI", "+", "+7776FU", "-3334FU", "%TORYO"].join("\n");
+        let respond: (response: Response) => void = () => {};
+        const fetchOverride = vi.fn(
+            () =>
+                new Promise<Response>((resolve) => {
+                    respond = resolve;
+                }),
+        ) as unknown as typeof fetch;
+        render(
+            <RshogiCsaLiveViewer
+                gameId="room-1"
+                engineOptions={[]}
+                manifestUrl="/nnue/manifest.json"
+                apiBaseUrl="https://example.com/api/v1"
+                fetchOverride={fetchOverride}
+            />,
+        );
+        const ws = MockWebSocket.instances[0];
+        act(() => {
+            ws.fireOpen();
+            ws.fireLines(["##[MONITOR2] BEGIN room-1", "##[MONITOR2] END"]);
+        });
+        await waitFor(() => expect(fetchOverride).toHaveBeenCalled());
+        // 対局が始まり、局面が届く。
+        act(() => {
+            ws.fireLines(buildLiveSnapshot(["+7776FU"]));
+        });
+        const staticResponse = await createStaticGameFetch(csa, "WIN_BLACK")("");
+        await act(async () => {
+            respond(staticResponse);
+        });
+        expect(
+            screen.queryByText("この対局は中継していないため、保存済み棋譜を表示しています。"),
+        ).toBeNull();
+        expect(screen.queryByText("開始待ち")).toBeNull();
     });
 
     it("対局が始まっていない部屋で、保存済み棋譜も無ければ、LIVE ではなく開始待ちと出す", async () => {
