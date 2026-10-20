@@ -116,6 +116,35 @@ const isHirateSfen = (sfen: string): boolean =>
     sfen === "startpos" || sfen.includes(HIRATE_BOARD_SFEN);
 
 /** 対局用の表示設定 localStorage キー。 */
+const MATCH_SIDES_KEY = "shogi-match-sides";
+const PLAY_SIDES_KEY = "shogi-play-sides";
+
+type MatchSides = { sente: SideSetting; gote: SideSetting };
+
+/**
+ * 対局画面を初めて開いたとき（先後をまだ PLAY_SIDES_KEY に保存していない）の先後。
+ * 共有のキーに残る先後は、ほかの画面の既定値（観戦は人 対 人、以前の対局画面は AI 同士）でも
+ * 書き込まれるので、引き継ぐのは「人 対 AI」のときだけ。引き継がないときは、時間設定も
+ * 既定値に戻す（AI 同士の秒読みが、自分の持ち時間に残らないようにする）。
+ */
+const readFirstPlaySides = (
+    defaults: MatchSides,
+): { sides: MatchSides; resetTime: boolean } | null => {
+    if (typeof window === "undefined") return null;
+    try {
+        if (localStorage.getItem(PLAY_SIDES_KEY) !== null) return null;
+        const raw = localStorage.getItem(MATCH_SIDES_KEY);
+        const legacy = raw === null ? null : (JSON.parse(raw) as Partial<MatchSides> | null);
+        const roles = [legacy?.sente?.role, legacy?.gote?.role];
+        if (legacy?.sente && legacy.gote && roles.includes("human") && roles.includes("engine")) {
+            return { sides: { sente: legacy.sente, gote: legacy.gote }, resetTime: false };
+        }
+    } catch {
+        // 読めない保存値は、引き継がずに既定値で始める。
+    }
+    return { sides: defaults, resetTime: true };
+};
+
 const DISPLAY_SETTINGS_KEY = "shogi-display-settings";
 /** ライブ観戦用の表示設定 localStorage キー (対局用と分離してチート防止既定を汚さない)。 */
 const SPECTATE_DISPLAY_SETTINGS_KEY = "rshogi-live-display-settings";
@@ -653,9 +682,12 @@ export function ShogiMatch({
     ) as BoardState;
     // 観戦・公開棋譜の画面も ShogiMatch を人 対 人で開き、その既定値を保存する。対局画面は別のキーに
     // 持ち、その保存で「自分 対 AI」の既定値が上書きされないようにする。
-    const [sides, setSides] = useLocalStorage<{ sente: SideSetting; gote: SideSetting }>(
-        screen === "play" ? "shogi-play-sides" : "shogi-match-sides",
-        defaultSides,
+    const [firstPlaySides] = useState(() =>
+        screen === "play" ? readFirstPlaySides(defaultSides) : null,
+    );
+    const [sides, setSides] = useLocalStorage<MatchSides>(
+        screen === "play" ? PLAY_SIDES_KEY : MATCH_SIDES_KEY,
+        firstPlaySides?.sides ?? defaultSides,
     );
 
     // 盤面状態管理（統合フック）
@@ -718,6 +750,12 @@ export function ShogiMatch({
         normalizeTimeSettings,
         isSameTimeSettings,
     );
+    const resetTimeForFirstPlay = useEffectEvent(() => {
+        if (firstPlaySides?.resetTime) setTimeSettings(defaultTimeSettings);
+    });
+    useEffect(() => {
+        resetTimeForFirstPlay();
+    }, []);
     const [isMatchRunning, setIsMatchRunning] = useState(false);
     const [isEditMode, setIsEditMode] = useState(true);
     const isPlayScreen = screen === "play";

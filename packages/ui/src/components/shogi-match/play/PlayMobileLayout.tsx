@@ -39,12 +39,14 @@ interface PlayMobileLayoutProps {
     searchInfo?: ReactNode;
     candidateNote: string | null;
     onDisplaySettingsChange: (settings: DisplaySettings) => void;
+    devTools?: ReactNode;
 }
 
 export function PlayMobileLayout({
     searchInfo,
     candidateNote,
     onDisplaySettingsChange,
+    devTools,
 }: PlayMobileLayoutProps): ReactElement {
     const { play } = useShogiMatchConfig();
     const {
@@ -254,7 +256,10 @@ export function PlayMobileLayout({
                 height="full"
             >
                 <div className="px-1 pb-4">
-                    <PlayAdvancedSettings onDisplaySettingsChange={onDisplaySettingsChange} />
+                    <PlayAdvancedSettings
+                        onDisplaySettingsChange={onDisplaySettingsChange}
+                        devTools={devTools}
+                    />
                 </div>
             </BottomSheet>
         </div>

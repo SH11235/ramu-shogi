@@ -261,6 +261,16 @@ export function ShogiMatchLayout({
         onDisplaySettingsChange,
     } = mobileSpecificProps;
 
+    const playDevTools = isDevMode && (
+        <EngineLogsPanel
+            eventLogs={eventLogs}
+            errorLogs={errorLogs}
+            engineErrorDetails={engineErrorDetails}
+            onRetry={retryEngine}
+            isRetrying={isRetrying}
+        />
+    );
+
     return (
         <>
             {/* DnD ゴースト */}
@@ -474,6 +484,7 @@ export function ShogiMatchLayout({
                                         searchInfo={mobileSpecificProps.searchInfo}
                                         candidateNote={candidateNote}
                                         onDisplaySettingsChange={onDisplaySettingsChange}
+                                        devTools={playDevTools}
                                     />
                                 ) : (
                                     <MobileLayout
@@ -617,17 +628,7 @@ export function ShogiMatchLayout({
                                         matchLayoutClasses={matchLayoutClasses}
                                         candidateNote={candidateNote}
                                         setDisplaySettings={setDisplaySettings}
-                                        devTools={
-                                            isDevMode && (
-                                                <EngineLogsPanel
-                                                    eventLogs={eventLogs}
-                                                    errorLogs={errorLogs}
-                                                    engineErrorDetails={engineErrorDetails}
-                                                    onRetry={retryEngine}
-                                                    isRetrying={isRetrying}
-                                                />
-                                            )
-                                        }
+                                        devTools={playDevTools}
                                     />
                                 ) : (
                                     <PCLayout
