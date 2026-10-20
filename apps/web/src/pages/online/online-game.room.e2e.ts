@@ -72,8 +72,49 @@ async function createRoom(
     }
 }
 
+interface CachedAsset {
+    status: number;
+    headers: Record<string, string>;
+    body: Buffer;
+}
+
+// 静的アセットは max-age=0 で配信され、ブラウザごと・再読み込みごとに取り直しになる。1 ページで 30 件ほどあり、
+// 参加者 3 人と再読み込みで stg の 10 秒あたりのリクエスト上限に届くので、同じ実行のテスト間で使い回す
+const staticAssets = new Map<string, Promise<CachedAsset>>();
+
+async function serveStaticAssetsFromMemory(context: BrowserContext): Promise<void> {
+    await context.route(/^https?:\/\/[^/]+\/(assets|pieces)\//, async (route) => {
+        // 古い deploy を見分ける HEAD の空の応答を覚えると、後の GET に空の本文を返してしまう
+        if (route.request().method() !== "GET") return route.continue();
+        const url = route.request().url();
+        let asset = staticAssets.get(url);
+        if (!asset) {
+            asset = route.fetch().then(async (response) => {
+                // body() は展開済みなので、圧縮を示すヘッダーを残すとブラウザが展開に失敗する
+                const headers = Object.fromEntries(
+                    Object.entries(response.headers()).filter(
+                        ([name]) =>
+                            name !== "content-encoding" &&
+                            name !== "content-length" &&
+                            name !== "transfer-encoding",
+                    ),
+                );
+                return { status: response.status(), headers, body: await response.body() };
+            });
+            staticAssets.set(url, asset);
+        }
+        // 取得したコンテキストが先に閉じると失敗するので、失敗や 200 以外は覚えずに次回取り直す
+        const cached = await asset.catch(() => null);
+        if (cached?.status !== 200) {
+            staticAssets.delete(url);
+        }
+        await (cached ? route.fulfill(cached) : route.continue());
+    });
+}
+
 async function newContext(browser: Browser, devLoginPlayer?: 1 | 2): Promise<BrowserContext> {
     const context = await browser.newContext();
+    await serveStaticAssetsFromMemory(context);
     if (useDevLogin && devLoginPlayer) {
         const response = await context.request.get(`/api/auth/dev-login?player=${devLoginPlayer}`);
         expect(response.ok(), "dev-login に失敗しました").toBe(true);
@@ -647,6 +688,7 @@ test.describe("オンライン対局", () => {
         await playOpening(match);
 
         await match.b.getByRole("button", { name: "投了" }).click();
+        await match.b.getByRole("button", { name: "投了する" }).click();
 
         for (const page of [match.b, match.w]) {
             await expect(resultDialogHeading(page, "w")).toBeVisible();
@@ -670,6 +712,7 @@ test.describe("オンライン対局", () => {
         const match = await startMatch(browser, request);
         await playOpening(match);
         await match.b.getByRole("button", { name: "投了" }).click();
+        await match.b.getByRole("button", { name: "投了する" }).click();
         await expect(resultDialogHeading(match.w, "w")).toBeVisible();
 
         await match.w.reload();

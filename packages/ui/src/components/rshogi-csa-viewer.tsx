@@ -301,7 +301,7 @@ function RshogiGameMetaPanel({
                     href={originUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xs text-wafuu-ai underline underline-offset-2 hover:text-wafuu-ai-light"
+                    className="relative w-fit text-xs text-wafuu-ai underline underline-offset-2 after:absolute after:inset-x-0 after:-inset-y-2.5 hover:text-wafuu-ai-light"
                 >
                     元の棋譜を開く（Floodgate）
                 </a>

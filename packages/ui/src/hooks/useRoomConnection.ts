@@ -3,10 +3,14 @@ import {
     createRoomClient,
     getStoredResumeToken,
     getStoredSeat,
+    isResumeTokenRejected,
+    removeStoredResumeToken,
+    removeStoredSeat,
     storeSeat,
 } from "@shogi/match-client";
 import { useEffect, useEffectEvent, useReducer, useRef } from "react";
 import { type GameStartSnapshot, snapshotAtGameStart } from "../components/online-game-state";
+import { isUnsupportedOnlineStartSfen } from "../components/PositionPresetSelector";
 
 function errorCodeToMessage(code: ErrorCode): string {
     switch (code) {
@@ -77,6 +81,7 @@ interface RoomState {
     joined: boolean;
     connectionLost: boolean;
     localStartSfen: string | null;
+    appliedStartSfen: string | null;
     gamePhase: "waiting" | "playing";
     client: RoomClient | null;
 }
@@ -91,11 +96,19 @@ type RoomAction =
     | { type: "client_cleared" }
     | { type: "room_changed" };
 
+// 空は「SFEN 直接入力」へ切り替えただけで、まだ局面が入力されていない状態。空の開始局面を
+// エラーで返すサーバーがあり、待機中の接続はエラーを受けると切れる。玉の数が合わない局面は
+// サーバーが黙って捨てるので、送らずに画面で知らせる
+function isSendableStartSfen(startSfen: string): boolean {
+    return startSfen !== "" && !isUnsupportedOnlineStartSfen(startSfen);
+}
+
 const INITIAL_ROOM_STATE: RoomState = {
     snapshot: null,
     joined: false,
     connectionLost: false,
     localStartSfen: null,
+    appliedStartSfen: null,
     gamePhase: "waiting",
     client: null,
 };
@@ -105,9 +118,24 @@ function roomReducer(state: RoomState, action: RoomAction): RoomState {
         case "joined":
             return { ...state, joined: true };
         case "snapshot_received":
-            return { ...state, snapshot: action.snapshot };
+            // snapshot の開始局面がサーバーの今の設定。切れている間に届かなかった変更や、
+            // まだ送っていない「SFEN 直接入力」の空はここで捨てる。サーバーの設定がプリセットなら
+            // 打ちかけの文字列は局面選択が持ち続けるので、SFEN 直接入力を選び直せば戻る
+            return {
+                ...state,
+                snapshot: action.snapshot,
+                localStartSfen: action.snapshot.settings.startSfen,
+                appliedStartSfen: action.snapshot.settings.startSfen,
+            };
         case "settings_updated":
-            return { ...state, localStartSfen: action.startSfen };
+            return {
+                ...state,
+                localStartSfen: action.startSfen,
+                // 空と玉の数が合わない局面はサーバーへ送らないので、サーバーの開始局面は前のまま
+                appliedStartSfen: isSendableStartSfen(action.startSfen)
+                    ? action.startSfen
+                    : state.appliedStartSfen,
+            };
         case "game_start":
             // 待機中の snapshot から引き継ぐのは観戦者数だけ。局面・手番・時計・設定は、
             // 待機中に開始局面が変更されると食い違うので引き継がない
@@ -138,6 +166,15 @@ function roomReducer(state: RoomState, action: RoomAction): RoomState {
 
 // ─── 待機中の参加者が受け取るメッセージの処理 ─────────────────────────────────
 
+function forgetRejectedResumeToken(roomId: string): (code: ErrorCode) => void {
+    return (code) => {
+        if (isResumeTokenRejected(code)) {
+            removeStoredResumeToken(roomId);
+            removeStoredSeat(roomId);
+        }
+    };
+}
+
 /** 開始局面を解釈できない game_start を受けてから、サーバーの snapshot を待つ上限 */
 const FULL_SNAPSHOT_TIMEOUT_MS = 15_000;
 
@@ -151,8 +188,6 @@ interface MessageContext {
 }
 
 interface ConnectionHandlers {
-    /** 切断後に RoomClient が resume し直したとき */
-    onReconnect: (client: RoomClient) => void;
     onMessage: (context: MessageContext) => void;
     requestFullSnapshot: (client: RoomClient) => boolean;
 }
@@ -168,6 +203,7 @@ function createWaitingRoomHandlers({
     dispatchJoin,
     requestFullSnapshot,
     errorMessage,
+    onError,
 }: {
     roomId: string;
     seat: "b" | "w" | "s";
@@ -175,19 +211,13 @@ function createWaitingRoomHandlers({
     dispatchJoin: (action: JoinFormAction) => void;
     requestFullSnapshot: (client: RoomClient) => boolean;
     errorMessage: (code: ErrorCode) => string;
+    /** fail より前に呼ぶ。fail は保存済みのトークンの有無で再読み込みの案内を決める */
+    onError?: (code: ErrorCode) => void;
 }): ConnectionHandlers {
-    // 開始局面を解釈できない game_start を受けてから、サーバーの snapshot で盤面を開くまで真
-    let needsFullSnapshot = false;
-
+    // snapshot を待つ間に切れても求め直さない。対局者は RoomClient が snapshot の返る resume で
+    // 席へ戻り、観戦者は onOpen で参加し直すので、どちらも応答に snapshot が含まれる
     return {
         requestFullSnapshot,
-        onReconnect: (client) => {
-            // RoomClient は再接続すると、最後に受け取ったイベントより後の差分だけを求める。
-            // サーバーは差分に snapshot を含めないので、待っている間に切れたら要求を送り直す
-            if (needsFullSnapshot) {
-                requestFullSnapshot(client);
-            }
-        },
         onMessage: ({ client, message, stopListening, fail, failAfter }) => {
             switch (message.t) {
                 case "joined": {
@@ -201,7 +231,6 @@ function createWaitingRoomHandlers({
                     dispatchRoom({ type: "joined" });
                     dispatchJoin({ type: "joined" });
                     if (message.payload.status !== "waiting") {
-                        needsFullSnapshot = false;
                         stopListening();
                         dispatchRoom({ type: "game_start", snapshot: message.payload });
                     }
@@ -223,7 +252,6 @@ function createWaitingRoomHandlers({
                         }
                         // 開始局面を組み立てられないまま盤面を開くと、サーバーと違う局面から
                         // 指せてしまう。サーバーの snapshot を待ち、届いたらそこから開く
-                        needsFullSnapshot = true;
                         if (requestFullSnapshot(client)) {
                             failAfter(FULL_SNAPSHOT_TIMEOUT_MS, errorCodeToMessage("DESYNC"));
                         } else {
@@ -233,6 +261,7 @@ function createWaitingRoomHandlers({
                     break;
                 }
                 case "error": {
+                    onError?.(message.payload.code);
                     fail(errorMessage(message.payload.code));
                     break;
                 }
@@ -271,6 +300,8 @@ export interface UseRoomConnectionReturn {
     /** 席を持ったまま接続に失敗した。再読み込みすると保存済みのトークンで席へ戻れる */
     connectionLost: boolean;
     localStartSfen: string | null;
+    /** 待機中に変更された開始局面のうち、サーバーへ送ったか、サーバーから届いた最後のもの */
+    appliedStartSfen: string | null;
     gamePhase: "waiting" | "playing";
     client: RoomClient | null;
 
@@ -303,7 +334,6 @@ export function useRoomConnection({
     const connectClient = ({
         timeoutMessage,
         onOpen,
-        onReconnect,
         onMessage,
         requestFullSnapshot,
     }: {
@@ -333,7 +363,6 @@ export function useRoomConnection({
                     return;
                 }
                 if (reconnect) {
-                    onReconnect(newClient);
                     return;
                 }
                 if (timeoutId !== null) {
@@ -451,6 +480,7 @@ export function useRoomConnection({
                     return true;
                 },
                 errorMessage: errorCodeToMessage,
+                onError: forgetRejectedResumeToken(roomId),
             }),
         });
     };
@@ -490,6 +520,7 @@ export function useRoomConnection({
                     return true;
                 },
                 errorMessage: () => "セッションが切れました。再度参加してください。",
+                onError: forgetRejectedResumeToken(roomId),
             }),
         });
         return leaveRoom;
@@ -499,9 +530,7 @@ export function useRoomConnection({
 
     const handleUpdateStartSfen = (startSfen: string): void => {
         dispatchRoom({ type: "settings_updated", startSfen });
-        // 空は「SFEN 直接入力」へ切り替えただけで、まだ局面が入力されていない状態。
-        // 空の開始局面をエラーで返すサーバーがあり、待機中の接続はエラーを受けると切れる
-        if (startSfen !== "") {
+        if (isSendableStartSfen(startSfen)) {
             clientRef.current?.updateSettings({ startSfen });
         }
     };
@@ -517,6 +546,7 @@ export function useRoomConnection({
         joined: roomState.joined,
         connectionLost: roomState.connectionLost,
         localStartSfen: roomState.localStartSfen,
+        appliedStartSfen: roomState.appliedStartSfen,
         gamePhase: roomState.gamePhase,
         client: roomState.client,
 

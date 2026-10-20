@@ -16,7 +16,7 @@
         "lint:fix": "pnpm --workspace-root exec biome check --write --files-ignore-unknown=true",
         "lint:fix:unsafe": "pnpm --workspace-root exec biome check --write --unsafe --files-ignore-unknown=true",
         "preview": "vite preview",
-        "typecheck": "tsc -p tsconfig.json --noEmit",
+        "typecheck": "tsc -b --noEmit",
         "test": "vitest run",
         "test:e2e": "playwright test",
         "test:e2e:rooms": "playwright test -c playwright.room.config.ts"

@@ -1,5 +1,6 @@
 // 自動再接続ロジック（指数バックオフ）と resumeToken/seat の localStorage 管理
 
+import type { ErrorCode } from "@shogi/match-protocol";
 import type { Seat } from "./types";
 
 /** バックオフ時間（ms）: 1s → 2s → 4s → 8s → 16s */
@@ -90,6 +91,19 @@ export function removeStoredResumeToken(roomId: string): void {
     } catch {
         // 無視
     }
+}
+
+// resume にこれらが返ったら、保存済みのトークンでは二度と席へ戻れない。残すと開き直すたびに
+// 同じトークンで resume し直して同じエラーになる
+const RESUME_TOKEN_REJECTED_CODES: ReadonlySet<ErrorCode> = new Set([
+    "INVALID_TOKEN",
+    "ROOM_NOT_FOUND",
+    "ROOM_EXPIRED",
+]);
+
+/** resume への応答が、保存済みの席とトークンを捨てるべきエラーか */
+export function isResumeTokenRejected(code: ErrorCode): boolean {
+    return RESUME_TOKEN_REJECTED_CODES.has(code);
 }
 
 // ─── seat の localStorage 管理 ────────────────────────────────────────────────

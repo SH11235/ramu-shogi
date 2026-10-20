@@ -312,6 +312,8 @@ export interface ThreadInfo {
 }
 
 export interface EngineClient {
+    /** 実行時能力を検査する解析専用 API。未対応バックエンドでは存在しない。 */
+    analysis?: AnalysisClient;
     init(opts?: EngineInitOptions): Promise<void>;
     /**
      * 局面を読み込む
@@ -457,4 +459,45 @@ export function createMockEngineClient(): EngineClient {
             }
         },
     };
+}
+
+/** 対話解析の今回の追加予算。 */
+export type AnalysisBudget =
+    | { type: "unlimited" }
+    | { type: "time"; milliseconds: number }
+    | { type: "nodes"; nodes: number };
+export interface AnalysisFinished {
+    sessionId: string;
+    runId: number;
+    reason: "paused" | "budgetReached" | "depthReached" | "terminal";
+    resumable: boolean;
+    completedDepth: number;
+    nodes: number;
+    timeMs: number;
+    totalNodes: number;
+    totalTimeMs: number;
+    workerDepths: [number, number][];
+}
+export interface AnalysisRun {
+    sessionId: string;
+    runId: number;
+    finished: Promise<AnalysisFinished>;
+    /** 全 worker が停止してから返る。失敗時は再開状態を破棄する。 */
+    pause(): Promise<AnalysisFinished>;
+}
+export interface AnalysisClient {
+    /** 初期化後の実効能力。 */
+    available(): boolean;
+    /** loadPosition と設定適用後に新規開始する。 */
+    start(
+        sessionId: string,
+        budget: AnalysisBudget,
+        onInfo: (info: EngineInfoEvent) => void,
+    ): Promise<AnalysisRun>;
+    resume(
+        sessionId: string,
+        budget: AnalysisBudget,
+        onInfo: (info: EngineInfoEvent) => void,
+    ): Promise<AnalysisRun>;
+    release(): Promise<void>;
 }

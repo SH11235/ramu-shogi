@@ -6,12 +6,14 @@ import type {
 } from "@shogi/api-contract";
 import type { ReactElement, ReactNode } from "react";
 import { createContext, useContext, useEffect, useEffectEvent, useState } from "react";
+import { RATE_LIMITED_MESSAGE } from "../lib/rateLimitMessage";
 
 const AUTH_SESSION_SYNC_EVENT = "ramu-auth-session-sync";
 
 export type SessionUser = AuthSessionUser;
 
 export async function parseApiError(response: Response): Promise<string> {
+    if (response.status === 429) return RATE_LIMITED_MESSAGE;
     try {
         const payload = (await response.json()) as ApiErrorResponse;
         if (typeof payload.message === "string" && payload.message.trim() !== "") {

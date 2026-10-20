@@ -129,6 +129,12 @@ export interface RshogiLiveSnapshot {
     };
     /** 終局済 DO への接続時のみ最終結果を含む。 */
     finalResult?: RshogiGameResult;
+    /**
+     * 対局がまだ始まっていない部屋の snapshot（`Game_Summary` も指し手も無い空の block）。
+     * server は対局者が LOGIN する前の部屋にも観戦を受け付け、空の block を返す。ライブで
+     * 中継していない ID（保存済み棋譜の ID や存在しない ID）でも同じ応答になる。
+     */
+    notStarted?: true;
 }
 
 /** broadcast move 1 手の到着イベント。 */
@@ -169,6 +175,8 @@ export type RshogiLiveConnectionState = "connecting" | "connected" | "reconnecti
 export type RshogiLiveStaticFallbackReason =
     | "terminal-snapshot"
     | "reconnect-limit-reached"
+    // 対局が始まっていない部屋で、同じ ID の保存済み棋譜が見つかった。
+    | "not-started"
     | "not-found";
 
 export class RshogiLiveRoomFullError extends Error {
@@ -520,6 +528,9 @@ const decodeSnapshotBlock = (
         finalResult: resultCodeLine
             ? decodeSnapshotResultCode(resultCodeLine, state.turn)
             : undefined,
+        ...(summaryLines.length === 0 && moveEntries.length === 0 && !resultCodeLine
+            ? { notStarted: true as const }
+            : {}),
     };
 
     return { snapshot, finalResultLine: resultCodeLine, warnings };
@@ -968,6 +979,9 @@ export function subscribeRshogiLiveGame(
         ((url: string) => new (globalThis.WebSocket as typeof WebSocket)(url));
 
     let ws: WebSocket | null = null;
+    // 直近の snapshot が「対局がまだ始まっていない」ものだった。始まったあとに届くのは指し手だけで、
+    // 対局者名や持ち時間（Game_Summary）は送り直されないので、最初の指し手で snapshot を取り直す。
+    let resyncOnFirstMove = false;
     let disposed = false;
     /** 受信 line バッファ (改行で区切る前の partial 文字列)。 */
     let recvBuffer = "";
@@ -1100,6 +1114,7 @@ export function subscribeRshogiLiveGame(
             // ply カウンタを snapshot 手数に同期。以降の broadcast move で +1 され、
             // その値が後続 `'` コメント行の紐付け先 ply になる。
             liveMoveCount = snapshot.moves.length;
+            resyncOnFirstMove = snapshot.notStarted === true;
             try {
                 callbacks.onSnapshot(snapshot);
             } catch (err) {
@@ -1190,6 +1205,21 @@ export function subscribeRshogiLiveGame(
         // move 行の処理 (`<token>,T<elapsed>` の `<token>` 部分のみ apply)。
         if (!(trimmed.startsWith("+") || trimmed.startsWith("-"))) {
             return;
+        }
+        if (resyncOnFirstMove) {
+            // 対局が始まった。名前・持ち時間・開始局面のそろった snapshot を取り直す（届けば全置換
+            // される）。開始前の仮の局面（平手・先手番）では、後手番開始などの手を読めないことがある
+            // ので、手を読む前に求める。
+            resyncOnFirstMove = false;
+            try {
+                ws?.send(`%%MONITOR2ON ${gameId}\n`);
+            } catch (err) {
+                emitError(
+                    err instanceof Error
+                        ? err
+                        : new Error(`failed to request snapshot after game start: ${String(err)}`),
+                );
+            }
         }
         const token = trimmed.split(",")[0];
         const elapsedSec = extractElapsedSec(trimmed);

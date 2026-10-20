@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { RATE_LIMITED_MESSAGE } from "./lib/rateLimitMessage";
 import { handleLoaderResponse } from "./router-loader-utils";
 
 describe("handleLoaderResponse", () => {
@@ -105,5 +106,14 @@ describe("handleLoaderResponse", () => {
         );
 
         expect(result).toBe("ok");
+    });
+
+    it("429 は画面ごとの失敗文言ではなく、待ってから試すよう案内する", () => {
+        expect(() =>
+            handleLoaderResponse(
+                { ok: false, status: 429 },
+                { errorMessage: "failed", notFoundMessage: "missing" },
+            ),
+        ).toThrow(RATE_LIMITED_MESSAGE);
     });
 });

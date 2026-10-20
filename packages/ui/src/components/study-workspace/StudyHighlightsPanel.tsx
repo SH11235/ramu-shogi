@@ -127,7 +127,7 @@ export function StudyHighlightsPanel({
         <button
             type="button"
             onClick={onOpenSettings}
-            className="rounded-sm text-wafuu-ai underline underline-offset-2 hover:text-wafuu-ai-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="relative rounded-sm text-wafuu-ai underline underline-offset-2 after:absolute after:inset-x-0 after:-inset-y-2.5 hover:text-wafuu-ai-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
             設定を変える
         </button>

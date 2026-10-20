@@ -38,6 +38,7 @@ export {
     createInitialPositionState,
     deriveLastMove,
     getAllSquares,
+    hasOneKingEach,
     isPassMove,
     parseMove,
     replayMoves,

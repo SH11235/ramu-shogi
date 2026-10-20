@@ -7,6 +7,7 @@
         "noEmit": true,
         "paths": {
             "@shogi/app-core": ["packages/app-core/src/index.ts"],
+            "@shogi/app-controller": ["packages/app-controller/src/index.ts"],
             "@shogi/engine-client": ["packages/engine-client/src"],
             "@shogi/engine-client/*": ["packages/engine-client/src/*"],
             "@shogi/design-system": ["packages/design-system/src"],

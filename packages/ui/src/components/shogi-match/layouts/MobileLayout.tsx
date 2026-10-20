@@ -231,7 +231,7 @@ export function MobileLayout({
             <button
                 type="button"
                 onClick={handleFlipBoard}
-                className="flex items-center justify-center w-6 h-6 rounded hover:bg-muted text-sm"
+                className="flex items-center justify-center w-8 h-8 rounded hover:bg-muted text-sm"
                 title="盤面を反転"
                 aria-label="盤面を反転"
             >
@@ -402,7 +402,8 @@ export function MobileLayout({
                                 type="button"
                                 onClick={() => setIsAnalysisSheetOpen(true)}
                                 aria-haspopup="dialog"
-                                className="px-2 py-0.5 text-xs rounded bg-muted hover:bg-muted/80 active:scale-95 transition-all"
+                                // 行の高さは変えず（盤を最初の画面に収めるため）、押せる範囲だけ上下に広げる。
+                                className="relative px-2 py-0.5 text-xs rounded bg-muted hover:bg-muted/80 active:scale-95 transition-all after:absolute after:inset-x-0 after:-inset-y-1.5"
                             >
                                 📊 グラフ・読み筋
                             </button>

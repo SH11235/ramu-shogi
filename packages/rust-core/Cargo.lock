@@ -236,7 +236,7 @@ dependencies = [
 [[package]]
 name = "rshogi-core"
 version = "0.8.1"
-source = "git+https://github.com/SH11235/rshogi.git?rev=05d897776040490a191edf71138b4105f92bc15d#05d897776040490a191edf71138b4105f92bc15d"
+source = "git+https://github.com/SH11235/rshogi.git?rev=711b839f1a1e07c4c1e034aead894faf5552146d#711b839f1a1e07c4c1e034aead894faf5552146d"
 dependencies = [
  "getrandom",
  "libc",
@@ -313,6 +313,17 @@ dependencies = [
  "ryu",
  "serde",
  "serde_core",
+]
+
+[[package]]
+name = "shogi-rules-wasm"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "js-sys",
+ "rshogi-core",
+ "serde_json",
+ "wasm-bindgen",
 ]
 
 [[package]]

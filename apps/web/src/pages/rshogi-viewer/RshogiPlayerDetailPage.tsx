@@ -136,7 +136,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                                         <div className="flex flex-wrap items-center gap-2 text-xs tracking-[0.18em] text-wafuu-kincha">
                                             RATING RECORD
                                             {player.legacy && (
-                                                <span className="rounded-sm border border-wafuu-kincha/50 px-1.5 py-0.5 text-[9px]">
+                                                <span className="rounded-sm border border-wafuu-kincha/50 px-1.5 py-0.5 text-[10px]">
                                                     LEGACY
                                                 </span>
                                             )}
@@ -144,13 +144,13 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                                         <h1 className="truncate font-serif text-3xl font-bold sm:text-4xl">
                                             {player.displayName}
                                         </h1>
-                                        <code className="truncate text-[10px] text-wafuu-washi-warm/45 sm:text-xs">
+                                        <code className="truncate text-[11px] text-wafuu-washi-warm/45 sm:text-xs">
                                             {player.playerId}
                                         </code>
                                     </div>
                                     <Link
                                         to="/rshogi-viewer/players"
-                                        className="w-fit border-b border-wafuu-kincha pb-1 text-sm hover:text-wafuu-kincha"
+                                        className="w-fit border-b border-wafuu-kincha pb-1 pt-2 text-sm hover:text-wafuu-kincha"
                                     >
                                         ← レーティングへ戻る
                                     </Link>
@@ -178,7 +178,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                                         key={label}
                                         className="flex flex-col items-center gap-1 px-2 py-4"
                                     >
-                                        <dt className="text-[10px] tracking-widest text-muted-foreground">
+                                        <dt className="text-[11px] tracking-widest text-muted-foreground">
                                             {label}
                                         </dt>
                                         <dd className="font-mono text-xl tabular-nums text-wafuu-sumi">
@@ -197,7 +197,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                                 className="flex items-center justify-between gap-4 rounded-xl border border-wafuu-border bg-wafuu-washi-warm px-5 py-4 text-wafuu-sumi shadow-sm transition-colors hover:bg-wafuu-kincha/10"
                             >
                                 <span className="min-w-0">
-                                    <span className="block text-[10px] font-semibold tracking-[0.2em] text-wafuu-shu">
+                                    <span className="block text-[11px] font-semibold tracking-[0.2em] text-wafuu-shu">
                                         NNUE EXPERIMENT
                                     </span>
                                     <span className="block truncate font-serif font-bold">
@@ -213,7 +213,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                         <section className="flex flex-col gap-3">
                             <div className="flex items-end justify-between gap-4 border-b border-wafuu-border pb-2">
                                 <div>
-                                    <p className="text-[10px] font-semibold tracking-[0.2em] text-wafuu-shu">
+                                    <p className="text-[11px] font-semibold tracking-[0.2em] text-wafuu-shu">
                                         GAME ARCHIVE
                                     </p>
                                     <h2 className="font-serif text-xl font-bold text-wafuu-sumi">

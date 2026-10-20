@@ -8,7 +8,7 @@ import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
 import { PageHeading } from "../../components/PageHeading";
 import { Section } from "../../components/Section";
-import { formatGameResult } from "./gameResultUtils";
+import { formatGameResult, SOURCE_LABELS, VISIBILITY_LABELS } from "./gameResultUtils";
 
 const routeApi = getRouteApi("/games");
 
@@ -148,10 +148,10 @@ export default function GamesPage(): ReactElement {
                                 <div className="flex flex-col gap-3">
                                     <div className="flex flex-wrap items-center gap-2 text-xs">
                                         <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
-                                            {game.visibility}
+                                            {VISIBILITY_LABELS[game.visibility]}
                                         </span>
                                         <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
-                                            {game.source}
+                                            {SOURCE_LABELS[game.source]}
                                         </span>
                                     </div>
 
@@ -170,10 +170,14 @@ export default function GamesPage(): ReactElement {
                                     </div>
 
                                     <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                                        {/* 終わった対局は終了日時だけ（作成日時は対局を始めた時刻でほぼ同じ）。 */}
                                         <span>終了: {formatFinishedAt(game.finishedAt)}</span>
-                                        <span>
-                                            作成: {new Date(game.createdAt).toLocaleString("ja-JP")}
-                                        </span>
+                                        {!game.finishedAt && (
+                                            <span>
+                                                作成:{" "}
+                                                {new Date(game.createdAt).toLocaleString("ja-JP")}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                             </Link>
