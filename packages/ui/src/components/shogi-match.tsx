@@ -41,7 +41,7 @@ import type { DropResult } from "./shogi-match/dnd/types";
 import { usePieceDnd } from "./shogi-match/dnd/usePieceDnd";
 import { useBatchAnalysis } from "./shogi-match/hooks/useBatchAnalysis";
 import { useBoardState } from "./shogi-match/hooks/useBoardState";
-import { useClockManager } from "./shogi-match/hooks/useClockManager";
+import { type ClockSettings, useClockManager } from "./shogi-match/hooks/useClockManager";
 import { useDialogs } from "./shogi-match/hooks/useDialogs";
 import { useEditModeActions } from "./shogi-match/hooks/useEditModeActions";
 import { useEngineManager } from "./shogi-match/hooks/useEngineManager";
@@ -65,6 +65,7 @@ import { useNormalizedSettings } from "./shogi-match/hooks/useNormalizedSettings
 import { usePassRights } from "./shogi-match/hooks/usePassRights";
 import { useUIState } from "./shogi-match/hooks/useUIState";
 import { ShogiMatchLayout } from "./shogi-match/layouts/ShogiMatchLayout";
+import { AI_TIME_CHOICES, MY_TIME_CHOICES, matchesChoice } from "./shogi-match/play/usePlaySetup";
 import {
     type PlayPhase,
     type PlayScreenConfig,
@@ -115,7 +116,6 @@ const HIRATE_BOARD_SFEN = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGK
 const isHirateSfen = (sfen: string): boolean =>
     sfen === "startpos" || sfen.includes(HIRATE_BOARD_SFEN);
 
-/** 対局用の表示設定 localStorage キー。 */
 const MATCH_SIDES_KEY = "shogi-match-sides";
 const PLAY_SIDES_KEY = "shogi-play-sides";
 
@@ -123,13 +123,13 @@ type MatchSides = { sente: SideSetting; gote: SideSetting };
 
 /**
  * 対局画面を初めて開いたとき（先後をまだ PLAY_SIDES_KEY に保存していない）の先後。
- * 共有のキーに残る先後は、ほかの画面の既定値（観戦は人 対 人、以前の対局画面は AI 同士）でも
- * 書き込まれるので、引き継ぐのは「人 対 AI」のときだけ。引き継がないときは、時間設定も
- * 既定値に戻す（AI 同士の秒読みが、自分の持ち時間に残らないようにする）。
+ * 共有のキーの先後は、ほかの画面の既定値（観戦の人 対 人）や、AI 同士の保存値のこともあるので、
+ * 引き継ぐのは「人 対 AI」のときだけ。引き継がないときは `alignTime` を立て、時間設定を
+ * 対局画面の選択肢にそろえる。
  */
 const readFirstPlaySides = (
     defaults: MatchSides,
-): { sides: MatchSides; resetTime: boolean } | null => {
+): { sides: MatchSides; alignTime: boolean } | null => {
     if (typeof window === "undefined") return null;
     try {
         if (localStorage.getItem(PLAY_SIDES_KEY) !== null) return null;
@@ -137,12 +137,30 @@ const readFirstPlaySides = (
         const legacy = raw === null ? null : (JSON.parse(raw) as Partial<MatchSides> | null);
         const roles = [legacy?.sente?.role, legacy?.gote?.role];
         if (legacy?.sente && legacy.gote && roles.includes("human") && roles.includes("engine")) {
-            return { sides: { sente: legacy.sente, gote: legacy.gote }, resetTime: false };
+            return { sides: { sente: legacy.sente, gote: legacy.gote }, alignTime: false };
         }
     } catch {
         // 読めない保存値は、引き継がずに既定値で始める。
     }
-    return { sides: defaults, resetTime: true };
+    return { sides: defaults, alignTime: true };
+};
+
+/**
+ * 人の側は MY_TIME_CHOICES、AI の側は AI_TIME_CHOICES のどれにも当たらない時計を既定値にする
+ * （AI 同士の 1 手 10 秒が自分の持ち時間に残る、観戦の「時間なし」が AI の考慮時間に残る、を防ぐ）。
+ */
+const alignTimeToPlayChoices = (
+    settings: ClockSettings,
+    sides: MatchSides,
+    defaults: ClockSettings,
+): ClockSettings => {
+    const align = (side: Player) => {
+        const choices = sides[side].role === "human" ? MY_TIME_CHOICES : AI_TIME_CHOICES;
+        return choices.some((choice) => matchesChoice(settings[side], choice))
+            ? settings[side]
+            : defaults[side];
+    };
+    return { sente: align("sente"), gote: align("gote") };
 };
 
 const DISPLAY_SETTINGS_KEY = "shogi-display-settings";
@@ -750,12 +768,21 @@ export function ShogiMatch({
         normalizeTimeSettings,
         isSameTimeSettings,
     );
-    const resetTimeForFirstPlay = useEffectEvent(() => {
-        if (firstPlaySides?.resetTime) setTimeSettings(defaultTimeSettings);
+    // 初めて開いた対局画面では、利用者が先後か時間を自分で選ぶまで、時間設定を選択肢にそろえ続ける。
+    // 1 度だけでは足りない（ログイン中は、サーバーに保存した時間設定があとから届いて書き戻される）。
+    const alignTimeRef = useRef(firstPlaySides?.alignTime === true);
+    const alignTimeForFirstPlay = useEffectEvent((current: ClockSettings) => {
+        if (!alignTimeRef.current) return;
+        const aligned = alignTimeToPlayChoices(current, sides, defaultTimeSettings);
+        if (!isSameTimeSettings(aligned, current)) setTimeSettings(aligned);
     });
     useEffect(() => {
-        resetTimeForFirstPlay();
-    }, []);
+        alignTimeForFirstPlay(timeSettings);
+    }, [timeSettings]);
+    const changeTimeSettings: typeof setTimeSettings = (next) => {
+        alignTimeRef.current = false;
+        setTimeSettings(next);
+    };
     const [isMatchRunning, setIsMatchRunning] = useState(false);
     const [isEditMode, setIsEditMode] = useState(true);
     const isPlayScreen = screen === "play";
@@ -1481,6 +1508,7 @@ export function ShogiMatch({
                 void disposeEngine(side);
             }
         }
+        alignTimeRef.current = false;
         setSides(newSides);
     };
 
@@ -2121,7 +2149,7 @@ export function ShogiMatch({
         analysisEngineId,
         setAnalysisEngineId,
         timeSettings,
-        setTimeSettings,
+        setTimeSettings: changeTimeSettings,
         passRightsSettings,
         handlePassRightsSettingsChange,
         settingsLocked,

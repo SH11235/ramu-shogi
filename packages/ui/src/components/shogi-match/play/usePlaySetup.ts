@@ -53,7 +53,7 @@ export const MY_TIME_CHOICES: TimeChoice[] = [
 
 const opposite = (side: Player): Player => (side === "sente" ? "gote" : "sente");
 
-const matchesChoice = (setting: ClockSettings[Player], choice: TimeChoice): boolean =>
+export const matchesChoice = (setting: ClockSettings[Player], choice: TimeChoice): boolean =>
     choice.enabled
         ? setting.enabled &&
           setting.mainMs === choice.mainMs &&
