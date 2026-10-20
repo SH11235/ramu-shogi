@@ -455,6 +455,9 @@ const CONNECTION_LABEL: Record<RshogiLiveConnectionState, string> = {
     closed: "切断済み",
 };
 
+/** 対局がまだ始まっていない部屋を見ているときの状態の表示。 */
+const WAITING_LABEL = "開始待ち";
+
 const CONNECTION_BADGE_CLASS: Record<RshogiLiveConnectionState, string> = {
     connecting: "bg-wafuu-kincha/30 text-wafuu-sumi",
     connected: "bg-wafuu-ai/20 text-wafuu-ai",
@@ -572,12 +575,15 @@ function ScoreboardSide({
     remaining,
     active,
     ownEvalCp,
+    clockHidden = false,
 }: {
     side: "sente" | "gote";
     name: string;
     /** 表示用残時間 (本体 or 秒読み)。 */
     remaining: SideRemaining;
     active: boolean;
+    /** 時計の値が無い（対局が始まる前）。場所は取ったまま見せない（始まったときに動かないように）。 */
+    clockHidden?: boolean;
     /** その手番自身の視点に直した最新評価値 (`+` = その手番が有利)。無ければ非表示。 */
     ownEvalCp?: number;
 }): ReactElement {
@@ -618,6 +624,7 @@ function ScoreboardSide({
                 className={cn(
                     "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-2xl font-bold leading-none tabular-nums transition-colors",
                     isSente ? "ml-auto" : "mr-auto",
+                    clockHidden && "invisible",
                     active ? "bg-wafuu-shu/10 text-wafuu-shu" : "text-wafuu-sumi-light",
                 )}
             >
@@ -659,6 +666,7 @@ export function RshogiLiveScoreboard({
     senteEvalCp,
     goteEvalCp,
     lastMoveElapsedSec,
+    waiting = false,
 }: {
     meta: RshogiGameMeta;
     moveCount: number;
@@ -671,9 +679,11 @@ export function RshogiLiveScoreboard({
     goteEvalCp?: number;
     /** 直近手の消費秒数。無ければ非表示。 */
     lastMoveElapsedSec?: number;
+    /** 対局がまだ始まっていない（LIVE ではなく「開始待ち」と出す）。 */
+    waiting?: boolean;
 }): ReactElement {
     const remaining = computeRemaining(clocks, elapsedSinceAnchor, meta.timeControl);
-    const isConnected = connectionState === "connected";
+    const isConnected = connectionState === "connected" && !waiting;
     const turnLabel = result
         ? "終局"
         : clocks?.sideToMove === "sente"
@@ -692,6 +702,7 @@ export function RshogiLiveScoreboard({
                 remaining={remaining.sente}
                 active={!result && clocks?.sideToMove === "sente"}
                 ownEvalCp={toOwnEval("sente", senteEvalCp)}
+                clockHidden={clocks === null}
             />
             <div className="flex flex-row items-center justify-between gap-3 border-y border-wafuu-border bg-wafuu-washi px-4 py-2 sm:min-w-[7.5rem] sm:flex-col sm:justify-center sm:gap-1 sm:border-x sm:border-y-0">
                 <span className="text-xl font-bold tabular-nums leading-none text-wafuu-sumi">
@@ -708,7 +719,11 @@ export function RshogiLiveScoreboard({
                     </span>
                 ) : (
                     <span className="rounded-full bg-wafuu-sumi/5 px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
-                        {result ? "対局終了" : CONNECTION_LABEL[connectionState]}
+                        {result
+                            ? "対局終了"
+                            : waiting
+                              ? WAITING_LABEL
+                              : CONNECTION_LABEL[connectionState]}
                     </span>
                 )}
                 <span className="text-xs text-muted-foreground">{turnLabel}</span>
@@ -729,6 +744,7 @@ export function RshogiLiveScoreboard({
                 remaining={remaining.gote}
                 active={!result && clocks?.sideToMove === "gote"}
                 ownEvalCp={toOwnEval("gote", goteEvalCp)}
+                clockHidden={clocks === null}
             />
         </section>
     );
@@ -744,6 +760,7 @@ export function RshogiLiveMobileHeader({
     elapsedSinceAnchor,
     connectionState,
     result,
+    waiting = false,
 }: {
     meta: RshogiGameMeta;
     /** 無ければ（保存済み棋譜に切り替えたあとなど）残り時間を出さない。 */
@@ -751,11 +768,19 @@ export function RshogiLiveMobileHeader({
     elapsedSinceAnchor: number;
     connectionState: RshogiLiveConnectionState;
     result?: RshogiGameResult;
+    /** 対局がまだ始まっていない（「開始待ち」と出す）。 */
+    waiting?: boolean;
 }): ReactElement {
     const remaining = computeRemaining(clocks, elapsedSinceAnchor, meta.timeControl);
-    const isLive = connectionState === "connected" && !result;
+    const isLive = connectionState === "connected" && !result && !waiting;
     // 状態は行を足さずに先手の行へ添える（つながり直すたびに盤が上下に動かないように）。
-    const status = isLive ? null : result ? "対局終了" : CONNECTION_LABEL[connectionState];
+    const status = isLive
+        ? null
+        : result
+          ? "対局終了"
+          : waiting
+            ? WAITING_LABEL
+            : CONNECTION_LABEL[connectionState];
     const renderSide = (side: "sente" | "gote") => {
         const isSente = side === "sente";
         const own = remaining[side];
@@ -891,6 +916,78 @@ export function RshogiCsaLiveViewer({
         setState(initialLiveState);
         setTickMs(Date.now());
         let staticFallbackController: AbortController | null = null;
+        // 対局が始まっていない部屋（空の snapshot）を見たら、同じ ID の保存済み棋譜があるか確かめる。
+        // 終わった対局のライブ URL を開いた場合などは、保存済み棋譜を出す。無ければ開始を待つ
+        // （対局者が入る前の部屋を先に開いている場合があるので、見つからなくても誤りとは出さない）。
+        let notStartedProbe: AbortController | null = null;
+        // 局面か指し手が届いた（ライブの対局が始まっている）。確認中なら、その結果は捨てる。
+        let liveStarted = false;
+        const markLiveStarted = () => {
+            liveStarted = true;
+            notStartedProbe?.abort();
+        };
+        const probeArchivedGame = () => {
+            if (notStartedProbe || staticFallbackController || liveStarted) return;
+            const controller = new AbortController();
+            notStartedProbe = controller;
+            void (async () => {
+                let game: RshogiGame;
+                try {
+                    game = await fetchRshogiGame(gameId, {
+                        baseUrl: apiBaseUrl,
+                        fetchImpl: fetchOverride,
+                        signal: controller.signal,
+                    });
+                } catch {
+                    return;
+                }
+                if (controller.signal.aborted || liveStarted || staticFallbackController) return;
+                // 中継していない対局の棋譜。ライブの接続は閉じ、保存済み棋譜を出す。
+                staticFallbackController = controller;
+                session?.disconnect();
+                setState((prev) => ({ ...prev, connectionState: "closed", lastError: undefined }));
+                showStaticGame("not-started", game);
+            })();
+        };
+        // 取得した保存済み棋譜を読み、静的表示へ切り替える。
+        const showStaticGame = (reason: RshogiLiveStaticFallbackReason, game: RshogiGame) => {
+            let startSfen: string;
+            let checkmatedSide: Player | undefined;
+            let moves: string[];
+            let moveData: (ReviewMoveEval | undefined)[];
+            try {
+                const record = parseCsaGameRecord(game.csa);
+                startSfen = record.startSfen;
+                checkmatedSide = record.checkmatedSide;
+                moves = record.moves;
+                moveData = csaAnnotationsToMoveData(record.annotations);
+            } catch (parseError) {
+                setState((prev) => ({
+                    ...prev,
+                    staticFallback:
+                        prev.snapshot && reason === "terminal-snapshot"
+                            ? undefined
+                            : {
+                                  status: "error",
+                                  reason,
+                                  errorMessage: `終局済み棋譜の解析に失敗しました: ${String(parseError)}`,
+                              },
+                }));
+                return;
+            }
+            setState((prev) => ({
+                ...prev,
+                staticFallback: {
+                    status: "ready",
+                    reason,
+                    game,
+                    startSfen,
+                    checkmatedSide,
+                    moves,
+                    moveData,
+                },
+            }));
+        };
         const loadStaticFallback = (reason: RshogiLiveStaticFallbackReason) => {
             if (staticFallbackController) return;
             staticFallbackController = new AbortController();
@@ -910,42 +1007,7 @@ export function RshogiCsaLiveViewer({
                         signal: controller.signal,
                     });
                     if (controller.signal.aborted) return;
-                    let startSfen: string;
-                    let checkmatedSide: Player | undefined;
-                    let moves: string[];
-                    let moveData: (ReviewMoveEval | undefined)[];
-                    try {
-                        const record = parseCsaGameRecord(game.csa);
-                        startSfen = record.startSfen;
-                        checkmatedSide = record.checkmatedSide;
-                        moves = record.moves;
-                        moveData = csaAnnotationsToMoveData(record.annotations);
-                    } catch (parseError) {
-                        setState((prev) => ({
-                            ...prev,
-                            staticFallback:
-                                prev.snapshot && reason === "terminal-snapshot"
-                                    ? undefined
-                                    : {
-                                          status: "error",
-                                          reason,
-                                          errorMessage: `終局済み棋譜の解析に失敗しました: ${String(parseError)}`,
-                                      },
-                        }));
-                        return;
-                    }
-                    setState((prev) => ({
-                        ...prev,
-                        staticFallback: {
-                            status: "ready",
-                            reason,
-                            game,
-                            startSfen,
-                            checkmatedSide,
-                            moves,
-                            moveData,
-                        },
-                    }));
+                    showStaticGame(reason, game);
                 } catch (error) {
                     if (controller.signal.aborted) return;
                     if (error instanceof RshogiGameNotFoundError) {
@@ -982,6 +1044,8 @@ export function RshogiCsaLiveViewer({
         };
         const callbacks: RshogiLiveCallbacks = {
             onSnapshot(snapshot) {
+                if (snapshot.notStarted) probeArchivedGame();
+                else markLiveStarted();
                 const summary = summarizeMoveDetails(
                     snapshot.moveDetails,
                     startTurnOfSfen(snapshot.startSfen),
@@ -1018,6 +1082,7 @@ export function RshogiCsaLiveViewer({
                 }));
             },
             onMove({ csaMove, elapsedSec }) {
+                markLiveStarted();
                 setState((prev) => {
                     const timeControl = prev.snapshot?.meta.timeControl;
                     return {
@@ -1118,6 +1183,7 @@ export function RshogiCsaLiveViewer({
         sessionRef.current = session;
         return () => {
             staticFallbackController?.abort();
+            notStartedProbe?.abort();
             session?.disconnect();
             sessionRef.current = null;
         };
@@ -1131,12 +1197,17 @@ export function RshogiCsaLiveViewer({
         }
     }, [state.result]);
 
+    // 対局がまだ始まっていない部屋を見ている（指し手が届けば始まったとみなす）。
+    const waitingForStart =
+        state.snapshot?.notStarted === true && state.moves.length === 0 && !state.result;
+
     // 進行中の対局を見ている間は、画面が消えてロックされないようにする。つながらなかった
     // （局面を一度も受け取れずに閉じた）ときは、エラーの画面なので消灯を止めない。
     useScreenWakeLock(
         !state.result &&
             !state.staticFallback &&
             state.snapshot !== null &&
+            !waitingForStart &&
             state.connectionState !== "closed",
     );
 
@@ -1160,7 +1231,9 @@ export function RshogiCsaLiveViewer({
             <div className="flex flex-col gap-2">
                 {header}
                 <div className="px-4 pt-2 text-xs text-muted-foreground">
-                    ライブ接続は終了済みのため、保存済み棋譜を表示しています。
+                    {state.staticFallback.reason === "not-started"
+                        ? "この対局は中継していないため、保存済み棋譜を表示しています。"
+                        : "ライブ接続は終了済みのため、保存済み棋譜を表示しています。"}
                 </div>
                 <ShogiMatch
                     key={`static-${game.meta.gameId}`}
@@ -1307,23 +1380,27 @@ export function RshogiCsaLiveViewer({
                 mobileHeaderContent={
                     <RshogiLiveMobileHeader
                         meta={meta}
-                        clocks={state.clocks}
+                        // 始まる前は時計の値が無い（0 のまま）ので出さない。
+                        clocks={waitingForStart ? null : state.clocks}
                         elapsedSinceAnchor={elapsedSinceAnchor}
                         connectionState={state.connectionState}
                         result={state.result}
+                        waiting={waitingForStart}
                     />
                 }
                 reviewTopContent={
                     <RshogiLiveScoreboard
                         meta={meta}
                         moveCount={state.moves.length}
-                        clocks={state.clocks}
+                        // 始まる前は時計の値が無い（0 のまま）ので出さない。
+                        clocks={waitingForStart ? null : state.clocks}
                         elapsedSinceAnchor={elapsedSinceAnchor}
                         connectionState={state.connectionState}
                         result={state.result}
                         senteEvalCp={state.senteEvalCp}
                         goteEvalCp={state.goteEvalCp}
                         lastMoveElapsedSec={state.lastMoveElapsedSec}
+                        waiting={waitingForStart}
                     />
                 }
                 // 観戦は見るだけの画面なので、対局開始・棋譜読込・局面編集などは出さない。
