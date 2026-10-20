@@ -199,6 +199,30 @@ describe("subscribeRshogiLiveGame: snapshot → broadcast → end → close", ()
         expect(events.clocks[0].sideToMove).toBe("sente");
     });
 
+    it("始まっていない部屋の snapshot のあとに最初の指し手が届いたら、snapshot を取り直す", () => {
+        const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+        subscribeRshogiLiveGame(
+            "room-1",
+            { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+            callbacks,
+        );
+        const ws = wsInstances[0];
+        ws.fireOpen();
+        ws.fireLines(["##[MONITOR2] BEGIN room-1", "##[MONITOR2] END"]);
+        expect(events.snapshot[0].notStarted).toBe(true);
+        expect(ws.sent).toEqual(["%%MONITOR2ON room-1\n"]);
+
+        // 対局が始まり、指し手だけが届く。手はそのまま反映し、snapshot を 1 度だけ求め直す。
+        ws.fireLines(["+7776FU,T3", "-3334FU,T2"]);
+        expect(events.moves.map((move) => move.csaMove)).toEqual(["7g7f", "3c3d"]);
+        expect(ws.sent).toEqual(["%%MONITOR2ON room-1\n", "%%MONITOR2ON room-1\n"]);
+
+        // 名前のそろった snapshot が届けば全置換される。
+        ws.fireLines(buildSnapshotLines(["+7776FU,T3", "-3334FU,T2"]));
+        expect(events.snapshot.at(-1)?.meta.senteName).toBe("alice");
+        expect(events.snapshot.at(-1)?.notStarted).toBeUndefined();
+    });
+
     it("To_Move が後手の snapshot を後手の move 行から復元する", () => {
         const { wsInstances, wsFactory, events, callbacks } = makeMocks();
         subscribeRshogiLiveGame(

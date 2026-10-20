@@ -1386,7 +1386,8 @@ export function RshogiCsaLiveViewer({
                     <RshogiLiveScoreboard
                         meta={meta}
                         moveCount={state.moves.length}
-                        clocks={state.clocks}
+                        // 始まる前は時計の値が無い（0 のまま）ので出さない。
+                        clocks={waitingForStart ? null : state.clocks}
                         elapsedSinceAnchor={elapsedSinceAnchor}
                         connectionState={state.connectionState}
                         result={state.result}

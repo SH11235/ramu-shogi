@@ -528,7 +528,7 @@ const decodeSnapshotBlock = (
         finalResult: resultCodeLine
             ? decodeSnapshotResultCode(resultCodeLine, state.turn)
             : undefined,
-        ...(summaryLines.length === 0 && moves.length === 0 && !resultCodeLine
+        ...(summaryLines.length === 0 && moveEntries.length === 0 && !resultCodeLine
             ? { notStarted: true as const }
             : {}),
     };
@@ -979,6 +979,9 @@ export function subscribeRshogiLiveGame(
         ((url: string) => new (globalThis.WebSocket as typeof WebSocket)(url));
 
     let ws: WebSocket | null = null;
+    // 直近の snapshot が「対局がまだ始まっていない」ものだった。始まったあとに届くのは指し手だけで、
+    // 対局者名や持ち時間（Game_Summary）は送り直されないので、最初の指し手で snapshot を取り直す。
+    let resyncOnFirstMove = false;
     let disposed = false;
     /** 受信 line バッファ (改行で区切る前の partial 文字列)。 */
     let recvBuffer = "";
@@ -1111,6 +1114,7 @@ export function subscribeRshogiLiveGame(
             // ply カウンタを snapshot 手数に同期。以降の broadcast move で +1 され、
             // その値が後続 `'` コメント行の紐付け先 ply になる。
             liveMoveCount = snapshot.moves.length;
+            resyncOnFirstMove = snapshot.notStarted === true;
             try {
                 callbacks.onSnapshot(snapshot);
             } catch (err) {
@@ -1223,6 +1227,20 @@ export function subscribeRshogiLiveGame(
         liveState = applied.nextState;
         liveTurn = applied.nextState.turn;
         liveMoveCount += 1;
+        if (resyncOnFirstMove) {
+            // 対局が始まった。届いた手はそのまま反映し、名前・持ち時間のそろった snapshot を
+            // 取り直す（届けば全置換される。届かなくても、いまの表示は保たれる）。
+            resyncOnFirstMove = false;
+            try {
+                ws?.send(`%%MONITOR2ON ${gameId}\n`);
+            } catch (err) {
+                emitError(
+                    err instanceof Error
+                        ? err
+                        : new Error(`failed to request snapshot after game start: ${String(err)}`),
+                );
+            }
+        }
         try {
             callbacks.onMove({ csaMove: applied.move, elapsedSec });
         } catch (err) {
