@@ -16,7 +16,7 @@ interface MobileKifuBarProps {
     currentPly: number;
     /** 手数選択時のコールバック */
     onPlySelect?: (ply: number) => void;
-    /** 見た目。`"wafuu"` は和の配色（地は和紙、いまの手は金の淡塗り）。省略時は従来どおり */
+    /** 見た目。`"wafuu"` は和の配色（地は和紙、いまの手は金の淡塗り）。省略時は既定の配色 */
     tone?: "default" | "wafuu";
 }
 

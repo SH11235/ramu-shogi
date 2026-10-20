@@ -8,7 +8,7 @@
  * Context の前提: MatchSettings / Analysis / MatchState / Navigation を親で Provider 済み。
  */
 
-import type { Dispatch, ReactElement, SetStateAction } from "react";
+import type { Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
 import { useState } from "react";
 import { Button } from "../../button";
 import {
@@ -45,12 +45,14 @@ interface PlayPCLayoutProps {
     matchLayoutClasses: string;
     candidateNote: string | null;
     setDisplaySettings: Dispatch<SetStateAction<DisplaySettings>>;
+    devTools?: ReactNode;
 }
 
 export function PlayPCLayout({
     matchLayoutClasses,
     candidateNote,
     setDisplaySettings,
+    devTools,
 }: PlayPCLayoutProps): ReactElement {
     const { play } = useShogiMatchConfig();
     const hintMove = usePlayHintMove();
@@ -217,7 +219,10 @@ export function PlayPCLayout({
                             <DialogTitle>詳細設定</DialogTitle>
                             <DialogDescription>ふだんは変えなくてよい設定です。</DialogDescription>
                         </DialogHeader>
-                        <PlayAdvancedSettings onDisplaySettingsChange={setDisplaySettings} />
+                        <PlayAdvancedSettings
+                            onDisplaySettingsChange={setDisplaySettings}
+                            devTools={devTools}
+                        />
                         <DialogClose asChild>
                             <Button
                                 type="button"

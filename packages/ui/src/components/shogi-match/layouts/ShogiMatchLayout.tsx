@@ -12,6 +12,7 @@ import { AboutDialog } from "../../AboutDialog";
 import { EngineRestartingOverlay } from "../../nnue/EngineRestartingOverlay";
 import { NnueManagerDialog } from "../../nnue/NnueManagerDialog";
 
+import { EngineLogsPanel } from "../components/EngineLogsPanel";
 import { GameResultDialog } from "../components/GameResultDialog";
 import { MoveDetailWindow } from "../components/MoveDetailWindow";
 import { PvPreviewDialog } from "../components/PvPreviewDialog";
@@ -616,6 +617,17 @@ export function ShogiMatchLayout({
                                         matchLayoutClasses={matchLayoutClasses}
                                         candidateNote={candidateNote}
                                         setDisplaySettings={setDisplaySettings}
+                                        devTools={
+                                            isDevMode && (
+                                                <EngineLogsPanel
+                                                    eventLogs={eventLogs}
+                                                    errorLogs={errorLogs}
+                                                    engineErrorDetails={engineErrorDetails}
+                                                    onRetry={retryEngine}
+                                                    isRetrying={isRetrying}
+                                                />
+                                            )
+                                        }
                                     />
                                 ) : (
                                     <PCLayout

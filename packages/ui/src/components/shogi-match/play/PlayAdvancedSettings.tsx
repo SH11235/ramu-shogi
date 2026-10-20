@@ -53,10 +53,13 @@ const ROW_BUTTON_CLASS = cn(
 
 interface PlayAdvancedSettingsProps {
     onDisplaySettingsChange: (settings: DisplaySettings) => void;
+    /** 開発モードで「開発者向け」に添える部品（エンジンのログ・再試行など）。 */
+    devTools?: ReactNode;
 }
 
 export function PlayAdvancedSettings({
     onDisplaySettingsChange,
+    devTools,
 }: PlayAdvancedSettingsProps): ReactElement {
     const setup = usePlaySetup();
     const {
@@ -300,6 +303,7 @@ export function PlayAdvancedSettings({
                             </NativeSelect>
                         </label>
                     ))}
+                    {devTools}
                 </Group>
             )}
 

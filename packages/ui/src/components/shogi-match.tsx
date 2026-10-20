@@ -559,7 +559,7 @@ interface ShogiMatchProps {
     /**
      * 画面の種類。`"play"` は対局専用の画面（AI と指す）で、対局の設定 → 対局 → 終局の流れだけを
      * 出す。棋譜の読み込み・駒を動かす検討・棋譜の解析は出さず（研究ノートで行う）、対局中の解析は
-     * いまの局面のヒントだけにする。省略時は、従来の対局・検討を兼ねた画面。
+     * いまの局面のヒントだけにする。省略時は、対局と検討を兼ねた画面。
      */
     screen?: "play";
     /** 対局画面（`screen="play"`）で、進み具合（設定・対局中・終局後など）が変わったときに呼ぶ。 */
@@ -651,8 +651,10 @@ export function ShogiMatch({
     const emptyBoard: BoardState = Object.fromEntries(
         getAllSquares().map((sq) => [sq, null]),
     ) as BoardState;
+    // 観戦・公開棋譜の画面も ShogiMatch を人 対 人で開き、その既定値を保存する。対局画面は別のキーに
+    // 持ち、その保存で「自分 対 AI」の既定値が上書きされないようにする。
     const [sides, setSides] = useLocalStorage<{ sente: SideSetting; gote: SideSetting }>(
-        "shogi-match-sides",
+        screen === "play" ? "shogi-play-sides" : "shogi-match-sides",
         defaultSides,
     );
 

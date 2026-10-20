@@ -90,7 +90,7 @@ function Segmented<T extends string>({
 const CUSTOM_TIME_ID = "custom";
 
 /** 時間の選択肢。いまの時間がどれにも当たらなければ、「秒で指定」を選ばれた状態で足す。 */
-const timeOptions = (choices: TimeChoice[], currentId: string | null = "") => [
+const timeOptions = (choices: TimeChoice[], currentId: string | null) => [
     ...choices.map((choice) => ({ id: choice.id, label: choice.label })),
     ...(currentId === null ? [{ id: CUSTOM_TIME_ID, label: "秒で指定" }] : []),
 ];
@@ -275,9 +275,13 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                     ))}
                     <Segmented
                         label="AI の考慮時間（1手・両者）"
-                        options={timeOptions(AI_TIME_CHOICES)}
-                        value={setup.bothAiTimeId}
+                        options={timeOptions(AI_TIME_CHOICES, setup.bothAiTimeId)}
+                        value={setup.bothAiTimeId ?? CUSTOM_TIME_ID}
                         onChange={(id) => {
+                            if (id === CUSTOM_TIME_ID) {
+                                onOpenAdvanced();
+                                return;
+                            }
                             const choice = AI_TIME_CHOICES.find((item) => item.id === id);
                             if (choice) setup.chooseBothAiTime(choice);
                         }}
@@ -373,9 +377,13 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
             {setup.kind === "humans" && (
                 <Segmented
                     label="持ち時間（両者）"
-                    options={timeOptions(MY_TIME_CHOICES)}
-                    value={setup.bothTimeId}
+                    options={timeOptions(MY_TIME_CHOICES, setup.bothTimeId)}
+                    value={setup.bothTimeId ?? CUSTOM_TIME_ID}
                     onChange={(id) => {
+                        if (id === CUSTOM_TIME_ID) {
+                            onOpenAdvanced();
+                            return;
+                        }
                         const choice = MY_TIME_CHOICES.find((item) => item.id === id);
                         if (choice) setup.chooseBothTime(choice);
                     }}
