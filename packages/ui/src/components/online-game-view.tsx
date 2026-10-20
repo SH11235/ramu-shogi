@@ -117,7 +117,7 @@ function rejectedCommandNotice(code: ErrorCode, seat: Seat): string | null {
 }
 
 const CHECKMATE_REJECTED_NOTICE =
-    "サーバーではこの局面を詰みと判定しませんでした。最新の局面を確認しています。指せる手が表示されないときは、投了で対局を終えてください。";
+    "サーバーではこの局面を詰みと判定しませんでした。指せる手が表示されないときは、投了で対局を終えてください。";
 
 /** 局面も手番も終局も変えないイベント。指し手を送る準備の途中に届いても、その指し手は有効 */
 const POSITION_KEEPING_EVENTS: ReadonlySet<RoomEvent["kind"]> = new Set([
@@ -412,7 +412,8 @@ export function OnlineGameView({
             setCommandNotice({ text });
         }
         if (code === "CHECKMATE_NOT_CONFIRMED") {
-            checkmateRejectedMovesRef.current = usiMovesKey;
+            // 申告するかの判定と同じ指し手列で記録する
+            checkmateRejectedMovesRef.current = movesRef.current.join(" ");
             setCheckmateRejectedMoves(usiMovesKey);
         }
         // 見ている局面が古いと指し直しても通らないので、取りこぼしたイベントを取り直す。

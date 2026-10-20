@@ -1796,7 +1796,7 @@ describe("OnlineGameView", () => {
 
     describe("詰みの申告が拒まれたとき", () => {
         const NOTICE =
-            "サーバーではこの局面を詰みと判定しませんでした。最新の局面を確認しています。指せる手が表示されないときは、投了で対局を終えてください。";
+            "サーバーではこの局面を詰みと判定しませんでした。指せる手が表示されないときは、投了で対局を終えてください。";
 
         async function renderDeclared(): Promise<{
             client: RoomClient;
