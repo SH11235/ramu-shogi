@@ -96,8 +96,13 @@ function buildCreateRoomRequest(settings: RoomFormState): CreateRoomRequest {
     };
 }
 
+const INVALID_SETTINGS_MESSAGE =
+    "この設定では部屋を作れません。開始局面の駒の数や手数を確認してください。";
+
 async function describeCreateRoomError(res: Response): Promise<string> {
     if (res.status === 429) return RATE_LIMITED_MESSAGE;
+    // 画面で止めきれない設定 (駒の数が多すぎる開始局面など) は、サーバーが英語の理由で 400 を返す
+    if (res.status === 400) return INVALID_SETTINGS_MESSAGE;
     try {
         const err = (await res.json()) as ApiErrorResponse | null;
         if (err?.message) return err.message;

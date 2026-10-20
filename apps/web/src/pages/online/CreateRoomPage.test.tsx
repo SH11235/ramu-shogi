@@ -163,10 +163,33 @@ describe("CreateRoomPage", () => {
         expect(await screen.findByText("ルームの作成に失敗しました")).toBeTruthy();
     });
 
+    it("設定を拒まれた 400 は、本文の英語ではなく設定の見直しを促す", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () =>
+                Response.json(
+                    { error: "INVALID_REQUEST", message: "Invalid room settings" },
+                    { status: 400 },
+                ),
+            ),
+        );
+        render(<CreateRoomPage />);
+        fireEvent.change(screen.getByPlaceholderText("プレイヤー名"), {
+            target: { value: "Alice" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "部屋を作成する" }));
+
+        expect(
+            await screen.findByText(
+                "この設定では部屋を作れません。開始局面の駒の数や手数を確認してください。",
+            ),
+        ).toBeTruthy();
+    });
+
     it("429 以外で本文に message が無い失敗は、エラーコードではなくルーム作成の失敗と伝える", async () => {
         vi.stubGlobal(
             "fetch",
-            vi.fn(async () => Response.json({ error: "INVALID_REQUEST" }, { status: 400 })),
+            vi.fn(async () => Response.json({ error: "CREATE_FAILED" }, { status: 500 })),
         );
         render(<CreateRoomPage />);
         fireEvent.change(screen.getByPlaceholderText("プレイヤー名"), {
