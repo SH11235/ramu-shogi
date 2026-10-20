@@ -223,6 +223,23 @@ describe("subscribeRshogiLiveGame: snapshot → broadcast → end → close", ()
         expect(events.snapshot.at(-1)?.notStarted).toBeUndefined();
     });
 
+    it("始まっていない部屋で後手番から始まった対局でも、最初の指し手で snapshot を取り直す", () => {
+        const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+        subscribeRshogiLiveGame(
+            "room-1",
+            { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+            callbacks,
+        );
+        const ws = wsInstances[0];
+        ws.fireOpen();
+        ws.fireLines(["##[MONITOR2] BEGIN room-1", "##[MONITOR2] END"]);
+
+        // 開始前の仮の局面（平手・先手番）では後手の手を読めないが、それでも取り直しは求める。
+        ws.fireLines(["-3334FU,T2"]);
+        expect(events.moves).toEqual([]);
+        expect(ws.sent).toEqual(["%%MONITOR2ON room-1\n", "%%MONITOR2ON room-1\n"]);
+    });
+
     it("To_Move が後手の snapshot を後手の move 行から復元する", () => {
         const { wsInstances, wsFactory, events, callbacks } = makeMocks();
         subscribeRshogiLiveGame(

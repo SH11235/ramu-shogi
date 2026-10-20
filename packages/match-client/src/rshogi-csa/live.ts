@@ -1206,6 +1206,21 @@ export function subscribeRshogiLiveGame(
         if (!(trimmed.startsWith("+") || trimmed.startsWith("-"))) {
             return;
         }
+        if (resyncOnFirstMove) {
+            // 対局が始まった。名前・持ち時間・開始局面のそろった snapshot を取り直す（届けば全置換
+            // される）。開始前の仮の局面（平手・先手番）では、後手番開始などの手を読めないことがある
+            // ので、手を読む前に求める。
+            resyncOnFirstMove = false;
+            try {
+                ws?.send(`%%MONITOR2ON ${gameId}\n`);
+            } catch (err) {
+                emitError(
+                    err instanceof Error
+                        ? err
+                        : new Error(`failed to request snapshot after game start: ${String(err)}`),
+                );
+            }
+        }
         const token = trimmed.split(",")[0];
         const elapsedSec = extractElapsedSec(trimmed);
         let applied: ReturnType<typeof parseSingleCsaMove>;
@@ -1227,20 +1242,6 @@ export function subscribeRshogiLiveGame(
         liveState = applied.nextState;
         liveTurn = applied.nextState.turn;
         liveMoveCount += 1;
-        if (resyncOnFirstMove) {
-            // 対局が始まった。届いた手はそのまま反映し、名前・持ち時間のそろった snapshot を
-            // 取り直す（届けば全置換される。届かなくても、いまの表示は保たれる）。
-            resyncOnFirstMove = false;
-            try {
-                ws?.send(`%%MONITOR2ON ${gameId}\n`);
-            } catch (err) {
-                emitError(
-                    err instanceof Error
-                        ? err
-                        : new Error(`failed to request snapshot after game start: ${String(err)}`),
-                );
-            }
-        }
         try {
             callbacks.onMove({ csaMove: applied.move, elapsedSec });
         } catch (err) {
