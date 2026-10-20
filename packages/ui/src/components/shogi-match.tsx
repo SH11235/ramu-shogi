@@ -152,13 +152,14 @@ const readFirstPlaySides = (
 const alignTimeToPlayChoices = (
     settings: ClockSettings,
     sides: MatchSides,
-    defaults: ClockSettings,
+    defaultClockFor: (role: SideSetting["role"]) => ClockSettings[Player],
 ): ClockSettings => {
     const align = (side: Player) => {
-        const choices = sides[side].role === "human" ? MY_TIME_CHOICES : AI_TIME_CHOICES;
+        const role = sides[side].role;
+        const choices = role === "human" ? MY_TIME_CHOICES : AI_TIME_CHOICES;
         return choices.some((choice) => matchesChoice(settings[side], choice))
             ? settings[side]
-            : defaults[side];
+            : defaultClockFor(role);
     };
     return { sente: align("sente"), gote: align("gote") };
 };
@@ -768,17 +769,23 @@ export function ShogiMatch({
         normalizeTimeSettings,
         isSameTimeSettings,
     );
-    // 初めて開いた対局画面では、利用者が先後か時間を自分で選ぶまで、時間設定を選択肢にそろえ続ける。
+    // 初めて開いた対局画面では、利用者が時間を自分で選ぶまで、時間設定をいまの先後の選択肢にそろえ続ける。
     // 1 度だけでは足りない（ログイン中は、サーバーに保存した時間設定があとから届いて書き戻される）。
     const alignTimeRef = useRef(firstPlaySides?.alignTime === true);
-    const alignTimeForFirstPlay = useEffectEvent((current: ClockSettings) => {
-        if (!alignTimeRef.current) return;
-        const aligned = alignTimeToPlayChoices(current, sides, defaultTimeSettings);
-        if (!isSameTimeSettings(aligned, current)) setTimeSettings(aligned);
-    });
+    const alignTimeForFirstPlay = useEffectEvent(
+        (current: ClockSettings, currentSides: MatchSides) => {
+            if (!alignTimeRef.current) return;
+            const aligned = alignTimeToPlayChoices(current, currentSides, (role) => ({
+                mainMs: initialMainTimeMs,
+                byoyomiMs: initialByoyomiMs,
+                enabled: role !== "human",
+            }));
+            if (!isSameTimeSettings(aligned, current)) setTimeSettings(aligned);
+        },
+    );
     useEffect(() => {
-        alignTimeForFirstPlay(timeSettings);
-    }, [timeSettings]);
+        alignTimeForFirstPlay(timeSettings, sides);
+    }, [timeSettings, sides]);
     const changeTimeSettings: typeof setTimeSettings = (next) => {
         alignTimeRef.current = false;
         setTimeSettings(next);
@@ -1508,7 +1515,6 @@ export function ShogiMatch({
                 void disposeEngine(side);
             }
         }
-        alignTimeRef.current = false;
         setSides(newSides);
     };
 
