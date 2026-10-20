@@ -447,11 +447,11 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                     対局開始
                 </Button>
             </div>
-            {/* 開始ボタンのすぐ下に寄せる（ボタンを下端に留めるために、同じ並びの別の要素にしている）。
+            {/* 開始ボタンの下に置く（ボタンを下端に留めるために、同じ並びの別の要素にしている）。
                 注記が無い相手でも 2 行ぶんの高さを取り、相手を選び直したときに下の「詳細設定」が動かないようにする。 */}
             <p
                 aria-hidden={downloadMb === null}
-                className="-mt-2 min-h-10 text-center text-xs leading-relaxed text-wafuu-sumi-light"
+                className="min-h-10 text-center text-xs leading-relaxed text-wafuu-sumi-light"
             >
                 {downloadMb !== null && (
                     <>
