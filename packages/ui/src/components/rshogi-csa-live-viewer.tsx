@@ -575,12 +575,15 @@ function ScoreboardSide({
     remaining,
     active,
     ownEvalCp,
+    clockHidden = false,
 }: {
     side: "sente" | "gote";
     name: string;
     /** 表示用残時間 (本体 or 秒読み)。 */
     remaining: SideRemaining;
     active: boolean;
+    /** 時計の値が無い（対局が始まる前）。場所は取ったまま見せない（始まったときに動かないように）。 */
+    clockHidden?: boolean;
     /** その手番自身の視点に直した最新評価値 (`+` = その手番が有利)。無ければ非表示。 */
     ownEvalCp?: number;
 }): ReactElement {
@@ -621,6 +624,7 @@ function ScoreboardSide({
                 className={cn(
                     "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-2xl font-bold leading-none tabular-nums transition-colors",
                     isSente ? "ml-auto" : "mr-auto",
+                    clockHidden && "invisible",
                     active ? "bg-wafuu-shu/10 text-wafuu-shu" : "text-wafuu-sumi-light",
                 )}
             >
@@ -698,6 +702,7 @@ export function RshogiLiveScoreboard({
                 remaining={remaining.sente}
                 active={!result && clocks?.sideToMove === "sente"}
                 ownEvalCp={toOwnEval("sente", senteEvalCp)}
+                clockHidden={clocks === null}
             />
             <div className="flex flex-row items-center justify-between gap-3 border-y border-wafuu-border bg-wafuu-washi px-4 py-2 sm:min-w-[7.5rem] sm:flex-col sm:justify-center sm:gap-1 sm:border-x sm:border-y-0">
                 <span className="text-xl font-bold tabular-nums leading-none text-wafuu-sumi">
@@ -739,6 +744,7 @@ export function RshogiLiveScoreboard({
                 remaining={remaining.gote}
                 active={!result && clocks?.sideToMove === "gote"}
                 ownEvalCp={toOwnEval("gote", goteEvalCp)}
+                clockHidden={clocks === null}
             />
         </section>
     );

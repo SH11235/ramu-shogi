@@ -296,6 +296,12 @@ describe("RshogiCsaLiveViewer: static fallback", () => {
         await waitFor(() => expect(fetchOverride).toHaveBeenCalled());
         expect((await screen.findAllByText("開始待ち")).length).toBeGreaterThan(0);
         expect(screen.queryByText("LIVE")).toBeNull();
+        // 時計の値が無いので、スコアボードの時計は見せない（場所は取ったまま）。
+        const clocks = screen
+            .getByRole("region", { name: "対局スコアボード" })
+            .querySelectorAll(".text-2xl");
+        expect(clocks.length).toBe(2);
+        for (const clock of clocks) expect(clock.className).toContain("invisible");
         // 見つからなくても、誤りとしては出さない（対局者が入る前の部屋を先に開いている場合がある）。
         expect(screen.queryByText(/見つかりませんでした/)).toBeNull();
     });
