@@ -376,6 +376,18 @@ describe("KIF の終局", () => {
         { moves: 2, winner: "b", reason: "resign", lines: ["まで2手で先手の勝ち"] },
         { moves: 1, winner: "w", reason: "disconnect", lines: ["まで1手で後手の勝ち", "*切断"] },
         { moves: 2, winner: null, reason: "sennichite", lines: ["   3 千日手", "まで2手で千日手"] },
+        {
+            moves: 2,
+            winner: "b",
+            reason: "oute_sennichite",
+            lines: ["   3 反則勝ち", "まで2手で連続王手の千日手により後手の反則負け"],
+        },
+        {
+            moves: 1,
+            winner: "b",
+            reason: "oute_sennichite",
+            lines: ["   2 反則負け", "まで1手で連続王手の千日手により後手の反則負け"],
+        },
     ] as const)("$reason で $winner が勝った $moves 手の対局に、終局語と「まで」の行を書く", ({
         moves,
         winner,

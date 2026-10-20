@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { type ReactElement, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { PositionPresetSelector } from "./PositionPresetSelector";
+import { isUnsupportedOnlineStartSfen, PositionPresetSelector } from "./PositionPresetSelector";
 
 const SFEN = "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1";
 
@@ -196,5 +196,18 @@ describe("PositionPresetSelector の SFEN 直接入力", () => {
         choose("SFEN 直接入力");
 
         expect(screen.queryByText("局面（SFEN）を入力してください")).toBeNull();
+    });
+});
+
+describe("isUnsupportedOnlineStartSfen", () => {
+    it.each([
+        ["startpos", false],
+        ["handicap:rook-bishop", false],
+        ["", false],
+        [SFEN, false],
+        ["9/9/9/9/9/9/9/9/4K4 b G 1", true],
+        ["4k4/9/9/9/9/9/9/9/3KK4 b - 1", true],
+    ])("%s は %s", (value, expected) => {
+        expect(isUnsupportedOnlineStartSfen(value)).toBe(expected);
     });
 });

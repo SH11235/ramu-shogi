@@ -6,6 +6,8 @@ export type GameEndReason =
     | "checkmate"
     | "timeout"
     | "sennichite"
+    // 連続王手の千日手。王手を掛け続けた側の負けで、終局イベントは sennichite のまま
+    | "oute_sennichite"
     | "illegal_move"
     | "disconnect";
 
@@ -241,6 +243,8 @@ export type ErrorCode =
     | "INVALID_TOKEN"
     | "DESYNC"
     | "ILLEGAL_MOVE"
+    // 合法手が残っているのに詰みを宣言した
+    | "CHECKMATE_NOT_CONFIRMED"
     | "NOT_YOUR_TURN"
     | "RATE_LIMITED"
     | "SPECTATOR_FORBIDDEN"

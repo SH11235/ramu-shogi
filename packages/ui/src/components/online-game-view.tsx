@@ -116,6 +116,9 @@ function rejectedCommandNotice(code: ErrorCode, seat: Seat): string | null {
     return null;
 }
 
+const CHECKMATE_REJECTED_NOTICE =
+    "サーバーではこの局面を詰みと判定しませんでした。最新の局面を確認しています。指せる手が表示されないときは、投了で対局を終えてください。";
+
 /** 局面も手番も終局も変えないイベント。指し手を送る準備の途中に届いても、その指し手は有効 */
 const POSITION_KEEPING_EVENTS: ReadonlySet<RoomEvent["kind"]> = new Set([
     "player_offline",
@@ -394,13 +397,26 @@ export function OnlineGameView({
         return () => clearTimeout(timerId);
     }, [commandNotice]);
 
+    // 詰みの申告を拒まれた局面の指し手。指せる手も無いまま止まらないよう、局面が変わるか
+    // 終局するまで案内を出し続ける
+    const [checkmateRejectedMoves, setCheckmateRejectedMoves] = useState<string | null>(null);
+    // 詰みを申告した局面の指し手。サーバーと食い違ったまま申告と拒否を繰り返さないよう、
+    // 同じ局面では 1 度しか申告しない
+    const checkmateDeclaredMovesRef = useRef<string | null>(null);
+    const usiMovesKey = usiMoveLog.map((entry) => entry.usi).join(" ");
+    const showsCheckmateRejected = !gameResult && checkmateRejectedMoves === usiMovesKey;
+
     const showRejection = useEffectEvent((code: ErrorCode): void => {
         const text = rejectedCommandNotice(code, seat);
         if (text) {
             setCommandNotice({ text });
         }
-        if (code === "DESYNC") {
-            // 見ている局面が古いと指し直しても通らないので、取りこぼしたイベントを取り直す
+        if (code === "CHECKMATE_NOT_CONFIRMED") {
+            setCheckmateRejectedMoves(usiMovesKey);
+        }
+        // 見ている局面が古いと指し直しても通らないので、取りこぼしたイベントを取り直す。
+        // 詰みの申告が拒まれるのも、手元の局面がサーバーと食い違っているとき
+        if (code === "DESYNC" || code === "CHECKMATE_NOT_CONFIRMED") {
             client.sync({ sinceEventId: appliedEventIdRef.current });
         }
     });
@@ -719,7 +735,9 @@ export function OnlineGameView({
                     if (cancelled) return;
                     dispatchUI({ type: "set_legal_moves", moves });
                     // 合法手が0 = 自分が詰まされている → サーバーに通知
-                    if (moves.length === 0) {
+                    const movesKey = movesRef.current.join(" ");
+                    if (moves.length === 0 && checkmateDeclaredMovesRef.current !== movesKey) {
+                        checkmateDeclaredMovesRef.current = movesKey;
                         client.checkmate({ eventId: appliedEventIdRef.current });
                     }
                 } catch {
@@ -1324,6 +1342,11 @@ export function OnlineGameView({
                     </div>
                 )}
 
+                {showsCheckmateRejected && (
+                    <p role="alert" className="text-sm text-destructive">
+                        {CHECKMATE_REJECTED_NOTICE}
+                    </p>
+                )}
                 {(loadFailed || commandNotice) && (
                     <p role="alert" className="text-sm text-destructive">
                         {loadFailed
@@ -1629,6 +1652,7 @@ const GAME_END_REASONS: Record<string, string> = {
     checkmate: "詰み",
     timeout: "時間切れ",
     sennichite: "千日手",
+    oute_sennichite: "連続王手の千日手",
     illegal_move: "反則",
     disconnect: "切断不戦敗",
 };

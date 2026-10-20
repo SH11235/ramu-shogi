@@ -9,6 +9,8 @@ import {
 } from "@shogi/match-client";
 import {
     ConnectionLostNotice,
+    isUnsupportedOnlineStartSfen,
+    ONLINE_KING_COUNT_MESSAGE,
     OnlineGameView,
     PositionPresetSelector,
     useRoomConnection,
@@ -234,6 +236,11 @@ function GameSettingsSection({
                 <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4">
                     <span className="text-sm font-semibold text-foreground">開始局面を変更</span>
                     <PositionPresetSelector value={displayStartSfen} onChange={onUpdateStartSfen} />
+                    {isUnsupportedOnlineStartSfen(displayStartSfen) && (
+                        <p className="text-xs text-destructive">
+                            {ONLINE_KING_COUNT_MESSAGE}。この局面は相手に送っていません。
+                        </p>
+                    )}
                 </div>
             )}
             <div className="rounded-lg border border-border bg-card p-4">

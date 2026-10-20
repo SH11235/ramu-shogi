@@ -10,6 +10,7 @@ import {
     createInitialPositionState,
     getAllSquares,
     type Hands,
+    hasOneKingEach,
     isPassMove,
     type PositionState,
     parseMove,
@@ -742,5 +743,20 @@ describe("パス手の処理", () => {
             expect(result.state.board["7f"]).toEqual({ owner: "sente", type: "P" });
             expect(result.state.board["2f"]).toEqual({ owner: "sente", type: "P" });
         });
+    });
+});
+
+describe("hasOneKingEach", () => {
+    it.each([
+        ["平手", "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1", true],
+        ["先頭に sfen の付いた局面", "sfen 4k4/9/9/9/9/9/9/9/4K4 b - 1", true],
+        ["成駒の混じった局面", "4k4/9/9/9/9/9/9/+R+B7/4K4 w - 1", true],
+        ["後手玉の無い局面", "9/9/9/9/9/9/9/9/4K4 b G 1", false],
+        ["先手玉の無い局面", "4k4/9/9/9/9/9/9/9/9 b - 1", false],
+        ["先手玉が 2 枚ある局面", "4k4/9/9/9/9/9/9/9/3KK4 b - 1", false],
+        ["玉の無い盤面", "9/9/9/9/9/9/9/9/9 b - 1", false],
+        ["空文字", "", false],
+    ])("%s は %s", (_label, sfen, expected) => {
+        expect(hasOneKingEach(sfen)).toBe(expected);
     });
 });

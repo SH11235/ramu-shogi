@@ -1,6 +1,7 @@
 // 開始局面セレクター
 // ローカル対局・オンライン対局で共通使用
 
+import { hasOneKingEach } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { Input } from "./input";
@@ -38,6 +39,18 @@ export const POSITION_PRESETS: PositionPreset[] = [
 ];
 
 const CUSTOM_VALUE = "custom";
+
+export const ONLINE_KING_COUNT_MESSAGE =
+    "オンライン対局では、先手と後手の玉が 1 枚ずつある局面だけ使えます";
+
+/**
+ * オンライン対局で使えない開始局面か。サーバーは玉が 1 枚ずつでない局面を受け付けず、待機中の
+ * 設定変更は黙って捨てるので、送る前に画面で止める。"" はまだ入力されていない印なので対象外
+ */
+export function isUnsupportedOnlineStartSfen(value: string): boolean {
+    if (value === "" || POSITION_PRESETS.some((p) => p.value === value)) return false;
+    return !hasOneKingEach(value);
+}
 
 // ─── バリデーション ────────────────────────────────────────────────────────────
 

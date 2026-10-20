@@ -23,6 +23,7 @@ const RESULT_REASON_LABELS: Record<string, string> = {
     resign: "投了",
     timeout: "時間切れ",
     sennichite: "千日手",
+    oute_sennichite: "連続王手の千日手",
     disconnect: "切断",
     checkmate: "詰み",
     illegal_move: "反則",
