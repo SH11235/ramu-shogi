@@ -23,6 +23,8 @@
         "apps/web/worker/index.ts",
         "packages/rust-core/target/**",
         "packages/rust-core/pkg/**",
+        "packages/rust-core/crates/shogi-rules-wasm/pkg/**",
+        "packages/rust-core/crates/shogi-rules-wasm/scripts/**",
         "infra/pulumi/**"
     ]
 }

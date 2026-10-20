@@ -1,0 +1,616 @@
+{
+  "cases": [
+    {
+      "name": "平手の合法手順",
+      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+      "passRights": null,
+      "moves": [
+        "7g7f",
+        "3c3d",
+        "8h2b+",
+        "3a2b"
+      ],
+      "expected": {
+        "ok": true,
+        "finalSfen": "lnsgkg1nl/1r5s1/pppppp1pp/6p2/9/2P6/PP1PPPPPP/7R1/LNSGKGSNL b Bb 5",
+        "inCheck": false,
+        "checkmate": false,
+        "repetition": "none"
+      }
+    },
+    {
+      "name": "startpos 表記も受け付ける",
+      "startSfen": "startpos",
+      "passRights": null,
+      "moves": [
+        "7g7f"
+      ],
+      "expected": {
+        "ok": true,
+        "finalSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/2P6/PP1PPPPPP/1B5R1/LNSGKGSNL w - 2"
+      }
+    },
+    {
+      "name": "持っていない駒を打つ",
+      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+      "passRights": null,
+      "moves": [
+        "7g7f",
+        "3c3d",
+        "8h2b",
+        "3a2b",
+        "P*7c"
+      ],
+      "expected": {
+        "ok": false,
+        "illegalIndex": 4,
+        "reason": "no_piece_in_hand"
+      }
+    },
+    {
+      "name": "不正な USI",
+      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+      "passRights": null,
+      "moves": [
+        "7g7f",
+        "3c3x"
+      ],
+      "expected": {
+        "ok": false,
+        "illegalIndex": 1,
+        "reason": "invalid_usi"
+      }
+    },
+    {
+      "name": "0000 はパスとして受け付けない",
+      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+      "passRights": {
+        "b": 1,
+        "w": 1
+      },
+      "moves": [
+        "0000"
+      ],
+      "expected": {
+        "ok": false,
+        "illegalIndex": 0,
+        "reason": "invalid_usi"
+      },
+      "serverOnly": true
+    },
+    {
+      "name": "none は指し手として受け付けない",
+      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+      "passRights": null,
+      "moves": [
+        "none"
+      ],
+      "expected": {
+        "ok": false,
+        "illegalIndex": 0,
+        "reason": "invalid_usi"
+      },
+      "serverOnly": true
+    },
+    {
+      "name": "成れない地点での成り",
+      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+      "passRights": null,
+      "moves": [
+        "7g7f+"
+      ],
+      "expected": {
+        "ok": false,
+        "illegalIndex": 0,
+        "reason": "illegal"
+      }
+    },
+    {
+      "name": "二枚落ちは後手から指す",
+      "startSfen": "lnsgkgsnl/9/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+      "passRights": null,
+      "moves": [
+        "3c3d",
+        "7g7f"
+      ],
+      "expected": {
+        "ok": true,
+        "repetition": "none"
+      }
+    },
+    {
+      "name": "二枚落ちで先手が先に指す",
+      "startSfen": "lnsgkgsnl/9/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+      "passRights": null,
+      "moves": [
+        "7g7f"
+      ],
+      "expected": {
+        "ok": false,
+        "illegalIndex": 0,
+        "reason": "illegal"
+      }
+    },
+    {
+      "name": "任意局面からの王手",
+      "startSfen": "4k4/9/9/9/9/9/9/9/4K4 b G 1",
+      "passRights": null,
+      "moves": [
+        "G*5b"
+      ],
+      "expected": {
+        "ok": true,
+        "inCheck": true,
+        "checkmate": false
+      }
+    },
+    {
+      "name": "パス権の範囲でパスする",
+      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+      "passRights": {
+        "b": 1,
+        "w": 1
+      },
+      "moves": [
+        "pass",
+        "pass"
+      ],
+      "expected": {
+        "ok": true,
+        "finalSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 3"
+      }
+    },
+    {
+      "name": "パス権を使い切った後のパス",
+      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+      "passRights": {
+        "b": 1,
+        "w": 1
+      },
+      "moves": [
+        "pass",
+        "pass",
+        "pass"
+      ],
+      "expected": {
+        "ok": false,
+        "illegalIndex": 2,
+        "reason": "no_pass_rights"
+      }
+    },
+    {
+      "name": "パス権の無い対局でのパス",
+      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+      "passRights": null,
+      "moves": [
+        "pass"
+      ],
+      "expected": {
+        "ok": false,
+        "illegalIndex": 0,
+        "reason": "no_pass_rights"
+      }
+    },
+    {
+      "name": "王手されている側のパス",
+      "startSfen": "4k4/9/9/9/9/9/9/4r4/4K4 b - 1",
+      "passRights": {
+        "b": 1,
+        "w": 1
+      },
+      "moves": [
+        "pass"
+      ],
+      "expected": {
+        "ok": false,
+        "illegalIndex": 0,
+        "reason": "pass_in_check"
+      }
+    },
+    {
+      "name": "二歩",
+      "startSfen": "4k4/9/9/9/9/9/4P4/9/4K4 b P 1",
+      "passRights": null,
+      "moves": [
+        "P*5e"
+      ],
+      "expected": {
+        "ok": false,
+        "illegalIndex": 0,
+        "reason": "nifu"
+      }
+    },
+    {
+      "name": "歩のない筋への歩打ち",
+      "startSfen": "4k4/9/9/9/9/9/4P4/9/4K4 b P 1",
+      "passRights": null,
+      "moves": [
+        "P*4e"
+      ],
+      "expected": {
+        "ok": true
+      }
+    },
+    {
+      "name": "打ち歩詰め",
+      "startSfen": "3pkp3/9/4G4/9/9/9/9/9/4K4 b P 1",
+      "passRights": null,
+      "moves": [
+        "P*5b"
+      ],
+      "expected": {
+        "ok": false,
+        "illegalIndex": 0,
+        "reason": "uchifuzume"
+      }
+    },
+    {
+      "name": "詰まない歩打ちの王手",
+      "startSfen": "3pk4/9/4G4/9/9/9/9/9/4K4 b P 1",
+      "passRights": null,
+      "moves": [
+        "P*5b"
+      ],
+      "expected": {
+        "ok": true,
+        "inCheck": true,
+        "checkmate": false
+      }
+    },
+    {
+      "name": "行き所のない桂打ち",
+      "startSfen": "4k4/9/9/9/9/9/9/9/4K4 b N 1",
+      "passRights": null,
+      "moves": [
+        "N*5b"
+      ],
+      "expected": {
+        "ok": false,
+        "illegalIndex": 0,
+        "reason": "dead_piece"
+      }
+    },
+    {
+      "name": "行き所のない香打ち",
+      "startSfen": "4k4/9/9/9/9/9/9/9/4K4 b L 1",
+      "passRights": null,
+      "moves": [
+        "L*1a"
+      ],
+      "expected": {
+        "ok": false,
+        "illegalIndex": 0,
+        "reason": "dead_piece"
+      }
+    },
+    {
+      "name": "行き所のない歩の不成",
+      "startSfen": "4k4/P8/9/9/9/9/9/9/4K4 b - 1",
+      "passRights": null,
+      "moves": [
+        "9b9a"
+      ],
+      "expected": {
+        "ok": false,
+        "illegalIndex": 0,
+        "reason": "dead_piece"
+      }
+    },
+    {
+      "name": "一段目への歩成り",
+      "startSfen": "4k4/P8/9/9/9/9/9/9/4K4 b - 1",
+      "passRights": null,
+      "moves": [
+        "9b9a+"
+      ],
+      "expected": {
+        "ok": true
+      }
+    },
+    {
+      "name": "王手放置",
+      "startSfen": "4k4/9/9/9/9/9/9/4r4/4K4 b G 1",
+      "passRights": null,
+      "moves": [
+        "G*1e"
+      ],
+      "expected": {
+        "ok": false,
+        "illegalIndex": 0,
+        "reason": "king_in_check"
+      }
+    },
+    {
+      "name": "ピンされた駒を動かす",
+      "startSfen": "4k4/9/9/9/4r4/9/9/4G4/4K4 b - 1",
+      "passRights": null,
+      "moves": [
+        "5h4h"
+      ],
+      "expected": {
+        "ok": false,
+        "illegalIndex": 0,
+        "reason": "king_in_check"
+      }
+    },
+    {
+      "name": "千日手の 3 回目までは成立しない",
+      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+      "passRights": null,
+      "moves": [
+        "5i4h",
+        "5a4b",
+        "4h5i",
+        "4b5a",
+        "5i4h",
+        "5a4b",
+        "4h5i",
+        "4b5a"
+      ],
+      "expected": {
+        "ok": true,
+        "repetition": "none"
+      }
+    },
+    {
+      "name": "千日手",
+      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+      "passRights": null,
+      "moves": [
+        "5i4h",
+        "5a4b",
+        "4h5i",
+        "4b5a",
+        "5i4h",
+        "5a4b",
+        "4h5i",
+        "4b5a",
+        "5i4h",
+        "5a4b",
+        "4h5i",
+        "4b5a"
+      ],
+      "expected": {
+        "ok": true,
+        "repetition": "sennichite",
+        "finalSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 13"
+      }
+    },
+    {
+      "name": "パスで戻った局面も千日手に数える",
+      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+      "passRights": {
+        "b": 1,
+        "w": 1
+      },
+      "moves": [
+        "pass",
+        "pass",
+        "5i4h",
+        "5a4b",
+        "4h5i",
+        "4b5a",
+        "5i4h",
+        "5a4b",
+        "4h5i",
+        "4b5a"
+      ],
+      "expected": {
+        "ok": true,
+        "repetition": "sennichite"
+      }
+    },
+    {
+      "name": "パス権の残りが違っても同一局面として数える",
+      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+      "passRights": {
+        "b": 3,
+        "w": 3
+      },
+      "moves": [
+        "pass",
+        "pass",
+        "pass",
+        "pass",
+        "pass",
+        "pass"
+      ],
+      "expected": {
+        "ok": true,
+        "repetition": "sennichite"
+      }
+    },
+    {
+      "name": "先手の連続王手の千日手",
+      "startSfen": "8k/9/9/9/9/9/9/9/K5R2 b - 1",
+      "passRights": null,
+      "moves": [
+        "3i1i",
+        "1a2a",
+        "1i2i",
+        "2a1a",
+        "2i1i",
+        "1a2a",
+        "1i2i",
+        "2a1a",
+        "2i1i",
+        "1a2a",
+        "1i2i",
+        "2a1a",
+        "2i1i"
+      ],
+      "expected": {
+        "ok": true,
+        "repetition": "oute_sennichite_lose_b",
+        "inCheck": true
+      }
+    },
+    {
+      "name": "後手の連続王手の千日手",
+      "startSfen": "2r5k/9/9/9/9/9/9/9/K8 w - 1",
+      "passRights": null,
+      "moves": [
+        "7a9a",
+        "9i8i",
+        "9a8a",
+        "8i9i",
+        "8a9a",
+        "9i8i",
+        "9a8a",
+        "8i9i",
+        "8a9a",
+        "9i8i",
+        "9a8a",
+        "8i9i",
+        "8a9a"
+      ],
+      "expected": {
+        "ok": true,
+        "repetition": "oute_sennichite_lose_w",
+        "inCheck": true
+      }
+    },
+    {
+      "name": "王手でない 1 周の後に王手の 2 周が続く千日手は通常の千日手",
+      "startSfen": "8k/9/9/9/9/9/9/9/K6R1 b - 1",
+      "passRights": null,
+      "moves": [
+        "9i9h",
+        "1a1b",
+        "9h9i",
+        "1b1a",
+        "2i1i",
+        "1a2a",
+        "1i2i",
+        "2a1a",
+        "2i1i",
+        "1a2a",
+        "1i2i",
+        "2a1a"
+      ],
+      "expected": {
+        "ok": true,
+        "repetition": "sennichite"
+      }
+    },
+    {
+      "name": "王手の 3 周は連続王手の千日手",
+      "startSfen": "8k/9/9/9/9/9/9/9/K6R1 b - 1",
+      "passRights": null,
+      "moves": [
+        "2i1i",
+        "1a2a",
+        "1i2i",
+        "2a1a",
+        "2i1i",
+        "1a2a",
+        "1i2i",
+        "2a1a",
+        "2i1i",
+        "1a2a",
+        "1i2i",
+        "2a1a"
+      ],
+      "expected": {
+        "ok": true,
+        "repetition": "oute_sennichite_lose_b"
+      }
+    },
+    {
+      "name": "詰んでいる局面",
+      "startSfen": "4k4/4G4/4P4/9/9/9/9/9/4K4 w - 2",
+      "passRights": null,
+      "moves": [],
+      "expected": {
+        "ok": true,
+        "inCheck": true,
+        "checkmate": true
+      }
+    },
+    {
+      "name": "詰ます手",
+      "startSfen": "4k4/9/4P4/9/9/9/9/9/4K4 b G 1",
+      "passRights": null,
+      "moves": [
+        "G*5b"
+      ],
+      "expected": {
+        "ok": true,
+        "inCheck": true,
+        "checkmate": true
+      }
+    },
+    {
+      "name": "詰んだ後の手",
+      "startSfen": "4k4/9/4P4/9/9/9/9/9/4K4 b G 1",
+      "passRights": null,
+      "moves": [
+        "G*5b",
+        "5a4a"
+      ],
+      "expected": {
+        "ok": false,
+        "illegalIndex": 1,
+        "reason": "king_in_check",
+        "checkmate": true
+      }
+    },
+    {
+      "name": "開始手数が i32 の上限ちょうどで手が無い",
+      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 2147483647",
+      "passRights": null,
+      "moves": [],
+      "expected": {
+        "ok": true,
+        "finalSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 2147483647"
+      }
+    },
+    {
+      "name": "読めない SFEN",
+      "startSfen": "xyz",
+      "passRights": null,
+      "moves": [],
+      "expectedError": true
+    },
+    {
+      "name": "上限を超えるパス権",
+      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+      "passRights": {
+        "b": 16,
+        "w": 16
+      },
+      "moves": [],
+      "expectedError": true
+    },
+    {
+      "name": "玉の無い局面",
+      "startSfen": "9/9/9/9/9/9/9/9/4K4 b G 1",
+      "passRights": null,
+      "moves": [],
+      "expectedError": true
+    },
+    {
+      "name": "開始手数に手数を足すと i32 を超える",
+      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 2147483647",
+      "passRights": null,
+      "moves": [
+        "7g7f"
+      ],
+      "expectedError": true
+    },
+    {
+      "name": "開始手数が 0",
+      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 0",
+      "passRights": null,
+      "moves": [],
+      "expectedError": true
+    },
+    {
+      "name": "開始手数が負",
+      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - -1",
+      "passRights": null,
+      "moves": [],
+      "expectedError": true
+    }
+  ]
+}

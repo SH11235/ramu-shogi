@@ -1,0 +1,21 @@
+[package]
+name = "shogi-rules-wasm"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+publish = false
+description = "Wasm bindings that replay a game record and judge its legality on the server"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+rshogi-core = { workspace = true }
+wasm-bindgen = "0.2.106"
+js-sys = "0.3.83"
+
+[target.wasm32-unknown-unknown.dependencies]
+getrandom = { workspace = true }
+
+[dev-dependencies]
+serde_json.workspace = true
