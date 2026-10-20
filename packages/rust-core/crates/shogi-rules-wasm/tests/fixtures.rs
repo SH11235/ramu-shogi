@@ -27,6 +27,7 @@ fn as_json(judgement: &Judgement) -> Value {
         "finalSfen": judgement.final_sfen,
         "inCheck": judgement.in_check,
         "checkmate": judgement.checkmate,
+        "noLegalMoves": judgement.no_legal_moves,
         "repetition": judgement.repetition.as_str(),
     });
     if let Some(illegal) = judgement.illegal {

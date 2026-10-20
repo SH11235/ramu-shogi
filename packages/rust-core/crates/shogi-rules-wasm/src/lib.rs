@@ -78,6 +78,8 @@ pub struct Judgement {
     pub final_sfen: String,
     pub in_check: bool,
     pub checkmate: bool,
+    /// 手番側にパスを含めて指せる手が無い。王手が掛かっていなくても指せない側の負けとして扱う
+    pub no_legal_moves: bool,
     pub repetition: Repetition,
 }
 
@@ -157,6 +159,7 @@ pub fn judge_game<S: AsRef<str>>(
         final_sfen: pos.to_sfen(),
         in_check,
         checkmate: in_check && legal.is_empty(),
+        no_legal_moves: legal.is_empty(),
         repetition: history.repetition(),
     })
 }

@@ -28,6 +28,7 @@ export type RulesJudgement = {
     finalSfen: string;
     inCheck: boolean;
     checkmate: boolean;
+    noLegalMoves: boolean;
     repetition: Repetition;
 };
 "#;
@@ -104,6 +105,7 @@ fn to_js(judgement: &Judgement) -> Result<JsValue, JsError> {
     set("finalSfen", JsValue::from_str(&judgement.final_sfen))?;
     set("inCheck", JsValue::from_bool(judgement.in_check))?;
     set("checkmate", JsValue::from_bool(judgement.checkmate))?;
+    set("noLegalMoves", JsValue::from_bool(judgement.no_legal_moves))?;
     set(
         "repetition",
         JsValue::from_str(judgement.repetition.as_str()),
