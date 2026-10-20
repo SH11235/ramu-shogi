@@ -1322,6 +1322,29 @@ describe("OnlineGameView", () => {
             });
         }
 
+        it("合法手はパス権の残り回数ではなく部屋の初期値から棋譜を再生して求める", async () => {
+            const settings = { ...makeSnapshot().settings, passRights: { initialCount: 2 } };
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={makeSubscribableClient().client}
+                        snapshot={makeSnapshot({
+                            eventId: 5,
+                            moves: ["pass", "3c3d"],
+                            turn: "b",
+                            passRights: { b: 1, w: 2 },
+                            settings,
+                        })}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                );
+            });
+            expect(mockGetLegalMoves).toHaveBeenLastCalledWith("startpos", ["pass", "3c3d"], {
+                passRights: { sente: 2, gote: 2 },
+            });
+        });
+
         it("手番が同じまま 2 手進んだ snapshot を受けたら、選択を解除し新しい局面の合法手を使う", async () => {
             mockGetLegalMoves.mockImplementation(async (_sfen, moves) =>
                 moves?.length === 2 ? ["7g7f"] : ["7g7f+"],

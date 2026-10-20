@@ -720,9 +720,15 @@ export function OnlineGameView({
     useEffect(() => {
         // 巻き戻し中は合法手を表示しない
         // passRightsOption は try/catch の外で計算する（React Compiler の制約）
-        const passRightsOption = passRights
-            ? { passRights: { sente: passRights.b, gote: passRights.w } }
-            : {};
+        // エンジンは渡したパス権を開始時の回数として棋譜を再生し、その中のパスで減らすので、
+        // 残り回数ではなく部屋の初期値を渡す。残り回数を渡すと使ったパスを二重に引く
+        const initialPassRights = passRights
+            ? snapshot.settings.passRights?.initialCount
+            : undefined;
+        const passRightsOption =
+            initialPassRights !== undefined
+                ? { passRights: { sente: initialPassRights, gote: initialPassRights } }
+                : {};
         let cancelled = false;
         void (async () => {
             // position に依存させる: 手番が変わらないまま局面だけ変わる再同期でも、
@@ -753,7 +759,15 @@ export function OnlineGameView({
         return () => {
             cancelled = true;
         };
-    }, [canPlay, gameResult, isRewound, passRights, client, position]);
+    }, [
+        canPlay,
+        gameResult,
+        isRewound,
+        passRights,
+        client,
+        position,
+        snapshot.settings.passRights,
+    ]);
 
     // ─── 棋譜ナビゲーションハンドラ ───────────────────────────────────────────
 
