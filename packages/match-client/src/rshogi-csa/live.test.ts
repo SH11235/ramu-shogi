@@ -152,6 +152,19 @@ const makeMocks = () => {
     return { wsInstances, wsFactory, events, callbacks };
 };
 
+describe("decodeSnapshotBlock: 対局が始まっていない部屋", () => {
+    it("Game_Summary も指し手も無い空の block は notStarted にする", () => {
+        const { snapshot } = __test_internals.decodeSnapshotBlock("room-1", []);
+        expect(snapshot.notStarted).toBe(true);
+        expect(snapshot.moves).toEqual([]);
+    });
+
+    it("Game_Summary がある block は notStarted にしない", () => {
+        const { snapshot } = __test_internals.decodeSnapshotBlock("game-1", SAMPLE_SUMMARY_LINES);
+        expect(snapshot.notStarted).toBeUndefined();
+    });
+});
+
 describe("subscribeRshogiLiveGame: snapshot → broadcast → end → close", () => {
     beforeEach(() => {
         vi.useFakeTimers();

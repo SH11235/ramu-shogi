@@ -129,6 +129,12 @@ export interface RshogiLiveSnapshot {
     };
     /** 終局済 DO への接続時のみ最終結果を含む。 */
     finalResult?: RshogiGameResult;
+    /**
+     * 対局がまだ始まっていない部屋の snapshot（`Game_Summary` も指し手も無い空の block）。
+     * server は対局者が LOGIN する前の部屋にも観戦を受け付け、空の block を返す。ライブで
+     * 中継していない ID（保存済み棋譜の ID や存在しない ID）でも同じ応答になる。
+     */
+    notStarted?: true;
 }
 
 /** broadcast move 1 手の到着イベント。 */
@@ -169,6 +175,8 @@ export type RshogiLiveConnectionState = "connecting" | "connected" | "reconnecti
 export type RshogiLiveStaticFallbackReason =
     | "terminal-snapshot"
     | "reconnect-limit-reached"
+    // 対局が始まっていない部屋で、同じ ID の保存済み棋譜が見つかった。
+    | "not-started"
     | "not-found";
 
 export class RshogiLiveRoomFullError extends Error {
@@ -520,6 +528,9 @@ const decodeSnapshotBlock = (
         finalResult: resultCodeLine
             ? decodeSnapshotResultCode(resultCodeLine, state.turn)
             : undefined,
+        ...(summaryLines.length === 0 && moves.length === 0 && !resultCodeLine
+            ? { notStarted: true as const }
+            : {}),
     };
 
     return { snapshot, finalResultLine: resultCodeLine, warnings };

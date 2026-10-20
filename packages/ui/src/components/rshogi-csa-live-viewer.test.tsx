@@ -215,6 +215,51 @@ describe("RshogiCsaLiveViewer: static fallback", () => {
         vi.unstubAllGlobals();
     });
 
+    it("対局が始まっていない部屋で、同じ ID の保存済み棋譜があれば、それを出す", async () => {
+        const csa = ["PI", "+", "+7776FU", "-3334FU", "%TORYO"].join("\n");
+        const fetchOverride = createStaticGameFetch(csa, "WIN_BLACK");
+        render(
+            <RshogiCsaLiveViewer
+                gameId="archived-1"
+                engineOptions={[]}
+                manifestUrl="/nnue/manifest.json"
+                apiBaseUrl="https://example.com/api/v1"
+                fetchOverride={fetchOverride}
+            />,
+        );
+        act(() => {
+            const ws = MockWebSocket.instances[0];
+            ws.fireOpen();
+            ws.fireLines(["##[MONITOR2] BEGIN archived-1", "##[MONITOR2] END"]);
+        });
+        expect(
+            await screen.findByText("この対局は中継していないため、保存済み棋譜を表示しています。"),
+        ).toBeTruthy();
+    });
+
+    it("対局が始まっていない部屋で、保存済み棋譜も無ければ、LIVE ではなく開始待ちと出す", async () => {
+        const fetchOverride = createStaticGameNotFoundFetch();
+        render(
+            <RshogiCsaLiveViewer
+                gameId="room-1"
+                engineOptions={[]}
+                manifestUrl="/nnue/manifest.json"
+                apiBaseUrl="https://example.com/api/v1"
+                fetchOverride={fetchOverride}
+            />,
+        );
+        act(() => {
+            const ws = MockWebSocket.instances[0];
+            ws.fireOpen();
+            ws.fireLines(["##[MONITOR2] BEGIN room-1", "##[MONITOR2] END"]);
+        });
+        await waitFor(() => expect(fetchOverride).toHaveBeenCalled());
+        expect((await screen.findAllByText("開始待ち")).length).toBeGreaterThan(0);
+        expect(screen.queryByText("LIVE")).toBeNull();
+        // 見つからなくても、誤りとしては出さない（対局者が入る前の部屋を先に開いている場合がある）。
+        expect(screen.queryByText(/見つかりませんでした/)).toBeNull();
+    });
+
     // 後手の金を一枚取り、もう一枚を 7 二へ動かして、5 三の馬で支えた頭金で詰ます。
     const checkmateMoves = [
         "+7776FU",
