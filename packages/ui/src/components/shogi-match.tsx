@@ -25,6 +25,7 @@ import {
 import type { EngineInfoEvent } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
 import { useShogiSound } from "../hooks/useShogiSound";
 import type { RemoteNnueManager } from "./nnue/types";
 import { MatchNnueDownloadDialog } from "./shogi-match/components/MatchNnueDownloadDialog";
@@ -2325,6 +2326,8 @@ export function ShogiMatch({
     ) : null;
 
     // ---- 対局画面（screen="play"）の状態と操作 ----
+    // AI の考慮中や持ち時間の間に画面が消えないようにする（一時停止中は止めない）。
+    useScreenWakeLock(isPlayScreen && playPhase === "playing");
     const notifyPlayPhase = useEffectEvent((phase: PlayPhase) => onPlayPhaseChange?.(phase));
     // 消すのは「指せない手」の知らせだけ（進み具合の変化と同じ更新で出たエラーは残す）。
     const clearIllegalMoveMessage = useEffectEvent(() => {
