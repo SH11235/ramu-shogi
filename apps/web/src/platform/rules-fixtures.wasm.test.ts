@@ -12,6 +12,7 @@ type FixtureCase = {
     moves: string[];
     expected?: { ok: boolean; illegalIndex?: number; reason?: string };
     expectedError?: boolean;
+    serverOnly?: boolean;
 };
 
 type ReplayResult = { applied: string[]; error?: string | null };
@@ -51,8 +52,9 @@ function replay(fixture: FixtureCase): { ok: boolean; illegalIndex?: number } {
         : { ok: true, illegalIndex: undefined };
 }
 
-// 開始局面の検査 (玉の数・パス権の上限) はサーバー側だけが持つので比べない
-const moveCases = cases.filter((fixture) => !fixture.expectedError);
+// 開始局面の検査 (玉の数・パス権の上限・手数) と、互換表記 ("0000" / "none") を拒む USI の検査は
+// サーバー側だけが持つので比べない
+const moveCases = cases.filter((fixture) => !fixture.expectedError && !fixture.serverOnly);
 
 describe("サーバーの合法手判定 fixture とクライアントの棋譜再生", () => {
     it("fixture を読み込めている", () => {

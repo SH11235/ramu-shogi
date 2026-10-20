@@ -87,6 +87,7 @@ pub enum InputError {
     Sfen(String),
     PassRightsOutOfRange(u32),
     KingCount,
+    PlyOutOfRange,
 }
 
 impl std::fmt::Display for InputError {
@@ -100,6 +101,7 @@ impl std::fmt::Display for InputError {
                 )
             }
             Self::KingCount => write!(f, "each side must have exactly one king"),
+            Self::PlyOutOfRange => write!(f, "start ply and move count exceed the supported range"),
         }
     }
 }
@@ -116,6 +118,11 @@ pub fn judge_game<S: AsRef<str>>(
     moves: &[S],
 ) -> Result<Judgement, InputError> {
     let mut pos = setup_position(start_sfen, pass_rights)?;
+    // rshogi-core は手数を i32 で数え、do_move ごとに加算する
+    let last_ply = i64::from(pos.game_ply()) + i64::try_from(moves.len()).unwrap_or(i64::MAX);
+    if pos.game_ply() < 1 || last_ply > i64::from(i32::MAX) {
+        return Err(InputError::PlyOutOfRange);
+    }
     let mut history = History::new(&pos);
     let mut illegal = None;
     for (index, usi) in moves.iter().enumerate() {
@@ -183,6 +190,10 @@ fn setup_position(sfen: &str, pass_rights: Option<(u32, u32)>) -> Result<Positio
 
 fn find_legal_move(pos: &Position, usi: &str) -> Result<Move, IllegalReason> {
     let parsed = Move::from_usi_strict(usi).ok_or(IllegalReason::InvalidUsi)?;
+    // from_usi_strict は互換のため "0000" (パス) と "none" も受け付けるが、ルームの棋譜でパスは "pass" だけ
+    if !parsed.is_normal() && usi != "pass" {
+        return Err(IllegalReason::InvalidUsi);
+    }
     let mut legal = MoveList::new();
     generate_legal_all_with_pass(pos, &mut legal);
     legal
@@ -312,12 +323,14 @@ impl History {
                 .filter(|&i| self.keys[i].side_to_move != color)
                 .all(|i| self.checks[i])
         };
-        if checked_throughout(Color::Black) {
-            Repetition::OuteSennichiteLoseBlack
-        } else if checked_throughout(Color::White) {
-            Repetition::OuteSennichiteLoseWhite
-        } else {
-            Repetition::Sennichite
+        // 両者が王手を掛け合い続けた場合はどちらか一方の連続王手とは言えないので通常の千日手とする
+        match (
+            checked_throughout(Color::Black),
+            checked_throughout(Color::White),
+        ) {
+            (true, false) => Repetition::OuteSennichiteLoseBlack,
+            (false, true) => Repetition::OuteSennichiteLoseWhite,
+            _ => Repetition::Sennichite,
         }
     }
 }
