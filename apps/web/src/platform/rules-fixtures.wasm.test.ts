@@ -10,7 +10,7 @@ type FixtureCase = {
     startSfen: string;
     passRights: { b: number; w: number } | null;
     moves: string[];
-    expected?: { ok: boolean; illegalIndex?: number; reason?: string };
+    expected?: { ok: boolean; illegalIndex?: number; reason?: string; noLegalMoves?: boolean };
     expectedError?: boolean;
     serverOnly?: boolean;
 };
@@ -52,13 +52,21 @@ function replay(fixture: FixtureCase): { ok: boolean; illegalIndex?: number } {
         : { ok: true, illegalIndex: undefined };
 }
 
+function hasNoLegalMoves(fixture: FixtureCase): boolean {
+    const passRights = fixture.passRights
+        ? { sente: fixture.passRights.b, gote: fixture.passRights.w }
+        : undefined;
+    const moves: string[] = glue.wasm_get_legal_moves(fixture.startSfen, fixture.moves, passRights);
+    return moves.length === 0;
+}
+
 // 開始局面の検査 (玉の数・パス権の上限・手数) と、互換表記 ("0000" / "none") を拒む USI の検査は
 // サーバー側だけが持つので比べない
 const moveCases = cases.filter((fixture) => !fixture.expectedError && !fixture.serverOnly);
 
 describe("サーバーの合法手判定 fixture とクライアントの棋譜再生", () => {
     it("fixture を読み込めている (fixture を増減したら件数も直す)", () => {
-        expect(moveCases.length).toBe(34);
+        expect(moveCases.length).toBe(36);
     });
 
     it.each(
@@ -75,5 +83,9 @@ describe("サーバーの合法手判定 fixture とクライアントの棋譜�
             ok: expected.ok,
             illegalIndex: expected.illegalIndex,
         });
+        // クライアントは合法手が 0 件になると詰みを宣言し、サーバーは noLegalMoves で裏付ける
+        if (expected.noLegalMoves !== undefined) {
+            expect(hasNoLegalMoves(fixture)).toBe(expected.noLegalMoves);
+        }
     });
 });

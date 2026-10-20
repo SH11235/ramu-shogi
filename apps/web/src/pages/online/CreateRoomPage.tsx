@@ -1,5 +1,9 @@
 import type { ApiErrorResponse, CreateRoomRequest, CreateRoomResponse } from "@shogi/api-contract";
-import { PositionPresetSelector } from "@shogi/ui";
+import {
+    isUnsupportedOnlineStartSfen,
+    ONLINE_KING_COUNT_MESSAGE,
+    PositionPresetSelector,
+} from "@shogi/ui";
 import { useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -92,8 +96,13 @@ function buildCreateRoomRequest(settings: RoomFormState): CreateRoomRequest {
     };
 }
 
+const INVALID_SETTINGS_MESSAGE =
+    "この設定では部屋を作れません。開始局面の駒の数や手数を確認してください。";
+
 async function describeCreateRoomError(res: Response): Promise<string> {
     if (res.status === 429) return RATE_LIMITED_MESSAGE;
+    // 画面で止めきれない設定 (駒の数が多すぎる開始局面など) は、サーバーが英語の理由で 400 を返す
+    if (res.status === 400) return INVALID_SETTINGS_MESSAGE;
     try {
         const err = (await res.json()) as ApiErrorResponse | null;
         if (err?.message) return err.message;
@@ -136,10 +145,11 @@ export default function CreateRoomPage(): ReactElement {
     // "" は SFEN 直接入力の局面がまだ決まっていない印で、サーバーへ送れる開始局面ではない。
     // 平手などに置き換えて作ると、選んだ覚えの無い局面の部屋ができる
     const startSfenMissing = settings.startSfen === "";
+    const startSfenUnsupported = isUnsupportedOnlineStartSfen(settings.startSfen);
 
     async function handleSubmit(): Promise<void> {
         const trimmedName = settings.name.trim();
-        if (!trimmedName || startSfenMissing) return;
+        if (!trimmedName || startSfenMissing || startSfenUnsupported) return;
         setIsCreating(true);
         setError(null);
         if (!session?.authenticated) saveLocalPlayerName(trimmedName);
@@ -221,6 +231,9 @@ export default function CreateRoomPage(): ReactElement {
                         <p className="text-xs text-muted-foreground">
                             局面（SFEN）を入力すると部屋を作成できます
                         </p>
+                    )}
+                    {startSfenUnsupported && (
+                        <p className="text-xs text-destructive">{ONLINE_KING_COUNT_MESSAGE}</p>
                     )}
                 </div>
 
@@ -343,9 +356,13 @@ export default function CreateRoomPage(): ReactElement {
                                     type="number"
                                     min={1}
                                     max={10}
+                                    aria-label="パス権の回数"
                                     value={settings.passRightsCount}
                                     onChange={(e) =>
-                                        set("passRightsCount", Math.max(1, Number(e.target.value)))
+                                        set(
+                                            "passRightsCount",
+                                            Math.min(10, Math.max(1, Number(e.target.value))),
+                                        )
                                     }
                                     className="w-16 rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                 />
@@ -469,7 +486,12 @@ export default function CreateRoomPage(): ReactElement {
                 <button
                     type="button"
                     onClick={() => void handleSubmit()}
-                    disabled={isCreating || !settings.name.trim() || startSfenMissing}
+                    disabled={
+                        isCreating ||
+                        !settings.name.trim() ||
+                        startSfenMissing ||
+                        startSfenUnsupported
+                    }
                     className="w-full rounded-lg bg-primary py-3 text-base font-semibold text-primary-foreground shadow hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                     {isCreating ? "作成中..." : "部屋を作成する"}

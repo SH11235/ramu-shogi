@@ -583,6 +583,24 @@ describe("useRoomConnection", () => {
             });
         });
 
+        it("玉が 1 枚ずつでない開始局面は待機画面の表示にだけ反映し、サーバーへ送らない", () => {
+            const { connection, result } = joinAndWait("b");
+
+            act(() => {
+                result.current.handleUpdateStartSfen("4k4/9/9/9/9/9/9/9/4K4 b - 1");
+                result.current.handleUpdateStartSfen("9/9/9/9/9/9/9/9/4K4 b G 1");
+            });
+
+            expect(result.current).toMatchObject({
+                localStartSfen: "9/9/9/9/9/9/9/9/4K4 b G 1",
+                appliedStartSfen: "4k4/9/9/9/9/9/9/9/4K4 b - 1",
+            });
+            expect(connection.client.updateSettings).toHaveBeenCalledTimes(1);
+            expect(connection.client.updateSettings).toHaveBeenCalledWith({
+                startSfen: "4k4/9/9/9/9/9/9/9/4K4 b - 1",
+            });
+        });
+
         it("待機中の snapshot が届いたら、その開始局面を送った局面と選択中の局面の両方にする", () => {
             const { connection, result } = joinAndWait("b");
             const waiting = waitingSnapshot("b");

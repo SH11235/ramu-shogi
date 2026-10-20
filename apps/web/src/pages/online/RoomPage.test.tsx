@@ -1440,6 +1440,31 @@ describe("RoomPage", () => {
             ]);
         });
 
+        it("玉が 1 枚ずつでない局面を入力したら、送らずにそのわけを出す", async () => {
+            const socket = await joinAndWait("b");
+            const settingsRow = (): string =>
+                screen.getByText("開始局面", { selector: "span" }).parentElement
+                    ?.textContent as string;
+            fireEvent.keyDown(screen.getByRole("combobox", { name: "開始局面を選択" }), {
+                key: "ArrowDown",
+            });
+            fireEvent.keyDown(screen.getByRole("option", { name: "SFEN 直接入力" }), {
+                key: "Enter",
+            });
+
+            fireEvent.change(screen.getByPlaceholderText(/^例: lnsgkgsnl/), {
+                target: { value: "9/9/9/9/9/9/9/9/4K4 b G 1" },
+            });
+
+            expect(
+                screen.getByText(
+                    "オンライン対局では、先手と後手の玉が 1 枚ずつある局面だけ使えます。この局面は相手に送っていません。",
+                ),
+            ).toBeTruthy();
+            expect(settingsRow()).toBe("開始局面平手");
+            expect(socket.sent.filter((message) => message.t === "update_settings")).toEqual([]);
+        });
+
         it("SFEN 入力待ちの間に相手が開始局面を変更したら、その局面を出して入力待ちを外す", async () => {
             const socket = await joinAndWait("b");
             const settingsRow = (): string =>

@@ -5,7 +5,7 @@
 
 ## API (wasm-bindgen, `--target web`)
 
-- `judgeGame({ startSfen, passRights, moves })` → `{ ok, illegalIndex?, reason?, finalSfen, inCheck, checkmate, repetition }`
+- `judgeGame({ startSfen, passRights, moves })` → `{ ok, illegalIndex?, reason?, finalSfen, inCheck, checkmate, noLegalMoves, repetition }`
   - `startSfen`: プリセットを展開済みの SFEN (`startpos` も可)。`passRights`: `{ b, w }` の初期値か `null`。`moves`: USI (`pass` を含む)
   - 反則手があれば `ok: false` とその添字・理由を返し、最終局面はその直前の局面になる
   - `repetition`: `none` / `sennichite` / `oute_sennichite_lose_b` / `oute_sennichite_lose_w` (連続王手を掛け続けた側の負け)。最終局面だけを判定する

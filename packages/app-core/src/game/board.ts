@@ -447,6 +447,20 @@ export function isPassMove(move: string): boolean {
 }
 
 /**
+ * SFEN の盤面に先手玉と後手玉がちょうど 1 枚ずつあるか。玉は持ち駒にならないので盤面だけを数える。
+ * 先頭の "sfen" は付いていてもよい
+ */
+export function hasOneKingEach(sfen: string): boolean {
+    const fields = sfen.trim().split(/\s+/);
+    const boardPart = (fields[0] === "sfen" ? fields[1] : fields[0]) ?? "";
+    const pieces = [...boardPart];
+    return (
+        pieces.filter((ch) => ch === "K").length === 1 &&
+        pieces.filter((ch) => ch === "k").length === 1
+    );
+}
+
+/**
  * 現在の局面でパスが可能かどうかを判定
  *
  * パスが可能な条件:

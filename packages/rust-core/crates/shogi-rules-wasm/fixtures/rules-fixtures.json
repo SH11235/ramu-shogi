@@ -524,7 +524,8 @@
       "expected": {
         "ok": true,
         "inCheck": true,
-        "checkmate": true
+        "checkmate": true,
+        "noLegalMoves": true
       }
     },
     {
@@ -537,7 +538,35 @@
       "expected": {
         "ok": true,
         "inCheck": true,
-        "checkmate": true
+        "checkmate": true,
+        "noLegalMoves": true
+      }
+    },
+    {
+      "name": "王手は無いが指せる手が無い",
+      "startSfen": "k8/2G6/1S7/9/9/9/9/9/4K4 w - 2",
+      "passRights": null,
+      "moves": [],
+      "expected": {
+        "ok": true,
+        "inCheck": false,
+        "checkmate": false,
+        "noLegalMoves": true
+      }
+    },
+    {
+      "name": "王手は無くパスだけ指せる",
+      "startSfen": "k8/2G6/1S7/9/9/9/9/9/4K4 w - 2",
+      "passRights": {
+        "b": 0,
+        "w": 1
+      },
+      "moves": [],
+      "expected": {
+        "ok": true,
+        "inCheck": false,
+        "checkmate": false,
+        "noLegalMoves": false
       }
     },
     {

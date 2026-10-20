@@ -450,6 +450,11 @@ function kifEnding(result: KifGameResult, sideToMove: "b" | "w"): KifEnding {
                 specialMove: loserToMove ? "反則負け" : "反則勝ち",
                 summary: `${loserLabel}の反則負け`,
             };
+        case "oute_sennichite":
+            return {
+                specialMove: loserToMove ? "反則負け" : "反則勝ち",
+                summary: `連続王手の千日手により${loserLabel}の反則負け`,
+            };
         case "disconnect":
             return { summary: `${winnerLabel}の勝ち`, comment: "切断" };
         default:

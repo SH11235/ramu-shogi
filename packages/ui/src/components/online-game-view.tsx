@@ -116,6 +116,9 @@ function rejectedCommandNotice(code: ErrorCode, seat: Seat): string | null {
     return null;
 }
 
+const CHECKMATE_REJECTED_NOTICE =
+    "サーバーではこの局面を詰みと判定しませんでした。指せる手が表示されないときは、投了で対局を終えてください。";
+
 /** 局面も手番も終局も変えないイベント。指し手を送る準備の途中に届いても、その指し手は有効 */
 const POSITION_KEEPING_EVENTS: ReadonlySet<RoomEvent["kind"]> = new Set([
     "player_offline",
@@ -394,13 +397,29 @@ export function OnlineGameView({
         return () => clearTimeout(timerId);
     }, [commandNotice]);
 
+    // 詰みの申告を拒まれた局面の指し手。指せる手も無いまま止まらないよう、局面が変わるか
+    // 終局するまで案内を出し続ける
+    const [checkmateRejectedMoves, setCheckmateRejectedMoves] = useState<string | null>(null);
+    // 詰みの申告を拒まれた局面の指し手。サーバーと食い違ったまま申告と拒否を繰り返さないよう、
+    // その局面では申告し直さない。届かなかった申告は再接続後に送り直せるよう、送っただけでは記録しない
+    const checkmateRejectedMovesRef = useRef<string | null>(null);
+    const usiMovesKey = usiMoveLog.map((entry) => entry.usi).join(" ");
+    const showsCheckmateRejected = !gameResult && checkmateRejectedMoves === usiMovesKey;
+
     const showRejection = useEffectEvent((code: ErrorCode): void => {
         const text = rejectedCommandNotice(code, seat);
         if (text) {
             setCommandNotice({ text });
         }
-        if (code === "DESYNC") {
-            // 見ている局面が古いと指し直しても通らないので、取りこぼしたイベントを取り直す
+        if (code === "CHECKMATE_NOT_CONFIRMED") {
+            // 申告の判定と同じ指し手列で記録する。案内は描画中の usiMovesKey と比べるが、
+            // どちらも適用し終えた指し手列から作るので一致する
+            checkmateRejectedMovesRef.current = movesRef.current.join(" ");
+            setCheckmateRejectedMoves(usiMovesKey);
+        }
+        // 見ている局面が古いと指し直しても通らないので、取りこぼしたイベントを取り直す。
+        // 詰みの申告が拒まれるのも、手元の局面がサーバーと食い違っているとき
+        if (code === "DESYNC" || code === "CHECKMATE_NOT_CONFIRMED") {
             client.sync({ sinceEventId: appliedEventIdRef.current });
         }
     });
@@ -702,9 +721,15 @@ export function OnlineGameView({
     useEffect(() => {
         // 巻き戻し中は合法手を表示しない
         // passRightsOption は try/catch の外で計算する（React Compiler の制約）
-        const passRightsOption = passRights
-            ? { passRights: { sente: passRights.b, gote: passRights.w } }
-            : {};
+        // エンジンは渡したパス権を開始時の回数として棋譜を再生し、その中のパスで減らすので、
+        // 残り回数ではなく部屋の初期値を渡す。残り回数を渡すと使ったパスを二重に引く
+        const initialPassRights = passRights
+            ? snapshot.settings.passRights?.initialCount
+            : undefined;
+        const passRightsOption =
+            initialPassRights !== undefined
+                ? { passRights: { sente: initialPassRights, gote: initialPassRights } }
+                : {};
         let cancelled = false;
         void (async () => {
             // position に依存させる: 手番が変わらないまま局面だけ変わる再同期でも、
@@ -719,7 +744,8 @@ export function OnlineGameView({
                     if (cancelled) return;
                     dispatchUI({ type: "set_legal_moves", moves });
                     // 合法手が0 = 自分が詰まされている → サーバーに通知
-                    if (moves.length === 0) {
+                    const movesKey = movesRef.current.join(" ");
+                    if (moves.length === 0 && checkmateRejectedMovesRef.current !== movesKey) {
                         client.checkmate({ eventId: appliedEventIdRef.current });
                     }
                 } catch {
@@ -734,7 +760,15 @@ export function OnlineGameView({
         return () => {
             cancelled = true;
         };
-    }, [canPlay, gameResult, isRewound, passRights, client, position]);
+    }, [
+        canPlay,
+        gameResult,
+        isRewound,
+        passRights,
+        client,
+        position,
+        snapshot.settings.passRights,
+    ]);
 
     // ─── 棋譜ナビゲーションハンドラ ───────────────────────────────────────────
 
@@ -1416,6 +1450,13 @@ export function OnlineGameView({
                     )}
                 </div>
 
+                {/* 投了を案内するので、出し入れで投了ボタンの位置がずれないよう操作ボタンの下に置く */}
+                {showsCheckmateRejected && (
+                    <p role="alert" className="text-sm text-destructive">
+                        {CHECKMATE_REJECTED_NOTICE}
+                    </p>
+                )}
+
                 {/* AI解析ミニサマリバー（モバイルのみ・シート閉じているとき） */}
                 {(aiSupport || analysis) && topMoves.length > 0 && (
                     <button
@@ -1629,6 +1670,7 @@ const GAME_END_REASONS: Record<string, string> = {
     checkmate: "詰み",
     timeout: "時間切れ",
     sennichite: "千日手",
+    oute_sennichite: "連続王手の千日手",
     illegal_move: "反則",
     disconnect: "切断不戦敗",
 };
