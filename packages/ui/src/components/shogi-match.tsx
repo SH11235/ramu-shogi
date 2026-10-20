@@ -145,6 +145,9 @@ const readFirstPlaySides = (
     return { sides: defaults, alignTime: true };
 };
 
+const isPlayChoiceClock = (clock: ClockSettings[Player]): boolean =>
+    [...MY_TIME_CHOICES, ...AI_TIME_CHOICES].some((choice) => matchesChoice(clock, choice));
+
 /**
  * 人の側は MY_TIME_CHOICES、AI の側は AI_TIME_CHOICES のどれにも当たらない時計を既定値にする
  * （AI 同士の 1 手 10 秒が自分の持ち時間に残る、観戦の「時間なし」が AI の考慮時間に残る、を防ぐ）。
@@ -769,7 +772,7 @@ export function ShogiMatch({
         normalizeTimeSettings,
         isSameTimeSettings,
     );
-    // 初めて開いた対局画面では、利用者が時間を自分で選ぶまで、時間設定をいまの先後の選択肢にそろえ続ける。
+    // 初めて開いた対局画面では、利用者が秒を指定するまで、時間設定をいまの先後の選択肢にそろえ続ける。
     // 1 度だけでは足りない（ログイン中は、サーバーに保存した時間設定があとから届いて書き戻される）。
     const alignTimeRef = useRef(firstPlaySides?.alignTime === true);
     const alignTimeForFirstPlay = useEffectEvent(
@@ -786,8 +789,16 @@ export function ShogiMatch({
     useEffect(() => {
         alignTimeForFirstPlay(timeSettings, sides);
     }, [timeSettings, sides]);
+    // 先後や時間の選択肢を選んだときの書き込みは、そろえ続けても変わらない。止めるのは、どの選択肢にも
+    // 当たらない時計（詳細設定で指定した秒）を書いたときだけ。
     const changeTimeSettings: typeof setTimeSettings = (next) => {
-        alignTimeRef.current = false;
+        if (
+            typeof next === "function" ||
+            !isPlayChoiceClock(next.sente) ||
+            !isPlayChoiceClock(next.gote)
+        ) {
+            alignTimeRef.current = false;
+        }
         setTimeSettings(next);
     };
     const [isMatchRunning, setIsMatchRunning] = useState(false);
