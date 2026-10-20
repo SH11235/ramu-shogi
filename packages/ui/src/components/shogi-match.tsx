@@ -145,9 +145,6 @@ const readFirstPlaySides = (
     return { sides: defaults, alignTime: true };
 };
 
-const isPlayChoiceClock = (clock: ClockSettings[Player]): boolean =>
-    [...MY_TIME_CHOICES, ...AI_TIME_CHOICES].some((choice) => matchesChoice(clock, choice));
-
 /**
  * 人の側は MY_TIME_CHOICES、AI の側は AI_TIME_CHOICES のどれにも当たらない時計を既定値にする
  * （AI 同士の 1 手 10 秒が自分の持ち時間に残る、観戦の「時間なし」が AI の考慮時間に残る、を防ぐ）。
@@ -775,27 +772,31 @@ export function ShogiMatch({
     // 初めて開いた対局画面では、利用者が秒を指定するまで、時間設定をいまの先後の選択肢にそろえ続ける。
     // 1 度だけでは足りない（ログイン中は、サーバーに保存した時間設定があとから届いて書き戻される）。
     const alignTimeRef = useRef(firstPlaySides?.alignTime === true);
+    // 先後は時計より先に書き込まれる（usePlaySetup）。時計を書くときは、その先後で選択肢を判定する。
+    const latestSidesRef = useRef(sides);
+    const alignToPlayChoices = (settings: ClockSettings, currentSides: MatchSides) =>
+        alignTimeToPlayChoices(settings, currentSides, (role) => ({
+            mainMs: initialMainTimeMs,
+            byoyomiMs: initialByoyomiMs,
+            enabled: role !== "human",
+        }));
     const alignTimeForFirstPlay = useEffectEvent(
         (current: ClockSettings, currentSides: MatchSides) => {
+            latestSidesRef.current = currentSides;
             if (!alignTimeRef.current) return;
-            const aligned = alignTimeToPlayChoices(current, currentSides, (role) => ({
-                mainMs: initialMainTimeMs,
-                byoyomiMs: initialByoyomiMs,
-                enabled: role !== "human",
-            }));
+            const aligned = alignToPlayChoices(current, currentSides);
             if (!isSameTimeSettings(aligned, current)) setTimeSettings(aligned);
         },
     );
     useEffect(() => {
         alignTimeForFirstPlay(timeSettings, sides);
     }, [timeSettings, sides]);
-    // 先後や時間の選択肢を選んだときの書き込みは、そろえ続けても変わらない。止めるのは、どの選択肢にも
-    // 当たらない時計（詳細設定で指定した秒）を書いたときだけ。
+    // 先後や時間の選択肢を選んだときの書き込みは、そろえ続けても変わらない。止めるのは、その役割の
+    // 選択肢に当たらない時計（詳細設定で指定した秒）を書いたときだけ。
     const changeTimeSettings: typeof setTimeSettings = (next) => {
         if (
             typeof next === "function" ||
-            !isPlayChoiceClock(next.sente) ||
-            !isPlayChoiceClock(next.gote)
+            !isSameTimeSettings(alignToPlayChoices(next, latestSidesRef.current), next)
         ) {
             alignTimeRef.current = false;
         }
@@ -1526,6 +1527,7 @@ export function ShogiMatch({
                 void disposeEngine(side);
             }
         }
+        latestSidesRef.current = newSides;
         setSides(newSides);
     };
 
