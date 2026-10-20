@@ -1854,6 +1854,19 @@ describe("OnlineGameView", () => {
             expect(screen.getByRole("alert").textContent).toBe(NOTICE);
         });
 
+        it("届かなかった申告は、同じ局面の snapshot を受け取り直したときに送り直す", async () => {
+            const { client, emit } = await renderDeclared();
+
+            await emit({
+                v: 1,
+                t: "snapshot",
+                payload: makeSnapshot({ eventId: 6, moves: FINAL_MOVES.slice(0, 2), turn: "b" }),
+            });
+
+            expect(client.checkmate).toHaveBeenCalledTimes(2);
+            expect(client.checkmate).toHaveBeenLastCalledWith({ eventId: 6 });
+        });
+
         it("取り直した局面が進んでいたら案内を消し、その局面でも指せなければ改めて申告する", async () => {
             const { client, emit } = await renderDeclared();
             await emit(errorMessage("CHECKMATE_NOT_CONFIRMED"));

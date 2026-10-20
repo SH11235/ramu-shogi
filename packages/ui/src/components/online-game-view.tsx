@@ -400,9 +400,9 @@ export function OnlineGameView({
     // 詰みの申告を拒まれた局面の指し手。指せる手も無いまま止まらないよう、局面が変わるか
     // 終局するまで案内を出し続ける
     const [checkmateRejectedMoves, setCheckmateRejectedMoves] = useState<string | null>(null);
-    // 詰みを申告した局面の指し手。サーバーと食い違ったまま申告と拒否を繰り返さないよう、
-    // 同じ局面では 1 度しか申告しない
-    const checkmateDeclaredMovesRef = useRef<string | null>(null);
+    // 詰みの申告を拒まれた局面の指し手。サーバーと食い違ったまま申告と拒否を繰り返さないよう、
+    // その局面では申告し直さない。届かなかった申告は再接続後に送り直せるよう、送っただけでは記録しない
+    const checkmateRejectedMovesRef = useRef<string | null>(null);
     const usiMovesKey = usiMoveLog.map((entry) => entry.usi).join(" ");
     const showsCheckmateRejected = !gameResult && checkmateRejectedMoves === usiMovesKey;
 
@@ -412,6 +412,7 @@ export function OnlineGameView({
             setCommandNotice({ text });
         }
         if (code === "CHECKMATE_NOT_CONFIRMED") {
+            checkmateRejectedMovesRef.current = usiMovesKey;
             setCheckmateRejectedMoves(usiMovesKey);
         }
         // 見ている局面が古いと指し直しても通らないので、取りこぼしたイベントを取り直す。
@@ -736,8 +737,7 @@ export function OnlineGameView({
                     dispatchUI({ type: "set_legal_moves", moves });
                     // 合法手が0 = 自分が詰まされている → サーバーに通知
                     const movesKey = movesRef.current.join(" ");
-                    if (moves.length === 0 && checkmateDeclaredMovesRef.current !== movesKey) {
-                        checkmateDeclaredMovesRef.current = movesKey;
+                    if (moves.length === 0 && checkmateRejectedMovesRef.current !== movesKey) {
                         client.checkmate({ eventId: appliedEventIdRef.current });
                     }
                 } catch {
