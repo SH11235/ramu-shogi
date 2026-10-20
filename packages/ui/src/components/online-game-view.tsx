@@ -412,7 +412,8 @@ export function OnlineGameView({
             setCommandNotice({ text });
         }
         if (code === "CHECKMATE_NOT_CONFIRMED") {
-            // 申告するかの判定と同じ指し手列で記録する
+            // 申告の判定と同じ指し手列で記録する。案内は描画中の usiMovesKey と比べるが、
+            // どちらも適用し終えた指し手列から作るので一致する
             checkmateRejectedMovesRef.current = movesRef.current.join(" ");
             setCheckmateRejectedMoves(usiMovesKey);
         }
@@ -1357,11 +1358,6 @@ export function OnlineGameView({
                     </div>
                 )}
 
-                {showsCheckmateRejected && (
-                    <p role="alert" className="text-sm text-destructive">
-                        {CHECKMATE_REJECTED_NOTICE}
-                    </p>
-                )}
                 {(loadFailed || commandNotice) && (
                     <p role="alert" className="text-sm text-destructive">
                         {loadFailed
@@ -1453,6 +1449,13 @@ export function OnlineGameView({
                         </button>
                     )}
                 </div>
+
+                {/* 投了を案内するので、出し入れで投了ボタンの位置がずれないよう操作ボタンの下に置く */}
+                {showsCheckmateRejected && (
+                    <p role="alert" className="text-sm text-destructive">
+                        {CHECKMATE_REJECTED_NOTICE}
+                    </p>
+                )}
 
                 {/* AI解析ミニサマリバー（モバイルのみ・シート閉じているとき） */}
                 {(aiSupport || analysis) && topMoves.length > 0 && (
