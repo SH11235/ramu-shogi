@@ -88,6 +88,7 @@ pub enum InputError {
     PassRightsOutOfRange(u32),
     KingCount,
     PlyOutOfRange,
+    TooManyMoves(usize),
 }
 
 impl std::fmt::Display for InputError {
@@ -102,11 +103,18 @@ impl std::fmt::Display for InputError {
             }
             Self::KingCount => write!(f, "each side must have exactly one king"),
             Self::PlyOutOfRange => write!(f, "start ply and move count exceed the supported range"),
+            Self::TooManyMoves(count) => {
+                write!(f, "{count} moves exceed the supported maximum {MAX_MOVES}")
+            }
         }
     }
 }
 
 impl std::error::Error for InputError {}
+
+/// 毎手すべてを再生するので、手数に比例する判定時間を Worker の CPU 時間の上限より十分小さく保つ。
+/// 実際の対局はこの手数に届かない
+pub const MAX_MOVES: usize = 2_000;
 
 /// `start_sfen` から `moves` を順に適用し、反則手・最終局面・王手・詰み・千日手を判定する。
 ///
@@ -117,6 +125,9 @@ pub fn judge_game<S: AsRef<str>>(
     pass_rights: Option<(u32, u32)>,
     moves: &[S],
 ) -> Result<Judgement, InputError> {
+    if moves.len() > MAX_MOVES {
+        return Err(InputError::TooManyMoves(moves.len()));
+    }
     let mut pos = setup_position(start_sfen, pass_rights)?;
     // rshogi-core は手数を i32 で数え、do_move ごとに加算する
     let last_ply = i64::from(pos.game_ply()) + i64::try_from(moves.len()).unwrap_or(i64::MAX);

@@ -57,8 +57,8 @@ function replay(fixture: FixtureCase): { ok: boolean; illegalIndex?: number } {
 const moveCases = cases.filter((fixture) => !fixture.expectedError && !fixture.serverOnly);
 
 describe("サーバーの合法手判定 fixture とクライアントの棋譜再生", () => {
-    it("fixture を読み込めている", () => {
-        expect(moveCases.length).toBeGreaterThan(20);
+    it("fixture を読み込めている (fixture を増減したら件数も直す)", () => {
+        expect(moveCases.length).toBe(34);
     });
 
     it.each(

@@ -1,5 +1,5 @@
 use serde_json::Value;
-use shogi_rules_wasm::{Judgement, judge_game};
+use shogi_rules_wasm::{InputError, Judgement, MAX_MOVES, judge_game};
 
 fn load_cases() -> Vec<Value> {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/rules-fixtures.json");
@@ -76,4 +76,13 @@ fn fixture_cases_match_expected_judgement() {
             );
         }
     }
+}
+
+#[test]
+fn too_many_moves_is_an_input_error_without_replaying() {
+    let moves = vec!["7g7f"; MAX_MOVES + 1];
+    assert_eq!(
+        judge_game("startpos", None, &moves).unwrap_err(),
+        InputError::TooManyMoves(MAX_MOVES + 1)
+    );
 }
