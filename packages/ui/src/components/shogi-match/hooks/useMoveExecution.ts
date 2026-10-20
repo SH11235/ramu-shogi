@@ -15,6 +15,9 @@ import type { UseKifuNavigationResult } from "./useKifuNavigation";
 
 type Selection = { kind: "square"; square: string } | { kind: "hand"; piece: PieceType };
 
+/** 指せない手を選んだときの知らせ。対局画面は、この知らせをしばらくして消し、言い換えて出す。 */
+export const ILLEGAL_MOVE_MESSAGE = "合法手ではありません";
+
 /**
  * useMoveExecution の props
  */
@@ -314,7 +317,7 @@ export function useMoveExecution({
             const moveStr = `${selection.piece}*${square}`;
             const legal = await getLegalSet();
             if (legal && !legal.has(moveStr)) {
-                setMessage({ text: "合法手ではありません", type: "error" });
+                setMessage({ text: ILLEGAL_MOVE_MESSAGE, type: "error" });
                 return true;
             }
             const result = applyMoveWithState(position, moveStr, { validateTurn: false });
@@ -348,7 +351,7 @@ export function useMoveExecution({
             if (promotion === "none") {
                 const moveStr = `${from}${to}`;
                 if (!legal.has(moveStr)) {
-                    setMessage({ text: "合法手ではありません", type: "error" });
+                    setMessage({ text: ILLEGAL_MOVE_MESSAGE, type: "error" });
                     return true;
                 }
                 const result = applyMoveWithState(position, moveStr, {
@@ -469,7 +472,7 @@ export function useMoveExecution({
             if (promotion === "none") {
                 const moveStr = `${from}${to}`;
                 if (!legal.has(moveStr)) {
-                    setMessage({ text: "合法手ではありません", type: "error" });
+                    setMessage({ text: ILLEGAL_MOVE_MESSAGE, type: "error" });
                     return true;
                 }
                 const result = applyMoveWithState(position, moveStr, { validateTurn: true });
@@ -528,7 +531,7 @@ export function useMoveExecution({
         const moveStr = `${selection.piece}*${square}`;
         const legal = await getLegalSet();
         if (legal && !legal.has(moveStr)) {
-            setMessage({ text: "合法手ではありません", type: "error" });
+            setMessage({ text: ILLEGAL_MOVE_MESSAGE, type: "error" });
             return true;
         }
         const result = applyMoveWithState(position, moveStr, { validateTurn: true });

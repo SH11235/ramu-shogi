@@ -52,6 +52,8 @@ export function useKifuKeyboardNavigation({
         if (
             target.tagName === "INPUT" ||
             target.tagName === "TEXTAREA" ||
+            // 選択欄では、矢印キーは選択肢を選ぶ操作
+            target.tagName === "SELECT" ||
             target.isContentEditable
         ) {
             return;

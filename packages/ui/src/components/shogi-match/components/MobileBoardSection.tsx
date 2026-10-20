@@ -76,6 +76,8 @@ interface MobileBoardSectionProps {
     passRights?: { sente: number; gote: number };
     /** 現在の手番 */
     turn?: Player;
+    /** ヒントとして盤に示す手（対局画面） */
+    hintMove?: { from?: string | null; to: string; side?: Player } | null;
 }
 
 /**
@@ -110,6 +112,7 @@ export function MobileBoardSection({
     passRightsSettings,
     passRights,
     turn,
+    hintMove,
 }: MobileBoardSectionProps): ReactElement {
     const cellSize = useMobileCellSize(boardSectionRef);
 
@@ -197,6 +200,7 @@ export function MobileBoardSection({
                 squareNotation={displaySettings.squareNotation}
                 showBoardLabels={displaySettings.showBoardLabels}
                 moveShadow={isEditModeActive ? null : moveShadow}
+                hintMove={hintMove}
             />
 
             {candidateNote ? (

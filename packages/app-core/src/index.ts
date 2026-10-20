@@ -52,7 +52,7 @@ export {
     parseSingleCsaMove,
 } from "./game/csa";
 // game/csa-move
-export { applyCsaMoveStrict, isCheckmate } from "./game/csa-move";
+export { applyCsaMoveStrict, isCheckmate, isKingInCheck } from "./game/csa-move";
 // game/csa-position
 export type { CsaStartPosition } from "./game/csa-position";
 export { buildCsaStartPosition, parseCsaStartPosition } from "./game/csa-position";

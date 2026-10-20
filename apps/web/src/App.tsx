@@ -1,6 +1,6 @@
 import type { EngineOption } from "@shogi/ui";
 import { EngineControlPanel, ShogiMatch, useDevMode } from "@shogi/ui";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useBlocker, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { HeaderNav } from "./components/HeaderNav";
 import { PageHeader } from "./components/PageHeader";
@@ -39,6 +39,15 @@ function App() {
     useEffect(() => {
         clearPlayHandoff();
     }, []);
+    // 対局中（一時停止を含む）にページを離れると、その対局は残らない。離れる前に確かめる
+    // （ヘッダーのリンクの押し間違いで一局を失わないようにする）。
+    const [isInMatch, setIsInMatch] = useState(false);
+    useBlocker({
+        shouldBlockFn: () =>
+            isInMatch &&
+            !window.confirm("対局中です。このページを離れると、この対局は残りません。離れますか？"),
+        enableBeforeUnload: () => isInMatch,
+    });
 
     return (
         <>
@@ -59,13 +68,40 @@ function App() {
                     aiIconUrl={`${import.meta.env.BASE_URL}ramu.jpeg`}
                     onPositionSnapshot={(snapshot) => setPanelPosition(snapshot)}
                     initialReview={initialReview}
+                    // 対局専用の画面。棋譜を調べる・検討するのは研究ノートで行う。
+                    screen="play"
+                    onPlayPhaseChange={(phase) =>
+                        setIsInMatch(phase === "playing" || phase === "paused")
+                    }
+                    // はじめての人は「自分（先手）対 AI」から始める（保存済みの設定があればそれを使う）。
+                    defaultSides={{
+                        sente: { role: "human" },
+                        gote: { role: "engine", engineId: engineOptions[0]?.id },
+                    }}
+                    playSetupFooter={
+                        <p className="leading-relaxed text-wafuu-sumi-light">
+                            <span className="inline-block">棋譜を調べる・検討するなら</span>{" "}
+                            <span className="inline-block">
+                                <Link
+                                    to="/studies"
+                                    className="font-medium text-wafuu-ai underline underline-offset-2 hover:text-wafuu-ai-light"
+                                >
+                                    研究ノート
+                                </Link>{" "}
+                                へ
+                            </span>
+                        </p>
+                    }
                     // 読み込んだ棋譜（分岐・コメントごと）を研究ノートにして、その画面へ移る。
                     // 研究ノートの保存層は使うときだけ読み込む（対局だけの人には要らない）。
                     onOpenAsStudy={(tree, info) => {
                         void import("./lib/studyEntry")
-                            .then(({ createStudyFromKifuTree }) =>
-                                createStudyFromKifuTree(tree, info),
-                            )
+                            .then(async ({ createStudyFromKifuTree, openStudyAtLastMove }) => {
+                                const created = await createStudyFromKifuTree(tree, info);
+                                // 指した対局の振り返りは、終局の局面から見始める。
+                                await openStudyAtLastMove(created.studyId);
+                                return created;
+                            })
                             .then(({ studyId }) =>
                                 navigate({ to: "/studies/$studyId", params: { studyId } }),
                             )
@@ -78,9 +114,6 @@ function App() {
                                 );
                             });
                     }}
-                    {...(initialReview
-                        ? { defaultSides: { sente: { role: "human" }, gote: { role: "human" } } }
-                        : {})}
                 />
                 {isDevMode && <EngineControlPanel engine={panelEngine} position={panelPosition} />}
             </main>

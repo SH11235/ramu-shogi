@@ -17,12 +17,15 @@ import {
     DEFAULT_PRESET_KEY,
     getAllSquares,
     getPositionService,
+    isKingInCheck,
     isStudyUsiMove,
+    NONE_NNUE_SELECTION,
     resolveWorkerCount,
 } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
 import { useShogiSound } from "../hooks/useShogiSound";
 import type { RemoteNnueManager } from "./nnue/types";
 import { MatchNnueDownloadDialog } from "./shogi-match/components/MatchNnueDownloadDialog";
@@ -38,7 +41,7 @@ import type { DropResult } from "./shogi-match/dnd/types";
 import { usePieceDnd } from "./shogi-match/dnd/usePieceDnd";
 import { useBatchAnalysis } from "./shogi-match/hooks/useBatchAnalysis";
 import { useBoardState } from "./shogi-match/hooks/useBoardState";
-import { useClockManager } from "./shogi-match/hooks/useClockManager";
+import { type ClockSettings, useClockManager } from "./shogi-match/hooks/useClockManager";
 import { useDialogs } from "./shogi-match/hooks/useDialogs";
 import { useEditModeActions } from "./shogi-match/hooks/useEditModeActions";
 import { useEngineManager } from "./shogi-match/hooks/useEngineManager";
@@ -55,14 +58,19 @@ import { useLegalMovePrefetch } from "./shogi-match/hooks/useLegalMovePrefetch";
 import { useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
 import { useMatchNnueDownload } from "./shogi-match/hooks/useMatchNnueDownload";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
-import { useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
+import { ILLEGAL_MOVE_MESSAGE, useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
 import { useMoveShadow } from "./shogi-match/hooks/useMoveShadow";
 import { useNnueManager } from "./shogi-match/hooks/useNnueManager";
 import { useNormalizedSettings } from "./shogi-match/hooks/useNormalizedSettings";
 import { usePassRights } from "./shogi-match/hooks/usePassRights";
 import { useUIState } from "./shogi-match/hooks/useUIState";
 import { ShogiMatchLayout } from "./shogi-match/layouts/ShogiMatchLayout";
-import { ShogiMatchProvider } from "./shogi-match/ShogiMatchContext";
+import { AI_TIME_CHOICES, MY_TIME_CHOICES, matchesChoice } from "./shogi-match/play/usePlaySetup";
+import {
+    type PlayPhase,
+    type PlayScreenConfig,
+    ShogiMatchProvider,
+} from "./shogi-match/ShogiMatchContext";
 import type {
     AnalysisSettings,
     AnalysisSnapshotDraft,
@@ -101,7 +109,61 @@ import { TooltipProvider } from "./tooltip";
 
 const EMPTY_ANALYSIS_MARKERS: Array<{ seat: "b" | "w"; ply: number }> = [];
 
-/** 対局用の表示設定 localStorage キー。 */
+/** 平手の開始局面の盤・手番・持ち駒（SFEN）。 */
+const HIRATE_BOARD_SFEN = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
+
+/** 開始局面が平手か（`startpos` と、同じ局面の SFEN の両方を平手とみなす）。 */
+const isHirateSfen = (sfen: string): boolean =>
+    sfen === "startpos" || sfen.includes(HIRATE_BOARD_SFEN);
+
+const MATCH_SIDES_KEY = "shogi-match-sides";
+const PLAY_SIDES_KEY = "shogi-play-sides";
+
+type MatchSides = { sente: SideSetting; gote: SideSetting };
+
+/**
+ * 対局画面を初めて開いたとき（先後をまだ PLAY_SIDES_KEY に保存していない）の先後。
+ * 共有のキーの先後は、ほかの画面の既定値（観戦の人 対 人）や、AI 同士の保存値のこともあるので、
+ * 引き継ぐのは「人 対 AI」のときだけ。引き継がないときは `alignTime` を立て、時間設定を
+ * 対局画面の選択肢にそろえる。
+ */
+const readFirstPlaySides = (
+    defaults: MatchSides,
+): { sides: MatchSides; alignTime: boolean } | null => {
+    if (typeof window === "undefined") return null;
+    try {
+        if (localStorage.getItem(PLAY_SIDES_KEY) !== null) return null;
+        const raw = localStorage.getItem(MATCH_SIDES_KEY);
+        const legacy = raw === null ? null : (JSON.parse(raw) as Partial<MatchSides> | null);
+        const roles = [legacy?.sente?.role, legacy?.gote?.role];
+        if (legacy?.sente && legacy.gote && roles.includes("human") && roles.includes("engine")) {
+            return { sides: { sente: legacy.sente, gote: legacy.gote }, alignTime: false };
+        }
+    } catch {
+        // 読めない保存値は、引き継がずに既定値で始める。
+    }
+    return { sides: defaults, alignTime: true };
+};
+
+/**
+ * 人の側は MY_TIME_CHOICES、AI の側は AI_TIME_CHOICES のどれにも当たらない時計を既定値にする
+ * （AI 同士の 1 手 10 秒が自分の持ち時間に残る、観戦の「時間なし」が AI の考慮時間に残る、を防ぐ）。
+ */
+const alignTimeToPlayChoices = (
+    settings: ClockSettings,
+    sides: MatchSides,
+    defaultClockFor: (role: SideSetting["role"]) => ClockSettings[Player],
+): ClockSettings => {
+    const align = (side: Player) => {
+        const role = sides[side].role;
+        const choices = role === "human" ? MY_TIME_CHOICES : AI_TIME_CHOICES;
+        return choices.some((choice) => matchesChoice(settings[side], choice))
+            ? settings[side]
+            : defaultClockFor(role);
+    };
+    return { sente: align("sente"), gote: align("gote") };
+};
+
 const DISPLAY_SETTINGS_KEY = "shogi-display-settings";
 /** ライブ観戦用の表示設定 localStorage キー (対局用と分離してチート防止既定を汚さない)。 */
 const SPECTATE_DISPLAY_SETTINGS_KEY = "rshogi-live-display-settings";
@@ -543,6 +605,16 @@ interface ShogiMatchProps {
      */
     viewerMode?: boolean;
     /**
+     * 画面の種類。`"play"` は対局専用の画面（AI と指す）で、対局の設定 → 対局 → 終局の流れだけを
+     * 出す。棋譜の読み込み・駒を動かす検討・棋譜の解析は出さず（研究ノートで行う）、対局中の解析は
+     * いまの局面のヒントだけにする。省略時は、対局と検討を兼ねた画面。
+     */
+    screen?: "play";
+    /** 対局画面（`screen="play"`）で、進み具合（設定・対局中・終局後など）が変わったときに呼ぶ。 */
+    onPlayPhaseChange?: (phase: PlayPhase) => void;
+    /** 対局画面（`screen="play"`）の設定の欄の下に出す、ほかのページへの案内（研究ノートなど）。 */
+    playSetupFooter?: React.ReactNode;
+    /**
      * PC の盤のすぐ上（対局時計の位置）に、対局時計の代わりに出すコンテンツ
      * （棋譜ビューアの対局者名など）。スマホのレイアウトには出ない。
      */
@@ -608,6 +680,9 @@ export function ShogiMatch({
     reviewMode,
     spectateMode,
     viewerMode = false,
+    screen,
+    playSetupFooter,
+    onPlayPhaseChange,
     boardTopContent,
     mobileHeaderContent,
     evalGraphPinned = false,
@@ -624,9 +699,14 @@ export function ShogiMatch({
     const emptyBoard: BoardState = Object.fromEntries(
         getAllSquares().map((sq) => [sq, null]),
     ) as BoardState;
-    const [sides, setSides] = useLocalStorage<{ sente: SideSetting; gote: SideSetting }>(
-        "shogi-match-sides",
-        defaultSides,
+    // 観戦・公開棋譜の画面も ShogiMatch を人 対 人で開き、その既定値を保存する。対局画面は別のキーに
+    // 持ち、その保存で「自分 対 AI」の既定値が上書きされないようにする。
+    const [firstPlaySides] = useState(() =>
+        screen === "play" ? readFirstPlaySides(defaultSides) : null,
+    );
+    const [sides, setSides] = useLocalStorage<MatchSides>(
+        screen === "play" ? PLAY_SIDES_KEY : MATCH_SIDES_KEY,
+        firstPlaySides?.sides ?? defaultSides,
     );
 
     // 盤面状態管理（統合フック）
@@ -689,10 +769,75 @@ export function ShogiMatch({
         normalizeTimeSettings,
         isSameTimeSettings,
     );
+    // 初めて開いた対局画面では、利用者が秒を指定するまで、時間設定をいまの先後の選択肢にそろえ続ける。
+    // 1 度だけでは足りない（ログイン中は、サーバーに保存した時間設定があとから届いて書き戻される）。
+    const alignTimeRef = useRef(firstPlaySides?.alignTime === true);
+    // 先後は時計より先に書き込まれる（usePlaySetup）。時計を書くときは、その先後で選択肢を判定する。
+    const latestSidesRef = useRef(sides);
+    const alignToPlayChoices = (settings: ClockSettings, currentSides: MatchSides) =>
+        alignTimeToPlayChoices(settings, currentSides, (role) => ({
+            mainMs: initialMainTimeMs,
+            byoyomiMs: initialByoyomiMs,
+            enabled: role !== "human",
+        }));
+    const alignTimeForFirstPlay = useEffectEvent(
+        (current: ClockSettings, currentSides: MatchSides) => {
+            latestSidesRef.current = currentSides;
+            if (!alignTimeRef.current) return;
+            const aligned = alignToPlayChoices(current, currentSides);
+            if (!isSameTimeSettings(aligned, current)) setTimeSettings(aligned);
+        },
+    );
+    useEffect(() => {
+        alignTimeForFirstPlay(timeSettings, sides);
+    }, [timeSettings, sides]);
+    // 先後や時間の選択肢を選んだときの書き込みは、そろえ続けても変わらない。止めるのは、その役割の
+    // 選択肢に当たらない時計（詳細設定で指定した秒）を書いたときだけ。
+    const changeTimeSettings: typeof setTimeSettings = (next) => {
+        if (
+            typeof next === "function" ||
+            !isSameTimeSettings(alignToPlayChoices(next, latestSidesRef.current), next)
+        ) {
+            alignTimeRef.current = false;
+        }
+        setTimeSettings(next);
+    };
     const [isMatchRunning, setIsMatchRunning] = useState(false);
     const [isEditMode, setIsEditMode] = useState(true);
-    const editAllowed = canEditPosition({ isEditMode, viewerMode });
+    const isPlayScreen = screen === "play";
+    // 対局画面では、利用者が「局面を変えて指す」を開いている間だけ盤を編集できる。
+    const [positionEditOpen, setPositionEditOpen] = useState(false);
+    const [hintCount, setHintCount] = useState(0);
+    const [hintPly, setHintPly] = useState<number | null>(null);
+    const [pendingOpenStudy, setPendingOpenStudy] = useState(false);
+    const [pendingRematch, setPendingRematch] = useState(false);
+    const editAllowed =
+        canEditPosition({ isEditMode, viewerMode }) && (!isPlayScreen || positionEditOpen);
     const [isPaused, setIsPaused] = useState(false);
+    // 対局画面の進み具合。終局の結果があれば、一時停止より優先する（一時停止中に投了したときも
+    // 結果の画面へ移る）。
+    const playPhase: PlayPhase = isMatchRunning
+        ? "playing"
+        : gameResult
+          ? "finished"
+          : isPaused
+            ? "paused"
+            : positionEditOpen
+              ? "editing"
+              : "setup";
+    // 終局後・一時停止から設定の画面へ戻している最中か（戻し終えるまで、対局を始めさせない）。
+    const [isPlayResetting, setIsPlayResetting] = useState(false);
+    // 対局を始める準備（評価関数の確認・エンジンの初期化）をしている最中か。その間は、設定や開始局面を
+    // 変えさせない（準備の途中で局面が変わると、始まった対局の手番と時計が食い違う）。
+    const [isPlayStarting, setIsPlayStarting] = useState(false);
+    // 対局の始めに 1 度だけ出す知らせ（振り駒の結果など）。
+    const [playStartNotice, setPlayStartNotice] = useState<string | null>(null);
+    // この対局の始まりの局面（開始局面と、そこまでの手順）。別のページから引き継いだ棋譜の途中から
+    // 始めた対局では、手順が空でない。「もう一局」「設定を変える」で戻す先と、待ったで戻せる範囲に使う。
+    const playStartRef = useRef<{ sfen: string; moves: string[] } | null>(null);
+    const [playStartPly, setPlayStartPly] = useState(0);
+    // 新しい対局を始めようとしている（始まったら、その時点の開始局面と手順を控える）。
+    const [pendingPlayStartCapture, setPendingPlayStartCapture] = useState(false);
     const pendingSearchStatsRef = useRef(new Map<number, MoveSearchStats>());
     const [liveSearchInfo, setLiveSearchInfo] = useState<{
         side: Player;
@@ -836,6 +981,44 @@ export function ShogiMatch({
         restartEngineForNnue: (side, selection) =>
             restartEngineForNnueRef.current?.(side, selection) ?? Promise.resolve(),
     });
+
+    // 対局画面のヒントに使う評価関数。利用者には選ばせず、準備の済んでいるものを使う:
+    // 相手の AI（内蔵エンジン）の評価関数、無ければ解析用に選んであるもの。どちらも未ダウンロードなら
+    // 簡易 AI（駒得）で出す（ヒントのためだけにダウンロードを求めない）。
+    const [playHintSelection, setPlayHintSelection] = useState<NnueSelection>(NONE_NNUE_SELECTION);
+    const hintCandidate: NnueSelection = (() => {
+        for (const side of ["gote", "sente"] as const) {
+            const setting = sides[side];
+            if (setting.role !== "engine") continue;
+            const engine =
+                engineOptions.find((option) => option.id === setting.engineId) ?? engineOptions[0];
+            if (engine && engine.kind !== "external") {
+                return side === "sente" ? senteNnueSelection : goteNnueSelection;
+            }
+        }
+        return analysisNnueSelection;
+    })();
+    const hintCandidateKey = `${hintCandidate.presetKey ?? ""}|${hintCandidate.nnueId ?? ""}`;
+    const resolveHintCandidate = useEffectEvent(async () => {
+        try {
+            await resolveNnue(hintCandidate);
+            return hintCandidate;
+        } catch {
+            return NONE_NNUE_SELECTION;
+        }
+    });
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 候補が変わったとき・評価関数の一覧が変わったとき（ダウンロード完了）に確かめ直す
+    useEffect(() => {
+        if (!isPlayScreen) return;
+        let cancelled = false;
+        void resolveHintCandidate().then((selection) => {
+            if (!cancelled) setPlayHintSelection(selection);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [isPlayScreen, hintCandidateKey, nnueList.length]);
+    const effectiveAnalysisNnueSelection = isPlayScreen ? playHintSelection : analysisNnueSelection;
 
     // 分析用 NNUE 変更時に一括解析をリセット（プール破棄に伴う UI 同期）
     const prevAnalysisNnueSelectionRef = useRef(analysisNnueSelection);
@@ -1036,6 +1219,9 @@ export function ShogiMatch({
             timeSettings,
             isMatchRunning,
             onTimeExpired: async (side) => {
+                // 対局画面では、AI の「考慮時間」は考える長さの目安で、切れても負けにしない
+                // （端末が重いと、AI が制限ぎりぎりまで考えて時計だけ先に 0 になることがある）。
+                if (isPlayScreen && sides[side].role === "engine") return;
                 const winner: Player = side === "sente" ? "gote" : "sente";
                 const result: GameResult = {
                     winner,
@@ -1089,11 +1275,16 @@ export function ShogiMatch({
 
     // 対局前に timeSettings が変更されたら clocks を同期
     // （resetClocks は timeSettings に依存しているため、resetClocks の変更で検知可能）
+    // 一時停止中は戻さない（戻すと、止めるたびに持ち時間・秒読みが元に戻ってしまう）。
+    // ただし、一時停止中に時間設定そのものを変えたときは、新しい設定に合わせ直す。
+    const syncedTimeSettingsRef = useRef(timeSettings);
     useEffect(() => {
-        if (!isMatchRunning) {
+        const settingsChanged = syncedTimeSettingsRef.current !== timeSettings;
+        syncedTimeSettingsRef.current = timeSettings;
+        if (!isMatchRunning && (!isPaused || settingsChanged)) {
             resetClocks(false);
         }
-    }, [isMatchRunning, resetClocks]);
+    }, [isMatchRunning, isPaused, resetClocks, timeSettings]);
 
     // 対局終了処理（エンジン管理フックから呼ばれる）
     const endMatch = async (result: GameResult) => {
@@ -1102,6 +1293,7 @@ export function ShogiMatch({
         setGameResult(result);
         setShowResultDialog(true);
         setIsMatchRunning(false);
+        setIsPaused(false);
         stopTicking();
         try {
             await stopAllEnginesRef.current();
@@ -1119,7 +1311,15 @@ export function ShogiMatch({
 
     // 投了処理
     const handleResign = async () => {
-        const currentTurn = positionRef.current.turn;
+        const senteIsHuman = sides.sente.role === "human";
+        const goteIsHuman = sides.gote.role === "human";
+        // 対局画面で人が片方だけなら、投了するのはその人（相手の AI の手番中に押しても、自分の負けにする）。
+        const currentTurn: Player =
+            isPlayScreen && senteIsHuman !== goteIsHuman
+                ? senteIsHuman
+                    ? "sente"
+                    : "gote"
+                : positionRef.current.turn;
         const result: GameResult = {
             winner: currentTurn === "sente" ? "gote" : "sente",
             reason: { kind: "resignation", loser: currentTurn },
@@ -1184,6 +1384,9 @@ export function ShogiMatch({
 
         const moveCount = moves.length;
         if (moveCount === 0) return;
+        // 対局画面では、この対局で指した手だけを戻す（引き継いだ棋譜の手は戻さない）。戻せる手が
+        // 無ければ、時計やエンジンを止める前に何もせず戻る。
+        if (isPlayScreen && moveCount - playStartPly <= 0) return;
 
         moveProcessingRef.current = true;
 
@@ -1196,7 +1399,13 @@ export function ShogiMatch({
 
             // 2手戻す（自分の前の手まで戻る）
             // ただし、1手しかない場合は1手だけ戻す
-            const undoCount = moveCount >= 2 ? 2 : 1;
+            // 対局画面の人 対 人では、直前の 1 手だけ戻す（交互に指しているので、2 手戻すと相手の手まで消える）。
+            const bothHumans = sides.sente.role === "human" && sides.gote.role === "human";
+            const wantedUndoCount = isPlayScreen && bothHumans ? 1 : moveCount >= 2 ? 2 : 1;
+            // 対局画面では、この対局で指した手だけを戻す（引き継いだ棋譜の手は戻さない）。
+            const undoCount = isPlayScreen
+                ? Math.min(wantedUndoCount, moveCount - playStartPly)
+                : wantedUndoCount;
 
             // 待った後の手番を明示的に計算
             // React のバッチ処理により navigation.goBack() 後の positionRef.current は
@@ -1212,6 +1421,8 @@ export function ShogiMatch({
             for (let i = 0; i < undoCount; i++) {
                 navigation.goBack();
             }
+            // 対局画面では、取り消した手を棋譜から消す（終局後の棋譜や研究ノートに残さない）。
+            if (isPlayScreen) navigation.truncate();
 
             // 停止で破棄したエンジンを時計再開前に初期化し直す
             // （初期化時間が秒読みから差し引かれるのを防ぐ）
@@ -1291,7 +1502,7 @@ export function ShogiMatch({
         maxLogs,
         senteNnueSelection,
         goteNnueSelection,
-        analysisNnueSelection,
+        analysisNnueSelection: effectiveAnalysisNnueSelection,
         resolveNnue,
         allowAnalysisDuringMatch,
         engineThreads,
@@ -1316,6 +1527,7 @@ export function ShogiMatch({
                 void disposeEngine(side);
             }
         }
+        latestSidesRef.current = newSides;
         setSides(newSides);
     };
 
@@ -1380,7 +1592,7 @@ export function ShogiMatch({
         analysisSettings,
         enginePool,
         resolveNnue,
-        analysisNnueSelection,
+        analysisNnueSelection: effectiveAnalysisNnueSelection,
         recordEvalByPly,
         recordEvalByNodeId,
         clearEvalByPly,
@@ -1443,7 +1655,8 @@ export function ShogiMatch({
         onBack: navigation.goBack,
         onToStart: navigation.goToStart,
         onToEnd: navigation.goToEnd,
-        disabled: isMatchRunning,
+        // 対局画面では、終局後だけ棋譜を送れる（設定中・一時停止中に局面を動かさせない）。
+        disabled: isMatchRunning || (isPlayScreen && playPhase !== "finished"),
         containerRef: boardSectionRef,
         enableWheelNavigation: displaySettings.enableWheelNavigation,
     });
@@ -1594,7 +1807,13 @@ export function ShogiMatch({
         }
     };
 
-    const matchNnueDownload = useMatchNnueDownload({ manifestUrl, resolveNnue, setMessage });
+    const matchNnueDownload = useMatchNnueDownload({
+        manifestUrl,
+        resolveNnue,
+        setMessage,
+        // 対局画面では、ダウンロードを断っても知らせを出さない（自分でやめただけで、エラーではない）。
+        silentOnDecline: isPlayScreen,
+    });
 
     // 対局制御フック
     const {
@@ -1929,7 +2148,10 @@ export function ShogiMatch({
     const isDraggingPiece = editAllowed && dndController.state.isDragging;
     // 棋譜を見るだけの画面（ビューア）は、盤を操作させない。局面の編集も、駒を動かして変化を
     // 作ることもできない（調べたいときは、研究ノートで開く）。
-    const boardLockedInViewer = viewerMode;
+    // 対局画面も、設定中（局面編集を開いていないとき）と終局後は盤を操作させない
+    // （駒を動かして調べるのは研究ノート）。
+    const boardLockedInViewer =
+        viewerMode || (isPlayScreen && (playPhase === "setup" || playPhase === "finished"));
     const internalEngineId = engineOptions[0]?.id ?? "wasm";
 
     useEffect(() => {
@@ -1946,7 +2168,7 @@ export function ShogiMatch({
         analysisEngineId,
         setAnalysisEngineId,
         timeSettings,
-        setTimeSettings,
+        setTimeSettings: changeTimeSettings,
         passRightsSettings,
         handlePassRightsSettingsChange,
         settingsLocked,
@@ -2190,9 +2412,221 @@ export function ShogiMatch({
         </div>
     ) : null;
 
+    // ---- 対局画面（screen="play"）の状態と操作 ----
+    // AI の考慮中や持ち時間の間に画面が消えないようにする（一時停止中は止めない）。
+    useScreenWakeLock(isPlayScreen && playPhase === "playing");
+    const notifyPlayPhase = useEffectEvent((phase: PlayPhase) => onPlayPhaseChange?.(phase));
+    // 消すのは「指せない手」の知らせだけ（進み具合の変化と同じ更新で出たエラーは残す）。
+    const clearIllegalMoveMessage = useEffectEvent(() => {
+        if (message?.text === ILLEGAL_MOVE_MESSAGE) setMessage(null);
+    });
+    // 進み具合が変わったら、前の段階の選択とメッセージを持ち越さない
+    // （「合法手ではありません」や駒の選択の枠が、一時停止中・終局後まで残らないようにする）。
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 進み具合が変わったときだけ
+    useEffect(() => {
+        if (!isPlayScreen) return;
+        notifyPlayPhase(playPhase);
+        setSelection(null);
+        setPromotionSelection(null);
+        clearIllegalMoveMessage();
+    }, [isPlayScreen, playPhase]);
+    // 指せない手を選んだ知らせは、しばらくしたら消す（次の手を考える邪魔にしない）。
+    // 選んでいた駒の枠は、すぐ外す（知らせだけが先に消えて、枠が残るのを避ける）。
+    // 依存は知らせそのもの（続けてもう一度指せない手を選んだときも、枠を外して数え直す）。
+    useEffect(() => {
+        if (!isPlayScreen || message?.text !== ILLEGAL_MOVE_MESSAGE) return;
+        setSelection(null);
+        const timer = setTimeout(() => setMessage(null), 2500);
+        return () => clearTimeout(timer);
+    }, [isPlayScreen, message, setMessage, setSelection]);
+    const isHirateStart = isHirateSfen(startSfen);
+    const playerNameFor = (side: Player): string => {
+        const setting = sides[side];
+        if (setting.role === "human") {
+            // 人 対 人では、どちらも「あなた」にならないよう、先手・後手で呼ぶ。
+            const bothHumans = sides.sente.role === "human" && sides.gote.role === "human";
+            return bothHumans ? (side === "sente" ? "先手" : "後手") : "あなた";
+        }
+        const engine = engineOptions.find((option) => option.id === setting.engineId);
+        if (engine?.kind === "external") return engine.label;
+        const selection = side === "sente" ? senteNnueSelection : goteNnueSelection;
+        const preset = presetConfigs.find((config) => config.presetKey === selection.presetKey);
+        if (preset) return preset.displayName;
+        const custom = nnueList.find((nnue) => nnue.id === selection.nnueId);
+        return custom?.displayName ?? "簡易AI";
+    };
+    const openStudyNow = useEffectEvent(() => {
+        // 対局者の名前を付けるのは、指した対局だけ（局面だけのノートは「取り込んだ局面」として作る）。
+        onOpenAsStudy?.(
+            navigation.tree,
+            navigation.tree.nodes.size > 1
+                ? { players: { sente: playerNameFor("sente"), gote: playerNameFor("gote") } }
+                : {},
+        );
+    });
+    // 局面の編集中は、棋譜のツリーが編集前の局面のまま。確定（編集モードを抜ける）を待ってから開く。
+    useEffect(() => {
+        if (!pendingOpenStudy || isEditMode) return;
+        setPendingOpenStudy(false);
+        openStudyNow();
+    }, [pendingOpenStudy, isEditMode]);
+    const treeFitsStudy = [...navigation.tree.nodes.values()].every(
+        (node) => node.usiMove === null || isStudyUsiMove(node.usiMove),
+    );
+    // 終局後・一時停止から、同じ開始局面の設定の画面に戻す。
+    const resetForNewGame = async () => {
+        if (isPlayResetting) return;
+        setIsPlayResetting(true);
+        try {
+            await resetForNewGameUnguarded();
+        } finally {
+            setIsPlayResetting(false);
+        }
+    };
+    const resetForNewGameUnguarded = async () => {
+        matchEndedRef.current = false;
+        setGameResult(null);
+        setShowResultDialog(false);
+        setHintCount(0);
+        setHintPly(null);
+        setIsPaused(false);
+        setPositionEditOpen(false);
+        setPlayStartNotice(null);
+        await stopAllEngines();
+        const start = playStartRef.current ?? { sfen: startSfen, moves: [] };
+        if (isHirateSfen(start.sfen) && start.moves.length === 0) {
+            await handleResetToStartpos();
+        } else {
+            // 編集した局面・引き継いだ棋譜の途中から始めた対局は、同じ始まりの局面に戻す。
+            await importSfen(start.sfen, start.moves);
+        }
+    };
+    // 「もう一局」は、設定の画面に戻ったのを待ってから始める（戻す処理が行き渡ってから）。
+    const startPlayMatch = async () => {
+        if (isPlayStarting) return;
+        setIsPlayStarting(true);
+        // 前に出ていた知らせ（前回の開始の失敗など）を、始め直すときに持ち越さない。
+        setMessage(null);
+        try {
+            await resumeAutoPlay();
+        } finally {
+            setIsPlayStarting(false);
+        }
+    };
+    const startRematch = useEffectEvent(() => {
+        void startPlayMatch();
+    });
+    useEffect(() => {
+        if (!pendingRematch || isPlayResetting) return;
+        setPendingRematch(false);
+        // 設定の画面へ戻せなかった（開始局面の取得に失敗した）ときは、始めない。
+        if (playPhase !== "setup" || moves.length !== (playStartRef.current?.moves.length ?? 0)) {
+            return;
+        }
+        startRematch();
+    }, [pendingRematch, isPlayResetting, playPhase, moves.length]);
+    // 対局が実際に始まった時点の開始局面と手順を、この対局の始まりとして控える
+    // （「もう一局」で戻す先と、待ったで戻せる範囲に使う）。
+    useEffect(() => {
+        if (!pendingPlayStartCapture || !isMatchRunning) return;
+        setPendingPlayStartCapture(false);
+        playStartRef.current = { sfen: startSfen, moves: [...moves] };
+        setPlayStartPly(moves.length);
+    }, [pendingPlayStartCapture, isMatchRunning, startSfen, moves]);
+    const playConfig: PlayScreenConfig | null = isPlayScreen
+        ? {
+              phase: playPhase,
+              isCustomStart: !isHirateStart || (playPhase === "setup" && moves.length > 0),
+              busy: isPlayResetting || pendingRematch || isPlayStarting,
+              startNotice: playPhase === "playing" && moves.length < 2 ? playStartNotice : null,
+              startPly: playStartPly,
+              startMatch: (notice?: string) => {
+                  if (isPlayResetting || isPlayStarting) return;
+                  setPositionEditOpen(false);
+                  if (!isPaused) {
+                      // 新しい対局の始まり。始まりの局面は、実際に始まった時点で控える
+                      // （開始の処理が、編集した局面の確定やパス権の初期化で開始局面・手順を
+                      // 作り直すことがあるので、押した時点の値は使わない）。
+                      setPendingPlayStartCapture(true);
+                      setPlayStartNotice(notice ?? null);
+                      setHintCount(0);
+                      setHintPly(null);
+                  }
+                  void startPlayMatch();
+              },
+              openPositionEditor: () => {
+                  setPositionEditOpen(true);
+                  if (!isEditMode) void handleEnterEditMode();
+              },
+              closePositionEditor: () => setPositionEditOpen(false),
+              resetToStartpos: () => {
+                  if (isPlayResetting || isPlayStarting) return;
+                  void (async () => {
+                      setIsPlayResetting(true);
+                      try {
+                          await handleResetToStartpos();
+                      } finally {
+                          setIsPlayResetting(false);
+                      }
+                  })();
+              },
+              startSfen,
+              loadStartPosition: (sfen: string) => {
+                  if (isPlayResetting || isPlayStarting) return;
+                  void (async () => {
+                      // 読み込みが済むまで、対局を始めさせない（読み込みがあとから完了すると、
+                      // 始まった対局の局面を置き換えて止めてしまう）。
+                      setIsPlayResetting(true);
+                      try {
+                          setPositionEditOpen(false);
+                          await importSfen(sfen, []);
+                      } finally {
+                          setIsPlayResetting(false);
+                      }
+                  })();
+              },
+              playerNames: { sente: playerNameFor("sente"), gote: playerNameFor("gote") },
+              editTurn: position.turn,
+              setEditTurn: (turn: Player) => {
+                  if (!editAllowed || turn === positionRef.current.turn) return;
+                  applyEditedPosition({ ...positionRef.current, turn });
+              },
+              inCheck: isMatchRunning && isKingInCheck(position),
+              newGame: () => {
+                  void resetForNewGame();
+              },
+              rematch: () => {
+                  void resetForNewGame().then(() => setPendingRematch(true));
+              },
+              openStudy:
+                  onOpenAsStudy === undefined || isMatchRunning || !treeFitsStudy
+                      ? null
+                      : () => {
+                            if (isEditMode) {
+                                // 局面の準備が済んでいなければ、確定できない（待ちだけが残るのを避ける）。
+                                if (!positionReady) return;
+                                setPendingOpenStudy(true);
+                                void handleStartReview();
+                            } else {
+                                openStudyNow();
+                            }
+                        },
+              requestHint: () => {
+                  setHintCount((count) => count + 1);
+                  setHintPly(navigation.state.currentPly);
+                  void handleAnalyzeHintPly(navigation.state.currentPly);
+              },
+              hintCount,
+              hintPly,
+              setupFooter: playSetupFooter ?? null,
+              gameResult,
+          }
+        : null;
+
     return (
         <ShogiMatchProvider
             config={{
+                play: playConfig,
                 kifuImportExtra,
                 viewerMode,
                 boardTopContent,

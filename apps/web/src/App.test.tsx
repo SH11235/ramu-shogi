@@ -19,7 +19,11 @@ vi.mock("@shogi/ui", () => ({
     EngineControlPanel: () => null,
     useDevMode: () => false,
 }));
-vi.mock("@tanstack/react-router", () => ({ useNavigate: () => vi.fn() }));
+vi.mock("@tanstack/react-router", () => ({
+    useNavigate: () => vi.fn(),
+    useBlocker: () => undefined,
+    Link: ({ children }: { children: React.ReactNode }) => <a href="/">{children}</a>,
+}));
 vi.mock("./components/HeaderNav", () => ({ HeaderNav: () => null }));
 vi.mock("./components/PageHeader", () => ({ PageHeader: () => null }));
 vi.mock("./hooks/useRemotePrivateNnueManager", () => ({

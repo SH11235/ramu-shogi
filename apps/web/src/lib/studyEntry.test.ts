@@ -20,6 +20,7 @@ import {
     createStudyFromKifuSource,
     createStudyFromKifuTree,
     openOrCreateStudy,
+    openStudyAtLastMove,
     openStudyFromGameRecord,
     openStudyFromRshogiGame,
 } from "./studyEntry";
@@ -388,5 +389,35 @@ describe("/play に読み込んだ棋譜からの入口", () => {
             { sync, api, replayMovesStrict: async (_sfen, moves) => ({ applied: moves }) },
         );
         expect((await sync.load(studyId))?.doc.title).toMatch(/^取り込んだ棋譜（\d+\/\d+）$/);
+    });
+
+    it("指した対局のノートは、本譜の最後の手の局面から見始める", async () => {
+        const api = createApi();
+        const sync = createSync(api);
+        const tree = buildTree(["7g7f", "3c3d"]);
+        const { studyId } = await createStudyFromKifuTree(
+            tree,
+            {},
+            { sync, api, replayMovesStrict: async (_sfen, moves) => ({ applied: moves }) },
+        );
+        await openStudyAtLastMove(studyId, { sync });
+        const stored = await sync.load(studyId);
+        const lastNodeId = stored?.doc.tree.nodes[stored.doc.tree.rootId]?.children[0];
+        const lastId = lastNodeId && stored?.doc.tree.nodes[lastNodeId]?.children[0];
+        expect(lastId).toBeDefined();
+        expect((await sync.getViewState(studyId)).currentNodeId).toBe(lastId);
+    });
+
+    it("指し手の無いノートでは、表示の状態を置かない", async () => {
+        const api = createApi();
+        const sync = createSync(api);
+        const setViewState = vi.spyOn(sync, "setViewState");
+        const { studyId } = await createStudyFromKifuTree(
+            buildTree([]),
+            {},
+            { sync, api, replayMovesStrict: async (_sfen, moves) => ({ applied: moves }) },
+        );
+        await openStudyAtLastMove(studyId, { sync });
+        expect(setViewState).not.toHaveBeenCalled();
     });
 });
