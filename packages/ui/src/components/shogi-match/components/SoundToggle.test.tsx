@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ShogiMatchProvider } from "../ShogiMatchContext";
 import { DEFAULT_DISPLAY_SETTINGS, type DisplaySettings } from "../types";
 import { SoundToggle } from "./SoundToggle";
 
@@ -29,5 +30,36 @@ describe("SoundToggle", () => {
         fireEvent.click(button);
         expect(button.getAttribute("aria-pressed")).toBe("true");
         expect(button.getAttribute("title")).toBe("サウンドON（クリックでOFF）");
+    });
+
+    describe("in a CPU game", () => {
+        function renderMenu() {
+            const previewSound = vi.fn();
+            render(
+                <ShogiMatchProvider config={{ soundVoiceSelectable: true, previewSound }}>
+                    <SoundToggle />
+                </ShogiMatchProvider>,
+            );
+            return previewSound;
+        }
+
+        it("defaults to the dog voice and can be turned off in one choice", () => {
+            const previewSound = renderMenu();
+            fireEvent.click(screen.getByRole("button", { name: "着手音: 犬" }));
+            fireEvent.click(screen.getByRole("radio", { name: "OFF" }));
+            expect(screen.getByRole("button", { name: "着手音: OFF" })).toBeTruthy();
+            expect(screen.queryByRole("radio")).toBeNull();
+            expect(previewSound).not.toHaveBeenCalled();
+        });
+
+        it("previews the chosen voice and turns sound back on", () => {
+            const previewSound = renderMenu();
+            fireEvent.click(screen.getByRole("button", { name: "着手音: 犬" }));
+            fireEvent.click(screen.getByRole("radio", { name: "OFF" }));
+            fireEvent.click(screen.getByRole("button", { name: "着手音: OFF" }));
+            fireEvent.click(screen.getByRole("radio", { name: "通常" }));
+            expect(screen.getByRole("button", { name: "着手音: 通常" })).toBeTruthy();
+            expect(previewSound).toHaveBeenLastCalledWith("standard");
+        });
     });
 });

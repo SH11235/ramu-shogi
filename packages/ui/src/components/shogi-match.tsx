@@ -25,8 +25,9 @@ import {
 import type { EngineInfoEvent } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { isCpuLosing, moveSoundScene } from "../hooks/moveSoundScene";
 import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
-import { useShogiSound } from "../hooks/useShogiSound";
+import { type SoundVoice, useShogiSound } from "../hooks/useShogiSound";
 import type { RemoteNnueManager } from "./nnue/types";
 import { MatchNnueDownloadDialog } from "./shogi-match/components/MatchNnueDownloadDialog";
 import { SearchInfoPanel } from "./shogi-match/components/SearchInfoPanel";
@@ -571,6 +572,8 @@ interface ShogiMatchProps {
     defaultNnuePresetKey?: string;
     /** AIアイコンのURL（GitHub Pages等でbase pathが必要な場合に指定） */
     aiIconUrl?: string;
+    /** CPU 戦の「犬」の音源を置いた URL（末尾 /）。未指定なら犬は選べず通常の駒音だけ */
+    dogSoundBaseUrl?: string;
     /** 対局中でも解析を許可する（オンライン対戦の AI サポート用） */
     allowAnalysisDuringMatch?: boolean;
     /** 棋譜パネルに表示する AI 解析使用マーカー */
@@ -671,6 +674,7 @@ export function ShogiMatch({
     remoteNnueManager,
     defaultNnuePresetKey,
     aiIconUrl,
+    dogSoundBaseUrl,
     allowAnalysisDuringMatch,
     analysisMarkers = EMPTY_ANALYSIS_MARKERS,
     initialReview,
@@ -875,10 +879,36 @@ export function ShogiMatch({
     );
     // 既存の localStorage データに新フィールド（enableSound 等）がない場合のマージ
     const displaySettings = { ...displaySettingsDefaults, ...storedDisplaySettings };
-    const { playSound } = useShogiSound();
-    // 人の手は合法手の確認を待ってから適用されるので、鳴らすかどうかはその時点の設定で決める。
-    const enableSoundRef = useRef(displaySettings.enableSound);
-    enableSoundRef.current = displaySettings.enableSound;
+    const { playSound } = useShogiSound({ dogSoundBaseUrl });
+    const isCpuGame = sides.sente.role === "engine" || sides.gote.role === "engine";
+    // 人の手は合法手の確認を待ってから適用されるので、鳴らすかどうか・鳴らし方はその時点の設定で決める。
+    const moveSoundRef = useRef<{ enabled: boolean; voice: SoundVoice }>({
+        enabled: false,
+        voice: "standard",
+    });
+    moveSoundRef.current = {
+        enabled: displaySettings.enableSound,
+        voice: isCpuGame && dogSoundBaseUrl ? displaySettings.cpuSoundVoice : "standard",
+    };
+    const playMoveSound = (
+        move: string,
+        before: PositionState,
+        after: PositionState,
+        by: "self" | "opponent",
+        cpuLosing = false,
+    ) => {
+        const { enabled, voice } = moveSoundRef.current;
+        if (!enabled) return;
+        if (move === "pass") {
+            playSound("pass");
+            return;
+        }
+        playSound(by === "opponent" ? "move_opponent" : "move_self", {
+            voice,
+            scene: moveSoundScene(before, move, after),
+            cpuLosing,
+        });
+    };
     // 解析設定（古いlocalStorageデータとの互換性のためデフォルト値とマージ）
     const [storedAnalysisSettings, setAnalysisSettings] = useLocalStorage<AnalysisSettings>(
         "shogi-analysis-settings",
@@ -1619,16 +1649,14 @@ export function ShogiMatch({
         lastMoveInfo: LastMove | undefined,
         source?: "human" | "engine",
     ) => {
-        // サウンドフィードバック
-        if (displaySettings.enableSound) {
-            if (move === "pass") {
-                playSound("pass");
-            } else if (source === "engine") {
-                playSound("move_opponent");
-            } else {
-                playSound("move_self");
-            }
-        }
+        // サウンドフィードバック（positionRef はまだ指す前の局面）
+        playMoveSound(
+            move,
+            positionRef.current,
+            nextPosition,
+            source === "engine" ? "opponent" : "self",
+            source === "engine" && isCpuLosing(pendingSearchStatsRef.current.get(moves.length)),
+        );
         // 消費時間を計算
         const elapsedMs = Date.now() - turnStartTimeRef.current;
         // 棋譜ナビゲーションに手を追加（局面更新はonPositionChangeで自動実行）
@@ -2030,9 +2058,7 @@ export function ShogiMatch({
         placePieceAt,
         moveProcessingRef,
         // 人の手は applyMoveAndUpdateState を通らないので、駒音はここで鳴らす。
-        onHumanMoveApplied: () => {
-            if (enableSoundRef.current) playSound("move_self");
-        },
+        onHumanMoveApplied: (move, before, after) => playMoveSound(move, before, after, "self"),
     });
 
     // 選んでいる駒の影（マウスを乗せた行き先に出す）。局面編集中は選択の意味が違うので出さない
@@ -2640,6 +2666,8 @@ export function ShogiMatch({
                 mobileHeaderContent,
                 evalGraphPinned,
                 aiIconUrl,
+                soundVoiceSelectable: isCpuGame && Boolean(dogSoundBaseUrl),
+                previewSound: (voice) => playSound("move_opponent", { voice, scene: "move" }),
                 presetIconUrls: Object.fromEntries(
                     presetConfigs.flatMap((preset) =>
                         preset.iconUrl ? [[preset.presetKey, preset.iconUrl]] : [],
