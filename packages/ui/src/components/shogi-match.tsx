@@ -1655,7 +1655,9 @@ export function ShogiMatch({
         lastMoveInfo: LastMove | undefined,
         source?: "human" | "engine",
     ) => {
-        // サウンドフィードバック（positionRef はまだ指す前の局面）
+        // サウンドフィードバック（positionRef はまだ指す前の局面）。
+        // 探索結果は bestmove を返した時点の手数（= この手を足す前の moves.length）で onSearchComplete が記録し、
+        // 下の navigation.addMove で棋譜に移すまで残っている。値はエンジン自身から見た評価値。
         playMoveSound(
             move,
             positionRef.current,
