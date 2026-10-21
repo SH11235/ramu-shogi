@@ -4,6 +4,7 @@ import type {
     AnalysisRun,
     EngineClient,
     EngineInfoEvent,
+    LoadPositionOptions,
 } from "@shogi/engine-client";
 
 /** 局面履歴まで含めた対話解析の対象。設定変更時は controller 自体を作り直す。 */
@@ -11,6 +12,8 @@ export interface AnalysisTarget {
     nodeId: string;
     sfen: string;
     moves: string[];
+    /** パス権など。同じ SFEN・指し手でも合法手と評価が変わるので、局面の同一性にも含める */
+    loadOptions?: LoadPositionOptions;
 }
 
 export interface InteractiveAnalysisState {
@@ -44,9 +47,23 @@ export interface InteractiveAnalysisOptions {
 const copyTarget = (target: AnalysisTarget): AnalysisTarget => ({
     ...target,
     moves: [...target.moves],
+    ...(target.loadOptions
+        ? {
+              loadOptions: {
+                  ...target.loadOptions,
+                  ...(target.loadOptions.passRights
+                      ? { passRights: { ...target.loadOptions.passRights } }
+                      : {}),
+              },
+          }
+        : {}),
 });
 const keyOf = (target: AnalysisTarget | null): string =>
-    JSON.stringify(target ? [target.nodeId, target.sfen, target.moves] : null);
+    JSON.stringify(
+        target
+            ? [target.nodeId, target.sfen, target.moves, target.loadOptions?.passRights ?? null]
+            : null,
+    );
 interface RetainedSession {
     target: AnalysisTarget;
     sessionId: string;
@@ -62,10 +79,21 @@ export function createAnalysisController(options: InteractiveAnalysisOptions) {
     let initialized = false;
     let selected: AnalysisTarget | null = null;
     let retained: RetainedSession | null = null;
-    let active: { run: AnalysisRun; session: RetainedSession; preserveFollowing: boolean } | null =
-        null;
+    let active: {
+        run: AnalysisRun;
+        session: RetainedSession;
+        preserveFollowing: boolean;
+        /** この run を始めた時点の追従要求の世代 */
+        followRequest: number;
+    } | null = null;
     let infoGeneration = 0;
     let following = false;
+    // 開始・停止の要求ごとに進める。停止の完了を待つ間に来た開始要求を、停止完了の後始末で消さないため。
+    let followRequest = 0;
+    const setFollowing = (value: boolean) => {
+        following = value;
+        followRequest += 1;
+    };
     let disposed = false;
     let phase: InteractiveAnalysisState["phase"] = "idle";
     let error: string | null = null;
@@ -91,8 +119,10 @@ export function createAnalysisController(options: InteractiveAnalysisOptions) {
         infoGeneration += 1;
         current.session.resumable = result.resumable;
         phase = "paused";
-        // 別局面への切り替え途中の停止完了では、追従要求を消さない。
-        if (!current.preserveFollowing) following = false;
+        // 別局面への切り替え途中の停止完了と、run を始めた後に新しい開始・停止要求があったときは、
+        // 追従要求を消さない（停止を待つ間の「開始」を失わない）。
+        if (!current.preserveFollowing && current.followRequest === followRequest)
+            following = false;
         options.onFinished(copyTarget(current.session.target), result);
         emit();
     };
@@ -134,7 +164,7 @@ export function createAnalysisController(options: InteractiveAnalysisOptions) {
         if (!following || disposed || !selected) return;
         const analysis = client.analysis;
         if (!analysis?.available()) {
-            following = false;
+            setFollowing(false);
             phase = "unsupported";
             emit();
             return;
@@ -145,7 +175,7 @@ export function createAnalysisController(options: InteractiveAnalysisOptions) {
             await analysis.release();
             retained = null;
             if (!following || disposed || keyOf(selected) !== keyOf(target)) return;
-            await client.loadPosition(target.sfen, [...target.moves]);
+            await client.loadPosition(target.sfen, [...target.moves], target.loadOptions);
             if (!following || disposed || keyOf(selected) !== keyOf(target)) return;
             retained = {
                 target,
@@ -171,7 +201,7 @@ export function createAnalysisController(options: InteractiveAnalysisOptions) {
             budget,
             onInfo,
         );
-        const current = { run, session, preserveFollowing: false };
+        const current = { run, session, preserveFollowing: false, followRequest };
         active = current;
         phase = "running";
         emit();
@@ -188,7 +218,7 @@ export function createAnalysisController(options: InteractiveAnalysisOptions) {
             await stop(!disposed && following);
     };
     const fail = async (cause: unknown) => {
-        following = false;
+        setFollowing(false);
         active = null;
         infoGeneration += 1;
         retained = null;
@@ -197,11 +227,12 @@ export function createAnalysisController(options: InteractiveAnalysisOptions) {
         client = null;
         try {
             await failedClient?.dispose();
-        } finally {
-            phase = disposed ? "disposed" : "error";
-            error = cause instanceof Error ? cause.message : String(cause);
-            emit();
+        } catch {
+            // 破棄の失敗は握る（ここで投げると queue が reject のまま残り、次の操作が実行されずに飛ばされる）。
         }
+        phase = disposed ? "disposed" : "error";
+        error = cause instanceof Error ? cause.message : String(cause);
+        emit();
     };
     const enqueue = (action = reconcile): Promise<void> => {
         queue = queue.then(action).catch(fail);
@@ -219,21 +250,21 @@ export function createAnalysisController(options: InteractiveAnalysisOptions) {
         start(additionalBudget: AnalysisBudget = { type: "unlimited" }): Promise<void> {
             if (disposed || !selected) return queue;
             budget = { ...additionalBudget };
-            following = true;
+            setFollowing(true);
             error = null;
             return enqueue();
         },
         pause(): Promise<void> {
-            following = false;
+            setFollowing(false);
             return enqueue();
         },
         setVisible(visible: boolean): Promise<void> {
-            if (!visible) following = false;
+            if (!visible) setFollowing(false);
             return enqueue();
         },
         dispose(): Promise<void> {
             disposed = true;
-            following = false;
+            setFollowing(false);
             return enqueue();
         },
     };

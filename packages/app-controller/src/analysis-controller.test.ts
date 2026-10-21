@@ -220,4 +220,61 @@ describe("対話解析 controller", () => {
         expect(launch).not.toHaveBeenCalled();
         await controller.dispose();
     });
+    it("停止の完了を待つ間に押した開始を失わない", async () => {
+        const { controller, runs, launch } = setup();
+        await controller.select(target("A"));
+        await controller.start();
+        const gate = deferred<void>();
+        const firstPause = runs[0]?.pause;
+        if (!firstPause) throw new Error("missing run");
+        const original = firstPause.getMockImplementation() as
+            | (() => Promise<AnalysisFinished>)
+            | undefined;
+        firstPause.mockImplementationOnce(async () => {
+            await gate.promise;
+            return original?.();
+        });
+        const pausing = controller.pause();
+        // エンジンの停止が始まってから（完了を待っている間に）開始を押す。
+        await vi.waitFor(() => expect(firstPause).toHaveBeenCalled());
+        const starting = controller.start();
+        gate.resolve();
+        await pausing;
+        await starting;
+        expect(launch).toHaveBeenCalledTimes(2);
+        expect(controller.getState()).toMatchObject({ phase: "running", following: true });
+    });
+
+    it("エラー後の破棄に失敗しても、次の操作を飛ばさない", async () => {
+        const prepare = vi.fn(async () => {});
+        prepare.mockRejectedValueOnce(new Error("prepare failed"));
+        const { controller, client, launch } = setup(prepare);
+        vi.mocked(client.dispose).mockRejectedValueOnce(new Error("dispose failed"));
+        await controller.select(target("A"));
+        await expect(controller.start()).resolves.toBeUndefined();
+        expect(controller.getState()).toMatchObject({ phase: "error", error: "prepare failed" });
+
+        await controller.start();
+        expect(launch).toHaveBeenCalledTimes(1);
+        expect(controller.getState()).toMatchObject({ phase: "running", error: null });
+    });
+
+    it("パス権を局面の読み込みに渡し、パス権が違えば別の局面として新規探索にする", async () => {
+        const { controller, client, launch } = setup();
+        const withPass = (count: number): AnalysisTarget => ({
+            ...target("A"),
+            loadOptions: { passRights: { sente: count, gote: count } },
+        });
+        await controller.select(withPass(1));
+        await controller.start();
+        expect(client.loadPosition).toHaveBeenLastCalledWith("startpos", [], {
+            passRights: { sente: 1, gote: 1 },
+        });
+        await controller.select(withPass(2));
+        expect(client.loadPosition).toHaveBeenLastCalledWith("startpos", [], {
+            passRights: { sente: 2, gote: 2 },
+        });
+        expect(client.analysis?.resume).not.toHaveBeenCalled();
+        expect(launch).toHaveBeenCalledTimes(2);
+    });
 });
