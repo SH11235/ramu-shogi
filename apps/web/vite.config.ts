@@ -119,7 +119,9 @@ function manualChunks(id: string): string | undefined {
     // 盤（ShogiBoard）と、盤が使う駒・座標・局面変換の小さな util。トップページの装飾の盤（HeroBoard）が
     // 使う。shogi-match/ 配下にあるものも、下の shogi-match ルールより前に分けないと、盤を出すだけで
     // shogi-match（~530KB）を丸ごと読み込む。ここに並べるファイルは、app-core・design-system・react と
-    // この一覧のファイルだけを import すること（shogi-match の部品を引くと、この chunk も重くなる）。
+    // この一覧のファイルだけを import すること。shogi-match/ のほかのファイルを import すると、shogi-match は
+    // すでに shogi-board を import しているので、2 つの chunk が互いを読み込む（ビルドは通り、初期化の順に
+    // よっては本番だけ落ちうる）。
     if (
         SHOGI_BOARD_MODULES.some((file) =>
             normalizedId.endsWith(`/packages/ui/src/components/${file}`),
