@@ -3,6 +3,7 @@
 /** 着手の場面。王手 > 駒取り > 成り > 通常 の順に優先する */
 export type MoveScene = "move" | "capture" | "promote" | "check";
 
+// 番号は元の動画で鳴いた順。bark3 は bark5 と高さ・長さが近く、聴き分けられないので入れていない
 const CLIP_NAMES = [
     "bark1",
     "bark2",
@@ -87,6 +88,7 @@ export function preloadDogSounds(baseUrl: string): void {
     }, LOAD_TIMEOUT_MS);
 }
 
+// 鳴っている声はページ全体で 1 つ。対局画面は同時に 1 つしか開かないので、再生状態はモジュールで持つ
 let current: AudioBufferSourceNode | null = null;
 let weakPlaying: AudioBufferSourceNode | null = null;
 

@@ -27,7 +27,7 @@ import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { isCpuLosing, moveSoundScene } from "../hooks/moveSoundScene";
 import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
-import { type SoundVoice, useShogiSound } from "../hooks/useShogiSound";
+import { normalizeSoundVoice, type SoundVoice, useShogiSound } from "../hooks/useShogiSound";
 import type { RemoteNnueManager } from "./nnue/types";
 import { MatchNnueDownloadDialog } from "./shogi-match/components/MatchNnueDownloadDialog";
 import { SearchInfoPanel } from "./shogi-match/components/SearchInfoPanel";
@@ -889,8 +889,11 @@ export function ShogiMatch({
     moveSoundRef.current = {
         enabled: displaySettings.enableSound,
         voice:
-            isCpuGame && dogSoundBaseUrl && displaySettings.cpuSoundVoice !== "standard"
-                ? "dog"
+            isCpuGame && dogSoundBaseUrl
+                ? normalizeSoundVoice(
+                      displaySettings.cpuSoundVoice,
+                      DEFAULT_DISPLAY_SETTINGS.cpuSoundVoice,
+                  )
                 : "standard",
     };
     const playMoveSound = (

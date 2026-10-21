@@ -1,7 +1,7 @@
 import { cn } from "@shogi/design-system";
 import type { KeyboardEvent, ReactElement } from "react";
 import { useRef, useState } from "react";
-import type { SoundVoice } from "../../../hooks/useShogiSound";
+import { normalizeSoundVoice, type SoundVoice } from "../../../hooks/useShogiSound";
 import { Popover, PopoverContent, PopoverTrigger } from "../../popover";
 import { useNavigation } from "../contexts/NavigationContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
@@ -118,11 +118,10 @@ export function SoundToggle(): ReactElement {
         );
     }
 
-    // 手で書き換えられた保存値などの知らない値は既定に戻す
-    const voice: SoundVoice =
-        displaySettings.cpuSoundVoice === "standard"
-            ? "standard"
-            : DEFAULT_DISPLAY_SETTINGS.cpuSoundVoice;
+    const voice = normalizeSoundVoice(
+        displaySettings.cpuSoundVoice,
+        DEFAULT_DISPLAY_SETTINGS.cpuSoundVoice,
+    );
     const mode: SoundMode = enabled ? voice : "off";
     const current = MODE_OPTIONS.find((option) => option.mode === mode);
 

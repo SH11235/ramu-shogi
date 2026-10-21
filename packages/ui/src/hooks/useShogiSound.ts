@@ -5,8 +5,15 @@ import { type MoveScene, playDogSound, preloadDogSounds } from "./dogSound";
 
 type ShogiSoundType = "move_self" | "move_opponent" | "pass";
 
+const SOUND_VOICES = ["dog", "standard"] as const;
+
 /** 着手音の鳴らし方（CPU 戦で選べる） */
-export type SoundVoice = "dog" | "standard";
+export type SoundVoice = (typeof SOUND_VOICES)[number];
+
+/** 手で書き換えられた保存値などの知らない声を、既定の声に戻す */
+export function normalizeSoundVoice(value: unknown, fallback: SoundVoice): SoundVoice {
+    return SOUND_VOICES.find((voice) => voice === value) ?? fallback;
+}
 
 interface MoveSoundDetail {
     voice: SoundVoice;
