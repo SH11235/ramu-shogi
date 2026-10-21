@@ -74,5 +74,15 @@ describe("SoundToggle", () => {
             ).toBe("true");
             expect(previewSound).not.toHaveBeenCalled();
         });
+
+        it("keeps menu arrow keys away from the kifu keyboard navigation", () => {
+            renderMenu();
+            const onDocumentKeyDown = vi.fn();
+            document.addEventListener("keydown", onDocumentKeyDown);
+            fireEvent.click(screen.getByRole("button", { name: "着手音: 犬" }));
+            fireEvent.keyDown(document.activeElement as Element, { key: "ArrowDown" });
+            document.removeEventListener("keydown", onDocumentKeyDown);
+            expect(onDocumentKeyDown).not.toHaveBeenCalled();
+        });
     });
 });

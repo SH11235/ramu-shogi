@@ -141,6 +141,8 @@ export function SoundToggle(): ReactElement {
         }[event.key];
         if (!target) return;
         event.preventDefault();
+        // 棋譜の矢印キー送りは document で聞いているので、メニュー内の移動で局面まで動かさない
+        event.stopPropagation();
         target.focus();
     };
 
