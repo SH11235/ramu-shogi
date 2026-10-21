@@ -1,9 +1,5 @@
 import type { ApiErrorResponse, CreateRoomRequest, CreateRoomResponse } from "@shogi/api-contract";
-import {
-    isUnsupportedOnlineStartSfen,
-    ONLINE_KING_COUNT_MESSAGE,
-    PositionPresetSelector,
-} from "@shogi/ui";
+import { onlineStartSfenProblem, PositionPresetSelector } from "@shogi/ui";
 import { useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -145,11 +141,11 @@ export default function CreateRoomPage(): ReactElement {
     // "" は SFEN 直接入力の局面がまだ決まっていない印で、サーバーへ送れる開始局面ではない。
     // 平手などに置き換えて作ると、選んだ覚えの無い局面の部屋ができる
     const startSfenMissing = settings.startSfen === "";
-    const startSfenUnsupported = isUnsupportedOnlineStartSfen(settings.startSfen);
+    const startSfenProblem = onlineStartSfenProblem(settings.startSfen);
 
     async function handleSubmit(): Promise<void> {
         const trimmedName = settings.name.trim();
-        if (!trimmedName || startSfenMissing || startSfenUnsupported) return;
+        if (!trimmedName || startSfenMissing || startSfenProblem !== null) return;
         setIsCreating(true);
         setError(null);
         if (!session?.authenticated) saveLocalPlayerName(trimmedName);
@@ -232,8 +228,8 @@ export default function CreateRoomPage(): ReactElement {
                             局面（SFEN）を入力すると部屋を作成できます
                         </p>
                     )}
-                    {startSfenUnsupported && (
-                        <p className="text-xs text-destructive">{ONLINE_KING_COUNT_MESSAGE}</p>
+                    {startSfenProblem && (
+                        <p className="text-xs text-destructive">{startSfenProblem}</p>
                     )}
                 </div>
 
@@ -490,7 +486,7 @@ export default function CreateRoomPage(): ReactElement {
                         isCreating ||
                         !settings.name.trim() ||
                         startSfenMissing ||
-                        startSfenUnsupported
+                        startSfenProblem !== null
                     }
                     className="w-full rounded-lg bg-primary py-3 text-base font-semibold text-primary-foreground shadow hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >

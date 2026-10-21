@@ -583,11 +583,12 @@ describe("useRoomConnection", () => {
             });
         });
 
-        it("玉が 1 枚ずつでない開始局面は待機画面の表示にだけ反映し、サーバーへ送らない", () => {
+        it("オンライン対局で使えない開始局面は待機画面の表示にだけ反映し、サーバーへ送らない", () => {
             const { connection, result } = joinAndWait("b");
 
             act(() => {
                 result.current.handleUpdateStartSfen("4k4/9/9/9/9/9/9/9/4K4 b - 1");
+                result.current.handleUpdateStartSfen("4k4/9/9/9/9/9/9/9/4K4 b 19P 1");
                 result.current.handleUpdateStartSfen("9/9/9/9/9/9/9/9/4K4 b G 1");
             });
 

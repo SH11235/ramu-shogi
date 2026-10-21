@@ -1440,7 +1440,7 @@ describe("RoomPage", () => {
             ]);
         });
 
-        it("玉が 1 枚ずつでない局面を入力したら、送らずにそのわけを出す", async () => {
+        it("オンライン対局で使えない局面を入力したら、送らずにそのわけを出す", async () => {
             const socket = await joinAndWait("b");
             const settingsRow = (): string =>
                 screen.getByText("開始局面", { selector: "span" }).parentElement
@@ -1462,6 +1462,17 @@ describe("RoomPage", () => {
                 ),
             ).toBeTruthy();
             expect(settingsRow()).toBe("開始局面平手");
+            expect(socket.sent.filter((message) => message.t === "update_settings")).toEqual([]);
+
+            fireEvent.change(screen.getByPlaceholderText(/^例: lnsgkgsnl/), {
+                target: { value: "4k4/9/9/9/9/9/9/9/4K4 b 19P 1" },
+            });
+
+            expect(
+                screen.getByText(
+                    "駒が多すぎます。盤と持ち駒を合わせて、歩は 18 枚、香・桂・銀・金は 4 枚、角・飛は 2 枚までです。この局面は相手に送っていません。",
+                ),
+            ).toBeTruthy();
             expect(socket.sent.filter((message) => message.t === "update_settings")).toEqual([]);
         });
 
