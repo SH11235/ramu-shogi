@@ -1,4 +1,5 @@
 import type { Piece, PieceType, Square } from "@shogi/app-core";
+import type { SoundVoice } from "../../hooks/useShogiSound";
 
 // Re-export types from app-controller for convenience
 export type { EngineOption, SideSetting } from "@shogi/app-controller";
@@ -49,6 +50,8 @@ export interface DisplaySettings {
     enableWheelNavigation: boolean;
     /** サウンドフィードバック */
     enableSound: boolean;
+    /** CPU 戦の着手音（人どうしの対局では常に通常の駒音） */
+    cpuSoundVoice: SoundVoice;
 }
 
 /** デフォルト表示設定 */
@@ -60,6 +63,7 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
     showSearchInfo: false,
     enableWheelNavigation: true,
     enableSound: true,
+    cpuSoundVoice: "dog",
 };
 
 /**

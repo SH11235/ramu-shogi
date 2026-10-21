@@ -5,6 +5,7 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
 import { defineConfig, loadEnv } from "vite";
+import { SHOGI_BOARD_MODULES } from "./shogi-board-chunk";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -41,6 +42,29 @@ const rshogiCoreVersion = readRshogiCoreVersion(
     path.join(rootDir, "../../packages/rust-core/Cargo.lock"),
 );
 
+/**
+ * 小さな部品（packages/ui/src/components 直下）。ここに並べる部品は、react・radix・
+ * class-variance-authority・design-system と、この一覧の部品だけを import すること。
+ * 対局画面の部品（shogi-match/ 配下）などを import すると、ui-base から重い chunk を引き、
+ * どの画面でも最初に読み込むようになる（ビルドは通るので気づきにくい）。
+ */
+const UI_PRIMITIVES = [
+    "alert-dialog",
+    "button",
+    "chevron-icon",
+    "dialog",
+    "input",
+    "native-select",
+    "popover",
+    "progress",
+    "select",
+    "sheet",
+    "spinner",
+    "surface-theme",
+    "switch",
+    "tooltip",
+];
+
 function manualChunks(id: string): string | undefined {
     const normalizedId = id.split(path.sep).join("/");
 
@@ -67,6 +91,35 @@ function manualChunks(id: string): string | undefined {
     // 引くため、小さな専用 chunk に切り出す(shogi-match ルールより前に判定する)。
     if (normalizedId.endsWith("/packages/ui/src/components/shogi-match/hooks/useLocalStorage.ts")) {
         return "ui-storage";
+    }
+
+    // ボタン・入力欄・ダイアログなどの小さな部品。どの画面も使うが、放置すると rollup が先に参照した
+    // 重い chunk（shogi-match）へ同梱する。起動時に読む棋譜一覧の検索欄（rshogi-csa-game-browser）が
+    // 入力欄を使うため、どの画面でも shogi-match（~400KB）を丸ごと読み込んでいた。
+    // design-system（cn・テーマ）は ui-base の部品が使う。ui-base に入れないと rollup が app-shell に
+    // 入れ、ui-base と app-shell が互いを読み込む（初期化の順によっては本番だけ落ちうる）。
+    if (normalizedId.includes("/packages/design-system/src/")) {
+        return "ui-base";
+    }
+    if (
+        UI_PRIMITIVES.some((name) =>
+            normalizedId.endsWith(`/packages/ui/src/components/${name}.tsx`),
+        )
+    ) {
+        return "ui-base";
+    }
+
+    // 盤（ShogiBoard）と、盤が使う駒・座標・局面変換の小さな util。トップページの装飾の盤（HeroBoard）が
+    // 使う。shogi-match/ 配下にあるものも、下の shogi-match ルールより前に分けないと、盤を出すだけで
+    // shogi-match（~530KB）を丸ごと読み込む。一覧と、そのファイルが import してよいものは shogi-board-chunk.ts。
+    // shogi-match/ のほかのファイルを import すると、2 つの chunk が互いを読み込む（ビルドは通り、初期化の順に
+    // よっては本番だけ落ちうる）ので、shogi-board-chunk.test.ts で確かめる。
+    if (
+        SHOGI_BOARD_MODULES.some((file) =>
+            normalizedId.endsWith(`/packages/ui/src/components/${file}`),
+        )
+    ) {
+        return "shogi-board";
     }
 
     // ShogiMatch は本体ファイル `shogi-match.tsx` と `shogi-match/` 配下(hooks/utils

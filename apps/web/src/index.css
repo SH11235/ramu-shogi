@@ -5,3 +5,11 @@
 
 /* Tailwind v4: preset と content 設定を読み込む */
 @config "../tailwind.config.ts";
+
+/* viewport-fit=cover なので、横向きの iPhone では画面の左右（ノッチ・角の丸み）まで描く。
+   本文はその内側に置く（縦向きや PC では 0）。body に付けると、ダイアログを開いたときにスクロールを
+   止める処理（react-remove-scroll）が body の余白を書き換え、画面が横に広がる。 */
+#root {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+}

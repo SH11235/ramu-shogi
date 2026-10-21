@@ -89,7 +89,7 @@ const formatResultSummary = (game: RshogiGameSummary): string => {
 };
 
 const EVENT_TAG_CLASS =
-    "inline-flex max-w-full items-center rounded-full border border-wafuu-border bg-background px-2 py-0.5 text-xs text-wafuu-sumi";
+    "inline-flex min-h-7 max-w-full items-center rounded-full border border-wafuu-border bg-background px-2.5 py-0.5 text-xs text-wafuu-sumi";
 
 /** イベントタグ。`onSelect` があれば押して絞り込めるボタンにする。 */
 function RshogiEventTag({
@@ -180,7 +180,8 @@ export function RshogiCsaGameList({
                                     <RshogiEventTag event={game.event} onSelect={onSelectEvent} />
                                 </div>
                             )}
-                            <div className="text-[11px] font-mono text-muted-foreground/80">
+                            {/* 対局 ID はスマホの幅では出さない（一覧が縦に長くなるだけで、押す先でも分かる）。 */}
+                            <div className="hidden text-[11px] font-mono text-muted-foreground/80 sm:block">
                                 {game.gameId}
                             </div>
                         </li>

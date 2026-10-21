@@ -1,5 +1,5 @@
 import type { ApiErrorResponse, CreateRoomRequest, CreateRoomResponse } from "@shogi/api-contract";
-import { PositionPresetSelector } from "@shogi/ui";
+import { onlineStartSfenProblem, PositionPresetSelector } from "@shogi/ui";
 import { useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -9,6 +9,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { PageHeading } from "../../components/PageHeading";
 import { syncProfileDisplayNameIfNeeded, useAuthSession } from "../../hooks/useAuthSession";
 import { getLocalPlayerName, saveLocalPlayerName } from "../../hooks/useLocalPlayerName";
+import { RATE_LIMITED_MESSAGE } from "../../lib/rateLimitMessage";
 
 // ─── ルーム設定の型 ───────────────────────────────────────────────────────────
 
@@ -91,6 +92,22 @@ function buildCreateRoomRequest(settings: RoomFormState): CreateRoomRequest {
     };
 }
 
+const INVALID_SETTINGS_MESSAGE =
+    "この設定では部屋を作れません。開始局面の駒の数や手数を確認してください。";
+
+async function describeCreateRoomError(res: Response): Promise<string> {
+    if (res.status === 429) return RATE_LIMITED_MESSAGE;
+    // 画面で止めきれない設定 (駒の数が多すぎる開始局面など) は、サーバーが英語の理由で 400 を返す
+    if (res.status === 400) return INVALID_SETTINGS_MESSAGE;
+    try {
+        const err = (await res.json()) as ApiErrorResponse | null;
+        if (err?.message) return err.message;
+    } catch {
+        // 本文が JSON でない失敗（プロキシの 502 など）は、parse エラーの英語を出さずに既定の文言にする
+    }
+    return "ルームの作成に失敗しました";
+}
+
 // ─── ページコンポーネント ─────────────────────────────────────────────────────
 
 export default function CreateRoomPage(): ReactElement {
@@ -124,10 +141,11 @@ export default function CreateRoomPage(): ReactElement {
     // "" は SFEN 直接入力の局面がまだ決まっていない印で、サーバーへ送れる開始局面ではない。
     // 平手などに置き換えて作ると、選んだ覚えの無い局面の部屋ができる
     const startSfenMissing = settings.startSfen === "";
+    const startSfenProblem = onlineStartSfenProblem(settings.startSfen);
 
     async function handleSubmit(): Promise<void> {
         const trimmedName = settings.name.trim();
-        if (!trimmedName || startSfenMissing) return;
+        if (!trimmedName || startSfenMissing || startSfenProblem !== null) return;
         setIsCreating(true);
         setError(null);
         if (!session?.authenticated) saveLocalPlayerName(trimmedName);
@@ -143,8 +161,7 @@ export default function CreateRoomPage(): ReactElement {
             )
             .then(async (res) => {
                 if (!res.ok) {
-                    const err = (await res.json()) as ApiErrorResponse;
-                    setError(err.message ?? "ルームの作成に失敗しました");
+                    setError(await describeCreateRoomError(res));
                     setIsCreating(false);
                     return;
                 }
@@ -211,6 +228,9 @@ export default function CreateRoomPage(): ReactElement {
                             局面（SFEN）を入力すると部屋を作成できます
                         </p>
                     )}
+                    {startSfenProblem && (
+                        <p className="text-xs text-destructive">{startSfenProblem}</p>
+                    )}
                 </div>
 
                 {/* 時間設定 */}
@@ -218,7 +238,10 @@ export default function CreateRoomPage(): ReactElement {
                     <span className={labelClass}>時間設定</span>
                     <div className="flex gap-3">
                         {(["byoyomi", "fischer"] as const).map((type) => (
-                            <label key={type} className="flex cursor-pointer items-center gap-2">
+                            <label
+                                key={type}
+                                className="flex min-h-9 cursor-pointer items-center gap-2"
+                            >
                                 <input
                                     type="radio"
                                     name="time-type"
@@ -302,8 +325,8 @@ export default function CreateRoomPage(): ReactElement {
                 {/* パス権設定 */}
                 <div className="flex flex-col gap-2">
                     <span className={labelClass}>パス権</span>
-                    <div className="flex gap-3">
-                        <label className="flex cursor-pointer items-center gap-2">
+                    <div className="flex gap-5">
+                        <label className="flex min-h-9 cursor-pointer items-center gap-2">
                             <input
                                 type="radio"
                                 name="pass-rights"
@@ -313,7 +336,7 @@ export default function CreateRoomPage(): ReactElement {
                             />
                             <span className="text-sm text-foreground">なし</span>
                         </label>
-                        <label className="flex cursor-pointer items-center gap-2">
+                        <label className="flex min-h-9 cursor-pointer items-center gap-2">
                             <input
                                 type="radio"
                                 name="pass-rights"
@@ -329,9 +352,13 @@ export default function CreateRoomPage(): ReactElement {
                                     type="number"
                                     min={1}
                                     max={10}
+                                    aria-label="パス権の回数"
                                     value={settings.passRightsCount}
                                     onChange={(e) =>
-                                        set("passRightsCount", Math.max(1, Number(e.target.value)))
+                                        set(
+                                            "passRightsCount",
+                                            Math.min(10, Math.max(1, Number(e.target.value))),
+                                        )
                                     }
                                     className="w-16 rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                 />
@@ -344,7 +371,7 @@ export default function CreateRoomPage(): ReactElement {
                 {/* 待った設定 */}
                 <div className="flex flex-col gap-2">
                     <span className={labelClass}>待った</span>
-                    <label className="flex cursor-pointer items-center gap-2">
+                    <label className="flex min-h-9 cursor-pointer items-center gap-2">
                         <input
                             type="checkbox"
                             checked={settings.takeback}
@@ -360,7 +387,7 @@ export default function CreateRoomPage(): ReactElement {
                 {/* AI サポート設定 */}
                 <div className="flex flex-col gap-2">
                     <span className={labelClass}>AI サポート</span>
-                    <label className="flex cursor-pointer items-center gap-2">
+                    <label className="flex min-h-9 cursor-pointer items-center gap-2">
                         <input
                             type="checkbox"
                             checked={settings.aiSupportEnabled}
@@ -455,7 +482,12 @@ export default function CreateRoomPage(): ReactElement {
                 <button
                     type="button"
                     onClick={() => void handleSubmit()}
-                    disabled={isCreating || !settings.name.trim() || startSfenMissing}
+                    disabled={
+                        isCreating ||
+                        !settings.name.trim() ||
+                        startSfenMissing ||
+                        startSfenProblem !== null
+                    }
                     className="w-full rounded-lg bg-primary py-3 text-base font-semibold text-primary-foreground shadow hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                     {isCreating ? "作成中..." : "部屋を作成する"}

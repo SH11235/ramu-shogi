@@ -1,6 +1,7 @@
 import type {
     GameRecordDetail,
     GameRecordVisibility,
+    JsonValue,
     UpdateGameVisibilityResponse,
 } from "@shogi/api-contract";
 import { exportGameRecordKif } from "@shogi/ui/components/online-game-state";
@@ -15,7 +16,7 @@ import { Section } from "../../components/Section";
 import { StatusBanner } from "../../components/StatusBanner";
 import { parseApiError } from "../../hooks/useAuthSession";
 import { canOpenGameRecordAsStudy, openStudyFromGameRecord } from "../../lib/studyEntry";
-import { formatGameResult } from "./gameResultUtils";
+import { formatGameResult, SOURCE_LABELS, VISIBILITY_LABELS } from "./gameResultUtils";
 
 function buildPublicUrl(publicId: string): string {
     return `${window.location.origin}/public/games/${publicId}`;
@@ -23,28 +24,38 @@ function buildPublicUrl(publicId: string): string {
 
 const routeApi = getRouteApi("/games/$gameId");
 
+/** 消費時間を記録しないサーバーが保存した棋譜の metadata には無い。中身の検証は KIF を作る側で行う */
+function savedMoveElapsedMs(metadata: JsonValue): JsonValue | undefined {
+    if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) {
+        return undefined;
+    }
+    return metadata.moveElapsedMs;
+}
+
 /**
  * サーバーは盤を持たず kifuText に USI を並べるだけなので、対局ルームの棋譜は開始局面と指し手から
  * KIF を作る。作り終えるまでは null、作れなければ kifuText
  */
 function useGameRecordKif(game: GameRecordDetail): string | null {
     const [generated, setGenerated] = useState<{ id: string; kif: string | null } | null>(null);
-    const { id, source, initialSfen, moves, participants } = game;
+    const { id, source, initialSfen, moves, result, participants } = game;
+    const moveElapsedMs = savedMoveElapsedMs(game.metadata);
 
     useEffect(() => {
         if (source !== "online_room") return;
         const nameOf = (seat: "b" | "w") =>
             participants.find((p) => p.seat === seat)?.displayNameSnapshot ?? "";
         let cancelled = false;
-        void exportGameRecordKif({ initialSfen, moves }, { b: nameOf("b"), w: nameOf("w") }).then(
-            (kif) => {
-                if (!cancelled) setGenerated({ id, kif });
-            },
-        );
+        void exportGameRecordKif(
+            { initialSfen, moves, result, moveElapsedMs },
+            { b: nameOf("b"), w: nameOf("w") },
+        ).then((kif) => {
+            if (!cancelled) setGenerated({ id, kif });
+        });
         return () => {
             cancelled = true;
         };
-    }, [id, source, initialSfen, moves, participants]);
+    }, [id, source, initialSfen, moves, result, participants, moveElapsedMs]);
 
     if (source !== "online_room") return game.kifuText;
     if (generated?.id !== id) return null;
@@ -110,10 +121,10 @@ export default function GameDetailPage(): ReactElement {
                     <div className="flex flex-col gap-3">
                         <div className="flex flex-wrap items-center gap-2 text-xs">
                             <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
-                                {game.visibility}
+                                {VISIBILITY_LABELS[game.visibility]}
                             </span>
                             <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
-                                {game.source}
+                                {SOURCE_LABELS[game.source]}
                             </span>
                         </div>
 
@@ -198,7 +209,7 @@ export default function GameDetailPage(): ReactElement {
                                 disabled={isUpdatingVisibility || game.visibility === value}
                                 className="flex items-start gap-3 rounded-md border border-input px-4 py-3 text-left transition-colors hover:bg-muted/50 disabled:pointer-events-none disabled:opacity-50"
                             >
-                                <span className="mt-0.5 text-sm font-medium text-foreground">
+                                <span className="mt-0.5 shrink-0 text-sm font-medium text-foreground">
                                     {label}
                                 </span>
                                 <span className="text-sm text-muted-foreground">{description}</span>
@@ -247,23 +258,6 @@ export default function GameDetailPage(): ReactElement {
                         </div>
                     </Section>
                 )}
-
-                <Section>
-                    <h2 className="text-lg font-semibold text-foreground">指し手</h2>
-                    <ol className="grid gap-2 text-sm text-foreground">
-                        {game.moves.map((move, index) => {
-                            const ply = index + 1;
-                            return (
-                                <li
-                                    key={`${game.id}:${ply}:${move}`}
-                                    className="rounded-md border border-border px-3 py-2"
-                                >
-                                    {ply}. {move}
-                                </li>
-                            );
-                        })}
-                    </ol>
-                </Section>
 
                 <Section>
                     <div className="flex items-center justify-between gap-3">

@@ -20,10 +20,13 @@ export function useMatchNnueDownload({
     resolveNnue,
     setMessage,
     cancelReason = "対局を開始できません",
+    silentOnDecline = false,
 }: {
     manifestUrl: string;
     resolveNnue: (selection: NnueSelection) => Promise<ResolvedNnue | null>;
     setMessage: (message: Message | null) => void;
+    /** ダウンロードを断ったときに、知らせを出さない（自分でやめただけで、エラーではない画面） */
+    silentOnDecline?: boolean;
     /** ダウンロードを断ったときの案内の結び（「〜が未ダウンロードのため、<ここ>。」）。 */
     cancelReason?: string;
 }) {
@@ -56,10 +59,12 @@ export function useMatchNnueDownload({
         if (busyRef.current) return;
         // 確認待ちでなければ、取り消すものが無い（主語の欠けた通知を出さない）。
         if (presets.length === 0) return;
-        setMessage({
-            text: `${presets.map((preset) => preset.displayName).join("・")}が未ダウンロードのため、${cancelReason}。`,
-            type: "error",
-        });
+        if (!silentOnDecline) {
+            setMessage({
+                text: `${presets.map((preset) => preset.displayName).join("・")}が未ダウンロードのため、${cancelReason}。`,
+                type: "error",
+            });
+        }
         finish(false);
     };
     const ensureMatchNnue = async (selections: NnueSelection[]): Promise<boolean> => {

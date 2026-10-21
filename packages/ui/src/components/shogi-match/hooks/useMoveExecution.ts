@@ -15,6 +15,9 @@ import type { UseKifuNavigationResult } from "./useKifuNavigation";
 
 type Selection = { kind: "square"; square: string } | { kind: "hand"; piece: PieceType };
 
+/** 指せない手を選んだときの知らせ。対局画面は、この知らせをしばらくして消し、言い換えて出す。 */
+export const ILLEGAL_MOVE_MESSAGE = "合法手ではありません";
+
 /**
  * useMoveExecution の props
  */
@@ -89,6 +92,8 @@ interface UseMoveExecutionProps {
     ) => boolean;
     /** 手の処理中フラグのref */
     moveProcessingRef: MutableRefObject<boolean>;
+    /** 対局中に人が手を指したとき（駒音など）。検討モードの手では呼ばない */
+    onHumanMoveApplied?: (move: string, before: PositionState, after: PositionState) => void;
 }
 
 /**
@@ -147,6 +152,7 @@ export function useMoveExecution({
     editPromoted,
     placePieceAt,
     moveProcessingRef,
+    onHumanMoveApplied,
 }: UseMoveExecutionProps): UseMoveExecutionReturn {
     // 合法手セットを取得
     const getLegalSet = async (): Promise<Set<string> | null> => {
@@ -180,6 +186,7 @@ export function useMoveExecution({
         // ターン開始時刻をリセット
         turnStartTimeRef.current = Date.now();
         updateClocksForNextTurn(nextPosition.turn);
+        onHumanMoveApplied?.(mv, position, nextPosition);
     };
 
     // 検討モードで手を適用（分岐作成、時計更新なし）
@@ -314,7 +321,7 @@ export function useMoveExecution({
             const moveStr = `${selection.piece}*${square}`;
             const legal = await getLegalSet();
             if (legal && !legal.has(moveStr)) {
-                setMessage({ text: "合法手ではありません", type: "error" });
+                setMessage({ text: ILLEGAL_MOVE_MESSAGE, type: "error" });
                 return true;
             }
             const result = applyMoveWithState(position, moveStr, { validateTurn: false });
@@ -348,7 +355,7 @@ export function useMoveExecution({
             if (promotion === "none") {
                 const moveStr = `${from}${to}`;
                 if (!legal.has(moveStr)) {
-                    setMessage({ text: "合法手ではありません", type: "error" });
+                    setMessage({ text: ILLEGAL_MOVE_MESSAGE, type: "error" });
                     return true;
                 }
                 const result = applyMoveWithState(position, moveStr, {
@@ -469,7 +476,7 @@ export function useMoveExecution({
             if (promotion === "none") {
                 const moveStr = `${from}${to}`;
                 if (!legal.has(moveStr)) {
-                    setMessage({ text: "合法手ではありません", type: "error" });
+                    setMessage({ text: ILLEGAL_MOVE_MESSAGE, type: "error" });
                     return true;
                 }
                 const result = applyMoveWithState(position, moveStr, { validateTurn: true });
@@ -528,7 +535,7 @@ export function useMoveExecution({
         const moveStr = `${selection.piece}*${square}`;
         const legal = await getLegalSet();
         if (legal && !legal.has(moveStr)) {
-            setMessage({ text: "合法手ではありません", type: "error" });
+            setMessage({ text: ILLEGAL_MOVE_MESSAGE, type: "error" });
             return true;
         }
         const result = applyMoveWithState(position, moveStr, { validateTurn: true });

@@ -69,8 +69,28 @@ describe("GameDetailPage の KIF テキスト", () => {
 
         await waitFor(() => expect(kifText()).toContain("手合割：角落ち"));
         expect(exportGameRecordKif).toHaveBeenCalledWith(
-            { initialSfen: HANDICAP_SFEN, moves: ["3c3d", "7g7f"] },
+            {
+                initialSfen: HANDICAP_SFEN,
+                moves: ["3c3d", "7g7f"],
+                result: { winner: "w", reason: "resign" },
+            },
             { b: "下手", w: "上手" },
+        );
+    });
+
+    it("保存時の metadata にある各手の消費時間を KIF の作成に渡す", async () => {
+        exportGameRecordKif.mockResolvedValue("#KIF version=2.0");
+        useLoaderData.mockReturnValue(
+            game({ metadata: { roomSettings: {}, moveElapsedMs: [1_000, 2_000] } }),
+        );
+
+        render(<GameDetailPage />);
+
+        await waitFor(() =>
+            expect(exportGameRecordKif).toHaveBeenCalledWith(
+                expect.objectContaining({ moveElapsedMs: [1_000, 2_000] }),
+                { b: "下手", w: "上手" },
+            ),
         );
     });
 

@@ -17,6 +17,8 @@ const createFetch = (respond: () => Response | Promise<Response>) => {
     return { fetchMock, requests };
 };
 
+const RATE_LIMITED_MESSAGE = "操作が多すぎます。しばらく待ってからお試しください";
+
 const json = (status: number, body: unknown): Response =>
     new Response(JSON.stringify(body), {
         status,
@@ -112,6 +114,32 @@ describe("createStudyApiClient", () => {
             status: 502,
             error: {},
         });
+    });
+
+    it("429 は本文の英語の message を、画面に出す日本語の文言に差し替える", async () => {
+        const limited = createFetch(() =>
+            json(429, { error: "RATE_LIMITED", message: "Rate limited" }),
+        );
+        expect(
+            await createStudyApiClient({ fetch: limited.fetchMock }).delete(TEST_STUDY_ID),
+        ).toEqual({
+            ok: false,
+            status: 429,
+            error: { error: "RATE_LIMITED", message: RATE_LIMITED_MESSAGE },
+        });
+    });
+
+    it("zone のレート制限で本文が HTML の 429 も、日本語の文言を返す", async () => {
+        const limited = createFetch(
+            () =>
+                new Response("<!DOCTYPE html><title>Error 1015</title>", {
+                    status: 429,
+                    headers: { "Content-Type": "text/html" },
+                }),
+        );
+        expect(await createStudyApiClient({ fetch: limited.fetchMock }).get(TEST_STUDY_ID)).toEqual(
+            { ok: false, status: 429, error: { message: RATE_LIMITED_MESSAGE } },
+        );
     });
 
     it("通信できなかった場合は status 0 を返す", async () => {

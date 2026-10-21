@@ -59,6 +59,8 @@ export function useCurrentPositionAiHints(): CurrentPositionAiHintsResult {
                 displayText: usi ? formatMoveSimple(usi, position.turn, position.board) : "",
                 scoreText: formatEval(normalized.evalCp, normalized.evalMate, ply),
                 scoreTone: toScoreTone(normalized),
+                evalCp: normalized.evalCp ?? undefined,
+                evalMate: normalized.evalMate ?? undefined,
             };
         })
         .filter((move) => move.usi !== "");

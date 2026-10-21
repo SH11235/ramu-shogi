@@ -6,6 +6,8 @@ export type GameEndReason =
     | "checkmate"
     | "timeout"
     | "sennichite"
+    // 連続王手の千日手。王手を掛け続けた側の負けで、終局イベントは sennichite のまま
+    | "oute_sennichite"
     | "illegal_move"
     | "disconnect";
 
@@ -88,6 +90,8 @@ export interface MoveEvent extends RoomEventBase {
     turn: "b" | "w";
     clock: ClockState;
     passRights: PassRightsState | null;
+    /** この手の消費時間 (ms)。snapshot の moveElapsedMs と同じ値。旧サーバーは送らない */
+    elapsedMs?: number;
 }
 
 export interface ResignEvent extends RoomEventBase {
@@ -223,6 +227,11 @@ export interface SnapshotPayload {
      * 旧サーバーと、旧サーバーが開始した対局では付かない
      */
     analysisLog?: Array<{ seat: "b" | "w"; ply: number }>;
+    /**
+     * moves と同じ並びの各手の消費時間 (ms)。パスも 1 手に数える。
+     * 旧サーバーと、旧サーバーが開始した対局では付かない
+     */
+    moveElapsedMs?: number[];
 }
 
 // ─── エラーコード ─────────────────────────────────────────────────────────
@@ -234,6 +243,8 @@ export type ErrorCode =
     | "INVALID_TOKEN"
     | "DESYNC"
     | "ILLEGAL_MOVE"
+    // 合法手が残っているのに詰みを宣言した
+    | "CHECKMATE_NOT_CONFIRMED"
     | "NOT_YOUR_TURN"
     | "RATE_LIMITED"
     | "SPECTATOR_FORBIDDEN"

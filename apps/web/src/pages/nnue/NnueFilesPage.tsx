@@ -2,6 +2,7 @@ import type {
     InitializeNnueUploadResponse,
     ListNnueFilesResponse,
     NnueFileSummary,
+    NnueUploadStatus,
 } from "@shogi/api-contract";
 import { getRouteApi } from "@tanstack/react-router";
 import type { ChangeEvent, ReactElement } from "react";
@@ -43,6 +44,14 @@ async function fetchNnueFiles(): Promise<ListNnueFilesResponse> {
 
     return (await response.json()) as ListNnueFilesResponse;
 }
+
+/** アップロードの状態の表示名（API の値をそのまま見せない）。 */
+const UPLOAD_STATUS_LABELS: Record<NnueUploadStatus, string> = {
+    pending: "アップロード途中",
+    completed: "保存済み",
+    failed: "失敗",
+    deleted: "削除済み",
+};
 
 async function uploadNnueFile(file: File, onProgress: (progress: number) => void): Promise<void> {
     const hash = await sha256Hex(file);
@@ -224,7 +233,7 @@ export default function NnueFilesPage(): ReactElement {
             <PageContainer>
                 <PageHeading
                     title="NNUE ファイル"
-                    description="アカウントに紐づく private NNUE を upload / download / delete できます。"
+                    description="アカウントに保存した評価関数（NNUE）を、ログインしたどの端末からでも使えます。"
                 />
 
                 {status && <StatusBanner variant="success">{status}</StatusBanner>}
@@ -233,10 +242,10 @@ export default function NnueFilesPage(): ReactElement {
 
                 {loaderData.needsAuth ? (
                     <AuthRequiredCard
-                        title="ログインすると private NNUE と保存済み棋譜を端末を跨いで使えます"
+                        title="ログインすると、評価関数（NNUE）と保存した棋譜をどの端末でも使えます"
                         details={[
-                            "private NNUE を upload / download / browser import できます。",
-                            "別の端末でログインしても、同じ private NNUE を取り込んで使えます。",
+                            "評価関数（NNUE）をアカウントに保存し、ダウンロードや取り込みができます。",
+                            "別の端末でログインしても、同じ評価関数を取り込んで使えます。",
                             "保存したオンライン対局の棋譜もアカウントに紐づいて共有されます。",
                         ]}
                         nextPath="/nnue"
@@ -249,7 +258,9 @@ export default function NnueFilesPage(): ReactElement {
                                 type="file"
                                 accept=".bin"
                                 onChange={handleFileChange}
-                                className="text-sm text-foreground file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium file:text-secondary-foreground"
+                                // ブラウザが出す「ファイルが選択されていません」は狭い画面で途中が切れるので出さない
+                                // （選んだファイル名は下に出す）。ボタンの文字だけ残す。
+                                className="w-full min-w-0 text-[0px] text-foreground file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium file:text-secondary-foreground"
                             />
                             {selectedFile && (
                                 <div className="text-sm text-muted-foreground">
@@ -261,9 +272,6 @@ export default function NnueFilesPage(): ReactElement {
                                     アップロード中... {uploadProgress}%
                                 </div>
                             )}
-                            <div className="text-xs text-muted-foreground">
-                                50MB ごとの chunk に分割して upload します。
-                            </div>
                             <button
                                 type="button"
                                 onClick={() => void handleUpload()}
@@ -287,13 +295,14 @@ export default function NnueFilesPage(): ReactElement {
                                             className="rounded-md border border-border px-4 py-3"
                                         >
                                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                                <div className="flex flex-col gap-1">
-                                                    <div className="text-sm font-medium text-foreground">
+                                                <div className="flex min-w-0 flex-col gap-1">
+                                                    {/* ファイル名は区切りの無い長い英数字になりがちなので、どこでも折り返す。 */}
+                                                    <div className="text-sm font-medium text-foreground [overflow-wrap:anywhere]">
                                                         {file.originalFilename}
                                                     </div>
                                                     <div className="text-xs text-muted-foreground">
                                                         {formatBytes(file.sizeBytes)} /{" "}
-                                                        {file.uploadStatus}
+                                                        {UPLOAD_STATUS_LABELS[file.uploadStatus]}
                                                     </div>
                                                 </div>
                                                 <div className="flex flex-wrap gap-2">

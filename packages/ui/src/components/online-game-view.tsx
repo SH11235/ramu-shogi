@@ -31,7 +31,19 @@ import {
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
 import { useLazyNnueLoader } from "../hooks/useLazyNnueLoader";
+import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
 import { useShogiSound } from "../hooks/useShogiSound";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "./alert-dialog";
 import { ConnectionLostNotice } from "./connection-lost-notice";
 import { NnueManagerDialog } from "./nnue/NnueManagerDialog";
 import type { RemoteNnueManager } from "./nnue/types";
@@ -103,6 +115,9 @@ function rejectedCommandNotice(code: ErrorCode, seat: Seat): string | null {
     }
     return null;
 }
+
+const CHECKMATE_REJECTED_NOTICE =
+    "サーバーではこの局面を詰みと判定しませんでした。指せる手が表示されないときは、投了で対局を終えてください。";
 
 /** 局面も手番も終局も変えないイベント。指し手を送る準備の途中に届いても、その指し手は有効 */
 const POSITION_KEEPING_EVENTS: ReadonlySet<RoomEvent["kind"]> = new Set([
@@ -347,6 +362,11 @@ export function OnlineGameView({
     // つながっていない間に送った操作は RoomClient が捨てる。再接続した直後も、サーバーの
     // 局面を反映し終えるまでは古い局面を見て選んだ操作になるので受け付けない
     const canSend = connection.state === "connected";
+    // 対局中（観戦中も）は、相手の手を待つ間に画面が消えてロックされないようにする。つながり直せない
+    // （再読み込みやトップへ戻る案内を出している）間は、消灯を止めない。
+    useScreenWakeLock(
+        !gameResult && (connection.state === "connected" || connection.state === "reconnecting"),
+    );
     // 切断・再接続のたびに進む。非同期処理の前後で比べ、その間に接続が替わったかを知る
     const connectionEpochRef = useRef(0);
     // 再接続後、席へ戻った結果の snapshot を待っている間だけ、その再接続の番号を持つ
@@ -377,16 +397,106 @@ export function OnlineGameView({
         return () => clearTimeout(timerId);
     }, [commandNotice]);
 
+    // 詰みの申告を拒まれた局面の指し手。指せる手も無いまま止まらないよう、局面が変わるか
+    // 終局するまで案内を出し続ける
+    const [checkmateRejectedMoves, setCheckmateRejectedMoves] = useState<string | null>(null);
+    // 詰みの申告を拒まれた局面の指し手。サーバーと食い違ったまま申告と拒否を繰り返さないよう、
+    // その局面では申告し直さない。届かなかった申告は再接続後に送り直せるよう、送っただけでは記録しない
+    const checkmateRejectedMovesRef = useRef<string | null>(null);
+    const usiMovesKey = usiMoveLog.map((entry) => entry.usi).join(" ");
+    const showsCheckmateRejected = !gameResult && checkmateRejectedMoves === usiMovesKey;
+
     const showRejection = useEffectEvent((code: ErrorCode): void => {
         const text = rejectedCommandNotice(code, seat);
         if (text) {
             setCommandNotice({ text });
         }
-        if (code === "DESYNC") {
-            // 見ている局面が古いと指し直しても通らないので、取りこぼしたイベントを取り直す
+        if (code === "CHECKMATE_NOT_CONFIRMED") {
+            // 申告の判定と同じ指し手列で記録する。案内は描画中の usiMovesKey と比べるが、
+            // どちらも適用し終えた指し手列から作るので一致する
+            checkmateRejectedMovesRef.current = movesRef.current.join(" ");
+            setCheckmateRejectedMoves(usiMovesKey);
+        }
+        // 見ている局面が古いと指し直しても通らないので、取りこぼしたイベントを取り直す。
+        // 詰みの申告が拒まれるのも、手元の局面がサーバーと食い違っているとき
+        if (code === "DESYNC" || code === "CHECKMATE_NOT_CONFIRMED") {
             client.sync({ sinceEventId: appliedEventIdRef.current });
         }
     });
+
+    // ─── 接続状態 ────────────────────────────────────────────────────────────
+
+    const stopResync = useEffectEvent((): void => {
+        resyncRef.current = null;
+        if (resyncTimerRef.current !== null) {
+            clearTimeout(resyncTimerRef.current);
+            resyncTimerRef.current = null;
+        }
+    });
+
+    const showConnectionLost = (): void => {
+        setConnection({
+            state: "lost",
+            canResume: seat !== "s" && getStoredResumeToken(roomId) !== null,
+        });
+    };
+
+    // snapshot を求め直せたら true。待ちが終わっていれば何もせず、回数を使い切ったら諦める
+    const requestResyncSnapshot = useEffectEvent((resync: number): boolean => {
+        if (resyncRef.current !== resync) return false;
+        if (resyncRetriesRef.current >= RESYNC_MAX_RETRIES || !requestFullSnapshot?.()) {
+            stopResync();
+            showConnectionLost();
+            return false;
+        }
+        resyncRetriesRef.current += 1;
+        return true;
+    });
+
+    const waitForResync = (resync: number): void => {
+        if (resyncTimerRef.current !== null) clearTimeout(resyncTimerRef.current);
+        resyncTimerRef.current = setTimeout(() => {
+            if (requestResyncSnapshot(resync)) waitForResync(resync);
+        }, RESYNC_TIMEOUT_MS);
+    };
+
+    const retryResync = useEffectEvent((resync: number): void => {
+        if (requestResyncSnapshot(resync)) waitForResync(resync);
+    });
+
+    const rejectResync = useEffectEvent((code: ErrorCode): void => {
+        stopResync();
+        // useRoomConnection は対局開始で購読をやめていて、この応答を見ない。二度と使えない
+        // トークンをここで捨てないと、再読み込みのたびに同じ resume が拒まれる
+        if (isResumeTokenRejected(code)) {
+            removeStoredResumeToken(roomId);
+            removeStoredSeat(roomId);
+        }
+        rejectedRef.current = true;
+        setConnection({ state: "rejected", finished: code === "ROOM_FINISHED" });
+    });
+
+    const applyStatus = useEffectEvent((status: RoomClientStatus): void => {
+        connectionEpochRef.current += 1;
+        stopResync();
+        if (rejectedRef.current) return;
+        if (status === "reconnecting") {
+            setConnection({ state: "reconnecting" });
+        } else if (status === "disconnected") {
+            showConnectionLost();
+        } else if (status === "connected") {
+            // WebSocket が開いても、席へ戻れたかは分からない。対局者は RoomClient が必ず snapshot の
+            // 返る resume を送り、観戦者は useRoomConnection が開き直した接続で参加し直すので、
+            // どちらも応答の snapshot を反映し終えたら戻す
+            const resync = connectionEpochRef.current;
+            resyncRef.current = resync;
+            resyncRetriesRef.current = 0;
+            waitForResync(resync);
+        }
+    });
+
+    const { playSound } = useShogiSound();
+    const playSoundEvent = useEffectEvent(playSound);
 
     // ─── サーバーからのメッセージの反映 ──────────────────────────────────────
 
@@ -521,6 +631,7 @@ export function OnlineGameView({
                 turn: e.turn,
                 clock: e.clock,
                 passRights: e.passRights,
+                elapsedMs: e.elapsedMs,
             });
             movesRef.current = [...movesRef.current, e.usi];
             dispatchUI({ type: "move_received" });
@@ -555,70 +666,6 @@ export function OnlineGameView({
             dispatch({ type: "takeback_cancelled" });
         }
         markApplied();
-    });
-
-    // ─── 接続状態 ────────────────────────────────────────────────────────────
-
-    const stopResync = useEffectEvent((): void => {
-        resyncRef.current = null;
-        if (resyncTimerRef.current !== null) {
-            clearTimeout(resyncTimerRef.current);
-            resyncTimerRef.current = null;
-        }
-    });
-
-    const showConnectionLost = (): void => {
-        setConnection({
-            state: "lost",
-            canResume: seat !== "s" && getStoredResumeToken(roomId) !== null,
-        });
-    };
-
-    const waitForResync = (resync: number): void => {
-        if (resyncTimerRef.current !== null) clearTimeout(resyncTimerRef.current);
-        resyncTimerRef.current = setTimeout(() => retryResync(resync), RESYNC_TIMEOUT_MS);
-    };
-
-    const retryResync = useEffectEvent((resync: number): void => {
-        if (resyncRef.current !== resync) return;
-        if (resyncRetriesRef.current >= RESYNC_MAX_RETRIES || !requestFullSnapshot?.()) {
-            stopResync();
-            showConnectionLost();
-            return;
-        }
-        resyncRetriesRef.current += 1;
-        waitForResync(resync);
-    });
-
-    const rejectResync = useEffectEvent((code: ErrorCode): void => {
-        stopResync();
-        // useRoomConnection は対局開始で購読をやめていて、この応答を見ない。二度と使えない
-        // トークンをここで捨てないと、再読み込みのたびに同じ resume が拒まれる
-        if (isResumeTokenRejected(code)) {
-            removeStoredResumeToken(roomId);
-            removeStoredSeat(roomId);
-        }
-        rejectedRef.current = true;
-        setConnection({ state: "rejected", finished: code === "ROOM_FINISHED" });
-    });
-
-    const applyStatus = useEffectEvent((status: RoomClientStatus): void => {
-        connectionEpochRef.current += 1;
-        stopResync();
-        if (rejectedRef.current) return;
-        if (status === "reconnecting") {
-            setConnection({ state: "reconnecting" });
-        } else if (status === "disconnected") {
-            showConnectionLost();
-        } else if (status === "connected") {
-            // WebSocket が開いても、席へ戻れたかは分からない。対局者は RoomClient が必ず snapshot の
-            // 返る resume を送り、観戦者は useRoomConnection が開き直した接続で参加し直すので、
-            // どちらも応答の snapshot を反映し終えたら戻す
-            const resync = connectionEpochRef.current;
-            resyncRef.current = resync;
-            resyncRetriesRef.current = 0;
-            waitForResync(resync);
-        }
     });
 
     useEffect(() => {
@@ -674,9 +721,15 @@ export function OnlineGameView({
     useEffect(() => {
         // 巻き戻し中は合法手を表示しない
         // passRightsOption は try/catch の外で計算する（React Compiler の制約）
-        const passRightsOption = passRights
-            ? { passRights: { sente: passRights.b, gote: passRights.w } }
-            : {};
+        // エンジンは渡したパス権を開始時の回数として棋譜を再生し、その中のパスで減らすので、
+        // 残り回数ではなく部屋の初期値を渡す。残り回数を渡すと使ったパスを二重に引く
+        const initialPassRights = passRights
+            ? snapshot.settings.passRights?.initialCount
+            : undefined;
+        const passRightsOption =
+            initialPassRights !== undefined
+                ? { passRights: { sente: initialPassRights, gote: initialPassRights } }
+                : {};
         let cancelled = false;
         void (async () => {
             // position に依存させる: 手番が変わらないまま局面だけ変わる再同期でも、
@@ -691,7 +744,8 @@ export function OnlineGameView({
                     if (cancelled) return;
                     dispatchUI({ type: "set_legal_moves", moves });
                     // 合法手が0 = 自分が詰まされている → サーバーに通知
-                    if (moves.length === 0) {
+                    const movesKey = movesRef.current.join(" ");
+                    if (moves.length === 0 && checkmateRejectedMovesRef.current !== movesKey) {
                         client.checkmate({ eventId: appliedEventIdRef.current });
                     }
                 } catch {
@@ -706,7 +760,15 @@ export function OnlineGameView({
         return () => {
             cancelled = true;
         };
-    }, [canPlay, gameResult, isRewound, passRights, client, position]);
+    }, [
+        canPlay,
+        gameResult,
+        isRewound,
+        passRights,
+        client,
+        position,
+        snapshot.settings.passRights,
+    ]);
 
     // ─── 棋譜ナビゲーションハンドラ ───────────────────────────────────────────
 
@@ -845,6 +907,9 @@ export function OnlineGameView({
         client.resign({ eventId: appliedEventIdRef.current });
     }
 
+    // 投了は取り消せないので、確かめてから送る（スマホでは隣の「棋譜」「待った」と押し間違えやすい）。
+    const [isResignConfirmOpen, setIsResignConfirmOpen] = useState(false);
+
     // ─── 待った ───────────────────────────────────────────────────────────────
 
     function handleTakebackRequest(): void {
@@ -895,8 +960,6 @@ export function OnlineGameView({
     const [nnueManagerOpen, setNnueManagerOpen] = useState(false);
     const { resolveNnue } = useLazyNnueLoader();
     const isMobile = useIsMobile();
-    const { playSound } = useShogiSound();
-    const playSoundEvent = useEffectEvent(playSound);
 
     const loadNnueEvent = useEffectEvent((sel: NnueSelection) => {
         if (!analysis?.loadNnue) return;
@@ -962,8 +1025,8 @@ export function OnlineGameView({
 
     // 最後の指し手（ハイライト用）
     const lastMoveUsi = isRewound
-        ? movesRef.current[(effectiveNavIndex ?? 0) - 1]
-        : movesRef.current.at(-1);
+        ? usiMoveLog[(effectiveNavIndex ?? 0) - 1]?.usi
+        : usiMoveLog.at(-1)?.usi;
     const lastMove = deriveLastMove(lastMoveUsi);
 
     // モバイル用 ref（MobileBoardSection の必須 props のため）
@@ -1331,14 +1394,41 @@ export function OnlineGameView({
                             </button>
                         )}
                     {!isSpectator && !gameResult && (
-                        <button
-                            type="button"
-                            onClick={handleResign}
-                            disabled={!canSend}
-                            className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                        <AlertDialog
+                            // 終局したらボタンごと消えるので、確かめている途中でも閉じる（相手の投了・時間切れ）。
+                            open={isResignConfirmOpen}
+                            onOpenChange={setIsResignConfirmOpen}
                         >
-                            投了
-                        </button>
+                            <AlertDialogTrigger asChild>
+                                <button
+                                    type="button"
+                                    disabled={!canSend}
+                                    className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    投了
+                                </button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>投了しますか？</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        {/* 切れている間（自分の手番でも押せない）は、上の接続の案内に任せる。 */}
+                                        {isMyTurn
+                                            ? "対局を終了します。取り消せません。"
+                                            : "相手の手番の間は投了できません。自分の手番になってから投了してください。"}
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                                    <AlertDialogAction
+                                        onClick={handleResign}
+                                        disabled={!canPlay || !position}
+                                    >
+                                        投了する
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
                     )}
                     <button
                         type="button"
@@ -1359,6 +1449,13 @@ export function OnlineGameView({
                         </button>
                     )}
                 </div>
+
+                {/* 投了を案内するので、出し入れで投了ボタンの位置がずれないよう操作ボタンの下に置く */}
+                {showsCheckmateRejected && (
+                    <p role="alert" className="text-sm text-destructive">
+                        {CHECKMATE_REJECTED_NOTICE}
+                    </p>
+                )}
 
                 {/* AI解析ミニサマリバー（モバイルのみ・シート閉じているとき） */}
                 {(aiSupport || analysis) && topMoves.length > 0 && (
@@ -1540,12 +1637,13 @@ function PlayerHeader({
     passRightsCount,
 }: PlayerHeaderProps): ReactElement {
     return (
+        // スマホでは親が中央寄せなので、幅を指定しないと中身の幅に縮み、名前と残り時間がくっつく。
         <div
-            className={`flex items-center justify-between rounded-lg border px-3 py-2 ${isMyTurn ? "border-primary bg-primary/5" : "border-border bg-card"}`}
+            className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 ${isMyTurn ? "border-primary bg-primary/5" : "border-border bg-card"}`}
         >
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2">
                 <span
-                    className={`text-sm font-semibold ${seat === "b" ? "text-wafuu-shu" : "text-wafuu-ai"}`}
+                    className={`min-w-0 truncate text-sm font-semibold ${seat === "b" ? "text-wafuu-shu" : "text-wafuu-ai"}`}
                 >
                     {seat === "b" ? "▲" : "△"} {name}
                 </span>
@@ -1559,7 +1657,7 @@ function PlayerHeader({
                 )}
             </div>
             <span
-                className={`font-mono text-sm tabular-nums ${isMyTurn ? "text-primary font-bold" : "text-muted-foreground"}`}
+                className={`shrink-0 font-mono text-base tabular-nums md:text-sm ${isMyTurn ? "text-primary font-bold" : "text-muted-foreground"}`}
             >
                 {formatMs(remainMs)}
             </span>
@@ -1572,6 +1670,7 @@ const GAME_END_REASONS: Record<string, string> = {
     checkmate: "詰み",
     timeout: "時間切れ",
     sennichite: "千日手",
+    oute_sennichite: "連続王手の千日手",
     illegal_move: "反則",
     disconnect: "切断不戦敗",
 };

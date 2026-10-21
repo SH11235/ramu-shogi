@@ -94,7 +94,8 @@ export function resolveMoves(game: GameRecordDetail): string[] {
 export default function PublicGamePage(): ReactElement {
     const game = routeApi.useLoaderData() as GameRecordDetail;
     const moves = resolveMoves(game);
-    // スマホのレイアウトには左の欄（対局情報）が無いので、研究ノートへの入口は盤の上に出す。
+    // スマホのレイアウトには左の欄（対局情報）が無いので、研究ノートへの入口は盤の下に出す
+    // （上に置くと、盤と手を送る操作が最初の画面に収まらない）。
     const isMobile = useIsMobile();
 
     return (
@@ -104,11 +105,6 @@ export default function PublicGamePage(): ReactElement {
                 right={<HeaderNav />}
             />
             <div>
-                {isMobile && (
-                    <div className="px-2 pt-2">
-                        <OpenAsStudy game={game} moves={moves} />
-                    </div>
-                )}
                 <ShogiMatch
                     engineOptions={engineOptions}
                     manifestUrl={import.meta.env.VITE_NNUE_MANIFEST_URL as string}
@@ -125,6 +121,11 @@ export default function PublicGamePage(): ReactElement {
                     viewerMode={true}
                     reviewLeftContent={<GameInfoPanel game={game} moves={moves} />}
                 />
+                {isMobile && (
+                    <div className="px-2 pb-4">
+                        <OpenAsStudy game={game} moves={moves} />
+                    </div>
+                )}
             </div>
         </>
     );

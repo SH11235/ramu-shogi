@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/engine-wasm",
+    "crates/shogi-rules-wasm",
 ]
 
 [workspace.dependencies]
@@ -21,6 +22,8 @@ regex = "1.11.2"
 smallvec = "1.15"
 # getrandom with wasm_js feature for WebAssembly support
 getrandom = { version = "0.3", default-features = false, features = ["wasm_js"] }
+# 将棋のルール実装は engine-wasm と shogi-rules-wasm で同じ rev を共有する
+rshogi-core = { git = "https://github.com/SH11235/rshogi.git", rev = "7e74f8dae4999cd9fbaf36d9e7124ceb3dabf862", default-features = false }
 
 
 # Debug build optimizations for reasonable test performance
@@ -46,3 +49,8 @@ overflow-checks = false   # 本番では無効化（速度優先）
 lto = "fat"               # 最大LTO
 codegen-units = 1         # 最適化優先
 panic = "abort"           # 小さいバイナリ
+
+# サーバー側の合法手検証用。探索をしないので速度よりサイズを優先する
+[profile.rules-wasm]
+inherits = "production"
+opt-level = "z"

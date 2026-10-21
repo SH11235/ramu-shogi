@@ -67,6 +67,8 @@ interface ShogiBoardProps {
      * ホバーできない端末（タッチ）では出ない。
      */
     moveShadow?: ShogiBoardMoveShadow | null;
+    /** ヒントとして示す手（動かす駒のマスと行き先。打つ手は行き先だけ）。枠で示す。 */
+    hintMove?: { from?: string | null; to: string; side?: ShogiBoardOwner } | null;
 }
 
 /**
@@ -86,6 +88,7 @@ export function ShogiBoard({
     squareNotation = "none",
     showBoardLabels = false,
     moveShadow = null,
+    hintMove = null,
 }: ShogiBoardProps): ReactElement {
     const lastPointerTypeRef = useRef<"mouse" | "touch" | "pen" | null>(null);
     const { files, ranks } = getBoardLabels(flipBoard);
@@ -142,6 +145,8 @@ export function ShogiBoard({
                                 cell.id === lastMove?.from && lastMove?.from !== null;
                             const isPromotionSquare = promotionSquare === cell.id;
                             const isShadowTarget = shadow?.targets.has(cell.id) ?? false;
+                            const isHintTo = hintMove?.to === cell.id;
+                            const isHintFrom = hintMove?.from === cell.id;
 
                             // 背景色: ハイライト時は上書き、通常時はチェッカーパターン
                             const isHighlighted = isLastMoveTo || isLastMoveFrom || isSelected;
@@ -155,6 +160,23 @@ export function ShogiBoard({
                                     key={cell.id}
                                     className="relative aspect-square w-[var(--shogi-cell-size,48px)] border-b border-r border-shogi-border"
                                 >
+                                    {(isHintTo || isHintFrom) && (
+                                        <span
+                                            aria-hidden
+                                            data-hint={isHintTo ? "to" : "from"}
+                                            className={cn(
+                                                "pointer-events-none absolute inset-0 z-10 rounded-sm",
+                                                // 色は指す側の色（先手 = 朱、後手 = 藍）。
+                                                hintMove?.side === "sente"
+                                                    ? isHintTo
+                                                        ? "bg-wafuu-shu/20 ring-[3px] ring-inset ring-wafuu-shu"
+                                                        : "border-2 border-dashed border-wafuu-shu"
+                                                    : isHintTo
+                                                      ? "bg-wafuu-ai/25 ring-[3px] ring-inset ring-wafuu-ai"
+                                                      : "border-2 border-dashed border-wafuu-ai",
+                                            )}
+                                        />
+                                    )}
                                     <button
                                         type="button"
                                         data-square={cell.id}
@@ -260,7 +282,17 @@ export function ShogiBoard({
                                     </button>
                                     {isPromotionSquare && onPromotionChoice && (
                                         <div
-                                            className="absolute inset-0 z-10 flex flex-col gap-[2px] p-[2px]"
+                                            // 行き先のマスの外（盤の内側へ寄せた上か下）に、マス 3 つ分の幅で左右に
+                                            // 並べる。行き先の駒を隠さず、指で押し分けられる大きさにする。
+                                            className={cn(
+                                                "absolute z-20 flex h-[150%] w-[300%] gap-1.5 p-1",
+                                                columnIndex === 0
+                                                    ? "left-0"
+                                                    : columnIndex === 8
+                                                      ? "right-0"
+                                                      : "-left-full",
+                                                rowIndex <= 4 ? "top-full" : "bottom-full",
+                                            )}
                                             role="dialog"
                                             aria-label="成り選択"
                                             aria-live="assertive"
@@ -283,7 +315,7 @@ export function ShogiBoard({
                                                     }
                                                 }}
                                                 aria-label="成る"
-                                                className="flex-1 rounded-t-md bg-gradient-to-b from-wafuu-shu to-wafuu-shu/80 text-[14px] font-bold text-white shadow-lg transition-all hover:scale-105 hover:shadow-xl active:scale-95 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"
+                                                className="flex-1 rounded-md border-2 border-wafuu-sumi bg-wafuu-kin text-[15px] font-bold text-wafuu-sumi shadow-lg transition-transform hover:scale-105 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                             >
                                                 成
                                             </button>
@@ -305,7 +337,7 @@ export function ShogiBoard({
                                                     }
                                                 }}
                                                 aria-label="成らない"
-                                                className="flex-1 rounded-b-md bg-gradient-to-b from-wafuu-ai to-wafuu-ai/80 text-[12px] font-bold text-white shadow-lg transition-all hover:scale-105 hover:shadow-xl active:scale-95 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"
+                                                className="flex-1 rounded-md border-2 border-wafuu-sumi bg-background text-[15px] font-bold text-wafuu-sumi shadow-lg transition-transform hover:scale-105 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                             >
                                                 不成
                                             </button>

@@ -16,6 +16,8 @@ interface MobileKifuBarProps {
     currentPly: number;
     /** 手数選択時のコールバック */
     onPlySelect?: (ply: number) => void;
+    /** 見た目。`"wafuu"` は和の配色（地は和紙、いまの手は金の淡塗り）。省略時は既定の配色 */
+    tone?: "default" | "wafuu";
 }
 
 /**
@@ -26,7 +28,9 @@ export function MobileKifuBar({
     moves,
     currentPly,
     onPlySelect,
+    tone = "default",
 }: MobileKifuBarProps): ReactElement {
+    const isWafuu = tone === "wafuu";
     const containerRef = useRef<HTMLDivElement>(null);
 
     // 現在の手を中央にスクロール（コールバックref）
@@ -50,7 +54,14 @@ export function MobileKifuBar({
 
     if (moves.length === 0) {
         return (
-            <div className="h-9 flex items-center justify-center text-sm text-muted-foreground bg-muted/30 rounded">
+            <div
+                className={cn(
+                    "h-9 flex items-center justify-center text-sm rounded",
+                    isWafuu
+                        ? "bg-wafuu-washi-warm text-wafuu-sumi-light"
+                        : "text-muted-foreground bg-muted/30",
+                )}
+            >
                 開始局面
             </div>
         );
@@ -59,7 +70,10 @@ export function MobileKifuBar({
     return (
         <div
             ref={containerRef}
-            className="h-9 flex items-center gap-1 overflow-x-auto scrollbar-hide bg-muted/30 rounded px-2 [scrollbar-width:none] [-ms-overflow-style:none]"
+            className={cn(
+                "h-9 flex items-center gap-1 overflow-x-auto scrollbar-hide rounded px-2 [scrollbar-width:none] [-ms-overflow-style:none]",
+                isWafuu ? "bg-wafuu-washi-warm" : "bg-muted/30",
+            )}
         >
             {moves.map((move) => {
                 const isCurrent = currentPly > 0 && move.ply === currentPly;
@@ -73,8 +87,12 @@ export function MobileKifuBar({
                         className={cn(
                             "shrink-0 px-1.5 py-1 rounded text-sm whitespace-nowrap transition-colors",
                             isCurrent
-                                ? "bg-primary text-primary-foreground font-semibold"
-                                : "text-foreground",
+                                ? isWafuu
+                                    ? "bg-wafuu-kin/30 font-semibold text-wafuu-sumi"
+                                    : "bg-primary text-primary-foreground font-semibold"
+                                : isWafuu
+                                  ? "text-wafuu-sumi"
+                                  : "text-foreground",
                             onPlySelect && !isCurrent && "hover:bg-muted",
                             !onPlySelect && "cursor-default",
                         )}

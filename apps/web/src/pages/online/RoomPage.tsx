@@ -10,6 +10,7 @@ import {
 import {
     ConnectionLostNotice,
     OnlineGameView,
+    onlineStartSfenProblem,
     PositionPresetSelector,
     useRoomConnection,
 } from "@shogi/ui";
@@ -21,6 +22,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { syncProfileDisplayNameIfNeeded, useAuthSession } from "../../hooks/useAuthSession";
 import { getLocalPlayerName, saveLocalPlayerName } from "../../hooks/useLocalPlayerName";
 import { useOnlineAnalysis } from "../../hooks/useOnlineAnalysis";
+import { usePlayFromPosition } from "../../hooks/usePlayFromPosition";
 import { useRemotePrivateNnueManager } from "../../hooks/useRemotePrivateNnueManager";
 
 const nnueManifestUrl: string = (() => {
@@ -227,12 +229,18 @@ function GameSettingsSection({
     displayStartSfen: string;
     onUpdateStartSfen: (sfen: string) => void;
 }): ReactElement {
+    const startSfenProblem = onlineStartSfenProblem(displayStartSfen);
     return (
         <>
             {joined && currentStatus === "waiting" && (
                 <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4">
                     <span className="text-sm font-semibold text-foreground">開始局面を変更</span>
                     <PositionPresetSelector value={displayStartSfen} onChange={onUpdateStartSfen} />
+                    {startSfenProblem && (
+                        <p className="text-xs text-destructive">
+                            {startSfenProblem}。この局面は相手に送っていません。
+                        </p>
+                    )}
                 </div>
             )}
             <div className="rounded-lg border border-border bg-card p-4">
@@ -273,6 +281,22 @@ function GameSettingsSection({
     );
 }
 
+/**
+ * 棋譜のページ（/games/$gameId）をいま開けるか。開けるのは参加したときのアカウントでログイン中の
+ * 対局者だけで、画面のログイン状態は失効やアカウントの切り替えを映さないので、サーバーに聞く。
+ */
+async function canOpenGameRecord(gameRecordId: string, signal: AbortSignal): Promise<boolean> {
+    try {
+        const response = await fetch(`/api/games/${encodeURIComponent(gameRecordId)}`, {
+            credentials: "same-origin",
+            signal,
+        });
+        return response.ok;
+    } catch {
+        return false;
+    }
+}
+
 // ─── ページコンポーネント ──────────────────────────────────────────────────────
 
 export default function RoomPage(): ReactElement {
@@ -282,6 +306,9 @@ export default function RoomPage(): ReactElement {
     const remoteNnueManager = useRemotePrivateNnueManager();
 
     const navigate = useNavigate();
+    const playFromPosition = usePlayFromPosition();
+    // 「棋譜を検討する」で棋譜のページを開けるか確かめている間だけ持つ
+    const openingReviewRef = useRef<{ roomId: string; controller: AbortController } | null>(null);
     const didAutofillNameRef = useRef(false);
     const [joinActionError, setJoinActionError] = useState<string | null>(null);
     const [isPreparingJoin, setIsPreparingJoin] = useState(false);
@@ -350,6 +377,48 @@ export default function RoomPage(): ReactElement {
         }
     }
 
+    // 確かめている間に画面を離れたら、応答が来ても遷移しない
+    useEffect(() => {
+        return () => {
+            const opening = openingReviewRef.current;
+            if (opening?.roomId === roomId) opening.controller.abort();
+        };
+    }, [roomId]);
+
+    async function handleStartReview(data: {
+        sfen: string;
+        moves: string[];
+        gameRecordId: string | null;
+    }): Promise<void> {
+        // 確かめている間にもう一度押されても、遷移を 2 回起こさない
+        if (openingReviewRef.current) return;
+        const opening = { roomId, controller: new AbortController() };
+        openingReviewRef.current = opening;
+        const { signal } = opening.controller;
+        const forgetSeat = (): void => {
+            removeStoredResumeToken(roomId);
+            removeStoredSeat(roomId);
+        };
+        try {
+            const { gameRecordId } = data;
+            const canOpen =
+                gameRecordId !== null &&
+                joinSeat !== "s" &&
+                (await canOpenGameRecord(gameRecordId, signal));
+            if (signal.aborted) return;
+            if (gameRecordId && canOpen) {
+                // 保存された棋譜のページへ。解析や検討は、そこから研究ノートで行う。
+                forgetSeat();
+                void navigate({ to: "/games/$gameId", params: { gameId: gameRecordId } });
+                return;
+            }
+            // 引き継げずに留まるなら、席へ戻れるように席の記憶は消さない
+            if (playFromPosition({ sfen: data.sfen, moves: data.moves })) forgetSeat();
+        } finally {
+            if (openingReviewRef.current === opening) openingReviewRef.current = null;
+        }
+    }
+
     const aiSupport = roomInfo.settings.aiSupport;
     const analysis = useOnlineAnalysis(
         aiSupport?.searchDepth ?? null,
@@ -391,20 +460,9 @@ export default function RoomPage(): ReactElement {
                 analysis={analysis}
                 manifestUrl={nnueManifestUrl}
                 remoteNnueManager={remoteNnueManager}
-                onStartReview={(data) => {
-                    removeStoredResumeToken(roomId);
-                    removeStoredSeat(roomId);
-                    if (data.gameRecordId) {
-                        // 保存された棋譜のページへ。解析や検討は、そこから研究ノートで行う。
-                        void navigate({
-                            to: "/games/$gameId",
-                            params: { gameId: data.gameRecordId },
-                        });
-                    } else {
-                        void navigate({ to: "/play" });
-                    }
-                }}
+                onStartReview={(data) => void handleStartReview(data)}
                 onExit={() => {
+                    openingReviewRef.current?.controller.abort();
                     removeStoredResumeToken(roomId);
                     removeStoredSeat(roomId);
                     void navigate({ to: "/" });

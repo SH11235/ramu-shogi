@@ -7,6 +7,7 @@ let session: { authenticated: boolean; user: { displayName: string } | null } | 
 // 本物の Link と同じく、`search` は押した時点で評価する（描いた時点の値は href に出す）。
 const navigated = vi.fn();
 vi.mock("@tanstack/react-router", () => ({
+    useLocation: () => ({ pathname: "/" }),
     Link: ({
         to,
         search,

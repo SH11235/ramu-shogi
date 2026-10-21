@@ -39,6 +39,81 @@ export const POSITION_PRESETS: PositionPreset[] = [
 
 const CUSTOM_VALUE = "custom";
 
+const ONLINE_FORMAT_MESSAGE =
+    "オンライン対局では読み取れない局面です。SFEN の書き方を確認してください";
+const ONLINE_FIELD_COUNT_MESSAGE =
+    "SFEN は「盤面 手番 持ち駒 手数」の 4 つだけにしてください。先頭の sfen や後ろの moves は外してください";
+const ONLINE_KING_COUNT_MESSAGE =
+    "オンライン対局では、先手と後手の玉が 1 枚ずつある局面だけ使えます";
+const ONLINE_PIECE_COUNT_MESSAGE =
+    "駒が多すぎます。盤と持ち駒を合わせて、歩は 18 枚、香・桂・銀・金は 4 枚、角・飛は 2 枚までです";
+const ONLINE_MAX_START_PLY = 1_000_000;
+const ONLINE_PLY_MESSAGE = `SFEN の最後の数字 (手数) は 1 から ${ONLINE_MAX_START_PLY.toLocaleString("ja-JP")} までにしてください`;
+const ONLINE_MAX_SFEN_LENGTH = 512;
+
+// 盤上と両者の持ち駒を合わせた枚数の上限。サーバーの合法手判定はこれを超える局面を読めない
+const PIECE_LIMITS = { P: 18, L: 4, N: 4, S: 4, G: 4, B: 2, R: 2 } as const;
+
+/**
+ * オンライン対局で使えない開始局面なら、そのわけを返す。サーバーは使えない局面で部屋を作らず、
+ * 待機中の設定変更は黙って捨てるので、送る前に画面で止める。"" はまだ入力されていない印なので対象外
+ */
+export function onlineStartSfenProblem(value: string): string | null {
+    if (value === "" || POSITION_PRESETS.some((p) => p.value !== CUSTOM_VALUE && p.value === value))
+        return null;
+    const fields = value.trim().split(/\s+/);
+    // 手数を省いた「盤面 手番 持ち駒」は、サーバーが 1 手目として受け付ける
+    if (fields.length === 3) fields.push("1");
+    if (fields.length > 4) return ONLINE_FIELD_COUNT_MESSAGE;
+    if (fields.length < 4) return ONLINE_FORMAT_MESSAGE;
+    const [board = "", turn, hands = "", ply = ""] = fields;
+    const counts =
+        value.length <= ONLINE_MAX_SFEN_LENGTH && (turn === "b" || turn === "w")
+            ? countPieces(board, hands)
+            : null;
+    if (!counts) return ONLINE_FORMAT_MESSAGE;
+    if (counts.get("K") !== 1 || counts.get("k") !== 1) return ONLINE_KING_COUNT_MESSAGE;
+    const tooMany = Object.entries(PIECE_LIMITS).some(
+        ([piece, max]) => (counts.get(piece) ?? 0) + (counts.get(piece.toLowerCase()) ?? 0) > max,
+    );
+    if (tooMany) return ONLINE_PIECE_COUNT_MESSAGE;
+    // サーバーは先頭に 0 の付いた手数や数字以外を書式の誤りとして断る
+    if (!/^(0|-?[1-9]\d*)$/.test(ply)) return ONLINE_FORMAT_MESSAGE;
+    if (Number(ply) < 1 || Number(ply) > ONLINE_MAX_START_PLY) return ONLINE_PLY_MESSAGE;
+    return null;
+}
+
+// 盤上と持ち駒の駒を、成りを外した駒の文字 (先手は大文字、後手は小文字) ごとに数える。
+// 書式がサーバーの受け付けない形なら null
+function countPieces(board: string, hands: string): Map<string, number> | null {
+    const counts = new Map<string, number>();
+    const add = (piece: string, n: number) => counts.set(piece, (counts.get(piece) ?? 0) + n);
+    const ranks = board.split("/");
+    if (ranks.length !== 9) return null;
+    for (const rank of ranks) {
+        let squares = 0;
+        for (const token of rank.match(/\+?./g) ?? []) {
+            if (/^[1-9]$/.test(token)) squares += Number(token);
+            else if (/^(\+[PLNSBRplnsbr]|[PLNSGBRKplnsgbrk])$/.test(token)) {
+                squares += 1;
+                add(token.slice(-1), 1);
+            } else return null;
+        }
+        if (squares !== 9) return null;
+    }
+    if (hands === "-") return counts;
+    // サーバーは同じ駒を 2 度書いた持ち駒を受け付けない
+    const seen = new Set<string>();
+    let consumed = "";
+    for (const [token, n, piece] of hands.matchAll(/([1-9]\d*)?([RBGSNLPrbgsnlp])/g)) {
+        if (seen.has(piece)) return null;
+        seen.add(piece);
+        add(piece, n ? Number(n) : 1);
+        consumed += token;
+    }
+    return consumed === hands ? counts : null;
+}
+
 // ─── バリデーション ────────────────────────────────────────────────────────────
 
 function validateCustomSfen(sfen: string): string | null {

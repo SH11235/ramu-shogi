@@ -27,6 +27,9 @@ export interface StudyApiClientOptions {
     baseUrl?: string;
 }
 
+/** zone のレート制限は本文が JSON でない HTML なので、本文の message ではなくステータス 429 で判断して出す。 */
+const RATE_LIMITED_MESSAGE = "操作が多すぎます。しばらく待ってからお試しください";
+
 const readErrorBody = async (response: Response): Promise<StudyApiErrorBody> => {
     try {
         const payload: unknown = await response.json();
@@ -71,7 +74,13 @@ export function createStudyApiClient(options: StudyApiClientOptions = {}): Study
             };
         }
         if (!response.ok) {
-            return { ok: false, status: response.status, error: await readErrorBody(response) };
+            const error = await readErrorBody(response);
+            return {
+                ok: false,
+                status: response.status,
+                error:
+                    response.status === 429 ? { ...error, message: RATE_LIMITED_MESSAGE } : error,
+            };
         }
         if (response.status === 204) {
             return { ok: true, status: 204, data: null as T };

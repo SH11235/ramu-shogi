@@ -26,7 +26,12 @@ export function useMobileCellSize(boardRef: RefObject<HTMLElement | null>): numb
     useEffect(() => {
         const container = boardRef.current?.parentElement;
         if (!container) return;
-        const update = () => setCellSize(cellSizeForWidth(container.clientWidth));
+        const update = () => {
+            // 隠している間（display:none）は幅 0 になる。そのまま測ると最小のマスになり、
+            // 表示した瞬間に盤が小さく出てから広がるので、見えるまでは前の大きさを保つ。
+            if (container.clientWidth === 0) return;
+            setCellSize(cellSizeForWidth(container.clientWidth));
+        };
         update();
         const observer = new ResizeObserver(update);
         observer.observe(container);

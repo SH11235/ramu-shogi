@@ -10,7 +10,7 @@ import type {
     Seat,
     SnapshotPayload,
 } from "@shogi/match-client";
-import { exportToKifString } from "./shogi-match/utils/kifFormat";
+import { exportToKifString, type KifEnding } from "./shogi-match/utils/kifFormat";
 
 export interface GameState {
     position: PositionState | null;
@@ -23,7 +23,7 @@ export interface GameState {
     passRights: PassRightsState | null;
     myAnalysisRemaining: number | null;
     analysisLog: Array<{ seat: "b" | "w"; ply: number }>;
-    /** elapsedMs は対局中に受信した指し手にだけ付く（snapshot は消費時間を持たない） */
+    /** elapsedMs は対局中に受信した指し手と、消費時間を持つ snapshot から復元した指し手にだけ付く */
     usiMoveLog: Array<{ usi: string; elapsedMs?: number }>;
     pendingTakeback: { seat: "b" | "w"; ply: number } | null;
 }
@@ -33,6 +33,8 @@ interface RestoredPosition {
     position: PositionState;
     history: PositionState[] | null;
     moves: string[];
+    /** moves と同じ並びの各手の消費時間。旧サーバーの snapshot には無い */
+    moveElapsedMs?: number[];
 }
 
 type GameAction =
@@ -43,6 +45,8 @@ type GameAction =
           turn: "b" | "w";
           clock: ClockState;
           passRights: PassRightsState | null;
+          /** サーバーが測ったこの手の消費時間。旧サーバーは送らない */
+          elapsedMs?: number;
       }
     | { type: "result"; result: GameResult }
     | { type: "player_offline"; seat: string }
@@ -131,6 +135,8 @@ function restoredRecord(
         position: restored.position,
         positionHistory: restored.history,
         usiMoveLog: restored.moves.map((usi, i) => {
+            const elapsedMs = restored.moveElapsedMs?.[i];
+            if (elapsedMs !== undefined) return { usi, elapsedMs };
             const known = knownLog[i];
             return known?.usi === usi ? known : { usi };
         }),
@@ -143,12 +149,15 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             return { ...state, ...restoredRecord(action, []) };
         case "move": {
             if (!state.position) return state;
-            // 消費時間: 動いた側の残り時間の差分（手番交代前の turn が動いた側）
+            // サーバーの値が無ければ動いた側の残り時間の差分で代える。秒読み中は 0、
+            // フィッシャーでは加算分を引いた値になり、snapshot や保存された棋譜の時間とずれる
             const movedSeat = state.turn;
-            const elapsedMs = Math.max(
-                0,
-                state.clockState[movedSeat].remainMs - action.clock[movedSeat].remainMs,
-            );
+            const elapsedMs = isValidMoveElapsedMs(action.elapsedMs)
+                ? action.elapsedMs
+                : Math.max(
+                      0,
+                      state.clockState[movedSeat].remainMs - action.clock[movedSeat].remainMs,
+                  );
             const next =
                 action.usi === "pass"
                     ? passTurn(state.position)
@@ -323,29 +332,56 @@ async function positionsBeforeMoves(
 }
 
 export async function restorePosition(
-    snapshot: Pick<SnapshotPayload, "sfen" | "moves" | "settings">,
+    snapshot: Pick<SnapshotPayload, "sfen" | "moves" | "settings" | "moveElapsedMs">,
 ): Promise<RestoredPosition> {
     const position = await getPositionService().parseSfen(snapshot.sfen);
+    const moveElapsedMs = matchingMoveElapsedMs(snapshot.moveElapsedMs, snapshot.moves);
     return {
         position,
         history: await replayPositions(snapshot.settings.startSfen, snapshot.moves, position),
         moves: snapshot.moves,
+        ...(moveElapsedMs ? { moveElapsedMs } : {}),
     };
 }
 
-/** 対局終了後のダウンロード・コピー用の KIF。指し手の記録が無ければ空文字 */
+// 1 手に 30 日かける対局は無い。それを超える値は壊れており、KIF の時間表記を指数表記や NaN にする
+const MAX_MOVE_ELAPSED_MS = 30 * 24 * 60 * 60 * 1000;
+
+function isValidMoveElapsedMs(ms: unknown): ms is number {
+    return (
+        typeof ms === "number" && Number.isSafeInteger(ms) && ms >= 0 && ms <= MAX_MOVE_ELAPSED_MS
+    );
+}
+
+/** 数が指し手と合わないか 1 手でも壊れた値を含む消費時間は、どの手の時間も信用できないので使わない */
+function matchingMoveElapsedMs(
+    moveElapsedMs: unknown,
+    moves: readonly string[],
+): number[] | undefined {
+    if (!Array.isArray(moveElapsedMs) || moveElapsedMs.length !== moves.length) return undefined;
+    return moveElapsedMs.every(isValidMoveElapsedMs) ? moveElapsedMs : undefined;
+}
+
+/** 終局の結果。保存された棋譜の reason はサーバーが書いた文字列のまま届く */
+interface KifGameResult {
+    winner: "b" | "w" | null;
+    reason: string;
+}
+
+/** 対局終了後のダウンロード・コピー用の KIF。指し手も終局の結果も無ければ空文字 */
 export function exportGameKif(
-    state: Pick<GameState, "usiMoveLog" | "positionHistory">,
+    state: Pick<GameState, "usiMoveLog" | "positionHistory" | "gameResult">,
     startSfen: string,
     playerNames: { b: string; w: string },
 ): string {
-    if (state.usiMoveLog.length === 0) return "";
+    if (state.usiMoveLog.length === 0 && !state.gameResult) return "";
     return formatKif(
         state.usiMoveLog,
         state.positionHistory.slice(0, state.usiMoveLog.length),
         HANDICAP_PRESETS[startSfen]?.kifName,
         resolveStartSfen(startSfen),
         playerNames,
+        state.gameResult,
     );
 }
 
@@ -354,7 +390,13 @@ export function exportGameKif(
  * 展開後の局面から引く。指し手が無くても手合割と開始局面は書き、再生できなければ null
  */
 export async function exportGameRecordKif(
-    record: { initialSfen: string; moves: string[] },
+    record: {
+        initialSfen: string;
+        moves: string[];
+        result?: KifGameResult | null;
+        /** 保存時の metadata の値をそのまま渡してよい。指し手と合わなければ消費時間を書かない */
+        moveElapsedMs?: unknown;
+    },
     playerNames: { b: string; w: string },
 ): Promise<string | null> {
     const startSfen = resolveStartSfen(record.initialSfen);
@@ -363,13 +405,61 @@ export async function exportGameRecordKif(
     const preset =
         HANDICAP_PRESETS[record.initialSfen] ??
         Object.values(HANDICAP_PRESETS).find((p) => p.sfen === startSfen);
+    const moveElapsedMs = matchingMoveElapsedMs(record.moveElapsedMs, record.moves);
     return formatKif(
-        record.moves.map((usi) => ({ usi })),
+        record.moves.map((usi, i) => ({ usi, elapsedMs: moveElapsedMs?.[i] })),
         history,
         preset?.kifName,
         startSfen,
         playerNames,
+        record.result,
     );
+}
+
+/** 開始局面の手番から、パスも 1 手として数えて最後の手の後の手番を求める */
+function sideToMoveAfter(startSfen: string, moveCount: number): "b" | "w" {
+    const startTurn = startSfen.trim().split(/\s+/)[1] === "w" ? "w" : "b";
+    return moveCount % 2 === 0 ? startTurn : startTurn === "b" ? "w" : "b";
+}
+
+/**
+ * 終局語と「まで」の行は Kifu for Windows が書く形に合わせる。投了・詰み・切れ負けは手番の側が
+ * 負けたことを表すので、手番でない側が負けた（手番外の投了など）ときは終局語を書かない。
+ * 切断に当たる語は無いので、他のソフトが勝敗を読める標準の形にして理由はコメントに残す
+ */
+function kifEnding(result: KifGameResult, sideToMove: "b" | "w"): KifEnding {
+    const { winner, reason } = result;
+    if (winner === null) {
+        return reason === "sennichite"
+            ? { specialMove: "千日手", summary: "千日手" }
+            : { specialMove: "中断", summary: "中断" };
+    }
+    const winnerLabel = winner === "b" ? "先手" : "後手";
+    const loserLabel = winner === "b" ? "後手" : "先手";
+    const loserToMove = winner !== sideToMove;
+    const onLoserTurn = (specialMove: string) => (loserToMove ? { specialMove } : {});
+    switch (reason) {
+        case "resign":
+            return { ...onLoserTurn("投了"), summary: `${winnerLabel}の勝ち` };
+        case "checkmate":
+            return { ...onLoserTurn("詰み"), summary: `${winnerLabel}の勝ち` };
+        case "timeout":
+            return { ...onLoserTurn("切れ負け"), summary: `時間切れにより${winnerLabel}の勝ち` };
+        case "illegal_move":
+            return {
+                specialMove: loserToMove ? "反則負け" : "反則勝ち",
+                summary: `${loserLabel}の反則負け`,
+            };
+        case "oute_sennichite":
+            return {
+                specialMove: loserToMove ? "反則負け" : "反則勝ち",
+                summary: `連続王手の千日手により${loserLabel}の反則負け`,
+            };
+        case "disconnect":
+            return { summary: `${winnerLabel}の勝ち`, comment: "切断" };
+        default:
+            return { summary: `${winnerLabel}の勝ち` };
+    }
 }
 
 function formatKif(
@@ -378,6 +468,7 @@ function formatKif(
     handicap: string | undefined,
     startSfen: string,
     playerNames: { b: string; w: string },
+    result: KifGameResult | null | undefined,
 ): string {
     return exportToKifString(
         moves.map((entry, i) => ({
@@ -388,7 +479,15 @@ function formatKif(
             displayText: "",
         })),
         positionsBefore.map((p) => p.board),
-        { senteName: playerNames.b, goteName: playerNames.w, handicap, startSfen },
+        {
+            senteName: playerNames.b,
+            goteName: playerNames.w,
+            handicap,
+            startSfen,
+            ending: result
+                ? kifEnding(result, sideToMoveAfter(startSfen, moves.length))
+                : undefined,
+        },
     );
 }
 

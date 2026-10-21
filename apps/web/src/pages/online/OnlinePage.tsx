@@ -57,13 +57,13 @@ export default function OnlinePage(): ReactElement {
                                 if (e.key === "Enter") handleJoin();
                             }}
                             placeholder="例: abc123"
-                            className="flex h-10 flex-1 rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            className="flex h-10 min-w-0 flex-1 rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         />
                         <button
                             type="button"
                             onClick={handleJoin}
                             disabled={!joinRoomId.trim()}
-                            className="rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground shadow-sm hover:bg-secondary/80 disabled:pointer-events-none disabled:opacity-50"
+                            className="shrink-0 whitespace-nowrap rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground shadow-sm hover:bg-secondary/80 disabled:pointer-events-none disabled:opacity-50"
                         >
                             参加する
                         </button>

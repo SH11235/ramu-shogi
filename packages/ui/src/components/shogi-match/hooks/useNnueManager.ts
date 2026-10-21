@@ -184,6 +184,9 @@ export function useNnueManager({
 
     // NNUE選択変更時にエンジンを再起動するラッパー（先手）
     const handleSenteNnueSelectionChange = (newSelection: NnueSelection) => {
+        // 利用者が選んだ時点で「保存済みの選択がある」とみなす（解析用と同じ。初めての訪問で
+        // 「簡易AI（駒得）」を選んでも、既定の AI へ戻されないようにする）。
+        hasStoredSenteSelectionRef.current = true;
         setSenteNnueSelection(newSelection);
         // 新しいselectionを明示的に渡す（state更新前に参照されるのを防ぐ）
         void restartEngineForNnue("sente", newSelection);
@@ -191,6 +194,7 @@ export function useNnueManager({
 
     // NNUE選択変更時にエンジンを再起動するラッパー（後手）
     const handleGoteNnueSelectionChange = (newSelection: NnueSelection) => {
+        hasStoredGoteSelectionRef.current = true;
         setGoteNnueSelection(newSelection);
         // 新しいselectionを明示的に渡す（state更新前に参照されるのを防ぐ）
         void restartEngineForNnue("gote", newSelection);

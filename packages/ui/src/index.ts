@@ -38,7 +38,11 @@ export type {
 // input
 // popover
 // position-preset-selector
-export { POSITION_PRESETS, PositionPresetSelector } from "./components/PositionPresetSelector";
+export {
+    onlineStartSfenProblem,
+    POSITION_PRESETS,
+    PositionPresetSelector,
+} from "./components/PositionPresetSelector";
 export { Popover, PopoverContent, PopoverTrigger } from "./components/popover";
 // AboutDialog
 // alert-dialog

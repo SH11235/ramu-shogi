@@ -92,6 +92,21 @@ function AuthenticatedProfileSection({
     );
 }
 
+/**
+ * backend はログインの往復（Google → コールバック）を完了できないと、`/auth?login_error=...` へ戻す。
+ * 細かい理由は backend のログにだけ残し、画面では「やめた」か「失敗した」かだけを伝える。
+ */
+function loginErrorMessage(loginError: string | null): string | null {
+    switch (loginError) {
+        case "cancelled":
+            return "Google でのログインを中止しました。";
+        case "failed":
+            return "ログインを完了できませんでした。時間が経ったか、ログインを始めたのとは別のタブやブラウザで開いた可能性があります。もう一度お試しください。";
+        default:
+            return null;
+    }
+}
+
 export default function AuthPage(): ReactElement {
     const router = useRouter();
     const { session, sessionError, isLoadingSession, refreshSession } = useAuthSession();
@@ -101,6 +116,7 @@ export default function AuthPage(): ReactElement {
     const requiresUsernameSetup = searchParams.get("setup") === "username";
     // ログイン後の戻り先（ログインを始めた画面）。使えない値は捨てて、トップへ戻す。
     const returnPath = readReturnPathFromSearch(searchParams.toString());
+    const loginError = loginErrorMessage(searchParams.get("login_error"));
     const [status, setStatus] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -232,18 +248,21 @@ export default function AuthPage(): ReactElement {
                                     : "Google アカウントでログインすると、元のページに戻ります。"}
                             </p>
                         </div>
+                        {loginError && <StatusBanner variant="error">{loginError}</StatusBanner>}
                         <button
                             type="button"
                             onClick={handleGoogleLogin}
                             className="inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
                         >
-                            Google アカウントでログイン
+                            {loginError
+                                ? "もう一度 Google でログイン"
+                                : "Google アカウントでログイン"}
                         </button>
                         <p className="text-xs text-muted-foreground">
                             ログインすることで{" "}
                             <Link
                                 to="/privacy"
-                                className="underline underline-offset-2 hover:text-foreground"
+                                className="relative underline underline-offset-2 after:absolute after:inset-x-0 after:-inset-y-2.5 hover:text-foreground"
                             >
                                 プライバシーポリシー
                             </Link>

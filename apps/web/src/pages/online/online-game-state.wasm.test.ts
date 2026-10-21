@@ -53,6 +53,7 @@ const CLOCK = {
     lastTickTs: 0,
 };
 const PLAYER_NAMES = { b: "Alice", w: "Bob" };
+const RESULT = { winner: "w", reason: "resign" } as const;
 const STARTPOS_SFEN = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
 
 /** 手数は実装ごとに数え方が違い得るので、盤面・手番・持ち駒だけを比べる */
@@ -209,15 +210,23 @@ describe("オンライン対局の状態（実物の Wasm 局面サービス）"
             );
         });
 
-        it("KIF に開始局面と全ての指し手を出力する", async () => {
-            const state = await restore(await makeSnapshot(startSfen, moves, passRights));
+        it("KIF に開始局面と全ての指し手と終局を出力する", async () => {
+            const state = await restore({
+                ...(await makeSnapshot(startSfen, moves, passRights)),
+                status: "finished",
+                result: RESULT,
+            });
 
             const kif = exportGameKif(state, startSfen, PLAYER_NAMES);
 
             expect(kif).toContain(`手合割：${kifHandicap}`);
-            expect(kif.split("\n").filter((line) => /^ +\d+ /.test(line))).toHaveLength(
-                moves.length,
-            );
+            const numberedLines = kif.split("\n").filter((line) => /^ +\d+ /.test(line));
+            // 投了の行は、投了した先手が手番のときだけ指し手の後に付く
+            const endsWithResign = state.turn === "b";
+            expect(numberedLines).toHaveLength(moves.length + (endsWithResign ? 1 : 0));
+            if (endsWithResign) {
+                expect(numberedLines.at(-1)).toBe(`${String(moves.length + 1).padStart(4)} 投了`);
+            }
             const resolved = resolveStartSfen(startSfen);
             // 平手は開始局面行を書かず、読み込み側は手合割から平手と解釈する
             const exportedStart = resolved === "startpos" ? null : parseSfen(resolved).sfen;
@@ -226,6 +235,7 @@ describe("オンライン対局の状態（実物の Wasm 局面サービス）"
             } else {
                 expect(kif).not.toContain("開始局面：");
             }
+            expect(kif).toContain(`まで${moves.length}手で後手の勝ち`);
             // KIF の読み込みはパスに対応していないので、往復はパスを含まない棋譜で確かめる
             if (!moves.includes("pass")) {
                 const parsed = parseKif(kif);
@@ -235,15 +245,61 @@ describe("オンライン対局の状態（実物の Wasm 局面サービス）"
         });
 
         it("保存された棋譜からも、対局画面と同じ KIF を作る", async () => {
-            const state = await restore(await makeSnapshot(startSfen, moves, passRights));
+            const state = await restore({
+                ...(await makeSnapshot(startSfen, moves, passRights)),
+                status: "finished",
+                result: RESULT,
+            });
             // サーバーは開始局面を展開して保存する
             const initialSfen =
                 startSfen === "startpos" ? STARTPOS_SFEN : resolveStartSfen(startSfen);
 
-            expect(await exportGameRecordKif({ initialSfen, moves }, PLAYER_NAMES)).toBe(
-                exportGameKif(state, startSfen, PLAYER_NAMES),
-            );
+            expect(
+                await exportGameRecordKif({ initialSfen, moves, result: RESULT }, PLAYER_NAMES),
+            ).toBe(exportGameKif(state, startSfen, PLAYER_NAMES));
         });
+
+        it("snapshot から復元した対局と保存された棋譜に、同じ各手の消費時間を書く", async () => {
+            const moveElapsedMs = moves.map((_, i) => (i + 1) * 61_000);
+            const state = await restore({
+                ...(await makeSnapshot(startSfen, moves, passRights)),
+                status: "finished",
+                result: RESULT,
+                moveElapsedMs,
+            });
+            const initialSfen =
+                startSfen === "startpos" ? STARTPOS_SFEN : resolveStartSfen(startSfen);
+
+            const kif = exportGameKif(state, startSfen, PLAYER_NAMES);
+
+            const moveLines = kif.split("\n").filter((line) => /^ +\d+ .*\(/.test(line));
+            expect(moveLines.map((line) => /\( *(\d+:\d\d)\//.exec(line)?.[1])).toEqual(
+                moves.map((_, i) => `${i + 1}:${String(i + 1).padStart(2, "0")}`),
+            );
+            expect(
+                await exportGameRecordKif(
+                    { initialSfen, moves, result: RESULT, moveElapsedMs },
+                    PLAYER_NAMES,
+                ),
+            ).toBe(kif);
+        });
+    });
+
+    it("上手から指す駒落ちの累計時間は、上手と下手それぞれの手を足す", async () => {
+        const kif = await exportGameRecordKif(
+            {
+                initialSfen: resolveStartSfen("handicap:bishop"),
+                moves: ["3c3d", "7g7f", "8c8d"],
+                moveElapsedMs: [10_000, 1_000, 20_000],
+            },
+            PLAYER_NAMES,
+        );
+
+        expect(kif?.split("\n").filter((line) => /^ +\d+ /.test(line))).toEqual([
+            "   1 ３四歩(33)   ( 0:10/00:00:10)",
+            "   2 ７六歩(77)   ( 0:01/00:00:01)",
+            "   3 ８四歩(83)   ( 0:20/00:00:30)",
+        ]);
     });
 
     const PRESETS = ["handicap:bishop", "handicap:rook", "handicap:rook-bishop"];
@@ -259,13 +315,15 @@ describe("オンライン対局の状態（実物の Wasm 局面サービス）"
         ["handicap:bishop", "角落ち"],
         ["handicap:rook", "飛車落ち"],
         ["handicap:rook-bishop", "飛車角落ち"],
-    ])("保存された %s の棋譜を、手合割と開始局面の入った読み込める KIF にする", async (preset, name) => {
+    ])("保存された %s の棋譜を、手合割と開始局面と終局の入った読み込める KIF にする", async (preset, name) => {
         const initialSfen = resolveStartSfen(preset);
         const moves = ["3c3d", "7g7f", "8c8d"];
 
-        const kif = await exportGameRecordKif({ initialSfen, moves }, PLAYER_NAMES);
+        const kif = await exportGameRecordKif({ initialSfen, moves, result: RESULT }, PLAYER_NAMES);
 
         expect(kif).toContain(`手合割：${name}`);
+        // 上手（後手）から指すので、3 手の後は下手（先手）の番で、投了したのは下手
+        expect(kif).toContain("   4 投了\nまで3手で後手の勝ち");
         const parsed = parseKif(kif ?? "");
         expect(parsed.moves).toEqual(moves);
         expect(parsed.startSfen).toBe(parseSfen(initialSfen).sfen);

@@ -10,6 +10,7 @@ import {
 } from "@shogi/match-client";
 import { useEffect, useEffectEvent, useReducer, useRef } from "react";
 import { type GameStartSnapshot, snapshotAtGameStart } from "../components/online-game-state";
+import { onlineStartSfenProblem } from "../components/PositionPresetSelector";
 
 function errorCodeToMessage(code: ErrorCode): string {
     switch (code) {
@@ -95,6 +96,13 @@ type RoomAction =
     | { type: "client_cleared" }
     | { type: "room_changed" };
 
+// 空は「SFEN 直接入力」へ切り替えただけで、まだ局面が入力されていない状態。空の開始局面を
+// エラーで返すサーバーがあり、待機中の接続はエラーを受けると切れる。オンライン対局で使えない
+// 局面はサーバーが黙って捨てるので、送らずに画面で知らせる
+function isSendableStartSfen(startSfen: string): boolean {
+    return startSfen !== "" && onlineStartSfenProblem(startSfen) === null;
+}
+
 const INITIAL_ROOM_STATE: RoomState = {
     snapshot: null,
     joined: false,
@@ -123,9 +131,10 @@ function roomReducer(state: RoomState, action: RoomAction): RoomState {
             return {
                 ...state,
                 localStartSfen: action.startSfen,
-                // 空はサーバーへ送らないので、サーバーの開始局面は前のまま
-                appliedStartSfen:
-                    action.startSfen === "" ? state.appliedStartSfen : action.startSfen,
+                // 空とオンライン対局で使えない局面はサーバーへ送らないので、サーバーの開始局面は前のまま
+                appliedStartSfen: isSendableStartSfen(action.startSfen)
+                    ? action.startSfen
+                    : state.appliedStartSfen,
             };
         case "game_start":
             // 待機中の snapshot から引き継ぐのは観戦者数だけ。局面・手番・時計・設定は、
@@ -521,9 +530,7 @@ export function useRoomConnection({
 
     const handleUpdateStartSfen = (startSfen: string): void => {
         dispatchRoom({ type: "settings_updated", startSfen });
-        // 空は「SFEN 直接入力」へ切り替えただけで、まだ局面が入力されていない状態。
-        // 空の開始局面をエラーで返すサーバーがあり、待機中の接続はエラーを受けると切れる
-        if (startSfen !== "") {
+        if (isSendableStartSfen(startSfen)) {
             clientRef.current?.updateSettings({ startSfen });
         }
     };

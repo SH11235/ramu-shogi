@@ -152,6 +152,19 @@ const makeMocks = () => {
     return { wsInstances, wsFactory, events, callbacks };
 };
 
+describe("decodeSnapshotBlock: 対局が始まっていない部屋", () => {
+    it("Game_Summary も指し手も無い空の block は notStarted にする", () => {
+        const { snapshot } = __test_internals.decodeSnapshotBlock("room-1", []);
+        expect(snapshot.notStarted).toBe(true);
+        expect(snapshot.moves).toEqual([]);
+    });
+
+    it("Game_Summary がある block は notStarted にしない", () => {
+        const { snapshot } = __test_internals.decodeSnapshotBlock("game-1", SAMPLE_SUMMARY_LINES);
+        expect(snapshot.notStarted).toBeUndefined();
+    });
+});
+
 describe("subscribeRshogiLiveGame: snapshot → broadcast → end → close", () => {
     beforeEach(() => {
         vi.useFakeTimers();
@@ -184,6 +197,47 @@ describe("subscribeRshogiLiveGame: snapshot → broadcast → end → close", ()
         expect(events.clocks.length).toBe(1);
         expect(events.clocks[0].remainingMs).toEqual({ sente: 600000, gote: 600000 });
         expect(events.clocks[0].sideToMove).toBe("sente");
+    });
+
+    it("始まっていない部屋の snapshot のあとに最初の指し手が届いたら、snapshot を取り直す", () => {
+        const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+        subscribeRshogiLiveGame(
+            "room-1",
+            { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+            callbacks,
+        );
+        const ws = wsInstances[0];
+        ws.fireOpen();
+        ws.fireLines(["##[MONITOR2] BEGIN room-1", "##[MONITOR2] END"]);
+        expect(events.snapshot[0].notStarted).toBe(true);
+        expect(ws.sent).toEqual(["%%MONITOR2ON room-1\n"]);
+
+        // 対局が始まり、指し手だけが届く。手はそのまま反映し、snapshot を 1 度だけ求め直す。
+        ws.fireLines(["+7776FU,T3", "-3334FU,T2"]);
+        expect(events.moves.map((move) => move.csaMove)).toEqual(["7g7f", "3c3d"]);
+        expect(ws.sent).toEqual(["%%MONITOR2ON room-1\n", "%%MONITOR2ON room-1\n"]);
+
+        // 名前のそろった snapshot が届けば全置換される。
+        ws.fireLines(buildSnapshotLines(["+7776FU,T3", "-3334FU,T2"]));
+        expect(events.snapshot.at(-1)?.meta.senteName).toBe("alice");
+        expect(events.snapshot.at(-1)?.notStarted).toBeUndefined();
+    });
+
+    it("始まっていない部屋で後手番から始まった対局でも、最初の指し手で snapshot を取り直す", () => {
+        const { wsInstances, wsFactory, events, callbacks } = makeMocks();
+        subscribeRshogiLiveGame(
+            "room-1",
+            { apiBaseUrl: "https://example.com", webSocketFactory: wsFactory },
+            callbacks,
+        );
+        const ws = wsInstances[0];
+        ws.fireOpen();
+        ws.fireLines(["##[MONITOR2] BEGIN room-1", "##[MONITOR2] END"]);
+
+        // 開始前の仮の局面（平手・先手番）では後手の手を読めないが、それでも取り直しは求める。
+        ws.fireLines(["-3334FU,T2"]);
+        expect(events.moves).toEqual([]);
+        expect(ws.sent).toEqual(["%%MONITOR2ON room-1\n", "%%MONITOR2ON room-1\n"]);
     });
 
     it("To_Move が後手の snapshot を後手の move 行から復元する", () => {

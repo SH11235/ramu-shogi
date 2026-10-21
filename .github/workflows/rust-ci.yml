@@ -158,7 +158,7 @@ jobs:
         if: always()
         run: sccache --show-stats || true
 
-  # Note: packages/rust-core now only contains engine-wasm (thin wrapper for rshogi-core)
+  # Note: packages/rust-core only contains thin wrappers for rshogi-core (engine-wasm, shogi-rules-wasm)
   # Most tests are in rshogi-core (https://github.com/SH11235/rshogi)
   test:
     name: Test
@@ -267,3 +267,5 @@ jobs:
       - name: Build wasm bindings
         run: node scripts/build-wasm.mjs
         working-directory: packages/engine-wasm
+      - name: Build rules wasm
+        run: cargo build --profile rules-wasm --target wasm32-unknown-unknown -p shogi-rules-wasm
