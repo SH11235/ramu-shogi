@@ -151,7 +151,12 @@ export function createAnalysisController(options: InteractiveAnalysisOptions) {
             emit();
             return;
         }
-        if (active && keyOf(active.session.target) === keyOf(selected)) return;
+        if (active && keyOf(active.session.target) === keyOf(selected)) {
+            // 同じ局面を解析中の開始要求は、いまの run が受け取ったことにする
+            // （予算を使い切ったときに追従を解除し、勝手に次の局面を解析しないように）。
+            active.followRequest = followRequest;
+            return;
+        }
         await stop(true);
         if (!following || disposed || !selected) return;
         phase = "preparing";

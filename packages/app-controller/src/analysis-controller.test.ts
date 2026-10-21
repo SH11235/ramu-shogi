@@ -277,4 +277,15 @@ describe("対話解析 controller", () => {
         expect(client.analysis?.resume).not.toHaveBeenCalled();
         expect(launch).toHaveBeenCalledTimes(2);
     });
+    it("解析中の同じ局面でもう一度開始しても、予算を使い切ったら追従をやめる", async () => {
+        const { controller, runs, launch } = setup();
+        await controller.select(target("A"));
+        await controller.start({ type: "nodes", nodes: 100 });
+        await controller.start({ type: "nodes", nodes: 100 });
+        runs[0]?.complete();
+        await vi.waitFor(() => expect(controller.getState().phase).toBe("paused"));
+        expect(controller.getState().following).toBe(false);
+        await controller.select(target("B"));
+        expect(launch).toHaveBeenCalledTimes(1);
+    });
 });
