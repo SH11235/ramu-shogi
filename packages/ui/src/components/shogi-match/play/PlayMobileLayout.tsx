@@ -2,7 +2,7 @@
  * 対局画面（`screen="play"`）のスマホレイアウト。
  *
  * 進み具合ごとに縦に並べる:
- * - 設定: 設定の欄 → 盤（触れない）
+ * - 設定: 設定の欄だけ（盤は出さない。設定と対局開始を 1 画面に収める）
  * - 局面編集: 盤 → 編集の欄
  * - 対局中: 時計 → 盤 → 棋譜 1 行 → 操作 → ヒント
  * - 終局後: 盤 → 棋譜の送り → 結果の欄
@@ -89,7 +89,8 @@ export function PlayMobileLayout({
         <div
             inert={phase === "setup" || phase === "finished"}
             // 盤は幅だけでなく高さにも合わせる（横向きなどの低い画面で、盤が画面に入らないのを避ける）。
-            className={`relative mx-auto flex w-full max-w-[max(280px,calc(100dvh-285px))] justify-center ${PLAY_HAND_ZONES}`}
+            // 設定中は隠すだけにして、対局を始めたときに盤を作り直さない。
+            className={`relative mx-auto w-full max-w-[max(280px,calc(100dvh-285px))] justify-center ${PLAY_HAND_ZONES} ${phase === "setup" ? "hidden" : "flex"}`}
         >
             <MobileBoardSection
                 grid={grid}
@@ -137,17 +138,12 @@ export function PlayMobileLayout({
                 （段階が変わっても盤を作り直さない）。 */}
             {phase === "setup" && (
                 <>
-                    <PlaySetupPanel
-                        onOpenAdvanced={() => setIsAdvancedOpen(true)}
-                        className="px-2 pb-2 pt-3"
-                    />
                     <PlayMessage />
-                    <div className="flex items-center justify-between gap-2 px-1">
-                        <span className="text-sm text-wafuu-sumi-light">
-                            {play?.isCustomStart ? "指定の局面から始めます" : "開始局面（平手）"}
-                        </span>
-                        <PlayBoardTools />
-                    </div>
+                    <PlaySetupPanel
+                        rows
+                        onOpenAdvanced={() => setIsAdvancedOpen(true)}
+                        className="flex-1 px-2 pt-3"
+                    />
                 </>
             )}
             {isEditing && (
@@ -246,7 +242,10 @@ export function PlayMobileLayout({
                 </div>
             )}
 
-            {displaySettings.showSearchInfo && <div className="min-h-10 w-full">{searchInfo}</div>}
+            {/* 設定中は AI が考えないので出さない（設定を 1 画面に収めるため、空の枠も取らない）。 */}
+            {displaySettings.showSearchInfo && phase !== "setup" && (
+                <div className="min-h-10 w-full">{searchInfo}</div>
+            )}
 
             {/* 詳細設定（先後それぞれの担当・秒数・変則ルール・評価関数の管理・表示） */}
             <BottomSheet
