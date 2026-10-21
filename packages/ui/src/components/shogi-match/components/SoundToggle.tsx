@@ -18,6 +18,15 @@ const MODE_OPTIONS: Array<{ mode: SoundMode; label: string }> = [
     { mode: "off", label: "OFF" },
 ];
 
+const KIFU_NAVIGATION_KEYS = new Set([
+    "ArrowUp",
+    "ArrowDown",
+    "ArrowLeft",
+    "ArrowRight",
+    "Home",
+    "End",
+]);
+
 const ICON_PROPS = {
     fill: "none",
     stroke: "currentColor",
@@ -129,6 +138,8 @@ export function SoundToggle(): ReactElement {
     };
 
     const moveFocus = (event: KeyboardEvent<HTMLDivElement>) => {
+        // 棋譜の矢印キー送りは document で聞いているので、メニューを開いている間は背後の局面を動かさない
+        if (KIFU_NAVIGATION_KEYS.has(event.key)) event.stopPropagation();
         const items = [
             ...event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitemradio"]'),
         ];
@@ -141,8 +152,6 @@ export function SoundToggle(): ReactElement {
         }[event.key];
         if (!target) return;
         event.preventDefault();
-        // 棋譜の矢印キー送りは document で聞いているので、メニュー内の移動で局面まで動かさない
-        event.stopPropagation();
         target.focus();
     };
 

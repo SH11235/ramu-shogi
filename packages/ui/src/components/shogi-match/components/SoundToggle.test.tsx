@@ -80,7 +80,9 @@ describe("SoundToggle", () => {
             const onDocumentKeyDown = vi.fn();
             document.addEventListener("keydown", onDocumentKeyDown);
             fireEvent.click(screen.getByRole("button", { name: "着手音: 犬" }));
-            fireEvent.keyDown(document.activeElement as Element, { key: "ArrowDown" });
+            for (const key of ["ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End"]) {
+                fireEvent.keyDown(document.activeElement as Element, { key });
+            }
             document.removeEventListener("keydown", onDocumentKeyDown);
             expect(onDocumentKeyDown).not.toHaveBeenCalled();
         });
