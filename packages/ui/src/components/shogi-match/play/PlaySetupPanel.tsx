@@ -12,6 +12,7 @@ import type { ReactElement, ReactNode } from "react";
 import { useEffect, useEffectEvent, useState } from "react";
 import { Button } from "../../button";
 import { NativeSelect } from "../../native-select";
+import { SoundToggle } from "../components/SoundToggle";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import { PLAY_HEADING, PLAY_PRIMARY_BUTTON, PLAY_TEXT_LINK } from "./playStyles";
@@ -311,7 +312,13 @@ export function PlaySetupPanel({
                           ? "人と人で対局する"
                           : "AI 同士の対局を見る"}
                 </h1>
-                {rows && <span className="text-[13px]">{advancedLink}</span>}
+                {/* 音の切り替えも、対局開始前に止められるよう見出しの行に置く（AI が先手なら初手から鳴る）。 */}
+                {rows && (
+                    <span className="flex items-center gap-2 text-[13px]">
+                        <SoundToggle />
+                        {advancedLink}
+                    </span>
+                )}
             </div>
             {/* 棋譜を調べたくて来た人が、最初に気づける位置に置く。行の形（スマホ）では、
                 設定を 1 画面に収めるために出さない（研究ノートへはメニューから行ける）。 */}
