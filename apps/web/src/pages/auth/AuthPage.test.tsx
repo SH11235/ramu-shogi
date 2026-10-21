@@ -31,8 +31,8 @@ vi.mock("../../hooks/useAuthSession", () => ({
 
 const { default: AuthPage } = await import("./AuthPage");
 
-/** 「Google アカウントでログイン」を押して、backend の開始エンドポイントへ渡した戻り先を返す。 */
-const startLoginAndReadNext = (): string | null => {
+/** ログインのボタンを押して、backend の開始エンドポイントへ渡した戻り先を返す。 */
+const startLoginAndReadNext = (buttonName = "Google アカウントでログイン"): string | null => {
     const assign = vi.fn();
     vi.stubGlobal("location", {
         pathname: window.location.pathname,
@@ -41,7 +41,7 @@ const startLoginAndReadNext = (): string | null => {
         assign,
     });
     render(<AuthPage />);
-    fireEvent.click(screen.getByRole("button", { name: "Google アカウントでログイン" }));
+    fireEvent.click(screen.getByRole("button", { name: buttonName }));
 
     expect(assign).toHaveBeenCalledTimes(1);
     const url = new URL(String(assign.mock.calls[0]?.[0]), "https://app.invalid");
@@ -77,6 +77,39 @@ describe("AuthPage", () => {
     it("戻り先が無ければ、これまでどおりトップへ戻す", () => {
         expect(startLoginAndReadNext()).toBe("/");
         expect(screen.getByText(/トップページに移動します/)).toBeTruthy();
+    });
+
+    it("ログインに失敗して戻されたら、理由を出して、同じ戻り先でやり直せる", () => {
+        window.history.replaceState(null, "", "/auth?login_error=failed&next=%2Fgames");
+
+        expect(startLoginAndReadNext("もう一度 Google でログイン")).toBe("/games");
+        expect(screen.getByRole("alert").textContent).toContain("ログインを完了できませんでした");
+    });
+
+    it("Google でやめて戻されたら、中止したことを伝える", () => {
+        window.history.replaceState(null, "", "/auth?login_error=cancelled");
+
+        render(<AuthPage />);
+
+        expect(screen.getByRole("alert").textContent).toBe("Google でのログインを中止しました。");
+    });
+
+    it.each(["unknown", "constructor"])("知らない login_error（%s）では何も出さない", (value) => {
+        window.history.replaceState(null, "", `/auth?login_error=${value}`);
+
+        render(<AuthPage />);
+
+        expect(screen.queryByRole("alert")).toBeNull();
+        expect(screen.getByRole("button", { name: "Google アカウントでログイン" })).toBeTruthy();
+    });
+
+    it("ログイン済みなら、失敗の表示は出さない", () => {
+        window.history.replaceState(null, "", "/auth?login_error=failed");
+        session = { authenticated: true, user: { id: "user-1", displayName: "ラム" } };
+
+        render(<AuthPage />);
+
+        expect(screen.queryByRole("alert")).toBeNull();
     });
 
     it.each([
