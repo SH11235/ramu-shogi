@@ -96,7 +96,7 @@ export function PlayPCLayout({
         <section
             ref={rootRef}
             // 盤は画面の高さに合わせる（低い画面で縦にはみ出さず、高い画面で小さく残らないように）。
-            className={`${matchLayoutClasses} [--shogi-cell-size:clamp(34px,calc((100dvh-400px)/9),72px)] min-[1700px]:[--panel-width:460px]`}
+            className={`${matchLayoutClasses} [--shogi-cell-size:clamp(34px,calc((100dvh-300px)/9),72px)] min-[1700px]:[--panel-width:460px]`}
         >
             <div className="w-full overflow-x-auto">
                 <div className="mx-auto flex w-max items-start gap-14 px-4 py-2">
@@ -140,6 +140,8 @@ export function PlayPCLayout({
                                         bottomHand={{ ...getHandInfo("bottom"), isAI: false }}
                                         hintMove={hintMove}
                                         handSize="medium"
+                                        // 横に余裕があるので、持ち駒は盤の左右に縦に置く（盤の上下を詰めて 1 画面に収める）。
+                                        handPlacement="sides"
                                         // パス権の残りは、対局者の帯に言葉で出す（盤のそばの ● は出さない）。
                                         passRightsSettings={undefined}
                                         passRights={position.passRights}
@@ -161,6 +163,7 @@ export function PlayPCLayout({
                                             onToStart={navigationHandlers.goToStart}
                                             onToEnd={navigationHandlers.goToEnd}
                                             canGoForward={navigationState.canGoForward}
+                                            size="large"
                                         />
                                     )}
                                     {phase !== "playing" && phase !== "paused" && <PlayMessage />}

@@ -50,6 +50,46 @@ for (const viewport of [
     });
 }
 
+test("持ち時間の「指定」は時間だけを聞き、決めた時間が選択肢に出て、設定は 1 画面に収まる", async ({
+    page,
+}) => {
+    await page.setViewportSize({ width: 375, height: 553 });
+    await page.goto("/play");
+    await page.getByRole("button", { name: "対局開始", exact: true }).waitFor();
+    const myTime = page.getByRole("group", { name: "あなたの持ち時間" });
+    await myTime.getByRole("button", { name: "指定", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "あなたの持ち時間を指定" });
+    await dialog.getByLabel("持ち時間").fill("5");
+    await dialog.getByLabel("＋ 1手").fill("20");
+    await dialog.getByRole("button", { name: "この時間にする" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(myTime.getByRole("button", { name: "5分+20秒" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+    );
+    await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollHeight))
+        .toBeLessThanOrEqual(553);
+});
+
+test("開始局面の編集が縦にはみ出さず、先に指す側を対局者で選べる", async ({ page }) => {
+    await page.setViewportSize({ width: 430, height: 717 });
+    await page.goto("/play");
+    await page.getByRole("button", { name: "対局開始", exact: true }).waitFor();
+    await page.getByLabel("相手", { exact: true }).selectOption("material");
+    await page.getByLabel("開始局面", { exact: true }).selectOption("edit");
+    const decide = page.getByRole("button", { name: "この局面に決める", exact: true });
+    await expect(decide).toBeInViewport({ ratio: 1 });
+    await page.getByRole("button", { name: /^簡易AI（後手）$/ }).click();
+    await expect(page.getByRole("button", { name: /^簡易AI（後手）$/ })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+    );
+    await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollHeight))
+        .toBeLessThanOrEqual(717);
+});
+
 test("小画面の対局中、操作が画面の中に留まり、探索情報の詳細も読める", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 568 });
     await page.goto("/play");

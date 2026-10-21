@@ -1,4 +1,5 @@
 import type { LastMove, PieceType, Player, Square } from "@shogi/app-core";
+import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 import type { ShogiBoardCell, ShogiBoardMoveShadow, ShogiBoardPiece } from "../../shogi-board";
 import { ShogiBoard } from "../../shogi-board";
@@ -63,6 +64,11 @@ interface PCBoardContentProps {
     turn?: Player;
     /** 持ち駒の欄の大きさ（省略時は、編集中は "edit"、それ以外は "normal"） */
     handSize?: "medium" | "normal";
+    /**
+     * 持ち駒の置き場所。"rows" は盤の上下に横長で、"sides" は盤の左右に縦長で置く
+     * （上側の持ち駒は盤の左上、下側の持ち駒は盤の右下。実物の駒台と同じ向き）。
+     */
+    handPlacement?: "rows" | "sides";
     /** ヒントとして盤に示す手（対局画面） */
     hintMove?: { from?: string | null; to: string; side?: Player } | null;
 }
@@ -102,135 +108,165 @@ export function PCBoardContent({
     turn,
     hintMove,
     handSize = "normal",
+    handPlacement = "rows",
 }: PCBoardContentProps): ReactElement {
-    return (
-        <>
-            {/* 上側の持ち駒 */}
-            <div data-zone={`hand-${topHand.owner}`} className="w-full">
-                <HandPiecesDisplay
-                    owner={topHand.owner}
-                    hand={topHand.hand}
-                    selectedPiece={selection?.kind === "hand" ? selection.piece : null}
-                    isActive={topHand.isActive}
-                    onHandSelect={onHandSelect}
-                    onPiecePointerDown={isEditModeActive ? onHandPiecePointerDown : undefined}
-                    isEditMode={isEditModeActive}
-                    isMatchRunning={isMatchRunning}
-                    hideEmptyPieces={hideEmptyHandPieces}
-                    onIncrement={
-                        onIncrementHand
-                            ? (piece) => onIncrementHand(topHand.owner, piece)
-                            : undefined
-                    }
-                    onDecrement={
-                        onDecrementHand
-                            ? (piece) => onDecrementHand(topHand.owner, piece)
-                            : undefined
-                    }
-                    flipBoard={flipBoard}
-                    size={isEditModeActive ? "edit" : handSize}
-                    isAI={topHand.isAI}
-                />
-                {/* パス権表示（上側プレイヤー） */}
-                {passRightsSettings?.enabled &&
-                    (passRightsSettings.senteInitialCount > 0 ||
-                        passRightsSettings.goteInitialCount > 0) &&
-                    passRights && (
-                        <div className="flex justify-end mt-1">
-                            <PassRightsDisplay
-                                remaining={passRights[topHand.owner]}
-                                max={
-                                    topHand.owner === "sente"
-                                        ? passRightsSettings.senteInitialCount
-                                        : passRightsSettings.goteInitialCount
-                                }
-                                isActive={turn === topHand.owner}
-                                compact
-                            />
-                        </div>
-                    )}
-            </div>
-
-            {/* 盤面 */}
-            <ShogiBoard
-                grid={grid}
-                selectedSquare={
-                    isEditModeActive && editFromSquare
-                        ? editFromSquare
-                        : selection?.kind === "square"
-                          ? selection.square
-                          : null
+    const sides = handPlacement === "sides";
+    // 縦の駒台は、空のときも同じ幅を取る（駒を取ったときに盤が横に動かないように）。
+    // 駒（マスの 0.8 倍）に、駒の枠と欄の余白・枠線でおよそ 20px。編集中は ± の 2 つ（16px × 2）を足して 52px。
+    const sideZoneClass = isEditModeActive
+        ? "w-[calc(var(--shogi-cell-size,40px)*0.8+52px)]"
+        : "w-[calc(var(--shogi-cell-size,40px)*0.8+20px)]";
+    const topHandBlock = (
+        <div
+            data-zone={`hand-${topHand.owner}`}
+            className={sides ? cn("shrink-0 self-start", sideZoneClass) : "w-full"}
+        >
+            <HandPiecesDisplay
+                owner={topHand.owner}
+                hand={topHand.hand}
+                selectedPiece={selection?.kind === "hand" ? selection.piece : null}
+                isActive={topHand.isActive}
+                onHandSelect={onHandSelect}
+                onPiecePointerDown={isEditModeActive ? onHandPiecePointerDown : undefined}
+                isEditMode={isEditModeActive}
+                isMatchRunning={isMatchRunning}
+                hideEmptyPieces={hideEmptyHandPieces}
+                onIncrement={
+                    onIncrementHand ? (piece) => onIncrementHand(topHand.owner, piece) : undefined
                 }
-                lastMove={
-                    displaySettings.highlightLastMove && lastMove
-                        ? {
-                              from: lastMove.from ?? undefined,
-                              to: lastMove.to,
-                          }
+                onDecrement={
+                    onDecrementHand ? (piece) => onDecrementHand(topHand.owner, piece) : undefined
+                }
+                flipBoard={flipBoard}
+                size={isEditModeActive ? "edit" : handSize}
+                isAI={topHand.isAI}
+                vertical={sides}
+            />
+            {/* パス権表示（上側プレイヤー） */}
+            {passRightsSettings?.enabled &&
+                (passRightsSettings.senteInitialCount > 0 ||
+                    passRightsSettings.goteInitialCount > 0) &&
+                passRights && (
+                    <div className="flex justify-end mt-1">
+                        <PassRightsDisplay
+                            remaining={passRights[topHand.owner]}
+                            max={
+                                topHand.owner === "sente"
+                                    ? passRightsSettings.senteInitialCount
+                                    : passRightsSettings.goteInitialCount
+                            }
+                            isActive={turn === topHand.owner}
+                            compact
+                        />
+                    </div>
+                )}
+        </div>
+    );
+
+    const board = (
+        <ShogiBoard
+            grid={grid}
+            selectedSquare={
+                isEditModeActive && editFromSquare
+                    ? editFromSquare
+                    : selection?.kind === "square"
+                      ? selection.square
+                      : null
+            }
+            lastMove={
+                displaySettings.highlightLastMove && lastMove
+                    ? {
+                          from: lastMove.from ?? undefined,
+                          to: lastMove.to,
+                      }
+                    : undefined
+            }
+            promotionSquare={promotionSelection?.to ?? null}
+            onSelect={onSquareSelect}
+            onPromotionChoice={onPromotionChoice}
+            flipBoard={flipBoard}
+            onPiecePointerDown={isEditModeActive ? onPiecePointerDown : undefined}
+            onPieceTogglePromote={isEditModeActive ? onPieceTogglePromote : undefined}
+            isDraggable={isEditModeActive}
+            squareNotation={displaySettings.squareNotation}
+            showBoardLabels={displaySettings.showBoardLabels}
+            moveShadow={isEditModeActive ? null : moveShadow}
+            hintMove={hintMove}
+        />
+    );
+    const note = candidateNote ? (
+        <div className="text-xs text-muted-foreground text-center">{candidateNote}</div>
+    ) : null;
+
+    const bottomHandBlock = (
+        <div
+            data-zone={`hand-${bottomHand.owner}`}
+            className={sides ? cn("shrink-0 self-end", sideZoneClass) : "w-full"}
+        >
+            <HandPiecesDisplay
+                owner={bottomHand.owner}
+                hand={bottomHand.hand}
+                selectedPiece={selection?.kind === "hand" ? selection.piece : null}
+                isActive={bottomHand.isActive}
+                onHandSelect={onHandSelect}
+                onPiecePointerDown={isEditModeActive ? onHandPiecePointerDown : undefined}
+                isEditMode={isEditModeActive}
+                isMatchRunning={isMatchRunning}
+                hideEmptyPieces={hideEmptyHandPieces}
+                onIncrement={
+                    onIncrementHand
+                        ? (piece) => onIncrementHand(bottomHand.owner, piece)
                         : undefined
                 }
-                promotionSquare={promotionSelection?.to ?? null}
-                onSelect={onSquareSelect}
-                onPromotionChoice={onPromotionChoice}
+                onDecrement={
+                    onDecrementHand
+                        ? (piece) => onDecrementHand(bottomHand.owner, piece)
+                        : undefined
+                }
                 flipBoard={flipBoard}
-                onPiecePointerDown={isEditModeActive ? onPiecePointerDown : undefined}
-                onPieceTogglePromote={isEditModeActive ? onPieceTogglePromote : undefined}
-                isDraggable={isEditModeActive}
-                squareNotation={displaySettings.squareNotation}
-                showBoardLabels={displaySettings.showBoardLabels}
-                moveShadow={isEditModeActive ? null : moveShadow}
-                hintMove={hintMove}
+                size={isEditModeActive ? "edit" : handSize}
+                isAI={bottomHand.isAI}
+                vertical={sides}
             />
+            {/* パス権表示（下側プレイヤー） */}
+            {passRightsSettings?.enabled &&
+                (passRightsSettings.senteInitialCount > 0 ||
+                    passRightsSettings.goteInitialCount > 0) &&
+                passRights && (
+                    <div className="flex justify-start mt-1">
+                        <PassRightsDisplay
+                            remaining={passRights[bottomHand.owner]}
+                            max={
+                                bottomHand.owner === "sente"
+                                    ? passRightsSettings.senteInitialCount
+                                    : passRightsSettings.goteInitialCount
+                            }
+                            isActive={turn === bottomHand.owner}
+                            compact
+                        />
+                    </div>
+                )}
+        </div>
+    );
 
-            {candidateNote ? (
-                <div className="text-xs text-muted-foreground text-center">{candidateNote}</div>
-            ) : null}
-
-            {/* 下側の持ち駒 */}
-            <div data-zone={`hand-${bottomHand.owner}`} className="w-full">
-                <HandPiecesDisplay
-                    owner={bottomHand.owner}
-                    hand={bottomHand.hand}
-                    selectedPiece={selection?.kind === "hand" ? selection.piece : null}
-                    isActive={bottomHand.isActive}
-                    onHandSelect={onHandSelect}
-                    onPiecePointerDown={isEditModeActive ? onHandPiecePointerDown : undefined}
-                    isEditMode={isEditModeActive}
-                    isMatchRunning={isMatchRunning}
-                    hideEmptyPieces={hideEmptyHandPieces}
-                    onIncrement={
-                        onIncrementHand
-                            ? (piece) => onIncrementHand(bottomHand.owner, piece)
-                            : undefined
-                    }
-                    onDecrement={
-                        onDecrementHand
-                            ? (piece) => onDecrementHand(bottomHand.owner, piece)
-                            : undefined
-                    }
-                    flipBoard={flipBoard}
-                    size={isEditModeActive ? "edit" : handSize}
-                    isAI={bottomHand.isAI}
-                />
-                {/* パス権表示（下側プレイヤー） */}
-                {passRightsSettings?.enabled &&
-                    (passRightsSettings.senteInitialCount > 0 ||
-                        passRightsSettings.goteInitialCount > 0) &&
-                    passRights && (
-                        <div className="flex justify-start mt-1">
-                            <PassRightsDisplay
-                                remaining={passRights[bottomHand.owner]}
-                                max={
-                                    bottomHand.owner === "sente"
-                                        ? passRightsSettings.senteInitialCount
-                                        : passRightsSettings.goteInitialCount
-                                }
-                                isActive={turn === bottomHand.owner}
-                                compact
-                            />
-                        </div>
-                    )}
+    if (sides) {
+        return (
+            <div className="flex items-stretch gap-2">
+                {topHandBlock}
+                <div className="flex flex-col items-center gap-1">
+                    {board}
+                    {note}
+                </div>
+                {bottomHandBlock}
             </div>
+        );
+    }
+    return (
+        <>
+            {topHandBlock}
+            {board}
+            {note}
+            {bottomHandBlock}
         </>
     );
 }

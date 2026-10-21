@@ -31,7 +31,7 @@ import {
 } from "./PlayControls";
 import { PlayHintButton, PlayHintLine, usePlayHintMove } from "./PlayHintCard";
 import { PlayMyStatus, PlayPlayerBar } from "./PlayPlayerBar";
-import { PlayResultCard, PlayResultLinks } from "./PlayResult";
+import { PlayResultCard, PlayResultHeadline, PlayResultLinks } from "./PlayResult";
 import { PlaySetupPanel } from "./PlaySetupPanel";
 import { PLAY_HAND_ZONES, PLAY_HEADING } from "./playStyles";
 
@@ -90,7 +90,7 @@ export function PlayMobileLayout({
             inert={phase === "setup" || phase === "finished"}
             // 盤は幅だけでなく高さにも合わせる（横向きなどの低い画面で、盤が画面に入らないのを避ける）。
             // 設定中は隠すだけにして、対局を始めたときに盤を作り直さない。
-            className={`relative mx-auto w-full max-w-[max(280px,calc(100dvh-285px))] justify-center ${PLAY_HAND_ZONES} ${phase === "setup" ? "hidden" : "flex"}`}
+            className={`relative mx-auto w-full ${isEditing ? "max-w-[max(260px,calc(100dvh-430px))]" : "max-w-[max(280px,calc(100dvh-285px))]"} justify-center ${PLAY_HAND_ZONES} ${phase === "setup" ? "hidden" : "flex"}`}
         >
             <MobileBoardSection
                 grid={grid}
@@ -164,7 +164,12 @@ export function PlayMobileLayout({
                     {/* 相手の帯と、盤の向き・音。対局中は棋譜の帯を出さない（直前の手は盤に示す。
                         縦を詰めて、盤と操作を 1 画面に収める）。 */}
                     <div className="flex items-center gap-1">
-                        <PlayPlayerBar position="top" className="min-w-0 flex-1" />
+                        {/* 終局後は、相手の帯の場所に結果を出す（最初に目が行く所。高さは同じで盤は動かない）。 */}
+                        {phase === "finished" ? (
+                            <PlayResultHeadline className="min-w-0 flex-1 px-1" />
+                        ) : (
+                            <PlayPlayerBar position="top" className="min-w-0 flex-1" />
+                        )}
                         <PlayBoardTools />
                     </div>
                 </>
@@ -186,13 +191,9 @@ export function PlayMobileLayout({
             )}
             {phase === "finished" && (
                 <>
-                    {/* 終局の結果と次の一歩は、対局中の操作と同じ位置（画面の下端）に出す。
-                        盤は動かさない。 */}
-                    <div className="sticky bottom-0 z-10 mt-auto border-t border-wafuu-border bg-background pb-1 pt-2">
-                        {/* 下端に留めるのは結果と主な操作だけ（小さい画面で盤の下の段を隠さないように）。 */}
-                        <PlayResultCard compact hideLinks className="px-1" />
-                    </div>
-                    <div className="flex justify-center">
+                    {/* 次の一歩（主な操作と振り返りの送り）は、対局中の操作と同じ下端に、押しやすい大きさで留める。盤は動かさない。 */}
+                    <div className="sticky bottom-0 z-10 mt-auto flex flex-col gap-1.5 border-t border-wafuu-border bg-background pb-1 pt-1.5">
+                        <PlayResultCard compact hideLinks hideSummary className="px-1" />
                         <KifuNavigationToolbar
                             currentPly={navigationState.currentPly}
                             totalPly={navigationState.totalPly}
@@ -201,6 +202,7 @@ export function PlayMobileLayout({
                             onToStart={navigationHandlers.goToStart}
                             onToEnd={navigationHandlers.goToEnd}
                             canGoForward={navigationState.canGoForward}
+                            size="large"
                         />
                     </div>
                     <MobileKifuBar
