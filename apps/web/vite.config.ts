@@ -5,6 +5,7 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
 import { defineConfig, loadEnv } from "vite";
+import { SHOGI_BOARD_MODULES } from "./shogi-board-chunk";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -106,6 +107,19 @@ function manualChunks(id: string): string | undefined {
         )
     ) {
         return "ui-base";
+    }
+
+    // 盤（ShogiBoard）と、盤が使う駒・座標・局面変換の小さな util。トップページの装飾の盤（HeroBoard）が
+    // 使う。shogi-match/ 配下にあるものも、下の shogi-match ルールより前に分けないと、盤を出すだけで
+    // shogi-match（~530KB）を丸ごと読み込む。一覧と、そのファイルが import してよいものは shogi-board-chunk.ts。
+    // shogi-match/ のほかのファイルを import すると、2 つの chunk が互いを読み込む（ビルドは通り、初期化の順に
+    // よっては本番だけ落ちうる）ので、shogi-board-chunk.test.ts で確かめる。
+    if (
+        SHOGI_BOARD_MODULES.some((file) =>
+            normalizedId.endsWith(`/packages/ui/src/components/${file}`),
+        )
+    ) {
+        return "shogi-board";
     }
 
     // ShogiMatch は本体ファイル `shogi-match.tsx` と `shogi-match/` 配下(hooks/utils
