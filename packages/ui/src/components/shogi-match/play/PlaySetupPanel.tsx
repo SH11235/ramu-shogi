@@ -15,7 +15,7 @@ import { NativeSelect } from "../../native-select";
 import { SoundToggle } from "../components/SoundToggle";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
-import { formatClock, PlayTimeDialog } from "./PlayTimeDialog";
+import { formatClock, isDialogRepresentable, PlayTimeDialog } from "./PlayTimeDialog";
 import {
     PLAY_HEADING,
     PLAY_OUTLINE_BUTTON,
@@ -129,8 +129,16 @@ const timeOptions = (choices: TimeChoice[], currentId: string | null, currentLab
     { id: CUSTOM_TIME_ID, label: currentId === null ? currentLabel : "指定" },
 ];
 
-/** AI の考慮時間を、選択肢と同じ書き方（「45秒」）で書く。 */
-const formatAiTime = (byoyomiMs: number): string => `${Math.floor(byoyomiMs / 1000)}秒`;
+type Clock = { mainMs: number; byoyomiMs: number; enabled: boolean };
+
+/** AI の考慮時間を、選択肢と同じ書き方（「45秒」）で書く。持ち時間があればそれも書く。 */
+const formatAiTime = (clock: Clock): string =>
+    clock.mainMs === 0
+        ? `${Math.round(clock.byoyomiMs / 1000)}秒`
+        : formatClock(clock.mainMs, clock.byoyomiMs);
+
+const sameClock = (a: Clock, b: Clock): boolean =>
+    a.enabled === b.enabled && a.mainMs === b.mainMs && a.byoyomiMs === b.byoyomiMs;
 
 type TimeTarget = "ai" | "my" | "both" | "bothAi";
 
@@ -165,7 +173,13 @@ export function PlaySetupPanel({
     const [randomSide, setRandomSide] = useState(false);
     const [pendingStart, setPendingStart] = useState(false);
     const [pendingNotice, setPendingNotice] = useState<string | undefined>(undefined);
-    const [timeDialog, setTimeDialog] = useState<TimeTarget | null>(null);
+    // 閉じる間も題名と中身を保つため、開閉と対象を分けて持つ。
+    const [timeDialog, setTimeDialogTarget] = useState<TimeTarget>("my");
+    const [timeDialogOpen, setTimeDialogOpen] = useState(false);
+    const setTimeDialog = (target: TimeTarget) => {
+        setTimeDialogTarget(target);
+        setTimeDialogOpen(true);
+    };
     const startMatch = useEffectEvent(() => {
         play?.startMatch(pendingNotice);
         setPendingNotice(undefined);
@@ -261,12 +275,20 @@ export function PlaySetupPanel({
                 </button>
             </p>
         );
-    // 時間のダイアログは、いまの時間から始める。無制限のときは、よく使う「10分＋30秒」から始める。
+    // 時間のダイアログは、いまの時間から始める。分と秒の入力で書き表せないとき（無制限・秒単位の持ち時間）は、
+    // よく使う時間から始める（そのまま決めても、いまの時間を黙って丸めないように）。
+    const isAiDialog = timeDialog === "ai" || timeDialog === "bothAi";
+    const currentDialogClock = isAiDialog ? setup.aiClock : setup.myClock;
     const dialogClock =
-        timeDialog === "ai" || timeDialog === "bothAi"
-            ? setup.aiClock
-            : setup.myClock.enabled
-              ? setup.myClock
+        currentDialogClock.enabled &&
+        isDialogRepresentable(
+            isAiDialog ? "ai" : "player",
+            currentDialogClock.mainMs,
+            currentDialogClock.byoyomiMs,
+        )
+            ? currentDialogClock
+            : isAiDialog
+              ? { mainMs: 0, byoyomiMs: 10_000 }
               : { mainMs: 600_000, byoyomiMs: 30_000 };
     const levelSlider = (
         <input
@@ -450,7 +472,10 @@ export function PlaySetupPanel({
                         options={timeOptions(
                             AI_TIME_CHOICES,
                             setup.bothAiTimeId,
-                            formatAiTime(setup.aiClock.byoyomiMs),
+                            // 先後で違うときは、どちらか一方の時間を出さず「指定」とだけ書く。
+                            sameClock(setup.clocks.sente, setup.clocks.gote)
+                                ? formatAiTime(setup.clocks.sente)
+                                : "指定",
                         )}
                         value={setup.bothAiTimeId ?? CUSTOM_TIME_ID}
                         onChange={(id) => {
@@ -537,7 +562,7 @@ export function PlaySetupPanel({
                         options={timeOptions(
                             AI_TIME_CHOICES,
                             setup.aiTimeId,
-                            formatAiTime(setup.aiClock.byoyomiMs),
+                            formatAiTime(setup.aiClock),
                         )}
                         value={setup.aiTimeId ?? CUSTOM_TIME_ID}
                         onChange={(id) => {
@@ -579,7 +604,9 @@ export function PlaySetupPanel({
                     options={timeOptions(
                         MY_TIME_CHOICES,
                         setup.bothTimeId,
-                        formatClock(setup.myClock.mainMs, setup.myClock.byoyomiMs),
+                        sameClock(setup.clocks.sente, setup.clocks.gote)
+                            ? formatClock(setup.clocks.sente.mainMs, setup.clocks.sente.byoyomiMs)
+                            : "指定",
                     )}
                     value={setup.bothTimeId ?? CUSTOM_TIME_ID}
                     onChange={(id) => {
@@ -653,19 +680,17 @@ export function PlaySetupPanel({
                 </>
             )}
             <PlayTimeDialog
-                open={timeDialog !== null}
-                onOpenChange={(open) => {
-                    if (!open) setTimeDialog(null);
-                }}
-                kind={timeDialog === "ai" || timeDialog === "bothAi" ? "ai" : "player"}
+                open={timeDialogOpen}
+                onOpenChange={setTimeDialogOpen}
+                kind={isAiDialog ? "ai" : "player"}
                 title={
-                    timeDialog === "ai" || timeDialog === "bothAi"
+                    isAiDialog
                         ? "AI の考慮時間を指定"
                         : timeDialog === "both"
                           ? "持ち時間を指定（両者）"
                           : "あなたの持ち時間を指定"
                 }
-                mainMs={timeDialog === "ai" || timeDialog === "bothAi" ? 0 : dialogClock.mainMs}
+                mainMs={isAiDialog ? 0 : dialogClock.mainMs}
                 byoyomiMs={dialogClock.byoyomiMs}
                 onApply={(choice) => {
                     if (timeDialog === "ai") setup.chooseAiTime({ ...choice, mainMs: 0 });

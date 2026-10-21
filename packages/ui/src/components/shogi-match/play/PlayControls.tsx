@@ -393,7 +393,7 @@ export function PlayPositionEditorPanel({
                     駒はドラッグで動かし、盤の外へ出すと取り除けます（成・不成は 2 回押し）。
                 </p>
             )}
-            {/* 「先手から・後手から」ではなく、局面から先に指す対局者で選ぶ（先後は駒の向きで決まっている）。 */}
+            {/* 先後は駒の向きで決まっているので、選ぶのは局面から先に指す対局者（あなた・AI）。 */}
             <fieldset className={cn("flex", stickyPrimary ? "items-center gap-2" : "flex-col")}>
                 <legend
                     className={

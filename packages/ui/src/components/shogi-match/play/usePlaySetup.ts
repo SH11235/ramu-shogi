@@ -75,6 +75,8 @@ interface PlaySetup {
     /** いまの AI・自分の時間（選択肢に無い値を、そのまま見せる・直すのに使う） */
     aiClock: ClockSettings[Player];
     myClock: ClockSettings[Player];
+    /** 先後それぞれの時間（人同士・AI 同士で、両者が同じかを見る） */
+    clocks: ClockSettings;
     locked: boolean;
     /** 自分の手番を決めて、人 対 AI の組み合わせにする（`opponentValue` を渡すと相手も同時に替える） */
     chooseSide: (side: Player, opponentValue?: string, aiTime?: TimeChoice) => void;
@@ -367,6 +369,7 @@ export function usePlaySetup(): PlaySetup {
         myTimeId,
         aiClock,
         myClock,
+        clocks: timeSettings,
         locked: settingsLocked,
         chooseSide,
         chooseOpponent,

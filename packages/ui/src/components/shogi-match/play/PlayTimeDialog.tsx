@@ -19,13 +19,36 @@ const MAX_SECONDS = 86_400;
 const NUMBER_INPUT_CLASS =
     "h-10 w-20 rounded-md border border-wafuu-border bg-background px-2 text-right text-base tabular-nums text-wafuu-sumi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-/** 「10分+30秒」「1手30秒」「5分」のように、選択肢と同じ書き方で時間を書く。 */
+/**
+ * 時間を選択肢と同じ書き方で書く（「10分+30秒」「1手30秒」「5分」「1分30秒」）。
+ * 詳細設定では秒単位の持ち時間も作れるので、分に丸めない。
+ */
 export function formatClock(mainMs: number, byoyomiMs: number): string {
-    const minutes = Math.floor(mainMs / 60_000);
-    const seconds = Math.floor(byoyomiMs / 1000);
-    if (minutes > 0 && seconds > 0) return `${minutes}分+${seconds}秒`;
-    if (minutes > 0) return `${minutes}分`;
-    return `1手${seconds}秒`;
+    const mainSeconds = Math.round(mainMs / 1000);
+    const minutes = Math.floor(mainSeconds / 60);
+    const restSeconds = mainSeconds % 60;
+    const mainText =
+        minutes > 0
+            ? restSeconds > 0
+                ? `${minutes}分${restSeconds}秒`
+                : `${minutes}分`
+            : restSeconds > 0
+              ? `${restSeconds}秒`
+              : "";
+    const byoyomi = Math.round(byoyomiMs / 1000);
+    if (mainText && byoyomi > 0) return `${mainText}+${byoyomi}秒`;
+    if (mainText) return mainText;
+    return `1手${byoyomi}秒`;
+}
+
+/** このダイアログの入力（分と秒）で、そのまま書き表せる時間か。 */
+export function isDialogRepresentable(
+    kind: "player" | "ai",
+    mainMs: number,
+    byoyomiMs: number,
+): boolean {
+    if (kind === "ai") return mainMs === 0 && byoyomiMs >= 1000;
+    return mainMs % 60_000 === 0 && (mainMs > 0 || byoyomiMs > 0);
 }
 
 interface PlayTimeDialogProps {
@@ -46,8 +69,8 @@ export function PlayTimeDialog(props: PlayTimeDialogProps): ReactElement {
                 <DialogHeader>
                     <DialogTitle>{props.title}</DialogTitle>
                 </DialogHeader>
-                {/* 開くたびに、いまの値から始める（前に打ちかけた値を残さない）。 */}
-                {props.open && <PlayTimeForm {...props} />}
+                {/* 中身は開くたびに作り直されるので、いまの値から始まる（前に打ちかけた値を残さない）。 */}
+                <PlayTimeForm {...props} />
             </DialogContent>
         </Dialog>
     );
@@ -64,8 +87,10 @@ function PlayTimeForm({
     const [secondsText, setSecondsText] = useState(String(Math.floor(byoyomiMs / 1000)));
 
     const parse = (text: string, max: number): number | null => {
-        if (text.trim() === "") return 0;
-        const value = Number(text);
+        const trimmed = text.trim();
+        if (trimmed === "") return 0;
+        if (!/^[0-9]+$/.test(trimmed)) return null;
+        const value = Number(trimmed);
         if (!Number.isInteger(value) || value < 0 || value > max) return null;
         return value;
     };
@@ -105,10 +130,8 @@ function PlayTimeForm({
                     <label className="flex items-center gap-1.5">
                         持ち時間
                         <input
-                            type="number"
+                            type="text"
                             inputMode="numeric"
-                            min={0}
-                            max={MAX_MINUTES}
                             value={minutesText}
                             onChange={(event) => setMinutesText(event.target.value)}
                             className={NUMBER_INPUT_CLASS}
@@ -119,10 +142,8 @@ function PlayTimeForm({
                 <label className="flex items-center gap-1.5">
                     {kind === "player" ? "＋ 1手" : "1手"}
                     <input
-                        type="number"
+                        type="text"
                         inputMode="numeric"
-                        min={0}
-                        max={MAX_SECONDS}
                         value={secondsText}
                         onChange={(event) => setSecondsText(event.target.value)}
                         className={NUMBER_INPUT_CLASS}

@@ -67,7 +67,7 @@ function NavButton({
             title={title}
             aria-label={title}
             className={`
-                ${large ? "h-11 min-w-12 flex-1 text-base" : "w-8 h-8"} flex items-center justify-center
+                ${large ? "h-10 min-w-12 flex-1 text-base" : "w-8 h-8"} flex items-center justify-center
                 rounded border border-border bg-background
                 text-foreground text-sm font-medium
                 transition-colors duration-150

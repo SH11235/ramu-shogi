@@ -175,11 +175,12 @@ export function HandPiecesDisplay({
     vertical = false,
 }: HandPiecesDisplayProps): ReactElement | null {
     const containerConfig = CONTAINER_SIZE_CONFIG[size];
-    const isCompactLayout = size === "compact" || size === "edit" || size === "medium";
+    const isCompactLayout = vertical || size === "compact" || size === "edit" || size === "medium";
     // 局面編集の横長の駒台は、± を駒の下に置く（横に置くと 7 種が 1 行に入らず、駒が小さくなる）。
     // 縦の駒台は幅に余裕があるので、± は駒の横に置き、駒は盤のマスに合わせる。
     const isEditLayout = size === "edit" && !vertical;
-    const tokenSize = size === "edit" && vertical ? "medium" : size;
+    // 縦の駒台は、マスに合わせた大きさ（medium）で描く。normal の横並び用の幅確保は縦では使えない。
+    const tokenSize = vertical && (size === "edit" || size === "normal") ? "medium" : size;
     // PlayerIcon用のサイズマッピング
     const iconSize = size === "compact" ? "xs" : size === "medium" || size === "edit" ? "sm" : "lg";
     const shouldHideEmptyPieces = hideEmptyPieces ?? (isMatchRunning && !isEditMode);
