@@ -1,9 +1,28 @@
 import { useEffect } from "react";
+import { type MoveScene, playDogSound, preloadDogSounds } from "./dogSound";
 
-// Web Audio API による合成音フック
-// 後から音声ファイルに差し替える場合は playSound の実装のみ変更する
+// Web Audio API による着手音フック。通常は合成音、CPU 戦で「犬」を選ぶと音声ファイルの鳴き声を鳴らす
 
 type ShogiSoundType = "move_self" | "move_opponent" | "pass";
+
+const SOUND_VOICES = ["dog", "standard"] as const;
+
+/** 着手音の鳴らし方（CPU 戦で選べる） */
+export type SoundVoice = (typeof SOUND_VOICES)[number];
+
+/** 手で書き換えられた保存値などの知らない声を、既定の声に戻す */
+export function normalizeSoundVoice(value: unknown, fallback: SoundVoice): SoundVoice {
+    return SOUND_VOICES.find((voice) => voice === value) ?? fallback;
+}
+
+interface MoveSoundDetail {
+    voice: SoundVoice;
+    scene: MoveScene;
+    /** CPU の手で、CPU 側の評価値が大きく負けているとき */
+    cpuLosing?: boolean;
+    /** 犬の声を読み込み中なら通常の駒音で代わりに鳴らす（試し鳴らしで無音にしない） */
+    fallbackWhileLoading?: boolean;
+}
 
 // ─── 合成音の実装 ─────────────────────────────────────────────────────────────
 
@@ -109,16 +128,36 @@ function installAudioUnlock(): void {
 
 // ─── フック ───────────────────────────────────────────────────────────────────
 
-export function useShogiSound(): { playSound: (type: ShogiSoundType) => void } {
-    useEffect(installAudioUnlock, []);
+interface UseShogiSoundOptions {
+    /** 犬の声の音源を置いた URL（末尾 /）。渡したときだけ読み込む */
+    dogSoundBaseUrl?: string;
+}
 
-    function playSound(type: ShogiSoundType): void {
+export function useShogiSound({ dogSoundBaseUrl }: UseShogiSoundOptions = {}): {
+    playSound: (type: ShogiSoundType, detail?: MoveSoundDetail) => void;
+} {
+    useEffect(installAudioUnlock, []);
+    useEffect(() => {
+        if (dogSoundBaseUrl) preloadDogSounds(dogSoundBaseUrl);
+    }, [dogSoundBaseUrl]);
+
+    function playSound(type: ShogiSoundType, detail?: MoveSoundDetail): void {
         const ctx = getAudioContext();
         if (!ctx) return;
 
         resumeIfSuspended(ctx).then(
             () => {
                 try {
+                    if (type !== "pass" && detail?.voice === "dog" && dogSoundBaseUrl) {
+                        const result = playDogSound(
+                            ctx,
+                            dogSoundBaseUrl,
+                            detail.scene,
+                            detail.cpuLosing ?? false,
+                        );
+                        if (result === "played") return;
+                        if (result === "loading" && !detail.fallbackWhileLoading) return;
+                    }
                     switch (type) {
                         case "move_self":
                             // 自分の着手: やや小さめの打撃音

@@ -66,6 +66,7 @@ function App() {
                     allowAnalysisDuringMatch={true}
                     defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
                     aiIconUrl={`${import.meta.env.BASE_URL}ramu.jpeg`}
+                    dogSoundBaseUrl={`${import.meta.env.BASE_URL}sounds/dog/v1/`}
                     onPositionSnapshot={(snapshot) => setPanelPosition(snapshot)}
                     initialReview={initialReview}
                     // 対局専用の画面。棋譜を調べる・検討するのは研究ノートで行う。

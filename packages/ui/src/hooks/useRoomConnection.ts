@@ -10,7 +10,7 @@ import {
 } from "@shogi/match-client";
 import { useEffect, useEffectEvent, useReducer, useRef } from "react";
 import { type GameStartSnapshot, snapshotAtGameStart } from "../components/online-game-state";
-import { isUnsupportedOnlineStartSfen } from "../components/PositionPresetSelector";
+import { onlineStartSfenProblem } from "../components/PositionPresetSelector";
 
 function errorCodeToMessage(code: ErrorCode): string {
     switch (code) {
@@ -97,10 +97,10 @@ type RoomAction =
     | { type: "room_changed" };
 
 // 空は「SFEN 直接入力」へ切り替えただけで、まだ局面が入力されていない状態。空の開始局面を
-// エラーで返すサーバーがあり、待機中の接続はエラーを受けると切れる。玉の数が合わない局面は
-// サーバーが黙って捨てるので、送らずに画面で知らせる
+// エラーで返すサーバーがあり、待機中の接続はエラーを受けると切れる。オンライン対局で使えない
+// 局面はサーバーが黙って捨てるので、送らずに画面で知らせる
 function isSendableStartSfen(startSfen: string): boolean {
-    return startSfen !== "" && !isUnsupportedOnlineStartSfen(startSfen);
+    return startSfen !== "" && onlineStartSfenProblem(startSfen) === null;
 }
 
 const INITIAL_ROOM_STATE: RoomState = {
@@ -131,7 +131,7 @@ function roomReducer(state: RoomState, action: RoomAction): RoomState {
             return {
                 ...state,
                 localStartSfen: action.startSfen,
-                // 空と玉の数が合わない局面はサーバーへ送らないので、サーバーの開始局面は前のまま
+                // 空とオンライン対局で使えない局面はサーバーへ送らないので、サーバーの開始局面は前のまま
                 appliedStartSfen: isSendableStartSfen(action.startSfen)
                     ? action.startSfen
                     : state.appliedStartSfen,

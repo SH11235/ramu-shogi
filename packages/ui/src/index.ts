@@ -39,8 +39,7 @@ export type {
 // popover
 // position-preset-selector
 export {
-    isUnsupportedOnlineStartSfen,
-    ONLINE_KING_COUNT_MESSAGE,
+    onlineStartSfenProblem,
     POSITION_PRESETS,
     PositionPresetSelector,
 } from "./components/PositionPresetSelector";
