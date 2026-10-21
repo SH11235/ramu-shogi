@@ -26,6 +26,30 @@ for (const viewport of [
     });
 }
 
+// 高さはブラウザのバーを除いた実際の表示域（iPhone SE・大きめの iPhone）。
+for (const viewport of [
+    { width: 320, height: 568 },
+    { width: 375, height: 553 },
+    { width: 430, height: 717 },
+]) {
+    test(`対局の設定が縦にはみ出さず 1 画面に収まる ${viewport.width}x${viewport.height}`, async ({
+        page,
+    }) => {
+        await page.setViewportSize(viewport);
+        await page.goto("/play");
+        const start = page.getByRole("button", { name: "対局開始", exact: true });
+        await start.waitFor();
+        // 駒落ちは「どちらから指すか」の 1 行が増えるので、その状態でも測る。
+        for (const startPosition of ["hirate", "bishop"]) {
+            await page.getByLabel("開始局面", { exact: true }).selectOption(startPosition);
+            await expect(start).toBeInViewport({ ratio: 1 });
+            await expect
+                .poll(() => page.evaluate(() => document.documentElement.scrollHeight))
+                .toBeLessThanOrEqual(viewport.height);
+        }
+    });
+}
+
 test("小画面の対局中、操作が画面の中に留まり、探索情報の詳細も読める", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 568 });
     await page.goto("/play");

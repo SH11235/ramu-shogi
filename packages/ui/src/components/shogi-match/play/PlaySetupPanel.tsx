@@ -46,21 +46,39 @@ const QUICK_AI_TIME = AI_TIME_CHOICES[0];
 
 function Segmented<T extends string>({
     label,
+    rowLabel,
     options,
     value,
     onChange,
     disabled,
 }: {
     label: string;
+    /** 行の形で並べるときの、左に出す短い項目名（読み上げは `label` のまま）。 */
+    rowLabel?: string;
     options: Array<{ id: T; label: ReactNode }>;
     value: T | null;
     onChange: (id: T) => void;
     disabled?: boolean;
 }): ReactElement {
     return (
-        <fieldset className="flex min-w-0 flex-col" disabled={disabled}>
-            <legend className="pb-1.5 text-xs font-medium text-wafuu-sumi-light">{label}</legend>
-            <div className="flex flex-wrap gap-1.5">
+        <fieldset
+            className={cn("flex min-w-0", rowLabel ? ROW_CLASS : "flex-col")}
+            disabled={disabled}
+        >
+            {/* legend は flex の子として並ばないので、行の形では見出しを別の要素で出す。 */}
+            <legend
+                className={
+                    rowLabel ? "sr-only" : "pb-1.5 text-xs font-medium text-wafuu-sumi-light"
+                }
+            >
+                {label}
+            </legend>
+            {rowLabel && (
+                <span aria-hidden className={ROW_LABEL_CLASS}>
+                    {rowLabel}
+                </span>
+            )}
+            <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
                 {options.map((option) => {
                     const selected = option.id === value;
                     return (
@@ -70,7 +88,8 @@ function Segmented<T extends string>({
                             aria-pressed={selected}
                             onClick={() => onChange(option.id)}
                             className={cn(
-                                "min-h-10 flex-1 whitespace-nowrap rounded-md border px-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 md:min-h-9 [@media(max-height:760px)]:md:min-h-8",
+                                rowLabel ? "px-2" : "px-2.5",
+                                "min-h-10 flex-1 whitespace-nowrap rounded-md border text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 md:min-h-9 [@media(max-height:760px)]:md:min-h-8",
                                 // 選んでいる項目は墨の枠で示す（朱・藍は、先手・後手の色に取っておく）。
                                 selected
                                     ? "border-wafuu-sumi bg-wafuu-washi-warm font-semibold text-wafuu-sumi ring-1 ring-inset ring-wafuu-sumi"
@@ -99,14 +118,26 @@ const sideLabel = (side: Player): string => (side === "sente" ? "先手" : "後�
 
 const FIELD_LABEL_CLASS = "text-xs font-medium text-wafuu-sumi-light";
 const TEXT_LINK_CLASS = PLAY_TEXT_LINK;
+/** 行の形: 左に項目名、右に選択肢。項目の間は細い線で区切る。 */
+const ROW_CLASS = "items-center gap-x-2 gap-y-0.5 border-b border-wafuu-border py-1";
+const ROW_LABEL_CLASS = "w-14 shrink-0 text-xs font-medium text-wafuu-sumi-light";
 
 interface PlaySetupPanelProps {
     /** 詳細設定を開く */
     onOpenAdvanced: () => void;
+    /**
+     * 項目を「左に項目名、右に選択肢」の行で並べる（スマホ用。盤を出さず、設定だけを 1 画面に収める）。
+     * 対局開始は欄の下端に置く。
+     */
+    rows?: boolean;
     className?: string;
 }
 
-export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProps): ReactElement {
+export function PlaySetupPanel({
+    onOpenAdvanced,
+    rows = false,
+    className,
+}: PlaySetupPanelProps): ReactElement {
     const { play } = useShogiMatchConfig();
     const setup = usePlaySetup();
     const { passRightsSettings } = useMatchSettings();
@@ -171,34 +202,106 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
         }
     };
 
+    const passRightsNotice = passRightsSettings.enabled && (
+        // 変則ルールが効いていることを、開始ボタンのそばで知らせる（スマホでは盤も対局者の帯も見えない）。
+        <p className="pb-1 text-center text-xs text-wafuu-sumi-light md:hidden">
+            変則ルール: パス権あり（先手 {passRightsSettings.senteInitialCount} 回・後手{" "}
+            {passRightsSettings.goteInitialCount} 回）
+        </p>
+    );
+    const startButton = (
+        <Button
+            type="button"
+            size="lg"
+            onClick={handleStart}
+            disabled={play?.busy}
+            className={cn("h-12 w-full text-base font-semibold", PLAY_PRIMARY_BUTTON)}
+        >
+            対局開始
+        </Button>
+    );
+    // 縦に並べるときは、注記が無い相手でも 2 行ぶんの高さを取る（相手を選び直したときに、下の「詳細設定」が動かないように）。
+    // 行の形では開始ボタンが下端に固定なので、高さは取らない。
+    const downloadNote =
+        rows && downloadMb === null ? null : (
+            <p
+                aria-hidden={downloadMb === null}
+                className={cn(
+                    "text-center text-xs leading-relaxed text-wafuu-sumi-light",
+                    !rows && "min-h-10",
+                )}
+            >
+                {downloadMb !== null && (
+                    <>
+                        <span className="inline-block">
+                            {setup.opponent?.label} は、初回だけ約 {downloadMb}MB
+                            のダウンロードがあります。
+                        </span>{" "}
+                        <button
+                            type="button"
+                            onClick={handleQuickStart}
+                            disabled={locked}
+                            className={cn(
+                                TEXT_LINK_CLASS,
+                                "font-medium text-wafuu-ai hover:text-wafuu-ai-light disabled:opacity-50",
+                                rows && "min-h-8",
+                            )}
+                        >
+                            ダウンロードせずに簡易AI と指す
+                        </button>
+                    </>
+                )}
+            </p>
+        );
+    const advancedLink = (
+        <button
+            type="button"
+            onClick={onOpenAdvanced}
+            className={cn(
+                TEXT_LINK_CLASS,
+                "ml-auto whitespace-nowrap text-wafuu-sumi-light hover:text-wafuu-sumi",
+            )}
+        >
+            詳細設定
+        </button>
+    );
+
     return (
         <section
             aria-labelledby="play-setup-heading"
             className={cn(
                 // 設定はこの画面の主役なので、背景付きの欄にしない（見出しと項目を、地の上に並べる）。
                 // 高さの低い画面（1280x720 など）では、行の間を詰めて 1 画面に収める。
-                "flex flex-col gap-4 [@media(max-height:760px)]:md:gap-2.5",
+                rows
+                    ? "flex flex-col"
+                    : "flex flex-col gap-4 [@media(max-height:760px)]:md:gap-2.5",
                 className,
             )}
         >
-            <h1
-                id="play-setup-heading"
-                data-play-heading
-                tabIndex={-1}
-                className={cn(PLAY_HEADING, "outline-none")}
-            >
-                {setup.kind === "vs-ai"
-                    ? "AI と対局する"
-                    : setup.kind === "humans"
-                      ? "人と人で対局する"
-                      : "AI 同士の対局を見る"}
-            </h1>
-            {/* 棋譜を調べたくて来た人が、最初に気づける位置に置く。 */}
-            {play?.setupFooter}
+            {/* 行の形では、詳細設定への入口を見出しの右に置く（縦を 1 行ぶん空ける）。 */}
+            <div className={rows ? "flex items-center justify-between gap-2" : "contents"}>
+                <h1
+                    id="play-setup-heading"
+                    data-play-heading
+                    tabIndex={-1}
+                    className={cn(PLAY_HEADING, "outline-none", rows && "text-xl")}
+                >
+                    {setup.kind === "vs-ai"
+                        ? "AI と対局する"
+                        : setup.kind === "humans"
+                          ? "人と人で対局する"
+                          : "AI 同士の対局を見る"}
+                </h1>
+                {rows && <span className="text-[13px]">{advancedLink}</span>}
+            </div>
+            {/* 棋譜を調べたくて来た人が、最初に気づける位置に置く。行の形（スマホ）では、
+                設定を 1 画面に収めるために出さない（研究ノートへはメニューから行ける）。 */}
+            {!rows && play?.setupFooter}
 
             {isVsAi ? (
                 <Segmented<SideChoice>
                     label="あなたの手番"
+                    rowLabel={rows ? "手番" : undefined}
                     options={[
                         { id: "sente", label: "☗ 先手" },
                         { id: "gote", label: "☖ 後手" },
@@ -280,6 +383,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                     ))}
                     <Segmented
                         label="AI の考慮時間（1手・両者）"
+                        rowLabel={rows ? "AI 1手" : undefined}
                         options={timeOptions(AI_TIME_CHOICES, setup.bothAiTimeId)}
                         value={setup.bothAiTimeId ?? CUSTOM_TIME_ID}
                         onChange={(id) => {
@@ -296,8 +400,11 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
             )}
 
             {isVsAi && (
-                <div className="flex flex-col gap-1.5">
-                    <label htmlFor="play-setup-opponent" className={FIELD_LABEL_CLASS}>
+                <div className={rows ? cn("flex", ROW_CLASS) : "flex flex-col gap-1.5"}>
+                    <label
+                        htmlFor="play-setup-opponent"
+                        className={rows ? ROW_LABEL_CLASS : FIELD_LABEL_CLASS}
+                    >
                         相手
                     </label>
                     <NativeSelect
@@ -305,6 +412,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                         value={setup.opponentValue}
                         disabled={locked}
                         onChange={(event) => setup.chooseOpponent(event.target.value)}
+                        wrapperClassName={rows ? "min-w-0 flex-1" : undefined}
                         className="min-h-10 text-sm"
                     >
                         {setup.opponentOptions.map((option) => (
@@ -320,7 +428,24 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                 </div>
             )}
 
-            {isVsAi && setup.opponent?.supportsLevel !== false && (
+            {isVsAi && setup.opponent?.supportsLevel !== false && rows && (
+                <label className={cn("flex", ROW_CLASS)}>
+                    <span className={ROW_LABEL_CLASS}>強さ</span>
+                    <input
+                        type="range"
+                        min={0}
+                        max={SKILL_LEVEL_MAX}
+                        value={setup.level}
+                        disabled={locked}
+                        onChange={(event) => setup.chooseLevel(Number(event.target.value))}
+                        className="h-10 min-w-0 flex-1 accent-wafuu-shu"
+                    />
+                    <span className="w-16 shrink-0 text-right text-sm tabular-nums text-wafuu-sumi">
+                        レベル {setup.level}
+                    </span>
+                </label>
+            )}
+            {isVsAi && setup.opponent?.supportsLevel !== false && !rows && (
                 <label className="flex flex-col gap-1.5">
                     <span className={cn("flex items-baseline justify-between", FIELD_LABEL_CLASS)}>
                         <span>強さ</span>
@@ -345,9 +470,16 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
             )}
 
             {isVsAi && (
-                <div className="flex flex-col gap-4 [@media(max-height:760px)]:md:gap-2.5">
+                <div
+                    className={
+                        rows
+                            ? "contents"
+                            : "flex flex-col gap-4 [@media(max-height:760px)]:md:gap-2.5"
+                    }
+                >
                     <Segmented
                         label="AI の考慮時間（1手）"
+                        rowLabel={rows ? "AI 1手" : undefined}
                         options={timeOptions(AI_TIME_CHOICES, setup.aiTimeId)}
                         value={setup.aiTimeId ?? CUSTOM_TIME_ID}
                         onChange={(id) => {
@@ -363,6 +495,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                     />
                     <Segmented
                         label="あなたの持ち時間"
+                        rowLabel={rows ? "持ち時間" : undefined}
                         options={timeOptions(MY_TIME_CHOICES, setup.myTimeId)}
                         value={setup.myTimeId ?? CUSTOM_TIME_ID}
                         onChange={(id) => {
@@ -382,6 +515,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
             {setup.kind === "humans" && (
                 <Segmented
                     label="持ち時間（両者）"
+                    rowLabel={rows ? "持ち時間" : undefined}
                     options={timeOptions(MY_TIME_CHOICES, setup.bothTimeId)}
                     value={setup.bothTimeId ?? CUSTOM_TIME_ID}
                     onChange={(id) => {
@@ -396,16 +530,26 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                 />
             )}
 
-            <div className="flex flex-col gap-1.5">
-                <div className="flex items-baseline justify-between gap-2">
-                    <label htmlFor="play-setup-start-position" className={FIELD_LABEL_CLASS}>
+            <div className={rows ? cn("flex flex-wrap", ROW_CLASS) : "flex flex-col gap-1.5"}>
+                <div className={rows ? "contents" : "flex items-baseline justify-between gap-2"}>
+                    <label
+                        htmlFor="play-setup-start-position"
+                        className={rows ? ROW_LABEL_CLASS : FIELD_LABEL_CLASS}
+                    >
                         開始局面
                     </label>
                     {/* どちらから指し始めるか（平手以外は、先手からとは限らない）。 */}
                     {play?.isCustomStart && (
-                        <span className="text-xs text-wafuu-sumi-light">
-                            {preset ? "上手（後手）の駒落ち ・ " : ""}
-                            {play.editTurn === "sente" ? "先手" : "後手"}から指し始めます
+                        <span
+                            className={cn(
+                                "text-xs text-wafuu-sumi-light",
+                                rows && "order-last w-full pl-16",
+                            )}
+                        >
+                            {/* 行の形では 1 行に収める（駒落ちであることは選んだ項目名で分かる）。 */}
+                            {preset ? (rows ? "上手（後手）" : "上手（後手）の駒落ち ・ ") : ""}
+                            {preset && rows ? "" : play.editTurn === "sente" ? "先手" : "後手"}
+                            から指し始めます
                         </span>
                     )}
                 </div>
@@ -414,6 +558,7 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                     value={startValue}
                     disabled={locked}
                     onChange={(event) => handleStartPositionChange(event.target.value)}
+                    wrapperClassName={rows ? "min-w-0 flex-1" : undefined}
                     className="min-h-10 text-sm"
                 >
                     <option value="hirate">平手</option>
@@ -427,65 +572,30 @@ export function PlaySetupPanel({ onOpenAdvanced, className }: PlaySetupPanelProp
                 </NativeSelect>
             </div>
 
-            {/* スマホでは、開始ボタン（と、変則ルールの知らせ 1 行）だけを画面の下端に留める（設定を全部送らなくても始められる。
-                注記や別の道まで留めると、下の項目を隠してしまう）。 */}
-            <div className="sticky bottom-0 z-10 bg-background pb-2 pt-1 md:static md:bg-transparent md:p-0">
-                {passRightsSettings.enabled && (
-                    // 変則ルールが効いていることを、開始ボタンのそばで知らせる（スマホでは盤も対局者の帯も下にある）。
-                    <p className="pb-1 text-center text-xs text-wafuu-sumi-light md:hidden">
-                        変則ルール: パス権あり（先手 {passRightsSettings.senteInitialCount} 回・後手{" "}
-                        {passRightsSettings.goteInitialCount} 回）
-                    </p>
-                )}
-                <Button
-                    type="button"
-                    size="lg"
-                    onClick={handleStart}
-                    disabled={play?.busy}
-                    className={cn("h-12 w-full text-base font-semibold", PLAY_PRIMARY_BUTTON)}
-                >
-                    対局開始
-                </Button>
-            </div>
-            {/* 開始ボタンの下に置く（ボタンを下端に留めるために、同じ並びの別の要素にしている）。
-                注記が無い相手でも 2 行ぶんの高さを取り、相手を選び直したときに下の「詳細設定」が動かないようにする。 */}
-            <p
-                aria-hidden={downloadMb === null}
-                className="min-h-10 text-center text-xs leading-relaxed text-wafuu-sumi-light"
-            >
-                {downloadMb !== null && (
-                    <>
-                        <span className="inline-block">
-                            {setup.opponent?.label} は、初回だけ約 {downloadMb}MB
-                            のダウンロードがあります。
-                        </span>{" "}
-                        <button
-                            type="button"
-                            onClick={handleQuickStart}
-                            disabled={locked}
-                            className={cn(
-                                TEXT_LINK_CLASS,
-                                "font-medium text-wafuu-ai hover:text-wafuu-ai-light disabled:opacity-50",
-                            )}
-                        >
-                            ダウンロードせずに簡易AI と指す
-                        </button>
-                    </>
-                )}
-            </p>
-
-            <div className="flex items-center justify-end border-t border-wafuu-border pt-3 text-[13px]">
-                <button
-                    type="button"
-                    onClick={onOpenAdvanced}
-                    className={cn(
-                        TEXT_LINK_CLASS,
-                        "ml-auto whitespace-nowrap text-wafuu-sumi-light hover:text-wafuu-sumi",
-                    )}
-                >
-                    詳細設定
-                </button>
-            </div>
+            {rows ? (
+                <>
+                    {/* 開始ボタンは欄の下端（親指の届く位置）に置き、注記はそのすぐ上に添える。 */}
+                    <div className="sticky bottom-0 z-10 mt-auto flex flex-col gap-1 bg-background pt-2">
+                        {passRightsNotice}
+                        {downloadNote}
+                        {startButton}
+                    </div>
+                </>
+            ) : (
+                <>
+                    {/* スマホでは、開始ボタン（と、変則ルールの知らせ 1 行）だけを画面の下端に留める（設定を全部送らなくても始められる。
+                        注記や別の道まで留めると、下の項目を隠してしまう）。 */}
+                    <div className="sticky bottom-0 z-10 bg-background pb-2 pt-1 md:static md:bg-transparent md:p-0">
+                        {passRightsNotice}
+                        {startButton}
+                    </div>
+                    {/* 開始ボタンの下に置く（ボタンを下端に留めるために、同じ並びの別の要素にしている）。 */}
+                    {downloadNote}
+                    <div className="flex items-center justify-end border-t border-wafuu-border pt-3 text-[13px]">
+                        {advancedLink}
+                    </div>
+                </>
+            )}
         </section>
     );
 }
