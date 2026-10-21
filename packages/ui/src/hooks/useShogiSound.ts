@@ -84,6 +84,7 @@ let unlockInstalled = false;
 function unlockOnUserGesture(): void {
     const ctx = getAudioContext();
     if (!ctx || ctx.state === "running") return;
+    // 操作の中で先に再生を始めてから resume する（iOS は、操作の中での再生を解放の条件にしている）。
     try {
         const source = ctx.createBufferSource();
         source.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
@@ -101,7 +102,8 @@ function installAudioUnlock(): void {
     if (unlockInstalled || typeof document === "undefined") return;
     unlockInstalled = true;
     for (const type of UNLOCK_EVENTS) {
-        document.addEventListener(type, unlockOnUserGesture, true);
+        // preventDefault しないので passive にして、touchend でスクロールを待たせない。
+        document.addEventListener(type, unlockOnUserGesture, { capture: true, passive: true });
     }
 }
 

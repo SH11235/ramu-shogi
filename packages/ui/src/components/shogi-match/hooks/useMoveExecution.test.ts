@@ -31,7 +31,7 @@ function createPosition(): PositionState {
 }
 
 /** この局面で合法とする手（テストに使う分だけ）。7 筋は二歩なので歩を打てない。 */
-const LEGAL_MOVES = ["P*5e", "G*5e", "G*7e", "2h2e", "7g7f"];
+const LEGAL_MOVES = ["P*5e", "G*5e", "G*7e", "2h2e", "2h2c", "2h2c+", "7g7f"];
 
 type Mode = "review" | "match";
 
@@ -95,7 +95,7 @@ function setup(mode: Mode, options: SetupOptions = {}) {
                 moveProcessingRef: { current: false },
                 onHumanMoveApplied,
             });
-            return { ...execution, selection, message };
+            return { ...execution, selection, message, promotionSelection };
         },
         { initialProps: { startSfen: START_SFEN } },
     );
@@ -259,6 +259,18 @@ describe("useMoveExecution: 人が指したときの知らせ（駒音）", () =
         const t = setup("match");
         t.selectHand("G");
         await t.selectSquare("5e");
+        expect(t.onHumanMoveApplied).toHaveBeenCalledTimes(1);
+    });
+
+    it("成るかどうかを選ぶまでは知らせず、選んだら 1 回だけ知らせる", async () => {
+        const t = setup("match");
+        await t.selectSquare("2h");
+        await t.selectSquare("2c");
+        expect(t.current().promotionSelection).not.toBeNull();
+        expect(t.onHumanMoveApplied).not.toHaveBeenCalled();
+
+        act(() => t.current().handlePromotionChoice(true));
+        expect(t.addMove).toHaveBeenCalledTimes(1);
         expect(t.onHumanMoveApplied).toHaveBeenCalledTimes(1);
     });
 
