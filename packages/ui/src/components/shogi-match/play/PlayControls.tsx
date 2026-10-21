@@ -19,6 +19,7 @@ import {
 } from "../../alert-dialog";
 import { Button } from "../../button";
 import { PassButton } from "../components/PassButton";
+import { PlayerIcon } from "../components/PlayerIcon";
 import { SoundToggle } from "../components/SoundToggle";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { ILLEGAL_MOVE_MESSAGE } from "../hooks/useMoveExecution";
@@ -333,6 +334,9 @@ export function PlayPositionEditorPanel({
     stickyPrimary?: boolean;
 }): ReactElement {
     const { play } = useShogiMatchConfig();
+    const { sides } = useMatchState();
+    // 人 対 人では、どちらも「あなた」になるので、名前は出さず先手・後手の印だけで示す。
+    const bothHumans = sides.sente.role === "human" && sides.gote.role === "human";
     const actions = (
         <div
             className={cn(
@@ -383,38 +387,63 @@ export function PlayPositionEditorPanel({
                     開始局面を編集
                 </h1>
             )}
-            {!stickyPrimary && actions}
-            <fieldset className="flex flex-col">
-                <legend className="pb-1.5 text-xs font-medium text-wafuu-sumi-light">
-                    どちらから指し始めるか
+            {/* スマホ（操作を下端に留める形）では、盤と操作を 1 画面に収めるため、操作の説明を省く。 */}
+            {!stickyPrimary && (
+                <p className="text-[13px] leading-relaxed text-wafuu-sumi-light">
+                    駒はドラッグで動かし、盤の外へ出すと取り除けます（成・不成は 2 回押し）。
+                </p>
+            )}
+            {/* 「先手から・後手から」ではなく、局面から先に指す対局者で選ぶ（先後は駒の向きで決まっている）。 */}
+            <fieldset className={cn("flex", stickyPrimary ? "items-center gap-2" : "flex-col")}>
+                <legend
+                    className={
+                        stickyPrimary
+                            ? "sr-only"
+                            : "pb-1.5 text-xs font-medium text-wafuu-sumi-light"
+                    }
+                >
+                    この局面から先に指すのは
                 </legend>
-                <div className="flex gap-1.5">
+                {stickyPrimary && (
+                    <span
+                        aria-hidden
+                        className="shrink-0 text-xs font-medium text-wafuu-sumi-light"
+                    >
+                        先に指す
+                    </span>
+                )}
+                <div className="flex min-w-0 flex-1 gap-1.5">
                     {(["sente", "gote"] as const).map((side) => {
                         const selected = play?.editTurn === side;
+                        const mark = side === "sente" ? "☗" : "☖";
+                        const name = bothHumans ? null : (play?.playerNames[side] ?? null);
                         return (
                             <button
                                 key={side}
                                 type="button"
                                 aria-pressed={selected}
+                                aria-label={`${name ?? mark}（${side === "sente" ? "先手" : "後手"}）`}
                                 onClick={() => play?.setEditTurn(side)}
                                 className={cn(
-                                    "min-h-10 flex-1 rounded-md border px-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-9",
+                                    "flex min-h-11 flex-1 items-center justify-center gap-2 rounded-md border px-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                     selected
                                         ? "border-wafuu-sumi bg-wafuu-washi-warm font-semibold text-wafuu-sumi ring-1 ring-inset ring-wafuu-sumi"
                                         : "border-wafuu-border bg-background text-wafuu-sumi hover:bg-wafuu-washi-warm",
                                 )}
                             >
-                                {side === "sente" ? "☗ 先手から" : "☖ 後手から"}
+                                <PlayerIcon
+                                    side={side}
+                                    isAI={sides[side].role === "engine"}
+                                    size="md"
+                                />
+                                {name && <span className="truncate">{name}</span>}
                             </button>
                         );
                     })}
                 </div>
             </fieldset>
-            <p className="text-[13px] leading-relaxed text-wafuu-sumi-light">
-                駒はドラッグで動かし、盤の外へ出すと取り除けます（成・不成は 2 回押し）。
-            </p>
-            {/* 下端に留めるときは、操作を最後に置く（見た目と Tab の順を合わせる）。 */}
-            {stickyPrimary && actions}
+            {/* 決める操作は、編集と手番を選び終えた後の最後に置く（見た目と Tab の順を合わせる）。 */}
+            {actions}
         </section>
     );
 }

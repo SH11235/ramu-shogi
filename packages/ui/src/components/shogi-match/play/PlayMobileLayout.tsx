@@ -90,7 +90,7 @@ export function PlayMobileLayout({
             inert={phase === "setup" || phase === "finished"}
             // 盤は幅だけでなく高さにも合わせる（横向きなどの低い画面で、盤が画面に入らないのを避ける）。
             // 設定中は隠すだけにして、対局を始めたときに盤を作り直さない。
-            className={`relative mx-auto w-full max-w-[max(280px,calc(100dvh-285px))] justify-center ${PLAY_HAND_ZONES} ${phase === "setup" ? "hidden" : "flex"}`}
+            className={`relative mx-auto w-full ${isEditing ? "max-w-[max(260px,calc(100dvh-430px))]" : "max-w-[max(280px,calc(100dvh-285px))]"} justify-center ${PLAY_HAND_ZONES} ${phase === "setup" ? "hidden" : "flex"}`}
         >
             <MobileBoardSection
                 grid={grid}
@@ -188,11 +188,9 @@ export function PlayMobileLayout({
                 <>
                     {/* 終局の結果と次の一歩は、対局中の操作と同じ位置（画面の下端）に出す。
                         盤は動かさない。 */}
-                    <div className="sticky bottom-0 z-10 mt-auto border-t border-wafuu-border bg-background pb-1 pt-2">
-                        {/* 下端に留めるのは結果と主な操作だけ（小さい画面で盤の下の段を隠さないように）。 */}
+                    <div className="sticky bottom-0 z-10 mt-auto flex flex-col gap-2 border-t border-wafuu-border bg-background pb-1 pt-2">
+                        {/* 下端に留めるのは、結果・主な操作・振り返りの送り（親指で届く位置に、押しやすい大きさで）。 */}
                         <PlayResultCard compact hideLinks className="px-1" />
-                    </div>
-                    <div className="flex justify-center">
                         <KifuNavigationToolbar
                             currentPly={navigationState.currentPly}
                             totalPly={navigationState.totalPly}
@@ -201,6 +199,7 @@ export function PlayMobileLayout({
                             onToStart={navigationHandlers.goToStart}
                             onToEnd={navigationHandlers.goToEnd}
                             canGoForward={navigationState.canGoForward}
+                            size="large"
                         />
                     </div>
                     <MobileKifuBar

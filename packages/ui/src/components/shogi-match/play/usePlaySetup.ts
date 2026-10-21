@@ -46,9 +46,9 @@ export const AI_TIME_CHOICES: TimeChoice[] = [
 
 /** 自分の持ち時間。 */
 export const MY_TIME_CHOICES: TimeChoice[] = [
-    { id: "none", label: "なし", mainMs: 0, byoyomiMs: 10_000, enabled: false },
+    { id: "none", label: "無制限", mainMs: 0, byoyomiMs: 10_000, enabled: false },
     { id: "30", label: "1手30秒", mainMs: 0, byoyomiMs: 30_000, enabled: true },
-    { id: "10+30", label: "10分＋30秒", mainMs: 600_000, byoyomiMs: 30_000, enabled: true },
+    { id: "10+30", label: "10分+30秒", mainMs: 600_000, byoyomiMs: 30_000, enabled: true },
 ];
 
 const opposite = (side: Player): Player => (side === "sente" ? "gote" : "sente");
@@ -72,6 +72,9 @@ interface PlaySetup {
     level: number;
     aiTimeId: string | null;
     myTimeId: string | null;
+    /** いまの AI・自分の時間（選択肢に無い値を、そのまま見せる・直すのに使う） */
+    aiClock: ClockSettings[Player];
+    myClock: ClockSettings[Player];
     locked: boolean;
     /** 自分の手番を決めて、人 対 AI の組み合わせにする（`opponentValue` を渡すと相手も同時に替える） */
     chooseSide: (side: Player, opponentValue?: string, aiTime?: TimeChoice) => void;
@@ -362,6 +365,8 @@ export function usePlaySetup(): PlaySetup {
         level: aiSetting.skillLevel?.skillLevel ?? SKILL_LEVEL_MAX,
         aiTimeId,
         myTimeId,
+        aiClock,
+        myClock,
         locked: settingsLocked,
         chooseSide,
         chooseOpponent,

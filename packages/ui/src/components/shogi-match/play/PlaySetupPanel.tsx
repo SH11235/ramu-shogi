@@ -15,7 +15,13 @@ import { NativeSelect } from "../../native-select";
 import { SoundToggle } from "../components/SoundToggle";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
-import { PLAY_HEADING, PLAY_PRIMARY_BUTTON, PLAY_TEXT_LINK } from "./playStyles";
+import { formatClock, PlayTimeDialog } from "./PlayTimeDialog";
+import {
+    PLAY_HEADING,
+    PLAY_OUTLINE_BUTTON,
+    PLAY_PRIMARY_BUTTON,
+    PLAY_TEXT_LINK,
+} from "./playStyles";
 import { AI_TIME_CHOICES, MY_TIME_CHOICES, type TimeChoice, usePlaySetup } from "./usePlaySetup";
 
 type SideChoice = Player | "random";
@@ -79,7 +85,12 @@ function Segmented<T extends string>({
                     {rowLabel}
                 </span>
             )}
-            <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+            <div
+                className={cn(
+                    "flex min-w-0 flex-1 flex-wrap gap-1.5",
+                    rowLabel && "max-[359px]:gap-1",
+                )}
+            >
                 {options.map((option) => {
                     const selected = option.id === value;
                     return (
@@ -89,7 +100,10 @@ function Segmented<T extends string>({
                             aria-pressed={selected}
                             onClick={() => onChange(option.id)}
                             className={cn(
-                                rowLabel ? "px-2" : "px-2.5",
+                                // 幅 320〜390px 級の端末でも、時間の 4〜5 個の選択肢を 1 行に収める。
+                                rowLabel
+                                    ? "px-1.5 max-[399px]:px-1 max-[399px]:text-xs max-[359px]:px-0.5"
+                                    : "px-2.5",
                                 "min-h-10 flex-1 whitespace-nowrap rounded-md border text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 md:min-h-9 [@media(max-height:760px)]:md:min-h-8",
                                 // 選んでいる項目は墨の枠で示す（朱・藍は、先手・後手の色に取っておく）。
                                 selected
@@ -106,14 +120,19 @@ function Segmented<T extends string>({
     );
 }
 
-/** 詳細設定で秒を指定していて、どの選択肢にも当たらないときの項目。 */
+/** 時間を数で決める項目（押すと時間だけを聞くダイアログを開く）。 */
 const CUSTOM_TIME_ID = "custom";
 
-/** 時間の選択肢。いまの時間がどれにも当たらなければ、「秒で指定」を選ばれた状態で足す。 */
-const timeOptions = (choices: TimeChoice[], currentId: string | null) => [
+/** 時間の選択肢と「指定」。いまの時間がどれにも当たらなければ、「指定」の所にその時間を書いて選ばれた状態にする。 */
+const timeOptions = (choices: TimeChoice[], currentId: string | null, currentLabel: string) => [
     ...choices.map((choice) => ({ id: choice.id, label: choice.label })),
-    ...(currentId === null ? [{ id: CUSTOM_TIME_ID, label: "秒で指定" }] : []),
+    { id: CUSTOM_TIME_ID, label: currentId === null ? currentLabel : "指定" },
 ];
+
+/** AI の考慮時間を、選択肢と同じ書き方（「45秒」）で書く。 */
+const formatAiTime = (byoyomiMs: number): string => `${Math.floor(byoyomiMs / 1000)}秒`;
+
+type TimeTarget = "ai" | "my" | "both" | "bothAi";
 
 const sideLabel = (side: Player): string => (side === "sente" ? "先手" : "後手");
 
@@ -121,7 +140,7 @@ const FIELD_LABEL_CLASS = "text-xs font-medium text-wafuu-sumi-light";
 const TEXT_LINK_CLASS = PLAY_TEXT_LINK;
 /** 行の形: 左に項目名、右に選択肢。項目の間は細い線で区切る。 */
 const ROW_CLASS = "items-center gap-x-2 gap-y-0.5 border-b border-wafuu-border py-1";
-const ROW_LABEL_CLASS = "w-14 shrink-0 text-xs font-medium text-wafuu-sumi-light";
+const ROW_LABEL_CLASS = "w-14 shrink-0 text-xs font-medium text-wafuu-sumi-light max-[359px]:w-12";
 
 interface PlaySetupPanelProps {
     /** 詳細設定を開く */
@@ -146,6 +165,7 @@ export function PlaySetupPanel({
     const [randomSide, setRandomSide] = useState(false);
     const [pendingStart, setPendingStart] = useState(false);
     const [pendingNotice, setPendingNotice] = useState<string | undefined>(undefined);
+    const [timeDialog, setTimeDialog] = useState<TimeTarget | null>(null);
     const startMatch = useEffectEvent(() => {
         play?.startMatch(pendingNotice);
         setPendingNotice(undefined);
@@ -221,39 +241,33 @@ export function PlaySetupPanel({
             対局開始
         </Button>
     );
-    // 縦に並べるときは、注記が無い相手でも 2 行ぶんの高さを取る（相手を選び直したときに、下の「詳細設定」が動かないように）。
-    // 行の形では開始ボタンが下端に固定なので、高さは取らない。
     const downloadNote =
-        rows && downloadMb === null ? null : (
-            <p
-                aria-hidden={downloadMb === null}
-                className={cn(
-                    "text-center text-xs leading-relaxed text-wafuu-sumi-light",
-                    !rows && "min-h-10",
-                )}
-            >
-                {downloadMb !== null && (
-                    <>
-                        <span className="inline-block">
-                            {setup.opponent?.label} は、初回だけ約 {downloadMb}MB
-                            のダウンロードがあります。
-                        </span>{" "}
-                        <button
-                            type="button"
-                            onClick={handleQuickStart}
-                            disabled={locked}
-                            className={cn(
-                                TEXT_LINK_CLASS,
-                                "font-medium text-wafuu-ai hover:text-wafuu-ai-light disabled:opacity-50",
-                                rows && "min-h-8",
-                            )}
-                        >
-                            ダウンロードせずに簡易AI と指す
-                        </button>
-                    </>
-                )}
+        downloadMb === null ? null : (
+            <p className="text-center text-xs leading-relaxed text-wafuu-sumi-light">
+                <span className="inline-block">
+                    {setup.opponent?.label} は、初回だけ約 {downloadMb}MB のダウンロードがあります。
+                </span>{" "}
+                <button
+                    type="button"
+                    onClick={handleQuickStart}
+                    disabled={locked}
+                    className={cn(
+                        TEXT_LINK_CLASS,
+                        "font-medium text-wafuu-ai hover:text-wafuu-ai-light disabled:opacity-50",
+                        rows && "min-h-8",
+                    )}
+                >
+                    ダウンロードせずに簡易AI と指す
+                </button>
             </p>
         );
+    // 時間のダイアログは、いまの時間から始める。無制限のときは、よく使う「10分＋30秒」から始める。
+    const dialogClock =
+        timeDialog === "ai" || timeDialog === "bothAi"
+            ? setup.aiClock
+            : setup.myClock.enabled
+              ? setup.myClock
+              : { mainMs: 600_000, byoyomiMs: 30_000 };
     const levelSlider = (
         <input
             id="play-setup-level"
@@ -266,24 +280,43 @@ export function PlaySetupPanel({
             className={cn("min-w-0 flex-1 accent-wafuu-shu", rows ? "h-10" : "h-8 md:h-6")}
         />
     );
-    const editTurnLabel = play?.editTurn === "sente" ? "先手" : "後手";
-    // 平手以外は、先手から指し始めるとは限らない。行の形では 1 行に収める（駒落ちであることは選んだ項目名で分かる）。
-    const startTurnNotice = !preset
-        ? `${editTurnLabel}から指し始めます`
-        : rows
-          ? "上手（後手）から指し始めます"
-          : `上手（後手）の駒落ち ・ ${editTurnLabel}から指し始めます`;
-    const advancedLink = (
-        <button
+    // 平手以外は、先手から指し始めるとは限らない。先に指す対局者を名前で示す（人同士は名前が同じなので先後の印）。
+    // 行の形では 1 行に収める（駒落ちであることは選んだ項目名で分かる）。
+    const editTurn = play?.editTurn ?? "sente";
+    const firstMover =
+        setup.kind === "humans"
+            ? editTurn === "sente"
+                ? "☗"
+                : "☖"
+            : (play?.playerNames[editTurn] ?? (editTurn === "sente" ? "☗" : "☖"));
+    const startTurnNotice =
+        preset && !rows
+            ? `上手の駒落ち ・ ${firstMover}から指し始めます`
+            : `${firstMover}から指し始めます`;
+    const advancedButton = (
+        <Button
             type="button"
+            variant="outline"
             onClick={onOpenAdvanced}
-            className={cn(
-                TEXT_LINK_CLASS,
-                "ml-auto whitespace-nowrap text-wafuu-sumi-light hover:text-wafuu-sumi",
-            )}
+            className={cn("h-9 min-h-9 gap-1.5 px-3 text-sm", PLAY_OUTLINE_BUTTON)}
         >
+            <svg
+                aria-hidden="true"
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            >
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                <circle cx="12" cy="12" r="3" />
+            </svg>
             詳細設定
-        </button>
+        </Button>
     );
 
     return (
@@ -298,8 +331,8 @@ export function PlaySetupPanel({
                 className,
             )}
         >
-            {/* 行の形では、詳細設定への入口を見出しの右に置く（縦を 1 行ぶん空ける）。 */}
-            <div className={rows ? "flex items-center justify-between gap-2" : "contents"}>
+            {/* 詳細設定への入口は、見出しの右に見える大きさで置く。 */}
+            <div className="flex items-center justify-between gap-2">
                 <h1
                     id="play-setup-heading"
                     data-play-heading
@@ -313,12 +346,10 @@ export function PlaySetupPanel({
                           : "AI 同士の対局を見る"}
                 </h1>
                 {/* 音の切り替えも、対局開始前に止められるよう見出しの行に置く（AI が先手なら初手から鳴る）。 */}
-                {rows && (
-                    <span className="flex items-center gap-2 text-[13px]">
-                        <SoundToggle />
-                        {advancedLink}
-                    </span>
-                )}
+                <span className="flex shrink-0 items-center gap-2">
+                    {rows && <SoundToggle />}
+                    {advancedButton}
+                </span>
             </div>
             {/* 棋譜を調べたくて来た人が、最初に気づける位置に置く。行の形（スマホ）では、
                 設定を 1 画面に収めるために出さない（研究ノートへはメニューから行ける）。 */}
@@ -416,11 +447,15 @@ export function PlaySetupPanel({
                     <Segmented
                         label="AI の考慮時間（1手・両者）"
                         rowLabel={rows ? "AI 1手" : undefined}
-                        options={timeOptions(AI_TIME_CHOICES, setup.bothAiTimeId)}
+                        options={timeOptions(
+                            AI_TIME_CHOICES,
+                            setup.bothAiTimeId,
+                            formatAiTime(setup.aiClock.byoyomiMs),
+                        )}
                         value={setup.bothAiTimeId ?? CUSTOM_TIME_ID}
                         onChange={(id) => {
                             if (id === CUSTOM_TIME_ID) {
-                                onOpenAdvanced();
+                                setTimeDialog("bothAi");
                                 return;
                             }
                             const choice = AI_TIME_CHOICES.find((item) => item.id === id);
@@ -499,12 +534,15 @@ export function PlaySetupPanel({
                     <Segmented
                         label="AI の考慮時間（1手）"
                         rowLabel={rows ? "AI 1手" : undefined}
-                        options={timeOptions(AI_TIME_CHOICES, setup.aiTimeId)}
+                        options={timeOptions(
+                            AI_TIME_CHOICES,
+                            setup.aiTimeId,
+                            formatAiTime(setup.aiClock.byoyomiMs),
+                        )}
                         value={setup.aiTimeId ?? CUSTOM_TIME_ID}
                         onChange={(id) => {
-                            // 「秒で指定」は詳細設定で決める。
                             if (id === CUSTOM_TIME_ID) {
-                                onOpenAdvanced();
+                                setTimeDialog("ai");
                                 return;
                             }
                             const choice = AI_TIME_CHOICES.find((item) => item.id === id);
@@ -515,12 +553,15 @@ export function PlaySetupPanel({
                     <Segmented
                         label="あなたの持ち時間"
                         rowLabel={rows ? "持ち時間" : undefined}
-                        options={timeOptions(MY_TIME_CHOICES, setup.myTimeId)}
+                        options={timeOptions(
+                            MY_TIME_CHOICES,
+                            setup.myTimeId,
+                            formatClock(setup.myClock.mainMs, setup.myClock.byoyomiMs),
+                        )}
                         value={setup.myTimeId ?? CUSTOM_TIME_ID}
                         onChange={(id) => {
-                            // 「秒で指定」は詳細設定で決める。
                             if (id === CUSTOM_TIME_ID) {
-                                onOpenAdvanced();
+                                setTimeDialog("my");
                                 return;
                             }
                             const choice = MY_TIME_CHOICES.find((item) => item.id === id);
@@ -535,11 +576,15 @@ export function PlaySetupPanel({
                 <Segmented
                     label="持ち時間（両者）"
                     rowLabel={rows ? "持ち時間" : undefined}
-                    options={timeOptions(MY_TIME_CHOICES, setup.bothTimeId)}
+                    options={timeOptions(
+                        MY_TIME_CHOICES,
+                        setup.bothTimeId,
+                        formatClock(setup.myClock.mainMs, setup.myClock.byoyomiMs),
+                    )}
                     value={setup.bothTimeId ?? CUSTOM_TIME_ID}
                     onChange={(id) => {
                         if (id === CUSTOM_TIME_ID) {
-                            onOpenAdvanced();
+                            setTimeDialog("both");
                             return;
                         }
                         const choice = MY_TIME_CHOICES.find((item) => item.id === id);
@@ -605,11 +650,31 @@ export function PlaySetupPanel({
                     </div>
                     {/* 開始ボタンの下に置く（ボタンを下端に留めるために、同じ並びの別の要素にしている）。 */}
                     {downloadNote}
-                    <div className="flex items-center justify-end border-t border-wafuu-border pt-3 text-[13px]">
-                        {advancedLink}
-                    </div>
                 </>
             )}
+            <PlayTimeDialog
+                open={timeDialog !== null}
+                onOpenChange={(open) => {
+                    if (!open) setTimeDialog(null);
+                }}
+                kind={timeDialog === "ai" || timeDialog === "bothAi" ? "ai" : "player"}
+                title={
+                    timeDialog === "ai" || timeDialog === "bothAi"
+                        ? "AI の考慮時間を指定"
+                        : timeDialog === "both"
+                          ? "持ち時間を指定（両者）"
+                          : "あなたの持ち時間を指定"
+                }
+                mainMs={timeDialog === "ai" || timeDialog === "bothAi" ? 0 : dialogClock.mainMs}
+                byoyomiMs={dialogClock.byoyomiMs}
+                onApply={(choice) => {
+                    if (timeDialog === "ai") setup.chooseAiTime({ ...choice, mainMs: 0 });
+                    else if (timeDialog === "bothAi")
+                        setup.chooseBothAiTime({ ...choice, mainMs: 0 });
+                    else if (timeDialog === "my") setup.chooseMyTime(choice);
+                    else if (timeDialog === "both") setup.chooseBothTime(choice);
+                }}
+            />
         </section>
     );
 }

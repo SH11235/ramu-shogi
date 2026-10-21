@@ -4,8 +4,8 @@
  * 結果は画面の見出しとして出す（ダイアログでは重ねない。同じ内容を二度出さない）。
  */
 
-import type { GameResult } from "@shogi/app-core";
-import { getReasonText, getWinnerLabel } from "@shogi/app-core";
+import type { GameResult, Player } from "@shogi/app-core";
+import { getWinnerLabel } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 import { useState } from "react";
@@ -27,6 +27,33 @@ function useResultHeadline(result: GameResult): { text: string; tone: "win" | "l
             : { text: "あなたの負け", tone: "lose" };
     }
     return { text: getWinnerLabel(result.winner), tone: "plain" };
+}
+
+/**
+ * 終局の理由を、対局者の名前で書く（「あなたの時間切れ」「簡易AI の投了」）。
+ * 人同士は名前が同じ「あなた」になるので、先手・後手で呼ぶ。
+ */
+function useReasonText(result: GameResult): string {
+    const { play } = useShogiMatchConfig();
+    const { sides } = useMatchState();
+    const bothHumans = sides.sente.role === "human" && sides.gote.role === "human";
+    const nameOf = (side: Player): string =>
+        bothHumans
+            ? side === "sente"
+                ? "先手"
+                : "後手"
+            : (play?.playerNames[side] ?? (side === "sente" ? "先手" : "後手"));
+    const reason = result.reason;
+    switch (reason.kind) {
+        case "time_expired":
+            return `${nameOf(reason.loser)}の時間切れ`;
+        case "resignation":
+            return `${nameOf(reason.loser)}の投了`;
+        case "checkmate":
+            return `${nameOf(reason.loser)}が詰み`;
+        case "win_declaration":
+            return `${nameOf(reason.winner)}の入玉宣言`;
+    }
 }
 
 interface PlayResultCardProps {
@@ -133,6 +160,7 @@ function ResultSummary({
 }): ReactElement {
     const { play } = useShogiMatchConfig();
     const headline = useResultHeadline(result);
+    const reasonText = useReasonText(result);
     return (
         <div
             className={cn(
@@ -156,8 +184,9 @@ function ResultSummary({
             >
                 {headline.text}
             </h1>
-            <p className={cn("text-wafuu-sumi-light", compact ? "text-xs" : "text-sm")}>
-                {getReasonText(result.reason)} ・ {result.totalMoves}手まで
+            {/* 何で終わったかは、勝敗と並ぶ主な情報なので、補足の色にせず読める大きさで出す。 */}
+            <p className={cn("font-medium text-wafuu-sumi", compact ? "text-sm" : "text-base")}>
+                {reasonText} ・ {result.totalMoves}手まで
                 {play && play.hintCount > 0 ? ` ・ ヒント ${play.hintCount} 回` : ""}
             </p>
         </div>
