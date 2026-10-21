@@ -145,7 +145,7 @@ export default function CreateRoomPage(): ReactElement {
 
     async function handleSubmit(): Promise<void> {
         const trimmedName = settings.name.trim();
-        if (!trimmedName || startSfenMissing || startSfenProblem) return;
+        if (!trimmedName || startSfenMissing || startSfenProblem !== null) return;
         setIsCreating(true);
         setError(null);
         if (!session?.authenticated) saveLocalPlayerName(trimmedName);

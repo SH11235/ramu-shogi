@@ -65,11 +65,10 @@ export function onlineStartSfenProblem(value: string): string | null {
     // 手数を省いた「盤面 手番 持ち駒」は、サーバーが 1 手目として受け付ける
     if (fields.length === 3) fields.push("1");
     if (fields.length > 4) return ONLINE_FIELD_COUNT_MESSAGE;
+    if (fields.length < 4) return ONLINE_FORMAT_MESSAGE;
     const [board = "", turn, hands = "", ply = ""] = fields;
     const counts =
-        value.length <= ONLINE_MAX_SFEN_LENGTH &&
-        fields.length === 4 &&
-        (turn === "b" || turn === "w")
+        value.length <= ONLINE_MAX_SFEN_LENGTH && (turn === "b" || turn === "w")
             ? countPieces(board, hands)
             : null;
     if (!counts) return ONLINE_FORMAT_MESSAGE;
