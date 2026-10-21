@@ -1,6 +1,7 @@
 import type { GameResult, Player } from "@shogi/app-core";
 import type { ReactNode } from "react";
 import { createContext, useContext } from "react";
+import type { SoundVoice } from "../../hooks/useShogiSound";
 
 /**
  * 対局画面（`screen="play"`）の進み具合。
@@ -89,6 +90,10 @@ interface ShogiMatchConfig {
     evalGraphPinned: boolean;
     /** 対局画面（`screen="play"`）のときだけ入る。それ以外の画面では null */
     play: PlayScreenConfig | null;
+    /** 着手音の鳴らし方（犬・通常）を選べるか。CPU 戦で犬の音源があるときだけ true */
+    soundVoiceSelectable: boolean;
+    /** 選んだ着手音を試しに鳴らす。無ければ null */
+    previewSound: ((voice: SoundVoice) => void) | null;
 }
 
 const defaultConfig: ShogiMatchConfig = {
@@ -101,6 +106,8 @@ const defaultConfig: ShogiMatchConfig = {
     mobileHeaderContent: null,
     evalGraphPinned: false,
     play: null,
+    soundVoiceSelectable: false,
+    previewSound: null,
 };
 
 const ShogiMatchContext = createContext<ShogiMatchConfig>(defaultConfig);
@@ -125,6 +132,8 @@ export function ShogiMatchProvider({ config, children }: ShogiMatchProviderProps
         mobileHeaderContent: config.mobileHeaderContent ?? defaultConfig.mobileHeaderContent,
         evalGraphPinned: config.evalGraphPinned ?? defaultConfig.evalGraphPinned,
         play: config.play ?? defaultConfig.play,
+        soundVoiceSelectable: config.soundVoiceSelectable ?? defaultConfig.soundVoiceSelectable,
+        previewSound: config.previewSound ?? defaultConfig.previewSound,
     };
     return <ShogiMatchContext.Provider value={mergedConfig}>{children}</ShogiMatchContext.Provider>;
 }

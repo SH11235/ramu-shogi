@@ -93,7 +93,7 @@ interface UseMoveExecutionProps {
     /** 手の処理中フラグのref */
     moveProcessingRef: MutableRefObject<boolean>;
     /** 対局中に人が手を指したとき（駒音など）。検討モードの手では呼ばない */
-    onHumanMoveApplied?: () => void;
+    onHumanMoveApplied?: (move: string, before: PositionState, after: PositionState) => void;
 }
 
 /**
@@ -186,7 +186,7 @@ export function useMoveExecution({
         // ターン開始時刻をリセット
         turnStartTimeRef.current = Date.now();
         updateClocksForNextTurn(nextPosition.turn);
-        onHumanMoveApplied?.();
+        onHumanMoveApplied?.(mv, position, nextPosition);
     };
 
     // 検討モードで手を適用（分岐作成、時計更新なし）

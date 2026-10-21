@@ -395,6 +395,7 @@ function App() {
                     onRequestNnueFilePath={requestNnueFilePath}
                     allowAnalysisDuringMatch={true}
                     defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
+                    dogSoundBaseUrl={`${import.meta.env.BASE_URL}sounds/dog/v1/`}
                     onPositionSnapshot={(snapshot) => setPanelPosition(snapshot)}
                     initialReview={playHandoff ?? undefined}
                     // 読み込んだ棋譜・編集した局面（分岐・コメントごと）を研究ノートにして、その画面へ移る。
