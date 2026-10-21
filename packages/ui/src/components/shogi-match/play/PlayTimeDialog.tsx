@@ -87,7 +87,8 @@ function PlayTimeForm({
     const [secondsText, setSecondsText] = useState(String(Math.floor(byoyomiMs / 1000)));
 
     const parse = (text: string, max: number): number | null => {
-        const trimmed = text.trim();
+        // 日本語入力のまま打った全角数字（「５」）も受け付ける。
+        const trimmed = text.normalize("NFKC").trim();
         if (trimmed === "") return 0;
         if (!/^[0-9]+$/.test(trimmed)) return null;
         const value = Number(trimmed);

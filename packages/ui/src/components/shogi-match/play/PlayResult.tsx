@@ -78,8 +78,9 @@ export function PlayResultCard({
 
     return (
         <section
-            aria-label="対局結果"
-            aria-live="polite"
+            // 見出しを別の場所に出すときは、操作だけの欄なので「対局結果」の領域にしない（同じ名前の領域を 2 つ作らない）。
+            aria-label={hideSummary ? undefined : "対局結果"}
+            aria-live={hideSummary ? undefined : "polite"}
             className={cn("flex flex-col", compact ? "gap-2.5" : "gap-4", className)}
         >
             {!hideSummary && <ResultSummary result={result} compact={compact} />}
