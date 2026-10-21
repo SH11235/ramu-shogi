@@ -69,19 +69,21 @@ function getAudioContext(): AudioContext | null {
 }
 
 async function resumeIfSuspended(ctx: AudioContext): Promise<void> {
-    if (ctx.state === "suspended") {
+    // iOS では着信やバックグラウンド移行のあと "interrupted" になることもあるので、running 以外は戻す。
+    if (ctx.state !== "running") {
         await ctx.resume();
     }
 }
 
 // iOS Safari などは、利用者の操作（タップ・クリック・キー入力）の中で再生を始めた AudioContext しか鳴らさない。
-// 駒音は AI の応手や、合法手の確認を待った後など操作の外で鳴るので、最初の操作で無音を 1 回鳴らして使える状態にしておく。
+// 駒音は AI の応手や、合法手の確認を待った後など操作の外で鳴るので、操作のたびに止まっていれば無音を 1 回鳴らして戻す。
+// 着信やバックグラウンド移行でまた止まることがあるので、リスナーは外さない（動いている間は何もしない）。
 const UNLOCK_EVENTS = ["touchend", "click", "keydown"] as const;
 let unlockInstalled = false;
 
 function unlockOnUserGesture(): void {
     const ctx = getAudioContext();
-    if (!ctx) return;
+    if (!ctx || ctx.state === "running") return;
     try {
         const source = ctx.createBufferSource();
         source.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
@@ -90,16 +92,9 @@ function unlockOnUserGesture(): void {
     } catch {
         // AudioContext が使えない環境では無視
     }
-    resumeIfSuspended(ctx)
-        .then(() => {
-            if (ctx.state !== "running") return;
-            for (const type of UNLOCK_EVENTS) {
-                document.removeEventListener(type, unlockOnUserGesture, true);
-            }
-        })
-        .catch(() => {
-            // 解放できなければ、次の操作でもう一度試す
-        });
+    resumeIfSuspended(ctx).catch(() => {
+        // 戻せなければ、次の操作でもう一度試す
+    });
 }
 
 function installAudioUnlock(): void {
