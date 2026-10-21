@@ -204,7 +204,9 @@ describe("onlineStartSfenProblem", () => {
     const KINGS = "オンライン対局では、先手と後手の玉が 1 枚ずつある局面だけ使えます";
     const PIECES =
         "駒が多すぎます。盤と持ち駒を合わせて、歩は 18 枚、香・桂・銀・金は 4 枚、角・飛は 2 枚までです";
-    const PLY = "手数は 1 から 1000000 までにしてください";
+    const PLY = "SFEN の最後の数字 (手数) は 1 から 1,000,000 までにしてください";
+    const FIELDS =
+        "SFEN は「盤面 手番 持ち駒 手数」の 4 つだけにしてください。先頭の sfen や後ろの moves は外してください";
 
     it.each([
         ["プリセット", "startpos", null],
@@ -227,7 +229,13 @@ describe("onlineStartSfenProblem", () => {
         ["持ち駒に同じ駒を 2 度書く", "4k4/9/9/9/9/9/9/9/4K4 b PP 1", FORMAT],
         ["持ち駒の数が 0", "4k4/9/9/9/9/9/9/9/4K4 b 0P 1", FORMAT],
         ["持ち駒に玉", "4k4/9/9/9/9/9/9/9/4K4 b K 1", FORMAT],
-        ["フィールドが 5 つ", "sfen 4k4/9/9/9/9/9/9/9/4K4 b - 1", FORMAT],
+        ["先頭に sfen が付いた局面", "sfen 4k4/9/9/9/9/9/9/9/4K4 b - 1", FIELDS],
+        ["後ろに moves が付いた局面", "4k4/9/9/9/9/9/9/9/4K4 b - 1 moves 5i5h", FIELDS],
+        ["選択肢の SFEN 直接入力そのもの", "custom", FORMAT],
+        ["先頭に 0 の付いた手数", "4k4/9/9/9/9/9/9/9/4K4 b - 01", FORMAT],
+        ["数字でない手数", "4k4/9/9/9/9/9/9/9/4K4 b - 1.5", FORMAT],
+        ["安全な整数を超える持ち駒の数", "4k4/9/9/9/9/9/9/9/4K4 b 99999999999999999999P 1", PIECES],
+        ["区切りの空白が複数ある手数省略の局面", "4k4/9/9/9/9/9/9/9/4K4  b   -", null],
         ["長すぎる文字列", `4k4/9/9/9/9/9/9/9/4K4 b - 1${" ".repeat(512)}`, FORMAT],
     ])("%s", (_label, value, expected) => {
         expect(onlineStartSfenProblem(value)).toBe(expected);
