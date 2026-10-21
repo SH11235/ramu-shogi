@@ -44,6 +44,7 @@ interface SetupOptions {
 
 function setup(mode: Mode, options: SetupOptions = {}) {
     const addMove = vi.fn();
+    const onHumanMoveApplied = vi.fn();
     const legalCache = new LegalMoveCache();
     if (!options.fetchLegalMoves) {
         legalCache.set(buildLegalCacheKey(START_SFEN, [], {}), new Set(LEGAL_MOVES));
@@ -92,6 +93,7 @@ function setup(mode: Mode, options: SetupOptions = {}) {
                 editPromoted: false,
                 placePieceAt: () => false,
                 moveProcessingRef: { current: false },
+                onHumanMoveApplied,
             });
             return { ...execution, selection, message };
         },
@@ -100,6 +102,7 @@ function setup(mode: Mode, options: SetupOptions = {}) {
 
     return {
         addMove,
+        onHumanMoveApplied,
         legalCache,
         /** 開始局面を読み込み直す（呼び出し側と同じく、合法手キャッシュも捨てる） */
         loadStartSfen: (startSfen: string) => {
@@ -240,5 +243,37 @@ describe("useMoveExecution: 合法手キャッシュと局面の入れ替え", (
         // B の合法手はキャッシュに残り、3 回目は取りに行かない。
         expect([...((await t.current().getLegalSet()) ?? [])]).toEqual(["2h2e"]);
         expect(fetchLegalMoves).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe("useMoveExecution: 人が指したときの知らせ（駒音）", () => {
+    it("対局中に盤の駒を動かすと知らせる", async () => {
+        const t = setup("match");
+        await t.selectSquare("7g");
+        await t.selectSquare("7f");
+        expect(t.addMove).toHaveBeenCalledTimes(1);
+        expect(t.onHumanMoveApplied).toHaveBeenCalledTimes(1);
+    });
+
+    it("対局中に持ち駒を打つと知らせる", async () => {
+        const t = setup("match");
+        t.selectHand("G");
+        await t.selectSquare("5e");
+        expect(t.onHumanMoveApplied).toHaveBeenCalledTimes(1);
+    });
+
+    it("検討モードの手では知らせない", async () => {
+        const t = setup("review");
+        await t.selectSquare("7g");
+        await t.selectSquare("7f");
+        expect(t.addMove).toHaveBeenCalledTimes(1);
+        expect(t.onHumanMoveApplied).not.toHaveBeenCalled();
+    });
+
+    it("指せない手では知らせない", async () => {
+        const t = setup("match");
+        t.selectHand("P");
+        await t.selectSquare("7e");
+        expect(t.onHumanMoveApplied).not.toHaveBeenCalled();
     });
 });

@@ -2026,6 +2026,10 @@ export function ShogiMatch({
         editPromoted,
         placePieceAt,
         moveProcessingRef,
+        // 人の手は applyMoveAndUpdateState を通らないので、駒音はここで鳴らす。
+        onHumanMoveApplied: () => {
+            if (displaySettings.enableSound) playSound("move_self");
+        },
     });
 
     // 選んでいる駒の影（マウスを乗せた行き先に出す）。局面編集中は選択の意味が違うので出さない

@@ -92,6 +92,8 @@ interface UseMoveExecutionProps {
     ) => boolean;
     /** 手の処理中フラグのref */
     moveProcessingRef: MutableRefObject<boolean>;
+    /** 対局中に人が手を指したとき（駒音など）。検討モードの手では呼ばない */
+    onHumanMoveApplied?: () => void;
 }
 
 /**
@@ -150,6 +152,7 @@ export function useMoveExecution({
     editPromoted,
     placePieceAt,
     moveProcessingRef,
+    onHumanMoveApplied,
 }: UseMoveExecutionProps): UseMoveExecutionReturn {
     // 合法手セットを取得
     const getLegalSet = async (): Promise<Set<string> | null> => {
@@ -183,6 +186,7 @@ export function useMoveExecution({
         // ターン開始時刻をリセット
         turnStartTimeRef.current = Date.now();
         updateClocksForNextTurn(nextPosition.turn);
+        onHumanMoveApplied?.();
     };
 
     // 検討モードで手を適用（分岐作成、時計更新なし）

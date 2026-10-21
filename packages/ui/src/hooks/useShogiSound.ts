@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+
 // Web Audio API による合成音フック
 // 後から音声ファイルに差し替える場合は playSound の実装のみ変更する
 
@@ -72,32 +74,75 @@ async function resumeIfSuspended(ctx: AudioContext): Promise<void> {
     }
 }
 
+// iOS Safari などは、利用者の操作（タップ・クリック・キー入力）の中で再生を始めた AudioContext しか鳴らさない。
+// 駒音は AI の応手や、合法手の確認を待った後など操作の外で鳴るので、最初の操作で無音を 1 回鳴らして使える状態にしておく。
+const UNLOCK_EVENTS = ["touchend", "click", "keydown"] as const;
+let unlockInstalled = false;
+
+function unlockOnUserGesture(): void {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    try {
+        const source = ctx.createBufferSource();
+        source.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+        source.connect(ctx.destination);
+        source.start();
+    } catch {
+        // AudioContext が使えない環境では無視
+    }
+    resumeIfSuspended(ctx)
+        .then(() => {
+            if (ctx.state !== "running") return;
+            for (const type of UNLOCK_EVENTS) {
+                document.removeEventListener(type, unlockOnUserGesture, true);
+            }
+        })
+        .catch(() => {
+            // 解放できなければ、次の操作でもう一度試す
+        });
+}
+
+function installAudioUnlock(): void {
+    if (unlockInstalled || typeof document === "undefined") return;
+    unlockInstalled = true;
+    for (const type of UNLOCK_EVENTS) {
+        document.addEventListener(type, unlockOnUserGesture, true);
+    }
+}
+
 // ─── フック ───────────────────────────────────────────────────────────────────
 
 export function useShogiSound(): { playSound: (type: ShogiSoundType) => void } {
+    useEffect(installAudioUnlock, []);
+
     function playSound(type: ShogiSoundType): void {
         const ctx = getAudioContext();
         if (!ctx) return;
 
-        void resumeIfSuspended(ctx).then(() => {
-            try {
-                switch (type) {
-                    case "move_self":
-                        // 自分の着手: やや小さめの打撃音
-                        playKnockSound(ctx, 0.4);
-                        break;
-                    case "move_opponent":
-                        // 相手の着手: 大きめの打撃音
-                        playKnockSound(ctx, 0.75);
-                        break;
-                    case "pass":
-                        playPassSound(ctx);
-                        break;
+        resumeIfSuspended(ctx).then(
+            () => {
+                try {
+                    switch (type) {
+                        case "move_self":
+                            // 自分の着手: やや小さめの打撃音
+                            playKnockSound(ctx, 0.4);
+                            break;
+                        case "move_opponent":
+                            // 相手の着手: 大きめの打撃音
+                            playKnockSound(ctx, 0.75);
+                            break;
+                        case "pass":
+                            playPassSound(ctx);
+                            break;
+                    }
+                } catch {
+                    // AudioContext が使えない環境では無視
                 }
-            } catch {
-                // AudioContext が使えない環境では無視
-            }
-        });
+            },
+            () => {
+                // 操作の前で、まだ音を出せない
+            },
+        );
     }
 
     return { playSound };
