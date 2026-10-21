@@ -38,6 +38,7 @@ describe("isCpuLosing", () => {
         expect(isCpuLosing({ scoreCp: -999 })).toBe(false);
         expect(isCpuLosing({ scoreCp: -1000 })).toBe(true);
         expect(isCpuLosing({ scoreMate: -5 })).toBe(true);
+        expect(isCpuLosing({ scoreMate: -0 })).toBe(true);
         expect(isCpuLosing({ scoreMate: 3, scoreCp: -2000 })).toBe(false);
     });
 });

@@ -13,6 +13,8 @@ interface MoveSoundDetail {
     scene: MoveScene;
     /** CPU の手で、CPU 側の評価値が大きく負けているとき */
     cpuLosing?: boolean;
+    /** 犬の声を読み込み中なら通常の駒音で代わりに鳴らす（試し鳴らしで無音にしない） */
+    fallbackWhileLoading?: boolean;
 }
 
 // ─── 合成音の実装 ─────────────────────────────────────────────────────────────
@@ -146,7 +148,8 @@ export function useShogiSound({ dogSoundBaseUrl }: UseShogiSoundOptions = {}): {
                             detail.scene,
                             detail.cpuLosing ?? false,
                         );
-                        if (result !== "unavailable") return;
+                        if (result === "played") return;
+                        if (result === "loading" && !detail.fallbackWhileLoading) return;
                     }
                     switch (type) {
                         case "move_self":

@@ -888,7 +888,10 @@ export function ShogiMatch({
     });
     moveSoundRef.current = {
         enabled: displaySettings.enableSound,
-        voice: isCpuGame && dogSoundBaseUrl ? displaySettings.cpuSoundVoice : "standard",
+        voice:
+            isCpuGame && dogSoundBaseUrl && displaySettings.cpuSoundVoice !== "standard"
+                ? "dog"
+                : "standard",
     };
     const playMoveSound = (
         move: string,
@@ -2667,7 +2670,12 @@ export function ShogiMatch({
                 evalGraphPinned,
                 aiIconUrl,
                 soundVoiceSelectable: isCpuGame && Boolean(dogSoundBaseUrl),
-                previewSound: (voice) => playSound("move_opponent", { voice, scene: "move" }),
+                previewSound: (voice) =>
+                    playSound("move_opponent", {
+                        voice,
+                        scene: "move",
+                        fallbackWhileLoading: true,
+                    }),
                 presetIconUrls: Object.fromEntries(
                     presetConfigs.flatMap((preset) =>
                         preset.iconUrl ? [[preset.presetKey, preset.iconUrl]] : [],

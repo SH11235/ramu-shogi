@@ -1,6 +1,6 @@
 import { cn } from "@shogi/design-system";
-import type { ReactElement } from "react";
-import { useId, useState } from "react";
+import type { KeyboardEvent, ReactElement } from "react";
+import { useRef, useState } from "react";
 import type { SoundVoice } from "../../../hooks/useShogiSound";
 import { Popover, PopoverContent, PopoverTrigger } from "../../popover";
 import { useNavigation } from "../contexts/NavigationContext";
@@ -84,7 +84,7 @@ export function SoundToggle(): ReactElement {
     const { displaySettings, onDisplaySettingsChange } = useNavigation();
     const { soundVoiceSelectable, previewSound } = useShogiMatchConfig();
     const [open, setOpen] = useState(false);
-    const groupName = useId();
+    const menuRef = useRef<HTMLDivElement>(null);
     const enabled = displaySettings.enableSound;
 
     if (!soundVoiceSelectable) {
@@ -109,7 +109,11 @@ export function SoundToggle(): ReactElement {
         );
     }
 
-    const voice = displaySettings.cpuSoundVoice ?? DEFAULT_DISPLAY_SETTINGS.cpuSoundVoice;
+    // 手で書き換えられた保存値などの知らない値は既定に戻す
+    const voice: SoundVoice =
+        displaySettings.cpuSoundVoice === "standard"
+            ? "standard"
+            : DEFAULT_DISPLAY_SETTINGS.cpuSoundVoice;
     const mode: SoundMode = enabled ? voice : "off";
     const current = MODE_OPTIONS.find((option) => option.mode === mode);
 
@@ -124,6 +128,22 @@ export function SoundToggle(): ReactElement {
         if (next !== "off") previewSound?.(next);
     };
 
+    const moveFocus = (event: KeyboardEvent<HTMLDivElement>) => {
+        const items = [
+            ...event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitemradio"]'),
+        ];
+        const index = items.indexOf(document.activeElement as HTMLElement);
+        const target = {
+            ArrowDown: items[(index + 1) % items.length],
+            ArrowUp: items[(index - 1 + items.length) % items.length],
+            Home: items[0],
+            End: items[items.length - 1],
+        }[event.key];
+        if (!target) return;
+        event.preventDefault();
+        target.focus();
+    };
+
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
@@ -136,29 +156,37 @@ export function SoundToggle(): ReactElement {
                     <SoundIcon mode={mode} />
                 </button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-36 p-1">
-                <fieldset className="flex flex-col gap-0.5">
-                    <legend className="sr-only">着手音</legend>
+            <PopoverContent
+                align="end"
+                className="w-36 p-1"
+                // 先頭ではなく今の選択から矢印キーで動けるようにする
+                onOpenAutoFocus={(event) => {
+                    event.preventDefault();
+                    menuRef.current?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
+                }}
+            >
+                {/* ラジオ入力だと矢印キーで移っただけで選ばれて閉じるので、移動と決定を分けたメニューにする */}
+                <div
+                    ref={menuRef}
+                    role="menu"
+                    aria-label="着手音"
+                    onKeyDown={moveFocus}
+                    className="flex flex-col gap-0.5"
+                >
                     {MODE_OPTIONS.map((option) => {
                         const checked = option.mode === mode;
                         return (
-                            <label
+                            <button
                                 key={option.mode}
+                                type="button"
+                                role="menuitemradio"
+                                aria-checked={checked}
+                                onClick={() => select(option.mode)}
                                 className={cn(
-                                    "flex min-h-10 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
+                                    "flex min-h-10 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                     checked && "bg-wafuu-kin/20 font-medium",
                                 )}
                             >
-                                {/* 選び直しでも閉じて試し鳴らしできるよう、change ではなく click で拾う */}
-                                <input
-                                    type="radio"
-                                    name={groupName}
-                                    value={option.mode}
-                                    checked={checked}
-                                    onChange={() => {}}
-                                    onClick={() => select(option.mode)}
-                                    className="sr-only"
-                                />
                                 <SoundIcon mode={option.mode} />
                                 <span className="flex-1">{option.label}</span>
                                 {checked && (
@@ -172,10 +200,10 @@ export function SoundToggle(): ReactElement {
                                         <path d="m5 12 5 5 9-10" />
                                     </svg>
                                 )}
-                            </label>
+                            </button>
                         );
                     })}
-                </fieldset>
+                </div>
             </PopoverContent>
         </Popover>
     );

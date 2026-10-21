@@ -20,6 +20,7 @@ const CPU_LOSING_CP = -1000;
 /** 対局エンジンの探索結果（手番側＝エンジンから見た値）で、CPU が劣勢か */
 export function isCpuLosing(stats: { scoreCp?: number; scoreMate?: number } | undefined): boolean {
     if (!stats) return false;
-    if (stats.scoreMate !== undefined) return stats.scoreMate < 0;
+    // 詰まされた側は mate -0 を出すことがある
+    if (stats.scoreMate !== undefined) return stats.scoreMate < 0 || Object.is(stats.scoreMate, -0);
     return stats.scoreCp !== undefined && stats.scoreCp <= CPU_LOSING_CP;
 }

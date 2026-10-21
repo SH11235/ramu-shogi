@@ -32,6 +32,7 @@ const WEAK_PROBABILITY = 0.25;
 // weak は 1.2 秒あり、人がすぐ指し返しても切らずに鳴らし切る。その間の声は小さくして重ねる。
 const DUCK_GAIN_WHILE_WEAK = 0.5;
 
+const LOAD_TIMEOUT_MS = 15_000;
 const loadingBases = new Set<string>();
 const loadedBuffers = new Map<string, Map<ClipName, AudioBuffer>>();
 
@@ -55,20 +56,35 @@ async function decodeClip(
 
 /** 音源を読み込んでデコードしておく。同じ基点 URL では 1 回だけ読む */
 export function preloadDogSounds(baseUrl: string): void {
-    if (loadingBases.has(baseUrl) || typeof window === "undefined" || !window.OfflineAudioContext) {
+    if (loadingBases.has(baseUrl) || loadedBuffers.has(baseUrl)) return;
+    if (typeof window === "undefined" || !window.OfflineAudioContext) {
+        loadedBuffers.set(baseUrl, new Map());
+        return;
+    }
+    // 再生用の AudioContext は利用者の操作の前に作ると止まったままになるので、デコードは別の文脈で行う。
+    // AudioBuffer は文脈をまたいで使え、サンプリング周波数の違いは再生時に変換される。
+    let ctx: OfflineAudioContext;
+    try {
+        ctx = new OfflineAudioContext(1, 1, 48000);
+    } catch {
+        loadedBuffers.set(baseUrl, new Map());
         return;
     }
     loadingBases.add(baseUrl);
-    // 再生用の AudioContext は利用者の操作の前に作ると止まったままになるので、デコードは別の文脈で行う。
-    // AudioBuffer は文脈をまたいで使え、サンプリング周波数の違いは再生時に変換される。
-    const ctx = new OfflineAudioContext(1, 1, 48000);
     void Promise.all(
         CLIP_NAMES.map(async (name) => [name, await decodeClip(ctx, baseUrl, name)] as const),
     ).then((entries) => {
         const buffers = new Map<ClipName, AudioBuffer>();
         for (const [name, buffer] of entries) if (buffer) buffers.set(name, buffer);
         loadedBuffers.set(baseUrl, buffers);
+        loadingBases.delete(baseUrl);
     });
+    // 回線が止まりかけていたり、デコードが返ってこなかったりしても、ずっと無音のままにしない。
+    // 時間切れのあとは通常の駒音で鳴らし、遅れて読み終われば犬の声に戻す。
+    setTimeout(() => {
+        if (!loadedBuffers.has(baseUrl)) loadedBuffers.set(baseUrl, new Map());
+        loadingBases.delete(baseUrl);
+    }, LOAD_TIMEOUT_MS);
 }
 
 let current: AudioBufferSourceNode | null = null;
