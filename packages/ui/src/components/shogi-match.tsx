@@ -876,6 +876,9 @@ export function ShogiMatch({
     // 既存の localStorage データに新フィールド（enableSound 等）がない場合のマージ
     const displaySettings = { ...displaySettingsDefaults, ...storedDisplaySettings };
     const { playSound } = useShogiSound();
+    // 人の手は合法手の確認を待ってから適用されるので、鳴らすかどうかはその時点の設定で決める。
+    const enableSoundRef = useRef(displaySettings.enableSound);
+    enableSoundRef.current = displaySettings.enableSound;
     // 解析設定（古いlocalStorageデータとの互換性のためデフォルト値とマージ）
     const [storedAnalysisSettings, setAnalysisSettings] = useLocalStorage<AnalysisSettings>(
         "shogi-analysis-settings",
@@ -1609,7 +1612,7 @@ export function ShogiMatch({
     // handleEvalUpdate を ref に設定（useEngineManager で使用）
     handleEvalUpdateRef.current = handleEvalUpdate;
 
-    // 手の適用後の共通処理（エンジンの手・パス手・人間の手で共通）
+    // エンジンの手・パスの適用後の共通処理（盤や持ち駒からの人の手は useMoveExecution が適用する）
     const applyMoveAndUpdateState = (
         move: string,
         nextPosition: PositionState,
@@ -2026,6 +2029,10 @@ export function ShogiMatch({
         editPromoted,
         placePieceAt,
         moveProcessingRef,
+        // 人の手は applyMoveAndUpdateState を通らないので、駒音はここで鳴らす。
+        onHumanMoveApplied: () => {
+            if (enableSoundRef.current) playSound("move_self");
+        },
     });
 
     // 選んでいる駒の影（マウスを乗せた行き先に出す）。局面編集中は選択の意味が違うので出さない
