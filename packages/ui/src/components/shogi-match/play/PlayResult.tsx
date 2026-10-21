@@ -44,6 +44,11 @@ function useReasonText(result: GameResult): string {
             return `${nameOf(reason.loser)}が詰み`;
         case "win_declaration":
             return `${nameOf(reason.winner)}の入玉宣言`;
+        default: {
+            // 終局の理由が増えたら、ここで型エラーにして書き足し漏れに気づけるようにする。
+            const unhandled: never = reason;
+            return unhandled;
+        }
     }
 }
 
@@ -131,6 +136,7 @@ function ResultHeadlineLine({
     result: GameResult;
     className?: string;
 }): ReactElement {
+    const { play } = useShogiMatchConfig();
     const headline = useResultHeadline(result);
     const reasonText = useReasonText(result);
     return (
@@ -151,6 +157,7 @@ function ResultHeadlineLine({
             </h1>
             <p className="min-w-0 truncate text-sm font-medium text-wafuu-sumi">
                 {reasonText} ・ {result.totalMoves}手まで
+                {play && play.hintCount > 0 ? ` ・ ヒント ${play.hintCount} 回` : ""}
             </p>
         </section>
     );

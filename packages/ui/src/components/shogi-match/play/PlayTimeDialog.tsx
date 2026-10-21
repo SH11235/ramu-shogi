@@ -38,7 +38,8 @@ export function formatClock(mainMs: number, byoyomiMs: number): string {
     const byoyomi = Math.round(byoyomiMs / 1000);
     if (mainText && byoyomi > 0) return `${mainText}+${byoyomi}秒`;
     if (mainText) return mainText;
-    return `1手${byoyomi}秒`;
+    // 両方 0 は時間を決めていない（無制限）のと同じなので、時間としては書かない。
+    return byoyomi > 0 ? `1手${byoyomi}秒` : "指定";
 }
 
 /** このダイアログの入力（分と秒）で、そのまま書き表せる時間か。 */
@@ -82,7 +83,10 @@ function PlayTimeForm({
     mainMs,
     byoyomiMs,
     onApply,
-}: PlayTimeDialogProps): ReactElement {
+}: Pick<
+    PlayTimeDialogProps,
+    "onOpenChange" | "kind" | "mainMs" | "byoyomiMs" | "onApply"
+>): ReactElement {
     const [minutesText, setMinutesText] = useState(String(Math.floor(mainMs / 60_000)));
     const [secondsText, setSecondsText] = useState(String(Math.floor(byoyomiMs / 1000)));
 

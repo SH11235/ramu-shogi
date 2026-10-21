@@ -111,7 +111,8 @@ export function PCBoardContent({
     handPlacement = "rows",
 }: PCBoardContentProps): ReactElement {
     const sides = handPlacement === "sides";
-    // 縦の駒台は、空のときも同じ幅を取る（駒を取ったときに盤が横に動かないように）。編集中は ± の分だけ広い。
+    // 縦の駒台は、空のときも同じ幅を取る（駒を取ったときに盤が横に動かないように）。
+    // 駒（マスの 0.8 倍）に、駒の枠と欄の余白・枠線でおよそ 20px。編集中は ± の 2 つ（16px × 2）を足して 52px。
     const sideZoneClass = isEditModeActive
         ? "w-[calc(var(--shogi-cell-size,40px)*0.8+52px)]"
         : "w-[calc(var(--shogi-cell-size,40px)*0.8+20px)]";
