@@ -253,6 +253,25 @@ export function PlaySetupPanel({
                 )}
             </p>
         );
+    const levelSlider = (
+        <input
+            id="play-setup-level"
+            type="range"
+            min={0}
+            max={SKILL_LEVEL_MAX}
+            value={setup.level}
+            disabled={locked}
+            onChange={(event) => setup.chooseLevel(Number(event.target.value))}
+            className={cn("min-w-0 flex-1 accent-wafuu-shu", rows ? "h-10" : "h-8 md:h-6")}
+        />
+    );
+    const editTurnLabel = play?.editTurn === "sente" ? "先手" : "後手";
+    // 平手以外は、先手から指し始めるとは限らない。行の形では 1 行に収める（駒落ちであることは選んだ項目名で分かる）。
+    const startTurnNotice = !preset
+        ? `${editTurnLabel}から指し始めます`
+        : rows
+          ? "上手（後手）から指し始めます"
+          : `上手（後手）の駒落ち ・ ${editTurnLabel}から指し始めます`;
     const advancedLink = (
         <button
             type="button"
@@ -434,46 +453,33 @@ export function PlaySetupPanel({
                 </div>
             )}
 
-            {isVsAi && setup.opponent?.supportsLevel !== false && rows && (
-                <label className={cn("flex", ROW_CLASS)}>
-                    <span className={ROW_LABEL_CLASS}>強さ</span>
-                    <input
-                        type="range"
-                        min={0}
-                        max={SKILL_LEVEL_MAX}
-                        value={setup.level}
-                        disabled={locked}
-                        onChange={(event) => setup.chooseLevel(Number(event.target.value))}
-                        className="h-10 min-w-0 flex-1 accent-wafuu-shu"
-                    />
-                    <span className="w-16 shrink-0 text-right text-sm tabular-nums text-wafuu-sumi">
-                        レベル {setup.level}
-                    </span>
-                </label>
-            )}
-            {isVsAi && setup.opponent?.supportsLevel !== false && !rows && (
-                <label className="flex flex-col gap-1.5">
-                    <span className={cn("flex items-baseline justify-between", FIELD_LABEL_CLASS)}>
-                        <span>強さ</span>
-                        <span className="text-sm tabular-nums text-wafuu-sumi">
+            {isVsAi &&
+                setup.opponent?.supportsLevel !== false &&
+                (rows ? (
+                    <label htmlFor="play-setup-level" className={cn("flex", ROW_CLASS)}>
+                        <span className={ROW_LABEL_CLASS}>強さ</span>
+                        {levelSlider}
+                        <span className="w-16 shrink-0 text-right text-sm tabular-nums text-wafuu-sumi">
                             レベル {setup.level}
                         </span>
-                    </span>
-                    <span className="flex items-center gap-2 text-[11px] text-wafuu-sumi-light">
-                        <span aria-hidden>弱</span>
-                        <input
-                            type="range"
-                            min={0}
-                            max={SKILL_LEVEL_MAX}
-                            value={setup.level}
-                            disabled={locked}
-                            onChange={(event) => setup.chooseLevel(Number(event.target.value))}
-                            className="h-8 min-w-0 flex-1 accent-wafuu-shu md:h-6"
-                        />
-                        <span aria-hidden>強</span>
-                    </span>
-                </label>
-            )}
+                    </label>
+                ) : (
+                    <label htmlFor="play-setup-level" className="flex flex-col gap-1.5">
+                        <span
+                            className={cn("flex items-baseline justify-between", FIELD_LABEL_CLASS)}
+                        >
+                            <span>強さ</span>
+                            <span className="text-sm tabular-nums text-wafuu-sumi">
+                                レベル {setup.level}
+                            </span>
+                        </span>
+                        <span className="flex items-center gap-2 text-[11px] text-wafuu-sumi-light">
+                            <span aria-hidden>弱</span>
+                            {levelSlider}
+                            <span aria-hidden>強</span>
+                        </span>
+                    </label>
+                ))}
 
             {isVsAi && (
                 <div
@@ -544,7 +550,6 @@ export function PlaySetupPanel({
                     >
                         開始局面
                     </label>
-                    {/* どちらから指し始めるか（平手以外は、先手からとは限らない）。 */}
                     {play?.isCustomStart && (
                         <span
                             className={cn(
@@ -552,10 +557,7 @@ export function PlaySetupPanel({
                                 rows && "order-last w-full pl-16",
                             )}
                         >
-                            {/* 行の形では 1 行に収める（駒落ちであることは選んだ項目名で分かる）。 */}
-                            {preset ? (rows ? "上手（後手）" : "上手（後手）の駒落ち ・ ") : ""}
-                            {preset && rows ? "" : play.editTurn === "sente" ? "先手" : "後手"}
-                            から指し始めます
+                            {startTurnNotice}
                         </span>
                     )}
                 </div>
@@ -578,15 +580,13 @@ export function PlaySetupPanel({
                 </NativeSelect>
             </div>
 
+            {/* 行の形では、開始ボタンを欄の下端（親指の届く位置）に置き、注記はそのすぐ上に添える。 */}
             {rows ? (
-                <>
-                    {/* 開始ボタンは欄の下端（親指の届く位置）に置き、注記はそのすぐ上に添える。 */}
-                    <div className="sticky bottom-0 z-10 mt-auto flex flex-col gap-1 bg-background pt-2">
-                        {passRightsNotice}
-                        {downloadNote}
-                        {startButton}
-                    </div>
-                </>
+                <div className="sticky bottom-0 z-10 mt-auto flex flex-col gap-1 bg-background pt-2">
+                    {passRightsNotice}
+                    {downloadNote}
+                    {startButton}
+                </div>
             ) : (
                 <>
                     {/* 盤の横に並べる形（PC）。md より狭い幅では、開始ボタンだけを画面の下端に留める。 */}
