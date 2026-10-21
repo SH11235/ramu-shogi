@@ -580,9 +580,11 @@ export function PlaySetupPanel({
                 </NativeSelect>
             </div>
 
-            {/* 行の形では、開始ボタンを欄の下端（親指の届く位置）に置き、注記はそのすぐ上に添える。 */}
+            {/* 行の形では、開始ボタンを欄の下端（親指の届く位置）に置き、注記はそのすぐ上に添える。
+                間の空きはマージンではなく伸びる要素で取る（欄の高さは呼び出し側が決める）。 */}
+            {rows && <div aria-hidden className="flex-1" />}
             {rows ? (
-                <div className="sticky bottom-0 z-10 mt-auto flex flex-col gap-1 bg-background pt-2">
+                <div className="sticky bottom-0 z-10 flex flex-col gap-1 bg-background pt-2">
                     {passRightsNotice}
                     {downloadNote}
                     {startButton}
