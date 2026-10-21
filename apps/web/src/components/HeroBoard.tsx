@@ -3,6 +3,7 @@ import { cn } from "@shogi/design-system";
 // 入口（@shogi/ui）からは読まない。盤だけの小さな chunk（vite.config.ts の shogi-board）から読み、
 // トップページの最初の読み込みに対局画面の部品一式（shogi-match）を載せない。
 import { ShogiBoard } from "@shogi/ui/components/shogi-board";
+// shogi-match/ 配下でも、positionUtils は shogi-board chunk に入る（apps/web/shogi-board-chunk.ts）。
 import { boardToGrid } from "@shogi/ui/components/shogi-match/utils/positionUtils";
 import type { ReactElement } from "react";
 

@@ -5,6 +5,7 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
 import { defineConfig, loadEnv } from "vite";
+import { SHOGI_BOARD_MODULES } from "./shogi-board-chunk";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -64,14 +65,6 @@ const UI_PRIMITIVES = [
     "tooltip",
 ];
 
-const SHOGI_BOARD_MODULES = [
-    "shogi-board.tsx",
-    "shogi-match/utils/boardUtils.ts",
-    "shogi-match/utils/constants.ts",
-    "shogi-match/utils/coordinateFormat.ts",
-    "shogi-match/utils/positionUtils.ts",
-];
-
 function manualChunks(id: string): string | undefined {
     const normalizedId = id.split(path.sep).join("/");
 
@@ -118,10 +111,9 @@ function manualChunks(id: string): string | undefined {
 
     // 盤（ShogiBoard）と、盤が使う駒・座標・局面変換の小さな util。トップページの装飾の盤（HeroBoard）が
     // 使う。shogi-match/ 配下にあるものも、下の shogi-match ルールより前に分けないと、盤を出すだけで
-    // shogi-match（~530KB）を丸ごと読み込む。ここに並べるファイルは、app-core・design-system・react と
-    // この一覧のファイルだけを import すること。shogi-match/ のほかのファイルを import すると、shogi-match は
-    // すでに shogi-board を import しているので、2 つの chunk が互いを読み込む（ビルドは通り、初期化の順に
-    // よっては本番だけ落ちうる）。
+    // shogi-match（~530KB）を丸ごと読み込む。一覧と、そのファイルが import してよいものは shogi-board-chunk.ts。
+    // shogi-match/ のほかのファイルを import すると、2 つの chunk が互いを読み込む（ビルドは通り、初期化の順に
+    // よっては本番だけ落ちうる）ので、shogi-board-chunk.test.ts で確かめる。
     if (
         SHOGI_BOARD_MODULES.some((file) =>
             normalizedId.endsWith(`/packages/ui/src/components/${file}`),
