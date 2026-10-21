@@ -242,7 +242,10 @@ export function PlayMobileLayout({
                 </div>
             )}
 
-            {displaySettings.showSearchInfo && <div className="min-h-10 w-full">{searchInfo}</div>}
+            {/* 設定中は AI が考えないので出さない（設定を 1 画面に収めるため、空の枠も取らない）。 */}
+            {displaySettings.showSearchInfo && phase !== "setup" && (
+                <div className="min-h-10 w-full">{searchInfo}</div>
+            )}
 
             {/* 詳細設定（先後それぞれの担当・秒数・変則ルール・評価関数の管理・表示） */}
             <BottomSheet

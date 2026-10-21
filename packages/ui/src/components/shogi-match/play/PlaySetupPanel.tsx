@@ -335,7 +335,13 @@ export function PlaySetupPanel({
             {setup.kind === "ai-vs-ai" && (
                 <>
                     {(["sente", "gote"] as const).map((side) => (
-                        <div key={side} className="flex flex-col gap-1.5">
+                        <div
+                            key={side}
+                            className={cn(
+                                "flex flex-col gap-1.5",
+                                rows && "border-b border-wafuu-border py-1.5",
+                            )}
+                        >
                             <label htmlFor={`play-setup-ai-${side}`} className={FIELD_LABEL_CLASS}>
                                 {side === "sente" ? "☗ 先手の AI" : "☖ 後手の AI"}
                             </label>
@@ -583,8 +589,7 @@ export function PlaySetupPanel({
                 </>
             ) : (
                 <>
-                    {/* スマホでは、開始ボタン（と、変則ルールの知らせ 1 行）だけを画面の下端に留める（設定を全部送らなくても始められる。
-                        注記や別の道まで留めると、下の項目を隠してしまう）。 */}
+                    {/* 盤の横に並べる形（PC）。md より狭い幅では、開始ボタンだけを画面の下端に留める。 */}
                     <div className="sticky bottom-0 z-10 bg-background pb-2 pt-1 md:static md:bg-transparent md:p-0">
                         {passRightsNotice}
                         {startButton}
