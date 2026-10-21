@@ -64,6 +64,14 @@ const UI_PRIMITIVES = [
     "tooltip",
 ];
 
+const SHOGI_BOARD_MODULES = [
+    "shogi-board.tsx",
+    "shogi-match/utils/boardUtils.ts",
+    "shogi-match/utils/constants.ts",
+    "shogi-match/utils/coordinateFormat.ts",
+    "shogi-match/utils/positionUtils.ts",
+];
+
 function manualChunks(id: string): string | undefined {
     const normalizedId = id.split(path.sep).join("/");
 
@@ -106,6 +114,18 @@ function manualChunks(id: string): string | undefined {
         )
     ) {
         return "ui-base";
+    }
+
+    // 盤（ShogiBoard）と、盤が使う駒・座標・局面変換の小さな util。トップページの装飾の盤（HeroBoard）が
+    // 使う。shogi-match/ 配下にあるものも、下の shogi-match ルールより前に分けないと、盤を出すだけで
+    // shogi-match（~530KB）を丸ごと読み込む。ここに並べるファイルは、app-core・design-system・react と
+    // この一覧のファイルだけを import すること（shogi-match の部品を引くと、この chunk も重くなる）。
+    if (
+        SHOGI_BOARD_MODULES.some((file) =>
+            normalizedId.endsWith(`/packages/ui/src/components/${file}`),
+        )
+    ) {
+        return "shogi-board";
     }
 
     // ShogiMatch は本体ファイル `shogi-match.tsx` と `shogi-match/` 配下(hooks/utils

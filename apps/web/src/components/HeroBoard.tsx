@@ -1,6 +1,9 @@
 import { createInitialPositionState } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
-import { boardToGrid, ShogiBoard } from "@shogi/ui";
+// 入口（@shogi/ui）からは読まない。盤だけの小さな chunk（vite.config.ts の shogi-board）から読み、
+// トップページの最初の読み込みに対局画面の部品一式（shogi-match）を載せない。
+import { ShogiBoard } from "@shogi/ui/components/shogi-board";
+import { boardToGrid } from "@shogi/ui/components/shogi-match/utils/positionUtils";
 import type { ReactElement } from "react";
 
 // トップの装飾用に、対局で使う実盤 ShogiBoard を平手初期局面で静的描画する。
