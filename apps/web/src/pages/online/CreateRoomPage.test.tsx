@@ -23,8 +23,8 @@ const KINGLESS_SFEN = "9/9/9/9/9/9/9/9/4K4 b G 1";
 
 // 本物の選択欄が SFEN 直接入力へ切り替えて入力欄が空のときに通知する "" を、選択肢として出す
 vi.mock("@shogi/ui", () => ({
-    isUnsupportedOnlineStartSfen: (value: string) => value === KINGLESS_SFEN,
-    ONLINE_KING_COUNT_MESSAGE: "玉が 1 枚ずつの局面だけ使えます",
+    onlineStartSfenProblem: (value: string) =>
+        value === KINGLESS_SFEN ? "玉が 1 枚ずつの局面だけ使えます" : null,
     PositionPresetSelector: ({
         value,
         onChange,
@@ -73,7 +73,7 @@ describe("CreateRoomPage", () => {
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it("玉が 1 枚ずつでない局面では部屋を作成せず、そのわけを出す", () => {
+    it("オンライン対局で使えない局面では部屋を作成せず、そのわけを出す", () => {
         const fetchMock = vi.fn();
         vi.stubGlobal("fetch", fetchMock);
         render(<CreateRoomPage />);

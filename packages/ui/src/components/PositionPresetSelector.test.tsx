@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { type ReactElement, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { isUnsupportedOnlineStartSfen, PositionPresetSelector } from "./PositionPresetSelector";
+import { onlineStartSfenProblem, PositionPresetSelector } from "./PositionPresetSelector";
 
 const SFEN = "4k4/9/4p4/9/9/9/4P4/9/4K4 w - 1";
 
@@ -199,15 +199,37 @@ describe("PositionPresetSelector の SFEN 直接入力", () => {
     });
 });
 
-describe("isUnsupportedOnlineStartSfen", () => {
+describe("onlineStartSfenProblem", () => {
+    const FORMAT = "オンライン対局では読み取れない局面です。SFEN の書き方を確認してください";
+    const KINGS = "オンライン対局では、先手と後手の玉が 1 枚ずつある局面だけ使えます";
+    const PIECES =
+        "駒が多すぎます。盤と持ち駒を合わせて、歩は 18 枚、香・桂・銀・金は 4 枚、角・飛は 2 枚までです";
+    const PLY = "手数は 1 から 1000000 までにしてください";
+
     it.each([
-        ["startpos", false],
-        ["handicap:rook-bishop", false],
-        ["", false],
-        [SFEN, false],
-        ["9/9/9/9/9/9/9/9/4K4 b G 1", true],
-        ["4k4/9/9/9/9/9/9/9/3KK4 b - 1", true],
-    ])("%s は %s", (value, expected) => {
-        expect(isUnsupportedOnlineStartSfen(value)).toBe(expected);
+        ["プリセット", "startpos", null],
+        ["駒落ちのプリセット", "handicap:rook-bishop", null],
+        ["入力待ち", "", null],
+        ["使える局面", SFEN, null],
+        ["手数を省いた局面", "4k4/9/9/9/9/9/9/9/4K4 b 2Pg", null],
+        ["駒がちょうど上限まである局面", "4k4/9/9/9/9/9/9/+R8/4K4 b 9Pr9p 1000000", null],
+        ["玉の無い局面", "9/9/9/9/9/9/9/9/4K4 b G 1", KINGS],
+        ["先手玉が 2 枚ある局面", "4k4/9/9/9/9/9/9/9/3KK4 b - 1", KINGS],
+        ["持ち駒の歩が 19 枚", "4k4/9/9/9/9/9/9/9/4K4 b 19P 1", PIECES],
+        ["先手と後手の持ち駒を合わせて飛車が 3 枚", "4k4/9/9/9/9/9/9/9/4K4 b 2Rr 1", PIECES],
+        ["成った飛車と持ち駒を合わせて 3 枚", "4k4/9/9/9/9/9/9/+R8/4K4 b 2R 1", PIECES],
+        ["手数が 0", "4k4/9/9/9/9/9/9/9/4K4 b - 0", PLY],
+        ["手数が負", "4k4/9/9/9/9/9/9/9/4K4 b - -1", PLY],
+        ["手数が上限を超える", "4k4/9/9/9/9/9/9/9/4K4 b - 1000001", PLY],
+        ["読めない文字列", "xyz", FORMAT],
+        ["1 段が 10 マス", "4k5/9/9/9/9/9/9/9/4K4 b - 1", FORMAT],
+        ["成れない金の成り", "4k4/9/9/9/9/9/9/+G8/4K4 b - 1", FORMAT],
+        ["持ち駒に同じ駒を 2 度書く", "4k4/9/9/9/9/9/9/9/4K4 b PP 1", FORMAT],
+        ["持ち駒の数が 0", "4k4/9/9/9/9/9/9/9/4K4 b 0P 1", FORMAT],
+        ["持ち駒に玉", "4k4/9/9/9/9/9/9/9/4K4 b K 1", FORMAT],
+        ["フィールドが 5 つ", "sfen 4k4/9/9/9/9/9/9/9/4K4 b - 1", FORMAT],
+        ["長すぎる文字列", `4k4/9/9/9/9/9/9/9/4K4 b - 1${" ".repeat(512)}`, FORMAT],
+    ])("%s", (_label, value, expected) => {
+        expect(onlineStartSfenProblem(value)).toBe(expected);
     });
 });
