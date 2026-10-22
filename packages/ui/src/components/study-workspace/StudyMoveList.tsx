@@ -48,9 +48,9 @@ interface StudyMoveListProps {
     className?: string;
 }
 
-const ROW_GRID = "grid grid-cols-[1.75rem_minmax(0,1fr)_3.25rem] items-center gap-x-1.5";
+const ROW_GRID = "grid grid-cols-[1.75rem_minmax(0,1fr)_3.25rem] items-baseline gap-x-1.5";
 const ROW_GRID_WITH_SOURCE =
-    "grid grid-cols-[1.75rem_minmax(0,1fr)_3.25rem_3.25rem] items-center gap-x-1.5";
+    "grid grid-cols-[1.75rem_minmax(0,1fr)_3.25rem_3.25rem] items-baseline gap-x-1.5";
 
 const sideClass = (side: "sente" | "gote" | null): string =>
     side === "sente" ? "text-wafuu-shu" : side === "gote" ? "text-wafuu-ai" : "text-foreground";
