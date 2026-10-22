@@ -285,9 +285,7 @@ export function useEngineManager({
 
     useEffect(() => {
         return () => {
-            void controller.command.dispose("sente");
-            void controller.command.dispose("gote");
-            void controller.command.cancelAnalysis();
+            void controller.command.disposeAll();
         };
     }, [controller]);
 

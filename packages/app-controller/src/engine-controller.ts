@@ -160,6 +160,7 @@ interface EngineControllerCommand {
     prepare: (side: Player) => Promise<boolean>;
     startTurn: (side: Player) => Promise<void>;
     dispose: (side: Player) => Promise<void>;
+    disposeAll: () => Promise<void>;
     retry: (side: Player) => Promise<void>;
     restartForNnue: (side: Player, selection?: NnueSelection) => Promise<void>;
     startAnalysis: (request: AnalysisRequest) => Promise<void>;
@@ -231,6 +232,7 @@ type EngineControllerActiveSearch = {
 
 interface AnalysisEngineState {
     client: EngineClient | null;
+    ready: boolean;
     subscription: (() => void) | null;
     handle: SearchHandle | null;
     ply: number | null;
@@ -293,6 +295,7 @@ const createInitialSearchStates = (): Record<Player, EngineControllerSearchState
 
 const createInitialAnalysisState = (): AnalysisEngineState => ({
     client: null,
+    ready: false,
     subscription: null,
     handle: null,
     ply: null,
@@ -537,6 +540,7 @@ export function createEngineController(
             engineId: string;
         } | null> | null
     >;
+    const sideGeneration = { sente: 0, gote: 0 };
     let activeSearch: EngineControllerActiveSearch | null = null;
     let logId = 0;
     const maxLogs = dependencies.maxLogs ?? 80;
@@ -627,8 +631,10 @@ export function createEngineController(
     const attachSubscription = (side: Player, client: EngineClient, engineId: string) => {
         const engineState = engineStates[side];
         if (engineState.subscription) return;
+        const generation = sideGeneration[side];
 
         const unsub = client.subscribe((event) => {
+            if (sideGeneration[side] !== generation || engineState.client !== client) return;
             pushEventLog({
                 id: ++logId,
                 atMs: now(),
@@ -682,6 +688,7 @@ export function createEngineController(
 
                 if (result.action === "end_match" && result.gameResult) {
                     callbacks.onMatchEnd(result.gameResult).catch((error) => {
+                        if (sideGeneration[side] !== generation) return;
                         addErrorLog(`match end failed: ${String(error)}`, { side, engineId });
                     });
                 }
@@ -729,8 +736,7 @@ export function createEngineController(
         engineState.subscription = unsub;
     };
 
-    // 側ごとの初期化/破棄を直列化するロック。init 中に dispose が割り込むと
-    // 破棄済み client への load や ready=true の誤設定が起きるため、両者を同一キューで実行する
+    // EngineClient に中断用 signal がないため、実行中の呼び出しが戻ってから破棄する。
     const sideOps = { sente: Promise.resolve(), gote: Promise.resolve() } as Record<
         Player,
         Promise<unknown>
@@ -744,53 +750,46 @@ export function createEngineController(
         return run;
     };
 
-    const disposeEngineForSide = (side: Player): Promise<void> =>
-        withSideOp(side, () => disposeEngineForSideInner(side));
+    const disposeEngineForSide = (side: Player): Promise<void> => {
+        sideGeneration[side] += 1;
+        initializing[side] = null;
+        engineStates[side].ready = false;
+        const previousSearch = searchStates[side];
+        searchStates[side] = { handle: null, pending: false, requestPly: null };
+        if (activeSearch?.side === side) activeSearch = null;
+        const disposing = withSideOp(side, () => disposeEngineForSideInner(side, previousSearch));
+        setEngineReady(side, false);
+        return disposing;
+    };
 
-    const disposeEngineForSideInner = async (side: Player) => {
+    const disposeEngineForSideInner = async (side: Player, searchState = searchStates[side]) => {
         const engineState = engineStates[side];
-        const searchState = searchStates[side];
-
-        try {
-            if (searchState.handle) {
-                await searchState.handle.cancel();
-            }
-        } catch (error) {
-            addErrorLog(`検索キャンセルに失敗 (${side}): ${String(error)}`, { side });
-        } finally {
-            searchState.handle = null;
-            searchState.pending = false;
-            searchState.requestPly = null;
-            activeSearch = null;
-        }
-
-        try {
-            if (engineState.subscription) {
-                engineState.subscription();
-            }
-        } catch (error) {
-            addErrorLog(`サブスクリプション解除に失敗 (${side}): ${String(error)}`, { side });
-        } finally {
-            engineState.subscription = null;
-        }
-
-        try {
-            if (engineState.client) {
-                // stop()は不要: dispose()内でWorkerをterminateするため。
-                // stop()を先に呼ぶとterminateAndRecoverが非同期で再初期化を開始し、
-                // 直後のdispose()と競合してWASM_THREADS_INIT_FAILEDを引き起こす。
-                if (typeof engineState.client.dispose === "function") {
-                    await engineState.client.dispose();
-                }
-            }
-        } catch (error) {
-            addErrorLog(`エンジン破棄に失敗 (${side}): ${String(error)}`, { side });
-        } finally {
-            engineState.client = null;
-        }
-
+        const client = engineState.client;
+        const handle = searchState.handle;
+        const unsubscribe = engineState.subscription;
+        engineState.client = null;
+        engineState.subscription = null;
         engineState.selectedId = null;
         engineState.ready = false;
+        searchState.handle = null;
+        searchState.pending = false;
+        searchState.requestPly = null;
+        if (activeSearch?.side === side) activeSearch = null;
+
+        try {
+            unsubscribe?.();
+        } catch (error) {
+            addErrorLog(`サブスクリプション解除に失敗 (${side}): ${String(error)}`, { side });
+        }
+
+        try {
+            // WASM の cancel/stop は Worker を再初期化するため、破棄時は dispose を使う。
+            if (client?.dispose) await client.dispose();
+            else await handle?.cancel();
+        } catch (error) {
+            addErrorLog(`エンジン破棄に失敗 (${side}): ${String(error)}`, { side });
+        }
+
         setEngineReady(side, false);
         setEngineStatus(side, "idle");
     };
@@ -802,7 +801,10 @@ export function createEngineController(
             errorLogPrefix: string;
             nnueSelection?: NnueSelection;
         },
-    ): Promise<boolean> => withSideOp(side, () => reinitializeEngineCoreInner(side, options));
+    ): Promise<boolean> => {
+        const generation = sideGeneration[side];
+        return withSideOp(side, () => reinitializeEngineCoreInner(side, options, generation));
+    };
 
     const reinitializeEngineCoreInner = async (
         side: Player,
@@ -811,7 +813,10 @@ export function createEngineController(
             errorLogPrefix: string;
             nnueSelection?: NnueSelection;
         },
+        generation: number,
     ): Promise<boolean> => {
+        const isCurrent = () => sideGeneration[side] === generation;
+        if (!isCurrent()) return false;
         const engineState = engineStates[side];
         const client = engineState.client;
         if (!client) return false;
@@ -819,6 +824,7 @@ export function createEngineController(
         try {
             if ("reset" in client && typeof client.reset === "function") {
                 await client.reset();
+                if (!isCurrent()) return false;
             }
 
             setEngineErrorDetails(side, null);
@@ -827,21 +833,26 @@ export function createEngineController(
 
             const threadCount = getThreadCountForSide(context.engineThreads, side);
             await client.init({ threads: threadCount });
+            if (!isCurrent()) return false;
 
             const selection =
                 options.nnueSelection ??
                 (side === "sente" ? context.nnueSelections.sente : context.nnueSelections.gote);
             if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
                 const resolved = await dependencies.resolveNnue(selection);
+                if (!isCurrent()) return false;
                 if (resolved) {
                     await client.loadNnue(resolved.nnueId, resolved.layerStacks);
+                    if (!isCurrent()) return false;
                     await client.setOption("FV_SCALE", resolved.fvScale);
+                    if (!isCurrent()) return false;
                 }
             }
 
             const skillSettings = context.sides[side].skillLevel;
             if (skillSettings) {
                 await applySkillLevelSettings(client, skillSettings);
+                if (!isCurrent()) return false;
             }
 
             if (options.loadPosition && context.position) {
@@ -853,12 +864,14 @@ export function createEngineController(
                         context.position.moves,
                     ),
                 );
+                if (!isCurrent()) return false;
             }
 
             engineState.ready = true;
             setEngineReady(side, true);
             return true;
         } catch (error) {
+            if (!isCurrent()) return false;
             addErrorLog(`${options.errorLogPrefix} (${side}): ${String(error)}`, { side });
             setEngineStatus(side, "error");
             const errorInfo = getEngineErrorInfo("WASM_INIT_FAILED");
@@ -878,16 +891,25 @@ export function createEngineController(
         const inflight = initializing[side];
         if (inflight) return inflight;
 
-        const promise = withSideOp(side, () => ensureEngineReadyInner(side)).finally(() => {
-            initializing[side] = null;
-        });
+        const generation = sideGeneration[side];
+        const promise = withSideOp(side, () => ensureEngineReadyInner(side, generation))
+            .catch((error) => {
+                if (sideGeneration[side] !== generation) return null;
+                throw error;
+            })
+            .finally(() => {
+                if (initializing[side] === promise) initializing[side] = null;
+            });
         initializing[side] = promise;
         return promise;
     };
 
     const ensureEngineReadyInner = async (
         side: Player,
+        generation: number,
     ): Promise<{ client: EngineClient; engineId: string } | null> => {
+        const isCurrent = () => sideGeneration[side] === generation;
+        if (!isCurrent()) return null;
         const setting = context.sides[side];
         if (setting.role !== "engine") return null;
         const selectedId = setting.engineId;
@@ -899,6 +921,7 @@ export function createEngineController(
             // ensureEngineReadyInner は sideOps ロック内で実行されるため、
             // ロックを取る disposeEngineForSide を呼ぶとデッドロックする
             await disposeEngineForSideInner(side);
+            if (!isCurrent()) return null;
         }
 
         let client = engineState.client;
@@ -914,20 +937,25 @@ export function createEngineController(
         if (!engineState.ready) {
             const threadCount = getThreadCountForSide(context.engineThreads, side);
             await client.init({ threads: threadCount });
+            if (!isCurrent()) return null;
 
             const selection =
                 side === "sente" ? context.nnueSelections.sente : context.nnueSelections.gote;
             if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
                 const resolved = await dependencies.resolveNnue(selection);
+                if (!isCurrent()) return null;
                 if (resolved) {
                     await client.loadNnue(resolved.nnueId, resolved.layerStacks);
+                    if (!isCurrent()) return null;
                     await client.setOption("FV_SCALE", resolved.fvScale);
+                    if (!isCurrent()) return null;
                 }
             }
 
             const skillSettings = setting.skillLevel;
             if (skillSettings) {
                 await applySkillLevelSettings(client, skillSettings);
+                if (!isCurrent()) return null;
             }
 
             if (context.position) {
@@ -939,6 +967,7 @@ export function createEngineController(
                         context.position.moves,
                     ),
                 );
+                if (!isCurrent()) return null;
             }
             engineState.ready = true;
             setEngineReady(side, true);
@@ -948,6 +977,8 @@ export function createEngineController(
     };
 
     const startEngineTurn = async (side: Player) => {
+        const generation = sideGeneration[side];
+        const isCurrent = () => sideGeneration[side] === generation;
         if (!context.position || !context.position.ready) return;
         if (!context.matchRunning) return;
 
@@ -959,7 +990,7 @@ export function createEngineController(
 
         try {
             const ready = await ensureEngineReady(side);
-            if (!ready) return;
+            if (!ready || !isCurrent()) return;
             const { client, engineId } = ready;
 
             const engineState = engineStates[side];
@@ -973,6 +1004,7 @@ export function createEngineController(
                     return;
                 }
                 await searchState.handle.cancel().catch(() => undefined);
+                if (!isCurrent()) return;
             }
 
             setEngineStatus(side, "thinking");
@@ -984,7 +1016,7 @@ export function createEngineController(
                 buildPassRightsOption(context.position.passRightsSettings, context.position.moves),
             );
 
-            if (engineState.client !== client || !context.matchRunning) {
+            if (!isCurrent() || engineState.client !== client || !context.matchRunning) {
                 return;
             }
 
@@ -1017,15 +1049,21 @@ export function createEngineController(
                 ponder: false,
             });
 
-            if (engineState.client !== client || !context.matchRunning) {
+            if (!isCurrent() || engineState.client !== client) {
+                if (!client.dispose) await handle.cancel().catch(() => undefined);
+                return;
+            }
+            if (!context.matchRunning) {
                 await handle.cancel().catch(() => undefined);
                 return;
             }
 
             searchState.handle = handle;
             activeSearch = { side, engineId };
+        } catch (error) {
+            if (isCurrent()) throw error;
         } finally {
-            searchState.pending = false;
+            if (isCurrent()) searchState.pending = false;
         }
     };
 
@@ -1047,8 +1085,10 @@ export function createEngineController(
         if (searchState.requestPly === movesCount) return;
 
         searchState.requestPly = movesCount;
+        const generation = sideGeneration[side];
 
         void startEngineTurn(side).catch((error) => {
+            if (sideGeneration[side] !== generation) return;
             setEngineStatus(side, "error");
             addErrorLog(`engine error: ${String(error)}`, { side, engineId: selectedId });
         });
@@ -1069,51 +1109,73 @@ export function createEngineController(
         });
     };
 
-    const cancelAnalysis = async () => {
+    let analysisGeneration = 0;
+    let reuseSupersededAnalysis = false;
+    let analysisOps: Promise<unknown> = Promise.resolve();
+    const withAnalysisOp = (operation: () => Promise<void>): Promise<void> => {
+        const run = analysisOps.then(operation);
+        analysisOps = run.catch(() => undefined);
+        return run;
+    };
+
+    const invalidateAnalysis = (reuseReadyClient = false) => {
+        analysisGeneration += 1;
+        reuseSupersededAnalysis = reuseReadyClient;
+        completeAnalysisRun("aborted");
+        analysisState.subscription?.();
+        analysisState.subscription = null;
+        analysisState.ply = null;
+        updateState((prev) => ({ ...prev, isAnalyzing: false }));
+        return analysisGeneration;
+    };
+
+    const cancelAnalysisInner = async () => {
+        const handle = analysisState.handle;
+        analysisState.handle = null;
         try {
-            if (analysisState.handle) {
-                await analysisState.handle.cancel();
-            }
+            await handle?.cancel();
         } catch {
             // ignore
-        } finally {
-            // 途中で止めた探索も、そこまでの結果を「中断」として通知する。
-            completeAnalysisRun("aborted");
-            analysisState.handle = null;
-            analysisState.ply = null;
-            updateState((prev) => ({ ...prev, isAnalyzing: false }));
         }
     };
 
-    const disposeAnalysisEngine = async () => {
-        await cancelAnalysis();
-
-        if (analysisState.subscription) {
-            analysisState.subscription();
-            analysisState.subscription = null;
-        }
-
-        if (analysisState.client) {
-            try {
-                if (typeof analysisState.client.dispose === "function") {
-                    await analysisState.client.dispose();
-                }
-            } catch {
-                // ignore
-            }
-            analysisState.client = null;
-            analysisState.engineId = null;
+    const disposeAnalysisEngineInner = async () => {
+        const client = analysisState.client;
+        const handle = analysisState.handle;
+        analysisState.subscription?.();
+        analysisState.subscription = null;
+        analysisState.client = null;
+        analysisState.ready = false;
+        analysisState.engineId = null;
+        analysisState.handle = null;
+        analysisThreads = null;
+        try {
+            // WASM の cancel は Worker を再初期化するため、破棄時は dispose だけを使う。
+            if (client?.dispose) await client.dispose();
+            else await handle?.cancel();
+        } catch (error) {
+            addErrorLog(`解析エンジンの破棄に失敗: ${String(error)}`);
         }
     };
 
-    const startAnalysis = async (request: AnalysisRequest) => {
+    const cancelAnalysis = () => {
+        invalidateAnalysis();
+        return withAnalysisOp(cancelAnalysisInner);
+    };
+
+    const disposeAnalysisEngine = () => {
+        invalidateAnalysis();
+        return withAnalysisOp(disposeAnalysisEngineInner);
+    };
+
+    const startAnalysisInner = async (request: AnalysisRequest, generation: number) => {
+        const isCurrent = () => analysisGeneration === generation;
+        if (!isCurrent()) return;
+        await cancelAnalysisInner();
+        if (!isCurrent()) return;
         if (context.matchRunning && !dependencies.allowAnalysisDuringMatch) {
             addErrorLog("対局中は解析できません");
             return;
-        }
-
-        if (state.isAnalyzing) {
-            await cancelAnalysis();
         }
 
         const engineId =
@@ -1131,28 +1193,35 @@ export function createEngineController(
         let client = analysisState.client;
         if (!client || analysisState.engineId !== engineId) {
             if (client && analysisState.engineId !== engineId) {
-                await disposeAnalysisEngine();
+                await disposeAnalysisEngineInner();
+                if (!isCurrent()) return;
             }
             try {
                 client = dependencies.createClient(engineId);
                 analysisState.client = client;
+                analysisState.ready = false;
                 analysisState.engineId = engineId;
                 const threadCount = getAnalysisThreadCount(context.engineThreads);
                 await client.init({ threads: threadCount });
+                if (!isCurrent()) return;
                 analysisThreads = threadCount;
 
                 const selection = context.nnueSelections.analysis;
                 if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
                     const resolved = await dependencies.resolveNnue(selection);
+                    if (!isCurrent()) return;
                     if (resolved) {
                         await client.loadNnue(resolved.nnueId, resolved.layerStacks);
+                        if (!isCurrent()) return;
                         await client.setOption("FV_SCALE", resolved.fvScale);
+                        if (!isCurrent()) return;
                     }
                 }
+                analysisState.ready = true;
             } catch (error) {
+                if (!isCurrent()) return;
                 addErrorLog(`エンジン初期化エラー: ${String(error)}`);
-                analysisState.ply = null;
-                updateState((prev) => ({ ...prev, isAnalyzing: false }));
+                invalidateAnalysis();
                 return;
             }
         }
@@ -1163,6 +1232,7 @@ export function createEngineController(
         } catch {
             // ignore unsupported MultiPV
         }
+        if (!isCurrent()) return;
 
         if (analysisState.subscription) {
             analysisState.subscription();
@@ -1182,6 +1252,7 @@ export function createEngineController(
             : null;
 
         const unsub = client.subscribe((event) => {
+            if (!isCurrent()) return;
             pushEventLog({
                 id: ++logId,
                 atMs: now(),
@@ -1255,11 +1326,13 @@ export function createEngineController(
                 buildPassRightsOption(context.position?.passRightsSettings, request.moves),
             );
         } catch (error) {
+            analysisState.ready = false;
+            if (!isCurrent()) return;
             addErrorLog(`局面読み込みエラー: ${String(error)}`);
-            analysisState.ply = null;
-            updateState((prev) => ({ ...prev, isAnalyzing: false }));
+            invalidateAnalysis();
             return;
         }
+        if (!isCurrent()) return;
 
         try {
             const timeMs = request.timeMs ?? DEFAULT_ANALYSIS_TIME_MS;
@@ -1274,13 +1347,30 @@ export function createEngineController(
                 ponder: false,
             });
 
-            analysisState.handle = handle;
+            if (!isCurrent() || state.isAnalyzing) analysisState.handle = handle;
         } catch (error) {
+            analysisState.ready = false;
+            if (!isCurrent()) return;
             analysisRun = null;
             addErrorLog(`探索開始エラー: ${String(error)}`);
-            analysisState.ply = null;
-            updateState((prev) => ({ ...prev, isAnalyzing: false }));
+            invalidateAnalysis();
         }
+    };
+
+    const startAnalysis = (request: AnalysisRequest) => {
+        const generation = invalidateAnalysis(true);
+        return withAnalysisOp(async () => {
+            try {
+                await startAnalysisInner(request, generation);
+            } finally {
+                if (
+                    analysisGeneration !== generation &&
+                    (!reuseSupersededAnalysis || !analysisState.ready)
+                ) {
+                    await disposeAnalysisEngineInner();
+                }
+            }
+        });
     };
 
     const applySkillLevels = () => {
@@ -1291,8 +1381,10 @@ export function createEngineController(
             if (!engineState.client || !engineState.ready) continue;
             const selectedId = setting.engineId;
             if (!selectedId || engineState.selectedId !== selectedId) continue;
+            const generation = sideGeneration[side];
 
             void applySkillLevelSettings(engineState.client, setting.skillLevel).catch((error) => {
+                if (sideGeneration[side] !== generation) return;
                 addErrorLog(`Skill Level 設定に失敗 (${side}): ${String(error)}`, {
                     side,
                     engineId: selectedId,
@@ -1303,15 +1395,18 @@ export function createEngineController(
 
     // sideOps キューに載せることで、初期化 in-flight 中の変更も init 完了後に適用される。
     // 失敗は握りつぶさずエラーログへ記録する
-    const applyThreadOptionQueued = (side: Player, client: EngineClient, threadCount: number) =>
-        withSideOp(side, async () => {
-            if (engineStates[side].client !== client) return;
+    const applyThreadOptionQueued = (side: Player, client: EngineClient, threadCount: number) => {
+        const generation = sideGeneration[side];
+        return withSideOp(side, async () => {
+            if (sideGeneration[side] !== generation || engineStates[side].client !== client) return;
             try {
                 await client.setOption("Threads", threadCount);
             } catch (error) {
+                if (sideGeneration[side] !== generation) return;
                 addErrorLog(`スレッド数の適用に失敗 (${side}): ${String(error)}`, { side });
             }
         });
+    };
 
     const applyThreadChange = (
         nextThreads: Record<Player, number>,
@@ -1446,11 +1541,14 @@ export function createEngineController(
             addErrorLog(message, options);
         },
         prepare: async (side) => {
+            const generation = sideGeneration[side];
             const setting = context.sides[side];
             if (setting.role !== "engine" || !setting.engineId) return true;
             try {
-                return (await ensureEngineReady(side)) !== null;
+                const ready = await ensureEngineReady(side);
+                return sideGeneration[side] === generation && ready !== null;
             } catch (error) {
+                if (sideGeneration[side] !== generation) return false;
                 setEngineStatus(side, "error");
                 addErrorLog(`engine error: ${String(error)}`, {
                     side,
@@ -1464,6 +1562,14 @@ export function createEngineController(
         },
         dispose: async (side) => {
             await disposeEngineForSide(side);
+        },
+        disposeAll: async () => {
+            context = { ...context, matchRunning: false };
+            await Promise.all([
+                disposeEngineForSide("sente"),
+                disposeEngineForSide("gote"),
+                disposeAnalysisEngine(),
+            ]);
         },
         retry: async (side) => {
             const engineState = engineStates[side];
