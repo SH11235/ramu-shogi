@@ -13,6 +13,8 @@ on:
       - "biome.json"
       - "knip.json"
       - "tsconfig*.json"
+      - "scripts/validate-desktop-release.*"
+      - ".github/workflows/release-desktop.yml"
       - "tsconfig.base.json"
       - ".github/workflows/js-format-lint.yml"
   pull_request:
@@ -26,6 +28,8 @@ on:
       - "biome.json"
       - "knip.json"
       - "tsconfig*.json"
+      - "scripts/validate-desktop-release.*"
+      - ".github/workflows/release-desktop.yml"
       - "tsconfig.base.json"
       - ".github/workflows/js-format-lint.yml"
 
@@ -66,6 +70,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      - run: pnpm test:release
 
   knip:
     runs-on: ubuntu-latest

@@ -3,5 +3,4 @@ packages:
   - packages/*
 
 onlyBuiltDependencies:
-  - wasm-opt
   - esbuild

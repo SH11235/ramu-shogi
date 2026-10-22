@@ -18,6 +18,7 @@
         "test": "turbo test -- --run",
         "test:watch": "turbo test",
         "test:unit": "turbo test:unit",
+        "test:release": "node --test scripts/validate-desktop-release.test.ts",
         "lint": "turbo lint",
         "lint:fix": "turbo lint:fix",
         "lint:fix:unsafe": "turbo lint:fix:unsafe",
@@ -35,6 +36,8 @@
         "build:rust": "pnpm build:rust:core && pnpm build:rust:tauri",
         "build:rust:core": "cd packages/rust-core && cargo build --workspace",
         "build:rust:tauri": "cd apps/desktop/src-tauri && cargo build --workspace",
+        "build:rules-wasm": "node packages/rust-core/crates/shogi-rules-wasm/scripts/build.mjs",
+        "test:rules-wasm": "node --test packages/rust-core/crates/shogi-rules-wasm/scripts/build.test.ts",
         "build:rust:release": "pnpm build:rust:release:core && pnpm build:rust:release:tauri",
         "build:rust:release:core": "cd packages/rust-core && cargo build --workspace --release",
         "build:rust:release:tauri": "cd apps/desktop/src-tauri && cargo build --workspace --release",
@@ -53,11 +56,13 @@
     },
     "devDependencies": {
         "@biomejs/biome": "^2.4.6",
+        "binaryen": "132.0.0",
         "husky": "^9.1.7",
-        "knip": "^5.73.4",
-        "lint-staged": "^16.2.7",
+        "knip": "^5.88.1",
+        "lint-staged": "^16.4.0",
         "openapi-typescript": "7.13.0",
-        "turbo": "^2.6.3",
+        "smol-toml": "1.5.2",
+        "turbo": "^2.11.10",
         "typescript": "~5.9.3"
     },
     "overrides": {

@@ -1,0 +1,83 @@
+name: Dependency audit
+
+on:
+  schedule:
+    - cron: "23 2 * * 1"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "**/package.json"
+      - "**/pnpm-lock.yaml"
+      - "**/pnpm-workspace.yaml"
+      - ".github/dependency-audit-exceptions.json"
+      - ".github/workflows/dependency-audit.yml"
+      - "scripts/check-dependency-audit*.mjs"
+  push:
+    branches: [main]
+    paths:
+      - "**/package.json"
+      - "**/pnpm-lock.yaml"
+      - "**/pnpm-workspace.yaml"
+      - ".github/dependency-audit-exceptions.json"
+      - ".github/workflows/dependency-audit.yml"
+      - "scripts/check-dependency-audit*.mjs"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Audit ${{ matrix.scope }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scope: frontend-prod
+            directory: .
+            args: --prod
+          - scope: frontend-all
+            directory: .
+            args: ""
+          - scope: pulumi
+            directory: infra/pulumi
+            args: ""
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788 # v6.0.6
+        with:
+          package_json_file: ${{ matrix.directory }}/package.json
+          run_install: false
+      - id: versions
+        run: echo "node=$(node -p "require('./package.json').volta.node")" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: ${{ steps.versions.outputs.node }}
+      - name: Check audit policy
+        run: node --test scripts/check-dependency-audit.test.mjs
+      - name: Install lockfile without lifecycle scripts
+        working-directory: ${{ matrix.directory }}
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Audit dependencies
+        working-directory: ${{ matrix.directory }}
+        shell: bash
+        run: |
+          set +e
+          pnpm audit ${{ matrix.args }} --json > "${RUNNER_TEMP}/dependency-audit-${{ matrix.scope }}.json"
+          audit_status=$?
+          set -e
+          node "${GITHUB_WORKSPACE}/scripts/check-dependency-audit.mjs" \
+            "${{ matrix.scope }}" "${RUNNER_TEMP}/dependency-audit-${{ matrix.scope }}.json" "$audit_status"
+      - name: Save audit report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dependency-audit-${{ matrix.scope }}
+          path: ${{ runner.temp }}/dependency-audit-${{ matrix.scope }}.json
+          if-no-files-found: warn
+          retention-days: 30
