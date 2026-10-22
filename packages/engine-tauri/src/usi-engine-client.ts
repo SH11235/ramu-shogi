@@ -140,6 +140,8 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
                     btimeMs: params.limits?.btimeMs,
                     wtimeMs: params.limits?.wtimeMs,
                     byoyomiMs: params.limits?.byoyomiMs,
+                    bincMs: params.limits?.bincMs,
+                    wincMs: params.limits?.wincMs,
                     movetimeMs: params.limits?.movetimeMs,
                     infinite: !params.limits,
                 },
