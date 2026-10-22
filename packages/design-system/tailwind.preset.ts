@@ -63,6 +63,13 @@ const preset: Omit<Config, "content"> = {
                     "washi-warm": "hsl(var(--wafuu-washi-warm))",
                     border: "hsl(var(--wafuu-border))",
                 },
+                // ラム（トイプードル）の毛色
+                ram: {
+                    fur: "hsl(var(--ram-fur))",
+                    "fur-deep": "hsl(var(--ram-fur-deep))",
+                    cream: "hsl(var(--ram-cream))",
+                    ink: "hsl(var(--ram-ink))",
+                },
                 // 接続状態・成功状態
                 status: {
                     online: "hsl(var(--status-online))",

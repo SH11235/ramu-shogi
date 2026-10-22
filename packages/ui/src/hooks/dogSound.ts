@@ -1,5 +1,7 @@
 // CPU 戦の「犬」の着手音。音源はアプリの public/sounds/dog/v1/ に置き、URL の基点はアプリから受け取る。
 
+import { registerScheduledSound, reserveSoundSlot } from "./soundSchedule";
+
 /** 着手の場面。王手 > 駒取り > 成り > 通常 の順に優先する */
 export type MoveScene = "move" | "capture" | "promote" | "check";
 
@@ -55,6 +57,12 @@ async function decodeClip(
     return null;
 }
 
+export function setDogBuffersForTest(baseUrl: string, buffers: Map<string, AudioBuffer>): void {
+    loadedBuffers.set(baseUrl, buffers as Map<ClipName, AudioBuffer>);
+    current = null;
+    weakPlaying = null;
+}
+
 /** 音源を読み込んでデコードしておく。同じ基点 URL では 1 回だけ読む */
 export function preloadDogSounds(baseUrl: string): void {
     if (loadingBases.has(baseUrl) || loadedBuffers.has(baseUrl)) return;
@@ -89,8 +97,11 @@ export function preloadDogSounds(baseUrl: string): void {
 }
 
 // 鳴っている声はページ全体で 1 つ。対局画面は同時に 1 つしか開かないので、再生状態はモジュールで持つ
-let current: AudioBufferSourceNode | null = null;
+let current: { source: AudioBufferSourceNode; gain: GainNode } | null = null;
 let weakPlaying: AudioBufferSourceNode | null = null;
+const endedSources = new WeakSet<AudioBufferSourceNode>();
+// 次の声に切り替えるとき、ぶつ切りにすると「プツッ」と鳴るので短く絞ってから止める
+const CUT_FADE_SEC = 0.02;
 
 function pick<T>(items: readonly T[], random: () => number): T | undefined {
     return items[Math.floor(random() * items.length)];
@@ -125,9 +136,12 @@ export function playDogSound(
     if (!name || !buffer) return "unavailable";
 
     const isWeak = name === "weak";
-    if (current && current !== weakPlaying) {
+    const now = ctx.currentTime;
+    const when = reserveSoundSlot(now);
+    if (current && current.source !== weakPlaying) {
         try {
-            current.stop();
+            current.gain.gain.setTargetAtTime(0, when, CUT_FADE_SEC / 3);
+            current.source.stop(when + CUT_FADE_SEC * 2);
         } catch {
             // 既に止まっている
         }
@@ -140,13 +154,27 @@ export function playDogSound(
     gain.gain.value = (isWeak ? 1 : SCENE_GAIN[scene]) * duck;
     source.connect(gain);
     gain.connect(ctx.destination);
-    source.start();
-    current = source;
-    if (isWeak) {
-        weakPlaying = source;
-        source.onended = () => {
-            if (weakPlaying === source) weakPlaying = null;
-        };
-    }
+    source.start(when);
+    const previous = current;
+    const previousWeak = weakPlaying;
+    current = { source, gain };
+    source.onended = () => {
+        endedSources.add(source);
+        if (weakPlaying === source) weakPlaying = null;
+    };
+    if (isWeak) weakPlaying = source;
+    registerScheduledSound(when, now, () => {
+        try {
+            source.stop();
+        } catch {
+            // stop の二度呼びで例外を投げる古い実装でも、下の状態は戻す
+        }
+        // 取り消した声の前の状態に戻す。戻さないと、鳴っている weak を通常の声として切ってしまい、
+        // 鳴らなかった声に次の切り替えのフェードを掛けると停止時刻が後ろへ上書きされて一瞬鳴ってしまう
+        if (weakPlaying === source) {
+            weakPlaying = previousWeak && !endedSources.has(previousWeak) ? previousWeak : null;
+        }
+        if (current?.source === source) current = previous;
+    });
     return "played";
 }

@@ -36,28 +36,39 @@ const ICON_PROPS = {
 
 function SoundIcon({ mode, className = "h-5 w-5" }: { mode: SoundMode; className?: string }) {
     if (mode === "dog") {
-        // トイプードルの顔。小さくしても形が残るよう、垂れ耳を塗って輪郭を強くし、枠いっぱいに描く
+        // トイプードルの顔。耳を頭の後ろに描いて重ね、毛色で塗る。輪郭は文字色のままにして、
+        // 明るい背景でも暗い背景でも形が読めるようにする
         return (
             <svg
                 viewBox="2.3 4.1 19.4 16.2"
                 className={className}
-                strokeWidth="1.5"
+                strokeWidth="1.3"
                 aria-hidden="true"
                 {...ICON_PROPS}
             >
-                <path d="M7 10a2.6 2.6 0 0 1 2.4-3.6 2.7 2.7 0 0 1 5.2 0A2.6 2.6 0 0 1 17 10" />
                 <path
                     d="M7.2 9.8C4.8 9.6 3.3 11.7 3.5 14.4c.2 2.4 1.5 3.9 3.1 3.6 1-.2 1.4-1 1.3-1.9Z"
-                    fill="currentColor"
+                    className="fill-ram-fur-deep"
                 />
                 <path
                     d="M16.8 9.8c2.4-.2 3.9 1.9 3.7 4.6-.2 2.4-1.5 3.9-3.1 3.6-1-.2-1.4-1-1.3-1.9Z"
-                    fill="currentColor"
+                    className="fill-ram-fur-deep"
                 />
-                <path d="M8.3 11.5v3a3.7 3.7 0 0 0 7.4 0v-3" />
-                <circle cx="10.4" cy="13" r=".9" fill="currentColor" stroke="none" />
-                <circle cx="13.6" cy="13" r=".9" fill="currentColor" stroke="none" />
-                <ellipse cx="12" cy="15.6" rx="1.1" ry=".8" fill="currentColor" stroke="none" />
+                <path
+                    d="M7 10a2.6 2.6 0 0 1 2.4-3.6 2.7 2.7 0 0 1 5.2 0A2.6 2.6 0 0 1 17 10l-1.3 1.5v3a3.7 3.7 0 0 1-7.4 0v-3Z"
+                    className="fill-ram-fur"
+                />
+                <ellipse
+                    cx="12"
+                    cy="15.5"
+                    rx="2"
+                    ry="1.5"
+                    className="fill-ram-cream"
+                    stroke="none"
+                />
+                <circle cx="10.4" cy="12.9" r=".95" className="fill-ram-ink" stroke="none" />
+                <circle cx="13.6" cy="12.9" r=".95" className="fill-ram-ink" stroke="none" />
+                <ellipse cx="12" cy="15" rx="1" ry=".72" className="fill-ram-ink" stroke="none" />
             </svg>
         );
     }

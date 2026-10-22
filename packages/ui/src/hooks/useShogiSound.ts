@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { type MoveScene, playDogSound, preloadDogSounds } from "./dogSound";
+import { registerScheduledSound, reserveSoundSlot } from "./soundSchedule";
 
 // Web Audio API による着手音フック。通常は合成音、CPU 戦で「犬」を選ぶと音声ファイルの鳴き声を鳴らす
 
@@ -48,31 +49,35 @@ function playKnockSound(ctx: AudioContext, gainValue: number): void {
     filter.Q.value = 0.8;
 
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(gainValue, ctx.currentTime);
+    const when = reserveSoundSlot(ctx.currentTime);
+    gain.gain.setValueAtTime(gainValue, when);
 
     source.connect(filter);
     filter.connect(gain);
     gain.connect(ctx.destination);
-    source.start();
+    source.start(when);
+    registerScheduledSound(when, ctx.currentTime, () => source.stop());
 }
 
 // パス音（ソフトなサイン波トーン）
 function playPassSound(ctx: AudioContext): void {
     const durationSec = 0.2;
+    const when = reserveSoundSlot(ctx.currentTime);
 
     const osc = ctx.createOscillator();
     osc.type = "sine";
-    osc.frequency.setValueAtTime(520, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(380, ctx.currentTime + durationSec);
+    osc.frequency.setValueAtTime(520, when);
+    osc.frequency.exponentialRampToValueAtTime(380, when + durationSec);
 
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.25, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + durationSec);
+    gain.gain.setValueAtTime(0.25, when);
+    gain.gain.exponentialRampToValueAtTime(0.001, when + durationSec);
 
     osc.connect(gain);
     gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + durationSec);
+    osc.start(when);
+    osc.stop(when + durationSec);
+    registerScheduledSound(when, ctx.currentTime, () => osc.stop());
 }
 
 // ─── AudioContext の遅延初期化 ────────────────────────────────────────────────
