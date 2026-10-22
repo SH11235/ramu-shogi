@@ -254,4 +254,69 @@ describe("HandPiecesDisplay: 選択の枠", () => {
         expect(pieceButton("後手の歩").className).not.toContain("border-wafuu-shu");
         expect(pieceButton("後手の歩").className).toContain("border-transparent");
     });
+
+    describe("個数の札", () => {
+        const defaultHand = { R: 0, B: 0, G: 0, S: 0, N: 0, L: 0, P: 0 };
+        const hand = { ...defaultHand, P: 3, G: 1 };
+        const mockHandSelect = vi.fn();
+        const getActualPiecesContainer = () => screen.getByTestId("hand-pieces-actual");
+
+        it("対局中は 2 枚以上だけ札を出し、1 枚は出さない。読み上げの名前には常に枚数を入れる", () => {
+            render(
+                <HandPiecesDisplay
+                    owner="sente"
+                    hand={hand}
+                    selectedPiece={null}
+                    isActive={true}
+                    onHandSelect={mockHandSelect}
+                    size="medium"
+                    isMatchRunning={true}
+                />,
+            );
+            const container = getActualPiecesContainer();
+            const pawn = within(container).getByRole("button", { name: "先手の歩 3枚" });
+            const gold = within(container).getByRole("button", { name: "先手の金 1枚" });
+            expect(pawn.textContent).toContain("3");
+            expect(gold.textContent).not.toContain("1");
+        });
+
+        it("持っていない駒も並べる画面では、0 と 1 を見分けられるよう 1 枚でも札を出す", () => {
+            render(
+                <HandPiecesDisplay
+                    owner="sente"
+                    hand={hand}
+                    selectedPiece={null}
+                    isActive={false}
+                    onHandSelect={mockHandSelect}
+                    size="medium"
+                    hideEmptyPieces={false}
+                />,
+            );
+            const container = getActualPiecesContainer();
+            expect(
+                within(container).getByRole("button", { name: "先手の金 1枚" }).textContent,
+            ).toContain("1");
+            expect(
+                within(container).getByRole("button", { name: "先手の飛 0枚" }).textContent,
+            ).toContain("0");
+        });
+
+        it("編集中は 0 枚でも札を出す", () => {
+            render(
+                <HandPiecesDisplay
+                    owner="sente"
+                    hand={defaultHand}
+                    selectedPiece={null}
+                    isActive={false}
+                    onHandSelect={mockHandSelect}
+                    size="edit"
+                    isEditMode={true}
+                />,
+            );
+            const container = getActualPiecesContainer();
+            expect(
+                within(container).getByRole("button", { name: "先手の歩 0枚" }).textContent,
+            ).toContain("0");
+        });
+    });
 });
