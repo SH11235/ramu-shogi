@@ -336,7 +336,8 @@ export async function createStudyFromKifuSource(
 
 /**
  * `/play` に読み込んである棋譜（分岐・コメントごと）から研究ノートを作る。
- * 棋譜に付いていた評価値（先手視点に正規化済みのもの）は、対局時の評価値として取り込む。
+ * 棋譜に付いていた評価値（先手視点に正規化済みのもの）と、AI が指した手の探索結果は、
+ * 対局時の評価値として取り込む。
  * 棋譜に対局者名が書かれていれば（CSA）、直接貼ったときと同じ表題・対局者名にする。
  */
 export async function createStudyFromKifuTree(
