@@ -249,6 +249,7 @@ jobs:
         with:
           path: ${{ runner.temp }}/wasm-threaded-target
           key: wasm-threaded-${{ runner.os }}-${{ env.RUST_NIGHTLY_TOOLCHAIN }}-release-${{ hashFiles('packages/rust-core/Cargo.lock', 'packages/rust-core/**/Cargo.toml', 'packages/rust-core/targets/**', 'packages/engine-wasm/scripts/build-wasm.mjs') }}
+          restore-keys: wasm-threaded-${{ runner.os }}-${{ env.RUST_NIGHTLY_TOOLCHAIN }}-release-
       - name: Build wasm bindings
         run: node scripts/build-wasm.mjs
         working-directory: packages/engine-wasm
@@ -259,6 +260,6 @@ jobs:
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ runner.temp }}/wasm-threaded-target
-          key: wasm-threaded-${{ runner.os }}-${{ env.RUST_NIGHTLY_TOOLCHAIN }}-release-${{ hashFiles('packages/rust-core/Cargo.lock', 'packages/rust-core/**/Cargo.toml', 'packages/rust-core/targets/**', 'packages/engine-wasm/scripts/build-wasm.mjs') }}
+          key: ${{ steps.threaded-target.outputs.cache-primary-key }}
       - name: Build rules wasm
         run: cargo build --profile rules-wasm --target wasm32-unknown-unknown -p shogi-rules-wasm

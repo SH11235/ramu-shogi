@@ -147,6 +147,7 @@ jobs:
         with:
           path: ${{ runner.temp }}/wasm-threaded-target
           key: wasm-threaded-${{ runner.os }}-${{ env.RUST_NIGHTLY_TOOLCHAIN }}-release-${{ hashFiles('packages/rust-core/Cargo.lock', 'packages/rust-core/**/Cargo.toml', 'packages/rust-core/targets/**', 'packages/engine-wasm/scripts/build-wasm.mjs') }}
+          restore-keys: wasm-threaded-${{ runner.os }}-${{ env.RUST_NIGHTLY_TOOLCHAIN }}-release-
       # main で作ったタスク結果を PR で再利用し、変更の無いパッケージの build / test を省く
       - name: Restore turbo cache
         uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
@@ -172,7 +173,7 @@ jobs:
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ runner.temp }}/wasm-threaded-target
-          key: wasm-threaded-${{ runner.os }}-${{ env.RUST_NIGHTLY_TOOLCHAIN }}-release-${{ hashFiles('packages/rust-core/Cargo.lock', 'packages/rust-core/**/Cargo.toml', 'packages/rust-core/targets/**', 'packages/engine-wasm/scripts/build-wasm.mjs') }}
+          key: ${{ steps.threaded-target.outputs.cache-primary-key }}
       # 復元したキャッシュに新しい結果を足して保存するので、7 日以上前の結果を落として肥大を防ぐ
       - name: Prune turbo cache
         if: github.ref == 'refs/heads/main'

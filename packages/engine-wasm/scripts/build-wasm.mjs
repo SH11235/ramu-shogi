@@ -22,7 +22,7 @@ const defaultCargoTargetDir = process.env.CARGO_TARGET_DIR
 // CI の rust-cache は保存前に cargo metadata に無い成果物を消すため、build-std で作る
 // core/std まで消えてスレッド版が毎回フルビルドになる。CI ではここを別ディレクトリにして別途キャッシュする
 const threadedCargoTargetDir = process.env.ENGINE_WASM_THREADED_TARGET_DIR
-    ? path.resolve(process.env.ENGINE_WASM_THREADED_TARGET_DIR)
+    ? path.resolve(rustRoot, process.env.ENGINE_WASM_THREADED_TARGET_DIR)
     : defaultCargoTargetDir;
 
 const outDir = path.resolve(__dirname, "../pkg");
