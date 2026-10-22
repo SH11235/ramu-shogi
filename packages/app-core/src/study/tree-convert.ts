@@ -110,7 +110,9 @@ function searchStatsToSource(
         { scoreCp: stats.scoreCp, scoreMate: stats.scoreMate },
         mover,
     );
-    const line = stats.pv?.[0] === node.usiMove ? stats.pv.slice(1) : stats.pv;
+    // 外部エンジンは最後に送った読み筋が bestmove から始まるとは限らない。指した手から
+    // 始まらない読み筋は指した後の局面で再生できないので、評価値だけを残す。
+    const line = stats.pv?.[0] === node.usiMove ? stats.pv.slice(1) : undefined;
     return { score, pv: score ? truncatePv(line) : null };
 }
 

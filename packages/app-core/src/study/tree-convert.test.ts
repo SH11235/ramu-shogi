@@ -197,6 +197,31 @@ describe("実行時ツリー → 保存用", () => {
         });
     });
 
+    it("指した手から始まらない探索の読み筋は捨て、棋譜から読んだ評価値は探索結果より優先する", () => {
+        const initial = createInitialPositionState();
+        const afterFirst = applyMoveWithState(initial, "7g7f").next;
+        const afterSecond = applyMoveWithState(afterFirst, "3c3d").next;
+        let tree = addMove(hirateTree(), "7g7f", afterFirst, {
+            searchStats: { scoreCp: 30, pv: ["2g2f", "8c8d"] },
+        });
+        tree = addMove(tree, "3c3d", afterSecond, {
+            eval: { scoreCp: 120, normalized: true },
+            searchStats: { scoreCp: 500, pv: ["3c3d", "2g2f"] },
+        });
+
+        const stored = kifuTreeToStudyTree(tree, { sourceKind: "kifu" }).tree;
+        const first = studyChildNodeId(stored.rootId, "7g7f");
+        const second = studyChildNodeId(first, "3c3d");
+        expect(stored.nodes[first].source).toEqual({
+            kind: "kifu",
+            score: { kind: "cp", value: 30 },
+            pv: null,
+            elapsedMs: null,
+        });
+        expect(stored.nodes[second].source?.score).toEqual({ kind: "cp", value: 120 });
+        expect(stored.nodes[second].source?.pv).toBeNull();
+    });
+
     it("パスを含むツリーも研究ノートにでき、復元すると同じ手順になる", () => {
         const start: PositionState = {
             ...createInitialPositionState(),
