@@ -1644,7 +1644,7 @@ export function StudyWorkspaceView({
                                 {navBar}
                             </div>
                             {/* 右の列は画面の高さに収める。xl では注目局面の一覧を縮めて収め、それでも溢れる分
-                                （lg では棋譜の欄も入るので常に）は列の中で送る。送る列の端で欄の影やフォーカスの
+                                （xl 未満では棋譜の欄も入るので常に）は列の中で送る。送る列の端で欄の影やフォーカスの
                                 枠が切れないよう、内側に余白を取って外側の余白で打ち消す。 */}
                             <div className="-m-1 flex min-w-0 flex-col gap-3 p-1 max-h-[calc(100dvh-10rem+0.5rem)] overflow-y-auto xl:max-h-[calc(100dvh-9rem+0.5rem)]">
                                 <div className="shrink-0">{graphWithComment}</div>
