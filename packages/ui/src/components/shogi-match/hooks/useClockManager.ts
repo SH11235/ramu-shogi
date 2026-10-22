@@ -7,7 +7,16 @@ const CLOCK_UPDATE_INTERVAL_MS = 200;
 /**
  * 各プレイヤーの時間設定
  */
-export type ClockSettings = Record<Player, { mainMs: number; byoyomiMs: number; enabled: boolean }>;
+export type ClockSettings = Record<
+    Player,
+    {
+        mainMs: number;
+        byoyomiMs: number;
+        /** 1 手指すごとに持ち時間へ足す時間（フィッシャー）。0 なら足さない */
+        incrementMs: number;
+        enabled: boolean;
+    }
+>;
 
 /**
  * 時計の状態
@@ -15,6 +24,8 @@ export type ClockSettings = Record<Player, { mainMs: number; byoyomiMs: number; 
 interface ClockState {
     mainMs: number;
     byoyomiMs: number;
+    /** 設定の加算（エンジンに渡すために時計の状態にも持つ。対局中は変わらない） */
+    incrementMs: number;
 }
 
 /**
@@ -53,8 +64,11 @@ interface UseClockManagerReturn {
     clocksRef: { readonly current: TickState };
     /** 時計をリセットする */
     resetClocks: (startTick: boolean) => void;
-    /** 次の手番に時計を更新する（秒読み時間をリセット） */
-    updateClocksForNextTurn: (nextTurn: Player) => void;
+    /**
+     * 次の手番に時計を更新する（秒読み時間をリセット）。`moved` は指し終えて手番が移ったときに付け、
+     * 指した側の持ち時間に加算を足す（「待った」で手番を戻すときは足さない）。
+     */
+    updateClocksForNextTurn: (nextTurn: Player, options?: { moved?: boolean }) => void;
     /** 時計を停止する */
     stopTicking: () => void;
     /** 時計を開始する */
@@ -66,10 +80,18 @@ interface UseClockManagerReturn {
  */
 export function initialTick(settings: ClockSettings): TickState {
     return {
-        sente: { mainMs: settings.sente.mainMs, byoyomiMs: settings.sente.byoyomiMs },
-        gote: { mainMs: settings.gote.mainMs, byoyomiMs: settings.gote.byoyomiMs },
+        sente: clockStateOf(settings.sente),
+        gote: clockStateOf(settings.gote),
         ticking: null,
         lastUpdatedAt: Date.now(),
+    };
+}
+
+function clockStateOf(setting: ClockSettings[Player]): ClockState {
+    return {
+        mainMs: setting.mainMs,
+        byoyomiMs: setting.byoyomiMs,
+        incrementMs: setting.enabled ? setting.incrementMs : 0,
     };
 }
 
@@ -87,7 +109,7 @@ export function initialTick(settings: ClockSettings): TickState {
  * @example
  * ```typescript
  * const { clocks, resetClocks, updateClocksForNextTurn } = useClockManager({
- *   timeSettings: { sente: { mainMs: 600000, byoyomiMs: 10000 }, gote: { ... } },
+ *   timeSettings: { sente: { mainMs: 600000, byoyomiMs: 10000, incrementMs: 0, enabled: true }, gote: { ... } },
  *   isMatchRunning: true,
  *   onTimeExpired: async (side) => {
  *     console.log(`${side} の時間切れ`);
@@ -122,14 +144,8 @@ export function useClockManager({
      */
     const resetClocks = (startTick: boolean) => {
         setClocks({
-            sente: {
-                mainMs: timeSettings.sente.mainMs,
-                byoyomiMs: timeSettings.sente.byoyomiMs,
-            },
-            gote: {
-                mainMs: timeSettings.gote.mainMs,
-                byoyomiMs: timeSettings.gote.byoyomiMs,
-            },
+            sente: clockStateOf(timeSettings.sente),
+            gote: clockStateOf(timeSettings.gote),
             ticking: startTick ? "sente" : null,
             lastUpdatedAt: Date.now(),
         });
@@ -138,11 +154,20 @@ export function useClockManager({
     /**
      * 次の手番に時計を更新する（秒読み時間をリセット）
      */
-    const updateClocksForNextTurn = (nextTurn: Player) => {
+    const updateClocksForNextTurn = (nextTurn: Player, options?: { moved?: boolean }) => {
+        const mover: Player = nextTurn === "sente" ? "gote" : "sente";
         setClocks((prev) => ({
             ...prev,
+            ...(options?.moved && prev[mover].incrementMs > 0
+                ? {
+                      [mover]: {
+                          ...prev[mover],
+                          mainMs: prev[mover].mainMs + prev[mover].incrementMs,
+                      },
+                  }
+                : {}),
             [nextTurn]: {
-                mainMs: prev[nextTurn].mainMs,
+                ...prev[nextTurn],
                 byoyomiMs: timeSettings[nextTurn].byoyomiMs,
             },
             ticking: nextTurn,
@@ -201,7 +226,7 @@ export function useClockManager({
 
             const nextState: TickState = {
                 ...prev,
-                [side]: { mainMs: Math.max(0, mainMs), byoyomiMs },
+                [side]: { ...current, mainMs: Math.max(0, mainMs), byoyomiMs },
                 lastUpdatedAt: now,
             };
 

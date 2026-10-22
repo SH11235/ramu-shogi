@@ -429,6 +429,35 @@ describe("createEngineController", () => {
         });
     });
 
+    it("加算の対局では秒読みを渡さず、両者の加算を渡す", async () => {
+        const mockClient = createMockEngineClient();
+        const controller = createEngineController({
+            createClient: () => mockClient.client,
+            getClockState: () => ({
+                sente: { mainMs: 60_000, byoyomiMs: 0, incrementMs: 1_000 },
+                gote: { mainMs: 50_000, byoyomiMs: 0, incrementMs: 2_000 },
+                lastUpdatedAt: 1_000,
+                ticking: "sente",
+            }),
+            now: () => 1_500,
+            resolveNnue: async () => null,
+            callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
+        });
+        controller.command.syncContext({
+            sides: { sente: { role: "engine", engineId: "engine1" }, gote: { role: "human" } },
+            position: { startSfen: "startpos", moves: [], turn: "sente", ready: true },
+            matchRunning: true,
+        });
+
+        await controller.command.startTurn("sente");
+        await flushPromises();
+
+        expect(mockClient.search).toHaveBeenCalledWith({
+            limits: { btimeMs: 59_500, wtimeMs: 50_000, bincMs: 1_000, wincMs: 2_000 },
+            ponder: false,
+        });
+    });
+
     it("bestmove の通常手でコールバックを呼ぶ", async () => {
         const mockClient = createMockEngineClient();
         const onMoveFromEngine = vi.fn();

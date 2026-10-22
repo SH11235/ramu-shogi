@@ -54,9 +54,16 @@ type EngineControllerSides = {
     gote: SideSetting;
 };
 
+type EngineSideClock = {
+    mainMs: number;
+    byoyomiMs: number;
+    /** 1 手ごとに持ち時間へ足す時間（フィッシャー）。無ければ 0 と同じ */
+    incrementMs?: number;
+};
+
 type EngineClockState = {
-    sente: { mainMs: number; byoyomiMs: number };
-    gote: { mainMs: number; byoyomiMs: number };
+    sente: EngineSideClock;
+    gote: EngineSideClock;
     lastUpdatedAt: number;
     ticking?: Player | null;
 };
@@ -1005,14 +1012,20 @@ export function createEngineController(
             const hasMainTime = clocks.sente.mainMs > 0 || clocks.gote.mainMs > 0;
             const btimeMs = side === "sente" ? remainingMainMs : clocks.sente.mainMs;
             const wtimeMs = side === "gote" ? remainingMainMs : clocks.gote.mainMs;
+            const bincMs = clocks.sente.incrementMs ?? 0;
+            const wincMs = clocks.gote.incrementMs ?? 0;
+            // 加算の対局で秒読みが無い側に最低 100ms の秒読みを渡すと、エンジンは持ち時間を使い切っても
+            // 秒読みがあると見て指し遅れ、時間切れになる。
+            const sendByoyomi = (clockState.incrementMs ?? 0) === 0 || clockState.byoyomiMs > 0;
 
             liveSearchStats[side] = {};
-            liveThinkLimitMs[side] = effectiveByoyomiMs;
+            liveThinkLimitMs[side] = sendByoyomi ? effectiveByoyomiMs : undefined;
 
             const handle = await client.search({
                 limits: {
-                    byoyomiMs: effectiveByoyomiMs,
+                    ...(sendByoyomi ? { byoyomiMs: effectiveByoyomiMs } : {}),
                     ...(hasMainTime ? { btimeMs, wtimeMs } : {}),
+                    ...(bincMs > 0 || wincMs > 0 ? { bincMs, wincMs } : {}),
                 },
                 ponder: false,
             });

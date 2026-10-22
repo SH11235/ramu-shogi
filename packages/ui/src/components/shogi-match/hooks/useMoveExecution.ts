@@ -53,7 +53,7 @@ interface UseMoveExecutionProps {
     /** パス権オプションを取得する */
     getPassRightsOption: () => { passRights?: { sente: number; gote: number } };
     /** 次の手番に時計を更新する */
-    updateClocksForNextTurn: (turn: Player) => void;
+    updateClocksForNextTurn: (turn: Player, options?: { moved?: boolean }) => void;
     /** ターン開始時刻のref */
     turnStartTimeRef: MutableRefObject<number>;
     /** エンジンの手番かどうか */
@@ -185,7 +185,7 @@ export function useMoveExecution({
         clearLegalCache();
         // ターン開始時刻をリセット
         turnStartTimeRef.current = Date.now();
-        updateClocksForNextTurn(nextPosition.turn);
+        updateClocksForNextTurn(nextPosition.turn, { moved: true });
         onHumanMoveApplied?.(mv, position, nextPosition);
     };
 

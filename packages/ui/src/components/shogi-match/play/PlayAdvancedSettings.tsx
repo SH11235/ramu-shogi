@@ -1,6 +1,6 @@
 /**
  * 対局画面の詳細設定。ふだんは触らないものをここに集める:
- * 対局の組み合わせ（自分 対 AI ／ 人 対 人 ／ AI 対 AI）、時間を秒で指定、変則ルール、評価関数、盤の表示。
+ * 時間を秒で指定、変則ルール、評価関数、盤の表示。
  *
  * PC ではダイアログ、スマホでは下から出るシートの中に置く。ここで変えた内容は、設定の欄にもそのまま出る。
  */
@@ -17,13 +17,7 @@ import { useShogiMatchConfig } from "../ShogiMatchContext";
 import type { DisplaySettings } from "../types";
 import { buildThreadOptions } from "../utils/threadOptions";
 import { PLAY_OUTLINE_BUTTON } from "./playStyles";
-import { type PlayMatchKind, usePlaySetup } from "./usePlaySetup";
-
-const KIND_OPTIONS: Array<{ id: PlayMatchKind; label: string }> = [
-    { id: "vs-ai", label: "自分 対 AI" },
-    { id: "humans", label: "人 対 人" },
-    { id: "ai-vs-ai", label: "AI 対 AI" },
-];
+import { usePlaySetup } from "./usePlaySetup";
 
 const DISPLAY_TOGGLES: Array<{ key: keyof DisplaySettings; label: string }> = [
     { key: "showBoardLabels", label: "盤の外に筋・段を表示" },
@@ -90,7 +84,11 @@ export function PlayAdvancedSettings({
         return mark;
     };
 
-    const setSeconds = (side: Player, field: "mainMs" | "byoyomiMs", raw: string) => {
+    const setSeconds = (
+        side: Player,
+        field: "mainMs" | "byoyomiMs" | "incrementMs",
+        raw: string,
+    ) => {
         const parsed = Number(raw);
         if (Number.isNaN(parsed) || parsed < 0) return;
         const seconds = Math.min(Math.floor(parsed), MAX_SECONDS);
@@ -102,31 +100,6 @@ export function PlayAdvancedSettings({
 
     return (
         <div className="flex flex-col gap-4 text-wafuu-sumi">
-            <Group title="対局の組み合わせ">
-                <div className="flex flex-wrap gap-1.5">
-                    {KIND_OPTIONS.map((option) => {
-                        const selected = option.id === setup.kind;
-                        return (
-                            <button
-                                key={option.id}
-                                type="button"
-                                aria-pressed={selected}
-                                disabled={settingsLocked}
-                                onClick={() => setup.chooseKind(option.id)}
-                                className={cn(
-                                    "min-h-10 flex-1 whitespace-nowrap rounded-md border px-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
-                                    selected
-                                        ? "border-wafuu-sumi bg-wafuu-washi-warm font-semibold ring-1 ring-inset ring-wafuu-sumi"
-                                        : "border-wafuu-border bg-background hover:bg-wafuu-washi-warm",
-                                )}
-                            >
-                                {option.label}
-                            </button>
-                        );
-                    })}
-                </div>
-            </Group>
-
             <Group title="時間を秒で指定">
                 {(["sente", "gote"] as const).map((side) => {
                     const clock = timeSettings[side];
@@ -160,7 +133,7 @@ export function PlayAdvancedSettings({
                                     </label>
                                 )}
                             </div>
-                            <div className="flex items-center gap-4">
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                                 <label className="flex items-center gap-1.5 text-sm">
                                     持ち時間
                                     <input
@@ -178,7 +151,7 @@ export function PlayAdvancedSettings({
                                     秒
                                 </label>
                                 <label className="flex items-center gap-1.5 text-sm">
-                                    1手
+                                    秒読み
                                     <input
                                         type="number"
                                         inputMode="numeric"
@@ -188,6 +161,22 @@ export function PlayAdvancedSettings({
                                         disabled={settingsLocked || !clock.enabled}
                                         onChange={(event) =>
                                             setSeconds(side, "byoyomiMs", event.target.value)
+                                        }
+                                        className={NUMBER_INPUT_CLASS}
+                                    />
+                                    秒
+                                </label>
+                                <label className="flex items-center gap-1.5 text-sm">
+                                    1手ごとに +
+                                    <input
+                                        type="number"
+                                        inputMode="numeric"
+                                        min={0}
+                                        max={MAX_SECONDS}
+                                        value={Math.floor(clock.incrementMs / 1000)}
+                                        disabled={settingsLocked || !clock.enabled}
+                                        onChange={(event) =>
+                                            setSeconds(side, "incrementMs", event.target.value)
                                         }
                                         className={NUMBER_INPUT_CLASS}
                                     />

@@ -7,22 +7,22 @@ import { initialTick, useClockManager } from "./useClockManager";
 describe("initialTick", () => {
     it("ClockSettings から TickState を初期化する", () => {
         const settings: ClockSettings = {
-            sente: { mainMs: 600000, byoyomiMs: 10000, enabled: true },
-            gote: { mainMs: 300000, byoyomiMs: 5000, enabled: true },
+            sente: { mainMs: 600000, byoyomiMs: 10000, incrementMs: 0, enabled: true },
+            gote: { mainMs: 300000, byoyomiMs: 5000, incrementMs: 0, enabled: true },
         };
 
         const result = initialTick(settings);
 
-        expect(result.sente).toEqual({ mainMs: 600000, byoyomiMs: 10000 });
-        expect(result.gote).toEqual({ mainMs: 300000, byoyomiMs: 5000 });
+        expect(result.sente).toEqual({ mainMs: 600000, byoyomiMs: 10000, incrementMs: 0 });
+        expect(result.gote).toEqual({ mainMs: 300000, byoyomiMs: 5000, incrementMs: 0 });
         expect(result.ticking).toBeNull();
         expect(result.lastUpdatedAt).toBeGreaterThan(0);
     });
 
     it("ticking は null で初期化される", () => {
         const settings: ClockSettings = {
-            sente: { mainMs: 0, byoyomiMs: 0, enabled: true },
-            gote: { mainMs: 0, byoyomiMs: 0, enabled: true },
+            sente: { mainMs: 0, byoyomiMs: 0, incrementMs: 0, enabled: true },
+            gote: { mainMs: 0, byoyomiMs: 0, incrementMs: 0, enabled: true },
         };
 
         const result = initialTick(settings);
@@ -33,8 +33,8 @@ describe("initialTick", () => {
     it("lastUpdatedAt は現在時刻に近い値で初期化される", () => {
         const before = Date.now();
         const settings: ClockSettings = {
-            sente: { mainMs: 100, byoyomiMs: 200, enabled: true },
-            gote: { mainMs: 300, byoyomiMs: 400, enabled: true },
+            sente: { mainMs: 100, byoyomiMs: 200, incrementMs: 0, enabled: true },
+            gote: { mainMs: 300, byoyomiMs: 400, incrementMs: 0, enabled: true },
         };
 
         const result = initialTick(settings);
@@ -63,8 +63,8 @@ describe("useClockManager", () => {
     describe("clock operations", () => {
         it("resetClocks が時間をリセットする（startTick = false）", () => {
             const timeSettings: ClockSettings = {
-                sente: { mainMs: 600000, byoyomiMs: 10000, enabled: true },
-                gote: { mainMs: 300000, byoyomiMs: 5000, enabled: true },
+                sente: { mainMs: 600000, byoyomiMs: 10000, incrementMs: 0, enabled: true },
+                gote: { mainMs: 300000, byoyomiMs: 5000, incrementMs: 0, enabled: true },
             };
 
             const { result } = renderHook(() =>
@@ -89,8 +89,8 @@ describe("useClockManager", () => {
 
         it("resetClocks が時間をリセットする（startTick = true）", () => {
             const timeSettings: ClockSettings = {
-                sente: { mainMs: 100000, byoyomiMs: 5000, enabled: true },
-                gote: { mainMs: 200000, byoyomiMs: 8000, enabled: true },
+                sente: { mainMs: 100000, byoyomiMs: 5000, incrementMs: 0, enabled: true },
+                gote: { mainMs: 200000, byoyomiMs: 8000, incrementMs: 0, enabled: true },
             };
 
             const { result } = renderHook(() =>
@@ -111,8 +111,8 @@ describe("useClockManager", () => {
 
         it("updateClocksForNextTurn が秒読み時間をリセットし、手番を切り替える", () => {
             const timeSettings: ClockSettings = {
-                sente: { mainMs: 600000, byoyomiMs: 10000, enabled: true },
-                gote: { mainMs: 300000, byoyomiMs: 5000, enabled: true },
+                sente: { mainMs: 600000, byoyomiMs: 10000, incrementMs: 0, enabled: true },
+                gote: { mainMs: 300000, byoyomiMs: 5000, incrementMs: 0, enabled: true },
             };
 
             const { result } = renderHook(() =>
@@ -142,10 +142,38 @@ describe("useClockManager", () => {
             expect(result.current.clocks.gote.byoyomiMs).toBe(5000); // リセットされる
         });
 
+        it("加算の対局では、指し終えた側の持ち時間に加算を足す（待ったでは足さない）", () => {
+            const timeSettings: ClockSettings = {
+                sente: { mainMs: 60_000, byoyomiMs: 0, incrementMs: 2_000, enabled: true },
+                gote: { mainMs: 60_000, byoyomiMs: 0, incrementMs: 5_000, enabled: true },
+            };
+
+            const { result } = renderHook(() =>
+                useClockManager({
+                    timeSettings,
+                    isMatchRunning: false,
+                    onTimeExpired,
+                    matchEndedRef,
+                }),
+            );
+
+            act(() => {
+                result.current.updateClocksForNextTurn("gote", { moved: true });
+            });
+            expect(result.current.clocks.sente.mainMs).toBe(62_000);
+            expect(result.current.clocks.gote.mainMs).toBe(60_000);
+
+            act(() => {
+                result.current.updateClocksForNextTurn("sente");
+            });
+            expect(result.current.clocks.gote.mainMs).toBe(60_000);
+            expect(result.current.clocks.sente.incrementMs).toBe(2_000);
+        });
+
         it("stopTicking が時計を停止する", () => {
             const timeSettings: ClockSettings = {
-                sente: { mainMs: 100000, byoyomiMs: 5000, enabled: true },
-                gote: { mainMs: 100000, byoyomiMs: 5000, enabled: true },
+                sente: { mainMs: 100000, byoyomiMs: 5000, incrementMs: 0, enabled: true },
+                gote: { mainMs: 100000, byoyomiMs: 5000, incrementMs: 0, enabled: true },
             };
 
             const { result } = renderHook(() =>
@@ -172,8 +200,8 @@ describe("useClockManager", () => {
 
         it("startTicking が時計を開始する", () => {
             const timeSettings: ClockSettings = {
-                sente: { mainMs: 100000, byoyomiMs: 5000, enabled: true },
-                gote: { mainMs: 100000, byoyomiMs: 5000, enabled: true },
+                sente: { mainMs: 100000, byoyomiMs: 5000, incrementMs: 0, enabled: true },
+                gote: { mainMs: 100000, byoyomiMs: 5000, incrementMs: 0, enabled: true },
             };
 
             const { result } = renderHook(() =>
@@ -198,8 +226,8 @@ describe("useClockManager", () => {
     describe("clock time calculation", () => {
         it("持ち時間が正常に減少する", () => {
             const timeSettings: ClockSettings = {
-                sente: { mainMs: 10000, byoyomiMs: 5000, enabled: true },
-                gote: { mainMs: 10000, byoyomiMs: 5000, enabled: true },
+                sente: { mainMs: 10000, byoyomiMs: 5000, incrementMs: 0, enabled: true },
+                gote: { mainMs: 10000, byoyomiMs: 5000, incrementMs: 0, enabled: true },
             };
 
             const { result } = renderHook(() =>
@@ -231,8 +259,8 @@ describe("useClockManager", () => {
 
         it("持ち時間が0になった後、秒読み時間が減少する", () => {
             const timeSettings: ClockSettings = {
-                sente: { mainMs: 500, byoyomiMs: 5000, enabled: true },
-                gote: { mainMs: 10000, byoyomiMs: 5000, enabled: true },
+                sente: { mainMs: 500, byoyomiMs: 5000, incrementMs: 0, enabled: true },
+                gote: { mainMs: 10000, byoyomiMs: 5000, incrementMs: 0, enabled: true },
             };
 
             const { result } = renderHook(() =>
@@ -261,8 +289,8 @@ describe("useClockManager", () => {
 
         it("両方が0になったときに時間が0になる", () => {
             const timeSettings: ClockSettings = {
-                sente: { mainMs: 100, byoyomiMs: 100, enabled: true },
-                gote: { mainMs: 10000, byoyomiMs: 5000, enabled: true },
+                sente: { mainMs: 100, byoyomiMs: 100, incrementMs: 0, enabled: true },
+                gote: { mainMs: 10000, byoyomiMs: 5000, incrementMs: 0, enabled: true },
             };
 
             const { result } = renderHook(() =>
@@ -290,8 +318,8 @@ describe("useClockManager", () => {
 
         it("時間がマイナスにならない", () => {
             const timeSettings: ClockSettings = {
-                sente: { mainMs: 100, byoyomiMs: 100, enabled: true },
-                gote: { mainMs: 10000, byoyomiMs: 5000, enabled: true },
+                sente: { mainMs: 100, byoyomiMs: 100, incrementMs: 0, enabled: true },
+                gote: { mainMs: 10000, byoyomiMs: 5000, incrementMs: 0, enabled: true },
             };
 
             const { result } = renderHook(() =>
@@ -319,8 +347,8 @@ describe("useClockManager", () => {
 
         it("isMatchRunning が false の場合は時間が減少しない", async () => {
             const timeSettings: ClockSettings = {
-                sente: { mainMs: 10000, byoyomiMs: 5000, enabled: true },
-                gote: { mainMs: 10000, byoyomiMs: 5000, enabled: true },
+                sente: { mainMs: 10000, byoyomiMs: 5000, incrementMs: 0, enabled: true },
+                gote: { mainMs: 10000, byoyomiMs: 5000, incrementMs: 0, enabled: true },
             };
 
             const { result } = renderHook(() =>
@@ -348,8 +376,8 @@ describe("useClockManager", () => {
 
         it("ticking が null の場合は時間が減少しない", async () => {
             const timeSettings: ClockSettings = {
-                sente: { mainMs: 10000, byoyomiMs: 5000, enabled: true },
-                gote: { mainMs: 10000, byoyomiMs: 5000, enabled: true },
+                sente: { mainMs: 10000, byoyomiMs: 5000, incrementMs: 0, enabled: true },
+                gote: { mainMs: 10000, byoyomiMs: 5000, incrementMs: 0, enabled: true },
             };
 
             const { result } = renderHook(() =>
@@ -375,8 +403,8 @@ describe("useClockManager", () => {
             matchEndedRef.current = true;
 
             const timeSettings: ClockSettings = {
-                sente: { mainMs: 100, byoyomiMs: 100, enabled: true },
-                gote: { mainMs: 10000, byoyomiMs: 5000, enabled: true },
+                sente: { mainMs: 100, byoyomiMs: 100, incrementMs: 0, enabled: true },
+                gote: { mainMs: 10000, byoyomiMs: 5000, incrementMs: 0, enabled: true },
             };
 
             const { result } = renderHook(() =>
@@ -408,8 +436,8 @@ describe("useClockManager", () => {
     describe("time settings update", () => {
         it("timeSettings が変更されたら resetClocks で新しい設定が反映される", () => {
             const initialSettings: ClockSettings = {
-                sente: { mainMs: 100000, byoyomiMs: 5000, enabled: true },
-                gote: { mainMs: 100000, byoyomiMs: 5000, enabled: true },
+                sente: { mainMs: 100000, byoyomiMs: 5000, incrementMs: 0, enabled: true },
+                gote: { mainMs: 100000, byoyomiMs: 5000, incrementMs: 0, enabled: true },
             };
 
             const { result, rerender } = renderHook(
@@ -424,8 +452,8 @@ describe("useClockManager", () => {
             );
 
             const newSettings: ClockSettings = {
-                sente: { mainMs: 200000, byoyomiMs: 10000, enabled: true },
-                gote: { mainMs: 300000, byoyomiMs: 15000, enabled: true },
+                sente: { mainMs: 200000, byoyomiMs: 10000, incrementMs: 0, enabled: true },
+                gote: { mainMs: 300000, byoyomiMs: 15000, incrementMs: 0, enabled: true },
             };
 
             rerender({ settings: newSettings });

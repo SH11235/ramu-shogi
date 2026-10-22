@@ -66,7 +66,12 @@ import { useNormalizedSettings } from "./shogi-match/hooks/useNormalizedSettings
 import { usePassRights } from "./shogi-match/hooks/usePassRights";
 import { useUIState } from "./shogi-match/hooks/useUIState";
 import { ShogiMatchLayout } from "./shogi-match/layouts/ShogiMatchLayout";
-import { AI_TIME_CHOICES, MY_TIME_CHOICES, matchesChoice } from "./shogi-match/play/usePlaySetup";
+import {
+    AI_MATCH_TIME_CHOICES,
+    AI_TIME_CHOICES,
+    MY_TIME_CHOICES,
+    matchesChoice,
+} from "./shogi-match/play/usePlaySetup";
 import {
     type PlayPhase,
     type PlayScreenConfig,
@@ -147,7 +152,7 @@ const readFirstPlaySides = (
 };
 
 /**
- * 人の側は MY_TIME_CHOICES、AI の側は AI_TIME_CHOICES のどれにも当たらない時計を既定値にする
+ * 人の側は MY_TIME_CHOICES、AI の側は AI の選択肢のどれにも当たらない時計を既定値にする
  * （AI 同士の 1 手 10 秒が自分の持ち時間に残る、観戦の「時間なし」が AI の考慮時間に残る、を防ぐ）。
  */
 const alignTimeToPlayChoices = (
@@ -157,7 +162,8 @@ const alignTimeToPlayChoices = (
 ): ClockSettings => {
     const align = (side: Player) => {
         const role = sides[side].role;
-        const choices = role === "human" ? MY_TIME_CHOICES : AI_TIME_CHOICES;
+        const choices =
+            role === "human" ? MY_TIME_CHOICES : [...AI_TIME_CHOICES, ...AI_MATCH_TIME_CHOICES];
         return choices.some((choice) => matchesChoice(settings[side], choice))
             ? settings[side]
             : defaultClockFor(role);
@@ -759,11 +765,13 @@ export function ShogiMatch({
         sente: {
             mainMs: initialMainTimeMs,
             byoyomiMs: initialByoyomiMs,
+            incrementMs: 0,
             enabled: defaultSides.sente.role !== "human",
         },
         gote: {
             mainMs: initialMainTimeMs,
             byoyomiMs: initialByoyomiMs,
+            incrementMs: 0,
             enabled: defaultSides.gote.role !== "human",
         },
     };
@@ -782,6 +790,7 @@ export function ShogiMatch({
         alignTimeToPlayChoices(settings, currentSides, (role) => ({
             mainMs: initialMainTimeMs,
             byoyomiMs: initialByoyomiMs,
+            incrementMs: 0,
             enabled: role !== "human",
         }));
     const alignTimeForFirstPlay = useEffectEvent(
@@ -1679,7 +1688,7 @@ export function ShogiMatch({
         clearLegalCache();
         // ターン開始時刻をリセット
         turnStartTimeRef.current = Date.now();
-        updateClocksForNextTurn(nextPosition.turn);
+        updateClocksForNextTurn(nextPosition.turn, { moved: true });
     };
 
     // キーボード・ホイールナビゲーション用のgoForward（分岐対応）

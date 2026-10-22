@@ -2,8 +2,7 @@
  * 対局画面（`screen="play"`）の「かんたん設定」。
  *
  * 対局の設定は内部では「先手・後手それぞれの担当・評価関数・時間」で持っている。この画面では
- * 「自分の手番・相手・強さ・時間」の 4 つに絞って見せ、内部の設定へ書き戻す。
- * AI 同士・人同士のような組み合わせは、詳細設定で作る。
+ * 「対局の組み合わせ・自分の手番・相手・強さ・時間」に絞って見せ、内部の設定へ書き戻す。
  */
 
 import type { NnueSelection, Player } from "@shogi/app-core";
@@ -12,6 +11,7 @@ import { SKILL_LEVEL_MAX } from "@shogi/engine-client";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import type { ClockSettings } from "../hooks/useClockManager";
 import type { SideSetting } from "../types";
+import { isSameClock } from "../utils/timeSettings";
 
 /** 対局の組み合わせ。 */
 export type PlayMatchKind = "vs-ai" | "humans" | "ai-vs-ai";
@@ -33,22 +33,63 @@ export interface TimeChoice {
     label: string;
     mainMs: number;
     byoyomiMs: number;
+    incrementMs: number;
     enabled: boolean;
 }
 
-/** AI の 1 手の考慮時間（秒読み）。 */
-export const AI_TIME_CHOICES: TimeChoice[] = [
-    { id: "1", label: "1秒", mainMs: 0, byoyomiMs: 1_000, enabled: true },
-    { id: "3", label: "3秒", mainMs: 0, byoyomiMs: 3_000, enabled: true },
-    { id: "10", label: "10秒", mainMs: 0, byoyomiMs: 10_000, enabled: true },
-    { id: "30", label: "30秒", mainMs: 0, byoyomiMs: 30_000, enabled: true },
+const perMove = (seconds: number): TimeChoice => ({
+    id: String(seconds),
+    label: `1手${seconds}秒`,
+    mainMs: 0,
+    byoyomiMs: seconds * 1000,
+    incrementMs: 0,
+    enabled: true,
+});
+
+/**
+ * 自分と指す AI の考慮時間。1 手ごとの秒数にそろえる（返事の速さが毎手同じで、AI が時間切れで負けない）。
+ * 持ち時間・加算は「指定」で決める。
+ */
+export const AI_TIME_CHOICES: TimeChoice[] = [perMove(1), perMove(3), perMove(10), perMove(30)];
+
+/**
+ * AI 同士の考慮時間。持ち時間の使い方も強さのうちなので、短い加算（フィッシャー）も選べるようにする。
+ * 1 分 +1 秒は 1 手あたり平均 1〜2 秒で、「1手3秒」と同じくらいの長さで終わる。
+ */
+export const AI_MATCH_TIME_CHOICES: TimeChoice[] = [
+    perMove(1),
+    perMove(3),
+    perMove(10),
+    {
+        id: "1m+1",
+        label: "1分 +1秒",
+        mainMs: 60_000,
+        byoyomiMs: 0,
+        incrementMs: 1_000,
+        enabled: true,
+    },
+    {
+        id: "3m+2",
+        label: "3分 +2秒",
+        mainMs: 180_000,
+        byoyomiMs: 0,
+        incrementMs: 2_000,
+        enabled: true,
+    },
 ];
 
 /** 自分の持ち時間。 */
 export const MY_TIME_CHOICES: TimeChoice[] = [
-    { id: "none", label: "無制限", mainMs: 0, byoyomiMs: 10_000, enabled: false },
-    { id: "30", label: "1手30秒", mainMs: 0, byoyomiMs: 30_000, enabled: true },
-    { id: "10+30", label: "10分+30秒", mainMs: 600_000, byoyomiMs: 30_000, enabled: true },
+    { id: "none", label: "無制限", mainMs: 0, byoyomiMs: 10_000, incrementMs: 0, enabled: false },
+    { id: "30", label: "秒読み30秒", mainMs: 0, byoyomiMs: 30_000, incrementMs: 0, enabled: true },
+    {
+        id: "10+30",
+        label: "10分 秒読み30秒",
+        mainMs: 600_000,
+        byoyomiMs: 30_000,
+        incrementMs: 0,
+        enabled: true,
+    },
 ];
 
 const opposite = (side: Player): Player => (side === "sente" ? "gote" : "sente");
@@ -57,8 +98,23 @@ export const matchesChoice = (setting: ClockSettings[Player], choice: TimeChoice
     choice.enabled
         ? setting.enabled &&
           setting.mainMs === choice.mainMs &&
-          setting.byoyomiMs === choice.byoyomiMs
+          setting.byoyomiMs === choice.byoyomiMs &&
+          setting.incrementMs === choice.incrementMs
         : !setting.enabled;
+
+/** 時計の設定を選択肢の形にする（「自分と同じ」や、選択肢に無い時間を選び直すのに使う）。 */
+export const clockAsChoice = (
+    id: string,
+    label: string,
+    clock: ClockSettings[Player],
+): TimeChoice => ({
+    id,
+    label,
+    mainMs: clock.mainMs,
+    byoyomiMs: clock.byoyomiMs,
+    incrementMs: clock.incrementMs,
+    enabled: clock.enabled,
+});
 
 interface PlaySetup {
     kind: PlayMatchKind;
@@ -89,13 +145,21 @@ interface PlaySetup {
     chooseBothTime: (choice: TimeChoice) => void;
     /** 対局の組み合わせを替える（自分 対 AI ／ 人 対 人 ／ AI 対 AI） */
     chooseKind: (kind: PlayMatchKind) => void;
-    /** AI 対 AI のときの、それぞれの側の AI（選択欄の値）と強さ */
-    sideAi: Record<Player, { value: string; option: OpponentOption | null; level: number }>;
+    /** AI 対 AI のときの、それぞれの側の AI（選択欄の値）・強さ・考慮時間 */
+    sideAi: Record<
+        Player,
+        {
+            value: string;
+            option: OpponentOption | null;
+            level: number;
+            clock: ClockSettings[Player];
+            /** AI_MATCH_TIME_CHOICES のどれに当たるか。当たらなければ null */
+            timeId: string | null;
+        }
+    >;
     chooseSideAi: (side: Player, value: string) => void;
     chooseSideLevel: (side: Player, level: number) => void;
-    /** AI 対 AI の考慮時間（両者に同じ決まりを当てる）。両者が同じでなければ null */
-    bothAiTimeId: string | null;
-    chooseBothAiTime: (choice: TimeChoice) => void;
+    chooseSideTime: (side: Player, choice: TimeChoice) => void;
 }
 
 export function usePlaySetup(): PlaySetup {
@@ -192,6 +256,10 @@ export function usePlaySetup(): PlaySetup {
             value,
             option: opponentOptions.find((option) => option.value === value) ?? null,
             level: sides[side].skillLevel?.skillLevel ?? SKILL_LEVEL_MAX,
+            clock: timeSettings[side],
+            timeId:
+                AI_MATCH_TIME_CHOICES.find((choice) => matchesChoice(timeSettings[side], choice))
+                    ?.id ?? null,
         };
     };
 
@@ -273,11 +341,13 @@ export function usePlaySetup(): PlaySetup {
             [side]: {
                 mainMs: humanClock.mainMs,
                 byoyomiMs: humanClock.byoyomiMs,
+                incrementMs: humanClock.incrementMs,
                 enabled: humanClock.enabled,
             },
             [other]: {
                 mainMs: engineClock.mainMs,
                 byoyomiMs: engineClock.byoyomiMs,
+                incrementMs: engineClock.incrementMs,
                 enabled: true,
             },
         });
@@ -309,10 +379,13 @@ export function usePlaySetup(): PlaySetup {
                 sente: { role: "human", engineId: undefined, skillLevel: undefined },
                 gote: { role: "human", engineId: undefined, skillLevel: undefined },
             });
-            onTimeSettingsChange({
-                sente: { mainMs: clock.mainMs, byoyomiMs: clock.byoyomiMs, enabled: false },
-                gote: { mainMs: clock.mainMs, byoyomiMs: clock.byoyomiMs, enabled: false },
-            });
+            const off = {
+                mainMs: clock.mainMs,
+                byoyomiMs: clock.byoyomiMs,
+                incrementMs: clock.incrementMs,
+                enabled: false,
+            };
+            onTimeSettingsChange({ sente: { ...off }, gote: { ...off } });
             return;
         }
         // AI 対 AI: いまの相手の AI（評価関数・強さ・考慮時間）を、両方の側に置く。
@@ -320,6 +393,7 @@ export function usePlaySetup(): PlaySetup {
         const clock = {
             mainMs: engineClock.mainMs,
             byoyomiMs: engineClock.byoyomiMs,
+            incrementMs: engineClock.incrementMs,
             enabled: true,
         };
         setSelection("sente", aiSelection);
@@ -352,6 +426,7 @@ export function usePlaySetup(): PlaySetup {
             [side]: {
                 mainMs: choice.mainMs,
                 byoyomiMs: choice.byoyomiMs,
+                incrementMs: choice.incrementMs,
                 enabled: choice.enabled,
             },
         });
@@ -375,7 +450,27 @@ export function usePlaySetup(): PlaySetup {
         chooseOpponent,
         chooseLevel,
         chooseAiTime: (choice) => applyClock(aiSide, choice),
-        chooseMyTime: (choice) => applyClock(mySide, choice),
+        chooseMyTime: (choice) => {
+            // AI の時間を「自分と同じ」にしてあれば、自分の時間を変えたときに AI もそろえる。
+            // AI の選択肢そのものの時間（1手30秒など）は、たまたま同じでも動かさない。
+            const followsMine =
+                kind === "vs-ai" &&
+                choice.enabled &&
+                myClock.enabled &&
+                isSameClock(aiClock, myClock) &&
+                !AI_TIME_CHOICES.some((item) => matchesChoice(aiClock, item));
+            if (!followsMine) {
+                applyClock(mySide, choice);
+                return;
+            }
+            const clock = {
+                mainMs: choice.mainMs,
+                byoyomiMs: choice.byoyomiMs,
+                incrementMs: choice.incrementMs,
+                enabled: true,
+            };
+            onTimeSettingsChange({ ...timeSettings, [mySide]: clock, [aiSide]: { ...clock } });
+        },
         bothTimeId:
             MY_TIME_CHOICES.find(
                 (choice) =>
@@ -386,6 +481,7 @@ export function usePlaySetup(): PlaySetup {
             const clock = {
                 mainMs: choice.mainMs,
                 byoyomiMs: choice.byoyomiMs,
+                incrementMs: choice.incrementMs,
                 enabled: choice.enabled,
             };
             onTimeSettingsChange({ sente: { ...clock }, gote: { ...clock } });
@@ -394,19 +490,7 @@ export function usePlaySetup(): PlaySetup {
         sideAi: { sente: sideAiOf("sente"), gote: sideAiOf("gote") },
         chooseSideAi,
         chooseSideLevel,
-        bothAiTimeId:
-            AI_TIME_CHOICES.find(
-                (choice) =>
-                    matchesChoice(timeSettings.sente, choice) &&
-                    matchesChoice(timeSettings.gote, choice),
-            )?.id ?? null,
-        chooseBothAiTime: (choice) => {
-            const clock = {
-                mainMs: choice.mainMs,
-                byoyomiMs: choice.byoyomiMs,
-                enabled: true,
-            };
-            onTimeSettingsChange({ sente: { ...clock }, gote: { ...clock } });
-        },
+        // AI は時間を決めずには指せないので、常に時間制限ありにする。
+        chooseSideTime: (side, choice) => applyClock(side, { ...choice, enabled: true }),
     };
 }

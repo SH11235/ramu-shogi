@@ -141,8 +141,8 @@ describe("formatEngineEventLog", () => {
 describe("useEngineManager", () => {
     const createMockClocksRef = () => ({
         current: {
-            sente: { mainMs: 1000, byoyomiMs: 500 },
-            gote: { mainMs: 1000, byoyomiMs: 500 },
+            sente: { mainMs: 1000, byoyomiMs: 500, incrementMs: 0 },
+            gote: { mainMs: 1000, byoyomiMs: 500, incrementMs: 0 },
             ticking: null as "sente" | "gote" | null,
             lastUpdatedAt: Date.now(),
         },
@@ -372,8 +372,8 @@ describe("useEngineManager", () => {
 describe("useEngineManager - NNUE restart", () => {
     const createMockClocksRef = () => ({
         current: {
-            sente: { mainMs: 1000, byoyomiMs: 500 },
-            gote: { mainMs: 1000, byoyomiMs: 500 },
+            sente: { mainMs: 1000, byoyomiMs: 500, incrementMs: 0 },
+            gote: { mainMs: 1000, byoyomiMs: 500, incrementMs: 0 },
             ticking: null as "sente" | "gote" | null,
             lastUpdatedAt: Date.now(),
         },
@@ -553,8 +553,8 @@ describe("useEngineManager - NNUE restart", () => {
 describe("useEngineManager - 明示API", () => {
     const createMockClocksRef = () => ({
         current: {
-            sente: { mainMs: 1000, byoyomiMs: 500 },
-            gote: { mainMs: 1000, byoyomiMs: 500 },
+            sente: { mainMs: 1000, byoyomiMs: 500, incrementMs: 0 },
+            gote: { mainMs: 1000, byoyomiMs: 500, incrementMs: 0 },
             ticking: null as "sente" | "gote" | null,
             lastUpdatedAt: Date.now(),
         },
