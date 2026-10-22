@@ -1,5 +1,7 @@
 // CPU 戦の「犬」の着手音。音源はアプリの public/sounds/dog/v1/ に置き、URL の基点はアプリから受け取る。
 
+import { registerScheduledSound, reserveSoundSlot } from "./soundSchedule";
+
 /** 着手の場面。王手 > 駒取り > 成り > 通常 の順に優先する */
 export type MoveScene = "move" | "capture" | "promote" | "check";
 
@@ -89,8 +91,10 @@ export function preloadDogSounds(baseUrl: string): void {
 }
 
 // 鳴っている声はページ全体で 1 つ。対局画面は同時に 1 つしか開かないので、再生状態はモジュールで持つ
-let current: AudioBufferSourceNode | null = null;
+let current: { source: AudioBufferSourceNode; gain: GainNode } | null = null;
 let weakPlaying: AudioBufferSourceNode | null = null;
+// 次の声に切り替えるとき、ぶつ切りにすると「プツッ」と鳴るので短く絞ってから止める
+const CUT_FADE_SEC = 0.02;
 
 function pick<T>(items: readonly T[], random: () => number): T | undefined {
     return items[Math.floor(random() * items.length)];
@@ -125,9 +129,12 @@ export function playDogSound(
     if (!name || !buffer) return "unavailable";
 
     const isWeak = name === "weak";
-    if (current && current !== weakPlaying) {
+    const now = ctx.currentTime;
+    const when = reserveSoundSlot(now);
+    if (current && current.source !== weakPlaying) {
         try {
-            current.stop();
+            current.gain.gain.setTargetAtTime(0, when, CUT_FADE_SEC / 3);
+            current.source.stop(when + CUT_FADE_SEC * 2);
         } catch {
             // 既に止まっている
         }
@@ -140,13 +147,20 @@ export function playDogSound(
     gain.gain.value = (isWeak ? 1 : SCENE_GAIN[scene]) * duck;
     source.connect(gain);
     gain.connect(ctx.destination);
-    source.start();
-    current = source;
+    source.start(when);
+    const previous = current;
+    current = { source, gain };
     if (isWeak) {
         weakPlaying = source;
         source.onended = () => {
             if (weakPlaying === source) weakPlaying = null;
         };
     }
+    registerScheduledSound(when, now, () => {
+        source.stop();
+        if (weakPlaying === source) weakPlaying = null;
+        // 鳴らなかった声に次の切り替えのフェードを掛けると、停止時刻が後ろへ上書きされて一瞬鳴ってしまう
+        if (current?.source === source) current = previous;
+    });
     return "played";
 }
