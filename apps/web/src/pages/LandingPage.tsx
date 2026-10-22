@@ -104,6 +104,16 @@ export default function LandingPage(): ReactElement {
                     </Link>{" "}
                     に保存できます（要ログイン）。
                 </p>
+                <p className="border-t border-wafuu-border pt-4 text-sm text-wafuu-sumi-light">
+                    2026年10月22日：ログイン時の記録とアクセス解析の説明を{" "}
+                    <Link
+                        to="/privacy"
+                        className="text-wafuu-sumi underline underline-offset-2 hover:text-wafuu-shu"
+                    >
+                        プライバシーポリシー
+                    </Link>
+                    に追記しました。
+                </p>
             </main>
         </>
     );
