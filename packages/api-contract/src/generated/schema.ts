@@ -1855,8 +1855,8 @@ export interface operations {
             };
             cookie?: never;
         };
-        /** @description Update a user settings document */
-        requestBody?: {
+        /** @description Update a user settings document. The JSON body is limited to 64 KiB; value permits at most 64 nesting levels and 4096 JSON nodes. */
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["PutUserSettingsRequest"];
             };
@@ -1871,6 +1871,15 @@ export interface operations {
                     "application/json": components["schemas"]["PutUserSettingsResponse"];
                 };
             };
+            /** @description Invalid JSON request or settings value exceeds depth or node limits */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
             /** @description Authentication is required */
             401: {
                 headers: {
@@ -1882,6 +1891,15 @@ export interface operations {
             };
             /** @description Settings version conflict or authenticated user mismatch */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request body exceeds 64 KiB */
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };

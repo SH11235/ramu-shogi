@@ -60,15 +60,16 @@ export function useLocalStorage<T>(key: string, defaultValue: T): UseLocalStorag
         }
         return parseStoredValue(key, localStorage.getItem(key), defaultValue);
     });
-    const hasPersistedRef = useRef(false);
+    const lastPersistedRef = useRef<{ key: string; serialized: string } | null>(null);
 
     // 値が変更されたら localStorage に保存
     useEffect(() => {
         if (typeof window === "undefined") {
             return;
         }
+        const serialized = JSON.stringify(value);
         try {
-            localStorage.setItem(key, JSON.stringify(value));
+            localStorage.setItem(key, serialized);
         } catch (error) {
             // LocalStorage容量制限（通常5-10MB）に達した場合のハンドリング
             if (error instanceof DOMException && error.name === "QuotaExceededError") {
@@ -79,10 +80,10 @@ export function useLocalStorage<T>(key: string, defaultValue: T): UseLocalStorag
                 console.warn(`Failed to save to localStorage key "${key}":`, error);
             }
         }
-        if (hasPersistedRef.current) {
+        const previous = lastPersistedRef.current;
+        lastPersistedRef.current = { key, serialized };
+        if (previous && (previous.key !== key || previous.serialized !== serialized)) {
             dispatchLocalStorageSyncEvent(key);
-        } else {
-            hasPersistedRef.current = true;
         }
     }, [key, value]);
 

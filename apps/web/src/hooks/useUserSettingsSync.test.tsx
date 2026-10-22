@@ -1,5 +1,8 @@
 import type { JsonValue, UserSettingsDocumentKey } from "@shogi/api-contract";
-import { LOCAL_STORAGE_SYNC_EVENT } from "@shogi/ui/components/shogi-match/hooks/useLocalStorage";
+import {
+    LOCAL_STORAGE_SYNC_EVENT,
+    useLocalStorage,
+} from "@shogi/ui/components/shogi-match/hooks/useLocalStorage";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useUserSettingsSync } from "./useUserSettingsSync";
@@ -175,12 +178,66 @@ describe("useUserSettingsSync", () => {
         expectPut(1, { theme: "dark" }, 7);
     });
 
-    it("初期 GET 中にイベントなしで保存された変更も保護する", async () => {
+    it("初期 GET 中の編集通知がない保存よりサーバー設定を優先する", async () => {
         renderHook(() => useUserSettingsSync());
         localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme: "dark" }));
         await reply(0, { documents: [remote({ theme: "light" }, 7)] });
-        expect(readLocal()).toEqual({ theme: "dark" });
-        expectPut(1, { theme: "dark" }, 7);
+        expect(readLocal()).toEqual({ theme: "light" });
+        expect(requests).toHaveLength(1);
+    });
+
+    it.each([
+        false,
+        true,
+    ])("画面の初期値保存でサーバー設定を上書きしない（StrictMode: %s）", async (reactStrictMode) => {
+        renderHook(() => useUserSettingsSync(), { reactStrictMode });
+        const { result } = renderHook(() => useLocalStorage(DISPLAY_KEY, { sound: true }), {
+            reactStrictMode,
+        });
+        const activeRequest = requests.length - 1;
+        await reply(activeRequest, { documents: [remote({ sound: false }, 4)] });
+        expect(result.current[0]).toEqual({ sound: false });
+        expect(readLocal()).toEqual({ sound: false });
+        expect(requests).toHaveLength(activeRequest + 1);
+    });
+
+    it.each([
+        false,
+        true,
+    ])("画面での明示的な初期 GET 中の編集を保存する（StrictMode: %s）", async (reactStrictMode) => {
+        renderHook(() => useUserSettingsSync(), { reactStrictMode });
+        const { result } = renderHook(() => useLocalStorage(DISPLAY_KEY, { sound: true }), {
+            reactStrictMode,
+        });
+        act(() => result.current[1]({ sound: false }));
+        const activeRequest = requests.length - 1;
+        await reply(activeRequest, { documents: [remote({ sound: true }, 4)] });
+        expectPut(activeRequest + 1, { sound: false }, 4);
+        expect(result.current[0]).toEqual({ sound: false });
+    });
+
+    it.each([
+        "failed-refetch",
+        "stale-response",
+    ])("拒否された PUT と同じ他端末の更新を自分の保存とみなさない（%s）", async (scenario) => {
+        const { result, rerender } = renderHook(() => useUserSettingsSync());
+        await reply(0, { documents: [remote({ sound: true }, 4)] });
+        changeLocal({ sound: false });
+        changeLocal({ sound: true });
+        if (scenario === "failed-refetch") {
+            await reply(1, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+            await reply(2, { error: "INTERNAL_ERROR" }, 500);
+        }
+        auth = { ...auth, session: { authenticated: true, user: { id: "user-1" } } };
+        rerender();
+        if (scenario === "stale-response") {
+            await reply(1, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+        }
+        const activeRequest = requests.length - 1;
+        await reply(activeRequest, { documents: [remote({ sound: false }, 5)] });
+        expect(requests).toHaveLength(activeRequest + 1);
+        expect(readLocal()).toEqual({ sound: true });
+        expect(result.current.syncError).toContain("更新が競合");
     });
 
     it("別利用者へ切り替えた後の古い GET は設定も保存先も変えない", async () => {

@@ -221,6 +221,7 @@ export function createUserSettingsSync(
         )
             return;
         candidate.uploading.add(document.documentKey);
+        let attempt: DocumentState["unconfirmedWrites"][number] | undefined;
         try {
             while (isCurrent(candidate) && document.dirty && !document.failure) {
                 if (document.version === undefined || document.localValue === null) break;
@@ -232,7 +233,8 @@ export function createUserSettingsSync(
                     break;
                 }
                 const value = document.localValue;
-                document.unconfirmedWrites.push({ value, version: (document.version ?? 0) + 1 });
+                attempt = { value, version: (document.version ?? 0) + 1 };
+                document.unconfirmedWrites.push(attempt);
                 const payload = await request<PutUserSettingsResponse>(
                     candidate,
                     `/api/user/settings/${document.documentKey}`,
@@ -242,6 +244,11 @@ export function createUserSettingsSync(
                 acceptRemote(document, payload.document);
             }
         } catch (error) {
+            if (isRequestError(error) && error.status >= 400 && error.status < 500) {
+                document.unconfirmedWrites = document.unconfirmedWrites.filter(
+                    (write) => write !== attempt,
+                );
+            }
             if (!isCurrent(candidate)) return;
             if (
                 isRequestError(error) &&
@@ -277,7 +284,8 @@ export function createUserSettingsSync(
             );
             for (const document of candidate.user.documents) {
                 if (!isCurrent(candidate)) return;
-                captureLocalChange(document);
+                // 画面の初回保存は編集ではない。編集通知がなければ取得した設定を優先する。
+                if (!document.dirty) document.localValue = readLocalDocument(document.storageKey);
                 const remote = remoteDocuments.get(document.documentKey) ?? null;
                 const remoteVersion = remote?.version ?? null;
                 const remoteValue = remote ? JSON.stringify(remote.value) : null;

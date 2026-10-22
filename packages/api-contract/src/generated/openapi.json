@@ -2966,7 +2966,8 @@
                     }
                 ],
                 "requestBody": {
-                    "description": "Update a user settings document",
+                    "required": true,
+                    "description": "Update a user settings document. The JSON body is limited to 64 KiB; value permits at most 64 nesting levels and 4096 JSON nodes.",
                     "content": {
                         "application/json": {
                             "schema": {
@@ -2986,6 +2987,16 @@
                             }
                         }
                     },
+                    "400": {
+                        "description": "Invalid JSON request or settings value exceeds depth or node limits",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
                     "401": {
                         "description": "Authentication is required",
                         "content": {
@@ -2998,6 +3009,16 @@
                     },
                     "409": {
                         "description": "Settings version conflict or authenticated user mismatch",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "413": {
+                        "description": "Request body exceeds 64 KiB",
                         "content": {
                             "application/json": {
                                 "schema": {
