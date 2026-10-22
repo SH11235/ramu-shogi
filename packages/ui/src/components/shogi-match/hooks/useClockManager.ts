@@ -185,6 +185,7 @@ export function useClockManager({
     };
 
     const resetClocks = (startTick: boolean) => {
+        moveTimeRef.current = null;
         writeClocks({
             sente: clockStateOf(timeSettings.sente),
             gote: clockStateOf(timeSettings.gote),
@@ -200,9 +201,12 @@ export function useClockManager({
         const mover: Player = nextTurn === "sente" ? "gote" : "sente";
         const measured = moveTimeRef.current;
         moveTimeRef.current = null;
+        // 時計の最後の更新より前に測った時刻は、この手のものではない（拒否した手の残りなど）ので使わない。
         const now =
-            options?.moved && measured?.mover === mover
-                ? Math.max(measured.at, clocksRef.current.lastUpdatedAt)
+            options?.moved &&
+            measured?.mover === mover &&
+            measured.at >= clocksRef.current.lastUpdatedAt
+                ? measured.at
                 : Date.now();
         let prev = clocksRef.current;
         // 指した側の、最後の 200ms ごとの更新から指すまでの時間も引いてから加算する（時間切れもここで判定する）。
