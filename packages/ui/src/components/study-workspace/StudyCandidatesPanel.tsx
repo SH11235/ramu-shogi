@@ -135,7 +135,7 @@ function CandidateRow({
                 )}
             </div>
             {hasPv && (
-                <div className="flex shrink-0 items-center">
+                <div className="flex shrink-0 items-center self-start">
                     <StudyIconButton
                         label={`${groupLabel}候補 ${candidate.rank} の読み筋を盤で見る`}
                         onClick={() => onPreviewPv(request)}
