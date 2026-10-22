@@ -1,6 +1,5 @@
 import { execFileSync } from "node:child_process";
 import { mkdtemp, readdir, readFile, realpath, rm, stat } from "node:fs/promises";
-import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -128,8 +127,20 @@ export function declarationSignature(source, filename = "contract.ts") {
     }
     const signature = (node) => {
         const children = [];
+        const roles = new Map();
+        for (const [field, value] of Object.entries(node)) {
+            if (field === "parent") continue;
+            if (Array.isArray(value)) {
+                for (const child of value) roles.set(child, field);
+            } else if (value && typeof value === "object") {
+                roles.set(value, field);
+            }
+        }
         ts.forEachChild(node, (child) => {
-            children.push(signature(child));
+            const field = roles.get(child);
+            if (!field) fail(`Unrecognized TypeScript AST child in ${filename}.`);
+            // Optional slots such as constraint/default can contain the same node kind.
+            children.push([field, signature(child)]);
         });
         // Type operators and type-only import/export flags are not AST child nodes.
         return [
@@ -249,10 +260,9 @@ export async function withTemporaryDirectory(callback) {
 async function generateBackendContracts(backendDirectory, outputDirectory) {
     const generator = path.join(backendDirectory, "scripts/generate-api-contract.ts");
     await readText(generator);
-    const backendRequire = createRequire(path.join(backendDirectory, "package.json"));
     let tsxPackage;
     try {
-        tsxPackage = backendRequire.resolve("tsx/package.json");
+        tsxPackage = await realpath(path.join(backendDirectory, "node_modules/tsx/package.json"));
     } catch {
         fail("Backend tsx is unavailable. Install the backend's frozen dependencies first.");
     }

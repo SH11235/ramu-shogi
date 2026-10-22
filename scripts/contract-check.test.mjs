@@ -172,6 +172,22 @@ test("TypeScript comparison ignores comments, whitespace, quotes and type separa
 for (const [name, left, right] of [
     ["optional fields", "export interface M { id: string }", "export interface M { id?: string }"],
     ["field types", "export interface M { id: string }", "export interface M { id: number }"],
+    ["field names", "export interface M { id: string }", "export interface M { name: string }"],
+    [
+        "generic constraint versus default",
+        "export interface ClientMessage<T = unknown> { value: T }",
+        "export interface ClientMessage<T extends unknown> { value: T }",
+    ],
+    [
+        "mapped key remapping versus value type",
+        "export type M<T> = { [K in keyof T as string] }",
+        "export type M<T> = { [K in keyof T]: string }",
+    ],
+    [
+        "mapped optional modifiers",
+        "export type M<T> = { [K in keyof T]+?: T[K] }",
+        "export type M<T> = { [K in keyof T]-?: T[K] }",
+    ],
     ["exports", "export interface M { id: string }", "interface M { id: string }"],
     ["literal values", 'export type M = "move"', 'export type M = "resign"'],
     ["type operators", "export type M = readonly string[]", "export type M = string[]"],
@@ -342,6 +358,20 @@ test("backend generation failure is nonzero and cleans up only its temporary out
 
 test("missing backend dependencies cannot be mistaken for a successful check", async () => {
     await runFixture({ omitTsx: true }, async (root, { frontend, backend }) => {
+        await put(
+            root,
+            "node_modules/tsx/package.json",
+            '{"name":"tsx","type":"module","bin":"./cli.mjs"}',
+        );
+        await put(
+            root,
+            "node_modules/tsx/cli.mjs",
+            `import { pathToFileURL } from "node:url";
+const [, , script, ...args] = process.argv;
+process.argv = [process.execPath, script, ...args];
+await import(pathToFileURL(script).href);
+`,
+        );
         const result = runCli(root, ["--backend-dir", backend, "--frontend-dir", frontend]);
         assert.equal(result.status, 1, result.output);
         assert.match(result.output, /Backend tsx is unavailable/);
