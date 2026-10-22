@@ -526,9 +526,14 @@
                     },
                     "uploadId": {
                         "type": "string"
+                    },
+                    "partSizeBytes": {
+                        "type": "number",
+                        "enum": [52428800],
+                        "description": "Upload consecutive parts starting at 1. Every part has this size except the final part, which contains the remaining bytes."
                     }
                 },
-                "required": ["file", "uploadId"]
+                "required": ["file", "uploadId", "partSizeBytes"]
             },
             "InitializeNnueUploadRequest": {
                 "type": "object",
@@ -545,7 +550,7 @@
                     },
                     "sha256Hex": {
                         "type": "string",
-                        "pattern": "^[0-9a-f]{64}$"
+                        "pattern": "^[0-9a-fA-F]{64}$"
                     }
                 },
                 "required": ["originalFilename", "sizeBytes", "sha256Hex"]
@@ -586,7 +591,8 @@
                             "properties": {
                                 "partNumber": {
                                     "type": "integer",
-                                    "exclusiveMinimum": 0
+                                    "minimum": 1,
+                                    "maximum": 6
                                 },
                                 "etag": {
                                     "type": "string",
@@ -595,7 +601,8 @@
                             },
                             "required": ["partNumber", "etag"]
                         },
-                        "minItems": 1
+                        "minItems": 1,
+                        "maxItems": 6
                     }
                 },
                 "required": ["uploadId", "parts"]
@@ -2382,7 +2389,8 @@
                     {
                         "schema": {
                             "type": "integer",
-                            "exclusiveMinimum": 0
+                            "minimum": 1,
+                            "maximum": 6
                         },
                         "required": true,
                         "name": "partNumber",
@@ -2405,6 +2413,16 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/UploadNnuePartResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid part number or part size",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
                                 }
                             }
                         }
@@ -2494,6 +2512,16 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/CompleteNnueUploadResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parts, file size, or SHA-256 digest",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
                                 }
                             }
                         }
@@ -2811,6 +2839,18 @@
             "get": {
                 "operationId": "listUserSettings",
                 "tags": ["UserSettings"],
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256
+                        },
+                        "required": false,
+                        "name": "x-expected-user-id",
+                        "in": "header"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "List user settings documents",
@@ -2824,6 +2864,16 @@
                     },
                     "401": {
                         "description": "Authentication is required",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Authenticated user differs from the expected user",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2847,6 +2897,16 @@
                         "required": true,
                         "name": "documentKey",
                         "in": "path"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256
+                        },
+                        "required": false,
+                        "name": "x-expected-user-id",
+                        "in": "header"
                     }
                 ],
                 "responses": {
@@ -2869,6 +2929,16 @@
                                 }
                             }
                         }
+                    },
+                    "409": {
+                        "description": "Authenticated user differs from the expected user",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
                     }
                 }
             },
@@ -2883,6 +2953,16 @@
                         "required": true,
                         "name": "documentKey",
                         "in": "path"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256
+                        },
+                        "required": false,
+                        "name": "x-expected-user-id",
+                        "in": "header"
                     }
                 ],
                 "requestBody": {
@@ -2917,7 +2997,7 @@
                         }
                     },
                     "409": {
-                        "description": "Settings version conflict",
+                        "description": "Settings version conflict or authenticated user mismatch",
                         "content": {
                             "application/json": {
                                 "schema": {
