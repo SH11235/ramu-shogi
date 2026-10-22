@@ -138,6 +138,8 @@ graph LR
 
 対応する NNUE モデルと設定は [NNUE モデルの読み込み](docs/nnue-models.md) を参照してください。
 
+backend と共有する型の更新・リリース前の確認は [HTTP / WebSocket 契約の確認](docs/backend-contracts.md) を参照してください。
+
 ## 📄 ライセンス
 
 GPL-3.0-or-later License

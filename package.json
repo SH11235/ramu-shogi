@@ -10,6 +10,9 @@
     ],
     "scripts": {
         "check:env": "node scripts/check-env.mjs",
+        "check:contracts:frontend": "node scripts/check-frontend-contracts.mjs",
+        "check:contracts:backend": "node scripts/check-backend-contracts.mjs",
+        "test:contracts": "node --test scripts/contract-check.test.mjs",
         "build": "turbo build",
         "dev": "turbo dev",
         "test": "turbo test -- --run",
@@ -53,6 +56,7 @@
         "husky": "^9.1.7",
         "knip": "^5.73.4",
         "lint-staged": "^16.2.7",
+        "openapi-typescript": "7.13.0",
         "turbo": "^2.6.3",
         "typescript": "~5.9.3"
     },
