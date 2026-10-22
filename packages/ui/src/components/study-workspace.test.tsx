@@ -538,21 +538,12 @@ describe("StudyWorkspaceView", () => {
         expect(screen.getByText("☗先手太郎 対 ☖後手花子")).toBeTruthy();
     });
 
-    it("しおり・コメント・表題の編集が操作として流れる", async () => {
+    it("コメント・表題の編集が操作として流れる", async () => {
         const { doc, ids } = createTestStudy();
         const onOps = vi.fn();
         render(<Harness initialDoc={doc} onOps={onOps} />);
 
         fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
-        fireEvent.click(screen.getByRole("button", { name: "この手にしおりを付ける" }));
-        expect(onOps).toHaveBeenLastCalledWith([
-            { type: "setBookmark", nodeId: ids[1], value: true },
-        ]);
-        expect(screen.getByRole("button", { name: "しおりを外す" })).toBeTruthy();
-        // しおりを付けた手は、解析していなくても注目局面に並ぶ。
-        expect(
-            within(highlights()).getByRole("button", { name: /1手目 ☗7六歩\(77\)/ }),
-        ).toBeTruthy();
 
         const comment = commentTextbox();
         fireEvent.change(comment, { target: { value: "角道を開ける" } });
@@ -1329,8 +1320,8 @@ describe("StudyWorkspaceView", () => {
             fireEvent.blur(title);
             // 再送の操作も出さない。
             expect(screen.queryByRole("button", { name: "もう一度保存する" })).toBeNull();
-            // 深く解析・残りを解析・しおり・コメントは、操作できない領域（inert）の中にある。
-            for (const name of ["この局面を深く解析", "残りを解析", "この手にしおりを付ける"]) {
+            // 深く解析・残りを解析・コメントは、操作できない領域（inert）の中にある。
+            for (const name of ["この局面を深く解析", "残りを解析"]) {
                 expect(screen.getByRole("button", { name }).closest("[inert]")).toBeTruthy();
             }
             expect(commentTextbox().closest("[inert]")).toBeTruthy();

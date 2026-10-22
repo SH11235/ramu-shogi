@@ -78,8 +78,6 @@ interface MobileBoardSectionProps {
     turn?: Player;
     /** ヒントとして盤に示す手（対局画面） */
     hintMove?: { from?: string | null; to: string; side?: Player } | null;
-    /** マスの大きさ（px）。指定すると、親の幅から決めずにこの大きさで描く。 */
-    cellSize?: number;
     /** 親の幅から決めるときのマスの下限（px）。親の幅がこれより狭いと盤ははみ出す。 */
     minCellSize?: number;
 }
@@ -117,11 +115,9 @@ export function MobileBoardSection({
     passRights,
     turn,
     hintMove,
-    cellSize: fixedCellSize,
     minCellSize,
 }: MobileBoardSectionProps): ReactElement {
-    const fittedCellSize = useMobileCellSize(boardSectionRef, minCellSize);
-    const cellSize = fixedCellSize ?? fittedCellSize;
+    const cellSize = useMobileCellSize(boardSectionRef, minCellSize);
     // 持っていない駒を出さないとき、持ち駒が 1 枚も無い段は中身が無くなる。駒を取った・打ったときに
     // 盤が上下に動かないよう、駒がある段と同じ高さ（駒台の枠の高さ。下限 34px）を確保する。
     const handZoneClass = hideEmptyHandPieces

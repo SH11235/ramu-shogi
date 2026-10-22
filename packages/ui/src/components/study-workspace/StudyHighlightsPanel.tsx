@@ -3,7 +3,7 @@
  *
  * - 未解析: 「全体を解析」だけを主操作として出す。
  * - 解析中: 進み具合と中止。見つかった手はその場で並んでいく。
- * - 解析後: 悪手・疑問手・しおり・コメントのある手の一覧。押すとその局面へ移る。
+ * - 解析後: 悪手・疑問手・コメントのある手の一覧。押すとその局面へ移る。
  *   悪手・疑問手には、代わりに指すべきだった手（1 手前の局面の最善手）を添える。
  */
 
@@ -13,7 +13,7 @@ import type { ReactElement } from "react";
 import { useState } from "react";
 import { Button } from "../button";
 import { Progress } from "../progress";
-import { AnalyzeIcon, BookmarkIcon, CommentIcon } from "./StudyIcons";
+import { AnalyzeIcon, CommentIcon } from "./StudyIcons";
 import { formatStudyScore, studyHighlightTitle } from "./studyView";
 
 interface StudyHighlightsPanelProps {
@@ -46,6 +46,11 @@ interface StudyHighlightsPanelProps {
     hideHeading?: boolean;
     /** 「全体を解析」のボタンを出さない（スマートフォンでは画面下に固定して出すため）。 */
     hideStartButton?: boolean;
+    /**
+     * 一覧の下の「未解析の局面が N あります・残りを解析」を出さない（スマートフォンでは一覧の行数を
+     * 削ってしまうので、盤の表示のグラフの見出しに出す）。
+     */
+    hideResume?: boolean;
     className?: string;
 }
 
@@ -68,13 +73,6 @@ function HighlightBadge({ highlight }: { highlight: StudyHighlight }): ReactElem
     if (highlight.kind) {
         const badge = KIND_BADGE[highlight.kind];
         return <span className={cn(base, badge.className)}>{badge.label}</span>;
-    }
-    if (highlight.bookmarked) {
-        return (
-            <span className={cn(base, "border-wafuu-border bg-wafuu-kin/20 text-wafuu-sumi")}>
-                しおり
-            </span>
-        );
     }
     return <span className={cn(base, "border-border bg-muted text-muted-foreground")}>メモ</span>;
 }
@@ -106,6 +104,7 @@ export function StudyHighlightsPanel({
     onOpenSettings,
     hideHeading = false,
     hideStartButton = false,
+    hideResume = false,
     className,
 }: StudyHighlightsPanelProps): ReactElement {
     // 振り返りは対局の流れに沿って見るのが自然なので、既定は手数順にする。
@@ -121,7 +120,7 @@ export function StudyHighlightsPanel({
         progress && progress.total > 0
             ? Math.round((progress.completed / progress.total) * 100)
             : undefined;
-    // `highlights` は落差の大きい順（そのあとに、しおり・メモだけの手）で届く。
+    // `highlights` は落差の大きい順（そのあとに、メモだけの手）で届く。
     const ordered = order === "ply" ? sortByPly(highlights) : highlights;
     const settingsLink = (
         <button
@@ -263,12 +262,6 @@ export function StudyHighlightsPanel({
                                                     変化
                                                 </span>
                                             )}
-                                            {highlight.kind !== null && highlight.bookmarked && (
-                                                <BookmarkIcon
-                                                    filled
-                                                    className="h-3.5 w-3.5 text-wafuu-kin"
-                                                />
-                                            )}
                                             {highlight.kind !== null && highlight.hasComment && (
                                                 <CommentIcon className="h-3.5 w-3.5 text-muted-foreground" />
                                             )}
@@ -301,13 +294,13 @@ export function StudyHighlightsPanel({
                 !needsFullAnalysis &&
                 !isRunningFull && (
                     <p className="px-1 text-sm text-muted-foreground">
-                        悪手・疑問手は見つかりませんでした。気になる手にしおりやコメントを付けると、ここに並びます。
+                        悪手・疑問手は見つかりませんでした。気になる手にコメントを付けると、ここに並びます。
                     </p>
                 )
             )}
 
             {/* 一覧の行数を圧迫しないよう、一覧の下に 1 行で出す。 */}
-            {!needsFullAnalysis && !isRunningFull && unanalyzedCount > 0 && (
+            {!hideResume && !needsFullAnalysis && !isRunningFull && unanalyzedCount > 0 && (
                 <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border pt-2">
                     <p className="min-w-0 text-xs text-muted-foreground">
                         {displayLabel ? `${displayLabel}で` : ""}未解析の局面が {unanalyzedCount}{" "}

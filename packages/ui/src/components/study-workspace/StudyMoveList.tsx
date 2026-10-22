@@ -16,7 +16,7 @@ import type { ReactElement } from "react";
 import { useEffect, useRef } from "react";
 import { formatEval } from "../shogi-match/utils/kifFormat";
 import { StudyIconButton } from "./StudyIconButton";
-import { BookmarkIcon, BranchIcon, CommentIcon, TrashIcon } from "./StudyIcons";
+import { BranchIcon, CommentIcon, TrashIcon } from "./StudyIcons";
 import {
     formatStudyScore,
     studyDeletableBranchHead,
@@ -201,7 +201,7 @@ export function StudyMoveList({
                                 <span className="text-right font-mono text-xs tabular-nums text-muted-foreground">
                                     {index === 0 ? "" : index}
                                 </span>
-                                {/* 指し手は切らずに出し、印（悪手・しおりなど）は入る分だけ出す。 */}
+                                {/* 指し手は切らずに出し、印（悪手・コメントなど）は入る分だけ出す。 */}
                                 <span className="flex min-w-0 items-center gap-1 overflow-hidden">
                                     <span className="shrink-0 whitespace-nowrap text-wafuu-sumi">
                                         {label}
@@ -216,14 +216,6 @@ export function StudyMoveList({
                                             )}
                                         >
                                             {KIND_MARK[kind].text}
-                                        </span>
-                                    )}
-                                    {stored?.bookmarked && (
-                                        <span role="img" aria-label="しおり" className="shrink-0">
-                                            <BookmarkIcon
-                                                filled
-                                                className="h-3.5 w-3.5 text-wafuu-kin"
-                                            />
                                         </span>
                                     )}
                                     {unsavedComments?.has(nodeId) && (

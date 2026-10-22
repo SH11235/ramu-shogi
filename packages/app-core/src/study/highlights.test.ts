@@ -104,7 +104,6 @@ describe("computeStudyHighlights", () => {
             kind: "blunder",
             scoreBefore: cp(-300),
             scoreAfter: cp(400),
-            bookmarked: false,
             hasComment: false,
         });
         expect(blunder.drop).toBeCloseTo(
@@ -168,7 +167,7 @@ describe("computeStudyHighlights", () => {
         expect(highlights[0]).toMatchObject({ kind: "blunder", mover: "sente", drop: 0.5 });
     });
 
-    it("しおり・コメントのある手は、評価値が無くても一覧に入る（落差で拾った手のあと）", () => {
+    it("コメントのある手は、評価値が無くても一覧に入る（落差で拾った手のあと）。しおりだけの手は入らない", () => {
         const { doc, ids } = docWithScores([cp(0), cp(-900)]);
         const marked = applyStudyOps(doc, [
             { type: "setBookmark", nodeId: ids[5], value: true },
@@ -176,20 +175,13 @@ describe("computeStudyHighlights", () => {
             { type: "setComment", nodeId: ids[1], value: "悪手にコメント" },
         ]);
         const highlights = computeStudyHighlights(marked, layerId);
-        expect(highlights.map((item) => item.nodeId)).toEqual([ids[1], ids[3], ids[5]]);
+        expect(highlights.map((item) => item.nodeId)).toEqual([ids[1], ids[3]]);
         expect(highlights[0]).toMatchObject({ kind: "blunder", hasComment: true });
-        expect(highlights[1]).toMatchObject({
-            kind: null,
-            drop: null,
-            hasComment: true,
-            bookmarked: false,
-        });
-        expect(highlights[2]).toMatchObject({ kind: null, bookmarked: true, hasComment: false });
-        // レイヤーを表示していなくても、しおり・コメントは並ぶ。
+        expect(highlights[1]).toMatchObject({ kind: null, drop: null, hasComment: true });
+        // レイヤーを表示していなくても、コメントのある手は並ぶ。
         expect(computeStudyHighlights(marked, null).map((item) => item.nodeId)).toEqual([
             ids[1],
             ids[3],
-            ids[5],
         ]);
     });
 

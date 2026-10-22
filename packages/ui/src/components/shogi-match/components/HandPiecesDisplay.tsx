@@ -9,8 +9,11 @@ const HAND_ORDER: PieceType[] = ["R", "B", "G", "S", "N", "L", "P"];
 /** サイズ設定: compact=編集用(小), edit=編集用(中), medium=モバイル対局用, normal=PC用 */
 type HandPieceSize = "compact" | "edit" | "medium" | "normal";
 
-/** 個数の文字は盤のマスに合わせて大きくする（小さい盤でも 12px は保つ）。 */
-const CELL_BADGE_SIZE = "text-[max(12px,calc(var(--shogi-cell-size,40px)*0.26))]";
+/**
+ * 個数の文字は盤のマスに合わせる。下限は 9px（スマホの盤の横の駒台では駒が 20px 前後になり、
+ * それより大きい札は駒を隠してしまう）。
+ */
+const CELL_BADGE_SIZE = "text-[max(9px,calc(var(--shogi-cell-size,40px)*0.26))]";
 
 const SIZE_CONFIG = {
     compact: {
@@ -262,8 +265,12 @@ export function HandPiecesDisplay({
                 "rounded-md border border-border/50 bg-muted/30",
                 vertical
                     ? cn(
-                          "flex h-full w-full flex-col items-center gap-1 px-0.5 py-1",
-                          verticalAlign === "end" ? "justify-end" : "justify-start",
+                          "flex h-full w-full items-center gap-1 px-0.5 py-1",
+                          // 先後の印は駒台の端（持ち主の側）に固定し、駒はその隣から積む（駒が増えても
+                          // 印が動かないように）。下の駒台は印を一番下に置き、駒は上へ積む。
+                          verticalAlign === "end"
+                              ? "flex-col-reverse justify-start"
+                              : "flex-col justify-start",
                       )
                     : cn(
                           "flex items-center justify-start w-full px-1",
