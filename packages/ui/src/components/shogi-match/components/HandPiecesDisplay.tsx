@@ -172,7 +172,7 @@ interface HandPiecesDisplayProps {
     isAI?: boolean;
     /** 駒を縦に並べる（盤の横に置く駒台）。compact 系のサイズで使う */
     vertical?: boolean;
-    /** 縦の駒台で、駒を上（start）と下（end）のどちらに寄せるか */
+    /** 縦の駒台で、駒を上（start）と下（end）のどちらに寄せるか。`vertical` のときだけ効く */
     verticalAlign?: "start" | "end";
 }
 
