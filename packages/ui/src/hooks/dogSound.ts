@@ -164,7 +164,11 @@ export function playDogSound(
     };
     if (isWeak) weakPlaying = source;
     registerScheduledSound(when, now, () => {
-        source.stop();
+        try {
+            source.stop();
+        } catch {
+            // stop の二度呼びで例外を投げる古い実装でも、下の状態は戻す
+        }
         // 取り消した声の前の状態に戻す。戻さないと、鳴っている weak を通常の声として切ってしまい、
         // 鳴らなかった声に次の切り替えのフェードを掛けると停止時刻が後ろへ上書きされて一瞬鳴ってしまう
         if (weakPlaying === source) {

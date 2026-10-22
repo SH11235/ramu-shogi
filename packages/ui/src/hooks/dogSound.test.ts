@@ -30,9 +30,11 @@ function fakeAudioContext() {
         stops: Array<number | undefined>;
         gain: { value: number };
     }> = [];
+    const nodes: unknown[] = [];
     const ctx = {
         currentTime: 0,
         destination: {},
+        nodes,
         createBufferSource() {
             const voice = { starts: [] as number[], stops: [] as Array<number | undefined> };
             const node = {
@@ -44,7 +46,8 @@ function fakeAudioContext() {
                 stop: (when?: number) => voice.stops.push(when),
             };
             voices.push({ ...voice, gain: { value: 1 } });
-            return Object.assign(node, { voiceIndex: voices.length - 1 });
+            nodes.push(node);
+            return node;
         },
         createGain() {
             const gain = { value: 1, setTargetAtTime: vi.fn() };
@@ -87,5 +90,23 @@ describe("playDogSound", () => {
         expect(weakB.stops).toEqual([undefined]);
         expect(check.starts).toEqual(weakB.starts);
         expect(check.gain.value).toBeCloseTo(0.5);
+    });
+
+    it("restores the voice state even when cancelling throws", () => {
+        const { ctx, voices } = fakeAudioContext();
+        ctx.currentTime = 1;
+        playDogSound(ctx, base, "move", true);
+        ctx.currentTime = 1.02;
+        playDogSound(ctx, base, "move", true);
+        const nodes = (
+            ctx as unknown as { nodes: Array<{ onended: (() => void) | null; stop: () => void }> }
+        ).nodes;
+        nodes[0].onended?.();
+        nodes[1].stop = () => {
+            throw new Error("already stopped");
+        };
+        ctx.currentTime = 1.04;
+        playDogSound(ctx, base, "check", false);
+        expect(voices[2].gain.value).toBeCloseTo(1);
     });
 });
