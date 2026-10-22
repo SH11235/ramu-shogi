@@ -11,6 +11,7 @@ import type { MutableRefObject } from "react";
 import type { Message, PromotionSelection } from "../types";
 import { buildLegalCacheKey, type LegalMoveCache } from "../utils/legalMoveCache";
 import { determinePromotion } from "../utils/promotionLogic";
+import type { ClockTurnOptions } from "./useClockManager";
 import type { UseKifuNavigationResult } from "./useKifuNavigation";
 
 type Selection = { kind: "square"; square: string } | { kind: "hand"; piece: PieceType };
@@ -53,7 +54,9 @@ interface UseMoveExecutionProps {
     /** パス権オプションを取得する */
     getPassRightsOption: () => { passRights?: { sente: number; gote: number } };
     /** 次の手番に時計を更新する */
-    updateClocksForNextTurn: (turn: Player) => void;
+    updateClocksForNextTurn: (turn: Player, options?: ClockTurnOptions) => void;
+    /** 指す前に時間が切れていたら終局させて true を返す（その手は盤にも棋譜にも足さない） */
+    endIfFlaggedBeforeMove?: (mover: Player) => boolean;
     /** ターン開始時刻のref */
     turnStartTimeRef: MutableRefObject<number>;
     /** エンジンの手番かどうか */
@@ -135,6 +138,7 @@ export function useMoveExecution({
     setCanPassLegal,
     getPassRightsOption,
     updateClocksForNextTurn,
+    endIfFlaggedBeforeMove,
     turnStartTimeRef,
     isEngineTurn,
     selection,
@@ -175,6 +179,7 @@ export function useMoveExecution({
 
     // 対局モードで手を適用する
     const applyMoveCommon = (nextPosition: PositionState, mv: string, last?: LastMove) => {
+        if (endIfFlaggedBeforeMove?.(position.turn)) return;
         // 消費時間を計算
         const elapsedMs = Date.now() - turnStartTimeRef.current;
         // 棋譜ナビゲーションに手を追加（局面更新はonPositionChangeで自動実行）
@@ -185,7 +190,7 @@ export function useMoveExecution({
         clearLegalCache();
         // ターン開始時刻をリセット
         turnStartTimeRef.current = Date.now();
-        updateClocksForNextTurn(nextPosition.turn);
+        updateClocksForNextTurn(nextPosition.turn, { moved: true });
         onHumanMoveApplied?.(mv, position, nextPosition);
     };
 

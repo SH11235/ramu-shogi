@@ -20,6 +20,9 @@ importers:
       lint-staged:
         specifier: ^16.2.7
         version: 16.2.7
+      smol-toml:
+        specifier: 1.5.2
+        version: 1.5.2
       turbo:
         specifier: ^2.6.3
         version: 2.6.3

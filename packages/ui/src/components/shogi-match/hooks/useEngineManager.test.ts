@@ -1,7 +1,8 @@
 import type { EngineControllerEvent } from "@shogi/app-controller";
 import type { GameResult, NnueSelection, Player } from "@shogi/app-core";
 import type { EngineEvent } from "@shogi/engine-client";
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatEngineEventLog } from "./formatEngineEvent";
 import { resolveSides, useEngineManager } from "./useEngineManager";
@@ -141,8 +142,8 @@ describe("formatEngineEventLog", () => {
 describe("useEngineManager", () => {
     const createMockClocksRef = () => ({
         current: {
-            sente: { mainMs: 1000, byoyomiMs: 500 },
-            gote: { mainMs: 1000, byoyomiMs: 500 },
+            sente: { mainMs: 1000, byoyomiMs: 500, incrementMs: 0 },
+            gote: { mainMs: 1000, byoyomiMs: 500, incrementMs: 0 },
             ticking: null as "sente" | "gote" | null,
             lastUpdatedAt: Date.now(),
         },
@@ -179,6 +180,7 @@ describe("useEngineManager", () => {
             emit,
             search,
             loadPosition,
+            listeners,
         };
     };
 
@@ -192,6 +194,7 @@ describe("useEngineManager", () => {
         engineOptions,
         analysisEngineId,
         allowAnalysisDuringMatch,
+        strictMode = false,
         clocksRef = createMockClocksRef(),
     }: {
         positionTurn: Player;
@@ -210,38 +213,121 @@ describe("useEngineManager", () => {
         }[];
         analysisEngineId?: string;
         allowAnalysisDuringMatch?: boolean;
+        strictMode?: boolean;
         clocksRef?: ReturnType<typeof createMockClocksRef>;
     }) => {
-        return renderHook(() =>
-            useEngineManager({
-                sides,
-                engineOptions: engineOptions ?? [
-                    {
-                        id: "engine1",
-                        label: "Engine 1",
-                        createClient: () => mockClient.client,
-                    },
-                ],
-                clocksRef,
-                startSfen: "startpos",
-                moves,
-                positionTurn,
-                isMatchRunning: true,
-                positionReady: true,
-                onMoveFromEngine,
-                onMatchEnd,
-                maxLogs: 10,
-                senteNnueSelection: createNnueSelection(null),
-                goteNnueSelection: createNnueSelection(null),
-                analysisEngineId,
-                resolveNnue: createMockResolveNnue(),
-                allowAnalysisDuringMatch,
-            }),
+        return renderHook(
+            () =>
+                useEngineManager({
+                    sides,
+                    engineOptions: engineOptions ?? [
+                        {
+                            id: "engine1",
+                            label: "Engine 1",
+                            createClient: () => mockClient.client,
+                        },
+                    ],
+                    clocksRef,
+                    startSfen: "startpos",
+                    moves,
+                    positionTurn,
+                    isMatchRunning: true,
+                    positionReady: true,
+                    onMoveFromEngine,
+                    onMatchEnd,
+                    maxLogs: 10,
+                    senteNnueSelection: createNnueSelection(null),
+                    goteNnueSelection: createNnueSelection(null),
+                    analysisEngineId,
+                    resolveNnue: createMockResolveNnue(),
+                    allowAnalysisDuringMatch,
+                }),
+            { wrapper: strictMode ? StrictMode : undefined },
         );
     };
 
     afterEach(() => {
         vi.clearAllMocks();
+    });
+
+    it("StrictModeでも解析完了後のunmountでclientと購読を解放する", async () => {
+        const mockClient = createMockEngineClient();
+        const { result, unmount } = renderEngineHook({
+            positionTurn: "sente",
+            moves: [],
+            onMoveFromEngine: vi.fn(),
+            onMatchEnd: vi.fn().mockResolvedValue(undefined),
+            sides: { sente: { role: "human" }, gote: { role: "human" } },
+            mockClient,
+            allowAnalysisDuringMatch: true,
+            strictMode: true,
+        });
+        expect(mockClient.client.init).not.toHaveBeenCalled();
+        await act(async () => {
+            await result.current.analyzePosition({ sfen: "startpos", moves: [], ply: 0 });
+        });
+        expect(mockClient.client.init).toHaveBeenCalledTimes(1);
+        expect(mockClient.search).toHaveBeenCalledTimes(1);
+        act(() => mockClient.emit({ type: "bestmove", move: "7g7f" }));
+        unmount();
+        await waitFor(() => expect(mockClient.client.dispose).toHaveBeenCalledTimes(1));
+        expect(mockClient.listeners.size).toBe(0);
+    });
+
+    it("StrictModeで対局用clientを再接続しunmountでは探索を残さない", async () => {
+        const mockClient = createMockEngineClient();
+        const { result, unmount } = renderEngineHook({
+            positionTurn: "sente",
+            moves: [],
+            onMoveFromEngine: vi.fn(),
+            onMatchEnd: vi.fn().mockResolvedValue(undefined),
+            sides: { sente: { role: "engine", engineId: "engine1" }, gote: { role: "human" } },
+            mockClient,
+            strictMode: true,
+        });
+        await waitFor(() => expect(result.current.engineReady.sente).toBe(true));
+        expect(mockClient.search).toHaveBeenCalledTimes(1);
+        unmount();
+        await waitFor(() => expect(mockClient.listeners.size).toBe(0));
+        expect(mockClient.client.dispose).toHaveBeenCalled();
+    });
+
+    it("初期化中のunmount後に解析を開始しない", async () => {
+        const mockClient = createMockEngineClient();
+        let resolveInit: () => void = () => undefined;
+        let entered: () => void = () => undefined;
+        const gate = new Promise<void>((resolve) => {
+            resolveInit = resolve;
+        });
+        const initialized = new Promise<void>((resolve) => {
+            entered = resolve;
+        });
+        mockClient.client.init.mockImplementationOnce(async () => {
+            entered();
+            await gate;
+        });
+        const { result, unmount } = renderEngineHook({
+            positionTurn: "sente",
+            moves: [],
+            onMoveFromEngine: vi.fn(),
+            onMatchEnd: vi.fn().mockResolvedValue(undefined),
+            sides: { sente: { role: "human" }, gote: { role: "human" } },
+            mockClient,
+            allowAnalysisDuringMatch: true,
+        });
+        let starting = Promise.resolve();
+        await act(async () => {
+            starting = result.current.analyzePosition({ sfen: "startpos", moves: [], ply: 0 });
+            await initialized;
+        });
+        unmount();
+        await act(async () => {
+            resolveInit();
+            await starting;
+        });
+        expect(mockClient.search).not.toHaveBeenCalled();
+        expect(mockClient.client.dispose).toHaveBeenCalledTimes(1);
+        expect(mockClient.listeners.size).toBe(0);
     });
 
     it("エンジンを初期化し探索を開始する", async () => {
@@ -372,8 +458,8 @@ describe("useEngineManager", () => {
 describe("useEngineManager - NNUE restart", () => {
     const createMockClocksRef = () => ({
         current: {
-            sente: { mainMs: 1000, byoyomiMs: 500 },
-            gote: { mainMs: 1000, byoyomiMs: 500 },
+            sente: { mainMs: 1000, byoyomiMs: 500, incrementMs: 0 },
+            gote: { mainMs: 1000, byoyomiMs: 500, incrementMs: 0 },
             ticking: null as "sente" | "gote" | null,
             lastUpdatedAt: Date.now(),
         },
@@ -553,8 +639,8 @@ describe("useEngineManager - NNUE restart", () => {
 describe("useEngineManager - 明示API", () => {
     const createMockClocksRef = () => ({
         current: {
-            sente: { mainMs: 1000, byoyomiMs: 500 },
-            gote: { mainMs: 1000, byoyomiMs: 500 },
+            sente: { mainMs: 1000, byoyomiMs: 500, incrementMs: 0 },
+            gote: { mainMs: 1000, byoyomiMs: 500, incrementMs: 0 },
             ticking: null as "sente" | "gote" | null,
             lastUpdatedAt: Date.now(),
         },

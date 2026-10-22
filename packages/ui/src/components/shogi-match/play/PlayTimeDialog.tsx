@@ -1,7 +1,8 @@
 /**
  * 時間を数で決めるダイアログ（対局の設定の「指定」から開く）。
  *
- * 時間だけを聞く。人の持ち時間は「持ち時間（分）＋ 1 手（秒）」、AI の考慮時間は「1 手（秒）」。
+ * 時間だけを聞く。持ち時間（分）と、使い切ったあとの決まり（秒読み／1 手ごとの加算）の秒数。
+ * 人も AI も同じ形で決める。
  */
 
 import { cn } from "@shogi/design-system";
@@ -9,6 +10,7 @@ import type { ReactElement } from "react";
 import { useState } from "react";
 import { Button } from "../../button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../dialog";
+import { formatTimeRule } from "../utils/timeSettings";
 import { PLAY_OUTLINE_BUTTON, PLAY_PRIMARY_BUTTON } from "./playStyles";
 import type { TimeChoice } from "./usePlaySetup";
 
@@ -19,54 +21,54 @@ const MAX_SECONDS = 86_400;
 const NUMBER_INPUT_CLASS =
     "h-10 w-20 rounded-md border border-wafuu-border bg-background px-2 text-right text-base tabular-nums text-wafuu-sumi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-/**
- * 時間を選択肢と同じ書き方で書く（「10分+30秒」「1手30秒」「5分」「1分30秒」）。
- * 詳細設定では秒単位の持ち時間も作れるので、分に丸めない。
- */
-export function formatClock(mainMs: number, byoyomiMs: number): string {
-    const mainSeconds = Math.round(mainMs / 1000);
-    const minutes = Math.floor(mainSeconds / 60);
-    const restSeconds = mainSeconds % 60;
-    const mainText =
-        minutes > 0
-            ? restSeconds > 0
-                ? `${minutes}分${restSeconds}秒`
-                : `${minutes}分`
-            : restSeconds > 0
-              ? `${restSeconds}秒`
-              : "";
-    const byoyomi = Math.round(byoyomiMs / 1000);
-    if (mainText && byoyomi > 0) return `${mainText}+${byoyomi}秒`;
-    if (mainText) return mainText;
-    // 両方 0 は時間を決めていない（無制限）のと同じなので、時間としては書かない。
-    return byoyomi > 0 ? `1手${byoyomi}秒` : "指定";
-}
+type RuleMode = "byoyomi" | "increment";
 
-/** このダイアログの入力（分と秒）で、そのまま書き表せる時間か。 */
-export function isDialogRepresentable(
-    kind: "player" | "ai",
-    mainMs: number,
-    byoyomiMs: number,
-): boolean {
-    if (kind === "ai") return mainMs === 0 && byoyomiMs >= 1000;
-    return mainMs % 60_000 === 0 && (mainMs > 0 || byoyomiMs > 0);
+const RULE_OPTIONS: Array<{ id: RuleMode; title: ReactElement; description: string }> = [
+    {
+        id: "byoyomi",
+        title: <>秒読み</>,
+        description: "持ち時間を使い切ったら、1 手ごとに決まった秒数で指す",
+    },
+    {
+        id: "increment",
+        title: (
+            <>
+                1 手ごとに加算
+                <span className="font-normal text-wafuu-sumi-light">（フィッシャー方式）</span>
+            </>
+        ),
+        description: "1 手指すごとに持ち時間が増える。秒読みはない",
+    },
+];
+
+/** このダイアログの入力（分と秒、秒読みか加算のどちらか一方）で、そのまま書き表せる時間か。 */
+export function isDialogRepresentable(clock: {
+    mainMs: number;
+    byoyomiMs: number;
+    incrementMs: number;
+}): boolean {
+    if (clock.mainMs % 60_000 !== 0) return false;
+    if (clock.byoyomiMs > 0 && clock.incrementMs > 0) return false;
+    if (clock.incrementMs > 0) return clock.mainMs > 0 && clock.incrementMs % 1000 === 0;
+    return clock.byoyomiMs % 1000 === 0 && (clock.mainMs > 0 || clock.byoyomiMs > 0);
 }
 
 interface PlayTimeDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    /** "player": 持ち時間（分）と 1 手（秒）を聞く。"ai": 1 手（秒）だけを聞く */
+    /** "ai" は時間を決めずには指せないので、持ち時間も秒も 0 にはできない。書き方も「1手○秒」にする */
     kind: "player" | "ai";
     title: string;
     mainMs: number;
     byoyomiMs: number;
+    incrementMs: number;
     onApply: (choice: TimeChoice) => void;
 }
 
 export function PlayTimeDialog(props: PlayTimeDialogProps): ReactElement {
     return (
         <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-            <DialogContent className="w-[min(360px,calc(100%-24px))]">
+            <DialogContent className="w-[min(380px,calc(100%-24px))]">
                 <DialogHeader>
                     <DialogTitle>{props.title}</DialogTitle>
                 </DialogHeader>
@@ -82,13 +84,14 @@ function PlayTimeForm({
     kind,
     mainMs,
     byoyomiMs,
+    incrementMs,
     onApply,
-}: Pick<
-    PlayTimeDialogProps,
-    "onOpenChange" | "kind" | "mainMs" | "byoyomiMs" | "onApply"
->): ReactElement {
+}: Omit<PlayTimeDialogProps, "open" | "title">): ReactElement {
+    const [mode, setMode] = useState<RuleMode>(incrementMs > 0 ? "increment" : "byoyomi");
     const [minutesText, setMinutesText] = useState(String(Math.floor(mainMs / 60_000)));
-    const [secondsText, setSecondsText] = useState(String(Math.floor(byoyomiMs / 1000)));
+    const [secondsText, setSecondsText] = useState(
+        String(Math.floor((incrementMs > 0 ? incrementMs : byoyomiMs) / 1000)),
+    );
 
     const parse = (text: string, max: number): number | null => {
         // 日本語入力のまま打った全角数字（「５」）も受け付ける。
@@ -99,24 +102,46 @@ function PlayTimeForm({
         if (!Number.isInteger(value) || value < 0 || value > max) return null;
         return value;
     };
-    const minutes = kind === "player" ? parse(minutesText, MAX_MINUTES) : 0;
+    const minutes = parse(minutesText, MAX_MINUTES);
     const seconds = parse(secondsText, MAX_SECONDS);
+    const isIncrement = mode === "increment";
     const error =
         minutes === null || seconds === null
             ? "0 以上の整数で入れてください"
-            : kind === "ai" && seconds === 0
-              ? "1 秒以上にしてください"
-              : minutes === 0 && seconds === 0
-                ? "時間を決めないときは「無制限」を選んでください"
-                : null;
+            : isIncrement && minutes === 0
+              ? "加算では、持ち時間を 1 分以上にしてください"
+              : isIncrement && seconds === 0
+                ? "加算する秒数を 1 秒以上にしてください"
+                : minutes === 0 && seconds === 0
+                  ? kind === "ai"
+                      ? "1 秒以上にしてください"
+                      : "時間を決めないときは「無制限」を選んでください"
+                  : null;
+    const clock =
+        minutes === null || seconds === null
+            ? null
+            : {
+                  mainMs: minutes * 60_000,
+                  byoyomiMs: isIncrement ? 0 : seconds * 1000,
+                  incrementMs: isIncrement ? seconds * 1000 : 0,
+              };
+    // 入れた数で言い直す（決まりの名前だけでは、初めての人に伝わらない）。
+    const help =
+        error ??
+        (isIncrement
+            ? `${minutes} 分から始まり、1 手指すたびに ${seconds} 秒増えます。持ち時間が 0 になったら負けです。`
+            : minutes === 0
+              ? `毎手 ${seconds} 秒以内に指します。`
+              : seconds === 0
+                ? `${minutes} 分を使い切ったら負けです（切れ負け）。`
+                : `${minutes} 分を使い切ったら、そこからは 1 手 ${seconds} 秒以内に指します。`);
 
     const apply = () => {
-        if (error !== null || minutes === null || seconds === null) return;
+        if (error !== null || clock === null) return;
         onApply({
             id: "custom",
-            label: formatClock(minutes * 60_000, seconds * 1000),
-            mainMs: minutes * 60_000,
-            byoyomiMs: seconds * 1000,
+            label: formatTimeRule(clock, { perMove: kind === "ai" }),
+            ...clock,
             enabled: true,
         });
         onOpenChange(false);
@@ -130,22 +155,47 @@ function PlayTimeForm({
                 apply();
             }}
         >
+            <fieldset className="flex flex-col gap-1.5">
+                <legend className="sr-only">持ち時間を使い切ったあとの決まり</legend>
+                {RULE_OPTIONS.map((option) => {
+                    const selected = option.id === mode;
+                    return (
+                        <button
+                            key={option.id}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() => setMode(option.id)}
+                            className={cn(
+                                "flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                selected
+                                    ? "border-wafuu-sumi bg-wafuu-washi-warm ring-1 ring-inset ring-wafuu-sumi"
+                                    : "border-wafuu-border bg-background hover:bg-wafuu-washi-warm",
+                            )}
+                        >
+                            <span className="text-sm font-semibold text-wafuu-sumi">
+                                {option.title}
+                            </span>
+                            <span className="text-xs text-wafuu-sumi-light">
+                                {option.description}
+                            </span>
+                        </button>
+                    );
+                })}
+            </fieldset>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-3 text-sm text-wafuu-sumi">
-                {kind === "player" && (
-                    <label className="flex items-center gap-1.5">
-                        持ち時間
-                        <input
-                            type="text"
-                            inputMode="numeric"
-                            value={minutesText}
-                            onChange={(event) => setMinutesText(event.target.value)}
-                            className={NUMBER_INPUT_CLASS}
-                        />
-                        分
-                    </label>
-                )}
                 <label className="flex items-center gap-1.5">
-                    {kind === "player" ? "＋ 1手" : "1手"}
+                    持ち時間
+                    <input
+                        type="text"
+                        inputMode="numeric"
+                        value={minutesText}
+                        onChange={(event) => setMinutesText(event.target.value)}
+                        className={NUMBER_INPUT_CLASS}
+                    />
+                    分
+                </label>
+                <label className="flex items-center gap-1.5">
+                    {isIncrement ? "1手ごとに +" : "秒読み"}
                     <input
                         type="text"
                         inputMode="numeric"
@@ -159,14 +209,11 @@ function PlayTimeForm({
             <p
                 role={error ? "alert" : undefined}
                 className={cn(
-                    "min-h-5 text-xs",
+                    "min-h-10 text-xs leading-relaxed",
                     error ? "text-destructive" : "text-wafuu-sumi-light",
                 )}
             >
-                {error ??
-                    (kind === "player"
-                        ? "持ち時間を使い切ると、1 手ごとに秒読みになります。"
-                        : "AI は 1 手ごとにこの時間まで考えます。")}
+                {help}
             </p>
             <div className="flex gap-2">
                 <Button

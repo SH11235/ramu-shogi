@@ -62,6 +62,8 @@ struct JsLimits {
     btime_ms: Option<i64>,
     wtime_ms: Option<i64>,
     byoyomi_ms: Option<i64>,
+    binc_ms: Option<i64>,
+    winc_ms: Option<i64>,
     movetime_ms: Option<i64>,
 }
 
@@ -236,6 +238,8 @@ fn parse_limits(value: JsValue) -> Result<JsLimits, JsValue> {
         btime_ms: get_optional_i64(&value, "btimeMs")?,
         wtime_ms: get_optional_i64(&value, "wtimeMs")?,
         byoyomi_ms: get_optional_i64(&value, "byoyomiMs")?,
+        binc_ms: get_optional_i64(&value, "bincMs")?,
+        winc_ms: get_optional_i64(&value, "wincMs")?,
         movetime_ms: get_optional_i64(&value, "movetimeMs")?,
     })
 }
@@ -955,6 +959,12 @@ pub fn search(params: Option<JsValue>) -> Result<(), JsValue> {
             }
             if let Some(byo) = lim.byoyomi_ms {
                 limits.byoyomi = [byo, byo];
+            }
+            if let Some(binc) = lim.binc_ms {
+                limits.inc[Color::Black.index()] = binc;
+            }
+            if let Some(winc) = lim.winc_ms {
+                limits.inc[Color::White.index()] = winc;
             }
             if let Some(mt) = lim.movetime_ms {
                 limits.movetime = mt;

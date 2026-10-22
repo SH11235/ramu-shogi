@@ -34,9 +34,12 @@ export function useNormalizedSettings<T>(
 
     useEffect(() => {
         if (!isSame(normalized, stored)) {
-            setStored(normalized);
+            setStored((current) => {
+                const next = normalize(current, defaultValue);
+                return isSame(next, current) ? current : next;
+            }, "automatic");
         }
-    }, [normalized, stored, setStored, isSame]);
+    }, [normalized, stored, setStored, isSame, normalize, defaultValue]);
 
     // isSame で同一と判定されるなら stored（安定した参照）を返す
     // これにより normalize() が毎レンダーで新オブジェクトを生成しても

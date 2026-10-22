@@ -8,7 +8,12 @@ import { MatchSettingsProvider } from "../contexts/MatchSettingsContext";
 import type { ClockSettings } from "../hooks/useClockManager";
 import type { SideSetting } from "../types";
 import { DEFAULT_PASS_RIGHTS_SETTINGS } from "../types";
-import { AI_TIME_CHOICES, MY_TIME_CHOICES, usePlaySetup } from "./usePlaySetup";
+import {
+    AI_MATCH_TIME_CHOICES,
+    AI_TIME_CHOICES,
+    MY_TIME_CHOICES,
+    usePlaySetup,
+} from "./usePlaySetup";
 
 type Sides = { sente: SideSetting; gote: SideSetting };
 
@@ -99,8 +104,8 @@ function setupHarness(initial: Initial) {
 
 const HUMAN: SideSetting = { role: "human" };
 const AI_L5: SideSetting = { role: "engine", engineId: "wasm", skillLevel: { skillLevel: 5 } };
-const UNLIMITED = { mainMs: 0, byoyomiMs: 10_000, enabled: false };
-const AI_3S = { mainMs: 0, byoyomiMs: 3_000, enabled: true };
+const UNLIMITED = { mainMs: 0, byoyomiMs: 10_000, incrementMs: 0, enabled: false };
+const AI_3S = { mainMs: 0, byoyomiMs: 3_000, incrementMs: 0, enabled: true };
 
 describe("usePlaySetup（対局画面のかんたん設定）", () => {
     it("人 対 AI の設定を、自分の手番・相手・強さ・時間として読む", () => {
@@ -195,7 +200,12 @@ describe("usePlaySetup（対局画面のかんたん設定）", () => {
         expect(snapshot.time.sente.byoyomiMs).toBe(10_000);
         expect(snapshot.time.gote).toEqual(UNLIMITED);
         act(() => hook.result.current.chooseMyTime(MY_TIME_CHOICES[2]));
-        expect(snapshot.time.gote).toEqual({ mainMs: 600_000, byoyomiMs: 30_000, enabled: true });
+        expect(snapshot.time.gote).toEqual({
+            mainMs: 600_000,
+            byoyomiMs: 30_000,
+            incrementMs: 0,
+            enabled: true,
+        });
         expect(snapshot.time.sente.byoyomiMs).toBe(10_000);
     });
 
@@ -211,7 +221,8 @@ describe("usePlaySetup（対局画面のかんたん設定）", () => {
         expect(snapshot.sente).toEqual(RAMU);
         expect(snapshot.time.sente).toEqual(AI_3S);
         expect(hook.result.current.kind).toBe("ai-vs-ai");
-        expect(hook.result.current.bothAiTimeId).toBe("3");
+        expect(hook.result.current.sideAi.sente.timeId).toBe("3");
+        expect(hook.result.current.sideAi.gote.timeId).toBe("3");
         // それぞれの側の AI を別々に替えられる
         act(() => hook.result.current.chooseSideAi("sente", "material"));
         act(() => hook.result.current.chooseSideLevel("gote", 3));
@@ -219,6 +230,45 @@ describe("usePlaySetup（対局画面のかんたん設定）", () => {
         expect(snapshot.gote).toEqual(RAMU);
         expect(hook.result.current.sideAi.sente.value).toBe("material");
         expect(hook.result.current.sideAi.gote.level).toBe(3);
+    });
+
+    it("AI 対 AI の考慮時間は先後で別に決められ、加算（フィッシャー）も選べる", () => {
+        const { hook, snapshot } = setupHarness({
+            sides: { sente: AI_L5, gote: AI_L5 },
+            time: { sente: AI_3S, gote: AI_3S },
+        });
+        const fischer = AI_MATCH_TIME_CHOICES.find((choice) => choice.id === "1m+1");
+        if (!fischer) throw new Error("1分 +1秒 の選択肢が無い");
+        act(() => hook.result.current.chooseSideTime("sente", fischer));
+        expect(snapshot.time.sente).toEqual({
+            mainMs: 60_000,
+            byoyomiMs: 0,
+            incrementMs: 1_000,
+            enabled: true,
+        });
+        expect(snapshot.time.gote).toEqual(AI_3S);
+        expect(hook.result.current.sideAi.sente.timeId).toBe("1m+1");
+        expect(hook.result.current.sideAi.gote.timeId).toBe("3");
+    });
+
+    it("AI の時間を自分と同じにしておくと、自分の時間を変えたときに AI もそろう", () => {
+        const mine = { mainMs: 600_000, byoyomiMs: 30_000, incrementMs: 0, enabled: true };
+        const { hook, snapshot } = setupHarness({
+            sides: { sente: HUMAN, gote: AI_L5 },
+            time: { sente: mine, gote: { ...mine } },
+        });
+        act(() => hook.result.current.chooseMyTime(MY_TIME_CHOICES[1]));
+        expect(snapshot.time.sente).toEqual({
+            mainMs: 0,
+            byoyomiMs: 30_000,
+            incrementMs: 0,
+            enabled: true,
+        });
+        expect(snapshot.time.gote).toEqual(snapshot.time.sente);
+        // 無制限は AI に当てられないので、AI はそのまま
+        act(() => hook.result.current.chooseMyTime(MY_TIME_CHOICES[0]));
+        expect(snapshot.time.sente.enabled).toBe(false);
+        expect(snapshot.time.gote.enabled).toBe(true);
     });
 
     it("対局の組み合わせを人 対 人にすると、両者とも人・時間無制限になり、持ち時間は両者に当てる", () => {
@@ -232,8 +282,18 @@ describe("usePlaySetup（対局画面のかんたん設定）", () => {
         expect(snapshot.time.gote.enabled).toBe(false);
         expect(hook.result.current.bothTimeId).toBe("none");
         act(() => hook.result.current.chooseBothTime(MY_TIME_CHOICES[1]));
-        expect(snapshot.time.sente).toEqual({ mainMs: 0, byoyomiMs: 30_000, enabled: true });
-        expect(snapshot.time.gote).toEqual({ mainMs: 0, byoyomiMs: 30_000, enabled: true });
+        expect(snapshot.time.sente).toEqual({
+            mainMs: 0,
+            byoyomiMs: 30_000,
+            incrementMs: 0,
+            enabled: true,
+        });
+        expect(snapshot.time.gote).toEqual({
+            mainMs: 0,
+            byoyomiMs: 30_000,
+            incrementMs: 0,
+            enabled: true,
+        });
         // 自分 対 AI に戻すと、後手が内蔵エンジンになる
         act(() => hook.result.current.chooseKind("vs-ai"));
         expect(snapshot.sides.gote.role).toBe("engine");

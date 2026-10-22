@@ -1,36 +1,47 @@
 import { describe, expect, it } from "vitest";
 import { describeRemaining, describeTimeRule } from "./PlayPlayerBar";
 
+const rule = (mainMs: number, byoyomiMs: number, incrementMs = 0) => ({
+    mainMs,
+    byoyomiMs,
+    incrementMs,
+});
+
 describe("describeTimeRule", () => {
-    it("持ち時間が分ちょうどなら「分＋1手◯秒」", () => {
-        expect(describeTimeRule(600_000, 30_000)).toBe("10分＋1手30秒");
+    it("持ち時間と秒読みは「分 秒読み◯秒」（+ は加算にだけ使う）", () => {
+        expect(describeTimeRule(rule(600_000, 30_000))).toBe("10分 秒読み30秒");
     });
 
     it("1 分に満たない持ち時間は秒で書く（0分にしない）", () => {
-        expect(describeTimeRule(20_000, 5_000)).toBe("20秒＋1手5秒");
+        expect(describeTimeRule(rule(20_000, 5_000))).toBe("20秒 秒読み5秒");
     });
 
     it("分と秒が混ざる持ち時間", () => {
-        expect(describeTimeRule(90_000, 5_000)).toBe("1分30秒＋1手5秒");
+        expect(describeTimeRule(rule(90_000, 5_000))).toBe("1分30秒 秒読み5秒");
     });
 
-    it("持ち時間なしは 1 手の秒数だけ", () => {
-        expect(describeTimeRule(0, 10_000)).toBe("1手10秒");
+    it("加算は「分 +◯秒」", () => {
+        expect(describeTimeRule(rule(300_000, 0, 10_000))).toBe("5分 +10秒");
     });
 
-    it("秒読みなしは持ち時間だけ", () => {
-        expect(describeTimeRule(300_000, 0)).toBe("5分");
-        expect(describeTimeRule(20_000, 0)).toBe("20秒");
+    it("持ち時間なしは、人は「秒読み◯秒」、AI は「1手◯秒」", () => {
+        expect(describeTimeRule(rule(0, 10_000))).toBe("秒読み10秒");
+        expect(describeTimeRule(rule(0, 10_000), { perMove: true })).toBe("1手10秒");
+    });
+
+    it("秒読みも加算もなければ切れ負け", () => {
+        expect(describeTimeRule(rule(300_000, 0))).toBe("5分 切れ負け");
+        expect(describeTimeRule(rule(20_000, 0))).toBe("20秒 切れ負け");
     });
 
     it("1 分の境目（秒は切り上げ）", () => {
-        expect(describeTimeRule(59_001, 0)).toBe("1分");
-        expect(describeTimeRule(60_000, 0)).toBe("1分");
-        expect(describeTimeRule(60_001, 0)).toBe("1分1秒");
+        expect(describeTimeRule(rule(59_001, 0))).toBe("1分 切れ負け");
+        expect(describeTimeRule(rule(60_000, 0))).toBe("1分 切れ負け");
+        expect(describeTimeRule(rule(60_001, 0))).toBe("1分1秒 切れ負け");
     });
 
-    it("どちらも 0 なら「1手0秒」", () => {
-        expect(describeTimeRule(0, 0)).toBe("1手0秒");
+    it("どれも 0 なら「1手0秒」", () => {
+        expect(describeTimeRule(rule(0, 0))).toBe("1手0秒");
     });
 });
 

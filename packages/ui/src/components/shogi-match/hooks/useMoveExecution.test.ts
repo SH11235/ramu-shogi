@@ -40,6 +40,8 @@ const START_SFEN = "sfen-of-test-position";
 interface SetupOptions {
     /** 渡すと、キャッシュを先に埋めずに、合法手をこの関数へ取りに行く */
     fetchLegalMoves?: (sfen: string, moves: string[]) => Promise<string[]>;
+    /** 指す前に時間切れだったかを返す（渡すと、対局の手を適用する前に聞かれる） */
+    endIfFlaggedBeforeMove?: (mover: "sente" | "gote") => boolean;
 }
 
 function setup(mode: Mode, options: SetupOptions = {}) {
@@ -76,6 +78,7 @@ function setup(mode: Mode, options: SetupOptions = {}) {
                 setCanPassLegal: () => {},
                 getPassRightsOption: () => ({}),
                 updateClocksForNextTurn: () => {},
+                endIfFlaggedBeforeMove: options.endIfFlaggedBeforeMove,
                 turnStartTimeRef: { current: 0 },
                 isEngineTurn: () => false,
                 selection,
@@ -287,5 +290,24 @@ describe("useMoveExecution: 人が指したときの知らせ（駒音）", () =
         t.selectHand("P");
         await t.selectSquare("7e");
         expect(t.onHumanMoveApplied).not.toHaveBeenCalled();
+    });
+});
+
+describe("useMoveExecution: 時間切れのあとの手", () => {
+    it("指す前に時間が切れていた手は、棋譜に足さない", async () => {
+        const flagged = vi.fn(() => true);
+        const t = setup("match", { endIfFlaggedBeforeMove: flagged });
+        await t.selectSquare("7g");
+        await t.selectSquare("7f");
+        expect(flagged).toHaveBeenCalledWith("sente");
+        expect(t.addMove).not.toHaveBeenCalled();
+        expect(t.onHumanMoveApplied).not.toHaveBeenCalled();
+    });
+
+    it("時間内の手は、そのまま棋譜に足す", async () => {
+        const t = setup("match", { endIfFlaggedBeforeMove: () => false });
+        await t.selectSquare("7g");
+        await t.selectSquare("7f");
+        expect(t.addMove).toHaveBeenCalledTimes(1);
     });
 });

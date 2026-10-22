@@ -174,7 +174,7 @@ describe("createUsiEngineClient", () => {
         const client = createUsiEngineClient({ registrationId: "reg-1" });
         await client.init();
         await client.search({
-            limits: { btimeMs: 12_000, wtimeMs: 6_500, byoyomiMs: 1_000 },
+            limits: { btimeMs: 12_000, wtimeMs: 6_500, byoyomiMs: 1_000, bincMs: 2_000 },
         });
 
         expect(invokeMock).toHaveBeenCalledWith("usi_engine_go", {
@@ -185,6 +185,8 @@ describe("createUsiEngineClient", () => {
                 btimeMs: 12_000,
                 wtimeMs: 6_500,
                 byoyomiMs: 1_000,
+                bincMs: 2_000,
+                wincMs: undefined,
                 movetimeMs: undefined,
                 infinite: false,
             },

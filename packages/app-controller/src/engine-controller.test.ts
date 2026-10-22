@@ -260,6 +260,7 @@ describe("createEngineController", () => {
             ? vi.fn().mockRejectedValue(options.initError)
             : vi.fn().mockResolvedValue(undefined);
         const loadPosition = vi.fn().mockResolvedValue(undefined);
+        const loadNnue = vi.fn().mockResolvedValue(undefined);
         const cancel = vi.fn().mockResolvedValue(undefined);
         const search = vi.fn().mockResolvedValue({ cancel });
         const stop = vi.fn().mockResolvedValue(undefined);
@@ -276,6 +277,7 @@ describe("createEngineController", () => {
             client: {
                 init,
                 loadPosition,
+                loadNnue,
                 search,
                 stop,
                 setOption,
@@ -284,12 +286,17 @@ describe("createEngineController", () => {
                 ...(reset ? { reset } : {}),
             },
             emit,
+            subscribe,
             init,
             loadPosition,
+            loadNnue,
             search,
             reset,
             stop,
             dispose,
+            cancel,
+            setOption,
+            listeners,
         };
     };
 
@@ -305,6 +312,502 @@ describe("createEngineController", () => {
             await Promise.resolve();
         }
     };
+
+    const deferred = () => {
+        let resolve: () => void = () => undefined;
+        const promise = new Promise<void>((done) => {
+            resolve = done;
+        });
+        return { promise, resolve };
+    };
+
+    const createGameLifecycleFixture = (side: "sente" | "gote") => {
+        const mock = createMockEngineClient({ withReset: true });
+        const resolveNnue = vi.fn().mockResolvedValue({ nnueId: "network", fvScale: 16 });
+        const callbacks = {
+            onMoveFromEngine: vi.fn(),
+            onMatchEnd: vi.fn().mockResolvedValue(undefined),
+            onEvalUpdate: vi.fn(),
+            onLiveInfo: vi.fn(),
+        };
+        const createClient = vi.fn().mockReturnValue(mock.client);
+        const controller = createEngineController({
+            createClient,
+            getClockState: createClockState,
+            now: Date.now,
+            resolveNnue,
+            callbacks,
+        });
+        controller.command.syncContext({
+            sides: {
+                sente: { role: "human" },
+                gote: { role: "human" },
+                [side]: { role: "engine", engineId: "engine", skillLevel: { skillLevel: 10 } },
+            },
+            nnueSelections: { [side]: { nnueId: "network", presetKey: null } },
+            position: { startSfen: "startpos", moves: [], turn: side, ready: true },
+        });
+        const callCounts = () => [
+            mock.reset?.mock.calls.length,
+            mock.init.mock.calls.length,
+            resolveNnue.mock.calls.length,
+            mock.loadNnue.mock.calls.length,
+            mock.setOption.mock.calls.length,
+            mock.loadPosition.mock.calls.length,
+            mock.search.mock.calls.length,
+        ];
+        return { controller, mock, resolveNnue, createClient, callbacks, callCounts };
+    };
+
+    const blockGameStage = (
+        fixture: ReturnType<typeof createGameLifecycleFixture>,
+        stage:
+            | "reset"
+            | "init"
+            | "resolveNnue"
+            | "loadNnue"
+            | "fvScale"
+            | "skillLevel"
+            | "loadPosition",
+    ) => {
+        const entered = deferred();
+        const gate = deferred();
+        const block = async () => {
+            entered.resolve();
+            await gate.promise;
+        };
+        if (stage === "fvScale" || stage === "skillLevel") {
+            fixture.mock.setOption.mockImplementation(async (name: string) => {
+                if (name === (stage === "fvScale" ? "FV_SCALE" : "Skill Level")) await block();
+            });
+        } else if (stage === "resolveNnue") {
+            fixture.resolveNnue.mockImplementationOnce(async () => {
+                await block();
+                return { nnueId: "network", fvScale: 16 };
+            });
+        } else {
+            fixture.mock[stage]?.mockImplementationOnce(block);
+        }
+        return { entered, gate };
+    };
+
+    describe.each(["sente", "gote"] as const)("%s の対局エンジン破棄", (side) => {
+        it.each([
+            "init",
+            "resolveNnue",
+            "loadNnue",
+            "fvScale",
+            "skillLevel",
+            "loadPosition",
+        ] as const)("%s 待機中のdisposeAllは後続操作と遅延イベントを無効化する", async (stage) => {
+            const fixture = createGameLifecycleFixture(side);
+            const { controller, mock, callbacks, callCounts } = fixture;
+            const { entered, gate } = blockGameStage(fixture, stage);
+            const preparing = controller.command.prepare(side);
+            await entered.promise;
+            const callsAtDispose = callCounts();
+            const lateEvent = mock.subscribe.mock.calls[0][0];
+            const disposing = controller.command.disposeAll();
+            lateEvent({ type: "info", scoreCp: 100 });
+            lateEvent({ type: "bestmove", move: "7g7f" });
+            lateEvent({ type: "error", message: "late error" });
+            expect(controller.getState().eventLogs).toEqual([]);
+            expect(controller.getState().errorLogs).toEqual([]);
+            for (const callback of Object.values(callbacks))
+                expect(callback).not.toHaveBeenCalled();
+            gate.resolve();
+            await expect(preparing).resolves.toBe(false);
+            await disposing;
+            expect(callCounts()).toEqual(callsAtDispose);
+            expect(mock.dispose).toHaveBeenCalledTimes(1);
+            expect(mock.listeners.size).toBe(0);
+            expect(controller.getState().engineReady[side]).toBe(false);
+            expect(controller.getClientForSide(side)).toBeNull();
+        });
+
+        it("キュー待ちのprepareはdisposeでclientを生成せず終了する", async () => {
+            const { controller, createClient } = createGameLifecycleFixture(side);
+            const preparing = controller.command.prepare(side);
+            const disposing = controller.command.dispose(side);
+            await expect(preparing).resolves.toBe(false);
+            await disposing;
+            expect(createClient).not.toHaveBeenCalled();
+        });
+
+        it("dispose直後のprepareは新しいclientで初期化を共有する", async () => {
+            const fixture = createGameLifecycleFixture(side);
+            const { controller, mock, createClient, callbacks } = fixture;
+            const { entered, gate } = blockGameStage(fixture, "init");
+            const preparing = controller.command.prepare(side);
+            await entered.promise;
+            const oldEvent = mock.subscribe.mock.calls[0][0];
+            const next = createMockEngineClient();
+            const nextEntered = deferred();
+            const nextGate = deferred();
+            next.init.mockImplementationOnce(async () => {
+                nextEntered.resolve();
+                await nextGate.promise;
+            });
+            createClient.mockReturnValue(next.client);
+            const disposing = controller.command.disposeAll();
+            const restarting = controller.command.prepare(side);
+            gate.resolve();
+            await nextEntered.promise;
+            const shared = controller.command.prepare(side);
+            nextGate.resolve();
+            await expect(preparing).resolves.toBe(false);
+            await disposing;
+            await expect(restarting).resolves.toBe(true);
+            await expect(shared).resolves.toBe(true);
+            expect(mock.loadNnue).not.toHaveBeenCalled();
+            expect(mock.dispose).toHaveBeenCalledTimes(1);
+            expect(next.init).toHaveBeenCalledTimes(1);
+            expect(next.loadNnue).toHaveBeenCalledTimes(1);
+            expect(controller.getClientForSide(side)).toBe(next.client);
+            oldEvent({ type: "info", scoreCp: 1 });
+            expect(callbacks.onEvalUpdate).not.toHaveBeenCalled();
+            next.emit({ type: "info", scoreCp: 2 });
+            expect(callbacks.onEvalUpdate).toHaveBeenCalledTimes(1);
+            await controller.command.disposeAll();
+        });
+
+        it("init中のdispose後に対局を再開すると新しい世代だけが探索する", async () => {
+            const fixture = createGameLifecycleFixture(side);
+            const { controller, mock, createClient } = fixture;
+            const { entered, gate } = blockGameStage(fixture, "init");
+            controller.command.setMatchRunning(true);
+            await entered.promise;
+            const next = createMockEngineClient();
+            createClient.mockReturnValue(next.client);
+            const disposing = controller.command.disposeAll();
+            controller.command.setMatchRunning(true);
+            gate.resolve();
+            await disposing;
+            await controller.command.prepare(side);
+            await flushPromises();
+            expect(mock.search).not.toHaveBeenCalled();
+            expect(mock.dispose).toHaveBeenCalledTimes(1);
+            expect(next.init).toHaveBeenCalledTimes(1);
+            expect(next.search).toHaveBeenCalledTimes(1);
+            await controller.command.disposeAll();
+        });
+    });
+
+    it.each([
+        "reset",
+        "init",
+        "resolveNnue",
+        "loadNnue",
+        "fvScale",
+        "skillLevel",
+        "loadPosition",
+    ] as const)("再初期化の%s待機中もdisposeAllで後続操作を止める", async (stage) => {
+        const fixture = createGameLifecycleFixture("sente");
+        const { controller, mock, callCounts } = fixture;
+        await controller.command.prepare("sente");
+        const { entered, gate } = blockGameStage(fixture, stage);
+        const restarting = controller.command.restartForNnue("sente");
+        await entered.promise;
+        const callsAtDispose = callCounts();
+        const disposing = controller.command.disposeAll();
+        gate.resolve();
+        await Promise.all([restarting, disposing]);
+        expect(callCounts()).toEqual(callsAtDispose);
+        expect(mock.dispose).toHaveBeenCalledTimes(1);
+        expect(controller.getState().engineReady.sente).toBe(false);
+        expect(controller.getState().isEngineRestarting).toBe(false);
+    });
+
+    it("dispose後に失敗したinitはエラーを通知しない", async () => {
+        const fixture = createGameLifecycleFixture("sente");
+        const { controller, mock } = fixture;
+        const gate = deferred();
+        const entered = deferred();
+        mock.init.mockImplementationOnce(async () => {
+            entered.resolve();
+            await gate.promise;
+            throw new Error("late init failure");
+        });
+        const preparing = controller.command.prepare("sente");
+        await entered.promise;
+        const disposing = controller.command.disposeAll();
+        gate.resolve();
+        await expect(preparing).resolves.toBe(false);
+        await disposing;
+        expect(controller.getState().errorLogs).toEqual([]);
+        expect(controller.getState().engineStatus.sente).toBe("idle");
+    });
+
+    it("init中にキューへ積んだスレッド変更もdisposeで無効化する", async () => {
+        const fixture = createGameLifecycleFixture("sente");
+        const { controller, mock } = fixture;
+        const { entered, gate } = blockGameStage(fixture, "init");
+        const preparing = controller.command.prepare("sente");
+        await entered.promise;
+        controller.command.syncContext({ engineThreads: { sente: 2, gote: 2 } });
+        const disposing = controller.command.disposeAll();
+        gate.resolve();
+        await Promise.all([preparing, disposing]);
+        expect(mock.setOption).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        "loadPosition",
+        "search",
+    ] as const)("対局探索の%s待機中にdisposeしても検索と通知が復活しない", async (stage) => {
+        const { controller, mock, callbacks } = createGameLifecycleFixture("sente");
+        await controller.command.prepare("sente");
+        const entered = deferred();
+        const gate = deferred();
+        mock[stage].mockImplementationOnce(async () => {
+            entered.resolve();
+            await gate.promise;
+            if (stage === "search") return { cancel: mock.cancel };
+        });
+        controller.command.setMatchRunning(true);
+        await entered.promise;
+        const disposing = controller.command.disposeAll();
+        const oldEvent = mock.subscribe.mock.calls[0][0];
+        gate.resolve();
+        await disposing;
+        await flushPromises();
+        oldEvent({ type: "bestmove", move: "7g7f" });
+        expect(callbacks.onMoveFromEngine).not.toHaveBeenCalled();
+        expect(mock.search).toHaveBeenCalledTimes(stage === "search" ? 1 : 0);
+        expect(mock.cancel).not.toHaveBeenCalled();
+        expect(mock.dispose).toHaveBeenCalledTimes(1);
+        expect(controller.getClientForSide("sente")).toBeNull();
+    });
+
+    it.each([
+        "cancel",
+        "setOption",
+        "loadPosition",
+        "search",
+    ] as const)("準備済み解析の%s待機中に新要求が来ても同じclientとNNUEを再利用する", async (stage) => {
+        const mock = createMockEngineClient();
+        const createClient = vi.fn().mockReturnValue(mock.client);
+        const resolveNnue = vi.fn().mockResolvedValue({ nnueId: "network", fvScale: 16 });
+        const controller = createEngineController({
+            createClient,
+            getClockState: createClockState,
+            now: Date.now,
+            resolveNnue,
+        });
+        controller.command.setAnalysisNnueSelection({ nnueId: "network", presetKey: null });
+        const request = { engineId: "engine", sfen: "startpos", moves: [], ply: 0 };
+        await controller.command.startAnalysis(request);
+        const entered = deferred();
+        const gate = deferred();
+        mock[stage].mockImplementationOnce(async () => {
+            entered.resolve();
+            await gate.promise;
+            if (stage === "search") return { cancel: mock.cancel };
+        });
+        const superseded = controller.command.startAnalysis({ ...request, ply: 1 });
+        await entered.promise;
+        const latest = controller.command.startAnalysis({ ...request, ply: 2 });
+        gate.resolve();
+        await Promise.all([superseded, latest]);
+        expect(createClient).toHaveBeenCalledTimes(1);
+        expect(mock.init).toHaveBeenCalledTimes(1);
+        expect(mock.loadNnue).toHaveBeenCalledTimes(1);
+        expect(mock.dispose).not.toHaveBeenCalled();
+        expect(mock.search).toHaveBeenCalledTimes(stage === "search" ? 3 : 2);
+        expect(controller.getState().isAnalyzing).toBe(true);
+        await controller.command.disposeAll();
+        expect(mock.dispose).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+        "init",
+        "loadNnue",
+    ] as const)("解析の%s中に置き換えたclientは再利用せず最新要求用に作り直す", async (stage) => {
+        const first = createMockEngineClient();
+        const next = createMockEngineClient();
+        const entered = deferred();
+        const gate = deferred();
+        first[stage].mockImplementationOnce(async () => {
+            entered.resolve();
+            await gate.promise;
+        });
+        const createClient = vi.fn().mockReturnValueOnce(first.client).mockReturnValue(next.client);
+        const controller = createEngineController({
+            createClient,
+            getClockState: createClockState,
+            now: Date.now,
+            resolveNnue: async () => ({ nnueId: "network", fvScale: 16 }),
+        });
+        controller.command.setAnalysisNnueSelection({ nnueId: "network", presetKey: null });
+        const request = { engineId: "engine", sfen: "startpos", moves: [], ply: 0 };
+        const superseded = controller.command.startAnalysis(request);
+        await entered.promise;
+        const latest = controller.command.startAnalysis({ ...request, ply: 1 });
+        gate.resolve();
+        await Promise.all([superseded, latest]);
+        expect(first.dispose).toHaveBeenCalledTimes(1);
+        expect(first.search).not.toHaveBeenCalled();
+        expect(next.init).toHaveBeenCalledTimes(1);
+        expect(next.loadNnue).toHaveBeenCalledTimes(1);
+        expect(next.search).toHaveBeenCalledTimes(1);
+        await controller.command.disposeAll();
+    });
+
+    it.each([
+        "loadPosition",
+        "search",
+    ] as const)("解析の%sが置換後に失敗したclientは最新要求へ再利用しない", async (stage) => {
+        const first = createMockEngineClient();
+        const next = createMockEngineClient();
+        const createClient = vi.fn().mockReturnValueOnce(first.client).mockReturnValue(next.client);
+        const controller = createEngineController({
+            createClient,
+            getClockState: createClockState,
+            now: Date.now,
+            resolveNnue: async () => null,
+        });
+        const request = { engineId: "engine", sfen: "startpos", moves: [], ply: 0 };
+        await controller.command.startAnalysis(request);
+        const entered = deferred();
+        const gate = deferred();
+        first[stage].mockImplementationOnce(async () => {
+            entered.resolve();
+            await gate.promise;
+            throw new Error("stale engine failure");
+        });
+        const superseded = controller.command.startAnalysis({ ...request, ply: 1 });
+        await entered.promise;
+        const latest = controller.command.startAnalysis({ ...request, ply: 2 });
+        gate.resolve();
+        await Promise.all([superseded, latest]);
+        expect(first.dispose).toHaveBeenCalledTimes(1);
+        expect(next.init).toHaveBeenCalledTimes(1);
+        expect(next.search).toHaveBeenCalledTimes(1);
+        expect(controller.getState().errorLogs).toEqual([]);
+        await controller.command.disposeAll();
+    });
+
+    it("disposeを持たないclientでは破棄後に届いた検索handleをcancelする", async () => {
+        const { controller, mock, createClient } = createGameLifecycleFixture("sente");
+        createClient.mockReturnValue({ ...mock.client, dispose: undefined });
+        await controller.command.prepare("sente");
+        const entered = deferred();
+        const gate = deferred();
+        mock.search.mockImplementationOnce(async () => {
+            entered.resolve();
+            await gate.promise;
+            return { cancel: mock.cancel };
+        });
+        controller.command.setMatchRunning(true);
+        await entered.promise;
+        await controller.command.disposeAll();
+        gate.resolve();
+        await flushPromises();
+        expect(mock.cancel).toHaveBeenCalledTimes(1);
+        expect(mock.dispose).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        "init",
+        "resolveNnue",
+        "loadNnue",
+        "setOption",
+        "loadPosition",
+        "search",
+    ] as const)("%s の完了待ちをcancelすると後続探索を開始せずclientを解放する", async (stage) => {
+        const mock = createMockEngineClient();
+        const entered = deferred();
+        const gate = deferred();
+        const resolveNnue = vi.fn().mockResolvedValue({ nnueId: "network", fvScale: 16 });
+        const blocked = stage === "resolveNnue" ? resolveNnue : mock[stage];
+        blocked.mockImplementationOnce(async () => {
+            entered.resolve();
+            await gate.promise;
+            if (stage === "resolveNnue") return { nnueId: "network", fvScale: 16 };
+            if (stage === "search") return { cancel: mock.cancel };
+        });
+        const controller = createEngineController({
+            createClient: () => mock.client,
+            getClockState: createClockState,
+            now: Date.now,
+            resolveNnue,
+        });
+        controller.command.setAnalysisNnueSelection({ nnueId: "network", presetKey: null });
+        const starting = controller.command.startAnalysis({
+            engineId: "engine",
+            sfen: "startpos",
+            moves: [],
+            ply: 0,
+        });
+        await entered.promise;
+        const cancelling = controller.command.cancelAnalysis();
+        expect(controller.getState().isAnalyzing).toBe(false);
+        gate.resolve();
+        await Promise.all([starting, cancelling]);
+        expect(mock.search).toHaveBeenCalledTimes(stage === "search" ? 1 : 0);
+        expect(mock.dispose).toHaveBeenCalledTimes(1);
+        expect(mock.listeners.size).toBe(0);
+        expect(controller.getAnalysisClient()).toBeNull();
+    });
+
+    it("初期化中のdisposeAll後も同じcontrollerで新しい解析を開始できる", async () => {
+        const first = createMockEngineClient();
+        const second = createMockEngineClient();
+        const entered = deferred();
+        const gate = deferred();
+        first.init.mockImplementationOnce(async () => {
+            entered.resolve();
+            await gate.promise;
+        });
+        const createClient = vi
+            .fn()
+            .mockReturnValueOnce(first.client)
+            .mockReturnValue(second.client);
+        const controller = createEngineController({
+            createClient,
+            getClockState: createClockState,
+            now: Date.now,
+            resolveNnue: async () => null,
+        });
+        const request = { engineId: "engine", sfen: "startpos", moves: [], ply: 0 };
+        const starting = controller.command.startAnalysis(request);
+        await entered.promise;
+        const disposing = controller.command.disposeAll();
+        const restarting = controller.command.startAnalysis(request);
+        gate.resolve();
+        await Promise.all([starting, disposing, restarting]);
+        expect(first.dispose).toHaveBeenCalledTimes(1);
+        expect(first.search).not.toHaveBeenCalled();
+        expect(second.init).toHaveBeenCalledTimes(1);
+        expect(second.search).toHaveBeenCalledTimes(1);
+        expect(controller.getAnalysisClient()).toBe(second.client);
+        await controller.command.disposeAll();
+        expect(second.dispose).toHaveBeenCalledTimes(1);
+        expect(second.cancel).not.toHaveBeenCalled();
+        expect(second.listeners.size).toBe(0);
+    });
+
+    it("解析完了後のdisposeAllは購読とclientを解放する", async () => {
+        const mock = createMockEngineClient();
+        const controller = createEngineController({
+            createClient: () => mock.client,
+            getClockState: createClockState,
+            now: Date.now,
+            resolveNnue: async () => null,
+        });
+        await controller.command.startAnalysis({
+            engineId: "engine",
+            sfen: "startpos",
+            moves: [],
+            ply: 0,
+        });
+        mock.emit({ type: "bestmove", move: "7g7f" });
+        await controller.command.disposeAll();
+        expect(mock.dispose).toHaveBeenCalledTimes(1);
+        expect(mock.cancel).not.toHaveBeenCalled();
+        expect(mock.listeners.size).toBe(0);
+        expect(controller.getAnalysisClient()).toBeNull();
+    });
 
     it("エンジンを初期化し探索を開始する", async () => {
         const mockClient = createMockEngineClient();
@@ -427,6 +930,76 @@ describe("createEngineController", () => {
             limits: { byoyomiMs: 800 },
             ponder: false,
         });
+    });
+
+    it("加算の対局では秒読みを渡さず、両者の加算を渡す", async () => {
+        const mockClient = createMockEngineClient();
+        const controller = createEngineController({
+            createClient: () => mockClient.client,
+            getClockState: () => ({
+                sente: { mainMs: 60_000, byoyomiMs: 0, incrementMs: 1_000 },
+                gote: { mainMs: 50_000, byoyomiMs: 0, incrementMs: 2_000 },
+                lastUpdatedAt: 1_000,
+                ticking: "sente",
+            }),
+            now: () => 1_500,
+            resolveNnue: async () => null,
+            callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
+        });
+        controller.command.syncContext({
+            sides: { sente: { role: "engine", engineId: "engine1" }, gote: { role: "human" } },
+            position: { startSfen: "startpos", moves: [], turn: "sente", ready: true },
+            matchRunning: true,
+        });
+
+        await controller.command.startTurn("sente");
+        await flushPromises();
+
+        // 手番側は、残り 59.5 秒から自分の加算 1 秒を引いた時間を渡す（加算は指し終えてから足すため）。
+        expect(mockClient.search).toHaveBeenCalledWith({
+            limits: { btimeMs: 58_500, wtimeMs: 50_000, bincMs: 1_000, wincMs: 2_000 },
+            ponder: false,
+        });
+    });
+
+    it.each([
+        {
+            name: "切れ負けの側には秒読みを渡さない",
+            sente: { mainMs: 30_000, byoyomiMs: 0, incrementMs: 0 },
+            gote: { mainMs: 30_000, byoyomiMs: 0, incrementMs: 0 },
+            limits: { btimeMs: 29_500, wtimeMs: 30_000 },
+        },
+        {
+            name: "秒読みで指す側には、相手の加算を渡さない",
+            sente: { mainMs: 0, byoyomiMs: 3_000, incrementMs: 0 },
+            gote: { mainMs: 180_000, byoyomiMs: 0, incrementMs: 2_000 },
+            limits: { byoyomiMs: 2_500, btimeMs: 0, wtimeMs: 180_000 },
+        },
+        {
+            name: "加算で指す側の残りが加算より少なければ、渡す加算を残りまでに抑える",
+            sente: { mainMs: 1_000, byoyomiMs: 0, incrementMs: 2_000 },
+            gote: { mainMs: 90_000, byoyomiMs: 0, incrementMs: 2_000 },
+            limits: { btimeMs: 0, wtimeMs: 90_000, bincMs: 500, wincMs: 2_000 },
+        },
+    ])("$name", async ({ sente, gote, limits }) => {
+        const mockClient = createMockEngineClient();
+        const controller = createEngineController({
+            createClient: () => mockClient.client,
+            getClockState: () => ({ sente, gote, lastUpdatedAt: 1_000, ticking: "sente" }),
+            now: () => 1_500,
+            resolveNnue: async () => null,
+            callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
+        });
+        controller.command.syncContext({
+            sides: { sente: { role: "engine", engineId: "engine1" }, gote: { role: "human" } },
+            position: { startSfen: "startpos", moves: [], turn: "sente", ready: true },
+            matchRunning: true,
+        });
+
+        await controller.command.startTurn("sente");
+        await flushPromises();
+
+        expect(mockClient.search).toHaveBeenCalledWith({ limits, ponder: false });
     });
 
     it("bestmove の通常手でコールバックを呼ぶ", async () => {
@@ -829,7 +1402,7 @@ describe("createEngineController", () => {
         expect(mockClient.search).toHaveBeenCalledTimes(1);
     });
 
-    it("初期化中の dispose は初期化完了後に直列実行される", async () => {
+    it("初期化中のdisposeは実行中の呼び出しを待ち、局面は読み込まない", async () => {
         const mockClient = createMockEngineClient();
         let resolveInit: (() => void) | undefined;
         mockClient.init.mockImplementation(
@@ -861,19 +1434,17 @@ describe("createEngineController", () => {
         });
 
         const preparing = controller.command.prepare("sente");
-        const disposing = controller.command.dispose("sente");
         await flushPromises();
+        expect(mockClient.init).toHaveBeenCalledTimes(1);
+        const disposing = controller.command.dispose("sente");
         expect(mockClient.dispose).not.toHaveBeenCalled();
         resolveInit?.();
 
-        await expect(preparing).resolves.toBe(true);
+        await expect(preparing).resolves.toBe(false);
         await disposing;
 
         expect(mockClient.dispose).toHaveBeenCalledTimes(1);
-        // dispose は in-flight init (loadPosition まで) の完了を待ってから実行される
-        expect(mockClient.dispose.mock.invocationCallOrder[0]).toBeGreaterThan(
-            mockClient.loadPosition.mock.invocationCallOrder[0] ?? 0,
-        );
+        expect(mockClient.loadPosition).not.toHaveBeenCalled();
         expect(controller.getState().engineReady.sente).toBe(false);
     });
 
@@ -1125,6 +1696,7 @@ describe("createEngineController", () => {
         // dispose は Worker を terminate するため stop() を呼ばない設計
         // (理由は engine-controller.ts の disposeEngineForSide 実装コメント参照)
         expect(mockClient.stop).not.toHaveBeenCalled();
+        expect(mockClient.cancel).not.toHaveBeenCalled();
         expect(mockClient.dispose).toHaveBeenCalled();
         expect(controller.getState().engineReady.sente).toBe(false);
     });
