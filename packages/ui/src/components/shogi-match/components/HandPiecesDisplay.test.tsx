@@ -318,5 +318,24 @@ describe("HandPiecesDisplay: 選択の枠", () => {
                 within(container).getByRole("button", { name: "先手の歩 0枚" }).textContent,
             ).toContain("0");
         });
+
+        it("縦の駒台は空でも枠を描き、下寄せの指定で駒を下に寄せる", () => {
+            const { container } = render(
+                <HandPiecesDisplay
+                    owner="sente"
+                    hand={defaultHand}
+                    selectedPiece={null}
+                    isActive={false}
+                    onHandSelect={mockHandSelect}
+                    size="medium"
+                    isMatchRunning={true}
+                    vertical={true}
+                    verticalAlign="end"
+                />,
+            );
+            const frame = container.firstElementChild;
+            expect(frame).not.toBeNull();
+            expect(frame?.className).toContain("justify-end");
+        });
     });
 });

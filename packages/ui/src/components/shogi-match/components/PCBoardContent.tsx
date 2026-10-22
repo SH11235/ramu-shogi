@@ -254,13 +254,14 @@ export function PCBoardContent({
 
     if (sides) {
         return (
-            <div className="flex items-stretch gap-2">
-                {topHandBlock}
-                <div className="flex flex-col items-center gap-1">
+            // 駒台の高さは盤だけに合わせる（盤の下の注記が出ても、駒台が伸び縮みしないように注記は行の外に置く）。
+            <div className="flex flex-col items-center gap-1">
+                <div className="flex items-stretch gap-2">
+                    {topHandBlock}
                     {board}
-                    {note}
+                    {bottomHandBlock}
                 </div>
-                {bottomHandBlock}
+                {note}
             </div>
         );
     }
