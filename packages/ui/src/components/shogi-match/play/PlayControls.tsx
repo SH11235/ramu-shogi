@@ -283,8 +283,8 @@ export function PlayMatchActions({
 }
 
 const FLIP_SIZE_CLASS = {
-    md: { button: "h-8 w-8", icon: 18 },
-    lg: { button: "h-11 w-11", icon: 26 },
+    md: { button: "h-8 w-8", icon: "h-[18px] w-[18px]" },
+    lg: { button: "h-11 w-11", icon: "h-[26px] w-[26px]" },
 } as const;
 
 /**
@@ -316,8 +316,7 @@ export function PlayBoardTools({
             >
                 <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    width={flipSize.icon}
-                    height={flipSize.icon}
+                    className={flipSize.icon}
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
