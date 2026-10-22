@@ -9,8 +9,14 @@ import { DEFAULT_DISPLAY_SETTINGS } from "../types";
 
 type SoundMode = SoundVoice | "off";
 
-const BUTTON_CLASS =
-    "flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md border border-wafuu-border bg-card text-wafuu-sumi transition-colors hover:bg-wafuu-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const BUTTON_BASE_CLASS =
+    "flex shrink-0 cursor-pointer items-center justify-center rounded-md border border-wafuu-border bg-card text-wafuu-sumi transition-colors hover:bg-wafuu-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+const SIZE_CLASS = {
+    md: { button: "h-8 w-8", icon: "h-5 w-5" },
+    // 盤の横に 1 つだけ置くとき。犬（ラム）はこのアプリの顔なので、はっきり見える大きさにする。
+    lg: { button: "h-11 w-11", icon: "h-8 w-8" },
+} as const;
 
 const MODE_OPTIONS: Array<{ mode: SoundMode; label: string }> = [
     { mode: "dog", label: "犬" },
@@ -100,7 +106,9 @@ function SoundIcon({ mode, className = "h-5 w-5" }: { mode: SoundMode; className
  * 着手音の切り替え。人どうしの対局では押すたびに ON/OFF、CPU 戦では「犬・通常・OFF」を選ぶメニューを出す。
  * CPU 戦は犬が既定なので、驚いた人が 1 回で確実に止められるよう、順送りではなく選択肢を並べる。
  */
-export function SoundToggle(): ReactElement {
+export function SoundToggle({ size = "md" }: { size?: "md" | "lg" }): ReactElement {
+    const sizeClass = SIZE_CLASS[size];
+    const buttonClass = cn(BUTTON_BASE_CLASS, sizeClass.button);
     const { displaySettings, onDisplaySettingsChange } = useNavigation();
     const { soundVoiceSelectable, previewSound } = useShogiMatchConfig();
     const [open, setOpen] = useState(false);
@@ -122,9 +130,9 @@ export function SoundToggle(): ReactElement {
                         ),
                     }))
                 }
-                className={BUTTON_CLASS}
+                className={buttonClass}
             >
-                <SoundIcon mode={enabled ? "standard" : "off"} />
+                <SoundIcon mode={enabled ? "standard" : "off"} className={sizeClass.icon} />
             </button>
         );
     }
@@ -172,9 +180,9 @@ export function SoundToggle(): ReactElement {
                     type="button"
                     aria-label={`着手音: ${current?.label}`}
                     title={`着手音: ${current?.label}（クリックで変更）`}
-                    className={`${BUTTON_CLASS} data-[state=open]:bg-wafuu-border`}
+                    className={cn(buttonClass, "data-[state=open]:bg-wafuu-border")}
                 >
-                    <SoundIcon mode={mode} />
+                    <SoundIcon mode={mode} className={sizeClass.icon} />
                 </button>
             </PopoverTrigger>
             <PopoverContent
