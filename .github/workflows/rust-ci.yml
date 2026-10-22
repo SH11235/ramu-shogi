@@ -226,6 +226,9 @@ jobs:
         run: |
           rustup toolchain install "${RUST_NIGHTLY_TOOLCHAIN}"
           rustup component add rust-src --toolchain "${RUST_NIGHTLY_TOOLCHAIN}"
+          # build-std の core/std は cargo からはパス依存で、ソースの mtime で再ビルドを判定する。
+          # rust-src は毎回入れ直されて新しく見えるため、mtime を固定してキャッシュした成果物を使えるようにする
+          find "$(rustc +"${RUST_NIGHTLY_TOOLCHAIN}" --print sysroot)/lib/rustlib/src" -exec touch -h -d @946684800 {} +
       - name: Resolve wasm-bindgen version
         run: |
           WASM_BINDGEN_VERSION=$(awk -F '"' '/^name = "wasm-bindgen"$/ {getline; print $2; exit}' Cargo.lock)
