@@ -26,8 +26,8 @@ const DISPLAY_KEY = "shogi-display-settings";
 const LAST_USER_KEY = "shogi-user-settings-last-user-id";
 const TIME_KEY = "shogi-match-time-settings";
 const defaultTimeSettings = {
-    sente: { mainMs: 300_000, byoyomiMs: 30_000, enabled: true },
-    gote: { mainMs: 300_000, byoyomiMs: 30_000, enabled: true },
+    sente: { mainMs: 300_000, byoyomiMs: 30_000, incrementMs: 0, enabled: true },
+    gote: { mainMs: 300_000, byoyomiMs: 30_000, incrementMs: 0, enabled: true },
 };
 const mappings = [
     ["match.time-settings", "shogi-match-time-settings"],
@@ -250,8 +250,8 @@ describe("useUserSettingsSync", () => {
             { reactStrictMode },
         );
         const remoteTime = {
-            sente: { mainMs: 600_000, byoyomiMs: 60_000, enabled: true },
-            gote: { mainMs: 600_000, byoyomiMs: 60_000, enabled: true },
+            sente: { mainMs: 600_000, byoyomiMs: 60_000, incrementMs: 0, enabled: true },
+            gote: { mainMs: 600_000, byoyomiMs: 60_000, incrementMs: 0, enabled: true },
         };
         expect(readLocal(TIME_KEY)).toEqual(defaultTimeSettings);
         const activeRequest = requests.length - 1;
@@ -287,7 +287,7 @@ describe("useUserSettingsSync", () => {
         );
         const editedTime = {
             ...defaultTimeSettings,
-            sente: { mainMs: 900_000, byoyomiMs: 30_000, enabled: true },
+            sente: { mainMs: 900_000, byoyomiMs: 30_000, incrementMs: 0, enabled: true },
         };
         act(() => result.current[1](editedTime));
         const activeRequest = requests.length - 1;
@@ -312,7 +312,7 @@ describe("useUserSettingsSync", () => {
         );
         const editedTime = {
             ...defaultTimeSettings,
-            sente: { mainMs: 900_000, byoyomiMs: 30_000, enabled: true },
+            sente: { mainMs: 900_000, byoyomiMs: 30_000, incrementMs: 0, enabled: true },
         };
         renderHook(() => useUserSettingsSync(), { reactStrictMode });
         const { result } = renderHook(
@@ -342,8 +342,8 @@ describe("useUserSettingsSync", () => {
         true,
     ])("初期 GET 中に自動補正前の値へ戻す利用者編集を保存する（StrictMode: %s）", async (reactStrictMode) => {
         const savedTime = {
-            sente: { mainMs: 600_000, byoyomiMs: 60_000, enabled: true },
-            gote: { mainMs: 600_000, byoyomiMs: 60_000, enabled: true },
+            sente: { mainMs: 600_000, byoyomiMs: 60_000, incrementMs: 0, enabled: true },
+            gote: { mainMs: 600_000, byoyomiMs: 60_000, incrementMs: 0, enabled: true },
         };
         localStorage.setItem(TIME_KEY, JSON.stringify(savedTime));
         const sync = renderHook(() => useUserSettingsSync(), { reactStrictMode });
