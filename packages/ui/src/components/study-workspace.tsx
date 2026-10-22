@@ -1277,15 +1277,12 @@ export function StudyWorkspaceView({
             hideHeading={isMobile}
             hideStartButton={showsFixedStart}
             // 主役なので、PC では画面の高さに合わせて伸ばす（下に候補手の欄が見える分は残す）。
-            // 幅広の画面では上限を列の側で決め、溢れる分はこの欄が縮む。縮んでも 4 件ほどは見せる
-            // （件数が少ないときに下限を付けると、欄の中が空いて見えるので付けない）。
+            // 幅広の画面では上限を列の側で決める。
             className={
                 isMobile
                     ? "max-h-[70vh]"
                     : isWide
-                      ? highlights.length > 3
-                          ? "min-h-[12rem]"
-                          : undefined
+                      ? undefined
                       : "max-h-[max(17rem,calc(100dvh-24rem))]"
             }
         />
@@ -1625,8 +1622,9 @@ export function StudyWorkspaceView({
                     ) : (
                         // 盤の大きさは対局画面（PlayPCLayout）と揃える: 高さは同じ式で決め、横は右の列の
                         // 幅（xl は 2 列で約 600px、lg は 1 列で約 330px）を残す分で抑える。盤と駒台の幅は
-                        // マスのおよそ 11.2 倍 + 56px。
-                        <div className="grid items-start gap-3 lg:grid-cols-[auto_minmax(0,1fr)] lg:[--shogi-cell-size:clamp(34px,min(calc((100dvh-300px)/9),calc((100vw-440px)/11.2)),72px)] xl:grid-cols-[auto_minmax(300px,1fr)_minmax(260px,300px)] xl:[--shogi-cell-size:clamp(34px,min(calc((100dvh-300px)/9),calc((min(100vw,1600px)-720px)/11.2)),72px)]">
+                        // マスのおよそ 11.2 倍 + 56px。この分岐は PC だけで描くので、xl 未満の値は画面幅の
+                        // 条件を付けずに置く（lg の rem と isTablet の px が文字の大きさで食い違っても効くように）。
+                        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 [--shogi-cell-size:clamp(34px,min(calc((100dvh-300px)/9),calc((100vw-440px)/11.2)),72px)] xl:grid-cols-[auto_minmax(300px,1fr)_minmax(260px,300px)] xl:[--shogi-cell-size:clamp(34px,min(calc((100dvh-300px)/9),calc((min(100vw,1600px)-720px)/11.2)),72px)]">
                             <div
                                 ref={boardSectionRef}
                                 // 持ち駒は対局画面と同じく盤の左右に置く（盤の上下を詰めて 1 画面に収める）。
@@ -1648,13 +1646,14 @@ export function StudyWorkspaceView({
                             {/* 右の列は画面の高さに収める。xl では注目局面の一覧を縮めて収め、それでも溢れる分
                                 （lg では棋譜の欄も入るので常に）は列の中で送る。送る列の端で欄の影やフォーカスの
                                 枠が切れないよう、内側に余白を取って外側の余白で打ち消す。 */}
-                            <div className="-m-1 flex min-w-0 flex-col gap-3 p-1 lg:max-h-[calc(100dvh-10rem+0.5rem)] lg:overflow-y-auto xl:max-h-[calc(100dvh-9rem+0.5rem)]">
+                            <div className="-m-1 flex min-w-0 flex-col gap-3 p-1 max-h-[calc(100dvh-10rem+0.5rem)] overflow-y-auto xl:max-h-[calc(100dvh-9rem+0.5rem)]">
                                 <div className="shrink-0">{graphWithComment}</div>
                                 <div
                                     className={cn(
                                         "flex min-h-0 shrink-0 flex-col",
-                                        // 縮めてよいのは、一覧の中で送れるだけの件数があるときだけ。
-                                        highlights.length > 3 && "xl:shrink",
+                                        // 縮めてよいのは、一覧の中で送れるだけの件数があるときだけ。縮んでも
+                                        // 4 件ほどは見せる（件数が少ないときに下限を付けると欄の中が空く）。
+                                        highlights.length > 3 && "xl:min-h-[12rem] xl:shrink",
                                     )}
                                 >
                                     {highlightsPanel}
