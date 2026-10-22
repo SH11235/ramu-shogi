@@ -92,9 +92,16 @@ export function PlayAdvancedSettings({
         const parsed = Number(raw);
         if (Number.isNaN(parsed) || parsed < 0) return;
         const seconds = Math.min(Math.floor(parsed), MAX_SECONDS);
+        // 秒読みと加算はどちらか一方の決まり。片方に秒を入れたら、もう片方は 0 にする。
+        const exclusive =
+            seconds > 0 && field === "byoyomiMs"
+                ? { incrementMs: 0 }
+                : seconds > 0 && field === "incrementMs"
+                  ? { byoyomiMs: 0 }
+                  : {};
         onTimeSettingsChange({
             ...timeSettings,
-            [side]: { ...timeSettings[side], [field]: seconds * 1000 },
+            [side]: { ...timeSettings[side], ...exclusive, [field]: seconds * 1000 },
         });
     };
 
