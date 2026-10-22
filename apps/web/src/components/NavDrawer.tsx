@@ -162,7 +162,10 @@ export function NavDrawer(): ReactElement {
                     </span>
                 </button>
             </SheetTrigger>
-            <SheetContent side="left" className="flex w-72 max-w-[calc(100vw-32px)] flex-col p-4">
+            <SheetContent
+                side="left"
+                className="flex w-72 max-w-[calc(100vw-32px)] flex-col overflow-y-auto p-4"
+            >
                 <SheetTitle className="sr-only">メニュー</SheetTitle>
                 <nav aria-label="サイト内ナビゲーション" className="flex flex-1 flex-col gap-5">
                     <div className="flex flex-col gap-4">
@@ -199,6 +202,13 @@ export function NavDrawer(): ReactElement {
                                 onNavigate={() => setOpen(false)}
                             />
                         )}
+                        <Link
+                            to="/privacy"
+                            onClick={() => setOpen(false)}
+                            className="mt-3 block px-3 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                        >
+                            プライバシーポリシー
+                        </Link>
                     </div>
                 </nav>
             </SheetContent>

@@ -30,7 +30,7 @@ export default function PrivacyPage(): ReactElement {
             <PageContainer width="narrow">
                 <PageHeading
                     title="プライバシーポリシー"
-                    description="最終更新日：2026年10月22日"
+                    description="最終更新日：2026年10月23日"
                 />
 
                 <Section className="gap-6 p-6">
@@ -58,29 +58,26 @@ export default function PrivacyPage(): ReactElement {
                             <li>
                                 ご自身で設定した表示名、保存・同期した設定、棋譜、研究ノート、アップロードしたNNUEファイル
                             </li>
+                            <li>ログイン時のIPアドレスとブラウザ情報、ログインと利用の日時</li>
                             <li>
-                                ログイン時のIPアドレスとブラウザ情報（User-Agent）、セッションの作成・最終利用・有効期限・失効の日時
-                            </li>
-                            <li>
-                                通信に伴うIPアドレス、User-Agent、アクセス先や日時などのCloudflare上のアクセス情報
-                            </li>
-                            <li>
-                                アクセス解析によるページのURL・パス、参照元、国、ブラウザ・OS・端末の種類、ページの表示速度や操作応答に関する情報
+                                通信やアクセス解析に伴うIPアドレス、閲覧したページ、参照元、ブラウザ・端末の種類、表示速度などの情報
                             </li>
                         </ul>
-                        <p className="mt-2">
-                            URLのパスにはルームなどの識別子が含まれる場合があります。アクセス解析の送信時に、これらの識別子を独自に伏せる処理は行っていません。
-                        </p>
                     </PolicySection>
 
                     <PolicySection title="3. 利用目的">
                         <p>取得した情報は以下の目的のみで利用します。</p>
                         <ul className="mt-2 list-inside list-disc space-y-1">
                             <li>ユーザー認証およびアカウント管理</li>
-                            <li>NNUEファイルアップロードおよび棋譜公開時の不正利用防止</li>
+                            <li>
+                                NNUEファイルのアップロードと棋譜の公開を、メールアドレスが確認済みのアカウントに限ること
+                            </li>
                             <li>棋譜データとアカウントの紐付け</li>
                             <li>設定・研究ノート・ファイルの保存と同期</li>
-                            <li>不正利用の調査、障害対応、利用状況と表示性能の把握・改善</li>
+                            <li>
+                                第三者による不正ログインの調査、サービスへの攻撃や過剰なアクセスへの対処、障害対応
+                            </li>
+                            <li>利用状況と表示速度の把握・改善</li>
                         </ul>
                         <p className="mt-2">
                             メールアドレスは本人確認の目的のみで使用し、ユーザーへの連絡・マーケティングには使用しません。対戦相手など他のユーザーには公開されません。
@@ -95,10 +92,7 @@ export default function PrivacyPage(): ReactElement {
 
                     <PolicySection title="5. 情報の管理">
                         <p>
-                            アカウントやサーバーに保存したデータはCloudflareのインフラ上で管理します。アカウントの削除をご希望の場合は、お問い合わせ先までご連絡ください。
-                        </p>
-                        <p className="mt-2">
-                            認証セッションの有効期間は作成から30日です。ログアウトするとそのセッションは失効しますが、IPアドレスやブラウザ情報を含むサーバー側のセッション記録は、失効・期限切れだけでは自動削除されません。その他のアカウント情報・保存データにも一律の自動削除期限は設けていません。Cloudflareのアクセス情報・解析データの保存期間は、同社のサービス仕様と契約に従います。
+                            アカウントやサーバーに保存したデータはCloudflareのインフラ上で管理します。ログイン状態の有効期間は30日です。アカウントの削除をご希望の場合は、お問い合わせ先までご連絡ください。
                         </p>
                     </PolicySection>
 
@@ -120,12 +114,9 @@ export default function PrivacyPage(): ReactElement {
 
                     <PolicySection title="7. Cloudflareの利用とアクセス解析">
                         <p>
-                            配信・データ保存・不正アクセス対策にCloudflareを利用します。また、利用状況と表示性能を把握するためCloudflare
+                            配信・データ保存・不正アクセス対策にCloudflareを利用します。アクセス解析にはCloudflare
                             Web
-                            Analyticsを利用し、ページのURL・参照元・端末情報・表示性能などをCloudflareへ送信します。この解析はCookieやlocalStorageを使った利用者の追跡を行いません。認証用のセッション記録や、通信に伴うアクセス情報とは別の仕組みです。
-                        </p>
-                        <p className="mt-2">
-                            詳しくは{" "}
+                            Analyticsを利用しています。この解析はCookieなどを使った利用者の追跡を行いません。詳しくは{" "}
                             <a
                                 href="https://www.cloudflare.com/privacypolicy/"
                                 target="_blank"
@@ -133,15 +124,6 @@ export default function PrivacyPage(): ReactElement {
                                 className="text-foreground underline underline-offset-2 hover:text-muted-foreground"
                             >
                                 Cloudflareのプライバシーポリシー
-                            </a>
-                            と{" "}
-                            <a
-                                href="https://developers.cloudflare.com/web-analytics/data-metrics/data-origin-and-collection/"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-foreground underline underline-offset-2 hover:text-muted-foreground"
-                            >
-                                Web Analyticsの情報収集について
                             </a>
                             をご参照ください。
                         </p>
