@@ -103,7 +103,7 @@ export function PlayPCLayout({
                     {/* 盤の列: 相手の帯 → 持ち駒 → 盤 → 持ち駒 → 自分の帯 → 操作 */}
                     <div className="flex shrink-0 flex-col items-center gap-2">
                         <div ref={boardSectionRef} className="relative flex w-fit flex-col gap-2">
-                            {/* 着手音の切り替えは、盤の右上の角に固定する（どの段階でも同じ位置）。 */}
+                            {/* 盤の横の操作（盤の向き・着手音）は、盤の右上の角に固定する（どの段階でも同じ位置）。 */}
                             <PlayBoardTools
                                 size="lg"
                                 className="absolute left-full top-0 ml-2 flex-col"
