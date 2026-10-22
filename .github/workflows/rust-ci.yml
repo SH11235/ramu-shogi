@@ -2,6 +2,7 @@ name: Rust CI
 
 on:
   push:
+    branches: [main]
     paths:
       - 'packages/rust-core/**'
       - 'apps/desktop/src-tauri/**'
@@ -12,7 +13,6 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  SCCACHE_GHA_ENABLED: "true"
   RUST_NIGHTLY_TOOLCHAIN: nightly-2025-12-25
 
 concurrency:
@@ -101,19 +101,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
-      - name: Enable sccache
-        run: echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: "packages/rust-core -> target"
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: sccache stats
-        if: always()
-        run: sccache --show-stats || true
 
   lint-tauri:
     name: Clippy Lint (tauri)
@@ -144,19 +138,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
-      - name: Enable sccache
-        run: echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: "apps/desktop/src-tauri -> target"
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: sccache stats
-        if: always()
-        run: sccache --show-stats || true
 
   # Note: packages/rust-core only contains thin wrappers for rshogi-core (engine-wasm, shogi-rules-wasm)
   # Most tests are in rshogi-core (https://github.com/SH11235/rshogi)
@@ -169,19 +157,13 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: dtolnay/rust-toolchain@stable
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
-      - name: Enable sccache
-        run: echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: "packages/rust-core -> target"
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Run tests
         run: cargo test --release --workspace
-      - name: sccache stats
-        if: always()
-        run: sccache --show-stats || true
 
   test-tauri:
     name: Test (tauri)
@@ -210,19 +192,13 @@ jobs:
             wget \
             file
       - uses: dtolnay/rust-toolchain@stable
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
-      - name: Enable sccache
-        run: echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: "apps/desktop/src-tauri -> target"
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Run tests
         run: cargo test --release --workspace -- --test-threads=2
-      - name: sccache stats
-        if: always()
-        run: sccache --show-stats || true
 
   security:
     name: Security Audit
@@ -252,20 +228,37 @@ jobs:
           rustup component add rust-src --toolchain "${RUST_NIGHTLY_TOOLCHAIN}"
       - name: Resolve wasm-bindgen version
         run: |
-          WASM_BINDGEN_VERSION=$(awk -F '"' '/^wasm-bindgen[[:space:]]*=/ {for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\./){print $i; exit}}' crates/engine-wasm/Cargo.toml)
+          WASM_BINDGEN_VERSION=$(awk -F '"' '/^name = "wasm-bindgen"$/ {getline; print $2; exit}' Cargo.lock)
           if [ -z "$WASM_BINDGEN_VERSION" ]; then
             echo "Failed to resolve wasm-bindgen version"; exit 1;
           fi
           echo "WASM_BINDGEN_VERSION=$WASM_BINDGEN_VERSION" >> "$GITHUB_ENV"
           echo "wasm-bindgen version: $WASM_BINDGEN_VERSION"
       - name: Install wasm-bindgen-cli
-        run: cargo install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION"
+        uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+        with:
+          tool: wasm-bindgen@${{ env.WASM_BINDGEN_VERSION }}
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: "packages/rust-core -> target"
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Restore threaded wasm target
+        id: threaded-target
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ runner.temp }}/wasm-threaded-target
+          key: wasm-threaded-${{ runner.os }}-${{ env.RUST_NIGHTLY_TOOLCHAIN }}-release-${{ hashFiles('packages/rust-core/Cargo.lock', 'packages/rust-core/**/Cargo.toml', 'packages/rust-core/targets/**', 'packages/engine-wasm/scripts/build-wasm.mjs') }}
       - name: Build wasm bindings
         run: node scripts/build-wasm.mjs
         working-directory: packages/engine-wasm
+        env:
+          ENGINE_WASM_THREADED_TARGET_DIR: ${{ runner.temp }}/wasm-threaded-target
+      - name: Save threaded wasm target
+        if: github.ref == 'refs/heads/main' && steps.threaded-target.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ runner.temp }}/wasm-threaded-target
+          key: wasm-threaded-${{ runner.os }}-${{ env.RUST_NIGHTLY_TOOLCHAIN }}-release-${{ hashFiles('packages/rust-core/Cargo.lock', 'packages/rust-core/**/Cargo.toml', 'packages/rust-core/targets/**', 'packages/engine-wasm/scripts/build-wasm.mjs') }}
       - name: Build rules wasm
         run: cargo build --profile rules-wasm --target wasm32-unknown-unknown -p shogi-rules-wasm

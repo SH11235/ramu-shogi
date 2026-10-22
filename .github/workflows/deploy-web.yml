@@ -81,10 +81,25 @@ jobs:
           echo "WASM_BINDGEN_VERSION=$WASM_BINDGEN_VERSION" >> "$GITHUB_ENV"
           echo "wasm-bindgen version: $WASM_BINDGEN_VERSION"
       - name: Install wasm-bindgen-cli
-        run: cargo install wasm-bindgen-cli --locked --version "$WASM_BINDGEN_VERSION"
+        uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+        with:
+          tool: wasm-bindgen@${{ env.WASM_BINDGEN_VERSION }}
+      - name: Restore threaded wasm target
+        id: threaded-target
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ runner.temp }}/wasm-threaded-target
+          key: wasm-threaded-${{ runner.os }}-${{ env.RUST_NIGHTLY_TOOLCHAIN }}-production-${{ hashFiles('packages/rust-core/Cargo.lock', 'packages/rust-core/**/Cargo.toml', 'packages/rust-core/targets/**', 'packages/engine-wasm/scripts/build-wasm.mjs') }}
       - name: Build and deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           DEPLOY_MODE: ${{ (github.event_name == 'push' || inputs.target == 'staging') && 'stg' || 'prod' }}
+          ENGINE_WASM_THREADED_TARGET_DIR: ${{ runner.temp }}/wasm-threaded-target
         run: bash scripts/deploy-web.sh "$DEPLOY_MODE"
+      - name: Save threaded wasm target
+        if: github.ref == 'refs/heads/main' && steps.threaded-target.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ runner.temp }}/wasm-threaded-target
+          key: wasm-threaded-${{ runner.os }}-${{ env.RUST_NIGHTLY_TOOLCHAIN }}-production-${{ hashFiles('packages/rust-core/Cargo.lock', 'packages/rust-core/**/Cargo.toml', 'packages/rust-core/targets/**', 'packages/engine-wasm/scripts/build-wasm.mjs') }}
