@@ -74,6 +74,8 @@ interface UseClockManagerReturn {
     resetClocks: (startTick: boolean) => void;
     /** 次の手番に時計を更新する（秒読み時間をリセット） */
     updateClocksForNextTurn: (nextTurn: Player, options?: ClockTurnOptions) => void;
+    /** いま指した手が、指す前に時間切れになっていたか */
+    hasExpiredAtMove: (mover: Player) => boolean;
     /** 時計を停止する */
     stopTicking: () => void;
     /** 時計を開始する */
@@ -232,6 +234,16 @@ export function useClockManager({
     };
 
     /**
+     * いま指した手が、指す前に時間切れになっていたか（最後の 200ms ごとの更新から指すまでの端数も含める）。
+     * 時間切れの手は盤や棋譜に足さないので、手を適用する前に聞く。
+     */
+    const hasExpiredAtMove = (mover: Player): boolean => {
+        const prev = clocksRef.current;
+        if (!isMatchRunning || prev.ticking !== mover || !timeSettings[mover].enabled) return false;
+        return spendTime(prev[mover], Date.now() - prev.lastUpdatedAt).expired;
+    };
+
+    /**
      * 時計を停止する
      */
     const stopTicking = () => {
@@ -289,6 +301,7 @@ export function useClockManager({
         clocksRef,
         resetClocks,
         updateClocksForNextTurn,
+        hasExpiredAtMove,
         stopTicking,
         startTicking,
     };

@@ -1261,33 +1261,45 @@ export function ShogiMatch({
     const stopAllEnginesRef = useRef<() => Promise<void>>(async () => {});
     const prepareEnginesRef = useRef<() => Promise<boolean>>(async () => true);
 
+    // 対局画面では、AI の「1 手◯秒」は考える長さの目安で、切れても負けにしない
+    // （端末が重いと、AI が制限ぎりぎりまで考えて時計だけ先に 0 になることがある）。
+    // 持ち時間のある決まり（秒読み・加算・切れ負け）は時計どおりに負けにする。
+    const isTimeExemptAi = (side: Player): boolean =>
+        isPlayScreen && sides[side].role === "engine" && timeSettings[side].mainMs === 0;
+    const handleTimeExpired = async (side: Player) => {
+        if (isTimeExemptAi(side)) return;
+        const winner: Player = side === "sente" ? "gote" : "sente";
+        const result: GameResult = {
+            winner,
+            reason: { kind: "time_expired", loser: side },
+            totalMoves: moves.length,
+        };
+        await endMatchRef.current?.(result);
+    };
+
     // 時計管理フックを使用
-    const { clocks, clocksRef, resetClocks, updateClocksForNextTurn, stopTicking, startTicking } =
-        useClockManager({
-            timeSettings,
-            isMatchRunning,
-            onTimeExpired: async (side) => {
-                // 対局画面では、AI の「1 手◯秒」は考える長さの目安で、切れても負けにしない
-                // （端末が重いと、AI が制限ぎりぎりまで考えて時計だけ先に 0 になることがある）。
-                // 持ち時間のある決まり（秒読み・加算・切れ負け）は時計どおりに負けにする。
-                if (
-                    isPlayScreen &&
-                    sides[side].role === "engine" &&
-                    timeSettings[side].mainMs === 0
-                ) {
-                    return;
-                }
-                const winner: Player = side === "sente" ? "gote" : "sente";
-                const result: GameResult = {
-                    winner,
-                    reason: { kind: "time_expired", loser: side },
-                    totalMoves: moves.length,
-                };
-                await endMatchRef.current?.(result);
-            },
-            matchEndedRef,
-            onClockError: handleClockError,
-        });
+    const {
+        clocks,
+        clocksRef,
+        resetClocks,
+        updateClocksForNextTurn,
+        hasExpiredAtMove,
+        stopTicking,
+        startTicking,
+    } = useClockManager({
+        timeSettings,
+        isMatchRunning,
+        onTimeExpired: handleTimeExpired,
+        matchEndedRef,
+        onClockError: handleClockError,
+    });
+
+    /** 指す前に時間が切れていた手なら、手を適用せずに時間切れで終局させる（true を返す）。 */
+    const endIfFlaggedBeforeMove = (mover: Player): boolean => {
+        if (isTimeExemptAi(mover) || !hasExpiredAtMove(mover)) return false;
+        void handleTimeExpired(mover);
+        return true;
+    };
 
     const getRemainingTimeMs = (side: Player) => {
         const clock = clocksRef.current;
@@ -1678,6 +1690,7 @@ export function ShogiMatch({
         lastMoveInfo: LastMove | undefined,
         source?: "human" | "engine",
     ) => {
+        if (endIfFlaggedBeforeMove(positionRef.current.turn)) return;
         // サウンドフィードバック（positionRef はまだ指す前の局面）。
         // 探索結果は bestmove を返した時点の手数（= この手を足す前の moves.length）で onSearchComplete が記録し、
         // 下の navigation.addMove で棋譜に移すまで残っている。値はエンジン自身から見た評価値。
@@ -2071,6 +2084,7 @@ export function ShogiMatch({
         setCanPassLegal: passRights.setCanPassLegal,
         getPassRightsOption: passRights.getPassRightsOption,
         updateClocksForNextTurn,
+        endIfFlaggedBeforeMove,
         turnStartTimeRef,
         isEngineTurn,
         selection,

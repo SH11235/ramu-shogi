@@ -55,6 +55,8 @@ interface UseMoveExecutionProps {
     getPassRightsOption: () => { passRights?: { sente: number; gote: number } };
     /** 次の手番に時計を更新する */
     updateClocksForNextTurn: (turn: Player, options?: ClockTurnOptions) => void;
+    /** 指す前に時間が切れていたら終局させて true を返す（その手は盤にも棋譜にも足さない） */
+    endIfFlaggedBeforeMove?: (mover: Player) => boolean;
     /** ターン開始時刻のref */
     turnStartTimeRef: MutableRefObject<number>;
     /** エンジンの手番かどうか */
@@ -136,6 +138,7 @@ export function useMoveExecution({
     setCanPassLegal,
     getPassRightsOption,
     updateClocksForNextTurn,
+    endIfFlaggedBeforeMove,
     turnStartTimeRef,
     isEngineTurn,
     selection,
@@ -176,6 +179,7 @@ export function useMoveExecution({
 
     // 対局モードで手を適用する
     const applyMoveCommon = (nextPosition: PositionState, mv: string, last?: LastMove) => {
+        if (endIfFlaggedBeforeMove?.(position.turn)) return;
         // 消費時間を計算
         const elapsedMs = Date.now() - turnStartTimeRef.current;
         // 棋譜ナビゲーションに手を追加（局面更新はonPositionChangeで自動実行）

@@ -203,10 +203,13 @@ describe("useClockManager", () => {
             expect(result.current.clocks.sente.mainMs).toBe(60_850);
             expect(onTimeExpired).not.toHaveBeenCalled();
 
-            // 後手は残り 100ms のところ 150ms かけて指した。加算はもらえず時間切れ
+            // 後手は残り 100ms のところ 150ms かけて指した。手を足す前に聞くと切れている
             act(() => {
                 vi.advanceTimersByTime(150);
             });
+            expect(result.current.hasExpiredAtMove("gote")).toBe(true);
+            expect(result.current.hasExpiredAtMove("sente")).toBe(false);
+            // 手番を移しても加算はもらえず時間切れ
             act(() => {
                 result.current.updateClocksForNextTurn("sente", { moved: true });
             });
