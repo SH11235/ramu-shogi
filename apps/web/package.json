@@ -30,26 +30,26 @@
         "@shogi/match-client": "workspace:*",
         "@shogi/study-client": "workspace:*",
         "@shogi/ui": "workspace:*",
-        "@tanstack/react-router": "^1.162.6",
+        "@tanstack/react-router": "~1.162.9",
         "react": "^19.2.3",
         "react-dom": "^19.2.3"
     },
     "devDependencies": {
-        "@cloudflare/workers-types": "^4.20260122.0",
+        "@cloudflare/workers-types": "^5.20261019.1",
         "@playwright/test": "^1.58.2",
-        "@tailwindcss/vite": "^4.1.18",
+        "@tailwindcss/vite": "^4.3.3",
         "@testing-library/react": "^16.3.2",
         "@types/node": "^24.10.1",
         "@types/react": "^19.2.7",
         "@types/react-dom": "^19.2.3",
-        "@vitejs/plugin-react": "^5.1.2",
+        "@vitejs/plugin-react": "^5.2.0",
         "babel-plugin-react-compiler": "^1.0.0",
-        "happy-dom": "^20.7.0",
+        "happy-dom": "^20.14.6",
         "rollup-plugin-visualizer": "^6.0.5",
-        "tailwindcss": "^4.1.18",
+        "tailwindcss": "^4.3.3",
         "typescript": "~5.9.3",
-        "vite": "^7.3.0",
-        "vitest": "^4.0.15",
-        "wrangler": "^4.68.1"
+        "vite": "^7.3.7",
+        "vitest": "^4.1.12",
+        "wrangler": "^4.151.3"
     }
 }

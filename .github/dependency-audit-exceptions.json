@@ -1,0 +1,12 @@
+[
+    {
+        "scope": "frontend-all",
+        "advisory": "GHSA-vfj7-8cjw-p6xm",
+        "module": "braces",
+        "version": "3.0.3",
+        "severity": "high",
+        "paths": [".>knip>fast-glob>micromatch>braces"],
+        "reviewBy": "2026-11-22",
+        "reason": "Knip consumes repository-controlled glob patterns during static analysis; no application request reaches this dependency. No patched release is available. Keep the finding visible until the upstream release or reachability changes."
+    }
+]
