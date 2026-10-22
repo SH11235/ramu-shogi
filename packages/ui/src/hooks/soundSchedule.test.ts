@@ -18,6 +18,11 @@ describe("reserveSoundSlot", () => {
         expect(reserveSoundSlot(1.05)).toBeCloseTo(1.18);
     });
 
+    it("forgets the clock of a recreated AudioContext", () => {
+        expect(reserveSoundSlot(50)).toBe(50);
+        expect(reserveSoundSlot(0.1)).toBe(0.1);
+    });
+
     it("keeps only the last of a burst of instant moves", () => {
         const now = 1;
         expect(reserveSoundSlot(now)).toBe(1);

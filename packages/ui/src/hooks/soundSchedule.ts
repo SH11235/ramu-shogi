@@ -11,6 +11,11 @@ let pending: { when: number; cancel: () => void } | null = null;
  * まだ鳴っていない予約があれば取り消してその時刻を使う（連打の途中の手は鳴らさず、最後の手を鳴らす）。
  */
 export function reserveSoundSlot(now: number): number {
+    // AudioContext を作り直すと時計が 0 からになるので、前の時計の時刻は捨てる（残すと次の音がずっと先になる）
+    if (lastStart > now + MIN_GAP_SEC) {
+        lastStart = Number.NEGATIVE_INFINITY;
+        pending = null;
+    }
     if (pending && pending.when > now) {
         pending.cancel();
         const { when } = pending;
