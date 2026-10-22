@@ -217,6 +217,35 @@ describe("useClockManager", () => {
             expect(onTimeExpired).toHaveBeenCalledWith("gote");
         });
 
+        it("手番を移すときの精算は、指す前に時間切れを確かめた時刻で行う", () => {
+            const timeSettings: ClockSettings = {
+                sente: { mainMs: 100, byoyomiMs: 0, incrementMs: 1_000, enabled: true },
+                gote: { mainMs: 60_000, byoyomiMs: 0, incrementMs: 1_000, enabled: true },
+            };
+
+            const { result } = renderHook(() =>
+                useClockManager({
+                    timeSettings,
+                    isMatchRunning: true,
+                    onTimeExpired,
+                    matchEndedRef,
+                }),
+            );
+
+            act(() => {
+                result.current.startTicking("sente");
+            });
+            vi.setSystemTime(Date.now() + 99);
+            expect(result.current.hasExpiredAtMove("sente")).toBe(false);
+            // 確かめてから手番を移すまでに時刻が進んでも、確かめた時刻で精算する
+            vi.setSystemTime(Date.now() + 2);
+            act(() => {
+                result.current.updateClocksForNextTurn("gote", { moved: true });
+            });
+            expect(result.current.clocks.sente.mainMs).toBe(1_001);
+            expect(onTimeExpired).not.toHaveBeenCalled();
+        });
+
         it("手番を移した直後に止めても、移した手番と加算が残る", () => {
             const timeSettings: ClockSettings = {
                 sente: { mainMs: 60_000, byoyomiMs: 0, incrementMs: 2_000, enabled: true },

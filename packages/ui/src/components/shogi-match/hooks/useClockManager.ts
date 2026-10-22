@@ -164,6 +164,8 @@ export function useClockManager({
 }: UseClockManagerProps): UseClockManagerReturn {
     const [clocks, setClocks] = useState<TickState>(() => initialTick(timeSettings));
     const clocksRef = useRef<TickState>(clocks);
+    /** hasExpiredAtMove で測った、指した時刻 */
+    const moveTimeRef = useRef<{ mover: Player; at: number } | null>(null);
 
     // onTimeExpired を ref に保存（依存配列の安定化）
     const onTimeExpiredRef = useRef(onTimeExpired);
@@ -196,7 +198,12 @@ export function useClockManager({
      */
     const updateClocksForNextTurn = (nextTurn: Player, options?: ClockTurnOptions) => {
         const mover: Player = nextTurn === "sente" ? "gote" : "sente";
-        const now = Date.now();
+        const measured = moveTimeRef.current;
+        moveTimeRef.current = null;
+        const now =
+            options?.moved && measured?.mover === mover
+                ? Math.max(measured.at, clocksRef.current.lastUpdatedAt)
+                : Date.now();
         let prev = clocksRef.current;
         // 指した側の、最後の 200ms ごとの更新から指すまでの時間も引いてから加算する（時間切れもここで判定する）。
         let expired = false;
@@ -238,9 +245,12 @@ export function useClockManager({
      * 時間切れの手は盤や棋譜に足さないので、手を適用する前に聞く。
      */
     const hasExpiredAtMove = (mover: Player): boolean => {
+        const now = Date.now();
+        // 手番を移すときの精算もこの時刻で行う（別の時刻で測り直すと、その間に切れた手が棋譜に残る）。
+        moveTimeRef.current = { mover, at: now };
         const prev = clocksRef.current;
         if (!isMatchRunning || prev.ticking !== mover || !timeSettings[mover].enabled) return false;
-        return spendTime(prev[mover], Date.now() - prev.lastUpdatedAt).expired;
+        return spendTime(prev[mover], now - prev.lastUpdatedAt).expired;
     };
 
     /**

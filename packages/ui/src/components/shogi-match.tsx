@@ -1294,8 +1294,10 @@ export function ShogiMatch({
         onClockError: handleClockError,
     });
 
-    /** 指す前に時間が切れていた手なら、手を適用せずに時間切れで終局させる（true を返す）。 */
+    /** 指す前に時間が切れていた手、終局後に届いた手なら、手を適用しない（true を返す）。 */
     const endIfFlaggedBeforeMove = (mover: Player): boolean => {
+        // 合法手を調べている間などに終局していたら、その手は受け付けない。
+        if (matchEndedRef.current) return true;
         if (isTimeExemptAi(mover) || !hasExpiredAtMove(mover)) return false;
         void handleTimeExpired(mover);
         return true;
