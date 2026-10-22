@@ -37,7 +37,6 @@ env:
   CI: true
   PNPM_CACHE_DIR: ~/.pnpm-store
   CARGO_TERM_COLOR: always
-  SCCACHE_GHA_ENABLED: "true"
   RUST_NIGHTLY_TOOLCHAIN: nightly-2025-12-25
 
 jobs:
@@ -117,6 +116,7 @@ jobs:
           node-version: ${{ steps.versions.outputs.node }}
           cache: pnpm
       - name: Setup Rust
+        id: rust-toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
@@ -124,43 +124,66 @@ jobs:
         run: |
           rustup toolchain install "${RUST_NIGHTLY_TOOLCHAIN}"
           rustup component add rust-src --toolchain "${RUST_NIGHTLY_TOOLCHAIN}"
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
-      - name: Enable sccache
-        run: echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
       - name: Resolve wasm-bindgen version
         run: |
-          CARGO_TOML_PATH="packages/rust-core/crates/engine-wasm/Cargo.toml"
-          WASM_BINDGEN_VERSION=$(awk -F '"' '/^wasm-bindgen[[:space:]]*=/ {for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\./){print $i; exit}}' "$CARGO_TOML_PATH")
+          WASM_BINDGEN_VERSION=$(awk -F '"' '/^name = "wasm-bindgen"$/ {getline; print $2; exit}' packages/rust-core/Cargo.lock)
+          if [ -z "$WASM_BINDGEN_VERSION" ]; then
+            echo "Failed to resolve wasm-bindgen version"; exit 1;
+          fi
           echo "WASM_BINDGEN_VERSION=$WASM_BINDGEN_VERSION" >> "$GITHUB_ENV"
           echo "Resolved wasm-bindgen version: $WASM_BINDGEN_VERSION"
-      - name: Cache wasm-bindgen-cli
-        id: cache-wasm-bindgen
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: |
-            ~/.cargo/bin/wasm-bindgen
-            ~/.cargo/bin/wasm-bindgen-test-runner
-          key: wasm-bindgen-cli-${{ env.WASM_BINDGEN_VERSION }}-${{ runner.os }}
       - name: Install wasm-bindgen-cli
-        if: steps.cache-wasm-bindgen.outputs.cache-hit != 'true'
-        run: cargo install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION"
+        uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+        with:
+          tool: wasm-bindgen@${{ env.WASM_BINDGEN_VERSION }}
       - name: Cache Rust
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: "packages/rust-core -> target"
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Restore threaded wasm target
+        id: threaded-target
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ runner.temp }}/wasm-threaded-target
+          key: wasm-threaded-${{ runner.os }}-${{ env.RUST_NIGHTLY_TOOLCHAIN }}-release-${{ hashFiles('packages/rust-core/Cargo.lock', 'packages/rust-core/**/Cargo.toml', 'packages/rust-core/targets/**', 'packages/engine-wasm/scripts/build-wasm.mjs') }}
+          restore-keys: wasm-threaded-${{ runner.os }}-${{ env.RUST_NIGHTLY_TOOLCHAIN }}-release-
+      # main で作ったタスク結果を PR で再利用し、変更の無いパッケージの build / test を省く
+      - name: Restore turbo cache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
+      # stable の rustc が上がったら turbo の build / test キャッシュを外す
+      - run: echo "RUST_STABLE_CACHEKEY=${{ steps.rust-toolchain.outputs.cachekey }}" >> "$GITHUB_ENV"
       - name: Build
         env:
           VITE_NNUE_MANIFEST_URL: https://ramu-shogi.sh11235.com/nnue/manifest.json
+          ENGINE_WASM_THREADED_TARGET_DIR: ${{ runner.temp }}/wasm-threaded-target
         run: pnpm build
-      # engine-wasm は Wasm ビルド成果物 (pkg/) を参照するため、ビルド後に typecheck を実行
-      - run: pnpm turbo typecheck --filter="@shogi/engine-wasm"
+      # engine-wasm は Wasm ビルド成果物 (pkg/) を参照するため、ビルド後に typecheck を実行。
+      # pkg/ は typecheck の inputs に入らずキャッシュの一致判定に効かないので、キャッシュを使わない
+      - run: pnpm turbo typecheck --filter="@shogi/engine-wasm" --force
       # ユニットテスト (vitest): build 済みの dist / wasm pkg を再利用するため build job 内に配置。
       # tauri/wasm 前提や test 無しのパッケージは対象外。
       - name: Test (unit)
         run: pnpm turbo test --filter=web --filter=@shogi/match-client --filter=@shogi/app-core --filter=@shogi/app-controller --filter=@shogi/design-system --filter=@shogi/engine-client --filter=@shogi/study-client --filter=@shogi/ui -- --run
-      - name: sccache stats
-        if: always()
-        run: sccache --show-stats || true
+      - name: Save threaded wasm target
+        if: github.ref == 'refs/heads/main' && steps.threaded-target.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ runner.temp }}/wasm-threaded-target
+          key: ${{ steps.threaded-target.outputs.cache-primary-key }}
+      # 復元したキャッシュに新しい結果を足して保存するので、7 日以上前の結果を落として肥大を防ぐ
+      - name: Prune turbo cache
+        if: github.ref == 'refs/heads/main'
+        run: find .turbo/cache -type f -mtime +7 -delete
+      - name: Save turbo cache
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ github.sha }}
