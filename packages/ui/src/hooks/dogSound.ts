@@ -57,6 +57,12 @@ async function decodeClip(
     return null;
 }
 
+export function setDogBuffersForTest(baseUrl: string, buffers: Map<string, AudioBuffer>): void {
+    loadedBuffers.set(baseUrl, buffers as Map<ClipName, AudioBuffer>);
+    current = null;
+    weakPlaying = null;
+}
+
 /** 音源を読み込んでデコードしておく。同じ基点 URL では 1 回だけ読む */
 export function preloadDogSounds(baseUrl: string): void {
     if (loadingBases.has(baseUrl) || loadedBuffers.has(baseUrl)) return;
@@ -93,6 +99,7 @@ export function preloadDogSounds(baseUrl: string): void {
 // 鳴っている声はページ全体で 1 つ。対局画面は同時に 1 つしか開かないので、再生状態はモジュールで持つ
 let current: { source: AudioBufferSourceNode; gain: GainNode } | null = null;
 let weakPlaying: AudioBufferSourceNode | null = null;
+const endedSources = new WeakSet<AudioBufferSourceNode>();
 // 次の声に切り替えるとき、ぶつ切りにすると「プツッ」と鳴るので短く絞ってから止める
 const CUT_FADE_SEC = 0.02;
 
@@ -149,17 +156,20 @@ export function playDogSound(
     gain.connect(ctx.destination);
     source.start(when);
     const previous = current;
+    const previousWeak = weakPlaying;
     current = { source, gain };
-    if (isWeak) {
-        weakPlaying = source;
-        source.onended = () => {
-            if (weakPlaying === source) weakPlaying = null;
-        };
-    }
+    source.onended = () => {
+        endedSources.add(source);
+        if (weakPlaying === source) weakPlaying = null;
+    };
+    if (isWeak) weakPlaying = source;
     registerScheduledSound(when, now, () => {
         source.stop();
-        if (weakPlaying === source) weakPlaying = null;
-        // 鳴らなかった声に次の切り替えのフェードを掛けると、停止時刻が後ろへ上書きされて一瞬鳴ってしまう
+        // 取り消した声の前の状態に戻す。戻さないと、鳴っている weak を通常の声として切ってしまい、
+        // 鳴らなかった声に次の切り替えのフェードを掛けると停止時刻が後ろへ上書きされて一瞬鳴ってしまう
+        if (weakPlaying === source) {
+            weakPlaying = previousWeak && !endedSources.has(previousWeak) ? previousWeak : null;
+        }
         if (current?.source === source) current = previous;
     });
     return "played";

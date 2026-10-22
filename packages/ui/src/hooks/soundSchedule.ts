@@ -17,10 +17,14 @@ export function reserveSoundSlot(now: number): number {
         pending = null;
     }
     if (pending && pending.when > now) {
-        pending.cancel();
-        const { when } = pending;
+        const { when, cancel } = pending;
         pending = null;
         lastStart = when;
+        try {
+            cancel();
+        } catch {
+            // stop の二度呼びで例外を投げる古い実装でも、次の音は鳴らす
+        }
         return when;
     }
     pending = null;
