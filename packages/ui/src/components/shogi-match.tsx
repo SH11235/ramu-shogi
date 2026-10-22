@@ -798,7 +798,9 @@ export function ShogiMatch({
             latestSidesRef.current = currentSides;
             if (!alignTimeRef.current) return;
             const aligned = alignToPlayChoices(current, currentSides);
-            if (!isSameTimeSettings(aligned, current)) setTimeSettings(aligned);
+            if (!isSameTimeSettings(aligned, current)) {
+                setTimeSettings((latest) => alignToPlayChoices(latest, currentSides), "automatic");
+            }
         },
     );
     useEffect(() => {
