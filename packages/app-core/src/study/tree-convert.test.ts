@@ -154,6 +154,49 @@ describe("実行時ツリー → 保存用", () => {
         expect(withoutSource.nodes[first].source).toBeNull();
     });
 
+    it("AI が指した手の探索結果は、指した側から見た評価値として先手視点で source に入る", () => {
+        const initial = createInitialPositionState();
+        const afterFirst = applyMoveWithState(initial, "7g7f").next;
+        const afterSecond = applyMoveWithState(afterFirst, "3c3d").next;
+        const afterThird = applyMoveWithState(afterSecond, "2g2f").next;
+        let tree = addMove(hirateTree(), "7g7f", afterFirst, {
+            elapsedMs: 900,
+            searchStats: { scoreCp: 60, pv: ["7g7f", "3c3d", "2g2f"], depth: 12 },
+            // 指した後の局面を解析した値（手番側視点）は、探索結果より優先しない。
+            eval: { scoreCp: 999 },
+        });
+        tree = addMove(tree, "3c3d", afterSecond, {
+            searchStats: { scoreCp: 40, pv: ["3c3d"] },
+        });
+        tree = addMove(tree, "2g2f", afterThird, {
+            elapsedMs: 3000,
+            searchStats: { scoreMate: -7 },
+        });
+
+        const stored = kifuTreeToStudyTree(tree, { sourceKind: "kifu" }).tree;
+        const first = studyChildNodeId(stored.rootId, "7g7f");
+        const second = studyChildNodeId(first, "3c3d");
+        const third = studyChildNodeId(second, "2g2f");
+        expect(stored.nodes[first].source).toEqual({
+            kind: "kifu",
+            score: { kind: "cp", value: 60 },
+            pv: ["3c3d", "2g2f"],
+            elapsedMs: 900,
+        });
+        expect(stored.nodes[second].source).toEqual({
+            kind: "kifu",
+            score: { kind: "cp", value: -40 },
+            pv: null,
+            elapsedMs: null,
+        });
+        expect(stored.nodes[third].source).toEqual({
+            kind: "kifu",
+            score: { kind: "mate", winner: "gote", plies: 7 },
+            pv: null,
+            elapsedMs: 3000,
+        });
+    });
+
     it("パスを含むツリーも研究ノートにでき、復元すると同じ手順になる", () => {
         const start: PositionState = {
             ...createInitialPositionState(),

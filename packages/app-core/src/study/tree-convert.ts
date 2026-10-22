@@ -21,6 +21,7 @@ import {
     type StudyDocument,
     type StudyNode,
     type StudyOp,
+    type StudyScore,
     type StudySource,
     type StudyTree,
 } from "./types";
@@ -86,19 +87,47 @@ const truncatePv = (pv: readonly string[] | undefined): string[] | null => {
 export interface KifuTreeToStudyOptions {
     /**
      * 対局時の評価値の出どころ（`source.kind`。CSA 棋譜なら `"csa"`）。
-     * 指定すると、先手視点に正規化済みの評価値（棋譜から読んだもの）と消費時間を `source` に入れる。
-     * エンジンの出力（`normalized` が true でない評価値）は解析結果であり `source` には入れない。
+     * 指定すると、先手視点に正規化済みの評価値（棋譜から読んだもの）、なければ AI がその手を
+     * 指したときの探索結果（`searchStats`）と、消費時間を `source` に入れる。
+     * 局面ごとのエンジン出力（`normalized` が true でない `eval`）は解析結果であり `source` には入れない。
      * null なら `source` を作らない。
      */
     sourceKind: string | null;
 }
 
+/**
+ * AI がその手を指したときの探索結果を、評価値と読み筋にする。
+ * 探索したのは指す前の局面なので、評価値は指した側から見た値で、読み筋はその手から始まる
+ * （CSA の棋譜コメントと同じく、読み筋はその手を除いて指した後の局面から始める）。
+ */
+function searchStatsToSource(
+    node: KifuNode,
+    mover: PositionState["turn"],
+): { score: StudyScore | null; pv: string[] | null } {
+    const stats = node.searchStats;
+    if (!stats) return { score: null, pv: null };
+    const score = kifuEvalToStudyScore(
+        { scoreCp: stats.scoreCp, scoreMate: stats.scoreMate },
+        mover,
+    );
+    const line = stats.pv?.[0] === node.usiMove ? stats.pv.slice(1) : stats.pv;
+    return { score, pv: score ? truncatePv(line) : null };
+}
+
 /** 実行時のノードから「対局時の評価値」を作る。何も無ければ null。 */
-function runtimeNodeToSource(node: KifuNode, sourceKind: string | null): StudySource | null {
+function runtimeNodeToSource(
+    node: KifuNode,
+    parent: KifuNode | undefined,
+    sourceKind: string | null,
+): StudySource | null {
     if (sourceKind === null) return null;
     const imported = node.eval?.normalized === true ? node.eval : undefined;
-    const score = imported ? kifuEvalToStudyScore(imported, node.positionAfter.turn) : null;
-    const pv = imported ? truncatePv(imported.pv) : null;
+    const searched =
+        !imported && parent ? searchStatsToSource(node, parent.positionAfter.turn) : null;
+    const score = imported
+        ? kifuEvalToStudyScore(imported, node.positionAfter.turn)
+        : (searched?.score ?? null);
+    const pv = imported ? truncatePv(imported.pv) : (searched?.pv ?? null);
     const elapsedMs =
         node.elapsedMs !== undefined && Number.isFinite(node.elapsedMs)
             ? Math.max(0, Math.round(node.elapsedMs))
@@ -147,7 +176,13 @@ export function kifuTreeToStudyTree(
             children,
             comment: node.comment ?? "",
             bookmarked: false,
-            source: isRoot ? null : runtimeNodeToSource(node, options.sourceKind),
+            source: isRoot
+                ? null
+                : runtimeNodeToSource(
+                      node,
+                      tree.nodes.get(node.parentId ?? ""),
+                      options.sourceKind,
+                  ),
         };
     }
     return { startSfen, tree: { version: 1, rootId, nodes }, index };
