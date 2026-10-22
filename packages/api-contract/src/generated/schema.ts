@@ -542,6 +542,11 @@ export interface components {
         InitializeNnueUploadResponse: {
             file: components["schemas"]["NnueFileSummary"];
             uploadId: string;
+            /**
+             * @description Upload consecutive parts starting at 1. Every part has this size except the final part, which contains the remaining bytes.
+             * @enum {number}
+             */
+            partSizeBytes: 52428800;
         };
         InitializeNnueUploadRequest: {
             originalFilename: string;
@@ -1421,6 +1426,15 @@ export interface operations {
                     "application/json": components["schemas"]["UploadNnuePartResponse"];
                 };
             };
+            /** @description Invalid part number or part size */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
             /** @description Authentication is required */
             401: {
                 headers: {
@@ -1491,6 +1505,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CompleteNnueUploadResponse"];
+                };
+            };
+            /** @description Invalid parts, file size, or SHA-256 digest */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
             /** @description Authentication is required */
@@ -1742,7 +1765,9 @@ export interface operations {
     listUserSettings: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-expected-user-id"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1766,12 +1791,23 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
+            /** @description Authenticated user differs from the expected user */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
         };
     };
     getUserSettings: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-expected-user-id"?: string;
+            };
             path: {
                 documentKey: components["schemas"]["UserSettingsDocumentKey"];
             };
@@ -1797,19 +1833,30 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
+            /** @description Authenticated user differs from the expected user */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
         };
     };
     putUserSettings: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-expected-user-id"?: string;
+            };
             path: {
                 documentKey: components["schemas"]["UserSettingsDocumentKey"];
             };
             cookie?: never;
         };
-        /** @description Update a user settings document */
-        requestBody?: {
+        /** @description Update a user settings document. The JSON body is limited to 64 KiB; value permits at most 64 nesting levels and 4096 JSON nodes. */
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["PutUserSettingsRequest"];
             };
@@ -1824,6 +1871,15 @@ export interface operations {
                     "application/json": components["schemas"]["PutUserSettingsResponse"];
                 };
             };
+            /** @description Invalid JSON request or settings value exceeds depth or node limits */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
             /** @description Authentication is required */
             401: {
                 headers: {
@@ -1833,8 +1889,17 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
-            /** @description Settings version conflict */
+            /** @description Settings version conflict or authenticated user mismatch */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request body exceeds 64 KiB */
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };
