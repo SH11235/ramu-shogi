@@ -160,6 +160,7 @@ interface EngineControllerCommand {
     prepare: (side: Player) => Promise<boolean>;
     startTurn: (side: Player) => Promise<void>;
     dispose: (side: Player) => Promise<void>;
+    disposeAll: () => Promise<void>;
     retry: (side: Player) => Promise<void>;
     restartForNnue: (side: Player, selection?: NnueSelection) => Promise<void>;
     startAnalysis: (request: AnalysisRequest) => Promise<void>;
@@ -1069,51 +1070,70 @@ export function createEngineController(
         });
     };
 
-    const cancelAnalysis = async () => {
+    let analysisGeneration = 0;
+    let analysisOps: Promise<unknown> = Promise.resolve();
+    const withAnalysisOp = (operation: () => Promise<void>): Promise<void> => {
+        const run = analysisOps.then(operation);
+        analysisOps = run.catch(() => undefined);
+        return run;
+    };
+
+    const invalidateAnalysis = () => {
+        analysisGeneration += 1;
+        completeAnalysisRun("aborted");
+        analysisState.subscription?.();
+        analysisState.subscription = null;
+        analysisState.ply = null;
+        updateState((prev) => ({ ...prev, isAnalyzing: false }));
+        return analysisGeneration;
+    };
+
+    const cancelAnalysisInner = async () => {
+        const handle = analysisState.handle;
+        analysisState.handle = null;
         try {
-            if (analysisState.handle) {
-                await analysisState.handle.cancel();
-            }
+            await handle?.cancel();
         } catch {
             // ignore
-        } finally {
-            // 途中で止めた探索も、そこまでの結果を「中断」として通知する。
-            completeAnalysisRun("aborted");
-            analysisState.handle = null;
-            analysisState.ply = null;
-            updateState((prev) => ({ ...prev, isAnalyzing: false }));
         }
     };
 
-    const disposeAnalysisEngine = async () => {
-        await cancelAnalysis();
-
-        if (analysisState.subscription) {
-            analysisState.subscription();
-            analysisState.subscription = null;
-        }
-
-        if (analysisState.client) {
-            try {
-                if (typeof analysisState.client.dispose === "function") {
-                    await analysisState.client.dispose();
-                }
-            } catch {
-                // ignore
-            }
-            analysisState.client = null;
-            analysisState.engineId = null;
+    const disposeAnalysisEngineInner = async () => {
+        const client = analysisState.client;
+        const handle = analysisState.handle;
+        analysisState.subscription?.();
+        analysisState.subscription = null;
+        analysisState.client = null;
+        analysisState.engineId = null;
+        analysisState.handle = null;
+        analysisThreads = null;
+        try {
+            // WASM の cancel は Worker を再初期化するため、破棄時は dispose だけを使う。
+            if (client?.dispose) await client.dispose();
+            else await handle?.cancel();
+        } catch (error) {
+            addErrorLog(`解析エンジンの破棄に失敗: ${String(error)}`);
         }
     };
 
-    const startAnalysis = async (request: AnalysisRequest) => {
+    const cancelAnalysis = () => {
+        invalidateAnalysis();
+        return withAnalysisOp(cancelAnalysisInner);
+    };
+
+    const disposeAnalysisEngine = () => {
+        invalidateAnalysis();
+        return withAnalysisOp(disposeAnalysisEngineInner);
+    };
+
+    const startAnalysisInner = async (request: AnalysisRequest, generation: number) => {
+        const isCurrent = () => analysisGeneration === generation;
+        if (!isCurrent()) return;
+        await cancelAnalysisInner();
+        if (!isCurrent()) return;
         if (context.matchRunning && !dependencies.allowAnalysisDuringMatch) {
             addErrorLog("対局中は解析できません");
             return;
-        }
-
-        if (state.isAnalyzing) {
-            await cancelAnalysis();
         }
 
         const engineId =
@@ -1131,7 +1151,8 @@ export function createEngineController(
         let client = analysisState.client;
         if (!client || analysisState.engineId !== engineId) {
             if (client && analysisState.engineId !== engineId) {
-                await disposeAnalysisEngine();
+                await disposeAnalysisEngineInner();
+                if (!isCurrent()) return;
             }
             try {
                 client = dependencies.createClient(engineId);
@@ -1139,20 +1160,24 @@ export function createEngineController(
                 analysisState.engineId = engineId;
                 const threadCount = getAnalysisThreadCount(context.engineThreads);
                 await client.init({ threads: threadCount });
+                if (!isCurrent()) return;
                 analysisThreads = threadCount;
 
                 const selection = context.nnueSelections.analysis;
                 if (selection && (selection.presetKey || selection.nnueId) && client.loadNnue) {
                     const resolved = await dependencies.resolveNnue(selection);
+                    if (!isCurrent()) return;
                     if (resolved) {
                         await client.loadNnue(resolved.nnueId, resolved.layerStacks);
+                        if (!isCurrent()) return;
                         await client.setOption("FV_SCALE", resolved.fvScale);
+                        if (!isCurrent()) return;
                     }
                 }
             } catch (error) {
+                if (!isCurrent()) return;
                 addErrorLog(`エンジン初期化エラー: ${String(error)}`);
-                analysisState.ply = null;
-                updateState((prev) => ({ ...prev, isAnalyzing: false }));
+                invalidateAnalysis();
                 return;
             }
         }
@@ -1163,6 +1188,7 @@ export function createEngineController(
         } catch {
             // ignore unsupported MultiPV
         }
+        if (!isCurrent()) return;
 
         if (analysisState.subscription) {
             analysisState.subscription();
@@ -1182,6 +1208,7 @@ export function createEngineController(
             : null;
 
         const unsub = client.subscribe((event) => {
+            if (!isCurrent()) return;
             pushEventLog({
                 id: ++logId,
                 atMs: now(),
@@ -1255,11 +1282,12 @@ export function createEngineController(
                 buildPassRightsOption(context.position?.passRightsSettings, request.moves),
             );
         } catch (error) {
+            if (!isCurrent()) return;
             addErrorLog(`局面読み込みエラー: ${String(error)}`);
-            analysisState.ply = null;
-            updateState((prev) => ({ ...prev, isAnalyzing: false }));
+            invalidateAnalysis();
             return;
         }
+        if (!isCurrent()) return;
 
         try {
             const timeMs = request.timeMs ?? DEFAULT_ANALYSIS_TIME_MS;
@@ -1274,13 +1302,24 @@ export function createEngineController(
                 ponder: false,
             });
 
-            analysisState.handle = handle;
+            if (!isCurrent() || state.isAnalyzing) analysisState.handle = handle;
         } catch (error) {
+            if (!isCurrent()) return;
             analysisRun = null;
             addErrorLog(`探索開始エラー: ${String(error)}`);
-            analysisState.ply = null;
-            updateState((prev) => ({ ...prev, isAnalyzing: false }));
+            invalidateAnalysis();
         }
+    };
+
+    const startAnalysis = (request: AnalysisRequest) => {
+        const generation = invalidateAnalysis();
+        return withAnalysisOp(async () => {
+            try {
+                await startAnalysisInner(request, generation);
+            } finally {
+                if (analysisGeneration !== generation) await disposeAnalysisEngineInner();
+            }
+        });
     };
 
     const applySkillLevels = () => {
@@ -1464,6 +1503,14 @@ export function createEngineController(
         },
         dispose: async (side) => {
             await disposeEngineForSide(side);
+        },
+        disposeAll: async () => {
+            context = { ...context, matchRunning: false };
+            await Promise.all([
+                disposeEngineForSide("sente"),
+                disposeEngineForSide("gote"),
+                disposeAnalysisEngine(),
+            ]);
         },
         retry: async (side) => {
             const engineState = engineStates[side];
