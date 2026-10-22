@@ -11,6 +11,9 @@ importers:
       '@biomejs/biome':
         specifier: ^2.4.6
         version: 2.4.6
+      binaryen:
+        specifier: 132.0.0
+        version: 132.0.0
       husky:
         specifier: ^9.1.7
         version: 9.1.7
@@ -2128,6 +2131,10 @@ packages:
   baseline-browser-mapping@2.11.30:
     resolution: {integrity: sha512-YJs6Pz17RMNv8HoyKREtCY38E3BV1nPkWVmIb+XN1uHC1Vqt3KZCH/uJH9ZKRoiKb/icZ6tvehyee6RZNbFfRA==}
     engines: {node: '>=6.0.0'}
+    hasBin: true
+
+  binaryen@132.0.0:
+    resolution: {integrity: sha512-4Usg7yEvwO3FMso3Oov6qkOOHSod1IEv+boKkh77kTljM+eNBouqCTbqWswGzbG+vDNO/b/v2C4gfEh1WgB9Lg==}
     hasBin: true
 
   blake3-wasm@2.1.5:
@@ -4419,6 +4426,8 @@ snapshots:
       '@babel/types': 7.29.8
 
   baseline-browser-mapping@2.11.30: {}
+
+  binaryen@132.0.0: {}
 
   blake3-wasm@2.1.5: {}
 

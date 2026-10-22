@@ -2,11 +2,12 @@
 // pkg/ に出力する。pkg/manifest.json に生成元とファイルの sha256 を記録する。
 //
 // 使い方: node packages/rust-core/crates/shogi-rules-wasm/scripts/build.mjs
-// wasm-opt は WASM_OPT で指定するか、packages/engine-wasm の devDependencies (npm の wasm-opt) を使う。
+// wasm-opt は WASM_OPT で指定するか、ルートの devDependencies (binaryen) を使う。
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,6 +16,7 @@ const crateName = "shogi-rules-wasm";
 const artifactName = crateName.replace(/-/g, "_");
 const profile = "rules-wasm";
 const target = "wasm32-unknown-unknown";
+const require = createRequire(import.meta.url);
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const crateDir = path.resolve(scriptDir, "..");
@@ -48,9 +50,7 @@ function run(cmd, args, { cwd = rustRoot, capture = false, env = process.env } =
 
 function lockedPackage(name) {
     const lock = readFileSync(path.join(rustRoot, "Cargo.lock"), "utf8");
-    const block = lock
-        .split("[[package]]")
-        .find((entry) => entry.includes(`\nname = "${name}"\n`));
+    const block = lock.split("[[package]]").find((entry) => entry.includes(`\nname = "${name}"\n`));
     if (!block) throw new Error(`${name} が Cargo.lock にありません`);
     return {
         version: block.match(/\nversion = "([^"]+)"/)?.[1],
@@ -69,27 +69,35 @@ function ensureWasmBindgen(expectedVersion) {
     }
 }
 
-function resolveWasmOpt() {
-    if (process.env.WASM_OPT) return process.env.WASM_OPT;
-    const bundled = path.join(repoRoot, "packages/engine-wasm/node_modules/.bin/wasm-opt");
-    if (existsSync(bundled)) return bundled;
-    throw new Error("wasm-opt が見つかりません。pnpm install するか WASM_OPT で指定してください");
+export function resolveWasmOpt(override = process.env.WASM_OPT) {
+    if (override) return { command: override, args: [] };
+    try {
+        const cli = require.resolve("binaryen/bin/wasm-opt");
+        return { command: process.execPath, args: [cli] };
+    } catch (cause) {
+        throw new Error(
+            "binaryen の wasm-opt が見つかりません。pnpm install するか WASM_OPT で指定してください",
+            { cause },
+        );
+    }
 }
 
 const cargoHome = process.env.CARGO_HOME ?? path.join(os.homedir(), ".cargo");
-// panic の発生箇所の文字列にビルドした機械の絶対パスが入らないよう、依存と repo のパスを置き換える
-// rust-src が入っていると std のパスも手元の sysroot を指すので同様に置き換える
-const remappedPrefixes = [
-    [cargoHome, "/cargo"],
-    [repoRoot, "/ramu-shogi"],
-    [
-        path.join(run("rustc", ["--print", "sysroot"], { capture: true }), "lib/rustlib/src/rust"),
-        "/rustc",
-    ],
-];
 
 // target dir は CARGO_TARGET_DIR や cargo config で変わるので、cargo が報告した成果物のパスを使う
 function cargoBuild() {
+    // panic の位置にローカルの絶対パスが入らないよう、依存・repo・rust-src のパスを置き換える
+    const remappedPrefixes = [
+        [cargoHome, "/cargo"],
+        [repoRoot, "/ramu-shogi"],
+        [
+            path.join(
+                run("rustc", ["--print", "sysroot"], { capture: true }),
+                "lib/rustlib/src/rust",
+            ),
+            "/rustc",
+        ],
+    ];
     const rustflags = [
         ...(process.env.RUSTFLAGS ?? "").split(/\s+/).filter(Boolean),
         ...remappedPrefixes.map(([from, to]) => `--remap-path-prefix=${from}=${to}`),
@@ -128,7 +136,9 @@ function cargoBuild() {
 
 function assertNoLocalPaths(filePath) {
     const contents = readFileSync(filePath).toString("latin1");
-    const leaked = [cargoHome, repoRoot, os.homedir()].filter((prefix) => contents.includes(prefix));
+    const leaked = [cargoHome, repoRoot, os.homedir()].filter((prefix) =>
+        contents.includes(prefix),
+    );
     if (leaked.length > 0) {
         throw new Error(`${filePath} にローカルの絶対パスが残っています: ${leaked.join(", ")}`);
     }
@@ -163,7 +173,7 @@ function main() {
     rmSync(path.join(outDir, `${artifactName}_bg.wasm.d.ts`));
 
     const bgWasm = path.join(outDir, `${artifactName}_bg.wasm`);
-    run(wasmOpt, ["-Oz", ...wasmFeatures, bgWasm, "-o", bgWasm]);
+    run(wasmOpt.command, [...wasmOpt.args, "-Oz", ...wasmFeatures, bgWasm, "-o", bgWasm]);
 
     const files = [`${artifactName}.js`, `${artifactName}.d.ts`, `${artifactName}_bg.wasm`];
     const manifest = {
@@ -176,7 +186,7 @@ function main() {
         rshogiCoreRev: rshogiRev,
         rustc: run("rustc", ["--version"], { capture: true }),
         wasmBindgen: wasmBindgen.version,
-        wasmOpt: run(wasmOpt, ["--version"], { capture: true }),
+        wasmOpt: run(wasmOpt.command, [...wasmOpt.args, "--version"], { capture: true }),
         // wasm-bindgen の出力は実行ごとに揺れ得るため、決定的な rustc の出力でも出所を辿れるようにする
         rustcWasmSha256: sha256(builtWasm),
         files: Object.fromEntries([
@@ -189,9 +199,11 @@ function main() {
     console.log(JSON.stringify(manifest, null, 4));
 }
 
-try {
-    main();
-} catch (error) {
-    console.error(error.message);
-    process.exitCode = 1;
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+    try {
+        main();
+    } catch (error) {
+        console.error(error.message);
+        process.exitCode = 1;
+    }
 }

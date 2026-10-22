@@ -75,6 +75,93 @@ test("low and moderate findings are reported without blocking", () => {
     }
 });
 
+test("info-only reports accept either pnpm JSON exit status and remain visible", () => {
+    for (const status of [0, 1]) {
+        const result = evaluateAudit(
+            reportFor([finding({ severity: "info" })]),
+            status,
+            "frontend-all",
+            exceptions,
+            now,
+        );
+        assert.equal(result.blocked, false);
+        assert.equal(result.counts.info, 1);
+        assert.equal(result.issues[0].severity, "info");
+        assert.equal(result.issues[0].exception, undefined);
+    }
+});
+
+test("a zero exit status cannot hide low or higher findings alongside info", () => {
+    for (const severity of ["low", "moderate", "high", "critical"]) {
+        const report = reportFor([finding({ severity: "info" }), finding({ severity })]);
+        assert.throws(() => evaluateAudit(report, 0, "frontend-all", exceptions, now));
+        assert.equal(evaluateAudit(report, 1, "frontend-all", exceptions, now).issues.length, 2);
+    }
+});
+
+test("malformed exception fields fail closed", () => {
+    const invalidFields = [
+        { scope: "unknown" },
+        { advisory: "" },
+        { module: "" },
+        { version: "" },
+        { severity: "unknown" },
+        { paths: `${exceptions[0].paths[0]}>different-package` },
+        { paths: [] },
+        { paths: [null] },
+        { paths: [""] },
+        { paths: [" "] },
+        { reason: "" },
+        { reason: " \n " },
+        { reason: null },
+        { reviewBy: "not-a-date" },
+        { reviewBy: "2026-02-30" },
+        { reviewBy: "2026-13-01" },
+        { reviewBy: "2026-1-01" },
+        { reviewBy: null },
+    ];
+    for (const fields of invalidFields) {
+        assert.throws(
+            () =>
+                evaluateAudit(
+                    reportFor([finding()]),
+                    1,
+                    "frontend-all",
+                    [{ ...exceptions[0], ...fields }],
+                    now,
+                ),
+            /invalid entry/,
+        );
+    }
+    for (const entries of [null, {}, [null]]) {
+        assert.throws(() => evaluateAudit(reportFor(), 0, "frontend-all", entries, now));
+    }
+});
+
+test("exception paths match complete array entries", () => {
+    const result = evaluateAudit(
+        reportFor([finding()]),
+        1,
+        "frontend-all",
+        [{ ...exceptions[0], paths: [`${exceptions[0].paths[0]}>different-package`] }],
+        now,
+    );
+    assert.equal(result.blocked, true);
+});
+
+test("valid leap-day and distant review dates do not impose an extra expiry limit", () => {
+    for (const reviewBy of ["2028-02-29", "2050-01-01"]) {
+        const result = evaluateAudit(
+            reportFor([finding()]),
+            1,
+            "frontend-all",
+            [{ ...exceptions[0], reviewBy }],
+            now,
+        );
+        assert.equal(result.blocked, false);
+    }
+});
+
 test("multiple installed versions of an advisory are counted separately", () => {
     const result = evaluate(
         finding({

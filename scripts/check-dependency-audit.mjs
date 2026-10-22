@@ -5,9 +5,41 @@ import { fileURLToPath } from "node:url";
 const severities = ["info", "low", "moderate", "high", "critical"];
 const scopes = ["frontend-prod", "frontend-all", "pulumi"];
 const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+const isNonEmptyString = (value) => typeof value === "string" && value.trim().length > 0;
+const advisoryId = /^GHSA-[\w-]+$/;
+
+function isReviewDate(value) {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const timestamp = Date.parse(`${value}T00:00:00Z`);
+    return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
+}
+
+function validateExceptions(exceptions) {
+    if (
+        !Array.isArray(exceptions) ||
+        !exceptions.every(
+            (entry) =>
+                isRecord(entry) &&
+                scopes.includes(entry.scope) &&
+                typeof entry.advisory === "string" &&
+                advisoryId.test(entry.advisory) &&
+                isNonEmptyString(entry.module) &&
+                isNonEmptyString(entry.version) &&
+                severities.includes(entry.severity) &&
+                Array.isArray(entry.paths) &&
+                entry.paths.length > 0 &&
+                entry.paths.every(isNonEmptyString) &&
+                isNonEmptyString(entry.reason) &&
+                isReviewDate(entry.reviewBy),
+        )
+    ) {
+        throw new Error("Audit exceptions contain an invalid entry.");
+    }
+}
 
 export function evaluateAudit(report, status, scope, exceptions, now = new Date()) {
     if (!scopes.includes(scope)) throw new Error(`Unknown audit scope: ${scope}`);
+    validateExceptions(exceptions);
     if (![0, 1].includes(status) || !isRecord(report) || report.error) {
         throw new Error(`Audit did not complete successfully (exit ${status}).`);
     }
@@ -62,6 +94,7 @@ export function evaluateAudit(report, status, scope, exceptions, now = new Date(
             exception,
         };
     });
+    // pnpm の JSON 出力は info のみでも終了コード 1 を返す版がある。
     if (
         !severities.every(
             (severity) =>
@@ -71,7 +104,8 @@ export function evaluateAudit(report, status, scope, exceptions, now = new Date(
                     0,
                 ),
         ) ||
-        status !== (issues.length === 0 ? 0 : 1)
+        (status === 1 && issues.length === 0) ||
+        (status === 0 && issues.some((issue) => issue.severity !== "info"))
     ) {
         throw new Error("Audit exit status, counts and advisory details do not agree.");
     }

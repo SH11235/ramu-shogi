@@ -22,9 +22,14 @@
 ## ビルドと backend への配置
 
 ```sh
-node packages/rust-core/crates/shogi-rules-wasm/scripts/build.mjs
+pnpm install --frozen-lockfile
+pnpm build:rules-wasm
+pnpm test:rules-wasm
 node packages/rust-core/crates/shogi-rules-wasm/scripts/copy-to-backend.mjs <backend repo のパス>
 ```
+
+`wasm-opt` はルートの `devDependencies` に固定した [binaryen](https://github.com/AssemblyScript/binaryen.js#command-line) の
+Node CLI を使う。別のネイティブ実行ファイルを使う場合は、そのパスを `WASM_OPT` に指定する。
 
 `build.mjs` は wasm-bindgen CLI の版が Cargo.lock の wasm-bindgen と一致することを確かめ、`pkg/manifest.json` に
 生成元 commit・rshogi-core の rev・ツールの版・各ファイルの sha256 を書く。wasm-bindgen の出力は実行ごとに

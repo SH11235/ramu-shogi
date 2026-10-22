@@ -32,6 +32,8 @@
         "build:rust": "pnpm build:rust:core && pnpm build:rust:tauri",
         "build:rust:core": "cd packages/rust-core && cargo build --workspace",
         "build:rust:tauri": "cd apps/desktop/src-tauri && cargo build --workspace",
+        "build:rules-wasm": "node packages/rust-core/crates/shogi-rules-wasm/scripts/build.mjs",
+        "test:rules-wasm": "node --test packages/rust-core/crates/shogi-rules-wasm/scripts/build.test.ts",
         "build:rust:release": "pnpm build:rust:release:core && pnpm build:rust:release:tauri",
         "build:rust:release:core": "cd packages/rust-core && cargo build --workspace --release",
         "build:rust:release:tauri": "cd apps/desktop/src-tauri && cargo build --workspace --release",
@@ -50,6 +52,7 @@
     },
     "devDependencies": {
         "@biomejs/biome": "^2.4.6",
+        "binaryen": "132.0.0",
         "husky": "^9.1.7",
         "knip": "^5.88.1",
         "lint-staged": "^16.4.0",

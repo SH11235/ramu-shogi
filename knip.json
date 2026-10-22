@@ -19,7 +19,7 @@
         "packages/rust-core/target/**",
         "packages/rust-core/pkg/**",
         "packages/rust-core/crates/shogi-rules-wasm/pkg/**",
-        "packages/rust-core/crates/shogi-rules-wasm/scripts/**",
+        "packages/rust-core/crates/shogi-rules-wasm/scripts/copy-to-backend.mjs",
         "infra/pulumi/**"
     ]
 }
