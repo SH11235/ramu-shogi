@@ -451,6 +451,7 @@ export function StudyWorkspaceView({
     const [mobileTab, setMobileTab] = useState<MobileTab>("highlights");
     // コメント欄は普段は畳んでおき、盤の上のボタンで開く（開いたままにすれば、手を送っても出続ける）。
     const [isCommentOpen, setIsCommentOpen] = useState(false);
+    const sideColumnRef = useRef<HTMLDivElement | null>(null);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     // 「その他の操作」を開いている間は、矢印キーで局面を動かさない（コピー・対局に渡す局面が、
     // メニューの中でのキー操作で変わってしまうため）。
@@ -1133,6 +1134,15 @@ export function StudyWorkspaceView({
     // 開いて見せたら、開いたままにする（対応が済んだ瞬間に、入力中の欄が閉じてしまわないように）。
     if (commentNeedsAttention && !isCommentOpen) setIsCommentOpen(true);
     const showsComment = isCommentOpen || commentNeedsAttention;
+    // PC の右の列は列の中で送るので、送ったあとで開くと、列の先頭に重ねたコメント欄が見えないまま
+    // になる。開いたときに、列の中だけを送って見せる（`scrollIntoView` はページ全体まで動かす）。
+    useEffect(() => {
+        const column = sideColumnRef.current;
+        const comment = document.getElementById("study-comment");
+        if (!showsComment || !column || !comment) return;
+        const offset = comment.getBoundingClientRect().top - column.getBoundingClientRect().top;
+        if (offset < 0) column.scrollTop += offset;
+    }, [showsComment]);
     // 保存できていない書きかけ（保存を待っている・保存に失敗した、など）がこの手にあるか。
     const hasCommentDraft = draftCommentIds.has(currentNodeId);
     const settingsButtonLabel =
@@ -1646,14 +1656,21 @@ export function StudyWorkspaceView({
                             {/* 右の列は画面の高さに収める。xl では注目局面の一覧を縮めて収め、それでも溢れる分
                                 （xl 未満では棋譜の欄も入るので常に）は列の中で送る。送る列の端で欄の影やフォーカスの
                                 枠が切れないよう、内側に余白を取って外側の余白で打ち消す。 */}
-                            <div className="-m-1 flex min-w-0 flex-col gap-3 p-1 max-h-[calc(100dvh-10rem+0.5rem)] overflow-y-auto xl:max-h-[calc(100dvh-9rem+0.5rem)]">
+                            <div
+                                ref={sideColumnRef}
+                                className="-m-1 flex min-w-0 flex-col gap-3 p-1 max-h-[calc(100dvh-10rem+0.5rem)] overflow-y-auto xl:max-h-[calc(100dvh-9rem+0.5rem)]"
+                            >
                                 <div className="shrink-0">{graphWithComment}</div>
                                 <div
                                     className={cn(
                                         "flex min-h-0 shrink-0 flex-col",
-                                        // 縮めてよいのは、一覧の中で送れるだけの件数があるときだけ。縮んでも
-                                        // 4 件ほどは見せる（件数が少ないときに下限を付けると欄の中が空く）。
-                                        highlights.length > 3 && "xl:min-h-[12rem] xl:shrink",
+                                        // 縮めてよいのは、一覧の中で送れるだけの件数があり、解析の案内・途中経過を
+                                        // 出していないときだけ（下限は欄全体の高さなので、案内が出ていると一覧が
+                                        // 潰れる）。件数が少ないときに下限を付けると欄の中が空くので付けない。
+                                        highlights.length > 3 &&
+                                            !needsFullAnalysis &&
+                                            analysis.mode !== "full" &&
+                                            "xl:min-h-[16rem] xl:shrink",
                                     )}
                                 >
                                     {highlightsPanel}
