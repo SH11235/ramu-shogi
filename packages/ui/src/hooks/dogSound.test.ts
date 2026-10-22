@@ -36,24 +36,28 @@ function fakeAudioContext() {
         destination: {},
         nodes,
         createBufferSource() {
-            const voice = { starts: [] as number[], stops: [] as Array<number | undefined> };
+            const voice = {
+                starts: [] as number[],
+                stops: [] as Array<number | undefined>,
+                gain: { value: Number.NaN },
+            };
             const node = {
                 buffer: null,
                 playbackRate: { value: 1 },
                 onended: null as (() => void) | null,
-                connect: () => {},
+                // 声の音量は、つないだ先の GainNode で見る
+                connect: (target: { gain: { value: number } }) => {
+                    voice.gain = target.gain;
+                },
                 start: (when: number) => voice.starts.push(when),
                 stop: (when?: number) => voice.stops.push(when),
             };
-            voices.push({ ...voice, gain: { value: 1 } });
+            voices.push(voice);
             nodes.push(node);
             return node;
         },
         createGain() {
-            const gain = { value: 1, setTargetAtTime: vi.fn() };
-            const last = voices[voices.length - 1];
-            if (last) last.gain = gain;
-            return { gain, connect: () => {} };
+            return { gain: { value: 1, setTargetAtTime: vi.fn() }, connect: () => {} };
         },
     };
     return { ctx: ctx as unknown as AudioContext & { currentTime: number }, voices };

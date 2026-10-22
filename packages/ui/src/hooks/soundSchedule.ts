@@ -19,7 +19,6 @@ export function reserveSoundSlot(now: number): number {
     if (pending && pending.when > now) {
         const { when, cancel } = pending;
         pending = null;
-        lastStart = when;
         try {
             cancel();
         } catch {
