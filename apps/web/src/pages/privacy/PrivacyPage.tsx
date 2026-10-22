@@ -44,10 +44,14 @@ export default function PrivacyPage(): ReactElement {
                         <p>Googleアカウントでログインする際に以下の情報を取得します。</p>
                         <ul className="mt-2 list-inside list-disc space-y-1">
                             <li>メールアドレス</li>
+                            <li>メールアドレスの確認状態</li>
                             <li>GoogleユーザーID（内部識別用）</li>
                         </ul>
                         <p className="mt-2">
                             表示名はGoogleアカウントから取得せず、ユーザーご自身に設定していただきます。プロフィール画像は取得・保存しません。
+                        </p>
+                        <p className="mt-2">
+                            表示名は対局相手に表示され、公開した棋譜にも対局時の表示名が残ります。
                         </p>
                         <p className="mt-2">サービスの利用に伴い、次の情報も取り扱います。</p>
                         <ul className="mt-2 list-inside list-disc space-y-1">
