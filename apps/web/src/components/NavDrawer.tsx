@@ -199,6 +199,13 @@ export function NavDrawer(): ReactElement {
                                 onNavigate={() => setOpen(false)}
                             />
                         )}
+                        <Link
+                            to="/privacy"
+                            onClick={() => setOpen(false)}
+                            className="mt-3 block px-3 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                        >
+                            プライバシーポリシー
+                        </Link>
                     </div>
                 </nav>
             </SheetContent>

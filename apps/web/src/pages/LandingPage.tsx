@@ -93,17 +93,6 @@ export default function LandingPage(): ReactElement {
                         進行中のエンジン対局をリアルタイムで見る。終局した棋譜も再生できる。
                     </EntryCard>
                 </section>
-
-                <p className="text-sm text-wafuu-sumi-light">
-                    指した対局は{" "}
-                    <Link
-                        to="/games"
-                        className="font-medium text-wafuu-sumi underline underline-offset-2 hover:text-wafuu-shu"
-                    >
-                        マイ棋譜
-                    </Link>{" "}
-                    に保存できます（要ログイン）。
-                </p>
             </main>
         </>
     );

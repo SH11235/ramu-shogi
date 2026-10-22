@@ -58,7 +58,7 @@ export default function PrivacyPage(): ReactElement {
                             <li>
                                 ご自身で設定した表示名、保存・同期した設定、棋譜、研究ノート、アップロードしたNNUEファイル
                             </li>
-                            <li>ログイン時のIPアドレス、ブラウザ情報、日時</li>
+                            <li>ログイン時のIPアドレスとブラウザ情報、ログインと利用の日時</li>
                             <li>
                                 通信やアクセス解析に伴うIPアドレス、閲覧したページ、参照元、ブラウザ・端末の種類、表示速度などの情報
                             </li>
@@ -69,6 +69,9 @@ export default function PrivacyPage(): ReactElement {
                         <p>取得した情報は以下の目的のみで利用します。</p>
                         <ul className="mt-2 list-inside list-disc space-y-1">
                             <li>ユーザー認証およびアカウント管理</li>
+                            <li>
+                                NNUEファイルのアップロードと棋譜の公開を、メールアドレスが確認済みのアカウントに限ること
+                            </li>
                             <li>棋譜データとアカウントの紐付け</li>
                             <li>設定・研究ノート・ファイルの保存と同期</li>
                             <li>
