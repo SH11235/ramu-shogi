@@ -337,6 +337,113 @@ describe("useUserSettingsSync", () => {
         expect(result.current).toEqual(editedTime);
     });
 
+    it.each([
+        false,
+        true,
+    ])("初期 GET 中に自動補正前の値へ戻す利用者編集を保存する（StrictMode: %s）", async (reactStrictMode) => {
+        const savedTime = {
+            sente: { mainMs: 600_000, byoyomiMs: 60_000, enabled: true },
+            gote: { mainMs: 600_000, byoyomiMs: 60_000, enabled: true },
+        };
+        localStorage.setItem(TIME_KEY, JSON.stringify(savedTime));
+        const sync = renderHook(() => useUserSettingsSync(), { reactStrictMode });
+        const { result } = renderHook(
+            () =>
+                useNormalizedSettings(
+                    TIME_KEY,
+                    defaultTimeSettings,
+                    normalizeTimeSettings,
+                    isSameTimeSettings,
+                ),
+            { reactStrictMode },
+        );
+        const activeRequest = requests.length - 1;
+        const alignedTime = {
+            ...defaultTimeSettings,
+            sente: { ...defaultTimeSettings.sente, enabled: false },
+        };
+        act(() => result.current[1](alignedTime, "automatic"));
+        expect(readLocal(TIME_KEY)).toEqual(alignedTime);
+        expect(requests).toHaveLength(activeRequest + 1);
+        act(() => result.current[1](savedTime));
+        expect(readLocal(TIME_KEY)).toEqual(savedTime);
+        await reply(activeRequest, {
+            documents: [remote(defaultTimeSettings, 7, "match.time-settings")],
+        });
+        expect(readLocal(TIME_KEY)).toEqual(savedTime);
+        expect(result.current[0]).toEqual(savedTime);
+        expectPut(activeRequest + 1, savedTime, 7);
+        await reply(activeRequest + 1, {
+            document: remote(savedTime, 8, "match.time-settings"),
+        });
+        expect(sync.result.current.syncError).toBeNull();
+        expect(requests).toHaveLength(activeRequest + 2);
+    });
+
+    it.each([
+        { reactStrictMode: false, order: "user-first" },
+        { reactStrictMode: true, order: "user-first" },
+        { reactStrictMode: false, order: "automatic-first" },
+        { reactStrictMode: true, order: "automatic-first" },
+    ])("初期 GET 中の同じbatchの編集と自動補正を保存する（$order、StrictMode: $reactStrictMode）", async ({
+        reactStrictMode,
+        order,
+    }) => {
+        const defaults = { sound: true, volume: 1 };
+        const edited = { sound: false, volume: 0.5 };
+        renderHook(() => useUserSettingsSync(), { reactStrictMode });
+        const { result } = renderHook(() => useLocalStorage(DISPLAY_KEY, defaults), {
+            reactStrictMode,
+        });
+        const setter = result.current[1];
+        const edit = () => setter((previous) => ({ ...previous, sound: false }));
+        const normalize = () => setter((previous) => ({ ...previous, volume: 0.5 }), "automatic");
+        act(() => {
+            if (order === "user-first") {
+                edit();
+                normalize();
+            } else {
+                normalize();
+                edit();
+            }
+        });
+        const activeRequest = requests.length - 1;
+        await reply(activeRequest, { documents: [remote(defaults, 7)] });
+        expect(readLocal()).toEqual(edited);
+        expect(result.current[0]).toEqual(edited);
+        expectPut(activeRequest + 1, edited, 7);
+        await reply(activeRequest + 1, { document: remote(edited, 8) });
+        expect(requests).toHaveLength(activeRequest + 2);
+    });
+
+    it.each([
+        false,
+        true,
+    ])("PUT 中の自動補正を未保存の編集として再送しない（StrictMode: %s）", async (reactStrictMode) => {
+        const defaults = { sound: true, volume: 1 };
+        const edited = { sound: false, volume: 1 };
+        const normalized = { sound: false, volume: 0.5 };
+        renderHook(() => useUserSettingsSync(), { reactStrictMode });
+        const first = renderHook(() => useLocalStorage(DISPLAY_KEY, defaults), {
+            reactStrictMode,
+        });
+        const second = renderHook(() => useLocalStorage(DISPLAY_KEY, defaults), {
+            reactStrictMode,
+        });
+        const activeRequest = requests.length - 1;
+        await reply(activeRequest, { documents: [remote(defaults, 7)] });
+        act(() => first.result.current[1](edited));
+        expectPut(activeRequest + 1, edited, 7);
+        act(() => first.result.current[1](normalized, "automatic"));
+        expect(second.result.current[0]).toEqual(normalized);
+        await reply(activeRequest + 1, { document: remote(edited, 8) });
+        expect(requests).toHaveLength(activeRequest + 2);
+        expect(readLocal()).toEqual(normalized);
+        const nextEdit = { sound: true, volume: 0.5 };
+        act(() => first.result.current[1](nextEdit));
+        expectPut(activeRequest + 2, nextEdit, 8);
+    });
+
     it("取得後の自動補正は画面へ反映し、次の利用者編集で同期する", async () => {
         renderHook(() => useUserSettingsSync());
         const first = renderHook(() => useLocalStorage(TIME_KEY, defaultTimeSettings));

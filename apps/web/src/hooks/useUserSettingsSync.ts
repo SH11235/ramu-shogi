@@ -16,7 +16,7 @@ export function useUserSettingsSync(): { syncError: string | null; retrySync: ()
     useEffect(() => {
         const handleLocalStorageSync = (event: Event): void => {
             const detail = (event as CustomEvent<LocalStorageSyncDetail>).detail;
-            if (detail?.key && detail.source !== "automatic") sync.localChanged(detail.key);
+            if (detail?.key) sync.localChanged(detail.key, detail.source);
         };
         window.addEventListener(LOCAL_STORAGE_SYNC_EVENT, handleLocalStorageSync);
         return () => {

@@ -9,7 +9,10 @@ import type {
     UserSettingsDocumentKey,
 } from "@shogi/api-contract";
 // 起動時の同期から対局画面の chunk を読み込まないよう、軽量な storage モジュールを直接参照する。
-import { dispatchLocalStorageSyncEvent } from "@shogi/ui/components/shogi-match/hooks/useLocalStorage";
+import {
+    dispatchLocalStorageSyncEvent,
+    type LocalStorageChangeSource,
+} from "@shogi/ui/components/shogi-match/hooks/useLocalStorage";
 
 const SETTINGS_STORAGE_MAPPINGS = [
     {
@@ -107,7 +110,7 @@ export function createUserSettingsSync(
     start: (userId: string) => void;
     pause: () => void;
     reset: () => void;
-    localChanged: (storageKey: string) => void;
+    localChanged: (storageKey: string, source?: LocalStorageChangeSource) => void;
 } {
     let user: UserState | null = null;
     let generation: Generation | null = null;
@@ -361,9 +364,15 @@ export function createUserSettingsSync(
         publishError();
     }
 
-    function localChanged(storageKey: string): void {
+    function localChanged(storageKey: string, source: LocalStorageChangeSource = "user"): void {
         const document = user?.documents.find((candidate) => candidate.storageKey === storageKey);
-        if (!document || !captureLocalChange(document)) return;
+        if (!document) return;
+        if (source === "automatic") {
+            // 補正前へ戻す編集を検出できるよう、未保存の編集がないときだけ比較値を進める。
+            if (!document.dirty) document.localValue = readLocalDocument(document.storageKey);
+            return;
+        }
+        if (!captureLocalChange(document)) return;
         publishError();
         if (generation) void upload(generation, document);
     }
