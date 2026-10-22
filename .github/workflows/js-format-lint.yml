@@ -116,6 +116,7 @@ jobs:
           node-version: ${{ steps.versions.outputs.node }}
           cache: pnpm
       - name: Setup Rust
+        id: rust-toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
@@ -156,6 +157,8 @@ jobs:
           key: turbo-${{ runner.os }}-${{ github.sha }}
           restore-keys: turbo-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
+      # stable の rustc が上がったら turbo の build / test キャッシュを外す
+      - run: echo "RUST_STABLE_CACHEKEY=${{ steps.rust-toolchain.outputs.cachekey }}" >> "$GITHUB_ENV"
       - name: Build
         env:
           VITE_NNUE_MANIFEST_URL: https://ramu-shogi.sh11235.com/nnue/manifest.json

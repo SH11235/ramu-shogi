@@ -13,7 +13,7 @@
                 "$TURBO_ROOT$/packages/rust-core/targets/**"
             ],
             "outputs": ["dist/**", "pkg/**", "pkg-threaded/**"],
-            "env": ["RUST_NIGHTLY_TOOLCHAIN", "RUSTFLAGS"],
+            "env": ["RUST_NIGHTLY_TOOLCHAIN", "RUST_STABLE_CACHEKEY", "RUSTFLAGS"],
             "passThroughEnv": ["CARGO_TARGET_DIR", "ENGINE_WASM_THREADED_TARGET_DIR"]
         }
     }

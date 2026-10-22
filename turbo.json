@@ -65,5 +65,11 @@
             "cache": false
         }
     },
-    "globalDependencies": ["package.json", "turbo.json", "biome.json", ".gitignore"]
+    "globalDependencies": [
+        "package.json",
+        "turbo.json",
+        "biome.json",
+        ".gitignore",
+        "tsconfig.base.json"
+    ]
 }
