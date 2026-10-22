@@ -1014,11 +1014,13 @@ export function createEngineController(
             // エンジン（YaneuraOu 系の時間管理）は「残り時間 + 加算」まで考えてよいと読むが、この時計は
             // 加算を指し終えてから足す。残り時間から加算を引いて渡さないと、終盤に送った時間を超えて考え、
             // 時間切れになる。
-            const ownTimeMs = Math.max(0, remainingMainMs - ownIncrementMs);
+            // 残りが加算より少ないときは加算のほうを残りまでに抑え、渡す合計が残り時間を超えないようにする。
+            const ownIncrementSentMs = Math.min(ownIncrementMs, remainingMainMs);
+            const ownTimeMs = remainingMainMs - ownIncrementSentMs;
             const btimeMs = side === "sente" ? ownTimeMs : clocks.sente.mainMs;
             const wtimeMs = side === "gote" ? ownTimeMs : clocks.gote.mainMs;
-            const bincMs = clocks.sente.incrementMs ?? 0;
-            const wincMs = clocks.gote.incrementMs ?? 0;
+            const bincMs = side === "sente" ? ownIncrementSentMs : (clocks.sente.incrementMs ?? 0);
+            const wincMs = side === "gote" ? ownIncrementSentMs : (clocks.gote.incrementMs ?? 0);
             // 秒読みの下限 100ms が要るのは、持ち時間の無い「1 手◯秒」だけ。切れ負けや加算の側に渡すと、
             // エンジンは持ち時間を使い切っても秒読みがあると見て指し遅れ、時間切れになる。
             const sendByoyomi = clockState.byoyomiMs > 0 || clockState.mainMs === 0;

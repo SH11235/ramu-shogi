@@ -473,10 +473,10 @@ describe("createEngineController", () => {
             limits: { byoyomiMs: 2_500, btimeMs: 0, wtimeMs: 180_000 },
         },
         {
-            name: "加算で指す側の残りが加算より少なければ 0 を渡す",
+            name: "加算で指す側の残りが加算より少なければ、渡す加算を残りまでに抑える",
             sente: { mainMs: 1_000, byoyomiMs: 0, incrementMs: 2_000 },
             gote: { mainMs: 90_000, byoyomiMs: 0, incrementMs: 2_000 },
-            limits: { btimeMs: 0, wtimeMs: 90_000, bincMs: 2_000, wincMs: 2_000 },
+            limits: { btimeMs: 0, wtimeMs: 90_000, bincMs: 500, wincMs: 2_000 },
         },
     ])("$name", async ({ sente, gote, limits }) => {
         const mockClient = createMockEngineClient();

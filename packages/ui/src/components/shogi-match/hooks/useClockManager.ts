@@ -169,15 +169,12 @@ export function useClockManager({
         onTimeExpiredRef.current = onTimeExpired;
     }, [onTimeExpired]);
 
-    // 最新の時計状態を ref に保持（setInterval 内で参照するため）
-    useEffect(() => {
-        clocksRef.current = clocks;
-    }, [clocks]);
-
     /**
      * 時計をリセットする
      */
     // 時計の状態は ref と state を同時に書く（200ms ごとの更新が ref から次の状態を作るため）。
+    // state から ref へ書き戻す effect は置かない。遅れて走る effect が、後から書いた手番や加算を
+    // 古い状態で上書きし、時計が止まる。
     const writeClocks = (next: TickState) => {
         clocksRef.current = next;
         setClocks(next);
