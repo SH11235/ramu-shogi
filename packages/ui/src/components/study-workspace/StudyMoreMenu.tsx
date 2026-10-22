@@ -4,7 +4,7 @@
  * どれも主役の操作ではないので、表題の右の 1 つのボタンにまとめる。
  */
 
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "../popover";
 import { MoreIcon } from "./StudyIcons";
@@ -23,6 +23,15 @@ interface StudyMoreMenuProps {
     onPass?: () => void;
     /** 開いているかどうかを知らせる（開いている間、画面側は矢印キーでの局面の移動を止める）。 */
     onOpenChange?: (open: boolean) => void;
+    /**
+     * 操作の上に出す、ノートの情報（出典・保存先など）。画面に常に出すほどではない情報を、
+     * スマートフォンでここにまとめる。
+     */
+    info?: ReactNode;
+    /**
+     * 先頭に足す項目（スマートフォンで画面から外した操作: 表題の変更・解析の設定・盤の反転など）。
+     */
+    extraItems?: Array<{ label: string; note: string; run: () => void }>;
 }
 
 const ITEM_CLASS =
@@ -34,6 +43,8 @@ export function StudyMoreMenu({
     onPlayFromPosition,
     onPass,
     onOpenChange,
+    info,
+    extraItems = [],
 }: StudyMoreMenuProps): ReactElement {
     const [open, setOpenState] = useState(false);
     const setOpen = (next: boolean): void => {
@@ -41,6 +52,7 @@ export function StudyMoreMenu({
         onOpenChange?.(next);
     };
     const items: Array<{ label: string; note: string; run: () => void }> = [
+        ...extraItems,
         {
             label: "棋譜をコピー（KIF）",
             note: "表示中の手順を、表示中の解析の評価値とコメントつきで",
@@ -79,6 +91,9 @@ export function StudyMoreMenu({
                 </button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-72 p-1.5" aria-label="その他の操作">
+                {info && (
+                    <div className="mb-1.5 border-b border-border px-1.5 pb-2 pt-1">{info}</div>
+                )}
                 <ul className="flex flex-col gap-0.5">
                     {items.map((item) => (
                         <li key={item.label}>

@@ -34,8 +34,8 @@ import {
     studyScoreToKifuEval,
 } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
-import type { KeyboardEvent, ReactElement, ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import type { CSSProperties, KeyboardEvent, ReactElement, ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -51,6 +51,7 @@ import type { PlayFromPosition } from "./rshogi-play-from-position";
 import { EvalGraph, type EvalGraphMarker } from "./shogi-match/components/EvalGraph";
 import { MatchNnueDownloadDialog } from "./shogi-match/components/MatchNnueDownloadDialog";
 import { type HandInfo, MobileBoardSection } from "./shogi-match/components/MobileBoardSection";
+import { MobileKifuBar } from "./shogi-match/components/MobileKifuBar";
 import { PCBoardContent } from "./shogi-match/components/PCBoardContent";
 import { PvPreviewDialog } from "./shogi-match/components/PvPreviewDialog";
 import { TOOLTIP_DELAY_DURATION_MS } from "./shogi-match/constants";
@@ -68,6 +69,7 @@ import {
     type PromotionSelection,
     type Selection,
 } from "./shogi-match/types";
+import { formatEval } from "./shogi-match/utils/kifFormat";
 import { LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
 import { StudyAnalysisSettings } from "./study-workspace/StudyAnalysisSettings";
@@ -97,6 +99,7 @@ import {
     StudySaveNotice,
     type StudyWorkspaceSaveStatus,
 } from "./study-workspace/StudySaveStatus";
+import { StudyTitleDialog } from "./study-workspace/StudyTitleDialog";
 import { exportStudyLineToKif, exportStudyPositionToSfen } from "./study-workspace/studyExport";
 import {
     applyStudyLayerToTree,
@@ -104,6 +107,7 @@ import {
     chooseStudyDisplayLayer,
     countStudyLayerResults,
     countStudyUnanalyzed,
+    formatStudyScore,
     pickStudyDeeperResult,
     pickStudyPositionResult,
     resolveStudyLine,
@@ -232,13 +236,50 @@ interface StudyWorkspaceViewProps extends StudyWorkspaceCommonProps {
     deepLayerId?: string | null;
 }
 
-type MobileTab = "highlights" | "moves" | "candidates";
+/**
+ * スマートフォンの表示の切り替え。「盤」は盤を大きく見る表示、ほかは盤を縮めて一覧を並べる表示。
+ * 切り替えは画面の上（ブラウザの下端の操作に隠れない位置）に、名前の付いたタブで出す。
+ */
+type MobileTab = "board" | "highlights" | "moves" | "candidates";
 
 const MOBILE_TABS: { id: MobileTab; label: string }[] = [
+    { id: "board", label: "盤" },
     { id: "highlights", label: "注目局面" },
     { id: "moves", label: "棋譜" },
     { id: "candidates", label: "候補手" },
 ];
+
+// スマートフォンの盤（持ち駒の段を含む）の寸法。マスを c px とすると、盤は高さ 9c + 44px（枠と
+// 段ラベル）・幅 9c + 33px、持ち駒の段は高さ 0.8c + 15px（ただし駒台の枠の下限 34px）が 2 つ、
+// 間が 8px。置ける場所の高さと幅の両方に収まるマスで描く。
+const MOBILE_MAX_CELL_SIZE = 52;
+// 一覧を並べるときは盤を小さくするので、盤の部品の既定の下限（28px）より下げる。
+const MOBILE_MIN_CELL_SIZE = 20;
+
+const mobileBoardHeight = (cell: number): number =>
+    cell * 9 + 44 + 2 * Math.max(cell * 0.8 + 15, 34) + 8;
+
+/**
+ * 幅 `width`・高さ `height` の場所に盤を収めるマスの大きさと縮小率。下限のマスでも入らない低い
+ * 画面では、下限のマスで描いて見た目だけ縮める（はみ出して切れるより、小さくても全体が見える方がよい）。
+ */
+const fitMobileBoard = (width: number, height: number): { cellSize: number; scale: number } => {
+    const widthCell = Math.floor((width - 33) / 9);
+    for (
+        let cell = Math.min(MOBILE_MAX_CELL_SIZE, widthCell);
+        cell >= MOBILE_MIN_CELL_SIZE;
+        cell--
+    ) {
+        if (mobileBoardHeight(cell) <= height) return { cellSize: cell, scale: 1 };
+    }
+    return {
+        cellSize: MOBILE_MIN_CELL_SIZE,
+        scale: Math.max(0, height) / mobileBoardHeight(MOBILE_MIN_CELL_SIZE),
+    };
+};
+
+const sideTextClass = (side: "sente" | "gote" | null): string =>
+    side === "sente" ? "text-wafuu-shu" : side === "gote" ? "text-wafuu-ai" : "text-foreground";
 
 const noop = (): void => {};
 
@@ -308,6 +349,7 @@ function NavBar({
     onBack,
     onForward,
     onToEnd,
+    compact = false,
 }: {
     index: number;
     total: number;
@@ -315,8 +357,13 @@ function NavBar({
     onBack: () => void;
     onForward: () => void;
     onToEnd: () => void;
+    /** スマートフォンで、同じ行にしおり・コメントも並べるときの詰めた幅 */
+    compact?: boolean;
 }): ReactElement {
-    const buttonClass = "w-12 border-border bg-background text-wafuu-sumi";
+    const buttonClass = cn(
+        compact ? "w-10" : "w-12",
+        "border-border bg-background text-wafuu-sumi",
+    );
     return (
         <nav aria-label="局面の移動" className="flex items-center justify-center gap-1.5">
             <StudyIconButton
@@ -335,7 +382,12 @@ function NavBar({
             >
                 <PrevIcon />
             </StudyIconButton>
-            <output className="min-w-[4.5rem] text-center font-mono text-sm tabular-nums text-wafuu-sumi">
+            <output
+                className={cn(
+                    "text-center font-mono text-sm tabular-nums text-wafuu-sumi",
+                    compact ? "min-w-[3.75rem]" : "min-w-[4.5rem]",
+                )}
+            >
                 {index} / {total}
             </output>
             <StudyIconButton
@@ -448,11 +500,41 @@ export function StudyWorkspaceView({
     const [selection, setSelection] = useState<Selection | null>(null);
     const [promotionSelection, setPromotionSelection] = useState<PromotionSelection | null>(null);
     const [flipBoard, setFlipBoard] = useState(false);
-    const [mobileTab, setMobileTab] = useState<MobileTab>("highlights");
+    const [mobileTab, setMobileTab] = useState<MobileTab>("board");
+    const mobileView = mobileTab === "board" ? "board" : "list";
+    // スマートフォンでは画面の高さちょうどに収める（ページを縦に送らない）。上端の位置（アプリの
+    // 見出しの高さ）は端末と表示で変わるので、測って残りの高さを決める。
+    const rootRef = useRef<HTMLDivElement | null>(null);
+    const [rootTop, setRootTop] = useState<number | null>(null);
+    useLayoutEffect(() => {
+        const root = rootRef.current;
+        if (!isMobile || !root) return;
+        const update = () => setRootTop(root.getBoundingClientRect().top + window.scrollY);
+        update();
+        window.addEventListener("resize", update);
+        return () => window.removeEventListener("resize", update);
+    }, [isMobile]);
+    // 盤を置ける場所の大きさ。盤のマスをここから決める。盤を置く要素は表示（盤・一覧）ごとに
+    // 別なので、付いた要素をそのつど測る。
+    const [boardArea, setBoardArea] = useState<{ width: number; height: number } | null>(null);
+    const observeBoardArea = (area: HTMLDivElement | null) => {
+        if (!area) return;
+        const update = () => {
+            const { clientWidth: width, clientHeight: height } = area;
+            setBoardArea((prev) =>
+                prev?.width === width && prev.height === height ? prev : { width, height },
+            );
+        };
+        update();
+        const observer = new ResizeObserver(update);
+        observer.observe(area);
+        return () => observer.disconnect();
+    };
     // コメント欄は普段は畳んでおき、盤の上のボタンで開く（開いたままにすれば、手を送っても出続ける）。
     const [isCommentOpen, setIsCommentOpen] = useState(false);
     const sideColumnRef = useRef<HTMLDivElement | null>(null);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isTitleDialogOpen, setIsTitleDialogOpen] = useState(false);
     // 「その他の操作」を開いている間は、矢印キーで局面を動かさない（コピー・対局に渡す局面が、
     // メニューの中でのキー操作で変わってしまうため）。
     const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
@@ -1147,11 +1229,67 @@ export function StudyWorkspaceView({
     const hasCommentDraft = draftCommentIds.has(currentNodeId);
     const settingsButtonLabel =
         doc.layers.length > 1 && displayLayer ? displayLayer.display.label : null;
-    // スマートフォンでは、未解析のあいだ「全体を解析」を盤と移動ボタンのすぐ下（切り替えタブの
-    // 上）に、通常の流れとして出す。画面の下端に固定・貼り付けはしない（貼り付くのは画面が低くて
-    // 入りきらないときだけで、そのときは必ず移動ボタンや盤に重なってしまうため）。
-    const showsFixedStart = isMobile && needsFullAnalysis && analysis.mode === null;
 
+    const bookmarkButton = (
+        <StudyIconButton
+            label={storedNode?.bookmarked ? "しおりを外す" : "この手にしおりを付ける"}
+            pressed={storedNode?.bookmarked ?? false}
+            onClick={toggleBookmark}
+        >
+            <BookmarkIcon
+                filled={storedNode?.bookmarked ?? false}
+                className={storedNode?.bookmarked ? "text-wafuu-kin" : undefined}
+            />
+        </StudyIconButton>
+    );
+    const commentButton = (
+        <StudyIconButton
+            label={
+                commentNeedsAttention
+                    ? "コメント（保存できていない書きかけがあります）"
+                    : showsComment
+                      ? "コメントを閉じる"
+                      : hasCommentDraft
+                        ? "コメントを開く（保存していない書きかけあり）"
+                        : savedComment !== ""
+                          ? "コメントを開く（コメントあり）"
+                          : "コメントを開く"
+            }
+            pressed={showsComment}
+            aria-expanded={showsComment}
+            aria-controls="study-comment"
+            // 対応が要る書きかけがある間は、閉じられない。
+            disabled={commentNeedsAttention}
+            onClick={() => setIsCommentOpen(!showsComment)}
+            className="relative"
+        >
+            <CommentIcon />
+            {(savedComment !== "" || hasCommentDraft) && (
+                // この手にコメントがある印。保存していない書きかけは、注意の色にする。
+                <span
+                    aria-hidden="true"
+                    className={cn(
+                        "absolute right-1.5 top-1.5 h-2 w-2 rounded-full ring-2 ring-background",
+                        // 開いて入力している間は、保存待ちで色を変えない（ちらつかせない）。
+                        hasCommentDraft && !showsComment ? "bg-status-warning" : "bg-wafuu-shu",
+                    )}
+                />
+            )}
+        </StudyIconButton>
+    );
+    const positionActions = (
+        <div className="flex shrink-0 items-center gap-1">
+            {bookmarkButton}
+            {commentButton}
+            <StudyIconButton
+                label="盤面を反転"
+                pressed={flipBoard}
+                onClick={() => setFlipBoard(!flipBoard)}
+            >
+                <FlipIcon />
+            </StudyIconButton>
+        </div>
+    );
     const boardStatus = (
         <div className="flex w-full items-center justify-between gap-2">
             <output className="flex min-w-0 items-baseline gap-2">
@@ -1160,60 +1298,7 @@ export function StudyWorkspaceView({
                     {position.turn === "sente" ? "☗先手番" : "☖後手番"}
                 </span>
             </output>
-            <div className="flex shrink-0 items-center gap-1">
-                <StudyIconButton
-                    label={storedNode?.bookmarked ? "しおりを外す" : "この手にしおりを付ける"}
-                    pressed={storedNode?.bookmarked ?? false}
-                    onClick={toggleBookmark}
-                >
-                    <BookmarkIcon
-                        filled={storedNode?.bookmarked ?? false}
-                        className={storedNode?.bookmarked ? "text-wafuu-kin" : undefined}
-                    />
-                </StudyIconButton>
-                <StudyIconButton
-                    label={
-                        commentNeedsAttention
-                            ? "コメント（保存できていない書きかけがあります）"
-                            : showsComment
-                              ? "コメントを閉じる"
-                              : hasCommentDraft
-                                ? "コメントを開く（保存していない書きかけあり）"
-                                : savedComment !== ""
-                                  ? "コメントを開く（コメントあり）"
-                                  : "コメントを開く"
-                    }
-                    pressed={showsComment}
-                    aria-expanded={showsComment}
-                    aria-controls="study-comment"
-                    // 対応が要る書きかけがある間は、閉じられない。
-                    disabled={commentNeedsAttention}
-                    onClick={() => setIsCommentOpen(!showsComment)}
-                    className="relative"
-                >
-                    <CommentIcon />
-                    {(savedComment !== "" || hasCommentDraft) && (
-                        // この手にコメントがある印。保存していない書きかけは、注意の色にする。
-                        <span
-                            aria-hidden="true"
-                            className={cn(
-                                "absolute right-1.5 top-1.5 h-2 w-2 rounded-full ring-2 ring-background",
-                                // 開いて入力している間は、保存待ちで色を変えない（ちらつかせない）。
-                                hasCommentDraft && !showsComment
-                                    ? "bg-status-warning"
-                                    : "bg-wafuu-shu",
-                            )}
-                        />
-                    )}
-                </StudyIconButton>
-                <StudyIconButton
-                    label="盤面を反転"
-                    pressed={flipBoard}
-                    onClick={() => setFlipBoard(!flipBoard)}
-                >
-                    <FlipIcon />
-                </StudyIconButton>
-            </div>
+            {positionActions}
         </div>
     );
     const navBar = (
@@ -1245,8 +1330,8 @@ export function StudyWorkspaceView({
         displaySettings,
         isEditModeActive: false,
         isMatchRunning: false,
-        // 持ち駒の枠は常に出す（駒を取った・打ったときに盤が上下に動かないように）。
-        hideEmptyHandPieces: false,
+        // 研究ノートに局面編集は無いので、持っていない駒は出さない（駒台の高さは盤の部品が保つ）。
+        hideEmptyHandPieces: true,
         editFromSquare: null,
         candidateNote: null,
         onSquareSelect,
@@ -1256,12 +1341,15 @@ export function StudyWorkspaceView({
         bottomHand: handInfo("bottom"),
     };
     /** 盤を親の幅に合わせて描く（スマートフォンとタブレット）。 */
+    const mobileBoardFit =
+        boardArea === null ? null : fitMobileBoard(boardArea.width, boardArea.height);
     const fluidBoard = (
         <MobileBoardSection
             {...boardProps}
             position={position}
             boardSectionRef={boardSectionRef}
             isDraggingPiece={false}
+            cellSize={isMobile ? mobileBoardFit?.cellSize : undefined}
         />
     );
 
@@ -1285,38 +1373,104 @@ export function StudyWorkspaceView({
             onCancel={cancelAnalysis}
             onOpenSettings={() => setIsSettingsOpen(true)}
             hideHeading={isMobile}
-            hideStartButton={showsFixedStart}
             // 主役なので、PC では画面の高さに合わせて伸ばす（下に候補手の欄が見える分は残す）。
             // 幅広の画面では上限を列の側で決める。
+            // スマートフォンでは一覧の欄に収まるよう縮め、中で送る。
             className={
-                isMobile
-                    ? "max-h-[70vh]"
-                    : isWide
-                      ? undefined
-                      : "max-h-[max(17rem,calc(100dvh-24rem))]"
+                isMobile ? "min-h-0" : isWide ? undefined : "max-h-[max(17rem,calc(100dvh-24rem))]"
             }
         />
     );
+    // いまの手の評価値（スマートフォンのグラフの見出しに出す）。
+    const currentMover: "sente" | "gote" | null =
+        currentNode.ply === 0
+            ? null
+            : currentNode.positionAfter.turn === "sente"
+              ? "gote"
+              : "sente";
+    const currentEvalText = formatEval(currentNode.eval?.scoreCp, currentNode.eval?.scoreMate);
+    const currentSourceText = formatStudyScore(storedNode?.source?.score ?? null);
+    // 対局時の評価値がある棋譜では、どの手でもその欄を出す（値の無い手で欄が消えると、左の表示が動く）。
+    const noteHasSource = Object.values(doc.tree.nodes).some((node) => node.source?.score != null);
     const graphPanel = (
         <section
             aria-label="評価値グラフ"
-            className="flex flex-col gap-1 rounded-xl border border-wafuu-border bg-card px-3 py-2 shadow-sm"
+            className={cn(
+                "flex flex-col gap-1 rounded-xl border border-wafuu-border bg-card shadow-sm",
+                isMobile ? "px-2 py-1" : "px-3 py-2",
+            )}
         >
-            <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                <h2 className="font-display text-sm font-semibold text-wafuu-sumi">評価値グラフ</h2>
-                <span className="text-xs text-muted-foreground">
-                    {showsSourceGraph
-                        ? "対局時の評価値（解析前）"
-                        : hasResults
-                          ? (displayLayer?.display.label ?? "")
-                          : "解析すると、形勢の流れが出ます"}
-                </span>
-            </div>
+            {isMobile ? (
+                // スマートフォンでは見出しの代わりに、いまの手の評価値と「全体を解析」を出す（盤の下に
+                // 別の行を取らないため）。値の欄は幅を固定する（桁数で右の表示が動かないように）。
+                <div className="flex h-7 items-center justify-between gap-2 text-xs text-muted-foreground">
+                    <h2 className="sr-only">評価値グラフ</h2>
+                    <div className="flex min-w-0 items-baseline gap-3">
+                        <span className="flex items-baseline gap-1">
+                            解析
+                            <span
+                                className={cn(
+                                    "inline-block min-w-[6ch] text-right font-mono text-sm tabular-nums",
+                                    sideTextClass(currentMover),
+                                )}
+                            >
+                                {currentEvalText || "—"}
+                            </span>
+                        </span>
+                        {noteHasSource && (
+                            <span className="flex items-baseline gap-1">
+                                対局時
+                                <span
+                                    className={cn(
+                                        "inline-block min-w-[6ch] text-right font-mono text-sm tabular-nums opacity-80",
+                                        sideTextClass(currentMover),
+                                    )}
+                                >
+                                    {currentSourceText || "—"}
+                                </span>
+                            </span>
+                        )}
+                    </div>
+                    {analysis.mode === "full" ? (
+                        <output aria-live="polite" className="shrink-0 font-mono tabular-nums">
+                            解析中 {analysis.progress?.completed ?? 0} /{" "}
+                            {analysis.progress?.total ?? 0}
+                        </output>
+                    ) : (
+                        needsFullAnalysis &&
+                        !locked && (
+                            <Button
+                                type="button"
+                                size="sm"
+                                className="h-7 shrink-0 gap-1 px-2 text-xs"
+                                onClick={startFull}
+                                disabled={analysis.isPreparing || analysis.mode !== null}
+                            >
+                                <AnalyzeIcon />
+                                {analysis.fullTargetCount === 0 ? "結果を表示" : "全体を解析"}
+                            </Button>
+                        )
+                    )}
+                </div>
+            ) : (
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                    <h2 className="font-display text-sm font-semibold text-wafuu-sumi">
+                        評価値グラフ
+                    </h2>
+                    <span className="text-xs text-muted-foreground">
+                        {showsSourceGraph
+                            ? "対局時の評価値（解析前）"
+                            : hasResults
+                              ? (displayLayer?.display.label ?? "")
+                              : "解析すると、形勢の流れが出ます"}
+                    </span>
+                </div>
+            )}
             <EvalGraph
                 compact
                 evalHistory={graphHistory}
                 currentPly={currentIndex}
-                height={isMobile ? 64 : 72}
+                height={isMobile ? 40 : 72}
                 minScale={GRAPH_MIN_SCALE}
                 axisCap={GRAPH_AXIS_CAP}
                 onPlySelect={(ply) => {
@@ -1343,9 +1497,7 @@ export function StudyWorkspaceView({
             onBackToMainLine={backToMainLine}
             onPromoteToMainLine={promoteLineToMain}
             onRequestDeleteVariation={setDeleteTargetId}
-            className={
-                isMobile ? "max-h-[max(60vh,18rem)]" : "max-h-[26rem] xl:max-h-[calc(100dvh-9rem)]"
-            }
+            className={isMobile ? "min-h-0" : "max-h-[26rem] xl:max-h-[calc(100dvh-9rem)]"}
         />
     );
     const candidatesPanel = (
@@ -1392,9 +1544,51 @@ export function StudyWorkspaceView({
             <div
                 id="study-comment"
                 hidden={!showsComment}
-                className="absolute inset-x-0 top-0 z-20 rounded-xl shadow-lg"
+                // スマートフォンではグラフが画面の下寄りにあるので、上（盤の側）へ向けて開く。
+                className={cn(
+                    "absolute inset-x-0 z-20 rounded-xl shadow-lg",
+                    isMobile ? "bottom-0" : "top-0",
+                )}
             >
                 {commentBox}
+            </div>
+        </div>
+    );
+    // スマートフォンの盤の下に、手を横に流す棋譜を置く（いまの手を中央に。前後の流れが 1 行で見え、
+    // 押すとその手へ移る）。指し手の表記を省略せずに出せる。
+    const mobileMoveStrip = (
+        <MobileKifuBar
+            tone="wafuu"
+            moves={line.slice(1).map((nodeId, index) => ({
+                ply: index + 1,
+                displayText: studyMoveLabel(tree, nodeId),
+                mark: highlightKinds.get(nodeId),
+            }))}
+            currentPly={currentIndex}
+            onPlySelect={(ply) => {
+                const nodeId = line[ply];
+                if (nodeId !== undefined) navigateTo(nodeId);
+            }}
+        />
+    );
+    const mobileBoard = (
+        <div
+            ref={observeBoardArea}
+            className={cn(
+                "flex min-h-0 basis-0 items-start justify-center overflow-hidden",
+                // 一覧を並べるときも盤を主に見せる（盤 3 : 一覧 2）。
+                mobileView === "board" ? "flex-1" : "flex-[3]",
+            )}
+        >
+            <div
+                className="flex origin-top items-start justify-center"
+                style={
+                    mobileBoardFit !== null && mobileBoardFit.scale < 1
+                        ? { transform: `scale(${mobileBoardFit.scale})` }
+                        : undefined
+                }
+            >
+                {fluidBoard}
             </div>
         </div>
     );
@@ -1415,6 +1609,51 @@ export function StudyWorkspaceView({
                 className="md:ml-auto"
             />
         </div>
+    );
+    const moreMenu = (
+        <StudyMoreMenu
+            onOpenChange={setIsMoreMenuOpen}
+            // スマートフォンでは出典・保存先の行と、表題・解析の設定・盤の反転を画面に出さず、ここに置く。
+            info={isMobile ? metaRow : undefined}
+            extraItems={
+                isMobile
+                    ? [
+                          ...(locked
+                              ? []
+                              : [
+                                    {
+                                        label: "表題を変更",
+                                        note: "研究ノートの名前",
+                                        run: () => setIsTitleDialogOpen(true),
+                                    },
+                                    {
+                                        label: "解析の設定",
+                                        note:
+                                            settingsButtonLabel ?? "解析に使う AI と、1 局面の時間",
+                                        run: () => setIsSettingsOpen(true),
+                                    },
+                                ]),
+                          {
+                              label: flipBoard ? "盤面を元に戻す" : "盤面を反転",
+                              note: "後手側から盤を見る",
+                              run: () => setFlipBoard(!flipBoard),
+                          },
+                      ]
+                    : undefined
+            }
+            onPass={locked ? undefined : () => void passFromCurrent()}
+            onCopyKif={copyKif}
+            onCopySfen={copySfen}
+            onPlayFromPosition={
+                onPlayFromPosition
+                    ? () =>
+                          onPlayFromPosition({
+                              sfen: tree.startSfen,
+                              moves: movesToCurrent,
+                          })
+                    : undefined
+            }
+        />
     );
 
     const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>): void => {
@@ -1456,57 +1695,62 @@ export function StudyWorkspaceView({
 
     return (
         <TooltipProvider delayDuration={TOOLTIP_DELAY_DURATION_MS}>
-            <div className="flex w-full max-w-[1320px] xl:max-w-[1600px] flex-col gap-2 self-center px-3 py-1.5 md:gap-3 md:px-4 md:py-3">
-                <header className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                        <TitleInput
-                            key={doc.title}
-                            title={doc.title}
-                            disabled={locked}
-                            onCommit={(value) => void onApplyOps([{ type: "setTitle", value }])}
-                        />
-                        {isWide && metaRow}
-                        <StudyMoreMenu
-                            onOpenChange={setIsMoreMenuOpen}
-                            onPass={locked ? undefined : () => void passFromCurrent()}
-                            onCopyKif={copyKif}
-                            onCopySfen={copySfen}
-                            onPlayFromPosition={
-                                onPlayFromPosition
-                                    ? () =>
-                                          onPlayFromPosition({
-                                              sfen: tree.startSfen,
-                                              moves: movesToCurrent,
-                                          })
-                                    : undefined
-                            }
-                        />
-                        {settingsButtonLabel ? (
-                            <button
-                                type="button"
-                                onClick={() => setIsSettingsOpen(true)}
-                                aria-haspopup="dialog"
+            <div
+                ref={rootRef}
+                className={cn(
+                    "flex w-full max-w-[1320px] xl:max-w-[1600px] flex-col gap-2 self-center px-3 py-1.5 md:gap-3 md:px-4 md:py-3",
+                    isMobile && "overflow-hidden",
+                    // 高さはブラウザの操作の帯が出ているときの画面（svh）に合わせる。いまの画面（dvh）に
+                    // 合わせると、少しスクロールして帯が縮むたびに高さが変わり、盤が大きさを変えてしまう。
+                    isMobile &&
+                        rootTop !== null &&
+                        "h-[calc(100vh-var(--study-top))] supports-[height:1svh]:h-[calc(100svh-var(--study-top))]",
+                )}
+                style={
+                    isMobile && rootTop !== null
+                        ? ({ "--study-top": `${rootTop}px` } as CSSProperties)
+                        : undefined
+                }
+            >
+                {/* スマートフォンでは表題をパンくずに任せ、表題の行は出さない（狭い行に大きな表題を置くと
+                    ほとんど読めない）。その他の操作は、表示の切り替えの行に置く。 */}
+                {!isMobile && (
+                    <header className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                            <TitleInput
+                                key={doc.title}
+                                title={doc.title}
                                 disabled={locked}
-                                className="flex h-10 max-w-[45%] shrink-0 items-center gap-1.5 rounded-md border border-wafuu-border bg-background px-2 text-xs text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
-                            >
-                                <SettingsIcon />
-                                <span className="sr-only">解析の設定:</span>
-                                <span className="truncate">{settingsButtonLabel}</span>
-                            </button>
-                        ) : (
-                            <StudyIconButton
-                                label="解析の設定"
-                                aria-haspopup="dialog"
-                                disabled={locked}
-                                onClick={() => setIsSettingsOpen(true)}
-                            >
-                                <SettingsIcon />
-                            </StudyIconButton>
-                        )}
-                    </div>
-                    {/* スマホでは、盤と操作を最初の画面に収めるため、この行は画面の下へ回す。 */}
-                    {!isMobile && !isWide && metaRow}
-                </header>
+                                onCommit={(value) => void onApplyOps([{ type: "setTitle", value }])}
+                            />
+                            {isWide && metaRow}
+                            {moreMenu}
+                            {settingsButtonLabel ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsSettingsOpen(true)}
+                                    aria-haspopup="dialog"
+                                    disabled={locked}
+                                    className="flex h-10 max-w-[45%] shrink-0 items-center gap-1.5 rounded-md border border-wafuu-border bg-background px-2 text-xs text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
+                                >
+                                    <SettingsIcon />
+                                    <span className="sr-only">解析の設定:</span>
+                                    <span className="truncate">{settingsButtonLabel}</span>
+                                </button>
+                            ) : (
+                                <StudyIconButton
+                                    label="解析の設定"
+                                    aria-haspopup="dialog"
+                                    disabled={locked}
+                                    onClick={() => setIsSettingsOpen(true)}
+                                >
+                                    <SettingsIcon />
+                                </StudyIconButton>
+                            )}
+                        </div>
+                        {!isWide && metaRow}
+                    </header>
+                )}
 
                 {/* 編集できない間は、再送とノートの破棄も止める（残すのは「ログインし直す」だけ）。 */}
                 <StudySaveNotice
@@ -1546,71 +1790,91 @@ export function StudyWorkspaceView({
                 )}
 
                 {/* 編集できない間は、画面を残したまま操作だけを止める。 */}
-                <div inert={locked} className={cn("flex flex-col gap-3", locked && "opacity-70")}>
+                <div
+                    inert={locked}
+                    className={cn(
+                        "flex flex-col gap-3",
+                        isMobile && "min-h-0 flex-1",
+                        locked && "opacity-70",
+                    )}
+                >
                     {isMobile ? (
-                        <div className="flex flex-col gap-3">
-                            <div className="flex flex-col items-center gap-1.5">
-                                {boardStatus}
-                                {fluidBoard}
-                                {navBar}
-                            </div>
-                            {/* グラフは操作ボタンのすぐ下に置き、コメント欄は開いたときだけその上に重ねる
-                                （PC と同じ。開閉で下の要素が上下しない）。 */}
-                            {graphWithComment}
-                            {showsFixedStart && !locked && (
-                                <div className="flex flex-col">
-                                    <Button
-                                        type="button"
-                                        size="lg"
-                                        className="w-full gap-2"
-                                        onClick={startFull}
-                                        disabled={analysis.isPreparing}
-                                    >
-                                        <AnalyzeIcon />
-                                        {analysis.fullTargetCount === 0
-                                            ? "解析済みの結果を表示"
-                                            : "全体を解析"}
-                                    </Button>
+                        // 盤（大きく見る）と一覧（盤を縮めて並べる）のどちらも、画面の高さに収める。
+                        // 欄の中身が変わっても高さは変わらず、形が変わるのは利用者が切り替えたときだけ。
+                        <div className="flex min-h-0 flex-1 flex-col gap-1.5">
+                            <div className="flex shrink-0 items-center gap-1">
+                                <div
+                                    role="tablist"
+                                    aria-label="表示の切り替え"
+                                    className="grid min-w-0 flex-1 grid-cols-[3rem_repeat(3,minmax(0,1fr))] gap-1 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-1"
+                                >
+                                    {MOBILE_TABS.map((tab) => (
+                                        <button
+                                            key={tab.id}
+                                            id={`study-tab-${tab.id}`}
+                                            type="button"
+                                            role="tab"
+                                            aria-selected={mobileTab === tab.id}
+                                            aria-controls="study-tabpanel"
+                                            tabIndex={mobileTab === tab.id ? 0 : -1}
+                                            onClick={() => setMobileTab(tab.id)}
+                                            onKeyDown={handleTabKeyDown}
+                                            className={cn(
+                                                "h-9 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                                mobileTab === tab.id
+                                                    ? "bg-card text-wafuu-shu shadow-sm"
+                                                    : "text-wafuu-sumi-light hover:text-wafuu-sumi",
+                                            )}
+                                        >
+                                            {tab.label}
+                                        </button>
+                                    ))}
                                 </div>
-                            )}
-                            <div
-                                role="tablist"
-                                aria-label="表示の切り替え"
-                                className="grid grid-cols-3 gap-1 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-1"
-                            >
-                                {MOBILE_TABS.map((tab) => (
-                                    <button
-                                        key={tab.id}
-                                        id={`study-tab-${tab.id}`}
-                                        type="button"
-                                        role="tab"
-                                        aria-selected={mobileTab === tab.id}
-                                        aria-controls="study-tabpanel"
-                                        tabIndex={mobileTab === tab.id ? 0 : -1}
-                                        onClick={() => setMobileTab(tab.id)}
-                                        onKeyDown={handleTabKeyDown}
-                                        className={cn(
-                                            "h-10 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                            mobileTab === tab.id
-                                                ? "bg-card text-wafuu-shu shadow-sm"
-                                                : "text-wafuu-sumi-light hover:text-wafuu-sumi",
-                                        )}
-                                    >
-                                        {tab.label}
-                                    </button>
-                                ))}
+                                {moreMenu}
                             </div>
                             <div
                                 id="study-tabpanel"
                                 role="tabpanel"
                                 aria-labelledby={`study-tab-${mobileTab}`}
-                                className="flex flex-col gap-3"
+                                className="flex min-h-0 flex-1 flex-col gap-1.5"
                             >
-                                {mobileTab === "highlights" && highlightsPanel}
-                                {mobileTab === "moves" && moveList}
-                                {mobileTab === "candidates" && candidatesPanel}
+                                {mobileBoard}
+                                {mobileView === "board" && (
+                                    <>
+                                        <div className="shrink-0">{mobileMoveStrip}</div>
+                                        <div className="shrink-0">{graphPanel}</div>
+                                    </>
+                                )}
+                                {/* 局面の移動と、この局面へのしおり・コメント。コメント欄は開いたときだけ、
+                                    この行の上（盤の側）に重ねる（開閉で画面が上下しない）。 */}
+                                <div className="relative flex shrink-0 items-center justify-center gap-1">
+                                    <NavBar
+                                        compact
+                                        index={currentIndex}
+                                        total={line.length - 1}
+                                        onToStart={goToStart}
+                                        onBack={goBack}
+                                        onForward={goForward}
+                                        onToEnd={goToEnd}
+                                    />
+                                    {bookmarkButton}
+                                    {commentButton}
+                                    <div
+                                        id="study-comment"
+                                        hidden={!showsComment}
+                                        className="absolute inset-x-0 bottom-full z-20 mb-1.5 rounded-xl shadow-lg"
+                                    >
+                                        {commentBox}
+                                    </div>
+                                </div>
+                                {mobileView === "list" && (
+                                    <div className="flex min-h-0 flex-[2] basis-0 flex-col gap-2 overflow-y-auto overscroll-contain">
+                                        {mobileTab === "highlights" && highlightsPanel}
+                                        {mobileTab === "moves" && moveList}
+                                        {mobileTab === "candidates" && candidatesPanel}
+                                    </div>
+                                )}
                             </div>
-                            {metaRow}
                         </div>
                     ) : isTablet ? (
                         // タブレットの縦持ち: 盤を小さくして左に置き、右に注目局面からの列を並べる。
@@ -1686,6 +1950,13 @@ export function StudyWorkspaceView({
             </div>
 
             <Notice message={message} onDismiss={() => onMessageChange(null)} />
+
+            <StudyTitleDialog
+                open={isTitleDialogOpen && !locked}
+                onOpenChange={setIsTitleDialogOpen}
+                title={doc.title}
+                onCommit={(value) => void onApplyOps([{ type: "setTitle", value }])}
+            />
 
             <StudyAnalysisSettings
                 open={settingsOpen}

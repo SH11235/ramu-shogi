@@ -9,7 +9,7 @@ import {
 } from "@shogi/app-core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ANALYSIS_SETTINGS, type Message } from "./shogi-match/types";
 import { StudyWorkspaceView } from "./study-workspace";
 import type { StudyCommentDraftChange } from "./study-workspace/StudyCommentBox";
@@ -1967,5 +1967,52 @@ describe("StudyWorkspaceView", () => {
             fireEvent.click(screen.getByRole("button", { name: "このブラウザからも消す" }));
             expect(onDiscard).toHaveBeenCalledTimes(1);
         });
+    });
+});
+
+describe("StudyWorkspaceView: スマートフォン", () => {
+    beforeEach(() => {
+        vi.spyOn(window, "matchMedia").mockImplementation(
+            (query: string) =>
+                ({
+                    matches: query.includes("max-width: 767px"),
+                    media: query,
+                    addEventListener: () => {},
+                    removeEventListener: () => {},
+                }) as unknown as MediaQueryList,
+        );
+    });
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it("画面の上のタブで、盤を大きく見る表示と一覧の表示を切り替える", () => {
+        render(<Harness initialDoc={createTestStudy().doc} />);
+        const tab = (name: string) => screen.getByRole("tab", { name });
+        // 最初は盤を大きく見る表示（グラフを出し、一覧は出さない）。
+        expect(tab("盤").getAttribute("aria-selected")).toBe("true");
+        expect(screen.getByRole("region", { name: "評価値グラフ" })).toBeTruthy();
+        expect(screen.queryByRole("region", { name: "棋譜と変化" })).toBeNull();
+
+        fireEvent.click(tab("棋譜"));
+        expect(tab("棋譜").getAttribute("aria-selected")).toBe("true");
+        expect(screen.getByRole("region", { name: "棋譜と変化" })).toBeTruthy();
+        expect(screen.queryByRole("region", { name: "評価値グラフ" })).toBeNull();
+
+        fireEvent.click(tab("盤"));
+        expect(screen.queryByRole("region", { name: "棋譜と変化" })).toBeNull();
+    });
+
+    it("盤の下の横に流す棋譜で手を押すと、その手へ移る", () => {
+        render(<Harness initialDoc={createTestStudy().doc} />);
+        const position = () =>
+            within(screen.getByRole("navigation", { name: "局面の移動" })).getByRole("status");
+
+        const firstMove = screen
+            .getAllByRole("button")
+            .find((button) => /^1[☗☖]/.test(button.textContent ?? ""));
+        if (!firstMove) throw new Error("横に流す棋譜に 1 手目がありません");
+        fireEvent.click(firstMove);
+        expect(position().textContent?.replace(/\s/g, "")).toMatch(/^1\//);
     });
 });

@@ -20,12 +20,18 @@ vi.mock("@tanstack/react-router", () => ({
     Link: ({
         to,
         params,
+        search,
         children,
     }: {
         to: string;
         params?: { studyId?: string };
+        search?: Record<string, string>;
         children: ReactNode;
-    }) => <a href={params?.studyId ? to.replace("$studyId", params.studyId) : to}>{children}</a>,
+    }) => {
+        const path = params?.studyId ? to.replace("$studyId", params.studyId) : to;
+        const query = search ? new URLSearchParams(search).toString() : "";
+        return <a href={query ? `${path}?${query}` : path}>{children}</a>;
+    },
     useNavigate: () => navigate,
 }));
 vi.mock("../../hooks/useAuthSession", () => ({
@@ -67,9 +73,9 @@ describe("StudiesPage", () => {
         expect(screen.getByRole("button", { name: "ファイルを選ぶ" })).toBeTruthy();
         expect(
             screen.getByRole("link", { name: "観戦・棋譜一覧から選ぶ" }).getAttribute("href"),
-        ).toBe("/rshogi-viewer");
+        ).toBe("/studies/new");
         expect(screen.getByRole("link", { name: /自分の対局から選ぶ/ }).getAttribute("href")).toBe(
-            "/games",
+            "/studies/new?from=games",
         );
     });
 
