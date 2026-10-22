@@ -203,7 +203,12 @@ export function PlayPCLayout({
                                 <PlayMoveList
                                     selectable={phase === "finished"}
                                     upToCurrent={phase !== "finished"}
-                                    className="max-h-[max(120px,calc(100dvh-520px))]"
+                                    // 欄の下端を盤の列の下端に揃える（終局後は上の結果の欄が高い分を引く）。
+                                    className={
+                                        phase === "finished"
+                                            ? "max-h-[max(120px,calc(100dvh-445px))]"
+                                            : "max-h-[max(120px,calc(100dvh-400px))]"
+                                    }
                                 />
                             </section>
                         )}
