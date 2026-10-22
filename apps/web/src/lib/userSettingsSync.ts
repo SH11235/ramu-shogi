@@ -312,7 +312,7 @@ export function createUserSettingsSync(
                                 document.storageKey,
                                 JSON.stringify(remote.value),
                             );
-                            dispatchLocalStorageSyncEvent(document.storageKey);
+                            dispatchLocalStorageSyncEvent(document.storageKey, "automatic");
                         }
                     } else if (candidate.user.canSeed && document.localValue !== null) {
                         document.dirty = true;

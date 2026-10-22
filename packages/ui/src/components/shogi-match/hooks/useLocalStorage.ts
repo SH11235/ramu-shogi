@@ -7,8 +7,11 @@ import { useEffect, useRef, useState } from "react";
 
 export const LOCAL_STORAGE_SYNC_EVENT = "shogi-local-storage-sync";
 
-interface LocalStorageSyncDetail {
+export type LocalStorageChangeSource = "user" | "automatic";
+
+export interface LocalStorageSyncDetail {
     key: string;
+    source?: LocalStorageChangeSource;
 }
 
 function parseStoredValue<T>(key: string, stored: string | null, defaultValue: T): T {
@@ -28,14 +31,17 @@ function isSameStoredValue<T>(left: T, right: T): boolean {
     return JSON.stringify(left) === JSON.stringify(right);
 }
 
-export function dispatchLocalStorageSyncEvent(key: string): void {
+export function dispatchLocalStorageSyncEvent(
+    key: string,
+    source: LocalStorageChangeSource = "user",
+): void {
     if (typeof window === "undefined") {
         return;
     }
 
     window.dispatchEvent(
         new CustomEvent<LocalStorageSyncDetail>(LOCAL_STORAGE_SYNC_EVENT, {
-            detail: { key },
+            detail: { key, source },
         }),
     );
 }
@@ -43,7 +49,10 @@ export function dispatchLocalStorageSyncEvent(key: string): void {
 /**
  * useLocalStorage の戻り値の型
  */
-export type UseLocalStorageReturn<T> = readonly [T, (value: T | ((prev: T) => T)) => void];
+export type UseLocalStorageReturn<T> = readonly [
+    T,
+    (value: T | ((prev: T) => T), source?: LocalStorageChangeSource) => void,
+];
 
 /**
  * localStorage と同期する useState フック
@@ -54,13 +63,34 @@ export type UseLocalStorageReturn<T> = readonly [T, (value: T | ((prev: T) => T)
  */
 export function useLocalStorage<T>(key: string, defaultValue: T): UseLocalStorageReturn<T> {
     // 初期値を localStorage から読み込む
-    const [value, setValue] = useState<T>(() => {
-        if (typeof window === "undefined") {
-            return defaultValue;
-        }
-        return parseStoredValue(key, localStorage.getItem(key), defaultValue);
-    });
-    const lastPersistedRef = useRef<{ key: string; serialized: string } | null>(null);
+    const [{ value, userRevision }, setStored] = useState(() => ({
+        value:
+            typeof window === "undefined"
+                ? defaultValue
+                : parseStoredValue(key, localStorage.getItem(key), defaultValue),
+        userRevision: 0,
+    }));
+    const [setValue] = useState<UseLocalStorageReturn<T>[1]>(
+        () =>
+            (next: T | ((prev: T) => T), source: LocalStorageChangeSource = "user") => {
+                setStored((previous) => {
+                    const nextValue =
+                        typeof next === "function"
+                            ? (next as (prev: T) => T)(previous.value)
+                            : next;
+                    if (Object.is(previous.value, nextValue)) return previous;
+                    return {
+                        value: nextValue,
+                        userRevision: previous.userRevision + (source === "user" ? 1 : 0),
+                    };
+                });
+            },
+    );
+    const lastPersistedRef = useRef<{
+        key: string;
+        serialized: string;
+        userRevision: number;
+    } | null>(null);
 
     // 値が変更されたら localStorage に保存
     useEffect(() => {
@@ -81,11 +111,13 @@ export function useLocalStorage<T>(key: string, defaultValue: T): UseLocalStorag
             }
         }
         const previous = lastPersistedRef.current;
-        lastPersistedRef.current = { key, serialized };
+        lastPersistedRef.current = { key, serialized, userRevision };
         if (previous && (previous.key !== key || previous.serialized !== serialized)) {
-            dispatchLocalStorageSyncEvent(key);
+            // 自動更新とまとめて保存されても、利用者の編集があれば編集通知を送る。
+            const source = previous.userRevision !== userRevision ? "user" : "automatic";
+            dispatchLocalStorageSyncEvent(key, source);
         }
-    }, [key, value]);
+    }, [key, value, userRevision]);
 
     useEffect(() => {
         if (typeof window === "undefined") {
@@ -94,7 +126,11 @@ export function useLocalStorage<T>(key: string, defaultValue: T): UseLocalStorag
 
         const syncFromStorage = (stored: string | null): void => {
             const nextValue = parseStoredValue(key, stored, defaultValue);
-            setValue((prev) => (isSameStoredValue(prev, nextValue) ? prev : nextValue));
+            setStored((previous) =>
+                isSameStoredValue(previous.value, nextValue)
+                    ? previous
+                    : { ...previous, value: nextValue },
+            );
         };
 
         const handleStorage = (event: StorageEvent): void => {
@@ -121,6 +157,5 @@ export function useLocalStorage<T>(key: string, defaultValue: T): UseLocalStorag
         };
     }, [defaultValue, key]);
 
-    // useStateのsetValueは安定した参照なので直接返す
     return [value, setValue];
 }

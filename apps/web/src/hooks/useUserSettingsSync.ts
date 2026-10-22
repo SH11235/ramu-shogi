@@ -1,4 +1,7 @@
-import { LOCAL_STORAGE_SYNC_EVENT } from "@shogi/ui/components/shogi-match/hooks/useLocalStorage";
+import {
+    LOCAL_STORAGE_SYNC_EVENT,
+    type LocalStorageSyncDetail,
+} from "@shogi/ui/components/shogi-match/hooks/useLocalStorage";
 import { useEffect, useState } from "react";
 import { createUserSettingsSync } from "../lib/userSettingsSync";
 import { dispatchAuthSessionSyncEvent, useAuthSession } from "./useAuthSession";
@@ -12,8 +15,8 @@ export function useUserSettingsSync(): { syncError: string | null; retrySync: ()
 
     useEffect(() => {
         const handleLocalStorageSync = (event: Event): void => {
-            const key = (event as CustomEvent<{ key?: string }>).detail?.key;
-            if (key) sync.localChanged(key);
+            const detail = (event as CustomEvent<LocalStorageSyncDetail>).detail;
+            if (detail?.key && detail.source !== "automatic") sync.localChanged(detail.key);
         };
         window.addEventListener(LOCAL_STORAGE_SYNC_EVENT, handleLocalStorageSync);
         return () => {

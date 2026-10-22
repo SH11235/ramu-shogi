@@ -3,7 +3,13 @@ import {
     LOCAL_STORAGE_SYNC_EVENT,
     useLocalStorage,
 } from "@shogi/ui/components/shogi-match/hooks/useLocalStorage";
+import { useNormalizedSettings } from "@shogi/ui/components/shogi-match/hooks/useNormalizedSettings";
+import {
+    isSameTimeSettings,
+    normalizeTimeSettings,
+} from "@shogi/ui/components/shogi-match/utils/timeSettings";
 import { act, cleanup, renderHook } from "@testing-library/react";
+import { useLayoutEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useUserSettingsSync } from "./useUserSettingsSync";
 
@@ -18,6 +24,11 @@ vi.mock("./useAuthSession", () => ({
 
 const DISPLAY_KEY = "shogi-display-settings";
 const LAST_USER_KEY = "shogi-user-settings-last-user-id";
+const TIME_KEY = "shogi-match-time-settings";
+const defaultTimeSettings = {
+    sente: { mainMs: 300_000, byoyomiMs: 30_000, enabled: true },
+    gote: { mainMs: 300_000, byoyomiMs: 30_000, enabled: true },
+};
 const mappings = [
     ["match.time-settings", "shogi-match-time-settings"],
     ["match.display-settings", DISPLAY_KEY],
@@ -214,6 +225,138 @@ describe("useUserSettingsSync", () => {
         await reply(activeRequest, { documents: [remote({ sound: true }, 4)] });
         expectPut(activeRequest + 1, { sound: false }, 4);
         expect(result.current[0]).toEqual({ sound: false });
+    });
+
+    it.each([
+        false,
+        true,
+    ])("旧形式の正規化より初期 GET の時間設定を優先する（StrictMode: %s）", async (reactStrictMode) => {
+        localStorage.setItem(
+            TIME_KEY,
+            JSON.stringify({
+                sente: { mainMs: 300, byoyomiMs: 30, enabled: true },
+                gote: { mainMs: 300, byoyomiMs: 30, enabled: true },
+            }),
+        );
+        renderHook(() => useUserSettingsSync(), { reactStrictMode });
+        const { result } = renderHook(
+            () =>
+                useNormalizedSettings(
+                    TIME_KEY,
+                    defaultTimeSettings,
+                    normalizeTimeSettings,
+                    isSameTimeSettings,
+                ),
+            { reactStrictMode },
+        );
+        const remoteTime = {
+            sente: { mainMs: 600_000, byoyomiMs: 60_000, enabled: true },
+            gote: { mainMs: 600_000, byoyomiMs: 60_000, enabled: true },
+        };
+        expect(readLocal(TIME_KEY)).toEqual(defaultTimeSettings);
+        const activeRequest = requests.length - 1;
+        await reply(activeRequest, {
+            documents: [remote(remoteTime, 7, "match.time-settings")],
+        });
+        expect(readLocal(TIME_KEY)).toEqual(remoteTime);
+        expect(result.current[0]).toEqual(remoteTime);
+        expect(requests).toHaveLength(activeRequest + 1);
+    });
+
+    it.each([
+        false,
+        true,
+    ])("旧形式の正規化後も初期 GET 中の利用者編集を保存する（StrictMode: %s）", async (reactStrictMode) => {
+        localStorage.setItem(
+            TIME_KEY,
+            JSON.stringify({
+                sente: { mainMs: 300, byoyomiMs: 30, enabled: true },
+                gote: { mainMs: 300, byoyomiMs: 30, enabled: true },
+            }),
+        );
+        renderHook(() => useUserSettingsSync(), { reactStrictMode });
+        const { result } = renderHook(
+            () =>
+                useNormalizedSettings(
+                    TIME_KEY,
+                    defaultTimeSettings,
+                    normalizeTimeSettings,
+                    isSameTimeSettings,
+                ),
+            { reactStrictMode },
+        );
+        const editedTime = {
+            ...defaultTimeSettings,
+            sente: { mainMs: 900_000, byoyomiMs: 30_000, enabled: true },
+        };
+        act(() => result.current[1](editedTime));
+        const activeRequest = requests.length - 1;
+        await reply(activeRequest, {
+            documents: [remote(defaultTimeSettings, 7, "match.time-settings")],
+        });
+        expectPut(activeRequest + 1, editedTime, 7);
+        expect(readLocal(TIME_KEY)).toEqual(editedTime);
+        expect(result.current[0]).toEqual(editedTime);
+    });
+
+    it.each([
+        false,
+        true,
+    ])("正規化effectと同時の利用者編集を古い値で戻さない（StrictMode: %s）", async (reactStrictMode) => {
+        localStorage.setItem(
+            TIME_KEY,
+            JSON.stringify({
+                sente: { mainMs: 300, byoyomiMs: 30, enabled: true },
+                gote: { mainMs: 300, byoyomiMs: 30, enabled: true },
+            }),
+        );
+        const editedTime = {
+            ...defaultTimeSettings,
+            sente: { mainMs: 900_000, byoyomiMs: 30_000, enabled: true },
+        };
+        renderHook(() => useUserSettingsSync(), { reactStrictMode });
+        const { result } = renderHook(
+            () => {
+                const [settings, setSettings] = useNormalizedSettings(
+                    TIME_KEY,
+                    defaultTimeSettings,
+                    normalizeTimeSettings,
+                    isSameTimeSettings,
+                );
+                useLayoutEffect(() => setSettings(editedTime), [setSettings]);
+                return settings;
+            },
+            { reactStrictMode },
+        );
+        const activeRequest = requests.length - 1;
+        await reply(activeRequest, {
+            documents: [remote(defaultTimeSettings, 7, "match.time-settings")],
+        });
+        expectPut(activeRequest + 1, editedTime, 7);
+        expect(readLocal(TIME_KEY)).toEqual(editedTime);
+        expect(result.current).toEqual(editedTime);
+    });
+
+    it("取得後の自動補正は画面へ反映し、次の利用者編集で同期する", async () => {
+        renderHook(() => useUserSettingsSync());
+        const first = renderHook(() => useLocalStorage(TIME_KEY, defaultTimeSettings));
+        const second = renderHook(() => useLocalStorage(TIME_KEY, defaultTimeSettings));
+        await reply(0, {
+            documents: [remote(defaultTimeSettings, 7, "match.time-settings")],
+        });
+        const alignedTime = {
+            ...defaultTimeSettings,
+            sente: { ...defaultTimeSettings.sente, enabled: false },
+        };
+        act(() => first.result.current[1](alignedTime, "automatic"));
+        expect(second.result.current[0]).toEqual(alignedTime);
+        expect(requests).toHaveLength(1);
+        const editedTime = {
+            ...alignedTime,
+            gote: { ...defaultTimeSettings.gote, mainMs: 900_000 },
+        };
+        act(() => first.result.current[1](editedTime));
+        expectPut(1, editedTime, 7);
     });
 
     it.each([
