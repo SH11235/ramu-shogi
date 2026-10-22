@@ -288,9 +288,8 @@ const FLIP_SIZE_CLASS = {
 } as const;
 
 /**
- * 盤の横の操作（盤の向きと着手音）。自分 対 AI では盤の向きが手番から決まる（自分が後手なら
- * 自動で反転する）ので反転のボタンを置かず、犬（着手音）だけを見せる。人 対 人・AI 対 AI と
- * 局面の編集では、向きを手で変えたい場面があるので置く。
+ * 盤の横の操作（盤の向きと着手音）。どの対局の組み合わせでも同じ 2 つを同じ大きさで置く
+ * （組み合わせや段階でボタンが出たり消えたりすると、どこへ行ったか分からなくなる）。
  */
 export function PlayBoardTools({
     className,
@@ -299,45 +298,40 @@ export function PlayBoardTools({
     className?: string;
     size?: "md" | "lg";
 }): ReactElement {
-    const { flipBoard, onFlipBoardChange, sides } = useMatchState();
-    const { play } = useShogiMatchConfig();
-    const vsAi = (sides.sente.role === "human") !== (sides.gote.role === "human");
-    const showFlip = !vsAi || play?.phase === "editing";
+    const { flipBoard, onFlipBoardChange } = useMatchState();
     const flipSize = FLIP_SIZE_CLASS[size];
     return (
         <div className={cn("flex shrink-0 items-center gap-1", className)}>
-            {showFlip && (
-                <button
-                    type="button"
-                    onClick={() => onFlipBoardChange(!flipBoard)}
-                    aria-pressed={flipBoard}
-                    aria-label="盤面を反転"
-                    title="盤面を反転"
-                    className={cn(
-                        "flex shrink-0 items-center justify-center rounded-md border border-wafuu-border text-wafuu-sumi transition-colors hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        flipSize.button,
-                        flipBoard ? "bg-wafuu-kin/20" : "bg-card",
-                    )}
+            <button
+                type="button"
+                onClick={() => onFlipBoardChange(!flipBoard)}
+                aria-pressed={flipBoard}
+                aria-label="盤面を反転"
+                title="盤面を反転"
+                className={cn(
+                    "flex shrink-0 items-center justify-center rounded-md border border-wafuu-border text-wafuu-sumi transition-colors hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    flipSize.button,
+                    flipBoard ? "bg-wafuu-kin/20" : "bg-card",
+                )}
+            >
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width={flipSize.icon}
+                    height={flipSize.icon}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.75"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
                 >
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width={flipSize.icon}
-                        height={flipSize.icon}
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.75"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                    >
-                        <path d="M7 4v16" />
-                        <path d="m3 8 4-4 4 4" />
-                        <path d="M17 20V4" />
-                        <path d="m21 16-4 4-4-4" />
-                    </svg>
-                </button>
-            )}
+                    <path d="M7 4v16" />
+                    <path d="m3 8 4-4 4 4" />
+                    <path d="M17 20V4" />
+                    <path d="m21 16-4 4-4-4" />
+                </svg>
+            </button>
             <SoundToggle size={size} />
         </div>
     );
