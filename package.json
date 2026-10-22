@@ -15,6 +15,7 @@
         "test": "turbo test -- --run",
         "test:watch": "turbo test",
         "test:unit": "turbo test:unit",
+        "test:release": "node --test scripts/validate-desktop-release.test.ts",
         "lint": "turbo lint",
         "lint:fix": "turbo lint:fix",
         "lint:fix:unsafe": "turbo lint:fix:unsafe",
@@ -53,6 +54,7 @@
         "husky": "^9.1.7",
         "knip": "^5.73.4",
         "lint-staged": "^16.2.7",
+        "smol-toml": "1.5.2",
         "turbo": "^2.6.3",
         "typescript": "~5.9.3"
     },
