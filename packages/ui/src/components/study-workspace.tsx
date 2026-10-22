@@ -430,7 +430,9 @@ export function StudyWorkspaceView({
     // 768〜1023px（タブレットの縦持ち）: 盤を小さくして 2 列にする。
     const isTablet = useMediaQuery("(min-width: 768px) and (max-width: 1023px)");
     // 3 列で並ぶ幅。表題の行に余裕があるので、保存の状態なども同じ行に入れる（縦を取らない）。
-    const isWide = useMediaQuery("(min-width: 1280px)");
+    // Tailwind の xl（80rem）と同じ単位で判定する（px だと、ブラウザの文字の大きさを変えたときに
+    // 棋譜の欄を置く列が CSS のグリッドと食い違う）。
+    const isWide = useMediaQuery("(min-width: 80rem)");
     const [storedDisplaySettings] = useLocalStorage<DisplaySettings>(
         DISPLAY_SETTINGS_KEY,
         DEFAULT_DISPLAY_SETTINGS,
@@ -1275,12 +1277,15 @@ export function StudyWorkspaceView({
             hideHeading={isMobile}
             hideStartButton={showsFixedStart}
             // 主役なので、PC では画面の高さに合わせて伸ばす（下に候補手の欄が見える分は残す）。
-            // 幅広の画面では上限を列の側で決め、溢れる分はこの欄が縮む。
+            // 幅広の画面では上限を列の側で決め、溢れる分はこの欄が縮む。縮んでも 4 件ほどは見せる
+            // （件数が少ないときに下限を付けると、欄の中が空いて見えるので付けない）。
             className={
                 isMobile
                     ? "max-h-[70vh]"
                     : isWide
-                      ? undefined
+                      ? highlights.length > 3
+                          ? "min-h-[12rem]"
+                          : undefined
                       : "max-h-[max(17rem,calc(100dvh-24rem))]"
             }
         />
@@ -1640,10 +1645,20 @@ export function StudyWorkspaceView({
                                 />
                                 {navBar}
                             </div>
-                            {/* 右の列は画面の高さに収め、溢れる分は注目局面の一覧を縮めて各欄の中で送る。 */}
-                            <div className="flex min-w-0 flex-col gap-3 lg:max-h-[calc(100dvh-10rem)] lg:overflow-y-auto xl:max-h-[calc(100dvh-9rem)] xl:overflow-visible">
+                            {/* 右の列は画面の高さに収める。xl では注目局面の一覧を縮めて収め、それでも溢れる分
+                                （lg では棋譜の欄も入るので常に）は列の中で送る。送る列の端で欄の影やフォーカスの
+                                枠が切れないよう、内側に余白を取って外側の余白で打ち消す。 */}
+                            <div className="-m-1 flex min-w-0 flex-col gap-3 p-1 lg:max-h-[calc(100dvh-10rem+0.5rem)] lg:overflow-y-auto xl:max-h-[calc(100dvh-9rem+0.5rem)]">
                                 <div className="shrink-0">{graphWithComment}</div>
-                                {highlightsPanel}
+                                <div
+                                    className={cn(
+                                        "flex min-h-0 shrink-0 flex-col",
+                                        // 縮めてよいのは、一覧の中で送れるだけの件数があるときだけ。
+                                        highlights.length > 3 && "xl:shrink",
+                                    )}
+                                >
+                                    {highlightsPanel}
+                                </div>
                                 <div className="shrink-0">{candidatesPanel}</div>
                                 {!isWide && <div className="shrink-0">{moveList}</div>}
                             </div>
