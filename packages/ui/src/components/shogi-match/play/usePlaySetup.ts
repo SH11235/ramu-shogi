@@ -451,14 +451,13 @@ export function usePlaySetup(): PlaySetup {
         chooseLevel,
         chooseAiTime: (choice) => applyClock(aiSide, choice),
         chooseMyTime: (choice) => {
-            // AI の時間を「自分と同じ」にしてあれば、自分の時間を変えたときに AI もそろえる。
-            // AI の選択肢そのものの時間（1手30秒など）は、たまたま同じでも動かさない。
+            // AI の時間が自分と同じ（選択欄に「自分と同じ」と出ている）なら、自分の時間を変えたときに AI もそろえる。
+            // 無制限は AI に当てられないので、そのときは AI を動かさない。
             const followsMine =
                 kind === "vs-ai" &&
                 choice.enabled &&
                 myClock.enabled &&
-                isSameClock(aiClock, myClock) &&
-                !AI_TIME_CHOICES.some((item) => matchesChoice(aiClock, item));
+                isSameClock(aiClock, myClock);
             if (!followsMine) {
                 applyClock(mySide, choice);
                 return;

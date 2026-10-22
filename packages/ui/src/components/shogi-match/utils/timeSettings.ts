@@ -48,11 +48,12 @@ export function normalizeTimeSettings(
         return {
             mainMs: normalizeTimeValueMs(value.mainMs, fallback.mainMs),
             byoyomiMs: normalizeTimeValueMs(value.byoyomiMs, fallback.byoyomiMs),
-            // 加算の無かった版で保存した設定には項目が無い（加算なしとして読む）。
+            // 加算は最初から ms で保存するので、秒で保存した古い値の読み替えはしない。
+            // 項目が無い保存値（加算を持つ前の設定）は加算なしとして読む。
             incrementMs:
-                value.incrementMs === undefined
-                    ? 0
-                    : normalizeTimeValueMs(value.incrementMs, fallback.incrementMs),
+                Number.isFinite(value.incrementMs) && value.incrementMs >= 0
+                    ? Math.trunc(value.incrementMs)
+                    : 0,
             enabled: value.enabled ?? fallback.enabled,
         };
     };

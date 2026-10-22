@@ -19,6 +19,16 @@ describe("normalizeTimeSettings", () => {
         expect(result.sente.mainMs).toBe(600_000);
     });
 
+    it("加算は秒への読み替えをせず、読めない値は加算なしにする", () => {
+        const saved = {
+            sente: { mainMs: 60_000, byoyomiMs: 0, incrementMs: 500, enabled: true },
+            gote: { mainMs: 60_000, byoyomiMs: 0, incrementMs: null, enabled: true },
+        } as unknown as ClockSettings;
+        const result = normalizeTimeSettings(saved, DEFAULTS);
+        expect(result.sente.incrementMs).toBe(500);
+        expect(result.gote.incrementMs).toBe(0);
+    });
+
     it("加算を保存した値はそのまま読む", () => {
         const saved: ClockSettings = {
             sente: { mainMs: 60_000, byoyomiMs: 0, incrementMs: 1_000, enabled: true },

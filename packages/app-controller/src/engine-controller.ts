@@ -1010,13 +1010,18 @@ export function createEngineController(
 
             const effectiveByoyomiMs = Math.max(100, remainingByoyomiMs);
             const hasMainTime = clocks.sente.mainMs > 0 || clocks.gote.mainMs > 0;
-            const btimeMs = side === "sente" ? remainingMainMs : clocks.sente.mainMs;
-            const wtimeMs = side === "gote" ? remainingMainMs : clocks.gote.mainMs;
+            const ownIncrementMs = clockState.incrementMs ?? 0;
+            // エンジン（YaneuraOu 系の時間管理）は「残り時間 + 加算」まで考えてよいと読むが、この時計は
+            // 加算を指し終えてから足す。残り時間から加算を引いて渡さないと、終盤に送った時間を超えて考え、
+            // 時間切れになる。
+            const ownTimeMs = Math.max(0, remainingMainMs - ownIncrementMs);
+            const btimeMs = side === "sente" ? ownTimeMs : clocks.sente.mainMs;
+            const wtimeMs = side === "gote" ? ownTimeMs : clocks.gote.mainMs;
             const bincMs = clocks.sente.incrementMs ?? 0;
             const wincMs = clocks.gote.incrementMs ?? 0;
-            // 加算の対局で秒読みが無い側に最低 100ms の秒読みを渡すと、エンジンは持ち時間を使い切っても
-            // 秒読みがあると見て指し遅れ、時間切れになる。
-            const sendByoyomi = (clockState.incrementMs ?? 0) === 0 || clockState.byoyomiMs > 0;
+            // 秒読みの下限 100ms が要るのは、持ち時間の無い「1 手◯秒」だけ。切れ負けや加算の側に渡すと、
+            // エンジンは持ち時間を使い切っても秒読みがあると見て指し遅れ、時間切れになる。
+            const sendByoyomi = clockState.byoyomiMs > 0 || clockState.mainMs === 0;
 
             liveSearchStats[side] = {};
             liveThinkLimitMs[side] = sendByoyomi ? effectiveByoyomiMs : undefined;
@@ -1025,7 +1030,8 @@ export function createEngineController(
                 limits: {
                     ...(sendByoyomi ? { byoyomiMs: effectiveByoyomiMs } : {}),
                     ...(hasMainTime ? { btimeMs, wtimeMs } : {}),
-                    ...(bincMs > 0 || wincMs > 0 ? { bincMs, wincMs } : {}),
+                    // 秒読みで指す側には加算を渡さない（秒読みと加算を同時に受けると戸惑う外部エンジンがある）。
+                    ...(ownIncrementMs > 0 ? { bincMs, wincMs } : {}),
                 },
                 ponder: false,
             });

@@ -452,10 +452,51 @@ describe("createEngineController", () => {
         await controller.command.startTurn("sente");
         await flushPromises();
 
+        // 手番側は、残り 59.5 秒から自分の加算 1 秒を引いた時間を渡す（加算は指し終えてから足すため）。
         expect(mockClient.search).toHaveBeenCalledWith({
-            limits: { btimeMs: 59_500, wtimeMs: 50_000, bincMs: 1_000, wincMs: 2_000 },
+            limits: { btimeMs: 58_500, wtimeMs: 50_000, bincMs: 1_000, wincMs: 2_000 },
             ponder: false,
         });
+    });
+
+    it.each([
+        {
+            name: "切れ負けの側には秒読みを渡さない",
+            sente: { mainMs: 30_000, byoyomiMs: 0, incrementMs: 0 },
+            gote: { mainMs: 30_000, byoyomiMs: 0, incrementMs: 0 },
+            limits: { btimeMs: 29_500, wtimeMs: 30_000 },
+        },
+        {
+            name: "秒読みで指す側には、相手の加算を渡さない",
+            sente: { mainMs: 0, byoyomiMs: 3_000, incrementMs: 0 },
+            gote: { mainMs: 180_000, byoyomiMs: 0, incrementMs: 2_000 },
+            limits: { byoyomiMs: 2_500, btimeMs: 0, wtimeMs: 180_000 },
+        },
+        {
+            name: "加算で指す側の残りが加算より少なければ 0 を渡す",
+            sente: { mainMs: 1_000, byoyomiMs: 0, incrementMs: 2_000 },
+            gote: { mainMs: 90_000, byoyomiMs: 0, incrementMs: 2_000 },
+            limits: { btimeMs: 0, wtimeMs: 90_000, bincMs: 2_000, wincMs: 2_000 },
+        },
+    ])("$name", async ({ sente, gote, limits }) => {
+        const mockClient = createMockEngineClient();
+        const controller = createEngineController({
+            createClient: () => mockClient.client,
+            getClockState: () => ({ sente, gote, lastUpdatedAt: 1_000, ticking: "sente" }),
+            now: () => 1_500,
+            resolveNnue: async () => null,
+            callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
+        });
+        controller.command.syncContext({
+            sides: { sente: { role: "engine", engineId: "engine1" }, gote: { role: "human" } },
+            position: { startSfen: "startpos", moves: [], turn: "sente", ready: true },
+            matchRunning: true,
+        });
+
+        await controller.command.startTurn("sente");
+        await flushPromises();
+
+        expect(mockClient.search).toHaveBeenCalledWith({ limits, ponder: false });
     });
 
     it("bestmove の通常手でコールバックを呼ぶ", async () => {

@@ -168,6 +168,36 @@ describe("useClockManager", () => {
             });
             expect(result.current.clocks.gote.mainMs).toBe(60_000);
             expect(result.current.clocks.sente.incrementMs).toBe(2_000);
+
+            // 待ったで取り消した手の加算は返す
+            act(() => {
+                result.current.updateClocksForNextTurn("sente", { undone: { sente: 1 } });
+            });
+            expect(result.current.clocks.sente.mainMs).toBe(60_000);
+        });
+
+        it("手番を移した直後に止めても、移した手番と加算が残る", () => {
+            const timeSettings: ClockSettings = {
+                sente: { mainMs: 60_000, byoyomiMs: 0, incrementMs: 2_000, enabled: true },
+                gote: { mainMs: 60_000, byoyomiMs: 0, incrementMs: 2_000, enabled: true },
+            };
+
+            const { result } = renderHook(() =>
+                useClockManager({
+                    timeSettings,
+                    isMatchRunning: true,
+                    onTimeExpired,
+                    matchEndedRef,
+                }),
+            );
+
+            act(() => {
+                result.current.updateClocksForNextTurn("gote", { moved: true });
+                result.current.stopTicking();
+            });
+            expect(result.current.clocks.sente.mainMs).toBe(62_000);
+            expect(result.current.clocks.ticking).toBeNull();
+            expect(result.current.clocksRef.current.sente.mainMs).toBe(62_000);
         });
 
         it("stopTicking が時計を停止する", () => {

@@ -186,9 +186,10 @@ function AiTimeSelect({
     disabled?: boolean;
     className?: string;
 }): ReactElement {
-    const matched = choices.find((choice) => choice.enabled && isSameClock(clock, choice));
+    // 自分と同じ時間なら、選択肢の 1 つと同じ時間でも「自分と同じ」と見せる（自分の時間を変えると付いてくる）。
     const isSame = sameAsMine !== null && isSameClock(clock, sameAsMine);
-    const value = matched?.id ?? (isSame ? SAME_AS_MINE_ID : CURRENT_TIME_ID);
+    const matched = choices.find((choice) => choice.enabled && isSameClock(clock, choice));
+    const value = isSame ? SAME_AS_MINE_ID : (matched?.id ?? CURRENT_TIME_ID);
     return (
         <NativeSelect
             id={id}
@@ -218,7 +219,9 @@ function AiTimeSelect({
             ))}
             {sameAsMine && <option value={SAME_AS_MINE_ID}>自分と同じ</option>}
             {value === CURRENT_TIME_ID && (
-                <option value={CURRENT_TIME_ID}>{formatTimeRule(clock, { perMove: true })}</option>
+                <option value={CURRENT_TIME_ID}>
+                    {clock.enabled ? formatTimeRule(clock, { perMove: true }) : "時間無制限"}
+                </option>
             )}
             <option value={CUSTOM_TIME_ID}>指定…</option>
         </NativeSelect>

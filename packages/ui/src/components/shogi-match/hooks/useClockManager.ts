@@ -28,6 +28,14 @@ interface ClockState {
     incrementMs: number;
 }
 
+/** 手番を移すときの加算の扱い */
+export interface ClockTurnOptions {
+    /** 指し終えて手番が移った。指した側の持ち時間に加算を足す */
+    moved?: boolean;
+    /** 「待った」で取り消した、それぞれの側の手の数。その手で得た加算を持ち時間から引く */
+    undone?: Partial<Record<Player, number>>;
+}
+
 /**
  * 全体の時計状態（両プレイヤー + 現在刻んでいる側）
  */
@@ -64,11 +72,8 @@ interface UseClockManagerReturn {
     clocksRef: { readonly current: TickState };
     /** 時計をリセットする */
     resetClocks: (startTick: boolean) => void;
-    /**
-     * 次の手番に時計を更新する（秒読み時間をリセット）。`moved` は指し終えて手番が移ったときに付け、
-     * 指した側の持ち時間に加算を足す（「待った」で手番を戻すときは足さない）。
-     */
-    updateClocksForNextTurn: (nextTurn: Player, options?: { moved?: boolean }) => void;
+    /** 次の手番に時計を更新する（秒読み時間をリセット） */
+    updateClocksForNextTurn: (nextTurn: Player, options?: ClockTurnOptions) => void;
     /** 時計を停止する */
     stopTicking: () => void;
     /** 時計を開始する */
@@ -142,8 +147,14 @@ export function useClockManager({
     /**
      * 時計をリセットする
      */
+    // 時計の状態は ref と state を同時に書く（200ms ごとの更新が ref から次の状態を作るため）。
+    const writeClocks = (next: TickState) => {
+        clocksRef.current = next;
+        setClocks(next);
+    };
+
     const resetClocks = (startTick: boolean) => {
-        setClocks({
+        writeClocks({
             sente: clockStateOf(timeSettings.sente),
             gote: clockStateOf(timeSettings.gote),
             ticking: startTick ? "sente" : null,
@@ -154,39 +165,38 @@ export function useClockManager({
     /**
      * 次の手番に時計を更新する（秒読み時間をリセット）
      */
-    const updateClocksForNextTurn = (nextTurn: Player, options?: { moved?: boolean }) => {
+    const updateClocksForNextTurn = (nextTurn: Player, options?: ClockTurnOptions) => {
         const mover: Player = nextTurn === "sente" ? "gote" : "sente";
-        setClocks((prev) => ({
+        const prev = clocksRef.current;
+        const mainAfter = (side: Player): number => {
+            const increment = prev[side].incrementMs;
+            const earned = options?.moved && side === mover ? increment : 0;
+            const revoked = (options?.undone?.[side] ?? 0) * increment;
+            return Math.max(0, prev[side].mainMs + earned - revoked);
+        };
+        const next: TickState = {
             ...prev,
-            ...(options?.moved && prev[mover].incrementMs > 0
-                ? {
-                      [mover]: {
-                          ...prev[mover],
-                          mainMs: prev[mover].mainMs + prev[mover].incrementMs,
-                      },
-                  }
-                : {}),
-            [nextTurn]: {
-                ...prev[nextTurn],
-                byoyomiMs: timeSettings[nextTurn].byoyomiMs,
-            },
+            sente: { ...prev.sente, mainMs: mainAfter("sente") },
+            gote: { ...prev.gote, mainMs: mainAfter("gote") },
             ticking: nextTurn,
             lastUpdatedAt: Date.now(),
-        }));
+        };
+        next[nextTurn] = { ...next[nextTurn], byoyomiMs: timeSettings[nextTurn].byoyomiMs };
+        writeClocks(next);
     };
 
     /**
      * 時計を停止する
      */
     const stopTicking = () => {
-        setClocks((prev) => ({ ...prev, ticking: null }));
+        writeClocks({ ...clocksRef.current, ticking: null });
     };
 
     /**
      * 時計を開始する
      */
     const startTicking = (turn: Player) => {
-        setClocks((prev) => ({ ...prev, ticking: turn, lastUpdatedAt: Date.now() }));
+        writeClocks({ ...clocksRef.current, ticking: turn, lastUpdatedAt: Date.now() });
     };
 
     // 時計の定期更新（200ms間隔）
@@ -204,10 +214,7 @@ export function useClockManager({
 
             // 時間制限が無効な場合は時計を進めない
             if (!timeSettings[side].enabled) {
-                const nextState: TickState = {
-                    ...prev,
-                    lastUpdatedAt: now,
-                };
+                const nextState: TickState = { ...prev, lastUpdatedAt: now };
                 clocksRef.current = nextState;
                 setClocks(nextState);
                 return;
@@ -229,7 +236,6 @@ export function useClockManager({
                 [side]: { ...current, mainMs: Math.max(0, mainMs), byoyomiMs },
                 lastUpdatedAt: now,
             };
-
             clocksRef.current = nextState;
             setClocks(nextState);
 

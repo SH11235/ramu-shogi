@@ -1466,6 +1466,13 @@ export function ShogiMatch({
                         : "sente"
                     : turnBeforeUndo;
 
+            // 取り消す手は、直前の手（手番でない側）から交互にさかのぼる。その手で得た加算を返させる。
+            const undone = { sente: 0, gote: 0 };
+            for (let i = 0; i < undoCount; i++) {
+                const mover = (i % 2 === 0) === (turnBeforeUndo === "sente") ? "gote" : "sente";
+                undone[mover] += 1;
+            }
+
             for (let i = 0; i < undoCount; i++) {
                 navigation.goBack();
             }
@@ -1480,7 +1487,7 @@ export function ShogiMatch({
                 // 間は時計の interval が動かないため実時間は消費されない
                 setIsMatchRunning(false);
                 setIsPaused(true);
-                updateClocksForNextTurn(turnAfterUndo);
+                updateClocksForNextTurn(turnAfterUndo, { undone });
                 setMessage({ text: "エンジンの初期化に失敗しました。", type: "error" });
                 return;
             }
@@ -1488,7 +1495,7 @@ export function ShogiMatch({
             // 待った後の思考時間計測を新しく開始
             turnStartTimeRef.current = Date.now();
             // 秒読みをリセット（計算した手番で時計を更新・開始）
-            updateClocksForNextTurn(turnAfterUndo);
+            updateClocksForNextTurn(turnAfterUndo, { undone });
         } finally {
             moveProcessingRef.current = false;
         }

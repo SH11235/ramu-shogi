@@ -11,6 +11,7 @@ import type { MutableRefObject } from "react";
 import type { Message, PromotionSelection } from "../types";
 import { buildLegalCacheKey, type LegalMoveCache } from "../utils/legalMoveCache";
 import { determinePromotion } from "../utils/promotionLogic";
+import type { ClockTurnOptions } from "./useClockManager";
 import type { UseKifuNavigationResult } from "./useKifuNavigation";
 
 type Selection = { kind: "square"; square: string } | { kind: "hand"; piece: PieceType };
@@ -53,7 +54,7 @@ interface UseMoveExecutionProps {
     /** パス権オプションを取得する */
     getPassRightsOption: () => { passRights?: { sente: number; gote: number } };
     /** 次の手番に時計を更新する */
-    updateClocksForNextTurn: (turn: Player, options?: { moved?: boolean }) => void;
+    updateClocksForNextTurn: (turn: Player, options?: ClockTurnOptions) => void;
     /** ターン開始時刻のref */
     turnStartTimeRef: MutableRefObject<number>;
     /** エンジンの手番かどうか */
