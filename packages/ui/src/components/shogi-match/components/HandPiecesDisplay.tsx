@@ -9,35 +9,40 @@ const HAND_ORDER: PieceType[] = ["R", "B", "G", "S", "N", "L", "P"];
 /** サイズ設定: compact=編集用(小), edit=編集用(中), medium=モバイル対局用, normal=PC用 */
 type HandPieceSize = "compact" | "edit" | "medium" | "normal";
 
+/** 個数の文字は盤のマスに合わせて大きくする（小さい盤でも 12px は保つ）。 */
+const CELL_BADGE_SIZE = "text-[max(12px,calc(var(--shogi-cell-size,40px)*0.26))]";
+
 const SIZE_CONFIG = {
     compact: {
         imageSize: "h-6 w-6",
-        badgeSize: "min-w-[10px] text-[8px]",
-        badgePos: "-bottom-0.5 -right-0.5",
+        badgeSize: "text-[11px]",
+        badgePos: "-top-0.5 -right-0.5",
         badgePosRotated: "-left-0.5 -top-0.5 rotate-180",
     },
     edit: {
         // 7 種の駒と ± を 1 行に並べる。盤のマスに合わせつつ、欄の幅（cqw）から 1 駒ぶんを割って上限にする
-        // （欄が狭いときに、駒の画像だけが押しつぶされないように）。
+        // （欄が狭いときに、駒の画像だけが押しつぶされないように）。狭い欄では ± を駒の下に置く。
+        // ± を横に置く広い欄では、± の幅（約 17px）も 1 駒ぶんから引く。
         imageSize:
-            "h-[min(calc(var(--shogi-cell-size,40px)*0.8),calc((100cqw-32px)/7-8px))] w-[min(calc(var(--shogi-cell-size,40px)*0.8),calc((100cqw-32px)/7-8px))] shrink-0",
-        badgeSize: "min-w-[11px] text-[9px]",
-        badgePos: "-bottom-0.5 -right-0.5",
-        badgePosRotated: "-left-0.5 -top-0.5 rotate-180",
+            "h-[min(calc(var(--shogi-cell-size,40px)*0.8),calc((100cqw-32px)/7-8px))] w-[min(calc(var(--shogi-cell-size,40px)*0.8),calc((100cqw-32px)/7-8px))] @min-[27rem]:h-[min(calc(var(--shogi-cell-size,40px)*0.8),calc((100cqw-32px)/7-25px))] @min-[27rem]:w-[min(calc(var(--shogi-cell-size,40px)*0.8),calc((100cqw-32px)/7-25px))] shrink-0",
+        // 狭い欄では駒が 25px 前後まで小さくなるので、札は小さめにして駒を隠しすぎない。
+        badgeSize: "text-[10px]",
+        badgePos: "-top-1 -right-1.5",
+        badgePosRotated: "-left-1.5 -top-1 rotate-180",
     },
     medium: {
         // 盤のマスに合わせる（マスが大きい画面で、持ち駒だけ小さく見えないように）。
         // 既定のマス 40px で、これまでと同じ 32px 相当になる。
         imageSize:
             "h-[calc(var(--shogi-cell-size,40px)*0.8)] w-[calc(var(--shogi-cell-size,40px)*0.8)]",
-        badgeSize: "min-w-[12px] text-[9px]",
-        badgePos: "-bottom-0.5 -right-0.5",
-        badgePosRotated: "-left-0.5 -top-0.5 rotate-180",
+        badgeSize: CELL_BADGE_SIZE,
+        badgePos: "-top-1 -right-1.5",
+        badgePosRotated: "-left-1.5 -top-1 rotate-180",
     },
     normal: {
         imageSize: "h-10 w-10",
-        badgeSize: "min-w-[14px] text-[11px]",
-        badgePos: "-bottom-1 -right-1",
+        badgeSize: "text-[13px]",
+        badgePos: "-top-1 -right-1",
         badgePosRotated: "-left-1 -top-1 rotate-180",
     },
 } as const;
@@ -49,12 +54,15 @@ function PieceToken({
     count,
     flipBoard = false,
     size = "normal",
+    showCount = true,
 }: {
     pieceType: PieceType;
     owner: Player;
     count: number;
     flipBoard?: boolean;
     size?: HandPieceSize;
+    /** 個数の札を出すか（1 枚・0 枚を出すかは呼び出し側が決める） */
+    showCount?: boolean;
 }): ReactElement {
     // 盤面と同じ回転ロジック: 反転時は先手が逆さ、通常時は後手が逆さ
     const shouldRotate = flipBoard ? owner === "sente" : owner === "gote";
@@ -77,17 +85,26 @@ function PieceToken({
                 )}
                 draggable={false}
             />
-            {/* 個数を添え字として表示（親が回転しても常に右下に表示） */}
-            <span
-                className={cn(
-                    "absolute text-center font-bold leading-none",
-                    config.badgeSize,
-                    shouldRotate ? config.badgePosRotated : config.badgePos,
-                    count > 0 ? "text-wafuu-sumi" : "text-muted-foreground",
-                )}
-            >
-                {count}
-            </span>
+            {/* 個数は読める大きさの丸い札にして、駒の先（細い側）の脇に置く。駒は先が細い五角形なので、
+                広い側に置くと駒の体に重なる。正立の駒は右上、逆さの駒は見た目で右下。札の数字は常に正立。 */}
+            {showCount && (
+                <span
+                    // 個数は駒ボタンの名前で読み上げる（札は見た目だけ）。
+                    aria-hidden="true"
+                    className={cn(
+                        "absolute flex h-[1.4em] min-w-[1.4em] items-center justify-center rounded-full px-[0.3em] font-bold tabular-nums shadow-sm ring-1 ring-background",
+                        config.badgeSize,
+                        // 文字の大きさの後に置く（前に置くと cn が文字の大きさとの衝突として消す）。
+                        "leading-none",
+                        shouldRotate ? config.badgePosRotated : config.badgePos,
+                        count > 0
+                            ? "bg-wafuu-sumi text-background"
+                            : "bg-muted text-muted-foreground",
+                    )}
+                >
+                    {count}
+                </span>
+            )}
         </span>
     );
 }
@@ -155,6 +172,8 @@ interface HandPiecesDisplayProps {
     isAI?: boolean;
     /** 駒を縦に並べる（盤の横に置く駒台）。compact 系のサイズで使う */
     vertical?: boolean;
+    /** 縦の駒台で、駒を上（start）と下（end）のどちらに寄せるか。`vertical` のときだけ効く */
+    verticalAlign?: "start" | "end";
 }
 
 export function HandPiecesDisplay({
@@ -173,10 +192,11 @@ export function HandPiecesDisplay({
     size = "normal",
     isAI = false,
     vertical = false,
+    verticalAlign = "start",
 }: HandPiecesDisplayProps): ReactElement | null {
     const containerConfig = CONTAINER_SIZE_CONFIG[size];
     const isCompactLayout = vertical || size === "compact" || size === "edit" || size === "medium";
-    // 局面編集の横長の駒台は、± を駒の下に置く（横に置くと 7 種が 1 行に入らず、駒が小さくなる）。
+    // 局面編集の横長の駒台は、欄が狭いときだけ ± を駒の下に置く（横に置くと 7 種が 1 行に入らず、駒が小さくなる）。
     // 縦の駒台は幅に余裕があるので、± は駒の横に置き、駒は盤のマスに合わせる。
     const isEditLayout = size === "edit" && !vertical;
     // 縦の駒台は、マスに合わせた大きさ（medium）で描く。normal の横並び用の幅確保は縦では使えない。
@@ -187,7 +207,8 @@ export function HandPiecesDisplay({
     const allPiecesEmpty = HAND_ORDER.every((p) => (hand[p] ?? 0) === 0);
 
     // compact/medium レイアウトでは全駒0なら行ごと非表示（モバイルはスペースが限られるため）
-    if (shouldHideEmptyPieces && allPiecesEmpty && isCompactLayout) {
+    // 縦の駒台は枠を固定で見せるので、空でも外さない。
+    if (shouldHideEmptyPieces && allPiecesEmpty && isCompactLayout && !vertical) {
         return null;
     }
 
@@ -196,7 +217,10 @@ export function HandPiecesDisplay({
             className={cn(
                 "rounded-md border border-border/50 bg-muted/30",
                 vertical
-                    ? "flex h-full w-full flex-col items-center gap-1 px-0.5 py-1"
+                    ? cn(
+                          "flex h-full w-full flex-col items-center gap-1 px-0.5 py-1",
+                          verticalAlign === "end" ? "justify-end" : "justify-start",
+                      )
                     : cn(
                           "flex items-center justify-start w-full px-1",
                           containerConfig.rowMinHeight,
@@ -285,7 +309,8 @@ export function HandPiecesDisplay({
                                 className={cn(
                                     "flex items-center",
                                     isEditLayout
-                                        ? "flex-col gap-0.5 py-0.5"
+                                        ? // 欄が広い（駒台が盤と同じく広い）ときは、± を駒の横に戻して駒台を低く保つ。
+                                          "flex-col gap-0.5 py-0.5 @min-[27rem]:flex-row @min-[27rem]:gap-px @min-[27rem]:py-0"
                                         : vertical
                                           ? "gap-0.5"
                                           : "gap-px",
@@ -294,6 +319,7 @@ export function HandPiecesDisplay({
                                 {/* 駒ボタン */}
                                 <button
                                     type="button"
+                                    aria-label={`${owner === "sente" ? "先手" : "後手"}の${PIECE_LABELS[piece]} ${count}枚`}
                                     onPointerDown={(e) => {
                                         if (canDrag && onPiecePointerDown) {
                                             // タッチ時のテキスト選択・長押しメニューを防止
@@ -330,6 +356,11 @@ export function HandPiecesDisplay({
                                         count={count}
                                         flipBoard={flipBoard}
                                         size={tokenSize}
+                                        // 1 枚なら数は要らない。ただし編集中や、持っていない駒も並べる画面では、
+                                        // 0 と 1 を見分けられるよう数を出す。
+                                        showCount={
+                                            isEditMode || count > 1 || !shouldHideEmptyPieces
+                                        }
                                     />
                                 </button>
 
@@ -338,9 +369,11 @@ export function HandPiecesDisplay({
                                     <div
                                         className={cn(
                                             // 編集の駒台では横に「− +」の順で並べる（減らすを左に置く）。
-                                            isEditLayout || vertical
-                                                ? "flex flex-row-reverse"
-                                                : "flex flex-col gap-px",
+                                            isEditLayout
+                                                ? "flex flex-row-reverse @min-[27rem]:flex-col @min-[27rem]:gap-px"
+                                                : vertical
+                                                  ? "flex flex-row-reverse"
+                                                  : "flex flex-col gap-px",
                                             isEditMode ? "visible" : "invisible",
                                         )}
                                     >
@@ -351,9 +384,11 @@ export function HandPiecesDisplay({
                                             aria-label={`${PIECE_LABELS[piece]}を増やす`}
                                             className={cn(
                                                 "flex items-center justify-center border border-border text-xs font-bold leading-none",
-                                                isEditLayout || vertical
-                                                    ? "rounded-r"
-                                                    : "rounded-t border-b-0",
+                                                isEditLayout
+                                                    ? "rounded-r @min-[27rem]:rounded-none @min-[27rem]:rounded-t @min-[27rem]:border-b-0"
+                                                    : vertical
+                                                      ? "rounded-r"
+                                                      : "rounded-t border-b-0",
                                                 containerConfig.adjusterButton,
                                                 count < maxCount
                                                     ? "cursor-pointer bg-wafuu-washi text-wafuu-sumi opacity-100"
@@ -369,9 +404,11 @@ export function HandPiecesDisplay({
                                             aria-label={`${PIECE_LABELS[piece]}を減らす`}
                                             className={cn(
                                                 "flex items-center justify-center border border-border text-xs font-bold leading-none",
-                                                isEditLayout || vertical
-                                                    ? "rounded-l border-r-0"
-                                                    : "rounded-b",
+                                                isEditLayout
+                                                    ? "rounded-l border-r-0 @min-[27rem]:rounded-none @min-[27rem]:rounded-b @min-[27rem]:border-r"
+                                                    : vertical
+                                                      ? "rounded-l border-r-0"
+                                                      : "rounded-b",
                                                 containerConfig.adjusterButton,
                                                 count > 0
                                                     ? "cursor-pointer bg-wafuu-washi text-wafuu-sumi opacity-100"

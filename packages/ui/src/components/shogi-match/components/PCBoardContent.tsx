@@ -111,7 +111,8 @@ export function PCBoardContent({
     handPlacement = "rows",
 }: PCBoardContentProps): ReactElement {
     const sides = handPlacement === "sides";
-    // 縦の駒台は、空のときも同じ幅を取る（駒を取ったときに盤が横に動かないように）。
+    // 縦の駒台は盤と同じ高さの枠に固定する（駒の数で枠が伸び縮みしないように）。上側の駒は上に、
+    // 下側の駒は下に（それぞれ持ち主の近くに）寄せる。幅も空のときから同じだけ取る（盤が横に動かないように）。
     // 駒（マスの 0.8 倍）に、駒の枠と欄の余白・枠線でおよそ 20px。編集中は ± の 2 つ（16px × 2）を足して 52px。
     const sideZoneClass = isEditModeActive
         ? "w-[calc(var(--shogi-cell-size,40px)*0.8+52px)]"
@@ -119,7 +120,7 @@ export function PCBoardContent({
     const topHandBlock = (
         <div
             data-zone={`hand-${topHand.owner}`}
-            className={sides ? cn("shrink-0 self-start", sideZoneClass) : "w-full"}
+            className={sides ? cn("shrink-0 self-stretch", sideZoneClass) : "w-full"}
         >
             <HandPiecesDisplay
                 owner={topHand.owner}
@@ -141,6 +142,7 @@ export function PCBoardContent({
                 size={isEditModeActive ? "edit" : handSize}
                 isAI={topHand.isAI}
                 vertical={sides}
+                verticalAlign="start"
             />
             {/* パス権表示（上側プレイヤー） */}
             {passRightsSettings?.enabled &&
@@ -201,7 +203,7 @@ export function PCBoardContent({
     const bottomHandBlock = (
         <div
             data-zone={`hand-${bottomHand.owner}`}
-            className={sides ? cn("shrink-0 self-end", sideZoneClass) : "w-full"}
+            className={sides ? cn("shrink-0 self-stretch", sideZoneClass) : "w-full"}
         >
             <HandPiecesDisplay
                 owner={bottomHand.owner}
@@ -227,6 +229,7 @@ export function PCBoardContent({
                 size={isEditModeActive ? "edit" : handSize}
                 isAI={bottomHand.isAI}
                 vertical={sides}
+                verticalAlign="end"
             />
             {/* パス権表示（下側プレイヤー） */}
             {passRightsSettings?.enabled &&
@@ -251,13 +254,14 @@ export function PCBoardContent({
 
     if (sides) {
         return (
-            <div className="flex items-stretch gap-2">
-                {topHandBlock}
-                <div className="flex flex-col items-center gap-1">
+            // 駒台の高さは盤だけに合わせる（盤の下の注記が出ても、駒台が伸び縮みしないように注記は行の外に置く）。
+            <div className="flex flex-col items-center gap-1">
+                <div className="flex items-stretch gap-2">
+                    {topHandBlock}
                     {board}
-                    {note}
+                    {bottomHandBlock}
                 </div>
-                {bottomHandBlock}
+                {note}
             </div>
         );
     }
