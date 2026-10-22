@@ -112,7 +112,7 @@ export function PlayMoveList({
                     );
                     const rowClass = cn(
                         rowGrid,
-                        "min-h-7 w-full rounded px-1 text-left text-sm",
+                        "min-h-7 w-full content-center rounded px-1 text-left text-sm",
                         isCurrent
                             ? "bg-wafuu-kin/25 font-semibold text-wafuu-sumi"
                             : "text-wafuu-sumi",

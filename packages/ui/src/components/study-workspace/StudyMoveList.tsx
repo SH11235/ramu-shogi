@@ -194,7 +194,7 @@ export function StudyMoveList({
                                 aria-current={isCurrent ? "true" : undefined}
                                 className={cn(
                                     rowGrid,
-                                    "min-h-10 w-full rounded-md border border-transparent px-2 py-1 text-left text-sm transition-colors md:min-h-0 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                    "min-h-10 w-full content-center rounded-md border border-transparent px-2 py-1 text-left text-sm transition-colors md:min-h-0 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                     isCurrent && "border-wafuu-border bg-wafuu-kin/20",
                                 )}
                             >
