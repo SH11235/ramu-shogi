@@ -423,7 +423,7 @@ export default function RoomPage(): ReactElement {
     const analysis = useOnlineAnalysis(
         aiSupport?.searchDepth ?? null,
         aiSupport?.searchTimeMs ?? null,
-        roomInfo.settings.passRights?.initialCount ?? 1,
+        roomInfo.settings.passRights,
     );
     const inviteUrl =
         typeof window !== "undefined" ? `${window.location.origin}/online/${roomId}` : "";
