@@ -61,7 +61,7 @@
         "knip": "^5.88.1",
         "lint-staged": "^16.4.0",
         "openapi-typescript": "7.13.0",
-        "smol-toml": "1.5.2",
+        "smol-toml": "1.9.1",
         "turbo": "^2.11.10",
         "typescript": "~5.9.3"
     },
