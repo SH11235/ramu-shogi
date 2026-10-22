@@ -157,7 +157,8 @@ for (const [path, settled] of [
     ["/online/create", "部屋を作成する"],
     ["/book-viewer", "定跡ファイルを選ぶ"],
     ["/studies", "研究ノートにする"],
-    ["/privacy", "9. ポリシーの変更"],
+    // 節の番号は改訂で変わるので、見出しの言葉だけで待つ。
+    ["/privacy", /^\d+\. ポリシーの変更$/],
 ] as const) {
     test(`320px 幅で横にはみ出さない ${path}`, async ({ page }) => {
         await page.setViewportSize({ width: 320, height: 568 });

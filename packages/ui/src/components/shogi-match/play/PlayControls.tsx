@@ -282,41 +282,20 @@ export function PlayMatchActions({
     );
 }
 
-/** 盤の向きと音（盤の表示の操作）。線のアイコンで、ほかの操作より控えめに置く。 */
-export function PlayBoardTools({ className }: { className?: string }): ReactElement {
-    const { flipBoard, onFlipBoardChange } = useMatchState();
+/**
+ * 盤の横に置く着手音の切り替え。盤の向きは手番から決まる（自分が後手なら自動で反転する）ので、
+ * 対局画面には反転のボタンを置かない。
+ */
+export function PlayBoardTools({
+    className,
+    size = "md",
+}: {
+    className?: string;
+    size?: "md" | "lg";
+}): ReactElement {
     return (
         <div className={cn("flex shrink-0 items-center gap-1", className)}>
-            <button
-                type="button"
-                onClick={() => onFlipBoardChange(!flipBoard)}
-                aria-pressed={flipBoard}
-                aria-label="盤面を反転"
-                title="盤面を反転"
-                className={cn(
-                    "flex h-9 w-9 items-center justify-center rounded-md border border-wafuu-border text-wafuu-sumi transition-colors hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    flipBoard ? "bg-wafuu-kin/20" : "bg-background",
-                )}
-            >
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.75"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                >
-                    <path d="M7 4v16" />
-                    <path d="m3 8 4-4 4 4" />
-                    <path d="M17 20V4" />
-                    <path d="m21 16-4 4-4-4" />
-                </svg>
-            </button>
-            <SoundToggle />
+            <SoundToggle size={size} />
         </div>
     );
 }

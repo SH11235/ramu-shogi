@@ -134,7 +134,7 @@ export function PlayPlayerBar({ position, className }: PlayPlayerBarProps): Reac
                 className,
             )}
         >
-            <PlayerIcon side={owner} isAI={isAI} size="md" />
+            <PlayerIcon side={owner} isAI={isAI} size="bar" />
             <span className="min-w-0 truncate text-sm font-semibold text-wafuu-sumi">
                 {bothHumans ? sideLabel : (play?.playerNames[owner] ?? sideLabel)}
             </span>

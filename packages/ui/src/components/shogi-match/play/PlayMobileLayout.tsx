@@ -161,10 +161,11 @@ export function PlayMobileLayout({
                             対局中
                         </h1>
                     )}
-                    {/* 相手の帯と、盤の向き・音。対局中は棋譜の帯を出さない（直前の手は盤に示す。
+                    {/* 相手の帯と、着手音の切り替え。対局中は棋譜の帯を出さない（直前の手は盤に示す。
                         縦を詰めて、盤と操作を 1 画面に収める）。 */}
-                    <div className="flex items-center gap-1">
-                        {/* 終局後は、相手の帯の場所に結果を出す（最初に目が行く所。高さは同じで盤は動かない）。 */}
+                    {/* 高さは帯（アイコン 32px）に合わせて固定し、結果の行に替わっても盤を動かさない。 */}
+                    <div className="flex min-h-10 items-center gap-1">
+                        {/* 終局後は、相手の帯の場所に結果を出す（最初に目が行く所）。 */}
                         {phase === "finished" ? (
                             <PlayResultHeadline className="min-w-0 flex-1 px-1" />
                         ) : (

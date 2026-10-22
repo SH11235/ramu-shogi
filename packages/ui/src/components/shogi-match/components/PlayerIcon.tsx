@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "../../dialog";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 
-type IconSize = "xs" | "sm" | "md" | "lg" | "xl";
+type IconSize = "xs" | "sm" | "md" | "lg" | "xl" | "bar";
 
 const SIZE_CONFIG: Record<IconSize, { icon: string; text: string; container: string }> = {
     xs: { icon: "w-4 h-4", text: "text-sm", container: "w-4 h-4" },
@@ -13,6 +13,12 @@ const SIZE_CONFIG: Record<IconSize, { icon: string; text: string; container: str
     md: { icon: "w-6 h-6", text: "text-lg", container: "w-6 h-6" },
     lg: { icon: "w-8 h-8", text: "text-xl", container: "w-8 h-8" },
     xl: { icon: "w-10 h-10", text: "text-2xl", container: "w-10 h-10" },
+    // 対局者の帯。ラム・ココはこのアプリの顔なので見分けられる大きさにする（スマホは盤を優先して一回り小さく）。
+    bar: {
+        icon: "w-8 h-8 md:w-10 md:h-10",
+        text: "text-xl md:text-2xl",
+        container: "w-8 h-8 md:w-10 md:h-10",
+    },
 };
 
 interface PlayerIconProps {
