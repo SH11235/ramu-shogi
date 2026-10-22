@@ -1267,9 +1267,16 @@ export function ShogiMatch({
             timeSettings,
             isMatchRunning,
             onTimeExpired: async (side) => {
-                // 対局画面では、AI の「考慮時間」は考える長さの目安で、切れても負けにしない
+                // 対局画面では、AI の「1 手◯秒」は考える長さの目安で、切れても負けにしない
                 // （端末が重いと、AI が制限ぎりぎりまで考えて時計だけ先に 0 になることがある）。
-                if (isPlayScreen && sides[side].role === "engine") return;
+                // 持ち時間のある決まり（秒読み・加算・切れ負け）は時計どおりに負けにする。
+                if (
+                    isPlayScreen &&
+                    sides[side].role === "engine" &&
+                    timeSettings[side].mainMs === 0
+                ) {
+                    return;
+                }
                 const winner: Player = side === "sente" ? "gote" : "sente";
                 const result: GameResult = {
                     winner,

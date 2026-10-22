@@ -176,6 +176,44 @@ describe("useClockManager", () => {
             expect(result.current.clocks.sente.mainMs).toBe(60_000);
         });
 
+        it("指すまでの端数時間を引いてから加算し、加算前に切れていれば時間切れにする", () => {
+            const timeSettings: ClockSettings = {
+                sente: { mainMs: 60_000, byoyomiMs: 0, incrementMs: 1_000, enabled: true },
+                gote: { mainMs: 100, byoyomiMs: 0, incrementMs: 1_000, enabled: true },
+            };
+
+            const { result } = renderHook(() =>
+                useClockManager({
+                    timeSettings,
+                    isMatchRunning: true,
+                    onTimeExpired,
+                    matchEndedRef,
+                }),
+            );
+
+            act(() => {
+                result.current.startTicking("sente");
+            });
+            act(() => {
+                vi.advanceTimersByTime(150);
+            });
+            act(() => {
+                result.current.updateClocksForNextTurn("gote", { moved: true });
+            });
+            expect(result.current.clocks.sente.mainMs).toBe(60_850);
+            expect(onTimeExpired).not.toHaveBeenCalled();
+
+            // 後手は残り 100ms のところ 150ms かけて指した。加算はもらえず時間切れ
+            act(() => {
+                vi.advanceTimersByTime(150);
+            });
+            act(() => {
+                result.current.updateClocksForNextTurn("sente", { moved: true });
+            });
+            expect(result.current.clocks.gote.mainMs).toBe(0);
+            expect(onTimeExpired).toHaveBeenCalledWith("gote");
+        });
+
         it("手番を移した直後に止めても、移した手番と加算が残る", () => {
             const timeSettings: ClockSettings = {
                 sente: { mainMs: 60_000, byoyomiMs: 0, incrementMs: 2_000, enabled: true },

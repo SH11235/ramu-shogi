@@ -92,6 +92,36 @@ export function initialTick(settings: ClockSettings): TickState {
     };
 }
 
+/** 経過時間を持ち時間から引き、使い切ったら秒読みから引く。両方 0 になったら時間切れ。 */
+function spendTime(
+    state: ClockState,
+    elapsedMs: number,
+): { mainMs: number; byoyomiMs: number; expired: boolean } {
+    let mainMs = state.mainMs - elapsedMs;
+    let byoyomiMs = state.byoyomiMs;
+    if (mainMs < 0) {
+        byoyomiMs = Math.max(0, byoyomiMs - Math.abs(mainMs));
+        mainMs = 0;
+    }
+    return { mainMs, byoyomiMs, expired: mainMs <= 0 && byoyomiMs <= 0 };
+}
+
+function reportExpired(
+    onTimeExpired: (side: Player) => Promise<void>,
+    side: Player,
+    onClockError?: (message: string) => void,
+): void {
+    try {
+        Promise.resolve(onTimeExpired(side)).catch((err) => {
+            console.error("時間切れ処理エラー:", err);
+            onClockError?.(`時間切れ処理エラー: ${String(err)}`);
+        });
+    } catch (err) {
+        console.error("時間切れ処理エラー:", err);
+        onClockError?.(`時間切れ処理エラー: ${String(err)}`);
+    }
+}
+
 function clockStateOf(setting: ClockSettings[Player]): ClockState {
     return {
         mainMs: setting.mainMs,
@@ -167,10 +197,26 @@ export function useClockManager({
      */
     const updateClocksForNextTurn = (nextTurn: Player, options?: ClockTurnOptions) => {
         const mover: Player = nextTurn === "sente" ? "gote" : "sente";
-        const prev = clocksRef.current;
+        const now = Date.now();
+        let prev = clocksRef.current;
+        // 指した側の、最後の 200ms ごとの更新から指すまでの時間も引いてから加算する（時間切れもここで判定する）。
+        let expired = false;
+        if (
+            options?.moved &&
+            isMatchRunning &&
+            prev.ticking === mover &&
+            timeSettings[mover].enabled
+        ) {
+            const spent = spendTime(prev[mover], now - prev.lastUpdatedAt);
+            expired = spent.expired;
+            prev = {
+                ...prev,
+                [mover]: { ...prev[mover], mainMs: spent.mainMs, byoyomiMs: spent.byoyomiMs },
+            };
+        }
         const mainAfter = (side: Player): number => {
             const increment = prev[side].incrementMs;
-            const earned = options?.moved && side === mover ? increment : 0;
+            const earned = options?.moved && side === mover && !expired ? increment : 0;
             const revoked = (options?.undone?.[side] ?? 0) * increment;
             return Math.max(0, prev[side].mainMs + earned - revoked);
         };
@@ -179,10 +225,13 @@ export function useClockManager({
             sente: { ...prev.sente, mainMs: mainAfter("sente") },
             gote: { ...prev.gote, mainMs: mainAfter("gote") },
             ticking: nextTurn,
-            lastUpdatedAt: Date.now(),
+            lastUpdatedAt: now,
         };
         next[nextTurn] = { ...next[nextTurn], byoyomiMs: timeSettings[nextTurn].byoyomiMs };
         writeClocks(next);
+        if (expired && !matchEndedRef.current) {
+            reportExpired(onTimeExpiredRef.current, mover, onClockError);
+        }
     };
 
     /**
@@ -220,37 +269,18 @@ export function useClockManager({
                 return;
             }
 
-            let mainMs = current.mainMs - delta;
-            let byoyomiMs = current.byoyomiMs;
-
-            if (mainMs < 0) {
-                const over = Math.abs(mainMs);
-                mainMs = 0;
-                byoyomiMs = Math.max(0, byoyomiMs - over);
-            }
-
-            const expiredSide = mainMs <= 0 && byoyomiMs <= 0 ? side : null;
-
+            const spent = spendTime(current, delta);
             const nextState: TickState = {
                 ...prev,
-                [side]: { ...current, mainMs: Math.max(0, mainMs), byoyomiMs },
+                [side]: { ...current, mainMs: spent.mainMs, byoyomiMs: spent.byoyomiMs },
                 lastUpdatedAt: now,
             };
             clocksRef.current = nextState;
             setClocks(nextState);
 
-            if (expiredSide && isMatchRunning && !matchEndedRef.current) {
-                // 注: matchEndedRef.current は endMatch 内で設定されるため、ここでは設定しない
-                try {
-                    const result = onTimeExpiredRef.current(expiredSide);
-                    Promise.resolve(result).catch((err) => {
-                        console.error("時間切れ処理エラー:", err);
-                        onClockError?.(`時間切れ処理エラー: ${String(err)}`);
-                    });
-                } catch (err) {
-                    console.error("時間切れ処理エラー:", err);
-                    onClockError?.(`時間切れ処理エラー: ${String(err)}`);
-                }
+            // 注: matchEndedRef.current は endMatch 内で設定されるため、ここでは設定しない
+            if (spent.expired && isMatchRunning && !matchEndedRef.current) {
+                reportExpired(onTimeExpiredRef.current, side, onClockError);
             }
         }, CLOCK_UPDATE_INTERVAL_MS);
 
