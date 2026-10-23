@@ -44,7 +44,7 @@ export function PlayMoveList({
     const { kifMoves: allMoves, navigationState, handlePlySelect } = useNavigation();
     const { currentPly } = navigationState;
     const kifMoves = upToCurrent ? allMoves.filter((move) => move.ply <= currentPly) : allMoves;
-    const listRef = useRef<HTMLOListElement>(null);
+    const listRef = useRef<HTMLDivElement>(null);
 
     // 見ている手（対局中は最新の手）が見える位置へ送る。
     // biome-ignore lint/correctness/useExhaustiveDependencies: 手数が変わるたびに送り直す
@@ -72,11 +72,19 @@ export function PlayMoveList({
             showEval ? (showSearch ? "evalSearch" : "eval") : showSearch ? "search" : "plain"
         ];
     return (
-        <div className="flex min-h-0 flex-col gap-1">
+        // 見出しも指し手と同じスクロールの中に置く。外に出すと、指し手の側だけスクロールバーの幅だけ
+        // 狭くなり、見出しと値の列がずれる。
+        <div
+            ref={listRef}
+            className={cn(
+                "flex min-h-0 flex-col overflow-y-auto overscroll-contain [scrollbar-gutter:stable]",
+                className,
+            )}
+        >
             <div
                 className={cn(
                     rowGrid,
-                    "border-b border-wafuu-border px-1 pb-1 text-[11px] text-wafuu-sumi-light",
+                    "sticky top-0 z-10 border-b border-wafuu-border bg-wafuu-washi-warm px-1 pb-1 text-[11px] text-wafuu-sumi-light",
                 )}
                 aria-hidden="true"
             >
@@ -91,11 +99,7 @@ export function PlayMoveList({
                     </>
                 )}
             </div>
-            <ol
-                ref={listRef}
-                aria-label="棋譜"
-                className={cn("flex flex-col overflow-y-auto overscroll-contain pr-1", className)}
-            >
+            <ol aria-label="棋譜" className="flex flex-col pt-1">
                 {kifMoves.map((move) => {
                     const isCurrent = move.ply === currentPly;
                     const mover = move.mover ?? (move.ply % 2 === 1 ? "sente" : "gote");

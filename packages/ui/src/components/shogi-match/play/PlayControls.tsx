@@ -229,7 +229,8 @@ export function PlayMatchActions({
                     description="この対局の棋譜は残りません。設定の画面に戻ります。"
                     actionLabel="やめる"
                     onConfirm={play.newGame}
-                    className={cn(!compact && "ml-auto", itemClass)}
+                    // 止めている間の選択肢はこの 2 つだけなので、離さずに並べる（投了のように右端へ寄せない）。
+                    className={itemClass}
                 />
             </div>
         );
