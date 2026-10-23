@@ -7,7 +7,7 @@ import {
 } from "@shogi/ui/components/rshogi-csa-game-browser";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import type { KeyboardEvent, ReactElement } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AuthRequiredCard } from "../../components/AuthRequiredCard";
 import { HeaderNav } from "../../components/HeaderNav";
 import { PageContainer } from "../../components/PageContainer";
@@ -206,6 +206,10 @@ function OwnGamesPicker({
 }): ReactElement {
     const [state, setState] = useState<OwnGamesState>({ status: "loading" });
     const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [loadMoreFailed, setLoadMoreFailed] = useState(false);
+    // 画面を離れたら、続きの取得も止める。
+    const loadMoreControllerRef = useRef<AbortController | null>(null);
+    useEffect(() => () => loadMoreControllerRef.current?.abort(), []);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -227,8 +231,11 @@ function OwnGamesPicker({
     const loadMore = async (): Promise<void> => {
         if (state.status !== "ready" || !state.nextCursor || isLoadingMore) return;
         setIsLoadingMore(true);
+        setLoadMoreFailed(false);
+        const controller = new AbortController();
+        loadMoreControllerRef.current = controller;
         try {
-            const result = await fetchOwnGames(state.nextCursor);
+            const result = await fetchOwnGames(state.nextCursor, controller.signal);
             setState((current) =>
                 result === "needsAuth"
                     ? { status: "needsAuth" }
@@ -241,9 +248,10 @@ function OwnGamesPicker({
                       : current,
             );
         } catch {
-            setState({ status: "error" });
+            // 続きだけが取れなかったときは、表示できている対局を残して、押し直せるようにする。
+            if (!controller.signal.aborted) setLoadMoreFailed(true);
         } finally {
-            setIsLoadingMore(false);
+            if (!controller.signal.aborted) setIsLoadingMore(false);
         }
     };
 
@@ -299,7 +307,12 @@ function OwnGamesPicker({
                 ))}
             </ul>
             {state.nextCursor && (
-                <div className="flex justify-center">
+                <div className="flex flex-col items-center gap-2">
+                    {loadMoreFailed && (
+                        <p role="alert" className="text-sm text-destructive">
+                            続きを読み込めませんでした。もう一度お試しください。
+                        </p>
+                    )}
                     <button
                         type="button"
                         onClick={() => void loadMore()}

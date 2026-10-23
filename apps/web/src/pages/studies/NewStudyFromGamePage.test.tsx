@@ -126,6 +126,38 @@ describe("NewStudyFromGamePage", () => {
         expect(openStudyFromGameRecord).toHaveBeenCalledWith(detail);
     });
 
+    it("自分の対局の続きを読めなかったときは、表示済みの対局を残して押し直せるようにする", async () => {
+        search = { from: "games" };
+        const summary = {
+            id: "g-1",
+            visibility: "private",
+            source: "online_room",
+            participants: [
+                { seat: "sente", displayNameSnapshot: "あなた" },
+                { seat: "gote", displayNameSnapshot: "相手" },
+            ],
+            result: null,
+            finishedAt: null,
+            createdAt: "2026-10-01T00:00:00Z",
+        };
+        vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+            String(input) === "/api/games"
+                ? jsonResponse(200, { games: [summary], nextCursor: "c-2" })
+                : jsonResponse(500, {}),
+        );
+        render(<NewStudyFromGamePage />);
+
+        fireEvent.click(await screen.findByRole("button", { name: "もっと見る" }));
+
+        expect((await screen.findByRole("alert")).textContent).toContain(
+            "続きを読み込めませんでした",
+        );
+        expect(
+            screen.getByRole("button", { name: "あなた 対 相手を研究ノートで開く" }),
+        ).toBeTruthy();
+        expect(screen.getByRole("button", { name: "もっと見る" })).toBeTruthy();
+    });
+
     it("自分の対局は、ログインしていなければログインを案内し、戻り先をこの画面にする", async () => {
         search = { from: "games" };
         vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(401, {}));
