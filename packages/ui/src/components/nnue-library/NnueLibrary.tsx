@@ -46,8 +46,8 @@ type PendingAdd =
     | { kind: "path"; path: string }
     | { kind: "account"; file: NnueAccountFile };
 
-/** 端末とアカウントの両方にある AI を、どちらから消すか */
-type DeleteScope = "device" | "account" | "both";
+/** 両方にある AI を消すとき、アカウントの分も消すか（device はこの端末から外すだけ） */
+type DeleteScope = "device" | "both";
 
 type PendingDelete =
     | { kind: "device"; meta: NnueMeta; accountFile: NnueAccountFile | null }
@@ -299,11 +299,9 @@ export function NnueLibrary({
             } else if (target.kind === "account") {
                 await account?.remove(target.file.id);
             } else {
-                if (scope !== "account") {
-                    setBusyId(target.meta.id);
-                    await deleteNnue(target.meta.id);
-                }
-                if (scope !== "device" && target.accountFile) {
+                setBusyId(target.meta.id);
+                await deleteNnue(target.meta.id);
+                if (scope === "both" && target.accountFile) {
                     await account?.remove(target.accountFile.id);
                 }
             }
@@ -923,11 +921,11 @@ function DeleteDialog({
               : target.meta.displayName;
     const description =
         target.kind === "account"
-            ? "アカウントから削除します。ほかの端末でも取り込めなくなります。"
+            ? "アカウントから削除します。ほかの端末に取り込んだものは残ります。"
             : target.kind === "preset"
               ? `${deviceLabel}から削除します。使うときにまたダウンロードできます。`
               : target.accountFile
-                ? `${deviceLabel}とアカウントの両方に保存してあります。どちらから削除しますか？`
+                ? `${deviceLabel}とアカウントから削除します。アカウントに残すなら「${deviceLabel}から外す」を選んでください。`
                 : `${deviceLabel}から削除します。元に戻すには、ファイルをもう一度追加してください。`;
     const hasAccountCopy = target.kind === "device" && target.accountFile !== null;
     return (
@@ -937,31 +935,23 @@ function DeleteDialog({
                     <AlertDialogTitle>「{name}」を削除しますか？</AlertDialogTitle>
                     <AlertDialogDescription>{description}</AlertDialogDescription>
                 </AlertDialogHeader>
-                <AlertDialogFooter className="gap-2">
+                <AlertDialogFooter>
                     <AlertDialogCancel>やめる</AlertDialogCancel>
-                    {hasAccountCopy ? (
-                        <>
-                            <AlertDialogAction onClick={() => onConfirm("account")}>
-                                アカウントだけ削除
-                            </AlertDialogAction>
-                            <AlertDialogAction onClick={() => onConfirm("device")}>
-                                {deviceLabel}だけ削除
-                            </AlertDialogAction>
-                            <AlertDialogAction
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                onClick={() => onConfirm("both")}
-                            >
-                                両方から削除
-                            </AlertDialogAction>
-                        </>
-                    ) : (
+                    {hasAccountCopy && (
+                        // 「削除」と書くとアカウントそのものを消すと読まれるので、この端末から「外す」と言う。
                         <AlertDialogAction
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            className="border border-input bg-background text-foreground shadow-none hover:bg-muted/50"
                             onClick={() => onConfirm("device")}
                         >
-                            削除
+                            {deviceLabel}から外す
                         </AlertDialogAction>
                     )}
+                    <AlertDialogAction
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        onClick={() => onConfirm("both")}
+                    >
+                        削除
+                    </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
