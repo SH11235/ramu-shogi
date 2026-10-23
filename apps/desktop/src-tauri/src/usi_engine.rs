@@ -315,6 +315,8 @@ pub struct SearchParamsInput {
     pub btime_ms: Option<u64>,
     pub wtime_ms: Option<u64>,
     pub byoyomi_ms: Option<u64>,
+    pub binc_ms: Option<u64>,
+    pub winc_ms: Option<u64>,
     pub movetime_ms: Option<u64>,
     pub infinite: Option<bool>,
 }
@@ -339,6 +341,12 @@ fn build_go_command(params: &SearchParamsInput) -> String {
     }
     if let Some(byoyomi) = params.byoyomi_ms {
         cmd.push_str(&format!(" byoyomi {byoyomi}"));
+    }
+    if let Some(binc) = params.binc_ms {
+        cmd.push_str(&format!(" binc {binc}"));
+    }
+    if let Some(winc) = params.winc_ms {
+        cmd.push_str(&format!(" winc {winc}"));
     }
     if let Some(movetime) = params.movetime_ms {
         cmd.push_str(&format!(" movetime {movetime}"));
@@ -818,6 +826,8 @@ mod tests {
             btime_ms: Some(12_000),
             wtime_ms: Some(6_500),
             byoyomi_ms: Some(1_000),
+            binc_ms: None,
+            winc_ms: None,
             movetime_ms: None,
             infinite: Some(false),
         };
@@ -829,6 +839,26 @@ mod tests {
     }
 
     #[test]
+    fn build_go_command_writes_fischer_increment() {
+        let params = SearchParamsInput {
+            max_depth: None,
+            nodes: None,
+            btime_ms: Some(60_000),
+            wtime_ms: Some(55_000),
+            byoyomi_ms: None,
+            binc_ms: Some(1_000),
+            winc_ms: Some(2_000),
+            movetime_ms: None,
+            infinite: Some(false),
+        };
+
+        assert_eq!(
+            build_go_command(&params),
+            "go btime 60000 wtime 55000 binc 1000 winc 2000"
+        );
+    }
+
+    #[test]
     fn build_go_command_keeps_byoyomi_only_compatible() {
         let params = SearchParamsInput {
             max_depth: None,
@@ -836,6 +866,8 @@ mod tests {
             btime_ms: None,
             wtime_ms: None,
             byoyomi_ms: Some(1_000),
+            binc_ms: None,
+            winc_ms: None,
             movetime_ms: None,
             infinite: Some(false),
         };

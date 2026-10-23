@@ -16,6 +16,15 @@ const isProduction = process.argv.includes("--production");
 const profile = isProduction ? "production" : "release";
 const targetDir = isProduction ? "production" : "release";
 
+const defaultCargoTargetDir = process.env.CARGO_TARGET_DIR
+    ? path.resolve(rustRoot, process.env.CARGO_TARGET_DIR)
+    : path.join(rustRoot, "target");
+// CI の rust-cache は保存前に cargo metadata に無い成果物を消すため、build-std で作る
+// core/std まで消えてスレッド版が毎回フルビルドになる。CI ではここを別ディレクトリにして別途キャッシュする
+const threadedCargoTargetDir = process.env.ENGINE_WASM_THREADED_TARGET_DIR
+    ? path.resolve(rustRoot, process.env.ENGINE_WASM_THREADED_TARGET_DIR)
+    : defaultCargoTargetDir;
+
 const outDir = path.resolve(__dirname, "../pkg");
 const threadedOutDir = path.resolve(__dirname, "../pkg-threaded");
 const threadedTarget = path.resolve(rustRoot, "targets", "wasm32-unknown-unknown.json");
@@ -81,17 +90,21 @@ function buildWasm({
     cargoZArgs,
     emitThreadWorker,
     target,
+    cargoTargetDir = defaultCargoTargetDir,
 }) {
     const targetArg = target ?? "wasm32-unknown-unknown";
     const targetName = targetArg.endsWith(".json") ? path.basename(targetArg, ".json") : targetArg;
-    const targetWasm = path.join(rustRoot, "target", targetName, targetDir, `${artifactName}.wasm`);
+    const targetWasm = path.join(cargoTargetDir, targetName, targetDir, `${artifactName}.wasm`);
 
     console.log(`Building ${crateName}${label ? ` (${label})` : ""} with profile: ${profile}`);
     console.log(`Expected output: ${targetWasm}`);
 
-    const extraEnv = rustflags
-        ? { RUSTFLAGS: [process.env.RUSTFLAGS, rustflags].filter(Boolean).join(" ") }
-        : {};
+    const extraEnv = {
+        CARGO_TARGET_DIR: cargoTargetDir,
+        ...(rustflags
+            ? { RUSTFLAGS: [process.env.RUSTFLAGS, rustflags].filter(Boolean).join(" ") }
+            : {}),
+    };
 
     const args = [
         ...(toolchain ? [`+${toolchain}`] : []),
@@ -192,6 +205,7 @@ try {
         cargoZArgs: ["-Z", "build-std=core,alloc,std"],
         emitThreadWorker: true,
         target: threadedTarget,
+        cargoTargetDir: threadedCargoTargetDir,
     });
 
     verifyThreadedOutput(threadedOutDir);

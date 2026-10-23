@@ -1,0 +1,18 @@
+{
+    "$schema": "https://turbo.build/schema.json",
+    "extends": ["//"],
+    "tasks": {
+        "test": {
+            "inputs": [
+                "$TURBO_DEFAULT$",
+                "$TURBO_ROOT$/packages/rust-core/Cargo.toml",
+                "$TURBO_ROOT$/packages/rust-core/Cargo.lock",
+                "$TURBO_ROOT$/packages/rust-core/.cargo/**",
+                "$TURBO_ROOT$/packages/rust-core/crates/**",
+                "$TURBO_ROOT$/packages/rust-core/shared/**",
+                "$TURBO_ROOT$/packages/rust-core/targets/**"
+            ],
+            "env": ["RUST_NIGHTLY_TOOLCHAIN", "RUST_STABLE_CACHEKEY", "RUSTFLAGS"]
+        }
+    }
+}

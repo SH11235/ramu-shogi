@@ -2,7 +2,7 @@
  * 対局の設定（対局画面の最初の画面）。
  *
  * 「誰と・どちらの手番で・どのくらいの時間で指すか」を決めて「対局開始」を押す、だけの欄。
- * 細かい設定（AI 同士・人同士、秒数の指定、変則ルール、評価関数の管理、表示）は詳細設定に置く。
+ * 細かい設定（秒単位の時間、変則ルール、評価関数の管理、表示）は詳細設定に置く。
  */
 
 import type { Player } from "@shogi/app-core";
@@ -14,15 +14,26 @@ import { Button } from "../../button";
 import { NativeSelect } from "../../native-select";
 import { SoundToggle } from "../components/SoundToggle";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
+import type { ClockSettings } from "../hooks/useClockManager";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
-import { formatClock, isDialogRepresentable, PlayTimeDialog } from "./PlayTimeDialog";
+import { formatTimeRule, isSameClock } from "../utils/timeSettings";
+import { isDialogRepresentable, PlayTimeDialog } from "./PlayTimeDialog";
+import { PlayTimeRulesHelp } from "./PlayTimeRulesHelp";
 import {
     PLAY_HEADING,
     PLAY_OUTLINE_BUTTON,
     PLAY_PRIMARY_BUTTON,
     PLAY_TEXT_LINK,
 } from "./playStyles";
-import { AI_TIME_CHOICES, MY_TIME_CHOICES, type TimeChoice, usePlaySetup } from "./usePlaySetup";
+import {
+    AI_MATCH_TIME_CHOICES,
+    AI_TIME_CHOICES,
+    clockAsChoice,
+    MY_TIME_CHOICES,
+    type PlayMatchKind,
+    type TimeChoice,
+    usePlaySetup,
+} from "./usePlaySetup";
 
 type SideChoice = Player | "random";
 
@@ -54,6 +65,8 @@ const QUICK_AI_TIME = AI_TIME_CHOICES[0];
 function Segmented<T extends string>({
     label,
     rowLabel,
+    labelAddon,
+    wrapLabels,
     options,
     value,
     onChange,
@@ -62,6 +75,10 @@ function Segmented<T extends string>({
     label: string;
     /** 行の形で並べるときの、左に出す短い項目名（読み上げは `label` のまま）。 */
     rowLabel?: string;
+    /** 項目名の横に添える部品（説明の「?」など）。選べない間も押せる */
+    labelAddon?: ReactNode;
+    /** 選択肢の文言を 2 行に折り返してよい（「10分 秒読み30秒」をスマホの幅に収める） */
+    wrapLabels?: boolean;
     options: Array<{ id: T; label: ReactNode }>;
     value: T | null;
     onChange: (id: T) => void;
@@ -72,17 +89,22 @@ function Segmented<T extends string>({
             className={cn("flex min-w-0", rowLabel ? ROW_CLASS : "flex-col")}
             disabled={disabled}
         >
-            {/* legend は flex の子として並ばないので、行の形では見出しを別の要素で出す。 */}
+            {/* legend は flex の子として並ばないので、行の形では見出しを別の要素で出す。
+                legend の中の部品は、fieldset を disabled にしても押せる。 */}
             <legend
                 className={
-                    rowLabel ? "sr-only" : "pb-1.5 text-xs font-medium text-wafuu-sumi-light"
+                    rowLabel
+                        ? "sr-only"
+                        : "flex items-center gap-1.5 pb-1.5 text-xs font-medium text-wafuu-sumi-light"
                 }
             >
                 {label}
+                {!rowLabel && labelAddon}
             </legend>
             {rowLabel && (
-                <span aria-hidden className={ROW_LABEL_CLASS}>
-                    {rowLabel}
+                <span className={cn(ROW_LABEL_CLASS, "flex items-center gap-1")}>
+                    <span aria-hidden>{rowLabel}</span>
+                    {labelAddon}
                 </span>
             )}
             <div
@@ -104,7 +126,10 @@ function Segmented<T extends string>({
                                 rowLabel
                                     ? "px-1.5 max-[399px]:px-1 max-[399px]:text-xs max-[359px]:px-0.5"
                                     : "px-2.5",
-                                "min-h-10 flex-1 whitespace-nowrap rounded-md border text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 md:min-h-9 [@media(max-height:760px)]:md:min-h-8",
+                                wrapLabels
+                                    ? "whitespace-normal break-keep py-0.5 leading-tight max-[399px]:text-[11px]"
+                                    : "whitespace-nowrap",
+                                "min-h-10 flex-1 rounded-md border text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 md:min-h-9 [@media(max-height:760px)]:md:min-h-8",
                                 // 選んでいる項目は墨の枠で示す（朱・藍は、先手・後手の色に取っておく）。
                                 selected
                                     ? "border-wafuu-sumi bg-wafuu-washi-warm font-semibold text-wafuu-sumi ring-1 ring-inset ring-wafuu-sumi"
@@ -129,18 +154,87 @@ const timeOptions = (choices: TimeChoice[], currentId: string | null, currentLab
     { id: CUSTOM_TIME_ID, label: currentId === null ? currentLabel : "指定" },
 ];
 
-type Clock = { mainMs: number; byoyomiMs: number; enabled: boolean };
+type Clock = ClockSettings[Player];
 
-/** AI の考慮時間を、選択肢と同じ書き方（「45秒」）で書く。持ち時間があればそれも書く。 */
-const formatAiTime = (clock: Clock): string =>
-    clock.mainMs === 0
-        ? `${Math.round(clock.byoyomiMs / 1000)}秒`
-        : formatClock(clock.mainMs, clock.byoyomiMs);
+/** 選択欄の値: 「自分と同じ」・選択肢に無いいまの時間。 */
+const SAME_AS_MINE_ID = "same";
+const CURRENT_TIME_ID = "current";
 
-const sameClock = (a: Clock, b: Clock): boolean =>
-    a.enabled === b.enabled && a.mainMs === b.mainMs && a.byoyomiMs === b.byoyomiMs;
+/**
+ * AI の考慮時間の選択欄。AI の行（相手・強さと並べる）に置く。
+ * いまの時間が選択肢に無いときは、その時間を 1 つ足して選ばれた状態にする。最後の「指定…」で数を決める。
+ */
+function AiTimeSelect({
+    id,
+    label,
+    choices,
+    clock,
+    sameAsMine,
+    onChoose,
+    onCustom,
+    disabled,
+    className,
+}: {
+    id: string;
+    label: string;
+    choices: TimeChoice[];
+    clock: Clock;
+    /** 「自分と同じ」に当てる時計（人と AI の対局で、自分の時間が決まっているときだけ） */
+    sameAsMine: Clock | null;
+    onChoose: (choice: TimeChoice) => void;
+    onCustom: () => void;
+    disabled?: boolean;
+    className?: string;
+}): ReactElement {
+    // 自分と同じ時間なら、選択肢の 1 つと同じ時間でも「自分と同じ」と見せる（自分の時間を変えると付いてくる）。
+    const isSame = sameAsMine !== null && isSameClock(clock, sameAsMine);
+    const matched = choices.find((choice) => choice.enabled && isSameClock(clock, choice));
+    const value = isSame ? SAME_AS_MINE_ID : (matched?.id ?? CURRENT_TIME_ID);
+    return (
+        <NativeSelect
+            id={id}
+            aria-label={label}
+            value={value}
+            disabled={disabled}
+            onChange={(event) => {
+                const next = event.target.value;
+                if (next === CUSTOM_TIME_ID) {
+                    onCustom();
+                    return;
+                }
+                if (next === SAME_AS_MINE_ID && sameAsMine) {
+                    onChoose(clockAsChoice(SAME_AS_MINE_ID, "自分と同じ", sameAsMine));
+                    return;
+                }
+                const choice = choices.find((item) => item.id === next);
+                if (choice) onChoose(choice);
+            }}
+            wrapperClassName={className}
+            className="min-h-10 text-sm"
+        >
+            {choices.map((choice) => (
+                <option key={choice.id} value={choice.id}>
+                    {choice.label}
+                </option>
+            ))}
+            {sameAsMine && <option value={SAME_AS_MINE_ID}>自分と同じ</option>}
+            {value === CURRENT_TIME_ID && (
+                <option value={CURRENT_TIME_ID}>
+                    {clock.enabled ? formatTimeRule(clock, { perMove: true }) : "時間無制限"}
+                </option>
+            )}
+            <option value={CUSTOM_TIME_ID}>指定…</option>
+        </NativeSelect>
+    );
+}
 
-type TimeTarget = "ai" | "my" | "both" | "bothAi";
+const KIND_OPTIONS: Array<{ id: PlayMatchKind; label: string }> = [
+    { id: "vs-ai", label: "自分 対 AI" },
+    { id: "humans", label: "人 対 人" },
+    { id: "ai-vs-ai", label: "AI 対 AI" },
+];
+
+type TimeTarget = "ai" | "my" | "both" | "sente-ai" | "gote-ai";
 
 const sideLabel = (side: Player): string => (side === "sente" ? "先手" : "後手");
 
@@ -149,6 +243,10 @@ const TEXT_LINK_CLASS = PLAY_TEXT_LINK;
 /** 行の形: 左に項目名、右に選択肢。項目の間は細い線で区切る。 */
 const ROW_CLASS = "items-center gap-x-2 gap-y-0.5 border-b border-wafuu-border py-1";
 const ROW_LABEL_CLASS = "w-14 shrink-0 text-xs font-medium text-wafuu-sumi-light max-[359px]:w-12";
+/** AI の行（AI・強さ・考慮時間を横に並べる）。スマホの幅でも 1 行に収まるよう、選択欄の余白を詰める。 */
+const AI_ROW_CONTROLS_CLASS = "flex min-w-0 flex-1 items-center gap-1.5 md:gap-2";
+const COMPACT_SELECT_CLASS = "min-h-10 pl-2 pr-7 text-sm";
+const AI_TIME_SELECT_WIDTH = "w-[7.5rem] shrink-0";
 
 interface PlaySetupPanelProps {
     /** 詳細設定を開く */
@@ -277,19 +375,31 @@ export function PlaySetupPanel({
         );
     // 時間のダイアログは、いまの時間から始める。分と秒の入力で書き表せないとき（無制限・秒単位の持ち時間）は、
     // よく使う時間から始める（そのまま決めても、いまの時間を黙って丸めないように）。
-    const isAiDialog = timeDialog === "ai" || timeDialog === "bothAi";
-    const currentDialogClock = isAiDialog ? setup.aiClock : setup.myClock;
+    const isAiDialog = timeDialog !== "my" && timeDialog !== "both";
+    const currentDialogClock =
+        timeDialog === "sente-ai"
+            ? setup.clocks.sente
+            : timeDialog === "gote-ai"
+              ? setup.clocks.gote
+              : isAiDialog
+                ? setup.aiClock
+                : setup.myClock;
     const dialogClock =
-        currentDialogClock.enabled &&
-        isDialogRepresentable(
-            isAiDialog ? "ai" : "player",
-            currentDialogClock.mainMs,
-            currentDialogClock.byoyomiMs,
-        )
+        currentDialogClock.enabled && isDialogRepresentable(currentDialogClock)
             ? currentDialogClock
             : isAiDialog
-              ? { mainMs: 0, byoyomiMs: 10_000 }
-              : { mainMs: 600_000, byoyomiMs: 30_000 };
+              ? { mainMs: 0, byoyomiMs: 10_000, incrementMs: 0 }
+              : { mainMs: 600_000, byoyomiMs: 30_000, incrementMs: 0 };
+    const timeDialogTitle =
+        timeDialog === "sente-ai"
+            ? "☗ 先手の AI の考慮時間"
+            : timeDialog === "gote-ai"
+              ? "☖ 後手の AI の考慮時間"
+              : timeDialog === "ai"
+                ? "AI の考慮時間を指定"
+                : timeDialog === "both"
+                  ? "持ち時間を指定（両者）"
+                  : "あなたの持ち時間を指定";
     const levelSlider = (
         <input
             id="play-setup-level"
@@ -377,7 +487,19 @@ export function PlaySetupPanel({
                 設定を 1 画面に収めるために出さない（研究ノートへはメニューから行ける）。 */}
             {!rows && play?.setupFooter}
 
-            {isVsAi ? (
+            <Segmented<PlayMatchKind>
+                label="対局の組み合わせ"
+                rowLabel={rows ? "対局" : undefined}
+                options={KIND_OPTIONS}
+                value={setup.kind}
+                onChange={(id) => {
+                    setRandomSide(false);
+                    setup.chooseKind(id);
+                }}
+                disabled={locked}
+            />
+
+            {isVsAi && (
                 <Segmented<SideChoice>
                     label="あなたの手番"
                     rowLabel={rows ? "手番" : undefined}
@@ -397,126 +519,150 @@ export function PlaySetupPanel({
                     }}
                     disabled={locked}
                 />
-            ) : (
-                <button
-                    type="button"
-                    onClick={() => setup.chooseKind("vs-ai")}
-                    disabled={locked}
-                    className={cn(
-                        TEXT_LINK_CLASS,
-                        "self-start text-sm text-wafuu-ai hover:text-wafuu-ai-light",
-                    )}
-                >
-                    自分が AI と指す設定に戻す
-                </button>
             )}
 
             {setup.kind === "ai-vs-ai" && (
                 <>
-                    {(["sente", "gote"] as const).map((side) => (
-                        <div
-                            key={side}
-                            className={cn(
-                                "flex flex-col gap-1.5",
-                                rows && "border-b border-wafuu-border py-1.5",
-                            )}
-                        >
-                            <label htmlFor={`play-setup-ai-${side}`} className={FIELD_LABEL_CLASS}>
-                                {side === "sente" ? "☗ 先手の AI" : "☖ 後手の AI"}
-                            </label>
-                            <div className="flex items-center gap-2">
-                                <NativeSelect
-                                    id={`play-setup-ai-${side}`}
-                                    value={setup.sideAi[side].value}
-                                    disabled={locked}
-                                    onChange={(event) =>
-                                        setup.chooseSideAi(side, event.target.value)
-                                    }
-                                    wrapperClassName="flex-1"
-                                    className="min-h-10 text-sm"
+                    {/* AI ごとに 1 行: どの AI か・強さ・考慮時間。先後で別の時間にできる。 */}
+                    {(["sente", "gote"] as const).map((side) => {
+                        const ai = setup.sideAi[side];
+                        const name = sideLabel(side);
+                        const mark = side === "sente" ? "☗" : "☖";
+                        return (
+                            <div
+                                key={side}
+                                className={rows ? cn("flex", ROW_CLASS) : "flex flex-col gap-1.5"}
+                            >
+                                <label
+                                    htmlFor={`play-setup-ai-${side}`}
+                                    className={rows ? ROW_LABEL_CLASS : FIELD_LABEL_CLASS}
                                 >
-                                    {setup.opponentOptions.map((option) => (
-                                        <option key={option.value} value={option.value}>
-                                            {option.label}
-                                            {option.downloadMb !== null
-                                                ? `（初回 約${option.downloadMb}MB）`
-                                                : ""}
-                                        </option>
-                                    ))}
-                                </NativeSelect>
-                                {setup.sideAi[side].option?.supportsLevel !== false && (
+                                    {rows ? `${mark} ${name}` : `${mark} ${name}の AI`}
+                                </label>
+                                {/* スマホ（行の形）は幅が足りないので、AI を 1 段目、強さと時間を 2 段目に置く。 */}
+                                <div
+                                    className={
+                                        rows
+                                            ? "grid min-w-0 flex-1 grid-cols-2 gap-1.5"
+                                            : AI_ROW_CONTROLS_CLASS
+                                    }
+                                >
                                     <NativeSelect
-                                        aria-label={`${side === "sente" ? "先手" : "後手"}の AI の強さ`}
-                                        value={String(setup.sideAi[side].level)}
+                                        id={`play-setup-ai-${side}`}
+                                        value={ai.value}
                                         disabled={locked}
                                         onChange={(event) =>
-                                            setup.chooseSideLevel(side, Number(event.target.value))
+                                            setup.chooseSideAi(side, event.target.value)
                                         }
-                                        wrapperClassName="w-32 shrink-0"
-                                        className="min-h-10 text-sm"
+                                        wrapperClassName={rows ? "col-span-2" : "min-w-0 flex-1"}
+                                        className={COMPACT_SELECT_CLASS}
                                     >
-                                        {Array.from({ length: SKILL_LEVEL_MAX + 1 }, (_, level) => (
-                                            // biome-ignore lint/suspicious/noArrayIndexKey: レベルそのものが並びの位置
-                                            <option key={level} value={level}>
-                                                レベル {level}
+                                        {setup.opponentOptions.map((option) => (
+                                            <option key={option.value} value={option.value}>
+                                                {option.label}
+                                                {option.downloadMb !== null
+                                                    ? `（初回 約${option.downloadMb}MB）`
+                                                    : ""}
                                             </option>
                                         ))}
                                     </NativeSelect>
-                                )}
+                                    {ai.option?.supportsLevel !== false && (
+                                        <NativeSelect
+                                            aria-label={`${name}の AI の強さ`}
+                                            value={String(ai.level)}
+                                            disabled={locked}
+                                            onChange={(event) =>
+                                                setup.chooseSideLevel(
+                                                    side,
+                                                    Number(event.target.value),
+                                                )
+                                            }
+                                            wrapperClassName={rows ? undefined : "w-28 shrink-0"}
+                                            className={COMPACT_SELECT_CLASS}
+                                        >
+                                            {Array.from(
+                                                { length: SKILL_LEVEL_MAX + 1 },
+                                                (_, level) => (
+                                                    // biome-ignore lint/suspicious/noArrayIndexKey: レベルそのものが並びの位置
+                                                    <option key={level} value={level}>
+                                                        レベル {level}
+                                                    </option>
+                                                ),
+                                            )}
+                                        </NativeSelect>
+                                    )}
+                                    <AiTimeSelect
+                                        id={`play-setup-ai-time-${side}`}
+                                        label={`${name}の AI の考慮時間`}
+                                        choices={AI_MATCH_TIME_CHOICES}
+                                        clock={ai.clock}
+                                        sameAsMine={null}
+                                        onChoose={(choice) => setup.chooseSideTime(side, choice)}
+                                        onCustom={() => setTimeDialog(`${side}-ai`)}
+                                        disabled={locked}
+                                        className={
+                                            rows
+                                                ? ai.option?.supportsLevel === false
+                                                    ? "col-span-2"
+                                                    : undefined
+                                                : AI_TIME_SELECT_WIDTH
+                                        }
+                                    />
+                                </div>
                             </div>
-                        </div>
-                    ))}
-                    <Segmented
-                        label="AI の考慮時間（1手・両者）"
-                        rowLabel={rows ? "AI 1手" : undefined}
-                        options={timeOptions(
-                            AI_TIME_CHOICES,
-                            setup.bothAiTimeId,
-                            // 先後で違うときは、どちらか一方の時間を出さず「指定」とだけ書く。
-                            sameClock(setup.clocks.sente, setup.clocks.gote)
-                                ? formatAiTime(setup.clocks.sente)
-                                : "指定",
-                        )}
-                        value={setup.bothAiTimeId ?? CUSTOM_TIME_ID}
-                        onChange={(id) => {
-                            if (id === CUSTOM_TIME_ID) {
-                                setTimeDialog("bothAi");
-                                return;
-                            }
-                            const choice = AI_TIME_CHOICES.find((item) => item.id === id);
-                            if (choice) setup.chooseBothAiTime(choice);
-                        }}
-                        disabled={locked}
-                    />
+                        );
+                    })}
+                    <PlayTimeRulesHelp variant="text" className={cn("self-end", rows && "mt-1")} />
                 </>
             )}
 
             {isVsAi && (
                 <div className={rows ? cn("flex", ROW_CLASS) : "flex flex-col gap-1.5"}>
-                    <label
-                        htmlFor="play-setup-opponent"
-                        className={rows ? ROW_LABEL_CLASS : FIELD_LABEL_CLASS}
-                    >
-                        相手
-                    </label>
-                    <NativeSelect
-                        id="play-setup-opponent"
-                        value={setup.opponentValue}
-                        disabled={locked}
-                        onChange={(event) => setup.chooseOpponent(event.target.value)}
-                        wrapperClassName={rows ? "min-w-0 flex-1" : undefined}
-                        className="min-h-10 text-sm"
-                    >
-                        {setup.opponentOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                                {option.label}
-                                {option.description ? ` ・ ${option.description}` : ""}
-                                {option.downloadMb !== null
-                                    ? `（初回 約${option.downloadMb}MB）`
-                                    : ""}
-                            </option>
-                        ))}
-                    </NativeSelect>
+                    {rows ? (
+                        <label htmlFor="play-setup-opponent" className={ROW_LABEL_CLASS}>
+                            相手
+                        </label>
+                    ) : (
+                        <div className="flex gap-2">
+                            <label htmlFor="play-setup-opponent" className="flex-1">
+                                <span className={FIELD_LABEL_CLASS}>相手</span>
+                            </label>
+                            <label htmlFor="play-setup-ai-time" className={AI_TIME_SELECT_WIDTH}>
+                                <span className={FIELD_LABEL_CLASS}>考慮時間</span>
+                            </label>
+                        </div>
+                    )}
+                    <div className={AI_ROW_CONTROLS_CLASS}>
+                        <NativeSelect
+                            id="play-setup-opponent"
+                            value={setup.opponentValue}
+                            disabled={locked}
+                            onChange={(event) => setup.chooseOpponent(event.target.value)}
+                            wrapperClassName="min-w-0 flex-1"
+                            className={COMPACT_SELECT_CLASS}
+                        >
+                            {setup.opponentOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
+                                    {option.description ? ` ・ ${option.description}` : ""}
+                                    {option.downloadMb !== null
+                                        ? `（初回 約${option.downloadMb}MB）`
+                                        : ""}
+                                </option>
+                            ))}
+                        </NativeSelect>
+                        <AiTimeSelect
+                            id="play-setup-ai-time"
+                            label="AI の考慮時間"
+                            choices={AI_TIME_CHOICES}
+                            clock={setup.aiClock}
+                            sameAsMine={setup.myClock.enabled ? setup.myClock : null}
+                            onChoose={setup.chooseAiTime}
+                            onCustom={() => setTimeDialog("ai")}
+                            disabled={locked}
+                            className={AI_TIME_SELECT_WIDTH}
+                        />
+                    </div>
                 </div>
             )}
 
@@ -549,63 +695,40 @@ export function PlaySetupPanel({
                 ))}
 
             {isVsAi && (
-                <div
-                    className={
-                        rows
-                            ? "contents"
-                            : "flex flex-col gap-4 [@media(max-height:760px)]:md:gap-2.5"
-                    }
-                >
-                    <Segmented
-                        label="AI の考慮時間（1手）"
-                        rowLabel={rows ? "AI 1手" : undefined}
-                        options={timeOptions(
-                            AI_TIME_CHOICES,
-                            setup.aiTimeId,
-                            formatAiTime(setup.aiClock),
-                        )}
-                        value={setup.aiTimeId ?? CUSTOM_TIME_ID}
-                        onChange={(id) => {
-                            if (id === CUSTOM_TIME_ID) {
-                                setTimeDialog("ai");
-                                return;
-                            }
-                            const choice = AI_TIME_CHOICES.find((item) => item.id === id);
-                            if (choice) setup.chooseAiTime(choice);
-                        }}
-                        disabled={locked}
-                    />
-                    <Segmented
-                        label="あなたの持ち時間"
-                        rowLabel={rows ? "持ち時間" : undefined}
-                        options={timeOptions(
-                            MY_TIME_CHOICES,
-                            setup.myTimeId,
-                            formatClock(setup.myClock.mainMs, setup.myClock.byoyomiMs),
-                        )}
-                        value={setup.myTimeId ?? CUSTOM_TIME_ID}
-                        onChange={(id) => {
-                            if (id === CUSTOM_TIME_ID) {
-                                setTimeDialog("my");
-                                return;
-                            }
-                            const choice = MY_TIME_CHOICES.find((item) => item.id === id);
-                            if (choice) setup.chooseMyTime(choice);
-                        }}
-                        disabled={locked}
-                    />
-                </div>
+                <Segmented
+                    label="あなたの持ち時間"
+                    rowLabel={rows ? "時間" : undefined}
+                    labelAddon={<PlayTimeRulesHelp />}
+                    wrapLabels
+                    options={timeOptions(
+                        MY_TIME_CHOICES,
+                        setup.myTimeId,
+                        formatTimeRule(setup.myClock),
+                    )}
+                    value={setup.myTimeId ?? CUSTOM_TIME_ID}
+                    onChange={(id) => {
+                        if (id === CUSTOM_TIME_ID) {
+                            setTimeDialog("my");
+                            return;
+                        }
+                        const choice = MY_TIME_CHOICES.find((item) => item.id === id);
+                        if (choice) setup.chooseMyTime(choice);
+                    }}
+                    disabled={locked}
+                />
             )}
 
             {setup.kind === "humans" && (
                 <Segmented
                     label="持ち時間（両者）"
-                    rowLabel={rows ? "持ち時間" : undefined}
+                    rowLabel={rows ? "時間" : undefined}
+                    labelAddon={<PlayTimeRulesHelp />}
+                    wrapLabels
                     options={timeOptions(
                         MY_TIME_CHOICES,
                         setup.bothTimeId,
-                        sameClock(setup.clocks.sente, setup.clocks.gote)
-                            ? formatClock(setup.clocks.sente.mainMs, setup.clocks.sente.byoyomiMs)
+                        isSameClock(setup.clocks.sente, setup.clocks.gote)
+                            ? formatTimeRule(setup.clocks.sente)
                             : "指定",
                     )}
                     value={setup.bothTimeId ?? CUSTOM_TIME_ID}
@@ -683,21 +806,16 @@ export function PlaySetupPanel({
                 open={timeDialogOpen}
                 onOpenChange={setTimeDialogOpen}
                 kind={isAiDialog ? "ai" : "player"}
-                title={
-                    isAiDialog
-                        ? "AI の考慮時間を指定"
-                        : timeDialog === "both"
-                          ? "持ち時間を指定（両者）"
-                          : "あなたの持ち時間を指定"
-                }
-                mainMs={isAiDialog ? 0 : dialogClock.mainMs}
+                title={timeDialogTitle}
+                mainMs={dialogClock.mainMs}
                 byoyomiMs={dialogClock.byoyomiMs}
+                incrementMs={dialogClock.incrementMs}
                 onApply={(choice) => {
-                    if (timeDialog === "ai") setup.chooseAiTime({ ...choice, mainMs: 0 });
-                    else if (timeDialog === "bothAi")
-                        setup.chooseBothAiTime({ ...choice, mainMs: 0 });
+                    if (timeDialog === "ai") setup.chooseAiTime(choice);
+                    else if (timeDialog === "sente-ai") setup.chooseSideTime("sente", choice);
+                    else if (timeDialog === "gote-ai") setup.chooseSideTime("gote", choice);
                     else if (timeDialog === "my") setup.chooseMyTime(choice);
-                    else if (timeDialog === "both") setup.chooseBothTime(choice);
+                    else setup.chooseBothTime(choice);
                 }}
             />
         </section>

@@ -59,6 +59,7 @@ import { useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
 import { useIsMobile, useMediaQuery } from "./shogi-match/hooks/useMediaQuery";
 import { useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
 import { useMoveShadow } from "./shogi-match/hooks/useMoveShadow";
+import { PLAY_HAND_ZONES } from "./shogi-match/play/playStyles";
 import {
     DEFAULT_DISPLAY_SETTINGS,
     type DisplaySettings,
@@ -429,7 +430,9 @@ export function StudyWorkspaceView({
     // 768〜1023px（タブレットの縦持ち）: 盤を小さくして 2 列にする。
     const isTablet = useMediaQuery("(min-width: 768px) and (max-width: 1023px)");
     // 3 列で並ぶ幅。表題の行に余裕があるので、保存の状態なども同じ行に入れる（縦を取らない）。
-    const isWide = useMediaQuery("(min-width: 1280px)");
+    // Tailwind の xl（80rem）と同じ単位で判定する（px だと、ブラウザの文字の大きさを変えたときに
+    // 棋譜の欄を置く列が CSS のグリッドと食い違う）。
+    const isWide = useMediaQuery("(min-width: 80rem)");
     const [storedDisplaySettings] = useLocalStorage<DisplaySettings>(
         DISPLAY_SETTINGS_KEY,
         DEFAULT_DISPLAY_SETTINGS,
@@ -448,6 +451,7 @@ export function StudyWorkspaceView({
     const [mobileTab, setMobileTab] = useState<MobileTab>("highlights");
     // コメント欄は普段は畳んでおき、盤の上のボタンで開く（開いたままにすれば、手を送っても出続ける）。
     const [isCommentOpen, setIsCommentOpen] = useState(false);
+    const sideColumnRef = useRef<HTMLDivElement | null>(null);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     // 「その他の操作」を開いている間は、矢印キーで局面を動かさない（コピー・対局に渡す局面が、
     // メニューの中でのキー操作で変わってしまうため）。
@@ -1130,6 +1134,15 @@ export function StudyWorkspaceView({
     // 開いて見せたら、開いたままにする（対応が済んだ瞬間に、入力中の欄が閉じてしまわないように）。
     if (commentNeedsAttention && !isCommentOpen) setIsCommentOpen(true);
     const showsComment = isCommentOpen || commentNeedsAttention;
+    // PC の右の列は列の中で送るので、送ったあとで開くと、列の先頭に重ねたコメント欄が見えないまま
+    // になる。開いたときに、列の中だけを送って見せる（`scrollIntoView` はページ全体まで動かす）。
+    useEffect(() => {
+        const column = sideColumnRef.current;
+        const comment = document.getElementById("study-comment");
+        if (!showsComment || !column || !comment) return;
+        const offset = comment.getBoundingClientRect().top - column.getBoundingClientRect().top;
+        if (offset < 0) column.scrollTop += offset;
+    }, [showsComment]);
     // 保存できていない書きかけ（保存を待っている・保存に失敗した、など）がこの手にあるか。
     const hasCommentDraft = draftCommentIds.has(currentNodeId);
     const settingsButtonLabel =
@@ -1274,7 +1287,14 @@ export function StudyWorkspaceView({
             hideHeading={isMobile}
             hideStartButton={showsFixedStart}
             // 主役なので、PC では画面の高さに合わせて伸ばす（下に候補手の欄が見える分は残す）。
-            className={isMobile ? "max-h-[70vh]" : "max-h-[max(17rem,calc(100dvh-24rem))]"}
+            // 幅広の画面では上限を列の側で決める。
+            className={
+                isMobile
+                    ? "max-h-[70vh]"
+                    : isWide
+                      ? undefined
+                      : "max-h-[max(17rem,calc(100dvh-24rem))]"
+            }
         />
     );
     const graphPanel = (
@@ -1364,10 +1384,8 @@ export function StudyWorkspaceView({
 
     // コメント欄は畳んでいる間も描いたままにする（書きかけの保存・別の画面の変更との突き合わせは、
     // 欄が動いていないと進まない）。
-    // コメント欄は畳んでいる間も描いたままにする（書きかけの保存・別の画面の変更との突き合わせは、
-    // 欄が動いていないと進まない）。
-    // 盤（と操作ボタン）の下にグラフを置き、コメント欄は開いたときだけその上に重ねる
-    // （開閉で画面が上下しない）。重ねている間、下のグラフは操作させない。
+    // コメント欄は開いたときだけグラフの上に重ねる（開閉で画面が上下しない）。重ねている間、
+    // 下のグラフは操作させない。
     const graphWithComment = (
         <div className="relative w-0 min-w-full">
             <div inert={showsComment}>{graphPanel}</div>
@@ -1438,7 +1456,7 @@ export function StudyWorkspaceView({
 
     return (
         <TooltipProvider delayDuration={TOOLTIP_DELAY_DURATION_MS}>
-            <div className="flex w-full max-w-[1320px] flex-col gap-2 self-center px-3 py-1.5 md:gap-3 md:px-4 md:py-3">
+            <div className="flex w-full max-w-[1320px] xl:max-w-[1600px] flex-col gap-2 self-center px-3 py-1.5 md:gap-3 md:px-4 md:py-3">
                 <header className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
                         <TitleInput
@@ -1612,27 +1630,56 @@ export function StudyWorkspaceView({
                             </div>
                         </div>
                     ) : (
-                        <div className="grid items-start gap-3 lg:grid-cols-[auto_minmax(0,1fr)] xl:grid-cols-[auto_minmax(300px,1fr)_350px]">
-                            <div className="flex w-fit flex-col gap-3 lg:row-span-2 xl:row-span-1">
+                        // 盤の大きさは対局画面（PlayPCLayout）と揃える: 高さは同じ式で決め、横は右の列の
+                        // 幅（xl は 2 列で約 600px、lg は 1 列で約 330px）を残す分で抑える。盤と駒台の幅は
+                        // マスのおよそ 11.2 倍 + 56px。この分岐は PC だけで描くので、xl 未満の値は画面幅の
+                        // 条件を付けずに置く（lg の rem と isTablet の px が文字の大きさで食い違っても効くように）。
+                        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 [--shogi-cell-size:clamp(34px,min(calc((100dvh-300px)/9),calc((100vw-440px)/11.2)),72px)] xl:grid-cols-[auto_minmax(300px,1fr)_minmax(260px,300px)] xl:[--shogi-cell-size:clamp(34px,min(calc((100dvh-300px)/9),calc((min(100vw,1600px)-720px)/11.2)),72px)]">
+                            <div
+                                ref={boardSectionRef}
+                                // 持ち駒は対局画面と同じく盤の左右に置く（盤の上下を詰めて 1 画面に収める）。
+                                className={cn(
+                                    "flex w-fit flex-col items-center gap-2",
+                                    PLAY_HAND_ZONES,
+                                )}
+                            >
+                                {boardStatus}
+                                <PCBoardContent
+                                    {...boardProps}
+                                    // 縦の駒台は空でも枠の大きさが変わらないので、無い駒は出さない。
+                                    hideEmptyHandPieces
+                                    handSize="medium"
+                                    handPlacement="sides"
+                                />
+                                {navBar}
+                            </div>
+                            {/* 右の列は画面の高さに収める。xl では注目局面の一覧を縮めて収め、それでも溢れる分
+                                （xl 未満では棋譜の欄も入るので常に）は列の中で送る。送る列の端で欄の影やフォーカスの
+                                枠が切れないよう、内側に余白を取って外側の余白で打ち消す（上限は、画面の
+                                高さから表題の行などの 10rem（xl は 9rem）を引き、その余白の上下 0.5rem を足し戻した値）。 */}
+                            <div
+                                ref={sideColumnRef}
+                                className="-m-1 flex min-w-0 flex-col gap-3 p-1 max-h-[calc(100dvh-9.5rem)] overflow-y-auto xl:max-h-[calc(100dvh-8.5rem)]"
+                            >
+                                <div className="shrink-0">{graphWithComment}</div>
                                 <div
-                                    ref={boardSectionRef}
-                                    // 盤・操作・グラフが 1 画面に収まるよう、画面が低いときはマスを小さくする
-                                    // （盤以外の縦の合計が約 530px。表題の行・操作ボタン・グラフの高さを変えたら、
-                                    // この値も見直すこと）。
-                                    className="flex flex-col items-center gap-2 [--shogi-cell-size:clamp(32px,calc((100dvh-530px)/9),44px)]"
+                                    className={cn(
+                                        "flex min-h-0 shrink-0 flex-col",
+                                        // 縮めてよいのは、一覧の中で送れるだけの件数があり、解析の案内・途中経過を
+                                        // 出していないときだけ（下限は欄全体の高さなので、案内が出ていると一覧が
+                                        // 潰れる）。件数が少ないときに下限を付けると欄の中が空くので付けない。
+                                        highlights.length > 3 &&
+                                            !needsFullAnalysis &&
+                                            analysis.mode !== "full" &&
+                                            "xl:min-h-[16rem] xl:shrink",
+                                    )}
                                 >
-                                    {boardStatus}
-                                    <PCBoardContent {...boardProps} />
-                                    {navBar}
+                                    {highlightsPanel}
                                 </div>
-                                {/* グラフ（と、開いたときのコメント欄）の幅は盤に合わせる。 */}
-                                {graphWithComment}
+                                <div className="shrink-0">{candidatesPanel}</div>
+                                {!isWide && <div className="shrink-0">{moveList}</div>}
                             </div>
-                            <div className="flex min-w-0 flex-col gap-3">
-                                {highlightsPanel}
-                                {candidatesPanel}
-                            </div>
-                            <div className="min-w-0 lg:col-start-2 xl:col-start-3">{moveList}</div>
+                            {isWide && <div className="min-w-0">{moveList}</div>}
                         </div>
                     )}
                 </div>

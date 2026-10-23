@@ -201,8 +201,14 @@ export function HandPiecesDisplay({
     const isEditLayout = size === "edit" && !vertical;
     // 縦の駒台は、マスに合わせた大きさ（medium）で描く。normal の横並び用の幅確保は縦では使えない。
     const tokenSize = vertical && (size === "edit" || size === "normal") ? "medium" : size;
-    // PlayerIcon用のサイズマッピング
-    const iconSize = size === "compact" ? "xs" : size === "medium" || size === "edit" ? "sm" : "lg";
+    // PlayerIcon用のサイズマッピング。盤の横の縦の駒台は幅に余裕があるので、先後の印をはっきり見せる。
+    const iconSize = vertical
+        ? "lg"
+        : size === "compact"
+          ? "xs"
+          : size === "medium" || size === "edit"
+            ? "sm"
+            : "lg";
     const shouldHideEmptyPieces = hideEmptyPieces ?? (isMatchRunning && !isEditMode);
     const allPiecesEmpty = HAND_ORDER.every((p) => (hand[p] ?? 0) === 0);
 
