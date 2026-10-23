@@ -19,7 +19,6 @@ import {
     openStudyFromRshogiGame,
 } from "@shogi/ui/components/study-workspace/studyEntry";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useRef, useState } from "react";
 import { ActiveEngineSettingsPanel } from "./components/ActiveEngineSettingsPanel";
 import { BookViewerView } from "./components/book-viewer/BookViewerView";
@@ -30,6 +29,7 @@ import { RshogiViewerLiveView } from "./components/rshogi-viewer/RshogiViewerLiv
 import { RshogiViewerView } from "./components/rshogi-viewer/RshogiViewerView";
 import { StudiesView } from "./components/studies/StudiesView";
 import { StudyView } from "./components/studies/StudyView";
+import { requestNnueFilePath } from "./platform/nnueFilePicker";
 import { getDesktopStudySync } from "./studies/desktopStudySync";
 
 const createEngineClient = () =>
@@ -64,19 +64,6 @@ const validateNnueHeader = async (header: Uint8Array, fileSize: number) => ({
     format: (await detect_nnue_format(header, fileSize)) as NnueFormat,
     isCompatible: await is_nnue_compatible(header, fileSize),
 });
-
-// NNUE ファイル選択ダイアログを開く
-async function requestNnueFilePath(): Promise<string | null> {
-    const result = await open({
-        filters: [{ name: "NNUE Files", extensions: ["nnue"] }],
-        multiple: false,
-        directory: false,
-    });
-    if (typeof result === "string") {
-        return result;
-    }
-    return null;
-}
 
 function buildEngineOptions(registrations: EngineRegistration[]): EngineOption[] {
     const external: EngineOption[] = registrations.map((reg) => ({

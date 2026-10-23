@@ -26,8 +26,8 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 vi.mock("./components/HeaderNav", () => ({ HeaderNav: () => null }));
 vi.mock("./components/PageHeader", () => ({ PageHeader: () => null }));
-vi.mock("./hooks/useRemotePrivateNnueManager", () => ({
-    useRemotePrivateNnueManager: () => undefined,
+vi.mock("./hooks/useAccountNnue", () => ({
+    useAccountNnue: () => undefined,
 }));
 vi.mock("./platform/wasm-engine-client", () => ({ createWebWasmEngineClient: () => ({}) }));
 

@@ -211,7 +211,7 @@ export function PlayAdvancedSettings({
                     </span>
                 </button>
                 <button type="button" onClick={onOpenNnueManager} className={ROW_BUTTON_CLASS}>
-                    <span>評価関数を管理</span>
+                    <span>AI（評価関数）</span>
                     <span aria-hidden className="text-wafuu-sumi-light">
                         ›
                     </span>

@@ -10,7 +10,7 @@ import type {
     PositionState,
     PresetWithStatus,
 } from "@shogi/app-core";
-import type { RemoteNnueManager } from "../../nnue/types";
+import type { NnueAccountStore } from "../../nnue-library/types";
 import type { ShogiBoardCell, ShogiBoardMoveShadow } from "../../shogi-board";
 import type { SelectionState } from "../contexts/MatchStateContext.types";
 import type { ClockSettings, TickState } from "../hooks/useClockManager";
@@ -122,8 +122,8 @@ export interface DialogStateProps {
     clearNnueManagerOpenReason: () => void;
     manifestUrl?: string;
     onRequestNnueFilePath?: () => Promise<string | null>;
-    remoteNnueManager?: RemoteNnueManager;
-    /** 指定時、「評価関数を管理」は管理ダイアログでなく AI の一覧画面を開く */
+    nnueAccount?: NnueAccountStore;
+    /** 指定時、「AI（評価関数）」の入口はダイアログでなく一覧の画面を開く */
     onOpenNnueLibrary?: () => void;
     selectedMoveDetail: {
         move: import("../utils/kifFormat").KifMove;

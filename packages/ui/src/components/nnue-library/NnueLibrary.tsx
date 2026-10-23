@@ -22,7 +22,6 @@ import {
 } from "../alert-dialog";
 import { Button } from "../button";
 import { NnueErrorAlert } from "../nnue/NnueErrorAlert";
-import { FREE_NNUE_RESOURCES } from "../nnue/NnueFreeResourcesInfo";
 import { NnueFvScaleInputDialog } from "../nnue/NnueFvScaleInputDialog";
 import { Progress } from "../progress";
 import type { NnueAccountFile, NnueAccountStore } from "./types";
@@ -34,10 +33,10 @@ interface NnueLibraryProps {
     fallbackIconUrl?: string;
     /** Web のログイン中だけ渡す、アカウントの保存先 */
     account?: NnueAccountStore;
-    /** 追加した AI の保存先の呼び方（Web は「このブラウザ」） */
-    deviceLabel?: string;
     /** Desktop 用: ファイル選択ダイアログでパスを得る */
     onRequestFilePath?: () => Promise<string | null>;
+    /** この端末の AI を削除できない理由（対局中など）。指定時は削除ボタンを止める */
+    deleteDisabledReason?: string;
     /** 追加・ダウンロードが済んだとき（呼び出し元の画面へ戻る案内に使う） */
     onReady?: (meta: NnueMeta) => void;
 }
@@ -53,6 +52,17 @@ type PendingDelete =
     | { kind: "preset"; preset: PresetWithStatus };
 
 const ALLOWED_EXTENSIONS = [".nnue", ".bin"];
+
+const SUPPORT_ISSUES_URL = "https://github.com/SH11235/rshogi/issues";
+
+/** 公開されている評価関数の例（FV_SCALE は配布元の公開値） */
+const FREE_NNUE_RESOURCES = [
+    {
+        name: "AobaNNUE",
+        fvScale: 40,
+        downloadUrl: "https://github.com/yssaya/AobaNNUE/releases/tag/v1.1",
+    },
+];
 
 function formatSize(bytes: number): string {
     if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -87,8 +97,8 @@ export function NnueLibrary({
     manifestUrl,
     fallbackIconUrl,
     account,
-    deviceLabel = "この端末",
     onRequestFilePath,
+    deleteDisabledReason,
     onReady,
 }: NnueLibraryProps): ReactElement {
     const {
@@ -134,6 +144,8 @@ export function NnueLibrary({
     const [busyId, setBusyId] = useState<string | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
 
+    // Desktop はファイルとして端末に置き、Web はブラウザの中（IndexedDB）に置く。
+    const deviceLabel = capabilities?.supportsPathImport ? "この端末" : "このブラウザ";
     const canPickPath = Boolean(capabilities?.supportsPathImport && onRequestFilePath);
     const canPickFile = Boolean(capabilities?.supportsFileImport);
     const canAdd = canPickPath || canPickFile;
@@ -381,7 +393,8 @@ export function NnueLibrary({
                                     <Button
                                         size="sm"
                                         variant="ghost"
-                                        disabled={isBusy}
+                                        disabled={isBusy || Boolean(deleteDisabledReason)}
+                                        title={deleteDisabledReason}
                                         onClick={() =>
                                             setPendingDelete({ kind: "device", meta, accountFile })
                                         }
@@ -453,6 +466,7 @@ export function NnueLibrary({
                                             : null
                                     }
                                     disabled={isBusy}
+                                    deleteDisabledReason={deleteDisabledReason}
                                     isDeleting={busyId === preset.config.presetKey}
                                     onDownload={() => {
                                         setNotice(null);
@@ -472,6 +486,16 @@ export function NnueLibrary({
                     ? `（使える容量の目安 ${formatSize(storageUsage.quota)}）`
                     : ""}
                 。{account && "ブラウザのサイトデータを消すと、このブラウザの AI も消えます。"}
+                読み込めない形式や不具合は{" "}
+                <a
+                    href={SUPPORT_ISSUES_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline underline-offset-2 hover:text-foreground"
+                >
+                    GitHub Issues
+                </a>{" "}
+                へお知らせください。
             </p>
 
             {isDragOver && addedMetas.length + accountOnlyFiles.length > 0 && (
@@ -587,6 +611,7 @@ function PresetRow({
     fallbackIconUrl,
     progress,
     disabled,
+    deleteDisabledReason,
     isDeleting,
     onDownload,
     onDelete,
@@ -596,6 +621,7 @@ function PresetRow({
     fallbackIconUrl?: string;
     progress: NnueDownloadProgress | null;
     disabled: boolean;
+    deleteDisabledReason?: string;
     isDeleting: boolean;
     onDownload: () => void;
     onDelete: () => void;
@@ -658,7 +684,13 @@ function PresetRow({
                         <span className="text-xs text-status-success">
                             {isDeleting ? "削除中..." : `${deviceLabel}にあります`}
                         </span>
-                        <Button size="sm" variant="ghost" disabled={disabled} onClick={onDelete}>
+                        <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={disabled || Boolean(deleteDisabledReason)}
+                            title={deleteDisabledReason}
+                            onClick={onDelete}
+                        >
                             削除
                         </Button>
                     </>

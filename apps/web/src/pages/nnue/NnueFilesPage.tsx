@@ -51,7 +51,6 @@ export default function NnueFilesPage(): ReactElement {
                     manifestUrl={import.meta.env.VITE_NNUE_MANIFEST_URL as string}
                     fallbackIconUrl={`${import.meta.env.BASE_URL}ramu.jpeg`}
                     account={account}
-                    deviceLabel="このブラウザ"
                     onReady={() => setIsReady(true)}
                 />
             </PageContainer>

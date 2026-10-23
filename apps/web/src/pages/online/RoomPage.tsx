@@ -19,11 +19,11 @@ import type { ReactElement } from "react";
 import { useEffect, useRef, useState } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
 import { PageHeader } from "../../components/PageHeader";
+import { useAccountNnue } from "../../hooks/useAccountNnue";
 import { syncProfileDisplayNameIfNeeded, useAuthSession } from "../../hooks/useAuthSession";
 import { getLocalPlayerName, saveLocalPlayerName } from "../../hooks/useLocalPlayerName";
 import { useOnlineAnalysis } from "../../hooks/useOnlineAnalysis";
 import { usePlayFromPosition } from "../../hooks/usePlayFromPosition";
-import { useRemotePrivateNnueManager } from "../../hooks/useRemotePrivateNnueManager";
 
 const nnueManifestUrl: string = (() => {
     const value = import.meta.env.VITE_NNUE_MANIFEST_URL as string | undefined;
@@ -303,7 +303,7 @@ export default function RoomPage(): ReactElement {
     const { roomId } = useParams({ from: "/online/$roomId" });
     const roomInfo = routeApi.useLoaderData() as RoomInfo;
     const { session } = useAuthSession();
-    const remoteNnueManager = useRemotePrivateNnueManager();
+    const nnueAccount = useAccountNnue();
 
     const navigate = useNavigate();
     const playFromPosition = usePlayFromPosition();
@@ -459,7 +459,7 @@ export default function RoomPage(): ReactElement {
                 roomId={roomId}
                 analysis={analysis}
                 manifestUrl={nnueManifestUrl}
-                remoteNnueManager={remoteNnueManager}
+                nnueAccount={nnueAccount}
                 onStartReview={(data) => void handleStartReview(data)}
                 onExit={() => {
                     openingReviewRef.current?.controller.abort();

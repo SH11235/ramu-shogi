@@ -43,7 +43,7 @@ const NNUE_ERROR_MESSAGES: Record<NnueErrorCode, string> = {
     NNUE_DOWNLOAD_FAILED: "ダウンロードに失敗しました。ネットワークを確認してください",
     NNUE_DOWNLOAD_IN_PROGRESS: "このファイルは既にダウンロード中です",
     NNUE_NOT_DOWNLOADED:
-        "評価関数がダウンロードされていません。評価関数ファイル管理からダウンロードしてください",
+        "評価関数がダウンロードされていません。「AI（評価関数）」からダウンロードしてください",
     NNUE_RESOLVE_FAILED: "評価関数の解決に失敗しました",
     NNUE_STORAGE_FULL: "ストレージ容量が不足しています。不要な NNUE を削除してください",
     NNUE_SIZE_MISMATCH: "ダウンロードしたファイルサイズが一致しません",

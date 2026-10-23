@@ -4,7 +4,7 @@ import { Link, useBlocker, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { HeaderNav } from "./components/HeaderNav";
 import { PageHeader } from "./components/PageHeader";
-import { useRemotePrivateNnueManager } from "./hooks/useRemotePrivateNnueManager";
+import { useAccountNnue } from "./hooks/useAccountNnue";
 import { clearPlayHandoff, readPlayHandoff } from "./lib/playHandoff";
 import { createWebWasmEngineClient } from "./platform/wasm-engine-client";
 
@@ -25,7 +25,7 @@ const nnueManifestUrl = import.meta.env.VITE_NNUE_MANIFEST_URL as string;
 function App() {
     const isDevMode = useDevMode();
     const navigate = useNavigate();
-    const remoteNnueManager = useRemotePrivateNnueManager();
+    const nnueAccount = useAccountNnue();
     const [panelPosition, setPanelPosition] = useState<{
         label?: string;
         sfen: string;
@@ -62,7 +62,7 @@ function App() {
                     engineOptions={engineOptions}
                     isDevMode={isDevMode}
                     manifestUrl={nnueManifestUrl}
-                    remoteNnueManager={remoteNnueManager}
+                    nnueAccount={nnueAccount}
                     onOpenNnueLibrary={() => navigate({ to: "/nnue", search: { from: "/play" } })}
                     allowAnalysisDuringMatch={true}
                     defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
