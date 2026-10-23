@@ -1002,6 +1002,39 @@ describe("createEngineController", () => {
         expect(mockClient.search).toHaveBeenCalledWith({ limits, ponder: false });
     });
 
+    it.each([
+        { searchLimit: { kind: "nodes", nodes: 100_000 } as const, limits: { nodes: 100_000 } },
+        { searchLimit: { kind: "depth", depth: 12 } as const, limits: { maxDepth: 12 } },
+    ])("読む量を $searchLimit.kind で決めた側には、時計を渡さない", async ({
+        searchLimit,
+        limits,
+    }) => {
+        const mockClient = createMockEngineClient();
+        const controller = createEngineController({
+            createClient: () => mockClient.client,
+            getClockState: () => ({
+                sente: { mainMs: 0, byoyomiMs: 10_000 },
+                gote: { mainMs: 600_000, byoyomiMs: 30_000 },
+                lastUpdatedAt: 1_000,
+                ticking: "sente",
+            }),
+            now: () => 1_500,
+            resolveNnue: async () => null,
+            callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn() },
+        });
+        controller.command.syncContext({
+            sides: { sente: { role: "engine", engineId: "engine1" }, gote: { role: "human" } },
+            position: { startSfen: "startpos", moves: [], turn: "sente", ready: true },
+            matchRunning: true,
+            engineSearchLimits: { sente: searchLimit, gote: { kind: "clock" } },
+        });
+
+        await controller.command.startTurn("sente");
+        await flushPromises();
+
+        expect(mockClient.search).toHaveBeenCalledWith({ limits, ponder: false });
+    });
+
     it("bestmove の通常手でコールバックを呼ぶ", async () => {
         const mockClient = createMockEngineClient();
         const onMoveFromEngine = vi.fn();

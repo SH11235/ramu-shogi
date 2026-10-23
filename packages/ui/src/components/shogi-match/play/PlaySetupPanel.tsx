@@ -16,7 +16,11 @@ import { SoundToggle } from "../components/SoundToggle";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import type { ClockSettings } from "../hooks/useClockManager";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
+import type { EngineSearchLimit } from "../types";
+import { formatSearchLimit } from "../utils/searchLimits";
+import { buildThreadOptions } from "../utils/threadOptions";
 import { formatTimeRule, isSameClock } from "../utils/timeSettings";
+import { PlaySearchLimitDialog, type SearchLimitKind } from "./PlaySearchLimitDialog";
 import { isDialogRepresentable, PlayTimeDialog } from "./PlayTimeDialog";
 import { PlayTimeRulesHelp } from "./PlayTimeRulesHelp";
 import {
@@ -156,23 +160,29 @@ const timeOptions = (choices: TimeChoice[], currentId: string | null, currentLab
 
 type Clock = ClockSettings[Player];
 
-/** 選択欄の値: 「自分と同じ」・選択肢に無いいまの時間。 */
+/** 選択欄の値: 「自分と同じ」・選択肢に無いいまの時間・ノード数や深さで決めた読む量。 */
 const SAME_AS_MINE_ID = "same";
 const ADD_NNUE_LABEL = "＋ 自分の評価関数を追加";
 const CURRENT_TIME_ID = "current";
+const CURRENT_LIMIT_ID = "limit";
+const CUSTOM_NODES_ID = "custom-nodes";
+const CUSTOM_DEPTH_ID = "custom-depth";
 
 /**
  * AI の考慮時間の選択欄。AI の行（相手・強さと並べる）に置く。
- * いまの時間が選択肢に無いときは、その時間を 1 つ足して選ばれた状態にする。最後の「指定…」で数を決める。
+ * いまの時間が選択肢に無いときは、その時間を 1 つ足して選ばれた状態にする。末尾の「…で指定」で数を決める。
+ * 時間の代わりに、ノード数・深さで読む量を決めることもできる。
  */
 function AiTimeSelect({
     id,
     label,
     choices,
     clock,
+    searchLimit,
     sameAsMine,
     onChoose,
     onCustom,
+    onCustomLimit,
     disabled,
     className,
 }: {
@@ -180,17 +190,24 @@ function AiTimeSelect({
     label: string;
     choices: TimeChoice[];
     clock: Clock;
+    searchLimit: EngineSearchLimit;
     /** 「自分と同じ」に当てる時計（人と AI の対局で、自分の時間が決まっているときだけ） */
     sameAsMine: Clock | null;
     onChoose: (choice: TimeChoice) => void;
     onCustom: () => void;
+    onCustomLimit: (kind: SearchLimitKind) => void;
     disabled?: boolean;
     className?: string;
 }): ReactElement {
+    const limitText = formatSearchLimit(searchLimit);
     // 自分と同じ時間なら、選択肢の 1 つと同じ時間でも「自分と同じ」と見せる（自分の時間を変えると付いてくる）。
     const isSame = sameAsMine !== null && isSameClock(clock, sameAsMine);
     const matched = choices.find((choice) => choice.enabled && isSameClock(clock, choice));
-    const value = isSame ? SAME_AS_MINE_ID : (matched?.id ?? CURRENT_TIME_ID);
+    const value = limitText
+        ? CURRENT_LIMIT_ID
+        : isSame
+          ? SAME_AS_MINE_ID
+          : (matched?.id ?? CURRENT_TIME_ID);
     return (
         <NativeSelect
             id={id}
@@ -201,6 +218,10 @@ function AiTimeSelect({
                 const next = event.target.value;
                 if (next === CUSTOM_TIME_ID) {
                     onCustom();
+                    return;
+                }
+                if (next === CUSTOM_NODES_ID || next === CUSTOM_DEPTH_ID) {
+                    onCustomLimit(next === CUSTOM_NODES_ID ? "nodes" : "depth");
                     return;
                 }
                 if (next === SAME_AS_MINE_ID && sameAsMine) {
@@ -224,7 +245,10 @@ function AiTimeSelect({
                     {clock.enabled ? formatTimeRule(clock, { perMove: true }) : "時間無制限"}
                 </option>
             )}
-            <option value={CUSTOM_TIME_ID}>指定…</option>
+            {limitText && <option value={CURRENT_LIMIT_ID}>{limitText}</option>}
+            <option value={CUSTOM_TIME_ID}>時間で指定…</option>
+            <option value={CUSTOM_NODES_ID}>ノード数で指定…</option>
+            <option value={CUSTOM_DEPTH_ID}>深さで指定…</option>
         </NativeSelect>
     );
 }
@@ -236,6 +260,7 @@ const KIND_OPTIONS: Array<{ id: PlayMatchKind; label: string }> = [
 ];
 
 type TimeTarget = "ai" | "my" | "both" | "sente-ai" | "gote-ai";
+type LimitTarget = "ai" | Player;
 
 const sideLabel = (side: Player): string => (side === "sente" ? "先手" : "後手");
 
@@ -278,6 +303,15 @@ export function PlaySetupPanel({
     const setTimeDialog = (target: TimeTarget) => {
         setTimeDialogTarget(target);
         setTimeDialogOpen(true);
+    };
+    const [limitDialog, setLimitDialogTarget] = useState<{
+        target: LimitTarget;
+        kind: SearchLimitKind;
+    }>({ target: "ai", kind: "nodes" });
+    const [limitDialogOpen, setLimitDialogOpen] = useState(false);
+    const openLimitDialog = (target: LimitTarget, kind: SearchLimitKind) => {
+        setLimitDialogTarget({ target, kind });
+        setLimitDialogOpen(true);
     };
     const startMatch = useEffectEvent(() => {
         play?.startMatch(pendingNotice);
@@ -401,6 +435,101 @@ export function PlaySetupPanel({
                 : timeDialog === "both"
                   ? "持ち時間を指定（両者）"
                   : "あなたの持ち時間を指定";
+    const limitDialogOwner =
+        limitDialog.target === "ai"
+            ? "AI"
+            : `${limitDialog.target === "sente" ? "☗ 先手" : "☖ 後手"}の AI`;
+    const limitDialogTitle = `${limitDialogOwner} の読む量（${
+        limitDialog.kind === "nodes" ? "ノード数" : "深さ"
+    }）`;
+    const threadsSelect = ({
+        id,
+        label,
+        value,
+        maxThreads,
+        onChoose,
+        wrapperClassName,
+    }: {
+        id?: string;
+        label?: string;
+        value: number;
+        maxThreads: number | undefined;
+        onChoose: (threads: number) => void;
+        wrapperClassName?: string;
+    }) => (
+        <NativeSelect
+            id={id}
+            aria-label={label}
+            value={String(value)}
+            disabled={locked}
+            onChange={(event) => onChoose(Number(event.target.value))}
+            wrapperClassName={wrapperClassName}
+            className={COMPACT_SELECT_CLASS}
+        >
+            {buildThreadOptions({ compact: true, maxThreads }).map((option) => (
+                <option key={option.value} value={option.value}>
+                    {option.label}
+                </option>
+            ))}
+        </NativeSelect>
+    );
+    const aiThreadsSelect = (wrapperClassName?: string) =>
+        threadsSelect({
+            id: "play-setup-threads",
+            value: setup.aiThreads,
+            maxThreads: setup.aiMaxThreads,
+            onChoose: setup.chooseAiThreads,
+            wrapperClassName,
+        });
+    // 背の低いスマホ（375x553 など）では、ダウンロードの注記まで入れると 1 画面に収まらない。そのときは
+    // 詳細設定（先後別のスレッド数）に任せて、この行を出さない。
+    const threadsRow = (
+        <div
+            className={
+                rows
+                    ? cn(
+                          "flex",
+                          ROW_CLASS,
+                          downloadNote !== null && "[@media(max-height:600px)]:hidden",
+                      )
+                    : "flex flex-col gap-1.5"
+            }
+        >
+            <label
+                htmlFor="play-setup-threads"
+                className={rows ? ROW_LABEL_CLASS : FIELD_LABEL_CLASS}
+            >
+                {rows ? "スレッド" : "スレッド数"}
+            </label>
+            {aiThreadsSelect(rows ? "min-w-0 flex-1" : undefined)}
+        </div>
+    );
+    // AI 対 AI: 先後それぞれのスレッド数を 1 行に並べる（AI の行に足すと、スマホの幅で全部の欄が切れる）。
+    const sideThreadsRow = (
+        <div className={rows ? cn("flex", ROW_CLASS) : "flex flex-col gap-1.5"}>
+            <span className={rows ? ROW_LABEL_CLASS : FIELD_LABEL_CLASS}>
+                {rows ? "スレッド" : "スレッド数"}
+            </span>
+            <div className="flex min-w-0 flex-1 gap-2">
+                {(["sente", "gote"] as const).map((side) => (
+                    <span key={side} className="flex min-w-0 flex-1 items-center gap-1.5">
+                        <span aria-hidden className="text-sm text-wafuu-sumi">
+                            {side === "sente" ? "☗" : "☖"}
+                        </span>
+                        {threadsSelect({
+                            label: `${sideLabel(side)}の AI のスレッド数`,
+                            value: setup.sideAi[side].threads,
+                            maxThreads: setup.sideAi[side].maxThreads,
+                            onChoose: (threads) => setup.chooseSideThreads(side, threads),
+                            wrapperClassName: "min-w-0 flex-1",
+                        })}
+                    </span>
+                ))}
+            </div>
+        </div>
+    );
+    // PC で強さを選べるときは、スレッド数を強さの右に並べる（相手・考慮時間の行と同じ 2 列。縦を増やさない）。
+    const threadsBesideLevel = isVsAi && !rows && setup.opponent?.supportsLevel !== false;
     const levelSlider = (
         <input
             id="play-setup-level"
@@ -597,9 +726,11 @@ export function PlaySetupPanel({
                                         label={`${name}の AI の考慮時間`}
                                         choices={AI_MATCH_TIME_CHOICES}
                                         clock={ai.clock}
+                                        searchLimit={ai.searchLimit}
                                         sameAsMine={null}
                                         onChoose={(choice) => setup.chooseSideTime(side, choice)}
                                         onCustom={() => setTimeDialog(`${side}-ai`)}
+                                        onCustomLimit={(kind) => openLimitDialog(side, kind)}
                                         disabled={locked}
                                         className={
                                             rows
@@ -613,6 +744,7 @@ export function PlaySetupPanel({
                             </div>
                         );
                     })}
+                    {sideThreadsRow}
                     <div className={cn("flex items-center justify-between gap-2", rows && "mt-1")}>
                         <button
                             type="button"
@@ -653,7 +785,11 @@ export function PlaySetupPanel({
                                 </button>
                             </div>
                             <label htmlFor="play-setup-ai-time" className={AI_TIME_SELECT_WIDTH}>
-                                <span className={FIELD_LABEL_CLASS}>考慮時間</span>
+                                <span className={FIELD_LABEL_CLASS}>
+                                    {setup.aiSearchLimit.kind === "clock"
+                                        ? "考慮時間"
+                                        : "読みの上限"}
+                                </span>
                             </label>
                         </div>
                     )}
@@ -681,9 +817,11 @@ export function PlaySetupPanel({
                             label="AI の考慮時間"
                             choices={AI_TIME_CHOICES}
                             clock={setup.aiClock}
+                            searchLimit={setup.aiSearchLimit}
                             sameAsMine={setup.myClock.enabled ? setup.myClock : null}
                             onChoose={setup.chooseAiTime}
                             onCustom={() => setTimeDialog("ai")}
+                            onCustomLimit={(kind) => openLimitDialog("ai", kind)}
                             disabled={locked}
                             className={AI_TIME_SELECT_WIDTH}
                         />
@@ -702,22 +840,38 @@ export function PlaySetupPanel({
                         </span>
                     </label>
                 ) : (
-                    <label htmlFor="play-setup-level" className="flex flex-col gap-1.5">
-                        <span
-                            className={cn("flex items-baseline justify-between", FIELD_LABEL_CLASS)}
+                    <div className="flex items-end gap-2">
+                        <label
+                            htmlFor="play-setup-level"
+                            className="flex min-w-0 flex-1 flex-col gap-1.5"
                         >
-                            <span>強さ</span>
-                            <span className="text-sm tabular-nums text-wafuu-sumi">
-                                レベル {setup.level}
+                            <span
+                                className={cn(
+                                    "flex items-baseline justify-between",
+                                    FIELD_LABEL_CLASS,
+                                )}
+                            >
+                                <span>強さ</span>
+                                <span className="text-sm tabular-nums text-wafuu-sumi">
+                                    レベル {setup.level}
+                                </span>
                             </span>
-                        </span>
-                        <span className="flex items-center gap-2 text-[11px] text-wafuu-sumi-light">
-                            <span aria-hidden>弱</span>
-                            {levelSlider}
-                            <span aria-hidden>強</span>
-                        </span>
-                    </label>
+                            <span className="flex min-h-10 items-center gap-2 text-[11px] text-wafuu-sumi-light">
+                                <span aria-hidden>弱</span>
+                                {levelSlider}
+                                <span aria-hidden>強</span>
+                            </span>
+                        </label>
+                        <div className={cn("flex flex-col gap-1.5", AI_TIME_SELECT_WIDTH)}>
+                            <label htmlFor="play-setup-threads" className={FIELD_LABEL_CLASS}>
+                                スレッド数
+                            </label>
+                            {aiThreadsSelect()}
+                        </div>
+                    </div>
                 ))}
+
+            {isVsAi && !threadsBesideLevel && threadsRow}
 
             {isVsAi && (
                 <Segmented
@@ -841,6 +995,21 @@ export function PlaySetupPanel({
                     else if (timeDialog === "gote-ai") setup.chooseSideTime("gote", choice);
                     else if (timeDialog === "my") setup.chooseMyTime(choice);
                     else setup.chooseBothTime(choice);
+                }}
+            />
+            <PlaySearchLimitDialog
+                open={limitDialogOpen}
+                onOpenChange={setLimitDialogOpen}
+                kind={limitDialog.kind}
+                title={limitDialogTitle}
+                current={
+                    limitDialog.target === "ai"
+                        ? setup.aiSearchLimit
+                        : setup.sideAi[limitDialog.target].searchLimit
+                }
+                onApply={(limit) => {
+                    if (limitDialog.target === "ai") setup.chooseAiSearchLimit(limit);
+                    else setup.chooseSideSearchLimit(limitDialog.target, limit);
                 }}
             />
         </section>

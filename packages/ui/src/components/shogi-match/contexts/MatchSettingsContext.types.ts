@@ -6,7 +6,13 @@
 
 import type { NnueMeta, NnueSelection, PresetWithStatus } from "@shogi/app-core";
 import type { ClockSettings } from "../hooks/useClockManager";
-import type { EngineOption, EngineThreadSettings, PassRightsSettings, SideSetting } from "../types";
+import type {
+    EngineOption,
+    EngineSearchLimits,
+    EngineThreadSettings,
+    PassRightsSettings,
+    SideSetting,
+} from "../types";
 
 /**
  * 対局設定コンテキスト値
@@ -33,6 +39,9 @@ export interface MatchSettingsContextValue {
     /** 対局用スレッド数（0=自動） */
     engineThreads: EngineThreadSettings;
     onEngineThreadsChange: (threads: EngineThreadSettings) => void;
+    /** 対局で AI が 1 手に読む量（時計どおり・ノード数・深さ） */
+    engineSearchLimits: EngineSearchLimits;
+    onEngineSearchLimitsChange: (limits: EngineSearchLimits) => void;
 
     // NNUE関連
     senteNnueSelection: NnueSelection;

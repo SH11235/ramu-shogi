@@ -83,6 +83,9 @@ export function PlayMobileLayout({
     const isEditing = phase === "editing";
     const inGame = phase === "playing" || phase === "paused" || phase === "finished";
     const barMoves = kifMoves.map((move) => ({ ply: move.ply, displayText: move.displayText }));
+    // 自分 対 AI では盤の下があなたなので、手番の行には時間だけを出す。AI 同士・人同士では
+    // 盤の下の対局者が誰かも分かるよう、アイコンと名前を添える。
+    const isVsAi = (sides.sente.role === "human") !== (sides.gote.role === "human");
 
     const board = (
         // 設定中と終局後は盤を操作できない。フォーカスや読み上げの対象からも外す。
@@ -231,7 +234,7 @@ export function PlayMobileLayout({
                                 />
                             )}
                         </div>
-                        <PlayMyStatus />
+                        <PlayMyStatus withPlayer={!isVsAi} />
                     </div>
                     <PlayMatchActions
                         compact

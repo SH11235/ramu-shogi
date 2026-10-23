@@ -17,6 +17,7 @@ import type { ClockSettings, TickState } from "../hooks/useClockManager";
 import type {
     DisplaySettings,
     EngineOption,
+    EngineSearchLimits,
     EngineThreadSettings,
     GameMode,
     Message,
@@ -45,6 +46,8 @@ export interface MatchSettingsProps {
     isDevMode: boolean;
     engineThreads: EngineThreadSettings;
     setEngineThreads: (threads: EngineThreadSettings) => void;
+    engineSearchLimits: EngineSearchLimits;
+    setEngineSearchLimits: (limits: EngineSearchLimits) => void;
     senteNnueSelection: NnueSelection;
     handleSenteNnueSelectionChange: (selection: NnueSelection) => void;
     goteNnueSelection: NnueSelection;

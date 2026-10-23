@@ -13,6 +13,7 @@ import { PlayerIcon } from "../components/PlayerIcon";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
+import { formatSearchLimit } from "../utils/searchLimits";
 import { formatTime } from "../utils/timeFormat";
 import { formatTimeRule } from "../utils/timeSettings";
 
@@ -38,12 +39,14 @@ function usePlayerTime(owner: Player): { text: string; urgent: boolean } {
 /** 対局者の時間を言葉にする（「時間無制限」「1手10秒」「残り 09:32」「残り 7秒」）。 */
 function usePlayerTimeTextOnly(owner: Player): string {
     const { play } = useShogiMatchConfig();
-    const { timeSettings } = useMatchSettings();
+    const { timeSettings, engineSearchLimits } = useMatchSettings();
     const { sides, clocks } = useMatchState();
     const phase = play?.phase ?? "setup";
     const isAI = sides[owner].role === "engine";
     const rule = timeSettings[owner];
     const clock = clocks[owner];
+    const fixedSearch = isAI ? formatSearchLimit(engineSearchLimits[owner]) : null;
+    if (fixedSearch) return fixedSearch;
     if (!rule.enabled) return "時間無制限";
     if (phase !== "playing" && phase !== "paused") {
         // 対局の前後は、残り時間でなく決まり（持ち時間・秒読み）を出す。
@@ -172,22 +175,41 @@ export function PlayPlayerBar({
  * 自分（盤の下の側）のパス権の残りと時間を出す（スマホの操作の帯に置く。スマホの対局中は、
  * 自分の側の帯を出さないため）。どちらも無ければ何も出さない。
  */
-export function PlayMyStatus({ className }: { className?: string }): ReactElement | null {
+export function PlayMyStatus({
+    withPlayer = false,
+    className,
+}: {
+    /** 盤の下の対局者のアイコンと名前も添える（AI 同士・人同士。盤の下が「あなた」とは限らない） */
+    withPlayer?: boolean;
+    className?: string;
+}): ReactElement | null {
+    const { play } = useShogiMatchConfig();
     const { timeSettings } = useMatchSettings();
-    const { getHandInfo } = useMatchState();
+    const { getHandInfo, sides } = useMatchState();
     const owner = getHandInfo("bottom").owner;
     const { text: timeText, urgent } = usePlayerTime(owner);
     const passText = usePassRightsText(owner);
     const showTime = timeSettings[owner].enabled;
-    if (!showTime && !passText) return null;
+    if (!withPlayer && !showTime && !passText) return null;
+    const sideLabel = owner === "sente" ? "先手" : "後手";
+    const bothHumans = sides.sente.role === "human" && sides.gote.role === "human";
+    const name = bothHumans ? sideLabel : (play?.playerNames[owner] ?? sideLabel);
     return (
         <span
             className={cn(
-                "shrink-0 whitespace-nowrap text-sm font-semibold tabular-nums",
+                "flex min-w-0 shrink-0 items-center gap-1.5 whitespace-nowrap text-sm font-semibold tabular-nums",
                 urgent ? "text-wafuu-shu" : "text-wafuu-sumi",
                 className,
             )}
         >
+            {withPlayer && (
+                <>
+                    <PlayerIcon side={owner} isAI={sides[owner].role === "engine"} size="md" />
+                    {/* 幅の狭い端末では名前を省き、手番の行（ヒントの指し手など）の幅を残す。 */}
+                    <span className="min-w-0 max-w-24 truncate max-[399px]:hidden">{name}</span>
+                    {(passText || showTime) && <span aria-hidden>・</span>}
+                </>
+            )}
             {passText}
             {passText && showTime ? " ・ " : ""}
             {showTime ? timeText : ""}

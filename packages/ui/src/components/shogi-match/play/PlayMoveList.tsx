@@ -9,11 +9,17 @@ import type { ReactElement } from "react";
 import { useEffect, useRef } from "react";
 import { useNavigation } from "../contexts/NavigationContext";
 import { formatEval } from "../utils/kifFormat";
+import { formatNodeCount } from "../utils/searchLimits";
 import { formatElapsedTime } from "../utils/timeFormat";
 
-const ROW_GRID = "grid grid-cols-[1.75rem_minmax(0,1fr)_4rem] items-baseline gap-x-1.5";
-const ROW_GRID_WITH_EVAL =
-    "grid grid-cols-[1.75rem_minmax(0,1fr)_4rem_3.25rem] items-baseline gap-x-1.5";
+/** 列の幅: 手・指し手・消費、評価値、AI の読み（深さ・局面数）。 */
+const ROW_GRIDS = {
+    plain: "grid grid-cols-[1.75rem_minmax(0,1fr)_4rem] items-baseline gap-x-1.5",
+    eval: "grid grid-cols-[1.75rem_minmax(0,1fr)_4rem_3.25rem] items-baseline gap-x-1.5",
+    search: "grid grid-cols-[1.75rem_minmax(0,1fr)_4rem_2rem_3.25rem] items-baseline gap-x-1.5",
+    evalSearch:
+        "grid grid-cols-[1.75rem_minmax(0,1fr)_4rem_3.25rem_2rem_3.25rem] items-baseline gap-x-1.5",
+};
 
 interface PlayMoveListProps {
     /** 指し手を押して、その局面へ移れるか（終局後） */
@@ -22,6 +28,8 @@ interface PlayMoveListProps {
     upToCurrent?: boolean;
     /** 評価値の列を出すか（評価値を見せる対局） */
     showEval?: boolean;
+    /** AI の手に、読んだ深さと局面数の列を出すか（AI の指す対局） */
+    showSearch?: boolean;
     /** 指し手の一覧（見出しの行を除く）に付ける。高さの上限はここで決める */
     className?: string;
 }
@@ -30,6 +38,7 @@ export function PlayMoveList({
     selectable,
     upToCurrent = false,
     showEval = false,
+    showSearch = false,
     className,
 }: PlayMoveListProps): ReactElement {
     const { kifMoves: allMoves, navigationState, handlePlySelect } = useNavigation();
@@ -58,7 +67,10 @@ export function PlayMoveList({
         );
     }
 
-    const rowGrid = showEval ? ROW_GRID_WITH_EVAL : ROW_GRID;
+    const rowGrid =
+        ROW_GRIDS[
+            showEval ? (showSearch ? "evalSearch" : "eval") : showSearch ? "search" : "plain"
+        ];
     return (
         <div className="flex min-h-0 flex-col gap-1">
             <div
@@ -72,6 +84,12 @@ export function PlayMoveList({
                 <span>指し手</span>
                 <span className="text-right">消費</span>
                 {showEval && <span className="text-right">評価値</span>}
+                {showSearch && (
+                    <>
+                        <span className="text-right">深さ</span>
+                        <span className="text-right">局面</span>
+                    </>
+                )}
             </div>
             <ol
                 ref={listRef}
@@ -82,6 +100,7 @@ export function PlayMoveList({
                     const isCurrent = move.ply === currentPly;
                     const mover = move.mover ?? (move.ply % 2 === 1 ? "sente" : "gote");
                     const evalText = showEval ? formatEval(move.evalCp, move.evalMate) : "";
+                    const search = showSearch ? move.engineSearch : undefined;
                     const content = (
                         <>
                             <span className="text-right font-mono text-[11px] tabular-nums text-wafuu-sumi-light">
@@ -107,6 +126,18 @@ export function PlayMoveList({
                                         <span className="text-wafuu-sumi-light/60">—</span>
                                     )}
                                 </span>
+                            )}
+                            {showSearch && (
+                                <>
+                                    <span className="text-right font-mono text-xs tabular-nums text-wafuu-sumi-light">
+                                        {search?.depth ?? ""}
+                                    </span>
+                                    <span className="text-right font-mono text-xs tabular-nums text-wafuu-sumi-light">
+                                        {search?.nodes !== undefined
+                                            ? formatNodeCount(search.nodes)
+                                            : ""}
+                                    </span>
+                                </>
                             )}
                         </>
                     );

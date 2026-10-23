@@ -6,7 +6,7 @@ import { HeaderNav } from "./components/HeaderNav";
 import { PageHeader } from "./components/PageHeader";
 import { useAccountNnue } from "./hooks/useAccountNnue";
 import { clearPlayHandoff, readPlayHandoff } from "./lib/playHandoff";
-import { createWebWasmEngineClient } from "./platform/wasm-engine-client";
+import { createWebWasmEngineClient, getWebWasmMaxThreads } from "./platform/wasm-engine-client";
 
 const engineOptions: EngineOption[] = [
     {
@@ -14,6 +14,7 @@ const engineOptions: EngineOption[] = [
         label: "内蔵エンジン",
         createClient: createWebWasmEngineClient,
         kind: "internal",
+        maxThreads: getWebWasmMaxThreads(),
     },
 ];
 

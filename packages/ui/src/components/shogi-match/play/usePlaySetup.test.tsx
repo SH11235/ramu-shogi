@@ -6,7 +6,7 @@ import { useState } from "react";
 import { describe, expect, it } from "vitest";
 import { MatchSettingsProvider } from "../contexts/MatchSettingsContext";
 import type { ClockSettings } from "../hooks/useClockManager";
-import type { SideSetting } from "../types";
+import type { EngineSearchLimits, EngineThreadSettings, SideSetting } from "../types";
 import { DEFAULT_PASS_RIGHTS_SETTINGS } from "../types";
 import {
     AI_MATCH_TIME_CHOICES,
@@ -49,18 +49,24 @@ function setupHarness(initial: Initial) {
         time: ClockSettings;
         sente: NnueSelection;
         gote: NnueSelection;
+        threads: EngineThreadSettings;
+        limits: EngineSearchLimits;
     } = {
         sides: initial.sides,
         time: initial.time,
         sente: initial.sente ?? RAMU,
         gote: initial.gote ?? RAMU,
+        threads: { sente: 0, gote: 0 },
+        limits: { sente: { kind: "clock" }, gote: { kind: "clock" } },
     };
     function Wrapper({ children }: { children: ReactNode }) {
         const [sides, setSides] = useState(snapshot.sides);
         const [time, setTime] = useState(snapshot.time);
         const [sente, setSente] = useState(snapshot.sente);
         const [gote, setGote] = useState(snapshot.gote);
-        Object.assign(snapshot, { sides, time, sente, gote });
+        const [threads, setThreads] = useState(snapshot.threads);
+        const [limits, setLimits] = useState(snapshot.limits);
+        Object.assign(snapshot, { sides, time, sente, gote, threads, limits });
         return (
             <MatchSettingsProvider
                 sides={sides}
@@ -71,8 +77,10 @@ function setupHarness(initial: Initial) {
                 onPassRightsSettingsChange={() => {}}
                 settingsLocked={false}
                 isDevMode={false}
-                engineThreads={{ sente: 0, gote: 0 }}
-                onEngineThreadsChange={() => {}}
+                engineThreads={threads}
+                onEngineThreadsChange={setThreads}
+                engineSearchLimits={limits}
+                onEngineSearchLimitsChange={setLimits}
                 senteNnueSelection={sente}
                 onSenteNnueSelectionChange={setSente}
                 goteNnueSelection={gote}
@@ -298,5 +306,59 @@ describe("usePlaySetup（対局画面のかんたん設定）", () => {
         act(() => hook.result.current.chooseKind("vs-ai"));
         expect(snapshot.sides.gote.role).toBe("engine");
         expect(hook.result.current.kind).toBe("vs-ai");
+    });
+
+    it("ノード数で読む AI は時間の選択肢に当たらず、時間を選び直すと時計どおりに戻る", () => {
+        const { hook, snapshot } = setupHarness({
+            sides: { sente: HUMAN, gote: AI_L5 },
+            time: { sente: UNLIMITED, gote: AI_3S },
+        });
+        act(() => hook.result.current.chooseAiSearchLimit({ kind: "nodes", nodes: 50_000 }));
+        expect(snapshot.limits).toEqual({
+            sente: { kind: "clock" },
+            gote: { kind: "nodes", nodes: 50_000 },
+        });
+        expect(hook.result.current.aiTimeId).toBeNull();
+        act(() => hook.result.current.chooseAiTime(AI_TIME_CHOICES[1]));
+        expect(snapshot.limits.gote).toEqual({ kind: "clock" });
+        expect(hook.result.current.aiTimeId).toBe(AI_TIME_CHOICES[1].id);
+    });
+
+    it("手番を入れ替えると、AI の読む量とスレッド数も新しい AI の側へ移る", () => {
+        const { hook, snapshot } = setupHarness({
+            sides: { sente: HUMAN, gote: AI_L5 },
+            time: { sente: UNLIMITED, gote: AI_3S },
+        });
+        act(() => hook.result.current.chooseAiThreads(2));
+        act(() => hook.result.current.chooseAiSearchLimit({ kind: "depth", depth: 8 }));
+        act(() => hook.result.current.chooseSide("gote"));
+        expect(snapshot.sides.sente.role).toBe("engine");
+        expect(snapshot.threads.sente).toBe(2);
+        expect(snapshot.limits.sente).toEqual({ kind: "depth", depth: 8 });
+        expect(hook.result.current.aiThreads).toBe(2);
+    });
+
+    it("人 対 人から自分 対 AI に戻すと、AI の読む量は時計どおりに戻る", () => {
+        const { hook, snapshot } = setupHarness({
+            sides: { sente: HUMAN, gote: AI_L5 },
+            time: { sente: UNLIMITED, gote: AI_3S },
+        });
+        act(() => hook.result.current.chooseAiSearchLimit({ kind: "nodes", nodes: 50_000 }));
+        act(() => hook.result.current.chooseKind("humans"));
+        act(() => hook.result.current.chooseKind("vs-ai"));
+        expect(snapshot.limits.gote).toEqual({ kind: "clock" });
+    });
+
+    it("AI 対 AI ではスレッド数・読む量を先後で別に決める", () => {
+        const { hook, snapshot } = setupHarness({
+            sides: { sente: AI_L5, gote: AI_L5 },
+            time: { sente: AI_3S, gote: AI_3S },
+        });
+        act(() => hook.result.current.chooseSideThreads("sente", 3));
+        expect(snapshot.threads).toEqual({ sente: 3, gote: 0 });
+        expect(hook.result.current.sideAi.sente.threads).toBe(3);
+        act(() => hook.result.current.chooseSideSearchLimit("sente", { kind: "depth", depth: 5 }));
+        expect(hook.result.current.sideAi.sente.timeId).toBeNull();
+        expect(hook.result.current.sideAi.gote.searchLimit).toEqual({ kind: "clock" });
     });
 });

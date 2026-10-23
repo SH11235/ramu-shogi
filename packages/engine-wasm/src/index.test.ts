@@ -1,6 +1,6 @@
 import type { EngineEvent } from "@shogi/engine-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createWasmEngineClient } from "./index";
+import { createWasmEngineClient, memoryThreadCap } from "./index";
 
 type WorkerKind = "single" | "threaded";
 type MockWorker = {
@@ -1136,5 +1136,19 @@ describe("createWasmEngineClient", () => {
             expect(workers[0].terminate).not.toHaveBeenCalled();
             expect(workerFactory).toHaveBeenCalledTimes(1);
         });
+    });
+});
+
+describe("memoryThreadCap", () => {
+    it.each([
+        { device: { coarsePointer: true }, cap: 2 },
+        { device: { coarsePointer: true, deviceMemoryGb: 2 }, cap: 1 },
+        { device: { coarsePointer: true, deviceMemoryGb: 4 }, cap: 2 },
+        { device: { coarsePointer: true, deviceMemoryGb: 8 }, cap: 4 },
+        { device: { coarsePointer: false }, cap: 8 },
+        { device: { coarsePointer: false, deviceMemoryGb: 4 }, cap: 2 },
+        { device: { coarsePointer: false, deviceMemoryGb: 8 }, cap: 8 },
+    ])("$device なら $cap 本まで", ({ device, cap }) => {
+        expect(memoryThreadCap(device)).toBe(cap);
     });
 });

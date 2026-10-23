@@ -373,6 +373,8 @@ export function ShogiMatchLayout({
                     isDevMode={matchSettings.isDevMode}
                     engineThreads={matchSettings.engineThreads}
                     onEngineThreadsChange={matchSettings.setEngineThreads}
+                    engineSearchLimits={matchSettings.engineSearchLimits}
+                    onEngineSearchLimitsChange={matchSettings.setEngineSearchLimits}
                     senteNnueSelection={senteNnueSelection}
                     onSenteNnueSelectionChange={handleSenteNnueSelectionChange}
                     goteNnueSelection={goteNnueSelection}
@@ -517,6 +519,8 @@ export function ShogiMatchLayout({
                     isDevMode={matchSettings.isDevMode}
                     engineThreads={matchSettings.engineThreads}
                     onEngineThreadsChange={matchSettings.setEngineThreads}
+                    engineSearchLimits={matchSettings.engineSearchLimits}
+                    onEngineSearchLimitsChange={matchSettings.setEngineSearchLimits}
                     senteNnueSelection={senteNnueSelection}
                     onSenteNnueSelectionChange={handleSenteNnueSelectionChange}
                     goteNnueSelection={goteNnueSelection}

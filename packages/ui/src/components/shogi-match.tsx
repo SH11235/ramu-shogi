@@ -24,7 +24,8 @@ import {
 } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
 import type { ReactElement } from "react";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+// biome-ignore lint/style/noRestrictedImports: ShogiMatch は React Compiler がコンパイルを見送る（memo が入らない）ので、effect の依存に渡す値の同一性を useMemo で保つ
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { isCpuLosing, moveSoundScene } from "../hooks/moveSoundScene";
 import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
 import { normalizeSoundVoice, type SoundVoice, useShogiSound } from "../hooks/useShogiSound";
@@ -83,6 +84,7 @@ import type {
     AnalysisSnapshotEntryDraft,
     DisplaySettings,
     EngineOption,
+    EngineSearchLimits,
     EngineThreadSettings,
     GameMode,
     PassRightsSettings,
@@ -110,6 +112,11 @@ import {
     normalizePassRightsSettings,
 } from "./shogi-match/utils/passRightsSettings";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
+import {
+    clockSettingsForLimits,
+    DEFAULT_ENGINE_SEARCH_LIMITS,
+    normalizeEngineSearchLimits,
+} from "./shogi-match/utils/searchLimits";
 import { isSameTimeSettings, normalizeTimeSettings } from "./shogi-match/utils/timeSettings";
 import { TooltipProvider } from "./tooltip";
 
@@ -977,6 +984,14 @@ export function ShogiMatch({
             gote: Math.max(0, Math.trunc(next.gote)),
         });
     };
+    const [storedEngineSearchLimits, setEngineSearchLimits] = useLocalStorage<EngineSearchLimits>(
+        "shogi-match-engine-search-limits",
+        DEFAULT_ENGINE_SEARCH_LIMITS,
+    );
+    const engineSearchLimits = useMemo(
+        () => normalizeEngineSearchLimits(storedEngineSearchLimits),
+        [storedEngineSearchLimits],
+    );
     // UI状態管理（統合フック）
     const {
         flipBoard,
@@ -1285,6 +1300,11 @@ export function ShogiMatch({
         await endMatchRef.current?.(result);
     };
 
+    // 時計に渡す設定は、中身が同じ間は同じものにする（時計は設定が替わるたびに残り時間を戻す）。
+    const clockTimeSettings = useMemo(
+        () => clockSettingsForLimits(timeSettings, sides, engineSearchLimits),
+        [timeSettings, sides, engineSearchLimits],
+    );
     // 時計管理フックを使用
     const {
         clocks,
@@ -1295,7 +1315,7 @@ export function ShogiMatch({
         stopTicking,
         startTicking,
     } = useClockManager({
-        timeSettings,
+        timeSettings: clockTimeSettings,
         isMatchRunning,
         onTimeExpired: handleTimeExpired,
         matchEndedRef,
@@ -1354,14 +1374,15 @@ export function ShogiMatch({
     // （resetClocks は timeSettings に依存しているため、resetClocks の変更で検知可能）
     // 一時停止中は戻さない（戻すと、止めるたびに持ち時間・秒読みが元に戻ってしまう）。
     // ただし、一時停止中に時間設定そのものを変えたときは、新しい設定に合わせ直す。
-    const syncedTimeSettingsRef = useRef(timeSettings);
+    // 読む量（ノード数・深さ）を替えたときも時計の設定が替わるので、時計に渡す設定で比べる。
+    const syncedTimeSettingsRef = useRef(clockTimeSettings);
     useEffect(() => {
-        const settingsChanged = syncedTimeSettingsRef.current !== timeSettings;
-        syncedTimeSettingsRef.current = timeSettings;
+        const settingsChanged = syncedTimeSettingsRef.current !== clockTimeSettings;
+        syncedTimeSettingsRef.current = clockTimeSettings;
         if (!isMatchRunning && (!isPaused || settingsChanged)) {
             resetClocks(false);
         }
-    }, [isMatchRunning, isPaused, resetClocks, timeSettings]);
+    }, [isMatchRunning, isPaused, resetClocks, clockTimeSettings]);
 
     // 対局終了処理（エンジン管理フックから呼ばれる）
     const endMatch = async (result: GameResult) => {
@@ -1590,6 +1611,7 @@ export function ShogiMatch({
         resolveNnue,
         allowAnalysisDuringMatch,
         engineThreads,
+        engineSearchLimits,
         analysisEngineId,
     });
     stopAllEnginesRef.current = stopAllEngines;
@@ -2265,6 +2287,8 @@ export function ShogiMatch({
         isDevMode,
         engineThreads,
         setEngineThreads,
+        engineSearchLimits,
+        setEngineSearchLimits,
         senteNnueSelection,
         handleSenteNnueSelectionChange,
         goteNnueSelection,
