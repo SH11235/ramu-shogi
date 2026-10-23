@@ -333,6 +333,32 @@ describe("useUserSettingsSync", () => {
         expectPut(2, { theme: "dark" }, 4);
     });
 
+    it("所属保存の障害中に別利用者が編集した未記録の値を初期所有者へ送らない", async () => {
+        localStorage.setItem(DISPLAY_KEY, JSON.stringify({ owner: "A" }));
+        const storage = localStorage;
+        vi.stubGlobal("localStorage", {
+            getItem: storage.getItem.bind(storage),
+            setItem: (key: string, value: string) => {
+                if (key === `shogi-user-settings-owner:${DISPLAY_KEY}`)
+                    throw new Error("Quota exceeded");
+                storage.setItem(key, value);
+            },
+        });
+        const first = renderHook(() => useUserSettingsSync());
+        first.unmount();
+        auth = { ...auth, session: { authenticated: true, user: { id: "user-2" } } };
+        const second = renderHook(() => useUserSettingsSync());
+        changeLocal({ owner: "B" });
+        second.unmount();
+        expect(requests).toHaveLength(0);
+        vi.stubGlobal("localStorage", storage);
+        auth = { ...auth, session: { authenticated: true, user: { id: "user-1" } } };
+        renderHook(() => useUserSettingsSync());
+        await reply(0, { documents: [] });
+        expect(requests).toHaveLength(1);
+        expect(readLocal()).toEqual({ owner: "B" });
+    });
+
     it("初期 GET 中の編集通知がない保存よりサーバー設定を優先する", async () => {
         renderHook(() => useUserSettingsSync());
         localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme: "dark" }));

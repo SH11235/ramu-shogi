@@ -68,30 +68,38 @@ interface LocalOwnership {
     value: string | null;
 }
 
+function parseOwnership(value: unknown): LocalOwnership {
+    if (
+        typeof value === "object" &&
+        value !== null &&
+        "userId" in value &&
+        typeof value.userId === "string" &&
+        "value" in value &&
+        (value.value === null || typeof value.value === "string")
+    )
+        return { userId: value.userId, value: value.value };
+    return { userId: null, value: null };
+}
+
 function readOwnership(storageKey: string): LocalOwnership | null {
     const stored = window.localStorage.getItem(OWNERSHIP_STORAGE_PREFIX + storageKey);
     if (stored === null) return null;
     try {
-        const value: unknown = JSON.parse(stored);
-        if (
-            typeof value === "object" &&
-            value !== null &&
-            "userId" in value &&
-            typeof value.userId === "string" &&
-            "value" in value &&
-            (value.value === null || typeof value.value === "string")
-        )
-            return { userId: value.userId, value: value.value };
+        return parseOwnership(JSON.parse(stored));
     } catch {
         // 壊れた所属情報は匿名設定として引き継がない。
+        return { userId: null, value: null };
     }
-    return { userId: null, value: null };
 }
 
-function writeOwnership(document: DocumentState, userId: string): void {
+function writeOwnership(
+    document: DocumentState,
+    userId: string,
+    value = document.localValue,
+): void {
     window.localStorage.setItem(
         OWNERSHIP_STORAGE_PREFIX + document.storageKey,
-        JSON.stringify({ userId, value: document.localValue }),
+        JSON.stringify({ userId, value }),
     );
 }
 
@@ -402,17 +410,36 @@ export function createUserSettingsSync(
         user.initialError = null;
         generation = { user, abort: new AbortController(), ready: false, uploading: new Set() };
         try {
-            let initialOwner = window.localStorage.getItem(INITIAL_OWNER_STORAGE_KEY);
-            if (initialOwner === null) {
-                initialOwner =
+            let initialStored = window.localStorage.getItem(INITIAL_OWNER_STORAGE_KEY);
+            if (initialStored === null) {
+                const initialOwner =
                     window.localStorage.getItem(LAST_SYNCED_USER_ID_STORAGE_KEY) ?? userId;
-                // 文書ごとの保存が途中で失敗しても、未記録分の引き継ぎ元を失わない。
-                window.localStorage.setItem(INITIAL_OWNER_STORAGE_KEY, initialOwner);
+                initialStored = JSON.stringify(
+                    Object.fromEntries(
+                        user.documents.map((document) => [
+                            document.storageKey,
+                            { userId: initialOwner, value: document.localValue },
+                        ]),
+                    ),
+                );
+                // 部分保存後の復旧でも、後から編集された値を初期所有者へ帰属させない。
+                window.localStorage.setItem(INITIAL_OWNER_STORAGE_KEY, initialStored);
+            }
+            let initial: unknown;
+            try {
+                initial = JSON.parse(initialStored);
+            } catch {
+                initial = null;
             }
             // 初回の匿名設定だけを引き継ぎ、通信の成否に関係なく所属を確定する。
             for (const document of user.documents) {
                 if (readOwnership(document.storageKey) === null) {
-                    writeOwnership(document, initialOwner);
+                    const owner = parseOwnership(
+                        typeof initial === "object" && initial !== null
+                            ? (initial as Record<string, unknown>)[document.storageKey]
+                            : null,
+                    );
+                    if (owner.userId !== null) writeOwnership(document, owner.userId, owner.value);
                 }
             }
         } catch (error) {
