@@ -353,20 +353,19 @@ export function NnueLibrary({
 
             <LibrarySection
                 title="追加した AI"
-                description={
-                    account && !account.isAuthenticated ? (
+                description="自分で用意した評価関数（NNUE）を追加すると、対局の相手や研究の解析で選べます。"
+                note={
+                    account &&
+                    !account.isAuthenticated && (
                         <>
-                            評価関数（NNUE）のファイルを追加すると、対局の相手や研究の解析で選べます。
-                            追加した AI はこのブラウザの中にだけ保存されます。
+                            いまは{deviceLabel}の中にだけ保存されます。
                             <a
                                 href={account.loginHref}
                                 className="text-wafuu-ai underline underline-offset-2 hover:text-wafuu-ai-light"
                             >
-                                ログインするとアカウントにも保存して、別の端末でも使えます
+                                ログインするとアカウントにも保存できます
                             </a>
                         </>
-                    ) : (
-                        "評価関数（NNUE）のファイルを追加すると、対局の相手や研究の解析で選べます。"
                     )
                 }
                 action={
@@ -393,6 +392,7 @@ export function NnueLibrary({
                             disabled={isBusy}
                             isAdding={busyId === "adding"}
                             onPick={() => void startAdd()}
+                            hint={<FreeResources />}
                         />
                     )
                 ) : (
@@ -518,7 +518,6 @@ export function NnueLibrary({
                 {account?.isAuthenticated && account.isLoading && (
                     <p className="text-xs text-muted-foreground">アカウントの AI を読み込み中...</p>
                 )}
-                <FreeResources />
             </LibrarySection>
 
             {showPresets && (
@@ -664,11 +663,14 @@ export function NnueLibrary({
 function LibrarySection({
     title,
     description,
+    note,
     action,
     children,
 }: {
     title: string;
     description: ReactNode;
+    /** 説明の下に添える小さな補足（ログインの案内など） */
+    note?: ReactNode;
     action?: ReactNode;
     children: ReactNode;
 }): ReactElement {
@@ -678,6 +680,7 @@ function LibrarySection({
                 <div className="flex min-w-0 flex-col gap-1">
                     <h2 className="text-lg font-semibold text-foreground">{title}</h2>
                     <p className="text-sm text-muted-foreground">{description}</p>
+                    {note && <p className="text-xs text-muted-foreground">{note}</p>}
                 </div>
                 {action && <div className="shrink-0">{action}</div>}
             </div>
@@ -769,7 +772,12 @@ function PresetRow({
                                 {isDeleting ? "削除中..." : `${deviceLabel}にあります`}
                             </span>
                         ) : (
-                            <Button size="sm" disabled={disabled} onClick={onDownload}>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={disabled}
+                                onClick={onDownload}
+                            >
                                 {status === "update-available" ? "更新" : "ダウンロード"}
                             </Button>
                         )}
@@ -843,12 +851,14 @@ function DropZone({
     disabled,
     isAdding,
     onPick,
+    hint,
 }: {
     active: boolean;
     canDrop: boolean;
     disabled: boolean;
     isAdding: boolean;
     onPick: () => void;
+    hint?: ReactNode;
 }): ReactElement {
     return (
         <div
@@ -867,6 +877,7 @@ function DropZone({
             <Button onClick={onPick} disabled={disabled}>
                 ファイルを選ぶ
             </Button>
+            {hint}
         </div>
     );
 }
@@ -889,7 +900,6 @@ function FreeResources(): ReactElement {
                     （FV_SCALE {resource.fvScale}）
                 </span>
             ))}
-            。FV_SCALE などの値は、評価関数の配布元が公開しているものを入れてください。
         </p>
     );
 }
