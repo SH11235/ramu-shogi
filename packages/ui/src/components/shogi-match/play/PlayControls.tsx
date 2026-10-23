@@ -138,7 +138,6 @@ function ConfirmButton({
     description,
     actionLabel,
     onConfirm,
-    secondary,
     className,
 }: {
     label: string;
@@ -146,8 +145,6 @@ function ConfirmButton({
     description: string;
     actionLabel: string;
     onConfirm: () => void;
-    /** 確認の中に添える、もう 1 つの選び方（投了の代わりに棋譜を残さずやめる、など） */
-    secondary?: { label: string; onSelect: () => void };
     className?: string;
 }): ReactElement {
     return (
@@ -168,14 +165,6 @@ function ConfirmButton({
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                     <AlertDialogCancel>キャンセル</AlertDialogCancel>
-                    {secondary && (
-                        <AlertDialogAction
-                            onClick={secondary.onSelect}
-                            className={cn("border bg-background", PLAY_OUTLINE_BUTTON)}
-                        >
-                            {secondary.label}
-                        </AlertDialogAction>
-                    )}
                     <AlertDialogAction onClick={onConfirm}>{actionLabel}</AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
@@ -297,12 +286,6 @@ export function PlayMatchActions({
                     description="対局を終了します。"
                     actionLabel="投了する"
                     onConfirm={handleResign}
-                    // 一時停止を出さない対局では、一時停止の画面にある「対局をやめる」をここに置く。
-                    secondary={
-                        canPause
-                            ? undefined
-                            : { label: "棋譜を残さずやめる", onSelect: play.newGame }
-                    }
                     className={cn(!compact && "ml-auto", itemClass)}
                 />
             )}
