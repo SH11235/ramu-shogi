@@ -1139,6 +1139,7 @@ export function StudyWorkspaceView({
     useEffect(() => {
         if (!locked) return;
         setIsSettingsOpen(false);
+        setIsTitleDialogOpen(false);
         setDeleteTargetId(null);
         setSelection(null);
         setPromotionSelection(null);

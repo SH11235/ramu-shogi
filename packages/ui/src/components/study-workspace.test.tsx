@@ -2033,6 +2033,18 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         );
     });
 
+    it("表題のダイアログを開いたまま編集できなくなったら閉じ、戻っても開き直さない", () => {
+        const doc = createTestStudy().doc;
+        const view = render(<Harness initialDoc={doc} />);
+        fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
+        fireEvent.click(screen.getByRole("button", { name: /表題を変更/ }));
+        expect(screen.getByRole("textbox", { name: "研究ノートの表題" })).toBeTruthy();
+
+        view.rerender(<Harness initialDoc={doc} locked />);
+        view.rerender(<Harness initialDoc={doc} />);
+        expect(screen.queryByRole("textbox", { name: "研究ノートの表題" })).toBeNull();
+    });
+
     it("編集できない間も、「その他の操作」から棋譜を持ち出せる（止めるのは表示の場所だけ）", () => {
         render(<Harness initialDoc={createTestStudy().doc} locked />);
         const menuButton = screen.getByRole("button", { name: "その他の操作" });
