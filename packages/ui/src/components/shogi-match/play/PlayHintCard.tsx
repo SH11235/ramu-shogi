@@ -450,6 +450,13 @@ export function PlayHintLine({
                         深さ{best.depth}
                     </span>
                 )}
+                {/* 押すと、全部の候補と読み筋が下から出る */}
+                <span
+                    aria-hidden
+                    className="shrink-0 self-center text-base leading-none text-wafuu-sumi-light"
+                >
+                    ›
+                </span>
             </button>
             <BottomSheet open={sheetOpen} onOpenChange={setSheetOpen} title="ヒント" height="auto">
                 <div className="flex flex-col gap-2 px-1 pb-4">

@@ -63,7 +63,7 @@ const baseOptions = (engineOption: EngineOption, analyze = vi.fn(async () => tru
     startSfen: "startpos",
     moves: [] as string[],
     currentPly: 0,
-    usesPassRights: false,
+    passRightsSettings: undefined,
     matchActive: true,
     recordEvalByPly: vi.fn(),
     clearEvalByPly: vi.fn(),

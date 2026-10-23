@@ -2,12 +2,12 @@
  * 対局画面のヒントの読み。
  *
  * 再開できる解析（Web の wasm エンジンの協調停止）が使えるときは、止めても読みの状態（置換表・深さ）を
- * 残し、「続けて読む」でその続きから読む。使えないとき（Desktop のネイティブエンジン、共有メモリの無い
- * ブラウザ、パス権のある対局）は、上限まで 1 回読むだけにする（続きは無いので「続けて読む」を出さない）。
+ * 残し、「続けて読む」でその続きから読む。使えないとき（Desktop のネイティブエンジン、外部 USI エンジン、
+ * 共有メモリの無いブラウザ）は、上限まで 1 回読むだけにする（続きは無いので「続けて読む」を出さない）。
  */
 
-import type { InteractiveAnalysisState } from "@shogi/app-controller";
-import { createAnalysisController } from "@shogi/app-controller";
+import type { InteractiveAnalysisState, PassRightsSettings } from "@shogi/app-controller";
+import { buildPassRightsOption, createAnalysisController } from "@shogi/app-controller";
 import type { NnueSelection, ResolvedNnue } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
@@ -48,8 +48,8 @@ interface UsePlayHintSearchOptions {
     /** いまの局面までの指し手 */
     moves: string[];
     currentPly: number;
-    /** パス権のある対局（再開できる解析にパス権を渡せないので、1 回読むだけにする） */
-    usesPassRights: boolean;
+    /** パス権の設定（局面の読み込みに渡す。パス権が違えば別の局面として読む） */
+    passRightsSettings: PassRightsSettings | undefined;
     /** 対局が進んでいる（一時停止・終局していない） */
     matchActive: boolean;
     recordEvalByPly: (ply: number, event: RecordedEvalInfoEvent) => void;
@@ -91,10 +91,16 @@ export function usePlayHintSearch(options: UsePlayHintSearchOptions): PlayHintSe
     const controllerRef = useRef<ReturnType<typeof createAnalysisController> | null>(null);
     /** 再開できる解析が使えないと分かった（以後は 1 回読むだけにする） */
     const unsupportedRef = useRef(false);
+    /**
+     * いまのヒントの読み。新しく求めるたびに別の id にする（同じ局面でも、前の対局や前のヒントの読みを
+     * 再開しない）。「続けて読む」だけが同じ id を使う。id の違う読みからの通知は捨てる。
+     */
+    const sessionRef = useRef<{ nodeId: string; ply: number } | null>(null);
+    const sessionSerialRef = useRef(0);
+    /** 求める・止める・やり直すたびに進める。準備を待つ間に止められた要求を、あとから始めない */
+    const generationRef = useRef(0);
     /** 止めるまでの 1 回の読みで、それまでの読みに足す局面数 */
     const baseNodesRef = useRef(0);
-    /** 1 回だけの読みの要求ごとに進める（止めた要求を、準備のあとで始めない） */
-    const fallbackRequestRef = useRef(0);
     const usingFallbackRef = useRef(false);
 
     const settingsKey = JSON.stringify([
@@ -103,35 +109,55 @@ export function usePlayHintSearch(options: UsePlayHintSearchOptions): PlayHintSe
         options.multiPv,
         options.nnueSelection,
     ]);
+    const isCurrentSession = (nodeId: string | undefined) =>
+        nodeId !== undefined && sessionRef.current?.nodeId === nodeId;
 
     const onControllerState = useEffectEvent((state: InteractiveAnalysisState) => {
         if (state.phase === "unsupported") {
             unsupportedRef.current = true;
             return;
         }
+        if (usingFallbackRef.current || !isCurrentSession(state.selected?.nodeId)) return;
         setStatus((prev) => {
-            if (prev.ply === null || usingFallbackRef.current) return prev;
-            const searching = state.phase === "running" || state.phase === "stopping";
-            const phase: HintSearchPhase =
-                state.phase === "preparing" ? "preparing" : searching ? "searching" : "stopped";
-            if (prev.phase === phase && prev.canContinue === state.canResume) return prev;
+            if (prev.ply === null) return prev;
+            if (state.phase === "running") {
+                return prev.phase === "searching" ? prev : { ...prev, phase: "searching" };
+            }
+            // 求めた直後の select は、いまの（止まっている）状態を知らせてくる。読み始めるまでは
+            // 「準備中」のままにする（一瞬「止まった」「続けて読む」と見せない）。
+            if (
+                prev.phase === "preparing" &&
+                state.phase !== "error" &&
+                state.phase !== "disposed"
+            ) {
+                return prev;
+            }
+            if (state.phase === "preparing" || state.phase === "stopping") return prev;
+            const canContinue = state.canResume && isCurrentSession(state.retained?.nodeId);
+            if (prev.phase === "stopped" && prev.canContinue === canContinue) return prev;
             return {
                 ...prev,
-                phase,
-                canContinue: state.canResume,
-                endedAt: phase === "stopped" ? (prev.endedAt ?? Date.now()) : null,
+                phase: "stopped",
+                canContinue,
+                endedAt: prev.endedAt ?? Date.now(),
             };
         });
     });
-    const onControllerInfo = useEffectEvent((info: EngineInfoEvent) => {
-        if (status.ply === null) return;
+    const onControllerInfo = useEffectEvent((nodeId: string, info: EngineInfoEvent) => {
+        const session = sessionRef.current;
+        if (!session || session.nodeId !== nodeId) return;
         if (info.scoreCp !== undefined || info.scoreMate !== undefined) {
-            options.recordEvalByPly(status.ply, info);
+            options.recordEvalByPly(session.ply, info);
         }
         if (info.nodes !== undefined) {
             const nodes = baseNodesRef.current + info.nodes;
             setStatus((prev) => (prev.nodes === nodes ? prev : { ...prev, nodes }));
         }
+    });
+    const onControllerFinished = useEffectEvent((nodeId: string, totalNodes: number) => {
+        if (!isCurrentSession(nodeId)) return;
+        baseNodesRef.current = totalNodes;
+        setStatus((prev) => (prev.ply === null ? prev : { ...prev, nodes: totalNodes }));
     });
 
     // 再開できる解析を試すのは、ヒント専用にエンジンを 1 つ作れるときだけ。外部 USI エンジンは再開できず、
@@ -142,8 +168,12 @@ export function usePlayHintSearch(options: UsePlayHintSearchOptions): PlayHintSe
         options.engineOption.maxParallel !== 1;
 
     // 設定（エンジン・スレッド・候補数・評価関数）は解析の準備で 1 度だけ当てるので、変わったら作り直す。
+    // 作り直した読みは前の読みを続けられないので、ヒントの印も消して、もう一度求められるようにする。
     // biome-ignore lint/correctness/useExhaustiveDependencies: settingsKey が設定の変化を表す
     useEffect(() => {
+        generationRef.current += 1;
+        sessionRef.current = null;
+        setStatus(IDLE);
         if (!options.enabled || !options.engineOption || !canHostResumable) return;
         const engineOption = options.engineOption;
         const controller = createAnalysisController({
@@ -160,35 +190,42 @@ export function usePlayHintSearch(options: UsePlayHintSearchOptions): PlayHintSe
                 }
                 await client.setOption("MultiPV", String(options.multiPv));
             },
-            onState: (state) => onControllerState(state),
-            onInfo: (_target, _sessionId, info) => onControllerInfo(info),
-            onFinished: (_target, result) => {
-                baseNodesRef.current = result.totalNodes;
-                setStatus((prev) =>
-                    prev.ply === null ? prev : { ...prev, nodes: result.totalNodes },
-                );
+            onState: (state) => {
+                if (controllerRef.current !== controller) return;
+                onControllerState(state);
+                // 再開できないと分かったら、試しに作ったエンジンはすぐ手放す（以後は 1 回だけの読み）。
+                if (state.phase === "unsupported") {
+                    controllerRef.current = null;
+                    void controller.dispose();
+                }
+            },
+            onInfo: (target, _sessionId, info) => {
+                if (controllerRef.current === controller) onControllerInfo(target.nodeId, info);
+            },
+            onFinished: (target, result) => {
+                if (controllerRef.current === controller)
+                    onControllerFinished(target.nodeId, result.totalNodes);
             },
         });
         controllerRef.current = controller;
         unsupportedRef.current = false;
         return () => {
-            controllerRef.current = null;
+            if (controllerRef.current === controller) controllerRef.current = null;
             void controller.dispose();
         };
     }, [options.enabled, settingsKey, canHostResumable]);
 
-    const startFallback = (ply: number) => {
+    const startFallback = (ply: number, generation: number) => {
         usingFallbackRef.current = true;
-        const requestId = ++fallbackRequestRef.current;
         void options.fallback
             .analyze(ply, {
                 multiPv: options.multiPv,
                 timeMs: HINT_SEARCH_TIME_MS,
                 depth: HINT_SEARCH_MAX_DEPTH,
-                shouldStart: () => fallbackRequestRef.current === requestId,
+                shouldStart: () => generationRef.current === generation,
             })
             .then((started) => {
-                if (started || fallbackRequestRef.current !== requestId) return;
+                if (started || generationRef.current !== generation) return;
                 setStatus((prev) => ({ ...prev, phase: "stopped", endedAt: Date.now() }));
             });
     };
@@ -213,8 +250,8 @@ export function usePlayHintSearch(options: UsePlayHintSearchOptions): PlayHintSe
     }, [options.fallback.isAnalyzing]);
 
     const stop = () => {
+        generationRef.current += 1;
         if (usingFallbackRef.current) {
-            fallbackRequestRef.current += 1;
             void options.fallback.cancel();
             setStatus((prev) =>
                 prev.ply === null ? prev : { ...prev, phase: "stopped", endedAt: Date.now() },
@@ -236,8 +273,14 @@ export function usePlayHintSearch(options: UsePlayHintSearchOptions): PlayHintSe
     const begin = (resume: boolean) => {
         const ply = options.currentPly;
         const positionKey = hintPositionKey(options.startSfen, options.moves);
-        const controller = controllerRef.current;
+        const generation = ++generationRef.current;
         const now = Date.now();
+        if (!resume || !sessionRef.current) {
+            sessionRef.current = { nodeId: `${positionKey}#${++sessionSerialRef.current}`, ply };
+            baseNodesRef.current = 0;
+            options.clearEvalByPly(ply);
+        }
+        const { nodeId } = sessionRef.current;
         setStatus((prev) => ({
             ply,
             positionKey,
@@ -251,25 +294,29 @@ export function usePlayHintSearch(options: UsePlayHintSearchOptions): PlayHintSe
             endedAt: null,
             nodes: resume ? prev.nodes : null,
         }));
-        if (!resume) {
-            baseNodesRef.current = 0;
-            options.clearEvalByPly(ply);
-        }
-        const canResumeHere = !options.usesPassRights && !unsupportedRef.current && controller;
-        if (!canResumeHere) {
-            startFallback(ply);
+        const controller = controllerRef.current;
+        if (unsupportedRef.current || !controller) {
+            startFallback(ply, generation);
             return;
         }
         usingFallbackRef.current = false;
-        void controller
-            .select({ nodeId: positionKey, sfen: options.startSfen, moves: options.moves })
-            .then(() => controller.start(BUDGET))
-            .then(() => {
-                // 準備の途中で「再開できない」と分かったら、その場で 1 回だけの読みに切り替える。
-                if (unsupportedRef.current && controllerRef.current === controller) {
-                    startFallback(ply);
-                }
+        void (async () => {
+            await controller.select({
+                nodeId,
+                sfen: options.startSfen,
+                moves: options.moves,
+                loadOptions: buildPassRightsOption(options.passRightsSettings, options.moves),
             });
+            // 準備（前の読みの停止）を待つ間に止められた・やり直された要求は始めない。
+            if (generationRef.current !== generation) return;
+            await controller.start(BUDGET);
+            if (generationRef.current !== generation) {
+                await controller.pause();
+                return;
+            }
+            // 準備の途中で「再開できない」と分かったら、その場で 1 回だけの読みに切り替える。
+            if (unsupportedRef.current) startFallback(ply, generation);
+        })();
     };
 
     return {
@@ -283,7 +330,7 @@ export function usePlayHintSearch(options: UsePlayHintSearchOptions): PlayHintSe
         },
         reset: () => {
             stop();
-            fallbackRequestRef.current += 1;
+            sessionRef.current = null;
             baseNodesRef.current = 0;
             setStatus(IDLE);
         },

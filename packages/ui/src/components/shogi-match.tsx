@@ -1737,7 +1737,7 @@ export function ShogiMatch({
         startSfen,
         moves: moves.slice(0, navigation.state.currentPly),
         currentPly: navigation.state.currentPly,
-        usesPassRights: passRightsSettings?.enabled === true,
+        passRightsSettings,
         matchActive: isMatchRunning && !isPaused,
         recordEvalByPly,
         clearEvalByPly,
