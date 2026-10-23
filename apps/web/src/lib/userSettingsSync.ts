@@ -285,7 +285,7 @@ export function createUserSettingsSync(
     async function resolveConflict(
         candidate: Generation,
         document: DocumentState,
-        canRetry: boolean,
+        retriedRevision: number | undefined,
     ): Promise<boolean> {
         const hadUnconfirmedWrites = document.unconfirmedWrites.length > 0;
         const editBaseRevision = document.editBaseRevision;
@@ -296,7 +296,7 @@ export function createUserSettingsSync(
         if (!isCurrent(candidate)) return false;
         captureLocalChange(document);
         const canRebase =
-            canRetry &&
+            retriedRevision !== document.editBaseRevision &&
             !hadUnconfirmedWrites &&
             document.editBase !== undefined &&
             document.editBase ===
@@ -311,7 +311,7 @@ export function createUserSettingsSync(
     async function upload(
         candidate: Generation,
         document: DocumentState,
-        canRetry = true,
+        retriedRevision?: number,
     ): Promise<void> {
         if (
             !isCurrent(candidate) ||
@@ -364,7 +364,7 @@ export function createUserSettingsSync(
                 error.code === "SETTINGS_VERSION_CONFLICT"
             ) {
                 try {
-                    retry = await resolveConflict(candidate, document, canRetry);
+                    retry = await resolveConflict(candidate, document, retriedRevision);
                 } catch (conflictError) {
                     fail(candidate, document, conflictError);
                 }
@@ -376,7 +376,7 @@ export function createUserSettingsSync(
             if (isCurrent(candidate)) {
                 publishError();
                 markSynced(candidate);
-                if (retry) void upload(candidate, document, false);
+                if (retry) void upload(candidate, document, document.editBaseRevision);
             }
         }
     }

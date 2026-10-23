@@ -1035,6 +1035,28 @@ describe("useUserSettingsSync", () => {
         expect(readLocal()).toEqual({ theme: "dark" });
     });
 
+    it("再送中に別タブの更新から編集し直すと新しい編集を一度再送する", async () => {
+        const sync = renderHook(() => useUserSettingsSync());
+        await reply(0, { documents: [remote({ theme: "system" }, 7)] });
+        receiveLocal({ theme: "light" });
+        changeLocal({ theme: "dark" });
+        await reply(1, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+        await reply(2, { document: remote({ theme: "light" }, 8) });
+        expectPut(3, { theme: "dark" }, 8);
+        act(() => {
+            localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme: "custom" }));
+            window.dispatchEvent(
+                new StorageEvent("storage", { key: DISPLAY_KEY, storageArea: localStorage }),
+            );
+        });
+        changeLocal({ theme: "light" });
+        await reply(3, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+        await reply(4, { document: remote({ theme: "custom" }, 9) });
+        expectPut(5, { theme: "light" }, 9);
+        await reply(5, { document: remote({ theme: "light" }, 10) });
+        expect(sync.result.current.syncError).toBeNull();
+    });
+
     it("再取得した値が表示済みの開始値と違えば再送しない", async () => {
         const sync = renderHook(() => useUserSettingsSync());
         await reply(0, { documents: [remote({ theme: "system" }, 7)] });
