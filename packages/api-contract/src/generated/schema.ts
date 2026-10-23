@@ -504,6 +504,7 @@ export interface components {
             lineMoves: string[];
             analysisSettings: components["schemas"]["JsonValue"];
             metadata?: components["schemas"]["JsonValue"];
+            /** @description At most 512 entries, each with a unique ply value. */
             entries: components["schemas"]["AnalysisSnapshotEntry"][];
         };
         AnalysisSnapshotEntry: {
@@ -1218,8 +1219,8 @@ export interface operations {
             };
             cookie?: never;
         };
-        /** @description Create analysis snapshot */
-        requestBody?: {
+        /** @description Create an analysis snapshot. The JSON body is limited to 1 MiB, 64 nesting levels (the root object counts as one), and at most 512 entries with unique ply values. */
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["CreateAnalysisSnapshotRequest"];
             };
@@ -1234,6 +1235,15 @@ export interface operations {
                     "application/json": components["schemas"]["CreateAnalysisSnapshotResponse"];
                 };
             };
+            /** @description Invalid request, JSON depth exceeds 64, more than 512 entries, or duplicate ply values */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
             /** @description Authentication is required */
             401: {
                 headers: {
@@ -1245,6 +1255,15 @@ export interface operations {
             };
             /** @description Game record not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request body exceeds 1 MiB */
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };
