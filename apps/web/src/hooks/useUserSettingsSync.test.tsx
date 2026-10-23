@@ -935,6 +935,29 @@ describe("useUserSettingsSync", () => {
         expectPut(4, { theme: "dark" }, 9);
     });
 
+    it.each([
+        "system",
+        "light",
+    ])("GETで自分の保存を確認した後は成功値を基準に照合する（再取得値: %s）", async (theme) => {
+        const sync = renderHook(() => useUserSettingsSync());
+        await reply(0, { documents: [remote({ theme: "system" }, 7)] });
+        changeLocal({ theme: "light" });
+        changeLocal({ theme: "dark" });
+        auth = { ...auth, session: { authenticated: true, user: { id: "user-1" } } };
+        sync.rerender();
+        await reply(2, { documents: [remote({ theme: "light" }, 8)] });
+        expectPut(3, { theme: "dark" }, 8);
+        await reply(3, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+        await reply(4, { document: remote({ theme }, 9) });
+        if (theme === "light") {
+            expectPut(5, { theme: "dark" }, 9);
+        } else {
+            expect(requests).toHaveLength(5);
+            expect(sync.result.current.syncError).toContain("更新が競合");
+        }
+        expect(readLocal()).toEqual({ theme: "dark" });
+    });
+
     it("中断した PUT が未確定なら、GET と一致する取り消し編集も条件付きで保存する", async () => {
         const { result, rerender } = renderHook(() => useUserSettingsSync());
         await reply(0, { documents: [remote({ theme: "system" }, 4)] });

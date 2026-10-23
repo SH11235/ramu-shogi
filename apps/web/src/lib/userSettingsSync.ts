@@ -385,6 +385,7 @@ export function createUserSettingsSync(
                         document.failure = null;
                     }
                     acceptRemote(document, remote);
+                    if (ownWrite && document.dirty) document.editBase = document.remoteValue;
                 } else {
                     acceptRemote(document, remote);
                     if (remote) {
