@@ -390,7 +390,9 @@
                         "type": "array",
                         "items": {
                             "$ref": "#/components/schemas/AnalysisSnapshotEntry"
-                        }
+                        },
+                        "maxItems": 512,
+                        "description": "At most 512 entries, each with a unique ply value."
                     }
                 },
                 "required": ["lineMoves", "analysisSettings", "entries"]
@@ -2153,7 +2155,8 @@
                     }
                 ],
                 "requestBody": {
-                    "description": "Create analysis snapshot",
+                    "required": true,
+                    "description": "Create an analysis snapshot. The JSON body is limited to 1 MiB, 64 nesting levels (the root object counts as one), and at most 512 entries with unique ply values.",
                     "content": {
                         "application/json": {
                             "schema": {
@@ -2173,6 +2176,16 @@
                             }
                         }
                     },
+                    "400": {
+                        "description": "Invalid request, JSON depth exceeds 64, more than 512 entries, or duplicate ply values",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
                     "401": {
                         "description": "Authentication is required",
                         "content": {
@@ -2185,6 +2198,16 @@
                     },
                     "404": {
                         "description": "Game record not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "413": {
+                        "description": "Request body exceeds 1 MiB",
                         "content": {
                             "application/json": {
                                 "schema": {
