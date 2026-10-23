@@ -101,6 +101,11 @@ export function usePlayHintSearch(options: UsePlayHintSearchOptions): PlayHintSe
     const generationRef = useRef(0);
     /** 止めるまでの 1 回の読みで、それまでの読みに足す局面数 */
     const baseNodesRef = useRef(0);
+    /**
+     * いまの読みの通知を受け付けるか。止めた（局面を離れた）あとは、停止が終わるまでに届く読みも捨てる
+     * （待ったで別の手順から同じ手数に来たとき、その局面へ前の局面の評価を書き込まない）。
+     */
+    const acceptingInfoRef = useRef(false);
     const usingFallbackRef = useRef(false);
 
     const settingsKey = JSON.stringify([
@@ -118,9 +123,13 @@ export function usePlayHintSearch(options: UsePlayHintSearchOptions): PlayHintSe
             return;
         }
         if (usingFallbackRef.current || !isCurrentSession(state.selected?.nodeId)) return;
+        // 読みの状態（読んでいる・止まった）は、いまのヒントの読みを保持しているときだけ写す。
+        // 新しく求めた直後は、前の読みの停止の知らせ（保持しているのは前の読み）が先に届く。
+        const ours = isCurrentSession(state.retained?.nodeId);
         setStatus((prev) => {
             if (prev.ply === null) return prev;
             if (state.phase === "running") {
+                if (!ours) return prev;
                 return prev.phase === "searching" ? prev : { ...prev, phase: "searching" };
             }
             // 求めた直後の select は、いまの（止まっている）状態を知らせてくる。読み始めるまでは
@@ -133,7 +142,8 @@ export function usePlayHintSearch(options: UsePlayHintSearchOptions): PlayHintSe
                 return prev;
             }
             if (state.phase === "preparing" || state.phase === "stopping") return prev;
-            const canContinue = state.canResume && isCurrentSession(state.retained?.nodeId);
+            if (!ours && state.phase !== "error" && state.phase !== "disposed") return prev;
+            const canContinue = state.canResume && ours;
             if (prev.phase === "stopped" && prev.canContinue === canContinue) return prev;
             return {
                 ...prev,
@@ -145,7 +155,7 @@ export function usePlayHintSearch(options: UsePlayHintSearchOptions): PlayHintSe
     });
     const onControllerInfo = useEffectEvent((nodeId: string, info: EngineInfoEvent) => {
         const session = sessionRef.current;
-        if (!session || session.nodeId !== nodeId) return;
+        if (!acceptingInfoRef.current || !session || session.nodeId !== nodeId) return;
         if (info.scoreCp !== undefined || info.scoreMate !== undefined) {
             options.recordEvalByPly(session.ply, info);
         }
@@ -251,6 +261,13 @@ export function usePlayHintSearch(options: UsePlayHintSearchOptions): PlayHintSe
 
     const stop = () => {
         generationRef.current += 1;
+        acceptingInfoRef.current = false;
+        // 準備中に止めたら、準備が終わっても始めないので、ここで止まった状態にする（求め直せるように）。
+        setStatus((prev) =>
+            prev.phase === "preparing"
+                ? { ...prev, phase: "stopped", canContinue: false, endedAt: Date.now() }
+                : prev,
+        );
         if (usingFallbackRef.current) {
             void options.fallback.cancel();
             setStatus((prev) =>
@@ -281,6 +298,7 @@ export function usePlayHintSearch(options: UsePlayHintSearchOptions): PlayHintSe
             options.clearEvalByPly(ply);
         }
         const { nodeId } = sessionRef.current;
+        acceptingInfoRef.current = true;
         setStatus((prev) => ({
             ply,
             positionKey,

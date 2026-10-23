@@ -102,4 +102,49 @@ describe("usePlayHintSearch", () => {
         expect(result.current.status.canContinue).toBe(false);
         expect(calls).toEqual([]);
     });
+
+    it("準備中に止めたら止まった状態になり、もう一度求められる", async () => {
+        const { client, calls } = createResumableClient();
+        let releaseInit!: () => void;
+        (client.init as ReturnType<typeof vi.fn>).mockImplementation(
+            () =>
+                new Promise<void>((resolve) => {
+                    releaseInit = resolve;
+                }),
+        );
+        const engine: EngineOption = { id: "wasm", label: "wasm", createClient: () => client };
+        const { result } = renderHook(() => usePlayHintSearch(baseOptions(engine)));
+
+        act(() => result.current.request());
+        expect(result.current.status.phase).toBe("preparing");
+        await waitFor(() => expect(client.init).toHaveBeenCalled());
+        act(() => result.current.stop());
+        expect(result.current.status.phase).toBe("stopped");
+        await act(async () => releaseInit());
+        expect(calls).toEqual([]);
+    });
+
+    it("止めたあとに届いた読みは記録しない", async () => {
+        let emit: ((info: { scoreCp: number; nodes: number }) => void) | null = null;
+        const { client } = createResumableClient();
+        const analysis = client.analysis as unknown as {
+            start: (id: string, budget: unknown, onInfo: (info: unknown) => void) => unknown;
+        };
+        const originalStart = analysis.start;
+        analysis.start = (id, budget, onInfo) => {
+            emit = onInfo as typeof emit;
+            return originalStart(id, budget, onInfo);
+        };
+        const engine: EngineOption = { id: "wasm", label: "wasm", createClient: () => client };
+        const options = baseOptions(engine);
+        const { result } = renderHook(() => usePlayHintSearch(options));
+
+        act(() => result.current.request());
+        await waitFor(() => expect(result.current.status.phase).toBe("searching"));
+        act(() => emit?.({ scoreCp: 10, nodes: 100 }));
+        expect(options.recordEvalByPly).toHaveBeenCalledTimes(1);
+        act(() => result.current.stop());
+        act(() => emit?.({ scoreCp: 20, nodes: 200 }));
+        expect(options.recordEvalByPly).toHaveBeenCalledTimes(1);
+    });
 });
