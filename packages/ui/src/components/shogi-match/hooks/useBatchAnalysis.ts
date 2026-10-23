@@ -71,6 +71,8 @@ export interface HintSearchOptions {
     multiPv?: number;
     timeMs?: number;
     depth?: number;
+    /** 準備を終えた時点でまだ始めてよいか（準備中に止められた要求を捨てる） */
+    shouldStart?: () => boolean;
 }
 
 /**
@@ -156,6 +158,7 @@ export function useBatchAnalysis({
             openNnueManager("missing-analysis");
             return false;
         }
+        if (options?.shouldStart && !options.shouldStart()) return false;
         setMessage(null);
 
         // ply手目の局面を解析するには、ply-1手までの指し手が必要

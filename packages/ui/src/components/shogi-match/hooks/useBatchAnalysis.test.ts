@@ -5,6 +5,55 @@ import { DEFAULT_ANALYSIS_SETTINGS } from "../types";
 import { useBatchAnalysis } from "./useBatchAnalysis";
 
 describe("useBatchAnalysis", () => {
+    it("ヒントの準備中に取り消されたら探索を始めず、読む長さ・候補数は渡した値を使う", async () => {
+        const analyzePosition = vi.fn().mockResolvedValue(undefined);
+        let allowed = false;
+        const { result } = renderHook(() =>
+            useBatchAnalysis({
+                kifMoves: [],
+                startSfen: "startpos",
+                analysisSettings: DEFAULT_ANALYSIS_SETTINGS,
+                enginePool: {
+                    isRunning: false,
+                    progress: null,
+                    start: vi.fn(),
+                    cancel: vi.fn().mockResolvedValue(undefined),
+                    dispose: vi.fn().mockResolvedValue(undefined),
+                },
+                resolveNnue: vi.fn().mockResolvedValue({ nnueId: "ramu", fvScale: 8 }),
+                analysisNnueSelection: { presetKey: "ramu", nnueId: null },
+                recordEvalByPly: vi.fn(),
+                recordEvalByNodeId: vi.fn(),
+                clearEvalByPly: vi.fn(),
+                clearEvalByNodeId: vi.fn(),
+                analyzePosition,
+                isAnalyzing: false,
+                kifuTree: null,
+                openNnueManager: vi.fn(),
+                setMessage: vi.fn(),
+                batchAnalysis: null,
+                setBatchAnalysis: vi.fn(),
+            }),
+        );
+        const options = { multiPv: 5, timeMs: 30_000, depth: 60, shouldStart: () => allowed };
+
+        let started = true;
+        await act(async () => {
+            started = await result.current.handleAnalyzeHintPly(0, options);
+        });
+        expect(started).toBe(false);
+        expect(analyzePosition).not.toHaveBeenCalled();
+
+        allowed = true;
+        await act(async () => {
+            started = await result.current.handleAnalyzeHintPly(0, options);
+        });
+        expect(started).toBe(true);
+        expect(analyzePosition).toHaveBeenCalledWith(
+            expect.objectContaining({ multiPv: 5, timeMs: 30_000, depth: 60 }),
+        );
+    });
+
     it("NNUE未ダウンロード後の再解析に成功したら古いエラーメッセージを消す", async () => {
         const resolveNnue = vi
             .fn()

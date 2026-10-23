@@ -17,7 +17,6 @@ import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import { useCurrentPositionAiHints } from "../hooks/useCurrentPositionAiHints";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
-import { HINT_SEARCH_TIME_MS } from "../utils/hintSettings";
 import { convertPvToDisplay } from "../utils/kifFormat";
 import { PLAY_CARD, PLAY_OUTLINE_BUTTON } from "./playStyles";
 
@@ -26,6 +25,8 @@ const PV_SHOWN_MOVES = 7;
 
 interface ShownHints {
     moves: AiHintMove[];
+    /** 止めた・読み終えたあと、続きを読める（この局面のヒントを出していて、あなたの手番） */
+    canContinue: boolean;
     /** 読み始めて、まだ候補が 1 つも無い */
     isThinking: boolean;
     isAnalyzing: boolean;
@@ -60,18 +61,28 @@ export function rankHintMoves(moves: AiHintMove[], turn: Player): AiHintMove[] {
 function useShownHints(): ShownHints {
     const { play } = useShogiMatchConfig();
     const { navigationState } = useNavigation();
-    const { position } = useMatchState();
+    const { position, sides } = useMatchState();
     const { moves, isAnalyzing } = useCurrentPositionAiHints({ maxMoves: play?.hintMultiPv });
     // 対局エンジンの読み筋を勝手に出さないよう、ヒントを求めた局面でだけ出す。
     const isForThisPosition = play?.hintPly === navigationState.currentPly;
-    const shown =
+    const live =
         isForThisPosition && play?.phase === "playing" ? rankHintMoves(moves, position.turn) : [];
+    // 続けて読む間は、新しい読みが前の深さを超えるまで、前の結果を見せ続ける（浅い結果に戻さない）。
+    const carry = play?.hintCarry;
+    const carried =
+        carry != null &&
+        isForThisPosition &&
+        carry.ply === play?.hintPly &&
+        (live[0]?.depth ?? 0) < carry.depth;
+    const shown = carried ? carry.moves : live;
     const isSearching =
         isForThisPosition &&
         play?.phase === "playing" &&
         (isAnalyzing || play?.hintPending === true);
+    const isMyTurn = play?.phase === "playing" && sides[position.turn].role === "human";
     return {
         moves: shown,
+        canContinue: shown.length > 0 && !isSearching && !isAnalyzing && isMyTurn,
         isThinking: isSearching && shown.length === 0,
         isAnalyzing,
         isSearching,
@@ -92,8 +103,21 @@ function useHintElapsedSeconds(
         return () => clearInterval(timer);
     }, [running]);
     if (startedAt === null) return null;
-    const seconds = Math.floor(((running ? now : (endedAt ?? now)) - startedAt) / 1000);
-    return Math.min(HINT_SEARCH_TIME_MS / 1000, Math.max(0, seconds));
+    return Math.max(0, Math.floor(((running ? now : (endedAt ?? now)) - startedAt) / 1000));
+}
+
+/** 「続けて読む」: いま見せている結果を引き継いで、もう一度上限の時間まで読む。 */
+function useContinueHint(moves: AiHintMove[]): () => void {
+    const { play } = useShogiMatchConfig();
+    return () => {
+        const startedAt = play?.hintStartedAt;
+        const endedAt = play?.hintEndedAt;
+        play?.requestHint({
+            moves,
+            depth: moves[0]?.depth ?? 0,
+            elapsedMs: startedAt != null && endedAt != null ? endedAt - startedAt : 0,
+        });
+    };
 }
 
 /** 「深さ 18 ・ 12秒」。候補がまだ無ければ秒だけ。 */
@@ -263,7 +287,8 @@ interface PlayHintCardProps {
 export function PlayHintCard({ compact = false, className }: PlayHintCardProps): ReactElement {
     const { play } = useShogiMatchConfig();
     const { position, sides, gameMode } = useMatchState();
-    const { moves, isThinking, isAnalyzing, isSearching } = useShownHints();
+    const { moves, isThinking, isAnalyzing, isSearching, canContinue } = useShownHints();
+    const continueHint = useContinueHint(moves);
 
     const isMyTurn = gameMode === "playing" && sides[position.turn].role === "human";
     const idleText =
@@ -281,7 +306,7 @@ export function PlayHintCard({ compact = false, className }: PlayHintCardProps):
             <div className="flex items-center gap-2">
                 <h2 className="text-sm font-semibold text-wafuu-sumi">ヒント</h2>
                 <HintSearchStatus moves={moves} className="ml-auto" />
-                {/* 同じ局面では出し直さない（押すたびに答えが変わると、どれを信じるか迷う）。 */}
+                {/* 出し直しはしない（押すたびに答えが変わると、どれを信じるか迷う）。読み足すだけにする。 */}
                 {isSearching ? (
                     <Button
                         type="button"
@@ -291,18 +316,27 @@ export function PlayHintCard({ compact = false, className }: PlayHintCardProps):
                     >
                         止める
                     </Button>
-                ) : (
-                    moves.length === 0 && (
+                ) : moves.length > 0 ? (
+                    canContinue && (
                         <Button
                             type="button"
                             variant="outline"
                             className={cn(PLAY_OUTLINE_BUTTON, "ml-auto shrink-0")}
-                            onClick={() => play?.requestHint()}
-                            disabled={!isMyTurn || isAnalyzing}
+                            onClick={continueHint}
                         >
-                            ヒントを見る
+                            続けて読む
                         </Button>
                     )
+                ) : (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className={cn(PLAY_OUTLINE_BUTTON, "ml-auto shrink-0")}
+                        onClick={() => play?.requestHint()}
+                        disabled={!isMyTurn || isAnalyzing}
+                    >
+                        ヒントを見る
+                    </Button>
                 )}
             </div>
             {moves.length > 0 ? (
@@ -325,8 +359,21 @@ export function PlayHintCard({ compact = false, className }: PlayHintCardProps):
 export function PlayHintButton({ className }: { className?: string }): ReactElement {
     const { play } = useShogiMatchConfig();
     const { position, sides, gameMode } = useMatchState();
-    const { moves, isAnalyzing, isSearching } = useShownHints();
+    const { moves, isAnalyzing, isSearching, canContinue } = useShownHints();
+    const continueHint = useContinueHint(moves);
     const isMyTurn = gameMode === "playing" && sides[position.turn].role === "human";
+    if (canContinue) {
+        return (
+            <Button
+                type="button"
+                variant="outline"
+                className={cn(PLAY_OUTLINE_BUTTON, className)}
+                onClick={continueHint}
+            >
+                続けて読む
+            </Button>
+        );
+    }
     if (isSearching) {
         return (
             <Button
@@ -365,7 +412,8 @@ export function PlayHintLine({
 }): ReactElement {
     const { play } = useShogiMatchConfig();
     const { position } = useMatchState();
-    const { moves, isThinking, isSearching } = useShownHints();
+    const { moves, isThinking, isSearching, canContinue } = useShownHints();
+    const continueHint = useContinueHint(moves);
     const [sheetOpen, setSheetOpen] = useState(false);
     const best = moves[0];
     if (!best) {
@@ -418,7 +466,7 @@ export function PlayHintLine({
                 <div className="flex flex-col gap-2 px-1 pb-4">
                     <div className="flex min-h-10 items-center gap-2">
                         <HintSearchStatus moves={moves} />
-                        {isSearching && (
+                        {isSearching ? (
                             <Button
                                 type="button"
                                 variant="outline"
@@ -427,6 +475,17 @@ export function PlayHintLine({
                             >
                                 止める
                             </Button>
+                        ) : (
+                            canContinue && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className={cn(PLAY_OUTLINE_BUTTON, "ml-auto")}
+                                    onClick={continueHint}
+                                >
+                                    続けて読む
+                                </Button>
+                            )
                         )}
                     </div>
                     <HintCandidateList moves={moves} onSelect={() => setSheetOpen(false)} />

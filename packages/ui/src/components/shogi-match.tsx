@@ -74,6 +74,7 @@ import {
     matchesChoice,
 } from "./shogi-match/play/usePlaySetup";
 import {
+    type HintCarry,
     type PlayPhase,
     type PlayScreenConfig,
     ShogiMatchProvider,
@@ -848,6 +849,9 @@ export function ShogiMatch({
     const [hintEndedAt, setHintEndedAt] = useState<number | null>(null);
     /** ヒントを求めてから、解析が始まるまで（評価関数・エンジンの準備中）。 */
     const [hintPending, setHintPending] = useState(false);
+    const [hintCarry, setHintCarry] = useState<(HintCarry & { ply: number }) | null>(null);
+    /** ヒントの要求ごとに進める。止めた・局面を離れた要求は、準備を終えても始めない。 */
+    const hintRequestIdRef = useRef(0);
     const [storedHintMultiPv, setHintMultiPv] = useLocalStorage<number>(
         "shogi-play-hint-multipv",
         DEFAULT_HINT_MULTI_PV,
@@ -1642,20 +1646,24 @@ export function ShogiMatch({
     useEffect(() => {
         const wasAnalyzing = wasAnalyzingRef.current;
         wasAnalyzingRef.current = isAnalyzing;
-        if (!isAnalyzing) {
+        if (isAnalyzing) setHintPending(false);
+        if (!isAnalyzing && !hintPending) {
             if (wasAnalyzing && hintSearchingRef.current) {
                 hintSearchingRef.current = false;
                 setHintEndedAt(Date.now());
             }
             return;
         }
-        setHintPending(false);
         if (!hintSearchingRef.current) return;
         if (navigation.state.currentPly === hintPly && isMatchRunning && !isPaused) return;
         hintSearchingRef.current = false;
-        void cancelAnalysis();
+        hintRequestIdRef.current += 1;
+        setHintPending(false);
+        setHintEndedAt(Date.now());
+        if (isAnalyzing) void cancelAnalysis();
     }, [
         isAnalyzing,
+        hintPending,
         navigation.state.currentPly,
         hintPly,
         isMatchRunning,
@@ -2777,32 +2785,40 @@ export function ShogiMatch({
                                 openStudyNow();
                             }
                         },
-              requestHint: () => {
+              requestHint: (carry?: HintCarry) => {
                   if (hintPending) return;
-                  setHintCount((count) => count + 1);
-                  setHintPly(navigation.state.currentPly);
-                  setHintStartedAt(Date.now());
+                  const ply = navigation.state.currentPly;
+                  const requestId = ++hintRequestIdRef.current;
+                  if (!carry) setHintCount((count) => count + 1);
+                  setHintPly(ply);
+                  // 続けて読むときは、前の読みの時間から数え続ける。
+                  setHintStartedAt(Date.now() - (carry?.elapsedMs ?? 0));
                   setHintEndedAt(null);
+                  setHintCarry(carry ? { ...carry, ply } : null);
                   setHintPending(true);
                   hintSearchingRef.current = true;
-                  void handleAnalyzeHintPly(navigation.state.currentPly, {
+                  void handleAnalyzeHintPly(ply, {
                       multiPv: hintMultiPv,
                       timeMs: HINT_SEARCH_TIME_MS,
                       depth: HINT_SEARCH_MAX_DEPTH,
+                      shouldStart: () =>
+                          hintRequestIdRef.current === requestId && hintSearchingRef.current,
                   }).then((started) => {
                       // 評価関数が無いなどで始められなかったら、読んでいる印を残さない。
-                      if (started) return;
+                      if (started || hintRequestIdRef.current !== requestId) return;
                       hintSearchingRef.current = false;
                       setHintPending(false);
                       setHintEndedAt(Date.now());
                   });
               },
               stopHint: () => {
+                  hintRequestIdRef.current += 1;
                   hintSearchingRef.current = false;
                   setHintPending(false);
                   setHintEndedAt(Date.now());
                   void cancelAnalysis();
               },
+              hintCarry,
               hintStartedAt,
               hintEndedAt,
               hintPending,

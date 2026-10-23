@@ -2,6 +2,7 @@ import type { GameResult, Player } from "@shogi/app-core";
 import type { ReactNode } from "react";
 import { createContext, useContext } from "react";
 import type { SoundVoice } from "../../hooks/useShogiSound";
+import type { AiHintMove } from "./components/AiHintPanel";
 
 /**
  * 対局画面（`screen="play"`）の進み具合。
@@ -47,8 +48,13 @@ export interface PlayScreenConfig {
     rematch: () => void;
     /** いまの棋譜（指し手が無ければ局面）を研究ノートにする。できないときは null */
     openStudy: (() => void) | null;
-    /** いまの局面のヒント（候補手）を求める。上限の時間まで読み、候補と読み筋を更新し続ける */
-    requestHint: () => void;
+    /**
+     * いまの局面のヒント（候補手）を求める。上限の時間まで読み、候補と読み筋を更新し続ける。
+     * `carry` を渡すと「続けて読む」: 新しい読みがその深さを超えるまで、前の結果を見せ続ける。
+     */
+    requestHint: (carry?: HintCarry) => void;
+    /** 「続けて読む」の間、前の読みの結果（新しい読みが追いつくまで見せる） */
+    hintCarry: (HintCarry & { ply: number }) | null;
     /** 読みかけのヒントを止める（それまでの候補は残す） */
     stopHint: () => void;
     /** いまのヒントを読み始めた時刻（ミリ秒）。求めていなければ null */
@@ -68,6 +74,14 @@ export interface PlayScreenConfig {
     setupFooter: ReactNode;
     /** 終局の結果（終局後だけ） */
     gameResult: GameResult | null;
+}
+
+/** 「続けて読む」に引き継ぐ、前の読みの結果。 */
+export interface HintCarry {
+    moves: AiHintMove[];
+    depth: number;
+    /** 前の読みにかかった時間（経過秒を続きから数える） */
+    elapsedMs: number;
 }
 
 interface ShogiMatchConfig {
