@@ -540,6 +540,17 @@ export function StudyWorkspaceView({
         observer.observe(panel);
         return () => observer.disconnect();
     };
+    // ブラウザの操作の帯が縮んで、いまの画面（dvh）が帯の出ている画面（svh）より高くなった分。
+    // 全体はいまの画面いっぱいに広げ、増えた分は盤の下の欄に回す（盤の大きさは帯の出入りで変えない）。
+    const [barsSlack, setBarsSlack] = useState(0);
+    const observeBarsSlack = (probe: HTMLDivElement | null) => {
+        if (!probe) return;
+        const update = () => setBarsSlack(probe.clientHeight);
+        update();
+        const observer = new ResizeObserver(update);
+        observer.observe(probe);
+        return () => observer.disconnect();
+    };
     const observeGraphSlot = (slot: HTMLDivElement | null) => {
         if (!slot) return;
         const update = () => setGraphSlotHeight(slot.clientHeight);
@@ -1336,7 +1347,9 @@ export function StudyWorkspaceView({
     };
     /** 盤を親の幅に合わせて描く（スマートフォンとタブレット）。 */
     const mobileBoardFit =
-        mobilePanel === null ? null : fitMobileBoard(mobilePanel.width, mobilePanel.height);
+        mobilePanel === null
+            ? null
+            : fitMobileBoard(mobilePanel.width, mobilePanel.height - barsSlack);
     const fluidBoard = (
         <MobileBoardSection
             {...boardProps}
@@ -1734,11 +1747,11 @@ export function StudyWorkspaceView({
                 className={cn(
                     "flex w-full max-w-[1320px] xl:max-w-[1600px] flex-col gap-2 self-center px-3 py-1.5 md:gap-3 md:px-4 md:py-3",
                     isMobile && "overflow-hidden",
-                    // 高さはブラウザの操作の帯が出ているときの画面（svh）に合わせる。いまの画面（dvh）に
-                    // 合わせると、少しスクロールして帯が縮むたびに高さが変わり、盤が大きさを変えてしまう。
+                    // 高さはいまの画面（dvh）に合わせ、帯が縮んでも画面の下に空きを残さない。盤の大きさは
+                    // barsSlack を引いた高さから決めるので、帯の出入りで盤は変わらない。
                     isMobile &&
                         rootTop !== null &&
-                        "h-[calc(100vh-var(--study-top))] supports-[height:1svh]:h-[calc(100svh-var(--study-top))]",
+                        "h-[calc(100vh-var(--study-top))] supports-[height:1dvh]:h-[calc(100dvh-var(--study-top))]",
                 )}
                 style={
                     isMobile && rootTop !== null
@@ -1746,6 +1759,13 @@ export function StudyWorkspaceView({
                         : undefined
                 }
             >
+                {isMobile && (
+                    <div
+                        ref={observeBarsSlack}
+                        aria-hidden="true"
+                        className="pointer-events-none invisible fixed top-0 left-0 h-0 w-0 supports-[height:1svh]:h-[calc(100dvh-100svh)]"
+                    />
+                )}
                 {/* スマートフォンでは表題をパンくずに任せ、表題の行は出さない（狭い行に大きな表題を置くと
                     ほとんど読めない）。その他の操作は、表示の切り替えの行に置く。 */}
                 {!isMobile && (
