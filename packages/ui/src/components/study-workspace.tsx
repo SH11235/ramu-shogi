@@ -541,7 +541,8 @@ export function StudyWorkspaceView({
     const observeMobilePanel = (panel: HTMLDivElement | null) => {
         if (!panel) return;
         const update = () => {
-            const { clientWidth: width, clientHeight: height } = panel;
+            // 幅はスクロールバーを含めて測る（送りが出入りしても盤の大きさを行き来させない）。
+            const { offsetWidth: width, clientHeight: height } = panel;
             setMobilePanel((prev) =>
                 prev?.width === width && prev.height === height ? prev : { width, height },
             );
