@@ -37,7 +37,8 @@ export function NnueLibraryDialog({
     isMatchActive = false,
     ...libraryProps
 }: NnueLibraryDialogProps): ReactElement {
-    // 閉じると中身ごと作り直され、続いている処理の進み具合が見えなくなるので、処理中は閉じさせない。
+    // 閉じると中身ごと作り直され、続いている処理の進み具合が見えなくなる。処理中は Esc や外側の
+    // クリックでうっかり閉じないようにし、閉じるボタンでは閉じられるようにする（止まった通信で出られなくならないように）。
     const [isBusy, setIsBusy] = useState(false);
     const handleOpenChange = (next: boolean) => {
         if (!next && isBusy) return;
@@ -74,14 +75,10 @@ export function NnueLibraryDialog({
                 <DialogFooter className="items-center gap-3">
                     {isBusy && (
                         <span className="text-xs text-muted-foreground">
-                            処理が終わると閉じられます
+                            処理中です。閉じると進み具合が見えなくなります
                         </span>
                     )}
-                    <Button
-                        variant="secondary"
-                        disabled={isBusy}
-                        onClick={() => handleOpenChange(false)}
-                    >
+                    <Button variant="secondary" onClick={() => onOpenChange(false)}>
                         閉じる
                     </Button>
                 </DialogFooter>

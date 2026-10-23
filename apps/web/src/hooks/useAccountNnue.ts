@@ -49,8 +49,9 @@ async function uploadFile(file: File, onProgress: (percent: number) => void): Pr
     if (!initResponse.ok) throw new Error(await parseApiError(initResponse));
 
     const init = (await initResponse.json()) as InitializeNnueUploadResponse;
+    let parts: Array<{ partNumber: number; etag: string }>;
     try {
-        await uploadParts(file, init, onProgress);
+        parts = await uploadParts(file, init, onProgress);
     } catch (error) {
         // 途中で止まった記録をアカウントに残さない（同じファイルを保存し直せるように）。
         await fetch(`/api/nnue/files/${init.file.id}`, {
@@ -59,13 +60,22 @@ async function uploadFile(file: File, onProgress: (percent: number) => void): Pr
         }).catch(() => undefined);
         throw error;
     }
+
+    // 完了の通知が届かなくてもサーバー側では完了していることがあるので、ここでは片付けない。
+    const completeResponse = await fetch(`/api/nnue/uploads/${init.file.id}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ uploadId: init.uploadId, parts }),
+    });
+    if (!completeResponse.ok) throw new Error(await parseApiError(completeResponse));
 }
 
 async function uploadParts(
     file: File,
     init: InitializeNnueUploadResponse,
     onProgress: (percent: number) => void,
-): Promise<void> {
+): Promise<Array<{ partNumber: number; etag: string }>> {
     const parts: Array<{ partNumber: number; etag: string }> = [];
     const totalParts = Math.ceil(file.size / CHUNK_SIZE_BYTES);
     for (let index = 0; index < totalParts; index++) {
@@ -81,14 +91,7 @@ async function uploadParts(
         parts.push({ partNumber: part.partNumber, etag: part.etag });
         onProgress(Math.round((end / file.size) * 100));
     }
-
-    const completeResponse = await fetch(`/api/nnue/uploads/${init.file.id}/complete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({ uploadId: init.uploadId, parts }),
-    });
-    if (!completeResponse.ok) throw new Error(await parseApiError(completeResponse));
+    return parts;
 }
 
 const messageOf = (error: unknown, fallback: string): string =>
@@ -150,8 +153,12 @@ export function useAccountNnue(): NnueAccountStore {
         upload: (file, key) =>
             run(key, "アカウントに保存できませんでした", async () => {
                 setUploadProgress(0);
-                await uploadFile(file, setUploadProgress);
-                setFiles(await fetchAccountFiles());
+                try {
+                    await uploadFile(file, setUploadProgress);
+                } finally {
+                    // 失敗しても、途中で残った記録や完了していた分を一覧に映す。
+                    setFiles(await fetchAccountFiles().catch(() => files));
+                }
             }),
         download: (fileId) =>
             run(fileId, "アカウントから取り込めませんでした", async () => {

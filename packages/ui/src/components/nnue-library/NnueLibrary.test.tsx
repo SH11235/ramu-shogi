@@ -14,6 +14,7 @@ const storage = {
 const presetState = {
     presets: [] as PresetWithStatus[],
     isLoading: false,
+    hasFetched: true,
     refresh: vi.fn(async () => {}),
 };
 
@@ -46,6 +47,7 @@ vi.mock("../../hooks/usePresetManager", () => ({
         clearError: vi.fn(),
         refresh: presetState.refresh,
         isConfigured: true,
+        hasFetchedPresets: presetState.hasFetched,
     }),
 }));
 
@@ -108,6 +110,7 @@ beforeEach(() => {
     storage.loadData = vi.fn(async () => new Uint8Array([1, 2, 3]));
     presetState.presets = [];
     presetState.isLoading = false;
+    presetState.hasFetched = true;
     vi.clearAllMocks();
 });
 afterEach(cleanup);
@@ -136,6 +139,28 @@ describe("NnueLibrary", () => {
         presetState.presets = [preset({ localMetas: storage.nnueList })];
         render(<NnueLibrary account={account([accountFile({ sha256Hex: "ccc" })])} />);
         expect(screen.getByText("remote-net")).toBeDefined();
+    });
+
+    it("配布 AI と同じ中身のアカウントのファイルは、取り込ませず削除だけにする", () => {
+        storage.nnueList = [
+            meta({
+                source: "preset",
+                presetKey: "coco",
+                contentHashSha256: "ccc",
+                displayName: "COCO",
+            }),
+        ];
+        presetState.presets = [preset({ localMetas: storage.nnueList })];
+        render(<NnueLibrary account={account([accountFile({ sha256Hex: "ccc" })])} />);
+        expect(screen.getByText("配布 AI「COCO」と同じファイルです")).toBeDefined();
+        expect(screen.queryByRole("button", { name: "このブラウザで使う" })).toBeNull();
+    });
+
+    it("配布一覧を取り終えるまでは、配布 AI を追加した AI に並べない", () => {
+        storage.nnueList = [meta({ source: "preset", presetKey: "coco", displayName: "COCO" })];
+        presetState.hasFetched = false;
+        render(<NnueLibrary />);
+        expect(screen.queryByRole("button", { name: "「COCO」を削除" })).toBeNull();
     });
 
     it("配布一覧に無い配布 AI は追加した AI として並べ、消せるようにする", () => {

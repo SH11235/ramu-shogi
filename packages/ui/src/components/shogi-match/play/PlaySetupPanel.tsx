@@ -617,7 +617,10 @@ export function PlaySetupPanel({
                         <button
                             type="button"
                             onClick={onOpenNnueManager}
-                            className={cn(TEXT_LINK_CLASS, "text-xs text-wafuu-ai")}
+                            className={cn(
+                                TEXT_LINK_CLASS,
+                                "shrink-0 whitespace-nowrap text-xs text-wafuu-ai",
+                            )}
                         >
                             {ADD_NNUE_LABEL}
                         </button>
@@ -641,7 +644,10 @@ export function PlaySetupPanel({
                                 <button
                                     type="button"
                                     onClick={onOpenNnueManager}
-                                    className={cn(TEXT_LINK_CLASS, "text-xs text-wafuu-ai")}
+                                    className={cn(
+                                        TEXT_LINK_CLASS,
+                                        "shrink-0 whitespace-nowrap text-xs text-wafuu-ai",
+                                    )}
                                 >
                                     {ADD_NNUE_LABEL}
                                 </button>

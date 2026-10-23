@@ -127,6 +127,7 @@ export function NnueLibrary({
         clearError: clearPresetError,
         refresh: refreshPresets,
         isConfigured: isPresetConfigured,
+        hasFetchedPresets,
     } = usePresetManager({
         manifestUrl,
         autoFetch: Boolean(manifestUrl),
@@ -156,11 +157,13 @@ export function NnueLibrary({
         onBusyChange?.(isBusy);
     }, [isBusy, onBusyChange]);
 
+    // 配布一覧の取得が済むまでは、どの配布 AI が一覧から無くなったか分からない。
+    const presetsSettled = !isPresetConfigured || (hasFetchedPresets && !isPresetsLoading);
     // 配布一覧に無くなった（配布終了・manifest の取得失敗）配布 AI も、消せるように追加した AI と並べる。
     const addedMetas = nnueList.filter(
         (meta) =>
             meta.source !== "preset" ||
-            (!isPresetsLoading &&
+            (presetsSettled &&
                 !presets.some((preset) => preset.config.presetKey === meta.presetKey)),
     );
     const accountFiles = account?.isAuthenticated ? account.files : [];
@@ -173,6 +176,11 @@ export function NnueLibrary({
             !file.completed ||
             !addedMetas.some((meta) => meta.contentHashSha256 === file.sha256Hex),
     );
+    // 配布 AI と同じ中身のファイル。取り込むと配布 AI の設定を書き換えてしまうので、削除だけにする。
+    const presetWithSameFile = (file: NnueAccountFile) =>
+        nnueList.find(
+            (meta) => meta.source === "preset" && meta.contentHashSha256 === file.sha256Hex,
+        ) ?? null;
     const totalSize = nnueList.reduce((sum, meta) => sum + meta.size, 0);
 
     const acceptFile = (file: File) => {
@@ -247,7 +255,7 @@ export function NnueLibrary({
         setNotice(null);
         setLocalError(null);
         // 大きなファイルの読み出し中も二重に押せないよう、読み出しの前から操作中にする。
-        setBusyId(meta.id);
+        setBusyId(`upload:${meta.id}`);
         try {
             let data: Uint8Array;
             try {
@@ -397,8 +405,9 @@ export function NnueLibrary({
                                               : "読み込めるか確認できていません"
                                     }
                                     busyLabel={
-                                        account?.busyKey === meta.id
-                                            ? `アカウントに保存中... ${account.uploadProgress ?? 0}%`
+                                        account?.busyKey === meta.id ||
+                                        busyId === `upload:${meta.id}`
+                                            ? `アカウントに保存中... ${account?.uploadProgress ?? 0}%`
                                             : busyId === meta.id
                                               ? "削除中..."
                                               : null
@@ -449,14 +458,16 @@ export function NnueLibrary({
                                 details={[formatSize(file.sizeBytes)]}
                                 places={["アカウント"]}
                                 warning={
-                                    file.completed
-                                        ? null
-                                        : "アップロードが途中で止まっています。削除してから、もう一度保存してください"
+                                    !file.completed
+                                        ? "アップロードが途中で止まっています。削除してから、もう一度保存してください"
+                                        : presetWithSameFile(file)
+                                          ? `配布 AI「${presetWithSameFile(file)?.displayName}」と同じファイルです`
+                                          : null
                                 }
                                 muted
                                 busyLabel={account?.busyKey === file.id ? "処理中..." : null}
                             >
-                                {file.completed && (
+                                {file.completed && !presetWithSameFile(file) && (
                                     <Button
                                         size="sm"
                                         variant="outline"
