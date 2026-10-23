@@ -101,10 +101,16 @@ function usePassRightsText(owner: Player): string | null {
 interface PlayPlayerBarProps {
     /** 盤の上か下か（盤の向きに合わせて、どちらの対局者かが決まる） */
     position: "top" | "bottom";
+    /** CPU のアイコンをクリックで拡大できるようにするか */
+    enableIconZoom?: boolean;
     className?: string;
 }
 
-export function PlayPlayerBar({ position, className }: PlayPlayerBarProps): ReactElement {
+export function PlayPlayerBar({
+    position,
+    enableIconZoom = false,
+    className,
+}: PlayPlayerBarProps): ReactElement {
     const { play } = useShogiMatchConfig();
     const { engineOptions } = useMatchSettings();
     const { getHandInfo, sides, isMatchRunning, position: board } = useMatchState();
@@ -134,7 +140,7 @@ export function PlayPlayerBar({ position, className }: PlayPlayerBarProps): Reac
                 className,
             )}
         >
-            <PlayerIcon side={owner} isAI={isAI} size="bar" />
+            <PlayerIcon side={owner} isAI={isAI} size="bar" enableZoom={enableIconZoom} />
             <span className="min-w-0 truncate text-sm font-semibold text-wafuu-sumi">
                 {bothHumans ? sideLabel : (play?.playerNames[owner] ?? sideLabel)}
             </span>
