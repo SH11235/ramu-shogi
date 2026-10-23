@@ -38,6 +38,7 @@ const SETTINGS_STORAGE_MAPPINGS = [
 ] as const;
 
 const LAST_SYNCED_USER_ID_STORAGE_KEY = "shogi-user-settings-last-user-id";
+const OWNERSHIP_STORAGE_PREFIX = "shogi-user-settings-owner:";
 const REQUEST_ERROR = "設定を同期できませんでした。この端末の設定は保持しています。";
 const AUTH_ERROR =
     "ログイン状態を確認できないため、設定の同期を停止しました。この端末の設定は保持しています。";
@@ -56,10 +57,46 @@ interface DocumentState {
 
 interface UserState {
     userId: string;
-    canSeed: boolean;
     documents: DocumentState[];
     initialError: string | null;
     authRefreshRequested: boolean;
+}
+
+interface LocalOwnership {
+    userId: string;
+    value: string | null;
+}
+
+function readOwnership(storageKey: string): LocalOwnership | null {
+    const stored = window.localStorage.getItem(OWNERSHIP_STORAGE_PREFIX + storageKey);
+    if (stored === null) return null;
+    try {
+        const value: unknown = JSON.parse(stored);
+        if (
+            typeof value === "object" &&
+            value !== null &&
+            "userId" in value &&
+            typeof value.userId === "string" &&
+            "value" in value &&
+            (value.value === null || typeof value.value === "string")
+        )
+            return { userId: value.userId, value: value.value };
+    } catch {
+        // 壊れた所属情報は匿名設定として引き継がない。
+    }
+    throw new Error("Invalid settings ownership");
+}
+
+function writeOwnership(document: DocumentState, userId: string): void {
+    window.localStorage.setItem(
+        OWNERSHIP_STORAGE_PREFIX + document.storageKey,
+        JSON.stringify({ userId, value: document.localValue }),
+    );
+}
+
+function ownsLocalValue(document: DocumentState, userId: string): boolean {
+    const owner = readOwnership(document.storageKey);
+    return owner?.userId === userId && owner.value === document.localValue;
 }
 
 interface Generation {
@@ -137,7 +174,11 @@ export function createUserSettingsSync(
     function markSynced(candidate: Generation): void {
         if (!isCurrent(candidate) || !candidate.ready) return;
         if (candidate.user.documents.some((document) => document.dirty)) return;
-        window.localStorage.setItem(LAST_SYNCED_USER_ID_STORAGE_KEY, candidate.user.userId);
+        try {
+            window.localStorage.setItem(LAST_SYNCED_USER_ID_STORAGE_KEY, candidate.user.userId);
+        } catch (error) {
+            fail(candidate, null, error);
+        }
         candidate.user.authRefreshRequested = false;
     }
 
@@ -228,6 +269,9 @@ export function createUserSettingsSync(
         try {
             while (isCurrent(candidate) && document.dirty && !document.failure) {
                 if (document.version === undefined || document.localValue === null) break;
+                if (!ownsLocalValue(document, candidate.user.userId)) {
+                    throw new Error("Settings ownership is not confirmed");
+                }
                 if (
                     document.localValue === document.remoteValue &&
                     !hasUnconfirmedChange(document)
@@ -317,7 +361,11 @@ export function createUserSettingsSync(
                             );
                             dispatchLocalStorageSyncEvent(document.storageKey, "automatic");
                         }
-                    } else if (candidate.user.canSeed && document.localValue !== null) {
+                        writeOwnership(document, candidate.user.userId);
+                    } else if (
+                        ownsLocalValue(document, candidate.user.userId) &&
+                        document.localValue !== null
+                    ) {
                         document.dirty = true;
                     }
                 }
@@ -335,10 +383,8 @@ export function createUserSettingsSync(
     function start(userId: string): void {
         pause();
         if (user?.userId !== userId) {
-            const lastUserId = window.localStorage.getItem(LAST_SYNCED_USER_ID_STORAGE_KEY);
             user = {
                 userId,
-                canSeed: lastUserId === null || lastUserId === userId,
                 initialError: null,
                 authRefreshRequested: false,
                 documents: SETTINGS_STORAGE_MAPPINGS.map((mapping) => ({
@@ -354,6 +400,19 @@ export function createUserSettingsSync(
         }
         user.initialError = null;
         generation = { user, abort: new AbortController(), ready: false, uploading: new Set() };
+        try {
+            const legacyOwner = window.localStorage.getItem(LAST_SYNCED_USER_ID_STORAGE_KEY);
+            // 初回の匿名設定だけを引き継ぎ、通信の成否に関係なく所属を確定する。
+            for (const document of user.documents) {
+                if (readOwnership(document.storageKey) === null) {
+                    writeOwnership(document, legacyOwner ?? userId);
+                }
+            }
+        } catch (error) {
+            fail(generation, null, error);
+            pause();
+            return;
+        }
         publishError();
         void initialize(generation);
     }
@@ -366,15 +425,28 @@ export function createUserSettingsSync(
 
     function localChanged(storageKey: string, source: LocalStorageChangeSource = "user"): void {
         const document = user?.documents.find((candidate) => candidate.storageKey === storageKey);
-        if (!document) return;
-        if (source === "automatic") {
-            // 補正前へ戻す編集を検出できるよう、未保存の編集がないときだけ比較値を進める。
-            if (!document.dirty) document.localValue = readLocalDocument(document.storageKey);
-            return;
+        if (!document || !user) return;
+        try {
+            if (source === "automatic") {
+                // 補正前へ戻す編集を検出できるよう、未保存の編集がないときだけ比較値を進める。
+                if (!document.dirty) {
+                    const owned = ownsLocalValue(document, user.userId);
+                    document.localValue = readLocalDocument(document.storageKey);
+                    if (owned) writeOwnership(document, user.userId);
+                }
+                return;
+            }
+            if (!captureLocalChange(document)) return;
+            writeOwnership(document, user.userId);
+            publishError();
+            if (generation) void upload(generation, document);
+        } catch (error) {
+            if (generation) fail(generation, document, error);
+            else {
+                document.failure = "request";
+                publishError();
+            }
         }
-        if (!captureLocalChange(document)) return;
-        publishError();
-        if (generation) void upload(generation, document);
     }
 
     return { start, pause, reset, localChanged };

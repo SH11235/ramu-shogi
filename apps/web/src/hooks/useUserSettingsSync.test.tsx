@@ -121,6 +121,7 @@ describe("useUserSettingsSync", () => {
 
     afterEach(() => {
         cleanup();
+        vi.restoreAllMocks();
         vi.unstubAllGlobals();
     });
 
@@ -187,6 +188,108 @@ describe("useUserSettingsSync", () => {
         await reply(0, { documents: [remote({ theme: "light" }, 7)] });
         expect(readLocal()).toEqual({ theme: "dark" });
         expectPut(1, { theme: "dark" }, 7);
+    });
+
+    it.each([
+        false,
+        true,
+    ])("初回 PUT 失敗後も別利用者と再読込へ設定を引き継がない（StrictMode: %s）", async (reactStrictMode) => {
+        const value = { theme: "dark" };
+        localStorage.setItem(DISPLAY_KEY, JSON.stringify(value));
+        const first = renderHook(() => useUserSettingsSync(), { reactStrictMode });
+        await reply(requests.length - 1, { documents: [] });
+        await reply(requests.length - 1, { error: "UNAVAILABLE" }, 503);
+        first.unmount();
+        auth = { ...auth, session: { authenticated: false, user: null } };
+        const anonymous = renderHook(() => useUserSettingsSync(), { reactStrictMode });
+        expect(readLocal()).toEqual(value);
+        anonymous.unmount();
+        auth = { ...auth, session: { authenticated: true, user: { id: "user-2" } } };
+        for (let reload = 0; reload < 2; reload++) {
+            const next = renderHook(() => useUserSettingsSync(), { reactStrictMode });
+            const getIndex = requests.length - 1;
+            await reply(getIndex, { documents: [] });
+            expect(requests).toHaveLength(getIndex + 1);
+            expect(readLocal()).toEqual(value);
+            next.unmount();
+        }
+        auth = { ...auth, session: { authenticated: true, user: { id: "user-1" } } };
+        renderHook(() => useUserSettingsSync(), { reactStrictMode });
+        await reply(requests.length - 1, { documents: [] });
+        expectPut(requests.length - 1, value, null);
+    });
+
+    it("初期 GET 失敗と4文書の部分保存でも所属を個別に保持する", async () => {
+        for (const [, storageKey] of mappings) {
+            localStorage.setItem(storageKey, JSON.stringify({ owner: "A" }));
+        }
+        const first = renderHook(() => useUserSettingsSync());
+        await reply(0, { error: "UNAVAILABLE" }, 503);
+        first.unmount();
+        auth = { ...auth, session: { authenticated: true, user: { id: "user-2" } } };
+        const second = renderHook(() => useUserSettingsSync());
+        await reply(1, { documents: [remote({ owner: "B" })] });
+        expect(requests).toHaveLength(2);
+        second.unmount();
+        const third = renderHook(() => useUserSettingsSync());
+        await reply(2, { documents: [] });
+        expect(requests).toHaveLength(4);
+        expect(request(3).url).toBe("/api/user/settings/match.display-settings");
+        expectPut(3, { owner: "B" }, null, "user-2");
+        third.unmount();
+    });
+
+    it("所属の保存に失敗したら同期を止め、再試行でも未確認の編集を送信しない", async () => {
+        const sync = renderHook(() => useUserSettingsSync());
+        await reply(0, { documents: [remote({ theme: "light" })] });
+        const storage = localStorage;
+        vi.stubGlobal("localStorage", {
+            getItem: storage.getItem.bind(storage),
+            setItem: (key: string, value: string) => {
+                if (key.startsWith("shogi-user-settings-owner:")) throw new Error("Quota exceeded");
+                storage.setItem(key, value);
+            },
+        });
+        changeLocal({ theme: "dark" });
+        expect(requests).toHaveLength(1);
+        expect(sync.result.current.syncError).toContain("設定を同期できませんでした");
+        vi.stubGlobal("localStorage", storage);
+        auth = { ...auth, isLoadingSession: true };
+        sync.rerender();
+        auth = { ...auth, isLoadingSession: false };
+        sync.rerender();
+        await reply(1, { documents: [remote({ theme: "light" })] });
+        expect(requests).toHaveLength(2);
+        expect(readLocal()).toEqual({ theme: "dark" });
+        expect(sync.result.current.syncError).toContain("設定を同期できませんでした");
+    });
+
+    it("初回の所属記録が保存できなければ通信せずローカル値を保持する", () => {
+        localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme: "dark" }));
+        const storage = localStorage;
+        vi.stubGlobal("localStorage", {
+            getItem: storage.getItem.bind(storage),
+            setItem: () => {
+                throw new Error("Quota exceeded");
+            },
+        });
+        const sync = renderHook(() => useUserSettingsSync());
+        expect(requests).toHaveLength(0);
+        expect(readLocal()).toEqual({ theme: "dark" });
+        expect(sync.result.current.syncError).toContain("設定を同期できませんでした");
+    });
+
+    it("所属記録と値が一致しない設定を再読込後に自動送信しない", async () => {
+        localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme: "light" }));
+        const first = renderHook(() => useUserSettingsSync());
+        await reply(0, { documents: [] });
+        first.unmount();
+        localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme: "dark" }));
+        renderHook(() => useUserSettingsSync());
+        await reply(2, { documents: [] });
+        expect(requests).toHaveLength(3);
+        changeLocal({ theme: "system" });
+        expectPut(3, { theme: "system" }, null);
     });
 
     it("初期 GET 中の編集通知がない保存よりサーバー設定を優先する", async () => {
