@@ -67,7 +67,9 @@ vi.mock("@shogi/ui", () => ({
             </div>
         );
     },
+    NnueLibraryDialog: () => null,
 }));
+vi.mock("../../hooks/useAccountNnue", () => ({ useAccountNnue: () => undefined }));
 
 /** コメント欄が知らせる「下書きを置く」（コメントが空のときに書き始めた入力）。 */
 const setDraft = (text: string) => ({ type: "set" as const, text, base: "" });

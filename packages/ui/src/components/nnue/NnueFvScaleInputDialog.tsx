@@ -132,9 +132,7 @@ export function NnueFvScaleInputDialog({
                 onEscapeKeyDown={onCancel}
             >
                 <AlertDialogHeader>
-                    <AlertDialogTitle>
-                        {editing ? "評価関数の設定" : "評価関数のインポート"}
-                    </AlertDialogTitle>
+                    <AlertDialogTitle>{editing ? "AI の設定" : "AI を追加"}</AlertDialogTitle>
                     <AlertDialogDescription>
                         「{fileName}」の表示名と FV_SCALE、LayerStacks の方式を設定してください。
                     </AlertDialogDescription>
@@ -197,7 +195,7 @@ export function NnueFvScaleInputDialog({
                         }}
                         disabled={!canConfirm}
                     >
-                        {editing ? "保存" : "インポート"}
+                        {editing ? "保存" : "追加"}
                     </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>

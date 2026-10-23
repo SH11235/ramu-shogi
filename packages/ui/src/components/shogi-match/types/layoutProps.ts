@@ -10,7 +10,7 @@ import type {
     PositionState,
     PresetWithStatus,
 } from "@shogi/app-core";
-import type { RemoteNnueManager } from "../../nnue/types";
+import type { NnueAccountStore } from "../../nnue-library/types";
 import type { ShogiBoardCell, ShogiBoardMoveShadow } from "../../shogi-board";
 import type { SelectionState } from "../contexts/MatchStateContext.types";
 import type { HintSearchOptions } from "../hooks/useBatchAnalysis";
@@ -126,7 +126,7 @@ export interface DialogStateProps {
     clearNnueManagerOpenReason: () => void;
     manifestUrl?: string;
     onRequestNnueFilePath?: () => Promise<string | null>;
-    remoteNnueManager?: RemoteNnueManager;
+    nnueAccount?: NnueAccountStore;
     selectedMoveDetail: {
         move: import("../utils/kifFormat").KifMove;
         position: PositionState;

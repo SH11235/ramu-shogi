@@ -163,6 +163,8 @@ interface StudyWorkspaceCommonProps {
     onRetrySave?: () => void;
     /** ログインへ進む（未ログインのときの案内に使う）。 */
     onLogin?: () => void;
+    /** AI（評価関数）を追加する画面を開く。指定がなければ解析設定に追加の入口を出さない。 */
+    onOpenNnueLibrary?: () => void;
     /** このブラウザからノートを消す（他の端末で削除されたとき）。 */
     onDiscard?: () => void;
     /** 元の棋譜へのリンク。無ければ出どころの種別だけを出す。 */
@@ -480,6 +482,7 @@ export function StudyWorkspaceView({
     saveStatus,
     onRetrySave,
     onLogin,
+    onOpenNnueLibrary,
     onDiscard,
     originLink,
     localOnly = false,
@@ -2068,6 +2071,7 @@ export function StudyWorkspaceView({
                 settingsLabel={analysis.settingsLabel}
                 canStart={!locked && analysis.mode === null && !analysis.isPreparing}
                 onStartFull={startFull}
+                onOpenNnueLibrary={onOpenNnueLibrary}
             />
 
             <AlertDialog

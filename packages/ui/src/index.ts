@@ -8,6 +8,9 @@
 // Hooks
 // ============================================================
 
+export { NnueLibrary } from "./components/nnue-library/NnueLibrary";
+export { NnueLibraryDialog } from "./components/nnue-library/NnueLibraryDialog";
+export type { NnueAccountFile, NnueAccountStore } from "./components/nnue-library/types";
 // 一括解析（研究ノートの画面でも使う）
 export type { AnalysisJob, EnginePoolHandle } from "./components/shogi-match/hooks/useEnginePool";
 export { useEnginePool } from "./components/shogi-match/hooks/useEnginePool";
@@ -88,7 +91,6 @@ export { SurfaceThemeProvider, useSurfaceTheme } from "./components/surface-them
 
 export { listMockRshogiGameIds } from "@shogi/match-client";
 export { ConnectionLostNotice } from "./components/connection-lost-notice";
-export type { RemoteNnueFile, RemoteNnueManager } from "./components/nnue/types";
 export type { AnalysisMoveResult, OnlineAnalysis } from "./components/online-game-view";
 // online-game-view
 export { OnlineGameView } from "./components/online-game-view";

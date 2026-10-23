@@ -10,10 +10,11 @@ import { applyStudyOps, STUDY_LIMITS, type StudyDocument, type StudyOp } from "@
 import { getLegalMoves } from "@shogi/engine-tauri";
 import type { StoredStudy, StudySync } from "@shogi/study-client";
 import type { EngineOption, PlayFromPosition, StudyWorkspaceViewState } from "@shogi/ui";
-import { StudyWorkspace } from "@shogi/ui";
+import { NnueLibraryDialog, StudyWorkspace } from "@shogi/ui";
 import { Button } from "@shogi/ui/components/button";
 import type { ReactElement } from "react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { requestNnueFilePath } from "../../platform/nnueFilePicker";
 import { getDesktopStudySync } from "../../studies/desktopStudySync";
 
 interface Props {
@@ -81,6 +82,7 @@ export function StudyView({
 }: Props): ReactElement {
     const [state, setState] = useState<LoadState>({ status: "loading" });
     const [notice, setNotice] = useState<{ id: number; text: string; type: "error" } | null>(null);
+    const [isNnueLibraryOpen, setIsNnueLibraryOpen] = useState(false);
     const saveStatus = useSyncExternalStore(
         (listener) => sync.subscribeStatus(studyId, listener),
         () => sync.getStatus(studyId),
@@ -288,9 +290,16 @@ export function StudyView({
                         manifestUrl={nnueManifestUrl}
                         defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
                         engine={builtinEngine}
+                        onOpenNnueLibrary={() => setIsNnueLibraryOpen(true)}
                     />
                 </div>
             )}
+            <NnueLibraryDialog
+                open={isNnueLibraryOpen}
+                onOpenChange={setIsNnueLibraryOpen}
+                manifestUrl={nnueManifestUrl}
+                onRequestFilePath={requestNnueFilePath}
+            />
         </div>
     );
 }

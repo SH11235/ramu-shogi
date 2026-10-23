@@ -1,7 +1,7 @@
 import { applyStudyOps, STUDY_LIMITS, type StudyDocument, type StudyOp } from "@shogi/app-core";
 import type { StoredStudy } from "@shogi/study-client";
 import type { EngineOption, StudyCommentDraft, StudyWorkspaceViewState } from "@shogi/ui";
-import { StudyWorkspace } from "@shogi/ui";
+import { NnueLibraryDialog, StudyWorkspace } from "@shogi/ui";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import type { ReactElement, ReactNode } from "react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -9,6 +9,7 @@ import { HeaderNav } from "../../components/HeaderNav";
 import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
 import { Section } from "../../components/Section";
+import { useAccountNnue } from "../../hooks/useAccountNnue";
 import { dispatchAuthSessionSyncEvent, useAuthSession } from "../../hooks/useAuthSession";
 import { usePlayFromPosition } from "../../hooks/usePlayFromPosition";
 import { resolveBuiltinEngineIdentity } from "../../lib/builtinEngine";
@@ -156,6 +157,8 @@ export default function StudyPage(): ReactElement {
     const [state, setState] = useState<LoadState>({ status: "loading" });
     const [reloadCount, setReloadCount] = useState(0);
     const [notice, setNotice] = useState<{ id: number; text: string; type: "error" } | null>(null);
+    const [isNnueLibraryOpen, setIsNnueLibraryOpen] = useState(false);
+    const nnueAccount = useAccountNnue();
     const saveStatus = useSyncExternalStore(
         (listener) => sync.subscribeStatus(studyId, listener),
         () => sync.getStatus(studyId),
@@ -629,6 +632,7 @@ export default function StudyPage(): ReactElement {
                         saveStatus={saveStatus}
                         onRetrySave={() => void sync.retry(studyId).catch(() => undefined)}
                         onLogin={handleLogin}
+                        onOpenNnueLibrary={() => setIsNnueLibraryOpen(true)}
                         onDiscard={handleDiscard}
                         originLink={renderOriginLink(state.doc.origin)}
                         onPlayFromPosition={playFromPosition}
@@ -653,6 +657,14 @@ export default function StudyPage(): ReactElement {
                     />
                 </div>
             )}
+            {/* 解析中でも中断しないよう、画面を離れずに開く */}
+            <NnueLibraryDialog
+                open={isNnueLibraryOpen}
+                onOpenChange={setIsNnueLibraryOpen}
+                manifestUrl={import.meta.env.VITE_NNUE_MANIFEST_URL as string}
+                fallbackIconUrl={`${import.meta.env.BASE_URL}ramu.jpeg`}
+                account={nnueAccount}
+            />
         </>
     );
 }

@@ -54,13 +54,13 @@ export function useLazyNnueLoader(options?: UseLazyNnueLoaderOptions): UseLazyNn
         if (meta.fvScale === undefined) {
             throw new NnueError(
                 "NNUE_RESOLVE_FAILED",
-                `評価関数「${meta.displayName}」の FV_SCALE が未設定です。評価関数ファイル管理を開いて FV_SCALE を設定してください。`,
+                `評価関数「${meta.displayName}」の FV_SCALE が未設定です。「AI（評価関数）」を開いて FV_SCALE を設定してください。`,
             );
         }
         if (meta.format?.architecture.includes("LayerStacks") && !meta.layerStacks) {
             throw new NnueError(
                 "NNUE_RESOLVE_FAILED",
-                "LayerStacks の振り分け方式が未設定です。評価関数ファイル管理で設定してください。",
+                "LayerStacks の振り分け方式が未設定です。「AI（評価関数）」で設定してください。",
             );
         }
         if (meta.layerStacks) validateLayerStacks(meta.layerStacks);
@@ -111,7 +111,7 @@ export function useLazyNnueLoader(options?: UseLazyNnueLoaderOptions): UseLazyNn
                         meta.displayName;
                     throw new NnueError(
                         "NNUE_RESOLVE_FAILED",
-                        `評価関数「${displayName}」の FV_SCALE が未設定です。評価関数ファイル管理を開いて FV_SCALE を設定してください。`,
+                        `評価関数「${displayName}」の FV_SCALE が未設定です。「AI（評価関数）」を開いて FV_SCALE を設定してください。`,
                     );
                 }
                 return createResolvedNnue(meta.id);
@@ -121,7 +121,7 @@ export function useLazyNnueLoader(options?: UseLazyNnueLoaderOptions): UseLazyNn
             const displayName = getPresetDisplayName?.(presetKey) ?? presetKey;
             throw new NnueError(
                 "NNUE_NOT_DOWNLOADED",
-                `評価関数「${displayName}」がダウンロードされていません。評価関数ファイル管理からダウンロードしてください。`,
+                `評価関数「${displayName}」がダウンロードされていません。「AI（評価関数）」からダウンロードしてください。`,
             );
         } catch (e) {
             if (e instanceof NnueError) {

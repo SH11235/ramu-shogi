@@ -10,7 +10,7 @@
 import type { ReactElement } from "react";
 import { AboutDialog } from "../../AboutDialog";
 import { EngineRestartingOverlay } from "../../nnue/EngineRestartingOverlay";
-import { NnueManagerDialog } from "../../nnue/NnueManagerDialog";
+import { NnueLibraryDialog } from "../../nnue-library/NnueLibraryDialog";
 
 import { EngineLogsPanel } from "../components/EngineLogsPanel";
 import { GameResultDialog } from "../components/GameResultDialog";
@@ -145,7 +145,7 @@ export function ShogiMatchLayout({
         clearNnueManagerOpenReason,
         manifestUrl,
         onRequestNnueFilePath,
-        remoteNnueManager,
+        nnueAccount,
         selectedMoveDetail,
         setSelectedMoveDetailPly,
         isAboutOpen,
@@ -305,8 +305,8 @@ export function ShogiMatchLayout({
                 />
             )}
 
-            {/* NNUE ファイル管理ダイアログ */}
-            <NnueManagerDialog
+            {/* AI（評価関数）の一覧 */}
+            <NnueLibraryDialog
                 open={isNnueManagerOpen}
                 onOpenChange={(open) => {
                     if (open) {
@@ -317,7 +317,7 @@ export function ShogiMatchLayout({
                 }}
                 manifestUrl={manifestUrl}
                 onRequestFilePath={onRequestNnueFilePath}
-                remoteNnueManager={remoteNnueManager}
+                account={nnueAccount}
                 openReason={nnueManagerOpenReason ?? undefined}
                 onClearOpenReason={clearNnueManagerOpenReason}
                 isMatchActive={isMatchRunning || isPaused}

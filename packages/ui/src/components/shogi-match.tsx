@@ -30,7 +30,7 @@ import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { isCpuLosing, moveSoundScene } from "../hooks/moveSoundScene";
 import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
 import { normalizeSoundVoice, type SoundVoice, useShogiSound } from "../hooks/useShogiSound";
-import type { RemoteNnueManager } from "./nnue/types";
+import type { NnueAccountStore } from "./nnue-library/types";
 import { MatchNnueDownloadDialog } from "./shogi-match/components/MatchNnueDownloadDialog";
 import { SearchInfoPanel } from "./shogi-match/components/SearchInfoPanel";
 import {
@@ -582,8 +582,8 @@ interface ShogiMatchProps {
     manifestUrl: string;
     /** Desktop 用: NNUE ファイル選択ダイアログを開いてパスを取得するコールバック */
     onRequestNnueFilePath?: () => Promise<string | null>;
-    /** Web 用: remote private NNUE の取り込み導線 */
-    remoteNnueManager?: RemoteNnueManager;
+    /** Web 用: ログインしたアカウントに保存した AI */
+    nnueAccount?: NnueAccountStore;
     /** デフォルトの NNUE プリセットキー（未指定時は DEFAULT_PRESET_KEY） */
     defaultNnuePresetKey?: string;
     /** AIアイコンのURL（GitHub Pages等でbase pathが必要な場合に指定） */
@@ -692,7 +692,7 @@ export function ShogiMatch({
     isDevMode = false,
     manifestUrl,
     onRequestNnueFilePath,
-    remoteNnueManager,
+    nnueAccount,
     defaultNnuePresetKey,
     aiIconUrl,
     dogSoundBaseUrl,
@@ -2386,7 +2386,7 @@ export function ShogiMatch({
         clearNnueManagerOpenReason,
         manifestUrl,
         onRequestNnueFilePath,
-        remoteNnueManager,
+        nnueAccount,
         selectedMoveDetail,
         setSelectedMoveDetailPly,
         isAboutOpen,
