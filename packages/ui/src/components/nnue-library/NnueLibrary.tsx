@@ -637,6 +637,8 @@ function PresetRow({
                 {iconUrl && (
                     <img
                         src={iconUrl}
+                        // 配布 AI の画像は別オリジン。COEP（require-corp）の画面でも読めるよう CORS で取る。
+                        crossOrigin={config.iconUrl ? "anonymous" : undefined}
                         alt=""
                         className="h-11 w-11 shrink-0 rounded-full border border-border object-cover"
                     />
