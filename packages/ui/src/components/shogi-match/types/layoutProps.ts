@@ -185,7 +185,13 @@ export interface NavigationProps {
     lastAddedBranchInfo: { ply: number; firstMove: string } | null;
     setLastAddedBranchInfo: (info: { ply: number; firstMove: string } | null) => void;
     handleAddPvAsBranch: (ply: number, pv: string[]) => void;
-    handlePreviewPv: (ply: number, pv: string[], evalCp?: number, evalMate?: number) => void;
+    handlePreviewPv: (
+        ply: number,
+        pv: string[],
+        evalCp?: number,
+        evalMate?: number,
+        startPosition?: PositionState,
+    ) => void;
     kifuViewMode: import("../components/KifuPanel").KifuViewMode;
     setKifuViewMode: (mode: import("../components/KifuPanel").KifuViewMode) => void;
     setDisplaySettings: import("react").Dispatch<import("react").SetStateAction<DisplaySettings>>;

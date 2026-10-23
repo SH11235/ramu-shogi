@@ -37,7 +37,10 @@ function pickHintEvals(node: ReturnType<typeof getCurrentNode>): KifuEval[] {
     return [];
 }
 
-export function useCurrentPositionAiHints(): CurrentPositionAiHintsResult {
+/** `maxMoves` は並べる候補の上限（省略時は解析設定の MultiPV）。 */
+export function useCurrentPositionAiHints(options?: {
+    maxMoves?: number;
+}): CurrentPositionAiHintsResult {
     const { analysisSettings, isAnalyzing, handleAnalyzeHintPly } = useAnalysis();
     const { kifuTree, navigationState } = useNavigation();
     const { position, gameMode, isPaused, sides, applyUsiMove } = useMatchState();
@@ -46,7 +49,7 @@ export function useCurrentPositionAiHints(): CurrentPositionAiHintsResult {
     const hintEvals = currentNode ? pickHintEvals(currentNode) : [];
     const ply = currentNode?.ply ?? 0;
     const hintMoves = hintEvals
-        .slice(0, Math.max(1, analysisSettings.multiPv))
+        .slice(0, Math.max(1, options?.maxMoves ?? analysisSettings.multiPv))
         .map((evalData) => {
             const normalized = normalizeEvalToSentePerspective(
                 evalData,
@@ -56,6 +59,8 @@ export function useCurrentPositionAiHints(): CurrentPositionAiHintsResult {
             const usi = evalData.pv?.[0] ?? "";
             return {
                 usi,
+                pv: evalData.pv,
+                depth: evalData.depth ?? undefined,
                 displayText: usi ? formatMoveSimple(usi, position.turn, position.board) : "",
                 scoreText: formatEval(normalized.evalCp, normalized.evalMate, ply),
                 scoreTone: toScoreTone(normalized),

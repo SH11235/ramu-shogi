@@ -105,6 +105,12 @@ import type {
     NavigationProps,
     PCSpecificProps,
 } from "./shogi-match/types/layoutProps";
+import {
+    DEFAULT_HINT_MULTI_PV,
+    HINT_SEARCH_MAX_DEPTH,
+    HINT_SEARCH_TIME_MS,
+    normalizeHintMultiPv,
+} from "./shogi-match/utils/hintSettings";
 import type { KifMove } from "./shogi-match/utils/kifFormat";
 import { buildLegalCacheKey, LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
 import {
@@ -837,6 +843,15 @@ export function ShogiMatch({
     const [positionEditOpen, setPositionEditOpen] = useState(false);
     const [hintCount, setHintCount] = useState(0);
     const [hintPly, setHintPly] = useState<number | null>(null);
+    /** いまのヒントを読み始めた時刻（経過秒の表示に使う）。 */
+    const [hintStartedAt, setHintStartedAt] = useState<number | null>(null);
+    const [storedHintMultiPv, setHintMultiPv] = useLocalStorage<number>(
+        "shogi-play-hint-multipv",
+        DEFAULT_HINT_MULTI_PV,
+    );
+    const hintMultiPv = normalizeHintMultiPv(storedHintMultiPv);
+    /** 対局画面のヒントが読んでいる最中か（ほかの解析と区別して、局面が進んだら止める）。 */
+    const hintSearchingRef = useRef(false);
     const [pendingOpenStudy, setPendingOpenStudy] = useState(false);
     const [pendingRematch, setPendingRematch] = useState(false);
     const editAllowed =
@@ -1569,6 +1584,7 @@ export function ShogiMatch({
         logEngineError,
         isAnalyzing,
         analyzePosition,
+        cancelAnalysis,
         engineErrorDetails,
         retryEngine,
         isRetrying,
@@ -1616,6 +1632,29 @@ export function ShogiMatch({
     });
     stopAllEnginesRef.current = stopAllEngines;
     prepareEnginesRef.current = prepareEngines;
+
+    // ヒントは長く読むので、その局面を離れたら止める（AI の手番に探索スレッドを取り合わない）。
+    // 求めた直後はまだ解析が始まっていないので、読み終えた（解析中から外れた）ときだけ印を下ろす。
+    const wasAnalyzingRef = useRef(false);
+    useEffect(() => {
+        const wasAnalyzing = wasAnalyzingRef.current;
+        wasAnalyzingRef.current = isAnalyzing;
+        if (!isAnalyzing) {
+            if (wasAnalyzing) hintSearchingRef.current = false;
+            return;
+        }
+        if (!hintSearchingRef.current) return;
+        if (navigation.state.currentPly === hintPly && isMatchRunning && !isPaused) return;
+        hintSearchingRef.current = false;
+        void cancelAnalysis();
+    }, [
+        isAnalyzing,
+        navigation.state.currentPly,
+        hintPly,
+        isMatchRunning,
+        isPaused,
+        cancelAnalysis,
+    ]);
 
     // fatal なエンジンエラーは対局停止 (isMatchRunning=false) に遷移しないため、
     // error 状態を直接監視してライブ探索表示を消す
@@ -2232,10 +2271,16 @@ export function ShogiMatch({
     };
 
     // PVプレビューを開くコールバック
-    const handlePreviewPv = (ply: number, pv: string[], evalCp?: number, evalMate?: number) => {
+    const handlePreviewPv = (
+        ply: number,
+        pv: string[],
+        evalCp?: number,
+        evalMate?: number,
+        startPosition?: PositionState,
+    ) => {
         // PVはply手目を指した後の局面から計算されている
-        // positionHistory[ply-1] = ply手目を指した後の局面
-        const startPos = positionHistory[ply - 1];
+        // positionHistory[ply-1] = ply手目を指した後の局面（0 手目の局面は持たないので、呼び出し側が渡す）
+        const startPos = startPosition ?? positionHistory[ply - 1];
         if (!startPos) return;
 
         setPvPreview({
@@ -2728,8 +2773,21 @@ export function ShogiMatch({
               requestHint: () => {
                   setHintCount((count) => count + 1);
                   setHintPly(navigation.state.currentPly);
-                  void handleAnalyzeHintPly(navigation.state.currentPly);
+                  setHintStartedAt(Date.now());
+                  hintSearchingRef.current = true;
+                  void handleAnalyzeHintPly(navigation.state.currentPly, {
+                      multiPv: hintMultiPv,
+                      timeMs: HINT_SEARCH_TIME_MS,
+                      depth: HINT_SEARCH_MAX_DEPTH,
+                  });
               },
+              stopHint: () => {
+                  hintSearchingRef.current = false;
+                  void cancelAnalysis();
+              },
+              hintStartedAt,
+              hintMultiPv,
+              setHintMultiPv,
               hintCount,
               hintPly,
               setupFooter: playSetupFooter ?? null,

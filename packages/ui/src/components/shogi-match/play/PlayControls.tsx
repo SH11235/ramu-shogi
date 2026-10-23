@@ -21,6 +21,7 @@ import { Button } from "../../button";
 import { PassButton } from "../components/PassButton";
 import { PlayerIcon } from "../components/PlayerIcon";
 import { SoundToggle } from "../components/SoundToggle";
+import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { ILLEGAL_MOVE_MESSAGE } from "../hooks/useMoveExecution";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
@@ -201,9 +202,17 @@ export function PlayMatchActions({
         handlePassMove,
         shouldShowPassConfirm,
     } = useMatchState();
+    const { timeSettings } = useMatchSettings();
     if (!play) return null;
     const bothEngines = sides.sente.role === "engine" && sides.gote.role === "engine";
     const bothHumans = sides.sente.role === "human" && sides.gote.role === "human";
+    // 一時停止が役に立つのは、人の時計が動いている対局（離れても時間切れにしない）と、AI 同士の対局
+    // （止めて局面を見る）だけ。人の時間が無制限なら止めても得るものが無く、ヒントの「止める」と紛れる。
+    const canPause =
+        bothEngines ||
+        (["sente", "gote"] as const).some(
+            (side) => sides[side].role === "human" && timeSettings[side].enabled,
+        );
     // 待ったは「自分の指した手」を取り消す操作。自分がまだ指していない（相手の初手だけ）なら使えない。
     // 数えるのは、この対局で指した手だけ（引き継いだ棋譜の手は戻さない）。
     const playedMoves = moves.length - play.startPly;
@@ -260,14 +269,16 @@ export function PlayMatchActions({
                     compact={compact}
                 />
             )}
-            <Button
-                type="button"
-                variant="outline"
-                className={cn(PLAY_OUTLINE_BUTTON, itemClass)}
-                onClick={pauseAutoPlay}
-            >
-                一時停止
-            </Button>
+            {canPause && (
+                <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(PLAY_OUTLINE_BUTTON, itemClass)}
+                    onClick={pauseAutoPlay}
+                >
+                    一時停止
+                </Button>
+            )}
             {!bothEngines && (
                 <ConfirmButton
                     label="投了"

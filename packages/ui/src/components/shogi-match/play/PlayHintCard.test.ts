@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeEval } from "./PlayHintCard";
+import { describeEval, rankHintMoves } from "./PlayHintCard";
 
 describe("describeEval（ヒントの評価値を、手番の人から見た言葉にする）", () => {
     it("評価値は先手から見た値なので、後手番では符号を返して読む", () => {
@@ -35,5 +35,36 @@ describe("describeEval（ヒントの評価値を、手番の人から見た言�
 
     it("評価値が無ければ何も書かない", () => {
         expect(describeEval({}, "sente").text).toBe("");
+    });
+});
+
+describe("rankHintMoves（読んでいる途中の候補を並べ直す）", () => {
+    const move = (usi: string, depth: number, evalCp?: number, evalMate?: number) => ({
+        usi,
+        displayText: usi,
+        scoreText: "",
+        scoreTone: "neutral" as const,
+        depth,
+        evalCp,
+        evalMate,
+    });
+
+    it("同じ手はいちばん深く読んだものだけを残し、手番の側から見て良い順に並べる", () => {
+        const ranked = rankHintMoves(
+            [move("5i5h", 18, 12), move("7g7f", 17, 50), move("5i5h", 17, 45)],
+            "sente",
+        );
+        expect(ranked.map((m) => [m.usi, m.depth])).toEqual([
+            ["7g7f", 17],
+            ["5i5h", 18],
+        ]);
+    });
+
+    it("後手番では評価値を返して読み、詰みは評価値より先・早い詰みほど先に並べる", () => {
+        const ranked = rankHintMoves(
+            [move("a", 10, -300), move("b", 10, undefined, -5), move("c", 10, undefined, -3)],
+            "gote",
+        );
+        expect(ranked.map((m) => m.usi)).toEqual(["c", "b", "a"]);
     });
 });

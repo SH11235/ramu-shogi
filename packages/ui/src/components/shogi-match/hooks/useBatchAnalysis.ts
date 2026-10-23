@@ -66,6 +66,13 @@ interface UseBatchAnalysisProps {
     setBatchAnalysis: React.Dispatch<React.SetStateAction<BatchAnalysisState | null>>;
 }
 
+/** 局面 1 つの解析で、解析設定の代わりに使う値（ヒント用）。 */
+export interface HintSearchOptions {
+    multiPv?: number;
+    timeMs?: number;
+    depth?: number;
+}
+
 /**
  * useBatchAnalysis の返り値
  */
@@ -76,8 +83,8 @@ interface UseBatchAnalysisReturn {
     handleEvalUpdate: (ply: number, event: EngineInfoEvent) => void;
     /** 特定の手数の局面を解析する */
     handleAnalyzePly: (ply: number) => Promise<void>;
-    /** AIヒント用に現在局面を解析する（最大3候補を優先） */
-    handleAnalyzeHintPly: (ply: number) => Promise<void>;
+    /** AIヒント用に現在局面を解析する（既定は 3 候補・解析設定の時間） */
+    handleAnalyzeHintPly: (ply: number, options?: HintSearchOptions) => Promise<void>;
     /** 分岐内のノードを解析する */
     handleAnalyzeNode: (nodeId: string) => Promise<void>;
     /** 一括解析を開始する（本譜のみ） */
@@ -134,7 +141,7 @@ export function useBatchAnalysis({
         }
     };
 
-    const analyzePlyWithSettings = async (ply: number, options?: { multiPv?: number }) => {
+    const analyzePlyWithSettings = async (ply: number, options?: HintSearchOptions) => {
         // NNUE の存在確認（未ダウンロードの場合はエラー）
         try {
             await resolveNnue(analysisNnueSelection);
@@ -161,8 +168,8 @@ export function useBatchAnalysis({
                 sfen: startSfen,
                 moves: movesForPly,
                 ply,
-                timeMs: analysisSettings.batchAnalysisTimeMs,
-                depth: analysisSettings.batchAnalysisDepth,
+                timeMs: options?.timeMs ?? analysisSettings.batchAnalysisTimeMs,
+                depth: options?.depth ?? analysisSettings.batchAnalysisDepth,
                 multiPv: options?.multiPv ?? analysisSettings.multiPv,
             });
         } catch (error) {
@@ -174,8 +181,11 @@ export function useBatchAnalysis({
     // 特定の手数の局面を解析するコールバック（オンデマンド解析用）
     const handleAnalyzePly = analyzePlyWithSettings;
 
-    const handleAnalyzeHintPly = async (ply: number) => {
-        await analyzePlyWithSettings(ply, { multiPv: Math.max(3, analysisSettings.multiPv) });
+    const handleAnalyzeHintPly = async (ply: number, options?: HintSearchOptions) => {
+        await analyzePlyWithSettings(ply, {
+            ...options,
+            multiPv: options?.multiPv ?? Math.max(3, analysisSettings.multiPv),
+        });
     };
 
     // 分岐内のノードを解析するコールバック

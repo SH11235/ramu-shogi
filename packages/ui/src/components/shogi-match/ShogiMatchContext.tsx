@@ -47,8 +47,15 @@ export interface PlayScreenConfig {
     rematch: () => void;
     /** いまの棋譜（指し手が無ければ局面）を研究ノートにする。できないときは null */
     openStudy: (() => void) | null;
-    /** いまの局面のヒント（候補手）を求める */
+    /** いまの局面のヒント（候補手）を求める。上限の時間まで読み、候補と読み筋を更新し続ける */
     requestHint: () => void;
+    /** 読みかけのヒントを止める（それまでの候補は残す） */
+    stopHint: () => void;
+    /** いまのヒントを読み始めた時刻（ミリ秒）。求めていなければ null */
+    hintStartedAt: number | null;
+    /** ヒントで並べる候補の数（MultiPV） */
+    hintMultiPv: number;
+    setHintMultiPv: (count: number) => void;
     /** この対局でヒントを求めた回数 */
     hintCount: number;
     /** 最後にヒントを求めた手数（その局面を見ている間だけ結果を出す）。求めていなければ null */
