@@ -83,8 +83,8 @@ export function PlayMobileLayout({
     const isEditing = phase === "editing";
     const inGame = phase === "playing" || phase === "paused" || phase === "finished";
     const barMoves = kifMoves.map((move) => ({ ply: move.ply, displayText: move.displayText }));
-    // 自分 対 AI では盤の下があなたなので、帯を出さず手番と時間だけを出す。AI 同士・人同士では
-    // 盤の下の対局者も、手番の行に上と同じ帯で名前・時間を見せる。
+    // 自分 対 AI では盤の下があなたなので、手番の行には時間だけを出す。AI 同士・人同士では
+    // 盤の下の対局者が誰かも分かるよう、アイコンと名前を添える。
     const isVsAi = (sides.sente.role === "human") !== (sides.gote.role === "human");
 
     const board = (
@@ -229,19 +229,12 @@ export function PlayMobileLayout({
                                 <PlayMessage className="text-left" />
                             ) : (
                                 <PlayHintLine
-                                    className="flex min-w-0 flex-1 items-center"
-                                    // 盤の下の対局者の帯は、手番の表示を兼ねる（手番の側の帯が光る）。
-                                    fallback={
-                                        isVsAi ? (
-                                            <PlayTurnStatus />
-                                        ) : (
-                                            <PlayPlayerBar position="bottom" className="min-w-0" />
-                                        )
-                                    }
+                                    className="flex min-w-0 items-center"
+                                    fallback={<PlayTurnStatus />}
                                 />
                             )}
                         </div>
-                        {isVsAi && <PlayMyStatus />}
+                        <PlayMyStatus withPlayer={!isVsAi} />
                     </div>
                     <PlayMatchActions
                         compact
