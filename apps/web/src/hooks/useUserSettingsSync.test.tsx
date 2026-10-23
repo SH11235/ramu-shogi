@@ -84,6 +84,17 @@ function readLocal(storageKey = DISPLAY_KEY): unknown {
     return value === null ? null : JSON.parse(value);
 }
 
+function receiveLocal(value: JsonValue): void {
+    act(() => {
+        localStorage.setItem(DISPLAY_KEY, JSON.stringify(value));
+        window.dispatchEvent(
+            new CustomEvent(LOCAL_STORAGE_SYNC_EVENT, {
+                detail: { key: DISPLAY_KEY, source: "automatic" },
+            }),
+        );
+    });
+}
+
 function expectPut(
     index: number,
     value: JsonValue,
@@ -827,6 +838,101 @@ describe("useUserSettingsSync", () => {
         expect(requests).toHaveLength(3);
         changeLocal({ theme: "light" });
         expectPut(3, { theme: "light" }, 8);
+    });
+
+    it.each([
+        false,
+        true,
+    ])("別タブで表示した値からの編集は取得した新しい版で再送する（StrictMode: %s）", async (reactStrictMode) => {
+        const sync = renderHook(() => useUserSettingsSync(), { reactStrictMode });
+        const ui = renderHook(() => useLocalStorage(DISPLAY_KEY, { theme: "system" }));
+        const initial = requests.length - 1;
+        await reply(initial, { documents: [remote({ theme: "system" }, 7)] });
+        act(() => {
+            localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme: "light" }));
+            window.dispatchEvent(
+                new StorageEvent("storage", {
+                    key: DISPLAY_KEY,
+                    newValue: JSON.stringify({ theme: "light" }),
+                    storageArea: localStorage,
+                }),
+            );
+        });
+        expect(ui.result.current[0]).toEqual({ theme: "light" });
+        act(() => ui.result.current[1]({ theme: "dark" }));
+        expectPut(initial + 1, { theme: "dark" }, 7);
+        await reply(initial + 1, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+        await reply(initial + 2, { document: remote({ theme: "light" }, 8) });
+        expectPut(initial + 3, { theme: "dark" }, 8);
+        await reply(initial + 3, { document: remote({ theme: "dark" }, 9) });
+        expect(sync.result.current.syncError).toBeNull();
+        expect(readLocal()).toEqual({ theme: "dark" });
+    });
+
+    it("再取得中の追加編集も元の編集開始値と照合し、最新の編集だけを再送する", async () => {
+        renderHook(() => useUserSettingsSync());
+        await reply(0, { documents: [remote({ theme: "system" }, 7)] });
+        receiveLocal({ theme: "light" });
+        changeLocal({ theme: "dark" });
+        await reply(1, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+        changeLocal({ theme: "custom" });
+        await reply(2, { document: remote({ theme: "light" }, 8) });
+        expectPut(3, { theme: "custom" }, 8);
+        expect(requests).toHaveLength(4);
+    });
+
+    it("再送後も版が競合した場合は無限に再送せず編集を保持する", async () => {
+        const sync = renderHook(() => useUserSettingsSync());
+        await reply(0, { documents: [remote({ theme: "system" }, 7)] });
+        receiveLocal({ theme: "light" });
+        changeLocal({ theme: "dark" });
+        await reply(1, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+        await reply(2, { document: remote({ theme: "light" }, 8) });
+        expectPut(3, { theme: "dark" }, 8);
+        await reply(3, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+        await reply(4, { document: remote({ theme: "light" }, 9) });
+        expect(requests).toHaveLength(5);
+        expect(sync.result.current.syncError).toContain("更新が競合");
+        expect(readLocal()).toEqual({ theme: "dark" });
+    });
+
+    it("再取得した値が表示済みの開始値と違えば再送しない", async () => {
+        const sync = renderHook(() => useUserSettingsSync());
+        await reply(0, { documents: [remote({ theme: "system" }, 7)] });
+        receiveLocal({ theme: "light" });
+        changeLocal({ theme: "dark" });
+        await reply(1, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+        await reply(2, { document: remote({ theme: "another-device" }, 9) });
+        expect(requests).toHaveLength(3);
+        expect(sync.result.current.syncError).toContain("更新が競合");
+        expect(readLocal()).toEqual({ theme: "dark" });
+    });
+
+    it("未確定PUTが残る場合は編集開始値と一致しても自動で版を進めない", async () => {
+        const sync = renderHook(() => useUserSettingsSync());
+        await reply(0, { documents: [remote({ theme: "system" }, 7)] });
+        changeLocal({ theme: "light" });
+        changeLocal({ theme: "dark" });
+        auth = { ...auth, session: { authenticated: true, user: { id: "user-1" } } };
+        sync.rerender();
+        await reply(2, { documents: [remote({ theme: "system" }, 7)] });
+        expectPut(3, { theme: "dark" }, 7);
+        await reply(3, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+        await reply(4, { document: remote({ theme: "system" }, 8) });
+        expect(requests).toHaveLength(5);
+        expect(sync.result.current.syncError).toContain("更新が競合");
+    });
+
+    it("送信成功後に待機していた編集は成功値を基準に再送できる", async () => {
+        renderHook(() => useUserSettingsSync());
+        await reply(0, { documents: [remote({ theme: "system" }, 7)] });
+        changeLocal({ theme: "light" });
+        changeLocal({ theme: "dark" });
+        await reply(1, { document: remote({ theme: "light" }, 8) });
+        expectPut(2, { theme: "dark" }, 8);
+        await reply(2, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+        await reply(3, { document: remote({ theme: "light" }, 9) });
+        expectPut(4, { theme: "dark" }, 9);
     });
 
     it("中断した PUT が未確定なら、GET と一致する取り消し編集も条件付きで保存する", async () => {

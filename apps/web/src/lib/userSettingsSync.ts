@@ -49,6 +49,7 @@ interface DocumentState {
     storageKey: string;
     label: string;
     localValue: string | null;
+    editBase: string | null | undefined;
     remoteValue: string | null;
     version: number | null | undefined;
     dirty: boolean;
@@ -135,9 +136,12 @@ function readLocalDocument(storageKey: string): string | null {
     }
 }
 
-function captureLocalChange(document: DocumentState): boolean {
+function captureLocalChange(document: DocumentState, explicit = false): boolean {
     const localValue = readLocalDocument(document.storageKey);
     if (localValue === document.localValue) return false;
+    if (explicit && (!document.dirty || document.failure === "conflict")) {
+        document.editBase = document.localValue;
+    }
     document.localValue = localValue;
     document.dirty = localValue !== null;
     document.failure = null;
@@ -251,22 +255,41 @@ export function createUserSettingsSync(
         );
         if (document.localValue === document.remoteValue && !hasUnconfirmedChange(document)) {
             document.dirty = false;
+            document.editBase = undefined;
             document.failure = null;
         }
     }
 
-    async function resolveConflict(candidate: Generation, document: DocumentState): Promise<void> {
+    async function resolveConflict(
+        candidate: Generation,
+        document: DocumentState,
+        canRetry: boolean,
+    ): Promise<boolean> {
+        const hadUnconfirmedWrites = document.unconfirmedWrites.length > 0;
         const payload = await request<GetUserSettingsResponse>(
             candidate,
             `/api/user/settings/${document.documentKey}`,
         );
-        if (!isCurrent(candidate)) return;
+        if (!isCurrent(candidate)) return false;
         captureLocalChange(document);
+        const canRebase =
+            canRetry &&
+            !hadUnconfirmedWrites &&
+            document.editBase !== undefined &&
+            document.editBase ===
+                (payload.document ? JSON.stringify(payload.document.value) : null);
         acceptRemote(document, payload.document);
+        // 編集開始時に表示した値と一致する場合だけ、既知の更新として一度再送する。
+        if (document.dirty && canRebase) return true;
         if (document.dirty) document.failure = "conflict";
+        return false;
     }
 
-    async function upload(candidate: Generation, document: DocumentState): Promise<void> {
+    async function upload(
+        candidate: Generation,
+        document: DocumentState,
+        canRetry = true,
+    ): Promise<void> {
         if (
             !isCurrent(candidate) ||
             !candidate.ready ||
@@ -275,6 +298,7 @@ export function createUserSettingsSync(
             return;
         candidate.uploading.add(document.documentKey);
         let attempt: DocumentState["unconfirmedWrites"][number] | undefined;
+        let retry = false;
         try {
             while (isCurrent(candidate) && document.dirty && !document.failure) {
                 if (document.version === undefined || document.localValue === null) break;
@@ -298,6 +322,7 @@ export function createUserSettingsSync(
                 );
                 if (!isCurrent(candidate)) return;
                 acceptRemote(document, payload.document);
+                if (document.dirty) document.editBase = document.remoteValue;
             }
         } catch (error) {
             if (isRequestError(error) && error.status >= 400 && error.status < 500) {
@@ -312,7 +337,7 @@ export function createUserSettingsSync(
                 error.code === "SETTINGS_VERSION_CONFLICT"
             ) {
                 try {
-                    await resolveConflict(candidate, document);
+                    retry = await resolveConflict(candidate, document, canRetry);
                 } catch (conflictError) {
                     fail(candidate, document, conflictError);
                 }
@@ -324,6 +349,7 @@ export function createUserSettingsSync(
             if (isCurrent(candidate)) {
                 publishError();
                 markSynced(candidate);
+                if (retry) void upload(candidate, document, false);
             }
         }
     }
@@ -399,6 +425,7 @@ export function createUserSettingsSync(
                 documents: SETTINGS_STORAGE_MAPPINGS.map((mapping) => ({
                     ...mapping,
                     localValue: readLocalDocument(mapping.storageKey),
+                    editBase: undefined,
                     remoteValue: null,
                     version: undefined,
                     dirty: false,
@@ -470,7 +497,7 @@ export function createUserSettingsSync(
                 }
                 return;
             }
-            if (!captureLocalChange(document)) return;
+            if (!captureLocalChange(document, true)) return;
             writeOwnership(document, user.userId);
             publishError();
             if (generation) void upload(generation, document);
