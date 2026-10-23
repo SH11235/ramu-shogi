@@ -7,8 +7,8 @@ import type { NnueAccountFile, NnueAccountStore } from "./types";
 const storage = {
     nnueList: [] as NnueMeta[],
     deleteNnue: vi.fn(async () => {}),
-    loadData: vi.fn(async () => new Uint8Array([1, 2, 3])) as
-        | ((id: string) => Promise<Uint8Array>)
+    loadBlob: vi.fn(async () => new Blob([new Uint8Array([1, 2, 3])])) as
+        | ((id: string) => Promise<Blob>)
         | null,
 };
 const presetState = {
@@ -33,7 +33,7 @@ vi.mock("../../hooks/useNnueStorage", () => ({
         refreshList: vi.fn(async () => {}),
         storageUsage: null,
         capabilities: { supportsFileImport: true, supportsPathImport: false, supportsLoad: true },
-        loadData: storage.loadData,
+        loadBlob: storage.loadBlob,
     }),
 }));
 vi.mock("../../hooks/usePresetManager", () => ({
@@ -107,7 +107,7 @@ const preset = (overrides: Partial<PresetWithStatus>): PresetWithStatus => ({
 
 beforeEach(() => {
     storage.nnueList = [];
-    storage.loadData = vi.fn(async () => new Uint8Array([1, 2, 3]));
+    storage.loadBlob = vi.fn(async () => new Blob([new Uint8Array([1, 2, 3])]));
     presetState.presets = [];
     presetState.isLoading = false;
     presetState.hasFetched = true;
@@ -227,10 +227,10 @@ describe("NnueLibrary", () => {
 
     it("アカウントへの保存は読み出し中から二重に押せず、読み出せなければ知らせる", async () => {
         storage.nnueList = [meta({})];
-        let finishRead: (value: Uint8Array) => void = () => {};
-        storage.loadData = vi.fn(
+        let finishRead: (value: Blob) => void = () => {};
+        storage.loadBlob = vi.fn(
             () =>
-                new Promise<Uint8Array>((resolve) => {
+                new Promise<Blob>((resolve) => {
                     finishRead = resolve;
                 }),
         );
@@ -239,10 +239,12 @@ describe("NnueLibrary", () => {
         const upload = screen.getByRole("button", { name: "アカウントに保存" });
         fireEvent.click(upload);
         await waitFor(() => expect((upload as HTMLButtonElement).disabled).toBe(true));
-        finishRead(new Uint8Array([1]));
+        finishRead(new Blob([new Uint8Array([1])]));
         await waitFor(() => expect(store.upload).toHaveBeenCalledTimes(1));
+        // 端末に保存してあるハッシュを渡し、アップロード前にファイル全体を読み直させない。
+        expect(store.upload).toHaveBeenCalledWith(expect.any(File), "local-1", "aaa");
 
-        storage.loadData = vi.fn(async () => {
+        storage.loadBlob = vi.fn(async () => {
             throw new Error("read failed");
         });
         cleanup();

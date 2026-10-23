@@ -22,7 +22,8 @@ export interface NnueAccountStore {
     busyKey: string | null;
     uploadProgress: number | null;
     loginHref: string;
-    upload: (file: File, busyKey: string) => Promise<void>;
+    /** sha256Hex を渡すと、アップロード前にファイル全体を読み直してハッシュを取らない */
+    upload: (file: File, busyKey: string, sha256Hex?: string) => Promise<void>;
     download: (fileId: string) => Promise<Blob>;
     remove: (fileId: string) => Promise<void>;
     clearError: () => void;

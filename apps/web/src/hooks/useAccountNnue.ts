@@ -9,6 +9,7 @@ import { buildLoginHref, currentReturnPath } from "../lib/loginReturn";
 import { parseApiError, useAuthSession } from "./useAuthSession";
 
 const CHUNK_SIZE_BYTES = 50 * 1024 * 1024;
+const PENDING_REFRESH_MS = 30_000;
 
 async function sha256Hex(file: File): Promise<string> {
     const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
@@ -35,7 +36,11 @@ async function fetchAccountFiles(): Promise<NnueAccountFile[]> {
     return payload.files.filter((file) => file.uploadStatus !== "deleted").map(toAccountFile);
 }
 
-async function uploadFile(file: File, onProgress: (percent: number) => void): Promise<void> {
+async function uploadFile(
+    file: File,
+    onProgress: (percent: number) => void,
+    knownSha256Hex?: string,
+): Promise<void> {
     const initResponse = await fetch("/api/nnue/uploads/init", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -43,7 +48,7 @@ async function uploadFile(file: File, onProgress: (percent: number) => void): Pr
         body: JSON.stringify({
             originalFilename: file.name,
             sizeBytes: file.size,
-            sha256Hex: await sha256Hex(file),
+            sha256Hex: knownSha256Hex ?? (await sha256Hex(file)),
         }),
     });
     if (!initResponse.ok) throw new Error(await parseApiError(initResponse));
@@ -109,6 +114,7 @@ export function useAccountNnue(): NnueAccountStore {
 
     const refresh = useEffectEvent(async (): Promise<void> => {
         setIsLoading(true);
+        setError(null);
         try {
             setFiles(await fetchAccountFiles());
         } catch (nextError) {
@@ -127,6 +133,14 @@ export function useAccountNnue(): NnueAccountStore {
         }
         void refresh();
     }, [isLoadingSession, isAuthenticated]);
+
+    // 途中のアップロードは、中断や期限切れでサーバー側の状態が後から変わる。残っている間は取り直す。
+    const hasPending = files.some((file) => file.status === "pending");
+    useEffect(() => {
+        if (!isAuthenticated || !hasPending) return;
+        const timer = window.setInterval(() => void refresh(), PENDING_REFRESH_MS);
+        return () => window.clearInterval(timer);
+    }, [isAuthenticated, hasPending]);
 
     const run = async <T>(key: string, fallback: string, task: () => Promise<T>): Promise<T> => {
         setBusyKey(key);
@@ -150,11 +164,11 @@ export function useAccountNnue(): NnueAccountStore {
         busyKey,
         uploadProgress,
         loginHref: buildLoginHref(currentReturnPath()),
-        upload: (file, key) =>
+        upload: (file, key, knownSha256Hex) =>
             run(key, "アカウントに保存できませんでした", async () => {
                 setUploadProgress(0);
                 try {
-                    await uploadFile(file, setUploadProgress);
+                    await uploadFile(file, setUploadProgress, knownSha256Hex);
                 } finally {
                     // 失敗しても、途中で残った記録や完了していた分を一覧に映す。
                     setFiles(await fetchAccountFiles().catch(() => files));

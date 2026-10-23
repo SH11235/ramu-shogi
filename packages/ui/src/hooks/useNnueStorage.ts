@@ -53,8 +53,11 @@ interface UseNnueStorageReturn {
     storageUsage: { used: number; quota?: number } | null;
     /** ストレージの capability */
     capabilities: NnueStorageCapabilities | null;
-    /** 保存したファイルの中身（ファイルを読めないストレージでは null） */
-    loadData: ((id: string) => Promise<Uint8Array>) | null;
+    /**
+     * 保存したファイルの中身を Blob で返す（ストリームで読めないストレージでは null）。
+     * 数百 MB のファイルを JS の配列に丸ごと写さないよう、Blob のまま扱う。
+     */
+    loadBlob: ((id: string) => Promise<Blob>) | null;
 }
 
 /**
@@ -388,6 +391,11 @@ export function useNnueStorage(): UseNnueStorageReturn {
         clearError,
         storageUsage,
         capabilities,
-        loadData: storage?.load ? storage.load.bind(storage) : null,
+        loadBlob: storage?.loadStream
+            ? async (id: string) => {
+                  const stream = await storage.loadStream?.(id);
+                  return new Response(stream).blob();
+              }
+            : null,
     };
 }

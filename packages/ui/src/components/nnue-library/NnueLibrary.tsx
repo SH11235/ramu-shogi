@@ -118,7 +118,7 @@ export function NnueLibrary({
         refreshList,
         storageUsage,
         capabilities,
-        loadData,
+        loadBlob,
     } = useNnueStorage();
     const {
         presets,
@@ -259,21 +259,21 @@ export function NnueLibrary({
     };
 
     const uploadToAccount = async (meta: NnueMeta) => {
-        if (!account || !loadData) return;
+        if (!account || !loadBlob) return;
         setNotice(null);
         setLocalError(null);
         // 大きなファイルの読み出し中も二重に押せないよう、読み出しの前から操作中にする。
         setBusyId(`upload:${meta.id}`);
         try {
-            let data: Uint8Array;
+            let blob: Blob;
             try {
-                data = await loadData(meta.id);
+                blob = await loadBlob(meta.id);
             } catch {
                 setLocalError(`「${meta.displayName}」を読み出せませんでした。`);
                 return;
             }
-            const file = new File([data.slice().buffer], meta.originalFileName);
-            await account.upload(file, meta.id);
+            const file = new File([blob], meta.originalFileName);
+            await account.upload(file, meta.id, meta.contentHashSha256);
             setNotice(`「${meta.displayName}」をアカウントに保存しました。`);
         } catch {
             // 失敗の内容は account.error に出る
@@ -432,7 +432,7 @@ export function NnueLibrary({
                                                 file.status !== "failed" &&
                                                 file.sha256Hex === meta.contentHashSha256,
                                         ) &&
-                                        loadData && (
+                                        loadBlob && (
                                             <Button
                                                 size="sm"
                                                 variant="outline"
@@ -467,47 +467,52 @@ export function NnueLibrary({
                                 </AddedRow>
                             );
                         })}
-                        {accountOnlyFiles.map((file) => (
-                            <AddedRow
-                                key={file.id}
-                                title={file.originalFilename.replace(/\.(nnue|bin)$/i, "")}
-                                details={[formatSize(file.sizeBytes)]}
-                                places={["アカウント"]}
-                                warning={
-                                    file.status === "pending"
-                                        ? "アップロードの途中です。終わらなかったものは、しばらくすると片付きます"
-                                        : file.status === "failed"
-                                          ? "アップロードが途中で止まりました。削除するか、もう一度保存してください"
-                                          : presetWithSameFile(file)
-                                            ? `配布 AI「${presetWithSameFile(file)?.displayName}」と同じファイルです`
-                                            : null
-                                }
-                                muted
-                                busyLabel={account?.busyKey === file.id ? "処理中..." : null}
-                            >
-                                {file.status === "completed" && !presetWithSameFile(file) && (
-                                    <Button
-                                        size="sm"
-                                        variant="outline"
-                                        disabled={isBusy}
-                                        onClick={() => setPendingAdd({ kind: "account", file })}
-                                    >
-                                        {deviceLabel}で使う
-                                    </Button>
-                                )}
-                                {file.status !== "pending" && (
-                                    <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        disabled={isBusy}
-                                        aria-label={`「${file.originalFilename}」をアカウントから削除`}
-                                        onClick={() => setPendingDelete({ kind: "account", file })}
-                                    >
-                                        削除
-                                    </Button>
-                                )}
-                            </AddedRow>
-                        ))}
+                        {accountOnlyFiles.map((file) => {
+                            const samePreset = presetWithSameFile(file);
+                            return (
+                                <AddedRow
+                                    key={file.id}
+                                    title={file.originalFilename.replace(/\.(nnue|bin)$/i, "")}
+                                    details={[formatSize(file.sizeBytes)]}
+                                    places={["アカウント"]}
+                                    warning={
+                                        file.status === "pending"
+                                            ? "アップロードの途中です。終わらなかったものは、しばらくすると片付きます"
+                                            : file.status === "failed"
+                                              ? "アップロードが途中で止まりました。削除するか、もう一度保存してください"
+                                              : samePreset
+                                                ? `配布 AI「${samePreset?.displayName}」と同じファイルです`
+                                                : null
+                                    }
+                                    muted
+                                    busyLabel={account?.busyKey === file.id ? "処理中..." : null}
+                                >
+                                    {file.status === "completed" && !samePreset && (
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            disabled={isBusy}
+                                            onClick={() => setPendingAdd({ kind: "account", file })}
+                                        >
+                                            {deviceLabel}で使う
+                                        </Button>
+                                    )}
+                                    {file.status !== "pending" && (
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            disabled={isBusy}
+                                            aria-label={`「${file.originalFilename}」をアカウントから削除`}
+                                            onClick={() =>
+                                                setPendingDelete({ kind: "account", file })
+                                            }
+                                        >
+                                            削除
+                                        </Button>
+                                    )}
+                                </AddedRow>
+                            );
+                        })}
                     </ul>
                 )}
                 {account?.isAuthenticated && account.isLoading && (
