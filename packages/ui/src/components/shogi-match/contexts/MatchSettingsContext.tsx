@@ -14,7 +14,13 @@ import type { NnueMeta, NnueSelection, PresetWithStatus } from "@shogi/app-core"
 import type { ReactNode } from "react";
 import { createContext, useContext } from "react";
 import type { ClockSettings } from "../hooks/useClockManager";
-import type { EngineOption, EngineThreadSettings, PassRightsSettings, SideSetting } from "../types";
+import type {
+    EngineOption,
+    EngineSearchLimits,
+    EngineThreadSettings,
+    PassRightsSettings,
+    SideSetting,
+} from "../types";
 import type { MatchSettingsContextValue } from "./types";
 
 const MatchSettingsContext = createContext<MatchSettingsContextValue | null>(null);
@@ -31,6 +37,8 @@ interface MatchSettingsProviderProps {
     isDevMode: boolean;
     engineThreads: EngineThreadSettings;
     onEngineThreadsChange: (threads: EngineThreadSettings) => void;
+    engineSearchLimits: EngineSearchLimits;
+    onEngineSearchLimitsChange: (limits: EngineSearchLimits) => void;
 
     // NNUE関連
     senteNnueSelection: NnueSelection;
@@ -78,6 +86,8 @@ export function MatchSettingsProvider({
     isDevMode,
     engineThreads,
     onEngineThreadsChange,
+    engineSearchLimits,
+    onEngineSearchLimitsChange,
     senteNnueSelection,
     onSenteNnueSelectionChange,
     goteNnueSelection,
@@ -106,6 +116,8 @@ export function MatchSettingsProvider({
         isDevMode,
         engineThreads,
         onEngineThreadsChange,
+        engineSearchLimits,
+        onEngineSearchLimitsChange,
         senteNnueSelection,
         onSenteNnueSelectionChange,
         goteNnueSelection,

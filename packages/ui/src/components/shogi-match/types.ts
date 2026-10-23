@@ -1,11 +1,15 @@
-import type { Piece, PieceType, Square } from "@shogi/app-core";
+import type { EngineSearchLimit } from "@shogi/app-controller";
+import type { Piece, PieceType, Player, Square } from "@shogi/app-core";
 import type { SoundVoice } from "../../hooks/useShogiSound";
 
 // Re-export types from app-controller for convenience
-export type { EngineOption, SideSetting } from "@shogi/app-controller";
+export type { EngineOption, EngineSearchLimit, SideSetting } from "@shogi/app-controller";
 
 /** 対局用スレッド数（0=自動） */
 export type EngineThreadSettings = { sente: number; gote: number };
+
+/** 対局で AI が 1 手に読む量（先後別） */
+export type EngineSearchLimits = Record<Player, EngineSearchLimit>;
 
 /**
  * 成り判定の結果を表す型

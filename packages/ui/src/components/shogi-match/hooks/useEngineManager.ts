@@ -21,7 +21,7 @@ import type {
 } from "@shogi/app-core";
 import type { EngineClient, EngineInfoEvent } from "@shogi/engine-client";
 import { useEffect, useRef, useState } from "react";
-import type { EngineThreadSettings } from "../types";
+import type { EngineSearchLimits, EngineThreadSettings } from "../types";
 import type { TickState } from "./useClockManager";
 
 interface UseEngineManagerProps {
@@ -67,6 +67,8 @@ interface UseEngineManagerProps {
     allowAnalysisDuringMatch?: boolean;
     /** 対局用スレッド数（0=自動） */
     engineThreads?: EngineThreadSettings;
+    /** 対局で AI が 1 手に読む量 */
+    engineSearchLimits?: EngineSearchLimits;
     /** 解析用エンジンID */
     analysisEngineId?: string;
 }
@@ -160,6 +162,7 @@ export function useEngineManager({
     resolveNnue,
     allowAnalysisDuringMatch,
     engineThreads,
+    engineSearchLimits,
     analysisEngineId,
 }: UseEngineManagerProps): UseEngineManagerReturn {
     const engineOptionsRef = useRef(engineOptions);
@@ -266,6 +269,7 @@ export function useEngineManager({
             },
             matchRunning: isMatchRunning,
             engineThreads,
+            engineSearchLimits,
         });
     }, [
         analysisNnueSelection,
@@ -281,6 +285,7 @@ export function useEngineManager({
         senteNnueSelection,
         startSfen,
         engineThreads,
+        engineSearchLimits,
     ]);
 
     useEffect(() => {

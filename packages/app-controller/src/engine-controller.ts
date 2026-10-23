@@ -39,6 +39,11 @@ export type EngineOption = {
      * 共有するので 1。複数の局面を並列に解析すると、互いの局面を上書きしてしまう。
      */
     maxParallel?: number;
+    /**
+     * 1 クライアントが使えるスレッド数の上限（省略時は端末のコア数まで）。
+     * Web の wasm エンジンは線形メモリ（2 GiB）の都合で 8 まで。超えた分は黙って丸められる。
+     */
+    maxThreads?: number;
 };
 
 type SideRole = "human" | "engine";
@@ -136,6 +141,15 @@ export interface EngineControllerState {
     isEngineRestarting: boolean;
 }
 
+/**
+ * 対局で AI が 1 手に読む量の決め方。"clock" は時計（秒読み・持ち時間）どおりに考える。
+ * "nodes"・"depth" はその量だけ読んで指し、時計は渡さない。
+ */
+export type EngineSearchLimit =
+    | { kind: "clock" }
+    | { kind: "nodes"; nodes: number }
+    | { kind: "depth"; depth: number };
+
 interface EngineControllerSyncContext {
     sides?: EngineControllerSides;
     nnueSelections?: {
@@ -147,6 +161,8 @@ interface EngineControllerSyncContext {
     matchRunning?: boolean;
     /** 対局用スレッド数（0または未指定は自動） */
     engineThreads?: Record<Player, number>;
+    /** 対局で AI が 1 手に読む量（未指定は時計どおり） */
+    engineSearchLimits?: Record<Player, EngineSearchLimit>;
 }
 
 interface EngineControllerCommand {
@@ -217,6 +233,7 @@ interface EngineControllerContext {
     };
     /** 対局用スレッド数（0=自動） */
     engineThreads: Record<Player, number>;
+    engineSearchLimits: Record<Player, EngineSearchLimit>;
 }
 
 interface EngineInternalState {
@@ -262,6 +279,7 @@ const createDefaultContext = (): EngineControllerContext => ({
         analysis: undefined,
     },
     engineThreads: { sente: 0, gote: 0 },
+    engineSearchLimits: { sente: { kind: "clock" }, gote: { kind: "clock" } },
 });
 
 const normalizeThreadCount = (value?: number): number | undefined => {
@@ -1057,16 +1075,23 @@ export function createEngineController(
             // エンジンは持ち時間を使い切っても秒読みがあると見て指し遅れ、時間切れになる。
             const sendByoyomi = clockState.byoyomiMs > 0 || clockState.mainMs === 0;
 
+            const searchLimit = context.engineSearchLimits[side];
             liveSearchStats[side] = {};
-            liveThinkLimitMs[side] = sendByoyomi ? effectiveByoyomiMs : undefined;
+            liveThinkLimitMs[side] =
+                searchLimit.kind === "clock" && sendByoyomi ? effectiveByoyomiMs : undefined;
 
             const handle = await client.search({
-                limits: {
-                    ...(sendByoyomi ? { byoyomiMs: effectiveByoyomiMs } : {}),
-                    ...(hasMainTime ? { btimeMs, wtimeMs } : {}),
-                    // 秒読みで指す側には加算を渡さない（秒読みと加算を同時に受けると戸惑う外部エンジンがある）。
-                    ...(ownIncrementMs > 0 ? { bincMs, wincMs } : {}),
-                },
+                limits:
+                    searchLimit.kind === "nodes"
+                        ? { nodes: searchLimit.nodes }
+                        : searchLimit.kind === "depth"
+                          ? { maxDepth: searchLimit.depth }
+                          : {
+                                ...(sendByoyomi ? { byoyomiMs: effectiveByoyomiMs } : {}),
+                                ...(hasMainTime ? { btimeMs, wtimeMs } : {}),
+                                // 秒読みで指す側には加算を渡さない（秒読みと加算を同時に受けると戸惑う外部エンジンがある）。
+                                ...(ownIncrementMs > 0 ? { bincMs, wincMs } : {}),
+                            },
                 ponder: false,
             });
 
@@ -1496,6 +1521,7 @@ export function createEngineController(
                 position: next.position ?? context.position,
                 nnueSelections: nextNnueSelections,
                 engineThreads: nextThreads,
+                engineSearchLimits: next.engineSearchLimits ?? context.engineSearchLimits,
             };
 
             if (

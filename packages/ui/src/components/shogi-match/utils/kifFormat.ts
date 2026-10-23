@@ -90,6 +90,13 @@ export interface KifMove {
     pv?: string[];
     /** 複数PV用の評価値配列 */
     multiPvEvals?: PvEvalInfo[];
+    /** 対局中の AI がこの手を決めるまでに読んだ深さ・局面数 */
+    engineSearch?: EngineSearchSummary;
+}
+
+export interface EngineSearchSummary {
+    depth?: number;
+    nodes?: number;
 }
 
 /** 評価値の履歴（グラフ用） */
@@ -542,6 +549,7 @@ export interface NodeData {
     pv?: string[];
     /** 複数PV用の評価値配列（インデックス=multipv-1） */
     multiPvEvals?: (MultiPvNodeData | undefined)[];
+    engineSearch?: EngineSearchSummary;
 }
 
 /**
@@ -616,6 +624,7 @@ export function convertMovesToKif(
             elapsedMs: nodeData?.elapsedMs,
             pv: nodeData?.pv,
             multiPvEvals,
+            engineSearch: nodeData?.engineSearch,
         });
 
         // 次の「同」判定用に移動先を記録
