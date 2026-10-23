@@ -205,7 +205,8 @@ export function PlayMyStatus({
             {withPlayer && (
                 <>
                     <PlayerIcon side={owner} isAI={sides[owner].role === "engine"} size="md" />
-                    <span className="min-w-0 max-w-24 truncate">{name}</span>
+                    {/* 幅の狭い端末では名前を省き、手番の行（ヒントの指し手など）の幅を残す。 */}
+                    <span className="min-w-0 max-w-24 truncate max-[399px]:hidden">{name}</span>
                     {(passText || showTime) && <span aria-hidden>・</span>}
                 </>
             )}
