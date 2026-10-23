@@ -83,8 +83,8 @@ interface UseBatchAnalysisReturn {
     handleEvalUpdate: (ply: number, event: EngineInfoEvent) => void;
     /** 特定の手数の局面を解析する */
     handleAnalyzePly: (ply: number) => Promise<void>;
-    /** AIヒント用に現在局面を解析する（既定は 3 候補・解析設定の時間） */
-    handleAnalyzeHintPly: (ply: number, options?: HintSearchOptions) => Promise<void>;
+    /** AIヒント用に現在局面を解析する（既定は 3 候補・解析設定の時間）。始められたかを返す */
+    handleAnalyzeHintPly: (ply: number, options?: HintSearchOptions) => Promise<boolean>;
     /** 分岐内のノードを解析する */
     handleAnalyzeNode: (nodeId: string) => Promise<void>;
     /** 一括解析を開始する（本譜のみ） */
@@ -141,7 +141,10 @@ export function useBatchAnalysis({
         }
     };
 
-    const analyzePlyWithSettings = async (ply: number, options?: HintSearchOptions) => {
+    const analyzePlyWithSettings = async (
+        ply: number,
+        options?: HintSearchOptions,
+    ): Promise<boolean> => {
         // NNUE の存在確認（未ダウンロードの場合はエラー）
         try {
             await resolveNnue(analysisNnueSelection);
@@ -151,7 +154,7 @@ export function useBatchAnalysis({
             setMessage({ text: detailedMessage, type: "error" });
             // NNUE管理ダイアログを開く
             openNnueManager("missing-analysis");
-            return;
+            return false;
         }
         setMessage(null);
 
@@ -172,21 +175,24 @@ export function useBatchAnalysis({
                 depth: options?.depth ?? analysisSettings.batchAnalysisDepth,
                 multiPv: options?.multiPv ?? analysisSettings.multiPv,
             });
+            return true;
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             setAnalyzingState({ type: "error", ply, message: errorMessage });
+            return false;
         }
     };
 
     // 特定の手数の局面を解析するコールバック（オンデマンド解析用）
-    const handleAnalyzePly = analyzePlyWithSettings;
+    const handleAnalyzePly = async (ply: number) => {
+        await analyzePlyWithSettings(ply);
+    };
 
-    const handleAnalyzeHintPly = async (ply: number, options?: HintSearchOptions) => {
-        await analyzePlyWithSettings(ply, {
+    const handleAnalyzeHintPly = (ply: number, options?: HintSearchOptions) =>
+        analyzePlyWithSettings(ply, {
             ...options,
             multiPv: options?.multiPv ?? Math.max(3, analysisSettings.multiPv),
         });
-    };
 
     // 分岐内のノードを解析するコールバック
     const handleAnalyzeNode = async (nodeId: string) => {

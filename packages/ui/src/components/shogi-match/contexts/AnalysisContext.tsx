@@ -38,7 +38,7 @@ interface AnalysisProviderProps {
 
     // 分析操作
     handleAnalyzePly: (ply: number) => void;
-    handleAnalyzeHintPly: (ply: number, options?: HintSearchOptions) => void;
+    handleAnalyzeHintPly: (ply: number, options?: HintSearchOptions) => Promise<boolean>;
     handleStartBatchAnalysis: () => void;
     handleCancelBatchAnalysis: () => void;
     handleAnalyzeNode: (nodeId: string) => void;

@@ -53,6 +53,10 @@ export interface PlayScreenConfig {
     stopHint: () => void;
     /** いまのヒントを読み始めた時刻（ミリ秒）。求めていなければ null */
     hintStartedAt: number | null;
+    /** いまのヒントを読み終えた（止めた）時刻。読んでいる間は null */
+    hintEndedAt: number | null;
+    /** ヒントを求めてから、読み始めるまで（評価関数・エンジンの準備中） */
+    hintPending: boolean;
     /** ヒントで並べる候補の数（MultiPV） */
     hintMultiPv: number;
     setHintMultiPv: (count: number) => void;

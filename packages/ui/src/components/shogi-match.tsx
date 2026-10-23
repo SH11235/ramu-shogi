@@ -843,8 +843,11 @@ export function ShogiMatch({
     const [positionEditOpen, setPositionEditOpen] = useState(false);
     const [hintCount, setHintCount] = useState(0);
     const [hintPly, setHintPly] = useState<number | null>(null);
-    /** いまのヒントを読み始めた時刻（経過秒の表示に使う）。 */
+    /** いまのヒントを読み始めた時刻・読み終えた（止めた）時刻（経過秒の表示に使う）。 */
     const [hintStartedAt, setHintStartedAt] = useState<number | null>(null);
+    const [hintEndedAt, setHintEndedAt] = useState<number | null>(null);
+    /** ヒントを求めてから、解析が始まるまで（評価関数・エンジンの準備中）。 */
+    const [hintPending, setHintPending] = useState(false);
     const [storedHintMultiPv, setHintMultiPv] = useLocalStorage<number>(
         "shogi-play-hint-multipv",
         DEFAULT_HINT_MULTI_PV,
@@ -1640,9 +1643,13 @@ export function ShogiMatch({
         const wasAnalyzing = wasAnalyzingRef.current;
         wasAnalyzingRef.current = isAnalyzing;
         if (!isAnalyzing) {
-            if (wasAnalyzing) hintSearchingRef.current = false;
+            if (wasAnalyzing && hintSearchingRef.current) {
+                hintSearchingRef.current = false;
+                setHintEndedAt(Date.now());
+            }
             return;
         }
+        setHintPending(false);
         if (!hintSearchingRef.current) return;
         if (navigation.state.currentPly === hintPly && isMatchRunning && !isPaused) return;
         hintSearchingRef.current = false;
@@ -2771,21 +2778,34 @@ export function ShogiMatch({
                             }
                         },
               requestHint: () => {
+                  if (hintPending) return;
                   setHintCount((count) => count + 1);
                   setHintPly(navigation.state.currentPly);
                   setHintStartedAt(Date.now());
+                  setHintEndedAt(null);
+                  setHintPending(true);
                   hintSearchingRef.current = true;
                   void handleAnalyzeHintPly(navigation.state.currentPly, {
                       multiPv: hintMultiPv,
                       timeMs: HINT_SEARCH_TIME_MS,
                       depth: HINT_SEARCH_MAX_DEPTH,
+                  }).then((started) => {
+                      // 評価関数が無いなどで始められなかったら、読んでいる印を残さない。
+                      if (started) return;
+                      hintSearchingRef.current = false;
+                      setHintPending(false);
+                      setHintEndedAt(Date.now());
                   });
               },
               stopHint: () => {
                   hintSearchingRef.current = false;
+                  setHintPending(false);
+                  setHintEndedAt(Date.now());
                   void cancelAnalysis();
               },
               hintStartedAt,
+              hintEndedAt,
+              hintPending,
               hintMultiPv,
               setHintMultiPv,
               hintCount,

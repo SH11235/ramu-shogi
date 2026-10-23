@@ -66,7 +66,10 @@ function useShownHints(): ShownHints {
     const isForThisPosition = play?.hintPly === navigationState.currentPly;
     const shown =
         isForThisPosition && play?.phase === "playing" ? rankHintMoves(moves, position.turn) : [];
-    const isSearching = isForThisPosition && play?.phase === "playing" && isAnalyzing;
+    const isSearching =
+        isForThisPosition &&
+        play?.phase === "playing" &&
+        (isAnalyzing || play?.hintPending === true);
     return {
         moves: shown,
         isThinking: isSearching && shown.length === 0,
@@ -75,8 +78,12 @@ function useShownHints(): ShownHints {
     };
 }
 
-/** 読み始めてからの秒数。読んでいる間は刻々と進め、読み終えたらそこで止める。 */
-function useHintElapsedSeconds(startedAt: number | null, running: boolean): number | null {
+/** 読み始めてからの秒数。読んでいる間は刻々と進め、読み終えたらその時刻で止める。 */
+function useHintElapsedSeconds(
+    startedAt: number | null,
+    endedAt: number | null,
+    running: boolean,
+): number | null {
     const [now, setNow] = useState(() => Date.now());
     useEffect(() => {
         if (!running) return;
@@ -85,7 +92,7 @@ function useHintElapsedSeconds(startedAt: number | null, running: boolean): numb
         return () => clearInterval(timer);
     }, [running]);
     if (startedAt === null) return null;
-    const seconds = Math.floor((now - startedAt) / 1000);
+    const seconds = Math.floor(((running ? now : (endedAt ?? now)) - startedAt) / 1000);
     return Math.min(HINT_SEARCH_TIME_MS / 1000, Math.max(0, seconds));
 }
 
@@ -93,7 +100,11 @@ function useHintElapsedSeconds(startedAt: number | null, running: boolean): numb
 function HintSearchStatus({ moves, className }: { moves: AiHintMove[]; className?: string }) {
     const { play } = useShogiMatchConfig();
     const { isSearching } = useShownHints();
-    const seconds = useHintElapsedSeconds(play?.hintStartedAt ?? null, isSearching);
+    const seconds = useHintElapsedSeconds(
+        play?.hintStartedAt ?? null,
+        play?.hintEndedAt ?? null,
+        isSearching,
+    );
     const depth = moves[0]?.depth;
     if (seconds === null || (!isSearching && moves.length === 0)) return null;
     return (
