@@ -939,6 +939,33 @@ describe("useUserSettingsSync", () => {
         expectPut(4, { theme: "light" }, 9);
     });
 
+    it.each([
+        "dark",
+        "system",
+    ])("PUT応答前に別タブの%sから再選択した送信中と同じ値も保存する", async (theme) => {
+        renderHook(() => useUserSettingsSync());
+        const ui = renderHook(() => useLocalStorage(DISPLAY_KEY, { theme: "system" }));
+        await reply(0, { documents: [remote({ theme: "system" }, 7)] });
+        act(() => ui.result.current[1]({ theme: "light" }));
+        act(() => {
+            localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme }));
+            window.dispatchEvent(
+                new StorageEvent("storage", {
+                    key: DISPLAY_KEY,
+                    newValue: JSON.stringify({ theme }),
+                    storageArea: localStorage,
+                }),
+            );
+        });
+        expect(ui.result.current[0]).toEqual({ theme });
+        act(() => ui.result.current[1]({ theme: "light" }));
+        await reply(1, { document: remote({ theme: "light" }, 8) });
+        expectPut(2, { theme: "light" }, 8);
+        await reply(2, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+        await reply(3, { document: remote({ theme }, 9) });
+        expectPut(4, { theme: "light" }, 9);
+    });
+
     it("再取得中の追加編集も元の編集開始値と照合し、最新の編集だけを再送する", async () => {
         renderHook(() => useUserSettingsSync());
         await reply(0, { documents: [remote({ theme: "system" }, 7)] });

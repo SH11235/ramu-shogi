@@ -50,6 +50,8 @@ interface DocumentState {
     label: string;
     localValue: string | null;
     editBase: string | null | undefined;
+    editBaseRevision: number;
+    observedValue: string | null | undefined;
     remoteValue: string | null;
     version: number | null | undefined;
     dirty: boolean;
@@ -138,10 +140,19 @@ function readLocalDocument(storageKey: string): string | null {
 
 function captureLocalChange(document: DocumentState, explicit = false): boolean {
     const localValue = readLocalDocument(document.storageKey);
-    if (localValue === document.localValue) return false;
-    if (explicit && (!document.dirty || document.failure === "conflict")) {
-        document.editBase = document.localValue;
+    const previousValue =
+        explicit && document.observedValue !== undefined
+            ? document.observedValue
+            : document.localValue;
+    if (localValue === previousValue) return false;
+    if (
+        explicit &&
+        (!document.dirty || document.failure === "conflict" || document.observedValue !== undefined)
+    ) {
+        document.editBase = previousValue;
+        document.editBaseRevision++;
     }
+    document.observedValue = undefined;
     document.localValue = localValue;
     document.dirty = localValue !== null;
     document.failure = null;
@@ -248,17 +259,26 @@ export function createUserSettingsSync(
         publishError();
     }
 
-    function acceptRemote(document: DocumentState, remote: UserSettingsDocument | null): void {
+    function acceptRemote(
+        document: DocumentState,
+        remote: UserSettingsDocument | null,
+        canComplete = true,
+    ): void {
         document.version = remote?.version ?? null;
         document.remoteValue = remote ? JSON.stringify(remote.value) : null;
         document.unconfirmedWrites = document.unconfirmedWrites.filter(
             (write) => write.version > (document.version ?? 0),
         );
-        if (document.localValue === document.remoteValue && !hasUnconfirmedChange(document)) {
+        if (
+            canComplete &&
+            document.localValue === document.remoteValue &&
+            !hasUnconfirmedChange(document)
+        ) {
             document.dirty = false;
             document.editBase = undefined;
             document.failure = null;
             document.localValue = readLocalDocument(document.storageKey);
+            document.observedValue = undefined;
         }
     }
 
@@ -317,6 +337,7 @@ export function createUserSettingsSync(
                     break;
                 }
                 const value = document.localValue;
+                const editBaseRevision = document.editBaseRevision;
                 attempt = { value, version: (document.version ?? 0) + 1 };
                 document.unconfirmedWrites.push(attempt);
                 const payload = await request<PutUserSettingsResponse>(
@@ -325,8 +346,9 @@ export function createUserSettingsSync(
                     { value: JSON.parse(value) as JsonValue, expectedVersion: document.version },
                 );
                 if (!isCurrent(candidate)) return;
-                acceptRemote(document, payload.document);
-                if (document.dirty) document.editBase = document.remoteValue;
+                const sameEditBase = document.editBaseRevision === editBaseRevision;
+                acceptRemote(document, payload.document, sameEditBase);
+                if (document.dirty && sameEditBase) document.editBase = document.remoteValue;
             }
         } catch (error) {
             if (isRequestError(error) && error.status >= 400 && error.status < 500) {
@@ -431,6 +453,8 @@ export function createUserSettingsSync(
                     ...mapping,
                     localValue: readLocalDocument(mapping.storageKey),
                     editBase: undefined,
+                    editBaseRevision: 0,
+                    observedValue: undefined,
                     remoteValue: null,
                     version: undefined,
                     dirty: false,
@@ -518,10 +542,11 @@ export function createUserSettingsSync(
     function storageChanged(storageKey: string | null): void {
         for (const document of user?.documents ?? []) {
             if (storageKey !== null && document.storageKey !== storageKey) continue;
-            if (document.dirty) continue;
             try {
                 // 別タブからの値は比較にだけ使い、受信側の利用者へ所属を移さない。
-                document.localValue = readLocalDocument(document.storageKey);
+                const value = readLocalDocument(document.storageKey);
+                if (document.dirty) document.observedValue = value;
+                else document.localValue = value;
             } catch (error) {
                 if (generation) fail(generation, document, error);
             }
