@@ -541,8 +541,7 @@ export function StudyWorkspaceView({
     const observeMobilePanel = (panel: HTMLDivElement | null) => {
         if (!panel) return;
         const update = () => {
-            // 幅はスクロールバーを含めて測る（送りが出入りしても盤の大きさを行き来させない）。
-            const { offsetWidth: width, clientHeight: height } = panel;
+            const { clientWidth: width, clientHeight: height } = panel;
             setMobilePanel((prev) =>
                 prev?.width === width && prev.height === height ? prev : { width, height },
             );
@@ -1906,8 +1905,10 @@ export function StudyWorkspaceView({
                                 inert={locked}
                                 // 普段は中身がちょうど収まる。盤が縮小の下限でも入らない低い画面と、コメント欄が
                                 // 下の場所より高いときだけ、ここを縦に送る（切れて届かない操作を作らない）。
+                                // スクロールバーが幅を取る環境でも、その幅を常に空けておき、送りが出入りしても
+                                // 盤の大きさを行き来させない。
                                 className={cn(
-                                    "flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain",
+                                    "flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]",
                                     locked && "opacity-70",
                                 )}
                             >
