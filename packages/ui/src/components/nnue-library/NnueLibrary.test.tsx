@@ -138,14 +138,23 @@ describe("NnueLibrary", () => {
         expect(screen.queryByRole("button", { name: "このブラウザで使う" })).toBeNull();
     });
 
-    it("両方にある AI は、アカウントの分だけを消せる", async () => {
+    it("両方にある AI の「削除」は両方から消し、「このブラウザから外す」はアカウントに残す", async () => {
         storage.nnueList = [meta({ contentHashSha256: "bbb" })];
         const store = account([accountFile({ sha256Hex: "bbb" })]);
         render(<NnueLibrary account={store} />);
         fireEvent.click(screen.getByRole("button", { name: "「my-net」を削除" }));
-        fireEvent.click(screen.getByRole("button", { name: "アカウントだけ削除" }));
+        expect(screen.getByRole("alertdialog").textContent).toContain(
+            "このブラウザとアカウントから削除します",
+        );
+        fireEvent.click(screen.getByRole("button", { name: "削除" }));
         await waitFor(() => expect(store.remove).toHaveBeenCalledWith("remote-1"));
-        expect(storage.deleteNnue).not.toHaveBeenCalled();
+        expect(storage.deleteNnue).toHaveBeenCalledWith("local-1");
+
+        vi.clearAllMocks();
+        fireEvent.click(screen.getByRole("button", { name: "「my-net」を削除" }));
+        fireEvent.click(screen.getByRole("button", { name: "このブラウザから外す" }));
+        await waitFor(() => expect(storage.deleteNnue).toHaveBeenCalledWith("local-1"));
+        expect(store.remove).not.toHaveBeenCalled();
     });
 
     it("設定ダイアログの中へのドロップは、AI の追加として受け取らない", () => {
