@@ -260,6 +260,8 @@ const MOBILE_MIN_CELL_SIZE = 20;
 // 盤の下（移動の行のさらに下）に残す高さ。盤の表示では棋譜の帯とグラフ、一覧の表示では一覧を置く。
 const MOBILE_LOWER_MIN_HEIGHT = 150;
 const MOBILE_LOWER_SHORT_HEIGHT = 48;
+// コメント欄の高さの下限（入力欄と、別の画面の変更との突き合わせの操作が収まる高さ）。
+const MOBILE_COMMENT_MIN_HEIGHT = 200;
 // 局面の移動の行の高さと、行どうしの間。
 const MOBILE_NAV_HEIGHT = 40;
 const MOBILE_ROW_GAP = 6;
@@ -272,7 +274,7 @@ const mobileBoardBlockHeight = (cell: number): number =>
 /**
  * 幅 `width`・高さ `height` の表示の場所に置く、盤のマスの大きさ・縮小率・盤の高さ。下限のマスでも
  * 入らない低い画面では、下限のマスで描いて見た目だけ縮める（はみ出して切れるより、小さくても全体が
- * 見える方がよい）。
+ * 見える方がよい）。縮小の下限でも入らないときは、表示の場所を縦に送って見せる。
  */
 export const fitMobileBoard = (
     width: number,
@@ -1901,8 +1903,10 @@ export function StudyWorkspaceView({
                                 role="tabpanel"
                                 aria-labelledby={`study-tab-${mobileTab}`}
                                 inert={locked}
+                                // 普段は中身がちょうど収まる。盤が縮小の下限でも入らない低い画面と、コメント欄が
+                                // 下の場所より高いときだけ、ここを縦に送る（切れて届かない操作を作らない）。
                                 className={cn(
-                                    "flex min-h-0 flex-1 flex-col gap-1.5",
+                                    "flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain",
                                     locked && "opacity-70",
                                 )}
                             >
@@ -1923,18 +1927,20 @@ export function StudyWorkspaceView({
                                     <div
                                         id="study-comment"
                                         hidden={!showsComment}
-                                        // ページは縦に送れないので、欄が下の場所より高くなる（別の画面の変更との
-                                        // 突き合わせなど）ときは欄の中で送る。
+                                        // 欄は下の場所の高さまでにして中で送る（別の画面の変更との突き合わせなどで
+                                        // 高くなる）。下の場所が低すぎるときは下限の高さで出し、表示の場所ごと送る。
                                         className="absolute inset-x-0 top-full z-20 mt-1.5 overflow-y-auto overscroll-contain rounded-xl shadow-lg"
                                         style={
                                             mobilePanel === null || mobileBoardFit === null
                                                 ? undefined
                                                 : {
-                                                      maxHeight:
+                                                      maxHeight: Math.max(
+                                                          MOBILE_COMMENT_MIN_HEIGHT,
                                                           mobilePanel.height -
-                                                          mobileBoardFit.boardHeight -
-                                                          MOBILE_NAV_HEIGHT -
-                                                          2 * MOBILE_ROW_GAP,
+                                                              mobileBoardFit.boardHeight -
+                                                              MOBILE_NAV_HEIGHT -
+                                                              2 * MOBILE_ROW_GAP,
+                                                      ),
                                                   }
                                         }
                                     >
