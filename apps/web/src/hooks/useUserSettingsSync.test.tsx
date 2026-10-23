@@ -292,6 +292,47 @@ describe("useUserSettingsSync", () => {
         expectPut(3, { theme: "system" }, null);
     });
 
+    it.each([
+        false,
+        true,
+    ])("所属の部分保存から復旧しても別利用者へ未記録の文書を渡さない（StrictMode: %s）", async (reactStrictMode) => {
+        for (const [, key] of mappings) localStorage.setItem(key, JSON.stringify({ owner: "A" }));
+        const storage = localStorage;
+        vi.stubGlobal("localStorage", {
+            getItem: storage.getItem.bind(storage),
+            setItem: (key: string, value: string) => {
+                if (key === `shogi-user-settings-owner:${DISPLAY_KEY}`)
+                    throw new Error("Quota exceeded");
+                storage.setItem(key, value);
+            },
+        });
+        const first = renderHook(() => useUserSettingsSync(), { reactStrictMode });
+        expect(first.result.current.syncError).toContain("設定を同期できませんでした");
+        expect(requests).toHaveLength(0);
+        first.unmount();
+        vi.stubGlobal("localStorage", storage);
+        auth = { ...auth, session: { authenticated: true, user: { id: "user-2" } } };
+        renderHook(() => useUserSettingsSync(), { reactStrictMode });
+        const getIndex = requests.length - 1;
+        await reply(getIndex, { documents: [] });
+        expect(requests).toHaveLength(getIndex + 1);
+        for (const [, key] of mappings) expect(readLocal(key)).toEqual({ owner: "A" });
+    });
+
+    it("壊れた所属情報の値は送信せず、サーバー値の取得で復旧する", async () => {
+        localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme: "dark" }));
+        localStorage.setItem(`shogi-user-settings-owner:${DISPLAY_KEY}`, "invalid json");
+        const first = renderHook(() => useUserSettingsSync());
+        await reply(0, { documents: [] });
+        expect(requests).toHaveLength(1);
+        first.unmount();
+        renderHook(() => useUserSettingsSync());
+        await reply(1, { documents: [remote({ theme: "light" }, 4)] });
+        expect(readLocal()).toEqual({ theme: "light" });
+        changeLocal({ theme: "dark" });
+        expectPut(2, { theme: "dark" }, 4);
+    });
+
     it("初期 GET 中の編集通知がない保存よりサーバー設定を優先する", async () => {
         renderHook(() => useUserSettingsSync());
         localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme: "dark" }));

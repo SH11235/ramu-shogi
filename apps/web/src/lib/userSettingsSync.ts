@@ -38,6 +38,7 @@ const SETTINGS_STORAGE_MAPPINGS = [
 ] as const;
 
 const LAST_SYNCED_USER_ID_STORAGE_KEY = "shogi-user-settings-last-user-id";
+const INITIAL_OWNER_STORAGE_KEY = "shogi-user-settings-initial-owner";
 const OWNERSHIP_STORAGE_PREFIX = "shogi-user-settings-owner:";
 const REQUEST_ERROR = "設定を同期できませんでした。この端末の設定は保持しています。";
 const AUTH_ERROR =
@@ -63,7 +64,7 @@ interface UserState {
 }
 
 interface LocalOwnership {
-    userId: string;
+    userId: string | null;
     value: string | null;
 }
 
@@ -84,7 +85,7 @@ function readOwnership(storageKey: string): LocalOwnership | null {
     } catch {
         // 壊れた所属情報は匿名設定として引き継がない。
     }
-    throw new Error("Invalid settings ownership");
+    return { userId: null, value: null };
 }
 
 function writeOwnership(document: DocumentState, userId: string): void {
@@ -401,11 +402,17 @@ export function createUserSettingsSync(
         user.initialError = null;
         generation = { user, abort: new AbortController(), ready: false, uploading: new Set() };
         try {
-            const legacyOwner = window.localStorage.getItem(LAST_SYNCED_USER_ID_STORAGE_KEY);
+            let initialOwner = window.localStorage.getItem(INITIAL_OWNER_STORAGE_KEY);
+            if (initialOwner === null) {
+                initialOwner =
+                    window.localStorage.getItem(LAST_SYNCED_USER_ID_STORAGE_KEY) ?? userId;
+                // 文書ごとの保存が途中で失敗しても、未記録分の引き継ぎ元を失わない。
+                window.localStorage.setItem(INITIAL_OWNER_STORAGE_KEY, initialOwner);
+            }
             // 初回の匿名設定だけを引き継ぎ、通信の成否に関係なく所属を確定する。
             for (const document of user.documents) {
                 if (readOwnership(document.storageKey) === null) {
-                    writeOwnership(document, legacyOwner ?? userId);
+                    writeOwnership(document, initialOwner);
                 }
             }
         } catch (error) {
