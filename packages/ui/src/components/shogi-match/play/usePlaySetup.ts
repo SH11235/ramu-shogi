@@ -11,6 +11,7 @@ import { SKILL_LEVEL_MAX } from "@shogi/engine-client";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import type { ClockSettings } from "../hooks/useClockManager";
 import type { EngineSearchLimit, SideSetting } from "../types";
+import { clampThreads, threadCapOf } from "../utils/threadOptions";
 import { isSameClock } from "../utils/timeSettings";
 
 /** 対局の組み合わせ。 */
@@ -130,6 +131,8 @@ interface PlaySetup {
     aiSearchLimit: EngineSearchLimit;
     /** AI のスレッド数（0 は自動）。AI 対 AI で先後が違えば null */
     aiThreads: number | null;
+    /** AI のエンジンが使えるスレッド数の上限（AI 対 AI では両者の小さいほう）。無ければ undefined */
+    aiMaxThreads: number | undefined;
     aiTimeId: string | null;
     myTimeId: string | null;
     /** いまの AI・自分の時間（選択肢に無い値を、そのまま見せる・直すのに使う） */
@@ -288,6 +291,10 @@ export function usePlaySetup(): PlaySetup {
         aiSearchLimit.kind === "clock"
             ? (AI_TIME_CHOICES.find((choice) => matchesChoice(aiClock, choice))?.id ?? null)
             : null;
+    const aiMaxThreads = threadCapOf(
+        engineOptions,
+        kind === "ai-vs-ai" ? [sides.sente.engineId, sides.gote.engineId] : [aiSetting.engineId],
+    );
     /** AI の読む量・スレッド数を、先後の両方（AI 対 AI）か AI の側だけに当てる。 */
     const aiTargets: Player[] = kind === "ai-vs-ai" ? ["sente", "gote"] : [aiSide];
     const withSides = <T>(current: Record<Player, T>, targets: Player[], value: T) => ({
@@ -485,7 +492,8 @@ export function usePlaySetup(): PlaySetup {
         aiThreads:
             kind === "ai-vs-ai" && engineThreads.sente !== engineThreads.gote
                 ? null
-                : engineThreads[aiSide],
+                : clampThreads(engineThreads[aiSide], aiMaxThreads),
+        aiMaxThreads,
         aiTimeId,
         myTimeId,
         aiClock,

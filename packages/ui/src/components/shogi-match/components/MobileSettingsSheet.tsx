@@ -23,7 +23,7 @@ import {
     type ImportSfenHandler,
     KIFU_FILE_ACCEPT,
 } from "../utils/kifuImport";
-import { buildThreadOptions } from "../utils/threadOptions";
+import { buildThreadOptions, threadCapOf } from "../utils/threadOptions";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 
 type SideKey = "sente" | "gote";
@@ -267,7 +267,8 @@ export function MobileSettingsSheet({
     positionReady = true,
     viewerMode = false,
 }: MobileSettingsSheetProps): ReactElement {
-    const threadOptions = buildThreadOptions();
+    const threadOptionsFor = (side: "sente" | "gote") =>
+        buildThreadOptions({ maxThreads: threadCapOf(engineOptions, [sides[side].engineId]) });
     const externalEngines = engineOptions?.filter((engine) => engine.kind === "external") ?? [];
     // カスタム NNUE（プリセット以外）のフィルタリング
     const customNnueList = nnueList.filter((n) => n.source !== "preset");
@@ -493,7 +494,7 @@ export function MobileSettingsSheet({
                                     }
                                     className="text-base"
                                 >
-                                    {threadOptions.map((opt) => (
+                                    {threadOptionsFor("sente").map((opt) => (
                                         <option key={opt.value} value={opt.value}>
                                             {opt.label}
                                         </option>
@@ -606,7 +607,7 @@ export function MobileSettingsSheet({
                                     }
                                     className="text-base"
                                 >
-                                    {threadOptions.map((opt) => (
+                                    {threadOptionsFor("gote").map((opt) => (
                                         <option key={opt.value} value={opt.value}>
                                             {opt.label}
                                         </option>

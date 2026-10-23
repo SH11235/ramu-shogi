@@ -246,6 +246,17 @@ const DEFAULT_WORKER_TIMEOUT_MS = 30_000; // Worker リクエストのタイム�
 // 30 workers は 2 GiB の線形メモリ上限を超える。実ブラウザ検証の対応上限。
 const MAX_WASM_THREADS = 8;
 
+/** この端末で wasm エンジンが使えるスレッド数の上限（スレッドを使えない環境では 1）。 */
+export function getWasmMaxThreads(): number {
+    if (typeof crossOriginIsolated === "undefined" || !crossOriginIsolated) return 1;
+    if (typeof SharedArrayBuffer === "undefined") return 1;
+    const hc =
+        typeof navigator !== "undefined" && Number.isFinite(navigator.hardwareConcurrency)
+            ? Math.max(1, Math.trunc(navigator.hardwareConcurrency))
+            : 1;
+    return Math.min(MAX_WASM_THREADS, hc);
+}
+
 /**
  * NNUE ロード進捗イベント
  */

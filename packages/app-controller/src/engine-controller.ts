@@ -39,6 +39,11 @@ export type EngineOption = {
      * 共有するので 1。複数の局面を並列に解析すると、互いの局面を上書きしてしまう。
      */
     maxParallel?: number;
+    /**
+     * 1 クライアントが使えるスレッド数の上限（省略時は端末のコア数まで）。
+     * Web の wasm エンジンは線形メモリ（2 GiB）の都合で 8 まで。超えた分は黙って丸められる。
+     */
+    maxThreads?: number;
 };
 
 type SideRole = "human" | "engine";

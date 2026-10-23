@@ -16,7 +16,7 @@ import { useMatchState } from "../contexts/MatchStateContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import type { DisplaySettings } from "../types";
 import { formatSearchLimit } from "../utils/searchLimits";
-import { buildThreadOptions } from "../utils/threadOptions";
+import { buildThreadOptions, clampThreads, threadCapOf } from "../utils/threadOptions";
 import { PLAY_OUTLINE_BUTTON } from "./playStyles";
 import { usePlaySetup } from "./usePlaySetup";
 
@@ -70,6 +70,7 @@ export function PlayAdvancedSettings({
         engineSearchLimits,
         onOpenNnueManager,
         onOpenEngineManager,
+        engineOptions,
     } = useMatchSettings();
     const { displaySettings } = useMatchState();
     const { play } = useShogiMatchConfig();
@@ -216,7 +217,12 @@ export function PlayAdvancedSettings({
                             >
                                 {side === "sente" ? "☗ 先手" : "☖ 後手"}
                                 <NativeSelect
-                                    value={String(engineThreads[side])}
+                                    value={String(
+                                        clampThreads(
+                                            engineThreads[side],
+                                            threadCapOf(engineOptions, [sides[side].engineId]),
+                                        ),
+                                    )}
                                     disabled={settingsLocked}
                                     onChange={(event) =>
                                         onEngineThreadsChange({
@@ -227,7 +233,11 @@ export function PlayAdvancedSettings({
                                     wrapperClassName="w-40"
                                     className="min-h-10 text-sm"
                                 >
-                                    {buildThreadOptions().map((option) => (
+                                    {buildThreadOptions({
+                                        maxThreads: threadCapOf(engineOptions, [
+                                            sides[side].engineId,
+                                        ]),
+                                    }).map((option) => (
                                         <option key={option.value} value={option.value}>
                                             {option.label}
                                         </option>

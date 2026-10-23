@@ -456,7 +456,7 @@ export function PlaySetupPanel({
             wrapperClassName={wrapperClassName}
             className={COMPACT_SELECT_CLASS}
         >
-            {buildThreadOptions({ compact: true }).map((option) => (
+            {buildThreadOptions({ compact: true, maxThreads: setup.aiMaxThreads }).map((option) => (
                 <option key={option.value} value={option.value}>
                     {option.label}
                 </option>
