@@ -349,13 +349,14 @@ describe("usePlaySetup（対局画面のかんたん設定）", () => {
         expect(snapshot.limits.gote).toEqual({ kind: "clock" });
     });
 
-    it("AI 対 AI ではスレッド数を両者に当て、先後で違えば null を返す", () => {
+    it("AI 対 AI ではスレッド数・読む量を先後で別に決める", () => {
         const { hook, snapshot } = setupHarness({
             sides: { sente: AI_L5, gote: AI_L5 },
             time: { sente: AI_3S, gote: AI_3S },
         });
-        act(() => hook.result.current.chooseAiThreads(3));
-        expect(snapshot.threads).toEqual({ sente: 3, gote: 3 });
+        act(() => hook.result.current.chooseSideThreads("sente", 3));
+        expect(snapshot.threads).toEqual({ sente: 3, gote: 0 });
+        expect(hook.result.current.sideAi.sente.threads).toBe(3);
         act(() => hook.result.current.chooseSideSearchLimit("sente", { kind: "depth", depth: 5 }));
         expect(hook.result.current.sideAi.sente.timeId).toBeNull();
         expect(hook.result.current.sideAi.gote.searchLimit).toEqual({ kind: "clock" });

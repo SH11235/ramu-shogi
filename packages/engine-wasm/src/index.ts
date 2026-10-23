@@ -246,16 +246,52 @@ const DEFAULT_WORKER_TIMEOUT_MS = 30_000; // Worker リクエストのタイム�
 // 30 workers は 2 GiB の線形メモリ上限を超える。実ブラウザ検証の対応上限。
 const MAX_WASM_THREADS = 8;
 
+/**
+ * 端末のメモリから決めるスレッド数の上限。探索スレッドは 1 本ごとに履歴表を持ち、約 100MB を使う
+ * （評価関数と置換表はスレッドで共有する）。AI 対 AI では 2 つのエンジンが同時に動くので、
+ * スマホでは 2 本までにする。`deviceMemory`（GB、Chromium だけが返す）が分かればそれも使う。
+ */
+export function memoryThreadCap(device: {
+    deviceMemoryGb?: number;
+    coarsePointer: boolean;
+}): number {
+    const memory = device.deviceMemoryGb;
+    if (device.coarsePointer) {
+        if (memory === undefined) return 2;
+        return memory <= 3 ? 1 : memory < 6 ? 2 : 4;
+    }
+    if (memory === undefined) return MAX_WASM_THREADS;
+    return memory <= 2 ? 1 : memory <= 4 ? 2 : MAX_WASM_THREADS;
+}
+
+const readDeviceMemoryGb = (): number | undefined => {
+    if (typeof navigator === "undefined") return undefined;
+    const value = (navigator as Navigator & { deviceMemory?: unknown }).deviceMemory;
+    return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+};
+
+const isCoarsePointer = (): boolean =>
+    typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+
 /** この端末で wasm エンジンが使えるスレッド数の上限（スレッドを使えない環境では 1）。 */
 export function getWasmMaxThreads(): number {
     if (typeof crossOriginIsolated === "undefined" || !crossOriginIsolated) return 1;
     if (typeof SharedArrayBuffer === "undefined") return 1;
+    return threadCapForDevice();
+}
+
+/** スレッドが使えるときの上限: 実装の上限・コア数・メモリの小さいほう。 */
+const threadCapForDevice = (): number => {
     const hc =
         typeof navigator !== "undefined" && Number.isFinite(navigator.hardwareConcurrency)
             ? Math.max(1, Math.trunc(navigator.hardwareConcurrency))
             : 1;
-    return Math.min(MAX_WASM_THREADS, hc);
-}
+    const memoryCap = memoryThreadCap({
+        deviceMemoryGb: readDeviceMemoryGb(),
+        coarsePointer: isCoarsePointer(),
+    });
+    return Math.min(MAX_WASM_THREADS, hc, memoryCap);
+};
 
 /**
  * NNUE ロード進捗イベント
@@ -451,12 +487,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             }
             return { effective: 1, threadedAvailable: false };
         }
-        const hcRaw =
-            typeof navigator !== "undefined" && typeof navigator.hardwareConcurrency === "number"
-                ? navigator.hardwareConcurrency
-                : 1;
-        const hc = Math.max(1, Math.trunc(hcRaw));
-        const max = Math.max(1, Math.min(MAX_WASM_THREADS, hc));
+        const max = Math.max(1, threadCapForDevice());
         let effective = desired;
         if (effective < 1) effective = 1;
         if (effective > max) effective = max;
@@ -1078,7 +1109,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
                 activeThreads: activeThreads ?? 1,
                 hardwareConcurrency,
                 threadedAvailable,
-                maxThreads: threadedAvailable ? Math.min(MAX_WASM_THREADS, hardwareConcurrency) : 1,
+                maxThreads: threadedAvailable ? threadCapForDevice() : 1,
             };
         },
         async loadNnue(nnueId: string, layerStacks?: LayerStacksOptions): Promise<void> {

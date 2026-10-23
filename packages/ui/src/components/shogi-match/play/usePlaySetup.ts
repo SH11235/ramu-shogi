@@ -129,9 +129,9 @@ interface PlaySetup {
     level: number;
     /** AI の読む量（時計どおり・ノード数・深さ） */
     aiSearchLimit: EngineSearchLimit;
-    /** AI のスレッド数（0 は自動）。AI 対 AI で先後が違えば null */
-    aiThreads: number | null;
-    /** AI のエンジンが使えるスレッド数の上限（AI 対 AI では両者の小さいほう）。無ければ undefined */
+    /** AI のスレッド数（0 は自動） */
+    aiThreads: number;
+    /** AI のエンジンが使えるスレッド数の上限。無ければ undefined */
     aiMaxThreads: number | undefined;
     aiTimeId: string | null;
     myTimeId: string | null;
@@ -146,9 +146,8 @@ interface PlaySetup {
     chooseOpponent: (value: string) => void;
     chooseLevel: (level: number) => void;
     chooseAiTime: (choice: TimeChoice) => void;
-    /** AI の読む量をノード数・深さで決める（AI 対 AI では先後とも） */
+    /** AI の読む量をノード数・深さで決める */
     chooseAiSearchLimit: (limit: EngineSearchLimit) => void;
-    /** AI のスレッド数（AI 対 AI では先後とも） */
     chooseAiThreads: (threads: number) => void;
     chooseMyTime: (choice: TimeChoice) => void;
     /** 人 対 人の持ち時間（両者に同じ決まりを当てる）。両者が同じでなければ null */
@@ -165,6 +164,9 @@ interface PlaySetup {
             level: number;
             clock: ClockSettings[Player];
             searchLimit: EngineSearchLimit;
+            /** スレッド数（0 は自動）と、そのエンジンが使える上限 */
+            threads: number;
+            maxThreads: number | undefined;
             /** AI_MATCH_TIME_CHOICES のどれに当たるか。当たらなければ（ノード数・深さで読むときも）null */
             timeId: string | null;
         }
@@ -173,6 +175,7 @@ interface PlaySetup {
     chooseSideLevel: (side: Player, level: number) => void;
     chooseSideTime: (side: Player, choice: TimeChoice) => void;
     chooseSideSearchLimit: (side: Player, limit: EngineSearchLimit) => void;
+    chooseSideThreads: (side: Player, threads: number) => void;
 }
 
 export function usePlaySetup(): PlaySetup {
@@ -269,12 +272,15 @@ export function usePlaySetup(): PlaySetup {
     const opponent = opponentOptions.find((option) => option.value === opponentValue) ?? null;
     const sideAiOf = (side: Player) => {
         const value = aiValueOf(sides[side], selectionOf(side));
+        const maxThreads = threadCapOf(engineOptions, [sides[side].engineId]);
         return {
             value,
             option: opponentOptions.find((option) => option.value === value) ?? null,
             level: sides[side].skillLevel?.skillLevel ?? SKILL_LEVEL_MAX,
             clock: timeSettings[side],
             searchLimit: engineSearchLimits[side],
+            threads: clampThreads(engineThreads[side], maxThreads),
+            maxThreads,
             timeId:
                 engineSearchLimits[side].kind === "clock"
                     ? (AI_MATCH_TIME_CHOICES.find((choice) =>
@@ -291,16 +297,7 @@ export function usePlaySetup(): PlaySetup {
         aiSearchLimit.kind === "clock"
             ? (AI_TIME_CHOICES.find((choice) => matchesChoice(aiClock, choice))?.id ?? null)
             : null;
-    const aiMaxThreads = threadCapOf(
-        engineOptions,
-        kind === "ai-vs-ai" ? [sides.sente.engineId, sides.gote.engineId] : [aiSetting.engineId],
-    );
-    /** AI の読む量・スレッド数を、先後の両方（AI 対 AI）か AI の側だけに当てる。 */
-    const aiTargets: Player[] = kind === "ai-vs-ai" ? ["sente", "gote"] : [aiSide];
-    const withSides = <T>(current: Record<Player, T>, targets: Player[], value: T) => ({
-        ...current,
-        ...Object.fromEntries(targets.map((side) => [side, value])),
-    });
+    const aiMaxThreads = threadCapOf(engineOptions, [aiSetting.engineId]);
     const myTimeId = MY_TIME_CHOICES.find((choice) => matchesChoice(myClock, choice))?.id ?? null;
 
     /** 相手の種類（選択欄の値）から、AI の側に入れる設定と評価関数を作る。 */
@@ -463,9 +460,9 @@ export function usePlaySetup(): PlaySetup {
         });
     };
 
-    const resetToClockLimit = (targets: Player[]) => {
-        if (targets.every((side) => engineSearchLimits[side].kind === "clock")) return;
-        onEngineSearchLimitsChange(withSides(engineSearchLimits, targets, { kind: "clock" }));
+    const resetToClockLimit = (side: Player) => {
+        if (engineSearchLimits[side].kind === "clock") return;
+        onEngineSearchLimitsChange({ ...engineSearchLimits, [side]: { kind: "clock" } });
     };
 
     const applyClock = (side: Player, choice: TimeChoice) => {
@@ -489,10 +486,7 @@ export function usePlaySetup(): PlaySetup {
         opponent,
         level: aiSetting.skillLevel?.skillLevel ?? SKILL_LEVEL_MAX,
         aiSearchLimit,
-        aiThreads:
-            kind === "ai-vs-ai" && engineThreads.sente !== engineThreads.gote
-                ? null
-                : clampThreads(engineThreads[aiSide], aiMaxThreads),
+        aiThreads: clampThreads(engineThreads[aiSide], aiMaxThreads),
         aiMaxThreads,
         aiTimeId,
         myTimeId,
@@ -504,13 +498,13 @@ export function usePlaySetup(): PlaySetup {
         chooseOpponent,
         chooseLevel,
         chooseAiTime: (choice) => {
-            resetToClockLimit([aiSide]);
+            resetToClockLimit(aiSide);
             applyClock(aiSide, choice);
         },
         chooseAiSearchLimit: (limit) =>
-            onEngineSearchLimitsChange(withSides(engineSearchLimits, aiTargets, limit)),
+            onEngineSearchLimitsChange({ ...engineSearchLimits, [aiSide]: limit }),
         chooseAiThreads: (threads) =>
-            onEngineThreadsChange(withSides(engineThreads, aiTargets, threads)),
+            onEngineThreadsChange({ ...engineThreads, [aiSide]: threads }),
         chooseMyTime: (choice) => {
             // AI の時間が自分と同じ（選択欄に「自分と同じ」と出ている）なら、自分の時間を変えたときに AI もそろえる。
             // 無制限は AI に当てられないので、そのときは AI を動かさない。
@@ -552,10 +546,12 @@ export function usePlaySetup(): PlaySetup {
         chooseSideLevel,
         // AI は時間を決めずには指せないので、常に時間制限ありにする。
         chooseSideTime: (side, choice) => {
-            resetToClockLimit([side]);
+            resetToClockLimit(side);
             applyClock(side, { ...choice, enabled: true });
         },
         chooseSideSearchLimit: (side, limit) =>
             onEngineSearchLimitsChange({ ...engineSearchLimits, [side]: limit }),
+        chooseSideThreads: (side, threads) =>
+            onEngineThreadsChange({ ...engineThreads, [side]: threads }),
     };
 }

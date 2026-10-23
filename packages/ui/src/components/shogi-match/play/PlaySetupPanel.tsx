@@ -261,9 +261,6 @@ const KIND_OPTIONS: Array<{ id: PlayMatchKind; label: string }> = [
 type TimeTarget = "ai" | "my" | "both" | "sente-ai" | "gote-ai";
 type LimitTarget = "ai" | Player;
 
-/** スレッド数の選択欄の値: AI 対 AI で先後の数が違うとき。 */
-const MIXED_THREADS_ID = "mixed";
-
 const sideLabel = (side: Player): string => (side === "sente" ? "先手" : "後手");
 
 const FIELD_LABEL_CLASS = "text-xs font-medium text-wafuu-sumi-light";
@@ -444,26 +441,45 @@ export function PlaySetupPanel({
     const limitDialogTitle = `${limitDialogOwner} の読む量（${
         limitDialog.kind === "nodes" ? "ノード数" : "深さ"
     }）`;
-    const threadsSelect = (wrapperClassName?: string) => (
+    const threadsSelect = ({
+        id,
+        label,
+        value,
+        maxThreads,
+        onChoose,
+        wrapperClassName,
+    }: {
+        id?: string;
+        label?: string;
+        value: number;
+        maxThreads: number | undefined;
+        onChoose: (threads: number) => void;
+        wrapperClassName?: string;
+    }) => (
         <NativeSelect
-            id="play-setup-threads"
-            value={setup.aiThreads === null ? MIXED_THREADS_ID : String(setup.aiThreads)}
+            id={id}
+            aria-label={label}
+            value={String(value)}
             disabled={locked}
-            onChange={(event) => {
-                if (event.target.value === MIXED_THREADS_ID) return;
-                setup.chooseAiThreads(Number(event.target.value));
-            }}
+            onChange={(event) => onChoose(Number(event.target.value))}
             wrapperClassName={wrapperClassName}
             className={COMPACT_SELECT_CLASS}
         >
-            {buildThreadOptions({ compact: true, maxThreads: setup.aiMaxThreads }).map((option) => (
+            {buildThreadOptions({ compact: true, maxThreads }).map((option) => (
                 <option key={option.value} value={option.value}>
                     {option.label}
                 </option>
             ))}
-            {setup.aiThreads === null && <option value={MIXED_THREADS_ID}>先後で別</option>}
         </NativeSelect>
     );
+    const aiThreadsSelect = (wrapperClassName?: string) =>
+        threadsSelect({
+            id: "play-setup-threads",
+            value: setup.aiThreads,
+            maxThreads: setup.aiMaxThreads,
+            onChoose: setup.chooseAiThreads,
+            wrapperClassName,
+        });
     // 背の低いスマホ（375x553 など）では、ダウンロードの注記まで入れると 1 画面に収まらない。そのときは
     // 詳細設定（先後別のスレッド数）に任せて、この行を出さない。
     const threadsRow = (
@@ -482,13 +498,33 @@ export function PlaySetupPanel({
                 htmlFor="play-setup-threads"
                 className={rows ? ROW_LABEL_CLASS : FIELD_LABEL_CLASS}
             >
-                {rows
-                    ? "スレッド"
-                    : setup.kind === "ai-vs-ai"
-                      ? "スレッド数（両者）"
-                      : "スレッド数"}
+                {rows ? "スレッド" : "スレッド数"}
             </label>
-            {threadsSelect(rows ? "min-w-0 flex-1" : undefined)}
+            {aiThreadsSelect(rows ? "min-w-0 flex-1" : undefined)}
+        </div>
+    );
+    // AI 対 AI: 先後それぞれのスレッド数を 1 行に並べる（AI の行に足すと、スマホの幅で全部の欄が切れる）。
+    const sideThreadsRow = (
+        <div className={rows ? cn("flex", ROW_CLASS) : "flex flex-col gap-1.5"}>
+            <span className={rows ? ROW_LABEL_CLASS : FIELD_LABEL_CLASS}>
+                {rows ? "スレッド" : "スレッド数"}
+            </span>
+            <div className="flex min-w-0 flex-1 gap-2">
+                {(["sente", "gote"] as const).map((side) => (
+                    <span key={side} className="flex min-w-0 flex-1 items-center gap-1.5">
+                        <span aria-hidden className="text-sm text-wafuu-sumi">
+                            {side === "sente" ? "☗" : "☖"}
+                        </span>
+                        {threadsSelect({
+                            label: `${sideLabel(side)}の AI のスレッド数`,
+                            value: setup.sideAi[side].threads,
+                            maxThreads: setup.sideAi[side].maxThreads,
+                            onChoose: (threads) => setup.chooseSideThreads(side, threads),
+                            wrapperClassName: "min-w-0 flex-1",
+                        })}
+                    </span>
+                ))}
+            </div>
         </div>
     );
     // PC で強さを選べるときは、スレッド数を強さの右に並べる（相手・考慮時間の行と同じ 2 列。縦を増やさない）。
@@ -707,7 +743,7 @@ export function PlaySetupPanel({
                             </div>
                         );
                     })}
-                    {threadsRow}
+                    {sideThreadsRow}
                     <PlayTimeRulesHelp variant="text" className={cn("self-end", rows && "mt-1")} />
                 </>
             )}
@@ -805,7 +841,7 @@ export function PlaySetupPanel({
                             <label htmlFor="play-setup-threads" className={FIELD_LABEL_CLASS}>
                                 スレッド数
                             </label>
-                            {threadsSelect()}
+                            {aiThreadsSelect()}
                         </div>
                     </div>
                 ))}

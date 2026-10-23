@@ -29,7 +29,10 @@ vi.mock("./components/PageHeader", () => ({ PageHeader: () => null }));
 vi.mock("./hooks/useRemotePrivateNnueManager", () => ({
     useRemotePrivateNnueManager: () => undefined,
 }));
-vi.mock("./platform/wasm-engine-client", () => ({ createWebWasmEngineClient: () => ({}) }));
+vi.mock("./platform/wasm-engine-client", () => ({
+    createWebWasmEngineClient: () => ({}),
+    getWebWasmMaxThreads: () => 8,
+}));
 
 const { default: App } = await import("./App");
 

@@ -1,6 +1,6 @@
 import { createWasmEngineClient, getWasmMaxThreads } from "@shogi/engine-wasm";
 
-export const getWebWasmMaxThreads = getWasmMaxThreads;
+export const getWebWasmMaxThreads = (): number => getWasmMaxThreads();
 
 export const DEFAULT_WASM_THREADS = 4;
 
