@@ -19,7 +19,7 @@ interface MobileNavigationProps {
     disabled?: boolean;
     /** 設定ボタンクリック（指定時は右端に設定ボタンを表示） */
     onSettingsClick?: () => void;
-    /** 評価関数ファイル管理ボタンクリック（指定時は設定ボタンの左に表示） */
+    /** AI（評価関数）ボタンクリック（指定時は設定ボタンの左に表示） */
     onNnueManagerClick?: () => void;
 }
 

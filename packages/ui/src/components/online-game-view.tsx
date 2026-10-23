@@ -45,8 +45,8 @@ import {
     AlertDialogTrigger,
 } from "./alert-dialog";
 import { ConnectionLostNotice } from "./connection-lost-notice";
-import { NnueManagerDialog } from "./nnue/NnueManagerDialog";
-import type { RemoteNnueManager } from "./nnue/types";
+import { NnueLibraryDialog } from "./nnue-library/NnueLibraryDialog";
+import type { NnueAccountStore } from "./nnue-library/types";
 import {
     createSerialQueue,
     exportGameKif,
@@ -274,7 +274,7 @@ interface OnlineGameViewProps {
     roomId: string;
     analysis?: OnlineAnalysis;
     manifestUrl?: string;
-    remoteNnueManager?: RemoteNnueManager;
+    nnueAccount?: NnueAccountStore;
     onStartReview?: (data: {
         sfen: string;
         moves: string[];
@@ -293,7 +293,7 @@ export function OnlineGameView({
     roomId,
     analysis,
     manifestUrl,
-    remoteNnueManager,
+    nnueAccount,
     onStartReview,
     onExit,
     requestFullSnapshot,
@@ -1601,13 +1601,13 @@ export function OnlineGameView({
                 />
             )}
 
-            {/* NNUE ファイル管理ダイアログ */}
+            {/* AI（評価関数）の一覧。対局中に部屋を離れると接続が切れるので、その場で開く */}
             {manifestUrl && (
-                <NnueManagerDialog
+                <NnueLibraryDialog
                     open={nnueManagerOpen}
                     onOpenChange={setNnueManagerOpen}
                     manifestUrl={manifestUrl}
-                    remoteNnueManager={remoteNnueManager}
+                    account={nnueAccount}
                     isMatchActive={!gameResult}
                 />
             )}

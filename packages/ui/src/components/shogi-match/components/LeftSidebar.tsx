@@ -14,7 +14,7 @@ import { SkillLevelSelector } from "./SkillLevelSelector";
 
 type SideKey = "sente" | "gote";
 
-const EVAL_FILE_MANAGER_LABEL = "評価関数を管理";
+const EVAL_FILE_MANAGER_LABEL = "AI（評価関数）";
 const SETTINGS_LOCKED_MESSAGE = "対局中は変更不可";
 const sectionClassName = "flex flex-col gap-3";
 const labelClassName = "flex flex-col gap-1 text-xs text-muted-foreground";

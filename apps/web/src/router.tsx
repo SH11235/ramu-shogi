@@ -186,28 +186,6 @@ const nnueFilesRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/nnue",
     component: lazyRouteComponent(() => import("./pages/nnue/NnueFilesPage")),
-    loader: async () => {
-        const response = await fetch("/api/nnue/files", {
-            credentials: "same-origin",
-        });
-
-        if (
-            handleLoaderResponse(response, {
-                errorMessage: "NNUE 一覧の取得に失敗しました",
-                onUnauthorized: "return_needs_auth",
-            }) === "needs_auth"
-        ) {
-            return {
-                needsAuth: true,
-                files: [],
-            };
-        }
-
-        return {
-            needsAuth: false,
-            files: (await response.json()).files,
-        };
-    },
 });
 
 const privacyRoute = createRoute({

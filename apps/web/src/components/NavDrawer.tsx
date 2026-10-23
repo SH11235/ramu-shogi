@@ -85,14 +85,10 @@ function buildNavSections(pathname: string): NavSection[] {
             ],
         },
         {
-            label: "管理",
+            label: "AI",
             items: [
-                {
-                    to: "/nnue",
-                    label: "NNUE モデル",
-                    active: pathname === "/nnue",
-                    requiresAuth: true,
-                },
+                // 配布 AI のダウンロードと、評価関数の追加。未ログインでも使える（ブラウザ内に保存）。
+                { to: "/nnue", label: "AI（評価関数）", active: pathname === "/nnue" },
             ],
         },
     ];

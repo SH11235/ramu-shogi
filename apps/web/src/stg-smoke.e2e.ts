@@ -14,6 +14,6 @@ test.describe("stg smoke", () => {
         await expect(page.getByRole("heading", { name: "棋譜一覧" })).toBeVisible();
 
         await page.goto("/nnue");
-        await expect(page.getByRole("heading", { name: "NNUE ファイル" })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "AI（評価関数）" })).toBeVisible();
     });
 });

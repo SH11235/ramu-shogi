@@ -15,7 +15,8 @@ type NnueErrorCode =
     | "NNUE_HASH_MISMATCH"
     | "NNUE_STORAGE_FAILED"
     | "NNUE_DELETE_FAILED"
-    | "NNUE_SIZE_EXCEEDED";
+    | "NNUE_SIZE_EXCEEDED"
+    | "NNUE_VALIDATOR_UNAVAILABLE";
 
 /**
  * NNUE エラー
@@ -43,7 +44,7 @@ const NNUE_ERROR_MESSAGES: Record<NnueErrorCode, string> = {
     NNUE_DOWNLOAD_FAILED: "ダウンロードに失敗しました。ネットワークを確認してください",
     NNUE_DOWNLOAD_IN_PROGRESS: "このファイルは既にダウンロード中です",
     NNUE_NOT_DOWNLOADED:
-        "評価関数がダウンロードされていません。評価関数ファイル管理からダウンロードしてください",
+        "評価関数がダウンロードされていません。「AI（評価関数）」からダウンロードしてください",
     NNUE_RESOLVE_FAILED: "評価関数の解決に失敗しました",
     NNUE_STORAGE_FULL: "ストレージ容量が不足しています。不要な NNUE を削除してください",
     NNUE_SIZE_MISMATCH: "ダウンロードしたファイルサイズが一致しません",
@@ -51,6 +52,8 @@ const NNUE_ERROR_MESSAGES: Record<NnueErrorCode, string> = {
     NNUE_STORAGE_FAILED: "保存に失敗しました（容量不足の可能性）",
     NNUE_DELETE_FAILED: "削除に失敗しました",
     NNUE_SIZE_EXCEEDED: "ファイルサイズが上限を超えています",
+    NNUE_VALIDATOR_UNAVAILABLE:
+        "評価関数を確かめる部品を読み込めませんでした。ページを再読み込みしてください",
 };
 
 /**

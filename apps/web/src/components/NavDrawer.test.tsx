@@ -56,7 +56,7 @@ describe("NavDrawer", () => {
         render(<NavDrawer />);
         fireEvent.click(screen.getByRole("button", { name: "メニュー" }));
 
-        for (const heading of ["指す", "棋譜", "観戦", "管理"]) {
+        for (const heading of ["指す", "棋譜", "観戦", "AI"]) {
             expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
         }
         for (const link of [
@@ -66,7 +66,7 @@ describe("NavDrawer", () => {
             // 要ログイン導線はバッジ「要ログイン」がアクセシブルネームに続く
             "マイ棋譜 要ログイン",
             "観戦・棋譜一覧",
-            "NNUE モデル 要ログイン",
+            "AI（評価関数）",
             "ログイン",
         ]) {
             expect(screen.getByRole("link", { name: link })).toBeTruthy();

@@ -7,7 +7,7 @@ interface MobileSettingsActionsProps {
     variant: MobileSettingsActionsVariant;
     /** 対局設定ボタンクリック */
     onSettingsClick?: () => void;
-    /** 評価関数ファイル管理ボタンクリック */
+    /** AI（評価関数）ボタンクリック */
     onNnueManagerClick?: () => void;
 }
 
@@ -44,8 +44,8 @@ export function MobileSettingsActions({
                               )
                             : fabButtonClassName
                     }
-                    title="評価関数ファイル管理"
-                    aria-label="評価関数ファイル管理を開く"
+                    title="AI（評価関数）"
+                    aria-label="AI（評価関数）を開く"
                 >
                     <span role="img" aria-label="フォルダ">
                         📁

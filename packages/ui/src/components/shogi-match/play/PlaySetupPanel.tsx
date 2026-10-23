@@ -162,6 +162,7 @@ type Clock = ClockSettings[Player];
 
 /** 選択欄の値: 「自分と同じ」・選択肢に無いいまの時間・ノード数や深さで決めた読む量。 */
 const SAME_AS_MINE_ID = "same";
+const ADD_NNUE_LABEL = "＋ 自分の評価関数を追加";
 const CURRENT_TIME_ID = "current";
 const CURRENT_LIMIT_ID = "limit";
 const CUSTOM_NODES_ID = "custom-nodes";
@@ -291,7 +292,7 @@ export function PlaySetupPanel({
 }: PlaySetupPanelProps): ReactElement {
     const { play } = useShogiMatchConfig();
     const setup = usePlaySetup();
-    const { passRightsSettings } = useMatchSettings();
+    const { passRightsSettings, onOpenNnueManager } = useMatchSettings();
     // 振り駒は、始めるときに先後を決める（設定としては保存しない）。
     const [randomSide, setRandomSide] = useState(false);
     const [pendingStart, setPendingStart] = useState(false);
@@ -744,21 +745,45 @@ export function PlaySetupPanel({
                         );
                     })}
                     {sideThreadsRow}
-                    <PlayTimeRulesHelp variant="text" className={cn("self-end", rows && "mt-1")} />
+                    <div className={cn("flex items-center justify-between gap-2", rows && "mt-1")}>
+                        <button
+                            type="button"
+                            onClick={onOpenNnueManager}
+                            className={cn(
+                                TEXT_LINK_CLASS,
+                                "shrink-0 whitespace-nowrap text-xs text-wafuu-ai",
+                            )}
+                        >
+                            {ADD_NNUE_LABEL}
+                        </button>
+                        <PlayTimeRulesHelp variant="text" />
+                    </div>
                 </>
             )}
 
             {isVsAi && (
-                <div className={rows ? cn("flex", ROW_CLASS) : "flex flex-col gap-1.5"}>
+                <div className={rows ? cn("flex flex-wrap", ROW_CLASS) : "flex flex-col gap-1.5"}>
                     {rows ? (
                         <label htmlFor="play-setup-opponent" className={ROW_LABEL_CLASS}>
                             相手
                         </label>
                     ) : (
                         <div className="flex gap-2">
-                            <label htmlFor="play-setup-opponent" className="flex-1">
-                                <span className={FIELD_LABEL_CLASS}>相手</span>
-                            </label>
+                            <div className="flex flex-1 items-baseline gap-3">
+                                <label htmlFor="play-setup-opponent">
+                                    <span className={FIELD_LABEL_CLASS}>相手</span>
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={onOpenNnueManager}
+                                    className={cn(
+                                        TEXT_LINK_CLASS,
+                                        "shrink-0 whitespace-nowrap text-xs text-wafuu-ai",
+                                    )}
+                                >
+                                    {ADD_NNUE_LABEL}
+                                </button>
+                            </div>
                             <label htmlFor="play-setup-ai-time" className={AI_TIME_SELECT_WIDTH}>
                                 <span className={FIELD_LABEL_CLASS}>
                                     {setup.aiSearchLimit.kind === "clock"
@@ -801,6 +826,19 @@ export function PlaySetupPanel({
                             className={AI_TIME_SELECT_WIDTH}
                         />
                     </div>
+                    {/* スマホ（行の形）でも PC と同じく相手の欄に添える。盤の画面の高さを使い切らないよう、
+                        選択欄の下に小さな 1 行だけ足し、押せる範囲は上下の余白で広げる（行の高さは増やさない）。 */}
+                    {rows && (
+                        <div className="basis-full pl-16 max-[359px]:pl-14">
+                            <button
+                                type="button"
+                                onClick={onOpenNnueManager}
+                                className="-my-1 whitespace-nowrap py-1 text-xs text-wafuu-ai underline underline-offset-2 hover:text-wafuu-ai-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                                {ADD_NNUE_LABEL}
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
 
