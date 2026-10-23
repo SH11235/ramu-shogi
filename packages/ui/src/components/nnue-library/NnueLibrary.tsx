@@ -206,13 +206,17 @@ export function NnueLibrary({
         inputRef.current?.click();
     };
 
+    // React のイベントはポータルを越えて届く。設定ダイアログの係数ファイル欄へのドロップなどを、
+    // AI の追加として受け取らないよう、DOM の上でこの一覧の中にあるときだけ扱う。
+    const isOwnDragTarget = (event: DragEvent) =>
+        event.currentTarget.contains(event.target as Node | null);
     const handleDragOver = (event: DragEvent) => {
-        if (!canPickFile || isBusy) return;
+        if (!canPickFile || isBusy || !isOwnDragTarget(event)) return;
         event.preventDefault();
         setIsDragOver(true);
     };
     const handleDrop = (event: DragEvent) => {
-        if (!canPickFile) return;
+        if (!canPickFile || !isOwnDragTarget(event)) return;
         event.preventDefault();
         setIsDragOver(false);
         const file = event.dataTransfer.files[0];
@@ -423,7 +427,11 @@ export function NnueLibrary({
                                 >
                                     {account?.isAuthenticated &&
                                         meta.source !== "preset" &&
-                                        !accountFile &&
+                                        !accountFiles.some(
+                                            (file) =>
+                                                file.status !== "failed" &&
+                                                file.sha256Hex === meta.contentHashSha256,
+                                        ) &&
                                         loadData && (
                                             <Button
                                                 size="sm"

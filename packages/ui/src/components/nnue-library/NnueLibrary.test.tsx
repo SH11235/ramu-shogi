@@ -148,6 +148,26 @@ describe("NnueLibrary", () => {
         expect(storage.deleteNnue).not.toHaveBeenCalled();
     });
 
+    it("設定ダイアログの中へのドロップは、AI の追加として受け取らない", () => {
+        storage.nnueList = [meta({})];
+        render(<NnueLibrary />);
+        fireEvent.click(screen.getByRole("button", { name: "「my-net」の設定" }));
+        const dialog = screen.getByRole("alertdialog");
+        const file = new File([new Uint8Array([1])], "progress.bin");
+        fireEvent.dragOver(dialog, { dataTransfer: { files: [file] } });
+        fireEvent.drop(dialog, { dataTransfer: { files: [file] } });
+        expect(screen.queryByText("AI を追加")).toBeNull();
+    });
+
+    it("ページの中へのドロップは、AI の追加として受け取る", () => {
+        render(<NnueLibrary />);
+        const file = new File([new Uint8Array([1])], "my-net.bin");
+        const area = screen.getByRole("region", { name: "AI の一覧" });
+        fireEvent.dragOver(area, { dataTransfer: { files: [file] } });
+        fireEvent.drop(area, { dataTransfer: { files: [file] } });
+        expect(screen.getByText("AI を追加")).toBeDefined();
+    });
+
     it("配布 AI と同じ中身のアカウントのファイルも隠さない", () => {
         storage.nnueList = [
             meta({ source: "preset", presetKey: "coco", contentHashSha256: "ccc" }),
