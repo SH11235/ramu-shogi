@@ -361,7 +361,8 @@ export function usePlaySetup(): PlaySetup {
         if (nextSelection) setSelection(other, nextSelection);
         onEngineSearchLimitsChange({
             ...engineSearchLimits,
-            [other]: aiTime ? { kind: "clock" } : aiSearchLimit,
+            // 人 対 人から戻すときは時間を選び直すので、読む量も時計どおりに戻す。
+            [other]: aiTime || kind === "humans" ? { kind: "clock" } : aiSearchLimit,
         });
         onEngineThreadsChange({ ...engineThreads, [other]: engineThreads[aiSide] });
         onSidesChange({

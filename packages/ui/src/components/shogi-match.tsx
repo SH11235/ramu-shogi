@@ -1374,14 +1374,15 @@ export function ShogiMatch({
     // （resetClocks は timeSettings に依存しているため、resetClocks の変更で検知可能）
     // 一時停止中は戻さない（戻すと、止めるたびに持ち時間・秒読みが元に戻ってしまう）。
     // ただし、一時停止中に時間設定そのものを変えたときは、新しい設定に合わせ直す。
-    const syncedTimeSettingsRef = useRef(timeSettings);
+    // 読む量（ノード数・深さ）を替えたときも時計の設定が替わるので、時計に渡す設定で比べる。
+    const syncedTimeSettingsRef = useRef(clockTimeSettings);
     useEffect(() => {
-        const settingsChanged = syncedTimeSettingsRef.current !== timeSettings;
-        syncedTimeSettingsRef.current = timeSettings;
+        const settingsChanged = syncedTimeSettingsRef.current !== clockTimeSettings;
+        syncedTimeSettingsRef.current = clockTimeSettings;
         if (!isMatchRunning && (!isPaused || settingsChanged)) {
             resetClocks(false);
         }
-    }, [isMatchRunning, isPaused, resetClocks, timeSettings]);
+    }, [isMatchRunning, isPaused, resetClocks, clockTimeSettings]);
 
     // 対局終了処理（エンジン管理フックから呼ばれる）
     const endMatch = async (result: GameResult) => {

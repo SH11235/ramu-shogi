@@ -338,6 +338,17 @@ describe("usePlaySetup（対局画面のかんたん設定）", () => {
         expect(hook.result.current.aiThreads).toBe(2);
     });
 
+    it("人 対 人から自分 対 AI に戻すと、AI の読む量は時計どおりに戻る", () => {
+        const { hook, snapshot } = setupHarness({
+            sides: { sente: HUMAN, gote: AI_L5 },
+            time: { sente: UNLIMITED, gote: AI_3S },
+        });
+        act(() => hook.result.current.chooseAiSearchLimit({ kind: "nodes", nodes: 50_000 }));
+        act(() => hook.result.current.chooseKind("humans"));
+        act(() => hook.result.current.chooseKind("vs-ai"));
+        expect(snapshot.limits.gote).toEqual({ kind: "clock" });
+    });
+
     it("AI 対 AI ではスレッド数を両者に当て、先後で違えば null を返す", () => {
         const { hook, snapshot } = setupHarness({
             sides: { sente: AI_L5, gote: AI_L5 },
