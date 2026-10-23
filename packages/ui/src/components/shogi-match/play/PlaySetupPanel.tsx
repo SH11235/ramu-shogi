@@ -762,7 +762,7 @@ export function PlaySetupPanel({
             )}
 
             {isVsAi && (
-                <div className={rows ? cn("flex", ROW_CLASS) : "flex flex-col gap-1.5"}>
+                <div className={rows ? cn("flex flex-wrap", ROW_CLASS) : "flex flex-col gap-1.5"}>
                     {rows ? (
                         <label htmlFor="play-setup-opponent" className={ROW_LABEL_CLASS}>
                             相手
@@ -826,6 +826,19 @@ export function PlaySetupPanel({
                             className={AI_TIME_SELECT_WIDTH}
                         />
                     </div>
+                    {/* スマホ（行の形）でも PC と同じく相手の欄に添える。盤の画面の高さを使い切らないよう、
+                        選択欄の下に小さな 1 行だけ足し、押せる範囲は上下の余白で広げる（行の高さは増やさない）。 */}
+                    {rows && (
+                        <div className="basis-full pl-16 max-[359px]:pl-14">
+                            <button
+                                type="button"
+                                onClick={onOpenNnueManager}
+                                className="-my-1 whitespace-nowrap py-1 text-xs text-wafuu-ai underline underline-offset-2 hover:text-wafuu-ai-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                                {ADD_NNUE_LABEL}
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
 
