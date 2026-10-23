@@ -112,7 +112,7 @@ export function PlayPCLayout({
                                 // 持ち駒の欄は、空のときも同じ高さで見せる（駒を取ったときに盤や操作が動かないように）。
                                 className={`flex flex-col items-center gap-2 ${PLAY_HAND_ZONES} ${isDraggingPiece ? "touch-none" : ""}`}
                             >
-                                <PlayPlayerBar position="top" />
+                                <PlayPlayerBar position="top" enableIconZoom />
 
                                 <div inert={boardInert} className="contents">
                                     <PCBoardContent
@@ -152,7 +152,7 @@ export function PlayPCLayout({
                                     />
                                 </div>
 
-                                <PlayPlayerBar position="bottom" />
+                                <PlayPlayerBar position="bottom" enableIconZoom />
 
                                 {/* 盤の下。操作の有無で列の高さが変わらないよう、高さを確保する。 */}
                                 <div className="flex min-h-10 w-full flex-col items-center gap-2">
