@@ -36,6 +36,7 @@ interface StudyAnalysisSettingsProps {
     /** 解析を始められるか（実行中・準備中は false）。 */
     canStart: boolean;
     onStartFull: () => void;
+    onOpenNnueLibrary?: () => void;
 }
 
 const MULTI_PV_OPTIONS = [1, 2, 3, 4, 5] as const;
@@ -58,6 +59,7 @@ function SettingsBody({
     onStartFull,
     onOpenChange,
     isMobile,
+    onOpenNnueLibrary,
 }: Omit<StudyAnalysisSettingsProps, "open">): ReactElement {
     const nnueOptions = buildNnueOptions({
         presets: form.presets,
@@ -137,25 +139,39 @@ function SettingsBody({
                         AI（評価関数）で解析します。結果は、エンジンの名前で残ります。
                     </p>
                 ) : (
-                    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                        使う AI
-                        <NativeSelect
-                            value={toNnueSelectionValue(form.nnueSelection)}
-                            onChange={(event) =>
-                                form.onNnueSelectionChange(
-                                    parseNnueSelectionValue(event.target.value),
-                                )
-                            }
-                            className={isMobile ? "text-base" : "text-sm"}
-                        >
-                            <option value="material">簡易AI（駒得）</option>
-                            {nnueOptions.map((option) => (
-                                <option key={toOptionValue(option)} value={toOptionValue(option)}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </NativeSelect>
-                    </label>
+                    <div className="flex flex-col gap-1">
+                        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                            使う AI
+                            <NativeSelect
+                                value={toNnueSelectionValue(form.nnueSelection)}
+                                onChange={(event) =>
+                                    form.onNnueSelectionChange(
+                                        parseNnueSelectionValue(event.target.value),
+                                    )
+                                }
+                                className={isMobile ? "text-base" : "text-sm"}
+                            >
+                                <option value="material">簡易AI（駒得）</option>
+                                {nnueOptions.map((option) => (
+                                    <option
+                                        key={toOptionValue(option)}
+                                        value={toOptionValue(option)}
+                                    >
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </NativeSelect>
+                        </label>
+                        {onOpenNnueLibrary && (
+                            <button
+                                type="button"
+                                onClick={onOpenNnueLibrary}
+                                className="self-start text-xs text-wafuu-ai underline underline-offset-2 hover:text-wafuu-ai-light"
+                            >
+                                自分の評価関数（NNUE）を追加する
+                            </button>
+                        )}
+                    </div>
                 )}
                 <fieldset className="flex flex-col gap-1">
                     <legend className="pb-1 text-xs text-muted-foreground">

@@ -158,6 +158,9 @@ type Clock = ClockSettings[Player];
 
 /** 選択欄の値: 「自分と同じ」・選択肢に無いいまの時間。 */
 const SAME_AS_MINE_ID = "same";
+/** AI の選択欄の末尾に置く、評価関数を追加する入口（選んでも設定は変えない） */
+const ADD_NNUE_VALUE = "add-nnue";
+const ADD_NNUE_LABEL = "＋ 自分の評価関数（NNUE）を追加…";
 const CURRENT_TIME_ID = "current";
 
 /**
@@ -266,7 +269,7 @@ export function PlaySetupPanel({
 }: PlaySetupPanelProps): ReactElement {
     const { play } = useShogiMatchConfig();
     const setup = usePlaySetup();
-    const { passRightsSettings } = useMatchSettings();
+    const { passRightsSettings, onOpenNnueManager } = useMatchSettings();
     // 振り駒は、始めるときに先後を決める（設定としては保存しない）。
     const [randomSide, setRandomSide] = useState(false);
     const [pendingStart, setPendingStart] = useState(false);
@@ -551,9 +554,13 @@ export function PlaySetupPanel({
                                         id={`play-setup-ai-${side}`}
                                         value={ai.value}
                                         disabled={locked}
-                                        onChange={(event) =>
-                                            setup.chooseSideAi(side, event.target.value)
-                                        }
+                                        onChange={(event) => {
+                                            if (event.target.value === ADD_NNUE_VALUE) {
+                                                onOpenNnueManager();
+                                                return;
+                                            }
+                                            setup.chooseSideAi(side, event.target.value);
+                                        }}
                                         wrapperClassName={rows ? "col-span-2" : "min-w-0 flex-1"}
                                         className={COMPACT_SELECT_CLASS}
                                     >
@@ -565,6 +572,7 @@ export function PlaySetupPanel({
                                                     : ""}
                                             </option>
                                         ))}
+                                        <option value={ADD_NNUE_VALUE}>{ADD_NNUE_LABEL}</option>
                                     </NativeSelect>
                                     {ai.option?.supportsLevel !== false && (
                                         <NativeSelect
@@ -637,7 +645,13 @@ export function PlaySetupPanel({
                             id="play-setup-opponent"
                             value={setup.opponentValue}
                             disabled={locked}
-                            onChange={(event) => setup.chooseOpponent(event.target.value)}
+                            onChange={(event) => {
+                                if (event.target.value === ADD_NNUE_VALUE) {
+                                    onOpenNnueManager();
+                                    return;
+                                }
+                                setup.chooseOpponent(event.target.value);
+                            }}
                             wrapperClassName="min-w-0 flex-1"
                             className={COMPACT_SELECT_CLASS}
                         >
@@ -650,6 +664,7 @@ export function PlaySetupPanel({
                                         : ""}
                                 </option>
                             ))}
+                            <option value={ADD_NNUE_VALUE}>{ADD_NNUE_LABEL}</option>
                         </NativeSelect>
                         <AiTimeSelect
                             id="play-setup-ai-time"

@@ -185,29 +185,10 @@ const publicGameRoute = createRoute({
 const nnueFilesRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/nnue",
+    // `from` は AI を追加したあとに戻る画面。戻り先として使えるかは、読む側で確かめる。
+    validateSearch: (search: Record<string, unknown>): { from?: string } =>
+        typeof search.from === "string" ? { from: search.from } : {},
     component: lazyRouteComponent(() => import("./pages/nnue/NnueFilesPage")),
-    loader: async () => {
-        const response = await fetch("/api/nnue/files", {
-            credentials: "same-origin",
-        });
-
-        if (
-            handleLoaderResponse(response, {
-                errorMessage: "NNUE 一覧の取得に失敗しました",
-                onUnauthorized: "return_needs_auth",
-            }) === "needs_auth"
-        ) {
-            return {
-                needsAuth: true,
-                files: [],
-            };
-        }
-
-        return {
-            needsAuth: false,
-            files: (await response.json()).files,
-        };
-    },
 });
 
 const privacyRoute = createRoute({

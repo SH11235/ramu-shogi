@@ -123,6 +123,8 @@ export interface DialogStateProps {
     manifestUrl?: string;
     onRequestNnueFilePath?: () => Promise<string | null>;
     remoteNnueManager?: RemoteNnueManager;
+    /** 指定時、「評価関数を管理」は管理ダイアログでなく AI の一覧画面を開く */
+    onOpenNnueLibrary?: () => void;
     selectedMoveDetail: {
         move: import("../utils/kifFormat").KifMove;
         position: PositionState;

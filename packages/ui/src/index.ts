@@ -8,6 +8,8 @@
 // Hooks
 // ============================================================
 
+export { NnueLibrary } from "./components/nnue-library/NnueLibrary";
+export type { NnueAccountFile, NnueAccountStore } from "./components/nnue-library/types";
 // 一括解析（研究ノートの画面でも使う）
 export type { AnalysisJob, EnginePoolHandle } from "./components/shogi-match/hooks/useEnginePool";
 export { useEnginePool } from "./components/shogi-match/hooks/useEnginePool";

@@ -629,6 +629,9 @@ export default function StudyPage(): ReactElement {
                         saveStatus={saveStatus}
                         onRetrySave={() => void sync.retry(studyId).catch(() => undefined)}
                         onLogin={handleLogin}
+                        onOpenNnueLibrary={() =>
+                            navigate({ to: "/nnue", search: { from: `/studies/${studyId}` } })
+                        }
                         onDiscard={handleDiscard}
                         originLink={renderOriginLink(state.doc.origin)}
                         onPlayFromPosition={playFromPosition}

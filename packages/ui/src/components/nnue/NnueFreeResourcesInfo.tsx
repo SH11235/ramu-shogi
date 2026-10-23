@@ -2,7 +2,7 @@ import type { ReactElement } from "react";
 import { useState } from "react";
 import { ChevronIcon } from "../chevron-icon";
 
-interface FreeNnueResource {
+export interface FreeNnueResource {
     /** 評価関数名 */
     name: string;
     /** アーキテクチャ */
@@ -17,7 +17,7 @@ interface FreeNnueResource {
     authorUrl: string;
 }
 
-const FREE_NNUE_RESOURCES: FreeNnueResource[] = [
+export const FREE_NNUE_RESOURCES: FreeNnueResource[] = [
     {
         name: "AobaNNUE",
         architecture: "halfkp_768x2-16-64",

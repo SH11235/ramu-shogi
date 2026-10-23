@@ -53,6 +53,8 @@ interface UseNnueStorageReturn {
     storageUsage: { used: number; quota?: number } | null;
     /** ストレージの capability */
     capabilities: NnueStorageCapabilities | null;
+    /** 保存したファイルの中身（ファイルを読めないストレージでは null） */
+    loadData: ((id: string) => Promise<Uint8Array>) | null;
 }
 
 /**
@@ -386,5 +388,6 @@ export function useNnueStorage(): UseNnueStorageReturn {
         clearError,
         storageUsage,
         capabilities,
+        loadData: storage?.load ? storage.load.bind(storage) : null,
     };
 }
