@@ -318,7 +318,14 @@ export function NnueLibrary({
                     canAdd && (
                         <DropZone
                             active={isDragOver}
-                            canDrop={canPickFile}
+                            canDrop={
+                                canPickFile &&
+                                !(
+                                    typeof window !== "undefined" &&
+                                    typeof window.matchMedia === "function" &&
+                                    window.matchMedia("(pointer: coarse)").matches
+                                )
+                            }
                             disabled={isBusy}
                             isAdding={busyId === "adding"}
                             onPick={() => void startAdd()}
