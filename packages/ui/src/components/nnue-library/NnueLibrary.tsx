@@ -37,8 +37,6 @@ interface NnueLibraryProps {
     onRequestFilePath?: () => Promise<string | null>;
     /** この端末の AI を削除できない理由（対局中など）。指定時は削除ボタンを止める */
     deleteDisabledReason?: string;
-    /** 追加・ダウンロードが済んだとき（呼び出し元の画面へ戻る案内に使う） */
-    onReady?: (meta: NnueMeta) => void;
 }
 
 type PendingAdd =
@@ -99,7 +97,6 @@ export function NnueLibrary({
     account,
     onRequestFilePath,
     deleteDisabledReason,
-    onReady,
 }: NnueLibraryProps): ReactElement {
     const {
         nnueList,
@@ -129,9 +126,8 @@ export function NnueLibrary({
     } = usePresetManager({
         manifestUrl,
         autoFetch: Boolean(manifestUrl),
-        onDownloadComplete: (meta) => {
+        onDownloadComplete: () => {
             void refreshList();
-            onReady?.(meta);
         },
     });
 
@@ -219,7 +215,6 @@ export function NnueLibrary({
             }
             if (meta) {
                 setNotice(`「${meta.displayName}」を追加しました。`);
-                onReady?.(meta);
             }
         } catch {
             // 失敗の内容は useNnueStorage / account の error に出る

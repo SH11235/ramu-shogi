@@ -185,9 +185,6 @@ const publicGameRoute = createRoute({
 const nnueFilesRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/nnue",
-    // `from` は AI を追加したあとに戻る画面。戻り先として使えるかは、読む側で確かめる。
-    validateSearch: (search: Record<string, unknown>): { from?: string } =>
-        typeof search.from === "string" ? { from: search.from } : {},
     component: lazyRouteComponent(() => import("./pages/nnue/NnueFilesPage")),
 });
 

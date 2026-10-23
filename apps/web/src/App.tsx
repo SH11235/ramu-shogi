@@ -63,7 +63,7 @@ function App() {
                     isDevMode={isDevMode}
                     manifestUrl={nnueManifestUrl}
                     nnueAccount={nnueAccount}
-                    onOpenNnueLibrary={() => navigate({ to: "/nnue", search: { from: "/play" } })}
+                    onOpenNnueLibrary={() => navigate({ to: "/nnue" })}
                     allowAnalysisDuringMatch={true}
                     defaultNnuePresetKey={import.meta.env.VITE_DEFAULT_NNUE_PRESET}
                     aiIconUrl={`${import.meta.env.BASE_URL}ramu.jpeg`}
