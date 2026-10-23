@@ -44,8 +44,6 @@ interface StudyHighlightsPanelProps {
     onOpenSettings: () => void;
     /** 見出しを出さない（スマートフォンでは切り替えのタブが見出しを兼ねる）。 */
     hideHeading?: boolean;
-    /** 「全体を解析」のボタンを出さない（スマートフォンでは画面下に固定して出すため）。 */
-    hideStartButton?: boolean;
     /**
      * 一覧の下の「未解析の局面が N あります・残りを解析」を出さない（スマートフォンでは一覧の行数を
      * 削ってしまうので、盤の表示のグラフの見出しに出す）。
@@ -103,7 +101,6 @@ export function StudyHighlightsPanel({
     onCancel,
     onOpenSettings,
     hideHeading = false,
-    hideStartButton = false,
     hideResume = false,
     className,
 }: StudyHighlightsPanelProps): ReactElement {
@@ -194,18 +191,16 @@ export function StudyHighlightsPanel({
                     <p className="text-sm text-wafuu-sumi">
                         全体を解析すると、見直すべき手がここに並びます。
                     </p>
-                    {!hideStartButton && (
-                        <Button
-                            type="button"
-                            size="lg"
-                            className="w-full gap-2"
-                            onClick={onStartFull}
-                            disabled={isPreparing || analysisMode !== null}
-                        >
-                            <AnalyzeIcon />
-                            {fullTargetCount === 0 ? "解析済みの結果を表示" : "全体を解析"}
-                        </Button>
-                    )}
+                    <Button
+                        type="button"
+                        size="lg"
+                        className="w-full gap-2"
+                        onClick={onStartFull}
+                        disabled={isPreparing || analysisMode !== null}
+                    >
+                        <AnalyzeIcon />
+                        {fullTargetCount === 0 ? "解析済みの結果を表示" : "全体を解析"}
+                    </Button>
                     <p className="text-xs text-muted-foreground">
                         {fullTargetCount === 0
                             ? // いまの設定の解析は済んでいる（表示しているのが、別の設定の結果）。

@@ -237,8 +237,9 @@ interface StudyWorkspaceViewProps extends StudyWorkspaceCommonProps {
 }
 
 /**
- * スマートフォンの表示の切り替え。「盤」は盤を大きく見る表示、ほかは盤を縮めて一覧を並べる表示。
- * 切り替えは画面の上（ブラウザの下端の操作に隠れない位置）に、名前の付いたタブで出す。
+ * スマートフォンの表示の切り替え。盤と局面の移動はどの表示でも同じ位置に置き、その下の欄だけを
+ * 替える（表示を替えても操作の位置が動かないように）。切り替えは画面の上（ブラウザの下端の操作に
+ * 隠れない位置）に、名前の付いたタブで出す。
  */
 type MobileTab = "board" | "highlights" | "moves" | "candidates";
 
@@ -251,37 +252,45 @@ const MOBILE_TABS: { id: MobileTab; label: string }[] = [
 
 // スマートフォンの盤の寸法（マスを c px とする）。持ち駒は盤の左右に縦に置き、盤は幅 9c + 33px・
 // 高さ 9c + 44px（枠と段ラベル）、左右の駒台は幅 0.8c + 20px で間が 8px ずつ（全体の幅 10.6c + 89px）。
-// 盤と局面の移動の行は、どの表示（盤・注目局面・棋譜・候補手）でも同じ位置・同じ大きさにする（表示を
-// 替えても操作の位置が動かないように）。盤はその下に MOBILE_LOWER_MIN_HEIGHT を残して、幅に収まる
-// いちばん大きいマスで描く。
+// 駒台は 7 種類の駒（1 つ 0.8c + 8px、間 4px）と先後の印・余白（70px）で 5.6c + 126px あり、小さい
+// マスでは盤より高い。持ち駒が増えても移動の行が動かないよう、高い方を常に確保する。
+// 盤はその下に MOBILE_LOWER_MIN_HEIGHT を残して、幅に収まるいちばん大きいマスで描く。
 const MOBILE_MAX_CELL_SIZE = 52;
 const MOBILE_MIN_CELL_SIZE = 20;
 // 盤の下（移動の行のさらに下）に残す高さ。盤の表示では棋譜の帯とグラフ、一覧の表示では一覧を置く。
 const MOBILE_LOWER_MIN_HEIGHT = 150;
+const MOBILE_LOWER_SHORT_HEIGHT = 48;
 // 局面の移動の行の高さと、行どうしの間。
 const MOBILE_NAV_HEIGHT = 40;
 const MOBILE_ROW_GAP = 6;
+// 下限のマスでも入らないときの縮小の下限。これより縮めると駒が読めないので、下の欄を削って盤を残す。
+const MOBILE_MIN_SCALE = 0.6;
+
+const mobileBoardBlockHeight = (cell: number): number =>
+    Math.max(cell * 9 + 44, Math.ceil(cell * 5.6 + 126));
 
 /**
  * 幅 `width`・高さ `height` の表示の場所に置く、盤のマスの大きさ・縮小率・盤の高さ。下限のマスでも
  * 入らない低い画面では、下限のマスで描いて見た目だけ縮める（はみ出して切れるより、小さくても全体が
  * 見える方がよい）。
  */
-const fitMobileBoard = (
+export const fitMobileBoard = (
     width: number,
     height: number,
 ): { cellSize: number; scale: number; boardHeight: number } => {
-    const boardSpace = height - MOBILE_NAV_HEIGHT - 2 * MOBILE_ROW_GAP - MOBILE_LOWER_MIN_HEIGHT;
-    const cell = Math.min(
-        MOBILE_MAX_CELL_SIZE,
-        Math.floor((width - 89) / 10.6),
-        Math.floor((boardSpace - 44) / 9),
-    );
-    if (cell >= MOBILE_MIN_CELL_SIZE)
-        return { cellSize: cell, scale: 1, boardHeight: cell * 9 + 44 };
-    const fullHeight = MOBILE_MIN_CELL_SIZE * 9 + 44;
+    const widthCell = Math.min(MOBILE_MAX_CELL_SIZE, Math.floor((width - 89) / 10.6));
+    // 低い画面では、盤を縮める前に下の欄を棋譜の帯 1 行ぶんまで削る。
+    for (const lower of [MOBILE_LOWER_MIN_HEIGHT, MOBILE_LOWER_SHORT_HEIGHT]) {
+        const space = height - MOBILE_NAV_HEIGHT - 2 * MOBILE_ROW_GAP - lower;
+        for (let cell = widthCell; cell >= MOBILE_MIN_CELL_SIZE; cell--) {
+            const boardHeight = mobileBoardBlockHeight(cell);
+            if (boardHeight <= space) return { cellSize: cell, scale: 1, boardHeight };
+        }
+    }
+    const boardSpace = height - MOBILE_NAV_HEIGHT - 2 * MOBILE_ROW_GAP - MOBILE_LOWER_SHORT_HEIGHT;
+    const fullHeight = mobileBoardBlockHeight(MOBILE_MIN_CELL_SIZE);
     const scale = Math.max(
-        0,
+        MOBILE_MIN_SCALE,
         Math.min(1, boardSpace / fullHeight, width / (MOBILE_MIN_CELL_SIZE * 10.6 + 89)),
     );
     return { cellSize: MOBILE_MIN_CELL_SIZE, scale, boardHeight: fullHeight * scale };
@@ -884,6 +893,7 @@ export function StudyWorkspaceView({
             pvPreview !== null ||
             deleteTargetId !== null ||
             isSettingsOpen ||
+            isTitleDialogOpen ||
             isMoreMenuOpen,
         containerRef: boardSectionRef,
         enableWheelNavigation: displaySettings.enableWheelNavigation,
@@ -1567,11 +1577,7 @@ export function StudyWorkspaceView({
             <div
                 id="study-comment"
                 hidden={!showsComment}
-                // スマートフォンではグラフが画面の下寄りにあるので、上（盤の側）へ向けて開く。
-                className={cn(
-                    "absolute inset-x-0 z-20 rounded-xl shadow-lg",
-                    isMobile ? "bottom-0" : "top-0",
-                )}
+                className="absolute inset-x-0 top-0 z-20 rounded-xl shadow-lg"
             >
                 {commentBox}
             </div>
@@ -1746,7 +1752,8 @@ export function StudyWorkspaceView({
                 ref={rootRef}
                 className={cn(
                     "flex w-full max-w-[1320px] xl:max-w-[1600px] flex-col gap-2 self-center px-3 py-1.5 md:gap-3 md:px-4 md:py-3",
-                    isMobile && "overflow-hidden",
+                    // 下で切れた欄の中の絶対配置の要素（読み上げ用の見出しなど）も、ここで切る。
+                    isMobile && "relative overflow-hidden",
                     // 高さはいまの画面（dvh）に合わせ、帯が縮んでも画面の下に空きを残さない。盤の大きさは
                     // barsSlack を引いた高さから決めるので、帯の出入りで盤は変わらない。
                     isMobile &&
@@ -1844,12 +1851,14 @@ export function StudyWorkspaceView({
                 )}
 
                 {/* 編集できない間は、画面を残したまま操作だけを止める。 */}
+                {/* スマートフォンでは表示の切り替えと「その他の操作」を止めない（棋譜のコピーなど、
+                    編集できない間も中身を持ち出せるように）。止めるのは表示の場所だけ。 */}
                 <div
-                    inert={locked}
+                    inert={locked && !isMobile}
                     className={cn(
                         "flex flex-col gap-3",
                         isMobile && "min-h-0 flex-1",
-                        locked && "opacity-70",
+                        locked && !isMobile && "opacity-70",
                     )}
                 >
                     {isMobile ? (
@@ -1891,7 +1900,11 @@ export function StudyWorkspaceView({
                                 id="study-tabpanel"
                                 role="tabpanel"
                                 aria-labelledby={`study-tab-${mobileTab}`}
-                                className="flex min-h-0 flex-1 flex-col gap-1.5"
+                                inert={locked}
+                                className={cn(
+                                    "flex min-h-0 flex-1 flex-col gap-1.5",
+                                    locked && "opacity-70",
+                                )}
                             >
                                 {mobileBoard}
                                 {/* 局面の移動と、この局面へのコメント。どの表示でも盤のすぐ下の同じ位置に置く。
@@ -1910,7 +1923,20 @@ export function StudyWorkspaceView({
                                     <div
                                         id="study-comment"
                                         hidden={!showsComment}
-                                        className="absolute inset-x-0 top-full z-20 mt-1.5 rounded-xl shadow-lg"
+                                        // ページは縦に送れないので、欄が下の場所より高くなる（別の画面の変更との
+                                        // 突き合わせなど）ときは欄の中で送る。
+                                        className="absolute inset-x-0 top-full z-20 mt-1.5 overflow-y-auto overscroll-contain rounded-xl shadow-lg"
+                                        style={
+                                            mobilePanel === null || mobileBoardFit === null
+                                                ? undefined
+                                                : {
+                                                      maxHeight:
+                                                          mobilePanel.height -
+                                                          mobileBoardFit.boardHeight -
+                                                          MOBILE_NAV_HEIGHT -
+                                                          2 * MOBILE_ROW_GAP,
+                                                  }
+                                        }
                                     >
                                         {commentBox}
                                     </div>

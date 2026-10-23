@@ -29,8 +29,11 @@ export function OpenStudyButton({
 }: OpenStudyButtonProps): ReactElement {
     const { openStudy, isBusy, error } = useOpenStudy();
 
+    const compact = size === "compact";
     return (
-        <div className="flex flex-col gap-1">
+        // 小さいボタンは 1 行に並べて置くので、文言の差し替えやエラーで行の幅・高さを変えない
+        // （エラーは行の外に重ねて出す）。
+        <div className={cn("flex flex-col gap-1", compact && "relative")}>
             <button
                 type="button"
                 onClick={() => void openStudy(open)}
@@ -46,10 +49,30 @@ export function OpenStudyButton({
                     className,
                 )}
             >
-                {isBusy ? "準備中…" : label}
+                {compact ? (
+                    <span className="grid">
+                        <span className={cn("col-start-1 row-start-1", isBusy && "invisible")}>
+                            {label}
+                        </span>
+                        <span className={cn("col-start-1 row-start-1", !isBusy && "invisible")}>
+                            準備中…
+                        </span>
+                    </span>
+                ) : isBusy ? (
+                    "準備中…"
+                ) : (
+                    label
+                )}
             </button>
             {error && (
-                <p role="alert" className="text-xs text-destructive">
+                <p
+                    role="alert"
+                    className={cn(
+                        "text-xs text-destructive",
+                        compact &&
+                            "absolute top-full right-0 z-30 mt-1 w-max max-w-64 rounded-md border border-border bg-card px-2 py-1 shadow-md",
+                    )}
+                >
                     {error}
                 </p>
             )}

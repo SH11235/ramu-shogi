@@ -388,6 +388,9 @@ export function HandPiecesDisplay({
                                     disabled={isDisabled}
                                     className={cn(
                                         "relative rounded-lg border-2 transition-all",
+                                        // 縦の駒台では駒を行の中に置かず、行の高さの分の隙間を下に作らない
+                                        // （7 種類並べても盤の高さに収める）。
+                                        vertical && "flex",
                                         // タッチ選択・長押しメニュー防止
                                         "select-none [-webkit-touch-callout:none]",
                                         // 編集モード（ドラッグ可能）時はスクロールも防止

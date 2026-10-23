@@ -6,7 +6,7 @@ import {
     type RshogiGameBrowserSearch,
 } from "@shogi/ui/components/rshogi-csa-game-browser";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import type { ReactElement } from "react";
+import type { KeyboardEvent, ReactElement } from "react";
 import { useEffect, useState } from "react";
 import { AuthRequiredCard } from "../../components/AuthRequiredCard";
 import { HeaderNav } from "../../components/HeaderNav";
@@ -71,6 +71,31 @@ export default function NewStudyFromGamePage(): ReactElement {
         });
     };
 
+    const selectSource = (id: NewStudySource) => {
+        void navigate({
+            to: "/studies/new",
+            search: id === "games" ? { from: "games" } : {},
+            replace: true,
+        });
+        document.getElementById(`new-study-tab-${id}`)?.focus();
+    };
+    const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+        const index = SOURCES.findIndex((item) => item.id === source);
+        const next =
+            event.key === "ArrowRight"
+                ? (index + 1) % SOURCES.length
+                : event.key === "ArrowLeft"
+                  ? (index - 1 + SOURCES.length) % SOURCES.length
+                  : event.key === "Home"
+                    ? 0
+                    : event.key === "End"
+                      ? SOURCES.length - 1
+                      : -1;
+        if (next < 0) return;
+        event.preventDefault();
+        selectSource(SOURCES[next].id);
+    };
+
     return (
         <>
             <PageHeader
@@ -95,16 +120,14 @@ export default function NewStudyFromGamePage(): ReactElement {
                     {SOURCES.map((item) => (
                         <button
                             key={item.id}
+                            id={`new-study-tab-${item.id}`}
                             type="button"
                             role="tab"
                             aria-selected={source === item.id}
-                            onClick={() =>
-                                void navigate({
-                                    to: "/studies/new",
-                                    search: item.id === "games" ? { from: "games" } : {},
-                                    replace: true,
-                                })
-                            }
+                            aria-controls="new-study-tabpanel"
+                            tabIndex={source === item.id ? 0 : -1}
+                            onClick={() => selectSource(item.id)}
+                            onKeyDown={handleTabKeyDown}
                             className={cn(
                                 "h-10 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                 source === item.id
@@ -138,7 +161,13 @@ export default function NewStudyFromGamePage(): ReactElement {
                     </div>
                 )}
 
-                <div inert={isBusy} className={cn(isBusy && "opacity-60")}>
+                <div
+                    id="new-study-tabpanel"
+                    role="tabpanel"
+                    aria-labelledby={`new-study-tab-${source}`}
+                    inert={isBusy}
+                    className={cn(isBusy && "opacity-60")}
+                >
                     {source === "rshogi" ? (
                         <RshogiCsaGameBrowser
                             apiBaseUrl={rshogiApiBaseUrl}
