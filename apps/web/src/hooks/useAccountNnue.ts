@@ -24,7 +24,7 @@ function toAccountFile(file: NnueFileSummary): NnueAccountFile {
         sizeBytes: file.sizeBytes,
         sha256Hex: file.sha256Hex,
         createdAt: file.completedAt ?? file.createdAt,
-        completed: file.uploadStatus === "completed",
+        status: file.uploadStatus === "deleted" ? "failed" : file.uploadStatus,
     };
 }
 
@@ -53,11 +53,11 @@ async function uploadFile(file: File, onProgress: (percent: number) => void): Pr
     try {
         parts = await uploadParts(file, init, onProgress);
     } catch (error) {
-        // 途中で止まった記録をアカウントに残さない（同じファイルを保存し直せるように）。
-        await fetch(`/api/nnue/files/${init.file.id}`, {
-            method: "DELETE",
-            credentials: "same-origin",
-        }).catch(() => undefined);
+        // 途中の記録は削除できない（中断が先に要る）。中断して、同じファイルを保存し直せるようにする。
+        await fetch(
+            `/api/nnue/uploads/${init.file.id}/abort?uploadId=${encodeURIComponent(init.uploadId)}`,
+            { method: "POST", credentials: "same-origin" },
+        ).catch(() => undefined);
         throw error;
     }
 

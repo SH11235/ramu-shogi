@@ -46,6 +46,9 @@ type PendingAdd =
     | { kind: "path"; path: string }
     | { kind: "account"; file: NnueAccountFile };
 
+/** 端末とアカウントの両方にある AI を、どちらから消すか */
+type DeleteScope = "device" | "account" | "both";
+
 type PendingDelete =
     | { kind: "device"; meta: NnueMeta; accountFile: NnueAccountFile | null }
     | { kind: "account"; file: NnueAccountFile }
@@ -169,11 +172,12 @@ export function NnueLibrary({
     const accountFiles = account?.isAuthenticated ? account.files : [];
     // アップロードが済んでいないものは、アカウントにある扱いにしない（取り込めないため）。
     const accountFileOf = (meta: NnueMeta) =>
-        accountFiles.find((file) => file.completed && file.sha256Hex === meta.contentHashSha256) ??
-        null;
+        accountFiles.find(
+            (file) => file.status === "completed" && file.sha256Hex === meta.contentHashSha256,
+        ) ?? null;
     const accountOnlyFiles = accountFiles.filter(
         (file) =>
-            !file.completed ||
+            file.status !== "completed" ||
             !addedMetas.some((meta) => meta.contentHashSha256 === file.sha256Hex),
     );
     // 配布 AI と同じ中身のファイル。取り込むと配布 AI の設定を書き換えてしまうので、削除だけにする。
@@ -274,7 +278,7 @@ export function NnueLibrary({
         }
     };
 
-    const confirmDelete = async (alsoAccount: boolean) => {
+    const confirmDelete = async (scope: DeleteScope) => {
         const target = pendingDelete;
         setPendingDelete(null);
         if (!target) return;
@@ -291,9 +295,13 @@ export function NnueLibrary({
             } else if (target.kind === "account") {
                 await account?.remove(target.file.id);
             } else {
-                setBusyId(target.meta.id);
-                await deleteNnue(target.meta.id);
-                if (alsoAccount && target.accountFile) await account?.remove(target.accountFile.id);
+                if (scope !== "account") {
+                    setBusyId(target.meta.id);
+                    await deleteNnue(target.meta.id);
+                }
+                if (scope !== "device" && target.accountFile) {
+                    await account?.remove(target.accountFile.id);
+                }
             }
         } catch {
             // 失敗の内容は useNnueStorage / account の error に出る
@@ -458,16 +466,18 @@ export function NnueLibrary({
                                 details={[formatSize(file.sizeBytes)]}
                                 places={["アカウント"]}
                                 warning={
-                                    !file.completed
-                                        ? "アップロードが途中で止まっています。削除してから、もう一度保存してください"
-                                        : presetWithSameFile(file)
-                                          ? `配布 AI「${presetWithSameFile(file)?.displayName}」と同じファイルです`
-                                          : null
+                                    file.status === "pending"
+                                        ? "アップロードの途中です。終わらなかったものは、しばらくすると片付きます"
+                                        : file.status === "failed"
+                                          ? "アップロードが途中で止まりました。削除するか、もう一度保存してください"
+                                          : presetWithSameFile(file)
+                                            ? `配布 AI「${presetWithSameFile(file)?.displayName}」と同じファイルです`
+                                            : null
                                 }
                                 muted
                                 busyLabel={account?.busyKey === file.id ? "処理中..." : null}
                             >
-                                {file.completed && !presetWithSameFile(file) && (
+                                {file.status === "completed" && !presetWithSameFile(file) && (
                                     <Button
                                         size="sm"
                                         variant="outline"
@@ -477,15 +487,17 @@ export function NnueLibrary({
                                         {deviceLabel}で使う
                                     </Button>
                                 )}
-                                <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    disabled={isBusy}
-                                    aria-label={`「${file.originalFilename}」をアカウントから削除`}
-                                    onClick={() => setPendingDelete({ kind: "account", file })}
-                                >
-                                    削除
-                                </Button>
+                                {file.status !== "pending" && (
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        disabled={isBusy}
+                                        aria-label={`「${file.originalFilename}」をアカウントから削除`}
+                                        onClick={() => setPendingDelete({ kind: "account", file })}
+                                    >
+                                        削除
+                                    </Button>
+                                )}
                             </AddedRow>
                         ))}
                     </ul>
@@ -878,7 +890,7 @@ function DeleteDialog({
     target: PendingDelete;
     deviceLabel: string;
     onCancel: () => void;
-    onConfirm: (alsoAccount: boolean) => void;
+    onConfirm: (scope: DeleteScope) => void;
 }): ReactElement {
     const name =
         target.kind === "preset"
@@ -892,7 +904,7 @@ function DeleteDialog({
             : target.kind === "preset"
               ? `${deviceLabel}から削除します。使うときにまたダウンロードできます。`
               : target.accountFile
-                ? `${deviceLabel}から削除します。アカウントにも保存してあります。`
+                ? `${deviceLabel}とアカウントの両方に保存してあります。どちらから削除しますか？`
                 : `${deviceLabel}から削除します。元に戻すには、ファイルをもう一度追加してください。`;
     const hasAccountCopy = target.kind === "device" && target.accountFile !== null;
     return (
@@ -904,24 +916,29 @@ function DeleteDialog({
                 </AlertDialogHeader>
                 <AlertDialogFooter className="gap-2">
                     <AlertDialogCancel>やめる</AlertDialogCancel>
-                    {hasAccountCopy && (
+                    {hasAccountCopy ? (
+                        <>
+                            <AlertDialogAction onClick={() => onConfirm("account")}>
+                                アカウントだけ削除
+                            </AlertDialogAction>
+                            <AlertDialogAction onClick={() => onConfirm("device")}>
+                                {deviceLabel}だけ削除
+                            </AlertDialogAction>
+                            <AlertDialogAction
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                onClick={() => onConfirm("both")}
+                            >
+                                両方から削除
+                            </AlertDialogAction>
+                        </>
+                    ) : (
                         <AlertDialogAction
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            onClick={() => onConfirm(true)}
+                            onClick={() => onConfirm("device")}
                         >
-                            アカウントからも削除
+                            削除
                         </AlertDialogAction>
                     )}
-                    <AlertDialogAction
-                        className={
-                            hasAccountCopy
-                                ? undefined
-                                : "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        }
-                        onClick={() => onConfirm(false)}
-                    >
-                        {hasAccountCopy ? `${deviceLabel}だけ削除` : "削除"}
-                    </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>

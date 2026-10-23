@@ -5,8 +5,11 @@ export interface NnueAccountFile {
     sizeBytes: number;
     sha256Hex: string;
     createdAt: string;
-    /** アップロードが済んでいるか。途中で止まったものは削除だけできる */
-    completed: boolean;
+    /**
+     * アップロードの状態。pending（途中）は中断の手続きが要るため、この一覧からは消せない。
+     * failed は削除でき、同じファイルを保存し直すとサーバーが片付ける。
+     */
+    status: "completed" | "pending" | "failed";
 }
 
 /** ログインしたアカウントへの保存先。Web だけが渡す（Desktop はアカウントを持たない）。 */

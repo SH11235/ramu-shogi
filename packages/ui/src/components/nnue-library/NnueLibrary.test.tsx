@@ -70,7 +70,7 @@ const accountFile = (overrides: Partial<NnueAccountFile>): NnueAccountFile => ({
     sizeBytes: 2048,
     sha256Hex: "bbb",
     createdAt: "2026-01-01T00:00:00Z",
-    completed: true,
+    status: "completed",
     ...overrides,
 });
 
@@ -125,11 +125,27 @@ describe("NnueLibrary", () => {
     });
 
     it("アップロードが途中のファイルは取り込めず、削除だけできる", () => {
-        render(<NnueLibrary account={account([accountFile({ completed: false })])} />);
+        render(<NnueLibrary account={account([accountFile({ status: "failed" })])} />);
         expect(screen.queryByRole("button", { name: "このブラウザで使う" })).toBeNull();
         expect(
             screen.getByRole("button", { name: "「remote-net.bin」をアカウントから削除" }),
         ).toBeDefined();
+    });
+
+    it("アップロードの途中のファイルは、消せない（中断が要る）ので操作を出さない", () => {
+        render(<NnueLibrary account={account([accountFile({ status: "pending" })])} />);
+        expect(screen.queryByRole("button", { name: /remote-net\.bin/ })).toBeNull();
+        expect(screen.queryByRole("button", { name: "このブラウザで使う" })).toBeNull();
+    });
+
+    it("両方にある AI は、アカウントの分だけを消せる", async () => {
+        storage.nnueList = [meta({ contentHashSha256: "bbb" })];
+        const store = account([accountFile({ sha256Hex: "bbb" })]);
+        render(<NnueLibrary account={store} />);
+        fireEvent.click(screen.getByRole("button", { name: "「my-net」を削除" }));
+        fireEvent.click(screen.getByRole("button", { name: "アカウントだけ削除" }));
+        await waitFor(() => expect(store.remove).toHaveBeenCalledWith("remote-1"));
+        expect(storage.deleteNnue).not.toHaveBeenCalled();
     });
 
     it("配布 AI と同じ中身のアカウントのファイルも隠さない", () => {
