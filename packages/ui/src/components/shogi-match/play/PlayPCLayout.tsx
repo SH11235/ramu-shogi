@@ -206,6 +206,10 @@ export function PlayPCLayout({
                                 <PlayMoveList
                                     selectable={phase === "finished"}
                                     upToCurrent={phase !== "finished"}
+                                    showSearch={
+                                        sides.sente.role === "engine" ||
+                                        sides.gote.role === "engine"
+                                    }
                                     // 欄の下端を盤の列の下端に揃える。400px は、この一覧より上に積む欄（手番・ヒントなど）と
                                     // 一覧より下の分の高さ。終局後は、ヒントの代わりに出す結果の欄が約 45px 高いので引く
                                     // （それらの欄の高さを変えたら、この値も見直す）。

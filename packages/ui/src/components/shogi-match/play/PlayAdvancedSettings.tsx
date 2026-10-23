@@ -1,6 +1,6 @@
 /**
  * 対局画面の詳細設定。ふだんは触らないものをここに集める:
- * 時間を秒で指定、変則ルール、評価関数、盤の表示。
+ * 時間を秒で指定、先後別のスレッド数、変則ルール、評価関数、盤の表示。
  *
  * PC ではダイアログ、スマホでは下から出るシートの中に置く。ここで変えた内容は、設定の欄にもそのまま出る。
  */
@@ -15,6 +15,7 @@ import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import type { DisplaySettings } from "../types";
+import { formatSearchLimit } from "../utils/searchLimits";
 import { buildThreadOptions } from "../utils/threadOptions";
 import { PLAY_OUTLINE_BUTTON } from "./playStyles";
 import { usePlaySetup } from "./usePlaySetup";
@@ -66,6 +67,7 @@ export function PlayAdvancedSettings({
         isDevMode,
         engineThreads,
         onEngineThreadsChange,
+        engineSearchLimits,
         onOpenNnueManager,
         onOpenEngineManager,
     } = useMatchSettings();
@@ -111,6 +113,9 @@ export function PlayAdvancedSettings({
                 {(["sente", "gote"] as const).map((side) => {
                     const clock = timeSettings[side];
                     const isAi = sides[side].role === "engine";
+                    // ノード数・深さで読む AI は時計を使わない（時間を変えるときは、設定の欄で時間を選び直す）。
+                    const fixedSearch = isAi ? formatSearchLimit(engineSearchLimits[side]) : null;
+                    const inputsDisabled = settingsLocked || !clock.enabled || fixedSearch !== null;
                     return (
                         <fieldset key={side} className="flex min-w-0 flex-col gap-1.5">
                             <legend className="sr-only">{sideName(side)}の時間</legend>
@@ -119,6 +124,11 @@ export function PlayAdvancedSettings({
                                     {sideName(side)}
                                 </span>
                                 {/* AI は必ず考慮時間を持つ。人は時間無制限にできる。 */}
+                                {fixedSearch && (
+                                    <span className="text-xs text-wafuu-sumi-light">
+                                        {fixedSearch}まで読む（時間は使わない）
+                                    </span>
+                                )}
                                 {!isAi && (
                                     <label className="flex min-h-8 items-center gap-1.5 text-sm">
                                         <input
@@ -149,7 +159,7 @@ export function PlayAdvancedSettings({
                                         min={0}
                                         max={MAX_SECONDS}
                                         value={Math.floor(clock.mainMs / 1000)}
-                                        disabled={settingsLocked || !clock.enabled}
+                                        disabled={inputsDisabled}
                                         onChange={(event) =>
                                             setSeconds(side, "mainMs", event.target.value)
                                         }
@@ -165,7 +175,7 @@ export function PlayAdvancedSettings({
                                         min={0}
                                         max={MAX_SECONDS}
                                         value={Math.floor(clock.byoyomiMs / 1000)}
-                                        disabled={settingsLocked || !clock.enabled}
+                                        disabled={inputsDisabled}
                                         onChange={(event) =>
                                             setSeconds(side, "byoyomiMs", event.target.value)
                                         }
@@ -181,7 +191,7 @@ export function PlayAdvancedSettings({
                                         min={0}
                                         max={MAX_SECONDS}
                                         value={Math.floor(clock.incrementMs / 1000)}
-                                        disabled={settingsLocked || !clock.enabled}
+                                        disabled={inputsDisabled}
                                         onChange={(event) =>
                                             setSeconds(side, "incrementMs", event.target.value)
                                         }
@@ -194,6 +204,39 @@ export function PlayAdvancedSettings({
                     );
                 })}
             </Group>
+
+            {(sides.sente.role === "engine" || sides.gote.role === "engine") && (
+                <Group title="AI のスレッド数">
+                    {(["sente", "gote"] as const)
+                        .filter((side) => sides[side].role === "engine")
+                        .map((side) => (
+                            <label
+                                key={side}
+                                className="flex items-center justify-between gap-3 text-sm"
+                            >
+                                {side === "sente" ? "☗ 先手" : "☖ 後手"}
+                                <NativeSelect
+                                    value={String(engineThreads[side])}
+                                    disabled={settingsLocked}
+                                    onChange={(event) =>
+                                        onEngineThreadsChange({
+                                            ...engineThreads,
+                                            [side]: Number(event.target.value),
+                                        })
+                                    }
+                                    wrapperClassName="w-40"
+                                    className="min-h-10 text-sm"
+                                >
+                                    {buildThreadOptions().map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </NativeSelect>
+                            </label>
+                        ))}
+                </Group>
+            )}
 
             <Group title="ルール・評価関数">
                 <button
@@ -271,37 +314,7 @@ export function PlayAdvancedSettings({
                 ))}
             </Group>
 
-            {isDevMode && (
-                <Group title="開発者向け">
-                    {(["sente", "gote"] as const).map((side) => (
-                        <label
-                            key={side}
-                            className="flex items-center justify-between gap-3 text-sm"
-                        >
-                            {side === "sente" ? "☗ 先手" : "☖ 後手"}のスレッド数
-                            <NativeSelect
-                                value={String(engineThreads[side])}
-                                disabled={settingsLocked}
-                                onChange={(event) =>
-                                    onEngineThreadsChange({
-                                        ...engineThreads,
-                                        [side]: Number(event.target.value),
-                                    })
-                                }
-                                wrapperClassName="w-40"
-                                className="min-h-10 text-sm"
-                            >
-                                {buildThreadOptions().map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                        {option.label}
-                                    </option>
-                                ))}
-                            </NativeSelect>
-                        </label>
-                    ))}
-                    {devTools}
-                </Group>
-            )}
+            {isDevMode && devTools && <Group title="開発者向け">{devTools}</Group>}
 
             <PassRightsSettingsDialog
                 open={isPassRightsOpen}

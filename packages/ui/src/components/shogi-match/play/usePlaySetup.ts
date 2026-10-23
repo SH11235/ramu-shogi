@@ -10,7 +10,7 @@ import { NONE_NNUE_SELECTION } from "@shogi/app-core";
 import { SKILL_LEVEL_MAX } from "@shogi/engine-client";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import type { ClockSettings } from "../hooks/useClockManager";
-import type { SideSetting } from "../types";
+import type { EngineSearchLimit, SideSetting } from "../types";
 import { isSameClock } from "../utils/timeSettings";
 
 /** 対局の組み合わせ。 */
@@ -126,6 +126,10 @@ interface PlaySetup {
     opponentValue: string;
     opponent: OpponentOption | null;
     level: number;
+    /** AI の読む量（時計どおり・ノード数・深さ） */
+    aiSearchLimit: EngineSearchLimit;
+    /** AI のスレッド数（0 は自動）。AI 対 AI で先後が違えば null */
+    aiThreads: number | null;
     aiTimeId: string | null;
     myTimeId: string | null;
     /** いまの AI・自分の時間（選択肢に無い値を、そのまま見せる・直すのに使う） */
@@ -139,6 +143,10 @@ interface PlaySetup {
     chooseOpponent: (value: string) => void;
     chooseLevel: (level: number) => void;
     chooseAiTime: (choice: TimeChoice) => void;
+    /** AI の読む量をノード数・深さで決める（AI 対 AI では先後とも） */
+    chooseAiSearchLimit: (limit: EngineSearchLimit) => void;
+    /** AI のスレッド数（AI 対 AI では先後とも） */
+    chooseAiThreads: (threads: number) => void;
     chooseMyTime: (choice: TimeChoice) => void;
     /** 人 対 人の持ち時間（両者に同じ決まりを当てる）。両者が同じでなければ null */
     bothTimeId: string | null;
@@ -153,13 +161,15 @@ interface PlaySetup {
             option: OpponentOption | null;
             level: number;
             clock: ClockSettings[Player];
-            /** AI_MATCH_TIME_CHOICES のどれに当たるか。当たらなければ null */
+            searchLimit: EngineSearchLimit;
+            /** AI_MATCH_TIME_CHOICES のどれに当たるか。当たらなければ（ノード数・深さで読むときも）null */
             timeId: string | null;
         }
     >;
     chooseSideAi: (side: Player, value: string) => void;
     chooseSideLevel: (side: Player, level: number) => void;
     chooseSideTime: (side: Player, choice: TimeChoice) => void;
+    chooseSideSearchLimit: (side: Player, limit: EngineSearchLimit) => void;
 }
 
 export function usePlaySetup(): PlaySetup {
@@ -177,6 +187,10 @@ export function usePlaySetup(): PlaySetup {
         presets,
         internalEngineId,
         engineOptions,
+        engineThreads,
+        onEngineThreadsChange,
+        engineSearchLimits,
+        onEngineSearchLimitsChange,
     } = useMatchSettings();
 
     const senteIsHuman = sides.sente.role === "human";
@@ -257,15 +271,29 @@ export function usePlaySetup(): PlaySetup {
             option: opponentOptions.find((option) => option.value === value) ?? null,
             level: sides[side].skillLevel?.skillLevel ?? SKILL_LEVEL_MAX,
             clock: timeSettings[side],
+            searchLimit: engineSearchLimits[side],
             timeId:
-                AI_MATCH_TIME_CHOICES.find((choice) => matchesChoice(timeSettings[side], choice))
-                    ?.id ?? null,
+                engineSearchLimits[side].kind === "clock"
+                    ? (AI_MATCH_TIME_CHOICES.find((choice) =>
+                          matchesChoice(timeSettings[side], choice),
+                      )?.id ?? null)
+                    : null,
         };
     };
 
     const aiClock = timeSettings[aiSide];
     const myClock = timeSettings[mySide];
-    const aiTimeId = AI_TIME_CHOICES.find((choice) => matchesChoice(aiClock, choice))?.id ?? null;
+    const aiSearchLimit = engineSearchLimits[aiSide];
+    const aiTimeId =
+        aiSearchLimit.kind === "clock"
+            ? (AI_TIME_CHOICES.find((choice) => matchesChoice(aiClock, choice))?.id ?? null)
+            : null;
+    /** AI の読む量・スレッド数を、先後の両方（AI 対 AI）か AI の側だけに当てる。 */
+    const aiTargets: Player[] = kind === "ai-vs-ai" ? ["sente", "gote"] : [aiSide];
+    const withSides = <T>(current: Record<Player, T>, targets: Player[], value: T) => ({
+        ...current,
+        ...Object.fromEntries(targets.map((side) => [side, value])),
+    });
     const myTimeId = MY_TIME_CHOICES.find((choice) => matchesChoice(myClock, choice))?.id ?? null;
 
     /** 相手の種類（選択欄の値）から、AI の側に入れる設定と評価関数を作る。 */
@@ -331,6 +359,11 @@ export function usePlaySetup(): PlaySetup {
         const humanClock = kind === "vs-ai" ? myClock : { ...MY_TIME_CHOICES[0] };
         const engineClock = aiTime ?? (aiClock.enabled ? aiClock : { ...AI_TIME_CHOICES[1] });
         if (nextSelection) setSelection(other, nextSelection);
+        onEngineSearchLimitsChange({
+            ...engineSearchLimits,
+            [other]: aiTime ? { kind: "clock" } : aiSearchLimit,
+        });
+        onEngineThreadsChange({ ...engineThreads, [other]: engineThreads[aiSide] });
         onSidesChange({
             ...sides,
             [side]: { role: "human", engineId: undefined, skillLevel: undefined },
@@ -398,6 +431,8 @@ export function usePlaySetup(): PlaySetup {
         };
         setSelection("sente", aiSelection);
         setSelection("gote", aiSelection);
+        onEngineSearchLimitsChange({ sente: aiSearchLimit, gote: aiSearchLimit });
+        onEngineThreadsChange({ sente: engineThreads[aiSide], gote: engineThreads[aiSide] });
         onSidesChange({ sente: aiSetting, gote: aiSetting });
         onTimeSettingsChange({ sente: { ...clock }, gote: { ...clock } });
     };
@@ -420,6 +455,11 @@ export function usePlaySetup(): PlaySetup {
         });
     };
 
+    const resetToClockLimit = (targets: Player[]) => {
+        if (targets.every((side) => engineSearchLimits[side].kind === "clock")) return;
+        onEngineSearchLimitsChange(withSides(engineSearchLimits, targets, { kind: "clock" }));
+    };
+
     const applyClock = (side: Player, choice: TimeChoice) => {
         onTimeSettingsChange({
             ...timeSettings,
@@ -440,6 +480,11 @@ export function usePlaySetup(): PlaySetup {
         opponentValue,
         opponent,
         level: aiSetting.skillLevel?.skillLevel ?? SKILL_LEVEL_MAX,
+        aiSearchLimit,
+        aiThreads:
+            kind === "ai-vs-ai" && engineThreads.sente !== engineThreads.gote
+                ? null
+                : engineThreads[aiSide],
         aiTimeId,
         myTimeId,
         aiClock,
@@ -449,7 +494,14 @@ export function usePlaySetup(): PlaySetup {
         chooseSide,
         chooseOpponent,
         chooseLevel,
-        chooseAiTime: (choice) => applyClock(aiSide, choice),
+        chooseAiTime: (choice) => {
+            resetToClockLimit([aiSide]);
+            applyClock(aiSide, choice);
+        },
+        chooseAiSearchLimit: (limit) =>
+            onEngineSearchLimitsChange(withSides(engineSearchLimits, aiTargets, limit)),
+        chooseAiThreads: (threads) =>
+            onEngineThreadsChange(withSides(engineThreads, aiTargets, threads)),
         chooseMyTime: (choice) => {
             // AI の時間が自分と同じ（選択欄に「自分と同じ」と出ている）なら、自分の時間を変えたときに AI もそろえる。
             // 無制限は AI に当てられないので、そのときは AI を動かさない。
@@ -490,6 +542,11 @@ export function usePlaySetup(): PlaySetup {
         chooseSideAi,
         chooseSideLevel,
         // AI は時間を決めずには指せないので、常に時間制限ありにする。
-        chooseSideTime: (side, choice) => applyClock(side, { ...choice, enabled: true }),
+        chooseSideTime: (side, choice) => {
+            resetToClockLimit([side]);
+            applyClock(side, { ...choice, enabled: true });
+        },
+        chooseSideSearchLimit: (side, limit) =>
+            onEngineSearchLimitsChange({ ...engineSearchLimits, [side]: limit }),
     };
 }

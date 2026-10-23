@@ -16,6 +16,7 @@ export type {
     EngineControllerState,
     EngineErrorDetails,
     EngineOption,
+    EngineSearchLimit,
     EngineStatus,
     PassRightsSettings,
     SideSetting,

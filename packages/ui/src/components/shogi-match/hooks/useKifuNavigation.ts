@@ -863,8 +863,13 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
             const hasEval = node.eval != null;
             const hasElapsed = node.elapsedMs != null;
             const hasMultiPv = node.multiPvEvals != null && node.multiPvEvals.length > 0;
+            const stats = node.searchStats;
+            const engineSearch =
+                stats && (stats.depth !== undefined || stats.nodes !== undefined)
+                    ? { depth: stats.depth, nodes: stats.nodes }
+                    : undefined;
 
-            if (hasEval || hasElapsed || hasMultiPv) {
+            if (hasEval || hasElapsed || hasMultiPv || engineSearch) {
                 const normalizedEval = normalizeEvalToSentePerspective(
                     node.eval,
                     node.ply,
@@ -897,6 +902,7 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
                     elapsedMs: node.elapsedMs,
                     pv: node.eval?.pv,
                     multiPvEvals: normalizedMultiPvEvals,
+                    engineSearch,
                 });
             }
         }

@@ -19,14 +19,20 @@ export const ANALYSIS_TIME_OPTIONS: ThreadSelectOption[] = [
 
 const DEFAULT_MAX_OPTIONS = 32;
 
-export function buildThreadOptions(): ThreadSelectOption[] {
+/** `compact` は幅の狭い選択欄用（「自動（推奨: 4）」を「自動（4）」と書く）。 */
+export function buildThreadOptions(options?: { compact?: boolean }): ThreadSelectOption[] {
     const { detectedConcurrency, recommendedWorkers } = detectParallelism();
     const maxSelectable = Math.max(1, Math.min(detectedConcurrency, DEFAULT_MAX_OPTIONS));
-    const options: ThreadSelectOption[] = [
-        { value: 0, label: `自動（推奨: ${recommendedWorkers}）` },
+    const result: ThreadSelectOption[] = [
+        {
+            value: 0,
+            label: options?.compact
+                ? `自動（${recommendedWorkers}）`
+                : `自動（推奨: ${recommendedWorkers}）`,
+        },
     ];
     for (let i = 1; i <= maxSelectable; i += 1) {
-        options.push({ value: i, label: String(i) });
+        result.push({ value: i, label: String(i) });
     }
-    return options;
+    return result;
 }

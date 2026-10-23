@@ -13,6 +13,7 @@ import { PlayerIcon } from "../components/PlayerIcon";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
+import { formatSearchLimit } from "../utils/searchLimits";
 import { formatTime } from "../utils/timeFormat";
 import { formatTimeRule } from "../utils/timeSettings";
 
@@ -38,12 +39,14 @@ function usePlayerTime(owner: Player): { text: string; urgent: boolean } {
 /** 対局者の時間を言葉にする（「時間無制限」「1手10秒」「残り 09:32」「残り 7秒」）。 */
 function usePlayerTimeTextOnly(owner: Player): string {
     const { play } = useShogiMatchConfig();
-    const { timeSettings } = useMatchSettings();
+    const { timeSettings, engineSearchLimits } = useMatchSettings();
     const { sides, clocks } = useMatchState();
     const phase = play?.phase ?? "setup";
     const isAI = sides[owner].role === "engine";
     const rule = timeSettings[owner];
     const clock = clocks[owner];
+    const fixedSearch = isAI ? formatSearchLimit(engineSearchLimits[owner]) : null;
+    if (fixedSearch) return fixedSearch;
     if (!rule.enabled) return "時間無制限";
     if (phase !== "playing" && phase !== "paused") {
         // 対局の前後は、残り時間でなく決まり（持ち時間・秒読み）を出す。
