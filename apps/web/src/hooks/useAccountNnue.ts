@@ -4,7 +4,7 @@ import type {
     NnueFileSummary,
 } from "@shogi/api-contract";
 import type { NnueAccountFile, NnueAccountStore } from "@shogi/ui";
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { buildLoginHref, currentReturnPath } from "../lib/loginReturn";
 import { parseApiError, useAuthSession } from "./useAuthSession";
 
@@ -107,6 +107,14 @@ export function useAccountNnue(): NnueAccountStore {
     const { session, isLoadingSession } = useAuthSession();
     const isAuthenticated = session?.authenticated === true;
     const [files, setFiles] = useState<NnueAccountFile[]>([]);
+    // 一覧を変えるたびに進める。取得を始めた時点より後に変わっていたら、その取得結果は古いので捨てる
+    // （定期の取り直しが、あとから削除した行を戻さないように）。
+    const listVersionRef = useRef(0);
+    const applyFetchedFiles = async (): Promise<void> => {
+        const version = ++listVersionRef.current;
+        const fetched = await fetchAccountFiles();
+        if (version === listVersionRef.current) setFiles(fetched);
+    };
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -116,7 +124,7 @@ export function useAccountNnue(): NnueAccountStore {
         setIsLoading(true);
         setError(null);
         try {
-            setFiles(await fetchAccountFiles());
+            await applyFetchedFiles();
         } catch (nextError) {
             setError(messageOf(nextError, "アカウントの AI を読み込めませんでした"));
         } finally {
@@ -127,6 +135,7 @@ export function useAccountNnue(): NnueAccountStore {
     useEffect(() => {
         if (isLoadingSession) return;
         if (!isAuthenticated) {
+            listVersionRef.current++;
             setFiles([]);
             setError(null);
             return;
@@ -171,7 +180,7 @@ export function useAccountNnue(): NnueAccountStore {
                     await uploadFile(file, setUploadProgress, knownSha256Hex);
                 } finally {
                     // 失敗しても、途中で残った記録や完了していた分を一覧に映す。
-                    setFiles(await fetchAccountFiles().catch(() => files));
+                    await applyFetchedFiles().catch(() => undefined);
                 }
             }),
         download: (fileId) =>
@@ -189,6 +198,7 @@ export function useAccountNnue(): NnueAccountStore {
                     credentials: "same-origin",
                 });
                 if (!response.ok) throw new Error(await parseApiError(response));
+                listVersionRef.current++;
                 setFiles((current) => current.filter((file) => file.id !== fileId));
             }),
         clearError: () => setError(null),
