@@ -651,7 +651,7 @@ export function NnueLibrary({
                     target={pendingDelete}
                     deviceLabel={deviceLabel}
                     onCancel={() => setPendingDelete(null)}
-                    onConfirm={(alsoAccount) => void confirmDelete(alsoAccount)}
+                    onConfirm={(scope) => void confirmDelete(scope)}
                 />
             )}
         </section>

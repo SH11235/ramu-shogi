@@ -73,11 +73,11 @@ export function PlayMoveList({
         ];
     return (
         // 見出しも指し手と同じスクロールの中に置く。外に出すと、指し手の側だけスクロールバーの幅だけ
-        // 狭くなり、見出しと値の列がずれる。
+        // 狭くなり、見出しと値の列がずれる。上の余白は、前の手へ送ったときに見出しの下へ隠さないため。
         <div
             ref={listRef}
             className={cn(
-                "flex min-h-0 flex-col overflow-y-auto overscroll-contain [scrollbar-gutter:stable]",
+                "flex min-h-0 scroll-pt-7 flex-col overflow-y-auto overscroll-contain [scrollbar-gutter:stable]",
                 className,
             )}
         >
