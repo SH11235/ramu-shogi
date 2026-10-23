@@ -1,5 +1,6 @@
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
+import { useEffect, useState } from "react";
 import { useOpenStudy } from "../hooks/useOpenStudy";
 
 interface OpenStudyButtonProps {
@@ -16,6 +17,8 @@ interface OpenStudyButtonProps {
     className?: string;
 }
 
+const COMPACT_ERROR_MS = 6000;
+
 /**
  * 「研究ノートで開く」。棋譜を見ている画面（rshogi viewer、自分の対局、`/play`）に置く共通の入口。
  * 押すと研究ノートを用意して、その画面へ移る。
@@ -30,6 +33,14 @@ export function OpenStudyButton({
     const { openStudy, isBusy, error } = useOpenStudy();
 
     const compact = size === "compact";
+    // 小さいボタンのエラーは盤や移動のボタンに重なるので、しばらくしたら消す（押し直せばまた出る）。
+    const [compactErrorHidden, setCompactErrorHidden] = useState(false);
+    useEffect(() => {
+        setCompactErrorHidden(false);
+        if (!compact || !error) return;
+        const timer = setTimeout(() => setCompactErrorHidden(true), COMPACT_ERROR_MS);
+        return () => clearTimeout(timer);
+    }, [compact, error]);
     return (
         // 小さいボタンは 1 行に並べて置くので、文言の差し替えやエラーで行の幅・高さを変えない
         // （エラーは行の外に重ねて出す）。
@@ -51,10 +62,16 @@ export function OpenStudyButton({
             >
                 {compact ? (
                     <span className="grid">
-                        <span className={cn("col-start-1 row-start-1", isBusy && "invisible")}>
+                        <span
+                            className={cn("col-start-1 row-start-1", isBusy && "invisible")}
+                            aria-hidden={isBusy}
+                        >
                             {label}
                         </span>
-                        <span className={cn("col-start-1 row-start-1", !isBusy && "invisible")}>
+                        <span
+                            className={cn("col-start-1 row-start-1", !isBusy && "invisible")}
+                            aria-hidden={!isBusy}
+                        >
                             準備中…
                         </span>
                     </span>
@@ -64,13 +81,13 @@ export function OpenStudyButton({
                     label
                 )}
             </button>
-            {error && (
+            {error && !(compact && compactErrorHidden) && (
                 <p
                     role="alert"
                     className={cn(
                         "text-xs text-destructive",
                         compact &&
-                            "absolute top-full right-0 z-30 mt-1 w-max max-w-64 rounded-md border border-border bg-card px-2 py-1 shadow-md",
+                            "pointer-events-none absolute top-full right-0 z-30 mt-1 w-max max-w-64 rounded-md border border-border bg-card px-2 py-1 shadow-md",
                     )}
                 >
                     {error}
