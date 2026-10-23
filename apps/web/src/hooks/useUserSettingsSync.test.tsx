@@ -869,6 +869,76 @@ describe("useUserSettingsSync", () => {
         expect(readLocal()).toEqual({ theme: "dark" });
     });
 
+    it("設定画面を開く前の別タブ更新も編集開始値として使う", async () => {
+        const sync = renderHook(() => useUserSettingsSync());
+        await reply(0, { documents: [remote({ theme: "system" }, 7)] });
+        act(() => {
+            localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme: "light" }));
+            window.dispatchEvent(
+                new StorageEvent("storage", {
+                    key: DISPLAY_KEY,
+                    newValue: JSON.stringify({ theme: "light" }),
+                    storageArea: localStorage,
+                }),
+            );
+        });
+        const ui = renderHook(() => useLocalStorage(DISPLAY_KEY, { theme: "system" }));
+        expect(ui.result.current[0]).toEqual({ theme: "light" });
+        act(() => ui.result.current[1]({ theme: "dark" }));
+        await reply(1, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+        await reply(2, { document: remote({ theme: "light" }, 8) });
+        expectPut(3, { theme: "dark" }, 8);
+        expect(sync.result.current.syncError).toBeNull();
+    });
+
+    it("native storageの受信では別利用者の所属を移さず自動送信しない", async () => {
+        const sync = renderHook(() => useUserSettingsSync());
+        await reply(0, { documents: [remote({ theme: "system" }, 7)] });
+        const ownerKey = `shogi-user-settings-owner:${DISPLAY_KEY}`;
+        const owner = JSON.stringify({
+            userId: "user-2",
+            value: JSON.stringify({ theme: "light" }),
+        });
+        act(() => {
+            localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme: "light" }));
+            localStorage.setItem(ownerKey, owner);
+            window.dispatchEvent(
+                new StorageEvent("storage", { key: DISPLAY_KEY, storageArea: localStorage }),
+            );
+        });
+        expect(localStorage.getItem(ownerKey)).toBe(owner);
+        expect(requests).toHaveLength(1);
+        auth = { ...auth, session: { authenticated: true, user: { id: "user-1" } } };
+        sync.rerender();
+        await reply(1, { documents: [] });
+        expect(requests).toHaveLength(2);
+        expect(localStorage.getItem(ownerKey)).toBe(owner);
+    });
+
+    it("PUT応答待ちに受信した別タブの値を、保存成功後の編集開始値にする", async () => {
+        renderHook(() => useUserSettingsSync());
+        const ui = renderHook(() => useLocalStorage(DISPLAY_KEY, { theme: "system" }));
+        await reply(0, { documents: [remote({ theme: "system" }, 7)] });
+        act(() => ui.result.current[1]({ theme: "light" }));
+        act(() => {
+            localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme: "dark" }));
+            window.dispatchEvent(
+                new StorageEvent("storage", {
+                    key: DISPLAY_KEY,
+                    newValue: JSON.stringify({ theme: "dark" }),
+                    storageArea: localStorage,
+                }),
+            );
+        });
+        expect(ui.result.current[0]).toEqual({ theme: "dark" });
+        await reply(1, { document: remote({ theme: "light" }, 8) });
+        act(() => ui.result.current[1]({ theme: "light" }));
+        expectPut(2, { theme: "light" }, 8);
+        await reply(2, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+        await reply(3, { document: remote({ theme: "dark" }, 9) });
+        expectPut(4, { theme: "light" }, 9);
+    });
+
     it("再取得中の追加編集も元の編集開始値と照合し、最新の編集だけを再送する", async () => {
         renderHook(() => useUserSettingsSync());
         await reply(0, { documents: [remote({ theme: "system" }, 7)] });

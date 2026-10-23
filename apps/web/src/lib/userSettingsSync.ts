@@ -161,6 +161,7 @@ export function createUserSettingsSync(
     pause: () => void;
     reset: () => void;
     localChanged: (storageKey: string, source?: LocalStorageChangeSource) => void;
+    storageChanged: (storageKey: string | null) => void;
 } {
     let user: UserState | null = null;
     let generation: Generation | null = null;
@@ -257,6 +258,7 @@ export function createUserSettingsSync(
             document.dirty = false;
             document.editBase = undefined;
             document.failure = null;
+            document.localValue = readLocalDocument(document.storageKey);
         }
     }
 
@@ -307,6 +309,8 @@ export function createUserSettingsSync(
                 }
                 if (
                     document.localValue === document.remoteValue &&
+                    (document.editBase === undefined ||
+                        document.editBase === document.remoteValue) &&
                     !hasUnconfirmedChange(document)
                 ) {
                     document.dirty = false;
@@ -511,5 +515,18 @@ export function createUserSettingsSync(
         }
     }
 
-    return { start, pause, reset, localChanged };
+    function storageChanged(storageKey: string | null): void {
+        for (const document of user?.documents ?? []) {
+            if (storageKey !== null && document.storageKey !== storageKey) continue;
+            if (document.dirty) continue;
+            try {
+                // 別タブからの値は比較にだけ使い、受信側の利用者へ所属を移さない。
+                document.localValue = readLocalDocument(document.storageKey);
+            } catch (error) {
+                if (generation) fail(generation, document, error);
+            }
+        }
+    }
+
+    return { start, pause, reset, localChanged, storageChanged };
 }

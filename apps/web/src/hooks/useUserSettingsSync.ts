@@ -18,9 +18,14 @@ export function useUserSettingsSync(): { syncError: string | null; retrySync: ()
             const detail = (event as CustomEvent<LocalStorageSyncDetail>).detail;
             if (detail?.key) sync.localChanged(detail.key, detail.source);
         };
+        const handleStorage = (event: StorageEvent): void => {
+            if (event.storageArea === window.localStorage) sync.storageChanged(event.key);
+        };
         window.addEventListener(LOCAL_STORAGE_SYNC_EVENT, handleLocalStorageSync);
+        window.addEventListener("storage", handleStorage);
         return () => {
             window.removeEventListener(LOCAL_STORAGE_SYNC_EVENT, handleLocalStorageSync);
+            window.removeEventListener("storage", handleStorage);
         };
     }, [sync]);
 
