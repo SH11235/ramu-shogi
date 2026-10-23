@@ -966,6 +966,48 @@ describe("useUserSettingsSync", () => {
         expectPut(4, { theme: "light" }, 9);
     });
 
+    it("古い競合GETと同じ値への再選択を保存済みにしない", async () => {
+        const sync = renderHook(() => useUserSettingsSync());
+        await reply(0, { documents: [remote({ theme: "system" }, 7)] });
+        changeLocal({ theme: "light" });
+        await reply(1, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+        act(() => {
+            localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme: "dark" }));
+            window.dispatchEvent(
+                new StorageEvent("storage", { key: DISPLAY_KEY, storageArea: localStorage }),
+            );
+        });
+        changeLocal({ theme: "light" });
+        await reply(2, { document: remote({ theme: "light" }, 8) });
+        expect(sync.result.current.syncError).toContain("更新が競合");
+        expect(readLocal()).toEqual({ theme: "light" });
+    });
+
+    it.each([
+        "light",
+        "custom",
+    ])("再初期化GETで古い送信を確認しても%sへの新しい編集基準を保つ", async (theme) => {
+        const sync = renderHook(() => useUserSettingsSync());
+        await reply(0, { documents: [remote({ theme: "system" }, 7)] });
+        changeLocal({ theme: "light" });
+        auth = { ...auth, session: { authenticated: true, user: { id: "user-1" } } };
+        sync.rerender();
+        act(() => {
+            localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme: "dark" }));
+            window.dispatchEvent(
+                new StorageEvent("storage", { key: DISPLAY_KEY, storageArea: localStorage }),
+            );
+        });
+        changeLocal({ theme });
+        await reply(2, { documents: [remote({ theme: "light" }, 8)] });
+        expectPut(3, { theme }, 8);
+        await reply(3, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+        await reply(4, { document: remote({ theme: "dark" }, 9) });
+        expectPut(5, { theme }, 9);
+        await reply(5, { document: remote({ theme }, 10) });
+        expect(sync.result.current.syncError).toBeNull();
+    });
+
     it("再取得中の追加編集も元の編集開始値と照合し、最新の編集だけを再送する", async () => {
         renderHook(() => useUserSettingsSync());
         await reply(0, { documents: [remote({ theme: "system" }, 7)] });

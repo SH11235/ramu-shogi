@@ -56,7 +56,7 @@ interface DocumentState {
     version: number | null | undefined;
     dirty: boolean;
     failure: "conflict" | "request" | null;
-    unconfirmedWrites: { value: string; version: number }[];
+    unconfirmedWrites: { value: string; version: number; editBaseRevision: number }[];
 }
 
 interface UserState {
@@ -288,6 +288,7 @@ export function createUserSettingsSync(
         canRetry: boolean,
     ): Promise<boolean> {
         const hadUnconfirmedWrites = document.unconfirmedWrites.length > 0;
+        const editBaseRevision = document.editBaseRevision;
         const payload = await request<GetUserSettingsResponse>(
             candidate,
             `/api/user/settings/${document.documentKey}`,
@@ -300,7 +301,7 @@ export function createUserSettingsSync(
             document.editBase !== undefined &&
             document.editBase ===
                 (payload.document ? JSON.stringify(payload.document.value) : null);
-        acceptRemote(document, payload.document);
+        acceptRemote(document, payload.document, document.editBaseRevision === editBaseRevision);
         // 編集開始時に表示した値と一致する場合だけ、既知の更新として一度再送する。
         if (document.dirty && canRebase) return true;
         if (document.dirty) document.failure = "conflict";
@@ -338,7 +339,7 @@ export function createUserSettingsSync(
                 }
                 const value = document.localValue;
                 const editBaseRevision = document.editBaseRevision;
-                attempt = { value, version: (document.version ?? 0) + 1 };
+                attempt = { value, version: (document.version ?? 0) + 1, editBaseRevision };
                 document.unconfirmedWrites.push(attempt);
                 const payload = await request<PutUserSettingsResponse>(
                     candidate,
@@ -382,6 +383,9 @@ export function createUserSettingsSync(
 
     async function initialize(candidate: Generation): Promise<void> {
         try {
+            const editBaseRevisions = new Map(
+                candidate.user.documents.map((document) => [document, document.editBaseRevision]),
+            );
             const payload = await request<ListUserSettingsResponse>(
                 candidate,
                 "/api/user/settings",
@@ -397,7 +401,7 @@ export function createUserSettingsSync(
                 const remote = remoteDocuments.get(document.documentKey) ?? null;
                 const remoteVersion = remote?.version ?? null;
                 const remoteValue = remote ? JSON.stringify(remote.value) : null;
-                const ownWrite = document.unconfirmedWrites.some(
+                const ownWrite = document.unconfirmedWrites.find(
                     (write) => write.version === remoteVersion && write.value === remoteValue,
                 );
                 if (document.dirty) {
@@ -410,8 +414,12 @@ export function createUserSettingsSync(
                     } else if (document.failure === "request") {
                         document.failure = null;
                     }
-                    acceptRemote(document, remote);
-                    if (ownWrite && document.dirty) document.editBase = document.remoteValue;
+                    const sameEditBase =
+                        document.editBaseRevision === editBaseRevisions.get(document) &&
+                        (!ownWrite || ownWrite.editBaseRevision === document.editBaseRevision);
+                    acceptRemote(document, remote, sameEditBase);
+                    if (ownWrite && document.dirty && sameEditBase)
+                        document.editBase = document.remoteValue;
                 } else {
                     acceptRemote(document, remote);
                     if (remote) {
