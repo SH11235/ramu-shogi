@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { useState } from "react";
 import { Button } from "../button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../dialog";
 import { NnueLibrary } from "./NnueLibrary";
@@ -36,8 +37,14 @@ export function NnueLibraryDialog({
     isMatchActive = false,
     ...libraryProps
 }: NnueLibraryDialogProps): ReactElement {
+    // 閉じると中身ごと作り直され、続いている処理の進み具合が見えなくなるので、処理中は閉じさせない。
+    const [isBusy, setIsBusy] = useState(false);
+    const handleOpenChange = (next: boolean) => {
+        if (!next && isBusy) return;
+        onOpenChange(next);
+    };
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
+        <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogContent className="flex max-h-[90dvh] w-[min(760px,calc(100%-24px))] flex-col">
                 <DialogHeader>
                     <DialogTitle>AI（評価関数）</DialogTitle>
@@ -61,10 +68,20 @@ export function NnueLibraryDialog({
                     <NnueLibrary
                         {...libraryProps}
                         lockedReason={isMatchActive ? "対局中は変更できません" : undefined}
+                        onBusyChange={setIsBusy}
                     />
                 </div>
-                <DialogFooter>
-                    <Button variant="secondary" onClick={() => onOpenChange(false)}>
+                <DialogFooter className="items-center gap-3">
+                    {isBusy && (
+                        <span className="text-xs text-muted-foreground">
+                            処理が終わると閉じられます
+                        </span>
+                    )}
+                    <Button
+                        variant="secondary"
+                        disabled={isBusy}
+                        onClick={() => handleOpenChange(false)}
+                    >
                         閉じる
                     </Button>
                 </DialogFooter>

@@ -1,0 +1,192 @@
+import type { NnueMeta, PresetWithStatus } from "@shogi/app-core";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NnueLibrary } from "./NnueLibrary";
+import type { NnueAccountFile, NnueAccountStore } from "./types";
+
+const storage = {
+    nnueList: [] as NnueMeta[],
+    deleteNnue: vi.fn(async () => {}),
+    loadData: vi.fn(async () => new Uint8Array([1, 2, 3])) as
+        | ((id: string) => Promise<Uint8Array>)
+        | null,
+};
+const presetState = {
+    presets: [] as PresetWithStatus[],
+    isLoading: false,
+    refresh: vi.fn(async () => {}),
+};
+
+vi.mock("../../hooks/useNnueStorage", () => ({
+    useNnueStorage: () => ({
+        nnueList: storage.nnueList,
+        error: null,
+        importFromFile: vi.fn(),
+        importFromBlob: vi.fn(),
+        importFromPath: vi.fn(),
+        deleteNnue: storage.deleteNnue,
+        updateDisplayName: vi.fn(),
+        updateFvScale: vi.fn(),
+        updateLayerStacks: vi.fn(),
+        clearError: vi.fn(),
+        refreshList: vi.fn(async () => {}),
+        storageUsage: null,
+        capabilities: { supportsFileImport: true, supportsPathImport: false, supportsLoad: true },
+        loadData: storage.loadData,
+    }),
+}));
+vi.mock("../../hooks/usePresetManager", () => ({
+    usePresetManager: () => ({
+        presets: presetState.presets,
+        isLoading: presetState.isLoading,
+        downloadingKey: null,
+        downloadProgress: null,
+        error: null,
+        download: vi.fn(),
+        clearError: vi.fn(),
+        refresh: presetState.refresh,
+        isConfigured: true,
+    }),
+}));
+
+const meta = (overrides: Partial<NnueMeta>): NnueMeta => ({
+    id: "local-1",
+    displayName: "my-net",
+    originalFileName: "my-net.bin",
+    size: 1024 * 1024,
+    contentHashSha256: "aaa",
+    source: "user-uploaded",
+    createdAt: 0,
+    verified: false,
+    fvScale: 16,
+    ...overrides,
+});
+
+const accountFile = (overrides: Partial<NnueAccountFile>): NnueAccountFile => ({
+    id: "remote-1",
+    originalFilename: "remote-net.bin",
+    sizeBytes: 2048,
+    sha256Hex: "bbb",
+    createdAt: "2026-01-01T00:00:00Z",
+    completed: true,
+    ...overrides,
+});
+
+const account = (files: NnueAccountFile[]): NnueAccountStore => ({
+    isAuthenticated: true,
+    isLoading: false,
+    files,
+    error: null,
+    busyKey: null,
+    uploadProgress: null,
+    loginHref: "/auth",
+    upload: vi.fn(async () => {}),
+    download: vi.fn(async () => new Blob()),
+    remove: vi.fn(async () => {}),
+    clearError: vi.fn(),
+});
+
+const preset = (overrides: Partial<PresetWithStatus>): PresetWithStatus => ({
+    config: {
+        presetKey: "coco",
+        displayName: "COCO",
+        description: "",
+        url: "https://example.invalid/coco.bin",
+        size: 1,
+        sha256: "ccc",
+        license: "MIT",
+        releasedAt: "2026-01-01",
+        recommendedFvScale: 14,
+    },
+    status: "latest",
+    localMetas: [],
+    ...overrides,
+});
+
+beforeEach(() => {
+    storage.nnueList = [];
+    storage.loadData = vi.fn(async () => new Uint8Array([1, 2, 3]));
+    presetState.presets = [];
+    presetState.isLoading = false;
+    vi.clearAllMocks();
+});
+afterEach(cleanup);
+
+describe("NnueLibrary", () => {
+    it("ブラウザとアカウントの両方にある AI は 1 行にまとめ、保存先を両方示す", () => {
+        storage.nnueList = [meta({ contentHashSha256: "bbb" })];
+        render(<NnueLibrary account={account([accountFile({ sha256Hex: "bbb" })])} />);
+        expect(screen.getAllByRole("listitem")).toHaveLength(1);
+        expect(screen.getByText("保存先: このブラウザ・アカウント")).toBeDefined();
+        expect(screen.queryByRole("button", { name: "アカウントに保存" })).toBeNull();
+    });
+
+    it("アップロードが途中のファイルは取り込めず、削除だけできる", () => {
+        render(<NnueLibrary account={account([accountFile({ completed: false })])} />);
+        expect(screen.queryByRole("button", { name: "このブラウザで使う" })).toBeNull();
+        expect(
+            screen.getByRole("button", { name: "「remote-net.bin」をアカウントから削除" }),
+        ).toBeDefined();
+    });
+
+    it("配布 AI と同じ中身のアカウントのファイルも隠さない", () => {
+        storage.nnueList = [
+            meta({ source: "preset", presetKey: "coco", contentHashSha256: "ccc" }),
+        ];
+        presetState.presets = [preset({ localMetas: storage.nnueList })];
+        render(<NnueLibrary account={account([accountFile({ sha256Hex: "ccc" })])} />);
+        expect(screen.getByText("remote-net")).toBeDefined();
+    });
+
+    it("配布一覧に無い配布 AI は追加した AI として並べ、消せるようにする", () => {
+        storage.nnueList = [meta({ source: "preset", presetKey: "old", displayName: "OLD" })];
+        render(<NnueLibrary />);
+        expect(screen.getByRole("button", { name: "「OLD」を削除" })).toBeDefined();
+    });
+
+    it("更新のある配布 AI も、旧版を消せる。消したら配布 AI の状態を取り直す", async () => {
+        const local = meta({ id: "old-coco", source: "preset", presetKey: "coco" });
+        storage.nnueList = [local];
+        presetState.presets = [preset({ status: "update-available", localMetas: [local] })];
+        render(<NnueLibrary />);
+        fireEvent.click(screen.getByRole("button", { name: "「COCO」を削除" }));
+        fireEvent.click(screen.getByRole("button", { name: "削除" }));
+        await waitFor(() => expect(presetState.refresh).toHaveBeenCalled());
+        expect(storage.deleteNnue).toHaveBeenCalledWith("old-coco");
+    });
+
+    it("対局中は設定と削除を止める", () => {
+        storage.nnueList = [meta({})];
+        render(<NnueLibrary lockedReason="対局中は変更できません" />);
+        const settings = screen.getByRole("button", { name: "「my-net」の設定" });
+        const remove = screen.getByRole("button", { name: "「my-net」を削除" });
+        expect((settings as HTMLButtonElement).disabled).toBe(true);
+        expect((remove as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it("アカウントへの保存は読み出し中から二重に押せず、読み出せなければ知らせる", async () => {
+        storage.nnueList = [meta({})];
+        let finishRead: (value: Uint8Array) => void = () => {};
+        storage.loadData = vi.fn(
+            () =>
+                new Promise<Uint8Array>((resolve) => {
+                    finishRead = resolve;
+                }),
+        );
+        const store = account([]);
+        render(<NnueLibrary account={store} />);
+        const upload = screen.getByRole("button", { name: "アカウントに保存" });
+        fireEvent.click(upload);
+        await waitFor(() => expect((upload as HTMLButtonElement).disabled).toBe(true));
+        finishRead(new Uint8Array([1]));
+        await waitFor(() => expect(store.upload).toHaveBeenCalledTimes(1));
+
+        storage.loadData = vi.fn(async () => {
+            throw new Error("read failed");
+        });
+        cleanup();
+        render(<NnueLibrary account={account([])} />);
+        fireEvent.click(screen.getByRole("button", { name: "アカウントに保存" }));
+        expect(await screen.findByText("「my-net」を読み出せませんでした。")).toBeDefined();
+    });
+});

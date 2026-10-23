@@ -7,7 +7,7 @@ import type {
 } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { DragEvent, ReactElement, ReactNode } from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNnueStorage } from "../../hooks/useNnueStorage";
 import { usePresetManager } from "../../hooks/usePresetManager";
 import {
@@ -35,6 +35,8 @@ interface NnueLibraryProps {
     account?: NnueAccountStore;
     /** Desktop 用: ファイル選択ダイアログでパスを得る */
     onRequestFilePath?: () => Promise<string | null>;
+    /** 処理中（ダウンロード・追加・削除・アップロード）かどうかが変わったとき */
+    onBusyChange?: (busy: boolean) => void;
     /** この端末の AI を変えられない理由（対局中など）。指定時は設定と削除を止める */
     lockedReason?: string;
 }
@@ -97,6 +99,7 @@ export function NnueLibrary({
     account,
     onRequestFilePath,
     lockedReason,
+    onBusyChange,
 }: NnueLibraryProps): ReactElement {
     const {
         nnueList,
@@ -149,7 +152,17 @@ export function NnueLibrary({
     const canAdd = canPickPath || canPickFile;
     const isBusy = busyId !== null || downloadingKey !== null || account?.busyKey != null;
 
-    const addedMetas = nnueList.filter((meta) => meta.source !== "preset");
+    useEffect(() => {
+        onBusyChange?.(isBusy);
+    }, [isBusy, onBusyChange]);
+
+    // 配布一覧に無くなった（配布終了・manifest の取得失敗）配布 AI も、消せるように追加した AI と並べる。
+    const addedMetas = nnueList.filter(
+        (meta) =>
+            meta.source !== "preset" ||
+            (!isPresetsLoading &&
+                !presets.some((preset) => preset.config.presetKey === meta.presetKey)),
+    );
     const accountFiles = account?.isAuthenticated ? account.files : [];
     // アップロードが済んでいないものは、アカウントにある扱いにしない（取り込めないため）。
     const accountFileOf = (meta: NnueMeta) =>
@@ -157,7 +170,8 @@ export function NnueLibrary({
         null;
     const accountOnlyFiles = accountFiles.filter(
         (file) =>
-            !file.completed || !nnueList.some((meta) => meta.contentHashSha256 === file.sha256Hex),
+            !file.completed ||
+            !addedMetas.some((meta) => meta.contentHashSha256 === file.sha256Hex),
     );
     const totalSize = nnueList.reduce((sum, meta) => sum + meta.size, 0);
 
@@ -390,21 +404,25 @@ export function NnueLibrary({
                                               : null
                                     }
                                 >
-                                    {account?.isAuthenticated && !accountFile && loadData && (
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            disabled={isBusy}
-                                            onClick={() => void uploadToAccount(meta)}
-                                        >
-                                            アカウントに保存
-                                        </Button>
-                                    )}
+                                    {account?.isAuthenticated &&
+                                        meta.source !== "preset" &&
+                                        !accountFile &&
+                                        loadData && (
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                disabled={isBusy}
+                                                onClick={() => void uploadToAccount(meta)}
+                                            >
+                                                アカウントに保存
+                                            </Button>
+                                        )}
                                     <Button
                                         size="sm"
                                         variant={needsModelSettings(meta) ? "default" : "outline"}
                                         disabled={isBusy || Boolean(lockedReason)}
                                         title={lockedReason}
+                                        aria-label={`「${meta.displayName}」の設定`}
                                         onClick={() => setEditingMeta(meta)}
                                     >
                                         設定
@@ -414,6 +432,7 @@ export function NnueLibrary({
                                         variant="ghost"
                                         disabled={isBusy || Boolean(lockedReason)}
                                         title={lockedReason}
+                                        aria-label={`「${meta.displayName}」を削除`}
                                         onClick={() =>
                                             setPendingDelete({ kind: "device", meta, accountFile })
                                         }
@@ -451,6 +470,7 @@ export function NnueLibrary({
                                     size="sm"
                                     variant="ghost"
                                     disabled={isBusy}
+                                    aria-label={`「${file.originalFilename}」をアカウントから削除`}
                                     onClick={() => setPendingDelete({ kind: "account", file })}
                                 >
                                     削除
@@ -706,25 +726,31 @@ function PresetRow({
                                 : "確認して保存中..."}
                         </span>
                     </div>
-                ) : status === "latest" ? (
-                    <>
-                        <span className="text-xs text-status-success">
-                            {isDeleting ? "削除中..." : `${deviceLabel}にあります`}
-                        </span>
-                        <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={disabled || Boolean(lockedReason)}
-                            title={lockedReason}
-                            onClick={onDelete}
-                        >
-                            削除
-                        </Button>
-                    </>
                 ) : (
-                    <Button size="sm" disabled={disabled} onClick={onDownload}>
-                        {status === "update-available" ? "更新" : "ダウンロード"}
-                    </Button>
+                    <>
+                        {status === "latest" ? (
+                            <span className="text-xs text-status-success">
+                                {isDeleting ? "削除中..." : `${deviceLabel}にあります`}
+                            </span>
+                        ) : (
+                            <Button size="sm" disabled={disabled} onClick={onDownload}>
+                                {status === "update-available" ? "更新" : "ダウンロード"}
+                            </Button>
+                        )}
+                        {/* 旧版だけが残っている（更新できない）ときも消せるようにする */}
+                        {preset.localMetas.length > 0 && (
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={disabled || Boolean(lockedReason)}
+                                title={lockedReason}
+                                aria-label={`「${config.displayName}」を削除`}
+                                onClick={onDelete}
+                            >
+                                削除
+                            </Button>
+                        )}
+                    </>
                 )}
             </div>
         </li>
