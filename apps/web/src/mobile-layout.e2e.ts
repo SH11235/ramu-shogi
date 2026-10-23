@@ -60,10 +60,10 @@ test("持ち時間の「指定」は時間だけを聞き、決めた時間が�
     await myTime.getByRole("button", { name: "指定", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "あなたの持ち時間を指定" });
     await dialog.getByLabel("持ち時間").fill("5");
-    await dialog.getByLabel("＋ 1手").fill("20");
+    await dialog.getByLabel("秒読み").fill("20");
     await dialog.getByRole("button", { name: "この時間にする" }).click();
     await expect(dialog).toBeHidden();
-    await expect(myTime.getByRole("button", { name: "5分+20秒" })).toHaveAttribute(
+    await expect(myTime.getByRole("button", { name: "5分 秒読み20秒" })).toHaveAttribute(
         "aria-pressed",
         "true",
     );
@@ -121,7 +121,7 @@ test("対局 → 投了 → 結果 → もう一局まで、盤が動かず操�
     await page.goto("/play");
     await page.getByRole("button", { name: /対局開始$/ }).waitFor();
     await page.getByLabel("相手", { exact: true }).selectOption("material");
-    await page.getByRole("button", { name: "1秒", exact: true }).click();
+    await page.getByLabel("AI の考慮時間", { exact: true }).selectOption("1");
     await page.getByRole("button", { name: "対局開始", exact: true }).click();
 
     // 対局中: 盤と操作が 1 画面に収まり、縦にも横にもはみ出さない。
@@ -157,7 +157,8 @@ for (const [path, settled] of [
     ["/online/create", "部屋を作成する"],
     ["/book-viewer", "定跡ファイルを選ぶ"],
     ["/studies", "研究ノートにする"],
-    ["/privacy", "9. ポリシーの変更"],
+    // 節の番号は改訂で変わるので、見出しの言葉だけで待つ。
+    ["/privacy", /^\d+\. ポリシーの変更$/],
 ] as const) {
     test(`320px 幅で横にはみ出さない ${path}`, async ({ page }) => {
         await page.setViewportSize({ width: 320, height: 568 });

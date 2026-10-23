@@ -7,6 +7,7 @@ import {
 import { NnueProvider } from "@shogi/ui/providers/NnueContext";
 import { Outlet } from "@tanstack/react-router";
 import type { ReactElement } from "react";
+import { StatusBanner } from "./components/StatusBanner";
 import { AuthSessionProvider } from "./hooks/useAuthSession";
 import { useStudySessionSync } from "./hooks/useStudySessionSync";
 import { useUserSettingsSync } from "./hooks/useUserSettingsSync";
@@ -20,11 +21,27 @@ const validateNnueHeader = async (header: Uint8Array, fileSize: number) => ({
 });
 
 function AppProvidersInner(): ReactElement {
-    useUserSettingsSync();
+    const { syncError, retrySync } = useUserSettingsSync();
     useStudySessionSync();
 
     return (
         <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
+            {syncError && (
+                <div className="px-4 py-2">
+                    <StatusBanner variant="error">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span>{syncError}</span>
+                            <button
+                                type="button"
+                                className="font-medium underline"
+                                onClick={retrySync}
+                            >
+                                再確認
+                            </button>
+                        </div>
+                    </StatusBanner>
+                </div>
+            )}
             <Outlet />
         </NnueProvider>
     );

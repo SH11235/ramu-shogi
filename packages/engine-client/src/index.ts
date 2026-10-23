@@ -111,6 +111,10 @@ export interface SearchLimits {
     wtimeMs?: number;
     /** 秒読み (ms) */
     byoyomiMs?: number;
+    /** 先手の 1 手ごとの加算（フィッシャー、ms） */
+    bincMs?: number;
+    /** 後手の 1 手ごとの加算（フィッシャー、ms） */
+    wincMs?: number;
     /** 固定消費時間 (ms) */
     movetimeMs?: number;
 }

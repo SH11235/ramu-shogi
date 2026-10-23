@@ -156,6 +156,8 @@ struct SearchLimitsInput {
     btime_ms: Option<i64>,
     wtime_ms: Option<i64>,
     byoyomi_ms: Option<i64>,
+    binc_ms: Option<i64>,
+    winc_ms: Option<i64>,
     movetime_ms: Option<i64>,
 }
 
@@ -467,6 +469,12 @@ fn build_limits(params: &SearchParamsInput, options: &EngineOptions) -> LimitsTy
                 "build_limits: after setting, limits.byoyomi = {:?}",
                 limits.byoyomi
             );
+        }
+        if let Some(binc) = limits_input.binc_ms {
+            limits.inc[Color::Black.index()] = binc;
+        }
+        if let Some(winc) = limits_input.winc_ms {
+            limits.inc[Color::White.index()] = winc;
         }
         if let Some(movetime) = limits_input.movetime_ms {
             eprintln!("build_limits: setting movetime = {}", movetime);
@@ -1030,6 +1038,8 @@ mod tests {
                 btime_ms: Some(12_000),
                 wtime_ms: Some(6_500),
                 byoyomi_ms: Some(1_000),
+                binc_ms: None,
+                winc_ms: None,
                 movetime_ms: None,
             }),
             ponder: Some(false),
@@ -1040,6 +1050,29 @@ mod tests {
         assert_eq!(limits.time[Color::Black.index()], 12_000);
         assert_eq!(limits.time[Color::White.index()], 6_500);
         assert_eq!(limits.byoyomi, [1_000; Color::NUM]);
+    }
+
+    #[test]
+    fn build_limits_maps_fischer_increment_per_side() {
+        let params = SearchParamsInput {
+            limits: Some(SearchLimitsInput {
+                max_depth: None,
+                nodes: None,
+                btime_ms: Some(60_000),
+                wtime_ms: Some(55_000),
+                byoyomi_ms: None,
+                binc_ms: Some(1_000),
+                winc_ms: Some(2_000),
+                movetime_ms: None,
+            }),
+            ponder: Some(false),
+        };
+
+        let limits = build_limits(&params, &EngineOptions::default());
+
+        assert_eq!(limits.inc[Color::Black.index()], 1_000);
+        assert_eq!(limits.inc[Color::White.index()], 2_000);
+        assert_eq!(limits.byoyomi, [0; Color::NUM]);
     }
 
     #[test]

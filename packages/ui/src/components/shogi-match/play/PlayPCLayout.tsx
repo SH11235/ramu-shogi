@@ -103,8 +103,11 @@ export function PlayPCLayout({
                     {/* 盤の列: 相手の帯 → 持ち駒 → 盤 → 持ち駒 → 自分の帯 → 操作 */}
                     <div className="flex shrink-0 flex-col items-center gap-2">
                         <div ref={boardSectionRef} className="relative flex w-fit flex-col gap-2">
-                            {/* 盤の表示の操作（向き・音）は、盤の右上の角に固定する（どの段階でも同じ位置）。 */}
-                            <PlayBoardTools className="absolute left-full top-0 ml-2 flex-col" />
+                            {/* 盤の横の操作（盤の向き・着手音）は、盤の右上の角に固定する（どの段階でも同じ位置）。 */}
+                            <PlayBoardTools
+                                size="lg"
+                                className="absolute left-full top-0 ml-2 flex-col"
+                            />
                             <div
                                 // 持ち駒の欄は、空のときも同じ高さで見せる（駒を取ったときに盤や操作が動かないように）。
                                 className={`flex flex-col items-center gap-2 ${PLAY_HAND_ZONES} ${isDraggingPiece ? "touch-none" : ""}`}
@@ -203,7 +206,14 @@ export function PlayPCLayout({
                                 <PlayMoveList
                                     selectable={phase === "finished"}
                                     upToCurrent={phase !== "finished"}
-                                    className="max-h-[max(120px,calc(100dvh-520px))]"
+                                    // 欄の下端を盤の列の下端に揃える。400px は、この一覧より上に積む欄（手番・ヒントなど）と
+                                    // 一覧より下の分の高さ。終局後は、ヒントの代わりに出す結果の欄が約 45px 高いので引く
+                                    // （それらの欄の高さを変えたら、この値も見直す）。
+                                    className={
+                                        phase === "finished"
+                                            ? "max-h-[max(120px,calc(100dvh-445px))]"
+                                            : "max-h-[max(120px,calc(100dvh-400px))]"
+                                    }
                                 />
                             </section>
                         )}

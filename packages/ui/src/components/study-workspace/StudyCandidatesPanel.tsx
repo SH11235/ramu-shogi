@@ -110,8 +110,8 @@ function CandidateRow({
     const firstLabel = studyFirstMoveLabel(node, candidate.pv);
     const request: StudyPvRequest = { nodeId: node.id, pv: candidate.pv, score: candidate.score };
     return (
-        <li className="flex items-start gap-2 rounded-md px-1 py-1">
-            <span className="w-4 shrink-0 pt-0.5 text-center font-mono text-xs tabular-nums text-muted-foreground">
+        <li className="flex items-baseline gap-2 rounded-md px-1 py-1">
+            <span className="w-4 shrink-0 text-center font-mono text-xs tabular-nums text-muted-foreground">
                 {candidate.rank}
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -135,7 +135,7 @@ function CandidateRow({
                 )}
             </div>
             {hasPv && (
-                <div className="flex shrink-0 items-center">
+                <div className="flex shrink-0 items-center self-start">
                     <StudyIconButton
                         label={`${groupLabel}候補 ${candidate.rank} の読み筋を盤で見る`}
                         onClick={() => onPreviewPv(request)}
@@ -388,7 +388,7 @@ export function StudyCandidatesPanel({
             )}
 
             {source && (sourceText !== "" || source.pv) && (
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border pt-2 text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-t border-border pt-2 text-xs text-muted-foreground">
                     <span>対局時の評価値</span>
                     {sourceText !== "" && (
                         <span

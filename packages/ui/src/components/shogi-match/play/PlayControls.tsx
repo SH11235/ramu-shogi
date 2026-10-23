@@ -282,9 +282,24 @@ export function PlayMatchActions({
     );
 }
 
-/** 盤の向きと音（盤の表示の操作）。線のアイコンで、ほかの操作より控えめに置く。 */
-export function PlayBoardTools({ className }: { className?: string }): ReactElement {
+const FLIP_SIZE_CLASS = {
+    md: { button: "h-8 w-8", icon: "h-[18px] w-[18px]" },
+    lg: { button: "h-11 w-11", icon: "h-[26px] w-[26px]" },
+} as const;
+
+/**
+ * 盤の横の操作（盤の向きと着手音）。どの対局の組み合わせでも同じ 2 つを同じ大きさで置く
+ * （組み合わせや段階でボタンが出たり消えたりすると、どこへ行ったか分からなくなる）。
+ */
+export function PlayBoardTools({
+    className,
+    size = "md",
+}: {
+    className?: string;
+    size?: "md" | "lg";
+}): ReactElement {
     const { flipBoard, onFlipBoardChange } = useMatchState();
+    const flipSize = FLIP_SIZE_CLASS[size];
     return (
         <div className={cn("flex shrink-0 items-center gap-1", className)}>
             <button
@@ -294,14 +309,14 @@ export function PlayBoardTools({ className }: { className?: string }): ReactElem
                 aria-label="盤面を反転"
                 title="盤面を反転"
                 className={cn(
-                    "flex h-9 w-9 items-center justify-center rounded-md border border-wafuu-border text-wafuu-sumi transition-colors hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    flipBoard ? "bg-wafuu-kin/20" : "bg-background",
+                    "flex shrink-0 items-center justify-center rounded-md border border-wafuu-border text-wafuu-sumi transition-colors hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    flipSize.button,
+                    flipBoard ? "bg-wafuu-kin/20" : "bg-card",
                 )}
             >
                 <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    width="18"
-                    height="18"
+                    className={flipSize.icon}
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -316,7 +331,7 @@ export function PlayBoardTools({ className }: { className?: string }): ReactElem
                     <path d="m21 16-4 4-4-4" />
                 </svg>
             </button>
-            <SoundToggle />
+            <SoundToggle size={size} />
         </div>
     );
 }
