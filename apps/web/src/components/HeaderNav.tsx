@@ -24,7 +24,7 @@ const PRIMARY_LINK_CLASS =
     "inline-flex h-8 items-center whitespace-nowrap rounded-md px-2.5 text-sm transition-colors hover:bg-muted/50 hover:text-wafuu-sumi";
 
 /**
- * 主な行き先（対局・研究ノート・観戦）。メニューを開かなくても見えるようにヘッダーに並べる。
+ * 主な行き先（対局・研究ノート・観戦・AI）。メニューを開かなくても見えるようにヘッダーに並べる。
  * 幅の狭い画面では出さない（メニューから行く）。
  */
 function PrimaryLinks(): ReactElement {
@@ -33,6 +33,13 @@ function PrimaryLinks(): ReactElement {
         { to: "/play", label: "対局", active: pathname.startsWith("/play") },
         { to: "/studies", label: "研究ノート", active: pathname.startsWith("/studies") },
         { to: "/rshogi-viewer", label: "観戦", active: pathname.startsWith("/rshogi-viewer") },
+        // 768〜1023px ではパンくずとユーザー名に幅を残すため、短い名前にする。
+        {
+            to: "/nnue",
+            label: "AI（評価関数）",
+            shortLabel: "AI",
+            active: pathname === "/nnue",
+        },
     ] as const;
     return (
         <div className="hidden items-center gap-1 md:flex">
@@ -45,7 +52,14 @@ function PrimaryLinks(): ReactElement {
                         item.active ? "font-semibold text-wafuu-shu" : "text-wafuu-sumi"
                     }`}
                 >
-                    {item.label}
+                    {"shortLabel" in item ? (
+                        <>
+                            <span className="lg:hidden">{item.shortLabel}</span>
+                            <span className="hidden lg:inline">{item.label}</span>
+                        </>
+                    ) : (
+                        item.label
+                    )}
                 </Link>
             ))}
             <span aria-hidden className="mx-1 h-4 w-px bg-wafuu-border" />
