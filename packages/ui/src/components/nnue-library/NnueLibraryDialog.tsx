@@ -60,7 +60,7 @@ export function NnueLibraryDialog({
                     )}
                     <NnueLibrary
                         {...libraryProps}
-                        deleteDisabledReason={isMatchActive ? "対局中は削除できません" : undefined}
+                        lockedReason={isMatchActive ? "対局中は変更できません" : undefined}
                     />
                 </div>
                 <DialogFooter>

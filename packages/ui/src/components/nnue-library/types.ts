@@ -5,6 +5,8 @@ export interface NnueAccountFile {
     sizeBytes: number;
     sha256Hex: string;
     createdAt: string;
+    /** アップロードが済んでいるか。途中で止まったものは削除だけできる */
+    completed: boolean;
 }
 
 /** ログインしたアカウントへの保存先。Web だけが渡す（Desktop はアカウントを持たない）。 */

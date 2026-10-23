@@ -574,8 +574,6 @@ interface ShogiMatchProps {
     onRequestNnueFilePath?: () => Promise<string | null>;
     /** Web 用: ログインしたアカウントに保存した AI */
     nnueAccount?: NnueAccountStore;
-    /** 指定時、「AI（評価関数）」の入口はダイアログでなく一覧の画面を開く */
-    onOpenNnueLibrary?: () => void;
     /** デフォルトの NNUE プリセットキー（未指定時は DEFAULT_PRESET_KEY） */
     defaultNnuePresetKey?: string;
     /** AIアイコンのURL（GitHub Pages等でbase pathが必要な場合に指定） */
@@ -685,7 +683,6 @@ export function ShogiMatch({
     manifestUrl,
     onRequestNnueFilePath,
     nnueAccount,
-    onOpenNnueLibrary,
     defaultNnuePresetKey,
     aiIconUrl,
     dogSoundBaseUrl,
@@ -2331,7 +2328,6 @@ export function ShogiMatch({
         manifestUrl,
         onRequestNnueFilePath,
         nnueAccount,
-        onOpenNnueLibrary,
         selectedMoveDetail,
         setSelectedMoveDetailPly,
         isAboutOpen,

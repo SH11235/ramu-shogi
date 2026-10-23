@@ -24,6 +24,7 @@ function toAccountFile(file: NnueFileSummary): NnueAccountFile {
         sizeBytes: file.sizeBytes,
         sha256Hex: file.sha256Hex,
         createdAt: file.completedAt ?? file.createdAt,
+        completed: file.uploadStatus === "completed",
     };
 }
 
@@ -31,7 +32,7 @@ async function fetchAccountFiles(): Promise<NnueAccountFile[]> {
     const response = await fetch("/api/nnue/files", { credentials: "same-origin" });
     if (!response.ok) throw new Error(await parseApiError(response));
     const payload = (await response.json()) as ListNnueFilesResponse;
-    return payload.files.filter((file) => file.uploadStatus === "completed").map(toAccountFile);
+    return payload.files.filter((file) => file.uploadStatus !== "deleted").map(toAccountFile);
 }
 
 async function uploadFile(file: File, onProgress: (percent: number) => void): Promise<void> {
@@ -48,6 +49,23 @@ async function uploadFile(file: File, onProgress: (percent: number) => void): Pr
     if (!initResponse.ok) throw new Error(await parseApiError(initResponse));
 
     const init = (await initResponse.json()) as InitializeNnueUploadResponse;
+    try {
+        await uploadParts(file, init, onProgress);
+    } catch (error) {
+        // 途中で止まった記録をアカウントに残さない（同じファイルを保存し直せるように）。
+        await fetch(`/api/nnue/files/${init.file.id}`, {
+            method: "DELETE",
+            credentials: "same-origin",
+        }).catch(() => undefined);
+        throw error;
+    }
+}
+
+async function uploadParts(
+    file: File,
+    init: InitializeNnueUploadResponse,
+    onProgress: (percent: number) => void,
+): Promise<void> {
     const parts: Array<{ partNumber: number; etag: string }> = [];
     const totalParts = Math.ceil(file.size / CHUNK_SIZE_BYTES);
     for (let index = 0; index < totalParts; index++) {

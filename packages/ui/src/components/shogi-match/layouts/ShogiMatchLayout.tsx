@@ -146,7 +146,6 @@ export function ShogiMatchLayout({
         manifestUrl,
         onRequestNnueFilePath,
         nnueAccount,
-        onOpenNnueLibrary,
         selectedMoveDetail,
         setSelectedMoveDetailPly,
         isAboutOpen,
@@ -384,7 +383,7 @@ export function ShogiMatchLayout({
                     engineOptions={engineOptions}
                     onOpenEngineManager={onOpenEngineManager}
                     onOpenEngineSettings={onOpenEngineSettings}
-                    onOpenNnueManager={onOpenNnueLibrary ?? openNnueManager}
+                    onOpenNnueManager={openNnueManager}
                     onOpenDisplaySettings={() => setIsDisplaySettingsOpen(true)}
                     onOpenPassRightsSettings={() => setIsPassRightsSettingsOpen(true)}
                 >
@@ -528,7 +527,7 @@ export function ShogiMatchLayout({
                     engineOptions={engineOptions}
                     onOpenEngineManager={onOpenEngineManager}
                     onOpenEngineSettings={onOpenEngineSettings}
-                    onOpenNnueManager={onOpenNnueLibrary ?? openNnueManager}
+                    onOpenNnueManager={openNnueManager}
                     onOpenDisplaySettings={() => setIsDisplaySettingsOpen(true)}
                     onOpenPassRightsSettings={() => setIsPassRightsSettingsOpen(true)}
                 >

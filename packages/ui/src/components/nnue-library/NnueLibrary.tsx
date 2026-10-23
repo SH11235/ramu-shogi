@@ -35,8 +35,8 @@ interface NnueLibraryProps {
     account?: NnueAccountStore;
     /** Desktop 用: ファイル選択ダイアログでパスを得る */
     onRequestFilePath?: () => Promise<string | null>;
-    /** この端末の AI を削除できない理由（対局中など）。指定時は削除ボタンを止める */
-    deleteDisabledReason?: string;
+    /** この端末の AI を変えられない理由（対局中など）。指定時は設定と削除を止める */
+    lockedReason?: string;
 }
 
 type PendingAdd =
@@ -96,7 +96,7 @@ export function NnueLibrary({
     fallbackIconUrl,
     account,
     onRequestFilePath,
-    deleteDisabledReason,
+    lockedReason,
 }: NnueLibraryProps): ReactElement {
     const {
         nnueList,
@@ -122,6 +122,7 @@ export function NnueLibrary({
         error: presetError,
         download: downloadPreset,
         clearError: clearPresetError,
+        refresh: refreshPresets,
         isConfigured: isPresetConfigured,
     } = usePresetManager({
         manifestUrl,
@@ -139,6 +140,7 @@ export function NnueLibrary({
     const [editingMeta, setEditingMeta] = useState<NnueMeta | null>(null);
     const [busyId, setBusyId] = useState<string | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
+    const [localError, setLocalError] = useState<string | null>(null);
 
     // Desktop はファイルとして端末に置き、Web はブラウザの中（IndexedDB）に置く。
     const deviceLabel = capabilities?.supportsPathImport ? "この端末" : "このブラウザ";
@@ -149,10 +151,13 @@ export function NnueLibrary({
 
     const addedMetas = nnueList.filter((meta) => meta.source !== "preset");
     const accountFiles = account?.isAuthenticated ? account.files : [];
+    // アップロードが済んでいないものは、アカウントにある扱いにしない（取り込めないため）。
     const accountFileOf = (meta: NnueMeta) =>
-        accountFiles.find((file) => file.sha256Hex === meta.contentHashSha256) ?? null;
+        accountFiles.find((file) => file.completed && file.sha256Hex === meta.contentHashSha256) ??
+        null;
     const accountOnlyFiles = accountFiles.filter(
-        (file) => !nnueList.some((meta) => meta.contentHashSha256 === file.sha256Hex),
+        (file) =>
+            !file.completed || !nnueList.some((meta) => meta.contentHashSha256 === file.sha256Hex),
     );
     const totalSize = nnueList.reduce((sum, meta) => sum + meta.size, 0);
 
@@ -226,13 +231,24 @@ export function NnueLibrary({
     const uploadToAccount = async (meta: NnueMeta) => {
         if (!account || !loadData) return;
         setNotice(null);
+        setLocalError(null);
+        // 大きなファイルの読み出し中も二重に押せないよう、読み出しの前から操作中にする。
+        setBusyId(meta.id);
         try {
-            const data = await loadData(meta.id);
+            let data: Uint8Array;
+            try {
+                data = await loadData(meta.id);
+            } catch {
+                setLocalError(`「${meta.displayName}」を読み出せませんでした。`);
+                return;
+            }
             const file = new File([data.slice().buffer], meta.originalFileName);
             await account.upload(file, meta.id);
             setNotice(`「${meta.displayName}」をアカウントに保存しました。`);
         } catch {
             // 失敗の内容は account.error に出る
+        } finally {
+            setBusyId(null);
         }
     };
 
@@ -244,7 +260,12 @@ export function NnueLibrary({
         try {
             if (target.kind === "preset") {
                 setBusyId(target.preset.config.presetKey);
-                for (const meta of target.preset.localMetas) await deleteNnue(meta.id);
+                try {
+                    for (const meta of target.preset.localMetas) await deleteNnue(meta.id);
+                } finally {
+                    // 配布 AI の状態は一覧の変化では更新されないので、消したら取り直す。
+                    await refreshPresets();
+                }
             } else if (target.kind === "account") {
                 await account?.remove(target.file.id);
             } else {
@@ -260,6 +281,7 @@ export function NnueLibrary({
     };
 
     const clearErrors = () => {
+        setLocalError(null);
         clearStorageError();
         clearPresetError();
         account?.clearError();
@@ -279,17 +301,18 @@ export function NnueLibrary({
             }}
             onDrop={handleDrop}
         >
-            {(error || account?.error || notice) && (
+            {(error || account?.error || localError || notice) && (
                 <div className="flex flex-col gap-2" aria-live="polite">
                     <NnueErrorAlert error={error} onClose={clearErrors} />
-                    {account?.error && (
+                    {[account?.error, localError].filter(Boolean).map((message) => (
                         <p
+                            key={message}
                             role="alert"
                             className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
                         >
-                            {account.error}
+                            {message}
                         </p>
-                    )}
+                    ))}
                     {notice && <p className="text-sm text-status-success">{notice}</p>}
                 </div>
             )}
@@ -380,7 +403,8 @@ export function NnueLibrary({
                                     <Button
                                         size="sm"
                                         variant={needsModelSettings(meta) ? "default" : "outline"}
-                                        disabled={isBusy}
+                                        disabled={isBusy || Boolean(lockedReason)}
+                                        title={lockedReason}
                                         onClick={() => setEditingMeta(meta)}
                                     >
                                         設定
@@ -388,8 +412,8 @@ export function NnueLibrary({
                                     <Button
                                         size="sm"
                                         variant="ghost"
-                                        disabled={isBusy || Boolean(deleteDisabledReason)}
-                                        title={deleteDisabledReason}
+                                        disabled={isBusy || Boolean(lockedReason)}
+                                        title={lockedReason}
                                         onClick={() =>
                                             setPendingDelete({ kind: "device", meta, accountFile })
                                         }
@@ -405,18 +429,24 @@ export function NnueLibrary({
                                 title={file.originalFilename.replace(/\.(nnue|bin)$/i, "")}
                                 details={[formatSize(file.sizeBytes)]}
                                 places={["アカウント"]}
-                                warning={null}
+                                warning={
+                                    file.completed
+                                        ? null
+                                        : "アップロードが途中で止まっています。削除してから、もう一度保存してください"
+                                }
                                 muted
                                 busyLabel={account?.busyKey === file.id ? "処理中..." : null}
                             >
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    disabled={isBusy}
-                                    onClick={() => setPendingAdd({ kind: "account", file })}
-                                >
-                                    {deviceLabel}で使う
-                                </Button>
+                                {file.completed && (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={isBusy}
+                                        onClick={() => setPendingAdd({ kind: "account", file })}
+                                    >
+                                        {deviceLabel}で使う
+                                    </Button>
+                                )}
                                 <Button
                                     size="sm"
                                     variant="ghost"
@@ -461,7 +491,7 @@ export function NnueLibrary({
                                             : null
                                     }
                                     disabled={isBusy}
-                                    deleteDisabledReason={deleteDisabledReason}
+                                    lockedReason={lockedReason}
                                     isDeleting={busyId === preset.config.presetKey}
                                     onDownload={() => {
                                         setNotice(null);
@@ -606,7 +636,7 @@ function PresetRow({
     fallbackIconUrl,
     progress,
     disabled,
-    deleteDisabledReason,
+    lockedReason,
     isDeleting,
     onDownload,
     onDelete,
@@ -616,7 +646,7 @@ function PresetRow({
     fallbackIconUrl?: string;
     progress: NnueDownloadProgress | null;
     disabled: boolean;
-    deleteDisabledReason?: string;
+    lockedReason?: string;
     isDeleting: boolean;
     onDownload: () => void;
     onDelete: () => void;
@@ -684,8 +714,8 @@ function PresetRow({
                         <Button
                             size="sm"
                             variant="ghost"
-                            disabled={disabled || Boolean(deleteDisabledReason)}
-                            title={deleteDisabledReason}
+                            disabled={disabled || Boolean(lockedReason)}
+                            title={lockedReason}
                             onClick={onDelete}
                         >
                             削除

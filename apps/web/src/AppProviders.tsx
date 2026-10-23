@@ -1,6 +1,7 @@
-import type { NnueFormat } from "@shogi/app-core";
+import { NnueError, type NnueFormat } from "@shogi/app-core";
 import {
     createIndexedDBNnueStorage,
+    defaultWasmModuleUrl,
     detect_nnue_format,
     ensureWasmModule,
     is_nnue_compatible,
@@ -12,13 +13,27 @@ import { StatusBanner } from "./components/StatusBanner";
 import { AuthSessionProvider } from "./hooks/useAuthSession";
 import { useStudySessionSync } from "./hooks/useStudySessionSync";
 import { useUserSettingsSync } from "./hooks/useUserSettingsSync";
+import {
+    assetReturnsNotOk,
+    isStaleAssetError,
+    reloadForStaleDeploy,
+} from "./platform/stale-deploy-reload";
 
 // Web版のストレージも同期的に初期化可能
 const nnueStorage = createIndexedDBNnueStorage();
 
 // エンジンをまだ起動していない画面（AI の一覧など）でも判定できるよう、wasm を先に読み込む。
 const validateNnueHeader = async (header: Uint8Array, fileSize: number) => {
-    await ensureWasmModule();
+    try {
+        await ensureWasmModule();
+    } catch (error) {
+        // 旧デプロイの wasm が消えていれば新しいバンドルを取りに行く（wasm-position-service と同じ判定）。
+        // ファイルの形式違いと取り違えないよう、別のエラーとして返す。
+        if (isStaleAssetError(error) || (await assetReturnsNotOk(defaultWasmModuleUrl))) {
+            reloadForStaleDeploy();
+        }
+        throw new NnueError("NNUE_VALIDATOR_UNAVAILABLE", "wasm を読み込めませんでした", error);
+    }
     return {
         format: detect_nnue_format(header, BigInt(fileSize)) as NnueFormat,
         isCompatible: is_nnue_compatible(header, BigInt(fileSize)),
