@@ -47,16 +47,15 @@ export interface EvalGraphMarker {
     /** `evalHistory` の添字（0 = 開始局面）。 */
     ply: number;
     /** 印の種類。色だけでなく形でも見分けられるようにしている。 */
-    tone: "blunder" | "dubious" | "bookmark";
+    tone: "blunder" | "dubious";
     /** 読み上げ・ツールチップ用の説明（例: `42手目 悪手`）。 */
     label: string;
 }
 
 const MARKER_CLASS: Record<EvalGraphMarker["tone"], string> = {
-    // 悪手: 塗りの丸 / 疑問手: 白抜きの丸 / しおり: ひし形
+    // 悪手: 塗りの丸 / 疑問手: 白抜きの丸
     blunder: "rounded-full bg-study-blunder ring-2 ring-background",
     dubious: "rounded-full border-2 border-study-dubious bg-background",
-    bookmark: "rotate-45 bg-wafuu-kin ring-1 ring-wafuu-sumi/60",
 };
 
 /**

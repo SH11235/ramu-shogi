@@ -319,7 +319,7 @@ describe("HandPiecesDisplay: 選択の枠", () => {
             ).toContain("0");
         });
 
-        it("縦の駒台は空でも枠を描き、下寄せの指定で駒を下に寄せる", () => {
+        it("縦の駒台は空でも枠を描き、下寄せの指定では先後の印を一番下に固定して駒をその上に積む", () => {
             const { container } = render(
                 <HandPiecesDisplay
                     owner="sente"
@@ -335,7 +335,9 @@ describe("HandPiecesDisplay: 選択の枠", () => {
             );
             const frame = container.firstElementChild;
             expect(frame).not.toBeNull();
-            expect(frame?.className).toContain("justify-end");
+            // 下から並べる（先頭の子 = 先後の印が一番下に来て、駒が増えても動かない）。
+            expect(frame?.className).toContain("flex-col-reverse");
+            expect(frame?.firstElementChild?.querySelector("[data-zone], img, button")).toBeNull();
         });
     });
 });

@@ -9,8 +9,11 @@ const HAND_ORDER: PieceType[] = ["R", "B", "G", "S", "N", "L", "P"];
 /** サイズ設定: compact=編集用(小), edit=編集用(中), medium=モバイル対局用, normal=PC用 */
 type HandPieceSize = "compact" | "edit" | "medium" | "normal";
 
-/** 個数の文字は盤のマスに合わせて大きくする（小さい盤でも 12px は保つ）。 */
-const CELL_BADGE_SIZE = "text-[max(12px,calc(var(--shogi-cell-size,40px)*0.26))]";
+/**
+ * 個数の文字は盤のマスに合わせる。下限は 9px（スマホの盤の横の駒台では駒が 20px 前後になり、
+ * それより大きい札は駒を隠してしまう）。
+ */
+const CELL_BADGE_SIZE = "text-[max(9px,calc(var(--shogi-cell-size,40px)*0.26))]";
 
 const SIZE_CONFIG = {
     compact: {
@@ -55,6 +58,7 @@ function PieceToken({
     flipBoard = false,
     size = "normal",
     showCount = true,
+    inlineCount = false,
 }: {
     pieceType: PieceType;
     owner: Player;
@@ -63,11 +67,44 @@ function PieceToken({
     size?: HandPieceSize;
     /** 個数の札を出すか（1 枚・0 枚を出すかは呼び出し側が決める） */
     showCount?: boolean;
+    /**
+     * 個数を駒に重ねる札ではなく、駒の右に小さな数字で添える。小さい駒（スマホの盤の上下の段）では
+     * 札が駒と同じくらいの大きさになり、駒を隠してしまうため。
+     */
+    inlineCount?: boolean;
 }): ReactElement {
     // 盤面と同じ回転ロジック: 反転時は先手が逆さ、通常時は後手が逆さ
     const shouldRotate = flipBoard ? owner === "sente" : owner === "gote";
     const config = SIZE_CONFIG[size];
     const imagePath = getPieceImagePath(owner, pieceType);
+
+    if (inlineCount) {
+        return (
+            // 行の中で先手・後手の印と高さをそろえるため、inline にしない（inline だと行の下に余白が
+            // できて、駒だけが上にずれる）。
+            <span className="flex items-end">
+                <img
+                    src={imagePath}
+                    alt={`${owner === "sente" ? "先手" : "後手"}の${PIECE_LABELS[pieceType]}`}
+                    className={cn(
+                        config.imageSize,
+                        "object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.15)]",
+                        shouldRotate && "-rotate-180",
+                    )}
+                    draggable={false}
+                />
+                {showCount && (
+                    <span
+                        // 個数は駒ボタンの名前で読み上げる（数字は見た目だけ）。
+                        aria-hidden="true"
+                        className="text-[max(10px,calc(var(--shogi-cell-size,40px)*0.3))] font-bold leading-none tabular-nums text-wafuu-sumi"
+                    >
+                        {count}
+                    </span>
+                )}
+            </span>
+        );
+    }
 
     return (
         <span
@@ -201,6 +238,10 @@ export function HandPiecesDisplay({
     const isEditLayout = size === "edit" && !vertical;
     // 縦の駒台は、マスに合わせた大きさ（medium）で描く。normal の横並び用の幅確保は縦では使えない。
     const tokenSize = vertical && (size === "edit" || size === "normal") ? "medium" : size;
+    // スマホの盤の上下の段（横並びの小さい駒）では、個数を駒の右に添える（札を重ねると駒が隠れる）。
+    // 局面編集では 0 と 1 も見分けるので、駒の脇の札のまま。
+    const inlineCount =
+        !vertical && !isEditMode && (tokenSize === "medium" || tokenSize === "compact");
     // PlayerIcon用のサイズマッピング。盤の横の縦の駒台は幅に余裕があるので、先後の印をはっきり見せる。
     const iconSize = vertical
         ? "lg"
@@ -224,8 +265,12 @@ export function HandPiecesDisplay({
                 "rounded-md border border-border/50 bg-muted/30",
                 vertical
                     ? cn(
-                          "flex h-full w-full flex-col items-center gap-1 px-0.5 py-1",
-                          verticalAlign === "end" ? "justify-end" : "justify-start",
+                          "flex h-full w-full items-center gap-1 px-0.5 py-1",
+                          // 先後の印は駒台の端（持ち主の側）に固定し、駒はその隣から積む（駒が増えても
+                          // 印が動かないように）。下の駒台は印を一番下に置き、駒は上へ積む。
+                          verticalAlign === "end"
+                              ? "flex-col-reverse justify-start"
+                              : "flex-col justify-start",
                       )
                     : cn(
                           "flex items-center justify-start w-full px-1",
@@ -343,6 +388,9 @@ export function HandPiecesDisplay({
                                     disabled={isDisabled}
                                     className={cn(
                                         "relative rounded-lg border-2 transition-all",
+                                        // 縦の駒台では駒を行の中に置かず、行の高さの分の隙間を下に作らない
+                                        // （7 種類並べても盤の高さに収める）。
+                                        vertical && "flex",
                                         // タッチ選択・長押しメニュー防止
                                         "select-none [-webkit-touch-callout:none]",
                                         // 編集モード（ドラッグ可能）時はスクロールも防止
@@ -362,6 +410,7 @@ export function HandPiecesDisplay({
                                         count={count}
                                         flipBoard={flipBoard}
                                         size={tokenSize}
+                                        inlineCount={inlineCount}
                                         // 1 枚なら数は要らない。ただし編集中や、持っていない駒も並べる画面では、
                                         // 0 と 1 を見分けられるよう数を出す。
                                         showCount={

@@ -9,6 +9,7 @@
  * - NavigationContext: 親で Provider 済み
  */
 
+import { cn } from "@shogi/design-system";
 import type { ReactElement, ReactNode } from "react";
 import { useState } from "react";
 import { BottomSheet } from "../components/BottomSheet";
@@ -94,7 +95,7 @@ export function MobileLayout({
     const navigation = useNavigation();
     // 棋譜を見るだけの画面（棋譜ビューア・観戦）では、対局を始める・棋譜を読み込む・
     // 局面を編集する・平手に戻す操作を出さない。
-    const { viewerMode, mobileHeaderContent } = useShogiMatchConfig();
+    const { viewerMode, mobileHeaderContent, mobileReviewActions } = useShogiMatchConfig();
 
     // MatchStateContext から取得
     const {
@@ -216,7 +217,8 @@ export function MobileLayout({
 
     // 編集モード判定を事前計算（MobileBoardSectionに渡す）
     const isEditModeActive = isEditMode && !isMatchRunning;
-    const hideEmptyHandPieces = gameMode === "playing" || gameMode === "paused";
+    // 持っていない駒を出すのは、局面編集で駒台から駒を足すときだけ。
+    const hideEmptyHandPieces = !isEditModeActive;
     // FAB表示条件: 検討モードで棋譜がある場合と編集モードではインライン表示するため非表示
     // （棋譜を見るだけの画面は 0 手の棋譜でも検討モードの並びで出すので、同じく非表示）
     const shouldShowFloatingSettings =
@@ -264,7 +266,18 @@ export function MobileLayout({
             </header>
 
             {/* === 盤面セクション: 固定サイズ、縮小しない === */}
-            <main className="flex-shrink-0 relative flex justify-center">
+            {/* 棋譜を見るだけの画面は、盤の下の行（評価値・主な操作・移動）まで最初の画面に収める。
+                盤の幅は高さから逆算して絞る: マスを c px とすると盤（持ち駒の段を含む）の高さは
+                およそ 10.6c + 82px、盤以外の縦の合計は約 215px なので、幅 9c + 33px の上限は
+                およそ 85svh - 222px。高さはブラウザの操作の帯が出ているときの画面（svh）で測る
+                （帯が縮むたびに盤の大きさが変わらないように）。 */}
+            <main
+                className={cn(
+                    "flex-shrink-0 relative flex justify-center",
+                    viewerMode &&
+                        "mx-auto w-full max-w-[calc(85vh-222px)] supports-[height:1svh]:max-w-[calc(85svh-222px)]",
+                )}
+            >
                 <MobileBoardSection
                     grid={grid}
                     position={position}
@@ -294,6 +307,7 @@ export function MobileLayout({
                     passRightsSettings={passRightsSettings}
                     passRights={position.passRights}
                     turn={position.turn}
+                    minCellSize={viewerMode ? 20 : undefined}
                 />
             </main>
 
@@ -393,30 +407,37 @@ export function MobileLayout({
                             />
                         )}
                         {/* 現在の評価値（コンパクト表示） */}
-                        <div className="flex items-center justify-center gap-2 text-sm">
-                            <span className="text-muted-foreground">評価:</span>
-                            <span className="font-mono tabular-nums">
-                                {formatMobileCompactEval(evalCp, evalMate)}
-                            </span>
-                            <button
-                                type="button"
-                                onClick={() => setIsAnalysisSheetOpen(true)}
-                                aria-haspopup="dialog"
-                                // 行の高さは変えず（盤を最初の画面に収めるため）、押せる範囲だけ上下に広げる。
-                                className="relative px-2 py-0.5 text-xs rounded bg-muted hover:bg-muted/80 active:scale-95 transition-all after:absolute after:inset-x-0 after:-inset-y-1.5"
-                            >
-                                📊 グラフ・読み筋
-                            </button>
-                            {/* 棋譜を見るだけの画面では、解析（ヒント）は出さない。 */}
-                            {!viewerMode && (
+                        {/* 評価値は左、操作は右に寄せる（評価値の桁数・詰みの表記で幅が変わっても、
+                            操作のボタンが動かないように）。 */}
+                        <div className="flex items-center justify-between gap-2 px-1 text-sm">
+                            <div className="flex min-w-0 items-baseline gap-1.5">
+                                <span className="shrink-0 text-muted-foreground">評価:</span>
+                                <span className="truncate font-mono tabular-nums">
+                                    {formatMobileCompactEval(evalCp, evalMate)}
+                                </span>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => setIsAiHintOpen(true)}
-                                    className="px-2 py-0.5 text-xs rounded bg-muted hover:bg-muted/80 active:scale-95 transition-all"
+                                    onClick={() => setIsAnalysisSheetOpen(true)}
+                                    aria-haspopup="dialog"
+                                    // 行の高さは変えず（盤を最初の画面に収めるため）、押せる範囲だけ上下に広げる。
+                                    className="relative px-2 py-0.5 text-xs rounded bg-muted hover:bg-muted/80 active:scale-95 transition-all after:absolute after:inset-x-0 after:-inset-y-1.5"
                                 >
-                                    🤖 ヒント
+                                    📊 グラフ・読み筋
                                 </button>
-                            )}
+                                {/* 棋譜を見るだけの画面では、解析（ヒント）は出さない。 */}
+                                {!viewerMode && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsAiHintOpen(true)}
+                                        className="px-2 py-0.5 text-xs rounded bg-muted hover:bg-muted/80 active:scale-95 transition-all"
+                                    >
+                                        🤖 ヒント
+                                    </button>
+                                )}
+                                {mobileReviewActions}
+                            </div>
                         </div>
 
                         {/* ナビゲーションボタン */}

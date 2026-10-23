@@ -84,6 +84,11 @@ interface ShogiMatchConfig {
      */
     mobileHeaderContent: ReactNode;
     /**
+     * スマホの検討の画面で、評価値の行（「グラフ・読み筋」の隣）に足す操作
+     * （棋譜ビューアの「研究ノートで開く」など）。無ければ null
+     */
+    mobileReviewActions: ReactNode;
+    /**
      * 評価値グラフを常に出すか（折りたたみの操作を出さない）。棋譜ビューアのように、
      * グラフを隠す理由の無い画面で true にする。
      */
@@ -104,6 +109,7 @@ const defaultConfig: ShogiMatchConfig = {
     viewerMode: false,
     boardTopContent: null,
     mobileHeaderContent: null,
+    mobileReviewActions: null,
     evalGraphPinned: false,
     play: null,
     soundVoiceSelectable: false,
@@ -130,6 +136,7 @@ export function ShogiMatchProvider({ config, children }: ShogiMatchProviderProps
         viewerMode: config.viewerMode ?? defaultConfig.viewerMode,
         boardTopContent: config.boardTopContent ?? defaultConfig.boardTopContent,
         mobileHeaderContent: config.mobileHeaderContent ?? defaultConfig.mobileHeaderContent,
+        mobileReviewActions: config.mobileReviewActions ?? defaultConfig.mobileReviewActions,
         evalGraphPinned: config.evalGraphPinned ?? defaultConfig.evalGraphPinned,
         play: config.play ?? defaultConfig.play,
         soundVoiceSelectable: config.soundVoiceSelectable ?? defaultConfig.soundVoiceSelectable,

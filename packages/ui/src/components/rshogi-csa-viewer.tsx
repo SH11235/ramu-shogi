@@ -54,10 +54,11 @@ export interface RshogiCsaViewerProps {
     onRequestNnueFilePath?: React.ComponentProps<typeof ShogiMatch>["onRequestNnueFilePath"];
     isDevMode?: boolean;
     /**
-     * 対局情報の欄に足す操作（「研究ノートで開く」など）。読み込んだ棋譜を受け取って描く。
-     * PC では左の対局情報の下、モバイルでは対局情報のシートの中に出る。
+     * この画面の主な操作（「研究ノートで開く」など）。読み込んだ棋譜を受け取って描く。
+     * PC では左の対局情報の下に出す。スマホでは盤の下の評価値の行に `compact: true` で出す
+     * （最初の画面で見えるように）。対局情報のシートの中にも出す。
      */
-    renderGameAction?: (game: RshogiGame) => ReactNode;
+    renderGameAction?: (game: RshogiGame, options: { compact: boolean }) => ReactNode;
     /**
      * 「この局面から対局」を押したときに、いま表示している局面（本譜の現在の手数まで。分岐を
      * 見ていればその分岐の手順まで）を受け取る。対局ページへ引き継いで開く。
@@ -481,7 +482,7 @@ export function RshogiCsaViewer({
                 eventMeta={findRshogiEventMeta(events, game.meta.event, game.meta.source)}
             />
             {/* 主は「研究ノートで開く」、従は「この局面から対局」。続けて並べる。 */}
-            {renderGameAction?.(game)}
+            {renderGameAction?.(game, { compact: false })}
             {renderGameAction && (
                 // この画面は棋譜を見るだけ。「（整備中）」は、研究ノートの本格実装が済んだら外す。
                 <p className="text-xs text-muted-foreground">
@@ -528,32 +529,39 @@ export function RshogiCsaViewer({
                 // 棋譜に評価値が入っているときは、観戦と同じく評価値の列とグラフを最初から出す。
                 spectateMode={hasRecordedEval}
                 reviewLeftContent={metaContent}
+                // スマホには左カラムが無いので、主な操作と対局情報（シートで開く）は、最初の画面に
+                // 収まる評価値の行に置く。
+                mobileReviewActions={
+                    isMobile ? (
+                        <>
+                            {renderGameAction?.(game, { compact: true })}
+                            <button
+                                type="button"
+                                onClick={() => setIsMetaSheetOpen(true)}
+                                aria-haspopup="dialog"
+                                className="relative shrink-0 rounded px-2 py-0.5 text-xs text-wafuu-shu after:absolute after:inset-x-0 after:-inset-y-1.5 hover:bg-muted/60"
+                            >
+                                対局情報
+                            </button>
+                        </>
+                    ) : undefined
+                }
             />
-            {/* モバイルのレイアウトには左カラムが無い。対局場所の 1 行を操作欄の下に出し、
-                残り（対局者の全文・レート・元棋譜へのリンク・CSA ダウンロードなど）はシートで開く。 */}
+            {/* 対局者の全文・対局場所・レート・元棋譜へのリンク・CSA ダウンロードなどは、
+                スマホではシートで開く。 */}
             {isMobile && (
-                <>
-                    <button
-                        type="button"
-                        onClick={() => setIsMetaSheetOpen(true)}
-                        aria-haspopup="dialog"
-                        className="flex w-full items-center justify-end gap-2 border-t border-wafuu-border px-3 py-2 text-left text-xs text-wafuu-sumi"
-                    >
+                <BottomSheet
+                    open={isMetaSheetOpen}
+                    onOpenChange={setIsMetaSheetOpen}
+                    title="対局情報"
+                    height="auto"
+                >
+                    <div className="flex flex-col gap-3">
                         <RshogiVenueBadge source={game.meta.source} />
-                        <span className="shrink-0 text-wafuu-shu">対局情報</span>
-                    </button>
-                    <BottomSheet
-                        open={isMetaSheetOpen}
-                        onOpenChange={setIsMetaSheetOpen}
-                        title="対局情報"
-                        height="auto"
-                    >
-                        <div className="flex flex-col gap-3">
-                            {playersBar}
-                            {metaContent}
-                        </div>
-                    </BottomSheet>
-                </>
+                        {playersBar}
+                        {metaContent}
+                    </div>
+                </BottomSheet>
             )}
         </div>
     );

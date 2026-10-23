@@ -122,10 +122,10 @@ function ImportSection({
             <div className="flex flex-col gap-2 border-t border-border pt-3">
                 <p className="text-sm text-muted-foreground">ほかの棋譜から作る</p>
                 <div className="flex flex-col gap-2 sm:flex-row">
-                    <Link to="/rshogi-viewer" className={linkClass}>
+                    <Link to="/studies/new" className={linkClass}>
                         観戦・棋譜一覧から選ぶ
                     </Link>
-                    <Link to="/games" className={linkClass}>
+                    <Link to="/studies/new" search={{ from: "games" }} className={linkClass}>
                         自分の対局から選ぶ
                         {!isAuthenticated && <AuthBadge />}
                     </Link>

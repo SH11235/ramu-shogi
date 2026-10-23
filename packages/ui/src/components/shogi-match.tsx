@@ -634,6 +634,11 @@ interface ShogiMatchProps {
      */
     mobileHeaderContent?: React.ReactNode;
     /**
+     * スマホの検討の画面で、評価値の行（「グラフ・読み筋」の隣）に足す操作（棋譜ビューアの
+     * 「研究ノートで開く」など）。最初の画面に収まる位置なので、その画面の主な操作を置く。
+     */
+    mobileReviewActions?: React.ReactNode;
+    /**
      * 評価値グラフを常に出す（PC。折りたたみの操作を出さない）。棋譜ビューアのように、
      * 対局中ではなくグラフを隠す理由の無い画面で指定する。指定しない画面は、対局中だけ
      * 既定で閉じ、それ以外（対局前・検討・観戦）は既定で開く（どちらも利用者が開閉できる）。
@@ -695,6 +700,7 @@ export function ShogiMatch({
     onPlayPhaseChange,
     boardTopContent,
     mobileHeaderContent,
+    mobileReviewActions,
     evalGraphPinned = false,
     reviewLeftContent,
     reviewTopContent,
@@ -1955,7 +1961,9 @@ export function ShogiMatch({
           : isPaused
             ? "paused"
             : "reviewing";
-    const hideEmptyHandPieces = gameMode === "playing" || gameMode === "paused";
+    // 持っていない駒（0 枚）を薄く出すのは、局面編集で駒台から駒を足すときだけ。それ以外では
+    // 情報が無く、小さい盤では枚数の印が駒に重なって見づらいだけなので出さない。
+    const hideEmptyHandPieces = gameMode !== "editing";
 
     // パス可否判定のため、キャッシュ未作成時は合法手をプリフェッチ
     useLegalMovePrefetch({
@@ -2713,6 +2721,7 @@ export function ShogiMatch({
                 viewerMode,
                 boardTopContent,
                 mobileHeaderContent,
+                mobileReviewActions,
                 evalGraphPinned,
                 aiIconUrl,
                 soundVoiceSelectable: isCpuGame && Boolean(dogSoundBaseUrl),

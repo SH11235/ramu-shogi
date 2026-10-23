@@ -9,9 +9,9 @@ import {
 } from "@shogi/app-core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ANALYSIS_SETTINGS, type Message } from "./shogi-match/types";
-import { StudyWorkspaceView } from "./study-workspace";
+import { fitMobileBoard, StudyWorkspaceView } from "./study-workspace";
 import type { StudyCommentDraftChange } from "./study-workspace/StudyCommentBox";
 import type { StudyWorkspaceSaveStatus } from "./study-workspace/StudySaveStatus";
 import {
@@ -538,21 +538,12 @@ describe("StudyWorkspaceView", () => {
         expect(screen.getByText("☗先手太郎 対 ☖後手花子")).toBeTruthy();
     });
 
-    it("しおり・コメント・表題の編集が操作として流れる", async () => {
+    it("コメント・表題の編集が操作として流れる", async () => {
         const { doc, ids } = createTestStudy();
         const onOps = vi.fn();
         render(<Harness initialDoc={doc} onOps={onOps} />);
 
         fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
-        fireEvent.click(screen.getByRole("button", { name: "この手にしおりを付ける" }));
-        expect(onOps).toHaveBeenLastCalledWith([
-            { type: "setBookmark", nodeId: ids[1], value: true },
-        ]);
-        expect(screen.getByRole("button", { name: "しおりを外す" })).toBeTruthy();
-        // しおりを付けた手は、解析していなくても注目局面に並ぶ。
-        expect(
-            within(highlights()).getByRole("button", { name: /1手目 ☗7六歩\(77\)/ }),
-        ).toBeTruthy();
 
         const comment = commentTextbox();
         fireEvent.change(comment, { target: { value: "角道を開ける" } });
@@ -1329,8 +1320,8 @@ describe("StudyWorkspaceView", () => {
             fireEvent.blur(title);
             // 再送の操作も出さない。
             expect(screen.queryByRole("button", { name: "もう一度保存する" })).toBeNull();
-            // 深く解析・残りを解析・しおり・コメントは、操作できない領域（inert）の中にある。
-            for (const name of ["この局面を深く解析", "残りを解析", "この手にしおりを付ける"]) {
+            // 深く解析・残りを解析・コメントは、操作できない領域（inert）の中にある。
+            for (const name of ["この局面を深く解析", "残りを解析"]) {
                 expect(screen.getByRole("button", { name }).closest("[inert]")).toBeTruthy();
             }
             expect(commentTextbox().closest("[inert]")).toBeTruthy();
@@ -1967,5 +1958,126 @@ describe("StudyWorkspaceView", () => {
             fireEvent.click(screen.getByRole("button", { name: "このブラウザからも消す" }));
             expect(onDiscard).toHaveBeenCalledTimes(1);
         });
+    });
+});
+
+describe("StudyWorkspaceView: スマートフォン", () => {
+    beforeEach(() => {
+        vi.spyOn(window, "matchMedia").mockImplementation(
+            (query: string) =>
+                ({
+                    matches: query.includes("max-width: 767px"),
+                    media: query,
+                    addEventListener: () => {},
+                    removeEventListener: () => {},
+                }) as unknown as MediaQueryList,
+        );
+    });
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it("画面の上のタブで、盤を大きく見る表示と一覧の表示を切り替える", () => {
+        render(<Harness initialDoc={createTestStudy().doc} />);
+        const tab = (name: string) => screen.getByRole("tab", { name });
+        // 最初は盤を大きく見る表示（グラフを出し、一覧は出さない）。
+        expect(tab("盤").getAttribute("aria-selected")).toBe("true");
+        expect(screen.getByRole("region", { name: "評価値グラフ" })).toBeTruthy();
+        expect(screen.queryByRole("region", { name: "棋譜と変化" })).toBeNull();
+
+        fireEvent.click(tab("棋譜"));
+        expect(tab("棋譜").getAttribute("aria-selected")).toBe("true");
+        expect(screen.getByRole("region", { name: "棋譜と変化" })).toBeTruthy();
+        expect(screen.queryByRole("region", { name: "評価値グラフ" })).toBeNull();
+
+        fireEvent.click(tab("盤"));
+        expect(screen.queryByRole("region", { name: "棋譜と変化" })).toBeNull();
+    });
+
+    it("盤の下の横に流す棋譜で手を押すと、その手へ移る", () => {
+        render(<Harness initialDoc={createTestStudy().doc} />);
+        const position = () =>
+            within(screen.getByRole("navigation", { name: "局面の移動" })).getByRole("status");
+
+        const firstMove = screen
+            .getAllByRole("button")
+            .find((button) => /^1[☗☖]/.test(button.textContent ?? ""));
+        if (!firstMove) throw new Error("横に流す棋譜に 1 手目がありません");
+        fireEvent.click(firstMove);
+        expect(position().textContent?.replace(/\s/g, "")).toMatch(/^1\//);
+    });
+
+    it("注目局面の一覧で手を押すと、盤の表示に切り替えてその局面を見せる", () => {
+        const { doc } = createTestStudy([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
+        render(<Harness initialDoc={doc} />);
+        fireEvent.click(screen.getByRole("tab", { name: "注目局面" }));
+        fireEvent.click(within(highlights()).getByRole("button", { name: /3手目 ☗2六歩\(27\)/ }));
+        expect(screen.getByRole("tab", { name: "盤" }).getAttribute("aria-selected")).toBe("true");
+        const position = within(screen.getByRole("navigation", { name: "局面の移動" })).getByRole(
+            "status",
+        );
+        expect(position.textContent?.replace(/\s/g, "")).toMatch(/^3\//);
+    });
+
+    it("表題は「その他の操作」から変える", async () => {
+        const onOps = vi.fn();
+        render(<Harness initialDoc={createTestStudy().doc} onOps={onOps} />);
+        fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
+        fireEvent.click(screen.getByRole("button", { name: /表題を変更/ }));
+        fireEvent.change(screen.getByRole("textbox", { name: "研究ノートの表題" }), {
+            target: { value: "新しい表題" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "変更する" }));
+        await waitFor(() =>
+            expect(onOps).toHaveBeenCalledWith([{ type: "setTitle", value: "新しい表題" }]),
+        );
+    });
+
+    it("表題のダイアログを開いたまま編集できなくなったら閉じ、戻っても開き直さない", () => {
+        const doc = createTestStudy().doc;
+        const view = render(<Harness initialDoc={doc} />);
+        fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
+        fireEvent.click(screen.getByRole("button", { name: /表題を変更/ }));
+        expect(screen.getByRole("textbox", { name: "研究ノートの表題" })).toBeTruthy();
+
+        view.rerender(<Harness initialDoc={doc} locked />);
+        view.rerender(<Harness initialDoc={doc} />);
+        expect(screen.queryByRole("textbox", { name: "研究ノートの表題" })).toBeNull();
+    });
+
+    it("編集できない間も、「その他の操作」から棋譜を持ち出せる（止めるのは表示の場所だけ）", () => {
+        render(<Harness initialDoc={createTestStudy().doc} locked />);
+        const menuButton = screen.getByRole("button", { name: "その他の操作" });
+        expect(menuButton.closest("[inert]")).toBeNull();
+        expect(screen.getByRole("tabpanel").hasAttribute("inert")).toBe(true);
+        fireEvent.click(menuButton);
+        expect(screen.getByRole("button", { name: /棋譜をコピー（KIF）/ })).toBeTruthy();
+        expect(screen.queryByRole("button", { name: /表題を変更/ })).toBeNull();
+    });
+});
+
+describe("fitMobileBoard（スマートフォンの盤の寸法）", () => {
+    it("小さいマスでは、持ち駒 7 種類の駒台の高さを盤の高さとして確保する", () => {
+        const fit = fitMobileBoard(320, 500);
+        expect(fit.scale).toBe(1);
+        // 駒台は 5.6c + 126px、盤は 9c + 44px。マスが 24px 未満では駒台の方が高い。
+        expect(fit.boardHeight).toBe(
+            Math.max(fit.cellSize * 9 + 44, Math.ceil(fit.cellSize * 5.6 + 126)),
+        );
+        expect(fit.boardHeight).toBeGreaterThan(fit.cellSize * 9 + 44);
+    });
+
+    it("低い画面では、盤を縮める前に下の欄を削る", () => {
+        // 下に 150px を残すと下限のマスでも入らないが、削れば縮めずに入る高さ。
+        const fit = fitMobileBoard(375, 360);
+        expect(fit.scale).toBe(1);
+        expect(fit.cellSize).toBeGreaterThanOrEqual(20);
+    });
+
+    it("下の欄を削っても入らないときは縮めるが、駒が読めないほどには縮めない", () => {
+        const fit = fitMobileBoard(375, 100);
+        expect(fit.cellSize).toBe(20);
+        expect(fit.scale).toBe(0.6);
+        expect(fit.boardHeight).toBeGreaterThan(0);
     });
 });
