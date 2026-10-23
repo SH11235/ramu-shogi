@@ -49,11 +49,14 @@ interface DocumentState {
     storageKey: string;
     label: string;
     localValue: string | null;
+    editBase: string | null | undefined;
+    editBaseRevision: number;
+    observedValue: string | null | undefined;
     remoteValue: string | null;
     version: number | null | undefined;
     dirty: boolean;
     failure: "conflict" | "request" | null;
-    unconfirmedWrites: { value: string; version: number }[];
+    unconfirmedWrites: { value: string; version: number; editBaseRevision: number }[];
 }
 
 interface UserState {
@@ -135,9 +138,21 @@ function readLocalDocument(storageKey: string): string | null {
     }
 }
 
-function captureLocalChange(document: DocumentState): boolean {
+function captureLocalChange(document: DocumentState, explicit = false): boolean {
     const localValue = readLocalDocument(document.storageKey);
-    if (localValue === document.localValue) return false;
+    const previousValue =
+        explicit && document.observedValue !== undefined
+            ? document.observedValue
+            : document.localValue;
+    if (localValue === previousValue) return false;
+    if (
+        explicit &&
+        (!document.dirty || document.failure === "conflict" || document.observedValue !== undefined)
+    ) {
+        document.editBase = previousValue;
+        document.editBaseRevision++;
+    }
+    document.observedValue = undefined;
     document.localValue = localValue;
     document.dirty = localValue !== null;
     document.failure = null;
@@ -157,6 +172,7 @@ export function createUserSettingsSync(
     pause: () => void;
     reset: () => void;
     localChanged: (storageKey: string, source?: LocalStorageChangeSource) => void;
+    storageChanged: (storageKey: string | null) => void;
 } {
     let user: UserState | null = null;
     let generation: Generation | null = null;
@@ -243,30 +259,60 @@ export function createUserSettingsSync(
         publishError();
     }
 
-    function acceptRemote(document: DocumentState, remote: UserSettingsDocument | null): void {
+    function acceptRemote(
+        document: DocumentState,
+        remote: UserSettingsDocument | null,
+        canComplete = true,
+    ): void {
         document.version = remote?.version ?? null;
         document.remoteValue = remote ? JSON.stringify(remote.value) : null;
         document.unconfirmedWrites = document.unconfirmedWrites.filter(
             (write) => write.version > (document.version ?? 0),
         );
-        if (document.localValue === document.remoteValue && !hasUnconfirmedChange(document)) {
+        if (
+            canComplete &&
+            document.localValue === document.remoteValue &&
+            !hasUnconfirmedChange(document)
+        ) {
             document.dirty = false;
+            document.editBase = undefined;
             document.failure = null;
+            document.localValue = readLocalDocument(document.storageKey);
+            document.observedValue = undefined;
         }
     }
 
-    async function resolveConflict(candidate: Generation, document: DocumentState): Promise<void> {
+    async function resolveConflict(
+        candidate: Generation,
+        document: DocumentState,
+        retriedRevision: number | undefined,
+    ): Promise<boolean> {
+        const hadUnconfirmedWrites = document.unconfirmedWrites.length > 0;
+        const editBaseRevision = document.editBaseRevision;
         const payload = await request<GetUserSettingsResponse>(
             candidate,
             `/api/user/settings/${document.documentKey}`,
         );
-        if (!isCurrent(candidate)) return;
+        if (!isCurrent(candidate)) return false;
         captureLocalChange(document);
-        acceptRemote(document, payload.document);
+        const canRebase =
+            retriedRevision !== document.editBaseRevision &&
+            !hadUnconfirmedWrites &&
+            document.editBase !== undefined &&
+            document.editBase ===
+                (payload.document ? JSON.stringify(payload.document.value) : null);
+        acceptRemote(document, payload.document, document.editBaseRevision === editBaseRevision);
+        // 編集開始時に表示した値と一致する場合だけ、既知の更新として一度再送する。
+        if (document.dirty && canRebase) return true;
         if (document.dirty) document.failure = "conflict";
+        return false;
     }
 
-    async function upload(candidate: Generation, document: DocumentState): Promise<void> {
+    async function upload(
+        candidate: Generation,
+        document: DocumentState,
+        retriedRevision?: number,
+    ): Promise<void> {
         if (
             !isCurrent(candidate) ||
             !candidate.ready ||
@@ -275,6 +321,7 @@ export function createUserSettingsSync(
             return;
         candidate.uploading.add(document.documentKey);
         let attempt: DocumentState["unconfirmedWrites"][number] | undefined;
+        let retry = false;
         try {
             while (isCurrent(candidate) && document.dirty && !document.failure) {
                 if (document.version === undefined || document.localValue === null) break;
@@ -283,13 +330,16 @@ export function createUserSettingsSync(
                 }
                 if (
                     document.localValue === document.remoteValue &&
+                    (document.editBase === undefined ||
+                        document.editBase === document.remoteValue) &&
                     !hasUnconfirmedChange(document)
                 ) {
                     document.dirty = false;
                     break;
                 }
                 const value = document.localValue;
-                attempt = { value, version: (document.version ?? 0) + 1 };
+                const editBaseRevision = document.editBaseRevision;
+                attempt = { value, version: (document.version ?? 0) + 1, editBaseRevision };
                 document.unconfirmedWrites.push(attempt);
                 const payload = await request<PutUserSettingsResponse>(
                     candidate,
@@ -297,7 +347,9 @@ export function createUserSettingsSync(
                     { value: JSON.parse(value) as JsonValue, expectedVersion: document.version },
                 );
                 if (!isCurrent(candidate)) return;
-                acceptRemote(document, payload.document);
+                const sameEditBase = document.editBaseRevision === editBaseRevision;
+                acceptRemote(document, payload.document, sameEditBase);
+                if (document.dirty && sameEditBase) document.editBase = document.remoteValue;
             }
         } catch (error) {
             if (isRequestError(error) && error.status >= 400 && error.status < 500) {
@@ -312,7 +364,7 @@ export function createUserSettingsSync(
                 error.code === "SETTINGS_VERSION_CONFLICT"
             ) {
                 try {
-                    await resolveConflict(candidate, document);
+                    retry = await resolveConflict(candidate, document, retriedRevision);
                 } catch (conflictError) {
                     fail(candidate, document, conflictError);
                 }
@@ -324,12 +376,16 @@ export function createUserSettingsSync(
             if (isCurrent(candidate)) {
                 publishError();
                 markSynced(candidate);
+                if (retry) void upload(candidate, document, document.editBaseRevision);
             }
         }
     }
 
     async function initialize(candidate: Generation): Promise<void> {
         try {
+            const editBaseRevisions = new Map(
+                candidate.user.documents.map((document) => [document, document.editBaseRevision]),
+            );
             const payload = await request<ListUserSettingsResponse>(
                 candidate,
                 "/api/user/settings",
@@ -345,7 +401,7 @@ export function createUserSettingsSync(
                 const remote = remoteDocuments.get(document.documentKey) ?? null;
                 const remoteVersion = remote?.version ?? null;
                 const remoteValue = remote ? JSON.stringify(remote.value) : null;
-                const ownWrite = document.unconfirmedWrites.some(
+                const ownWrite = document.unconfirmedWrites.find(
                     (write) => write.version === remoteVersion && write.value === remoteValue,
                 );
                 if (document.dirty) {
@@ -358,7 +414,12 @@ export function createUserSettingsSync(
                     } else if (document.failure === "request") {
                         document.failure = null;
                     }
-                    acceptRemote(document, remote);
+                    const sameEditBase =
+                        document.editBaseRevision === editBaseRevisions.get(document) &&
+                        (!ownWrite || ownWrite.editBaseRevision === document.editBaseRevision);
+                    acceptRemote(document, remote, sameEditBase);
+                    if (ownWrite && document.dirty && sameEditBase)
+                        document.editBase = document.remoteValue;
                 } else {
                     acceptRemote(document, remote);
                     if (remote) {
@@ -399,6 +460,9 @@ export function createUserSettingsSync(
                 documents: SETTINGS_STORAGE_MAPPINGS.map((mapping) => ({
                     ...mapping,
                     localValue: readLocalDocument(mapping.storageKey),
+                    editBase: undefined,
+                    editBaseRevision: 0,
+                    observedValue: undefined,
                     remoteValue: null,
                     version: undefined,
                     dirty: false,
@@ -470,7 +534,7 @@ export function createUserSettingsSync(
                 }
                 return;
             }
-            if (!captureLocalChange(document)) return;
+            if (!captureLocalChange(document, true)) return;
             writeOwnership(document, user.userId);
             publishError();
             if (generation) void upload(generation, document);
@@ -483,5 +547,19 @@ export function createUserSettingsSync(
         }
     }
 
-    return { start, pause, reset, localChanged };
+    function storageChanged(storageKey: string | null): void {
+        for (const document of user?.documents ?? []) {
+            if (storageKey !== null && document.storageKey !== storageKey) continue;
+            try {
+                // 別タブからの値は比較にだけ使い、受信側の利用者へ所属を移さない。
+                const value = readLocalDocument(document.storageKey);
+                if (document.dirty) document.observedValue = value;
+                else document.localValue = value;
+            } catch (error) {
+                if (generation) fail(generation, document, error);
+            }
+        }
+    }
+
+    return { start, pause, reset, localChanged, storageChanged };
 }
