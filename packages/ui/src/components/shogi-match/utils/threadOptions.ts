@@ -20,12 +20,16 @@ export const ANALYSIS_TIME_OPTIONS: ThreadSelectOption[] = [
 
 const DEFAULT_MAX_OPTIONS = 32;
 
-/** その AI（エンジン）が使えるスレッド数の上限。複数の AI に同じ数を当てるときは小さいほうに合わせる。 */
+/**
+ * その AI（エンジン）が使えるスレッド数の上限。複数の AI に同じ数を当てるときは小さいほうに合わせる。
+ * engineId の無い AI は、対局と同じく先頭のエンジンとみなす（useEngineManager の resolveSides）。
+ */
 export function threadCapOf(
     engineOptions: EngineOption[] | undefined,
     engineIds: Array<string | undefined>,
 ): number | undefined {
     const caps = engineIds
+        .map((id) => id ?? engineOptions?.[0]?.id)
         .map((id) => engineOptions?.find((option) => option.id === id)?.maxThreads)
         .filter((cap): cap is number => cap !== undefined);
     return caps.length > 0 ? Math.min(...caps) : undefined;

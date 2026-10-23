@@ -8,7 +8,7 @@ import { NativeSelect } from "../../native-select";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../select";
 import { Switch } from "../../switch";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
-import { buildThreadOptions, threadCapOf } from "../utils/threadOptions";
+import { buildThreadOptions, clampThreads, threadCapOf } from "../utils/threadOptions";
 import { PlayerIcon } from "./PlayerIcon";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 
@@ -302,7 +302,12 @@ export function LeftSidebar({
                     <div className={labelClassName}>
                         <span>スレッド数</span>
                         <NativeSelect
-                            value={String(engineThreads[side])}
+                            value={String(
+                                clampThreads(
+                                    engineThreads[side],
+                                    threadCapOf(engineOptions, [sides[side].engineId]),
+                                ),
+                            )}
                             disabled={settingsLocked}
                             onChange={(e) =>
                                 onEngineThreadsChange({

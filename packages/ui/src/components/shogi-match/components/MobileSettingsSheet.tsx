@@ -23,7 +23,7 @@ import {
     type ImportSfenHandler,
     KIFU_FILE_ACCEPT,
 } from "../utils/kifuImport";
-import { buildThreadOptions, threadCapOf } from "../utils/threadOptions";
+import { buildThreadOptions, clampThreads, threadCapOf } from "../utils/threadOptions";
 import { SkillLevelSelector } from "./SkillLevelSelector";
 
 type SideKey = "sente" | "gote";
@@ -484,7 +484,10 @@ export function MobileSettingsSheet({
                                 <span className="text-xs text-muted-foreground">スレッド数</span>
                                 <NativeSelect
                                     id="mobile-sente-threads"
-                                    value={engineThreads.sente}
+                                    value={clampThreads(
+                                        engineThreads.sente,
+                                        threadCapOf(engineOptions, [sides.sente.engineId]),
+                                    )}
                                     disabled={settingsLocked}
                                     onChange={(e) =>
                                         onEngineThreadsChange({
@@ -597,7 +600,10 @@ export function MobileSettingsSheet({
                                 <span className="text-xs text-muted-foreground">スレッド数</span>
                                 <NativeSelect
                                     id="mobile-gote-threads"
-                                    value={engineThreads.gote}
+                                    value={clampThreads(
+                                        engineThreads.gote,
+                                        threadCapOf(engineOptions, [sides.gote.engineId]),
+                                    )}
                                     disabled={settingsLocked}
                                     onChange={(e) =>
                                         onEngineThreadsChange({

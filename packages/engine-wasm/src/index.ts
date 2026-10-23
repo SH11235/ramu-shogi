@@ -270,8 +270,17 @@ const readDeviceMemoryGb = (): number | undefined => {
     return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 };
 
-const isCoarsePointer = (): boolean =>
-    typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+let coarsePointerAtStart: boolean | null = null;
+
+/**
+ * 最初に見た値を使い続ける（途中でマウスをつないで pointer が変わっても、画面の選択肢と
+ * 実際のスレッド数がずれないように）。
+ */
+const isCoarsePointer = (): boolean => {
+    coarsePointerAtStart ??=
+        typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+    return coarsePointerAtStart;
+};
 
 /** この端末で wasm エンジンが使えるスレッド数の上限（スレッドを使えない環境では 1）。 */
 export function getWasmMaxThreads(): number {

@@ -31,6 +31,8 @@ describe("threadCapOf", () => {
     it("上限のあるエンジンだけで最小を取り、どれにも無ければ undefined", () => {
         expect(threadCapOf(engines, ["wasm", "ext"])).toBe(8);
         expect(threadCapOf(engines, ["ext"])).toBeUndefined();
-        expect(threadCapOf(engines, [undefined])).toBeUndefined();
+        // engineId の無い AI は先頭のエンジン（ここでは wasm）として扱う
+        expect(threadCapOf(engines, [undefined])).toBe(8);
+        expect(threadCapOf(undefined, [undefined])).toBeUndefined();
     });
 });
