@@ -276,6 +276,15 @@ const studiesRoute = createRoute({
     component: lazyRouteComponent(() => import("./pages/studies/StudiesPage")),
 });
 
+// `/studies/$studyId` より前に登録する（"new" をノートの ID と取り違えないように）。
+const newStudyRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/studies/new",
+    validateSearch: (search: Record<string, unknown>): { from?: "games" } =>
+        search.from === "games" ? { from: "games" } : {},
+    component: lazyRouteComponent(() => import("./pages/studies/NewStudyFromGamePage")),
+});
+
 const studyRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/studies/$studyId",
@@ -370,6 +379,7 @@ const routeTree = rootRoute.addChildren([
     publicGameRoute,
     nnueFilesRoute,
     studiesRoute,
+    newStudyRoute,
     studyRoute,
     createRoomRoute,
     roomRoute,

@@ -1,12 +1,14 @@
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 
 export interface KifuMove {
     /** 手数（1から始まる） */
     ply: number;
     /** 日本語表記の指し手 */
     displayText: string;
+    /** 悪手・疑問手の印（研究ノートの解析結果）。無ければ出さない */
+    mark?: "blunder" | "dubious";
 }
 
 interface MobileKifuBarProps {
@@ -33,23 +35,28 @@ export function MobileKifuBar({
     const isWafuu = tone === "wafuu";
     const containerRef = useRef<HTMLDivElement>(null);
 
-    // 現在の手を中央にスクロール（コールバックref）
-    const scrollToCurrentRef = (node: HTMLButtonElement | null) => {
-        if (node && containerRef.current) {
-            const container = containerRef.current;
-            const containerWidth = container.clientWidth;
-            const currentLeft = node.offsetLeft;
-            const currentWidth = node.clientWidth;
-            // 現在の手を中央に配置
-            const scrollLeft = currentLeft - containerWidth / 2 + currentWidth / 2;
-            container.scrollTo({ left: scrollLeft, behavior: "smooth" });
-        }
-    };
-    useEffect(() => {
-        if (currentPly !== 0) return;
-        if (!containerRef.current) return;
+    const currentRef = useRef<HTMLButtonElement | null>(null);
+    const hasScrolledRef = useRef(false);
+
+    // 現在の手を中央にスクロールする。ref の付く順（子が先）に左右されないよう、描画のあとで行う。
+    // 最初に出すときは途中の手から開いても一瞬で合わせ、そのあとの移動は滑らかに送る。
+    useLayoutEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+        const behavior: ScrollBehavior = hasScrolledRef.current ? "smooth" : "auto";
+        hasScrolledRef.current = true;
+        const node = currentRef.current;
         // 0手目は未選択扱いなので、先頭まで戻す
-        containerRef.current.scrollTo({ left: 0, behavior: "smooth" });
+        if (currentPly === 0 || !node) {
+            container.scrollTo({ left: 0, behavior });
+            return;
+        }
+        // offsetLeft は位置の基準になる祖先からの距離で、この帯からの距離とは限らないので、見えている
+        // 位置の差から求める。
+        const offset = node.getBoundingClientRect().left - container.getBoundingClientRect().left;
+        const scrollLeft =
+            container.scrollLeft + offset - container.clientWidth / 2 + node.clientWidth / 2;
+        container.scrollTo({ left: scrollLeft, behavior });
     }, [currentPly]);
 
     if (moves.length === 0) {
@@ -80,7 +87,7 @@ export function MobileKifuBar({
                 return (
                     <button
                         key={move.ply}
-                        ref={isCurrent ? scrollToCurrentRef : undefined}
+                        ref={isCurrent ? currentRef : undefined}
                         type="button"
                         onClick={onPlySelect ? () => onPlySelect(move.ply) : undefined}
                         disabled={!onPlySelect}
@@ -106,6 +113,18 @@ export function MobileKifuBar({
                             {move.ply}
                         </span>
                         {move.displayText}
+                        {move.mark && (
+                            <span
+                                className={cn(
+                                    "ml-1 rounded border px-0.5 text-[10px] font-semibold leading-4",
+                                    move.mark === "blunder"
+                                        ? "border-study-blunder-border bg-study-blunder-bg text-study-blunder"
+                                        : "border-study-dubious-border bg-study-dubious-bg text-study-dubious",
+                                )}
+                            >
+                                {move.mark === "blunder" ? "悪手" : "疑問手"}
+                            </span>
+                        )}
                     </button>
                 );
             })}

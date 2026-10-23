@@ -43,8 +43,13 @@ export default function RshogiViewerPage(): ReactElement {
                 apiBaseUrl={apiBaseUrl}
                 // 同じ棋譜の研究ノートがあればそれを開き、無ければ対局時の評価値ごと取り込んで作る。
                 // この画面から先へ進む操作は 2 つ。主が「研究ノートで開く」、従が「この局面から対局」。
-                renderGameAction={(game) => (
-                    <OpenStudyButton open={() => openStudyFromRshogiGame(game)} />
+                renderGameAction={(game, { compact }) => (
+                    <OpenStudyButton
+                        open={() => openStudyFromRshogiGame(game)}
+                        // スマホの盤の下の 1 行に収めるため、短い名前にする。
+                        label={compact ? "研究ノート" : undefined}
+                        size={compact ? "compact" : "default"}
+                    />
                 )}
                 // いま表示している局面を `/play` へ引き継ぐ（対局は始めず、設定を選べる状態で開く）。
                 onPlayFromPosition={playFromPosition}

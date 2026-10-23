@@ -173,8 +173,8 @@ export interface RshogiCsaGameBrowserProps {
     onSearchChange: (search: RshogiGameBrowserSearch) => void;
     /** 終局済みの対局を選んだとき。 */
     onSelectGame: (gameId: string) => void;
-    /** 進行中の対局を選んだとき。 */
-    onSelectLiveGame: (gameId: string) => void;
+    /** 進行中の対局を選んだとき。省くと、進行中の対局の欄を出さない（終局済みの棋譜だけを選ぶ画面）。 */
+    onSelectLiveGame?: (gameId: string) => void;
 }
 
 /** 「詳細条件」に入る欄 (イベント・結果・終了日) のうち、値が入っている数。 */
@@ -405,7 +405,12 @@ export function RshogiCsaGameBrowser({
 
     return (
         <div className="flex flex-col gap-4">
-            <RshogiCsaLiveGamesSection apiBaseUrl={apiBaseUrl} onSelectGame={onSelectLiveGame} />
+            {onSelectLiveGame && (
+                <RshogiCsaLiveGamesSection
+                    apiBaseUrl={apiBaseUrl}
+                    onSelectGame={onSelectLiveGame}
+                />
+            )}
 
             <section
                 aria-labelledby="rshogi-finished-games-heading"

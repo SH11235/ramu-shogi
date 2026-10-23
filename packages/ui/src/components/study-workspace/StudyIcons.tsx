@@ -33,18 +33,6 @@ function StrokeIcon({
     );
 }
 
-/** しおり。`filled` で付いている状態。 */
-export function BookmarkIcon({
-    className,
-    filled,
-}: IconProps & { filled?: boolean }): ReactElement {
-    return (
-        <StrokeIcon className={className} filled={filled}>
-            <path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z" />
-        </StrokeIcon>
-    );
-}
-
 /** コメント。 */
 export function CommentIcon({ className }: IconProps): ReactElement {
     return (

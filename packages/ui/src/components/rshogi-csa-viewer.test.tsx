@@ -17,6 +17,7 @@ interface CapturedShogiMatchProps {
     viewerMode?: boolean;
     boardTopContent?: ReactNode;
     mobileHeaderContent?: ReactNode;
+    mobileReviewActions?: ReactNode;
     evalGraphPinned?: boolean;
     onPositionSnapshot?: (snapshot: { sfen: string; moves: string[]; label?: string }) => void;
 }
@@ -30,6 +31,7 @@ vi.mock("./shogi-match", () => ({
             <div data-testid="shogi-match">
                 <div data-testid="board-top">{props.boardTopContent}</div>
                 <div data-testid="mobile-header">{props.mobileHeaderContent}</div>
+                <div data-testid="mobile-review-actions">{props.mobileReviewActions}</div>
                 <div data-testid="left-panel">{props.reviewLeftContent}</div>
             </div>
         );
@@ -769,28 +771,26 @@ describe("RshogiCsaViewer: モバイル幅", () => {
         );
     };
 
-    it("左カラムの無いモバイルでも、1 行の要約とシートから対局情報に到達できる", async () => {
+    it("左カラムの無いモバイルでも、盤の下の評価値の行とシートから対局情報に到達できる", async () => {
         stubMobile(true);
         vi.mocked(fetchRshogiGame).mockResolvedValue(WDOOR_GAME);
 
         renderViewer();
 
         // 盤の上に別の行は取らない。対局者は、盤の上の「手数・反転」の行に小さく出す。
-        const summary = await screen.findByRole("button", { name: /対局情報/ });
-        expect(within(summary).getByText("Floodgate")).toBeTruthy();
-        const inline = within(screen.getByTestId("mobile-header")).getByRole("region", {
+        const inline = within(await screen.findByTestId("mobile-header")).findByRole("region", {
             name: "対局者",
         });
-        expect(inline.textContent).toBe("☗先手RAMU☖後手SampleEngine");
-        // 対局場所の 1 行は、盤（操作欄）の下に出す。
-        expect(
-            screen.getByTestId("shogi-match").compareDocumentPosition(summary) &
-                Node.DOCUMENT_POSITION_FOLLOWING,
-        ).toBeTruthy();
+        expect((await inline).textContent).toBe("☗先手RAMU☖後手SampleEngine");
+        // 対局情報を開くボタンは、最初の画面に収まる評価値の行に置く。
+        const infoButton = within(screen.getByTestId("mobile-review-actions")).getByRole("button", {
+            name: "対局情報",
+        });
 
-        fireEvent.click(summary);
+        fireEvent.click(infoButton);
 
         const sheet = await screen.findByRole("dialog", { name: "対局情報" });
+        expect(within(sheet).getAllByText("Floodgate").length).toBeGreaterThan(0);
         // 盤の上では名前を省略しうるので、シートには対局者の全文とレートを出す。
         expect(within(sheet).getByRole("region", { name: "対局者" }).textContent).toBe(
             "先手☗RAMUR3512後手☖SampleEngineR3447",
@@ -945,7 +945,7 @@ describe("RshogiCsaViewer: 大会（イベント）のメタデータ", () => {
 
         renderViewer();
 
-        fireEvent.click(await screen.findByRole("button", { name: /対局情報/ }));
+        fireEvent.click(await screen.findByRole("button", { name: "対局情報" }));
         const sheet = await screen.findByRole("dialog", { name: "対局情報" });
         expect(await within(sheet).findByText(WCSC_META.title)).toBeTruthy();
         expect(within(sheet).getByText("主催: コンピュータ将棋協会")).toBeTruthy();
@@ -959,5 +959,36 @@ describe("RshogiCsaViewer: 大会（イベント）のメタデータ", () => {
                 .getByRole("link", { name: /^棋譜の出典\s*（新しいタブで開く）$/ })
                 .getAttribute("href"),
         ).toBe(WCSC_META.kifuSourceUrl);
+    });
+});
+
+describe("RshogiCsaViewer: 主な操作の置き場所", () => {
+    it("スマホでは、主な操作を評価値の行に小さく出す（シートの中にも出す）", async () => {
+        vi.spyOn(window, "matchMedia").mockImplementation(
+            (query: string) =>
+                ({
+                    matches: true,
+                    media: query,
+                    addEventListener: () => {},
+                    removeEventListener: () => {},
+                }) as unknown as MediaQueryList,
+        );
+        vi.mocked(fetchRshogiGame).mockResolvedValue(GAME);
+        const renderGameAction = vi.fn((_game: RshogiGame, { compact }: { compact: boolean }) => (
+            <button type="button">{compact ? "研究ノート" : "研究ノートで開く"}</button>
+        ));
+
+        render(
+            <RshogiCsaViewer
+                gameId={GAME_ID}
+                engineOptions={[]}
+                manifestUrl="/nnue-manifest.json"
+                renderGameAction={renderGameAction}
+            />,
+        );
+
+        const row = await screen.findByTestId("mobile-review-actions");
+        expect(await within(row).findByRole("button", { name: "研究ノート" })).toBeTruthy();
+        vi.restoreAllMocks();
     });
 });

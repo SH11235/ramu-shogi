@@ -50,7 +50,6 @@ export interface StudyHighlight {
     scoreBefore: StudyScore | null;
     /** 手を指した後の局面の評価値（先手視点）。未解析なら null。 */
     scoreAfter: StudyScore | null;
-    bookmarked: boolean;
     hasComment: boolean;
 }
 
@@ -138,7 +137,8 @@ export function computeStudyHighlights(
         }
 
         const hasComment = node.comment !== "";
-        if (kind === null && !node.bookmarked && !hasComment) continue;
+        // しおりは画面で付け外しできないので（保存した値は残す）、注目局面には入れない。
+        if (kind === null && !hasComment) continue;
         const highlight: StudyHighlight = {
             nodeId: item.nodeId,
             parentId: node.parentId,
@@ -150,7 +150,6 @@ export function computeStudyHighlights(
             drop,
             scoreBefore,
             scoreAfter,
-            bookmarked: node.bookmarked,
             hasComment,
         };
         if (kind !== null) judged.push(highlight);

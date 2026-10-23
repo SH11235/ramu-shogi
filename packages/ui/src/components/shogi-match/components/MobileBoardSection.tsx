@@ -78,6 +78,8 @@ interface MobileBoardSectionProps {
     turn?: Player;
     /** ヒントとして盤に示す手（対局画面） */
     hintMove?: { from?: string | null; to: string; side?: Player } | null;
+    /** 親の幅から決めるときのマスの下限（px）。親の幅がこれより狭いと盤ははみ出す。 */
+    minCellSize?: number;
 }
 
 /**
@@ -113,8 +115,14 @@ export function MobileBoardSection({
     passRights,
     turn,
     hintMove,
+    minCellSize,
 }: MobileBoardSectionProps): ReactElement {
-    const cellSize = useMobileCellSize(boardSectionRef);
+    const cellSize = useMobileCellSize(boardSectionRef, minCellSize);
+    // 持っていない駒を出さないとき、持ち駒が 1 枚も無い段は中身が無くなる。駒を取った・打ったときに
+    // 盤が上下に動かないよう、駒がある段と同じ高さ（駒台の枠の高さ。下限 34px）を確保する。
+    const handZoneClass = hideEmptyHandPieces
+        ? "min-h-[max(34px,calc(var(--shogi-cell-size)*0.8+15px))]"
+        : undefined;
 
     return (
         <div
@@ -127,7 +135,7 @@ export function MobileBoardSection({
             }
         >
             {/* 上側の持ち駒 */}
-            <div data-zone={`hand-${topHand.owner}`}>
+            <div data-zone={`hand-${topHand.owner}`} className={handZoneClass}>
                 <HandPiecesDisplay
                     owner={topHand.owner}
                     hand={topHand.hand}
@@ -208,7 +216,7 @@ export function MobileBoardSection({
             ) : null}
 
             {/* 下側の持ち駒 */}
-            <div data-zone={`hand-${bottomHand.owner}`}>
+            <div data-zone={`hand-${bottomHand.owner}`} className={handZoneClass}>
                 <HandPiecesDisplay
                     owner={bottomHand.owner}
                     hand={bottomHand.hand}

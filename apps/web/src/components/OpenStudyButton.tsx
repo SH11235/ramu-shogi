@@ -1,9 +1,7 @@
 import { cn } from "@shogi/design-system";
-import { useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
-import { useState } from "react";
-import { useAuthSession } from "../hooks/useAuthSession";
-import { ensureStudySession } from "../lib/studySync";
+import { useEffect, useState } from "react";
+import { useOpenStudy } from "../hooks/useOpenStudy";
 
 interface OpenStudyButtonProps {
     /**
@@ -14,8 +12,12 @@ interface OpenStudyButtonProps {
     label?: string;
     /** 見た目。`primary` は主ボタン、`outline` は枠線の控えめなボタン。 */
     variant?: "primary" | "outline";
+    /** `compact` は、スマホの盤の下の 1 行に収める小さいボタン。 */
+    size?: "default" | "compact";
     className?: string;
 }
+
+const COMPACT_ERROR_MS = 6000;
 
 /**
  * 「研究ノートで開く」。棋譜を見ている画面（rshogi viewer、自分の対局、`/play`）に置く共通の入口。
@@ -25,55 +27,69 @@ export function OpenStudyButton({
     open,
     label = "研究ノートで開く",
     variant = "primary",
+    size = "default",
     className,
 }: OpenStudyButtonProps): ReactElement {
-    const navigate = useNavigate();
-    const { session, isLoadingSession, sessionError } = useAuthSession();
-    const [isBusy, setIsBusy] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const { openStudy, isBusy, error } = useOpenStudy();
 
-    const handleClick = async (): Promise<void> => {
-        if (isBusy) return;
-        setIsBusy(true);
-        setError(null);
-        try {
-            // ログイン中なら、クラウドにある同じ棋譜のノートも探せるよう、先にログイン状態を伝える。
-            if (!isLoadingSession && session !== null) {
-                await ensureStudySession(session?.authenticated ? session.user.id : null, {
-                    confirmed: sessionError === null,
-                });
-            }
-            const { studyId } = await open();
-            await navigate({ to: "/studies/$studyId", params: { studyId } });
-        } catch (failure) {
-            setError(
-                `研究ノートを開けませんでした: ${
-                    failure instanceof Error ? failure.message : String(failure)
-                }`,
-            );
-        } finally {
-            setIsBusy(false);
-        }
-    };
-
+    const compact = size === "compact";
+    // 小さいボタンのエラーは盤や移動のボタンに重なるので、しばらくしたら消す（押し直せばまた出る）。
+    const [compactErrorHidden, setCompactErrorHidden] = useState(false);
+    useEffect(() => {
+        setCompactErrorHidden(false);
+        if (!compact || !error) return;
+        const timer = setTimeout(() => setCompactErrorHidden(true), COMPACT_ERROR_MS);
+        return () => clearTimeout(timer);
+    }, [compact, error]);
     return (
-        <div className="flex flex-col gap-1">
+        // 小さいボタンは 1 行に並べて置くので、文言の差し替えやエラーで行の幅・高さを変えない
+        // （エラーは行の外に重ねて出す）。
+        <div className={cn("flex flex-col gap-1", compact && "relative")}>
             <button
                 type="button"
-                onClick={() => void handleClick()}
+                onClick={() => void openStudy(open)}
                 disabled={isBusy}
                 className={cn(
-                    "rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+                    "rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+                    size === "compact"
+                        ? "whitespace-nowrap px-2 py-0.5 text-xs"
+                        : "px-4 py-2 text-sm",
                     variant === "primary"
                         ? "bg-primary text-primary-foreground shadow hover:bg-primary/90"
                         : "border border-input bg-background text-foreground hover:bg-muted/50",
                     className,
                 )}
             >
-                {isBusy ? "準備中…" : label}
+                {compact ? (
+                    <span className="grid">
+                        <span
+                            className={cn("col-start-1 row-start-1", isBusy && "invisible")}
+                            aria-hidden={isBusy}
+                        >
+                            {label}
+                        </span>
+                        <span
+                            className={cn("col-start-1 row-start-1", !isBusy && "invisible")}
+                            aria-hidden={!isBusy}
+                        >
+                            準備中…
+                        </span>
+                    </span>
+                ) : isBusy ? (
+                    "準備中…"
+                ) : (
+                    label
+                )}
             </button>
-            {error && (
-                <p role="alert" className="text-xs text-destructive">
+            {error && !(compact && compactErrorHidden) && (
+                <p
+                    role="alert"
+                    className={cn(
+                        "text-xs text-destructive",
+                        compact &&
+                            "pointer-events-none absolute top-full right-0 z-30 mt-1 w-max max-w-64 rounded-md border border-border bg-card px-2 py-1 shadow-md",
+                    )}
+                >
                     {error}
                 </p>
             )}
