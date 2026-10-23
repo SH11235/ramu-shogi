@@ -15,6 +15,7 @@ import {
     createDefaultNnueSelection,
     createEmptyHands,
     DEFAULT_PRESET_KEY,
+    detectParallelism,
     getAllSquares,
     getPositionService,
     isKingInCheck,
@@ -65,6 +66,7 @@ import { useMoveShadow } from "./shogi-match/hooks/useMoveShadow";
 import { useNnueManager } from "./shogi-match/hooks/useNnueManager";
 import { useNormalizedSettings } from "./shogi-match/hooks/useNormalizedSettings";
 import { usePassRights } from "./shogi-match/hooks/usePassRights";
+import { usePlayHintSearch } from "./shogi-match/hooks/usePlayHintSearch";
 import { useUIState } from "./shogi-match/hooks/useUIState";
 import { ShogiMatchLayout } from "./shogi-match/layouts/ShogiMatchLayout";
 import {
@@ -74,7 +76,6 @@ import {
     matchesChoice,
 } from "./shogi-match/play/usePlaySetup";
 import {
-    type HintCarry,
     type PlayPhase,
     type PlayScreenConfig,
     ShogiMatchProvider,
@@ -106,12 +107,7 @@ import type {
     NavigationProps,
     PCSpecificProps,
 } from "./shogi-match/types/layoutProps";
-import {
-    DEFAULT_HINT_MULTI_PV,
-    HINT_SEARCH_MAX_DEPTH,
-    HINT_SEARCH_TIME_MS,
-    normalizeHintMultiPv,
-} from "./shogi-match/utils/hintSettings";
+import { DEFAULT_HINT_MULTI_PV, normalizeHintMultiPv } from "./shogi-match/utils/hintSettings";
 import type { KifMove } from "./shogi-match/utils/kifFormat";
 import { buildLegalCacheKey, LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
 import {
@@ -843,22 +839,11 @@ export function ShogiMatch({
     // 対局画面では、利用者が「局面を変えて指す」を開いている間だけ盤を編集できる。
     const [positionEditOpen, setPositionEditOpen] = useState(false);
     const [hintCount, setHintCount] = useState(0);
-    const [hintPly, setHintPly] = useState<number | null>(null);
-    /** いまのヒントを読み始めた時刻・読み終えた（止めた）時刻（経過秒の表示に使う）。 */
-    const [hintStartedAt, setHintStartedAt] = useState<number | null>(null);
-    const [hintEndedAt, setHintEndedAt] = useState<number | null>(null);
-    /** ヒントを求めてから、解析が始まるまで（評価関数・エンジンの準備中）。 */
-    const [hintPending, setHintPending] = useState(false);
-    const [hintCarry, setHintCarry] = useState<(HintCarry & { ply: number }) | null>(null);
-    /** ヒントの要求ごとに進める。止めた・局面を離れた要求は、準備を終えても始めない。 */
-    const hintRequestIdRef = useRef(0);
     const [storedHintMultiPv, setHintMultiPv] = useLocalStorage<number>(
         "shogi-play-hint-multipv",
         DEFAULT_HINT_MULTI_PV,
     );
     const hintMultiPv = normalizeHintMultiPv(storedHintMultiPv);
-    /** 対局画面のヒントが読んでいる最中か（ほかの解析と区別して、局面が進んだら止める）。 */
-    const hintSearchingRef = useRef(false);
     const [pendingOpenStudy, setPendingOpenStudy] = useState(false);
     const [pendingRematch, setPendingRematch] = useState(false);
     const editAllowed =
@@ -1640,37 +1625,6 @@ export function ShogiMatch({
     stopAllEnginesRef.current = stopAllEngines;
     prepareEnginesRef.current = prepareEngines;
 
-    // ヒントは長く読むので、その局面を離れたら止める（AI の手番に探索スレッドを取り合わない）。
-    // 求めた直後はまだ解析が始まっていないので、読み終えた（解析中から外れた）ときだけ印を下ろす。
-    const wasAnalyzingRef = useRef(false);
-    useEffect(() => {
-        const wasAnalyzing = wasAnalyzingRef.current;
-        wasAnalyzingRef.current = isAnalyzing;
-        if (isAnalyzing) setHintPending(false);
-        if (!isAnalyzing && !hintPending) {
-            if (wasAnalyzing && hintSearchingRef.current) {
-                hintSearchingRef.current = false;
-                setHintEndedAt(Date.now());
-            }
-            return;
-        }
-        if (!hintSearchingRef.current) return;
-        if (navigation.state.currentPly === hintPly && isMatchRunning && !isPaused) return;
-        hintSearchingRef.current = false;
-        hintRequestIdRef.current += 1;
-        setHintPending(false);
-        setHintEndedAt(Date.now());
-        if (isAnalyzing) void cancelAnalysis();
-    }, [
-        isAnalyzing,
-        hintPending,
-        navigation.state.currentPly,
-        hintPly,
-        isMatchRunning,
-        isPaused,
-        cancelAnalysis,
-    ]);
-
     // fatal なエンジンエラーは対局停止 (isMatchRunning=false) に遷移しないため、
     // error 状態を直接監視してライブ探索表示を消す
     useEffect(() => {
@@ -1768,6 +1722,27 @@ export function ShogiMatch({
 
     // handleEvalUpdate を ref に設定（useEngineManager で使用）
     handleEvalUpdateRef.current = handleEvalUpdate;
+
+    // 対局画面のヒント。解析のスレッド数は、対局の先後のうち多いほう（解析エンジンと同じ決め方）。
+    const resolveThreads = (count: number) =>
+        count > 0 ? count : detectParallelism().recommendedWorkers;
+    const playHint = usePlayHintSearch({
+        enabled: isPlayScreen,
+        engineOption:
+            engineOptions.find((option) => option.id === analysisEngineId) ?? engineOptions[0],
+        threads: Math.max(resolveThreads(engineThreads.sente), resolveThreads(engineThreads.gote)),
+        multiPv: hintMultiPv,
+        nnueSelection: effectiveAnalysisNnueSelection,
+        resolveNnue,
+        startSfen,
+        moves: moves.slice(0, navigation.state.currentPly),
+        currentPly: navigation.state.currentPly,
+        usesPassRights: passRightsSettings?.enabled === true,
+        matchActive: isMatchRunning && !isPaused,
+        recordEvalByPly,
+        clearEvalByPly,
+        fallback: { analyze: handleAnalyzeHintPly, cancel: cancelAnalysis, isAnalyzing },
+    });
 
     // エンジンの手・パスの適用後の共通処理（盤や持ち駒からの人の手は useMoveExecution が適用する）
     const applyMoveAndUpdateState = (
@@ -2662,7 +2637,7 @@ export function ShogiMatch({
         setGameResult(null);
         setShowResultDialog(false);
         setHintCount(0);
-        setHintPly(null);
+        playHint.reset();
         setIsPaused(false);
         setPositionEditOpen(false);
         setPlayStartNotice(null);
@@ -2724,7 +2699,7 @@ export function ShogiMatch({
                       setPendingPlayStartCapture(true);
                       setPlayStartNotice(notice ?? null);
                       setHintCount(0);
-                      setHintPly(null);
+                      playHint.reset();
                   }
                   void startPlayMatch();
               },
@@ -2785,47 +2760,18 @@ export function ShogiMatch({
                                 openStudyNow();
                             }
                         },
-              requestHint: (carry?: HintCarry) => {
-                  if (hintPending) return;
-                  const ply = navigation.state.currentPly;
-                  const requestId = ++hintRequestIdRef.current;
-                  if (!carry) setHintCount((count) => count + 1);
-                  setHintPly(ply);
-                  // 続けて読むときは、前の読みの時間から数え続ける。
-                  setHintStartedAt(Date.now() - (carry?.elapsedMs ?? 0));
-                  setHintEndedAt(null);
-                  setHintCarry(carry ? { ...carry, ply } : null);
-                  setHintPending(true);
-                  hintSearchingRef.current = true;
-                  void handleAnalyzeHintPly(ply, {
-                      multiPv: hintMultiPv,
-                      timeMs: HINT_SEARCH_TIME_MS,
-                      depth: HINT_SEARCH_MAX_DEPTH,
-                      shouldStart: () =>
-                          hintRequestIdRef.current === requestId && hintSearchingRef.current,
-                  }).then((started) => {
-                      // 評価関数が無いなどで始められなかったら、読んでいる印を残さない。
-                      if (started || hintRequestIdRef.current !== requestId) return;
-                      hintSearchingRef.current = false;
-                      setHintPending(false);
-                      setHintEndedAt(Date.now());
-                  });
+              requestHint: () => {
+                  if (playHint.status.phase === "preparing") return;
+                  setHintCount((count) => count + 1);
+                  playHint.request();
               },
-              stopHint: () => {
-                  hintRequestIdRef.current += 1;
-                  hintSearchingRef.current = false;
-                  setHintPending(false);
-                  setHintEndedAt(Date.now());
-                  void cancelAnalysis();
-              },
-              hintCarry,
-              hintStartedAt,
-              hintEndedAt,
-              hintPending,
+              stopHint: playHint.stop,
+              resumeHint: playHint.resume,
+              hintStatus: playHint.status,
               hintMultiPv,
               setHintMultiPv,
               hintCount,
-              hintPly,
+              hintPly: playHint.status.ply,
               setupFooter: playSetupFooter ?? null,
               gameResult,
           }

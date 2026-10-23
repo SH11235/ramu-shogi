@@ -16,8 +16,10 @@ import { BottomSheet } from "../components/BottomSheet";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import { useCurrentPositionAiHints } from "../hooks/useCurrentPositionAiHints";
+import { hintPositionKey } from "../hooks/usePlayHintSearch";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import { convertPvToDisplay } from "../utils/kifFormat";
+import { formatNodeCount } from "../utils/searchLimits";
 import { PLAY_CARD, PLAY_OUTLINE_BUTTON } from "./playStyles";
 
 /** 読み筋のうち、候補の手のあとに書く手の数。 */
@@ -61,28 +63,24 @@ export function rankHintMoves(moves: AiHintMove[], turn: Player): AiHintMove[] {
 function useShownHints(): ShownHints {
     const { play } = useShogiMatchConfig();
     const { navigationState } = useNavigation();
-    const { position, sides } = useMatchState();
+    const { position, sides, moves: playedMoves } = useMatchState();
     const { moves, isAnalyzing } = useCurrentPositionAiHints({ maxMoves: play?.hintMultiPv });
-    // 対局エンジンの読み筋を勝手に出さないよう、ヒントを求めた局面でだけ出す。
-    const isForThisPosition = play?.hintPly === navigationState.currentPly;
-    const live =
-        isForThisPosition && play?.phase === "playing" ? rankHintMoves(moves, position.turn) : [];
-    // 続けて読む間は、新しい読みが前の深さを超えるまで、前の結果を見せ続ける（浅い結果に戻さない）。
-    const carry = play?.hintCarry;
-    const carried =
-        carry != null &&
-        isForThisPosition &&
-        carry.ply === play?.hintPly &&
-        (live[0]?.depth ?? 0) < carry.depth;
-    const shown = carried ? carry.moves : live;
-    const isSearching =
-        isForThisPosition &&
+    // 対局エンジンの読み筋を勝手に出さないよう、ヒントを求めた局面でだけ出す（手数でなく局面で照らし合わせる）。
+    const isForThisPosition =
         play?.phase === "playing" &&
-        (isAnalyzing || play?.hintPending === true);
+        play.hintPly === navigationState.currentPly &&
+        play.hintStatus.positionKey ===
+            hintPositionKey(play.startSfen, playedMoves.slice(0, navigationState.currentPly));
+    const shown = isForThisPosition ? rankHintMoves(moves, position.turn) : [];
+    const hintPhase = play?.hintStatus.phase;
+    const isSearching =
+        isForThisPosition && (hintPhase === "preparing" || hintPhase === "searching");
     const isMyTurn = play?.phase === "playing" && sides[position.turn].role === "human";
     return {
         moves: shown,
-        canContinue: shown.length > 0 && !isSearching && !isAnalyzing && isMyTurn,
+        // 続きを読めるのは、読みの状態を残してあるとき（再開できるエンジン）だけ。
+        canContinue:
+            isForThisPosition && !isSearching && isMyTurn && play?.hintStatus.canContinue === true,
         isThinking: isSearching && shown.length === 0,
         isAnalyzing,
         isSearching,
@@ -106,31 +104,23 @@ function useHintElapsedSeconds(
     return Math.max(0, Math.floor(((running ? now : (endedAt ?? now)) - startedAt) / 1000));
 }
 
-/** 「続けて読む」: いま見せている結果を引き継いで、もう一度上限の時間まで読む。 */
-function useContinueHint(moves: AiHintMove[]): () => void {
-    const { play } = useShogiMatchConfig();
-    return () => {
-        const startedAt = play?.hintStartedAt;
-        const endedAt = play?.hintEndedAt;
-        play?.requestHint({
-            moves,
-            depth: moves[0]?.depth ?? 0,
-            elapsedMs: startedAt != null && endedAt != null ? endedAt - startedAt : 0,
-        });
-    };
-}
-
-/** 「深さ 18 ・ 12秒」。候補がまだ無ければ秒だけ。 */
+/** 「深さ 18 ・ 120万局面 ・ 12秒」（止めどきの目安）。候補がまだ無ければ分かるものだけ。 */
 function HintSearchStatus({ moves, className }: { moves: AiHintMove[]; className?: string }) {
     const { play } = useShogiMatchConfig();
     const { isSearching } = useShownHints();
+    const status = play?.hintStatus;
     const seconds = useHintElapsedSeconds(
-        play?.hintStartedAt ?? null,
-        play?.hintEndedAt ?? null,
+        status?.startedAt ?? null,
+        status?.endedAt ?? null,
         isSearching,
     );
     const depth = moves[0]?.depth;
     if (seconds === null || (!isSearching && moves.length === 0)) return null;
+    const parts = [
+        depth !== undefined ? `深さ ${depth}` : null,
+        status?.nodes ? `${formatNodeCount(status.nodes)}局面` : null,
+        `${seconds}秒`,
+    ].filter((part): part is string => part !== null);
     return (
         <span
             className={cn(
@@ -138,8 +128,7 @@ function HintSearchStatus({ moves, className }: { moves: AiHintMove[]; className
                 className,
             )}
         >
-            {depth !== undefined ? `深さ ${depth} ・ ` : ""}
-            {seconds}秒
+            {parts.join(" ・ ")}
         </span>
     );
 }
@@ -288,7 +277,7 @@ export function PlayHintCard({ compact = false, className }: PlayHintCardProps):
     const { play } = useShogiMatchConfig();
     const { position, sides, gameMode } = useMatchState();
     const { moves, isThinking, isAnalyzing, isSearching, canContinue } = useShownHints();
-    const continueHint = useContinueHint(moves);
+    const continueHint = () => play?.resumeHint();
 
     const isMyTurn = gameMode === "playing" && sides[position.turn].role === "human";
     const idleText =
@@ -360,7 +349,7 @@ export function PlayHintButton({ className }: { className?: string }): ReactElem
     const { play } = useShogiMatchConfig();
     const { position, sides, gameMode } = useMatchState();
     const { moves, isAnalyzing, isSearching, canContinue } = useShownHints();
-    const continueHint = useContinueHint(moves);
+    const continueHint = () => play?.resumeHint();
     const isMyTurn = gameMode === "playing" && sides[position.turn].role === "human";
     if (canContinue) {
         return (
@@ -413,7 +402,7 @@ export function PlayHintLine({
     const { play } = useShogiMatchConfig();
     const { position } = useMatchState();
     const { moves, isThinking, isSearching, canContinue } = useShownHints();
-    const continueHint = useContinueHint(moves);
+    const continueHint = () => play?.resumeHint();
     const [sheetOpen, setSheetOpen] = useState(false);
     const best = moves[0];
     if (!best) {
