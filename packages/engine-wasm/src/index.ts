@@ -1110,8 +1110,9 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             if (!worker) {
                 return mock.search(params);
             }
-            normalSearches += 1;
             postToWorker({ type: "search", params });
+            // 送れたときだけ数える (送信に失敗すると bestmove も searchFailed も返らない)
+            normalSearches += 1;
             return {
                 async cancel() {
                     if (backend === "mock") {

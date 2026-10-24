@@ -1454,4 +1454,24 @@ describe("詰み探索 (mate.solve)", () => {
         });
         await solving;
     });
+
+    it("通常探索の送信に失敗しても、実行中の件数に残らない", async () => {
+        const { client, worker } = await createReadyClient();
+        const post = worker().postMessage.getMockImplementation();
+        worker().postMessage.mockImplementationOnce(() => {
+            throw new Error("DataCloneError");
+        });
+        await expect(client.search({})).rejects.toThrow("DataCloneError");
+        if (post) worker().postMessage.mockImplementation(post);
+        await client.search({});
+        reply(worker(), { type: "event", payload: { type: "bestmove", move: "7g7f" } });
+        const solving = client.mate?.solve({});
+        await vi.waitFor(() => expect(solveCalls(worker())).toHaveLength(1));
+        reply(worker(), {
+            type: "mateFinished",
+            requestId: solveCalls(worker())[0].requestId,
+            outcome: { result: { kind: "noMate" }, nodes: 1, elapsedMs: 0 },
+        });
+        await solving;
+    });
 });
