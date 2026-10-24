@@ -471,13 +471,13 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         pendingMates.clear();
     };
 
-    /** 詰み探索の準備中 (エンジンの初期化待ち) */
-    let mateStarting = false;
+    /** 準備中 (エンジンの初期化待ち) の詰み探索を始めたときの cancelEpoch。取り消されたら busy に数えない */
+    let mateStartingEpoch: number | null = null;
     /** 通常探索の準備中 (エンジンの初期化待ち) */
     let searchStarting = false;
     /** stop / dispose / reset のたびに進める。準備中の詰み探索はこれが変わったら送らない */
     let cancelEpoch = 0;
-    const mateBusy = () => mateStarting || pendingMates.size > 0;
+    const mateBusy = () => mateStartingEpoch === cancelEpoch || pendingMates.size > 0;
 
     /** 解析・詰み探索の最中は、ほかの操作をすぐ失敗させる (待たせると後ろの操作がタイムアウトし、worker の状態とずれる) */
     const assertIdle = () => {
@@ -913,7 +913,10 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             await ensureReady();
         },
         send: (command) => postToWorker(command),
-        release: () => postToWorkerAwait({ type: "releaseAnalysis" }),
+        release: async () => {
+            if (mateBusy()) throw new Error("詰み探索が終わってから操作してください");
+            await postToWorkerAwait({ type: "releaseAnalysis" });
+        },
         fail: () => enterErrorState("解析状態が失われました", "TIMEOUT"),
     });
 
@@ -975,11 +978,12 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             const normalized = normalizeMateParams(params);
             analysisBridge.invalidate("新しい局面・設定・探索が指定されました");
             const cancelled = cancelEpoch;
-            mateStarting = true;
+            mateStartingEpoch = cancelled;
             try {
                 await ensureReady();
             } finally {
-                mateStarting = false;
+                // 取り消された後に始まった別の solve の準備の印は消さない
+                if (mateStartingEpoch === cancelled) mateStartingEpoch = null;
             }
             if (cancelEpoch !== cancelled) throw new Error("詰み探索は開始前に停止されました");
             if (!worker) throw new Error("詰み探索は利用できません");

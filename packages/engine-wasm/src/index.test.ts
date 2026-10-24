@@ -1357,4 +1357,43 @@ describe("詰み探索 (mate.solve)", () => {
         });
         await solving;
     });
+
+    it("初期化待ちの solve を reset で取り消すと、続く init は待たされずに進む", async () => {
+        const workers: MockWorker[] = [];
+        const client = createWasmEngineClient({
+            workerFactory: () => {
+                // init の ack を返さない worker (初期化待ちのまま)
+                const worker = createMockWorker();
+                workers.push(worker);
+                return worker as unknown as Worker;
+            },
+        });
+        const solving = client.mate?.solve({});
+        solving?.catch(() => {});
+        await client.reset?.();
+        const initializing = client.init();
+        const initCall = workers
+            .at(-1)
+            ?.postMessage.mock.calls.map((call) => call[0])
+            .find((c) => c.type === "init");
+        expect(initCall).toBeDefined();
+        workers.at(-1)?.onmessage?.({
+            data: { type: "ack", requestId: initCall.requestId },
+        } as MessageEvent);
+        await expect(initializing).resolves.toBeUndefined();
+        await expect(solving).rejects.toThrow();
+    });
+
+    it("解いている間は解析の release もすぐ失敗する", async () => {
+        const { client, worker } = await createReadyClient();
+        const solving = client.mate?.solve({});
+        await vi.waitFor(() => expect(solveCalls(worker())).toHaveLength(1));
+        await expect(client.analysis?.release()).rejects.toThrow("詰み探索");
+        reply(worker(), {
+            type: "mateFinished",
+            requestId: solveCalls(worker())[0].requestId,
+            outcome: { result: { kind: "noMate" }, nodes: 1, elapsedMs: 0 },
+        });
+        await solving;
+    });
 });
