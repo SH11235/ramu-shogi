@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlayScreenConfig } from "../ShogiMatchContext";
 import { ShogiMatchProvider } from "../ShogiMatchContext";
+import type { KifMove } from "../utils/kifFormat";
 import { PlayEndStamp } from "./PlayEndStamp";
 import { PlayResultDialog } from "./PlayResultDialog";
 
@@ -10,17 +11,23 @@ const sides = {
     sente: { role: "human" },
     gote: { role: "engine" },
 };
-vi.mock("../contexts/MatchStateContext", () => ({ useMatchState: () => ({ sides }) }));
+vi.mock("../contexts/MatchStateContext", () => ({
+    useMatchState: () => ({ sides, displaySettings: { showEngineReading: true } }),
+}));
 vi.mock("../contexts/MatchSettingsContext", () => ({
     useMatchSettings: () => ({
         timeSettings: {
             sente: { mainMs: 600_000, byoyomiMs: 0, incrementMs: 0, enabled: true },
-            gote: { mainMs: 600_000, byoyomiMs: 0, incrementMs: 0, enabled: true },
+            gote: { mainMs: 0, byoyomiMs: 10_000, incrementMs: 0, enabled: true },
         },
+        engineSearchLimits: { sente: { kind: "clock" }, gote: { kind: "clock" } },
+        engineThreads: { sente: 0, gote: 4 },
+        engineOptions: [],
     }),
 }));
+let kifMoves: KifMove[] = [];
 vi.mock("../contexts/NavigationContext", () => ({
-    useNavigation: () => ({ handleCopyKif: () => "" }),
+    useNavigation: () => ({ handleCopyKif: () => "", kifMoves }),
 }));
 
 const CHECKMATE: GameResult = {
@@ -43,6 +50,7 @@ function renderDialog(result: GameResult, overrides: Partial<PlayScreenConfig> =
         newGame: vi.fn(),
         openStudy: vi.fn(),
         hintCount: 0,
+        startPly: 0,
         playerNames: { sente: "あなた", gote: "簡易AI" },
         ...overrides,
     } as unknown as PlayScreenConfig;
@@ -56,7 +64,10 @@ function renderDialog(result: GameResult, overrides: Partial<PlayScreenConfig> =
 }
 
 describe("PlayResultDialog", () => {
-    beforeEach(() => vi.useFakeTimers());
+    beforeEach(() => {
+        vi.useFakeTimers();
+        kifMoves = [];
+    });
     afterEach(() => vi.useRealTimers());
 
     it("stamps the reason on the board first, then opens with the next actions", () => {
@@ -66,9 +77,9 @@ describe("PlayResultDialog", () => {
 
         act(() => vi.advanceTimersByTime(700));
         expect(screen.getByRole("dialog", { name: "あなたの勝ち" })).toBeTruthy();
-        expect(screen.getByText("先手・10分 切れ負け・簡易AI")).toBeTruthy();
-        expect(screen.getByRole("button", { name: "設定を変えて対局" })).toBeTruthy();
-        expect(screen.getByRole("button", { name: "研究ノートで振り返る" })).toBeTruthy();
+        expect(screen.getByText("先手・10分 切れ負け")).toBeTruthy();
+        expect(screen.getByRole("button", { name: "設定を変える" })).toBeTruthy();
+        expect(screen.getByRole("button", { name: "ノート" })).toBeTruthy();
     });
 
     it("opens at once when the screen is pressed during the wait", () => {
@@ -93,10 +104,51 @@ describe("PlayResultDialog", () => {
         expect(screen.getByRole("dialog", { name: "あなたの負け" })).toBeTruthy();
     });
 
+    it("shows the AI's evaluation trend and average reading when the AI moves were recorded", () => {
+        kifMoves = [
+            { ply: 1, kifText: "", displayText: "☗7六歩(77)", usiMove: "7g7f" },
+            {
+                ply: 2,
+                kifText: "",
+                displayText: "☖3四歩(33)",
+                usiMove: "3c3d",
+                engineSearch: { depth: 12, nodes: 1_000_000, nps: 1_200_000, scoreCp: -40 },
+            },
+            { ply: 3, kifText: "", displayText: "☗2六歩(27)", usiMove: "2g2f" },
+            {
+                ply: 4,
+                kifText: "",
+                displayText: "☖8四歩(83)",
+                usiMove: "8c8d",
+                engineSearch: { depth: 14, nodes: 1_500_000, nps: 1_400_000, scoreCp: 120 },
+            },
+        ];
+        renderDialog(CHECKMATE);
+        act(() => vi.advanceTimersByTime(700));
+        expect(screen.getByRole("heading", { name: "評価値の推移" })).toBeTruthy();
+        expect(screen.getByText("AI 平均 深さ 13（2 手）")).toBeTruthy();
+        expect(screen.getByText("この端末で 平均 130万局面/秒")).toBeTruthy();
+    });
+
+    it("lists the opponent, how much it reads and the player's side and time", () => {
+        renderDialog(CHECKMATE);
+        act(() => vi.advanceTimersByTime(700));
+        expect(screen.getByText("相手")).toBeTruthy();
+        expect(screen.getByText("簡易AI レベル 20")).toBeTruthy();
+        expect(screen.getByText("1手10秒・スレッド 4")).toBeTruthy();
+        expect(screen.getByText("先手・10分 切れ負け")).toBeTruthy();
+    });
+
+    it("names the sides as 先手・後手 when both players have the same name", () => {
+        renderDialog(CHECKMATE, { playerNames: { sente: "簡易AI", gote: "簡易AI" } });
+        act(() => vi.advanceTimersByTime(700));
+        expect(screen.getByText(/後手が詰み/)).toBeTruthy();
+    });
+
     it("closes the dialog before starting the next game", () => {
         const play = renderDialog(CHECKMATE, { openStudy: null });
         act(() => vi.advanceTimersByTime(700));
-        expect(screen.queryByRole("button", { name: "研究ノートで振り返る" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "ノート" })).toBeNull();
         fireEvent.click(screen.getByRole("button", { name: "もう一局" }));
         expect(play.closeResultDialog).toHaveBeenCalledTimes(1);
         expect(play.rematch).toHaveBeenCalledTimes(1);

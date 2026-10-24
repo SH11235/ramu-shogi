@@ -29,6 +29,7 @@ import {
     PLAY_PRIMARY_BUTTON,
     PLAY_TEXT_LINK,
 } from "./playStyles";
+import { START_POSITIONS } from "./startPositions";
 import {
     AI_MATCH_TIME_CHOICES,
     AI_TIME_CHOICES,
@@ -40,28 +41,6 @@ import {
 } from "./usePlaySetup";
 
 type SideChoice = Player | "random";
-
-/**
- * 選べる開始局面。駒落ちは後手（上手）の駒を落とし、上手から指す
- * （オンライン対局の開始局面と同じ SFEN）。
- */
-const START_POSITIONS: Array<{ id: string; label: string; sfen: string }> = [
-    {
-        id: "bishop",
-        label: "角落ち",
-        sfen: "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
-    },
-    {
-        id: "rook",
-        label: "飛車落ち",
-        sfen: "lnsgkgsnl/7b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
-    },
-    {
-        id: "rook-bishop",
-        label: "飛車角落ち（二枚落ち）",
-        sfen: "lnsgkgsnl/9/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
-    },
-];
 
 /** 「簡易AI とすぐ指す」ときの考慮時間（1 秒）。 */
 const QUICK_AI_TIME = AI_TIME_CHOICES[0];

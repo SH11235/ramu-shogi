@@ -1,5 +1,5 @@
 /**
- * 終局の表示（対局画面）。結果と、次にすること（研究ノートで振り返る・もう一局）を出す。
+ * 終局の表示（対局画面）。結果と、次にすること（もう一局・研究ノートで振り返る）を出す。
  *
  * 終局の瞬間は PlayResultDialog で知らせ、閉じたあとはここの欄が結果の見出しとして残る。
  */
@@ -8,12 +8,11 @@ import type { GameResult, Player } from "@shogi/app-core";
 import { getWinnerLabel } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
-import { useState } from "react";
 import { Button } from "../../button";
 import { useMatchState } from "../contexts/MatchStateContext";
-import { useNavigation } from "../contexts/NavigationContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
-import { PLAY_OUTLINE_BUTTON, PLAY_PRIMARY_BUTTON, PLAY_TEXT_LINK } from "./playStyles";
+import { KifuCopyButtons, KifuCopySheetButton } from "./PlayKifuCopy";
+import { PLAY_OUTLINE_BUTTON, PLAY_PRIMARY_BUTTON } from "./playStyles";
 
 /** 結果の見出し。人が片方だけなら「あなたの勝ち／負け」、それ以外は「先手の勝ち」など。 */
 export function useResultHeadline(result: GameResult): {
@@ -35,8 +34,11 @@ export function useResultHeadline(result: GameResult): {
 /** 終局の理由を、対局者の名前で書く（「あなたの時間切れ」「簡易AI の投了」。人同士は「先手」「後手」）。 */
 export function useReasonText(result: GameResult): string {
     const { play } = useShogiMatchConfig();
+    const names = play?.playerNames;
+    // 同じ名前どうし（同じ AI 同士など）では、名前ではどちらか分からないので先手・後手で書く。
+    const sameNames = names !== undefined && names.sente === names.gote;
     const nameOf = (side: Player): string =>
-        play?.playerNames[side] ?? (side === "sente" ? "先手" : "後手");
+        (sameNames ? undefined : names?.[side]) ?? (side === "sente" ? "先手" : "後手");
     const reason = result.reason;
     switch (reason.kind) {
         case "time_expired":
@@ -66,8 +68,11 @@ export const winnerColorClass = (result: GameResult): string =>
 interface PlayResultCardProps {
     /** スマホ向けに詰める（見出しと操作を小さくまとめる） */
     compact?: boolean;
-    /** 「設定を変える」「棋譜をコピー」を出さない（`PlayResultLinks` を別の場所に置くとき） */
-    hideLinks?: boolean;
+    /**
+     * スマホの終局後: 「ノート」「もう一局」「設定を変える」「棋譜をコピー」を 1 行のボタンに並べる
+     * （盤と手の送りを 1 画面に収めるため、リンクの行を別に取らない）。
+     */
+    singleRow?: boolean;
     /** 結果の見出しを出さない（`PlayResultHeadline` を別の場所に置くとき） */
     hideSummary?: boolean;
     className?: string;
@@ -76,13 +81,47 @@ interface PlayResultCardProps {
 /** 終局後の欄。結果を見出しとして出し、次の一歩を並べる。 */
 export function PlayResultCard({
     compact = false,
-    hideLinks = false,
+    singleRow = false,
     hideSummary = false,
     className,
 }: PlayResultCardProps): ReactElement | null {
     const { play } = useShogiMatchConfig();
     const result = play?.gameResult;
     if (!play || !result) return null;
+
+    if (singleRow) {
+        const rowButton = "min-h-10 flex-1 px-1 text-[13px]";
+        return (
+            <section className={cn("flex gap-1.5", className)}>
+                <Button
+                    type="button"
+                    className={cn("font-semibold", rowButton, PLAY_PRIMARY_BUTTON)}
+                    onClick={play.rematch}
+                >
+                    もう一局
+                </Button>
+                {play.openStudy && (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className={cn(PLAY_OUTLINE_BUTTON, rowButton)}
+                        onClick={() => play.openStudy?.()}
+                    >
+                        ノート
+                    </Button>
+                )}
+                <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(PLAY_OUTLINE_BUTTON, rowButton)}
+                    onClick={play.newGame}
+                >
+                    設定を変える
+                </Button>
+                <KifuCopySheetButton className={rowButton} />
+            </section>
+        );
+    }
 
     return (
         <section
@@ -92,31 +131,42 @@ export function PlayResultCard({
             className={cn("flex flex-col", compact ? "gap-2.5" : "gap-4", className)}
         >
             {!hideSummary && <ResultSummary result={result} compact={compact} />}
+            {/* 主の操作は終局のダイアログと同じ「もう一局」。並び・言葉もダイアログと揃える。 */}
             <div className={cn("flex gap-2", compact ? "flex-row" : "flex-col")}>
-                {play.openStudy && (
-                    <Button
-                        type="button"
-                        size={compact ? "default" : "lg"}
-                        className={cn(
-                            "font-semibold",
-                            compact ? "min-h-10 flex-1 px-2" : "h-12 w-full text-base",
-                            PLAY_PRIMARY_BUTTON,
-                        )}
-                        onClick={() => play.openStudy?.()}
-                    >
-                        研究ノートで振り返る
-                    </Button>
-                )}
                 <Button
                     type="button"
-                    variant="outline"
-                    className={cn(PLAY_OUTLINE_BUTTON, compact ? "min-h-10 flex-1 px-2" : "w-full")}
+                    size={compact ? "default" : "lg"}
+                    className={cn(
+                        "font-semibold",
+                        compact ? "min-h-10 flex-1 px-2" : "h-12 w-full text-base",
+                        PLAY_PRIMARY_BUTTON,
+                    )}
                     onClick={play.rematch}
                 >
                     もう一局
                 </Button>
+                <div className={cn("grid gap-2", play.openStudy ? "grid-cols-2" : "grid-cols-1")}>
+                    {play.openStudy && (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className={cn(PLAY_OUTLINE_BUTTON, "min-h-10 px-2")}
+                            onClick={() => play.openStudy?.()}
+                        >
+                            ノート
+                        </Button>
+                    )}
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className={cn(PLAY_OUTLINE_BUTTON, "min-h-10 px-2")}
+                        onClick={play.newGame}
+                    >
+                        設定を変える
+                    </Button>
+                </div>
             </div>
-            {!hideLinks && <PlayResultLinks />}
+            <KifuCopyButtons />
         </section>
     );
 }
@@ -163,52 +213,6 @@ function ResultHeadlineLine({
                 {play && play.hintCount > 0 ? ` ・ ヒント ${play.hintCount} 回` : ""}
             </p>
         </section>
-    );
-}
-
-/** 終局後の、主でない操作（設定を変える・棋譜をコピー）。 */
-export function PlayResultLinks({ className }: { className?: string }): ReactElement | null {
-    const { play } = useShogiMatchConfig();
-    if (!play?.gameResult) return null;
-
-    return (
-        <div
-            className={cn(
-                "flex flex-wrap items-center gap-x-4 text-[13px] text-wafuu-sumi-light",
-                className,
-            )}
-        >
-            <button
-                type="button"
-                onClick={play.newGame}
-                className={cn(PLAY_TEXT_LINK, "hover:text-wafuu-sumi")}
-            >
-                設定を変える
-            </button>
-            <CopyKifButton />
-        </div>
-    );
-}
-
-/** 「棋譜をコピー」の文字リンク。 */
-export function CopyKifButton(): ReactElement {
-    const { handleCopyKif } = useNavigation();
-    const [copied, setCopied] = useState(false);
-    const copyKif = () => {
-        const text = handleCopyKif();
-        void navigator.clipboard
-            ?.writeText(text)
-            .then(() => setCopied(true))
-            .catch(() => setCopied(false));
-    };
-    return (
-        <button
-            type="button"
-            onClick={copyKif}
-            className={cn(PLAY_TEXT_LINK, "hover:text-wafuu-sumi")}
-        >
-            {copied ? "コピーしました" : "棋譜をコピー"}
-        </button>
     );
 }
 

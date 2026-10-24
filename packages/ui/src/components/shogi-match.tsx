@@ -1,3 +1,4 @@
+import { accumulateSearchStats } from "@shogi/app-controller";
 import type {
     BoardState,
     GameResult,
@@ -1607,7 +1608,14 @@ export function ShogiMatch({
         onLiveInfo: (side, event) => {
             // 対局停止後や fatal エラー後に flush された info が残留表示を再セットしないようにする
             if (!isMatchRunning || engineStatus[side] === "error") return;
-            liveInfoTrailingRef.current = { side, event };
+            // 同じ探索の info を積み上げてから出す（深さの無い info や MultiPV の 2 本目以降が最後に来ても、
+            // 帯の読みが消えたり別の候補の値になったりしないように）。探索が終わると積み上げは捨てる。
+            const previous = liveInfoTrailingRef.current;
+            const accumulated = accumulateSearchStats(
+                previous?.side === side ? (previous.event as MoveSearchStats) : {},
+                event,
+            );
+            liveInfoTrailingRef.current = { side, event: { ...accumulated, type: "info" } };
             if (liveInfoTimerRef.current) return;
             liveInfoTimerRef.current = setTimeout(() => {
                 if (liveInfoTrailingRef.current) setLiveSearchInfo(liveInfoTrailingRef.current);
@@ -2515,6 +2523,7 @@ export function ShogiMatch({
     // Props グループ化: Mobile専用
     const mobileSpecificProps: MobileSpecificProps = {
         searchInfo:
+            !isPlayScreen &&
             displaySettings.showSearchInfo &&
             isMatchRunning &&
             liveSearchInfo &&
@@ -2687,6 +2696,10 @@ export function ShogiMatch({
     const playConfig: PlayScreenConfig | null = isPlayScreen
         ? {
               phase: playPhase,
+              liveSearch:
+                  isMatchRunning && liveSearchInfo && engineStatus[liveSearchInfo.side] !== "error"
+                      ? liveSearchInfo
+                      : null,
               isCustomStart: !isHirateStart || (playPhase === "setup" && moves.length > 0),
               busy: isPlayResetting || pendingRematch || isPlayStarting,
               startNotice: playPhase === "playing" && moves.length < 2 ? playStartNotice : null,
@@ -2840,6 +2853,7 @@ export function ShogiMatch({
                     isPaused={isPaused}
                 />
                 {!isMobile &&
+                    !isPlayScreen &&
                     displaySettings.showSearchInfo &&
                     isMatchRunning &&
                     liveSearchInfo &&

@@ -515,7 +515,9 @@ export function accumulateSearchStats(
     current: MoveSearchStats,
     event: EngineInfoEvent,
 ): MoveSearchStats {
-    if (event.multipv !== undefined && event.multipv !== 1) return current;
+    // Desktop（Tauri）の info は、届かなかった項目が null で来る（Rust の Option をそのまま JSON にする）。
+    // null は「その項目は無し」として扱い、それまでの値を消さない。
+    if (event.multipv != null && event.multipv !== 1) return current;
     const next = { ...current };
     const fields = [
         "depth",
@@ -529,13 +531,24 @@ export function accumulateSearchStats(
     ] as const;
     for (const field of fields) {
         const value = event[field];
-        if (value !== undefined) (next as Record<string, unknown>)[field] = value;
+        if (value != null) (next as Record<string, unknown>)[field] = value;
+    }
+    // 探索を打ち切った最後の info は、読み筋が最善手 1 手だけに縮むことがある。新しい読み筋がそれまでの
+    // 読み筋の先頭と同じ手順なら、長い方を残す（途中から別の手順になったら、短くても新しい読み筋にする）。
+    const previousPv = current.pv;
+    if (
+        Array.isArray(event.pv) &&
+        Array.isArray(previousPv) &&
+        event.pv.length < previousPv.length &&
+        event.pv.every((move, index) => previousPv[index] === move)
+    ) {
+        next.pv = previousPv;
     }
     // 同一探索内で通常評価と詰み評価が入れ替わることがあるため、評価種別は排他で保持する
-    if (event.scoreCp !== undefined) {
+    if (typeof event.scoreCp === "number") {
         next.scoreCp = event.scoreCp;
         delete next.scoreMate;
-    } else if (event.scoreMate !== undefined) {
+    } else if (typeof event.scoreMate === "number") {
         next.scoreMate = event.scoreMate;
         delete next.scoreCp;
     }
@@ -706,10 +719,14 @@ export function createEngineController(
                 }
 
                 if (result.action === "apply_move" && result.move) {
+                    // 実際に使ったスレッド数（threaded の初期化に失敗して 1 スレッドに戻ることもあるので、設定値でなく
+                    // エンジンに聞く）。
+                    const threads = engineStates[side].client?.getThreadInfo?.().activeThreads;
                     callbacks.onSearchComplete?.(movesCount, {
                         ...liveSearchStats[side],
                         thinkLimitMs: liveThinkLimitMs[side],
                         engineId,
+                        ...(threads ? { threads } : {}),
                     });
                     callbacks.onMoveFromEngine(result.move);
                 }

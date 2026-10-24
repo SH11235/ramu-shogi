@@ -96,7 +96,56 @@ export interface KifMove {
 
 export interface EngineSearchSummary {
     depth?: number;
+    seldepth?: number;
     nodes?: number;
+    nps?: number;
+    timeMs?: number;
+    /** 評価値（先手視点） */
+    scoreCp?: number;
+    /** 詰み手数（先手視点） */
+    scoreMate?: number;
+    /** 読み筋（USI形式。先頭はこの手そのもの） */
+    pv?: string[];
+    /** 実際に使ったスレッド数 */
+    threads?: number;
+}
+
+/** 探索の統計の、数でない値（Desktop の外部 USI から届く null など）を「無し」にする。 */
+const numberOrUndefined = (value: unknown): number | undefined =>
+    typeof value === "number" && !Number.isNaN(value) ? value : undefined;
+
+/**
+ * 探索の統計（info や手を決めたときのまとめ）を、表示に使う形に直す。評価値は指した（考えている）側の
+ * 視点で届くので、先手視点に直す。
+ */
+export function toEngineSearchSummary(
+    stats: {
+        depth?: number | null;
+        seldepth?: number | null;
+        nodes?: number | null;
+        nps?: number | null;
+        timeMs?: number | null;
+        scoreCp?: number | null;
+        scoreMate?: number | null;
+        pv?: string[] | null;
+        threads?: number | null;
+    },
+    mover: Player,
+): EngineSearchSummary {
+    const sign = mover === "sente" ? 1 : -1;
+    const scoreCp = numberOrUndefined(stats.scoreCp);
+    const scoreMate = numberOrUndefined(stats.scoreMate);
+    return {
+        depth: numberOrUndefined(stats.depth),
+        seldepth: numberOrUndefined(stats.seldepth),
+        nodes: numberOrUndefined(stats.nodes),
+        nps: numberOrUndefined(stats.nps),
+        timeMs: numberOrUndefined(stats.timeMs),
+        scoreCp: scoreCp === undefined ? undefined : sign * scoreCp,
+        scoreMate: scoreMate === undefined ? undefined : sign * scoreMate,
+        pv: Array.isArray(stats.pv) ? stats.pv : undefined,
+        threads: numberOrUndefined(stats.threads),
+    };
 }
 
 /** 評価値の履歴（グラフ用） */

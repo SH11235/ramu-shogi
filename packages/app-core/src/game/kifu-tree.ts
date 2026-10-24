@@ -42,6 +42,8 @@ export interface MoveSearchStats {
     pv?: string[];
     thinkLimitMs?: number;
     engineId?: string;
+    /** この手を探索したときに実際に使ったスレッド数 */
+    threads?: number;
 }
 
 /** 棋譜ノード */

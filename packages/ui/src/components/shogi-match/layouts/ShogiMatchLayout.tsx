@@ -483,7 +483,6 @@ export function ShogiMatchLayout({
                             >
                                 {isPlayScreen ? (
                                     <PlayMobileLayout
-                                        searchInfo={mobileSpecificProps.searchInfo}
                                         candidateNote={candidateNote}
                                         onDisplaySettingsChange={onDisplaySettingsChange}
                                         devTools={playDevTools}

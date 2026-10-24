@@ -39,6 +39,20 @@ export function threadCapOf(
 export const clampThreads = (threads: number, maxThreads: number | undefined): number =>
     maxThreads !== undefined && threads > maxThreads ? maxThreads : threads;
 
+function maxSelectableThreads(maxThreads: number | undefined): number {
+    const { detectedConcurrency } = detectParallelism();
+    return Math.max(1, Math.min(detectedConcurrency, DEFAULT_MAX_OPTIONS, maxThreads ?? Infinity));
+}
+
+/** 「自動」で実際に使うスレッド数。 */
+function autoThreadCount(maxThreads: number | undefined): number {
+    return Math.min(detectParallelism().recommendedWorkers, maxSelectableThreads(maxThreads));
+}
+
+/** 設定したスレッド数（0 は自動）で、実際に使う数。 */
+export const resolveThreadCount = (threads: number, maxThreads: number | undefined): number =>
+    threads > 0 ? clampThreads(threads, maxThreads) : autoThreadCount(maxThreads);
+
 /**
  * スレッド数の選択肢。`maxThreads` はエンジンの上限（Web の wasm は 8）で、それより多い数は出さない
  * （選んでも黙って丸められる）。`compact` は幅の狭い選択欄用（「自動（推奨: 4）」を「自動（4）」と書く）。
@@ -47,12 +61,8 @@ export function buildThreadOptions(options?: {
     compact?: boolean;
     maxThreads?: number;
 }): ThreadSelectOption[] {
-    const { detectedConcurrency, recommendedWorkers } = detectParallelism();
-    const maxSelectable = Math.max(
-        1,
-        Math.min(detectedConcurrency, DEFAULT_MAX_OPTIONS, options?.maxThreads ?? Infinity),
-    );
-    const auto = Math.min(recommendedWorkers, maxSelectable);
+    const maxSelectable = maxSelectableThreads(options?.maxThreads);
+    const auto = autoThreadCount(options?.maxThreads);
     const result: ThreadSelectOption[] = [
         { value: 0, label: options?.compact ? `自動（${auto}）` : `自動（推奨: ${auto}）` },
     ];
