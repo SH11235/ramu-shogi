@@ -200,6 +200,7 @@ export function withNpsRecording<T extends EngineClient>(
     let unsubscribeEvents: (() => void) | null = null;
     /** 交互の探索でないと分かるまで書くのを待っている記録。閉じたら捨てる。 */
     const pendingWrites = new Set<() => void>();
+    let disposed = false;
     // Wasm の setOption("Threads") は次の初期化まで効かないので、設定値ではなく実際に動いている数を使う。
     const effectiveThreads = () => {
         const reported = inner.getThreadInfo?.().activeThreads;
@@ -252,7 +253,7 @@ export function withNpsRecording<T extends EngineClient>(
         const timer = setTimeout(() => {
             cancel();
             void hash.then((contentHash) => {
-                if (contentHash) store.addObserved({ contentHash, ...key }, nps);
+                if (contentHash && !disposed) store.addObserved({ contentHash, ...key }, nps);
             });
         }, ALTERNATING_SEARCH_WINDOW_MS);
         const unsubscribe = activity.subscribe(() => {
@@ -323,6 +324,7 @@ export function withNpsRecording<T extends EngineClient>(
         ...inner,
         ...(analysis ? { analysis } : {}),
         async init(opts) {
+            disposed = false;
             finish(null);
             requestedThreads = opts?.threads ?? requestedThreads;
             activity.setLive(id, true);
@@ -375,6 +377,7 @@ export function withNpsRecording<T extends EngineClient>(
             unsubscribeEvents = null;
             contentHash = Promise.resolve(null);
             activity.setLive(id, false);
+            disposed = true;
             for (const cancel of [...pendingWrites]) cancel();
             await inner.dispose();
         },

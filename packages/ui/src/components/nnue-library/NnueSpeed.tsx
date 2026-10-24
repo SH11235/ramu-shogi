@@ -83,8 +83,6 @@ export function useNnueSpeedBenchmark(support: NnueSpeedSupport | undefined) {
         () => support?.maxThreads ?? detectParallelism().detectedConcurrency,
     );
     // 上限を超えて保存してある数は上限にする（選択欄に無い数を測らないように）。
-    // 計測でマルチスレッド版が起動できず 1 スレッド版で動いたら、表もその版の値で見せる
-    const [threaded, setThreaded] = useState(support?.environment.threaded ?? false);
     const [currentThreads] = useState(() =>
         Math.min(readCurrentThreads(support?.maxThreads), threadCap),
     );
@@ -149,7 +147,6 @@ export function useNnueSpeedBenchmark(support: NnueSpeedSupport | undefined) {
                 result.nps,
                 Date.now(),
             );
-            if (result.threaded !== undefined) setThreaded(result.threaded);
             setState({ phase: "done", contentHash, message: null });
         } catch {
             setState({
@@ -169,7 +166,6 @@ export function useNnueSpeedBenchmark(support: NnueSpeedSupport | undefined) {
     return {
         threadCap,
         currentThreads,
-        threaded,
         state,
         isRunning: state.phase === "running",
         /** 探索中のエンジンがあるあいだは測らない */
@@ -203,11 +199,15 @@ export function NnueSpeedTable({
     disabledReason?: string;
 }): ReactElement | null {
     const data = useSyncExternalStore(nnueSpeedStore.subscribe, nnueSpeedStore.getSnapshot);
-    const rows = nnueSpeedRows(data, {
-        contentHash,
-        engineVersion: support.environment.engineVersion,
-        threaded: benchmark.threaded,
-    });
+    const rowsOf = (threaded: boolean) =>
+        nnueSpeedRows(data, {
+            contentHash,
+            engineVersion: support.environment.engineVersion,
+            threaded,
+        });
+    // マルチスレッド版が起動できず 1 スレッド版で動いた値しか無ければ、それを見せる（版は混ぜない）
+    const preferred = rowsOf(support.environment.threaded);
+    const rows = preferred.length > 0 ? preferred : rowsOf(!support.environment.threaded);
     const { state, threadCap } = benchmark;
     const [selectedThreads, setSelectedThreads] = useState(benchmark.currentThreads);
     const running = state.phase === "running" && state.contentHash === contentHash ? state : null;

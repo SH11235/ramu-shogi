@@ -217,6 +217,29 @@ describe("withNpsRecording", () => {
         expect(store.getSnapshot().records).toEqual([]);
     });
 
+    it("評価関数のハッシュが遅れて分かっても、閉じたあとには書かない", async () => {
+        let resolveHash: (hash: string) => void = () => {};
+        const fake = createFakeClient();
+        const client = withNpsRecording(fake.client, {
+            environment,
+            resolveContentHash: () =>
+                new Promise((resolve) => {
+                    resolveHash = resolve;
+                }),
+            store,
+            activity,
+        });
+        await client.init({ threads: 4 });
+        await client.loadNnue?.("id");
+        await client.search({});
+        fake.think();
+        await settle();
+        await client.dispose();
+        resolveHash("hash");
+        await vi.advanceTimersByTimeAsync(0);
+        expect(store.getSnapshot().records).toEqual([]);
+    });
+
     it("並列解析のように同時に探索するエンジンは記録しない", async () => {
         const first = createFakeClient();
         const second = createFakeClient();

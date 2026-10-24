@@ -155,7 +155,7 @@ describe("NnueSpeedTable", () => {
         expect(screen.queryByText(/ダウンロードします/)).toBeNull();
     });
 
-    it("1 スレッド版に切り替わって測った値も、表に出す", async () => {
+    it("1 スレッド版に切り替わって測った値も、開き直したあとも表に出す", async () => {
         const fallbackSupport: NnueSpeedSupport = {
             environment,
             maxThreads: 8,
@@ -186,6 +186,10 @@ describe("NnueSpeedTable", () => {
         render(<Fallback />);
         fireEvent.click(screen.getByRole("button", { name: "測る" }));
         await waitFor(() => expect(rowTexts()).toContain("1 | 約 100万 | —"));
+        // 画面を開き直しても出す
+        cleanup();
+        render(<Fallback />);
+        expect(rowTexts()).toContain("1 | 約 100万 | —");
     });
 
     it("対局・解析中などで測れないときは押せない", () => {
