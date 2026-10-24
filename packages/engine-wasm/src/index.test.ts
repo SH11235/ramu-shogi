@@ -1474,4 +1474,41 @@ describe("詰み探索 (mate.solve)", () => {
         });
         await solving;
     });
+
+    it("stop の後の作り直しで局面を戻し終えてから solveMate を送る", async () => {
+        let makeWorker: () => MockWorker = createAckingWorker;
+        const client = createWasmEngineClient({
+            workerFactory: () => makeWorker() as unknown as Worker,
+        });
+        await client.init();
+        await client.loadPosition("4k4/9/4P4/9/9/9/9/9/4K4 b G 1");
+        // 作り直した worker では局面の復元の ack を遅らせる
+        const restore: { release?: () => void } = {};
+        const order: string[] = [];
+        makeWorker = () => {
+            const worker = createMockWorker();
+            worker.postMessage.mockImplementation(
+                (command: { type: string; requestId?: string }) => {
+                    order.push(command.type);
+                    if (command.type === "solveMate" || !command.requestId) return;
+                    const ack = () =>
+                        worker.onmessage?.({
+                            data: { type: "ack", requestId: command.requestId },
+                        } as MessageEvent);
+                    if (command.type === "loadPosition") restore.release = ack;
+                    else queueMicrotask(ack);
+                },
+            );
+            return worker;
+        };
+        await client.stop();
+        await vi.waitFor(() => expect(restore.release).toBeDefined());
+        const solving = client.mate?.solve({});
+        solving?.catch(() => {});
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(order).not.toContain("solveMate");
+        restore.release?.();
+        await vi.waitFor(() => expect(order).toContain("solveMate"));
+        expect(order.indexOf("loadPosition")).toBeLessThan(order.indexOf("solveMate"));
+    });
 });

@@ -896,11 +896,13 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
 
     const ensureReady = async () => {
         if (backend === "mock") return;
-        if (initialized) return;
+        // init の ack の後も設定・NNUE・局面を戻している間は initialized が先に立つので、進行中の初期化を先に待つ
+        // (待たずに送ると、戻す前の局面で探索・詰み探索が走る)
         if (initInFlight) {
             await initInFlight;
             return;
         }
+        if (initialized) return;
         const attempt = startInit();
         initInFlight = attempt;
         try {
