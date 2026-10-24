@@ -17,10 +17,10 @@ import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import type { ClockSettings } from "../hooks/useClockManager";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import type { EngineSearchLimit } from "../types";
-import { formatSearchLimit } from "../utils/searchLimits";
+import { formatSearchLimit, type SearchLimitKind } from "../utils/searchLimits";
 import { buildThreadOptions } from "../utils/threadOptions";
 import { formatTimeRule, isSameClock } from "../utils/timeSettings";
-import { PlaySearchLimitDialog, type SearchLimitKind } from "./PlaySearchLimitDialog";
+import { PlaySearchLimitDialog } from "./PlaySearchLimitDialog";
 import { isDialogRepresentable, PlayTimeDialog } from "./PlayTimeDialog";
 import { PlayTimeRulesHelp } from "./PlayTimeRulesHelp";
 import {

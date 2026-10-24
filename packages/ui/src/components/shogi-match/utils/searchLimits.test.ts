@@ -5,7 +5,9 @@ import {
     formatNodeCount,
     formatSearchLimit,
     normalizeEngineSearchLimits,
+    parseSearchLimitInput,
     SEARCH_DEPTH_MAX,
+    SEARCH_NODES_MAX,
 } from "./searchLimits";
 
 describe("normalizeEngineSearchLimits", () => {
@@ -61,5 +63,26 @@ describe("formatSearchLimit", () => {
         expect(formatSearchLimit({ kind: "clock" })).toBeNull();
         expect(formatSearchLimit({ kind: "depth", depth: 12 })).toBe("深さ 12");
         expect(formatSearchLimit({ kind: "nodes", nodes: 1_000_000 })).toBe("100万局面");
+    });
+});
+
+describe("parseSearchLimitInput", () => {
+    it("全角数字・桁区切りのカンマ・前後の空白を受ける", () => {
+        expect(parseSearchLimitInput(" １，２００ ", "nodes")).toEqual({
+            limit: { kind: "nodes", nodes: 1_200 },
+            error: null,
+        });
+        expect(parseSearchLimitInput("８", "depth").limit).toEqual({ kind: "depth", depth: 8 });
+    });
+
+    it("1 未満・上限超え・整数でないものは弾く", () => {
+        expect(parseSearchLimitInput("0", "nodes").limit).toBeNull();
+        expect(parseSearchLimitInput("", "depth").limit).toBeNull();
+        expect(parseSearchLimitInput("1.5", "depth").limit).toBeNull();
+        expect(parseSearchLimitInput(String(SEARCH_DEPTH_MAX), "depth").limit).not.toBeNull();
+        expect(parseSearchLimitInput(String(SEARCH_DEPTH_MAX + 1), "depth").error).toBe(
+            `${SEARCH_DEPTH_MAX} 以下にしてください`,
+        );
+        expect(parseSearchLimitInput(String(SEARCH_NODES_MAX + 1), "nodes").limit).toBeNull();
     });
 });
