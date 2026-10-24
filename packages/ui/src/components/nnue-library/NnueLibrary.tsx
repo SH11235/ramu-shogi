@@ -3,6 +3,7 @@ import type {
     NnueDownloadProgress,
     NnueFormat,
     NnueMeta,
+    PresetConfig,
     PresetWithStatus,
 } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
@@ -24,6 +25,7 @@ import { Button } from "../button";
 import { NnueErrorAlert } from "../nnue/NnueErrorAlert";
 import { NnueFvScaleInputDialog } from "../nnue/NnueFvScaleInputDialog";
 import { Progress } from "../progress";
+import { MatchNnueDownloadDialog } from "../shogi-match/components/MatchNnueDownloadDialog";
 import { NnueSpeedTable, useNnueSpeedBenchmark } from "./NnueSpeed";
 import type { NnueAccountFile, NnueAccountStore, NnueSpeedSupport } from "./types";
 
@@ -170,16 +172,30 @@ export function NnueLibrary({
     const speedBenchmark = useNnueSpeedBenchmark(speed);
     // 測っている AI を消したり設定を変えたりしないよう、測っている間はほかの操作を止める。
     const controlsDisabled = isBusy || speedBenchmark.isRunning;
-    const speedTable = (
-        contentHash: string,
-        prepare: () => Promise<NnueMeta | undefined>,
-        downloadNote?: string,
-    ) =>
+    // 測るにはダウンロードが要る配布 AI。確かめてから落とし、終われば測る。
+    const [pendingMeasure, setPendingMeasure] = useState<{
+        preset: PresetConfig;
+        downloading: boolean;
+    } | null>(null);
+    // 確かめている途中で画面を離れたら、待っている計測を終わらせる（resolve しないと計測が残る）。
+    const pendingMeasureResolve = useRef<((meta: NnueMeta | undefined) => void) | null>(null);
+    useEffect(
+        () => () => {
+            pendingMeasureResolve.current?.(undefined);
+            pendingMeasureResolve.current = null;
+        },
+        [],
+    );
+    const settleMeasure = (meta: NnueMeta | undefined) => {
+        pendingMeasureResolve.current?.(meta);
+        pendingMeasureResolve.current = null;
+        setPendingMeasure(null);
+    };
+    const speedTable = (contentHash: string, prepare: () => Promise<NnueMeta | undefined>) =>
         speed ? (
             <NnueSpeedTable
                 contentHash={contentHash}
                 prepare={prepare}
-                downloadNote={downloadNote}
                 support={speed}
                 benchmark={speedBenchmark}
                 disabledReason={lockedReason ?? (isBusy ? "ほかの処理の途中です" : undefined)}
@@ -193,14 +209,13 @@ export function NnueLibrary({
             (meta) => meta.contentHashSha256 === preset.config.sha256,
         );
         if (localMeta) return speedTable(localMeta.contentHashSha256, async () => localMeta);
-        const downloadSize = preset.config.size + (preset.config.progressCoefficients?.size ?? 0);
         return speedTable(
             preset.config.sha256,
-            async () => {
-                setNotice(null);
-                return downloadPreset(preset.config.presetKey);
-            },
-            `測るときに ${formatSize(downloadSize)} をダウンロードします。`,
+            () =>
+                new Promise((resolve) => {
+                    pendingMeasureResolve.current = resolve;
+                    setPendingMeasure({ preset: preset.config, downloading: false });
+                }),
         );
     };
 
@@ -717,6 +732,28 @@ export function NnueLibrary({
                     </AlertDialogContent>
                 </AlertDialog>
             )}
+            <MatchNnueDownloadDialog
+                purpose="speed"
+                state={{
+                    presets: pendingMeasure ? [pendingMeasure.preset] : [],
+                    busy: pendingMeasure?.downloading ?? false,
+                    progress: pendingMeasure?.downloading ? downloadProgress : null,
+                    completedBytes: 0,
+                    error: null,
+                    cancel: () => settleMeasure(undefined),
+                    download: async () => {
+                        if (!pendingMeasure) return;
+                        setNotice(null);
+                        setPendingMeasure({ ...pendingMeasure, downloading: true });
+                        let meta: NnueMeta | undefined;
+                        try {
+                            meta = await downloadPreset(pendingMeasure.preset.presetKey);
+                        } finally {
+                            settleMeasure(meta);
+                        }
+                    },
+                }}
+            />
             {pendingDelete && (
                 <DeleteDialog
                     target={pendingDelete}
@@ -817,7 +854,12 @@ function PresetRow({
                     {speedLine}
                 </div>
             </div>
-            <div className="flex shrink-0 items-center justify-end gap-2 sm:w-48">
+            {/* ボタン・進捗・「あります」の行で高さが違う。狭い画面で列が下に回ったとき、
+                状態が変わるたびにカードと下の行が動かないよう、ボタン（h-9）の高さに揃える。 */}
+            <div
+                data-testid="preset-row-status"
+                className="flex h-9 shrink-0 items-center justify-end gap-2 sm:w-48"
+            >
                 {progress ? (
                     <div className="flex w-full flex-col gap-1" aria-live="polite">
                         <Progress value={progress.phase === "downloading" ? percent : undefined} />

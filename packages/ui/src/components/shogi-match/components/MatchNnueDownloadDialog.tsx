@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import { type ReactElement, useState } from "react";
 import { Button } from "../../button";
 import {
     Dialog,
@@ -11,7 +11,7 @@ import {
 import { presetDownloadSize, type useMatchNnueDownload } from "../hooks/useMatchNnueDownload";
 
 const mb = (bytes: number) =>
-    (bytes / 1_000_000).toLocaleString("ja-JP", { maximumFractionDigits: 1 });
+    (bytes / (1024 * 1024)).toLocaleString("ja-JP", { maximumFractionDigits: 1 });
 
 /** ダウンロードの目的ごとの文言。既定は対局の開始。 */
 const PURPOSE_TEXT = {
@@ -25,6 +25,11 @@ const PURPOSE_TEXT = {
         after: "ダウンロード後、自動で解析を始めます。",
         action: "ダウンロードして解析",
     },
+    speed: {
+        description: "測るには、",
+        after: "ダウンロード後、自動で測ります。",
+        action: "ダウンロードして測る",
+    },
 } as const;
 
 export function MatchNnueDownloadDialog({
@@ -32,7 +37,10 @@ export function MatchNnueDownloadDialog({
     purpose = "match",
     alternative,
 }: {
-    state: ReturnType<typeof useMatchNnueDownload>;
+    state: Pick<
+        ReturnType<typeof useMatchNnueDownload>,
+        "presets" | "busy" | "progress" | "completedBytes" | "error" | "cancel" | "download"
+    >;
     /** 何のためのダウンロードか（文言だけが変わる）。 */
     purpose?: keyof typeof PURPOSE_TEXT;
     /**
@@ -42,14 +50,27 @@ export function MatchNnueDownloadDialog({
     alternative?: { label: string; onSelect: () => void };
 }): ReactElement {
     const text = PURPOSE_TEXT[purpose];
-    const { presets, busy, progress, completedBytes, error, cancel, download } = state;
+    const { cancel, download } = state;
+    const open = state.presets.length > 0;
+    // 閉じるアニメーションの間も、空の内容（名前なし・0 MB・0%）ではなく閉じる直前の内容を出す。
+    const view = {
+        presets: state.presets,
+        busy: state.busy,
+        progress: state.progress,
+        completedBytes: state.completedBytes,
+        error: state.error,
+    };
+    const [lastShown, setLastShown] = useState(view);
+    if (open && (Object.keys(view) as (keyof typeof view)[]).some((k) => view[k] !== lastShown[k]))
+        setLastShown(view);
+    const { presets, busy, progress, completedBytes, error } = open ? view : lastShown;
     const total = presets.reduce((sum, preset) => sum + presetDownloadSize(preset), 0);
     const loaded = Math.min(total, completedBytes + (progress?.loaded ?? 0));
     const percent = total > 0 ? Math.floor((loaded / total) * 100) : 0;
     const names = presets.map((preset) => preset.displayName).join("・");
     return (
         <Dialog
-            open={presets.length > 0}
+            open={open}
             onOpenChange={(open) => {
                 if (!open && !busy) cancel();
             }}
