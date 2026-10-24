@@ -173,8 +173,8 @@ export function useNnueSpeedBenchmark(support: NnueSpeedSupport | undefined) {
 type Benchmark = ReturnType<typeof useNnueSpeedBenchmark>;
 
 /**
- * AI の行に出す、この端末での NPS。スレッド数ごとに計測と対局での実測を並べ、その下で
- * スレッド数を選んで測る（測り直しも同じ操作）。端末に無い AI も、測るときにダウンロードする
+ * AI の行に出す、この端末での NPS。スレッド数を選んで測る欄（測り直しも同じ操作）を上に置き、
+ * 記録が増えても押しやすいようにする。その下に、スレッド数ごとの計測と対局での実測を並べる。端末に無い AI も、測るときにダウンロードする
  * （`downloadNote` で通信量を知らせる）。
  */
 export function NnueSpeedTable({
@@ -238,6 +238,36 @@ export function NnueSpeedTable({
 
     return (
         <div className="flex flex-col items-start gap-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2">
+                <NativeSelect
+                    aria-label="測るスレッド数"
+                    value={selectedThreads}
+                    onChange={(event) => setSelectedThreads(Number(event.target.value))}
+                    disabled={running !== null}
+                    // 表と同じ文字の大きさにする（指で操作する端末では、拡大を防ぐ共通の指定で 16px になる）
+                    className="h-8 py-0 pl-2 pr-8 text-xs"
+                >
+                    {Array.from({ length: Math.max(1, threadCap) }, (_, index) => index + 1).map(
+                        (threads) => (
+                            <option key={threads} value={threads}>
+                                {threads} スレッド
+                            </option>
+                        ),
+                    )}
+                </NativeSelect>
+                <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 px-3 text-xs [@media(pointer:coarse)]:text-base"
+                    disabled={running !== null || blockedReason !== undefined}
+                    title={blockedReason ?? `約 ${totalSeconds} 秒読んで測ります`}
+                    onClick={() =>
+                        void benchmark.start({ contentHash, threads: selectedThreads, prepare })
+                    }
+                >
+                    {progressLabel ?? "測る"}
+                </Button>
+            </div>
             <table className="w-fit border-collapse whitespace-nowrap text-left tabular-nums">
                 <thead>
                     <tr className="border-b border-border">
@@ -266,36 +296,6 @@ export function NnueSpeedTable({
                     ))}
                 </tbody>
             </table>
-            <div className="flex items-center gap-2">
-                <NativeSelect
-                    aria-label="測るスレッド数"
-                    value={selectedThreads}
-                    onChange={(event) => setSelectedThreads(Number(event.target.value))}
-                    disabled={running !== null}
-                    // 表と同じ文字の大きさにする（指で操作する端末では、拡大を防ぐ共通の指定で 16px になる）
-                    className="h-8 py-0 pl-2 pr-8 text-xs"
-                >
-                    {Array.from({ length: Math.max(1, threadCap) }, (_, index) => index + 1).map(
-                        (threads) => (
-                            <option key={threads} value={threads}>
-                                {threads} スレッド
-                            </option>
-                        ),
-                    )}
-                </NativeSelect>
-                <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 px-3 text-xs"
-                    disabled={running !== null || blockedReason !== undefined}
-                    title={blockedReason ?? `約 ${totalSeconds} 秒読んで測ります`}
-                    onClick={() =>
-                        void benchmark.start({ contentHash, threads: selectedThreads, prepare })
-                    }
-                >
-                    {progressLabel ?? "測る"}
-                </Button>
-            </div>
             {downloadNote && !running && <p>{downloadNote}</p>}
             {message && <p aria-live="polite">{message}</p>}
         </div>

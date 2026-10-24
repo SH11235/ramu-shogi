@@ -58,9 +58,8 @@ function SettingsBody({
     canStart,
     onStartFull,
     onOpenChange,
-    isMobile,
     onOpenNnueLibrary,
-}: Omit<StudyAnalysisSettingsProps, "open">): ReactElement {
+}: Omit<StudyAnalysisSettingsProps, "open" | "isMobile">): ReactElement {
     const nnueOptions = buildNnueOptions({
         presets: form.presets,
         nnueList: form.nnueList,
@@ -123,7 +122,7 @@ function SettingsBody({
                             // 解析の準備中・実行中は切り替えさせない（切り替えると、その解析は止まる）。
                             disabled={!canStart}
                             onChange={(event) => form.onEngineIdChange(event.target.value)}
-                            className={isMobile ? "text-base" : "text-sm"}
+                            className="text-sm"
                         >
                             {form.engines.map((engine) => (
                                 <option key={engine.id} value={engine.id}>
@@ -149,7 +148,7 @@ function SettingsBody({
                                         parseNnueSelectionValue(event.target.value),
                                     )
                                 }
-                                className={isMobile ? "text-base" : "text-sm"}
+                                className="text-sm"
                             >
                                 <option value="material">簡易AI（駒得）</option>
                                 {nnueOptions.map((option) => (
