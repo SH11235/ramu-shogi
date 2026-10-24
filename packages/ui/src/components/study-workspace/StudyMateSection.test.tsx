@@ -86,6 +86,18 @@ describe("StudyMateResult", () => {
         expect(container.textContent).toBe("");
     });
 
+    it("調べ直している間は前の結果を出しておく", () => {
+        renderResult({
+            status: "running",
+            phase: "mate",
+            nodes: 0,
+            elapsedMs: 0,
+            previous: { status: "done", mate: { kind: "noMate" }, threat: { kind: "noMate" } },
+        });
+        screen.getByText("詰めろ");
+        expect(screen.getAllByText("なし")).toHaveLength(2);
+    });
+
     it("詰みは手数を言い切らずに手順と一緒に出し、盤で見られる", () => {
         // ▲7六歩 △3四歩 の後 (先手番)。手順の中身は表示の確認用で、詰みである必要はない
         const { node, handlers } = renderResult({

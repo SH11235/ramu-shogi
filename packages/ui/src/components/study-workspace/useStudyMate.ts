@@ -18,6 +18,12 @@ export const STUDY_MATE_TIME_MS = 10_000;
 /** 1 局面を解くスレッド数。Web のエンジンの既定のスレッド数に合わせる（多く指定してもエンジンのスレッド数に丸められる）。 */
 const MATE_THREADS = 4;
 
+type StudyDoneState = {
+    status: "done";
+    mate: MateResult;
+    threat: MateResult | null;
+};
+
 export type StudyMateState =
     | {
           status: "running";
@@ -25,6 +31,8 @@ export type StudyMateState =
           phase: "mate" | "threat";
           nodes: number;
           elapsedMs: number;
+          /** 調べ直す前の結果（調べている間も出しておき、欄の高さを変えない）。 */
+          previous?: StudyDoneState;
       }
     | {
           status: "done";
@@ -131,7 +139,9 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
         clientRef.current = client;
         activeRef.current = { nodeId, engineId: option.id, previous: results.get(nodeId) };
         setRunningNodeId(nodeId);
-        setResult(nodeId, { status: "running", phase: "mate", nodes: 0, elapsedMs: 0 });
+        const before = results.get(nodeId);
+        const previous = before?.status === "done" ? before : undefined;
+        setResult(nodeId, { status: "running", phase: "mate", nodes: 0, elapsedMs: 0, previous });
         const solve = async (
             sfen: string,
             phase: "mate" | "threat",
@@ -144,7 +154,7 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
                 { mode, threads: MATE_THREADS, hashMb, timeMs: STUDY_MATE_TIME_MS },
                 (progress) => {
                     if (runRef.current === run) {
-                        setResult(nodeId, { status: "running", phase, ...progress });
+                        setResult(nodeId, { status: "running", phase, ...progress, previous });
                     }
                 },
             );
@@ -169,6 +179,7 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
                         phase: "threat",
                         nodes: 0,
                         elapsedMs: 0,
+                        previous,
                     });
                     // 詰めろは不詰のことが多いので、不詰の判定が速い Speed で読む
                     const result = await solve(threatSfen(node), "threat", "Speed");

@@ -135,7 +135,7 @@ export function StudyMateControl({
     );
 }
 
-/** 調べた局面の結果（調べていない・調べている途中は何も出さない）。 */
+/** 調べた局面の結果（調べていない・初めて調べている途中は何も出さない）。 */
 export function StudyMateResult({
     node,
     state,
@@ -152,6 +152,19 @@ export function StudyMateResult({
             <p role="alert" className="px-1 text-xs text-destructive">
                 {state.message}
             </p>
+        );
+    }
+    // 調べ直している間は前の結果を薄く出しておく（欄が消えて下の内容が動かないように）
+    if (state?.status === "running" && state.previous) {
+        return (
+            <div aria-busy="true" className="opacity-50">
+                <MateResults
+                    node={node}
+                    state={state.previous}
+                    onPreviewPv={onPreviewPv}
+                    onAddPvAsVariation={onAddPvAsVariation}
+                />
+            </div>
         );
     }
     if (state?.status !== "done") return null;
