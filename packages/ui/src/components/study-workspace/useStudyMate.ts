@@ -3,14 +3,15 @@
  * （手番を相手に渡したら詰まされるか）を調べる。
  *
  * 解析（候補手）とは別のエンジンで解く。詰み探索の間は同じエンジンでほかの操作ができないので、
- * 解析のエンジンを借りると、全体の解析と取り合いになる。結果は画面を開いている間だけ覚える。
+ * 解析のエンジンを借りると、全体の解析と取り合いになる。エンジンは調べるたびに作って捨てる
+ * （詰み探索の置換表は数十 MB あり、スマートフォンで解析のエンジンと並べて持ち続けたくない）。
+ * 結果は画面を開いている間だけ覚える。
  */
 
-import { isStudyPassMove, type KifuNode, type KifuTree, positionToSfen } from "@shogi/app-core";
-import type { EngineClient, MateResult } from "@shogi/engine-client";
+import { type KifuNode, positionToSfen } from "@shogi/app-core";
+import type { EngineClient, MateMode, MateResult } from "@shogi/engine-client";
 import { useEffect, useRef, useState } from "react";
 import type { EngineOption } from "../shogi-match/types";
-import { studyPathTo } from "./studyView";
 
 /** 詰み・詰めろのそれぞれに掛ける時間の上限。 */
 export const STUDY_MATE_TIME_MS = 10_000;
@@ -43,26 +44,25 @@ export interface StudyMateController {
     results: ReadonlyMap<string, StudyMateState>;
     /** いま調べている局面（無ければ null）。 */
     runningNodeId: string | null;
-    start: (nodeId: string) => void;
+    start: (node: KifuNode) => void;
     stop: () => void;
 }
 
 interface UseStudyMateOptions {
-    tree: KifuTree;
     engineOption: EngineOption | undefined;
     /** 置換表の大きさ (MB)。スマートフォンでは小さくする。 */
     hashMb: number;
 }
 
-export function useStudyMate({
-    tree,
-    engineOption,
-    hashMb,
-}: UseStudyMateOptions): StudyMateController {
+/** 調べ終わる前に中止・アンマウントされた。 */
+class StudyMateCancelled extends Error {}
+
+export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): StudyMateController {
     const [results, setResults] = useState<ReadonlyMap<string, StudyMateState>>(new Map());
     const [runningNodeId, setRunningNodeId] = useState<string | null>(null);
-    const clientRef = useRef<{ key: string; client: EngineClient } | null>(null);
+    /** 実行の世代。開始・中止・アンマウントのたびに進め、古い実行の続きを捨てる。 */
     const runRef = useRef(0);
+    const clientRef = useRef<EngineClient | null>(null);
 
     const supported = engineOption?.supportsMate === true;
 
@@ -71,72 +71,65 @@ export function useStudyMate({
     };
 
     const disposeClient = (): void => {
-        const current = clientRef.current;
+        const client = clientRef.current;
         clientRef.current = null;
-        if (current) void current.client.dispose();
+        if (client) void client.dispose();
     };
 
-    // エンジンが変わったら作り直す。画面を閉じたら捨てる。
-    // biome-ignore lint/correctness/useExhaustiveDependencies: エンジンの id が変わったときだけ捨てる
-    useEffect(() => disposeClient, [engineOption?.id]);
+    // 画面を閉じたら、調べている途中のエンジンを捨てる
+    useEffect(
+        () => () => {
+            runRef.current++;
+            const client = clientRef.current;
+            clientRef.current = null;
+            if (client) void client.dispose();
+        },
+        [],
+    );
 
-    const ensureClient = async (option: EngineOption): Promise<EngineClient> => {
-        if (clientRef.current?.key !== option.id) {
-            disposeClient();
-            clientRef.current = { key: option.id, client: option.createClient() };
-        }
-        const { client } = clientRef.current;
-        if (!client.mate) throw new Error("このエンジンでは詰み探索を使えません");
-        await client.init();
-        if (!client.mate.available()) throw new Error("このエンジンでは詰み探索を使えません");
-        return client;
-    };
-
-    const start = (nodeId: string): void => {
+    const start = (node: KifuNode): void => {
         const option = engineOption;
-        const node = tree.nodes.get(nodeId);
-        if (!option || !supported || !node || runningNodeId !== null) return;
-        const startSfen = tree.startSfen;
-        const moves = studyPathTo(tree, nodeId)
-            .map((id) => tree.nodes.get(id)?.usiMove)
-            .filter((move): move is string => Boolean(move));
-        if (moves.some((move) => isStudyPassMove(move))) {
-            setResult(nodeId, {
-                status: "error",
-                message: "パスを含む局面は詰みを調べられません",
-            });
-            return;
-        }
+        if (!option || !supported || runningNodeId !== null) return;
+        const nodeId = node.id;
         const run = ++runRef.current;
-        const isCurrent = () => runRef.current === run;
+        const checkCurrent = (): void => {
+            if (runRef.current !== run) throw new StudyMateCancelled();
+        };
         setRunningNodeId(nodeId);
         setResult(nodeId, { status: "running", phase: "mate", nodes: 0, elapsedMs: 0 });
+
+        const client = option.createClient();
+        clientRef.current = client;
+        const solve = async (
+            sfen: string,
+            phase: "mate" | "threat",
+            mode: MateMode,
+        ): Promise<MateResult> => {
+            await client.loadPosition(sfen, []);
+            checkCurrent();
+            if (!client.mate) throw new Error("このエンジンでは詰み探索を使えません");
+            const outcome = await client.mate.solve(
+                { mode, threads: MATE_THREADS, hashMb, timeMs: STUDY_MATE_TIME_MS },
+                (progress) => {
+                    if (runRef.current === run) {
+                        setResult(nodeId, { status: "running", phase, ...progress });
+                    }
+                },
+            );
+            checkCurrent();
+            return outcome.result;
+        };
+
         void (async () => {
             try {
-                const client = await ensureClient(option);
-                const solve = async (phase: "mate" | "threat"): Promise<MateResult> => {
-                    if (phase === "mate") {
-                        await client.loadPosition(startSfen, moves);
-                    } else {
-                        await client.loadPosition(threatSfen(node), []);
-                    }
-                    const outcome = await client.mate?.solve(
-                        {
-                            mode: "Power",
-                            threads: MATE_THREADS,
-                            hashMb,
-                            timeMs: STUDY_MATE_TIME_MS,
-                        },
-                        (progress) => {
-                            if (!isCurrent()) return;
-                            setResult(nodeId, { status: "running", phase, ...progress });
-                        },
-                    );
-                    if (!outcome) throw new Error("このエンジンでは詰み探索を使えません");
-                    return outcome.result;
-                };
-                const mate = await solve("mate");
-                if (!isCurrent()) return;
+                // 通常の探索の置換表は使わないので最小にする
+                await client.init({ ttSizeMb: 1 });
+                checkCurrent();
+                if (!client.mate?.available()) {
+                    throw new Error("このエンジンでは詰み探索を使えません");
+                }
+                // 詰みは局面だけで決まる（それまでの手順は見ない）ので、局面を SFEN にして渡す
+                const mate = await solve(positionToSfen(node.positionAfter), "mate", "Power");
                 let threat: MateResult | null = null;
                 if (mate.kind !== "mate") {
                     setResult(nodeId, {
@@ -145,20 +138,23 @@ export function useStudyMate({
                         nodes: 0,
                         elapsedMs: 0,
                     });
-                    const result = await solve("threat");
+                    // 詰めろは不詰のことが多いので、不詰の判定が速い Speed で読む
+                    const result = await solve(threatSfen(node), "threat", "Speed");
                     // 王手されている局面は手番を渡せない（エンジンは扱えない局面として返す）
                     threat = result.kind === "unsupported" ? null : result;
                 }
-                if (!isCurrent()) return;
                 setResult(nodeId, { status: "done", mate, threat });
             } catch (error) {
-                if (!isCurrent()) return;
+                if (error instanceof StudyMateCancelled || runRef.current !== run) return;
                 setResult(nodeId, {
                     status: "error",
                     message: error instanceof Error ? error.message : String(error),
                 });
             } finally {
-                if (isCurrent()) setRunningNodeId(null);
+                if (runRef.current === run) {
+                    setRunningNodeId(null);
+                    disposeClient();
+                }
             }
         })();
     };
@@ -173,7 +169,7 @@ export function useStudyMate({
             next.delete(nodeId);
             return next;
         });
-        // 詰み探索は途中で止められないので、エンジンを捨てて止める（次に調べるときに作り直す）
+        // 詰み探索は途中で止められないので、エンジンを捨てて止める
         disposeClient();
     };
 

@@ -37,11 +37,12 @@ describe("StudyMateSection", () => {
         expect(handlers.onStart).toHaveBeenCalled();
     });
 
-    it("別の局面を調べている間は押せない", () => {
-        renderSection(undefined, true);
-        expect(
-            (screen.getByRole("button", { name: "詰みを調べる" }) as HTMLButtonElement).disabled,
-        ).toBe(true);
+    it("別の局面を調べている間は、そう伝えて中止できる", () => {
+        const { handlers } = renderSection(undefined, true);
+        screen.getByText("別の局面の詰みを調べています");
+        expect(screen.queryByRole("button", { name: "詰みを調べる" })).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: "詰み探索を中止" }));
+        expect(handlers.onStop).toHaveBeenCalled();
     });
 
     it("調べている間は途中経過と中止を出す", () => {
@@ -52,7 +53,7 @@ describe("StudyMateSection", () => {
             elapsedMs: 3_200,
         });
         screen.getByText("詰めろを調べています（3 秒・123 万局面）");
-        fireEvent.click(screen.getByRole("button", { name: "中止" }));
+        fireEvent.click(screen.getByRole("button", { name: "詰み探索を中止" }));
         expect(handlers.onStop).toHaveBeenCalled();
     });
 
@@ -63,8 +64,8 @@ describe("StudyMateSection", () => {
             mate: { kind: "mate", pv: ["2g2f", "8c8d", "2f2e"] },
             threat: null,
         });
-        screen.getByText("☗詰みあり");
-        screen.getByText("3 手の手順");
+        screen.getByText("あり");
+        screen.getByText("（☗の詰み・3 手の手順）");
         expect(screen.queryByText("詰めろ")).toBeNull();
         fireEvent.click(screen.getByRole("button", { name: "詰み手順を盤で見る" }));
         expect(handlers.onPreviewPv).toHaveBeenCalledWith({
@@ -82,7 +83,7 @@ describe("StudyMateSection", () => {
         });
         screen.getByText("なし");
         screen.getByText("詰めろ");
-        screen.getByText("☖詰みあり");
+        screen.getByText("（☖の詰み・1 手の手順）");
         // 詰めろの手順は手番を渡した局面からなので、盤で見る・変化に足す操作は出さない
         expect(screen.queryByRole("button", { name: "詰み手順を盤で見る" })).toBeNull();
     });

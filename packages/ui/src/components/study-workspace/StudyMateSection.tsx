@@ -1,6 +1,6 @@
 /**
- * 候補手の欄に出す詰み探索 (調べるボタン・途中経過・結果)。手番側の詰みと、手番側に掛かっている詰めろ（手番を相手に渡したら
- * 詰まされるか）を 1 行ずつ出す。
+ * 候補手の欄に出す詰み探索（調べるボタン・途中経過・結果）。手番側の詰みと、手番側に掛かっている
+ * 詰めろ（手番を相手に渡したら詰まされるか）を 1 行ずつ出す。
  */
 
 import type { KifuNode } from "@shogi/app-core";
@@ -15,13 +15,13 @@ import { AddBranchIcon, PlayIcon } from "./StudyIcons";
 import { studyFirstMoveLabel } from "./studyView";
 import { STUDY_MATE_TIME_MS, type StudyMateState } from "./useStudyMate";
 
-const sideClass = (turn: "sente" | "gote"): string =>
-    turn === "sente" ? "text-wafuu-shu" : "text-wafuu-ai";
+type Side = "sente" | "gote";
 
-const opponent = (turn: "sente" | "gote"): "sente" | "gote" =>
-    turn === "sente" ? "gote" : "sente";
+const sideClass = (side: Side): string => (side === "sente" ? "text-wafuu-shu" : "text-wafuu-ai");
+const sideMark = (side: Side): string => (side === "sente" ? "☗" : "☖");
+const opponent = (side: Side): Side => (side === "sente" ? "gote" : "sente");
 
-const TIME_LIMIT_SECONDS = STUDY_MATE_TIME_MS / 1000;
+const UNKNOWN_TEXT = `${STUDY_MATE_TIME_MS / 1000} 秒では読み切れませんでした`;
 
 /** 調べている途中の表示（例: `詰みを調べています（3 秒・120 万局面）`）。 */
 export function studyMateProgressText(state: StudyMateState & { status: "running" }): string {
@@ -34,20 +34,34 @@ export function studyMateProgressText(state: StudyMateState & { status: "running
     return `${what}を調べています（${seconds} 秒・${nodes}）`;
 }
 
+function StopButton({ onStop }: { onStop: () => void }): ReactElement {
+    return (
+        <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-label="詰み探索を中止"
+            onClick={onStop}
+        >
+            中止
+        </Button>
+    );
+}
+
 function MateLine({
     label,
-    turn,
+    mover,
     result,
     moves,
-    unknownText,
+    unsupportedText,
     actions,
 }: {
     label: string;
     /** 詰ませる側。 */
-    turn: "sente" | "gote";
+    mover: Side;
     result: MateResult;
     moves: string[];
-    unknownText: string;
+    unsupportedText: string;
     actions?: ReactElement;
 }): ReactElement {
     return (
@@ -57,12 +71,12 @@ function MateLine({
                 {result.kind === "mate" ? (
                     <>
                         {/* 見つけた手順は最短とも、受けの最善とも限らないので「N 手詰め」とは言わない */}
-                        <span className="flex items-baseline gap-1.5">
-                            <span className={cn("text-sm font-medium", sideClass(turn))}>
-                                {turn === "sente" ? "☗" : "☖"}詰みあり
+                        <span className="flex flex-wrap items-baseline gap-x-1.5">
+                            <span className={cn("text-sm font-medium", sideClass(mover))}>
+                                あり
                             </span>
                             <span className="text-xs text-muted-foreground">
-                                {result.pv.length} 手の手順
+                                （{sideMark(mover)}の詰み・{result.pv.length} 手の手順）
                             </span>
                         </span>
                         <p className="line-clamp-2 text-xs text-muted-foreground">
@@ -74,8 +88,8 @@ function MateLine({
                         {result.kind === "noMate"
                             ? "なし"
                             : result.kind === "unknown"
-                              ? unknownText
-                              : "この局面は調べられません"}
+                              ? UNKNOWN_TEXT
+                              : unsupportedText}
                     </span>
                 )}
             </div>
@@ -96,22 +110,22 @@ export function StudyMateSection({
     node: KifuNode;
     /** この局面の結果（調べていなければ undefined）。 */
     state: StudyMateState | undefined;
-    /** 別の局面を調べている途中（終わるまで始められない）。 */
+    /** 別の局面を調べている途中（終わるか中止するまで始められない）。 */
     busyElsewhere: boolean;
     onStart: () => void;
     onStop: () => void;
     onPreviewPv: (request: StudyPvRequest) => void;
     onAddPvAsVariation: (request: StudyPvRequest) => void;
 }): ReactElement {
-    if (state?.status === "running") {
+    if (state?.status === "running" || (busyElsewhere && state?.status !== "done")) {
         return (
             <div className="flex min-h-10 items-center justify-between gap-2 px-1">
                 <output aria-live="polite" className="text-xs text-muted-foreground">
-                    {studyMateProgressText(state)}
+                    {state?.status === "running"
+                        ? studyMateProgressText(state)
+                        : "別の局面の詰みを調べています"}
                 </output>
-                <Button type="button" variant="outline" size="sm" onClick={onStop}>
-                    中止
-                </Button>
+                <StopButton onStop={onStop} />
             </div>
         );
     }
@@ -125,13 +139,7 @@ export function StudyMateSection({
                 ) : (
                     <span className="text-xs text-muted-foreground">詰み・詰めろ</span>
                 )}
-                <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={onStart}
-                    disabled={busyElsewhere}
-                >
+                <Button type="button" variant="outline" size="sm" onClick={onStart}>
                     詰みを調べる
                 </Button>
             </div>
@@ -160,10 +168,10 @@ export function StudyMateSection({
         <div className="flex flex-col rounded-lg border border-border px-1 py-1">
             <MateLine
                 label="詰み"
-                turn={turn}
+                mover={turn}
                 result={mate}
                 moves={mateMoves}
-                unknownText={`${TIME_LIMIT_SECONDS} 秒では読み切れませんでした`}
+                unsupportedText="玉の無い局面は調べられません"
                 actions={
                     request ? (
                         <div className="flex shrink-0 items-center self-start">
@@ -186,10 +194,10 @@ export function StudyMateSection({
             {threat && (
                 <MateLine
                     label="詰めろ"
-                    turn={opponent(turn)}
+                    mover={opponent(turn)}
                     result={threat}
                     moves={threatMoves}
-                    unknownText={`${TIME_LIMIT_SECONDS} 秒では読み切れませんでした`}
+                    unsupportedText="この局面は調べられません"
                 />
             )}
         </div>

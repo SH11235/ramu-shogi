@@ -1565,10 +1565,10 @@ export function StudyWorkspaceView({
             mate={
                 mate?.supported
                     ? {
-                          state: mate.results.get(currentNodeId),
+                          state: mate.results.get(currentNode.id),
                           busyElsewhere:
-                              mate.runningNodeId !== null && mate.runningNodeId !== currentNodeId,
-                          onStart: () => mate.start(currentNodeId),
+                              mate.runningNodeId !== null && mate.runningNodeId !== currentNode.id,
+                          onStart: () => mate.start(currentNode),
                           onStop: mate.stop,
                       }
                     : undefined
@@ -2273,7 +2273,6 @@ export function StudyWorkspace({
 
     const isMobile = useIsMobile();
     const mate = useStudyMate({
-        tree,
         engineOption: engineOptions.find((option) => option.supportsMate),
         // スマートフォンはメモリが少ないので、置換表を小さくする
         hashMb: isMobile ? 32 : 64,
