@@ -302,6 +302,31 @@ describe("withNpsRecording", () => {
         expect(activity.getSnapshot().live).toBe(0);
     });
 
+    it("詰み探索の間は探索中として数え、ほかのエンジンの実測から外す", async () => {
+        const solver = createFakeClient();
+        let finishSolve: () => void = () => {};
+        solver.client.mate = {
+            available: () => true,
+            solve: () =>
+                new Promise((resolve) => {
+                    finishSolve = () =>
+                        resolve({ result: { kind: "noMate" }, nodes: 1, elapsedMs: 1 });
+                }),
+        };
+        const mateClient = await start(solver);
+        const solving = mateClient.mate?.solve({});
+        expect(activity.getSnapshot().searching).toBe(1);
+        const fake = createFakeClient();
+        const client = await start(fake);
+        await client.search({});
+        fake.think();
+        finishSolve();
+        await solving;
+        expect(activity.getSnapshot().searching).toBe(0);
+        await settle();
+        expect(store.getSnapshot().records).toEqual([]);
+    });
+
     it("計測用のエンジンは記録しない", async () => {
         const fake = createFakeClient();
         const client = wrap(fake, false);

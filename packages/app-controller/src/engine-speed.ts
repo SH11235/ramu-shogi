@@ -13,6 +13,7 @@ import type {
     EngineClient,
     EngineEvent,
     EngineInfoEvent,
+    MateClient,
     SearchHandle,
 } from "@shogi/engine-client";
 
@@ -320,9 +321,26 @@ export function withNpsRecording<T extends EngineClient>(
           }
         : undefined;
 
+    // 詰み探索も CPU を使うので探索中として数える（NPS の意味が違うので記録はしない）
+    const innerMate = inner.mate;
+    const mate: MateClient | undefined = innerMate
+        ? {
+              available: innerMate.available.bind(innerMate),
+              async solve(params, onProgress) {
+                  activity.setSearching(id, true);
+                  try {
+                      return await innerMate.solve(params, onProgress);
+                  } finally {
+                      activity.setSearching(id, false);
+                  }
+              },
+          }
+        : undefined;
+
     return {
         ...inner,
         ...(analysis ? { analysis } : {}),
+        ...(mate ? { mate } : {}),
         async init(opts) {
             disposed = false;
             finish(null);
