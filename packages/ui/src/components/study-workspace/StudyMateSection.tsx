@@ -23,17 +23,12 @@ const opponent = (side: Side): Side => (side === "sente" ? "gote" : "sente");
 
 const UNKNOWN_TEXT = `${STUDY_MATE_TIME_MS / 1000} 秒では読み切れませんでした`;
 
-/** 調べている途中の表示（例: `詰みを調べています（3 秒・120 万局面）`）。 */
+/** 調べている途中の表示（例: `詰みを調べています（3 秒）`）。狭い列でも 1 行に収まる長さにする。 */
 function studyMateProgressText(state: StudyMateState & { status: "running" }): string {
     const what = state.phase === "mate" ? "詰み" : "詰めろ";
     // 最初の途中経過はエンジンの起動を待つ間なので、数字を出さない
     if (state.nodes === 0) return `${what}を調べています`;
-    const seconds = Math.floor(state.elapsedMs / 1000);
-    const nodes =
-        state.nodes >= 10_000
-            ? `${Math.floor(state.nodes / 10_000)} 万局面`
-            : `${state.nodes} 局面`;
-    return `${what}を調べています（${seconds} 秒・${nodes}）`;
+    return `${what}を調べています（${Math.floor(state.elapsedMs / 1000)} 秒）`;
 }
 
 function StopButton({ onStop }: { onStop: () => void }): ReactElement {
@@ -79,7 +74,7 @@ function MateLine({
                                 あり
                             </span>
                             <span className="text-xs text-muted-foreground">
-                                （{sideMark(mover)}の詰み・{result.pv.length} 手の手順）
+                                （{sideMark(mover)}の詰み・{result.pv.length} 手）
                             </span>
                         </span>
                         <p className="line-clamp-2 text-xs text-muted-foreground">
@@ -121,7 +116,10 @@ export function StudyMateControl({
     if (state?.status === "running" || busyElsewhere) {
         return (
             <div className="flex items-center gap-2">
-                <output aria-live="polite" className="text-xs text-muted-foreground">
+                <output
+                    aria-live="polite"
+                    className="whitespace-nowrap text-xs text-muted-foreground"
+                >
                     {state?.status === "running"
                         ? studyMateProgressText(state)
                         : "別の局面の詰みを調べています"}

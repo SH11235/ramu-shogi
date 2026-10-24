@@ -57,7 +57,7 @@ describe("StudyMateControl", () => {
             nodes: 1_234_567,
             elapsedMs: 3_200,
         });
-        screen.getByText("詰めろを調べています（3 秒・123 万局面）");
+        screen.getByText("詰めろを調べています（3 秒）");
         fireEvent.click(screen.getByRole("button", { name: "詰み探索を中止" }));
         expect(handlers.onStop).toHaveBeenCalled();
     });
@@ -94,7 +94,7 @@ describe("StudyMateResult", () => {
             threat: null,
         });
         screen.getByText("あり");
-        screen.getByText("（☗の詰み・3 手の手順）");
+        screen.getByText("（☗の詰み・3 手）");
         expect(screen.queryByText("詰めろ")).toBeNull();
         fireEvent.click(screen.getByRole("button", { name: "詰み手順を盤で見る" }));
         expect(handlers.onPreviewPv).toHaveBeenCalledWith({
@@ -112,7 +112,7 @@ describe("StudyMateResult", () => {
         });
         screen.getByText("なし");
         screen.getByText("詰めろ");
-        screen.getByText("（☖の詰み・1 手の手順）");
+        screen.getByText("（☖の詰み・1 手）");
         // 詰めろの手順は手番を渡した局面からなので、盤で見る・変化に足す操作は出さない
         expect(screen.queryByRole("button", { name: "詰み手順を盤で見る" })).toBeNull();
     });
