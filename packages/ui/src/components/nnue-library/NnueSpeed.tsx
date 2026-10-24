@@ -5,13 +5,8 @@ import {
     runNnueSpeedBenchmark,
 } from "@shogi/app-controller";
 import type { NnueMeta, NnueSpeedRow } from "@shogi/app-core";
-import {
-    detectParallelism,
-    formatNodesPerSecond,
-    nnueSpeedRows,
-    primaryNnueSpeed,
-} from "@shogi/app-core";
-import type { ReactElement } from "react";
+import { detectParallelism, formatNodesPerSecond, nnueSpeedRows } from "@shogi/app-core";
+import type { ReactElement, ReactNode } from "react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ENGINE_THREADS_STORAGE_KEY } from "../shogi-match/constants";
 import type { NnueSpeedSupport } from "./types";
@@ -136,9 +131,9 @@ export function useNnueSpeedBenchmark(support: NnueSpeedSupport | undefined) {
 type Benchmark = ReturnType<typeof useNnueSpeedBenchmark>;
 
 /**
- * AI の行に出す、この端末での速さ。普段は 1 行で、開くとスレッド数ごとの表を出す。
+ * AI の行に出す、この端末での NPS。スレッド数ごとに、計測と対局での実測を並べる。
  */
-export function NnueSpeedLine({
+export function NnueSpeedTable({
     meta,
     support,
     benchmark,
@@ -157,8 +152,12 @@ export function NnueSpeedLine({
         threaded: support.environment.threaded,
     });
     const { threads, state } = benchmark;
-    const [isOpen, setIsOpen] = useState(false);
-    const current = primaryNnueSpeed(rows.find((row) => row.threads === threads));
+    // いまのスレッド数の行は、値が無くても出して「測る」を置く。ほかのスレッド数は値のある行だけ。
+    const tableRows: NnueSpeedRow[] = rows.some((row) => row.threads === threads)
+        ? rows
+        : [...rows, { threads, benchmarkNps: null, observedNps: null, observedCount: 0 }].sort(
+              (a, b) => a.threads - b.threads,
+          );
     const isRunningHere = state.phase === "running" && state.metaId === meta.id;
     const message = state.phase === "done" && state.metaId === meta.id ? state.message : null;
     const blockedReason =
@@ -169,98 +168,64 @@ export function NnueSpeedLine({
               ? "対局・解析中は測れません"
               : undefined);
 
-    if (isRunningHere && state.phase === "running") {
-        const position = NNUE_SPEED_BENCHMARK_POSITIONS[state.index];
-        return (
-            <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-                <span aria-live="polite">
-                    速さを測っています…（{position?.label} {state.index + 1}/
-                    {NNUE_SPEED_BENCHMARK_POSITIONS.length}）
+    const benchmarkCell = (row: NnueSpeedRow): ReactNode => {
+        if (row.threads === threads && isRunningHere && state.phase === "running") {
+            return (
+                <span className="flex items-center gap-x-1.5" aria-live="polite">
+                    <span className="text-muted-foreground">
+                        測定中 {state.index + 1}/{NNUE_SPEED_BENCHMARK_POSITIONS.length}
+                    </span>
+                    <InlineButton onClick={benchmark.cancel}>やめる</InlineButton>
                 </span>
-                <InlineButton onClick={benchmark.cancel}>やめる</InlineButton>
-            </p>
+            );
+        }
+        if (row.benchmarkNps !== null) return `約 ${formatNodesPerSecond(row.benchmarkNps)}`;
+        if (row.threads !== threads) return "—";
+        return (
+            <InlineButton
+                onClick={() => void benchmark.start(meta)}
+                disabled={blockedReason !== undefined}
+                title={blockedReason ?? `${threads} スレッドで約 10 秒探索して測ります`}
+            >
+                測る
+            </InlineButton>
         );
-    }
-
-    const measureButton = (label: string) => (
-        <InlineButton
-            onClick={() => void benchmark.start(meta)}
-            disabled={blockedReason !== undefined}
-            title={blockedReason ?? `${threads} スレッドで約 10 秒探索します`}
-        >
-            {label}
-        </InlineButton>
-    );
-
-    // 括弧の中で折り返すと読みにくいので、括弧はひとかたまりで送る。
-    const summary = current ? (
-        <span>
-            この端末で 約 {formatNodesPerSecond(current.nps)}局面/秒
-            <span className="whitespace-nowrap">
-                （{threads} スレッド・{current.source === "observed" ? "対局での実測" : "計測"}）
-            </span>
-        </span>
-    ) : (
-        <span>
-            この端末での速さ: まだ測っていません
-            <span className="whitespace-nowrap">（{threads} スレッド）</span>
-        </span>
-    );
+    };
 
     return (
         <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-            <p className="flex flex-wrap items-center gap-x-2">
-                {summary}
-                {!current && measureButton("測る")}
-                {rows.length > 0 && (
-                    <button
-                        type="button"
-                        aria-expanded={isOpen}
-                        onClick={() => setIsOpen(!isOpen)}
-                        className="underline underline-offset-2 hover:text-foreground"
-                    >
-                        {isOpen ? "閉じる" : "詳しく"}
-                    </button>
-                )}
-            </p>
-            {isOpen && rows.length > 0 && (
-                <div className="flex flex-col items-start gap-2 pt-1">
-                    <SpeedTable rows={rows} />
-                    <p>
-                        局面/秒は 1 秒あたりに読む局面の数。端末の混み具合で変わる参考値です。
-                        {current && <> {measureButton(`${threads} スレッドで測り直す`)}</>}
-                    </p>
-                </div>
-            )}
+            <table className="w-fit border-collapse whitespace-nowrap text-left tabular-nums">
+                <caption className="pb-1 text-left whitespace-normal">
+                    この端末での NPS
+                    {tableRows.length > 1 && (
+                        <span className="whitespace-nowrap">
+                            （いまの設定は {threads} スレッド）
+                        </span>
+                    )}
+                </caption>
+                <thead>
+                    <tr className="border-b border-border">
+                        <th className="py-1 pr-3 font-normal">スレッド数</th>
+                        <th className="py-1 pr-3 font-normal">計測</th>
+                        <th className="py-1 font-normal">対局での実測</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {tableRows.map((row) => (
+                        <tr key={row.threads} className="text-foreground">
+                            <td className="py-1 pr-3">{row.threads}</td>
+                            <td className="py-1 pr-3">{benchmarkCell(row)}</td>
+                            <td className="py-1">
+                                {row.observedNps === null
+                                    ? "—"
+                                    : `約 ${formatNodesPerSecond(row.observedNps)}・${row.observedCount} 回`}
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
             {message && <p aria-live="polite">{message}</p>}
         </div>
-    );
-}
-
-function SpeedTable({ rows }: { rows: NnueSpeedRow[] }): ReactElement {
-    const cell = (nps: number | null, count?: number) =>
-        nps === null
-            ? "—"
-            : `約 ${formatNodesPerSecond(nps)}${count !== undefined ? `・${count} 回` : ""}`;
-    return (
-        <table className="border-collapse text-left tabular-nums">
-            <thead>
-                <tr className="border-b border-border">
-                    <th className="py-1 pr-4 font-normal">スレッド</th>
-                    <th className="py-1 pr-4 font-normal">計測</th>
-                    <th className="py-1 font-normal">対局での実測</th>
-                </tr>
-            </thead>
-            <tbody>
-                {rows.map((row) => (
-                    <tr key={row.threads} className="text-foreground">
-                        <td className="py-1 pr-4">{row.threads}</td>
-                        <td className="py-1 pr-4">{cell(row.benchmarkNps)}</td>
-                        <td className="py-1">{cell(row.observedNps, row.observedCount)}</td>
-                    </tr>
-                ))}
-            </tbody>
-        </table>
     );
 }
 

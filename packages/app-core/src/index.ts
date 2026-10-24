@@ -168,7 +168,6 @@ export {
     NNUE_SPEED_OBSERVED_LIMIT,
     nnueSpeedRows,
     parseNnueSpeedData,
-    primaryNnueSpeed,
     setNnueSpeedBenchmark,
 } from "./nnue/speed";
 // nnue/storage

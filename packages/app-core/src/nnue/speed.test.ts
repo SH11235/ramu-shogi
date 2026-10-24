@@ -6,7 +6,6 @@ import {
     NNUE_SPEED_OBSERVED_LIMIT,
     nnueSpeedRows,
     parseNnueSpeedData,
-    primaryNnueSpeed,
     setNnueSpeedBenchmark,
 } from "./speed";
 
@@ -23,19 +22,6 @@ describe("nnue speed records", () => {
         expect(row?.observedCount).toBe(NNUE_SPEED_OBSERVED_LIMIT);
         // 6000〜25000 の 20 件の中央値
         expect(row?.observedNps).toBe(15_500);
-    });
-
-    it("実測があれば実測を、なければ計測を 1 行に出す", () => {
-        let data = setNnueSpeedBenchmark(EMPTY_NNUE_SPEED_DATA, key, 900_000, 1);
-        expect(primaryNnueSpeed(nnueSpeedRows(data, filter)[0])).toEqual({
-            nps: 900_000,
-            source: "benchmark",
-        });
-        data = addObservedNnueSpeed(data, key, 1_200_000);
-        expect(primaryNnueSpeed(nnueSpeedRows(data, filter)[0])).toEqual({
-            nps: 1_200_000,
-            source: "observed",
-        });
     });
 
     it("スレッド数ごとに分け、順に並べる", () => {

@@ -24,7 +24,7 @@ import { Button } from "../button";
 import { NnueErrorAlert } from "../nnue/NnueErrorAlert";
 import { NnueFvScaleInputDialog } from "../nnue/NnueFvScaleInputDialog";
 import { Progress } from "../progress";
-import { NnueSpeedLine, useNnueSpeedBenchmark } from "./NnueSpeed";
+import { NnueSpeedTable, useNnueSpeedBenchmark } from "./NnueSpeed";
 import type { NnueAccountFile, NnueAccountStore, NnueSpeedSupport } from "./types";
 
 interface NnueLibraryProps {
@@ -164,7 +164,7 @@ export function NnueLibrary({
     const controlsDisabled = isBusy || speedBenchmark.isRunning;
     const speedLineOf = (meta: NnueMeta | undefined) =>
         speed && meta && !needsModelSettings(meta) ? (
-            <NnueSpeedLine
+            <NnueSpeedTable
                 meta={meta}
                 support={speed}
                 benchmark={speedBenchmark}
@@ -543,6 +543,10 @@ export function NnueLibrary({
                 <LibrarySection
                     title="配布 AI"
                     description={`ラム将棋が用意している AI です。はじめて使うときに、${deviceLabel}へダウンロードします。`}
+                    note={
+                        speed &&
+                        "NPS は 1 秒あたりに読む局面の数で、AI の速さの目安です。「計測」は決まった局面を約 10 秒読んだ値、「対局での実測」は対局・解析で出た値です。端末の混み具合で変わります。"
+                    }
                 >
                     {presets.length === 0 ? (
                         <p className="text-sm text-muted-foreground">読み込み中...</p>

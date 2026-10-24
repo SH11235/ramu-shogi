@@ -1,11 +1,10 @@
 import { nnueSpeedStore } from "@shogi/app-controller";
 import type { NnueMeta } from "@shogi/app-core";
 import type { EngineClient, EngineEventHandler } from "@shogi/engine-client";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { ReactElement } from "react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ENGINE_THREADS_STORAGE_KEY } from "../shogi-match/constants";
-import { NnueSpeedLine, useNnueSpeedBenchmark } from "./NnueSpeed";
+import { NnueSpeedTable, useNnueSpeedBenchmark } from "./NnueSpeed";
 import type { NnueSpeedSupport } from "./types";
 
 const meta: NnueMeta = {
@@ -49,18 +48,28 @@ const createBenchmarkClient = (): EngineClient => {
     };
 };
 
-/** 括弧の部分が別の要素に分かれていても、1 行の文として探す */
-const findLine = (text: string) =>
-    screen.findByText((_, element) => element?.tagName === "SPAN" && element.textContent === text);
-
 const support: NnueSpeedSupport = { environment, createBenchmarkClient, maxThreads: 8 };
 
-function Harness(): ReactElement {
+function Harness({ hash = meta.contentHashSha256, reason }: { hash?: string; reason?: string }) {
     const benchmark = useNnueSpeedBenchmark(support);
-    return <NnueSpeedLine meta={meta} support={support} benchmark={benchmark} />;
+    return (
+        <NnueSpeedTable
+            meta={{ ...meta, contentHashSha256: hash }}
+            support={support}
+            benchmark={benchmark}
+            disabledReason={reason}
+        />
+    );
 }
 
-describe("NnueSpeedLine", () => {
+/** 表の 1 行を、セルの文字を「|」でつないだ形で読む */
+const rowTexts = () =>
+    screen
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => [...row.querySelectorAll("td")].map((cell) => cell.textContent).join(" | "));
+
+describe("NnueSpeedTable", () => {
     beforeEach(() => {
         localStorage.setItem(ENGINE_THREADS_STORAGE_KEY, JSON.stringify({ sente: 4, gote: 2 }));
     });
@@ -69,45 +78,30 @@ describe("NnueSpeedLine", () => {
         localStorage.clear();
     });
 
-    it("値が無ければ「まだ測っていません」と「測る」を出し、測ると計測の値を出す", async () => {
+    it("いまのスレッド数の行に「測る」を置き、測ると計測の値を出す", async () => {
         render(<Harness />);
-        expect(await findLine("この端末での速さ: まだ測っていません（4 スレッド）")).toBeTruthy();
+        expect(rowTexts()).toEqual(["4 | 測る | —"]);
         fireEvent.click(screen.getByRole("button", { name: "測る" }));
-        expect(await screen.findByText(/速さを測っています/)).toBeTruthy();
-        expect(await findLine("この端末で 約 100万局面/秒（4 スレッド・計測）")).toBeTruthy();
+        expect(await screen.findByText(/測定中/)).toBeTruthy();
+        await waitFor(() => expect(rowTexts()).toEqual(["4 | 約 100万 | —"]));
     });
 
-    it("実測があれば実測を出し、詳しくの表に回数を添える", async () => {
+    it("ほかのスレッド数は値のある行だけ出し、いまの設定に印を付ける", () => {
         for (const nps of [1_100_000, 1_200_000, 1_300_000]) {
-            nnueSpeedStore.addObserved({ ...key, threads: 4 }, nps);
+            nnueSpeedStore.addObserved({ ...key, contentHash: "several", threads: 8 }, nps);
         }
-        nnueSpeedStore.setBenchmark({ ...key, threads: 1 }, 300_000, 1);
-        render(<Harness />);
-        expect(
-            await findLine("この端末で 約 120万局面/秒（4 スレッド・対局での実測）"),
-        ).toBeTruthy();
-        expect(screen.queryByText("約 120万・3 回")).toBeNull();
-        fireEvent.click(screen.getByRole("button", { name: "詳しく" }));
-        expect(screen.getByText("約 120万・3 回")).toBeTruthy();
-        expect(screen.getByText("約 30万")).toBeTruthy();
+        nnueSpeedStore.setBenchmark({ ...key, contentHash: "several", threads: 1 }, 300_000, 1);
+        render(<Harness hash="several" />);
+        expect(screen.getByRole("table").querySelector("caption")?.textContent).toBe(
+            "この端末での NPS（いまの設定は 4 スレッド）",
+        );
+        expect(rowTexts()).toEqual(["1 | 約 30万 | —", "4 | 測る | —", "8 | — | 約 120万・3 回"]);
     });
 
     it("対局・解析中などで測れないときは押せない", () => {
-        render(<NnueSpeedLineWithReason reason="対局中は変更できません" />);
+        render(<Harness hash="other" reason="対局中は変更できません" />);
         const button = screen.getByRole("button", { name: "測る" }) as HTMLButtonElement;
         expect(button.disabled).toBe(true);
         expect(button.title).toBe("対局中は変更できません");
     });
 });
-
-function NnueSpeedLineWithReason({ reason }: { reason: string }): ReactElement {
-    const benchmark = useNnueSpeedBenchmark(support);
-    return (
-        <NnueSpeedLine
-            meta={{ ...meta, contentHashSha256: "other" }}
-            support={support}
-            benchmark={benchmark}
-            disabledReason={reason}
-        />
-    );
-}

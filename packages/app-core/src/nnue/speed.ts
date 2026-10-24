@@ -171,16 +171,6 @@ export function nnueSpeedRows(
         .sort((a, b) => a.threads - b.threads);
 }
 
-/** 1 行で見せる値。実測を優先し、なければ計測の値。 */
-export function primaryNnueSpeed(
-    row: NnueSpeedRow | undefined,
-): { nps: number; source: "observed" | "benchmark" } | null {
-    if (!row) return null;
-    if (row.observedNps !== null) return { nps: row.observedNps, source: "observed" };
-    if (row.benchmarkNps !== null) return { nps: row.benchmarkNps, source: "benchmark" };
-    return null;
-}
-
 /**
  * 局面/秒を「120万」のように丸める。参考値なので有効数字 2 桁ほどにする。
  * 1 万未満は百の位、10 万未満は小数 1 桁の万で見せる。
