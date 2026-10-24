@@ -32,6 +32,20 @@ export function reserveSoundSlot(now: number): number {
     return when;
 }
 
+/**
+ * 今から delaySec 後（前の音から MIN_GAP_SEC 経っていなければもっと後）の時刻。まだ鳴っていない予約は
+ * 取り消さない（終局の声は、最後の手の音を鳴らしてから重ねるため）。
+ */
+export function reserveSoundSlotAfter(now: number, delaySec: number): number {
+    if (lastStart > now + MIN_GAP_SEC) {
+        lastStart = Number.NEGATIVE_INFINITY;
+        pending = null;
+    }
+    const when = Math.max(now + delaySec, lastStart + MIN_GAP_SEC);
+    lastStart = when;
+    return when;
+}
+
 /** reserveSoundSlot で得た時刻に鳴らす音を登録する。鳴り始める前なら、次の予約で取り消される */
 export function registerScheduledSound(when: number, now: number, cancel: () => void): void {
     pending = when > now ? { when, cancel } : null;

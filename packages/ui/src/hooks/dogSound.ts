@@ -1,6 +1,6 @@
 // CPU 戦の「犬」の着手音。音源はアプリの public/sounds/dog/v1/ に置き、URL の基点はアプリから受け取る。
 
-import { registerScheduledSound, reserveSoundSlot } from "./soundSchedule";
+import { registerScheduledSound, reserveSoundSlot, reserveSoundSlotAfter } from "./soundSchedule";
 
 /** 着手の場面。王手 > 駒取り > 成り > 通常 の順に優先する */
 export type MoveScene = "move" | "capture" | "promote" | "check";
@@ -12,6 +12,7 @@ const CLIP_NAMES = [
     "bark4",
     "bark5",
     "bark6",
+    "bark6_full",
     "strong1",
     "strong2",
     "strong3",
@@ -29,6 +30,11 @@ const SCENE_CLIPS: Record<MoveScene, readonly ClipName[]> = {
 };
 const SCENE_GAIN: Record<MoveScene, number> = { move: 0.7, capture: 0.9, promote: 0.9, check: 1 };
 const PITCH_JITTER = 0.03;
+
+// 終局の合図。勝ち負けでは変えない（犬が喜ぶ・悲しむにすると、誰の気持ちなのかがずれる）。
+// 着手音の bark6 は先頭 320ms に切ってあり 1 回目の「わん」だけなので、2 回鳴く全長を使う
+const END_CLIP: ClipName = "bark6_full";
+const END_GAIN = 0.9;
 
 // CPU が劣勢のときの弱い声。毎手鳴ると効果が薄れるので一部の手だけ置き換える。
 const WEAK_PROBABILITY = 0.25;
@@ -61,6 +67,7 @@ export function setDogBuffersForTest(baseUrl: string, buffers: Map<string, Audio
     loadedBuffers.set(baseUrl, buffers as Map<ClipName, AudioBuffer>);
     current = null;
     weakPlaying = null;
+    weakGain = null;
 }
 
 /** 音源を読み込んでデコードしておく。同じ基点 URL では 1 回だけ読む */
@@ -99,6 +106,7 @@ export function preloadDogSounds(baseUrl: string): void {
 // 鳴っている声はページ全体で 1 つ。対局画面は同時に 1 つしか開かないので、再生状態はモジュールで持つ
 let current: { source: AudioBufferSourceNode; gain: GainNode } | null = null;
 let weakPlaying: AudioBufferSourceNode | null = null;
+let weakGain: GainNode | null = null;
 const endedSources = new WeakSet<AudioBufferSourceNode>();
 // 次の声に切り替えるとき、ぶつ切りにすると「プツッ」と鳴るので短く絞ってから止める
 const CUT_FADE_SEC = 0.02;
@@ -162,7 +170,10 @@ export function playDogSound(
         endedSources.add(source);
         if (weakPlaying === source) weakPlaying = null;
     };
-    if (isWeak) weakPlaying = source;
+    if (isWeak) {
+        weakPlaying = source;
+        weakGain = gain;
+    }
     registerScheduledSound(when, now, () => {
         try {
             source.stop();
@@ -176,5 +187,49 @@ export function playDogSound(
         }
         if (current?.source === source) current = previous;
     });
+    return "played";
+}
+
+/**
+ * 終局の声を、最後の手の音から delaySec 置いて鳴らす。鳴っている声（weak も）は絞って止める。
+ * 戻り値は playDogSound と同じ。
+ */
+export function playDogEndSound(
+    ctx: AudioContext,
+    baseUrl: string,
+    delaySec: number,
+): "played" | "loading" | "unavailable" {
+    const buffers = loadedBuffers.get(baseUrl);
+    if (!buffers) return loadingBases.has(baseUrl) ? "loading" : "unavailable";
+    const buffer = buffers.get(END_CLIP);
+    if (!buffer) return "unavailable";
+
+    const when = reserveSoundSlotAfter(ctx.currentTime, delaySec);
+    const playingVoices = [
+        current,
+        weakPlaying && weakGain && { source: weakPlaying, gain: weakGain },
+    ];
+    for (const playing of playingVoices) {
+        if (!playing) continue;
+        try {
+            playing.gain.gain.setTargetAtTime(0, when, CUT_FADE_SEC / 3);
+            playing.source.stop(when + CUT_FADE_SEC * 2);
+        } catch {
+            // 既に止まっている
+        }
+    }
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const gain = ctx.createGain();
+    gain.gain.value = END_GAIN;
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    source.start(when);
+    current = { source, gain };
+    weakPlaying = null;
+    weakGain = null;
+    source.onended = () => {
+        endedSources.add(source);
+    };
     return "played";
 }

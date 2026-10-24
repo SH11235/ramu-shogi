@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { chooseDogClip, playDogSound, setDogBuffersForTest } from "./dogSound";
+import { chooseDogClip, playDogEndSound, playDogSound, setDogBuffersForTest } from "./dogSound";
 import { resetSoundScheduleForTest } from "./soundSchedule";
 
 const always = (value: number) => () => value;
@@ -112,5 +112,44 @@ describe("playDogSound", () => {
         ctx.currentTime = 1.04;
         playDogSound(ctx, base, "check", false);
         expect(voices[2].gain.value).toBeCloseTo(1);
+    });
+});
+
+describe("playDogEndSound", () => {
+    const base = "/sounds/dog/v1/";
+    const full = {} as AudioBuffer;
+
+    beforeEach(() => {
+        resetSoundScheduleForTest();
+        setDogBuffersForTest(
+            base,
+            new Map([
+                ["weak", {} as AudioBuffer],
+                ["bark6_full", full],
+            ]),
+        );
+        vi.spyOn(Math, "random").mockReturnValue(0.1);
+    });
+    afterEach(() => vi.restoreAllMocks());
+
+    it("plays the full double bark after the delay and fades out a playing weak voice", () => {
+        const { ctx, voices } = fakeAudioContext();
+        ctx.currentTime = 1;
+        playDogSound(ctx, base, "move", true);
+        ctx.currentTime = 1.1;
+        expect(playDogEndSound(ctx, base, 0.32)).toBe("played");
+
+        const [weak, end] = voices;
+        expect(end.starts[0]).toBeCloseTo(1.42);
+        expect(weak.stops[0]).toBeCloseTo(1.42 + 0.04);
+        const nodes = (ctx as unknown as { nodes: Array<{ buffer: unknown }> }).nodes;
+        expect(nodes[1].buffer).toBe(full);
+    });
+
+    it("reports a missing clip so nothing is played", () => {
+        setDogBuffersForTest(base, new Map());
+        const { ctx, voices } = fakeAudioContext();
+        expect(playDogEndSound(ctx, base, 0.32)).toBe("unavailable");
+        expect(voices).toEqual([]);
     });
 });
