@@ -1238,6 +1238,7 @@ describe("詰み探索 (mate.solve)", () => {
     it("不正な引数は worker に送らずに失敗する", async () => {
         const { client, worker } = await createReadyClient();
         await expect(client.mate?.solve({ mode: "Fast" as never })).rejects.toThrow(RangeError);
+        await expect(client.mate?.solve({ mode: "Auto" as never })).rejects.toThrow(RangeError);
         await expect(client.mate?.solve({ hashMb: Number.NaN })).rejects.toThrow(RangeError);
         await expect(client.mate?.solve({ timeMs: -1 })).rejects.toThrow(RangeError);
         expect(solveCalls(worker())).toHaveLength(0);
@@ -1245,7 +1246,7 @@ describe("詰み探索 (mate.solve)", () => {
 
     it("mateError で失敗する", async () => {
         const { client, worker } = await createReadyClient();
-        const solving = client.mate?.solve({ mode: "Auto" });
+        const solving = client.mate?.solve({ mode: "Speed" });
         await vi.waitFor(() => expect(solveCalls(worker())).toHaveLength(1));
         reply(worker(), {
             type: "mateError",

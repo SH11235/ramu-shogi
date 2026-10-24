@@ -114,6 +114,8 @@ export {
     getPositionService,
     setPositionServiceFactory,
 } from "./game/position-service-registry";
+// game/position-sfen
+export { positionToSfen } from "./game/position-sfen";
 // game/result
 export type { GameResult } from "./game/result";
 export {

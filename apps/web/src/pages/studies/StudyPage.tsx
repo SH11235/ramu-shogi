@@ -28,6 +28,7 @@ const engineOptions: EngineOption[] = [
         label: "内蔵エンジン",
         createClient: createWebWasmEngineClient,
         kind: "internal",
+        supportsMate: true,
     },
 ];
 
