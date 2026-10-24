@@ -38,8 +38,8 @@ export type StudyMateState =
           status: "done";
           mate: MateResult;
           /**
-           * 手番を相手に渡した局面の結果。手番側に詰みがあるとき・王手されているとき（手番を渡せない）は
-           * 調べないので null。
+           * 手番を相手に渡した局面の結果。手番側に詰みがあるとき・王手されているとき（手番を渡せない）・
+           * 手番側の玉が無いときは null。
            */
           threat: MateResult | null;
       }
@@ -183,7 +183,8 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
                     });
                     // 詰めろは不詰のことが多いので、不詰の判定が速い Speed で読む
                     const result = await solve(threatSfen(node), "threat", "Speed");
-                    // 王手されている局面は手番を渡せない（エンジンは扱えない局面として返す）
+                    // 王手されている局面は手番を渡せない。手番側の玉が無い局面（詰将棋の攻め方）は
+                    // 詰まされることが無い。どちらもエンジンは扱えない局面として返す
                     threat = result.kind === "unsupported" ? null : result;
                 }
                 setResult(nodeId, { status: "done", mate, threat });

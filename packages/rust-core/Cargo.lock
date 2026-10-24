@@ -236,7 +236,7 @@ dependencies = [
 [[package]]
 name = "rshogi-core"
 version = "0.8.1"
-source = "git+https://github.com/SH11235/rshogi.git?rev=cf7d1b458723900662da01824b0c7eaa3ab830bf#cf7d1b458723900662da01824b0c7eaa3ab830bf"
+source = "git+https://github.com/SH11235/rshogi.git?rev=744bfe52830e64f9ed268a238bff6e7ab0aeec89#744bfe52830e64f9ed268a238bff6e7ab0aeec89"
 dependencies = [
  "getrandom",
  "libc",

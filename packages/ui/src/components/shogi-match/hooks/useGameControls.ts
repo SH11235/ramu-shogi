@@ -12,7 +12,7 @@ import {
 import type { MutableRefObject } from "react";
 import { useRef } from "react";
 import type { Message, PassRightsSettings } from "../types";
-import { cloneHandsState } from "../utils/boardUtils";
+import { cloneHandsState, missingKingReason } from "../utils/boardUtils";
 import type { UseKifuNavigationResult } from "./useKifuNavigation";
 
 /** PositionState を深くコピーする */
@@ -252,6 +252,12 @@ export function useGameControls({
         isTransitioningRef.current = true;
         try {
             if (!positionReady) return;
+            // 玉の無い側がある局面（局面編集・SFEN で作れる）では、勝ち負けが決まらない
+            const kinglessReason = missingKingReason(position);
+            if (kinglessReason) {
+                setMessage({ text: kinglessReason, type: "warning" });
+                return;
+            }
 
             // 承認待ち・ダウンロード中には局面や棋譜、時計を変更しない。
             const selections = getMatchNnueSelections(sides, engineOptions, {

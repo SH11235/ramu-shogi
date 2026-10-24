@@ -145,7 +145,7 @@ export interface StudyImportDeps extends StudyEntryDeps {
  * 通ってしまう）ので、信頼できない入力は先にここを通す。指せない手があれば、何手目かを添えて断る。
  *
  * 指し手が無いとき（局面だけのノート）は、手順の再生では局面を確かめられないので、局面として
- * 成り立つこと（玉が 1 枚ずつある、駒の枚数が一組に収まる）を確かめてから、局面を読み込ませる。
+ * 成り立つこと（玉がそれぞれ 1 枚まで、駒の枚数が一組に収まる）を確かめてから、局面を読み込ませる。
  */
 async function assertLegalLine(
     startSfen: string,

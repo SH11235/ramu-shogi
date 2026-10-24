@@ -134,28 +134,20 @@ export function pieceCapMessage(pieceType: PieceType): string {
  * エンジン側（rshogi の `Position::from_board_state_json`）が受け付ける条件と揃えてある。
  * ここを通らない局面は SFEN に変換できないので、盤へ反映する前に弾く。
  *
- * - 玉は先手・後手それぞれ盤上にちょうど 1 枚（持ち駒にはできない）
+ * - 玉は先手・後手それぞれ盤上に 1 枚まで（持ち駒にはできない）。詰将棋の攻め方のように、
+ *   玉の無い側があってもよい（対局は始められない。`missingKingReason` を参照）
  * - それ以外の駒は、先手・後手の盤上と持ち駒を合わせて一組の枚数まで
  *
  * @returns 成り立つなら null、成り立たないなら理由のメッセージ
  */
 export function validateEditedPosition(position: PositionState): string | null {
-    const kingsOnBoard: Record<Player, number> = { sente: 0, gote: 0 };
-    for (const piece of Object.values(position.board)) {
-        if (piece?.type === "K") kingsOnBoard[piece.owner] += 1;
-    }
     for (const owner of ["sente", "gote"] as Player[]) {
         if ((position.hands[owner].K ?? 0) > 0) {
             return "玉は持ち駒にできません。";
         }
     }
-    for (const owner of ["sente", "gote"] as Player[]) {
-        if (kingsOnBoard[owner] === 0) {
-            return `${OWNER_LABELS[owner]}の玉が盤上にありません。玉は盤上に1枚ずつ必要です。`;
-        }
-        if (kingsOnBoard[owner] > PIECE_CAP.K) {
-            return "玉はそれぞれ1枚まで配置できます。";
-        }
+    if (Object.values(kingsOnBoard(position)).some((count) => count > PIECE_CAP.K)) {
+        return "玉はそれぞれ1枚まで配置できます。";
     }
 
     const total = countTotalPieces(position);
@@ -165,4 +157,29 @@ export function validateEditedPosition(position: PositionState): string | null {
         }
     }
     return null;
+}
+
+function kingsOnBoard(position: PositionState): Record<Player, number> {
+    const kings: Record<Player, number> = { sente: 0, gote: 0 };
+    for (const piece of Object.values(position.board)) {
+        if (piece?.type === "K") kings[piece.owner] += 1;
+    }
+    return kings;
+}
+
+/** 玉の無い側（先手・後手の順）。玉を取る手は無いので、手順の途中でも開始局面と同じ。 */
+export function sidesWithoutKing(position: PositionState): Player[] {
+    const kings = kingsOnBoard(position);
+    return (["sente", "gote"] as Player[]).filter((owner) => kings[owner] === 0);
+}
+
+/**
+ * 対局を始められない、玉の無い側がある局面なら、その理由（無ければ null）。
+ * 玉の無い局面は研究ノートで調べられる（詰み探索は攻め方の玉が無くても解ける）。
+ */
+export function missingKingReason(position: PositionState): string | null {
+    const missing = sidesWithoutKing(position);
+    if (missing.length === 0) return null;
+    const who = missing.map((owner) => OWNER_LABELS[owner]).join("・");
+    return `${who}の玉が無い局面では対局できません。研究ノートで調べられます。`;
 }

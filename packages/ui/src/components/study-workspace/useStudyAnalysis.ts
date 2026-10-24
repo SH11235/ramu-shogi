@@ -39,6 +39,7 @@ import {
     type EngineOption,
     type Message,
 } from "../shogi-match/types";
+import { sidesWithoutKing } from "../shogi-match/utils/boardUtils";
 import { collectTreeAnalysisJobs } from "../shogi-match/utils/branchTreeUtils";
 import { resolveThreadCount } from "../shogi-match/utils/threadOptions";
 import { countStudyUnanalyzed, studyPathTo } from "./studyView";
@@ -537,6 +538,16 @@ export function useStudyAnalysis({
             return;
         }
         if (lockedRef.current) return;
+        // 解析のエンジンは、玉の無い側がある局面を読めない（詰みは詰み探索で調べられる）
+        const { tree: currentTree } = latestRef.current;
+        const root = currentTree.nodes.get(currentTree.rootId);
+        if (root && sidesWithoutKing(root.positionAfter).length > 0) {
+            setMessage({
+                text: "玉の無い局面は解析できません。詰みは「詰みを調べる」で調べられます。",
+                type: "warning",
+            });
+            return;
+        }
         const generation = generationRef.current + 1;
         generationRef.current = generation;
         preparingRef.current = true;

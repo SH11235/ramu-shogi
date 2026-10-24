@@ -37,7 +37,8 @@ export type StudyKifuSource =
 
 /**
  * 指し手の無いノートの開始局面が、局面として成り立つかを確かめる。基準は対局画面の局面編集と
- * 同じ（玉が先手・後手に 1 枚ずつ、駒は一組の枚数まで）。二歩などは見ない。
+ * 同じ（玉は先手・後手それぞれ 1 枚まで、駒は一組の枚数まで）。詰将棋のように玉の無い側があってもよい。
+ * 二歩などは見ない。
  * 成り立てば null、成り立たなければ理由。
  */
 export function studyStartPositionError(startSfen: string): string | null {

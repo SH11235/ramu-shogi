@@ -274,15 +274,15 @@ describe("貼り付けた棋譜の検証", () => {
         expect(replay).toHaveBeenCalledWith("4k4/9/9/9/9/9/9/9/4K4 b G 1", []);
     });
 
-    it("指し手が無く、局面として成り立たない（玉が無い・読み込めない）ものは、理由を添えて断る", async () => {
+    it("指し手が無く、局面として成り立たない（玉が 2 枚ある・読み込めない）ものは、理由を添えて断る", async () => {
         const api = createApi();
         const sync = createSync(api);
         await expect(
             createStudyFromKifuSource(
-                { kind: "moves", startSfen: "9/9/9/9/9/9/9/9/4K4 b - 1", moves: [] },
+                { kind: "moves", startSfen: "4k4/9/9/9/9/9/9/9/3KK4 b - 1", moves: [] },
                 { sync, api, replayMovesStrict: replayStoppingAt("none") },
             ),
-        ).rejects.toThrow("この局面は研究ノートにできません: 後手の玉が盤上にありません");
+        ).rejects.toThrow("この局面は研究ノートにできません: 玉はそれぞれ1枚まで配置できます。");
         // 局面を読み込む側が断った。
         await expect(
             createStudyFromKifuSource(
@@ -370,13 +370,21 @@ describe("/play に読み込んだ棋譜からの入口", () => {
         expect(replay).toHaveBeenCalledTimes(1);
         expect((await sync.load(studyId))?.doc.title).toMatch(/^局面の研究（\d+\/\d+）$/);
 
-        // 玉の無い局面のツリーは断る。
-        const kingless = createKifuTree(
-            parseStudySfen("9/9/9/9/9/9/9/9/9 b - 1"),
-            "9/9/9/9/9/9/9/9/9 b - 1",
+        // 攻め方の玉が無い詰将棋の局面も作れる。同じ側に玉が 2 枚ある局面は断る。
+        const tsume = "4k4/9/4P4/9/9/9/9/9/9 b G 1";
+        await createStudyFromKifuTree(
+            createKifuTree(parseStudySfen(tsume), tsume),
+            {},
+            { sync, api, replayMovesStrict: replay },
         );
+        expect(replay).toHaveBeenLastCalledWith(tsume, []);
+        const twoKings = "4k4/9/9/9/9/9/9/9/3KK4 b - 1";
         await expect(
-            createStudyFromKifuTree(kingless, {}, { sync, api, replayMovesStrict: replay }),
+            createStudyFromKifuTree(
+                createKifuTree(parseStudySfen(twoKings), twoKings),
+                {},
+                { sync, api, replayMovesStrict: replay },
+            ),
         ).rejects.toThrow("この局面は研究ノートにできません");
     });
 

@@ -215,7 +215,7 @@ function MateResults({
                 mover={turn}
                 result={mate}
                 moves={mateMoves}
-                unsupportedText="玉の無い局面は調べられません"
+                unsupportedText="相手の玉が無い局面は調べられません"
                 actions={
                     request ? (
                         <div className="flex shrink-0 items-center self-start">
