@@ -1152,3 +1152,80 @@ describe("memoryThreadCap", () => {
         expect(memoryThreadCap(device)).toBe(cap);
     });
 });
+
+describe("詰み探索 (mate.solve)", () => {
+    const createReadyClient = async () => {
+        const worker = createMockWorker();
+        const client = createWasmEngineClient({
+            workerFactory: () => worker as unknown as Worker,
+        });
+        const initPromise = client.init();
+        const initCall = worker.postMessage.mock.calls[0][0];
+        worker.onmessage?.({
+            data: { type: "ack", requestId: initCall.requestId },
+        } as MessageEvent);
+        await initPromise;
+        return { client, worker };
+    };
+    const lastSolveCall = (worker: MockWorker) =>
+        worker.postMessage.mock.calls
+            .map((call) => call[0] as { type: string; requestId: string; params: unknown })
+            .filter((c) => c.type === "solveMate")
+            .at(-1);
+
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it("solveMate を送り、進捗と結果を受け取る。スレッド数はエンジンのスレッド数で丸める", async () => {
+        const { client, worker } = await createReadyClient();
+        const progress = vi.fn();
+        const solving = client.mate?.solve({ mode: "Power", threads: 4, timeMs: 1000 }, progress);
+        await vi.waitFor(() => expect(lastSolveCall(worker)).toBeDefined());
+        const call = lastSolveCall(worker);
+        if (!call) throw new Error("solveMate が送られていない");
+        expect(call.params).toEqual({ mode: "Power", threads: 1, timeMs: 1000 });
+        worker.onmessage?.({
+            data: {
+                type: "mateProgress",
+                requestId: call.requestId,
+                progress: { nodes: 10, elapsedMs: 1000 },
+            },
+        } as MessageEvent);
+        const outcome = { result: { kind: "mate", pv: ["G*5b"] }, nodes: 12, elapsedMs: 3 };
+        worker.onmessage?.({
+            data: { type: "mateFinished", requestId: call.requestId, outcome },
+        } as MessageEvent);
+        await expect(solving).resolves.toEqual(outcome);
+        expect(progress).toHaveBeenCalledWith({ nodes: 10, elapsedMs: 1000 });
+    });
+
+    it("mateError で失敗する", async () => {
+        const { client, worker } = await createReadyClient();
+        const solving = client.mate?.solve({ mode: "Auto" });
+        await vi.waitFor(() => expect(lastSolveCall(worker)).toBeDefined());
+        worker.onmessage?.({
+            data: {
+                type: "mateError",
+                requestId: lastSolveCall(worker)?.requestId,
+                message: "bad",
+            },
+        } as MessageEvent);
+        await expect(solving).rejects.toThrow("bad");
+    });
+
+    it("stop で worker を作り直すと、待っている solve は失敗する", async () => {
+        const { client, worker } = await createReadyClient();
+        const solving = client.mate?.solve({});
+        await vi.waitFor(() => expect(lastSolveCall(worker)).toBeDefined());
+        await client.stop();
+        await expect(solving).rejects.toThrow();
+        expect(worker.terminate).toHaveBeenCalled();
+    });
+
+    it("モックのエンジンでは使えない", async () => {
+        const client = createWasmEngineClient({ useMock: true });
+        await client.init();
+        await expect(client.mate?.solve({})).rejects.toThrow("詰み探索は利用できません");
+    });
+});

@@ -8,6 +8,9 @@ import type {
     EngineStopMode,
     LayerStacksOptions,
     LoadPositionOptions,
+    MateClient,
+    MateOutcome,
+    MateProgress,
     SearchHandle,
     SearchParams,
     ThreadInfo,
@@ -16,6 +19,7 @@ import { createMockEngineClient } from "@shogi/engine-client";
 import initWasmModule from "../pkg/engine_wasm.js";
 import { createAnalysisBridge } from "./analysisBridge";
 import type { AnalysisCommand, AnalysisMessage } from "./analysisProtocol";
+import type { MateCommand, MateMessage } from "./mateProtocol";
 
 type WasmModuleSource = WebAssembly.Module | ArrayBuffer | Uint8Array | string | URL;
 
@@ -126,6 +130,7 @@ type NnueLoadSource =
 
 type WorkerCommand =
     | AnalysisCommand
+    | MateCommand
     | {
           type: "init";
           opts?: WasmEngineInitOptions;
@@ -408,12 +413,44 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
 
     const pendingAcks = new Map<string, { resolve: () => void; reject: (error: Error) => void }>();
 
+    /** 結果待ちの詰み探索 (worker を作り直すと失敗させる) */
+    const pendingMates = new Map<
+        string,
+        {
+            resolve: (outcome: MateOutcome) => void;
+            reject: (error: Error) => void;
+            onProgress?: (progress: MateProgress) => void;
+        }
+    >();
+
     const rejectAllPending = (error: unknown) => {
         const err = error instanceof Error ? error : new Error(String(error));
         for (const pending of pendingAcks.values()) {
             pending.reject(err);
         }
         pendingAcks.clear();
+        for (const pending of pendingMates.values()) {
+            pending.reject(err);
+        }
+        pendingMates.clear();
+    };
+
+    const receiveMate = (message: MateMessage) => {
+        const pending = pendingMates.get(message.requestId);
+        if (!pending) return;
+        switch (message.type) {
+            case "mateProgress":
+                pending.onProgress?.(message.progress);
+                return;
+            case "mateFinished":
+                pendingMates.delete(message.requestId);
+                pending.resolve(message.outcome);
+                return;
+            case "mateError":
+                pendingMates.delete(message.requestId);
+                pending.reject(new Error(message.message));
+                return;
+        }
     };
 
     const createRequestId = (): string => {
@@ -605,6 +642,10 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             if (gen !== workerGen) return;
             if (typeof msg.data?.type === "string" && msg.data.type.startsWith("analysis")) {
                 analysisBridge.receive(msg.data as AnalysisMessage);
+                return;
+            }
+            if (typeof msg.data?.type === "string" && msg.data.type.startsWith("mate")) {
+                receiveMate(msg.data as MateMessage);
                 return;
             }
             const data = msg.data as WorkerMessage;
@@ -867,8 +908,37 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             });
     };
 
+    const mateClient: MateClient = {
+        async solve(params, onProgress) {
+            if (analysisBridge.busy()) throw new Error("解析を停止してから操作してください");
+            analysisBridge.invalidate("新しい局面・設定・探索が指定されました");
+            if (backend === "mock" || backend === "error") {
+                throw new Error("詰み探索は利用できません");
+            }
+            await ensureReady();
+            const target = worker;
+            if (!target) throw new Error("詰み探索は利用できません");
+            // スレッドはエンジンのスレッドプールで動くので、プールより多く並べても速くならない
+            const threads = Math.max(
+                1,
+                Math.min(Math.floor(params.threads ?? 1), activeThreads ?? 1),
+            );
+            const requestId = createRequestId();
+            return new Promise<MateOutcome>((resolve, reject) => {
+                pendingMates.set(requestId, { resolve, reject, onProgress });
+                try {
+                    postToWorker({ type: "solveMate", requestId, params: { ...params, threads } });
+                } catch (error) {
+                    pendingMates.delete(requestId);
+                    reject(error instanceof Error ? error : new Error(String(error)));
+                }
+            });
+        },
+    };
+
     return {
         analysis: analysisBridge.client,
+        mate: mateClient,
         async init(opts?: WasmEngineInitOptions) {
             if (analysisBridge.busy()) throw new Error("解析を停止してから操作してください");
             analysisBridge.invalidate("新しい局面・設定・探索が指定されました");
