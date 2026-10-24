@@ -140,6 +140,10 @@ describe("PlayAdvancedSettings（読む量）", () => {
         );
         expect(input).toHaveProperty("value", "300000");
         expect(input.getAttribute("aria-invalid")).toBe("false");
+        act(() =>
+            snapshot.setLimits({ ...snapshot.limits, sente: { kind: "nodes", nodes: 50_000 } }),
+        );
+        expect(input).toHaveProperty("value", "50000");
     });
 
     it("ノード数と深さを行き来しても、前の種類の下書きを持ち越さない", () => {

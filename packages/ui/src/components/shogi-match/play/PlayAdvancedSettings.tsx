@@ -82,7 +82,10 @@ function SearchLimitInput({
     // 打っている文字は、どの保存値の上で打ったかと組で持つ。設定の欄や別のタブから保存値が変わったら、
     // 古い下書きを捨てて新しい値を見せる（下書きのまま打ち続けて、新しい値を上書きしないように）。
     const [draft, setDraft] = useState<{ text: string; base: number } | null>(null);
-    const text = draft && draft.base === saved && !disabled ? draft.text : String(saved);
+    // 隠すだけだと、保存値が元の数に戻ったときに古い下書きが生き返るので、その場で捨てる。
+    const stale = draft !== null && (draft.base !== saved || disabled);
+    if (stale) setDraft(null);
+    const text = draft && !stale ? draft.text : String(saved);
     const { error } = parseSearchLimitInput(text, kind);
     return (
         <div className="flex flex-col gap-1">
