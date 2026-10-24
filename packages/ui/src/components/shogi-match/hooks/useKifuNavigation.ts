@@ -383,7 +383,7 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
     ): "applied" | "preserved" | "missing" => {
         if (!update) return "preserved";
 
-        const hasEval = update.scoreCp !== undefined || update.scoreMate !== undefined;
+        const hasEval = update.scoreCp != null || update.scoreMate != null;
         const hasElapsed = update.elapsedMs !== undefined;
         if (!hasEval && !hasElapsed) return "preserved";
 

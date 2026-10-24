@@ -171,6 +171,27 @@ describe("createTauriEngineClient", () => {
             expect(handler).toHaveBeenCalledWith(event);
         });
 
+        it("届いたイベントの null の項目を落としてからハンドラに渡す", async () => {
+            let eventCallback: ((evt: { payload: unknown }) => void) | null = null;
+            mockInvoke.mockResolvedValue(undefined);
+            mockListen.mockImplementation(
+                (_eventName: string, callback: (evt: { payload: unknown }) => void) => {
+                    eventCallback = callback;
+                    return Promise.resolve(mockUnlisten);
+                },
+            );
+            const client = createTauriEngineClient({ ipc: mockIpc });
+            const handler = vi.fn();
+            client.subscribe(handler);
+            await client.init();
+
+            (eventCallback as unknown as (evt: { payload: unknown }) => void)({
+                payload: { type: "info", depth: 0, nodes: 0, scoreCp: null, scoreMate: null },
+            });
+
+            expect(handler).toHaveBeenCalledWith({ type: "info", depth: 0, nodes: 0 });
+        });
+
         it("unsubscribe でハンドラを削除する", async () => {
             let eventCallback: ((evt: { payload: EngineEvent }) => void) | null = null;
 
@@ -248,6 +269,36 @@ describe("createTauriEngineClient", () => {
 
             // init で listen が失敗するが、モックにフォールバック
             await expect(client.init()).resolves.toBeUndefined();
+        });
+    });
+
+    describe("getThreadInfo", () => {
+        it("engine_thread_info で取れた実際のスレッド数を返す", async () => {
+            mockInvoke.mockImplementation(async (command: string) =>
+                command === "engine_thread_info"
+                    ? {
+                          activeThreads: 4,
+                          maxThreads: 8,
+                          threadedAvailable: true,
+                          hardwareConcurrency: 8,
+                      }
+                    : undefined,
+            );
+            mockListen.mockResolvedValue(mockUnlisten);
+            const client = createTauriEngineClient({ ipc: mockIpc });
+            await client.init();
+            expect(client.getThreadInfo?.().activeThreads).toBe(4);
+        });
+
+        it("初期化前・取得に失敗したときは activeThreads を 0（不明）にする", async () => {
+            mockInvoke.mockImplementation(async (command: string) => {
+                if (command === "engine_thread_info") throw new Error("not available");
+            });
+            mockListen.mockResolvedValue(mockUnlisten);
+            const client = createTauriEngineClient({ ipc: mockIpc });
+            expect(client.getThreadInfo?.().activeThreads).toBe(0);
+            await client.init();
+            expect(client.getThreadInfo?.().activeThreads).toBe(0);
         });
     });
 

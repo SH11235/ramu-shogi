@@ -305,7 +305,7 @@ export interface SearchHandle {
  * Thread information for debugging and monitoring parallel search.
  */
 export interface ThreadInfo {
-    /** Number of threads currently active (1 = single-threaded) */
+    /** Number of threads currently active (1 = single-threaded, 0 = unknown, e.g. not initialized or failed to start) */
     activeThreads: number;
     /** Maximum threads allowed (based on hardware and wasm limits) */
     maxThreads: number;

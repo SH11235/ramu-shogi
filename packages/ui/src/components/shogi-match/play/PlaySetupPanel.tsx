@@ -29,7 +29,7 @@ import {
     PLAY_PRIMARY_BUTTON,
     PLAY_TEXT_LINK,
 } from "./playStyles";
-import { START_POSITIONS } from "./startPositions";
+import { findStartPosition, START_POSITIONS } from "./startPositions";
 import {
     AI_MATCH_TIME_CHOICES,
     AI_TIME_CHOICES,
@@ -310,7 +310,7 @@ export function PlaySetupPanel({
     const downloadMb = isVsAi ? (setup.opponent?.downloadMb ?? null) : null;
 
     const startSfen = play?.startSfen ?? "startpos";
-    const preset = START_POSITIONS.find((item) => startSfen.includes(item.sfen));
+    const preset = findStartPosition(startSfen);
     const startValue = !play?.isCustomStart ? "hirate" : (preset?.id ?? "custom");
 
     const handleStart = () => {

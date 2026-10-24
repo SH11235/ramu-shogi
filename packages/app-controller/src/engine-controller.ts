@@ -506,7 +506,7 @@ export function handleInfoEvent(
     if (event.type !== "info") return;
     if (!params.onEvalUpdate) return;
 
-    if (event.scoreCp !== undefined || event.scoreMate !== undefined) {
+    if (event.scoreCp != null || event.scoreMate != null) {
         params.onEvalUpdate(params.ply, event);
     }
 }
@@ -742,10 +742,7 @@ export function createEngineController(
             if (event.type === "info") {
                 callbacks.onLiveInfo?.(side, event);
                 liveSearchStats[side] = accumulateSearchStats(liveSearchStats[side], event);
-                if (
-                    callbacks.onEvalUpdate &&
-                    (event.scoreCp !== undefined || event.scoreMate !== undefined)
-                ) {
+                if (callbacks.onEvalUpdate && (event.scoreCp != null || event.scoreMate != null)) {
                     const ply = context.position?.moves.length ?? 0;
                     callbacks.onEvalUpdate(ply, event);
                 }
@@ -1328,10 +1325,7 @@ export function createEngineController(
 
             if (event.type === "info") {
                 if (run && analysisRun === run) run.collector.push(event);
-                if (
-                    callbacks.onEvalUpdate &&
-                    (event.scoreCp !== undefined || event.scoreMate !== undefined)
-                ) {
+                if (callbacks.onEvalUpdate && (event.scoreCp != null || event.scoreMate != null)) {
                     const ply = analysisState.ply;
                     if (ply !== null) {
                         callbacks.onEvalUpdate(ply, event);
@@ -1343,7 +1337,7 @@ export function createEngineController(
                 // bestmoveイベントにPVと評価値が含まれている場合、最終評価値として記録
                 if (
                     callbacks.onEvalUpdate &&
-                    (event.scoreCp !== undefined || event.scoreMate !== undefined) &&
+                    (event.scoreCp != null || event.scoreMate != null) &&
                     event.pv
                 ) {
                     const ply = analysisState.ply;
@@ -1360,7 +1354,7 @@ export function createEngineController(
                 }
                 if (run && analysisRun === run) {
                     // bestmove にだけ評価値が載るエンジンでも、最善候補を残す。
-                    if (event.scoreCp !== undefined || event.scoreMate !== undefined) {
+                    if (event.scoreCp != null || event.scoreMate != null) {
                         run.collector.push({
                             depth: event.depth,
                             scoreCp: event.scoreCp,

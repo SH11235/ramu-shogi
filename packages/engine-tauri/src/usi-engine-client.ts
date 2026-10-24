@@ -10,6 +10,7 @@ import type {
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { listen as tauriListen } from "@tauri-apps/api/event";
+import { normalizeEngineEvent } from "./engine-event";
 
 interface UsiEngineClientOptions {
     registrationId: string;
@@ -100,7 +101,7 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
                     // Subscribe to session-scoped event channel
                     const channel = `engine://usi/${newSessionId}`;
                     unlisten = await tauriListen<EngineEvent>(channel, (evt) => {
-                        emit(evt.payload);
+                        emit(normalizeEngineEvent(evt.payload));
                     });
                 } catch (error) {
                     // 購読に失敗したまま session を持つと誰もイベントを受け取れない。
