@@ -398,6 +398,9 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
     /** 送った通常探索のうち終わっていない数 (探索は 1 回ごとに bestmove か searchFailed を 1 回返す) */
     let normalSearches = 0;
     let initialized = false;
+    /** setOption のたびに進める番号と、初期化の中で設定を適用し終えたときの番号 */
+    let optionsVersion = 0;
+    let appliedOptionsVersion = 0;
     let initInFlight: Promise<void> | null = null;
     let lastInitOpts: WasmEngineInitOptions | undefined = rememberInitOpts(
         options.defaultInitOptions,
@@ -779,9 +782,11 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
 
     const applyPendingOptions = async () => {
         if (!worker) return;
+        const version = optionsVersion;
         for (const [name, value] of pendingOptions.entries()) {
             await postToWorkerAwait({ type: "setOption", name, value });
         }
+        appliedOptionsVersion = version;
     };
 
     const restoreLastPosition = async () => {
@@ -828,18 +833,14 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         const effectiveThreads = kind === "threaded" ? effective : 1;
         const payload = buildInitPayload(effectiveThreads);
         const module = getInitWasmModule();
-        // 進行中の初期化として登録し、局面などを戻し終えるまで ensureReady を待たせる
-        const attempt = (async () => {
-            try {
-                await initWorkerWithKind(kind, payload, module, true);
-            } catch (error) {
-                const code = classifyErrorCode(error);
-                enterErrorState("Wasm engine initialization failed", code);
-            }
-        })();
+        // 進行中の初期化として登録し、局面などを戻し終えるまで ensureReady を待たせる (失敗も待つ側に伝わる)
+        const attempt = initWorkerWithKind(kind, payload, module, true);
         initInFlight = attempt;
         try {
             await attempt;
+        } catch (error) {
+            const code = classifyErrorCode(error);
+            enterErrorState("Wasm engine initialization failed", code);
         } finally {
             if (initInFlight === attempt) initInFlight = null;
         }
@@ -1176,18 +1177,19 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             }
 
             pendingOptions.set(normalized, value);
+            optionsVersion += 1;
+            const version = optionsVersion;
 
             if (backend === "mock") {
                 return mock.setOption(name, value);
             }
 
-            const initPromise = initInFlight;
-            const wasInitialized = initialized;
             await ensureReady();
             if (!worker) {
                 return mock.setOption(name, value);
             }
-            if (wasInitialized && !initPromise) {
+            // 初期化 (作り直しを含む) の中で設定を適用し終えた後に変えた分は、ここで送る
+            if (appliedOptionsVersion < version) {
                 await postToWorkerAwait({ type: "setOption", name: normalized, value });
             }
         },

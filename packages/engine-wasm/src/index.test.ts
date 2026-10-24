@@ -1555,4 +1555,73 @@ describe("詰み探索 (mate.solve)", () => {
         await vi.waitFor(() => expect(order).toContain("solveMate"));
         expect(order.indexOf("loadPosition")).toBeLessThan(order.indexOf("solveMate"));
     });
+
+    /** スレッド版で初期化して局面を読み込んだ後、worker のエラーで single への作り直しを始める */
+    const startRecovery = async (recovering: () => MockWorker) => {
+        vi.stubGlobal("crossOriginIsolated", true);
+        vi.stubGlobal("SharedArrayBuffer", class {});
+        vi.stubGlobal("navigator", { hardwareConcurrency: 8 });
+        let makeWorker: () => MockWorker = createAckingWorker;
+        const created: MockWorker[] = [];
+        const client = createWasmEngineClient({
+            workerFactory: () => {
+                const worker = makeWorker();
+                created.push(worker);
+                return worker as unknown as Worker;
+            },
+        });
+        await client.init({ threads: 4 });
+        await client.loadPosition("4k4/9/4P4/9/9/9/9/9/4K4 b G 1");
+        makeWorker = recovering;
+        created[created.length - 1].onerror?.({ message: "worker failed" } as ErrorEvent);
+        return client;
+    };
+
+    it("作り直しの途中 (設定の適用の後) に変えた設定も、作り直しの後に送る", async () => {
+        const restore: { release?: () => void } = {};
+        const sent: { type: string; name?: string }[] = [];
+        const client = await startRecovery(() => {
+            const worker = createMockWorker();
+            worker.postMessage.mockImplementation(
+                (command: { type: string; requestId?: string; name?: string }) => {
+                    sent.push(command);
+                    if (!command.requestId) return;
+                    const ack = () =>
+                        worker.onmessage?.({
+                            data: { type: "ack", requestId: command.requestId },
+                        } as MessageEvent);
+                    if (command.type === "loadPosition") restore.release = ack;
+                    else queueMicrotask(ack);
+                },
+            );
+            return worker;
+        });
+        await vi.waitFor(() => expect(restore.release).toBeDefined());
+        const setting = client.setOption("MultiPV", 3);
+        restore.release?.();
+        await setting;
+        expect(sent.some((c) => c.type === "setOption" && c.name === "MultiPV")).toBe(true);
+    });
+
+    it("作り直しに失敗したら、その間に呼んだ solve も失敗する", async () => {
+        const client = await startRecovery(() => {
+            const worker = createMockWorker();
+            worker.postMessage.mockImplementation(
+                (command: { type: string; requestId?: string }) => {
+                    if (!command.requestId) return;
+                    queueMicrotask(() =>
+                        worker.onmessage?.({
+                            data: {
+                                type: "ack",
+                                requestId: command.requestId,
+                                error: command.type === "init" ? "init failed" : undefined,
+                            },
+                        } as MessageEvent),
+                    );
+                },
+            );
+            return worker;
+        });
+        await expect(client.mate?.solve({})).rejects.toThrow();
+    });
 });
