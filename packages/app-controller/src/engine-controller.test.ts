@@ -56,6 +56,16 @@ describe("accumulateSearchStats", () => {
         ]);
     });
 
+    it("最善手が同じでも、途中から別の手順になった読み筋は新しい方にする", () => {
+        const deep = accumulateSearchStats(
+            {},
+            { type: "info", depth: 14, pv: ["7g7f", "3c3d", "2g2f"] },
+        );
+        expect(
+            accumulateSearchStats(deep, { type: "info", depth: 15, pv: ["7g7f", "8c8d"] }).pv,
+        ).toEqual(["7g7f", "8c8d"]);
+    });
+
     it("multipv 2 以上を無視する", () => {
         const current = { depth: 10, scoreCp: 20 };
         expect(accumulateSearchStats(current, { type: "info", multipv: 2, depth: 99 })).toBe(

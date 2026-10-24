@@ -22,9 +22,13 @@ export const START_POSITIONS: Array<{ id: string; label: string; sfen: string }>
     },
 ];
 
+/** 開始局面が平手か（`startpos` と、`sfen` の前置き付き・無しの平手の SFEN）。 */
+export const isHirateStart = (startSfen: string): boolean =>
+    startSfen === "startpos" || startSfen.includes(STUDY_HIRATE_SFEN);
+
 /** 開始局面の名前（平手・駒落ち）。選べる局面のどれでもなければ「カスタム」（局面を編集して始めたとき）。 */
 export function startPositionLabel(startSfen: string): string {
-    if (startSfen === "startpos" || startSfen.includes(STUDY_HIRATE_SFEN)) return "平手";
+    if (isHirateStart(startSfen)) return "平手";
     return (
         START_POSITIONS.find((position) => startSfen.includes(position.sfen))?.label ?? "カスタム"
     );

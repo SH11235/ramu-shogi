@@ -106,6 +106,8 @@ export interface EngineSearchSummary {
     scoreMate?: number;
     /** 読み筋（USI形式。先頭はこの手そのもの） */
     pv?: string[];
+    /** 実際に使ったスレッド数 */
+    threads?: number;
 }
 
 /** 評価値の履歴（グラフ用） */

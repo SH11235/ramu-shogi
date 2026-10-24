@@ -716,10 +716,14 @@ export function createEngineController(
                 }
 
                 if (result.action === "apply_move" && result.move) {
+                    // 実際に使ったスレッド数（threaded の初期化に失敗して 1 スレッドに戻ることもあるので、設定値でなく
+                    // エンジンに聞く）。
+                    const threads = engineStates[side].client?.getThreadInfo?.().activeThreads;
                     callbacks.onSearchComplete?.(movesCount, {
                         ...liveSearchStats[side],
                         thinkLimitMs: liveThinkLimitMs[side],
                         engineId,
+                        ...(threads ? { threads } : {}),
                     });
                     callbacks.onMoveFromEngine(result.move);
                 }

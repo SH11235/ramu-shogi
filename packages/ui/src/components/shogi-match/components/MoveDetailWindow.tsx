@@ -514,6 +514,12 @@ export function MoveDetailWindow({
                                 ? `${(searchStats.timeMs / 1000).toFixed(1)}秒`
                                 : "—"}
                         </span>
+                        <span>
+                            思考上限{" "}
+                            {searchStats.thinkLimitMs !== undefined
+                                ? `${(searchStats.thinkLimitMs / 1000).toFixed(1)}秒`
+                                : "—"}
+                        </span>
                     </div>
                 )}
 

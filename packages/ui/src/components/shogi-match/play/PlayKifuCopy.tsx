@@ -3,7 +3,7 @@
  * PC は結果の欄・終局のダイアログにボタンを並べ、スマホは下の行のボタンから開くシートで選ぶ。
  */
 
-import { movesToCsa, STUDY_HIRATE_SFEN } from "@shogi/app-core";
+import { movesToCsa } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 import { useState } from "react";
@@ -12,6 +12,7 @@ import { BottomSheet } from "../components/BottomSheet";
 import { useNavigation } from "../contexts/NavigationContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import { PLAY_OUTLINE_BUTTON } from "./playStyles";
+import { isHirateStart } from "./startPositions";
 
 type KifuFormat = "kif" | "csa" | "usi";
 
@@ -34,7 +35,7 @@ function useKifuCopy(): {
     const { play } = useShogiMatchConfig();
     const [copiedFormat, setCopiedFormat] = useState<KifuFormat | null>(null);
     const startSfen = (kifuTree?.startSfen ?? "startpos").replace(/^sfen\s+/, "");
-    const isHirate = startSfen === "startpos" || startSfen === STUDY_HIRATE_SFEN;
+    const isHirate = isHirateStart(startSfen);
     const moves = kifMoves.map((move) => move.usiMove);
     const csaAvailable = isHirate && !moves.some((move) => move.toLowerCase() === "pass");
 

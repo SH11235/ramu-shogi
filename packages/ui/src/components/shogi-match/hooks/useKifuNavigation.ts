@@ -64,6 +64,7 @@ const toEngineSearchSummary = (stats: MoveSearchStats, mover: Player): EngineSea
         scoreCp: stats.scoreCp === undefined ? undefined : sign * stats.scoreCp,
         scoreMate: stats.scoreMate === undefined ? undefined : sign * stats.scoreMate,
         pv: stats.pv,
+        threads: stats.threads,
     };
 };
 

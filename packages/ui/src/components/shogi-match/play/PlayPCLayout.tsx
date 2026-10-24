@@ -226,7 +226,7 @@ export function PlayPCLayout({
                                 <PlayMoveList
                                     selectable={phase === "finished"}
                                     upToCurrent={phase !== "finished"}
-                                    showSearch={hasEngine}
+                                    showSearch={hasEngine && displaySettings.showEngineReading}
                                     className="min-h-[5.5rem] flex-1"
                                 />
                             </section>

@@ -46,7 +46,11 @@ function useConditionRows(): ConditionRow[] {
         {
             id: "start",
             label: "開始局面",
-            value: startPositionLabel(kifuTree?.startSfen ?? "startpos"),
+            // 棋譜の途中の局面から指し始めたときは、何手目からかを添える（棋譜の最初の局面は元のまま）。
+            value:
+                play.startPly > 0
+                    ? `${startPositionLabel(kifuTree?.startSfen ?? "startpos")}の ${play.startPly}手目から`
+                    : startPositionLabel(kifuTree?.startSfen ?? "startpos"),
         },
     ];
 
@@ -58,18 +62,18 @@ function useConditionRows(): ConditionRow[] {
                 ? ""
                 : `　レベル ${setting.skillLevel?.skillLevel ?? SKILL_LEVEL_MAX}`;
         const limit = formatSearchLimit(engineSearchLimits[side]) ?? timeText(side);
-        const threads = resolveThreadCount(
-            engineThreads[side],
-            threadCapOf(engineOptions, [setting.engineId]),
+        const sideMoves = kifMoves.filter(
+            (move) =>
+                move.engineSearch &&
+                (move.mover ?? (move.ply % 2 === 1 ? "sente" : "gote")) === side,
         );
+        // スレッド数は、手を決めたときにエンジンが実際に使った数を優先する（設定より少なくなることがある）。
+        const threads =
+            [...sideMoves].reverse().find((move) => move.engineSearch?.threads)?.engineSearch
+                ?.threads ??
+            resolveThreadCount(engineThreads[side], threadCapOf(engineOptions, [setting.engineId]));
         // 時間で読む量を決めると、端末の速さで読める局面の数（＝強さ）が変わるので、実際の速さも添える。
-        const average = averageReading(
-            kifMoves.filter(
-                (move) =>
-                    move.engineSearch &&
-                    (move.mover ?? (move.ply % 2 === 1 ? "sente" : "gote")) === side,
-            ),
-        );
+        const average = averageReading(sideMoves);
         rows.push(
             {
                 id: `${side}-engine`,
