@@ -13,5 +13,9 @@ describe("startPositionLabel", () => {
             startPositionLabel("lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1"),
         ).toBe("角落ち");
         expect(startPositionLabel("4k4/9/9/9/9/9/9/9/4K4 b G 1")).toBe("カスタム");
+        // 平手の盤でも、手数が 1 でなければ平手の開始としない（USI で startpos にすると手数が失われる）。
+        expect(
+            startPositionLabel("lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 10"),
+        ).toBe("カスタム");
     });
 });
