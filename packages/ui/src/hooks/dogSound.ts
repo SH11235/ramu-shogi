@@ -43,7 +43,7 @@ const END_CLIP: ClipName = "bark6_full";
 const END_GAIN = 0.9;
 
 // CPU が劣勢のときの弱い声。毎手鳴ると効果が薄れるので一部の手だけ置き換える。
-// v3_01〜06 は 3 本目の動画の 1 秒を超える長い声で、weak と同じ扱いにする
+// v3_01〜06 も 1 秒を超える長い声なので、weak と同じ扱いにする
 const WEAK_PROBABILITY = 0.25;
 const WEAK_CLIPS: readonly ClipName[] = [
     "weak",
