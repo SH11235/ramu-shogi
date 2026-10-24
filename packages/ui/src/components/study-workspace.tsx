@@ -1803,13 +1803,7 @@ export function StudyWorkspaceView({
         </div>
     );
     const metaRow = (
-        <div
-            className={cn(
-                "flex items-center gap-x-3 gap-y-1 px-1.5 text-xs text-muted-foreground",
-                // 表題の行に入れるときは、長い出典で表題を潰さないよう幅に上限を置く。
-                isWide ? "min-w-0 max-w-[55%]" : "flex-wrap",
-            )}
-        >
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1.5 text-xs text-muted-foreground">
             {playersLabel && <span className="truncate">{playersLabel}</span>}
             <span className="truncate">{originLink ?? studyOriginLabel(doc.origin)}</span>
             <StudySaveIndicator
@@ -1940,7 +1934,6 @@ export function StudyWorkspaceView({
                                 disabled={locked}
                                 onCommit={(value) => void onApplyOps([{ type: "setTitle", value }])}
                             />
-                            {isWide && metaRow}
                             {moreMenu}
                             {/* 解析に使う AI と 1 局面の時間は結果を大きく左右するので、アイコンだけにせず
                                 いまの値を見せ、押せば変えられるようにする。 */}
@@ -1959,7 +1952,8 @@ export function StudyWorkspaceView({
                             </button>
                             {analysisAction}
                         </div>
-                        {!isWide && metaRow}
+                        {/* 出典・保存先は表題の下の行に置く（表題の行は、表題と解析の操作で使う）。 */}
+                        {metaRow}
                     </header>
                 )}
 
@@ -2143,11 +2137,11 @@ export function StudyWorkspaceView({
                         // マスのおよそ 11.2 倍 + 56px。この分岐は PC だけで描くので、xl 未満の値は画面幅の
                         // 条件を付けずに置く（lg の rem と isTablet の px が文字の大きさで食い違っても効くように）。
                         // xl では評価値グラフを右の 2 列にまたがる横長の行に出し、その下に 2 列を並べる。
-                        // 2 列の高さは、画面の高さから表題の行などの 8.5rem を引いた全体の残りで決める。
+                        // 2 列の高さは、画面の高さから表題の行・出典の行などの 9.75rem を引いた全体の残りで決める。
                         <div
                             className={cn(
                                 "grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 [--shogi-cell-size:clamp(34px,min(calc((100dvh-300px)/9),calc((100vw-440px)/11.2)),72px)] xl:grid-cols-[auto_minmax(300px,1fr)_minmax(260px,300px)] xl:[--shogi-cell-size:clamp(34px,min(calc((100dvh-300px)/9),calc((min(100vw,1600px)-720px)/11.2)),72px)]",
-                                isWide && "h-[calc(100dvh-8.5rem)] grid-rows-[auto_minmax(0,1fr)]",
+                                isWide && "h-[calc(100dvh-9.75rem)] grid-rows-[auto_minmax(0,1fr)]",
                             )}
                         >
                             <div
