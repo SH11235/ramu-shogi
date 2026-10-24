@@ -4,8 +4,6 @@ import {
     createEngineRegistryService,
     createEngineSessionService,
     createPreviewSessionService,
-    createTauriEngineClient,
-    createTauriNnueStorage,
     createUsiEngineClient,
     detect_nnue_format,
     getLegalMoves,
@@ -29,15 +27,9 @@ import { RshogiViewerLiveView } from "./components/rshogi-viewer/RshogiViewerLiv
 import { RshogiViewerView } from "./components/rshogi-viewer/RshogiViewerView";
 import { StudiesView } from "./components/studies/StudiesView";
 import { StudyView } from "./components/studies/StudyView";
+import { createEngineClient, nnueStorage } from "./platform/engineClient";
 import { requestNnueFilePath } from "./platform/nnueFilePicker";
 import { getDesktopStudySync } from "./studies/desktopStudySync";
-
-const createEngineClient = () =>
-    createTauriEngineClient({
-        stopMode: "terminate",
-        useMockOnError: false,
-        debug: true,
-    });
 
 const INTERNAL_ENGINE_OPTION: EngineOption = {
     id: "native",
@@ -49,9 +41,6 @@ const INTERNAL_ENGINE_OPTION: EngineOption = {
 };
 
 const panelEngine = createEngineClient();
-
-// Tauri版のストレージは同期的に初期化可能
-const nnueStorage = createTauriNnueStorage();
 
 const registryService = createEngineRegistryService();
 const previewSessionService = createPreviewSessionService();

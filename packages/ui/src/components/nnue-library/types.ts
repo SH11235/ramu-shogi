@@ -1,3 +1,6 @@
+import type { EngineSpeedEnvironment } from "@shogi/app-controller";
+import type { EngineClient } from "@shogi/engine-client";
+
 /** アカウントに保存してある評価関数のファイル。FV_SCALE などの設定は持たない。 */
 export interface NnueAccountFile {
     id: string;
@@ -27,4 +30,13 @@ export interface NnueAccountStore {
     download: (fileId: string) => Promise<Blob>;
     remove: (fileId: string) => Promise<void>;
     clearError: () => void;
+}
+
+/** AI の行に、この端末での速さ（NPS）を出すときに渡す。 */
+export interface NnueSpeedSupport {
+    environment: EngineSpeedEnvironment;
+    /** 計測用のエンジン（`withNpsRecording` で `record: false` にしたもの） */
+    createBenchmarkClient: () => EngineClient;
+    /** エンジンが使えるスレッド数の上限（Web の wasm は端末のメモリなどで決まる） */
+    maxThreads?: number;
 }

@@ -24,7 +24,8 @@ import { Button } from "../button";
 import { NnueErrorAlert } from "../nnue/NnueErrorAlert";
 import { NnueFvScaleInputDialog } from "../nnue/NnueFvScaleInputDialog";
 import { Progress } from "../progress";
-import type { NnueAccountFile, NnueAccountStore } from "./types";
+import { NnueSpeedLine, useNnueSpeedBenchmark } from "./NnueSpeed";
+import type { NnueAccountFile, NnueAccountStore, NnueSpeedSupport } from "./types";
 
 interface NnueLibraryProps {
     /** 配布 AI の manifest.json の URL */
@@ -39,6 +40,8 @@ interface NnueLibraryProps {
     onBusyChange?: (busy: boolean) => void;
     /** この端末の AI を変えられない理由（対局中など）。指定時は設定と削除を止める */
     lockedReason?: string;
+    /** 渡すと、端末にある AI の行にこの端末での速さ（NPS）を出し、測れるようにする */
+    speed?: NnueSpeedSupport;
 }
 
 type PendingAdd =
@@ -103,6 +106,7 @@ export function NnueLibrary({
     onRequestFilePath,
     lockedReason,
     onBusyChange,
+    speed,
 }: NnueLibraryProps): ReactElement {
     const {
         nnueList,
@@ -155,6 +159,18 @@ export function NnueLibrary({
     const canPickFile = Boolean(capabilities?.supportsFileImport);
     const canAdd = canPickPath || canPickFile;
     const isBusy = busyId !== null || downloadingKey !== null || account?.busyKey != null;
+    const speedBenchmark = useNnueSpeedBenchmark(speed);
+    // 測っている AI を消したり設定を変えたりしないよう、測っている間はほかの操作を止める。
+    const controlsDisabled = isBusy || speedBenchmark.isRunning;
+    const speedLineOf = (meta: NnueMeta | undefined) =>
+        speed && meta && !needsModelSettings(meta) ? (
+            <NnueSpeedLine
+                meta={meta}
+                support={speed}
+                benchmark={speedBenchmark}
+                disabledReason={lockedReason ?? (isBusy ? "ほかの処理の途中です" : undefined)}
+            />
+        ) : null;
 
     useEffect(() => {
         onBusyChange?.(isBusy);
@@ -369,7 +385,11 @@ export function NnueLibrary({
                 action={
                     canAdd &&
                     (addedMetas.length > 0 || accountOnlyFiles.length > 0) && (
-                        <Button size="sm" onClick={() => void startAdd()} disabled={isBusy}>
+                        <Button
+                            size="sm"
+                            onClick={() => void startAdd()}
+                            disabled={controlsDisabled}
+                        >
                             ファイルから追加
                         </Button>
                     )
@@ -387,7 +407,7 @@ export function NnueLibrary({
                                     window.matchMedia("(pointer: coarse)").matches
                                 )
                             }
-                            disabled={isBusy}
+                            disabled={controlsDisabled}
                             isAdding={busyId === "adding"}
                             onPick={() => void startAdd()}
                             hint={<FreeResources />}
@@ -407,6 +427,7 @@ export function NnueLibrary({
                                         meta.fvScale ? `FV_SCALE ${meta.fvScale}` : null,
                                     ]}
                                     places={[deviceLabel, ...(accountFile ? ["アカウント"] : [])]}
+                                    speedLine={speedLineOf(meta)}
                                     warning={
                                         needsModelSettings(meta)
                                             ? "使う前にモデル設定（振り分け方式）が必要です"
@@ -434,7 +455,7 @@ export function NnueLibrary({
                                             <Button
                                                 size="sm"
                                                 variant="outline"
-                                                disabled={isBusy}
+                                                disabled={controlsDisabled}
                                                 onClick={() => void uploadToAccount(meta)}
                                             >
                                                 アカウントに保存
@@ -443,7 +464,7 @@ export function NnueLibrary({
                                     <Button
                                         size="sm"
                                         variant={needsModelSettings(meta) ? "default" : "outline"}
-                                        disabled={isBusy || Boolean(lockedReason)}
+                                        disabled={controlsDisabled || Boolean(lockedReason)}
                                         title={lockedReason}
                                         aria-label={`「${meta.displayName}」の設定`}
                                         onClick={() => setEditingMeta(meta)}
@@ -453,7 +474,7 @@ export function NnueLibrary({
                                     <Button
                                         size="sm"
                                         variant="ghost"
-                                        disabled={isBusy || Boolean(lockedReason)}
+                                        disabled={controlsDisabled || Boolean(lockedReason)}
                                         title={lockedReason}
                                         aria-label={`「${meta.displayName}」を削除`}
                                         onClick={() =>
@@ -489,7 +510,7 @@ export function NnueLibrary({
                                         <Button
                                             size="sm"
                                             variant="outline"
-                                            disabled={isBusy}
+                                            disabled={controlsDisabled}
                                             onClick={() => setPendingAdd({ kind: "account", file })}
                                         >
                                             {deviceLabel}で使う
@@ -499,7 +520,7 @@ export function NnueLibrary({
                                         <Button
                                             size="sm"
                                             variant="ghost"
-                                            disabled={isBusy}
+                                            disabled={controlsDisabled}
                                             aria-label={`「${file.originalFilename}」をアカウントから削除`}
                                             onClick={() =>
                                                 setPendingDelete({ kind: "account", file })
@@ -543,8 +564,14 @@ export function NnueLibrary({
                                               })
                                             : null
                                     }
-                                    disabled={isBusy}
+                                    disabled={controlsDisabled}
                                     lockedReason={lockedReason}
+                                    speedLine={speedLineOf(
+                                        preset.localMetas.find(
+                                            (meta) =>
+                                                meta.contentHashSha256 === preset.config.sha256,
+                                        ) ?? preset.localMetas[0],
+                                    )}
                                     isDeleting={busyId === preset.config.presetKey}
                                     onDownload={() => {
                                         setNotice(null);
@@ -694,6 +721,7 @@ function PresetRow({
     progress,
     disabled,
     lockedReason,
+    speedLine,
     isDeleting,
     onDownload,
     onDelete,
@@ -704,6 +732,7 @@ function PresetRow({
     progress: NnueDownloadProgress | null;
     disabled: boolean;
     lockedReason?: string;
+    speedLine: ReactNode;
     isDeleting: boolean;
     onDownload: () => void;
     onDelete: () => void;
@@ -751,6 +780,7 @@ function PresetRow({
                             <span>{config.license}</span>
                         )}
                     </p>
+                    {speedLine}
                 </div>
             </div>
             <div className="flex shrink-0 items-center justify-end gap-2 sm:w-48">
@@ -805,12 +835,14 @@ function AddedRow({
     places,
     warning,
     busyLabel,
+    speedLine,
     muted = false,
     children,
 }: {
     title: string;
     details: Array<string | null>;
     places: string[];
+    speedLine?: ReactNode;
     warning: string | null;
     busyLabel: string | null;
     muted?: boolean;
@@ -831,6 +863,7 @@ function AddedRow({
                     ))}
                     <span>保存先: {places.join("・")}</span>
                 </p>
+                {speedLine}
                 {warning && <p className="text-xs text-wafuu-shu">{warning}</p>}
                 {busyLabel && (
                     <p aria-live="polite" className="text-xs text-muted-foreground">

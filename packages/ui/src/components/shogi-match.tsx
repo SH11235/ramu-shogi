@@ -36,6 +36,7 @@ import { SearchInfoPanel } from "./shogi-match/components/SearchInfoPanel";
 import {
     DEFAULT_BYOYOMI_MS,
     DEFAULT_MAX_LOGS,
+    ENGINE_THREADS_STORAGE_KEY,
     MATCH_LAYOUT_CLASSES,
     TOOLTIP_DELAY_DURATION_MS,
 } from "./shogi-match/constants";
@@ -965,7 +966,7 @@ export function ShogiMatch({
     );
     const [storedEngineThreads, setStoredEngineThreads] = useLocalStorage<
         EngineThreadSettings | number
-    >("shogi-match-engine-threads", { sente: 0, gote: 0 });
+    >(ENGINE_THREADS_STORAGE_KEY, { sente: 0, gote: 0 });
     const engineThreads = (() => {
         // 0 は自動。旧 UI で選べた 32 超の値が localStorage に残っていると
         // 現在の選択肢 (1〜32) に一致せず表示が壊れるため clamp する

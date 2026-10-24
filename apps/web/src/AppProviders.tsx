@@ -1,6 +1,5 @@
 import { NnueError, type NnueFormat } from "@shogi/app-core";
 import {
-    createIndexedDBNnueStorage,
     defaultWasmModuleUrl,
     detect_nnue_format,
     ensureWasmModule,
@@ -13,14 +12,12 @@ import { StatusBanner } from "./components/StatusBanner";
 import { AuthSessionProvider } from "./hooks/useAuthSession";
 import { useStudySessionSync } from "./hooks/useStudySessionSync";
 import { useUserSettingsSync } from "./hooks/useUserSettingsSync";
+import { nnueStorage } from "./platform/nnue-storage";
 import {
     assetReturnsNotOk,
     isStaleAssetError,
     reloadForStaleDeploy,
 } from "./platform/stale-deploy-reload";
-
-// Web版のストレージも同期的に初期化可能
-const nnueStorage = createIndexedDBNnueStorage();
 
 // エンジンをまだ起動していない画面（AI の一覧など）でも判定できるよう、wasm を先に読み込む。
 const validateNnueHeader = async (header: Uint8Array, fileSize: number) => {
