@@ -8,7 +8,7 @@
 import type { Player } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement, ReactNode } from "react";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { NativeSelect } from "../../native-select";
 import { PassRightsSettingsDialog } from "../components/PassRightsSettingsDialog";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
@@ -17,10 +17,10 @@ import { useShogiMatchConfig } from "../ShogiMatchContext";
 import type { DisplaySettings, EngineSearchLimit } from "../types";
 import { HINT_MULTI_PV_CHOICES } from "../utils/hintSettings";
 import {
+    type FixedSearchLimit,
     formatSearchLimit,
     parseSearchLimitInput,
     SEARCH_LIMIT_DEFAULTS,
-    type SearchLimitKind,
 } from "../utils/searchLimits";
 import { buildThreadOptions, clampThreads, threadCapOf } from "../utils/threadOptions";
 import { PLAY_OUTLINE_BUTTON } from "./playStyles";
@@ -60,6 +60,9 @@ const SEARCH_KIND_OPTIONS: Array<{ id: SearchKind; label: string }> = [
     { id: "depth", label: "深さ" },
 ];
 
+const searchValueOf = (limit: FixedSearchLimit): number =>
+    limit.kind === "nodes" ? limit.nodes : limit.depth;
+
 /**
  * ノード数・深さの数を入れる欄。打っている途中の文字は手元に持ち、正しい数になったときだけ保存する
  * （空や範囲外のまま離れても、保存してある数は変わらない）。
@@ -69,14 +72,17 @@ function SearchLimitInput({
     disabled,
     onChange,
 }: {
-    limit: Extract<EngineSearchLimit, { kind: SearchLimitKind }>;
+    limit: FixedSearchLimit;
     disabled: boolean;
-    onChange: (limit: EngineSearchLimit) => void;
+    onChange: (limit: FixedSearchLimit) => void;
 }): ReactElement {
     const kind = limit.kind;
-    const saved = limit.kind === "nodes" ? limit.nodes : limit.depth;
-    const [draft, setDraft] = useState<string | null>(null);
-    const text = draft ?? String(saved);
+    const saved = searchValueOf(limit);
+    const hintId = useId();
+    // 打っている文字は、どの保存値の上で打ったかと組で持つ。設定の欄や別のタブから保存値が変わったら、
+    // 古い下書きを捨てて新しい値を見せる（下書きのまま打ち続けて、新しい値を上書きしないように）。
+    const [draft, setDraft] = useState<{ text: string; base: number } | null>(null);
+    const text = draft && draft.base === saved && !disabled ? draft.text : String(saved);
     const { error } = parseSearchLimitInput(text, kind);
     return (
         <div className="flex flex-col gap-1">
@@ -88,9 +94,13 @@ function SearchLimitInput({
                     value={text}
                     disabled={disabled}
                     aria-invalid={error !== null}
+                    aria-describedby={hintId}
                     onChange={(event) => {
-                        setDraft(event.target.value);
                         const parsed = parseSearchLimitInput(event.target.value, kind);
+                        setDraft({
+                            text: event.target.value,
+                            base: parsed.limit ? searchValueOf(parsed.limit) : saved,
+                        });
                         if (parsed.limit) onChange(parsed.limit);
                     }}
                     onBlur={() => setDraft(null)}
@@ -99,7 +109,8 @@ function SearchLimitInput({
                 {kind === "nodes" && "局面"}
             </label>
             <p
-                role={error ? "alert" : undefined}
+                id={hintId}
+                aria-live="polite"
                 className={cn("text-xs", error ? "text-destructive" : "text-wafuu-sumi-light")}
             >
                 {error ??
@@ -197,7 +208,10 @@ export function PlayAdvancedSettings({
                     const inputsDisabled = settingsLocked || !clock.enabled;
                     return (
                         <fieldset key={side} className="flex min-w-0 flex-col gap-1.5">
-                            <legend className="sr-only">{sideName(side)}の時間</legend>
+                            <legend className="sr-only">
+                                {sideName(side)}
+                                {isAi ? "の時間・読む量" : "の時間"}
+                            </legend>
                             <div className="flex items-center justify-between gap-3">
                                 <span aria-hidden className="text-sm font-medium">
                                     {sideName(side)}

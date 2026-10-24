@@ -1,9 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { MatchSettingsProvider } from "../contexts/MatchSettingsContext";
 import type { ClockSettings } from "../hooks/useClockManager";
+import { type PlayScreenConfig, ShogiMatchProvider } from "../ShogiMatchContext";
 import type { EngineSearchLimits, SideSetting } from "../types";
 import { DEFAULT_DISPLAY_SETTINGS, DEFAULT_PASS_RIGHTS_SETTINGS } from "../types";
 import { SEARCH_NODES_MAX } from "../utils/searchLimits";
@@ -18,58 +19,68 @@ const AI: SideSetting = { role: "engine", engineId: "wasm" };
 const UNLIMITED = { mainMs: 0, byoyomiMs: 10_000, incrementMs: 0, enabled: false };
 const AI_3S = { mainMs: 0, byoyomiMs: 3_000, incrementMs: 0, enabled: true };
 
-/** 設定を持つだけの親。いまの読む量を `snapshot.limits` で読む。 */
+/**
+ * 設定を持つだけの親。いまの読む量を `snapshot.limits` で読み、`snapshot.setLimits` で
+ * 詳細設定の外（設定の欄・別のタブ）からの書き換えを再現する。
+ */
 function renderSettings({
     sides,
     limits = { sente: { kind: "clock" }, gote: { kind: "clock" } },
     locked = false,
+    busy = false,
 }: {
     sides: { sente: SideSetting; gote: SideSetting };
     limits?: EngineSearchLimits;
     locked?: boolean;
+    busy?: boolean;
 }) {
-    const snapshot = { limits };
+    const snapshot: { limits: EngineSearchLimits; setLimits: (next: EngineSearchLimits) => void } =
+        { limits, setLimits: () => {} };
+    const play = { busy, hintMultiPv: 1, setHintMultiPv: () => {} } as unknown as PlayScreenConfig;
     function Harness(): ReactElement {
         const [time, setTime] = useState<ClockSettings>({ sente: UNLIMITED, gote: AI_3S });
         const [current, setLimits] = useState(snapshot.limits);
         snapshot.limits = current;
+        snapshot.setLimits = setLimits;
         return (
-            <MatchSettingsProvider
-                sides={sides}
-                onSidesChange={() => {}}
-                timeSettings={time}
-                onTimeSettingsChange={setTime}
-                passRightsSettings={DEFAULT_PASS_RIGHTS_SETTINGS}
-                onPassRightsSettingsChange={() => {}}
-                settingsLocked={locked}
-                isDevMode={false}
-                engineThreads={{ sente: 0, gote: 0 }}
-                onEngineThreadsChange={() => {}}
-                engineSearchLimits={current}
-                onEngineSearchLimitsChange={setLimits}
-                senteNnueSelection={{ presetKey: null, nnueId: null }}
-                onSenteNnueSelectionChange={() => {}}
-                goteNnueSelection={{ presetKey: null, nnueId: null }}
-                onGoteNnueSelectionChange={() => {}}
-                nnueList={[]}
-                presets={[]}
-                internalEngineId="wasm"
-                engineOptions={[
-                    {
-                        id: "wasm",
-                        label: "内蔵エンジン",
-                        kind: "internal",
-                        createClient: () => {
-                            throw new Error("テストではエンジンを作らない");
+            <ShogiMatchProvider config={{ play }}>
+                <MatchSettingsProvider
+                    sides={sides}
+                    onSidesChange={() => {}}
+                    timeSettings={time}
+                    onTimeSettingsChange={setTime}
+                    passRightsSettings={DEFAULT_PASS_RIGHTS_SETTINGS}
+                    onPassRightsSettingsChange={() => {}}
+                    settingsLocked={locked}
+                    isDevMode={false}
+                    engineThreads={{ sente: 0, gote: 0 }}
+                    onEngineThreadsChange={() => {}}
+                    engineSearchLimits={current}
+                    onEngineSearchLimitsChange={setLimits}
+                    senteNnueSelection={{ presetKey: null, nnueId: null }}
+                    onSenteNnueSelectionChange={() => {}}
+                    goteNnueSelection={{ presetKey: null, nnueId: null }}
+                    onGoteNnueSelectionChange={() => {}}
+                    nnueList={[]}
+                    presets={[]}
+                    internalEngineId="wasm"
+                    engineOptions={[
+                        {
+                            id: "wasm",
+                            label: "内蔵エンジン",
+                            kind: "internal",
+                            createClient: () => {
+                                throw new Error("テストではエンジンを作らない");
+                            },
                         },
-                    },
-                ]}
-                onOpenNnueManager={() => {}}
-                onOpenDisplaySettings={() => {}}
-                onOpenPassRightsSettings={() => {}}
-            >
-                <PlayAdvancedSettings onDisplaySettingsChange={() => {}} />
-            </MatchSettingsProvider>
+                    ]}
+                    onOpenNnueManager={() => {}}
+                    onOpenDisplaySettings={() => {}}
+                    onOpenPassRightsSettings={() => {}}
+                >
+                    <PlayAdvancedSettings onDisplaySettingsChange={() => {}} />
+                </MatchSettingsProvider>
+            </ShogiMatchProvider>
         );
     }
     render(<Harness />);
@@ -87,7 +98,6 @@ describe("PlayAdvancedSettings（読む量）", () => {
         fireEvent.change(readingSelects()[0], { target: { value: "nodes" } });
         expect(snapshot.limits.gote).toEqual({ kind: "nodes", nodes: 1_000_000 });
         expect(snapshot.limits.sente).toEqual({ kind: "clock" });
-        // 人の側の秒の欄は残り、AI の側だけ数の欄に替わる
         expect(screen.getAllByRole("spinbutton", { name: /持ち時間/ })).toHaveLength(1);
         expect(screen.getByRole("textbox", { name: /ノード数/ })).toHaveProperty(
             "value",
@@ -106,14 +116,49 @@ describe("PlayAdvancedSettings（読む量）", () => {
         expect(screen.getByText("毎手 20万局面まで読む（時計は使わない）")).toBeTruthy();
 
         fireEvent.change(input, { target: { value: "0" } });
-        expect(screen.getByRole("alert").textContent).toBe("1 以上の整数で入れてください");
+        expect(input.getAttribute("aria-invalid")).toBe("true");
+        expect(screen.getByText("1 以上の整数で入れてください")).toBeTruthy();
         fireEvent.change(input, { target: { value: String(SEARCH_NODES_MAX + 1) } });
-        expect(screen.getByRole("alert")).toBeTruthy();
+        expect(
+            screen.getByText(`${SEARCH_NODES_MAX.toLocaleString()} 以下にしてください`),
+        ).toBeTruthy();
         expect(snapshot.limits.sente).toEqual({ kind: "nodes", nodes: 200_000 });
-        // 欄を離れると、保存してある数に戻る
         fireEvent.blur(input);
         expect(input).toHaveProperty("value", "200000");
-        expect(screen.queryByRole("alert")).toBeNull();
+        expect(input.getAttribute("aria-invalid")).toBe("false");
+    });
+
+    it("打っている途中に外から読む量が変わったら、下書きを捨てて新しい値を見せる", () => {
+        const snapshot = renderSettings({
+            sides: { sente: AI, gote: AI },
+            limits: { sente: { kind: "nodes", nodes: 50_000 }, gote: { kind: "clock" } },
+        });
+        const input = screen.getByRole("textbox", { name: /ノード数/ });
+        fireEvent.change(input, { target: { value: "0" } });
+        act(() =>
+            snapshot.setLimits({ ...snapshot.limits, sente: { kind: "nodes", nodes: 300_000 } }),
+        );
+        expect(input).toHaveProperty("value", "300000");
+        expect(input.getAttribute("aria-invalid")).toBe("false");
+    });
+
+    it("ノード数と深さを行き来しても、前の種類の下書きを持ち越さない", () => {
+        const snapshot = renderSettings({
+            sides: { sente: AI, gote: AI },
+            limits: { sente: { kind: "nodes", nodes: 50_000 }, gote: { kind: "clock" } },
+        });
+        fireEvent.change(screen.getByRole("textbox", { name: /ノード数/ }), {
+            target: { value: "abc" },
+        });
+        const [senteSelect] = readingSelects();
+        fireEvent.change(senteSelect, { target: { value: "depth" } });
+        expect(screen.getByRole("textbox", { name: /深さ/ })).toHaveProperty("value", "12");
+        fireEvent.change(senteSelect, { target: { value: "nodes" } });
+        expect(snapshot.limits.sente).toEqual({ kind: "nodes", nodes: 1_000_000 });
+        expect(screen.getByRole("textbox", { name: /ノード数/ })).toHaveProperty(
+            "value",
+            "1000000",
+        );
     });
 
     it("深さ・時計どおりに切り替えられ、時計どおりに戻すと秒の欄が戻る", () => {
@@ -131,11 +176,14 @@ describe("PlayAdvancedSettings（読む量）", () => {
         expect(screen.getAllByRole("spinbutton", { name: /持ち時間/ })).toHaveLength(2);
     });
 
-    it("対局中は読み方も数も変えさせない", () => {
+    it.each([
+        ["対局中", { locked: true }],
+        ["対局の準備中", { busy: true }],
+    ])("%sは読み方も数も変えさせない", (_, state) => {
         renderSettings({
             sides: { sente: AI, gote: HUMAN },
             limits: { sente: { kind: "depth", depth: 8 }, gote: { kind: "clock" } },
-            locked: true,
+            ...state,
         });
         expect(readingSelects()[0]).toHaveProperty("disabled", true);
         expect(screen.getByRole("textbox", { name: /深さ/ })).toHaveProperty("disabled", true);

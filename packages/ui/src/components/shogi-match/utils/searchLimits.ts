@@ -7,6 +7,9 @@ export const SEARCH_DEPTH_MAX = 60;
 
 export type SearchLimitKind = "nodes" | "depth";
 
+/** 時計ではなく数で決めた読む量。 */
+export type FixedSearchLimit = Extract<EngineSearchLimit, { kind: SearchLimitKind }>;
+
 /** 数で読む量に切り替えたとき、はじめに入れておく数。 */
 export const SEARCH_LIMIT_DEFAULTS: Record<SearchLimitKind, number> = {
     nodes: 1_000_000,
@@ -59,7 +62,7 @@ export function normalizeEngineSearchLimits(value: unknown): EngineSearchLimits 
 export function parseSearchLimitInput(
     text: string,
     kind: SearchLimitKind,
-): { limit: EngineSearchLimit; error: null } | { limit: null; error: string } {
+): { limit: FixedSearchLimit; error: null } | { limit: null; error: string } {
     const normalized = text.normalize("NFKC").replace(/,/g, "").trim();
     const value = /^[0-9]+$/.test(normalized) ? Number(normalized) : null;
     const max = SEARCH_LIMIT_MAX[kind];
