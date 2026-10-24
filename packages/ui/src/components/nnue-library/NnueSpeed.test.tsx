@@ -155,6 +155,39 @@ describe("NnueSpeedTable", () => {
         expect(screen.queryByText(/ダウンロードします/)).toBeNull();
     });
 
+    it("1 スレッド版に切り替わって測った値も、表に出す", async () => {
+        const fallbackSupport: NnueSpeedSupport = {
+            environment,
+            maxThreads: 8,
+            createBenchmarkClient: () => {
+                const client = createBenchmarkClient();
+                return {
+                    ...client,
+                    getThreadInfo: () => ({
+                        activeThreads: 1,
+                        maxThreads: 1,
+                        threadedAvailable: false,
+                        hardwareConcurrency: 8,
+                    }),
+                };
+            },
+        };
+        function Fallback() {
+            const benchmark = useNnueSpeedBenchmark(fallbackSupport);
+            return (
+                <NnueSpeedTable
+                    contentHash="fallback"
+                    prepare={async () => ({ ...meta, contentHashSha256: "fallback" })}
+                    support={fallbackSupport}
+                    benchmark={benchmark}
+                />
+            );
+        }
+        render(<Fallback />);
+        fireEvent.click(screen.getByRole("button", { name: "測る" }));
+        await waitFor(() => expect(rowTexts()).toContain("1 | 約 100万 | —"));
+    });
+
     it("対局・解析中などで測れないときは押せない", () => {
         render(<Harness hash="other" reason="対局中は変更できません" />);
         const button = screen.getByRole("button", { name: "測る" }) as HTMLButtonElement;

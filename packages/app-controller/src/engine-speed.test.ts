@@ -190,6 +190,33 @@ describe("withNpsRecording", () => {
         expect(store.getSnapshot().records).toEqual([]);
     });
 
+    it("閉じたエンジンの直後に探索した別のエンジンも、交互の探索として記録しない", async () => {
+        const first = createFakeClient();
+        const second = createFakeClient();
+        const a = await start(first);
+        await a.search({});
+        first.think();
+        await a.dispose();
+        await vi.advanceTimersByTimeAsync(100);
+        const b = await start(second);
+        await b.search({});
+        second.think();
+        await settle();
+        expect(store.getSnapshot().records).toEqual([]);
+    });
+
+    it("閉じるときに打ち切った探索と、まだ書いていない記録は残さない", async () => {
+        const fake = createFakeClient();
+        const client = await start(fake);
+        await client.search({});
+        fake.think();
+        await client.search({});
+        fake.info(3_000_000, 2000);
+        await client.dispose();
+        await settle();
+        expect(store.getSnapshot().records).toEqual([]);
+    });
+
     it("並列解析のように同時に探索するエンジンは記録しない", async () => {
         const first = createFakeClient();
         const second = createFakeClient();

@@ -27,7 +27,7 @@
             "presetKey": "ramu",
             "displayName": "RAMU",
             "usageLabel": "棋力重視",
-            "description": "棋力重視モデル。COCOより約300 nElo高い棋力。計算が重いぶん NPS は COCO より低めですが、実戦や検討におすすめです。",
+            "description": "棋力重視モデル。COCOより約300 nElo高い棋力。NPS は COCO より低めですが、実戦や検討におすすめです。",
             "url": "https://ramu-shogi.sh11235.com/nnue/files/ramu-layerstacks1536-20260612.bin",
             "size": 118313473,
             "sha256": "89016fd8dd18f1a4c73b03d8bc011e09495ab62027930d7c3566a799efd530f4",

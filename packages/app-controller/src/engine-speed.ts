@@ -63,18 +63,22 @@ function createEngineActivity(now: () => number = Date.now) {
             if (!on && searching.has(id)) lastSearchEndedAt.set(id, now());
             toggle(searching, id, on);
         },
-        forget: (id: symbol) => {
-            lastSearchEndedAt.delete(id);
-        },
         /** 自分以外のエンジンが探索中か */
         othersSearching: (id: symbol) => [...searching].some((other) => other !== id),
         /** 自分以外のエンジンが探索中か、少し前まで探索していた（AI 対 AI・並列解析） */
-        othersSearchingOrJustDid: (id: symbol) =>
-            [...searching].some((other) => other !== id) ||
-            [...lastSearchEndedAt].some(
-                ([other, endedAt]) =>
-                    other !== id && now() - endedAt < ALTERNATING_SEARCH_WINDOW_MS,
-            ),
+        // 閉じたエンジンの履歴も、この間が過ぎるまでは残す（閉じた直後に別のエンジンが探索することがある）
+        othersSearchingOrJustDid: (id: symbol) => {
+            const current = now();
+            for (const [other, endedAt] of lastSearchEndedAt) {
+                if (current - endedAt >= ALTERNATING_SEARCH_WINDOW_MS) {
+                    lastSearchEndedAt.delete(other);
+                }
+            }
+            return (
+                [...searching].some((other) => other !== id) ||
+                [...lastSearchEndedAt.keys()].some((other) => other !== id)
+            );
+        },
         getSnapshot: () => snapshot,
         subscribe(listener: ActivityListener) {
             listeners.add(listener);
@@ -194,6 +198,8 @@ export function withNpsRecording<T extends EngineClient>(
     let active: { contaminated: boolean; sample: SearchSample | null } | null = null;
     let unsubscribeActivity: (() => void) | null = null;
     let unsubscribeEvents: (() => void) | null = null;
+    /** 交互の探索でないと分かるまで書くのを待っている記録。閉じたら捨てる。 */
+    const pendingWrites = new Set<() => void>();
     // Wasm の setOption("Threads") は次の初期化まで効かないので、設定値ではなく実際に動いている数を使う。
     const effectiveThreads = () => {
         const reported = inner.getThreadInfo?.().activeThreads;
@@ -213,7 +219,7 @@ export function withNpsRecording<T extends EngineClient>(
     };
 
     /** 探索を締める。`override` は解析の結果のように、探索全体の量が分かっているとき。 */
-    const finish = (override: SearchSample | null) => {
+    const finish = (override: SearchSample | null, { discard = false } = {}) => {
         if (!active) return;
         const { contaminated, sample: lastSample } = active;
         active = null;
@@ -221,7 +227,13 @@ export function withNpsRecording<T extends EngineClient>(
         unsubscribeActivity = null;
         activity.setSearching(id, false);
         const sample = override ?? lastSample;
-        if (!record || contaminated || !sample || sample.timeMs < NNUE_SPEED_MIN_SEARCH_MS) {
+        if (
+            discard ||
+            !record ||
+            contaminated ||
+            !sample ||
+            sample.timeMs < NNUE_SPEED_MIN_SEARCH_MS
+        ) {
             return;
         }
         const key = {
@@ -232,17 +244,21 @@ export function withNpsRecording<T extends EngineClient>(
         const nps = (sample.nodes * 1000) / sample.timeMs;
         const hash = contentHash;
         // 直後にほかのエンジンが探索を始めたら AI 対 AI とみなし、この探索も記録しない。
-        const timer = setTimeout(() => {
+        const cancel = () => {
+            clearTimeout(timer);
             unsubscribe();
+            pendingWrites.delete(cancel);
+        };
+        const timer = setTimeout(() => {
+            cancel();
             void hash.then((contentHash) => {
                 if (contentHash) store.addObserved({ contentHash, ...key }, nps);
             });
         }, ALTERNATING_SEARCH_WINDOW_MS);
         const unsubscribe = activity.subscribe(() => {
-            if (!activity.othersSearching(id)) return;
-            clearTimeout(timer);
-            unsubscribe();
+            if (activity.othersSearching(id)) cancel();
         });
+        pendingWrites.add(cancel);
     };
 
     const onEvent = (event: EngineEvent) => {
@@ -353,12 +369,13 @@ export function withNpsRecording<T extends EngineClient>(
             await inner.stop();
         },
         async dispose() {
-            finish(null);
+            // 閉じるときに打ち切った探索と、まだ書いていない記録は残さない（画面を離れた途中の値など）
+            finish(null, { discard: true });
             unsubscribeEvents?.();
             unsubscribeEvents = null;
             contentHash = Promise.resolve(null);
             activity.setLive(id, false);
-            activity.forget(id);
+            for (const cancel of [...pendingWrites]) cancel();
             await inner.dispose();
         },
     } as T;
