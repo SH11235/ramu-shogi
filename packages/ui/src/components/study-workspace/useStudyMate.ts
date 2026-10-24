@@ -60,7 +60,7 @@ class StudyMateCancelled extends Error {}
 export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): StudyMateController {
     const [results, setResults] = useState<ReadonlyMap<string, StudyMateState>>(new Map());
     const [runningNodeId, setRunningNodeId] = useState<string | null>(null);
-    /** 実行の世代。開始・中止・アンマウントのたびに進め、古い実行の続きを捨てる。 */
+    /** 実行の世代。開始・中止・エンジンの変更・アンマウントのたびに進め、古い実行の続きを捨てる。 */
     const runRef = useRef(0);
     const clientRef = useRef<EngineClient | null>(null);
     /** 調べている実行の局面と、使っているエンジンの id。 */
