@@ -17,7 +17,8 @@ import { useShogiMatchConfig } from "../ShogiMatchContext";
 import { formatTimeRule } from "../utils/timeSettings";
 import { isSelfResignation } from "./PlayEndStamp";
 import { PlayGameReadingSummary } from "./PlayEngineReading";
-import { CopyKifButton, useReasonText, useResultHeadline, winnerColorClass } from "./PlayResult";
+import { KifuCopyButtons } from "./PlayKifuCopy";
+import { useReasonText, useResultHeadline, winnerColorClass } from "./PlayResult";
 import { PLAY_OUTLINE_BUTTON, PLAY_PRIMARY_BUTTON } from "./playStyles";
 
 // 判子を見せてから開く。判子は終局の 150ms 後に押され、押す動きに 300ms かかる
@@ -221,9 +222,7 @@ function ResultDialogBody({
                     設定を変える
                 </Button>
             </div>
-            <div className="flex justify-center text-[13px] text-wafuu-sumi-light">
-                <CopyKifButton />
-            </div>
+            <KifuCopyButtons className="justify-center" />
         </div>
     );
 }

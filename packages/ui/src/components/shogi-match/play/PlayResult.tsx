@@ -8,12 +8,11 @@ import type { GameResult, Player } from "@shogi/app-core";
 import { getWinnerLabel } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
-import { useState } from "react";
 import { Button } from "../../button";
 import { useMatchState } from "../contexts/MatchStateContext";
-import { useNavigation } from "../contexts/NavigationContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
-import { PLAY_OUTLINE_BUTTON, PLAY_PRIMARY_BUTTON, PLAY_TEXT_LINK } from "./playStyles";
+import { KifuCopyButtons, KifuCopySheetButton } from "./PlayKifuCopy";
+import { PLAY_OUTLINE_BUTTON, PLAY_PRIMARY_BUTTON } from "./playStyles";
 
 /** 結果の見出し。人が片方だけなら「あなたの勝ち／負け」、それ以外は「先手の勝ち」など。 */
 export function useResultHeadline(result: GameResult): {
@@ -84,7 +83,6 @@ export function PlayResultCard({
     className,
 }: PlayResultCardProps): ReactElement | null {
     const { play } = useShogiMatchConfig();
-    const { copied, copyKif } = useCopyKif();
     const result = play?.gameResult;
     if (!play || !result) return null;
 
@@ -117,14 +115,7 @@ export function PlayResultCard({
                 >
                     設定を変える
                 </Button>
-                <Button
-                    type="button"
-                    variant="outline"
-                    className={cn(PLAY_OUTLINE_BUTTON, rowButton)}
-                    onClick={copyKif}
-                >
-                    {copied ? "コピーしました" : "棋譜をコピー"}
-                </Button>
+                <KifuCopySheetButton className={rowButton} />
             </section>
         );
     }
@@ -151,21 +142,28 @@ export function PlayResultCard({
                 >
                     もう一局
                 </Button>
-                {play.openStudy && (
+                <div className={cn("grid gap-2", play.openStudy ? "grid-cols-2" : "grid-cols-1")}>
+                    {play.openStudy && (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className={cn(PLAY_OUTLINE_BUTTON, "min-h-10 px-2")}
+                            onClick={() => play.openStudy?.()}
+                        >
+                            ノート
+                        </Button>
+                    )}
                     <Button
                         type="button"
                         variant="outline"
-                        className={cn(
-                            PLAY_OUTLINE_BUTTON,
-                            compact ? "min-h-10 flex-1 px-2" : "w-full",
-                        )}
-                        onClick={() => play.openStudy?.()}
+                        className={cn(PLAY_OUTLINE_BUTTON, "min-h-10 px-2")}
+                        onClick={play.newGame}
                     >
-                        ノート
+                        設定を変える
                     </Button>
-                )}
+                </div>
             </div>
-            <PlayResultLinks />
+            <KifuCopyButtons />
         </section>
     );
 }
@@ -212,58 +210,6 @@ function ResultHeadlineLine({
                 {play && play.hintCount > 0 ? ` ・ ヒント ${play.hintCount} 回` : ""}
             </p>
         </section>
-    );
-}
-
-/** 棋譜をクリップボードに写す。写せたら `copied` が true になる。 */
-function useCopyKif(): { copied: boolean; copyKif: () => void } {
-    const { handleCopyKif } = useNavigation();
-    const [copied, setCopied] = useState(false);
-    const copyKif = () => {
-        const text = handleCopyKif();
-        void navigator.clipboard
-            ?.writeText(text)
-            .then(() => setCopied(true))
-            .catch(() => setCopied(false));
-    };
-    return { copied, copyKif };
-}
-
-/** 終局後の、主でない操作（設定を変える・棋譜をコピー）。 */
-function PlayResultLinks({ className }: { className?: string }): ReactElement | null {
-    const { play } = useShogiMatchConfig();
-    if (!play?.gameResult) return null;
-
-    return (
-        <div
-            className={cn(
-                "flex flex-wrap items-center gap-x-4 text-[13px] text-wafuu-sumi-light",
-                className,
-            )}
-        >
-            <button
-                type="button"
-                onClick={play.newGame}
-                className={cn(PLAY_TEXT_LINK, "hover:text-wafuu-sumi")}
-            >
-                設定を変える
-            </button>
-            <CopyKifButton />
-        </div>
-    );
-}
-
-/** 「棋譜をコピー」の文字リンク。 */
-export function CopyKifButton(): ReactElement {
-    const { copied, copyKif } = useCopyKif();
-    return (
-        <button
-            type="button"
-            onClick={copyKif}
-            className={cn(PLAY_TEXT_LINK, "hover:text-wafuu-sumi")}
-        >
-            {copied ? "コピーしました" : "棋譜をコピー"}
-        </button>
     );
 }
 
