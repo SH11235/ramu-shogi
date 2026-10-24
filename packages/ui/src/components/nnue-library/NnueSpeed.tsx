@@ -272,7 +272,7 @@ export function NnueSpeedTable({
                 <thead>
                     <tr className="border-b border-border">
                         <th className="py-1 pr-4 font-normal">スレッド数</th>
-                        <th className="py-1 pr-4 font-normal">計測</th>
+                        <th className="py-1 pr-4 font-normal">NPS</th>
                         <th className="py-1 font-normal">対局での実測</th>
                     </tr>
                 </thead>

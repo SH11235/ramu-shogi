@@ -78,13 +78,19 @@ function formatSize(bytes: number): string {
     return `${Math.round(bytes / (1024 * 1024))} MB`;
 }
 
+/**
+ * 形式を「LayerStacks 1536-16-32」「HalfKP 256-32-32」のように書く。名前の末尾に L1 の次元が
+ * 付いている形式（HalfKP256 など）は、次元の並びと重なるので名前から外す。
+ */
 function formatLabel(format: Partial<NnueFormat> | undefined): string | null {
     const architecture = format?.architecture?.trim();
     if (!architecture || architecture.toLowerCase() === "unknown") return null;
     const dims = [format?.l1Dimension, format?.l2Dimension, format?.l3Dimension];
-    return dims.every((dim) => typeof dim === "number" && dim > 0)
-        ? `${architecture}（${dims.join(" / ")}）`
+    if (!dims.every((dim) => typeof dim === "number" && dim > 0)) return architecture;
+    const name = architecture.endsWith(String(dims[0]))
+        ? architecture.slice(0, -String(dims[0]).length)
         : architecture;
+    return `${name} ${dims.join("-")}`;
 }
 
 function needsModelSettings(meta: NnueMeta): boolean {
@@ -791,19 +797,21 @@ function PresetRow({
                     />
                 )}
                 <div className="flex min-w-0 flex-col gap-1">
+                    {/* 名前の横に用途・形式・大きさを並べる。幅が足りなければ折り返す。 */}
                     <h3 className="flex flex-wrap items-baseline gap-x-2 text-base font-semibold text-foreground">
                         {config.displayName}
-                        {config.usageLabel && (
-                            <span className="text-xs font-normal text-muted-foreground">
-                                {config.usageLabel}
-                            </span>
-                        )}
+                        {[config.usageLabel, formatLabel(config.format), formatSize(downloadSize)]
+                            .filter(Boolean)
+                            .map((label) => (
+                                <span
+                                    key={label}
+                                    className="text-xs font-normal text-muted-foreground"
+                                >
+                                    {label}
+                                </span>
+                            ))}
                     </h3>
                     <p className="text-sm text-muted-foreground">{config.description}</p>
-                    <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                        {formatLabel(config.format) && <span>{formatLabel(config.format)}</span>}
-                        <span>{formatSize(downloadSize)}</span>
-                    </p>
                     {speedLine}
                 </div>
             </div>
