@@ -268,3 +268,88 @@ describe("computeStudyHighlights", () => {
         ]);
     });
 });
+
+describe("computeStudyHighlights: 深く読んだ結果での判定し直し", () => {
+    const deepSpec: StudyLayerSpec = {
+        ...spec,
+        limits: { timeMs: 30000, depth: 64, nodes: null },
+        multiPv: 3,
+    };
+    const deepLayerId = studyLayerId(deepSpec);
+    const putDeep = (
+        nodeId: string,
+        candidates: Array<{ score: StudyScore; move: string }>,
+    ): StudyOp => ({
+        type: "putAnalysis",
+        layerId: deepLayerId,
+        nodeId,
+        result: {
+            runId: "deep",
+            completion: "completed",
+            depth: 25,
+            nodes: null,
+            timeMs: null,
+            execution: { threads: null, hashMb: null, parallelWorkers: null },
+            candidates: candidates.map((candidate, index) => ({
+                rank: index + 1,
+                score: candidate.score,
+                depth: 25,
+                seldepth: null,
+                pv: [candidate.move],
+            })),
+        },
+    });
+    const withDeep = (doc: StudyDocument, ops: StudyOp[]): StudyDocument =>
+        applyStudyOps(doc, [
+            { type: "ensureLayer", spec: deepSpec, display: { label: "RAMU・30 秒" } },
+            ...ops,
+        ]);
+    const find = (doc: StudyDocument, nodeId: string) =>
+        computeStudyHighlights(doc, layerId, { deeperLayerIds: [deepLayerId] }).find(
+            (highlight) => highlight.nodeId === nodeId,
+        );
+
+    it("指した後の局面を深く読んで落差が無かったら、悪手を取り消し、元の判定を残す", () => {
+        // 3 手目（☗2六歩）は、浅い解析では +20 → -900 の悪手。
+        const { doc, ids } = docWithScores([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
+        expect(find(doc, ids[3])?.kind).toBe("blunder");
+
+        const revised = find(
+            withDeep(doc, [putDeep(ids[3], [{ score: cp(10), move: "8c8d" }])]),
+            ids[3],
+        );
+        expect(revised?.kind).toBeNull();
+        expect(revised?.revisedFrom).toBe("blunder");
+        expect(revised?.judgedByDeeper).toBe(true);
+        expect(revised?.scoreAfter).toEqual(cp(10));
+    });
+
+    it("指す前の局面を深く読み、指した手が候補にあれば、同じ探索の中で最善手と比べる", () => {
+        // 浅い解析では問題なし（+30 → +20）。深く読むと、最善 ☗7六歩 +200 に対して指した ☗2六歩 は -500。
+        const { doc, ids } = docWithScores([cp(30), cp(40), cp(30), cp(20), cp(10)]);
+        expect(find(doc, ids[3])).toBeUndefined();
+
+        const deep = withDeep(doc, [
+            putDeep(ids[2], [
+                { score: cp(200), move: "7g7f" },
+                { score: cp(-500), move: "2g2f" },
+            ]),
+        ]);
+        const revised = find(deep, ids[3]);
+        expect(revised?.kind).toBe("blunder");
+        expect(revised?.revisedFrom).toBeNull();
+        expect(revised?.scoreBefore).toEqual(cp(200));
+        expect(revised?.scoreAfter).toEqual(cp(-500));
+    });
+
+    it("深く読んでも判定が同じなら、判定の変化として知らせない", () => {
+        const { doc, ids } = docWithScores([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
+        const same = find(
+            withDeep(doc, [putDeep(ids[3], [{ score: cp(-1000), move: "8c8d" }])]),
+            ids[3],
+        );
+        expect(same?.kind).toBe("blunder");
+        expect(same?.judgedByDeeper).toBe(true);
+        expect(same?.revisedFrom).toBeUndefined();
+    });
+});

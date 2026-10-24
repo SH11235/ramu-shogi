@@ -23,6 +23,8 @@ import {
     type StudyLayerRef,
     type StudyLayerSpecInput,
     type StudyOp,
+    studyLineFitsPassLimit,
+    studyPassRightsForLine,
 } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
 import { useEffect, useRef, useState } from "react";
@@ -38,10 +40,15 @@ import {
     type Message,
 } from "../shogi-match/types";
 import { collectTreeAnalysisJobs } from "../shogi-match/utils/branchTreeUtils";
+import { resolveThreadSetting } from "../shogi-match/utils/threadOptions";
 import { countStudyUnanalyzed, studyPathTo } from "./studyView";
+import { useStudyDeepSearch } from "./useStudyDeepSearch";
 
-/** 「この局面を深く解析」の探索時間（ミリ秒）。 */
-export const STUDY_DEEP_TIME_MS = 10_000;
+/**
+ * 「この局面を深く解析」の探索時間（ミリ秒）。続きから読めるエンジンでは、「続けて読む」のたびに
+ * この時間だけ読み足す（対局画面のヒントと同じ長さ）。
+ */
+export const STUDY_DEEP_TIME_MS = 30_000;
 /** 「この局面を深く解析」の探索深さの上限（時間で止まる前提の大きめの値）。 */
 const STUDY_DEEP_DEPTH = 64;
 /** 「この局面を深く解析」で読む候補手の数の下限。 */
@@ -95,6 +102,8 @@ export interface StudyAnalysisSettingsForm {
      * Desktop の内蔵エンジンは 1。
      */
     maxParallel: number | null;
+    /** いま選んでいるエンジンが、1 局面の探索に使えるスレッド数の上限（分からなければ null）。 */
+    maxThreads: number | null;
     onEngineIdChange: (engineId: string) => void;
 }
 
@@ -121,6 +130,10 @@ export interface StudyAnalysisController {
     resumeLayer: (layerId: string) => Promise<void>;
     /** 指定した局面を長い時間で解析する。 */
     startDeep: (nodeId: string) => Promise<void>;
+    /** 止めた「深く解析」を続きから読める局面。無ければ null。 */
+    continuableDeepNodeId: string | null;
+    /** 止めた「深く解析」を、その続きから読む。 */
+    continueDeep: () => Promise<void>;
     cancel: () => Promise<void>;
     form: StudyAnalysisSettingsForm;
 }
@@ -298,6 +311,10 @@ export function useStudyAnalysis({
         supportsPassRights: engineOption?.kind !== "external",
         materialFallback: engineOption?.kind !== "external",
         // エンジンが同時に動かせる数に収める（Desktop の内蔵エンジンは 1 つだけ）。
+        threadsPerWorker: Math.min(
+            Math.max(1, settings.batchAnalysisThreads),
+            engineOption?.maxThreads ?? Number.POSITIVE_INFINITY,
+        ),
         workerCount: Math.min(
             resolveWorkerCount(settings.parallelWorkers),
             engineOption?.maxParallel ?? Number.POSITIVE_INFINITY,
@@ -335,6 +352,36 @@ export function useStudyAnalysis({
             });
         },
     });
+
+    // 止めても続きから読める探索は、局面ごとに 1 つの読みを専有するエンジンが要る。外部の USI エンジンは
+    // 再開できず、Desktop の内蔵エンジン（同時に 1 つ）は解析の部品と共有するので、1 回だけの読みにする。
+    const canResumeDeep =
+        engineOption !== undefined &&
+        engineOption.kind !== "external" &&
+        engineOption.maxParallel !== 1;
+    /** いまの「深く解析」のレイヤー（続けて読むとき、表示をその結果に切り替えるのに使う）。 */
+    const deepLayerIdRef = useRef<string | null>(null);
+    const deep = useStudyDeepSearch({
+        createClient: canResumeDeep ? engineOption.createClient : null,
+        clientKey: engineOption?.id,
+        budgetMs: STUDY_DEEP_TIME_MS,
+        onResult: (request, result) => {
+            handlePositionAnalyzed({
+                layer: request.layer,
+                runtimeNodeId: request.nodeId,
+                ply: latestRef.current.tree.nodes.get(request.nodeId)?.ply ?? 0,
+                result,
+            });
+            // 止めるたびの結果なので、まとめずにすぐ反映する。
+            flushResults();
+            latestRef.current.onFlush?.();
+        },
+        onError: (message) => {
+            console.error("[study] 深く解析できませんでした:", message);
+            setMessage({ text: `解析に失敗しました: ${message}`, type: "error" });
+        },
+    });
+    const isDeepSearching = deep.state.phase === "preparing" || deep.state.phase === "running";
 
     useEffect(() => {
         mountedRef.current = true;
@@ -476,7 +523,9 @@ export function useStudyAnalysis({
         request: { kind: "full" } | { kind: "deep"; nodeId: string },
         task: (isCurrent: () => boolean) => Promise<void>,
     ): Promise<void> => {
-        if (pool.isRunning || preparingRef.current || !mountedRef.current) return;
+        if (pool.isRunning || isDeepSearching || preparingRef.current || !mountedRef.current) {
+            return;
+        }
         if (lockedRef.current) return;
         const generation = generationRef.current + 1;
         generationRef.current = generation;
@@ -540,6 +589,9 @@ export function useStudyAnalysis({
                 onLayerStarted(prepared.layer.layerId, "full");
                 return;
             }
+            // 止めてある「深く解析」の読みは手放す（全体の解析と同時にエンジンを持ち続けない）。
+            await deep.release();
+            if (!isCurrent() || lockedRef.current) return;
             run(jobs, prepared, multiPv, "full");
         });
 
@@ -600,6 +652,35 @@ export function useStudyAnalysis({
                 const move = current.tree.nodes.get(id)?.usiMove;
                 if (move) moves.push(move);
             }
+            if (canResumeDeep && studyLineFitsPassLimit(current.tree.startSfen, moves)) {
+                const passRights = studyPassRightsForLine(current.tree.startSfen, moves);
+                deepLayerIdRef.current = prepared.layer.layerId;
+                const started = await deep.start({
+                    nodeId,
+                    sfen: current.tree.startSfen,
+                    moves,
+                    sideToMove: node.positionAfter.turn,
+                    loadOptions: passRights ? { passRights } : undefined,
+                    layer: prepared.layer,
+                    setup: {
+                        nnueId: prepared.resolved?.nnueId ?? null,
+                        layerStacks: prepared.resolved?.layerStacks,
+                        fvScale: prepared.resolved?.fvScale,
+                        materialFallback: true,
+                        multiPv,
+                        threads: resolveThreadSetting(
+                            settings.deepAnalysisThreads,
+                            engineOption?.maxThreads,
+                        ),
+                    },
+                });
+                if (started) {
+                    onLayerStarted(prepared.layer.layerId, "deep");
+                    return;
+                }
+                // 続きから読める探索が使えないと分かったら、1 回だけの読みに切り替える。
+                if (!isCurrent() || lockedRef.current) return;
+            }
             setLive({ nodeId, depth: null });
             run(
                 [
@@ -625,6 +706,8 @@ export function useStudyAnalysis({
         preparingRef.current = false;
         requestRef.current = null;
         if (mountedRef.current) setIsPreparing(false);
+        // 深く解析している読みは、続きから読めるよう止めるだけにする（止めた時点の結果は保存される）。
+        await deep.stop();
         // 止めた探索は、そこまでの結果が「中断」として `onPositionAnalyzed` に届く。
         await pool.cancel();
         flushResults();
@@ -685,7 +768,17 @@ export function useStudyAnalysis({
         void cancelRef.current();
     }, [locked]);
 
-    const activeMode = pool.isRunning ? mode : null;
+    const continueDeep = async (): Promise<void> => {
+        if (lockedRef.current || pool.isRunning || preparingRef.current) return;
+        if (deepLayerIdRef.current !== null) onLayerStarted(deepLayerIdRef.current, "deep");
+        await deep.resume();
+    };
+
+    const activeMode = pool.isRunning ? mode : isDeepSearching ? "deep" : null;
+    const deepLive =
+        isDeepSearching && deep.state.nodeId !== null
+            ? { nodeId: deep.state.nodeId, depth: deep.state.depth }
+            : null;
     return {
         controller: {
             mode: activeMode,
@@ -694,12 +787,15 @@ export function useStudyAnalysis({
                 activeMode === "full" && pool.progress
                     ? { completed: pool.progress.completed, total: pool.progress.total }
                     : null,
-            live: activeMode === "deep" ? live : null,
+            live: activeMode === "deep" ? (deepLive ?? live) : null,
             settingsLabel,
             fullTargetCount,
             startFull: () => startFullWith(analysisNnueSelection),
             resumeLayer,
             startDeep: (nodeId) => startDeepWith(nodeId, analysisNnueSelection),
+            continuableDeepNodeId:
+                deep.state.phase === "paused" && deep.state.canContinue ? deep.state.nodeId : null,
+            continueDeep,
             cancel,
             form: {
                 settings,
@@ -717,6 +813,7 @@ export function useStudyAnalysis({
                 })),
                 engineId: engineOption?.id ?? "",
                 maxParallel: engineOption?.maxParallel ?? null,
+                maxThreads: engineOption?.maxThreads ?? null,
                 onEngineIdChange: setAnalysisEngineId,
             },
         },

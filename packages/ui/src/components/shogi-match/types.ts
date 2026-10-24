@@ -82,6 +82,10 @@ export interface AnalysisSettings {
     batchAnalysisDepth: number;
     /** 候補手数（MultiPV）、デフォルト: 1 */
     multiPv: number;
+    /** 全体の解析で、1 局面の探索に使うスレッド数（同時に解析する局面ごと）。 */
+    batchAnalysisThreads: number;
+    /** 「この局面を深く解析」のスレッド数（0=自動）。 */
+    deepAnalysisThreads: number;
 }
 
 /** デフォルト解析設定 */
@@ -90,6 +94,8 @@ export const DEFAULT_ANALYSIS_SETTINGS: AnalysisSettings = {
     batchAnalysisTimeMs: 1000,
     batchAnalysisDepth: 15,
     multiPv: 1,
+    batchAnalysisThreads: 1,
+    deepAnalysisThreads: 0,
 };
 
 export interface AnalysisSnapshotEntryDraft {

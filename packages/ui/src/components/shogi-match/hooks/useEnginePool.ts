@@ -17,7 +17,7 @@ import type {
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 /** 評価関数を使わないときの、駒得の評価の強さ（Wasm のエンジンが自分で選ぶ値と同じ）。 */
-const MATERIAL_FALLBACK_LEVEL = 9;
+export const MATERIAL_FALLBACK_LEVEL = 9;
 
 /**
  * 解析ジョブ
@@ -56,6 +56,11 @@ interface UseEnginePoolOptions {
     clientKey?: string;
     /** ワーカー数 */
     workerCount: number;
+    /**
+     * 1 つのワーカー（1 局面の探索）に使うスレッド数（既定は 1）。端末全体では
+     * `workerCount × threadsPerWorker` のスレッドを使う。
+     */
+    threadsPerWorker?: number;
     /**
      * 評価関数（NNUE）を読み込まずに探索するとき、駒得の評価（簡易 AI）を明示的に有効にするか
      * （既定は false）。内蔵エンジンは、評価関数も駒得の評価も無いと探索できない。Wasm は
@@ -177,6 +182,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         createClient,
         clientKey,
         workerCount,
+        threadsPerWorker = 1,
         onProgress,
         onResult,
         onComplete,
@@ -223,6 +229,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         /** 初期化済みワーカーが使用しているエンジンキー */
         currentClientKey: string | undefined;
         currentWorkerCount?: number;
+        currentThreadsPerWorker?: number;
     }>({
         workers: [],
         jobQueue: [],
@@ -345,7 +352,10 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                       collector: createStudyAnalysisCollector({
                           runId: crypto.randomUUID(),
                           sideToMove: job.sideToMove,
-                          execution: { threads: 1, parallelWorkers: state.workers.length },
+                          execution: {
+                              threads: state.currentThreadsPerWorker ?? 1,
+                              parallelWorkers: state.workers.length,
+                          },
                       }),
                   }
                 : null;
@@ -455,6 +465,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         layerStacks: LayerStacksOptions | undefined;
         clientKey: string | undefined;
         workerCount: number;
+        threadsPerWorker: number;
         createClient: () => EngineClient;
         materialFallback: boolean;
     }
@@ -467,6 +478,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         state.initialized = false;
         state.currentNnueId = undefined;
         state.currentWorkerCount = undefined;
+        state.currentThreadsPerWorker = undefined;
         await Promise.all(
             workers.map(async (worker) => {
                 try {
@@ -493,8 +505,11 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             let client: EngineClient | undefined;
             try {
                 client = params.createClient();
-                // 一括解析は局面単位で並列化し、各エンジン内の並列化との積を避ける。
-                await client.init({ threads: 1, usiThreads: 1 });
+                // 一括解析は局面単位で並列化する。1 局面の中でも並列に読むかは呼び出し側が決める。
+                await client.init({
+                    threads: params.threadsPerWorker,
+                    usiThreads: params.threadsPerWorker,
+                });
 
                 // NNUE をロード（指定されている場合）
                 if (params.nnueId && client.loadNnue) {
@@ -559,6 +574,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         state.currentFvScale = params.fvScale;
         state.currentLayerStacks = params.layerStacks;
         state.currentClientKey = params.clientKey;
+        state.currentThreadsPerWorker = params.threadsPerWorker;
         // 途中で打ち切った場合は、実際に作れた数を覚える（次の実行が足りなければ作り直す）。
         state.currentWorkerCount =
             workers.length < params.workerCount && state.runId !== runId
@@ -604,6 +620,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             layerStacks: startOptions?.layerStacks,
             clientKey,
             workerCount,
+            threadsPerWorker: Math.max(1, Math.trunc(threadsPerWorker)),
             createClient,
             materialFallback,
         };
@@ -624,7 +641,8 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                     JSON.stringify(params.layerStacks) !==
                         JSON.stringify(state.currentLayerStacks) ||
                     params.clientKey !== state.currentClientKey ||
-                    params.workerCount !== state.currentWorkerCount);
+                    params.workerCount !== state.currentWorkerCount ||
+                    params.threadsPerWorker !== state.currentThreadsPerWorker);
             if (shouldReinitialize) {
                 await disposeWorkers();
             }

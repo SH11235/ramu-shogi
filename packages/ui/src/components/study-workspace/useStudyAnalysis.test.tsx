@@ -1,5 +1,10 @@
 import { applyStudyOps, type StudyDocument, type StudyOp } from "@shogi/app-core";
-import type { EngineClient, EngineEventHandler } from "@shogi/engine-client";
+import type {
+    AnalysisFinished,
+    EngineClient,
+    EngineEventHandler,
+    EngineInfoEvent,
+} from "@shogi/engine-client";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,14 +18,19 @@ function createEngineOption(searchMs = 5): {
     option: EngineOption;
     searches: () => number;
     clients: () => number;
+    /** エンジンの初期化で渡されたスレッド数（作った順）。 */
+    initThreads: () => Array<number | undefined>;
 } {
     let searches = 0;
     let clients = 0;
+    const initThreads: Array<number | undefined> = [];
     const createClient = (): EngineClient => {
         clients++;
         const listeners = new Set<EngineEventHandler>();
         return {
-            init: vi.fn().mockResolvedValue(undefined),
+            init: vi.fn(async (options?: { threads?: number }) => {
+                initThreads.push(options?.threads);
+            }),
             loadPosition: vi.fn().mockResolvedValue(undefined),
             setOption: vi.fn().mockResolvedValue(undefined),
             stop: vi.fn().mockResolvedValue(undefined),
@@ -55,6 +65,96 @@ function createEngineOption(searchMs = 5): {
         option: { id: "wasm", label: "内蔵エンジン", createClient, kind: "internal" },
         searches: () => searches,
         clients: () => clients,
+        initThreads: () => initThreads,
+    };
+}
+
+/**
+ * 止めても続きから読める探索（`analysis`）を持つエンジン。読み始める・続けるたびに 5 ずつ深く読んだ
+ * info を 1 回流す。読みは `finishRun` で上限に届かせるか、止められるまで続く。
+ */
+function createResumableEngineOption(): {
+    option: EngineOption;
+    starts: () => number;
+    resumes: () => number;
+    searches: () => number;
+    /** いまの読みを、上限に届いたことにして終える。 */
+    finishRun: (elapsedMs: number) => void;
+} {
+    let starts = 0;
+    let resumes = 0;
+    let searches = 0;
+    let depth = 0;
+    let totalTimeMs = 0;
+    let end: ((reason: AnalysisFinished["reason"], elapsedMs: number) => AnalysisFinished) | null =
+        null;
+    const run = (sessionId: string, onInfo: (info: EngineInfoEvent) => void) => {
+        depth += 5;
+        onInfo({ type: "info", depth, scoreCp: 100 + depth, multipv: 1, pv: ["8c8d"] });
+        let resolve: (finished: AnalysisFinished) => void = () => {};
+        const finished = new Promise<AnalysisFinished>((done) => {
+            resolve = done;
+        });
+        let result: AnalysisFinished | null = null;
+        end = (reason, elapsedMs) => {
+            if (result) return result;
+            totalTimeMs += elapsedMs;
+            result = {
+                sessionId,
+                runId: 1,
+                reason,
+                resumable: true,
+                completedDepth: depth,
+                nodes: 1000,
+                timeMs: elapsedMs,
+                totalNodes: depth * 1000,
+                totalTimeMs,
+                workerDepths: [],
+            };
+            resolve(result);
+            return result;
+        };
+        return {
+            sessionId,
+            runId: 1,
+            finished,
+            pause: async () => (end as NonNullable<typeof end>)("paused", 10_000),
+        };
+    };
+    const createClient = (): EngineClient => ({
+        init: vi.fn().mockResolvedValue(undefined),
+        loadPosition: vi.fn().mockResolvedValue(undefined),
+        setOption: vi.fn().mockResolvedValue(undefined),
+        stop: vi.fn().mockResolvedValue(undefined),
+        dispose: vi.fn().mockResolvedValue(undefined),
+        subscribe: () => () => {},
+        async search() {
+            searches++;
+            return { async cancel() {} };
+        },
+        analysis: {
+            available: () => true,
+            async start(sessionId, _budget, onInfo) {
+                starts++;
+                depth = 0;
+                totalTimeMs = 0;
+                return run(sessionId, onInfo);
+            },
+            async resume(sessionId, _budget, onInfo) {
+                resumes++;
+                return run(sessionId, onInfo);
+            },
+            release: vi.fn().mockResolvedValue(undefined),
+        },
+    });
+    return {
+        option: { id: "wasm", label: "内蔵エンジン", createClient, kind: "internal" },
+        starts: () => starts,
+        resumes: () => resumes,
+        searches: () => searches,
+        finishRun: (elapsedMs) => {
+            end?.("budgetReached", elapsedMs);
+        },
     };
 }
 
@@ -149,6 +249,34 @@ describe("useStudyAnalysis", () => {
         expect(engine.searches()).toBe(5);
     });
 
+    it("全体の解析は、設定した 1 局面あたりのスレッド数でエンジンを用意する", async () => {
+        localStorage.setItem(
+            "shogi-analysis-settings",
+            JSON.stringify({
+                parallelWorkers: 2,
+                batchAnalysisTimeMs: 500,
+                batchAnalysisDepth: 15,
+                multiPv: 1,
+                batchAnalysisThreads: 3,
+            }),
+        );
+        const { doc } = createTestStudy();
+        const engine = createEngineOption();
+        const { result } = renderHook(() => useHarness(doc, [engine.option]));
+
+        await act(async () => {
+            await result.current.controller.startFull();
+        });
+        await waitFor(() => expect(result.current.flushCount).toBe(1));
+        expect(engine.initThreads()).toEqual([3, 3]);
+        const layer = result.current.doc.layers[0];
+        expect(Object.values(layer.results)[0].execution).toEqual({
+            threads: 3,
+            hashMb: null,
+            parallelWorkers: 2,
+        });
+    });
+
     it("この局面を深く解析すると、時間の長い別の設定の結果としてその局面だけに入る", async () => {
         const { doc, ids } = createTestStudy();
         const engine = createEngineOption();
@@ -162,10 +290,55 @@ describe("useStudyAnalysis", () => {
         const layer = result.current.doc.layers[0];
         expect(layer.spec.limits.timeMs).toBe(STUDY_DEEP_TIME_MS);
         expect(layer.spec.multiPv).toBe(3);
-        expect(layer.display.label).toBe("簡易AI（駒得）・10 秒");
+        expect(layer.display.label).toBe("簡易AI（駒得）・30 秒");
         expect(Object.keys(layer.results)).toEqual([ids[2]]);
         expect(result.current.startedLayers).toEqual([`deep:${layer.id}`]);
         expect(engine.searches()).toBe(1);
+    });
+
+    it("続きから読めるエンジンでは、深く解析を止めても同じ局面の続きから読め、止めるたびに結果を残す", async () => {
+        const { doc, ids } = createTestStudy();
+        const engine = createResumableEngineOption();
+        const { result } = renderHook(() => useHarness(doc, [engine.option]));
+
+        await act(async () => {
+            await result.current.controller.startDeep(ids[2]);
+        });
+        await waitFor(() => expect(result.current.controller.mode).toBe("deep"));
+        expect(result.current.controller.live).toEqual({ nodeId: ids[2], depth: 5 });
+
+        // 上限（30 秒）の前に止めると、そこまでの結果を「途中まで」として残し、続きから読める。
+        await act(async () => {
+            await result.current.controller.cancel();
+        });
+        await waitFor(() => expect(result.current.controller.continuableDeepNodeId).toBe(ids[2]));
+        const layerId = result.current.doc.layers[0].id;
+        const paused = result.current.doc.layers[0].results[ids[2]];
+        expect(paused.completion).toBe("aborted");
+        expect(paused.depth).toBe(5);
+        expect(result.current.controller.mode).toBeNull();
+
+        await act(async () => {
+            await result.current.controller.continueDeep();
+        });
+        await waitFor(() => expect(result.current.controller.mode).toBe("deep"));
+        expect(engine.resumes()).toBe(1);
+        expect(result.current.startedLayers).toEqual([`deep:${layerId}`, `deep:${layerId}`]);
+
+        // 続きの読みが上限に届くと、深くなった結果で置き換わる（読んだ時間は通算）。
+        await act(async () => {
+            engine.finishRun(30_000);
+        });
+        await waitFor(() =>
+            expect(result.current.doc.layers[0].results[ids[2]].completion).toBe("completed"),
+        );
+        const reached = result.current.doc.layers[0].results[ids[2]];
+        expect(reached.depth).toBe(10);
+        expect(reached.timeMs).toBe(40_000);
+        expect(reached.candidates[0].score).toEqual({ kind: "cp", value: 110 });
+        expect(result.current.controller.continuableDeepNodeId).toBe(ids[2]);
+        expect(engine.starts()).toBe(1);
+        expect(engine.searches()).toBe(0);
     });
 
     it("AI の準備中に画面を離れたら、解析を始めない（エンジンも作らない）", async () => {
