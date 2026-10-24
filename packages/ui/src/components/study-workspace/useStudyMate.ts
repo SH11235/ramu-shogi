@@ -18,6 +18,12 @@ export const STUDY_MATE_TIME_MS = 10_000;
 /** 1 局面を解くスレッド数。Web のエンジンの既定のスレッド数に合わせる（多く指定してもエンジンのスレッド数に丸められる）。 */
 const MATE_THREADS = 4;
 
+type StudyDoneState = {
+    status: "done";
+    mate: MateResult;
+    threat: MateResult | null;
+};
+
 export type StudyMateState =
     | {
           status: "running";
@@ -25,6 +31,8 @@ export type StudyMateState =
           phase: "mate" | "threat";
           nodes: number;
           elapsedMs: number;
+          /** 調べ直す前の結果（調べている間も出しておき、欄の高さを変えない）。 */
+          previous?: StudyDoneState;
       }
     | {
           status: "done";
@@ -63,8 +71,12 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
     /** 実行の世代。開始・中止・エンジンの変更・アンマウントのたびに進め、古い実行の続きを捨てる。 */
     const runRef = useRef(0);
     const clientRef = useRef<EngineClient | null>(null);
-    /** 調べている実行の局面と、使っているエンジンの id。 */
-    const activeRef = useRef<{ nodeId: string; engineId: string } | null>(null);
+    /** 調べている実行の局面、使っているエンジンの id、調べ直す前のその局面の結果。 */
+    const activeRef = useRef<{
+        nodeId: string;
+        engineId: string;
+        previous: StudyMateState | undefined;
+    } | null>(null);
 
     const supported = engineOption?.supportsMate === true;
 
@@ -78,7 +90,7 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
         if (client) void client.dispose();
     };
 
-    /** 調べている実行を取り消す（世代を進め、エンジンを捨て、途中の表示を消す）。 */
+    /** 調べている実行を取り消す（世代を進め、エンジンを捨て、途中の表示を調べる前の結果に戻す）。 */
     const cancelActive = (): void => {
         const active = activeRef.current;
         activeRef.current = null;
@@ -88,7 +100,8 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
         if (active) {
             setResults((previous) => {
                 const next = new Map(previous);
-                next.delete(active.nodeId);
+                if (active.previous) next.set(active.nodeId, active.previous);
+                else next.delete(active.nodeId);
                 return next;
             });
         }
@@ -124,9 +137,11 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
             return;
         }
         clientRef.current = client;
-        activeRef.current = { nodeId, engineId: option.id };
+        activeRef.current = { nodeId, engineId: option.id, previous: results.get(nodeId) };
         setRunningNodeId(nodeId);
-        setResult(nodeId, { status: "running", phase: "mate", nodes: 0, elapsedMs: 0 });
+        const before = results.get(nodeId);
+        const previous = before?.status === "done" ? before : undefined;
+        setResult(nodeId, { status: "running", phase: "mate", nodes: 0, elapsedMs: 0, previous });
         const solve = async (
             sfen: string,
             phase: "mate" | "threat",
@@ -139,7 +154,7 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
                 { mode, threads: MATE_THREADS, hashMb, timeMs: STUDY_MATE_TIME_MS },
                 (progress) => {
                     if (runRef.current === run) {
-                        setResult(nodeId, { status: "running", phase, ...progress });
+                        setResult(nodeId, { status: "running", phase, ...progress, previous });
                     }
                 },
             );
@@ -164,6 +179,7 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
                         phase: "threat",
                         nodes: 0,
                         elapsedMs: 0,
+                        previous,
                     });
                     // 詰めろは不詰のことが多いので、不詰の判定が速い Speed で読む
                     const result = await solve(threatSfen(node), "threat", "Speed");

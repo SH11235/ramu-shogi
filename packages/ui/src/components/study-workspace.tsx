@@ -1157,18 +1157,22 @@ export function StudyWorkspaceView({
     const settingsOpen = isSettingsOpen && !locked;
     const deleteDialogTargetId = locked ? null : deleteTargetId;
 
+    // 解析と詰み探索は同時に動かさない（スマートフォンで CPU とメモリを取り合う）
+    const mateRunning = (mate?.runningNodeId ?? null) !== null;
+    /** 解析を始められない（準備中か、詰み探索の途中）。 */
+    const analysisBlocked = analysis.isPreparing || mateRunning;
     const startFull = (): void => {
-        if (locked) return;
+        if (locked || mateRunning) return;
         void analysis.startFull();
     };
     /** 表示中の設定の未解析分を、その設定で解析する。表示中の結果が無ければ全体の解析。 */
     const resumeDisplayLayer = (): void => {
-        if (locked) return;
+        if (locked || mateRunning) return;
         if (displayLayerId === null) startFull();
         else void analysis.resumeLayer(displayLayerId);
     };
     const startDeep = (): void => {
-        if (locked) return;
+        if (locked || mateRunning) return;
         setDeepNodeId(currentNodeId);
         void analysis.startDeep(currentNodeId);
     };
@@ -1431,7 +1435,7 @@ export function StudyWorkspaceView({
                 type="button"
                 className="h-10 shrink-0 gap-1.5 px-3"
                 onClick={startFull}
-                disabled={analysis.isPreparing || analysis.mode !== null}
+                disabled={analysisBlocked || analysis.mode !== null}
             >
                 <AnalyzeIcon />
                 {analysis.fullTargetCount === 0 ? "解析済みの結果を表示" : "全体を解析"}
@@ -1443,7 +1447,7 @@ export function StudyWorkspaceView({
                 variant="outline"
                 className="h-10 shrink-0 px-3"
                 onClick={resumeDisplayLayer}
-                disabled={analysis.isPreparing || analysis.mode !== null}
+                disabled={analysisBlocked || analysis.mode !== null}
             >
                 残り {unanalyzedCount} 局面を解析
             </Button>
@@ -1509,7 +1513,7 @@ export function StudyWorkspaceView({
                             size="sm"
                             className="h-7 shrink-0 gap-1 px-2 text-xs"
                             onClick={startFull}
-                            disabled={analysis.isPreparing || analysis.mode !== null}
+                            disabled={analysisBlocked || analysis.mode !== null}
                         >
                             <AnalyzeIcon />
                             {analysis.fullTargetCount === 0 ? "結果を表示" : "全体を解析"}
@@ -1523,7 +1527,7 @@ export function StudyWorkspaceView({
                                 variant="outline"
                                 className="h-7 shrink-0 gap-1 px-2 text-xs"
                                 onClick={resumeDisplayLayer}
-                                disabled={analysis.isPreparing || analysis.mode !== null}
+                                disabled={analysisBlocked || analysis.mode !== null}
                             >
                                 残り {unanalyzedCount} 局面を解析
                             </Button>
@@ -1638,7 +1642,7 @@ export function StudyWorkspaceView({
                             type="button"
                             className="gap-1.5 shadow-sm"
                             onClick={startFull}
-                            disabled={analysis.isPreparing || analysis.mode !== null}
+                            disabled={analysisBlocked || analysis.mode !== null}
                         >
                             <AnalyzeIcon />
                             全体を解析
@@ -1697,7 +1701,10 @@ export function StudyWorkspaceView({
                           state: mate.results.get(currentNode.id),
                           busyElsewhere:
                               mate.runningNodeId !== null && mate.runningNodeId !== currentNode.id,
-                          onStart: () => mate.start(currentNode),
+                          onStart: () => {
+                              if (analysis.mode !== null || analysis.isPreparing) return;
+                              mate.start(currentNode);
+                          },
                           onStop: mate.stop,
                       }
                     : undefined
@@ -2206,7 +2213,7 @@ export function StudyWorkspaceView({
                 onDisplayLayerChange={onDisplayLayerChange}
                 form={analysis.form}
                 settingsLabel={analysis.settingsLabel}
-                canStart={!locked && analysis.mode === null && !analysis.isPreparing}
+                canStart={!locked && analysis.mode === null && !analysisBlocked}
                 onStartFull={startFull}
                 onOpenNnueLibrary={onOpenNnueLibrary}
             />

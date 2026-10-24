@@ -23,7 +23,7 @@ import { Button } from "../button";
 import { convertPvToDisplay } from "../shogi-match/utils/kifFormat";
 import { StudyIconButton } from "./StudyIconButton";
 import { AddBranchIcon, AnalyzeIcon, PlayIcon } from "./StudyIcons";
-import { StudyMateSection } from "./StudyMateSection";
+import { StudyMateControl, StudyMateResult } from "./StudyMateSection";
 import {
     formatStudyScore,
     type StudyPositionResult,
@@ -295,6 +295,8 @@ export function StudyCandidatesPanel({
     className,
 }: StudyCandidatesPanelProps): ReactElement {
     const isDeepHere = liveDepth !== undefined;
+    const mateRunning =
+        mate !== undefined && (mate.state?.status === "running" || mate.busyElsewhere);
     const sourceText = formatStudyScore(source?.score);
 
     return (
@@ -305,42 +307,53 @@ export function StudyCandidatesPanel({
                 className,
             )}
         >
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-col gap-2">
                 <h2 className="font-display text-base font-semibold text-wafuu-sumi">候補手</h2>
-                {isDeepHere ? (
-                    <div className="flex items-center gap-2">
-                        <output aria-live="polite" className="text-xs text-muted-foreground">
-                            深く解析中{liveDepth ? `（深さ ${liveDepth}）` : ""}
-                        </output>
-                        <Button type="button" variant="outline" size="sm" onClick={onCancel}>
-                            止める
+                <div className="flex flex-wrap items-center gap-2">
+                    {isDeepHere ? (
+                        <div className="flex items-center gap-2">
+                            <output aria-live="polite" className="text-xs text-muted-foreground">
+                                深く解析中{liveDepth ? `（深さ ${liveDepth}）` : ""}
+                            </output>
+                            <Button type="button" variant="outline" size="sm" onClick={onCancel}>
+                                止める
+                            </Button>
+                        </div>
+                    ) : canContinueDeep && onContinueDeep ? (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5"
+                            onClick={onContinueDeep}
+                            disabled={isPreparing || analysisMode !== null || mateRunning}
+                        >
+                            <AnalyzeIcon />
+                            続けて読む
                         </Button>
-                    </div>
-                ) : canContinueDeep && onContinueDeep ? (
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5"
-                        onClick={onContinueDeep}
-                        disabled={isPreparing || analysisMode !== null}
-                    >
-                        <AnalyzeIcon />
-                        続けて読む
-                    </Button>
-                ) : (
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5"
-                        onClick={onStartDeep}
-                        disabled={isPreparing || analysisMode !== null}
-                    >
-                        <AnalyzeIcon />
-                        この局面を深く解析
-                    </Button>
-                )}
+                    ) : (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5"
+                            onClick={onStartDeep}
+                            disabled={isPreparing || analysisMode !== null || mateRunning}
+                        >
+                            <AnalyzeIcon />
+                            この局面を深く解析
+                        </Button>
+                    )}
+                    {mate && (
+                        <StudyMateControl
+                            state={mate.state}
+                            busyElsewhere={mate.busyElsewhere}
+                            disabled={isPreparing || analysisMode !== null}
+                            onStart={mate.onStart}
+                            onStop={mate.onStop}
+                        />
+                    )}
+                </div>
             </div>
 
             {revision && (
@@ -356,12 +369,9 @@ export function StudyCandidatesPanel({
             )}
 
             {mate && (
-                <StudyMateSection
+                <StudyMateResult
                     node={node}
                     state={mate.state}
-                    busyElsewhere={mate.busyElsewhere}
-                    onStart={mate.onStart}
-                    onStop={mate.onStop}
                     onPreviewPv={onPreviewPv}
                     onAddPvAsVariation={onAddPvAsVariation}
                 />
