@@ -24,6 +24,7 @@ import {
     type PositionState,
     type Square,
 } from "./board";
+import { boardToSfen, handsToSfen } from "./position-sfen";
 
 export interface CsaStartPosition {
     /** 開始局面 (盤・持ち駒・手番)。 */
@@ -63,9 +64,6 @@ const FULL_SET: Readonly<Record<Exclude<PieceType, "K">, number>> = {
     B: 2,
     R: 2,
 };
-
-/** SFEN の持ち駒の並び順。 */
-const SFEN_HAND_ORDER: readonly PieceType[] = ["R", "B", "G", "S", "N", "L", "P"];
 
 const fail = (line: string, reason: string): never => {
     throw new Error(`CSA の開始局面を解釈できません: ${line} (${reason})`);
@@ -216,41 +214,6 @@ const assertPieceCounts = (board: BoardState, hands: Hands): void => {
             throw new Error("CSA の開始局面を解釈できません: 同じ側の玉が 2 枚以上あります");
         }
     }
-};
-
-const sfenLetter = (piece: Piece): string => {
-    const letter = piece.owner === "sente" ? piece.type : piece.type.toLowerCase();
-    return piece.promoted ? `+${letter}` : letter;
-};
-
-const boardToSfen = (board: BoardState): string =>
-    BOARD_RANKS.map((rank) => {
-        let row = "";
-        let empty = 0;
-        for (const file of BOARD_FILES) {
-            const piece = board[`${file}${rank}` as Square];
-            if (!piece) {
-                empty++;
-                continue;
-            }
-            if (empty > 0) row += String(empty);
-            empty = 0;
-            row += sfenLetter(piece);
-        }
-        return empty > 0 ? row + String(empty) : row;
-    }).join("/");
-
-const handsToSfen = (hands: Hands): string => {
-    let text = "";
-    for (const owner of ["sente", "gote"] as const) {
-        for (const type of SFEN_HAND_ORDER) {
-            const count = hands[owner][type] ?? 0;
-            if (count <= 0) continue;
-            const letter = owner === "sente" ? type : type.toLowerCase();
-            text += count > 1 ? `${count}${letter}` : letter;
-        }
-    }
-    return text.length > 0 ? text : "-";
 };
 
 /**
