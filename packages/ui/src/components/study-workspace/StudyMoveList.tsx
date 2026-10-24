@@ -33,6 +33,8 @@ interface StudyMoveListProps {
     currentNodeId: string;
     /** 悪手・疑問手と判定された手（ノード ID → 判定）。 */
     highlightKinds: ReadonlyMap<string, StudyHighlightKind>;
+    /** 深く読んで、悪手・疑問手ではなかったと分かった手（ノード ID → 元の判定）。 */
+    clearedKinds?: ReadonlyMap<string, StudyHighlightKind>;
     /**
      * コメントの書きかけが保存されていない手（ノード ID → 理由）。
      * `over_limit`: 長すぎて保存できない。`conflict`: 別の画面での変更とぶつかり、選択待ち。
@@ -48,21 +50,29 @@ interface StudyMoveListProps {
     className?: string;
 }
 
-const ROW_GRID = "grid grid-cols-[1.75rem_minmax(0,1fr)_3.25rem] items-baseline gap-x-1.5";
-const ROW_GRID_WITH_SOURCE =
-    "grid grid-cols-[1.75rem_minmax(0,1fr)_3.25rem_3.25rem] items-baseline gap-x-1.5";
+/**
+ * 行の列（手数・印・指し手・解析・対局時）。悪手・疑問手の印は指し手の欄に入れると、狭い列で
+ * 指し手に押し出されて切れるので、印だけの列を持つ（印のある手が無ければ列を作らない）。
+ */
+const ROW_GRIDS = {
+    plain: "grid grid-cols-[1.75rem_minmax(0,1fr)_2.5rem] items-baseline gap-x-1",
+    source: "grid grid-cols-[1.75rem_minmax(0,1fr)_2.5rem_2.5rem] items-baseline gap-x-1",
+    marks: "grid grid-cols-[1.75rem_1.25rem_minmax(0,1fr)_2.5rem] items-baseline gap-x-1",
+    marksSource:
+        "grid grid-cols-[1.75rem_1.25rem_minmax(0,1fr)_2.5rem_2.5rem] items-baseline gap-x-1",
+} as const;
 
 const sideClass = (side: "sente" | "gote" | null): string =>
     side === "sente" ? "text-wafuu-shu" : side === "gote" ? "text-wafuu-ai" : "text-foreground";
 
 const KIND_MARK: Record<StudyHighlightKind, { text: string; label: string; className: string }> = {
     blunder: {
-        text: "悪手",
+        text: "悪",
         label: "悪手",
         className: "border-study-blunder-border bg-study-blunder-bg text-study-blunder",
     },
     dubious: {
-        text: "疑問",
+        text: "疑",
         label: "疑問手",
         className: "border-study-dubious-border bg-study-dubious-bg text-study-dubious",
     },
@@ -74,6 +84,7 @@ export function StudyMoveList({
     line,
     currentNodeId,
     highlightKinds,
+    clearedKinds,
     unsavedComments,
     onSelect,
     onBackToMainLine,
@@ -82,7 +93,11 @@ export function StudyMoveList({
     className,
 }: StudyMoveListProps): ReactElement {
     const hasSource = Object.values(doc.tree.nodes).some((node) => node.source?.score != null);
-    const rowGrid = hasSource ? ROW_GRID_WITH_SOURCE : ROW_GRID;
+    const hasMarks = highlightKinds.size > 0 || (clearedKinds?.size ?? 0) > 0;
+    const rowGrid =
+        ROW_GRIDS[
+            hasMarks ? (hasSource ? "marksSource" : "marks") : hasSource ? "source" : "plain"
+        ];
     const mainLineIds = studyMainLineIds(tree);
     const onMainLine = line.every((nodeId) => mainLineIds.has(nodeId));
     // いま見ている枝の、直近の分岐点から先（本譜は消せないので、本譜の上なら null）。
@@ -155,6 +170,7 @@ export function StudyMoveList({
                 aria-hidden="true"
             >
                 <span className="text-right">手</span>
+                {hasMarks && <span />}
                 <span>指し手</span>
                 <span className="text-right">解析</span>
                 {hasSource && <span className="text-right">対局時</span>}
@@ -176,6 +192,7 @@ export function StudyMoveList({
                         ? parent.children.filter((childId) => childId !== nodeId)
                         : [];
                     const kind = highlightKinds.get(nodeId);
+                    const cleared = kind ? undefined : clearedKinds?.get(nodeId);
                     const analysisText = formatEval(node.eval?.scoreCp, node.eval?.scoreMate);
                     // 評価値の色は符号ではなく、その手を指した側で決める (評価値グラフの線と同じ対応)。
                     const mover: "sente" | "gote" | null =
@@ -201,23 +218,38 @@ export function StudyMoveList({
                                 <span className="text-right font-mono text-xs tabular-nums text-muted-foreground">
                                     {index === 0 ? "" : index}
                                 </span>
-                                {/* 指し手は切らずに出し、印（悪手・コメントなど）は入る分だけ出す。 */}
+                                {hasMarks && (
+                                    <span className="flex justify-center">
+                                        {kind && (
+                                            <span
+                                                role="img"
+                                                aria-label={KIND_MARK[kind].label}
+                                                title={KIND_MARK[kind].label}
+                                                className={cn(
+                                                    "flex h-4 w-4 items-center justify-center rounded border text-[10px] font-semibold leading-none",
+                                                    KIND_MARK[kind].className,
+                                                )}
+                                            >
+                                                {KIND_MARK[kind].text}
+                                            </span>
+                                        )}
+                                        {cleared && (
+                                            <span
+                                                role="img"
+                                                aria-label={`${KIND_MARK[cleared].label}ではなかった（深く解析）`}
+                                                title={`${KIND_MARK[cleared].label}ではなかった（深く解析）`}
+                                                className="flex h-4 w-4 items-center justify-center rounded border border-border text-[10px] leading-none text-muted-foreground line-through"
+                                            >
+                                                {KIND_MARK[cleared].text}
+                                            </span>
+                                        )}
+                                    </span>
+                                )}
+                                {/* 指し手は切らずに出し、コメントなどの印は入る分だけ出す。 */}
                                 <span className="flex min-w-0 items-center gap-1 overflow-hidden">
                                     <span className="shrink-0 whitespace-nowrap text-wafuu-sumi">
                                         {label}
                                     </span>
-                                    {kind && (
-                                        <span
-                                            role="img"
-                                            aria-label={KIND_MARK[kind].label}
-                                            className={cn(
-                                                "shrink-0 rounded border px-1 text-[10px] font-semibold leading-4",
-                                                KIND_MARK[kind].className,
-                                            )}
-                                        >
-                                            {KIND_MARK[kind].text}
-                                        </span>
-                                    )}
                                     {unsavedComments?.has(nodeId) && (
                                         <span
                                             role="img"

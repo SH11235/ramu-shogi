@@ -36,8 +36,13 @@ interface EvalGraphProps {
      * 省略時は従来どおり。
      */
     axisCap?: number;
-    /** グラフに重ねる印（研究ノートの注目局面など）。コンパクト表示でだけ描く。 */
+    /** グラフに重ねる印（研究ノートの悪手など）。コンパクト表示でだけ描く。 */
     markers?: readonly EvalGraphMarker[];
+    /**
+     * 主の線の下に、細い破線で重ねる別の評価値の列（`evalHistory` と同じ手順・同じ長さ）。
+     * 縦軸は両方の値から決める。コンパクト表示でだけ描く。
+     */
+    secondaryHistory?: readonly EvalHistory[];
     /** 印を押したときのコールバック。省略時は印を押せない（見た目だけ）。 */
     onMarkerSelect?: (marker: EvalGraphMarker) => void;
 }
@@ -50,6 +55,8 @@ export interface EvalGraphMarker {
     tone: "blunder" | "dubious";
     /** 読み上げ・ツールチップ用の説明（例: `42手目 悪手`）。 */
     label: string;
+    /** `secondary` なら、`secondaryHistory` の線の上に置く（印の元になった評価値の線に載せる）。 */
+    series?: "primary" | "secondary";
 }
 
 const MARKER_CLASS: Record<EvalGraphMarker["tone"], string> = {
@@ -157,6 +164,7 @@ export function EvalGraph({
     axisCap,
     markers,
     onMarkerSelect,
+    secondaryHistory,
 }: EvalGraphProps): ReactElement {
     const height = customHeight ?? (compact ? 60 : 80);
     const padding = { top: 4, bottom: 4, left: 0, right: 0 };
@@ -212,7 +220,32 @@ export function EvalGraph({
           }
         : undefined;
 
-    const scaleMax = computeEvalGraphScale(evalHistory, minScale, axisCap);
+    const scaleMax = computeEvalGraphScale(
+        secondaryHistory ? [...evalHistory, ...secondaryHistory] : evalHistory,
+        minScale,
+        axisCap,
+    );
+
+    // 重ねる線は手番で色を分けず、値の無い手で切る（途中まで解析した列でも、解析した区間だけ描く）。
+    const secondarySegments = (() => {
+        if (!secondaryHistory || secondaryHistory.length === 0) return [];
+        const maxPly = Math.max(evalHistory.length - 1, 1);
+        const segments: string[][] = [];
+        let current: string[] = [];
+        secondaryHistory.forEach((entry, index) => {
+            if (entry.evalCp === null && entry.evalMate === null) {
+                if (current.length > 0) segments.push(current);
+                current = [];
+                return;
+            }
+            const x = (index / maxPly) * 100;
+            const y =
+                padding.top + evalToYWithScale(entry.evalCp, entry.evalMate, graphHeight, scaleMax);
+            current.push(`${x},${y}`);
+        });
+        if (current.length > 0) segments.push(current);
+        return segments;
+    })();
 
     // ポイントの計算（先手・後手を分離して別々のセグメントを生成）
     // viewBox="0 0 100 height" なので x は 0-100 の数値、y はピクセル値
@@ -340,6 +373,19 @@ export function EvalGraph({
                         strokeWidth={label.value === "0" ? "1" : "0.5"}
                         vectorEffect="non-scaling-stroke"
                         strokeDasharray={label.value === "0" ? "none" : "2,2"}
+                    />
+                ))}
+
+                {secondarySegments.map((segment) => (
+                    <polyline
+                        key={`secondary-${segment[0]}`}
+                        data-series="secondary"
+                        points={segment.join(" ")}
+                        fill="none"
+                        stroke="hsl(var(--muted-foreground))"
+                        strokeWidth="1.5"
+                        strokeDasharray="4,3"
+                        vectorEffect="non-scaling-stroke"
                     />
                 ))}
 
@@ -475,7 +521,7 @@ export function EvalGraph({
             </>
         );
 
-        // 印（注目局面など）。SVG は横に引き伸ばして描くので、形が歪まないよう HTML で重ねる。
+        // 印（研究ノートの悪手など）。SVG は横に引き伸ばして描くので、形が歪まないよう HTML で重ねる。
         const maxPlyForMarkers = Math.max(evalHistory.length - 1, 1);
         const markerOverlay =
             markers && markers.length > 0 ? (
@@ -486,7 +532,10 @@ export function EvalGraph({
                     {markers
                         .filter((marker) => marker.ply >= 0 && marker.ply < evalHistory.length)
                         .map((marker) => {
-                            const entry = evalHistory[marker.ply];
+                            const entry =
+                                marker.series === "secondary" && secondaryHistory
+                                    ? secondaryHistory[marker.ply]
+                                    : evalHistory[marker.ply];
                             const style = {
                                 left: `${(marker.ply / maxPlyForMarkers) * 100}%`,
                                 top:

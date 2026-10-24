@@ -347,8 +347,8 @@ function hasLargerStudyLimits(other: StudyLayer, base: StudyLayer): boolean {
 /**
  * ある局面の、表示中の設定の解析結果。
  *
- * 注目局面の行の「最善」、候補手の「この手の代わりに」、「この局面の候補手」は、どれもこの
- * 結果から出す（欄によって別の設定の結果が混ざると、行とパネルで手や評価値が食い違う）。
+ * 悪手・疑問手の印、候補手の「この手の代わりに」、「この局面の候補手」は、どれもこの
+ * 結果から出す（欄によって別の設定の結果が混ざると、印とパネルで手や評価値が食い違う）。
  * 別の設定の結果は `pickStudyDeeperResult` で、別の段として添える。
  */
 export function pickStudyPositionResult(
@@ -373,16 +373,31 @@ export function pickStudyDeeperResult(
     nodeId: string,
     displayLayerId: string | null,
 ): StudyPositionResult | null {
-    const display = doc.layers.find((layer) => layer.id === displayLayerId);
-    if (!display) return null;
+    const deeper = new Set(studyDeeperLayerIds(doc, displayLayerId));
     let picked: StudyPositionResult | null = null;
     for (const layer of doc.layers) {
-        if (layer.id === display.id || !Object.hasOwn(layer.results, nodeId)) continue;
-        if (!isSameStudyAi(layer, display) || !hasLargerStudyLimits(layer, display)) continue;
+        if (!deeper.has(layer.id) || !Object.hasOwn(layer.results, nodeId)) continue;
         const result = layer.results[nodeId];
         if (picked === null || result.depth > picked.result.depth) picked = { layer, result };
     }
     return picked;
+}
+
+/**
+ * 表示中の設定と AI・評価関数が同じで、探索の上限だけが大きい設定（「この局面を深く解析」の結果）。
+ * 悪手・疑問手の判定し直しと、候補手の欄の「より深い解析」に使う。
+ */
+export function studyDeeperLayerIds(doc: StudyDocument, displayLayerId: string | null): string[] {
+    const display = doc.layers.find((layer) => layer.id === displayLayerId);
+    if (!display) return [];
+    return doc.layers
+        .filter(
+            (layer) =>
+                layer.id !== display.id &&
+                isSameStudyAi(layer, display) &&
+                hasLargerStudyLimits(layer, display),
+        )
+        .map((layer) => layer.id);
 }
 
 /** 解析結果の 1 位の候補。無ければ null。 */
@@ -413,7 +428,7 @@ export function countStudyUnanalyzed(doc: StudyDocument, layerId: string | null)
     return count;
 }
 
-/** 注目局面の 1 行の見出し（例: `42手目 ☖8六歩(87)`）。 */
+/** 注目局面の見出し（例: `42手目 ☖8六歩(87)`）。グラフの印の説明に使う。 */
 export function studyHighlightTitle(tree: KifuTree, highlight: StudyHighlight): string {
     if (highlight.ply === 0) return "開始局面";
     return `${highlight.ply}手目 ${studyMoveLabel(tree, highlight.nodeId)}`;

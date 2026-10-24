@@ -43,6 +43,8 @@ const createAnalysis = (
     startFull: vi.fn(async () => {}),
     resumeLayer: vi.fn(async () => {}),
     startDeep: vi.fn(async () => {}),
+    continuableDeepNodeId: null,
+    continueDeep: vi.fn(async () => {}),
     cancel: vi.fn(async () => {}),
     form: {
         settings: DEFAULT_ANALYSIS_SETTINGS,
@@ -55,6 +57,7 @@ const createAnalysis = (
         engines: [{ id: "wasm", label: "内蔵エンジン", kind: "internal" }],
         engineId: "wasm",
         maxParallel: null,
+        maxThreads: 8,
         onEngineIdChange: vi.fn(),
     },
     ...overrides,
@@ -168,8 +171,16 @@ function Harness({
     );
 }
 
-const highlights = () => screen.getByRole("region", { name: "注目局面" });
+const graphRegion = () => screen.getByRole("region", { name: "評価値グラフ" });
 const moveList = () => screen.getByRole("region", { name: "棋譜と変化" });
+/** 棋譜の欄で、表記にその文字列を含む手を押す。 */
+const selectMove = (label: string): void => {
+    const button = within(moveList())
+        .getAllByRole("button")
+        .find((element) => element.textContent?.includes(label));
+    if (!button) throw new Error(`棋譜に ${label} がありません`);
+    fireEvent.click(button);
+};
 const currentMove = () =>
     within(moveList()).getAllByRole("button", { current: true })[0]?.textContent ?? "";
 
@@ -191,11 +202,11 @@ describe("StudyWorkspaceView", () => {
         const analysis = createAnalysis();
         render(<Harness initialDoc={createTestStudy().doc} analysis={analysis} />);
 
-        expect(
-            within(highlights()).getByText("全体を解析すると、見直すべき手がここに並びます。"),
-        ).toBeTruthy();
-        expect(within(highlights()).getByText("RAMU・1 秒で 5 局面を解析します。")).toBeTruthy();
-        fireEvent.click(within(highlights()).getByRole("button", { name: "全体を解析" }));
+        // 使う AI と時間は、表題の行の「解析の設定」のボタンで見せる。
+        expect(screen.getByRole("button", { name: /^解析の設定/ }).textContent).toContain(
+            "RAMU・1 秒",
+        );
+        fireEvent.click(within(graphRegion()).getByRole("button", { name: "全体を解析" }));
         expect(analysis.startFull).toHaveBeenCalledTimes(1);
         // 候補手はまだ無い。
         expect(screen.getByText("この局面はまだ解析していません。")).toBeTruthy();
@@ -210,11 +221,9 @@ describe("StudyWorkspaceView", () => {
         });
         render(<Harness initialDoc={doc} analysis={analysis} />);
 
-        expect(highlights().textContent).not.toContain("0 局面を解析します");
-        expect(
-            within(highlights()).getByText(/簡易AI（駒得）・1 秒の解析は全局面で済んでいます/),
-        ).toBeTruthy();
-        fireEvent.click(within(highlights()).getByRole("button", { name: "解析済みの結果を表示" }));
+        expect(document.body.textContent).not.toContain("0 局面を解析します");
+        expect(screen.queryByRole("button", { name: "全体を解析" })).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: "解析済みの結果を表示" }));
         expect(analysis.startFull).toHaveBeenCalledTimes(1);
     });
 
@@ -227,9 +236,9 @@ describe("StudyWorkspaceView", () => {
             />,
         );
 
-        expect(within(highlights()).getByText("解析中 2 / 5 局面")).toBeTruthy();
-        expect(within(highlights()).queryByRole("button", { name: "全体を解析" })).toBeNull();
-        fireEvent.click(within(highlights()).getByRole("button", { name: "中止" }));
+        expect(screen.getByText("解析中 2 / 5 局面")).toBeTruthy();
+        expect(screen.queryByRole("button", { name: "全体を解析" })).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: "中止" }));
         expect(analysis.cancel).toHaveBeenCalledTimes(1);
         // 解析中は「この局面を深く解析」を押せない。
         expect(
@@ -249,7 +258,7 @@ describe("StudyWorkspaceView", () => {
     it("詰み探索の間は、全体の解析も深い解析も始められない", () => {
         const { doc, ids } = createTestStudy();
         render(<Harness initialDoc={doc} mate={createMate({ runningNodeId: ids[3] })} />);
-        const full = within(highlights()).getByRole("button", { name: "全体を解析" });
+        const full = within(graphRegion()).getByRole("button", { name: "全体を解析" });
         expect((full as HTMLButtonElement).disabled).toBe(true);
         const candidates = screen.getByRole("region", { name: "候補手" });
         const deep = within(candidates).getByRole("button", { name: "この局面を深く解析" });
@@ -285,25 +294,105 @@ describe("StudyWorkspaceView", () => {
         expect((button as HTMLButtonElement).disabled).toBe(true);
     });
 
-    it("解析後は悪手・疑問手が並び、押すとその局面へ移る", () => {
+    it("解析後は悪手に棋譜とグラフの印が付き、グラフの印を押すとその局面へ移る", () => {
         // 3 手目（☗2六歩）で先手が大きく損をした、という評価値。
         const { doc } = createTestStudy([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
         render(<Harness initialDoc={doc} />);
 
-        expect(within(highlights()).getByText("悪手・疑問手 1 手")).toBeTruthy();
-        const item = within(highlights()).getByRole("button", { name: /3手目 ☗2六歩\(27\)/ });
-        expect(item.textContent).toContain("悪手");
-        expect(item.textContent).toContain("+20 → -900");
+        expect(within(moveList()).getByRole("img", { name: "悪手" })).toBeTruthy();
         expect(currentMove()).toContain("開始局面");
 
-        fireEvent.click(item);
+        fireEvent.click(
+            within(graphRegion()).getByRole("button", { name: "3手目 ☗2六歩(27)（悪手）へ移動" }),
+        );
 
         expect(currentMove()).toContain("☗2六歩(27)");
         expect(screen.getByText("3手目 ☗2六歩(27)", { selector: "output span" })).toBeTruthy();
         // その局面の候補手（表示中の解析の結果）が出る。
         expect(screen.getByText("RAMU・1 秒・深さ 15")).toBeTruthy();
-        // 棋譜にも悪手の印が付く。
-        expect(within(moveList()).getByRole("img", { name: "悪手" })).toBeTruthy();
+    });
+
+    describe("評価値グラフ: 対局時の評価値と解析", () => {
+        const withSource = (doc: StudyDocument, ids: string[]): StudyDocument =>
+            applyStudyOps(
+                doc,
+                [50, 60, 40, -300].map((value, index) => ({
+                    type: "setSource" as const,
+                    nodeId: ids[index + 1],
+                    value: { kind: "csa", score: cp(value), pv: null, elapsedMs: null },
+                })),
+            );
+        const graph = () => screen.getByRole("region", { name: "評価値グラフ" });
+        const dashedLines = () => graph().querySelectorAll('polyline[data-series="secondary"]');
+
+        it("解析前は対局時の評価値だけを描き、切り替えは出さない", () => {
+            const { doc, ids } = createTestStudy();
+            render(<Harness initialDoc={withSource(doc, ids)} />);
+
+            expect(within(graph()).getByText("対局時")).toBeTruthy();
+            expect(within(graph()).queryByRole("button", { name: /対局時/ })).toBeNull();
+            expect(dashedLines()).toHaveLength(0);
+        });
+
+        it("解析後も対局時の線を残して重ね、主に描く線を切り替えられる。悪手の印は解析の線に載せる", () => {
+            const { doc, ids } = createTestStudy([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
+            render(<Harness initialDoc={withSource(doc, ids)} />);
+
+            const sourceButton = within(graph()).getByRole("button", { name: "対局時" });
+            const analysisButton = within(graph()).getByRole("button", {
+                name: "解析（RAMU・1 秒）",
+            });
+            // 既定は対局時が主の線で、解析の線は破線で重ねる。
+            expect(sourceButton.getAttribute("aria-pressed")).toBe("true");
+            expect(analysisButton.getAttribute("aria-pressed")).toBe("false");
+            expect(dashedLines().length).toBeGreaterThan(0);
+            expect(within(graph()).getByRole("button", { name: /悪手）へ移動/ })).toBeTruthy();
+
+            fireEvent.click(analysisButton);
+
+            expect(analysisButton.getAttribute("aria-pressed")).toBe("true");
+            expect(sourceButton.getAttribute("aria-pressed")).toBe("false");
+            expect(dashedLines().length).toBeGreaterThan(0);
+        });
+    });
+
+    describe("深く解析した結果での、悪手・疑問手の判定し直し", () => {
+        const DEEP_SPEC = buildStudyLayerSpec({
+            engine: { kind: "wasm", name: "rshogi", version: "0.8.1" },
+            appVersion: "0.0.0",
+            nnue: { sha256: "a".repeat(64), fvScale: 24 },
+            limits: { timeMs: 30_000, depth: 64 },
+            multiPv: 3,
+        });
+        const DEEP_ID = studyLayerId(DEEP_SPEC);
+
+        it("深く読んで悪手ではなかった手は、棋譜の印を取り消し線にし、候補手の欄で経緯を知らせる", () => {
+            // 3 手目（☗2六歩）は、全体の解析（1 秒）では +20 → -900 の悪手。
+            const { doc, ids } = createTestStudy([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
+            const deep = applyStudyOps(doc, [
+                { type: "ensureLayer", spec: DEEP_SPEC, display: { label: "RAMU・30 秒" } },
+                putScoreOp(ids[3], cp(10), { depth: 25, layerId: DEEP_ID }),
+            ]);
+            render(<Harness initialDoc={deep} initialDisplayLayerId={TEST_LAYER_ID} />);
+
+            expect(within(moveList()).queryByRole("img", { name: "悪手" })).toBeNull();
+            expect(
+                within(moveList()).getByRole("img", { name: "悪手ではなかった（深く解析）" }),
+            ).toBeTruthy();
+            expect(
+                within(graphRegion()).queryByRole("button", { name: /悪手）へ移動/ }),
+            ).toBeNull();
+
+            selectMove("☗2六歩(27)");
+            const candidates = screen.getByRole("region", { name: "候補手" });
+            expect(candidates.textContent).toContain(
+                "深く解析した結果、悪手ではありませんでした。",
+            );
+            expect(candidates.textContent).toContain("全体の解析では悪手");
+            expect(
+                within(candidates).queryByRole("heading", { name: /この手の代わりに/ }),
+            ).toBeNull();
+        });
     });
 
     it("盤上で駒を動かすと変化ができ、操作が保存層へ流れる", async () => {
@@ -701,7 +790,20 @@ describe("StudyWorkspaceView", () => {
         expect(analysis.startDeep).toHaveBeenCalledWith(ids[1]);
     });
 
-    it("悪手には代わりの最善手を添え、押すと「この手の代わりに」の候補手が先に出る", () => {
+    it("深く解析を止めた局面では「続けて読む」を出し、ほかの局面では出さない", () => {
+        const { doc, ids } = createTestStudy();
+        const analysis = createAnalysis({ continuableDeepNodeId: ids[1] });
+        render(<Harness initialDoc={doc} analysis={analysis} />);
+
+        expect(screen.queryByRole("button", { name: "続けて読む" })).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+        expect(screen.queryByRole("button", { name: "この局面を深く解析" })).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: "続けて読む" }));
+        expect(analysis.continueDeep).toHaveBeenCalledTimes(1);
+        expect(analysis.startDeep).not.toHaveBeenCalled();
+    });
+
+    it("悪手の局面では、「この手の代わりに」の候補手が先に出る", () => {
         const { doc, ids } = createTestStudy([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
         // 3 手目（☗2六歩）の 1 手前の局面の最善は ☗6六歩、という結果にする。
         const withBest = applyStudyOps(doc, [
@@ -709,10 +811,7 @@ describe("StudyWorkspaceView", () => {
         ]);
         render(<Harness initialDoc={withBest} />);
 
-        const item = within(highlights()).getByRole("button", { name: /3手目 ☗2六歩\(27\)/ });
-        expect(item.textContent).toContain("最善 ☗6六歩(67)");
-
-        fireEvent.click(item);
+        selectMove("☗2六歩(27)");
 
         const candidates = screen.getByRole("region", { name: "候補手" });
         expect(
@@ -794,34 +893,23 @@ describe("StudyWorkspaceView", () => {
             return { doc: twoLayers, ids };
         };
 
-        it("注目局面の行の「最善」と、候補手の「この手の代わりに」の 1 位が、全行で一致する", () => {
+        it("「この手の代わりに」は、表示中の設定の結果で出す", () => {
             const { doc } = createTwoLayerStudy();
             render(<Harness initialDoc={doc} initialDisplayLayerId={FAST_ID} />);
 
-            const rows = within(highlights())
-                .getAllByRole("button")
-                .filter((row) => /手目/.test(row.textContent ?? ""));
-            expect(rows.length).toBeGreaterThan(0);
-            let compared = 0;
-            for (const row of rows) {
-                const best = /最善\s*(\S+)/.exec(row.textContent ?? "")?.[1];
-                if (best === undefined) continue;
-                fireEvent.click(row);
-                const candidates = screen.getByRole("region", { name: "候補手" });
-                const heading = within(candidates).getByRole("heading", {
-                    name: "この手の代わりに（1 手前の局面の候補）",
-                });
-                const group = heading.closest("div")?.parentElement as HTMLElement;
-                const items = within(group).getAllByRole("listitem");
-                // 1 位が行の「最善」と同じ手で、候補の数は表示中の設定（候補 2）どおり。
-                expect(items[0].textContent).toContain(best);
-                expect(items).toHaveLength(2);
-                // どの設定の結果かは、表示中の設定の名前で出す（別の設定の名前を出さない）。
-                expect(group.textContent).toContain("RAMU・0.5 秒");
-                expect(group.textContent).not.toContain("RAMU・1 秒");
-                compared++;
-            }
-            expect(compared).toBeGreaterThan(0);
+            selectMove("☗2六歩(27)");
+            const candidates = screen.getByRole("region", { name: "候補手" });
+            const heading = within(candidates).getByRole("heading", {
+                name: "この手の代わりに（1 手前の局面の候補）",
+            });
+            const group = heading.closest("div")?.parentElement as HTMLElement;
+            const items = within(group).getAllByRole("listitem");
+            // 1 位は表示中の設定（0.5 秒）の最善手で、候補の数もその設定（候補 2）どおり。
+            expect(items[0].textContent).toContain("☗6六歩(67)");
+            expect(items).toHaveLength(2);
+            // どの設定の結果かは、表示中の設定の名前で出す（別の設定の名前を出さない）。
+            expect(group.textContent).toContain("RAMU・0.5 秒");
+            expect(group.textContent).not.toContain("RAMU・1 秒");
         });
 
         it("この局面の候補手は表示中の設定の結果で、より深い結果は別の段に添える", () => {
@@ -1023,10 +1111,7 @@ describe("StudyWorkspaceView", () => {
         ]);
         render(<Harness initialDoc={playedBest} />);
 
-        const item = within(highlights()).getByRole("button", { name: /3手目 ☗2六歩\(27\)/ });
-        // 行には、代わりの最善手も、指した手を最善と呼ぶ文言も出さない。
-        expect(item.textContent).not.toContain("最善");
-        fireEvent.click(item);
+        selectMove("☗2六歩(27)");
 
         const candidates = screen.getByRole("region", { name: "候補手" });
         expect(within(candidates).queryByRole("heading", { name: /この手の代わりに/ })).toBeNull();
@@ -1038,7 +1123,7 @@ describe("StudyWorkspaceView", () => {
 
     it("解析エンジンが 1 つだけなら選ぶ欄を出さない。複数あれば選べて、外部エンジンでは「使う AI」を出さない", () => {
         const single = render(<Harness initialDoc={createTestStudy().doc} />);
-        fireEvent.click(screen.getByRole("button", { name: "解析の設定" }));
+        fireEvent.click(screen.getByRole("button", { name: /^解析の設定/ }));
         expect(screen.queryByRole("combobox", { name: "解析エンジン" })).toBeNull();
         expect(screen.getByRole("combobox", { name: "使う AI" })).toBeTruthy();
         single.unmount();
@@ -1050,7 +1135,7 @@ describe("StudyWorkspaceView", () => {
         const base = createAnalysis();
         const analysis = createAnalysis({ form: { ...base.form, engines, engineId: "native" } });
         const multi = render(<Harness initialDoc={createTestStudy().doc} analysis={analysis} />);
-        fireEvent.click(screen.getByRole("button", { name: "解析の設定" }));
+        fireEvent.click(screen.getByRole("button", { name: /^解析の設定/ }));
         fireEvent.change(screen.getByRole("combobox", { name: "解析エンジン" }), {
             target: { value: "ext-1" },
         });
@@ -1061,7 +1146,7 @@ describe("StudyWorkspaceView", () => {
             form: { ...base.form, engines, engineId: "ext-1" },
         });
         render(<Harness initialDoc={createTestStudy().doc} analysis={externalSelected} />);
-        fireEvent.click(screen.getByRole("button", { name: "解析の設定" }));
+        fireEvent.click(screen.getByRole("button", { name: /^解析の設定/ }));
         expect(screen.queryByRole("combobox", { name: "使う AI" })).toBeNull();
         expect(screen.getByText(/外部エンジンは、そのエンジンに設定されている AI/)).toBeTruthy();
     });
@@ -1070,7 +1155,7 @@ describe("StudyWorkspaceView", () => {
         const analysis = createAnalysis();
         render(<Harness initialDoc={createTestStudy().doc} analysis={analysis} />);
 
-        fireEvent.click(screen.getByRole("button", { name: "解析の設定" }));
+        fireEvent.click(screen.getByRole("button", { name: /^解析の設定/ }));
         const dialog = screen.getByRole("dialog", { name: "解析の設定" });
         const group = within(dialog).getByRole("group", { name: /同時に解析する局面の数/ });
         // 既定は自動（選ばれる数を添える）。
@@ -1088,6 +1173,26 @@ describe("StudyWorkspaceView", () => {
         });
     });
 
+    it("解析の設定で、全体の解析と深く解析のスレッド数を別々に選べる", () => {
+        const analysis = createAnalysis();
+        render(<Harness initialDoc={createTestStudy().doc} analysis={analysis} />);
+        fireEvent.click(screen.getByRole("button", { name: /^解析の設定/ }));
+        const dialog = screen.getByRole("dialog", { name: "解析の設定" });
+
+        const batch = within(dialog).getByRole("combobox", { name: /全体の解析/ });
+        // 全体の解析は局面ごとに並べて読むので、「自動」は出さない。
+        expect(within(batch).queryByRole("option", { name: /自動/ })).toBeNull();
+        fireEvent.change(batch, { target: { value: "2" } });
+        expect(analysis.form.onSettingsChange).toHaveBeenLastCalledWith(
+            expect.objectContaining({ batchAnalysisThreads: 2 }),
+        );
+        const deep = within(dialog).getByRole("combobox", { name: /この局面を深く解析/ });
+        fireEvent.change(deep, { target: { value: "4" } });
+        expect(analysis.form.onSettingsChange).toHaveBeenLastCalledWith(
+            expect.objectContaining({ deepAnalysisThreads: 4 }),
+        );
+    });
+
     it("同時に解析できる数に上限のあるエンジンでは、上限までの選択肢だけを出す", () => {
         const base = createAnalysis();
         const limited = createAnalysis({
@@ -1098,7 +1203,7 @@ describe("StudyWorkspaceView", () => {
             },
         });
         const view = render(<Harness initialDoc={createTestStudy().doc} analysis={limited} />);
-        fireEvent.click(screen.getByRole("button", { name: "解析の設定" }));
+        fireEvent.click(screen.getByRole("button", { name: /^解析の設定/ }));
         const group = within(screen.getByRole("dialog", { name: "解析の設定" })).getByRole(
             "group",
             { name: /同時に解析する局面の数/ },
@@ -1113,7 +1218,7 @@ describe("StudyWorkspaceView", () => {
         // 1 局面ずつしか解析できないエンジン（Desktop の内蔵エンジン）では、欄ごと出さない。
         const single = createAnalysis({ form: { ...base.form, maxParallel: 1 } });
         render(<Harness initialDoc={createTestStudy().doc} analysis={single} />);
-        fireEvent.click(screen.getByRole("button", { name: "解析の設定" }));
+        fireEvent.click(screen.getByRole("button", { name: /^解析の設定/ }));
         expect(
             within(screen.getByRole("dialog", { name: "解析の設定" })).queryByRole("group", {
                 name: /同時に解析する局面の数/,
@@ -1127,12 +1232,10 @@ describe("StudyWorkspaceView", () => {
         const analysis = createAnalysis({ settingsLabel: "簡易AI（駒得）・0.5 秒" });
         render(<Harness initialDoc={doc} analysis={analysis} />);
 
-        // 文言の設定名と局面数は、表示中の設定のもの。
-        expect(
-            within(highlights()).getByText(/RAMU・1 秒で未解析の局面が 2\s*あります。/),
-        ).toBeTruthy();
-        expect(highlights().textContent).not.toContain("簡易AI");
-        fireEvent.click(within(highlights()).getByRole("button", { name: "残りを解析" }));
+        // グラフの欄に出す設定名と局面数は、表示中の設定のもの。
+        expect(graphRegion().textContent).toContain("RAMU・1 秒");
+        expect(graphRegion().textContent).not.toContain("簡易AI");
+        fireEvent.click(screen.getByRole("button", { name: "残り 2 局面を解析" }));
 
         expect(analysis.resumeLayer).toHaveBeenCalledWith(TEST_LAYER_ID);
         expect(analysis.startFull).not.toHaveBeenCalled();
@@ -1175,23 +1278,6 @@ describe("StudyWorkspaceView", () => {
         expect(
             within(moveList()).queryByRole("img", { name: "コメントが長すぎて保存されていません" }),
         ).toBeNull();
-    });
-
-    it("注目局面は手数順が既定で、大きい順に切り替えられる", () => {
-        // 1 手目が疑問手、3 手目が悪手（落差は 3 手目の方が大きい）。
-        const { doc } = createTestStudy([cp(400), cp(0), cp(0), cp(-900), cp(-880)]);
-        render(<Harness initialDoc={doc} />);
-
-        const titles = () =>
-            within(highlights())
-                .getAllByRole("listitem")
-                .map((item) => item.textContent ?? "");
-        expect(titles()[0]).toContain("1手目");
-        expect(titles()[1]).toContain("3手目");
-
-        fireEvent.click(within(highlights()).getByRole("button", { name: "大きい順" }));
-        expect(titles()[0]).toContain("3手目");
-        expect(titles()[1]).toContain("1手目");
     });
 
     it("局面を移っても、ページ全体をスクロールさせない", () => {
@@ -1380,10 +1466,11 @@ describe("StudyWorkspaceView", () => {
             fireEvent.blur(title);
             // 再送の操作も出さない。
             expect(screen.queryByRole("button", { name: "もう一度保存する" })).toBeNull();
-            // 深く解析・残りを解析・コメントは、操作できない領域（inert）の中にある。
-            for (const name of ["この局面を深く解析", "残りを解析"]) {
-                expect(screen.getByRole("button", { name }).closest("[inert]")).toBeTruthy();
-            }
+            // 「残りを解析」は出さない。深く解析・コメントは、操作できない領域（inert）の中にある。
+            expect(screen.queryByRole("button", { name: /局面を解析/ })).toBeNull();
+            expect(
+                screen.getByRole("button", { name: "この局面を深く解析" }).closest("[inert]"),
+            ).toBeTruthy();
             expect(commentTextbox().closest("[inert]")).toBeTruthy();
             // キーボードでも動かない。
             const before = currentMove();
@@ -2067,16 +2154,23 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         expect(position().textContent?.replace(/\s/g, "")).toMatch(/^1\//);
     });
 
-    it("注目局面の一覧で手を押すと、盤の表示に切り替えてその局面を見せる", () => {
-        const { doc } = createTestStudy([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
-        render(<Harness initialDoc={doc} />);
-        fireEvent.click(screen.getByRole("tab", { name: "注目局面" }));
-        fireEvent.click(within(highlights()).getByRole("button", { name: /3手目 ☗2六歩\(27\)/ }));
-        expect(screen.getByRole("tab", { name: "盤" }).getAttribute("aria-selected")).toBe("true");
-        const position = within(screen.getByRole("navigation", { name: "局面の移動" })).getByRole(
-            "status",
+    it("解析中は、盤の表示のグラフの見出しで進み具合を見て中止できる", () => {
+        const analysis = createAnalysis({ mode: "full", progress: { completed: 2, total: 5 } });
+        render(
+            <Harness
+                initialDoc={createTestStudy([cp(0), cp(10), null, null, null]).doc}
+                analysis={analysis}
+            />,
         );
-        expect(position.textContent?.replace(/\s/g, "")).toMatch(/^3\//);
+        expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+            "盤",
+            "棋譜",
+            "候補手",
+        ]);
+        const graph = screen.getByRole("region", { name: "評価値グラフ" });
+        expect(graph.textContent).toContain("解析中 2 / 5");
+        fireEvent.click(within(graph).getByRole("button", { name: "中止" }));
+        expect(analysis.cancel).toHaveBeenCalledTimes(1);
     });
 
     it("表題は「その他の操作」から変える", async () => {

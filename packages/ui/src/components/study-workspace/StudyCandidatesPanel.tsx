@@ -4,12 +4,18 @@
  * いま見ている手が悪手・疑問手のときは、「この手の代わりに」（1 手前の局面の候補手）を先に出す。
  * 悪手を見つけた人がまず知りたいのは「代わりに何を指すべきだったか」なので、1 操作で届くようにする。
  *
- * 「この手の代わりに」と「この局面の候補手」は、どちらも表示中の設定の結果（注目局面の行と
- * 同じ結果）。同じ AI でより深く読んだ結果がその局面にあるときは、差し替えずに、別の小さな段
+ * 「この手の代わりに」と「この局面の候補手」は、どちらも表示中の設定の結果（悪手・疑問手の
+ * 印と同じ結果）。同じ AI でより深く読んだ結果がその局面にあるときは、差し替えずに、別の小さな段
  * （「より深い解析」）として添える。
  */
 
-import type { KifuNode, StudyCandidate, StudyScore, StudySource } from "@shogi/app-core";
+import type {
+    KifuNode,
+    StudyCandidate,
+    StudyHighlightKind,
+    StudyScore,
+    StudySource,
+} from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 import { useState } from "react";
@@ -73,6 +79,14 @@ interface StudyCandidatesPanelProps {
     /** この局面を深く解析している途中経過。別の局面を解析中・解析していなければ undefined。 */
     liveDepth: number | null | undefined;
     onStartDeep: () => void;
+    /**
+     * 深く読んだ結果で、いま見ている手の判定が変わったときの、元の判定と新しい判定
+     * （悪手でも疑問手でもないなら null）。
+     */
+    revision?: { from: StudyHighlightKind | null; to: StudyHighlightKind | null } | null;
+    /** この局面で止めた「深く解析」を、続きから読める。 */
+    canContinueDeep?: boolean;
+    onContinueDeep?: () => void;
     onCancel: () => void;
     onPreviewPv: (request: StudyPvRequest) => void;
     onAddPvAsVariation: (request: StudyPvRequest) => void;
@@ -117,7 +131,7 @@ function CandidateRow({
     const display = convertPvToDisplay(candidate.pv, node.positionAfter);
     const [, ...rest] = display;
     const hasPv = display.length > 0;
-    // 最初の手は、棋譜・注目局面と同じ表記にする（直前の手と同じマスなら「同」）。
+    // 最初の手は、棋譜と同じ表記にする（直前の手と同じマスなら「同」）。
     const firstLabel = studyFirstMoveLabel(node, candidate.pv);
     const request: StudyPvRequest = { nodeId: node.id, pv: candidate.pv, score: candidate.score };
     return (
@@ -256,6 +270,8 @@ function DeeperResultSection({
     );
 }
 
+const KIND_LABEL: Record<StudyHighlightKind, string> = { blunder: "悪手", dubious: "疑問手" };
+
 export function StudyCandidatesPanel({
     node,
     positionResult,
@@ -269,6 +285,9 @@ export function StudyCandidatesPanel({
     isPreparing,
     liveDepth,
     onStartDeep,
+    revision = null,
+    canContinueDeep = false,
+    onContinueDeep,
     onCancel,
     onPreviewPv,
     onAddPvAsVariation,
@@ -297,9 +316,21 @@ export function StudyCandidatesPanel({
                                 深く解析中{liveDepth ? `（深さ ${liveDepth}）` : ""}
                             </output>
                             <Button type="button" variant="outline" size="sm" onClick={onCancel}>
-                                中止
+                                止める
                             </Button>
                         </div>
+                    ) : canContinueDeep && onContinueDeep ? (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5"
+                            onClick={onContinueDeep}
+                            disabled={isPreparing || analysisMode !== null || mateRunning}
+                        >
+                            <AnalyzeIcon />
+                            続けて読む
+                        </Button>
                     ) : (
                         <Button
                             type="button"
@@ -324,6 +355,20 @@ export function StudyCandidatesPanel({
                     )}
                 </div>
             </div>
+
+            {revision && (
+                <p className="rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-xs text-wafuu-sumi">
+                    {revision.to !== null
+                        ? `深く解析した結果、${KIND_LABEL[revision.to]}と分かりました。`
+                        : revision.from !== null
+                          ? `深く解析した結果、${KIND_LABEL[revision.from]}ではありませんでした。`
+                          : "深く解析した結果、判定が変わりました。"}
+                    <span className="ml-1 text-muted-foreground">
+                        （全体の解析では
+                        {revision.from === null ? "問題なし" : KIND_LABEL[revision.from]}）
+                    </span>
+                </p>
+            )}
 
             {mate && (
                 <StudyMateResult

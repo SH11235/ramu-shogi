@@ -19,7 +19,12 @@ import {
     toNnueSelectionValue,
     toOptionValue,
 } from "../shogi-match/utils/nnueSelectionUtils";
-import { ANALYSIS_TIME_OPTIONS, PARALLEL_WORKER_OPTIONS } from "../shogi-match/utils/threadOptions";
+import {
+    ANALYSIS_TIME_OPTIONS,
+    buildThreadOptions,
+    clampThreads,
+    PARALLEL_WORKER_OPTIONS,
+} from "../shogi-match/utils/threadOptions";
 import { countStudyLayerResults } from "./studyView";
 import type { StudyAnalysisSettingsForm } from "./useStudyAnalysis";
 
@@ -72,6 +77,10 @@ function SettingsBody({
         form.maxParallel === null
             ? form.settings.parallelWorkers
             : Math.min(form.settings.parallelWorkers, form.maxParallel);
+    const maxThreads = form.maxThreads ?? undefined;
+    const threadOptions = buildThreadOptions({ maxThreads, compact: true });
+    // 全体の解析は局面ごとに並べて読むので、「自動」は使わず、1 局面あたりの数を選ぶ。
+    const batchThreadOptions = threadOptions.filter((option) => option.value !== 0);
     return (
         <div className="flex flex-col gap-5">
             {doc.layers.length > 0 && (
@@ -248,6 +257,61 @@ function SettingsBody({
                         </div>
                     </fieldset>
                 )}
+                <fieldset className="flex flex-col gap-2">
+                    <legend className="pb-1 text-xs text-muted-foreground">
+                        スレッド数（多いほど深く読め、端末の負荷は上がります）
+                    </legend>
+                    <label className="flex items-center justify-between gap-3 text-sm text-wafuu-sumi">
+                        <span>
+                            全体の解析
+                            <span className="ml-1 text-xs text-muted-foreground">1 局面あたり</span>
+                        </span>
+                        <NativeSelect
+                            value={String(
+                                clampThreads(form.settings.batchAnalysisThreads, maxThreads),
+                            )}
+                            onChange={(event) =>
+                                form.onSettingsChange({
+                                    ...form.settings,
+                                    batchAnalysisThreads: Number(event.target.value),
+                                })
+                            }
+                            className="w-32 text-sm"
+                        >
+                            {batchThreadOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
+                                </option>
+                            ))}
+                        </NativeSelect>
+                    </label>
+                    <label className="flex items-center justify-between gap-3 text-sm text-wafuu-sumi">
+                        この局面を深く解析
+                        <NativeSelect
+                            value={String(
+                                clampThreads(form.settings.deepAnalysisThreads, maxThreads),
+                            )}
+                            onChange={(event) =>
+                                form.onSettingsChange({
+                                    ...form.settings,
+                                    deepAnalysisThreads: Number(event.target.value),
+                                })
+                            }
+                            className="w-32 text-sm"
+                        >
+                            {threadOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
+                                </option>
+                            ))}
+                        </NativeSelect>
+                    </label>
+                    {form.maxParallel !== 1 && form.settings.batchAnalysisThreads > 1 && (
+                        <p className="text-xs text-muted-foreground">
+                            全体の解析は、同時に解析する局面の数 × スレッド数のスレッドを使います。
+                        </p>
+                    )}
+                </fieldset>
                 <p className="text-xs text-muted-foreground">
                     AI・時間・候補手の数のどれかを変えて解析すると、結果は別の解析結果として残り、あとから切り替えて見られます。
                 </p>

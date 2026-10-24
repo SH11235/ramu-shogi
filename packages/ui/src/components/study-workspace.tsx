@@ -1,7 +1,7 @@
 /**
  * 研究ノートの画面（Web / Desktop 共通）。
  *
- * 「取り込む → 全体を解析 → 注目局面から深掘り」が主役になるよう、検討モード（`ShogiMatch`）とは
+ * 「取り込む → 全体を解析 → 悪手の印から深掘り」が主役になるよう、検討モード（`ShogiMatch`）とは
  * 別に組んでいる。盤・持ち駒・評価値グラフ・読み筋の再生・指し手の入力・解析の実行は
  * 既存の部品とフックをそのまま使う。
  *
@@ -47,6 +47,7 @@ import {
     AlertDialogTitle,
 } from "./alert-dialog";
 import { Button } from "./button";
+import { Progress } from "./progress";
 import type { PlayFromPosition } from "./rshogi-play-from-position";
 import { EvalGraph, type EvalGraphMarker } from "./shogi-match/components/EvalGraph";
 import { MatchNnueDownloadDialog } from "./shogi-match/components/MatchNnueDownloadDialog";
@@ -79,7 +80,6 @@ import {
     StudyCommentBox,
     type StudyCommentDraftChange,
 } from "./study-workspace/StudyCommentBox";
-import { StudyHighlightsPanel } from "./study-workspace/StudyHighlightsPanel";
 import { StudyIconButton } from "./study-workspace/StudyIconButton";
 import {
     AnalyzeIcon,
@@ -113,6 +113,7 @@ import {
     resolveStudyLine,
     type StudyStructureTree,
     studyBestCandidate,
+    studyDeeperLayerIds,
     studyFirstMoveLabel,
     studyHighlightTitle,
     studyLineEvalHistory,
@@ -246,11 +247,10 @@ interface StudyWorkspaceViewProps extends StudyWorkspaceCommonProps {
  * 替える（表示を替えても操作の位置が動かないように）。切り替えは画面の上（ブラウザの下端の操作に
  * 隠れない位置）に、名前の付いたタブで出す。
  */
-type MobileTab = "board" | "highlights" | "moves" | "candidates";
+type MobileTab = "board" | "moves" | "candidates";
 
 const MOBILE_TABS: { id: MobileTab; label: string }[] = [
     { id: "board", label: "盤" },
-    { id: "highlights", label: "注目局面" },
     { id: "moves", label: "棋譜" },
     { id: "candidates", label: "候補手" },
 ];
@@ -579,6 +579,8 @@ export function StudyWorkspaceView({
     };
     // コメント欄は普段は畳んでおき、盤の上のボタンで開く（開いたままにすれば、手を送っても出続ける）。
     const [isCommentOpen, setIsCommentOpen] = useState(false);
+    // 対局時の評価値と解析の両方があるとき、評価値グラフでどちらを主の線にするか。
+    const [graphPrimaryChoice, setGraphPrimaryChoice] = useState<"source" | "analysis">("source");
     const sideColumnRef = useRef<HTMLDivElement | null>(null);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isTitleDialogOpen, setIsTitleDialogOpen] = useState(false);
@@ -908,19 +910,26 @@ export function StudyWorkspaceView({
         enableWheelNavigation: displaySettings.enableWheelNavigation,
     });
 
-    // --- 注目局面・解析の状態 ---
-    const highlights = computeStudyHighlights(doc, displayLayerId);
+    // --- 悪手・疑問手・解析の状態 ---
+    // 同じ AI でより深く読んだ結果があれば、悪手・疑問手はそれで判定し直す。
+    const highlights = computeStudyHighlights(doc, displayLayerId, {
+        deeperLayerIds: studyDeeperLayerIds(doc, displayLayerId),
+    });
     const highlightKinds = new Map<string, StudyHighlightKind>();
+    /** 深く読んで、悪手・疑問手ではなかったと分かった手（元の判定）。 */
+    const clearedKinds = new Map<string, StudyHighlightKind>();
     for (const highlight of highlights) {
         if (highlight.kind) highlightKinds.set(highlight.nodeId, highlight.kind);
+        else if (highlight.revisedFrom) clearedKinds.set(highlight.nodeId, highlight.revisedFrom);
     }
+    const currentHighlight = highlights.find((highlight) => highlight.nodeId === currentNodeId);
     const displayLayer = doc.layers.find((layer) => layer.id === displayLayerId);
     const totalCount = Object.keys(doc.tree.nodes).length;
     const unanalyzedCount = countStudyUnanalyzed(doc, displayLayerId);
     const analyzedCount = displayLayer === undefined ? 0 : totalCount - unanalyzedCount;
     const hasResults = analyzedCount > 0;
     const needsFullAnalysis = analysis.mode !== "full" && analyzedCount * 2 < totalCount;
-    // 候補手・「この手の代わりに」・注目局面の行の「最善」は、どれも表示中の設定の結果から出す
+    // 候補手・「この手の代わりに」・悪手と疑問手の印は、どれも表示中の設定の結果から出す
     // （欄によって別の設定の結果が混ざると、行とパネルで手や評価値が食い違う）。
     const positionResult = pickStudyPositionResult(doc, currentNodeId, displayLayerId);
 
@@ -947,20 +956,6 @@ export function StudyWorkspaceView({
     const deeperIsFresh =
         isDeepHere && deeperResult !== null && (freshDeepResult !== null || deepLayerId === null);
 
-    // 悪手・疑問手の「代わりの最善手」（1 手前の局面の、表示中の設定の 1 位の候補の初手）。
-    const bestMoveLabels = new Map<string, string>();
-    for (const highlight of highlights) {
-        if (highlight.kind === null || highlight.parentId === null) continue;
-        const parent = tree.nodes.get(highlight.parentId);
-        const result = pickStudyPositionResult(doc, highlight.parentId, displayLayerId);
-        if (!parent || !result) continue;
-        const best = studyBestCandidate(result.result);
-        // 指した手が 1 位の候補と同じなら、代わりの手は無い。
-        if (!best || best.pv[0] === highlight.usiMove) continue;
-        const label = studyFirstMoveLabel(parent, best.pv);
-        if (label) bestMoveLabels.set(highlight.nodeId, label);
-    }
-
     // いま見ている手が悪手・疑問手なら、1 手前の局面の候補手（代わりに指すべきだった手）を出す。
     const currentKind = highlightKinds.get(currentNodeId);
     const parentNode = currentNode.parentId ? tree.nodes.get(currentNode.parentId) : undefined;
@@ -985,6 +980,25 @@ export function StudyWorkspaceView({
 
     // グラフの印は悪手だけ（疑問手まで出すと、件数が多いときに埋もれる。疑問手は一覧で分かる）。
     const graphMarkers: EvalGraphMarker[] = [];
+    // 棋譜に付いていた評価値（対局時）は、解析したあとも消さずに解析の線と重ねる。対局時のほうが
+    // 長く読んでいることがある（AI 同士の棋譜など）ので、解析の値で置き換えたことにしない。
+    const sourceHistory = studyLineSourceEvalHistory(doc, tree, line);
+    const hasSourceGraph = sourceHistory.some(
+        (entry) => entry.evalCp !== null || entry.evalMate !== null,
+    );
+    const analysisHistory = studyLineEvalHistory(tree, line);
+    const graphPrimary: "source" | "analysis" = !hasSourceGraph
+        ? "analysis"
+        : !hasResults
+          ? "source"
+          : graphPrimaryChoice;
+    const graphHistory = graphPrimary === "source" ? sourceHistory : analysisHistory;
+    const graphSecondaryHistory =
+        hasSourceGraph && hasResults
+            ? graphPrimary === "source"
+                ? analysisHistory
+                : sourceHistory
+            : undefined;
     for (const highlight of highlights) {
         const index = line.indexOf(highlight.nodeId);
         if (index < 0 || highlight.kind !== "blunder") continue;
@@ -992,14 +1006,10 @@ export function StudyWorkspaceView({
             ply: index,
             tone: "blunder",
             label: `${studyHighlightTitle(tree, highlight)}（悪手）`,
+            // 悪手は解析の値で決めるので、印は解析の線に載せる。
+            series: graphPrimary === "analysis" ? "primary" : "secondary",
         });
     }
-    // 解析する前でも全体の流れが見えるよう、棋譜に付いていた評価値があればグラフに出す。
-    const sourceHistory = hasResults ? null : studyLineSourceEvalHistory(doc, tree, line);
-    const showsSourceGraph =
-        sourceHistory?.some((entry) => entry.evalCp !== null || entry.evalMate !== null) ?? false;
-    const graphHistory =
-        showsSourceGraph && sourceHistory ? sourceHistory : studyLineEvalHistory(tree, line);
 
     // --- 編集 ---
     const changeComment = (nodeId: string, value: string): StudyApplyOpsResult =>
@@ -1134,13 +1144,6 @@ export function StudyWorkspaceView({
         }
         void onApplyOps([{ type: "deleteSubtree", nodeId: targetId }]);
     };
-    const selectHighlight = (nodeId: string): void => {
-        navigateTo(nodeId);
-        // スマートフォンでは、その局面を盤で大きく見せる（最善手と評価値の落差は一覧の行で見えている。
-        // 候補手はタブ 1 つで開ける）。
-        if (isMobile) setMobileTab("board");
-    };
-
     // 編集できなくなったら、開いているダイアログ・シートを閉じる（その中から編集や解析を
     // 始められないように）。開いているかどうかの表示も、編集できる間だけにする。
     useEffect(() => {
@@ -1172,6 +1175,11 @@ export function StudyWorkspaceView({
         if (locked || mateRunning) return;
         setDeepNodeId(currentNodeId);
         void analysis.startDeep(currentNodeId);
+    };
+    const continueDeep = (): void => {
+        if (locked) return;
+        setDeepNodeId(currentNodeId);
+        void analysis.continueDeep();
     };
     const changeCommentDraft = (nodeId: string, change: StudyCommentDraftChange): void => {
         if (change.type === "set") {
@@ -1269,8 +1277,6 @@ export function StudyWorkspaceView({
     }, [showsComment]);
     // 保存できていない書きかけ（保存を待っている・保存に失敗した、など）がこの手にあるか。
     const hasCommentDraft = draftCommentIds.has(currentNodeId);
-    const settingsButtonLabel =
-        doc.layers.length > 1 && displayLayer ? displayLayer.display.label : null;
 
     const commentButton = (
         <StudyIconButton
@@ -1383,39 +1389,6 @@ export function StudyWorkspaceView({
         />
     );
 
-    const highlightsPanel = (
-        <StudyHighlightsPanel
-            tree={tree}
-            highlights={highlights}
-            bestMoveLabels={bestMoveLabels}
-            currentNodeId={currentNodeId}
-            analyzedCount={analyzedCount}
-            totalCount={totalCount}
-            settingsLabel={analysis.settingsLabel}
-            fullTargetCount={analysis.fullTargetCount}
-            displayLabel={displayLayer?.display.label ?? null}
-            analysisMode={analysis.mode}
-            startDisabled={analysisBlocked}
-            progress={analysis.progress}
-            onSelect={selectHighlight}
-            onStartFull={startFull}
-            onResume={resumeDisplayLayer}
-            onCancel={cancelAnalysis}
-            onOpenSettings={() => setIsSettingsOpen(true)}
-            hideHeading={isMobile}
-            hideResume={isMobile}
-            // 主役なので、PC では画面の高さに合わせて伸ばす（下に候補手の欄が見える分は残す）。
-            // 幅広の画面では上限を列の側で決める。
-            // スマートフォンでは一覧の欄に収まるよう縮め、中で送る。
-            className={
-                isMobile
-                    ? "min-h-0 flex-1"
-                    : isWide
-                      ? undefined
-                      : "max-h-[max(17rem,calc(100dvh-24rem))]"
-            }
-        />
-    );
     // いまの手の評価値（スマートフォンのグラフの見出しに出す）。
     const currentMover: "sente" | "gote" | null =
         currentNode.ply === 0
@@ -1427,6 +1400,58 @@ export function StudyWorkspaceView({
     const currentSourceText = formatStudyScore(storedNode?.source?.score ?? null);
     // 対局時の評価値がある棋譜では、どの手でもその欄を出す（値の無い手で欄が消えると、左の表示が動く）。
     const noteHasSource = Object.values(doc.tree.nodes).some((node) => node.source?.score != null);
+    const analysisPercent =
+        analysis.progress && analysis.progress.total > 0
+            ? Math.round((analysis.progress.completed / analysis.progress.total) * 100)
+            : undefined;
+    // グラフに線が 1 本も無い（未解析で、対局時の評価値も無い）ときは、空のグラフの中央で解析を促す。
+    const graphIsEmpty = !hasSourceGraph && !hasResults;
+    // PC の解析の操作（始める・進み具合と中止・残りを解析）。表題の行の「解析の設定」の隣に置き、
+    // 「この AI・時間で解析する」と一続きに読めるようにする。
+    const analysisAction =
+        analysis.mode === "full" ? (
+            <div className="flex shrink-0 items-center gap-2">
+                <output aria-live="polite" className="text-xs text-wafuu-sumi tabular-nums">
+                    解析中 {analysis.progress?.completed ?? 0} / {analysis.progress?.total ?? 0}{" "}
+                    局面
+                </output>
+                <Progress
+                    value={analysisPercent}
+                    aria-label="解析の進み具合"
+                    className="h-1.5 w-20"
+                />
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-10 px-3"
+                    onClick={cancelAnalysis}
+                >
+                    中止
+                </Button>
+            </div>
+        ) : locked || graphIsEmpty ? null : needsFullAnalysis ? (
+            <Button
+                type="button"
+                className="h-10 shrink-0 gap-1.5 px-3"
+                onClick={startFull}
+                disabled={analysisBlocked || analysis.mode !== null}
+            >
+                <AnalyzeIcon />
+                {analysis.fullTargetCount === 0 ? "解析済みの結果を表示" : "全体を解析"}
+            </Button>
+        ) : unanalyzedCount > 0 ? (
+            // 解析の途中で止めた・手を足したなどで、未解析の局面が残っているとき。
+            <Button
+                type="button"
+                variant="outline"
+                className="h-10 shrink-0 px-3"
+                onClick={resumeDisplayLayer}
+                disabled={analysisBlocked || analysis.mode !== null}
+            >
+                残り {unanalyzedCount} 局面を解析
+            </Button>
+        ) : null;
     const graphPanel = (
         <section
             aria-label="評価値グラフ"
@@ -1467,10 +1492,21 @@ export function StudyWorkspaceView({
                         )}
                     </div>
                     {analysis.mode === "full" ? (
-                        <output aria-live="polite" className="shrink-0 font-mono tabular-nums">
-                            解析中 {analysis.progress?.completed ?? 0} /{" "}
-                            {analysis.progress?.total ?? 0}
-                        </output>
+                        <div className="flex shrink-0 items-center gap-2">
+                            <output aria-live="polite" className="font-mono tabular-nums">
+                                解析中 {analysis.progress?.completed ?? 0} /{" "}
+                                {analysis.progress?.total ?? 0}
+                            </output>
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs"
+                                onClick={cancelAnalysis}
+                            >
+                                中止
+                            </Button>
+                        </div>
                     ) : locked ? null : needsFullAnalysis ? (
                         <Button
                             type="button"
@@ -1499,36 +1535,121 @@ export function StudyWorkspaceView({
                     )}
                 </div>
             ) : (
-                <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                <div className="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1">
                     <h2 className="font-display text-sm font-semibold text-wafuu-sumi">
                         評価値グラフ
                     </h2>
-                    <span className="text-xs text-muted-foreground">
-                        {showsSourceGraph
-                            ? "対局時の評価値（解析前）"
-                            : hasResults
-                              ? (displayLayer?.display.label ?? "")
-                              : "解析すると、形勢の流れが出ます"}
-                    </span>
+                    {graphSecondaryHistory ? (
+                        // 押した側を主の線（手番で色分けした実線）にし、もう一方は破線で重ねる。
+                        // ボタンの線の見本が、そのまま凡例になる。
+                        <fieldset className="m-0 flex min-w-0 items-center gap-1 border-0 p-0">
+                            <legend className="sr-only">主に描く評価値</legend>
+                            {(
+                                [
+                                    { series: "source", label: "対局時" },
+                                    {
+                                        series: "analysis",
+                                        label: displayLayer
+                                            ? `解析（${displayLayer.display.label}）`
+                                            : "解析",
+                                    },
+                                ] as const
+                            ).map(({ series, label }) => {
+                                const isPrimary = graphPrimary === series;
+                                return (
+                                    <button
+                                        key={series}
+                                        type="button"
+                                        aria-pressed={isPrimary}
+                                        onClick={() => setGraphPrimaryChoice(series)}
+                                        className={cn(
+                                            "flex min-w-0 items-center gap-1.5 rounded px-1.5 py-0.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                            isPrimary
+                                                ? "bg-muted font-medium text-wafuu-sumi"
+                                                : "text-muted-foreground hover:bg-muted/60",
+                                        )}
+                                    >
+                                        {isPrimary ? (
+                                            <span
+                                                aria-hidden="true"
+                                                className="flex h-0.5 w-4 shrink-0"
+                                            >
+                                                <span className="flex-1 bg-wafuu-shu" />
+                                                <span className="flex-1 bg-wafuu-ai" />
+                                            </span>
+                                        ) : (
+                                            <span
+                                                aria-hidden="true"
+                                                className="w-4 shrink-0 border-t-[1.5px] border-dashed border-muted-foreground"
+                                            />
+                                        )}
+                                        <span className="truncate">{label}</span>
+                                    </button>
+                                );
+                            })}
+                        </fieldset>
+                    ) : (
+                        // 線が 1 本だけのときも、2 本のときの切り替えと同じ見本で、何の線かを示す。
+                        <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                            {(hasSourceGraph || hasResults) && (
+                                <span aria-hidden="true" className="flex h-0.5 w-4 shrink-0">
+                                    <span className="flex-1 bg-wafuu-shu" />
+                                    <span className="flex-1 bg-wafuu-ai" />
+                                </span>
+                            )}
+                            <span className="truncate">
+                                {hasSourceGraph
+                                    ? "対局時"
+                                    : hasResults
+                                      ? displayLayer
+                                          ? `解析（${displayLayer.display.label}）`
+                                          : "解析"
+                                      : "解析すると、形勢の流れが出ます"}
+                            </span>
+                        </span>
+                    )}
                 </div>
             )}
-            <EvalGraph
-                compact
-                evalHistory={graphHistory}
-                currentPly={currentIndex}
-                height={isMobile ? Math.max(40, Math.floor((graphSlotHeight ?? 102) - 62)) : 72}
-                minScale={GRAPH_MIN_SCALE}
-                axisCap={GRAPH_AXIS_CAP}
-                onPlySelect={(ply) => {
-                    const nodeId = line[ply];
-                    if (nodeId !== undefined) navigateTo(nodeId);
-                }}
-                markers={graphMarkers}
-                onMarkerSelect={(marker) => {
-                    const nodeId = line[marker.ply];
-                    if (nodeId !== undefined) navigateTo(nodeId);
-                }}
-            />
+            <div className="relative">
+                <EvalGraph
+                    compact
+                    evalHistory={graphHistory}
+                    secondaryHistory={graphSecondaryHistory}
+                    currentPly={currentIndex}
+                    // PC の広い画面では右の 2 列にまたがって横長に置くので、低くして列の高さを空ける。
+                    height={
+                        isMobile
+                            ? Math.max(40, Math.floor((graphSlotHeight ?? 102) - 62))
+                            : isWide
+                              ? 56
+                              : 72
+                    }
+                    minScale={GRAPH_MIN_SCALE}
+                    axisCap={GRAPH_AXIS_CAP}
+                    onPlySelect={(ply) => {
+                        const nodeId = line[ply];
+                        if (nodeId !== undefined) navigateTo(nodeId);
+                    }}
+                    markers={graphMarkers}
+                    onMarkerSelect={(marker) => {
+                        const nodeId = line[marker.ply];
+                        if (nodeId !== undefined) navigateTo(nodeId);
+                    }}
+                />
+                {!isMobile && graphIsEmpty && !locked && analysis.mode !== "full" && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                        <Button
+                            type="button"
+                            className="gap-1.5 shadow-sm"
+                            onClick={startFull}
+                            disabled={analysisBlocked || analysis.mode !== null}
+                        >
+                            <AnalyzeIcon />
+                            全体を解析
+                        </Button>
+                    </div>
+                )}
+            </div>
         </section>
     );
     const moveList = (
@@ -1538,13 +1659,14 @@ export function StudyWorkspaceView({
             line={line}
             currentNodeId={currentNodeId}
             highlightKinds={highlightKinds}
+            clearedKinds={clearedKinds}
             unsavedComments={unsavedComments}
             onSelect={(nodeId) => navigateTo(nodeId)}
             onBackToMainLine={backToMainLine}
             onPromoteToMainLine={promoteLineToMain}
             onRequestDeleteVariation={setDeleteTargetId}
             // スマートフォンでは一覧の場所いっぱいに広げ、中で送る（手が少なくても下が空かないように）。
-            className={isMobile ? "min-h-0 flex-1" : "max-h-[26rem] xl:max-h-[calc(100dvh-9rem)]"}
+            className={isMobile ? "min-h-0 flex-1" : isWide ? "max-h-full" : "max-h-[26rem]"}
         />
     );
     const candidatesPanel = (
@@ -1563,6 +1685,13 @@ export function StudyWorkspaceView({
             isPreparing={analysis.isPreparing}
             liveDepth={analysis.live?.nodeId === currentNodeId ? analysis.live.depth : undefined}
             onStartDeep={startDeep}
+            revision={
+                currentHighlight?.revisedFrom !== undefined
+                    ? { from: currentHighlight.revisedFrom, to: currentHighlight.kind }
+                    : null
+            }
+            canContinueDeep={analysis.continuableDeepNodeId === currentNodeId}
+            onContinueDeep={continueDeep}
             onCancel={cancelAnalysis}
             onPreviewPv={previewPv}
             onAddPvAsVariation={addPvAsVariation}
@@ -1709,8 +1838,7 @@ export function StudyWorkspaceView({
                                     },
                                     {
                                         label: "解析の設定",
-                                        note:
-                                            settingsButtonLabel ?? "解析に使う AI と、1 局面の時間",
+                                        note: analysis.settingsLabel,
                                         run: () => setIsSettingsOpen(true),
                                     },
                                 ]),
@@ -1814,28 +1942,22 @@ export function StudyWorkspaceView({
                             />
                             {isWide && metaRow}
                             {moreMenu}
-                            {settingsButtonLabel ? (
-                                <button
-                                    type="button"
-                                    onClick={() => setIsSettingsOpen(true)}
-                                    aria-haspopup="dialog"
-                                    disabled={locked}
-                                    className="flex h-10 max-w-[45%] shrink-0 items-center gap-1.5 rounded-md border border-wafuu-border bg-background px-2 text-xs text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
-                                >
-                                    <SettingsIcon />
-                                    <span className="sr-only">解析の設定:</span>
-                                    <span className="truncate">{settingsButtonLabel}</span>
-                                </button>
-                            ) : (
-                                <StudyIconButton
-                                    label="解析の設定"
-                                    aria-haspopup="dialog"
-                                    disabled={locked}
-                                    onClick={() => setIsSettingsOpen(true)}
-                                >
-                                    <SettingsIcon />
-                                </StudyIconButton>
-                            )}
+                            {/* 解析に使う AI と 1 局面の時間は結果を大きく左右するので、アイコンだけにせず
+                                いまの値を見せ、押せば変えられるようにする。 */}
+                            <button
+                                type="button"
+                                onClick={() => setIsSettingsOpen(true)}
+                                aria-haspopup="dialog"
+                                disabled={locked}
+                                className="flex h-10 max-w-[45%] shrink-0 items-center gap-2 rounded-md border border-wafuu-border bg-background px-3 text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
+                            >
+                                <SettingsIcon />
+                                <span className="text-xs text-muted-foreground">解析の設定</span>
+                                <span className="truncate font-medium">
+                                    {analysis.settingsLabel}
+                                </span>
+                            </button>
+                            {analysisAction}
                         </div>
                         {!isWide && metaRow}
                     </header>
@@ -1993,7 +2115,6 @@ export function StudyWorkspaceView({
                                         {mobileTab !== "moves" && backToMainButton && (
                                             <div className="flex shrink-0">{backToMainButton}</div>
                                         )}
-                                        {mobileTab === "highlights" && highlightsPanel}
                                         {mobileTab === "moves" && moveList}
                                         {mobileTab === "candidates" && candidatesPanel}
                                     </div>
@@ -2001,7 +2122,7 @@ export function StudyWorkspaceView({
                             </div>
                         </div>
                     ) : isTablet ? (
-                        // タブレットの縦持ち: 盤を小さくして左に置き、右に注目局面からの列を並べる。
+                        // タブレットの縦持ち: 盤を小さくして左に置き、右に候補手と棋譜の列を並べる。
                         <div className="grid grid-cols-[22.5rem_minmax(0,1fr)] items-start gap-3">
                             <div className="flex min-w-0 flex-col gap-3">
                                 <div className="flex flex-col items-center gap-2">
@@ -2012,7 +2133,6 @@ export function StudyWorkspaceView({
                                 {graphWithComment}
                             </div>
                             <div className="flex min-w-0 flex-col gap-3">
-                                {highlightsPanel}
                                 {candidatesPanel}
                                 {moveList}
                             </div>
@@ -2022,12 +2142,20 @@ export function StudyWorkspaceView({
                         // 幅（xl は 2 列で約 600px、lg は 1 列で約 330px）を残す分で抑える。盤と駒台の幅は
                         // マスのおよそ 11.2 倍 + 56px。この分岐は PC だけで描くので、xl 未満の値は画面幅の
                         // 条件を付けずに置く（lg の rem と isTablet の px が文字の大きさで食い違っても効くように）。
-                        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 [--shogi-cell-size:clamp(34px,min(calc((100dvh-300px)/9),calc((100vw-440px)/11.2)),72px)] xl:grid-cols-[auto_minmax(300px,1fr)_minmax(260px,300px)] xl:[--shogi-cell-size:clamp(34px,min(calc((100dvh-300px)/9),calc((min(100vw,1600px)-720px)/11.2)),72px)]">
+                        // xl では評価値グラフを右の 2 列にまたがる横長の行に出し、その下に 2 列を並べる。
+                        // 2 列の高さは、画面の高さから表題の行などの 8.5rem を引いた全体の残りで決める。
+                        <div
+                            className={cn(
+                                "grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 [--shogi-cell-size:clamp(34px,min(calc((100dvh-300px)/9),calc((100vw-440px)/11.2)),72px)] xl:grid-cols-[auto_minmax(300px,1fr)_minmax(260px,300px)] xl:[--shogi-cell-size:clamp(34px,min(calc((100dvh-300px)/9),calc((min(100vw,1600px)-720px)/11.2)),72px)]",
+                                isWide && "h-[calc(100dvh-8.5rem)] grid-rows-[auto_minmax(0,1fr)]",
+                            )}
+                        >
                             <div
                                 ref={boardSectionRef}
                                 // 持ち駒は対局画面と同じく盤の左右に置く（盤の上下を詰めて 1 画面に収める）。
                                 className={cn(
                                     "flex w-fit flex-col items-center gap-2",
+                                    isWide && "row-span-2",
                                     PLAY_HAND_ZONES,
                                 )}
                             >
@@ -2041,33 +2169,27 @@ export function StudyWorkspaceView({
                                 />
                                 {navBar}
                             </div>
-                            {/* 右の列は画面の高さに収める。xl では注目局面の一覧を縮めて収め、それでも溢れる分
-                                （xl 未満では棋譜の欄も入るので常に）は列の中で送る。送る列の端で欄の影やフォーカスの
-                                枠が切れないよう、内側に余白を取って外側の余白で打ち消す（上限は、画面の
-                                高さから表題の行などの 10rem（xl は 9rem）を引き、その余白の上下 0.5rem を足し戻した値）。 */}
+                            {isWide && <div className="col-span-2 min-w-0">{graphWithComment}</div>}
+                            {/* 右の列は画面の高さに収め、溢れる分は列の中で送る。送る列の端で欄の影やフォーカスの
+                                枠が切れないよう、内側に余白を取って外側の余白で打ち消す（xl 未満の上限は、画面の
+                                高さから表題の行などの 10rem を引き、その余白の上下 0.5rem を足し戻した値。xl では
+                                グラフの下の行いっぱいに伸ばす）。 */}
                             <div
                                 ref={sideColumnRef}
-                                className="-m-1 flex min-w-0 flex-col gap-3 p-1 max-h-[calc(100dvh-9.5rem)] overflow-y-auto xl:max-h-[calc(100dvh-8.5rem)]"
+                                className={cn(
+                                    "-m-1 flex min-w-0 flex-col gap-3 overflow-y-auto p-1",
+                                    isWide ? "min-h-0 self-stretch" : "max-h-[calc(100dvh-9.5rem)]",
+                                )}
                             >
-                                <div className="shrink-0">{graphWithComment}</div>
-                                <div
-                                    className={cn(
-                                        "flex min-h-0 shrink-0 flex-col",
-                                        // 縮めてよいのは、一覧の中で送れるだけの件数があり、解析の案内・途中経過を
-                                        // 出していないときだけ（下限は欄全体の高さなので、案内が出ていると一覧が
-                                        // 潰れる）。件数が少ないときに下限を付けると欄の中が空くので付けない。
-                                        highlights.length > 3 &&
-                                            !needsFullAnalysis &&
-                                            analysis.mode !== "full" &&
-                                            "xl:min-h-[16rem] xl:shrink",
-                                    )}
-                                >
-                                    {highlightsPanel}
-                                </div>
+                                {!isWide && <div className="shrink-0">{graphWithComment}</div>}
                                 <div className="shrink-0">{candidatesPanel}</div>
                                 {!isWide && <div className="shrink-0">{moveList}</div>}
                             </div>
-                            {isWide && <div className="min-w-0">{moveList}</div>}
+                            {isWide && (
+                                <div className="flex min-h-0 min-w-0 flex-col self-stretch">
+                                    {moveList}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
@@ -2230,7 +2352,7 @@ export function StudyWorkspace({
         onFlush,
         locked,
         // 全体の解析を始めたら、その設定の結果を表示に切り替える。1 局面だけの深い解析では
-        // 切り替えない（評価値グラフと注目局面は全体の解析の結果のまま見せる）。
+        // 切り替えない（評価値グラフと悪手・疑問手の印は全体の解析の結果のまま見せる）。
         onLayerStarted: (layerId, mode) => {
             if (mode !== "full") {
                 setDeepLayerId(layerId);
