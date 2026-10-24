@@ -318,6 +318,8 @@ export interface ThreadInfo {
 export interface EngineClient {
     /** 実行時能力を検査する解析専用 API。未対応バックエンドでは存在しない。 */
     analysis?: AnalysisClient;
+    /** 詰み探索 (df-pn)。未対応バックエンドでは存在しない。 */
+    mate?: MateClient;
     init(opts?: EngineInitOptions): Promise<void>;
     /**
      * 局面を読み込む
@@ -504,4 +506,57 @@ export interface AnalysisClient {
         onInfo: (info: EngineInfoEvent) => void,
     ): Promise<AnalysisRun>;
     release(): Promise<void>;
+}
+
+/**
+ * 詰み探索の進め方。
+ * - `Speed`: 速さ優先 (不詰の多い詰めろ判定向け)
+ * - `Power`: 解く力優先 (証明駒・反証駒で持駒違いの局面に流用する。詰む問題・長手数・難問向け)
+ * - `Auto`: 証明駒を使わずに読み、決まらなければ解く力優先で続ける
+ */
+export type MateMode = "Speed" | "Power" | "Auto";
+export interface MateParams {
+    /** 既定 `Auto` */
+    mode?: MateMode;
+    /** 1 局面を解くスレッド数。既定 1。エンジンのスレッド数を上限に丸める (スレッドが使えないときは 1)。 */
+    threads?: number;
+    /** 置換表の大きさ (MB)。既定 64、上限 1024 */
+    hashMb?: number;
+    /** 時間の上限 (ミリ秒)。0 か省略で無制限 */
+    timeMs?: number;
+    /** ノード数の上限。0 か省略で無制限 */
+    nodes?: number;
+}
+/**
+ * 詰み探索の結論。
+ * - `mate`: 詰み。`pv` は攻め方の手から始まる USI 形式の手順 (最後の手で受け方が詰む)
+ * - `noMate`: 不詰 (王手を続けて詰ませる手順は無い)
+ * - `unknown`: 時間・ノード数の上限で打ち切った、または判定できなかった
+ * - `unsupported`: 扱えない局面 (玉が無い、手番でない側が王手されている)
+ */
+export type MateResult =
+    | { kind: "mate"; pv: string[] }
+    | { kind: "noMate" }
+    | { kind: "unknown" }
+    | { kind: "unsupported" };
+export interface MateOutcome {
+    result: MateResult;
+    nodes: number;
+    elapsedMs: number;
+}
+export interface MateProgress {
+    nodes: number;
+    elapsedMs: number;
+}
+export interface MateClient {
+    /** 初期化後に使えるか。 */
+    available(): boolean;
+    /**
+     * loadPosition で読み込んだ局面の手番側が詰ませられるかを解く。
+     * 終わるまでほかの操作 (探索・局面の読み込み・設定など) はすぐ失敗する。途中で止めるには上限を指定する
+     * (stop() はエンジンを作り直して止め、待っている solve は失敗する)。
+     * 通常の探索・解析の最中に呼ぶと失敗する。
+     * @param onProgress 約 1 秒ごとに呼ばれる
+     */
+    solve(params: MateParams, onProgress?: (progress: MateProgress) => void): Promise<MateOutcome>;
 }

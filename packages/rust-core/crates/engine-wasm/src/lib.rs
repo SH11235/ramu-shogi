@@ -14,6 +14,7 @@ mod yo_sfnn;
 use rshogi_core::eval::{
     MaterialLevel, disable_material, set_eval_hash_enabled, set_material_level,
 };
+use rshogi_core::mate::dfpn::{DfpnSolver, MateLimits, MateMode, MateProgress, MateResult};
 use rshogi_core::movegen::{MoveList, generate_legal_all_with_pass};
 use rshogi_core::nnue::{init_nnue_from_bytes, set_fv_scale_override};
 use rshogi_core::position::{Position, SFEN_HIRATE};
@@ -32,6 +33,9 @@ use yo_sfnn::detect_format;
 const DEFAULT_TT_SIZE_MB: usize = 64;
 const DEFAULT_EVAL_HASH_SIZE_MB: usize = 16;
 const DEFAULT_USE_EVAL_HASH: bool = false;
+const DEFAULT_MATE_HASH_MB: usize = 64;
+/// スレッド版の線形メモリは 2 GiB までで、探索の置換表や評価関数もそこに置くので、詰み探索の置換表はその半分まで
+const MAX_MATE_HASH_MB: usize = 1024;
 
 thread_local! {
     static ENGINE: RefCell<Option<EngineState>> = const { RefCell::new(None) };
@@ -123,6 +127,14 @@ struct EngineState {
     analysis_run: Option<AnalysisRunHandle>,
     position: Position,
     default_multi_pv: usize,
+    /// 詰み探索のソルバー (置換表を持ち回る)。置換表の大きさとモードが変わったら作り直す
+    mate: Option<MateSolverState>,
+}
+
+struct MateSolverState {
+    hash_mb: usize,
+    mode: MateMode,
+    solver: DfpnSolver,
 }
 
 impl EngineState {
@@ -136,6 +148,7 @@ impl EngineState {
             analysis_run: None,
             position,
             default_multi_pv: 1,
+            mate: None,
         }
     }
 }
@@ -995,6 +1008,117 @@ pub fn stop() {
             .stop();
         Ok(())
     });
+}
+
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JsMateParams {
+    /// "Speed" / "Power" / "Auto" (既定 Auto)
+    mode: Option<String>,
+    /// 1 局面を解くスレッド数 (既定 1)。スレッドの無いビルドでは常に 1
+    threads: Option<usize>,
+    /// 置換表の大きさ (MB、既定 64、上限 `MAX_MATE_HASH_MB`)
+    hash_mb: Option<usize>,
+    /// 時間の上限 (ミリ秒、0 か省略で無制限)
+    time_ms: Option<u64>,
+    /// ノード数の上限 (0 か省略で無制限)
+    nodes: Option<u64>,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum JsMateResult {
+    Mate { pv: Vec<String> },
+    NoMate,
+    Unknown,
+    Unsupported,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JsMateOutcome {
+    result: JsMateResult,
+    nodes: u64,
+    elapsed_ms: u64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JsMateProgress {
+    nodes: u64,
+    elapsed_ms: u64,
+}
+
+/// 現在の局面 (`load_position` で読み込んだもの) の手番側が詰ませられるかを df-pn で解く。
+///
+/// 終わるまで戻らない (`time_ms` / `nodes` で打ち切る)。`on_progress` は約 1 秒ごとに
+/// `{ nodes, elapsedMs }` で呼ばれる。置換表は解くたびに空にするが、確保した領域は持ち回る。
+#[wasm_bindgen]
+pub fn solve_mate(
+    params: Option<JsValue>,
+    on_progress: Option<js_sys::Function>,
+) -> Result<JsValue, JsValue> {
+    let params: JsMateParams = match params {
+        Some(value) if !value.is_null() && !value.is_undefined() => swb::from_value(value)
+            .map_err(|e| JsValue::from_str(&format!("invalid mate params: {e}")))?,
+        _ => JsMateParams::default(),
+    };
+    let mode = match params.mode.as_deref() {
+        Some(name) => MateMode::from_name(name)
+            .ok_or_else(|| JsValue::from_str(&format!("unknown mate mode: {name}")))?,
+        None => MateMode::default(),
+    };
+    let hash_mb = params
+        .hash_mb
+        .unwrap_or(DEFAULT_MATE_HASH_MB)
+        .clamp(1, MAX_MATE_HASH_MB);
+    let limits = MateLimits {
+        nodes: params.nodes.unwrap_or(0),
+        time_ms: params.time_ms.unwrap_or(0),
+    };
+
+    with_engine_mut(|engine| {
+        // 使い回せない古い置換表は、新しい表を確保する前に解放する (線形メモリは縮まないので、
+        // 両方を同時に持つとその分だけ上限に近づく)
+        let reusable = engine
+            .mate
+            .take()
+            .filter(|state| state.hash_mb == hash_mb && state.mode == mode);
+        let mut state = reusable.unwrap_or_else(|| MateSolverState {
+            hash_mb,
+            mode,
+            solver: DfpnSolver::with_mode(hash_mb, mode),
+        });
+        state.solver.set_threads(params.threads.unwrap_or(1));
+        let stop = std::sync::atomic::AtomicBool::new(false);
+        let started = js_sys::Date::now();
+        let result = state
+            .solver
+            .solve(&mut engine.position, &limits, &stop, |p: MateProgress| {
+                if let Some(callback) = on_progress.as_ref()
+                    && let Ok(value) = swb::to_value(&JsMateProgress {
+                        nodes: p.nodes,
+                        elapsed_ms: p.elapsed_ms,
+                    })
+                {
+                    let _ = callback.call1(&JsValue::NULL, &value);
+                }
+            });
+        let outcome = JsMateOutcome {
+            result: match result {
+                MateResult::Mate(pv) => JsMateResult::Mate {
+                    pv: pv.iter().map(|m| m.to_usi()).collect(),
+                },
+                MateResult::NoMate => JsMateResult::NoMate,
+                MateResult::Unknown => JsMateResult::Unknown,
+                MateResult::Unsupported => JsMateResult::Unsupported,
+            },
+            nodes: state.solver.nodes(),
+            elapsed_ms: (js_sys::Date::now() - started).max(0.0) as u64,
+        };
+        engine.mate = Some(state);
+        swb::to_value(&outcome).map_err(|e| JsValue::from_str(&format!("{e}")))
+    })
 }
 
 #[wasm_bindgen]
