@@ -5,6 +5,22 @@ import type { EngineSearchLimit, EngineSearchLimits, SideSetting } from "../type
 export const SEARCH_NODES_MAX = 1_000_000_000;
 export const SEARCH_DEPTH_MAX = 60;
 
+export type SearchLimitKind = "nodes" | "depth";
+
+/** 時計ではなく数で決めた読む量。 */
+export type FixedSearchLimit = Extract<EngineSearchLimit, { kind: SearchLimitKind }>;
+
+/** 数で読む量に切り替えたとき、はじめに入れておく数。 */
+export const SEARCH_LIMIT_DEFAULTS: Record<SearchLimitKind, number> = {
+    nodes: 1_000_000,
+    depth: 12,
+};
+
+const SEARCH_LIMIT_MAX: Record<SearchLimitKind, number> = {
+    nodes: SEARCH_NODES_MAX,
+    depth: SEARCH_DEPTH_MAX,
+};
+
 const CLOCK_LIMIT: EngineSearchLimit = { kind: "clock" };
 
 export const DEFAULT_ENGINE_SEARCH_LIMITS: EngineSearchLimits = {
@@ -36,6 +52,25 @@ export function normalizeEngineSearchLimits(value: unknown): EngineSearchLimits 
     return {
         sente: normalizeEngineSearchLimit(raw.sente),
         gote: normalizeEngineSearchLimit(raw.gote),
+    };
+}
+
+/**
+ * 入れられた読む量を数にする。日本語入力のまま打った全角数字や、桁区切りのカンマも受ける。
+ * 1 未満・上限超え・整数でないものは、理由を添えて弾く。
+ */
+export function parseSearchLimitInput(
+    text: string,
+    kind: SearchLimitKind,
+): { limit: FixedSearchLimit; error: null } | { limit: null; error: string } {
+    const normalized = text.normalize("NFKC").replace(/,/g, "").trim();
+    const value = /^[0-9]+$/.test(normalized) ? Number(normalized) : null;
+    const max = SEARCH_LIMIT_MAX[kind];
+    if (value === null || value < 1) return { limit: null, error: "1 以上の整数で入れてください" };
+    if (value > max) return { limit: null, error: `${max.toLocaleString()} 以下にしてください` };
+    return {
+        limit: kind === "nodes" ? { kind, nodes: value } : { kind, depth: value },
+        error: null,
     };
 }
 

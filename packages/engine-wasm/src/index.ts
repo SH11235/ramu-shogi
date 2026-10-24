@@ -122,7 +122,7 @@ function isWasmPanic(message: string): boolean {
     return lower.includes("runtimeerror") && lower.includes("unreachable");
 }
 
-const MATE_MODES: readonly MateMode[] = ["Speed", "Power", "Auto"];
+const MATE_MODES: readonly MateMode[] = ["Speed", "Power"];
 /** wasm 側の置換表の上限 (スレッド版の線形メモリは 2 GiB) */
 const MAX_MATE_HASH_MB = 1024;
 const MAX_MATE_THREADS = 512;

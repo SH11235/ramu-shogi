@@ -44,6 +44,8 @@ export type EngineOption = {
      * Web の wasm エンジンは線形メモリ（2 GiB）の都合で 8 まで。超えた分は黙って丸められる。
      */
     maxThreads?: number;
+    /** 詰み探索（`EngineClient.mate`）を持つか（省略時は持たない）。 */
+    supportsMate?: boolean;
 };
 
 type SideRole = "human" | "engine";

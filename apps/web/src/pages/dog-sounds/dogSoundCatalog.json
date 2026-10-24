@@ -1,0 +1,398 @@
+[
+    {
+        "id": "bark1",
+        "recording": 1,
+        "startSec": 0.0,
+        "durationMs": 494,
+        "voice": "ワン！（鋭い）"
+    },
+    {
+        "id": "bark2",
+        "recording": 1,
+        "startSec": 3.2,
+        "durationMs": 424,
+        "voice": "ワン（やわらかい）"
+    },
+    {
+        "id": "bark3",
+        "recording": 1,
+        "startSec": 5.4,
+        "durationMs": 628,
+        "voice": "ゥワン（やわらかい）"
+    },
+    {
+        "id": "bark4",
+        "recording": 1,
+        "startSec": 8.8,
+        "durationMs": 572,
+        "voice": "ワン（やわらかい 低め）"
+    },
+    {
+        "id": "bark5",
+        "recording": 1,
+        "startSec": 13.6,
+        "durationMs": 582,
+        "voice": "ワン（澄んだ・語尾が上がる）"
+    },
+    {
+        "id": "bark6",
+        "recording": 1,
+        "startSec": 16.8,
+        "durationMs": 689,
+        "voice": "ワンワン"
+    },
+    {
+        "id": "weak",
+        "recording": 1,
+        "startSec": 10.7,
+        "durationMs": 1240,
+        "voice": "くぅん（鼻鳴らし）"
+    },
+    {
+        "id": "strong1",
+        "recording": 2,
+        "startSec": 0.8,
+        "durationMs": 372,
+        "voice": "ワン！（鋭い）"
+    },
+    {
+        "id": "strong2",
+        "recording": 2,
+        "startSec": 4.1,
+        "durationMs": 367,
+        "voice": "ワン！（短い）"
+    },
+    {
+        "id": "strong3",
+        "recording": 2,
+        "startSec": 8.3,
+        "durationMs": 386,
+        "voice": "ワン！（短い）"
+    },
+    {
+        "id": "strong4",
+        "recording": 2,
+        "startSec": 13.0,
+        "durationMs": 306,
+        "voice": "ワン！（短い）"
+    },
+    {
+        "id": "v3_01",
+        "recording": 3,
+        "startSec": 0.5,
+        "durationMs": 1446,
+        "voice": "くううう…（長い・低い）"
+    },
+    {
+        "id": "v3_02",
+        "recording": 3,
+        "startSec": 3.1,
+        "durationMs": 1040,
+        "voice": "うゃぅーん（小さい）"
+    },
+    {
+        "id": "v3_03",
+        "recording": 3,
+        "startSec": 5.0,
+        "durationMs": 1380,
+        "voice": "わおおおーーん（語尾が上がる）"
+    },
+    {
+        "id": "v3_04",
+        "recording": 3,
+        "startSec": 7.3,
+        "durationMs": 1342,
+        "voice": "くぅーん（下がる）"
+    },
+    {
+        "id": "v3_05",
+        "recording": 3,
+        "startSec": 9.5,
+        "durationMs": 1333,
+        "voice": "わおーん／くぅーん"
+    },
+    {
+        "id": "v3_06",
+        "recording": 3,
+        "startSec": 11.6,
+        "durationMs": 1078,
+        "voice": "ううーん（下がる）"
+    },
+    {
+        "id": "v3_07",
+        "recording": 3,
+        "startSec": 15.7,
+        "durationMs": 691,
+        "voice": "ワーン（長め・下がる）"
+    },
+    {
+        "id": "v3_08",
+        "recording": 3,
+        "startSec": 17.3,
+        "durationMs": 363,
+        "voice": "ウワン"
+    },
+    {
+        "id": "v3_09",
+        "recording": 3,
+        "startSec": 19.5,
+        "durationMs": 295,
+        "voice": "ワン（短い）"
+    },
+    {
+        "id": "v3_10",
+        "recording": 3,
+        "startSec": 20.5,
+        "durationMs": 252,
+        "voice": "ワッ（短い）"
+    },
+    {
+        "id": "v3_11",
+        "recording": 3,
+        "startSec": 22.2,
+        "durationMs": 283,
+        "voice": "アン（短い）"
+    },
+    {
+        "id": "v3_12",
+        "recording": 3,
+        "startSec": 25.6,
+        "durationMs": 381,
+        "voice": "ワン"
+    },
+    {
+        "id": "v3_13",
+        "recording": 3,
+        "startSec": 27.4,
+        "durationMs": 259,
+        "voice": "ワン（短い）"
+    },
+    {
+        "id": "v3_14",
+        "recording": 3,
+        "startSec": 34.1,
+        "durationMs": 636,
+        "voice": "ワンッワン（高い）"
+    },
+    {
+        "id": "v4_01",
+        "recording": 4,
+        "startSec": 0.2,
+        "durationMs": 601,
+        "voice": "ヴォン（低め）"
+    },
+    {
+        "id": "v4_02",
+        "recording": 4,
+        "startSec": 1.2,
+        "durationMs": 726,
+        "voice": "ううう（うなり）"
+    },
+    {
+        "id": "v4_03",
+        "recording": 4,
+        "startSec": 6.9,
+        "durationMs": 555,
+        "voice": "ううう（うなり シンプル）"
+    },
+    {
+        "id": "v4_04",
+        "recording": 4,
+        "startSec": 7.9,
+        "durationMs": 649,
+        "voice": "ヴォン（低めのうなり）"
+    },
+    {
+        "id": "v4_05",
+        "recording": 4,
+        "startSec": 9.1,
+        "durationMs": 512,
+        "voice": "ううう（うなり）"
+    },
+    {
+        "id": "v4_06",
+        "recording": 4,
+        "startSec": 13.0,
+        "durationMs": 360,
+        "voice": "ウッ（短い）"
+    },
+    {
+        "id": "v4_07",
+        "recording": 4,
+        "startSec": 15.4,
+        "durationMs": 1137,
+        "voice": "うううう（長いうなり）"
+    },
+    {
+        "id": "v4_08",
+        "recording": 4,
+        "startSec": 17.0,
+        "durationMs": 1133,
+        "voice": "あうううわう（長いうなり）・推定"
+    },
+    {
+        "id": "v4_09",
+        "recording": 4,
+        "startSec": 18.6,
+        "durationMs": 1077,
+        "voice": "あううううん（長いうなり）"
+    },
+    {
+        "id": "v4_10",
+        "recording": 4,
+        "startSec": 28.3,
+        "durationMs": 762,
+        "voice": "あヴォン（低めのワン）"
+    },
+    {
+        "id": "v4_11",
+        "recording": 4,
+        "startSec": 29.3,
+        "durationMs": 547,
+        "voice": "ううう（うなり）"
+    },
+    {
+        "id": "v4_12",
+        "recording": 4,
+        "startSec": 31.9,
+        "durationMs": 524,
+        "voice": "アーウ（低めのワン）"
+    },
+    {
+        "id": "v4_13",
+        "recording": 4,
+        "startSec": 32.8,
+        "durationMs": 488,
+        "voice": "ううう（うなり・短い）",
+        "note": "背景に別の音が入っている"
+    },
+    {
+        "id": "v4_13a",
+        "recording": 4,
+        "startSec": 32.8,
+        "durationMs": 488,
+        "voice": "ううう（うなり・短い）",
+        "note": "v4_13 の背景除去の試作（強めのノイズ除去）"
+    },
+    {
+        "id": "v4_13b",
+        "recording": 4,
+        "startSec": 32.8,
+        "durationMs": 488,
+        "voice": "ううう（うなり・短い）",
+        "note": "v4_13 の背景除去の試作（80〜1200 Hz だけ残す）"
+    },
+    {
+        "id": "v4_13c",
+        "recording": 4,
+        "startSec": 32.8,
+        "durationMs": 488,
+        "voice": "ううう（うなり・短い）",
+        "note": "v4_13 の背景除去の試作（a と b の両方）"
+    },
+    {
+        "id": "v4_14",
+        "recording": 4,
+        "startSec": 34.4,
+        "durationMs": 570,
+        "voice": "ううう（うなり）"
+    },
+    {
+        "id": "v4_15",
+        "recording": 4,
+        "startSec": 36.4,
+        "durationMs": 951,
+        "voice": "うううう（長いうなり）"
+    },
+    {
+        "id": "v4_16",
+        "recording": 4,
+        "startSec": 37.6,
+        "durationMs": 500,
+        "voice": "ううう（うなり）"
+    },
+    {
+        "id": "v4_17",
+        "recording": 4,
+        "startSec": 39.0,
+        "durationMs": 400,
+        "voice": "ぐるる"
+    },
+    {
+        "id": "v4_18",
+        "recording": 4,
+        "startSec": 42.1,
+        "durationMs": 673,
+        "voice": "ヴォン（低めのワン）"
+    },
+    {
+        "id": "v4_19",
+        "recording": 4,
+        "startSec": 43.3,
+        "durationMs": 536,
+        "voice": "ヴォン（低めのワン）"
+    },
+    {
+        "id": "v4_20",
+        "recording": 4,
+        "startSec": 45.2,
+        "durationMs": 632,
+        "voice": "ヴォン（低めのワン）"
+    },
+    {
+        "id": "v4_21",
+        "recording": 4,
+        "startSec": 48.1,
+        "durationMs": 910,
+        "voice": "うううう（長いうなり）"
+    },
+    {
+        "id": "v4_22",
+        "recording": 4,
+        "startSec": 50.4,
+        "durationMs": 640,
+        "voice": "ううう（うなり）"
+    },
+    {
+        "id": "v4_23",
+        "recording": 4,
+        "startSec": 52.2,
+        "durationMs": 643,
+        "voice": "ヴォン（下がる）"
+    },
+    {
+        "id": "v4_24",
+        "recording": 4,
+        "startSec": 53.1,
+        "durationMs": 851,
+        "voice": "あううううん（長いうなり）"
+    },
+    {
+        "id": "v4_25",
+        "recording": 4,
+        "startSec": 54.8,
+        "durationMs": 600,
+        "voice": "あうあう（うなり）"
+    },
+    {
+        "id": "v4_26",
+        "recording": 4,
+        "startSec": 55.8,
+        "durationMs": 786,
+        "voice": "ううう（うなり）"
+    },
+    {
+        "id": "v4_27",
+        "recording": 4,
+        "startSec": 57.3,
+        "durationMs": 1498,
+        "voice": "ううう…ううう（2回の長いうなり）"
+    },
+    {
+        "id": "v4_28",
+        "recording": 4,
+        "startSec": 59.4,
+        "durationMs": 1040,
+        "voice": "うううう（長いうなり）"
+    }
+]
