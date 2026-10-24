@@ -119,7 +119,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("NnueLibrary", () => {
-    it("端末に無い配布 AI も、測るときにダウンロードすると知らせ、測るとダウンロードする", async () => {
+    it("端末に無い配布 AI を測るときは、ダウンロードを確かめてから落とす", async () => {
         presetState.presets = [preset({ status: "not-downloaded", localMetas: [] })];
         render(
             <NnueLibrary
@@ -130,9 +130,28 @@ describe("NnueLibrary", () => {
                 }}
             />,
         );
-        expect(screen.getByText("測るときに 1 KB をダウンロードします。")).toBeDefined();
         fireEvent.click(screen.getByRole("button", { name: "測る" }));
+        expect(await screen.findByText("COCOをダウンロードしますか？")).toBeDefined();
+        expect(presetState.download).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole("button", { name: "ダウンロードして測る" }));
         await waitFor(() => expect(presetState.download).toHaveBeenCalledWith("coco"));
+    });
+
+    it("測るときのダウンロードを断れば、ダウンロードも計測もしない", async () => {
+        presetState.presets = [preset({ status: "not-downloaded", localMetas: [] })];
+        render(
+            <NnueLibrary
+                speed={{
+                    environment: { engineVersion: "wasm:test", threaded: true },
+                    createBenchmarkClient: vi.fn(),
+                    maxThreads: 4,
+                }}
+            />,
+        );
+        fireEvent.click(screen.getByRole("button", { name: "測る" }));
+        fireEvent.click(await screen.findByRole("button", { name: "キャンセル" }));
+        await waitFor(() => expect(screen.getByRole("button", { name: "測る" })).toBeDefined());
+        expect(presetState.download).not.toHaveBeenCalled();
     });
 
     it("配布 AI の旧版しか端末に無いときは、旧版で測らず最新版をダウンロードして測る", async () => {
@@ -153,8 +172,10 @@ describe("NnueLibrary", () => {
                 }}
             />,
         );
-        expect(screen.getByText("測るときに 1 KB をダウンロードします。")).toBeDefined();
         fireEvent.click(screen.getByRole("button", { name: "測る" }));
+        expect(await screen.findByText("COCOをダウンロードしますか？")).toBeDefined();
+        expect(presetState.download).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole("button", { name: "ダウンロードして測る" }));
         await waitFor(() => expect(presetState.download).toHaveBeenCalledWith("coco"));
     });
 
