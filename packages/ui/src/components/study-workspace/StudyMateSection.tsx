@@ -1,6 +1,6 @@
 /**
- * 候補手の欄に出す詰み探索（調べるボタン・途中経過・結果）。手番側の詰みと、手番側に掛かっている
- * 詰めろ（手番を相手に渡したら詰まされるか）を 1 行ずつ出す。
+ * 候補手の欄に出す詰み探索。操作（調べるボタン・途中経過・中止）は「この局面を深く解析」と並べ、
+ * 結果（手番側の詰みと、手番側に掛かっている詰めろ）は調べた局面にだけ出す。
  */
 
 import type { KifuNode } from "@shogi/app-core";
@@ -23,17 +23,12 @@ const opponent = (side: Side): Side => (side === "sente" ? "gote" : "sente");
 
 const UNKNOWN_TEXT = `${STUDY_MATE_TIME_MS / 1000} 秒では読み切れませんでした`;
 
-/** 調べている途中の表示（例: `詰みを調べています（3 秒・120 万局面）`）。 */
+/** 調べている途中の表示（例: `詰みを調べています（3 秒）`）。狭い列でも 1 行に収まる長さにする。 */
 function studyMateProgressText(state: StudyMateState & { status: "running" }): string {
     const what = state.phase === "mate" ? "詰み" : "詰めろ";
     // 最初の途中経過はエンジンの起動を待つ間なので、数字を出さない
     if (state.nodes === 0) return `${what}を調べています`;
-    const seconds = Math.floor(state.elapsedMs / 1000);
-    const nodes =
-        state.nodes >= 10_000
-            ? `${Math.floor(state.nodes / 10_000)} 万局面`
-            : `${state.nodes} 局面`;
-    return `${what}を調べています（${seconds} 秒・${nodes}）`;
+    return `${what}を調べています（${Math.floor(state.elapsedMs / 1000)} 秒）`;
 }
 
 function StopButton({ onStop }: { onStop: () => void }): ReactElement {
@@ -79,7 +74,7 @@ function MateLine({
                                 あり
                             </span>
                             <span className="text-xs text-muted-foreground">
-                                （{sideMark(mover)}の詰み・{result.pv.length} 手の手順）
+                                （{sideMark(mover)}の詰み・{result.pv.length} 手）
                             </span>
                         </span>
                         <p className="line-clamp-2 text-xs text-muted-foreground">
@@ -101,29 +96,30 @@ function MateLine({
     );
 }
 
-export function StudyMateSection({
-    node,
+/** 「詰みを調べる」のボタン。調べている間は途中経過と中止に替わる。 */
+export function StudyMateControl({
     state,
     busyElsewhere,
+    disabled,
     onStart,
     onStop,
-    onPreviewPv,
-    onAddPvAsVariation,
 }: {
-    node: KifuNode;
     /** この局面の結果（調べていなければ undefined）。 */
     state: StudyMateState | undefined;
     /** 別の局面を調べている途中（終わるか中止するまで始められない）。 */
     busyElsewhere: boolean;
+    /** 解析が動いているか準備中（解析と詰み探索は同時に動かさない）。 */
+    disabled: boolean;
     onStart: () => void;
     onStop: () => void;
-    onPreviewPv: (request: StudyPvRequest) => void;
-    onAddPvAsVariation: (request: StudyPvRequest) => void;
 }): ReactElement {
     if (state?.status === "running" || busyElsewhere) {
-        const progress = (
-            <div className="flex min-h-10 items-center justify-between gap-2 px-1">
-                <output aria-live="polite" className="text-xs text-muted-foreground">
+        return (
+            <div className="flex items-center gap-2">
+                <output
+                    aria-live="polite"
+                    className="whitespace-nowrap text-xs text-muted-foreground"
+                >
                     {state?.status === "running"
                         ? studyMateProgressText(state)
                         : "別の局面の詰みを調べています"}
@@ -131,36 +127,47 @@ export function StudyMateSection({
                 <StopButton onStop={onStop} />
             </div>
         );
-        // この局面の結果があれば、それも出す（別の局面を調べている間に戻ってきたとき）
-        if (state?.status !== "done") return progress;
+    }
+    return (
+        <Button type="button" variant="outline" size="sm" onClick={onStart} disabled={disabled}>
+            詰みを調べる
+        </Button>
+    );
+}
+
+/** 調べた局面の結果（調べていない・初めて調べている途中は何も出さない）。 */
+export function StudyMateResult({
+    node,
+    state,
+    onPreviewPv,
+    onAddPvAsVariation,
+}: {
+    node: KifuNode;
+    state: StudyMateState | undefined;
+    onPreviewPv: (request: StudyPvRequest) => void;
+    onAddPvAsVariation: (request: StudyPvRequest) => void;
+}): ReactElement | null {
+    if (state?.status === "error") {
         return (
-            <div className="flex flex-col gap-1">
+            <p role="alert" className="px-1 text-xs text-destructive">
+                {state.message}
+            </p>
+        );
+    }
+    // 調べ直している間は前の結果を薄く出しておく（欄が消えて下の内容が動かないように）
+    if (state?.status === "running" && state.previous) {
+        return (
+            <div aria-busy="true" className="opacity-50">
                 <MateResults
                     node={node}
-                    state={state}
+                    state={state.previous}
                     onPreviewPv={onPreviewPv}
                     onAddPvAsVariation={onAddPvAsVariation}
                 />
-                {progress}
             </div>
         );
     }
-    if (state?.status !== "done") {
-        return (
-            <div className="flex min-h-10 flex-wrap items-center justify-between gap-x-2 gap-y-1 px-1">
-                {state?.status === "error" ? (
-                    <p role="alert" className="text-xs text-destructive">
-                        {state.message}
-                    </p>
-                ) : (
-                    <span className="text-xs text-muted-foreground">詰み・詰めろ</span>
-                )}
-                <Button type="button" variant="outline" size="sm" onClick={onStart}>
-                    詰みを調べる
-                </Button>
-            </div>
-        );
-    }
+    if (state?.status !== "done") return null;
     return (
         <MateResults
             node={node}

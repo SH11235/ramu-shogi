@@ -25,6 +25,8 @@ vi.mock("@shogi/engine-wasm", () => ({
         search: vi.fn().mockResolvedValue({ cancel: vi.fn().mockResolvedValue(undefined) }),
         dispose: vi.fn().mockResolvedValue(undefined),
     }),
+    createIndexedDBNnueStorage: vi.fn(),
+    getWasmMaxThreads: () => 1,
 }));
 
 // @tanstack/react-router のモック

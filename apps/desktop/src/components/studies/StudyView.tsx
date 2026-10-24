@@ -14,6 +14,7 @@ import { NnueLibraryDialog, StudyWorkspace } from "@shogi/ui";
 import { Button } from "@shogi/ui/components/button";
 import type { ReactElement } from "react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { desktopSpeedSupport } from "../../platform/engineClient";
 import { requestNnueFilePath } from "../../platform/nnueFilePicker";
 import { getDesktopStudySync } from "../../studies/desktopStudySync";
 
@@ -299,6 +300,7 @@ export function StudyView({
                 onOpenChange={setIsNnueLibraryOpen}
                 manifestUrl={nnueManifestUrl}
                 onRequestFilePath={requestNnueFilePath}
+                speed={desktopSpeedSupport}
             />
         </div>
     );

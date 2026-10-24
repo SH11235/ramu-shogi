@@ -160,6 +160,20 @@ describe("useStudyMate", () => {
         expect(engine.solves).toHaveLength(at === "solve" ? 1 : 0);
     });
 
+    it("結果のある局面を調べ直して中止すると、前の結果に戻す", async () => {
+        const { node, engine, hook } = setup(() => MATE);
+        act(() => hook.result.current.start(node(1)));
+        const done = { status: "done", mate: MATE, threat: null };
+        await waitFor(() => expect(hook.result.current.results.get(node(1).id)).toEqual(done));
+        engine.hold("solve");
+        act(() => hook.result.current.start(node(1)));
+        await waitFor(() => expect(engine.solves).toHaveLength(2));
+        act(() => hook.result.current.stop());
+        expect(hook.result.current.results.get(node(1).id)).toEqual(done);
+        await act(async () => engine.release());
+        expect(hook.result.current.results.get(node(1).id)).toEqual(done);
+    });
+
     it("画面を閉じると、調べている途中のエンジンを捨てる", async () => {
         const { node, engine, hook } = setup(() => MATE);
         engine.hold("solve");

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Button } from "../button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../dialog";
 import { NnueLibrary } from "./NnueLibrary";
-import type { NnueAccountStore } from "./types";
+import type { NnueAccountStore, NnueSpeedSupport } from "./types";
 
 interface NnueLibraryDialogProps {
     open: boolean;
@@ -17,6 +17,7 @@ interface NnueLibraryDialogProps {
     onClearOpenReason?: () => void;
     /** 対局中は、使っている AI を消せないようにする */
     isMatchActive?: boolean;
+    speed?: NnueSpeedSupport;
 }
 
 function reasonMessage(reason: string): string {

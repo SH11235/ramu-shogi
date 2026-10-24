@@ -5,6 +5,17 @@ import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
 import { PageHeading } from "../../components/PageHeading";
 import { useAccountNnue } from "../../hooks/useAccountNnue";
+import {
+    createWebSpeedBenchmarkClient,
+    getWebWasmMaxThreads,
+    webEngineSpeedEnvironment,
+} from "../../platform/wasm-engine-client";
+
+const speedSupport = {
+    environment: webEngineSpeedEnvironment,
+    createBenchmarkClient: createWebSpeedBenchmarkClient,
+    maxThreads: getWebWasmMaxThreads(),
+};
 
 export default function NnueFilesPage(): ReactElement {
     const account = useAccountNnue();
@@ -24,6 +35,7 @@ export default function NnueFilesPage(): ReactElement {
                     manifestUrl={import.meta.env.VITE_NNUE_MANIFEST_URL as string}
                     fallbackIconUrl={`${import.meta.env.BASE_URL}ramu.jpeg`}
                     account={account}
+                    speed={speedSupport}
                 />
             </PageContainer>
         </>

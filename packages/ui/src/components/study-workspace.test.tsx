@@ -22,6 +22,7 @@ import {
 } from "./study-workspace/study-test-support";
 import { buildStudyViewTree, chooseStudyDisplayLayer } from "./study-workspace/studyView";
 import type { StudyAnalysisController } from "./study-workspace/useStudyAnalysis";
+import type { StudyMateController } from "./study-workspace/useStudyMate";
 
 const LOCAL_STATUS: StudyWorkspaceSaveStatus = {
     state: "local",
@@ -59,6 +60,15 @@ const createAnalysis = (
     ...overrides,
 });
 
+const createMate = (overrides: Partial<StudyMateController> = {}): StudyMateController => ({
+    supported: true,
+    results: new Map(),
+    runningNodeId: null,
+    start: vi.fn(),
+    stop: vi.fn(),
+    ...overrides,
+});
+
 interface HarnessProps {
     initialDoc: StudyDocument;
     analysis?: StudyAnalysisController;
@@ -87,6 +97,7 @@ interface HarnessProps {
     initialDisplayLayerId?: string;
     deepLayerId?: string | null;
     onPlayFromPosition?: (position: { sfen: string; moves: string[] }) => void;
+    mate?: StudyMateController;
 }
 
 /** 呼び出し側（ページ）の代わりに、操作を文書へ適用して画面に渡し直す。 */
@@ -110,6 +121,7 @@ function Harness({
     initialDisplayLayerId,
     deepLayerId,
     onPlayFromPosition,
+    mate,
 }: HarnessProps) {
     const [doc, setDoc] = useState(initialDoc);
     const [message, setMessage] = useState<Message | null>(null);
@@ -149,6 +161,7 @@ function Harness({
             deepLayerId={deepLayerId}
             onPlayFromPosition={onPlayFromPosition}
             analysis={analysis}
+            mate={mate}
             message={message}
             onMessageChange={setMessage}
         />
@@ -223,6 +236,53 @@ describe("StudyWorkspaceView", () => {
             (screen.getByRole("button", { name: "この局面を深く解析" }) as HTMLButtonElement)
                 .disabled,
         ).toBe(true);
+    });
+
+    it("候補手の欄には解析と詰み探索のボタンだけを並べ、調べる前に詰みの見出しを出さない", () => {
+        render(<Harness initialDoc={createTestStudy().doc} mate={createMate()} />);
+        const candidates = screen.getByRole("region", { name: "候補手" });
+        within(candidates).getByRole("button", { name: "この局面を深く解析" });
+        within(candidates).getByRole("button", { name: "詰みを調べる" });
+        expect(within(candidates).queryByText(/詰めろ/)).toBeNull();
+    });
+
+    it("詰み探索の間は、全体の解析も深い解析も始められない", () => {
+        const { doc, ids } = createTestStudy();
+        render(<Harness initialDoc={doc} mate={createMate({ runningNodeId: ids[3] })} />);
+        const full = within(highlights()).getByRole("button", { name: "全体を解析" });
+        expect((full as HTMLButtonElement).disabled).toBe(true);
+        const candidates = screen.getByRole("region", { name: "候補手" });
+        const deep = within(candidates).getByRole("button", { name: "この局面を深く解析" });
+        expect((deep as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it("結果のある局面でも、別の局面を調べている間はそれを伝えて中止できる", () => {
+        const { doc, ids } = createTestStudy();
+        const mate = createMate({
+            runningNodeId: ids[3],
+            results: new Map([
+                [doc.tree.rootId, { status: "done", mate: { kind: "noMate" }, threat: null }],
+            ]),
+        });
+        render(<Harness initialDoc={doc} mate={mate} />);
+        const candidates = screen.getByRole("region", { name: "候補手" });
+        within(candidates).getByText("なし");
+        within(candidates).getByText("別の局面の詰みを調べています");
+        fireEvent.click(within(candidates).getByRole("button", { name: "詰み探索を中止" }));
+        expect(mate.stop).toHaveBeenCalled();
+    });
+
+    it("解析の間は、詰み探索を始められない", () => {
+        render(
+            <Harness
+                initialDoc={createTestStudy().doc}
+                analysis={createAnalysis({ mode: "full", progress: { completed: 1, total: 5 } })}
+                mate={createMate()}
+            />,
+        );
+        const candidates = screen.getByRole("region", { name: "候補手" });
+        const button = within(candidates).getByRole("button", { name: "詰みを調べる" });
+        expect((button as HTMLButtonElement).disabled).toBe(true);
     });
 
     it("解析後は悪手・疑問手が並び、押すとその局面へ移る", () => {
