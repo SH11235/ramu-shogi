@@ -1395,7 +1395,7 @@ export function StudyWorkspaceView({
             fullTargetCount={analysis.fullTargetCount}
             displayLabel={displayLayer?.display.label ?? null}
             analysisMode={analysis.mode}
-            isPreparing={analysisBlocked}
+            startDisabled={analysisBlocked}
             progress={analysis.progress}
             onSelect={selectHighlight}
             onStartFull={startFull}
@@ -1572,7 +1572,10 @@ export function StudyWorkspaceView({
                           state: mate.results.get(currentNode.id),
                           busyElsewhere:
                               mate.runningNodeId !== null && mate.runningNodeId !== currentNode.id,
-                          onStart: () => mate.start(currentNode),
+                          onStart: () => {
+                              if (analysis.mode !== null || analysis.isPreparing) return;
+                              mate.start(currentNode);
+                          },
                           onStop: mate.stop,
                       }
                     : undefined

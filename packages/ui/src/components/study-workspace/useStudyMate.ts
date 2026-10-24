@@ -63,8 +63,12 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
     /** 実行の世代。開始・中止・エンジンの変更・アンマウントのたびに進め、古い実行の続きを捨てる。 */
     const runRef = useRef(0);
     const clientRef = useRef<EngineClient | null>(null);
-    /** 調べている実行の局面と、使っているエンジンの id。 */
-    const activeRef = useRef<{ nodeId: string; engineId: string } | null>(null);
+    /** 調べている実行の局面、使っているエンジンの id、調べ直す前のその局面の結果。 */
+    const activeRef = useRef<{
+        nodeId: string;
+        engineId: string;
+        previous: StudyMateState | undefined;
+    } | null>(null);
 
     const supported = engineOption?.supportsMate === true;
 
@@ -78,7 +82,7 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
         if (client) void client.dispose();
     };
 
-    /** 調べている実行を取り消す（世代を進め、エンジンを捨て、途中の表示を消す）。 */
+    /** 調べている実行を取り消す（世代を進め、エンジンを捨て、途中の表示を調べる前の結果に戻す）。 */
     const cancelActive = (): void => {
         const active = activeRef.current;
         activeRef.current = null;
@@ -88,7 +92,8 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
         if (active) {
             setResults((previous) => {
                 const next = new Map(previous);
-                next.delete(active.nodeId);
+                if (active.previous) next.set(active.nodeId, active.previous);
+                else next.delete(active.nodeId);
                 return next;
             });
         }
@@ -124,7 +129,7 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
             return;
         }
         clientRef.current = client;
-        activeRef.current = { nodeId, engineId: option.id };
+        activeRef.current = { nodeId, engineId: option.id, previous: results.get(nodeId) };
         setRunningNodeId(nodeId);
         setResult(nodeId, { status: "running", phase: "mate", nodes: 0, elapsedMs: 0 });
         const solve = async (

@@ -247,22 +247,29 @@ describe("StudyWorkspaceView", () => {
     });
 
     it("詰み探索の間は、全体の解析も深い解析も始められない", () => {
-        const analysis = createAnalysis();
         const { doc, ids } = createTestStudy();
-        render(
-            <Harness
-                initialDoc={doc}
-                analysis={analysis}
-                mate={createMate({ runningNodeId: ids[3] })}
-            />,
-        );
+        render(<Harness initialDoc={doc} mate={createMate({ runningNodeId: ids[3] })} />);
         const full = within(highlights()).getByRole("button", { name: "全体を解析" });
         expect((full as HTMLButtonElement).disabled).toBe(true);
         const candidates = screen.getByRole("region", { name: "候補手" });
         const deep = within(candidates).getByRole("button", { name: "この局面を深く解析" });
         expect((deep as HTMLButtonElement).disabled).toBe(true);
-        fireEvent.click(full);
-        expect(analysis.startFull).not.toHaveBeenCalled();
+    });
+
+    it("結果のある局面でも、別の局面を調べている間はそれを伝えて中止できる", () => {
+        const { doc, ids } = createTestStudy();
+        const mate = createMate({
+            runningNodeId: ids[3],
+            results: new Map([
+                [doc.tree.rootId, { status: "done", mate: { kind: "noMate" }, threat: null }],
+            ]),
+        });
+        render(<Harness initialDoc={doc} mate={mate} />);
+        const candidates = screen.getByRole("region", { name: "候補手" });
+        within(candidates).getByText("なし");
+        within(candidates).getByText("別の局面の詰みを調べています");
+        fireEvent.click(within(candidates).getByRole("button", { name: "詰み探索を中止" }));
+        expect(mate.stop).toHaveBeenCalled();
     });
 
     it("解析の間は、詰み探索を始められない", () => {

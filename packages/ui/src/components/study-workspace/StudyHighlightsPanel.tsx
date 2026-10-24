@@ -33,7 +33,8 @@ interface StudyHighlightsPanelProps {
     /** 表示中の解析の設定の表示名（例: 「RAMU・1 秒」）。結果が無ければ null。 */
     displayLabel: string | null;
     analysisMode: "full" | "deep" | null;
-    isPreparing: boolean;
+    /** 解析を始められない（解析の準備中か、詰み探索の途中）。 */
+    startDisabled: boolean;
     progress: { completed: number; total: number } | null;
     onSelect: (nodeId: string) => void;
     onStartFull: () => void;
@@ -93,7 +94,7 @@ export function StudyHighlightsPanel({
     fullTargetCount,
     displayLabel,
     analysisMode,
-    isPreparing,
+    startDisabled,
     progress,
     onSelect,
     onStartFull,
@@ -196,7 +197,7 @@ export function StudyHighlightsPanel({
                         size="lg"
                         className="w-full gap-2"
                         onClick={onStartFull}
-                        disabled={isPreparing || analysisMode !== null}
+                        disabled={startDisabled || analysisMode !== null}
                     >
                         <AnalyzeIcon />
                         {fullTargetCount === 0 ? "解析済みの結果を表示" : "全体を解析"}
@@ -304,7 +305,7 @@ export function StudyHighlightsPanel({
                     <button
                         type="button"
                         onClick={onResume}
-                        disabled={isPreparing || analysisMode !== null}
+                        disabled={startDisabled || analysisMode !== null}
                         className="min-h-10 shrink-0 rounded-md border border-input bg-background px-3 text-xs font-medium text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 md:min-h-8"
                     >
                         残りを解析

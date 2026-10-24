@@ -290,7 +290,6 @@ export function StudyCandidatesPanel({
         >
             <div className="flex flex-col gap-2">
                 <h2 className="font-display text-base font-semibold text-wafuu-sumi">候補手</h2>
-                {/* 解析と詰み探索は同時に動かさない（スマートフォンで CPU とメモリを取り合う） */}
                 <div className="flex flex-wrap items-center gap-2">
                     {isDeepHere ? (
                         <div className="flex items-center gap-2">

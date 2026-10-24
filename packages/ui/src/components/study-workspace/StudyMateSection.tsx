@@ -108,7 +108,7 @@ export function StudyMateControl({
     state: StudyMateState | undefined;
     /** 別の局面を調べている途中（終わるか中止するまで始められない）。 */
     busyElsewhere: boolean;
-    /** 解析が動いている（同時には動かさない）。 */
+    /** 解析が動いているか準備中（解析と詰み探索は同時に動かさない）。 */
     disabled: boolean;
     onStart: () => void;
     onStop: () => void;
