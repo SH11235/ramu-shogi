@@ -49,7 +49,7 @@ function renderDialog(result: GameResult, overrides: Partial<PlayScreenConfig> =
     render(
         <ShogiMatchProvider config={{ play }}>
             <PlayEndStamp />
-            <PlayResultDialog variant="panel" />
+            <PlayResultDialog variant="center" />
         </ShogiMatchProvider>,
     );
     return play;

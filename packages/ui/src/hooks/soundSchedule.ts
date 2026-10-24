@@ -2,6 +2,9 @@
 // 鳴り始めては次の音で切られ、音が乱れて聞こえるため。
 
 const MIN_GAP_SEC = 0.18;
+// 予約はこれより先にはならない（終局の声の 0.32 秒後 + MIN_GAP_SEC でも収まる）。前の時刻がこれより先なら、
+// AudioContext が作り直されて時計が 0 からになったとみなす
+const CLOCK_RESET_MARGIN_SEC = 1;
 
 let lastStart = Number.NEGATIVE_INFINITY;
 let pending: { when: number; cancel: () => void } | null = null;
@@ -12,7 +15,7 @@ let pending: { when: number; cancel: () => void } | null = null;
  */
 export function reserveSoundSlot(now: number): number {
     // AudioContext を作り直すと時計が 0 からになるので、前の時計の時刻は捨てる（残すと次の音がずっと先になる）
-    if (lastStart > now + MIN_GAP_SEC) {
+    if (lastStart > now + CLOCK_RESET_MARGIN_SEC) {
         lastStart = Number.NEGATIVE_INFINITY;
         pending = null;
     }
@@ -37,7 +40,7 @@ export function reserveSoundSlot(now: number): number {
  * 取り消さない（終局の声は、最後の手の音を鳴らしてから重ねるため）。
  */
 export function reserveSoundSlotAfter(now: number, delaySec: number): number {
-    if (lastStart > now + MIN_GAP_SEC) {
+    if (lastStart > now + CLOCK_RESET_MARGIN_SEC) {
         lastStart = Number.NEGATIVE_INFINITY;
         pending = null;
     }

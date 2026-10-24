@@ -1,6 +1,6 @@
 /**
  * 終局のダイアログ（対局画面）。盤に判子（PlayEndStamp）を押したあとに開き、結果と次の操作を出す。
- * PC は右の欄の上に重ね（盤と判子を隠さない）、スマホは下からのシートにする（ボタンを親指の位置に置く）。
+ * PC は画面の中央、スマホは下からのシートにする（ボタンを親指の位置に置く）。
  */
 
 import * as DialogPrimitive from "@radix-ui/react-dialog";
@@ -9,6 +9,7 @@ import { cn } from "@shogi/design-system";
 import type { ReactElement, RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../../button";
+import { Dialog, DialogContent } from "../../dialog";
 import { useSurfaceTheme } from "../../surface-theme";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
@@ -64,8 +65,8 @@ function useRematchSummary(): string | null {
 }
 
 interface PlayResultDialogProps {
-    /** panel: PC の右の欄に重ねる。sheet: スマホの下からのシート */
-    variant: "panel" | "sheet";
+    /** center: PC の画面の中央。sheet: スマホの下からのシート */
+    variant: "center" | "sheet";
 }
 
 export function PlayResultDialog({ variant }: PlayResultDialogProps): ReactElement | null {
@@ -87,20 +88,26 @@ export function PlayResultDialog({ variant }: PlayResultDialogProps): ReactEleme
         event.preventDefault();
         primaryRef.current?.focus();
     };
+    // 開いたボタンが無いダイアログなので、閉じたら結果の見出しに戻す（キーボードで位置を失わないように）。
+    const focusHeading = (event: Event) => {
+        event.preventDefault();
+        document.querySelector<HTMLElement>("[data-play-heading]")?.focus();
+    };
     const body = <ResultDialogBody result={result} primaryRef={primaryRef} />;
 
-    if (variant === "panel") {
-        // 盤を見られるよう modal にしない。外を押すと閉じる（盤を押せば最終局面が見える）。
+    if (variant === "center") {
+        // 後ろの盤（判子と最終局面）が透けて見えるよう、暗くするのは薄めにする。
         return (
-            <DialogPrimitive.Root open={revealed} onOpenChange={onOpenChange} modal={false}>
-                <DialogPrimitive.Content
-                    aria-describedby={undefined}
+            <Dialog open={revealed} onOpenChange={onOpenChange}>
+                <DialogContent
                     onOpenAutoFocus={focusPrimary}
-                    className="absolute inset-x-0 top-0 z-20 rounded-xl border border-wafuu-border bg-background p-5 text-foreground shadow-[0_18px_40px_rgba(0,0,0,0.22)] outline-none duration-200 data-[state=open]:animate-in data-[state=open]:fade-in data-[state=open]:slide-in-from-bottom-2 motion-reduce:animate-none"
+                    onCloseAutoFocus={focusHeading}
+                    overlayClassName="bg-black/30 backdrop-blur-none"
+                    className="w-[min(400px,calc(100%-32px))] border-wafuu-border bg-background p-5 motion-reduce:animate-none"
                 >
                     {body}
-                </DialogPrimitive.Content>
-            </DialogPrimitive.Root>
+                </DialogContent>
+            </Dialog>
         );
     }
     return (
@@ -111,6 +118,7 @@ export function PlayResultDialog({ variant }: PlayResultDialogProps): ReactEleme
                 <DialogPrimitive.Content
                     aria-describedby={undefined}
                     onOpenAutoFocus={focusPrimary}
+                    onCloseAutoFocus={focusHeading}
                     className={cn(
                         surfaceTheme,
                         "fixed inset-x-0 bottom-0 z-[51] rounded-t-2xl border-t border-wafuu-border bg-background px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-2 text-foreground shadow-[0_-12px_30px_rgba(0,0,0,0.2)] outline-none duration-300 data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom motion-reduce:animate-none",
@@ -139,7 +147,7 @@ function ResultDialogBody({
     const reasonText = useReasonText(result);
     const summary = useRematchSummary();
     if (!play) return null;
-    // ダイアログを閉じてから次へ進む（閉じないと、次の対局の終局で開き直せない）。
+    // 先に閉じる（研究ノートへ移るときは、閉じる処理を含む対局のリセットを通らない）。
     const closeThen = (action: () => void) => () => {
         play.closeResultDialog();
         action();

@@ -179,8 +179,8 @@ export function PlayPCLayout({
                     </div>
 
                     {/* 進み具合ごとの欄 */}
-                    <div className="relative flex w-[var(--panel-width)] shrink-0 flex-col gap-4 pt-1">
-                        {phase === "finished" && <PlayResultDialog variant="panel" />}
+                    <div className="flex w-[var(--panel-width)] shrink-0 flex-col gap-4 pt-1">
+                        {phase === "finished" && <PlayResultDialog variant="center" />}
                         {phase === "setup" && (
                             <PlaySetupPanel onOpenAdvanced={() => setIsAdvancedOpen(true)} />
                         )}
