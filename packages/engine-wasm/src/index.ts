@@ -214,6 +214,7 @@ type WorkerMessage =
     | { type: "event"; payload: EngineEvent }
     | { type: "events"; payload: EngineEvent[] }
     | WorkerAck
+    | { type: "searchFailed" }
     | { type: "nnueLoadProgress"; loaded: number; total: number }
     | { type: "nnueLoaded"; size: number };
 
@@ -394,7 +395,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
     let backend: BackendKind = options.useMock ? "mock" : "single";
     let worker: Worker | null = null;
     let workerGen = 0;
-    /** 送った通常探索のうち bestmove がまだ届いていない数 (探索は 1 回ごとに bestmove を 1 回返す) */
+    /** 送った通常探索のうち終わっていない数 (探索は 1 回ごとに bestmove か searchFailed を 1 回返す) */
     let normalSearches = 0;
     let initialized = false;
     let initInFlight: Promise<void> | null = null;
@@ -423,7 +424,6 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
 
     const emit = (event: EngineEvent) => {
         if (event.type === "bestmove") normalSearches = Math.max(0, normalSearches - 1);
-        if (event.type === "error" && event.severity !== "warning") normalSearches = 0;
         if (event.type === "error" && event.severity !== "warning") {
             lastPosition = null;
         }
@@ -728,6 +728,10 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
                 for (const event of data.payload) {
                     emit(event);
                 }
+                return;
+            }
+            if (data?.type === "searchFailed") {
+                normalSearches = Math.max(0, normalSearches - 1);
                 return;
             }
             if (data?.type === "nnueLoadProgress") {

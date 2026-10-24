@@ -703,6 +703,10 @@ export function createEngineWorker(bindings: WasmWorkerBindings) {
                 analysisSession = null;
                 ctx.postMessage({ type: "analysisError", requestId, message: String(error) });
             }
+            if (command.type === "search") {
+                // 失敗した探索は bestmove を返さないので、client が実行中の探索の数を減らせるよう知らせる
+                ctx.postMessage({ type: "searchFailed" });
+            }
             if (command.type === "solveMate") {
                 const message: MateMessage = {
                     type: "mateError",

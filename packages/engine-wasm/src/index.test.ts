@@ -1433,4 +1433,25 @@ describe("詰み探索 (mate.solve)", () => {
         });
         await solving;
     });
+
+    it("先に送った通常探索が失敗しても、後ろの探索が終わるまで solve は失敗する", async () => {
+        const { client, worker } = await createReadyClient();
+        await client.search({});
+        await client.search({});
+        reply(worker(), { type: "searchFailed" });
+        reply(worker(), {
+            type: "event",
+            payload: { type: "error", severity: "error", message: "invalid limits" },
+        });
+        await expect(client.mate?.solve({})).rejects.toThrow("通常探索");
+        reply(worker(), { type: "event", payload: { type: "bestmove", move: "7g7f" } });
+        const solving = client.mate?.solve({});
+        await vi.waitFor(() => expect(solveCalls(worker())).toHaveLength(1));
+        reply(worker(), {
+            type: "mateFinished",
+            requestId: solveCalls(worker())[0].requestId,
+            outcome: { result: { kind: "noMate" }, nodes: 1, elapsedMs: 0 },
+        });
+        await solving;
+    });
 });
