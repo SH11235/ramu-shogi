@@ -1,6 +1,6 @@
 /**
- * 候補手の欄に出す詰み探索（調べるボタン・途中経過・結果）。手番側の詰みと、手番側に掛かっている
- * 詰めろ（手番を相手に渡したら詰まされるか）を 1 行ずつ出す。
+ * 候補手の欄に出す詰み探索。操作（調べるボタン・途中経過・中止）は「この局面を深く解析」と並べ、
+ * 結果（手番側の詰みと、手番側に掛かっている詰めろ）は調べた局面にだけ出す。
  */
 
 import type { KifuNode } from "@shogi/app-core";
@@ -101,28 +101,26 @@ function MateLine({
     );
 }
 
-export function StudyMateSection({
-    node,
+/** 「詰みを調べる」のボタン。調べている間は途中経過と中止に替わる。 */
+export function StudyMateControl({
     state,
     busyElsewhere,
+    disabled,
     onStart,
     onStop,
-    onPreviewPv,
-    onAddPvAsVariation,
 }: {
-    node: KifuNode;
     /** この局面の結果（調べていなければ undefined）。 */
     state: StudyMateState | undefined;
     /** 別の局面を調べている途中（終わるか中止するまで始められない）。 */
     busyElsewhere: boolean;
+    /** 解析が動いている（同時には動かさない）。 */
+    disabled: boolean;
     onStart: () => void;
     onStop: () => void;
-    onPreviewPv: (request: StudyPvRequest) => void;
-    onAddPvAsVariation: (request: StudyPvRequest) => void;
 }): ReactElement {
     if (state?.status === "running" || busyElsewhere) {
-        const progress = (
-            <div className="flex min-h-10 items-center justify-between gap-2 px-1">
+        return (
+            <div className="flex items-center gap-2">
                 <output aria-live="polite" className="text-xs text-muted-foreground">
                     {state?.status === "running"
                         ? studyMateProgressText(state)
@@ -131,36 +129,34 @@ export function StudyMateSection({
                 <StopButton onStop={onStop} />
             </div>
         );
-        // この局面の結果があれば、それも出す（別の局面を調べている間に戻ってきたとき）
-        if (state?.status !== "done") return progress;
+    }
+    return (
+        <Button type="button" variant="outline" size="sm" onClick={onStart} disabled={disabled}>
+            詰みを調べる
+        </Button>
+    );
+}
+
+/** 調べた局面の結果（調べていない・調べている途中は何も出さない）。 */
+export function StudyMateResult({
+    node,
+    state,
+    onPreviewPv,
+    onAddPvAsVariation,
+}: {
+    node: KifuNode;
+    state: StudyMateState | undefined;
+    onPreviewPv: (request: StudyPvRequest) => void;
+    onAddPvAsVariation: (request: StudyPvRequest) => void;
+}): ReactElement | null {
+    if (state?.status === "error") {
         return (
-            <div className="flex flex-col gap-1">
-                <MateResults
-                    node={node}
-                    state={state}
-                    onPreviewPv={onPreviewPv}
-                    onAddPvAsVariation={onAddPvAsVariation}
-                />
-                {progress}
-            </div>
+            <p role="alert" className="px-1 text-xs text-destructive">
+                {state.message}
+            </p>
         );
     }
-    if (state?.status !== "done") {
-        return (
-            <div className="flex min-h-10 flex-wrap items-center justify-between gap-x-2 gap-y-1 px-1">
-                {state?.status === "error" ? (
-                    <p role="alert" className="text-xs text-destructive">
-                        {state.message}
-                    </p>
-                ) : (
-                    <span className="text-xs text-muted-foreground">詰み・詰めろ</span>
-                )}
-                <Button type="button" variant="outline" size="sm" onClick={onStart}>
-                    詰みを調べる
-                </Button>
-            </div>
-        );
-    }
+    if (state?.status !== "done") return null;
     return (
         <MateResults
             node={node}
