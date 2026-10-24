@@ -1,5 +1,5 @@
 /**
- * 終局のダイアログに出す、この対局の条件（相手の AI と強さ・読む量・あなたの手番と時間）。
+ * 終局のダイアログに出す、この対局の条件（開始局面・相手の AI と強さ・読む量・あなたの手番と時間）。
  * どの AI に、どの強さ・読む量で勝ったかを、スクリーンショットにしても分かるように項目名つきで並べる。
  */
 
@@ -15,6 +15,7 @@ import { formatNodeCount, formatSearchLimit } from "../utils/searchLimits";
 import { resolveThreadCount, threadCapOf } from "../utils/threadOptions";
 import { formatTimeRule } from "../utils/timeSettings";
 import { averageReading } from "./PlayEngineReading";
+import { startPositionLabel } from "./startPositions";
 
 const SIDE_MARK: Record<Player, string> = { sente: "☗ 先手", gote: "☖ 後手" };
 
@@ -30,7 +31,7 @@ function useConditionRows(): ConditionRow[] {
     const { play } = useShogiMatchConfig();
     const { sides } = useMatchState();
     const { timeSettings, engineSearchLimits, engineThreads, engineOptions } = useMatchSettings();
-    const { kifMoves } = useNavigation();
+    const { kifMoves, kifuTree } = useNavigation();
     if (!play) return [];
 
     const timeText = (side: Player): string => {
@@ -41,7 +42,13 @@ function useConditionRows(): ConditionRow[] {
         (side) => sides[side].role === "engine",
     );
     const humanSides = (["sente", "gote"] as const).filter((side) => sides[side].role === "human");
-    const rows: ConditionRow[] = [];
+    const rows: ConditionRow[] = [
+        {
+            id: "start",
+            label: "開始局面",
+            value: startPositionLabel(kifuTree?.startSfen ?? "startpos"),
+        },
+    ];
 
     for (const side of engineSides) {
         const setting = sides[side];
@@ -97,7 +104,7 @@ export function PlayMatchConditions(): ReactElement | null {
     const rows = useConditionRows();
     if (rows.length === 0) return null;
     return (
-        <dl className="m-0 grid grid-cols-[4rem_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 border-t border-wafuu-border pt-2">
+        <dl className="m-0 grid grid-cols-[4.5rem_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 border-t border-wafuu-border pt-2">
             {rows.map((row) => (
                 <Fragment key={row.id}>
                     <dt className="text-xs text-wafuu-sumi-light">{row.label}</dt>
