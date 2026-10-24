@@ -771,18 +771,6 @@ function PresetRow({
                     <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                         {formatLabel(config.format) && <span>{formatLabel(config.format)}</span>}
                         <span>{formatSize(downloadSize)}</span>
-                        {config.licenseUrl ? (
-                            <a
-                                href={config.licenseUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="underline underline-offset-2 hover:text-foreground"
-                            >
-                                {config.license}
-                            </a>
-                        ) : (
-                            <span>{config.license}</span>
-                        )}
                     </p>
                     {speedLine}
                 </div>

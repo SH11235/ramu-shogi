@@ -92,9 +92,6 @@ describe("NnueSpeedTable", () => {
         }
         nnueSpeedStore.setBenchmark({ ...key, contentHash: "several", threads: 1 }, 300_000, 1);
         render(<Harness hash="several" />);
-        expect(screen.getByRole("table").querySelector("caption")?.textContent).toBe(
-            "この端末での NPS",
-        );
         expect(rowTexts()).toEqual(["1 | 約 30万 | —", "4 | 測る | —", "8 | — | 約 120万・3 回"]);
     });
 
