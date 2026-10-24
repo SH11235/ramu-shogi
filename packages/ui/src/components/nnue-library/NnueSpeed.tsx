@@ -243,6 +243,7 @@ export function NnueSpeedTable({
     // 測る途中でダウンロードが済むと注記が要らなくなるが、測り終えるまでは残してカードの高さを変えない
     const [lastNote, setLastNote] = useState(downloadNote);
     if (downloadNote && downloadNote !== lastNote) setLastNote(downloadNote);
+    if (!downloadNote && !running && lastNote) setLastNote(undefined);
     const shownNote = downloadNote ?? (running ? lastNote : undefined);
     const blockedReason =
         disabledReason ??

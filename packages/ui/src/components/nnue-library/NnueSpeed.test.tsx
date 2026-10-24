@@ -246,6 +246,10 @@ describe("NnueSpeedTable", () => {
         await waitFor(() =>
             expect(screen.queryByText("測るときに 1 KB をダウンロードします。")).toBeNull(),
         );
+        // ダウンロード済みのあとに測り直しても、注記は戻らない
+        fireEvent.click(screen.getByRole("button", { name: "測る" }));
+        await screen.findByRole("button", { name: /あと約/ });
+        expect(screen.queryByText("測るときに 1 KB をダウンロードします。")).toBeNull();
     });
 
     it("対局・解析中などで測れないときは押せない", () => {
