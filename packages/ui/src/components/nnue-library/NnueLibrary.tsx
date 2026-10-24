@@ -745,7 +745,12 @@ export function NnueLibrary({
                         if (!pendingMeasure) return;
                         setNotice(null);
                         setPendingMeasure({ ...pendingMeasure, downloading: true });
-                        settleMeasure(await downloadPreset(pendingMeasure.preset.presetKey));
+                        let meta: NnueMeta | undefined;
+                        try {
+                            meta = await downloadPreset(pendingMeasure.preset.presetKey);
+                        } finally {
+                            settleMeasure(meta);
+                        }
                     },
                 }}
             />
