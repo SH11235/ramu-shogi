@@ -92,8 +92,10 @@ export function PlayMobileLayout({
         <div
             inert={phase === "setup" || phase === "finished"}
             // 盤は幅だけでなく高さにも合わせる（横向きなどの低い画面で、盤が画面に入らないのを避ける）。
+            // 対局中の盤の欄（持ち駒を含む）の高さは、幅に約 118px を足したもの。上下の帯・操作・余白（約 189px）
+            // と合わせて画面に収まるよう、幅を「画面の高さ − 307px」までにする。
             // 設定中は隠すだけにして、対局を始めたときに盤を作り直さない。
-            className={`relative mx-auto w-full ${isEditing ? "max-w-[max(260px,calc(100dvh-430px))]" : "max-w-[max(280px,calc(100dvh-285px))]"} justify-center ${PLAY_HAND_ZONES} ${phase === "setup" ? "hidden" : "flex"}`}
+            className={`relative mx-auto w-full ${isEditing ? "max-w-[max(260px,calc(100dvh-430px))]" : "max-w-[max(280px,calc(100dvh-307px))]"} justify-center ${PLAY_HAND_ZONES} ${phase === "setup" ? "hidden" : "flex"}`}
         >
             <MobileBoardSection
                 grid={grid}
