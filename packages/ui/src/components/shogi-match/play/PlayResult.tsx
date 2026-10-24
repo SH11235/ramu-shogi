@@ -1,5 +1,5 @@
 /**
- * 終局の表示（対局画面）。結果と、次にすること（研究ノートで振り返る・もう一局）を出す。
+ * 終局の表示（対局画面）。結果と、次にすること（もう一局・研究ノートで振り返る）を出す。
  *
  * 終局の瞬間は PlayResultDialog で知らせ、閉じたあとはここの欄が結果の見出しとして残る。
  */
@@ -92,23 +92,23 @@ export function PlayResultCard({
         const rowButton = "min-h-10 flex-1 px-1 text-[13px]";
         return (
             <section className={cn("flex gap-1.5", className)}>
+                <Button
+                    type="button"
+                    className={cn("font-semibold", rowButton, PLAY_PRIMARY_BUTTON)}
+                    onClick={play.rematch}
+                >
+                    もう一局
+                </Button>
                 {play.openStudy && (
                     <Button
                         type="button"
-                        className={cn("font-semibold", rowButton, PLAY_PRIMARY_BUTTON)}
+                        variant="outline"
+                        className={cn(PLAY_OUTLINE_BUTTON, rowButton)}
                         onClick={() => play.openStudy?.()}
                     >
                         ノート
                     </Button>
                 )}
-                <Button
-                    type="button"
-                    variant="outline"
-                    className={cn(PLAY_OUTLINE_BUTTON, rowButton)}
-                    onClick={play.rematch}
-                >
-                    もう一局
-                </Button>
                 <Button
                     type="button"
                     variant="outline"
@@ -137,29 +137,33 @@ export function PlayResultCard({
             className={cn("flex flex-col", compact ? "gap-2.5" : "gap-4", className)}
         >
             {!hideSummary && <ResultSummary result={result} compact={compact} />}
+            {/* 主の操作は終局のダイアログと同じ「もう一局」。並び・言葉もダイアログと揃える。 */}
             <div className={cn("flex gap-2", compact ? "flex-row" : "flex-col")}>
-                {play.openStudy && (
-                    <Button
-                        type="button"
-                        size={compact ? "default" : "lg"}
-                        className={cn(
-                            "font-semibold",
-                            compact ? "min-h-10 flex-1 px-2" : "h-12 w-full text-base",
-                            PLAY_PRIMARY_BUTTON,
-                        )}
-                        onClick={() => play.openStudy?.()}
-                    >
-                        研究ノートで振り返る
-                    </Button>
-                )}
                 <Button
                     type="button"
-                    variant="outline"
-                    className={cn(PLAY_OUTLINE_BUTTON, compact ? "min-h-10 flex-1 px-2" : "w-full")}
+                    size={compact ? "default" : "lg"}
+                    className={cn(
+                        "font-semibold",
+                        compact ? "min-h-10 flex-1 px-2" : "h-12 w-full text-base",
+                        PLAY_PRIMARY_BUTTON,
+                    )}
                     onClick={play.rematch}
                 >
                     もう一局
                 </Button>
+                {play.openStudy && (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className={cn(
+                            PLAY_OUTLINE_BUTTON,
+                            compact ? "min-h-10 flex-1 px-2" : "w-full",
+                        )}
+                        onClick={() => play.openStudy?.()}
+                    >
+                        ノート
+                    </Button>
+                )}
             </div>
             <PlayResultLinks />
         </section>

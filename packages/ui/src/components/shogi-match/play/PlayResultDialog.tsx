@@ -16,6 +16,7 @@ import { useMatchState } from "../contexts/MatchStateContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import { formatTimeRule } from "../utils/timeSettings";
 import { isSelfResignation } from "./PlayEndStamp";
+import { PlayGameReadingSummary } from "./PlayEngineReading";
 import { CopyKifButton, useReasonText, useResultHeadline, winnerColorClass } from "./PlayResult";
 import { PLAY_OUTLINE_BUTTON, PLAY_PRIMARY_BUTTON } from "./playStyles";
 
@@ -183,6 +184,7 @@ function ResultDialogBody({
                     </button>
                 </DialogPrimitive.Close>
             </div>
+            <PlayGameReadingSummary />
             <div className="flex flex-col gap-1.5">
                 <Button
                     ref={primaryRef}
@@ -195,15 +197,8 @@ function ResultDialogBody({
                 </Button>
                 {summary && <p className="text-center text-xs text-wafuu-sumi-light">{summary}</p>}
             </div>
+            {/* 並び・言葉は、閉じたあとの欄（PC の右の欄・スマホの下の行）と揃える。 */}
             <div className={cn("grid gap-2", openStudy ? "grid-cols-2" : "grid-cols-1")}>
-                <Button
-                    type="button"
-                    variant="outline"
-                    className={cn(PLAY_OUTLINE_BUTTON, "h-auto min-h-11 whitespace-normal px-2")}
-                    onClick={closeThen(play.newGame)}
-                >
-                    設定を変えて対局
-                </Button>
                 {openStudy && (
                     <Button
                         type="button"
@@ -214,9 +209,17 @@ function ResultDialogBody({
                         )}
                         onClick={closeThen(openStudy)}
                     >
-                        研究ノートで振り返る
+                        ノート
                     </Button>
                 )}
+                <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(PLAY_OUTLINE_BUTTON, "h-auto min-h-11 whitespace-normal px-2")}
+                    onClick={closeThen(play.newGame)}
+                >
+                    設定を変える
+                </Button>
             </div>
             <div className="flex justify-center text-[13px] text-wafuu-sumi-light">
                 <CopyKifButton />

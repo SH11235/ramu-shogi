@@ -143,14 +143,14 @@ test("対局 → 投了 → 結果 → もう一局まで、盤が動かず操�
     await page.getByRole("button", { name: "投了する", exact: true }).click();
     const result = page.getByRole("dialog", { name: "あなたの負け" });
     await expect(result).toBeVisible();
-    await expect(result.getByRole("button", { name: "研究ノートで振り返る" })).toBeInViewport();
+    await expect(result.getByRole("button", { name: "ノート", exact: true })).toBeInViewport();
     expect((await square.boundingBox())?.y).toBe(boardTop);
 
     // 閉じると、結果は盤の上の行と下端の操作に残る。
     await result.getByRole("button", { name: "盤を見る" }).click();
     await expect(result).toBeHidden();
     await expect(page.getByRole("heading", { name: "あなたの負け" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "研究ノートで振り返る" })).toBeInViewport();
+    await expect(page.getByRole("button", { name: "ノート", exact: true })).toBeInViewport();
     expect((await square.boundingBox())?.y).toBe(boardTop);
 
     // もう一局は、同じ設定ですぐ始まる。

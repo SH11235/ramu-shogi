@@ -352,3 +352,121 @@ export function PlayKifuReading({ className }: { className?: string }): ReactEle
         </section>
     );
 }
+
+/** グラフの縦の幅（先手視点の評価値）。これより大きい値と詰みは端に寄せる。 */
+const GRAPH_LIMIT = 3000;
+const GRAPH_WIDTH = 320;
+const GRAPH_HEIGHT = 56;
+
+/** その側の AI が指した手の、読みの平均（深さ・速さ）。 */
+function averageReading(moves: KifMove[]): { depth: number; nps: number | null; count: number } {
+    const depths = moves.flatMap((move) =>
+        move.engineSearch?.depth !== undefined ? [move.engineSearch.depth] : [],
+    );
+    const speeds = moves.flatMap((move) => (move.engineSearch?.nps ? [move.engineSearch.nps] : []));
+    const mean = (values: number[]) =>
+        values.reduce((sum, value) => sum + value, 0) / values.length;
+    return {
+        depth: depths.length > 0 ? Math.round(mean(depths)) : 0,
+        nps: speeds.length > 0 ? mean(speeds) : null,
+        count: depths.length,
+    };
+}
+
+/**
+ * 終局のダイアログに置く、この対局の AI の読みのまとめ。AI が指した手の評価値の推移（点は指した側の色）と、
+ * 読んだ深さ・速さの平均。AI の手の記録が無ければ何も出さない。
+ */
+export function PlayGameReadingSummary({ className }: { className?: string }): ReactElement | null {
+    const { kifMoves } = useNavigation();
+    const { sides, displaySettings } = useMatchState();
+    const hasEngine = sides.sente.role === "engine" || sides.gote.role === "engine";
+    if (!hasEngine || !displaySettings.showEngineReading) return null;
+    const moverOf = (move: KifMove): Player =>
+        move.mover ?? (move.ply % 2 === 1 ? "sente" : "gote");
+    const engineMoves = kifMoves.filter((move) => move.engineSearch);
+    const points = engineMoves.flatMap((move) => {
+        const search = move.engineSearch;
+        if (!search) return [];
+        const value =
+            search.scoreMate !== undefined
+                ? Math.sign(search.scoreMate) * GRAPH_LIMIT
+                : search.scoreCp !== undefined
+                  ? Math.max(-GRAPH_LIMIT, Math.min(GRAPH_LIMIT, search.scoreCp))
+                  : null;
+        return value === null ? [] : [{ move, value }];
+    });
+    if (points.length === 0) return null;
+
+    const lastPly = Math.max(1, kifMoves.length);
+    const x = (ply: number) => ((ply - 1) / Math.max(1, lastPly - 1)) * (GRAPH_WIDTH - 8) + 4;
+    const y = (value: number) => GRAPH_HEIGHT / 2 - (value / GRAPH_LIMIT) * (GRAPH_HEIGHT / 2 - 4);
+    const last = points[points.length - 1];
+    const lastSearch = last.move.engineSearch;
+    const engineSides = (["sente", "gote"] as const).filter(
+        (side) => sides[side].role === "engine",
+    );
+
+    return (
+        <section
+            aria-label="この対局の AI の読み"
+            className={cn("flex flex-col gap-1 rounded-lg bg-wafuu-border/40 px-3 py-2", className)}
+        >
+            <div className="flex items-baseline justify-between gap-2">
+                <h3 className="text-xs font-semibold text-wafuu-sumi">評価値の推移</h3>
+                <span className="text-xs text-wafuu-sumi-light">
+                    {last.move.ply}手目{" "}
+                    <span
+                        className={cn("font-semibold tabular-nums", evalColor(moverOf(last.move)))}
+                    >
+                        {formatEval(lastSearch?.scoreCp, lastSearch?.scoreMate)}
+                    </span>
+                </span>
+            </div>
+            <svg
+                viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`}
+                className="h-14 w-full"
+                role="img"
+                aria-label={`評価値の推移。最後は ${last.move.ply}手目 ${formatEval(lastSearch?.scoreCp, lastSearch?.scoreMate)}`}
+            >
+                <line
+                    x1={0}
+                    x2={GRAPH_WIDTH}
+                    y1={GRAPH_HEIGHT / 2}
+                    y2={GRAPH_HEIGHT / 2}
+                    className="stroke-wafuu-border"
+                    strokeWidth={1}
+                />
+                <polyline
+                    fill="none"
+                    className="stroke-wafuu-sumi-light"
+                    strokeWidth={1.5}
+                    points={points.map((p) => `${x(p.move.ply)},${y(p.value)}`).join(" ")}
+                />
+                {points.map((p) => (
+                    <circle
+                        key={p.move.ply}
+                        cx={x(p.move.ply)}
+                        cy={y(p.value)}
+                        r={p === last ? 3 : 2}
+                        className={moverOf(p.move) === "sente" ? "fill-wafuu-shu" : "fill-wafuu-ai"}
+                    />
+                ))}
+            </svg>
+            {engineSides.map((side) => {
+                const average = averageReading(
+                    engineMoves.filter((move) => moverOf(move) === side),
+                );
+                if (average.count === 0) return null;
+                return (
+                    <p key={side} className="text-xs tabular-nums text-wafuu-sumi-light">
+                        {engineSides.length > 1 ? (side === "sente" ? "☗ " : "☖ ") : "AI "}
+                        平均 深さ {average.depth}
+                        {average.nps !== null ? `・${formatNodeCount(average.nps)}局面/秒` : ""}（
+                        {average.count} 手）
+                    </p>
+                );
+            })}
+        </section>
+    );
+}
