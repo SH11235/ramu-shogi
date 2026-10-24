@@ -2513,6 +2513,7 @@ export function ShogiMatch({
     // Props グループ化: Mobile専用
     const mobileSpecificProps: MobileSpecificProps = {
         searchInfo:
+            !isPlayScreen &&
             displaySettings.showSearchInfo &&
             isMatchRunning &&
             liveSearchInfo &&
@@ -2685,6 +2686,10 @@ export function ShogiMatch({
     const playConfig: PlayScreenConfig | null = isPlayScreen
         ? {
               phase: playPhase,
+              liveSearch:
+                  isMatchRunning && liveSearchInfo && engineStatus[liveSearchInfo.side] !== "error"
+                      ? liveSearchInfo
+                      : null,
               isCustomStart: !isHirateStart || (playPhase === "setup" && moves.length > 0),
               busy: isPlayResetting || pendingRematch || isPlayStarting,
               startNotice: playPhase === "playing" && moves.length < 2 ? playStartNotice : null,
@@ -2836,6 +2841,7 @@ export function ShogiMatch({
                     isPaused={isPaused}
                 />
                 {!isMobile &&
+                    !isPlayScreen &&
                     displaySettings.showSearchInfo &&
                     isMatchRunning &&
                     liveSearchInfo &&

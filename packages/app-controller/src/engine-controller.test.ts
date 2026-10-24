@@ -41,6 +41,21 @@ describe("accumulateSearchStats", () => {
         expect(mateThenCp).toEqual({ scoreCp: -120 });
     });
 
+    it("最善手が同じまま読み筋が縮んだら、長い読み筋を残す", () => {
+        const deep = accumulateSearchStats(
+            {},
+            { type: "info", depth: 14, pv: ["2f2e", "8d8e", "2e2d"] },
+        );
+        expect(accumulateSearchStats(deep, { type: "info", depth: 15, pv: ["2f2e"] }).pv).toEqual([
+            "2f2e",
+            "8d8e",
+            "2e2d",
+        ]);
+        expect(accumulateSearchStats(deep, { type: "info", depth: 15, pv: ["7g7f"] }).pv).toEqual([
+            "7g7f",
+        ]);
+    });
+
     it("multipv 2 以上を無視する", () => {
         const current = { depth: 10, scoreCp: 20 };
         expect(accumulateSearchStats(current, { type: "info", multipv: 2, depth: 99 })).toBe(

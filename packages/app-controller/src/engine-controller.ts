@@ -529,6 +529,16 @@ export function accumulateSearchStats(
         const value = event[field];
         if (value !== undefined) (next as Record<string, unknown>)[field] = value;
     }
+    // 探索を打ち切った最後の info は、読み筋が最善手 1 手だけに縮むことがある。最善手が同じなら、
+    // それまでの長い読み筋を残す（最善手が替わったら、短くても新しい読み筋にする）。
+    if (
+        event.pv !== undefined &&
+        current.pv !== undefined &&
+        event.pv.length < current.pv.length &&
+        event.pv.every((move, index) => current.pv?.[index] === move)
+    ) {
+        next.pv = current.pv;
+    }
     // 同一探索内で通常評価と詰み評価が入れ替わることがあるため、評価種別は排他で保持する
     if (event.scoreCp !== undefined) {
         next.scoreCp = event.scoreCp;

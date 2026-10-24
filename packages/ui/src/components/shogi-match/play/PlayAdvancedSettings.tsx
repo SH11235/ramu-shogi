@@ -1,6 +1,6 @@
 /**
  * 対局画面の詳細設定。ふだんは触らないものをここに集める:
- * 時間を秒で指定、先後別のスレッド数、変則ルール、評価関数、盤の表示。
+ * 時間を秒で指定、先後別のスレッド数、AI の読みの表示、変則ルール、評価関数、盤の表示。
  *
  * PC ではダイアログ、スマホでは下から出るシートの中に置く。ここで変えた内容は、設定の欄にもそのまま出る。
  */
@@ -24,7 +24,6 @@ import { usePlaySetup } from "./usePlaySetup";
 const DISPLAY_TOGGLES: Array<{ key: keyof DisplaySettings; label: string }> = [
     { key: "showBoardLabels", label: "盤の外に筋・段を表示" },
     { key: "highlightLastMove", label: "直前の手を強調" },
-    { key: "showSearchInfo", label: "AI の探索情報（NPS・深さ）を表示" },
     { key: "enableWheelNavigation", label: "終局後、盤の上のホイールで棋譜を送る" },
 ];
 
@@ -246,6 +245,25 @@ export function PlayAdvancedSettings({
                                 </NativeSelect>
                             </label>
                         ))}
+                </Group>
+            )}
+
+            {(sides.sente.role === "engine" || sides.gote.role === "engine") && (
+                <Group title="AI の読み">
+                    <label className="flex min-h-8 cursor-pointer items-center gap-2.5 text-sm">
+                        <input
+                            type="checkbox"
+                            checked={displaySettings.showEngineReading}
+                            onChange={(event) =>
+                                onDisplaySettingsChange({
+                                    ...displaySettings,
+                                    showEngineReading: event.target.checked,
+                                })
+                            }
+                            className="h-4 w-4 accent-wafuu-shu"
+                        />
+                        AI が読んだ深さ・局面数を表示
+                    </label>
                 </Group>
             )}
 

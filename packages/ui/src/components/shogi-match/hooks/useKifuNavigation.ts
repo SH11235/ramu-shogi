@@ -5,7 +5,13 @@
  * 局面間のナビゲーション機能を提供する
  */
 
-import type { AddMoveOptions, BoardState, PositionState } from "@shogi/app-core";
+import type {
+    AddMoveOptions,
+    BoardState,
+    MoveSearchStats,
+    Player,
+    PositionState,
+} from "@shogi/app-core";
 import {
     addMove as addMoveToTree,
     applyMoveWithState,
@@ -37,8 +43,29 @@ import {
 import type { EngineInfoEvent } from "@shogi/engine-client";
 import { useRef, useState } from "react";
 import { normalizeEvalToSentePerspective } from "../utils/branchTreeUtils";
-import type { EvalHistory, KifMove, MultiPvNodeData, NodeData } from "../utils/kifFormat";
+import type {
+    EngineSearchSummary,
+    EvalHistory,
+    KifMove,
+    MultiPvNodeData,
+    NodeData,
+} from "../utils/kifFormat";
 import { convertMovesToKif } from "../utils/kifFormat";
+
+/** AI がこの手を決めた探索の結果。評価値は指した側の視点で届くので、先手視点に直す。 */
+const toEngineSearchSummary = (stats: MoveSearchStats, mover: Player): EngineSearchSummary => {
+    const sign = mover === "sente" ? 1 : -1;
+    return {
+        depth: stats.depth,
+        seldepth: stats.seldepth,
+        nodes: stats.nodes,
+        nps: stats.nps,
+        timeMs: stats.timeMs,
+        scoreCp: stats.scoreCp === undefined ? undefined : sign * stats.scoreCp,
+        scoreMate: stats.scoreMate === undefined ? undefined : sign * stats.scoreMate,
+        pv: stats.pv,
+    };
+};
 
 export type RecordedEvalInfoEvent = EngineInfoEvent & Pick<KifuEval, "normalized">;
 
@@ -866,7 +893,10 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
             const stats = node.searchStats;
             const engineSearch =
                 stats && (stats.depth !== undefined || stats.nodes !== undefined)
-                    ? { depth: stats.depth, nodes: stats.nodes }
+                    ? toEngineSearchSummary(
+                          stats,
+                          node.positionAfter.turn === "sente" ? "gote" : "sente",
+                      )
                     : undefined;
 
             if (hasEval || hasElapsed || hasMultiPv || engineSearch) {

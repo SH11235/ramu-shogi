@@ -15,7 +15,6 @@ import { useState } from "react";
 import { BottomSheet } from "../components/BottomSheet";
 import { KifuNavigationToolbar } from "../components/KifuNavigationToolbar";
 import { MobileBoardSection } from "../components/MobileBoardSection";
-import { MobileKifuBar } from "../components/MobileKifuBar";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
@@ -29,21 +28,21 @@ import {
     PlayTurnStatus,
     usePlayPhaseFocus,
 } from "./PlayControls";
+import { PlayKifuStrip } from "./PlayEngineReading";
 import { PlayHintButton, PlayHintLine, usePlayHintMove } from "./PlayHintCard";
 import { PlayMyStatus, PlayPlayerBar } from "./PlayPlayerBar";
-import { PlayResultCard, PlayResultHeadline, PlayResultLinks } from "./PlayResult";
+import { PlayResultCard, PlayResultHeadline } from "./PlayResult";
 import { PlaySetupPanel } from "./PlaySetupPanel";
 import { PLAY_HAND_ZONES, PLAY_HEADING } from "./playStyles";
+import { useStableBoardMaxWidth } from "./useStableBoardMaxWidth";
 
 interface PlayMobileLayoutProps {
-    searchInfo?: ReactNode;
     candidateNote: string | null;
     onDisplaySettingsChange: (settings: DisplaySettings) => void;
     devTools?: ReactNode;
 }
 
 export function PlayMobileLayout({
-    searchInfo,
     candidateNote,
     onDisplaySettingsChange,
     devTools,
@@ -74,7 +73,7 @@ export function PlayMobileLayout({
         handleDecrementHand,
         sides,
     } = useMatchState();
-    const { navigationState, navigationHandlers, kifMoves, handlePlySelect } = useNavigation();
+    const { navigationState, navigationHandlers } = useNavigation();
     const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
     const hintMove = usePlayHintMove();
     const rootRef = usePlayPhaseFocus<HTMLDivElement>(play?.phase ?? "setup");
@@ -82,20 +81,26 @@ export function PlayMobileLayout({
     const phase = play?.phase ?? "setup";
     const isEditing = phase === "editing";
     const inGame = phase === "playing" || phase === "paused" || phase === "finished";
-    const barMoves = kifMoves.map((move) => ({ ply: move.ply, displayText: move.displayText }));
     // 自分 対 AI では盤の下があなたなので、手番の行には時間だけを出す。AI 同士・人同士では
     // 盤の下の対局者が誰かも分かるよう、アイコンと名前を添える。
     const isVsAi = (sides.sente.role === "human") !== (sides.gote.role === "human");
+    const hasEngine = sides.sente.role === "engine" || sides.gote.role === "engine";
+
+    const boardMaxWidth = useStableBoardMaxWidth(299, 267);
 
     const board = (
         // 設定中と終局後は盤を操作できない。フォーカスや読み上げの対象からも外す。
         <div
             inert={phase === "setup" || phase === "finished"}
             // 盤は幅だけでなく高さにも合わせる（横向きなどの低い画面で、盤が画面に入らないのを避ける）。
-            // 対局中の盤の欄（持ち駒を含む）の高さは、幅に約 118px を足したもの。上下の帯・操作・余白（約 189px）
-            // と合わせて画面に収まるよう、幅を「画面の高さ − 307px」までにする。
+            // 対局中・終局後の盤の欄（持ち駒を含む）の高さは、幅に約 118px を足したもの。上下の帯・操作・余白
+            // と合わせて画面に収まるよう、幅の上限を `useStableBoardMaxWidth` で決める（開いたときに測って固定し、
+            // スクロールでブラウザのバーが出入りしても盤の大きさを変えない）。下限の 267px はマス 26px の盤の幅で、
+            // ブラウザのバー込みで高さ 553px の端末（iPhone SE など）でも縦にはみ出さない大きさ。
+            // CSS の上限は、測れない環境での代わり。
             // 設定中は隠すだけにして、対局を始めたときに盤を作り直さない。
-            className={`relative mx-auto w-full ${isEditing ? "max-w-[max(260px,calc(100dvh-430px))]" : "max-w-[max(280px,calc(100dvh-307px))]"} justify-center ${PLAY_HAND_ZONES} ${phase === "setup" ? "hidden" : "flex"}`}
+            className={`relative mx-auto w-full ${isEditing ? "max-w-[max(260px,calc(100svh-430px))]" : "max-w-[max(267px,calc(100svh-307px))]"} justify-center ${PLAY_HAND_ZONES} ${phase === "setup" ? "hidden" : "flex"}`}
+            style={isEditing ? undefined : { maxWidth: boardMaxWidth }}
         >
             <MobileBoardSection
                 grid={grid}
@@ -129,6 +134,7 @@ export function PlayMobileLayout({
                 passRightsSettings={undefined}
                 passRights={position.passRights}
                 turn={position.turn}
+                minCellSize={26}
             />
         </div>
     );
@@ -137,7 +143,9 @@ export function PlayMobileLayout({
         <div
             ref={rootRef}
             // 画面の高さいっぱいを使う（背の高い端末でも、対局の操作が親指の届く下端に来るように）。
-            className="relative flex min-h-[calc(100dvh-53px)] w-full min-w-0 flex-col gap-1 bg-background px-2 pb-[max(env(safe-area-inset-bottom),8px)] text-foreground"
+            // 盤と同じく、ブラウザのバーが出ているときの高さ（svh）で測る。dvh だと、バーを畳んだときに
+            // 欄だけが伸びて、盤と下の操作の間が空く。
+            className="relative flex min-h-[calc(100svh-53px)] w-full min-w-0 flex-col gap-1 bg-background px-2 pb-[max(env(safe-area-inset-bottom),8px)] text-foreground"
         >
             {/* 盤の上: 段階ごとの内容。盤そのものは、どの段階でも下の 1 か所に置く
                 （段階が変わっても盤を作り直さない）。 */}
@@ -197,9 +205,9 @@ export function PlayMobileLayout({
             )}
             {phase === "finished" && (
                 <>
-                    {/* 次の一歩（主な操作と振り返りの送り）は、対局中の操作と同じ下端に、押しやすい大きさで留める。盤は動かさない。 */}
-                    <div className="sticky bottom-0 z-10 mt-auto flex flex-col gap-1.5 border-t border-wafuu-border bg-background pb-1 pt-1.5">
-                        <PlayResultCard compact hideLinks hideSummary className="px-1" />
+                    {/* 振り返りの送りと次の一歩は、対局中の手番の行・操作の行と同じ高さ・同じ位置に置く
+                        （終局で盤の大きさも位置も変えない）。棋譜の帯は行の幅いっぱいに置き（1 手ずつはここで送る）、両端に最初・最後へのボタンを置く。 */}
+                    <div className="sticky bottom-0 z-10 mt-auto flex flex-col gap-1 bg-background pb-1">
                         <KifuNavigationToolbar
                             currentPly={navigationState.currentPly}
                             totalPly={navigationState.totalPly}
@@ -208,16 +216,16 @@ export function PlayMobileLayout({
                             onToStart={navigationHandlers.goToStart}
                             onToEnd={navigationHandlers.goToEnd}
                             canGoForward={navigationState.canGoForward}
-                            size="large"
+                            size="bar"
+                            center={
+                                <PlayKifuStrip
+                                    showReading={hasEngine && displaySettings.showEngineReading}
+                                    className="h-8"
+                                />
+                            }
                         />
+                        <PlayResultCard singleRow hideSummary />
                     </div>
-                    <MobileKifuBar
-                        moves={barMoves}
-                        currentPly={navigationState.currentPly}
-                        onPlySelect={handlePlySelect}
-                        tone="wafuu"
-                    />
-                    <PlayResultLinks className="justify-center" />
                     <PlayMessage />
                 </>
             )}
@@ -248,11 +256,6 @@ export function PlayMobileLayout({
                         }
                     />
                 </div>
-            )}
-
-            {/* 設定中は AI が考えないので出さない（設定を 1 画面に収めるため、空の枠も取らない）。 */}
-            {displaySettings.showSearchInfo && phase !== "setup" && (
-                <div className="min-h-10 w-full">{searchInfo}</div>
             )}
 
             {/* 詳細設定（先後それぞれの担当・秒数・変則ルール・評価関数の管理・表示） */}

@@ -48,8 +48,10 @@ export interface DisplaySettings {
     highlightLastMove: boolean;
     /** 棋譜パネルに評価値を表示 */
     showKifuEval: boolean;
-    /** 対局エンジンの探索情報を表示 */
+    /** 対局エンジンの探索情報を表示（旧レイアウトの、画面の下の帯） */
     showSearchInfo: boolean;
+    /** 対局画面で AI の読み（考え中の深さ・局面数と、手ごとの読み）を表示 */
+    showEngineReading: boolean;
     /** マウスホイールで棋譜をナビゲート */
     enableWheelNavigation: boolean;
     /** サウンドフィードバック */
@@ -65,6 +67,7 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
     highlightLastMove: true,
     showKifuEval: false,
     showSearchInfo: false,
+    showEngineReading: true,
     enableWheelNavigation: true,
     enableSound: true,
     cpuSoundVoice: "dog",

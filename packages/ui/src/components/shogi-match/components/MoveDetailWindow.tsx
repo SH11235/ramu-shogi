@@ -32,6 +32,7 @@ import {
     toNnueSelectionValue,
     toOptionValue,
 } from "../utils/nnueSelectionUtils";
+import { formatNodeCount } from "../utils/searchLimits";
 import { formatElapsedTime } from "../utils/timeFormat";
 
 interface MoveDetailWindowProps {
@@ -454,15 +455,6 @@ export function MoveDetailWindow({
                     )}
                 </div>
 
-                {showSearchInfo && searchStats && (
-                    <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted/40 p-2 text-[11px] text-foreground">
-                        <span>選択深さ: {searchStats.seldepth ?? "-"}</span>
-                        <span>nodes: {searchStats.nodes?.toLocaleString() ?? "-"}</span>
-                        <span>NPS: {searchStats.nps?.toLocaleString() ?? "-"}</span>
-                        <span>探索時間: {searchStats.timeMs ?? "-"} ms</span>
-                        <span>思考上限: {searchStats.thinkLimitMs ?? "-"} ms</span>
-                    </div>
-                )}
                 <button
                     type="button"
                     className="bg-transparent border-none cursor-pointer px-2 py-1 rounded text-base leading-none text-muted-foreground hover:bg-accent"
@@ -498,6 +490,32 @@ export function MoveDetailWindow({
                         {evalInfo.depthText && <span>{evalInfo.depthText}</span>}
                     </div>
                 </div>
+
+                {showSearchInfo && searchStats && (
+                    <div className="mb-3 grid grid-cols-2 gap-1 text-[11px] tabular-nums text-muted-foreground">
+                        <span>
+                            深さ {searchStats.depth ?? "—"}
+                            {searchStats.seldepth !== undefined &&
+                                `（最大 ${searchStats.seldepth}）`}
+                        </span>
+                        <span>
+                            {searchStats.nodes !== undefined
+                                ? `${formatNodeCount(searchStats.nodes)}局面`
+                                : "—"}
+                        </span>
+                        <span>
+                            {searchStats.nps !== undefined
+                                ? `${formatNodeCount(searchStats.nps)}局面/秒`
+                                : "—"}
+                        </span>
+                        <span>
+                            考えた時間{" "}
+                            {searchStats.timeMs !== undefined
+                                ? `${(searchStats.timeMs / 1000).toFixed(1)}秒`
+                                : "—"}
+                        </span>
+                    </div>
+                )}
 
                 {/* 複数PV候補リスト */}
                 {hasPv && (

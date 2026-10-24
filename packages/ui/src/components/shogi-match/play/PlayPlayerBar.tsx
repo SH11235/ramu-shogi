@@ -16,6 +16,7 @@ import { useShogiMatchConfig } from "../ShogiMatchContext";
 import { formatSearchLimit } from "../utils/searchLimits";
 import { formatTime } from "../utils/timeFormat";
 import { formatTimeRule } from "../utils/timeSettings";
+import { PlayBarReading } from "./PlayEngineReading";
 
 const seconds = (ms: number): number => Math.max(0, Math.ceil(ms / 1000));
 
@@ -116,7 +117,13 @@ export function PlayPlayerBar({
 }: PlayPlayerBarProps): ReactElement {
     const { play } = useShogiMatchConfig();
     const { engineOptions } = useMatchSettings();
-    const { getHandInfo, sides, isMatchRunning, position: board } = useMatchState();
+    const {
+        getHandInfo,
+        sides,
+        isMatchRunning,
+        position: board,
+        displaySettings,
+    } = useMatchState();
     const owner = getHandInfo(position).owner;
     const setting = sides[owner];
     const isAI = setting.role === "engine";
@@ -134,6 +141,10 @@ export function PlayPlayerBar({
     const bothHumans = sides.sente.role === "human" && sides.gote.role === "human";
     const isTurn = phase === "playing" && isMatchRunning && board.turn === owner;
     const sideLabel = owner === "sente" ? "先手" : "後手";
+    const showReading =
+        isAI &&
+        displaySettings.showEngineReading &&
+        (phase === "playing" || phase === "paused" || phase === "finished");
 
     return (
         <div
@@ -149,14 +160,26 @@ export function PlayPlayerBar({
             </span>
             {!bothHumans && (
                 // 幅の狭い端末では、名前が切れないよう先後と強さを省く（先後は駒の向きと印で分かる）。
-                <span className="hidden shrink-0 text-xs text-wafuu-sumi-light min-[400px]:inline">
+                // AI の読みを並べるときは、読みの方を残す。
+                <span
+                    className={cn(
+                        "hidden shrink-0 text-xs text-wafuu-sumi-light",
+                        showReading ? "min-[480px]:inline" : "min-[400px]:inline",
+                    )}
+                >
                     {sideLabel}
                     {levelText ? ` ・ ${levelText}` : ""}
                 </span>
             )}
+            {showReading && (
+                <span className="ml-auto flex min-w-0 justify-end">
+                    <PlayBarReading owner={owner} />
+                </span>
+            )}
             <span
                 className={cn(
-                    "ml-auto shrink-0 whitespace-nowrap text-sm tabular-nums",
+                    "shrink-0 whitespace-nowrap text-sm tabular-nums",
+                    !showReading && "ml-auto",
                     urgent
                         ? "font-semibold text-wafuu-shu"
                         : isTurn
@@ -173,7 +196,7 @@ export function PlayPlayerBar({
 
 /**
  * 自分（盤の下の側）のパス権の残りと時間を出す（スマホの操作の帯に置く。スマホの対局中は、
- * 自分の側の帯を出さないため）。どちらも無ければ何も出さない。
+ * 自分の側の帯を出さないため）。盤の下が AI なら、その AI の読みも添える。どれも無ければ何も出さない。
  */
 export function PlayMyStatus({
     withPlayer = false,
@@ -185,7 +208,7 @@ export function PlayMyStatus({
 }): ReactElement | null {
     const { play } = useShogiMatchConfig();
     const { timeSettings } = useMatchSettings();
-    const { getHandInfo, sides } = useMatchState();
+    const { getHandInfo, sides, displaySettings } = useMatchState();
     const owner = getHandInfo("bottom").owner;
     const { text: timeText, urgent } = usePlayerTime(owner);
     const passText = usePassRightsText(owner);
@@ -213,6 +236,10 @@ export function PlayMyStatus({
             {passText}
             {passText && showTime ? " ・ " : ""}
             {showTime ? timeText : ""}
+            {/* AI 同士では盤の下も AI。盤の上の帯と同じく、その AI の読みを添える。 */}
+            {withPlayer && sides[owner].role === "engine" && displaySettings.showEngineReading && (
+                <PlayBarReading owner={owner} />
+            )}
         </span>
     );
 }

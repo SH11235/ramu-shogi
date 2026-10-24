@@ -1,4 +1,5 @@
 import type { GameResult, Player } from "@shogi/app-core";
+import type { EngineInfoEvent } from "@shogi/engine-client";
 import type { ReactNode } from "react";
 import { createContext, useContext } from "react";
 import type { SoundVoice } from "../../hooks/useShogiSound";
@@ -16,6 +17,8 @@ export type PlayPhase = "setup" | "editing" | "playing" | "paused" | "finished";
 /** 対局画面（`screen="play"`）のレイアウトが使う状態と操作。 */
 export interface PlayScreenConfig {
     phase: PlayPhase;
+    /** 対局の AI がいま考えている探索の途中経過（考えていなければ null） */
+    liveSearch: { side: Player; event: EngineInfoEvent } | null;
     /** 平手の開始局面以外（編集した局面・引き継いだ局面）から始めるか */
     isCustomStart: boolean;
     /** 前の対局を片付けている最中か（その間は、対局を始める操作を受け付けない） */

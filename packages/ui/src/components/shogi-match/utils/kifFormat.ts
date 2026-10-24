@@ -96,7 +96,16 @@ export interface KifMove {
 
 export interface EngineSearchSummary {
     depth?: number;
+    seldepth?: number;
     nodes?: number;
+    nps?: number;
+    timeMs?: number;
+    /** 評価値（先手視点） */
+    scoreCp?: number;
+    /** 詰み手数（先手視点） */
+    scoreMate?: number;
+    /** 読み筋（USI形式。先頭はこの手そのもの） */
+    pv?: string[];
 }
 
 /** 評価値の履歴（グラフ用） */

@@ -63,8 +63,11 @@ const winnerColorClass = (result: GameResult): string =>
 interface PlayResultCardProps {
     /** スマホ向けに詰める（見出しと操作を小さくまとめる） */
     compact?: boolean;
-    /** 「設定を変える」「棋譜をコピー」を出さない（`PlayResultLinks` を別の場所に置くとき） */
-    hideLinks?: boolean;
+    /**
+     * スマホの終局後: 「ノート」「もう一局」「設定を変える」「棋譜をコピー」を 1 行のボタンに並べる
+     * （盤と手の送りを 1 画面に収めるため、リンクの行を別に取らない）。
+     */
+    singleRow?: boolean;
     /** 結果の見出しを出さない（`PlayResultHeadline` を別の場所に置くとき） */
     hideSummary?: boolean;
     className?: string;
@@ -73,13 +76,55 @@ interface PlayResultCardProps {
 /** 終局後の欄。結果を見出しとして出し、次の一歩を並べる。 */
 export function PlayResultCard({
     compact = false,
-    hideLinks = false,
+    singleRow = false,
     hideSummary = false,
     className,
 }: PlayResultCardProps): ReactElement | null {
     const { play } = useShogiMatchConfig();
+    const { copied, copyKif } = useCopyKif();
     const result = play?.gameResult;
     if (!play || !result) return null;
+
+    if (singleRow) {
+        const rowButton = "min-h-10 flex-1 px-1 text-[13px]";
+        return (
+            <section className={cn("flex gap-1.5", className)}>
+                {play.openStudy && (
+                    <Button
+                        type="button"
+                        className={cn("font-semibold", rowButton, PLAY_PRIMARY_BUTTON)}
+                        onClick={() => play.openStudy?.()}
+                    >
+                        ノート
+                    </Button>
+                )}
+                <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(PLAY_OUTLINE_BUTTON, rowButton)}
+                    onClick={play.rematch}
+                >
+                    もう一局
+                </Button>
+                <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(PLAY_OUTLINE_BUTTON, rowButton)}
+                    onClick={play.newGame}
+                >
+                    設定を変える
+                </Button>
+                <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(PLAY_OUTLINE_BUTTON, rowButton)}
+                    onClick={copyKif}
+                >
+                    {copied ? "コピーしました" : "棋譜をコピー"}
+                </Button>
+            </section>
+        );
+    }
 
     return (
         <section
@@ -113,7 +158,7 @@ export function PlayResultCard({
                     もう一局
                 </Button>
             </div>
-            {!hideLinks && <PlayResultLinks />}
+            <PlayResultLinks />
         </section>
     );
 }
@@ -164,12 +209,9 @@ function ResultHeadlineLine({
 }
 
 /** 終局後の、主でない操作（設定を変える・棋譜をコピー）。 */
-export function PlayResultLinks({ className }: { className?: string }): ReactElement | null {
-    const { play } = useShogiMatchConfig();
+function useCopyKif(): { copied: boolean; copyKif: () => void } {
     const { handleCopyKif } = useNavigation();
     const [copied, setCopied] = useState(false);
-    if (!play?.gameResult) return null;
-
     const copyKif = () => {
         const text = handleCopyKif();
         void navigator.clipboard
@@ -177,6 +219,13 @@ export function PlayResultLinks({ className }: { className?: string }): ReactEle
             .then(() => setCopied(true))
             .catch(() => setCopied(false));
     };
+    return { copied, copyKif };
+}
+
+function PlayResultLinks({ className }: { className?: string }): ReactElement | null {
+    const { play } = useShogiMatchConfig();
+    const { copied, copyKif } = useCopyKif();
+    if (!play?.gameResult) return null;
 
     return (
         <div
