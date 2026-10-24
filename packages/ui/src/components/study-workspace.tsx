@@ -132,6 +132,7 @@ import {
     type StudyEngineIdentity,
     useStudyAnalysis,
 } from "./study-workspace/useStudyAnalysis";
+import { type StudyMateController, useStudyMate } from "./study-workspace/useStudyMate";
 import { TooltipProvider } from "./tooltip";
 
 /** 既存の盤面と同じ表示設定（座標・最終手の強調・ホイール操作）を使う。 */
@@ -236,6 +237,8 @@ interface StudyWorkspaceViewProps extends StudyWorkspaceCommonProps {
     onCurrentNodeChange?: (nodeId: string) => void;
     /** 直近の「この局面を深く解析」で使った解析の設定（レイヤー）。 */
     deepLayerId?: string | null;
+    /** 詰み探索。渡さなければ出さない。 */
+    mate?: StudyMateController;
 }
 
 /**
@@ -500,6 +503,7 @@ export function StudyWorkspaceView({
     initialNodeId,
     onCurrentNodeChange,
     deepLayerId = null,
+    mate,
 }: StudyWorkspaceViewProps): ReactElement {
     const isMobile = useIsMobile();
     // 768〜1023px（タブレットの縦持ち）: 盤を小さくして 2 列にする。
@@ -1558,6 +1562,17 @@ export function StudyWorkspaceView({
             onCancel={cancelAnalysis}
             onPreviewPv={previewPv}
             onAddPvAsVariation={addPvAsVariation}
+            mate={
+                mate?.supported
+                    ? {
+                          state: mate.results.get(currentNodeId),
+                          busyElsewhere:
+                              mate.runningNodeId !== null && mate.runningNodeId !== currentNodeId,
+                          onStart: () => mate.start(currentNodeId),
+                          onStop: mate.stop,
+                      }
+                    : undefined
+            }
         />
     );
     const commentBox = (
@@ -2256,6 +2271,14 @@ export function StudyWorkspace({
         }
     }, [revertLayerId, controller.mode, doc, displayLayerId, onViewChange]);
 
+    const isMobile = useIsMobile();
+    const mate = useStudyMate({
+        tree,
+        engineOption: engineOptions.find((option) => option.supportsMate),
+        // スマートフォンはメモリが少ないので、置換表を小さくする
+        hashMb: isMobile ? 32 : 64,
+    });
+
     const analysis: StudyAnalysisController = {
         ...controller,
         cancel: async () => {
@@ -2279,6 +2302,7 @@ export function StudyWorkspace({
                 displayLayerId={displayLayerId}
                 onDisplayLayerChange={changeDisplayLayer}
                 analysis={analysis}
+                mate={mate}
                 message={message}
                 onMessageChange={setMessage}
                 deepLayerId={deepLayerId}
