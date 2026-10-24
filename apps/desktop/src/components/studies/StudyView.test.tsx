@@ -33,7 +33,11 @@ vi.mock("@shogi/ui", () => ({
     NnueLibraryDialog: () => null,
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(async () => null) }));
-vi.mock("@shogi/engine-tauri", () => ({ getLegalMoves: vi.fn(async () => []) }));
+vi.mock("@shogi/engine-tauri", () => ({
+    getLegalMoves: vi.fn(async () => []),
+    createTauriNnueStorage: vi.fn(),
+    createTauriEngineClient: vi.fn(),
+}));
 
 const { StudyView } = await import("./StudyView");
 

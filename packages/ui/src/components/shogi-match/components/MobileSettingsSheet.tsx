@@ -142,8 +142,7 @@ interface MobileSettingsSheetProps {
     viewerMode?: boolean;
 }
 
-// iOS Safari の自動ズームを防ぐため input はここで、NativeSelect は各呼び出しで text-base(16px) を指定
-const inputClassName = "w-full border border-border bg-background text-base";
+const inputClassName = "w-full border border-border bg-background text-sm";
 const labelClassName = "flex flex-col gap-1 text-sm";
 
 // SkillLevelSelectorの高さを確保してレイアウトシフトを防止
@@ -191,7 +190,7 @@ function KifuImportSection({
                         onChange={(e) => handleInputChange(e.target.value)}
                         placeholder="startpos moves 7g7f 3c3d&#10;または&#10;1 ７六歩(77)&#10;または&#10;+7776FU"
                         rows={4}
-                        className="w-full p-2 text-base font-mono rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                        className="w-full p-2 text-sm font-mono rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring"
                         disabled={!positionReady}
                     />
                     {error && <div className="text-xs text-destructive">{error}</div>}
@@ -431,7 +430,7 @@ export function MobileSettingsSheet({
                                 value={getSelectorValue("sente", sides.sente)}
                                 onChange={(e) => handleSelectorChange("sente", e.target.value)}
                                 disabled={settingsLocked}
-                                className="text-base"
+                                className="text-sm"
                             >
                                 <option value="human">人間</option>
                                 {/* プリセット NNUE */}
@@ -495,7 +494,7 @@ export function MobileSettingsSheet({
                                             sente: Number(e.target.value),
                                         })
                                     }
-                                    className="text-base"
+                                    className="text-sm"
                                 >
                                     {threadOptionsFor("sente").map((opt) => (
                                         <option key={opt.value} value={opt.value}>
@@ -547,7 +546,7 @@ export function MobileSettingsSheet({
                                 value={getSelectorValue("gote", sides.gote)}
                                 onChange={(e) => handleSelectorChange("gote", e.target.value)}
                                 disabled={settingsLocked}
-                                className="text-base"
+                                className="text-sm"
                             >
                                 <option value="human">人間</option>
                                 {/* プリセット NNUE */}
@@ -611,7 +610,7 @@ export function MobileSettingsSheet({
                                             gote: Number(e.target.value),
                                         })
                                     }
-                                    className="text-base"
+                                    className="text-sm"
                                 >
                                     {threadOptionsFor("gote").map((opt) => (
                                         <option key={opt.value} value={opt.value}>
@@ -671,7 +670,7 @@ export function MobileSettingsSheet({
                                 value={resolvedAnalysisEngineId}
                                 disabled={settingsLocked}
                                 onChange={(e) => onAnalysisEngineIdChange(e.target.value)}
-                                className="text-base"
+                                className="text-sm"
                             >
                                 {engineOptions.map((engine) => (
                                     <option key={engine.id} value={engine.id}>
@@ -913,7 +912,7 @@ export function MobileSettingsSheet({
                                 squareNotation: e.target.value as SquareNotation,
                             })
                         }
-                        className="text-base"
+                        className="text-sm"
                     >
                         {NOTATION_OPTIONS.map((opt) => (
                             <option key={opt.value} value={opt.value}>

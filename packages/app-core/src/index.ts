@@ -155,6 +155,23 @@ export {
     getPresetStatus,
 } from "./nnue/preset-manager";
 
+// nnue/speed
+export type {
+    NnueSpeedData,
+    NnueSpeedKey,
+    NnueSpeedRecord,
+    NnueSpeedRow,
+} from "./nnue/speed";
+export {
+    addObservedNnueSpeed,
+    EMPTY_NNUE_SPEED_DATA,
+    formatNodesPerSecond,
+    NNUE_SPEED_MIN_SEARCH_MS,
+    NNUE_SPEED_OBSERVED_LIMIT,
+    nnueSpeedRows,
+    parseNnueSpeedData,
+    setNnueSpeedBenchmark,
+} from "./nnue/speed";
 // nnue/storage
 export type {
     NnueStorage,

@@ -28,3 +28,6 @@ export const LEGACY_STORAGE_KEYS = {
     analysisNnueId: "shogi:analysisNnueId",
     matchNnueId: "shogi:matchNnueId",
 } as const;
+
+/** 対局・解析のスレッド数（先後ごと、0 は自動）を残す localStorage のキー */
+export const ENGINE_THREADS_STORAGE_KEY = "shogi-match-engine-threads";

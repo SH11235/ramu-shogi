@@ -33,3 +33,12 @@ export type {
 } from "./analysis-controller";
 export { createAnalysisController } from "./analysis-controller";
 export { buildPassRightsOption, createEngineController } from "./engine-controller";
+export type { EngineSpeedEnvironment, NnueSpeedStore } from "./engine-speed";
+export {
+    engineActivity,
+    NNUE_SPEED_BENCHMARK_MS_PER_POSITION,
+    NNUE_SPEED_BENCHMARK_POSITIONS,
+    nnueSpeedStore,
+    runNnueSpeedBenchmark,
+    withNpsRecording,
+} from "./engine-speed";

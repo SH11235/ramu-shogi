@@ -24,7 +24,8 @@ import { Button } from "../button";
 import { NnueErrorAlert } from "../nnue/NnueErrorAlert";
 import { NnueFvScaleInputDialog } from "../nnue/NnueFvScaleInputDialog";
 import { Progress } from "../progress";
-import type { NnueAccountFile, NnueAccountStore } from "./types";
+import { NnueSpeedTable, useNnueSpeedBenchmark } from "./NnueSpeed";
+import type { NnueAccountFile, NnueAccountStore, NnueSpeedSupport } from "./types";
 
 interface NnueLibraryProps {
     /** 配布 AI の manifest.json の URL */
@@ -39,6 +40,8 @@ interface NnueLibraryProps {
     onBusyChange?: (busy: boolean) => void;
     /** この端末の AI を変えられない理由（対局中など）。指定時は設定と削除を止める */
     lockedReason?: string;
+    /** 渡すと、端末にある AI の行にこの端末での速さ（NPS）を出し、測れるようにする */
+    speed?: NnueSpeedSupport;
 }
 
 type PendingAdd =
@@ -57,6 +60,8 @@ type PendingDelete =
 const ALLOWED_EXTENSIONS = [".nnue", ".bin"];
 
 const SUPPORT_ISSUES_URL = "https://github.com/SH11235/rshogi/issues";
+// GitHub のアカウントを持たない人も知らせられるように、X の窓口も並べる。
+const SUPPORT_X_URL = "https://x.com/ramu_shogi";
 
 /** 公開されている評価関数の例（FV_SCALE は配布元の公開値） */
 const FREE_NNUE_RESOURCES = [
@@ -73,13 +78,19 @@ function formatSize(bytes: number): string {
     return `${Math.round(bytes / (1024 * 1024))} MB`;
 }
 
+/**
+ * 形式を「LayerStacks 1536-16-32」「HalfKP 256-32-32」のように書く。名前の末尾に L1 の次元が
+ * 付いている形式（HalfKP256 など）は、次元の並びと重なるので名前から外す。
+ */
 function formatLabel(format: Partial<NnueFormat> | undefined): string | null {
     const architecture = format?.architecture?.trim();
     if (!architecture || architecture.toLowerCase() === "unknown") return null;
     const dims = [format?.l1Dimension, format?.l2Dimension, format?.l3Dimension];
-    return dims.every((dim) => typeof dim === "number" && dim > 0)
-        ? `${architecture}（${dims.join(" / ")}）`
+    if (!dims.every((dim) => typeof dim === "number" && dim > 0)) return architecture;
+    const name = architecture.endsWith(String(dims[0]))
+        ? architecture.slice(0, -String(dims[0]).length)
         : architecture;
+    return `${name} ${dims.join("-")}`;
 }
 
 function needsModelSettings(meta: NnueMeta): boolean {
@@ -103,6 +114,7 @@ export function NnueLibrary({
     onRequestFilePath,
     lockedReason,
     onBusyChange,
+    speed,
 }: NnueLibraryProps): ReactElement {
     const {
         nnueList,
@@ -155,6 +167,40 @@ export function NnueLibrary({
     const canPickFile = Boolean(capabilities?.supportsFileImport);
     const canAdd = canPickPath || canPickFile;
     const isBusy = busyId !== null || downloadingKey !== null || account?.busyKey != null;
+    const speedBenchmark = useNnueSpeedBenchmark(speed);
+    // 測っている AI を消したり設定を変えたりしないよう、測っている間はほかの操作を止める。
+    const controlsDisabled = isBusy || speedBenchmark.isRunning;
+    const speedTable = (
+        contentHash: string,
+        prepare: () => Promise<NnueMeta | undefined>,
+        downloadNote?: string,
+    ) =>
+        speed ? (
+            <NnueSpeedTable
+                contentHash={contentHash}
+                prepare={prepare}
+                downloadNote={downloadNote}
+                support={speed}
+                benchmark={speedBenchmark}
+                disabledReason={lockedReason ?? (isBusy ? "ほかの処理の途中です" : undefined)}
+            />
+        ) : null;
+    // 端末に無い配布 AI は、測るときにダウンロードする（測りたい人にダウンロードを促す）。
+    const presetSpeedTable = (preset: PresetWithStatus) => {
+        const localMeta =
+            preset.localMetas.find((meta) => meta.contentHashSha256 === preset.config.sha256) ??
+            preset.localMetas[0];
+        if (localMeta) return speedTable(localMeta.contentHashSha256, async () => localMeta);
+        const downloadSize = preset.config.size + (preset.config.progressCoefficients?.size ?? 0);
+        return speedTable(
+            preset.config.sha256,
+            async () => {
+                setNotice(null);
+                return downloadPreset(preset.config.presetKey);
+            },
+            `測るときに ${formatSize(downloadSize)} をダウンロードします。`,
+        );
+    };
 
     useEffect(() => {
         onBusyChange?.(isBusy);
@@ -369,7 +415,11 @@ export function NnueLibrary({
                 action={
                     canAdd &&
                     (addedMetas.length > 0 || accountOnlyFiles.length > 0) && (
-                        <Button size="sm" onClick={() => void startAdd()} disabled={isBusy}>
+                        <Button
+                            size="sm"
+                            onClick={() => void startAdd()}
+                            disabled={controlsDisabled}
+                        >
                             ファイルから追加
                         </Button>
                     )
@@ -387,7 +437,7 @@ export function NnueLibrary({
                                     window.matchMedia("(pointer: coarse)").matches
                                 )
                             }
-                            disabled={isBusy}
+                            disabled={controlsDisabled}
                             isAdding={busyId === "adding"}
                             onPick={() => void startAdd()}
                             hint={<FreeResources />}
@@ -407,6 +457,11 @@ export function NnueLibrary({
                                         meta.fvScale ? `FV_SCALE ${meta.fvScale}` : null,
                                     ]}
                                     places={[deviceLabel, ...(accountFile ? ["アカウント"] : [])]}
+                                    speedLine={
+                                        needsModelSettings(meta)
+                                            ? null
+                                            : speedTable(meta.contentHashSha256, async () => meta)
+                                    }
                                     warning={
                                         needsModelSettings(meta)
                                             ? "使う前にモデル設定（振り分け方式）が必要です"
@@ -434,7 +489,7 @@ export function NnueLibrary({
                                             <Button
                                                 size="sm"
                                                 variant="outline"
-                                                disabled={isBusy}
+                                                disabled={controlsDisabled}
                                                 onClick={() => void uploadToAccount(meta)}
                                             >
                                                 アカウントに保存
@@ -443,7 +498,7 @@ export function NnueLibrary({
                                     <Button
                                         size="sm"
                                         variant={needsModelSettings(meta) ? "default" : "outline"}
-                                        disabled={isBusy || Boolean(lockedReason)}
+                                        disabled={controlsDisabled || Boolean(lockedReason)}
                                         title={lockedReason}
                                         aria-label={`「${meta.displayName}」の設定`}
                                         onClick={() => setEditingMeta(meta)}
@@ -453,7 +508,7 @@ export function NnueLibrary({
                                     <Button
                                         size="sm"
                                         variant="ghost"
-                                        disabled={isBusy || Boolean(lockedReason)}
+                                        disabled={controlsDisabled || Boolean(lockedReason)}
                                         title={lockedReason}
                                         aria-label={`「${meta.displayName}」を削除`}
                                         onClick={() =>
@@ -489,7 +544,7 @@ export function NnueLibrary({
                                         <Button
                                             size="sm"
                                             variant="outline"
-                                            disabled={isBusy}
+                                            disabled={controlsDisabled}
                                             onClick={() => setPendingAdd({ kind: "account", file })}
                                         >
                                             {deviceLabel}で使う
@@ -499,7 +554,7 @@ export function NnueLibrary({
                                         <Button
                                             size="sm"
                                             variant="ghost"
-                                            disabled={isBusy}
+                                            disabled={controlsDisabled}
                                             aria-label={`「${file.originalFilename}」をアカウントから削除`}
                                             onClick={() =>
                                                 setPendingDelete({ kind: "account", file })
@@ -522,6 +577,10 @@ export function NnueLibrary({
                 <LibrarySection
                     title="配布 AI"
                     description={`ラム将棋が用意している AI です。はじめて使うときに、${deviceLabel}へダウンロードします。`}
+                    note={
+                        speed &&
+                        "NPS（nodes per second）は 1 秒あたりに読む局面の数で、AI の速さの目安です。ほかのアプリやタブが動いていると低めに出ます。"
+                    }
                 >
                     {presets.length === 0 ? (
                         <p className="text-sm text-muted-foreground">読み込み中...</p>
@@ -543,8 +602,9 @@ export function NnueLibrary({
                                               })
                                             : null
                                     }
-                                    disabled={isBusy}
+                                    disabled={controlsDisabled}
                                     lockedReason={lockedReason}
+                                    speedLine={presetSpeedTable(preset)}
                                     isDeleting={busyId === preset.config.presetKey}
                                     onDownload={() => {
                                         setNotice(null);
@@ -572,6 +632,15 @@ export function NnueLibrary({
                     className="underline underline-offset-2 hover:text-foreground"
                 >
                     GitHub Issues
+                </a>
+                か X の{" "}
+                <a
+                    href={SUPPORT_X_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline underline-offset-2 hover:text-foreground"
+                >
+                    @ramu_shogi
                 </a>{" "}
                 へお知らせください。
             </p>
@@ -694,6 +763,7 @@ function PresetRow({
     progress,
     disabled,
     lockedReason,
+    speedLine,
     isDeleting,
     onDownload,
     onDelete,
@@ -704,6 +774,7 @@ function PresetRow({
     progress: NnueDownloadProgress | null;
     disabled: boolean;
     lockedReason?: string;
+    speedLine: ReactNode;
     isDeleting: boolean;
     onDownload: () => void;
     onDelete: () => void;
@@ -726,31 +797,22 @@ function PresetRow({
                     />
                 )}
                 <div className="flex min-w-0 flex-col gap-1">
+                    {/* 名前の横に用途・形式・大きさを並べる。幅が足りなければ折り返す。 */}
                     <h3 className="flex flex-wrap items-baseline gap-x-2 text-base font-semibold text-foreground">
                         {config.displayName}
-                        {config.usageLabel && (
-                            <span className="text-xs font-normal text-muted-foreground">
-                                {config.usageLabel}
-                            </span>
-                        )}
+                        {[config.usageLabel, formatLabel(config.format), formatSize(downloadSize)]
+                            .filter(Boolean)
+                            .map((label) => (
+                                <span
+                                    key={label}
+                                    className="text-xs font-normal text-muted-foreground"
+                                >
+                                    {label}
+                                </span>
+                            ))}
                     </h3>
                     <p className="text-sm text-muted-foreground">{config.description}</p>
-                    <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                        {formatLabel(config.format) && <span>{formatLabel(config.format)}</span>}
-                        <span>{formatSize(downloadSize)}</span>
-                        {config.licenseUrl ? (
-                            <a
-                                href={config.licenseUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="underline underline-offset-2 hover:text-foreground"
-                            >
-                                {config.license}
-                            </a>
-                        ) : (
-                            <span>{config.license}</span>
-                        )}
-                    </p>
+                    {speedLine}
                 </div>
             </div>
             <div className="flex shrink-0 items-center justify-end gap-2 sm:w-48">
@@ -805,12 +867,14 @@ function AddedRow({
     places,
     warning,
     busyLabel,
+    speedLine,
     muted = false,
     children,
 }: {
     title: string;
     details: Array<string | null>;
     places: string[];
+    speedLine?: ReactNode;
     warning: string | null;
     busyLabel: string | null;
     muted?: boolean;
@@ -831,6 +895,7 @@ function AddedRow({
                     ))}
                     <span>保存先: {places.join("・")}</span>
                 </p>
+                {speedLine}
                 {warning && <p className="text-xs text-wafuu-shu">{warning}</p>}
                 {busyLabel && (
                     <p aria-live="polite" className="text-xs text-muted-foreground">
