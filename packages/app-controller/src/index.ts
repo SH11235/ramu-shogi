@@ -36,6 +36,7 @@ export { buildPassRightsOption, createEngineController } from "./engine-controll
 export type { EngineSpeedEnvironment, NnueSpeedStore } from "./engine-speed";
 export {
     engineActivity,
+    NNUE_SPEED_BENCHMARK_MS_PER_POSITION,
     NNUE_SPEED_BENCHMARK_POSITIONS,
     nnueSpeedStore,
     runNnueSpeedBenchmark,

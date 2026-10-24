@@ -78,12 +78,12 @@ describe("NnueSpeedTable", () => {
         localStorage.clear();
     });
 
-    it("いまのスレッド数の行に「測る」を置き、測ると計測の値を出す", async () => {
+    it("いまのスレッド数の行に「測る」を置き、測ると計測の値と「測り直す」を出す", async () => {
         render(<Harness />);
         expect(rowTexts()).toEqual(["4 | 測る | —"]);
         fireEvent.click(screen.getByRole("button", { name: "測る" }));
-        expect(await screen.findByText(/測定中/)).toBeTruthy();
-        await waitFor(() => expect(rowTexts()).toEqual(["4 | 約 100万 | —"]));
+        expect(await screen.findByText("あと約 9 秒")).toBeTruthy();
+        await waitFor(() => expect(rowTexts()).toEqual(["4 | 約 100万測り直す | —"]));
     });
 
     it("ほかのスレッド数は値のある行だけ出し、いまの設定に印を付ける", () => {

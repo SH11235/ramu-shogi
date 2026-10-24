@@ -1,5 +1,6 @@
 import {
     engineActivity,
+    NNUE_SPEED_BENCHMARK_MS_PER_POSITION,
     NNUE_SPEED_BENCHMARK_POSITIONS,
     nnueSpeedStore,
     runNnueSpeedBenchmark,
@@ -50,7 +51,7 @@ export function useNnueSpeedBenchmark(support: NnueSpeedSupport | undefined) {
     const activity = useSyncExternalStore(engineActivity.subscribe, engineActivity.getSnapshot);
     const [threads] = useState(() => readCurrentThreads(support?.maxThreads));
 
-    const abort = (reason: string | null) => {
+    const abort = (reason: string) => {
         if (!controllerRef.current) return;
         abortReasonRef.current = reason;
         controllerRef.current.abort();
@@ -124,7 +125,6 @@ export function useNnueSpeedBenchmark(support: NnueSpeedSupport | undefined) {
         /** 探索中のエンジンがあるあいだは測らない */
         isEngineBusy: activity.searching > 0,
         start,
-        cancel: () => abort(null),
     };
 }
 
@@ -159,6 +159,8 @@ export function NnueSpeedTable({
               (a, b) => a.threads - b.threads,
           );
     const isRunningHere = state.phase === "running" && state.metaId === meta.id;
+    const totalSeconds =
+        (NNUE_SPEED_BENCHMARK_POSITIONS.length * NNUE_SPEED_BENCHMARK_MS_PER_POSITION) / 1000;
     const message = state.phase === "done" && state.metaId === meta.id ? state.message : null;
     const blockedReason =
         disabledReason ??
@@ -170,25 +172,36 @@ export function NnueSpeedTable({
 
     const benchmarkCell = (row: NnueSpeedRow): ReactNode => {
         if (row.threads === threads && isRunningHere && state.phase === "running") {
+            // 局面ごとに決まった時間だけ読むので、残りの局面の数から残り時間が分かる。
+            const remainingSeconds =
+                ((NNUE_SPEED_BENCHMARK_POSITIONS.length - state.index) *
+                    NNUE_SPEED_BENCHMARK_MS_PER_POSITION) /
+                1000;
             return (
-                <span className="flex items-center gap-x-1.5" aria-live="polite">
-                    <span className="text-muted-foreground">
-                        測定中 {state.index + 1}/{NNUE_SPEED_BENCHMARK_POSITIONS.length}
-                    </span>
-                    <InlineButton onClick={benchmark.cancel}>やめる</InlineButton>
+                <span className="text-muted-foreground" aria-live="polite">
+                    あと約 {remainingSeconds} 秒
                 </span>
             );
         }
-        if (row.benchmarkNps !== null) return `約 ${formatNodesPerSecond(row.benchmarkNps)}`;
-        if (row.threads !== threads) return "—";
-        return (
+        if (row.threads !== threads) {
+            return row.benchmarkNps === null ? "—" : `約 ${formatNodesPerSecond(row.benchmarkNps)}`;
+        }
+        // 端末の混み具合で変わるので、測った後も測り直せるようにする。
+        const measureButton = (
             <InlineButton
                 onClick={() => void benchmark.start(meta)}
                 disabled={blockedReason !== undefined}
-                title={blockedReason ?? `${threads} スレッドで約 10 秒探索して測ります`}
+                title={blockedReason ?? `${threads} スレッドで約 ${totalSeconds} 秒読んで測ります`}
             >
-                測る
+                {row.benchmarkNps === null ? "測る" : "測り直す"}
             </InlineButton>
+        );
+        if (row.benchmarkNps === null) return measureButton;
+        return (
+            <span className="flex items-center gap-x-2">
+                約 {formatNodesPerSecond(row.benchmarkNps)}
+                {measureButton}
+            </span>
         );
     };
 

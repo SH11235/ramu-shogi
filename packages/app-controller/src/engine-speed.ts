@@ -340,7 +340,7 @@ export const NNUE_SPEED_BENCHMARK_POSITIONS: ReadonlyArray<{ label: string; sfen
     },
 ];
 
-const BENCHMARK_MS_PER_POSITION = 3000;
+export const NNUE_SPEED_BENCHMARK_MS_PER_POSITION = 3000;
 
 const abortedError = () => new Error("計測を中断しました");
 
@@ -418,7 +418,7 @@ function searchOnce(client: EngineClient, signal: AbortSignal): Promise<SearchSa
         });
         signal.addEventListener("abort", onAbort);
         client
-            .search({ limits: { movetimeMs: BENCHMARK_MS_PER_POSITION } })
+            .search({ limits: { movetimeMs: NNUE_SPEED_BENCHMARK_MS_PER_POSITION } })
             .catch((error: unknown) => {
                 cleanup();
                 reject(error);
