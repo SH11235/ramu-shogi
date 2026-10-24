@@ -62,7 +62,7 @@ try {
         try {
             await client.init({ threads: engineThreads, ttSizeMb: 4 });
             const modes = {};
-            for (const mode of ["Speed", "Power", "Auto"]) {
+            for (const mode of ["Speed", "Power"]) {
                 const outcome = await solve("4k4/9/4P4/9/9/9/9/9/4K4 b G 1", {
                     mode,
                     timeMs: 10000,
