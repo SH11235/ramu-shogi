@@ -24,7 +24,7 @@ const opponent = (side: Side): Side => (side === "sente" ? "gote" : "sente");
 const UNKNOWN_TEXT = `${STUDY_MATE_TIME_MS / 1000} 秒では読み切れませんでした`;
 
 /** 調べている途中の表示（例: `詰みを調べています（3 秒・120 万局面）`）。 */
-export function studyMateProgressText(state: StudyMateState & { status: "running" }): string {
+function studyMateProgressText(state: StudyMateState & { status: "running" }): string {
     const what = state.phase === "mate" ? "詰み" : "詰めろ";
     // 最初の途中経過はエンジンの起動を待つ間なので、数字を出さない
     if (state.nodes === 0) return `${what}を調べています`;
