@@ -272,8 +272,8 @@ export function NnueSpeedTable({
                     value={selectedThreads}
                     onChange={(event) => setSelectedThreads(Number(event.target.value))}
                     disabled={running !== null}
-                    // iOS Safari は 16px 未満の入力欄にフォーカスすると画面を拡大するので、スマホでは 16px にする
-                    className="py-1 pl-2 pr-8 text-base sm:text-xs"
+                    // 表と同じ文字の大きさにする（指で操作する端末では、拡大を防ぐ共通の指定で 16px になる）
+                    className="h-8 py-0 pl-2 pr-8 text-xs"
                 >
                     {Array.from({ length: Math.max(1, threadCap) }, (_, index) => index + 1).map(
                         (threads) => (
@@ -286,6 +286,7 @@ export function NnueSpeedTable({
                 <Button
                     size="sm"
                     variant="outline"
+                    className="h-8 px-3 text-xs"
                     disabled={running !== null || blockedReason !== undefined}
                     title={blockedReason ?? `約 ${totalSeconds} 秒読んで測ります`}
                     onClick={() =>
