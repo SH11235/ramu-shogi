@@ -298,6 +298,8 @@ export function createTauriEngineClient(options: TauriEngineClientOptions = {}):
             cachedThreadInfo = null;
         },
         getThreadInfo(): ThreadInfo {
+            // モックに切り替わった後は、その前に取れた値は動いていないエンジンの数になる。
+            if (usingMock) return defaultThreadInfo;
             return cachedThreadInfo ?? defaultThreadInfo;
         },
         async reset(): Promise<void> {

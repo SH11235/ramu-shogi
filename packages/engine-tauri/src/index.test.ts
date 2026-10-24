@@ -300,6 +300,26 @@ describe("createTauriEngineClient", () => {
             await client.init();
             expect(client.getThreadInfo?.().activeThreads).toBe(0);
         });
+
+        it("モックに切り替わった後は、前に取れたスレッド数を返さない", async () => {
+            mockInvoke.mockImplementation(async (command: string) => {
+                if (command === "engine_thread_info") {
+                    return {
+                        activeThreads: 4,
+                        maxThreads: 8,
+                        threadedAvailable: true,
+                        hardwareConcurrency: 8,
+                    };
+                }
+                if (command === "engine_position") throw new Error("IPC failed");
+            });
+            mockListen.mockResolvedValue(mockUnlisten);
+            const client = createTauriEngineClient({ ipc: mockIpc });
+            await client.init();
+            expect(client.getThreadInfo?.().activeThreads).toBe(4);
+            await client.loadPosition("startpos");
+            expect(client.getThreadInfo?.().activeThreads).toBe(0);
+        });
     });
 
     describe("dispose", () => {
