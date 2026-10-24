@@ -912,14 +912,25 @@ describe("createEngineController", () => {
         expect(onSearchComplete.mock.calls[0][1].threads).toBe(expected);
     });
 
-    it("読み筋の無い info（Desktop の外部 USI からの pv: null）でも統計を更新できる", () => {
-        const deep = accumulateSearchStats({}, { type: "info", depth: 20, pv: ["7g7f", "3c3d"] });
-        const next = accumulateSearchStats(deep, {
-            type: "info",
-            depth: 21,
-            pv: null as unknown as string[],
-        });
-        expect(next.depth).toBe(21);
+    it("Desktop から null で届く項目は「無し」として扱い、それまでの値を消さない", () => {
+        // Tauri は届かなかった項目を null にする。
+        const asTauri = (event: Record<string, unknown>) =>
+            ({ type: "info", ...event }) as unknown as EngineEvent & { type: "info" };
+        const deep = accumulateSearchStats(
+            {},
+            asTauri({ depth: 20, nodes: 1000, pv: ["7g7f", "3c3d"], scoreCp: 30, scoreMate: null }),
+        );
+        const mate = accumulateSearchStats(
+            deep,
+            asTauri({ depth: 21, pv: null, scoreCp: null, scoreMate: 3, multipv: null }),
+        );
+        expect(mate).toMatchObject({ depth: 21, nodes: 1000, pv: ["7g7f", "3c3d"], scoreMate: 3 });
+        expect(mate.scoreCp).toBeUndefined();
+        const empty = accumulateSearchStats(
+            mate,
+            asTauri({ depth: null, nodes: null, pv: null, scoreCp: null, scoreMate: null }),
+        );
+        expect(empty).toEqual(mate);
     });
 
     it("後手の探索に両者の残り持ち時間を渡す", async () => {

@@ -213,7 +213,9 @@ export function PlayMyStatus({
     const { text: timeText, urgent } = usePlayerTime(owner);
     const passText = usePassRightsText(owner);
     const showTime = timeSettings[owner].enabled;
-    if (!withPlayer && !showTime && !passText) return null;
+    // 盤を反転して AI が盤の下に来たときも、その AI の読みは出す。
+    const showReading = sides[owner].role === "engine" && displaySettings.showEngineReading;
+    if (!withPlayer && !showTime && !passText && !showReading) return null;
     const sideLabel = owner === "sente" ? "先手" : "後手";
     const bothHumans = sides.sente.role === "human" && sides.gote.role === "human";
     const name = bothHumans ? sideLabel : (play?.playerNames[owner] ?? sideLabel);
@@ -236,10 +238,8 @@ export function PlayMyStatus({
             {passText}
             {passText && showTime ? " ・ " : ""}
             {showTime ? timeText : ""}
-            {/* AI 同士では盤の下も AI。盤の上の帯と同じく、その AI の読みを添える。 */}
-            {withPlayer && sides[owner].role === "engine" && displaySettings.showEngineReading && (
-                <PlayBarReading owner={owner} />
-            )}
+            {/* 盤の下が AI（AI 同士・盤を反転したとき）なら、盤の上の帯と同じく、その AI の読みを添える。 */}
+            {showReading && <PlayBarReading owner={owner} />}
         </span>
     );
 }

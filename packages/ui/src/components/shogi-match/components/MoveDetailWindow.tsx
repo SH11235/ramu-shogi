@@ -492,31 +492,32 @@ export function MoveDetailWindow({
                 </div>
 
                 {showSearchInfo && searchStats && (
+                    // Desktop の記録には、届かなかった項目が null で入っていることがある。
                     <div className="mb-3 grid grid-cols-2 gap-1 text-[11px] tabular-nums text-muted-foreground">
                         <span>
-                            深さ {searchStats.depth ?? "—"}
-                            {searchStats.seldepth !== undefined &&
+                            深さ {typeof searchStats.depth === "number" ? searchStats.depth : "—"}
+                            {typeof searchStats.seldepth === "number" &&
                                 `（最大 ${searchStats.seldepth}）`}
                         </span>
                         <span>
-                            {searchStats.nodes !== undefined
+                            {typeof searchStats.nodes === "number"
                                 ? `${formatNodeCount(searchStats.nodes)}局面`
                                 : "—"}
                         </span>
                         <span>
-                            {searchStats.nps !== undefined
+                            {typeof searchStats.nps === "number"
                                 ? `${formatNodeCount(searchStats.nps)}局面/秒`
                                 : "—"}
                         </span>
                         <span>
                             考えた時間{" "}
-                            {searchStats.timeMs !== undefined
+                            {typeof searchStats.timeMs === "number"
                                 ? `${(searchStats.timeMs / 1000).toFixed(1)}秒`
                                 : "—"}
                         </span>
                         <span>
                             思考上限{" "}
-                            {searchStats.thinkLimitMs !== undefined
+                            {typeof searchStats.thinkLimitMs === "number"
                                 ? `${(searchStats.thinkLimitMs / 1000).toFixed(1)}秒`
                                 : "—"}
                         </span>

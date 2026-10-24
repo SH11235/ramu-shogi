@@ -70,12 +70,12 @@ function useConditionRows(): ConditionRow[] {
                 (move.mover ?? (move.ply % 2 === 1 ? "sente" : "gote")) === side,
         );
         // スレッド数は、手を決めたときにエンジンが実際に使った数を優先する（設定より少なくなることがある）。
-        // 外部エンジンの「自動」は登録時の設定のまま動き、その数はこちらから分からないので出さない。
+        // 外部エンジンは登録時の設定のスレッド数で動き、その数はこちらから分からないので出さない。
         const recordedThreads = [...sideMoves].reverse().find((move) => move.engineSearch?.threads)
             ?.engineSearch?.threads;
         const threads =
             recordedThreads ??
-            (engine?.kind === "external" && engineThreads[side] === 0
+            (engine?.kind === "external"
                 ? null
                 : resolveThreadCount(
                       engineThreads[side],
