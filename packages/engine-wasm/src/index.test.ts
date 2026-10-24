@@ -1312,4 +1312,49 @@ describe("詰み探索 (mate.solve)", () => {
         expect(client.mate?.available()).toBe(false);
         await expect(client.mate?.solve({})).rejects.toThrow("詰み探索は利用できません");
     });
+
+    it("初期化前に呼んでも、スレッド版の worker の生成で自分の solve を取り消さない", async () => {
+        vi.stubGlobal("crossOriginIsolated", true);
+        vi.stubGlobal("SharedArrayBuffer", class {});
+        vi.stubGlobal("navigator", { hardwareConcurrency: 8 });
+        const workers: MockWorker[] = [];
+        const client = createWasmEngineClient({
+            workerFactory: () => {
+                const worker = createAckingWorker();
+                workers.push(worker);
+                return worker as unknown as Worker;
+            },
+        });
+        const solving = client.mate?.solve({});
+        await vi.waitFor(() => expect(workers.flatMap((w) => solveCalls(w))).toHaveLength(1));
+        const worker = workers[workers.length - 1];
+        reply(worker, {
+            type: "mateFinished",
+            requestId: solveCalls(worker)[0].requestId,
+            outcome: { result: { kind: "noMate" }, nodes: 1, elapsedMs: 0 },
+        });
+        await expect(solving).resolves.toMatchObject({ result: { kind: "noMate" } });
+    });
+
+    it("通常探索を始めた直後の solve は失敗する", async () => {
+        const { client } = await createReadyClient();
+        const searching = client.search({});
+        await expect(client.mate?.solve({})).rejects.toThrow("通常探索");
+        await searching;
+    });
+
+    it("wasm 側で受け取れない数値は送る前に失敗し、置換表は上限に丸める", async () => {
+        const { client, worker } = await createReadyClient();
+        await expect(client.mate?.solve({ nodes: 2 ** 53 })).rejects.toThrow(RangeError);
+        const solving = client.mate?.solve({ hashMb: 2 ** 32 });
+        await vi.waitFor(() => expect(solveCalls(worker())).toHaveLength(1));
+        const [call] = solveCalls(worker());
+        expect(call.params).toMatchObject({ hashMb: 1024 });
+        reply(worker(), {
+            type: "mateFinished",
+            requestId: call.requestId,
+            outcome: { result: { kind: "unknown" }, nodes: 0, elapsedMs: 0 },
+        });
+        await solving;
+    });
 });

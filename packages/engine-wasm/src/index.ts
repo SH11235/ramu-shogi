@@ -117,13 +117,26 @@ function classifyErrorCode(error: unknown): EngineErrorCode {
  * 作り直す判定に使う。単語単体では「到達不能」を語るカスタムメッセージや
  * wasm 無関係の RuntimeError と衝突するため、両方を含む場合のみ panic 扱い。
  */
-const MATE_MODES: readonly MateMode[] = ["Speed", "Power", "Auto"];
+function isWasmPanic(message: string): boolean {
+    const lower = message.toLowerCase();
+    return lower.includes("runtimeerror") && lower.includes("unreachable");
+}
 
-/** 0 以上の整数に切り捨てる (worker に送る前に確かめ、不正な値をエンジンのエラーにしない) */
+const MATE_MODES: readonly MateMode[] = ["Speed", "Power", "Auto"];
+/** wasm 側の置換表の上限 (スレッド版の線形メモリは 2 GiB) */
+const MAX_MATE_HASH_MB = 1024;
+const MAX_MATE_THREADS = 512;
+
+/** 0 以上の安全な整数に切り捨てる (worker に送る前に確かめ、不正な値をエンジンのエラーにしない) */
 function nonNegativeInteger(name: string, value: number | undefined): number | undefined {
     if (value === undefined) return undefined;
-    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-        throw new RangeError(`${name} は 0 以上の数で指定してください`);
+    if (
+        typeof value !== "number" ||
+        !Number.isFinite(value) ||
+        value < 0 ||
+        value > Number.MAX_SAFE_INTEGER
+    ) {
+        throw new RangeError(`${name} は 0 以上 ${Number.MAX_SAFE_INTEGER} 以下で指定してください`);
     }
     return Math.floor(value);
 }
@@ -133,18 +146,14 @@ function normalizeMateParams(params: MateParams): MateParams {
         throw new RangeError(`未知の詰み探索のモードです: ${String(params.mode)}`);
     }
     const threads = nonNegativeInteger("threads", params.threads);
+    const hashMb = nonNegativeInteger("hashMb", params.hashMb);
     return {
         mode: params.mode,
-        threads: Math.max(1, threads ?? 1),
-        hashMb: nonNegativeInteger("hashMb", params.hashMb),
+        threads: Math.min(MAX_MATE_THREADS, Math.max(1, threads ?? 1)),
+        hashMb: hashMb === undefined ? undefined : Math.min(MAX_MATE_HASH_MB, Math.max(1, hashMb)),
         timeMs: nonNegativeInteger("timeMs", params.timeMs),
         nodes: nonNegativeInteger("nodes", params.nodes),
     };
-}
-
-function isWasmPanic(message: string): boolean {
-    const lower = message.toLowerCase();
-    return lower.includes("runtimeerror") && lower.includes("unreachable");
 }
 
 /**
@@ -462,10 +471,18 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         pendingMates.clear();
     };
 
+    /** 詰み探索の準備中 (エンジンの初期化待ち) */
+    let mateStarting = false;
+    /** 通常探索の準備中 (エンジンの初期化待ち) */
+    let searchStarting = false;
+    /** stop / dispose / reset のたびに進める。準備中の詰み探索はこれが変わったら送らない */
+    let cancelEpoch = 0;
+    const mateBusy = () => mateStarting || pendingMates.size > 0;
+
     /** 解析・詰み探索の最中は、ほかの操作をすぐ失敗させる (待たせると後ろの操作がタイムアウトし、worker の状態とずれる) */
     const assertIdle = () => {
         if (analysisBridge.busy()) throw new Error("解析を停止してから操作してください");
-        if (pendingMates.size > 0) throw new Error("詰み探索が終わってから操作してください");
+        if (mateBusy()) throw new Error("詰み探索が終わってから操作してください");
     };
 
     const receiveMate = (message: MateMessage) => {
@@ -892,8 +909,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         available: () => initialized && backend === "threaded",
         ready: async () => {
             if (normalSearchActive) throw new Error("通常探索を停止してから解析を開始してください");
-            if (pendingMates.size > 0)
-                throw new Error("詰み探索が終わってから解析を開始してください");
+            if (mateBusy()) throw new Error("詰み探索が終わってから解析を開始してください");
             await ensureReady();
         },
         send: (command) => postToWorker(command),
@@ -903,6 +919,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
 
     const terminateAndRecover = () => {
         if (backend === "mock") return;
+        cancelEpoch += 1;
         replaceWorker("engine worker terminated");
         initInFlight = null;
         void ensureReady().catch((error) => {
@@ -949,42 +966,39 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         available: () => initialized && (backend === "single" || backend === "threaded"),
         async solve(params, onProgress) {
             assertIdle();
-            if (normalSearchActive)
+            if (normalSearchActive || searchStarting) {
                 throw new Error("通常探索を停止してから詰み探索を始めてください");
+            }
             if (backend === "mock" || backend === "error") {
                 throw new Error("詰み探索は利用できません");
             }
             const normalized = normalizeMateParams(params);
             analysisBridge.invalidate("新しい局面・設定・探索が指定されました");
-            const requestId = createRequestId();
-            // 準備を待つ前に登録し、その間の stop() などでも取り消せるようにする
-            const result = new Promise<MateOutcome>((resolve, reject) => {
-                pendingMates.set(requestId, { resolve, reject, onProgress });
-            });
+            const cancelled = cancelEpoch;
+            mateStarting = true;
             try {
                 await ensureReady();
-            } catch (error) {
-                if (!pendingMates.delete(requestId)) return result;
-                throw error;
+            } finally {
+                mateStarting = false;
             }
-            if (!pendingMates.has(requestId)) return result;
-            if (!worker) {
-                pendingMates.delete(requestId);
-                throw new Error("詰み探索は利用できません");
-            }
+            if (cancelEpoch !== cancelled) throw new Error("詰み探索は開始前に停止されました");
+            if (!worker) throw new Error("詰み探索は利用できません");
             // 補助スレッドはエンジンのスレッドプールで動くので、プールより多く並べても速くならない
             const threads = Math.min(normalized.threads ?? 1, activeThreads ?? 1);
-            try {
-                postToWorker({
-                    type: "solveMate",
-                    requestId,
-                    params: { ...normalized, threads },
-                });
-            } catch (error) {
-                pendingMates.delete(requestId);
-                throw error;
-            }
-            return result;
+            const requestId = createRequestId();
+            return new Promise<MateOutcome>((resolve, reject) => {
+                pendingMates.set(requestId, { resolve, reject, onProgress });
+                try {
+                    postToWorker({
+                        type: "solveMate",
+                        requestId,
+                        params: { ...normalized, threads },
+                    });
+                } catch (error) {
+                    pendingMates.delete(requestId);
+                    reject(error instanceof Error ? error : new Error(String(error)));
+                }
+            });
         },
     };
 
@@ -1078,7 +1092,12 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
                     },
                 };
             }
-            await ensureReady();
+            searchStarting = true;
+            try {
+                await ensureReady();
+            } finally {
+                searchStarting = false;
+            }
             if (!worker) {
                 return mock.search(params);
             }
@@ -1162,6 +1181,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             return () => nnueLoadListeners.delete(handler);
         },
         async dispose() {
+            cancelEpoch += 1;
             if (backend === "mock") {
                 await mock.dispose();
                 detachMock();
@@ -1188,6 +1208,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             initInFlight = null;
         },
         async reset(): Promise<void> {
+            cancelEpoch += 1;
             // Cancel any in-flight operations
             if (initInFlight) {
                 initInFlight = null;
