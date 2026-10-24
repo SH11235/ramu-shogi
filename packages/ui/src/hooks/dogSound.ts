@@ -127,6 +127,24 @@ const endedSources = new WeakSet<AudioBufferSourceNode>();
 // 次の声に切り替えるとき、ぶつ切りにすると「プツッ」と鳴るので短く絞ってから止める
 const CUT_FADE_SEC = 0.02;
 
+/** 鳴き声の使い道。着手の場面のほか、CPU 劣勢の弱い声と終局の合図 */
+export type DogClipUsage = MoveScene | "losing" | "end";
+
+/** 鳴き声ごとの使い道（声の一覧で、採用中の声を示すのに使う）。全長版（bark6_full）は元の声の名前でまとめる */
+export function dogClipUsages(): Map<string, DogClipUsage[]> {
+    const usages = new Map<string, DogClipUsage[]>();
+    const add = (clip: ClipName, usage: DogClipUsage) => {
+        const name = clip.replace(/_full$/, "");
+        usages.set(name, [...(usages.get(name) ?? []), usage]);
+    };
+    for (const scene of Object.keys(SCENE_CLIPS) as MoveScene[]) {
+        for (const clip of SCENE_CLIPS[scene]) add(clip, scene);
+    }
+    for (const clip of WEAK_CLIPS) add(clip, "losing");
+    add(END_CLIP, "end");
+    return usages;
+}
+
 function pick<T>(items: readonly T[], random: () => number): T | undefined {
     return items[Math.floor(random() * items.length)];
 }

@@ -194,6 +194,13 @@ const privacyRoute = createRoute({
     component: lazyRouteComponent(() => import("./pages/privacy/PrivacyPage")),
 });
 
+// 犬の鳴き声の素材の一覧。導線は置かない（URL を知っている人だけが開く）
+const dogSoundsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/dog-sounds",
+    component: lazyRouteComponent(() => import("./pages/dog-sounds/DogSoundsPage")),
+});
+
 const rshogiViewerListRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/rshogi-viewer",
@@ -350,6 +357,7 @@ const routeTree = rootRoute.addChildren([
     onlineRoute,
     authRoute,
     privacyRoute,
+    dogSoundsRoute,
     gamesRoute,
     gameDetailRoute,
     gameReviewRoute,

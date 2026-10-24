@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { chooseDogClip, playDogEndSound, playDogSound, setDogBuffersForTest } from "./dogSound";
+import {
+    chooseDogClip,
+    dogClipUsages,
+    playDogEndSound,
+    playDogSound,
+    setDogBuffersForTest,
+} from "./dogSound";
 import { resetSoundScheduleForTest } from "./soundSchedule";
 
 const always = (value: number) => () => value;
@@ -176,5 +182,16 @@ describe("playDogEndSound", () => {
         const { ctx, voices } = fakeAudioContext();
         expect(playDogEndSound(ctx, base, 0.32)).toBe("unavailable");
         expect(voices).toEqual([]);
+    });
+});
+
+describe("dogClipUsages", () => {
+    it("lists every clip the app plays, with the full-length end bark under its own name", () => {
+        const usages = dogClipUsages();
+        expect(usages.get("bark2")).toEqual(["move"]);
+        expect(usages.get("strong1")).toEqual(["check"]);
+        expect(usages.get("bark6")).toEqual(["promote", "end"]);
+        expect(usages.get("v3_06")).toEqual(["losing"]);
+        expect(usages.has("bark4")).toBe(false);
     });
 });
