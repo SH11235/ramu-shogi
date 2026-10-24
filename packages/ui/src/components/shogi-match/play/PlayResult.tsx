@@ -1,7 +1,7 @@
 /**
  * 終局の表示（対局画面）。結果と、次にすること（研究ノートで振り返る・もう一局）を出す。
  *
- * 結果は画面の見出しとして出す（ダイアログでは重ねない。同じ内容を二度出さない）。
+ * 終局の瞬間は PlayResultDialog で知らせ、閉じたあとはここの欄が結果の見出しとして残る。
  */
 
 import type { GameResult, Player } from "@shogi/app-core";
@@ -16,7 +16,10 @@ import { useShogiMatchConfig } from "../ShogiMatchContext";
 import { PLAY_OUTLINE_BUTTON, PLAY_PRIMARY_BUTTON, PLAY_TEXT_LINK } from "./playStyles";
 
 /** 結果の見出し。人が片方だけなら「あなたの勝ち／負け」、それ以外は「先手の勝ち」など。 */
-function useResultHeadline(result: GameResult): { text: string; tone: "win" | "lose" | "plain" } {
+export function useResultHeadline(result: GameResult): {
+    text: string;
+    tone: "win" | "lose" | "plain";
+} {
     const { sides } = useMatchState();
     const senteIsHuman = sides.sente.role === "human";
     const goteIsHuman = sides.gote.role === "human";
@@ -30,7 +33,7 @@ function useResultHeadline(result: GameResult): { text: string; tone: "win" | "l
 }
 
 /** 終局の理由を、対局者の名前で書く（「あなたの時間切れ」「簡易AI の投了」。人同士は「先手」「後手」）。 */
-function useReasonText(result: GameResult): string {
+export function useReasonText(result: GameResult): string {
     const { play } = useShogiMatchConfig();
     const nameOf = (side: Player): string =>
         play?.playerNames[side] ?? (side === "sente" ? "先手" : "後手");
@@ -53,7 +56,7 @@ function useReasonText(result: GameResult): string {
 }
 
 /** 見出しの色は勝敗でなく、勝った側の色（先手 = 朱、後手 = 藍）。 */
-const winnerColorClass = (result: GameResult): string =>
+export const winnerColorClass = (result: GameResult): string =>
     result.winner === "sente"
         ? "text-wafuu-shu"
         : result.winner === "gote"
@@ -208,7 +211,7 @@ function ResultHeadlineLine({
     );
 }
 
-/** 終局後の、主でない操作（設定を変える・棋譜をコピー）。 */
+/** 棋譜をクリップボードに写す。写せたら `copied` が true になる。 */
 function useCopyKif(): { copied: boolean; copyKif: () => void } {
     const { handleCopyKif } = useNavigation();
     const [copied, setCopied] = useState(false);
@@ -222,9 +225,9 @@ function useCopyKif(): { copied: boolean; copyKif: () => void } {
     return { copied, copyKif };
 }
 
+/** 終局後の、主でない操作（設定を変える・棋譜をコピー）。 */
 function PlayResultLinks({ className }: { className?: string }): ReactElement | null {
     const { play } = useShogiMatchConfig();
-    const { copied, copyKif } = useCopyKif();
     if (!play?.gameResult) return null;
 
     return (
@@ -241,14 +244,22 @@ function PlayResultLinks({ className }: { className?: string }): ReactElement | 
             >
                 設定を変える
             </button>
-            <button
-                type="button"
-                onClick={copyKif}
-                className={cn(PLAY_TEXT_LINK, "hover:text-wafuu-sumi")}
-            >
-                {copied ? "コピーしました" : "棋譜をコピー"}
-            </button>
+            <CopyKifButton />
         </div>
+    );
+}
+
+/** 「棋譜をコピー」の文字リンク。 */
+export function CopyKifButton(): ReactElement {
+    const { copied, copyKif } = useCopyKif();
+    return (
+        <button
+            type="button"
+            onClick={copyKif}
+            className={cn(PLAY_TEXT_LINK, "hover:text-wafuu-sumi")}
+        >
+            {copied ? "コピーしました" : "棋譜をコピー"}
+        </button>
     );
 }
 

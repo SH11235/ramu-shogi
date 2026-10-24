@@ -29,6 +29,7 @@
         "smoke:nnue": "node ./scripts/smoke-nnue.mjs",
         "test:resume": "node ./scripts/test-resume.mjs",
         "test:analysis-client": "node ./scripts/test-analysis-client.mjs",
+        "test:mate-client": "node ./scripts/test-mate-client.mjs",
         "dev": "tsc -p tsconfig.build.json --watch",
         "format": "pnpm --workspace-root exec biome format --write .",
         "format:check": "pnpm --workspace-root exec biome format .",

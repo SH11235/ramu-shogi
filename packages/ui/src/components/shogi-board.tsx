@@ -1,6 +1,6 @@
 import type { PieceType } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
-import type { CSSProperties, ReactElement } from "react";
+import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useRef } from "react";
 import type { SquareNotation } from "./shogi-match/types";
 import { getPieceImagePath, PIECE_LABELS } from "./shogi-match/utils/constants";
@@ -69,6 +69,8 @@ interface ShogiBoardProps {
     moveShadow?: ShogiBoardMoveShadow | null;
     /** ヒントとして示す手（動かす駒のマスと行き先。打つ手は行き先だけ）。枠で示す。 */
     hintMove?: { from?: string | null; to: string; side?: ShogiBoardOwner } | null;
+    /** 盤の上に重ねて出すもの（終局の判子など）。盤の枠いっぱいの位置の基準で置く */
+    overlay?: ReactNode;
 }
 
 /**
@@ -89,6 +91,7 @@ export function ShogiBoard({
     showBoardLabels = false,
     moveShadow = null,
     hintMove = null,
+    overlay,
 }: ShogiBoardProps): ReactElement {
     const lastPointerTypeRef = useRef<"mouse" | "touch" | "pen" | null>(null);
     const { files, ranks } = getBoardLabels(flipBoard);
@@ -371,6 +374,7 @@ export function ShogiBoard({
                     </span>
                 ))}
             </div>
+            {overlay}
         </div>
     );
 }

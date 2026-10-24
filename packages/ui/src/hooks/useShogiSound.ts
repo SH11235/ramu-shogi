@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { type MoveScene, playDogSound, preloadDogSounds } from "./dogSound";
+import { type MoveScene, playDogEndSound, playDogSound, preloadDogSounds } from "./dogSound";
 import { registerScheduledSound, reserveSoundSlot } from "./soundSchedule";
 
 // Web Audio API による着手音フック。通常は合成音、CPU 戦で「犬」を選ぶと音声ファイルの鳴き声を鳴らす
@@ -138,8 +138,12 @@ interface UseShogiSoundOptions {
     dogSoundBaseUrl?: string;
 }
 
+// 犬の着手音は先頭 320ms に切ってあるので、最後の手の声を言い終えてから終局の声を鳴らす
+const END_SOUND_DELAY_SEC = 0.32;
+
 export function useShogiSound({ dogSoundBaseUrl }: UseShogiSoundOptions = {}): {
     playSound: (type: ShogiSoundType, detail?: MoveSoundDetail) => void;
+    playEndSound: (voice: SoundVoice) => void;
 } {
     useEffect(installAudioUnlock, []);
     useEffect(() => {
@@ -186,5 +190,24 @@ export function useShogiSound({ dogSoundBaseUrl }: UseShogiSoundOptions = {}): {
         );
     }
 
-    return { playSound };
+    /** 終局の合図。犬の声のときだけ鳴らす（通常の駒音には終局の音を用意していない） */
+    function playEndSound(voice: SoundVoice): void {
+        if (voice !== "dog" || !dogSoundBaseUrl) return;
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        resumeIfSuspended(ctx).then(
+            () => {
+                try {
+                    playDogEndSound(ctx, dogSoundBaseUrl, END_SOUND_DELAY_SEC);
+                } catch {
+                    // AudioContext が使えない環境では無視
+                }
+            },
+            () => {
+                // 操作の前で、まだ音を出せない
+            },
+        );
+    }
+
+    return { playSound, playEndSound };
 }

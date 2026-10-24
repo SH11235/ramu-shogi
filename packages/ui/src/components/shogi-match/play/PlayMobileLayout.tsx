@@ -28,10 +28,12 @@ import {
     PlayTurnStatus,
     usePlayPhaseFocus,
 } from "./PlayControls";
+import { PlayEndStamp } from "./PlayEndStamp";
 import { PlayKifuStrip } from "./PlayEngineReading";
 import { PlayHintButton, PlayHintLine, usePlayHintMove } from "./PlayHintCard";
 import { PlayMyStatus, PlayPlayerBar } from "./PlayPlayerBar";
 import { PlayResultCard, PlayResultHeadline } from "./PlayResult";
+import { PlayResultDialog } from "./PlayResultDialog";
 import { PlaySetupPanel } from "./PlaySetupPanel";
 import { PLAY_HAND_ZONES, PLAY_HEADING } from "./playStyles";
 import { useStableBoardMaxWidth } from "./useStableBoardMaxWidth";
@@ -128,6 +130,7 @@ export function PlayMobileLayout({
                 topHand={{ ...getHandInfo("top"), isAI: false }}
                 bottomHand={{ ...getHandInfo("bottom"), isAI: false }}
                 hintMove={hintMove}
+                boardOverlay={<PlayEndStamp />}
                 boardSectionRef={boardSectionRef}
                 isDraggingPiece={isDraggingPiece}
                 // パス権の残りは、対局者の帯・パスのボタンに言葉で出す（盤のそばの ● は出さない）。
@@ -227,6 +230,7 @@ export function PlayMobileLayout({
                         <PlayResultCard singleRow hideSummary />
                     </div>
                     <PlayMessage />
+                    <PlayResultDialog variant="sheet" />
                 </>
             )}
             {(phase === "playing" || phase === "paused") && (

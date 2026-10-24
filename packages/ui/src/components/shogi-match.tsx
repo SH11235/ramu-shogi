@@ -910,7 +910,7 @@ export function ShogiMatch({
     );
     // 既存の localStorage データに新フィールド（enableSound 等）がない場合のマージ
     const displaySettings = { ...displaySettingsDefaults, ...storedDisplaySettings };
-    const { playSound } = useShogiSound({ dogSoundBaseUrl });
+    const { playSound, playEndSound } = useShogiSound({ dogSoundBaseUrl });
     const isCpuGame = sides.sente.role === "engine" || sides.gote.role === "engine";
     // 人の手は合法手の確認を待ってから適用されるので、鳴らすかどうか・鳴らし方はその時点の設定で決める。
     const moveSoundRef = useRef<{ enabled: boolean; voice: SoundVoice }>({
@@ -1397,6 +1397,7 @@ export function ShogiMatch({
         matchEndedRef.current = true;
         setGameResult(result);
         setShowResultDialog(true);
+        if (moveSoundRef.current.enabled) playEndSound(moveSoundRef.current.voice);
         setIsMatchRunning(false);
         setIsPaused(false);
         stopTicking();
@@ -2779,6 +2780,8 @@ export function ShogiMatch({
               hintPly: playHint.status.ply,
               setupFooter: playSetupFooter ?? null,
               gameResult,
+              resultDialogOpen: showResultDialog,
+              closeResultDialog: () => setShowResultDialog(false),
           }
         : null;
 

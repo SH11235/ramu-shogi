@@ -8,6 +8,7 @@ import initWasm, {
     search as runSearch,
     set_event_handler as setEventHandler,
     set_option as setOption,
+    solve_mate as solveMate,
     stop as stopEngine,
 } from "../pkg/engine_wasm.js";
 import { createEngineWorker } from "./engine.worker.base";
@@ -16,6 +17,7 @@ createEngineWorker({
     initWasm,
     applyMoves,
     disposeEngine,
+    solveMate,
     initEngine,
     loadModel,
     configureLayerStacks,

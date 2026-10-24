@@ -4,3 +4,7 @@ packages:
 
 onlyBuiltDependencies:
   - esbuild
+
+# miniflare pins undici to an exact version that GHSA-xjj6-f33q-929c affects.
+overrides:
+  undici@7: ^7.30.1

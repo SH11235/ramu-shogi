@@ -34,11 +34,13 @@ import {
     PlayTurnStatus,
     usePlayPhaseFocus,
 } from "./PlayControls";
+import { PlayEndStamp } from "./PlayEndStamp";
 import { PlayKifuReading } from "./PlayEngineReading";
 import { PlayHintCard, usePlayHintMove } from "./PlayHintCard";
 import { PlayMoveList } from "./PlayMoveList";
 import { PlayPlayerBar } from "./PlayPlayerBar";
 import { PlayResultCard } from "./PlayResult";
+import { PlayResultDialog } from "./PlayResultDialog";
 import { PlaySetupPanel } from "./PlaySetupPanel";
 import { PLAY_CARD, PLAY_HAND_ZONES, PLAY_OUTLINE_BUTTON } from "./playStyles";
 
@@ -147,6 +149,7 @@ export function PlayPCLayout({
                                         topHand={{ ...getHandInfo("top"), isAI: false }}
                                         bottomHand={{ ...getHandInfo("bottom"), isAI: false }}
                                         hintMove={hintMove}
+                                        boardOverlay={<PlayEndStamp />}
                                         handSize="medium"
                                         // 横に余裕があるので、持ち駒は盤の左右に縦に置く（盤の上下を詰めて 1 画面に収める）。
                                         handPlacement="sides"
@@ -182,6 +185,7 @@ export function PlayPCLayout({
 
                     {/* 進み具合ごとの欄 */}
                     <div className="flex w-full max-w-[var(--panel-width)] shrink-0 flex-col gap-4 pt-1 min-[1000px]:w-[var(--panel-width)]">
+                        {phase === "finished" && <PlayResultDialog variant="center" />}
                         {phase === "setup" && (
                             <PlaySetupPanel onOpenAdvanced={() => setIsAdvancedOpen(true)} />
                         )}

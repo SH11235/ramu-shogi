@@ -5,9 +5,13 @@ import type {
     EngineEvent,
     EngineInitOptions,
     LayerStacksOptions,
+    MateOutcome,
+    MateParams,
+    MateProgress,
     SearchParams,
 } from "@shogi/engine-client";
 import type { AnalysisCommand } from "./analysisProtocol";
+import type { MateCommand, MateMessage } from "./mateProtocol";
 
 type WasmModuleSource = WebAssembly.Module | ArrayBuffer | Uint8Array | string | URL;
 type WasmInitInput =
@@ -27,6 +31,7 @@ type WasmWorkerBindings = {
     ) => { runId: number; address: number };
     runAnalysis?: (runId: number) => Omit<AnalysisFinished, "sessionId">;
     releaseAnalysis?: () => void;
+    solveMate?: (params: MateParams, onProgress: (progress: MateProgress) => void) => MateOutcome;
     initWasm: (input?: WasmInitInput) => Promise<unknown>;
     applyMoves: (moves: string[]) => Promise<void> | void;
     disposeEngine: () => void;
@@ -78,6 +83,7 @@ type NnueLoadSource =
 
 type WorkerCommand =
     | AnalysisCommand
+    | MateCommand
     | InitCommand
     | (CommandBase & {
           type: "loadPosition";
@@ -640,6 +646,25 @@ export function createEngineWorker(bindings: WasmWorkerBindings) {
                     analysisSession = null;
                     postAck(requestId);
                     break;
+                case "solveMate": {
+                    await ensureEngineReady();
+                    if (!bindings.solveMate) throw new Error("詰み探索は利用できません");
+                    const outcome = bindings.solveMate(command.params, (progress) => {
+                        const message: MateMessage = {
+                            type: "mateProgress",
+                            requestId: command.requestId,
+                            progress,
+                        };
+                        ctx.postMessage(message);
+                    });
+                    const message: MateMessage = {
+                        type: "mateFinished",
+                        requestId: command.requestId,
+                        outcome,
+                    };
+                    ctx.postMessage(message);
+                    break;
+                }
                 case "search":
                     await ensureEngineReady();
                     lastInfoPostedAt = Number.NEGATIVE_INFINITY;
@@ -677,6 +702,18 @@ export function createEngineWorker(bindings: WasmWorkerBindings) {
             if (command.type === "prepareAnalysis" || command.type === "runAnalysis") {
                 analysisSession = null;
                 ctx.postMessage({ type: "analysisError", requestId, message: String(error) });
+            }
+            if (command.type === "search") {
+                // 失敗した探索は bestmove を返さないので、client が実行中の探索の数を減らせるよう知らせる
+                ctx.postMessage({ type: "searchFailed" });
+            }
+            if (command.type === "solveMate") {
+                const message: MateMessage = {
+                    type: "mateError",
+                    requestId: command.requestId,
+                    message: String(error),
+                };
+                ctx.postMessage(message);
             }
             postAck(requestId, error);
             postEvent({ type: "error", message: String(error) });
