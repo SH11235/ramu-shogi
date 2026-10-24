@@ -181,6 +181,11 @@ describe("parseKifuTextForStudy", () => {
     });
 
     it("玉の無い側がある局面（詰将棋）は、局面だけのノートにできる", () => {
+        expect(parseKifuTextForStudy("P-51OU\nP+53FU\nP+00KI\n+")).toMatchObject({
+            kind: "moves",
+            startSfen: "4k4/9/4P4/9/9/9/9/9/9 b G 1",
+            moves: [],
+        });
         expect(parseKifuTextForStudy("sfen 4k4/9/4P4/9/9/9/9/9/9 b G 1")).toMatchObject({
             kind: "moves",
             startSfen: "4k4/9/4P4/9/9/9/9/9/9 b G 1",
@@ -192,6 +197,10 @@ describe("parseKifuTextForStudy", () => {
         // 同じ側に玉が 2 枚ある。
         expect(() => parseKifuTextForStudy("sfen 4k4/9/9/9/9/9/9/9/3KK4 b - 1")).toThrow(
             "この局面は研究ノートにできません: 玉はそれぞれ1枚まで配置できます。",
+        );
+        // 玉が 1 枚も無い。
+        expect(() => parseKifuTextForStudy("P+55FU\n+")).toThrow(
+            "この局面は研究ノートにできません: 玉が盤上にありません。",
         );
         // 歩が一組（18 枚）を超える。
         expect(() => parseKifuTextForStudy("sfen 4k4/9/9/9/9/9/9/9/4K4 b 19P 1")).toThrow(

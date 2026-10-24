@@ -43,7 +43,7 @@ describe("dropLogic", () => {
             expect(result.ok).toBe(true);
         });
 
-        it("玉も削除できる", () => {
+        it("玉は削除できない", () => {
             const position = createEmptyPosition();
             position.board["5i"] = { owner: "sente", type: "K" };
 
@@ -57,7 +57,8 @@ describe("dropLogic", () => {
 
             const result = validateDrop(origin, payload, target, position);
 
-            expect(result.ok).toBe(true);
+            expect(result.ok).toBe(false);
+            expect(result.error).toBe("玉は削除できません");
         });
 
         it("盤上から盤上への移動を許可する", () => {

@@ -253,11 +253,13 @@ export function useGameControls({
         try {
             if (!positionReady) return;
             // 玉の無い側がある局面（局面編集・SFEN で作れる）では、勝ち負けが決まらない
-            const kinglessReason = missingKingReason(position);
-            if (kinglessReason) {
-                setMessage({ text: kinglessReason, type: "warning" });
-                return;
-            }
+            // （AI の準備を待つ間の編集もあるので、確定した後にもう一度確かめる）
+            const refuseKingless = (): boolean => {
+                const reason = missingKingReason(positionRef.current);
+                if (reason) setMessage({ text: reason, type: "warning" });
+                return reason !== null;
+            };
+            if (refuseKingless()) return;
 
             // 承認待ち・ダウンロード中には局面や棋譜、時計を変更しない。
             const selections = getMatchNnueSelections(sides, engineOptions, {
@@ -286,6 +288,7 @@ export function useGameControls({
             if (isEditMode) {
                 await finalizeEditedPosition();
                 setIsEditMode(false);
+                if (refuseKingless()) return;
             }
 
             // パス権が有効な場合、対局開始時に初期化

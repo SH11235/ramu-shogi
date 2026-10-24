@@ -235,13 +235,9 @@ describe("validateEditedPosition", () => {
         position.board["5a"] = null;
 
         expect(validateEditedPosition(position)).toBeNull();
-        expect(missingKingReason(position)).toBe(
-            "後手の玉が無い局面では対局できません。研究ノートで調べられます。",
-        );
+        expect(missingKingReason(position)).toBe("後手の玉が無い局面では対局できません。");
         position.board["5i"] = null;
-        expect(missingKingReason(position)).toBe(
-            "先手・後手の玉が無い局面では対局できません。研究ノートで調べられます。",
-        );
+        expect(missingKingReason(position)).toBe("先手・後手の玉が無い局面では対局できません。");
         expect(missingKingReason(createInitialPositionState())).toBeNull();
     });
 

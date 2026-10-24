@@ -129,6 +129,31 @@ describe("StudyMateResult", () => {
         expect(screen.queryByRole("button", { name: "詰み手順を盤で見る" })).toBeNull();
     });
 
+    it("扱えない局面は、相手の玉の有無で理由を分けて伝える", () => {
+        const { node, handlers } = renderResult({
+            status: "done",
+            mate: { kind: "unsupported" },
+            threat: null,
+        });
+        screen.getByText("相手の玉に王手が掛かっている局面は調べられません");
+
+        const board = Object.fromEntries(
+            Object.entries(node.positionAfter.board).filter(
+                ([, piece]) => !(piece?.type === "K" && piece.owner !== node.positionAfter.turn),
+            ),
+        );
+        render(
+            <TooltipProvider>
+                <StudyMateResult
+                    node={{ ...node, positionAfter: { ...node.positionAfter, board } }}
+                    state={{ status: "done", mate: { kind: "unsupported" }, threat: null }}
+                    {...handlers}
+                />
+            </TooltipProvider>,
+        );
+        screen.getByText("相手の玉が無い局面は調べられません");
+    });
+
     it("時間内に読み切れなければ、そう伝える", () => {
         renderResult({ status: "done", mate: { kind: "unknown" }, threat: { kind: "unknown" } });
         expect(screen.getAllByText("10 秒では読み切れませんでした")).toHaveLength(2);

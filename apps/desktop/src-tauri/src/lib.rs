@@ -341,11 +341,6 @@ fn spawn_search(
     mut position: Position,
     limits: LimitsType,
 ) -> Result<ActiveSearch, String> {
-    // 通常の探索は両方の玉がある局面だけを扱う (玉の無い側の既定の升を玉とみなした指し手で panic する)
-    let has_king = |color| !position.pieces(color, PieceType::King).is_empty();
-    if !(has_king(Color::Black) && has_king(Color::White)) {
-        return Err("cannot search a position without both kings".to_string());
-    }
     eprintln!(
         "spawn_search: limits (depth={}, nodes={}, byoyomi={:?}, movetime={}, ponder={})",
         limits.depth, limits.nodes, limits.byoyomi, limits.movetime, limits.ponder
@@ -810,6 +805,19 @@ fn engine_search(
             .lock()
             .map_err(|e| format!("Failed to acquire engine state lock: {e}"))?;
         inner.reclaim_finished();
+        // 通常の探索は両方の玉がある局面だけを扱う (玉の無い側の既定の升を玉とみなした指し手で panic する)。
+        // 置換表を手放す前に断る
+        let has_king = |color| !inner.position.pieces(color, PieceType::King).is_empty();
+        if !(has_king(Color::Black) && has_king(Color::White)) {
+            let message = "cannot search a position without both kings".to_string();
+            emit_event(
+                &window,
+                EngineEvent::Error {
+                    message: message.clone(),
+                },
+            );
+            return Err(message);
+        }
         let position = inner.position.clone();
         let options = inner.options.clone();
         let search = inner.search.take().unwrap_or_else(|| inner.create_search());

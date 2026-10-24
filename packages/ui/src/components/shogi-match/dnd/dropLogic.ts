@@ -47,7 +47,10 @@ export function validateDrop(
 ): ValidateDropResult {
     // 削除
     if (target.type === "delete") {
-        // 玉も削除できる（詰将棋の攻め方のように、玉の無い局面を作れる）
+        // 玉は削除できない
+        if (payload.pieceType === "K") {
+            return { ok: false, error: "玉は削除できません" };
+        }
         return { ok: true };
     }
 
@@ -57,7 +60,7 @@ export function validateDrop(
         if (origin.type !== "board") {
             return { ok: false, error: "持ち駒から持ち駒への移動はできません" };
         }
-        // 玉は持ち駒にできない
+        // 玉は持ち駒にできない（盤上に玉が無い局面は成り立たない）
         if (payload.pieceType === "K") {
             return { ok: false, error: "玉は持ち駒にできません" };
         }
@@ -80,7 +83,7 @@ export function validateDrop(
             return { ok: false, error: "自分の駒がある場所には置けません" };
         }
 
-        // 相手の玉は取れない（玉は持ち駒にできない）
+        // 相手の玉は取れない（取ると盤上から玉が無くなる）
         if (existing?.type === "K") {
             return { ok: false, error: "玉は取れません" };
         }

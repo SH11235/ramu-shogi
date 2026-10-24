@@ -538,12 +538,12 @@ export function useStudyAnalysis({
             return;
         }
         if (lockedRef.current) return;
-        // 解析のエンジンは、玉の無い側がある局面を読めない（詰みは詰み探索で調べられる）
+        // 解析のエンジンは、玉の無い側がある局面を読めない
         const { tree: currentTree } = latestRef.current;
         const root = currentTree.nodes.get(currentTree.rootId);
         if (root && sidesWithoutKing(root.positionAfter).length > 0) {
             setMessage({
-                text: "玉の無い局面は解析できません。詰みは「詰みを調べる」で調べられます。",
+                text: "玉の無い局面は解析できません。",
                 type: "warning",
             });
             return;

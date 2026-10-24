@@ -8,6 +8,7 @@ import { cn } from "@shogi/design-system";
 import type { MateResult } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 import { Button } from "../button";
+import { sidesWithoutKing } from "../shogi-match/utils/boardUtils";
 import { convertPvToDisplay } from "../shogi-match/utils/kifFormat";
 import type { StudyPvRequest } from "./StudyCandidatesPanel";
 import { StudyIconButton } from "./StudyIconButton";
@@ -215,7 +216,11 @@ function MateResults({
                 mover={turn}
                 result={mate}
                 moves={mateMoves}
-                unsupportedText="相手の玉が無い局面は調べられません"
+                unsupportedText={
+                    sidesWithoutKing(node.positionAfter).includes(opponent(turn))
+                        ? "相手の玉が無い局面は調べられません"
+                        : "相手の玉に王手が掛かっている局面は調べられません"
+                }
                 actions={
                     request ? (
                         <div className="flex shrink-0 items-center self-start">

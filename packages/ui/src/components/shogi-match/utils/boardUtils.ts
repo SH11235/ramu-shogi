@@ -135,7 +135,7 @@ export function pieceCapMessage(pieceType: PieceType): string {
  * ここを通らない局面は SFEN に変換できないので、盤へ反映する前に弾く。
  *
  * - 玉は先手・後手それぞれ盤上に 1 枚まで（持ち駒にはできない）。詰将棋の攻め方のように、
- *   玉の無い側があってもよい（対局は始められない。`missingKingReason` を参照）
+ *   玉の無い側があってもよい（取り込んだ局面。対局は始められない。`missingKingReason` を参照）
  * - それ以外の駒は、先手・後手の盤上と持ち駒を合わせて一組の枚数まで
  *
  * @returns 成り立つなら null、成り立たないなら理由のメッセージ
@@ -175,11 +175,10 @@ export function sidesWithoutKing(position: PositionState): Player[] {
 
 /**
  * 対局を始められない、玉の無い側がある局面なら、その理由（無ければ null）。
- * 玉の無い局面は研究ノートで調べられる（詰み探索は攻め方の玉が無くても解ける）。
  */
 export function missingKingReason(position: PositionState): string | null {
     const missing = sidesWithoutKing(position);
     if (missing.length === 0) return null;
     const who = missing.map((owner) => OWNER_LABELS[owner]).join("・");
-    return `${who}の玉が無い局面では対局できません。研究ノートで調べられます。`;
+    return `${who}の玉が無い局面では対局できません。`;
 }
