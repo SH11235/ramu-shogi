@@ -327,6 +327,22 @@ describe("withNpsRecording", () => {
         expect(store.getSnapshot().records).toEqual([]);
     });
 
+    it("探索中に断られた詰み探索が、探索中の印を外さない", async () => {
+        const fake = createFakeClient();
+        fake.client.mate = {
+            available: () => true,
+            solve: async () => {
+                throw new Error("探索中は使えません");
+            },
+        };
+        const client = await start(fake);
+        await client.search({});
+        await expect(client.mate?.solve({})).rejects.toThrow();
+        expect(activity.getSnapshot().searching).toBe(1);
+        fake.think();
+        expect(activity.getSnapshot().searching).toBe(0);
+    });
+
     it("計測用のエンジンは記録しない", async () => {
         const fake = createFakeClient();
         const client = wrap(fake, false);

@@ -202,6 +202,13 @@ export function withNpsRecording<T extends EngineClient>(
     /** 交互の探索でないと分かるまで書くのを待っている記録。閉じたら捨てる。 */
     const pendingWrites = new Set<() => void>();
     let disposed = false;
+    // 探索と詰み探索は重ねて呼ばれうる（後のほうはエンジンに断られる）。断られた側が先の探索の印を
+    // 外さないよう、このクライアントの中で数え、0 になったときだけ探索中でなくする。
+    let runningCount = 0;
+    const markSearching = (on: boolean) => {
+        runningCount = Math.max(0, runningCount + (on ? 1 : -1));
+        activity.setSearching(id, runningCount > 0);
+    };
     // Wasm の setOption("Threads") は次の初期化まで効かないので、設定値ではなく実際に動いている数を使う。
     const effectiveThreads = () => {
         const reported = inner.getThreadInfo?.().activeThreads;
@@ -214,7 +221,7 @@ export function withNpsRecording<T extends EngineClient>(
     const begin = () => {
         finish(null);
         active = { contaminated: activity.othersSearchingOrJustDid(id), sample: null };
-        activity.setSearching(id, true);
+        markSearching(true);
         unsubscribeActivity = activity.subscribe(() => {
             if (active && activity.othersSearching(id)) active.contaminated = true;
         });
@@ -227,7 +234,7 @@ export function withNpsRecording<T extends EngineClient>(
         active = null;
         unsubscribeActivity?.();
         unsubscribeActivity = null;
-        activity.setSearching(id, false);
+        markSearching(false);
         const sample = override ?? lastSample;
         if (
             discard ||
@@ -327,11 +334,11 @@ export function withNpsRecording<T extends EngineClient>(
         ? {
               available: innerMate.available.bind(innerMate),
               async solve(params, onProgress) {
-                  activity.setSearching(id, true);
+                  markSearching(true);
                   try {
                       return await innerMate.solve(params, onProgress);
                   } finally {
-                      activity.setSearching(id, false);
+                      markSearching(false);
                   }
               },
           }
