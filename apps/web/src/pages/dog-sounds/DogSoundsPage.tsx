@@ -47,10 +47,10 @@ const USAGE_COLOR: Record<DogClipUsage, { border: string; chip: string }> = {
 const USAGE_ORDER: DogClipUsage[] = ["move", "capture", "check", "promote", "end", "losing"];
 
 // Safari の版によっては Ogg Opus を鳴らせないので、そのときは AAC を使う
-function soundUrl(id: string): string {
-    const opus =
-        typeof Audio !== "undefined" && new Audio().canPlayType('audio/ogg; codecs="opus"') !== "";
-    return `${BASE_URL}${id}.${opus ? "opus" : "m4a"}`;
+function canPlayOpus(): boolean {
+    return (
+        typeof Audio !== "undefined" && new Audio().canPlayType('audio/ogg; codecs="opus"') !== ""
+    );
 }
 
 function UsageChip({ usage }: { usage: DogClipUsage }): ReactElement {
@@ -72,13 +72,23 @@ export default function DogSoundsPage(): ReactElement {
     const [playing, setPlaying] = useState<string | null>(null);
     useEffect(() => () => audioRef.current?.pause(), []);
 
-    const play = (id: string) => {
+    const stopShowing = (id: string) => setPlaying((current) => (current === id ? null : current));
+    const start = (id: string, ext: "opus" | "m4a") => {
         audioRef.current?.pause();
-        const audio = new Audio(soundUrl(id));
+        const audio = new Audio(`${BASE_URL}${id}.${ext}`);
         audioRef.current = audio;
+        audio.onended = () => stopShowing(id);
+        audio.play().catch((error: unknown) => {
+            // 別の声に切り替えて止めたとき（AbortError）は、その声を鳴らしていないので何もしない。
+            // 「鳴らせる」と答えても Opus を再生できない環境があるので、一度だけ AAC で鳴らし直す。
+            if (error instanceof DOMException && error.name === "AbortError") return;
+            if (ext === "opus" && audioRef.current === audio) start(id, "m4a");
+            else stopShowing(id);
+        });
+    };
+    const play = (id: string) => {
         setPlaying(id);
-        audio.onended = () => setPlaying((current) => (current === id ? null : current));
-        void audio.play().catch(() => setPlaying(null));
+        start(id, canPlayOpus() ? "opus" : "m4a");
     };
 
     const recordings = [...new Set(SOUNDS.map((sound) => sound.recording))];

@@ -38,4 +38,28 @@ describe("DogSoundsPage", () => {
         fireEvent.click(screen.getByRole("button", { name: "v4_07 を再生" }));
         expect(created).toEqual(["/sounds/dog/catalog/v4_07.opus"]);
     });
+
+    it("plays the AAC file when Opus fails to play", async () => {
+        const created: string[] = [];
+        class FailingOpusAudio {
+            onended: (() => void) | null = null;
+            constructor(public src = "") {
+                if (src) created.push(src);
+            }
+            canPlayType = () => "maybe";
+            play = () =>
+                this.src.endsWith(".opus")
+                    ? Promise.reject(new DOMException("unsupported", "NotSupportedError"))
+                    : Promise.resolve();
+            pause = () => {};
+        }
+        vi.stubGlobal("Audio", FailingOpusAudio);
+        render(<DogSoundsPage />);
+        fireEvent.click(screen.getByRole("button", { name: "bark1 を再生" }));
+        await vi.waitFor(() => expect(created).toHaveLength(2));
+        expect(created).toEqual([
+            "/sounds/dog/catalog/bark1.opus",
+            "/sounds/dog/catalog/bark1.m4a",
+        ]);
+    });
 });
