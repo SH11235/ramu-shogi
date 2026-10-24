@@ -240,6 +240,10 @@ export function NnueSpeedTable({
         (NNUE_SPEED_BENCHMARK_POSITIONS.length * NNUE_SPEED_BENCHMARK_MS_PER_POSITION) / 1000;
     const message =
         state.phase === "done" && state.contentHash === contentHash ? state.message : null;
+    // 測る途中でダウンロードが済むと注記が要らなくなるが、測り終えるまでは残してカードの高さを変えない
+    const [lastNote, setLastNote] = useState(downloadNote);
+    if (downloadNote && downloadNote !== lastNote) setLastNote(downloadNote);
+    const shownNote = downloadNote ?? (running ? lastNote : undefined);
     const blockedReason =
         disabledReason ??
         (benchmark.isRunning
@@ -264,8 +268,9 @@ export function NnueSpeedTable({
     return (
         <div className="flex flex-col items-start gap-2 text-xs text-muted-foreground">
             {canMeasure && (
-                <div className="flex items-center gap-2">
+                <div className="flex w-full min-w-0 items-center gap-2">
                     <NativeSelect
+                        wrapperClassName="shrink-0"
                         aria-label="測るスレッド数"
                         value={selectedThreads}
                         onChange={(event) => setSelectedThreads(Number(event.target.value))}
@@ -285,7 +290,7 @@ export function NnueSpeedTable({
                     <Button
                         size="sm"
                         variant="outline"
-                        className="h-8 px-3 text-xs [@media(pointer:coarse)]:text-base"
+                        className="h-8 shrink-0 px-3 text-xs [@media(pointer:coarse)]:text-base"
                         disabled={running !== null || blockedReason !== undefined}
                         title={blockedReason ?? `約 ${totalSeconds} 秒読んで測ります`}
                         onClick={() =>
@@ -296,7 +301,11 @@ export function NnueSpeedTable({
                     </Button>
                     {/* 出たり消えたりしてもカードの高さが変わらないよう、操作の行に一言だけ置く */}
                     {message && (
-                        <span aria-live="polite" title={message.detail ?? undefined}>
+                        <span
+                            aria-live="polite"
+                            title={message.detail ?? undefined}
+                            className="min-w-0 truncate"
+                        >
                             {message.label}
                         </span>
                     )}
@@ -330,7 +339,7 @@ export function NnueSpeedTable({
                     ))}
                 </tbody>
             </table>
-            {canMeasure && downloadNote && <p>{downloadNote}</p>}
+            {canMeasure && shownNote && <p>{shownNote}</p>}
         </div>
     );
 }

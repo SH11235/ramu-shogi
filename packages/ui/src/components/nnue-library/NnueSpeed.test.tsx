@@ -2,6 +2,7 @@ import { nnueSpeedStore } from "@shogi/app-controller";
 import type { NnueMeta } from "@shogi/app-core";
 import type { EngineClient, EngineEventHandler } from "@shogi/engine-client";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ENGINE_THREADS_STORAGE_KEY } from "../shogi-match/constants";
 import { NnueSpeedTable, speedTableThreads, useNnueSpeedBenchmark } from "./NnueSpeed";
@@ -219,6 +220,32 @@ describe("NnueSpeedTable", () => {
         const label = await screen.findByText("測れませんでした");
         expect(label.title).toBe("測れませんでした。もう一度お試しください。");
         expect(label.closest("div")?.querySelector("select")).not.toBeNull();
+    });
+
+    it("測る途中でダウンロードが済んでも、測り終えるまで注記を残す", async () => {
+        function Downloading() {
+            const benchmark = useNnueSpeedBenchmark(support);
+            const [downloaded, setDownloaded] = useState(false);
+            return (
+                <NnueSpeedTable
+                    contentHash="downloading"
+                    prepare={async () => {
+                        setDownloaded(true);
+                        return meta;
+                    }}
+                    downloadNote={downloaded ? undefined : "測るときに 1 KB をダウンロードします。"}
+                    support={support}
+                    benchmark={benchmark}
+                />
+            );
+        }
+        render(<Downloading />);
+        fireEvent.click(screen.getByRole("button", { name: "測る" }));
+        await screen.findByRole("button", { name: /あと約/ });
+        expect(screen.getByText("測るときに 1 KB をダウンロードします。")).toBeTruthy();
+        await waitFor(() =>
+            expect(screen.queryByText("測るときに 1 KB をダウンロードします。")).toBeNull(),
+        );
     });
 
     it("対局・解析中などで測れないときは押せない", () => {
