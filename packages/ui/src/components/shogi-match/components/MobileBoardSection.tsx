@@ -1,5 +1,5 @@
 import type { LastMove, PieceType, Player, PositionState, Square } from "@shogi/app-core";
-import type { ReactElement, RefObject } from "react";
+import type { ReactElement, ReactNode, RefObject } from "react";
 import type { ShogiBoardCell, ShogiBoardMoveShadow, ShogiBoardPiece } from "../../shogi-board";
 import { ShogiBoard } from "../../shogi-board";
 import { useMobileCellSize } from "../hooks/useMobileCellSize";
@@ -78,6 +78,8 @@ interface MobileBoardSectionProps {
     turn?: Player;
     /** ヒントとして盤に示す手（対局画面） */
     hintMove?: { from?: string | null; to: string; side?: Player } | null;
+    /** 盤の上に重ねて出すもの（終局の判子など） */
+    boardOverlay?: ReactNode;
     /** 親の幅から決めるときのマスの下限（px）。親の幅がこれより狭いと盤ははみ出す。 */
     minCellSize?: number;
 }
@@ -115,6 +117,7 @@ export function MobileBoardSection({
     passRights,
     turn,
     hintMove,
+    boardOverlay,
     minCellSize,
 }: MobileBoardSectionProps): ReactElement {
     const cellSize = useMobileCellSize(boardSectionRef, minCellSize);
@@ -209,6 +212,7 @@ export function MobileBoardSection({
                 showBoardLabels={displaySettings.showBoardLabels}
                 moveShadow={isEditModeActive ? null : moveShadow}
                 hintMove={hintMove}
+                overlay={boardOverlay}
             />
 
             {candidateNote ? (

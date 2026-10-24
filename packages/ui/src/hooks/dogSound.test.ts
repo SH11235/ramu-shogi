@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { chooseDogClip, playDogSound, setDogBuffersForTest } from "./dogSound";
+import { chooseDogClip, playDogEndSound, playDogSound, setDogBuffersForTest } from "./dogSound";
 import { resetSoundScheduleForTest } from "./soundSchedule";
 
 const always = (value: number) => () => value;
@@ -16,6 +16,12 @@ describe("chooseDogClip", () => {
         expect(chooseDogClip("promote", true, always(0.1))).toBe("weak");
         expect(chooseDogClip("move", true, always(0.9))).not.toBe("weak");
         expect(chooseDogClip("move", false, always(0.1))).not.toBe("weak");
+    });
+
+    it("picks among all the long weak voices", () => {
+        const draws = [0.1, 0.99];
+        const random = () => draws.shift() ?? 0;
+        expect(chooseDogClip("move", true, random)).toBe("v3_06");
     });
 
     it("keeps check and capture voices even while the CPU is losing", () => {
@@ -112,5 +118,63 @@ describe("playDogSound", () => {
         ctx.currentTime = 1.04;
         playDogSound(ctx, base, "check", false);
         expect(voices[2].gain.value).toBeCloseTo(1);
+    });
+});
+
+describe("playDogEndSound", () => {
+    const base = "/sounds/dog/v1/";
+    const full = {} as AudioBuffer;
+
+    beforeEach(() => {
+        resetSoundScheduleForTest();
+        setDogBuffersForTest(
+            base,
+            new Map([
+                ["weak", {} as AudioBuffer],
+                ["bark1", {} as AudioBuffer],
+                ["bark6_full", full],
+            ]),
+        );
+        vi.spyOn(Math, "random").mockReturnValue(0.1);
+    });
+    afterEach(() => vi.restoreAllMocks());
+
+    it("plays the full double bark after the delay and fades out a playing weak voice", () => {
+        const { ctx, voices } = fakeAudioContext();
+        ctx.currentTime = 1;
+        playDogSound(ctx, base, "move", true);
+        ctx.currentTime = 1.1;
+        expect(playDogEndSound(ctx, base, 0.32)).toBe("played");
+
+        const [weak, end] = voices;
+        expect(end.starts[0]).toBeCloseTo(1.42);
+        expect(weak.stops[0]).toBeCloseTo(1.42 + 0.04);
+        const nodes = (ctx as unknown as { nodes: Array<{ buffer: unknown }> }).nodes;
+        expect(nodes[1].buffer).toBe(full);
+    });
+
+    it("fades the weak voice that is still playing after a later weak was cancelled", () => {
+        const { ctx, voices } = fakeAudioContext();
+        ctx.currentTime = 1;
+        playDogSound(ctx, base, "move", true);
+        ctx.currentTime = 1.02;
+        playDogSound(ctx, base, "move", true);
+        ctx.currentTime = 1.04;
+        playDogSound(ctx, base, "check", false);
+        ctx.currentTime = 1.1;
+        playDogEndSound(ctx, base, 0.32);
+
+        const [weakA, weakB] = voices as unknown as Array<{
+            gain: { setTargetAtTime: ReturnType<typeof vi.fn> };
+        }>;
+        expect(weakA.gain.setTargetAtTime).toHaveBeenCalledTimes(1);
+        expect(weakB.gain.setTargetAtTime).not.toHaveBeenCalled();
+    });
+
+    it("reports a missing clip so nothing is played", () => {
+        setDogBuffersForTest(base, new Map());
+        const { ctx, voices } = fakeAudioContext();
+        expect(playDogEndSound(ctx, base, 0.32)).toBe("unavailable");
+        expect(voices).toEqual([]);
     });
 });

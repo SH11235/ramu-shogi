@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     registerScheduledSound,
     reserveSoundSlot,
+    reserveSoundSlotAfter,
     resetSoundScheduleForTest,
 } from "./soundSchedule";
 
@@ -42,5 +43,22 @@ describe("reserveSoundSlot", () => {
         registerScheduledSound(when, 1, cancel);
         reserveSoundSlot(1.05);
         expect(cancel).not.toHaveBeenCalled();
+    });
+});
+
+describe("reserveSoundSlotAfter", () => {
+    it("waits the delay and keeps a pending move sound", () => {
+        const cancel = vi.fn();
+        reserveSoundSlot(1);
+        const move = reserveSoundSlot(1.05);
+        registerScheduledSound(move, 1.05, cancel);
+        expect(reserveSoundSlotAfter(1.05, 0.32)).toBeCloseTo(move + 0.32);
+        expect(cancel).not.toHaveBeenCalled();
+    });
+
+    it("keeps the gap after a delayed move sound", () => {
+        reserveSoundSlot(1);
+        const move = reserveSoundSlot(1.05);
+        expect(reserveSoundSlotAfter(1.05, 0)).toBeCloseTo(move + 0.18);
     });
 });

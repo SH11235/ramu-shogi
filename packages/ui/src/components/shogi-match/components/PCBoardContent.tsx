@@ -1,6 +1,6 @@
 import type { LastMove, PieceType, Player, Square } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import type { ShogiBoardCell, ShogiBoardMoveShadow, ShogiBoardPiece } from "../../shogi-board";
 import { ShogiBoard } from "../../shogi-board";
 import type { DisplaySettings, PassRightsSettings, PromotionSelection } from "../types";
@@ -71,6 +71,8 @@ interface PCBoardContentProps {
     handPlacement?: "rows" | "sides";
     /** ヒントとして盤に示す手（対局画面） */
     hintMove?: { from?: string | null; to: string; side?: Player } | null;
+    /** 盤の上に重ねて出すもの（終局の判子など） */
+    boardOverlay?: ReactNode;
 }
 
 /**
@@ -107,6 +109,7 @@ export function PCBoardContent({
     passRights,
     turn,
     hintMove,
+    boardOverlay,
     handSize = "normal",
     handPlacement = "rows",
 }: PCBoardContentProps): ReactElement {
@@ -194,6 +197,7 @@ export function PCBoardContent({
             showBoardLabels={displaySettings.showBoardLabels}
             moveShadow={isEditModeActive ? null : moveShadow}
             hintMove={hintMove}
+            overlay={boardOverlay}
         />
     );
     const note = candidateNote ? (
