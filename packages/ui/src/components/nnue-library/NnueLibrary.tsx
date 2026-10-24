@@ -175,9 +175,22 @@ export function NnueLibrary({
     // 測るにはダウンロードが要る配布 AI。確かめてから落とし、終われば測る。
     const [pendingMeasure, setPendingMeasure] = useState<{
         preset: PresetConfig;
-        resolve: (meta: NnueMeta | undefined) => void;
         downloading: boolean;
     } | null>(null);
+    // 確かめている途中で画面を離れたら、待っている計測を終わらせる（resolve しないと計測が残る）。
+    const pendingMeasureResolve = useRef<((meta: NnueMeta | undefined) => void) | null>(null);
+    useEffect(
+        () => () => {
+            pendingMeasureResolve.current?.(undefined);
+            pendingMeasureResolve.current = null;
+        },
+        [],
+    );
+    const settleMeasure = (meta: NnueMeta | undefined) => {
+        pendingMeasureResolve.current?.(meta);
+        pendingMeasureResolve.current = null;
+        setPendingMeasure(null);
+    };
     const speedTable = (contentHash: string, prepare: () => Promise<NnueMeta | undefined>) =>
         speed ? (
             <NnueSpeedTable
@@ -199,9 +212,10 @@ export function NnueLibrary({
         return speedTable(
             preset.config.sha256,
             () =>
-                new Promise((resolve) =>
-                    setPendingMeasure({ preset: preset.config, resolve, downloading: false }),
-                ),
+                new Promise((resolve) => {
+                    pendingMeasureResolve.current = resolve;
+                    setPendingMeasure({ preset: preset.config, downloading: false });
+                }),
         );
     };
 
@@ -726,17 +740,12 @@ export function NnueLibrary({
                     progress: pendingMeasure?.downloading ? downloadProgress : null,
                     completedBytes: 0,
                     error: null,
-                    cancel: () => {
-                        pendingMeasure?.resolve(undefined);
-                        setPendingMeasure(null);
-                    },
+                    cancel: () => settleMeasure(undefined),
                     download: async () => {
                         if (!pendingMeasure) return;
                         setNotice(null);
                         setPendingMeasure({ ...pendingMeasure, downloading: true });
-                        const meta = await downloadPreset(pendingMeasure.preset.presetKey);
-                        setPendingMeasure(null);
-                        pendingMeasure.resolve(meta);
+                        settleMeasure(await downloadPreset(pendingMeasure.preset.presetKey));
                     },
                 }}
             />

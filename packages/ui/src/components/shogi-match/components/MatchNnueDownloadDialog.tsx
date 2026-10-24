@@ -50,13 +50,20 @@ export function MatchNnueDownloadDialog({
     alternative?: { label: string; onSelect: () => void };
 }): ReactElement {
     const text = PURPOSE_TEXT[purpose];
-    const { progress, completedBytes, error, cancel, download } = state;
+    const { cancel, download } = state;
     const open = state.presets.length > 0;
-    // 閉じるアニメーションの間も、空の内容（名前なし・0 MB）ではなく閉じる直前の内容を出す。
-    const [lastShown, setLastShown] = useState({ presets: state.presets, busy: state.busy });
-    if (open && (lastShown.presets !== state.presets || lastShown.busy !== state.busy))
-        setLastShown({ presets: state.presets, busy: state.busy });
-    const { presets, busy } = open ? state : lastShown;
+    // 閉じるアニメーションの間も、空の内容（名前なし・0 MB・0%）ではなく閉じる直前の内容を出す。
+    const view = {
+        presets: state.presets,
+        busy: state.busy,
+        progress: state.progress,
+        completedBytes: state.completedBytes,
+        error: state.error,
+    };
+    const [lastShown, setLastShown] = useState(view);
+    if (open && (Object.keys(view) as (keyof typeof view)[]).some((k) => view[k] !== lastShown[k]))
+        setLastShown(view);
+    const { presets, busy, progress, completedBytes, error } = open ? view : lastShown;
     const total = presets.reduce((sum, preset) => sum + presetDownloadSize(preset), 0);
     const loaded = Math.min(total, completedBytes + (progress?.loaded ?? 0));
     const percent = total > 0 ? Math.floor((loaded / total) * 100) : 0;
