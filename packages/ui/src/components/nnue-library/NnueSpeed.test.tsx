@@ -4,7 +4,7 @@ import type { EngineClient, EngineEventHandler } from "@shogi/engine-client";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ENGINE_THREADS_STORAGE_KEY } from "../shogi-match/constants";
-import { NnueSpeedTable, useNnueSpeedBenchmark } from "./NnueSpeed";
+import { NnueSpeedTable, speedTableThreads, useNnueSpeedBenchmark } from "./NnueSpeed";
 import type { NnueSpeedSupport } from "./types";
 
 const meta: NnueMeta = {
@@ -50,11 +50,20 @@ const createBenchmarkClient = (): EngineClient => {
 
 const support: NnueSpeedSupport = { environment, createBenchmarkClient, maxThreads: 8 };
 
-function Harness({ hash = meta.contentHashSha256, reason }: { hash?: string; reason?: string }) {
+function Harness({
+    hash = meta.contentHashSha256,
+    reason,
+    prepare = async () => ({ ...meta, contentHashSha256: hash }),
+}: {
+    hash?: string;
+    reason?: string;
+    prepare?: () => Promise<NnueMeta | undefined>;
+}) {
     const benchmark = useNnueSpeedBenchmark(support);
     return (
         <NnueSpeedTable
-            meta={{ ...meta, contentHashSha256: hash }}
+            contentHash={hash}
+            prepare={prepare}
             support={support}
             benchmark={benchmark}
             disabledReason={reason}
@@ -69,6 +78,15 @@ const rowTexts = () =>
         .slice(1)
         .map((row) => [...row.querySelectorAll("td")].map((cell) => cell.textContent).join(" | "));
 
+describe("speedTableThreads", () => {
+    it("1・上限の半分・上限に、いまの設定と記録のある数を足す", () => {
+        expect(speedTableThreads(8, 4, [])).toEqual([1, 4, 8]);
+        expect(speedTableThreads(8, 3, [6])).toEqual([1, 3, 4, 6, 8]);
+        expect(speedTableThreads(2, 2, [])).toEqual([1, 2]);
+        expect(speedTableThreads(1, 1, [])).toEqual([1]);
+    });
+});
+
 describe("NnueSpeedTable", () => {
     beforeEach(() => {
         localStorage.setItem(ENGINE_THREADS_STORAGE_KEY, JSON.stringify({ sente: 4, gote: 2 }));
@@ -78,21 +96,39 @@ describe("NnueSpeedTable", () => {
         localStorage.clear();
     });
 
-    it("いまのスレッド数の行に「測る」を置き、測ると計測の値と「測り直す」を出す", async () => {
+    it("選んだスレッド数で測り、表のその行に計測の値を出す", async () => {
         render(<Harness />);
-        expect(rowTexts()).toEqual(["4 | 測る | —"]);
+        expect(rowTexts()).toEqual(["1 | — | —", "4 | — | —", "8 | — | —"]);
+        const select = screen.getByRole("combobox", {
+            name: "測るスレッド数",
+        }) as HTMLSelectElement;
+        expect(select.value).toBe("4");
+        fireEvent.change(select, { target: { value: "8" } });
         fireEvent.click(screen.getByRole("button", { name: "測る" }));
-        expect(await screen.findByText("あと約 9 秒")).toBeTruthy();
-        await waitFor(() => expect(rowTexts()).toEqual(["4 | 約 100万測り直す | —"]));
+        expect(await screen.findByRole("button", { name: /あと約 9 秒|準備中/ })).toBeTruthy();
+        await waitFor(() =>
+            expect(rowTexts()).toEqual(["1 | — | —", "4 | — | —", "8 | 約 100万 | —"]),
+        );
     });
 
-    it("ほかのスレッド数は値のある行だけ出し、「測る」はいまのスレッド数の行にだけ置く", () => {
+    it("実測は中央値と回数を出し、記録のあるスレッド数の行を足す", () => {
         for (const nps of [1_100_000, 1_200_000, 1_300_000]) {
-            nnueSpeedStore.addObserved({ ...key, contentHash: "several", threads: 8 }, nps);
+            nnueSpeedStore.addObserved({ ...key, contentHash: "several", threads: 3 }, nps);
         }
-        nnueSpeedStore.setBenchmark({ ...key, contentHash: "several", threads: 1 }, 300_000, 1);
         render(<Harness hash="several" />);
-        expect(rowTexts()).toEqual(["1 | 約 30万 | —", "4 | 測る | —", "8 | — | 約 120万・3 回"]);
+        expect(rowTexts()).toEqual([
+            "1 | — | —",
+            "3 | — | 約 120万・3 回",
+            "4 | — | —",
+            "8 | — | —",
+        ]);
+    });
+
+    it("用意できなかったとき（ダウンロードの失敗など）は測らない", async () => {
+        render(<Harness hash="missing" prepare={async () => undefined} />);
+        fireEvent.click(screen.getByRole("button", { name: "測る" }));
+        await waitFor(() => expect(screen.getByRole("button", { name: "測る" })).toBeTruthy());
+        expect(rowTexts()).toEqual(["1 | — | —", "4 | — | —", "8 | — | —"]);
     });
 
     it("対局・解析中などで測れないときは押せない", () => {

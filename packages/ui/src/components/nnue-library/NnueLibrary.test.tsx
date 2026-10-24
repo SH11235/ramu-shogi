@@ -16,6 +16,7 @@ const presetState = {
     isLoading: false,
     hasFetched: true,
     refresh: vi.fn(async () => {}),
+    download: vi.fn(async (_presetKey: string): Promise<NnueMeta | undefined> => undefined),
 };
 
 vi.mock("../../hooks/useNnueStorage", () => ({
@@ -43,7 +44,7 @@ vi.mock("../../hooks/usePresetManager", () => ({
         downloadingKey: null,
         downloadProgress: null,
         error: null,
-        download: vi.fn(),
+        download: presetState.download,
         clearError: vi.fn(),
         refresh: presetState.refresh,
         isConfigured: true,
@@ -116,6 +117,22 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("NnueLibrary", () => {
+    it("端末に無い配布 AI も、測るときにダウンロードすると知らせ、測るとダウンロードする", async () => {
+        presetState.presets = [preset({ status: "not-downloaded", localMetas: [] })];
+        render(
+            <NnueLibrary
+                speed={{
+                    environment: { engineVersion: "wasm:test", threaded: true },
+                    createBenchmarkClient: vi.fn(),
+                    maxThreads: 4,
+                }}
+            />,
+        );
+        expect(screen.getByText("測るときに 1 KB をダウンロードします。")).toBeDefined();
+        fireEvent.click(screen.getByRole("button", { name: "測る" }));
+        await waitFor(() => expect(presetState.download).toHaveBeenCalledWith("coco"));
+    });
+
     it("ブラウザとアカウントの両方にある AI は 1 行にまとめ、保存先を両方示す", () => {
         storage.nnueList = [meta({ contentHashSha256: "bbb" })];
         render(<NnueLibrary account={account([accountFile({ sha256Hex: "bbb" })])} />);

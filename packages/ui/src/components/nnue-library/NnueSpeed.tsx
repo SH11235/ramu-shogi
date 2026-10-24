@@ -7,8 +7,10 @@ import {
 } from "@shogi/app-controller";
 import type { NnueMeta, NnueSpeedRow } from "@shogi/app-core";
 import { detectParallelism, formatNodesPerSecond, nnueSpeedRows } from "@shogi/app-core";
-import type { ReactElement, ReactNode } from "react";
+import type { ReactElement } from "react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Button } from "../button";
+import { NativeSelect } from "../native-select";
 import { ENGINE_THREADS_STORAGE_KEY } from "../shogi-match/constants";
 import type { NnueSpeedSupport } from "./types";
 
@@ -38,18 +40,49 @@ function readCurrentThreads(maxThreads: number | undefined): number {
     return Math.max(1, maxThreads !== undefined ? Math.min(threads, maxThreads) : threads);
 }
 
+/**
+ * 表に出すスレッド数。1・上限の半分・上限を基本に、いまの設定と記録のある数を足す（重なりは 1 つに）。
+ * 対局で使う数（いまの設定）の値が無いと、対局での実測と見比べられないので必ず入れる。
+ */
+export function speedTableThreads(
+    threadCap: number,
+    currentThreads: number,
+    recorded: readonly number[],
+): number[] {
+    const cap = Math.max(1, threadCap);
+    const threads = new Set([
+        1,
+        Math.max(1, Math.floor(cap / 2)),
+        cap,
+        currentThreads,
+        ...recorded,
+    ]);
+    return [...threads].sort((a, b) => a - b);
+}
+
 type BenchmarkState =
     | { phase: "idle" }
-    | { phase: "running"; metaId: string; index: number }
-    | { phase: "done"; metaId: string; message: string | null };
+    /** `index` が null のあいだは、評価関数を用意している（端末に無ければダウンロードしている） */
+    | { phase: "running"; contentHash: string; threads: number; index: number | null }
+    | { phase: "done"; contentHash: string; message: string | null };
 
-/** 「速さを測る」の進み具合。1 度に 1 つの AI だけ測る。 */
+interface BenchmarkTarget {
+    contentHash: string;
+    threads: number;
+    /** 測る評価関数を用意する。用意できなければ undefined（理由は呼び出し側が出す） */
+    prepare: () => Promise<NnueMeta | undefined>;
+}
+
+/** 「速さを測る」の進み具合。1 度に 1 つの AI・1 つのスレッド数だけ測る。 */
 export function useNnueSpeedBenchmark(support: NnueSpeedSupport | undefined) {
     const [state, setState] = useState<BenchmarkState>({ phase: "idle" });
     const controllerRef = useRef<AbortController | null>(null);
     const abortReasonRef = useRef<string | null>(null);
     const activity = useSyncExternalStore(engineActivity.subscribe, engineActivity.getSnapshot);
-    const [threads] = useState(() => readCurrentThreads(support?.maxThreads));
+    const [threadCap] = useState(
+        () => support?.maxThreads ?? detectParallelism().detectedConcurrency,
+    );
+    const [currentThreads] = useState(() => readCurrentThreads(support?.maxThreads));
 
     const abort = (reason: string) => {
         if (!controllerRef.current) return;
@@ -60,12 +93,12 @@ export function useNnueSpeedBenchmark(support: NnueSpeedSupport | undefined) {
     // 画面を閉じたら測るのをやめる（計測のエンジンを残さない）。
     useEffect(() => () => controllerRef.current?.abort(), []);
 
-    const start = async (meta: NnueMeta) => {
+    const start = async ({ contentHash, threads, prepare }: BenchmarkTarget) => {
         if (!support || controllerRef.current) return;
         const controller = new AbortController();
         controllerRef.current = controller;
         abortReasonRef.current = null;
-        setState({ phase: "running", metaId: meta.id, index: 0 });
+        setState({ phase: "running", contentHash, threads, index: null });
         // 裏に回ったブラウザは探索を遅らせるので、測った値が低く出る。止めて捨てる。
         const onVisibilityChange = () => {
             if (document.visibilityState === "hidden") {
@@ -73,16 +106,24 @@ export function useNnueSpeedBenchmark(support: NnueSpeedSupport | undefined) {
             }
         };
         document.addEventListener("visibilitychange", onVisibilityChange);
-        // 測っている途中で対局・解析が始まったら、互いに遅くなるので止める。待機しているだけの
-        // エンジン（開く前からあったもの）は探索しないので数えない。増えるのは計測のエンジンの 1 つだけ。
-        const liveBefore = engineActivity.getSnapshot().live;
-        const unsubscribeActivity = engineActivity.subscribe(() => {
-            const { live, searching } = engineActivity.getSnapshot();
-            if (live > liveBefore + 1 || searching > 1) {
-                abort("対局・解析が始まったので、測るのをやめました。");
-            }
-        });
+        let unsubscribeActivity = () => {};
         try {
+            const meta = await prepare();
+            if (!meta) {
+                setState({ phase: "done", contentHash, message: null });
+                return;
+            }
+            if (controller.signal.aborted) throw new Error("aborted");
+            // 測っている途中で対局・解析が始まったら、互いに遅くなるので止める。待機しているだけの
+            // エンジン（開く前からあったもの）は探索しないので数えない。増えるのは計測のエンジンの 1 つだけ。
+            const liveBefore = engineActivity.getSnapshot().live;
+            unsubscribeActivity = engineActivity.subscribe(() => {
+                const { live, searching } = engineActivity.getSnapshot();
+                if (live > liveBefore + 1 || searching > 1) {
+                    abort("対局・解析が始まったので、測るのをやめました。");
+                }
+            });
+            setState({ phase: "running", contentHash, threads, index: 0 });
             const result = await runNnueSpeedBenchmark({
                 createClient: support.createBenchmarkClient,
                 nnueId: meta.id,
@@ -90,7 +131,7 @@ export function useNnueSpeedBenchmark(support: NnueSpeedSupport | undefined) {
                 fvScale: meta.fvScale,
                 threads,
                 signal: controller.signal,
-                onProgress: (index) => setState({ phase: "running", metaId: meta.id, index }),
+                onProgress: (index) => setState({ phase: "running", contentHash, threads, index }),
             });
             nnueSpeedStore.setBenchmark(
                 {
@@ -102,11 +143,11 @@ export function useNnueSpeedBenchmark(support: NnueSpeedSupport | undefined) {
                 result.nps,
                 Date.now(),
             );
-            setState({ phase: "done", metaId: meta.id, message: null });
+            setState({ phase: "done", contentHash, message: null });
         } catch {
             setState({
                 phase: "done",
-                metaId: meta.id,
+                contentHash,
                 message: controller.signal.aborted
                     ? abortReasonRef.current
                     : "測れませんでした。もう一度お試しください。",
@@ -119,7 +160,8 @@ export function useNnueSpeedBenchmark(support: NnueSpeedSupport | undefined) {
     };
 
     return {
-        threads,
+        threadCap,
+        currentThreads,
         state,
         isRunning: state.phase === "running",
         /** 探索中のエンジンがあるあいだは測らない */
@@ -131,15 +173,21 @@ export function useNnueSpeedBenchmark(support: NnueSpeedSupport | undefined) {
 type Benchmark = ReturnType<typeof useNnueSpeedBenchmark>;
 
 /**
- * AI の行に出す、この端末での NPS。スレッド数ごとに、計測と対局での実測を並べる。
+ * AI の行に出す、この端末での NPS。スレッド数ごとに計測と対局での実測を並べ、その下で
+ * スレッド数を選んで測る（測り直しも同じ操作）。端末に無い AI も、測るときにダウンロードする
+ * （`downloadNote` で通信量を知らせる）。
  */
 export function NnueSpeedTable({
-    meta,
+    contentHash,
+    prepare,
+    downloadNote,
     support,
     benchmark,
     disabledReason,
 }: {
-    meta: NnueMeta;
+    contentHash: string;
+    prepare: BenchmarkTarget["prepare"];
+    downloadNote?: string;
     support: NnueSpeedSupport;
     benchmark: Benchmark;
     /** 測れない理由（対局中・ほかの処理中など） */
@@ -147,79 +195,68 @@ export function NnueSpeedTable({
 }): ReactElement {
     const data = useSyncExternalStore(nnueSpeedStore.subscribe, nnueSpeedStore.getSnapshot);
     const rows = nnueSpeedRows(data, {
-        contentHash: meta.contentHashSha256,
+        contentHash,
         engineVersion: support.environment.engineVersion,
         threaded: support.environment.threaded,
     });
-    const { threads, state } = benchmark;
-    // いまのスレッド数の行は、値が無くても出して「測る」を置く。ほかのスレッド数は値のある行だけ。
-    const tableRows: NnueSpeedRow[] = rows.some((row) => row.threads === threads)
-        ? rows
-        : [...rows, { threads, benchmarkNps: null, observedNps: null, observedCount: 0 }].sort(
-              (a, b) => a.threads - b.threads,
-          );
-    const isRunningHere = state.phase === "running" && state.metaId === meta.id;
+    const { state, threadCap } = benchmark;
+    const [selectedThreads, setSelectedThreads] = useState(benchmark.currentThreads);
+    const running = state.phase === "running" && state.contentHash === contentHash ? state : null;
+    const tableRows: NnueSpeedRow[] = speedTableThreads(threadCap, benchmark.currentThreads, [
+        ...rows.map((row) => row.threads),
+        ...(running ? [running.threads] : []),
+    ]).map(
+        (threads) =>
+            rows.find((row) => row.threads === threads) ?? {
+                threads,
+                benchmarkNps: null,
+                observedNps: null,
+                observedCount: 0,
+            },
+    );
     const totalSeconds =
         (NNUE_SPEED_BENCHMARK_POSITIONS.length * NNUE_SPEED_BENCHMARK_MS_PER_POSITION) / 1000;
-    const message = state.phase === "done" && state.metaId === meta.id ? state.message : null;
+    const message =
+        state.phase === "done" && state.contentHash === contentHash ? state.message : null;
     const blockedReason =
         disabledReason ??
         (benchmark.isRunning
-            ? "ほかの AI を測っています"
+            ? "ほかの計測が終わってから測れます"
             : benchmark.isEngineBusy
               ? "対局・解析中は測れません"
               : undefined);
-
-    const benchmarkCell = (row: NnueSpeedRow): ReactNode => {
-        if (row.threads === threads && isRunningHere && state.phase === "running") {
-            // 局面ごとに決まった時間だけ読むので、残りの局面の数から残り時間が分かる。
-            const remainingSeconds =
-                ((NNUE_SPEED_BENCHMARK_POSITIONS.length - state.index) *
+    // 局面ごとに決まった時間だけ読むので、残りの局面の数から残り時間が分かる。
+    const progressLabel = !running
+        ? null
+        : running.index === null
+          ? "準備中"
+          : `あと約 ${
+                ((NNUE_SPEED_BENCHMARK_POSITIONS.length - running.index) *
                     NNUE_SPEED_BENCHMARK_MS_PER_POSITION) /
-                1000;
-            return (
-                <span className="text-muted-foreground" aria-live="polite">
-                    あと約 {remainingSeconds} 秒
-                </span>
-            );
-        }
-        if (row.threads !== threads) {
-            return row.benchmarkNps === null ? "—" : `約 ${formatNodesPerSecond(row.benchmarkNps)}`;
-        }
-        // 端末の混み具合で変わるので、測った後も測り直せるようにする。
-        const measureButton = (
-            <InlineButton
-                onClick={() => void benchmark.start(meta)}
-                disabled={blockedReason !== undefined}
-                title={blockedReason ?? `${threads} スレッドで約 ${totalSeconds} 秒読んで測ります`}
-            >
-                {row.benchmarkNps === null ? "測る" : "測り直す"}
-            </InlineButton>
-        );
-        if (row.benchmarkNps === null) return measureButton;
-        return (
-            <span className="flex items-center gap-x-2">
-                約 {formatNodesPerSecond(row.benchmarkNps)}
-                {measureButton}
-            </span>
-        );
-    };
+                1000
+            } 秒`;
 
     return (
-        <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+        <div className="flex flex-col items-start gap-2 text-xs text-muted-foreground">
             <table className="w-fit border-collapse whitespace-nowrap text-left tabular-nums">
                 <thead>
                     <tr className="border-b border-border">
-                        <th className="py-1 pr-3 font-normal">スレッド数</th>
-                        <th className="py-1 pr-3 font-normal">計測</th>
+                        <th className="py-1 pr-4 font-normal">スレッド数</th>
+                        <th className="py-1 pr-4 font-normal">計測</th>
                         <th className="py-1 font-normal">対局での実測</th>
                     </tr>
                 </thead>
                 <tbody>
                     {tableRows.map((row) => (
                         <tr key={row.threads} className="text-foreground">
-                            <td className="py-1 pr-3">{row.threads}</td>
-                            <td className="py-1 pr-3">{benchmarkCell(row)}</td>
+                            <td className="py-1 pr-4">{row.threads}</td>
+                            <td className="py-1 pr-4">
+                                {running?.threads === row.threads
+                                    ? "測定中"
+                                    : row.benchmarkNps === null
+                                      ? "—"
+                                      : `約 ${formatNodesPerSecond(row.benchmarkNps)}`}
+                            </td>
                             <td className="py-1">
                                 {row.observedNps === null
                                     ? "—"
@@ -229,31 +266,37 @@ export function NnueSpeedTable({
                     ))}
                 </tbody>
             </table>
+            <div className="flex items-center gap-2">
+                <NativeSelect
+                    aria-label="測るスレッド数"
+                    value={selectedThreads}
+                    onChange={(event) => setSelectedThreads(Number(event.target.value))}
+                    disabled={running !== null}
+                    // iOS Safari は 16px 未満の入力欄にフォーカスすると画面を拡大するので、スマホでは 16px にする
+                    className="py-1 pl-2 pr-8 text-base sm:text-xs"
+                >
+                    {Array.from({ length: Math.max(1, threadCap) }, (_, index) => index + 1).map(
+                        (threads) => (
+                            <option key={threads} value={threads}>
+                                {threads} スレッド
+                            </option>
+                        ),
+                    )}
+                </NativeSelect>
+                <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={running !== null || blockedReason !== undefined}
+                    title={blockedReason ?? `約 ${totalSeconds} 秒読んで測ります`}
+                    onClick={() =>
+                        void benchmark.start({ contentHash, threads: selectedThreads, prepare })
+                    }
+                >
+                    {progressLabel ?? "測る"}
+                </Button>
+            </div>
+            {downloadNote && !running && <p>{downloadNote}</p>}
             {message && <p aria-live="polite">{message}</p>}
         </div>
-    );
-}
-
-function InlineButton({
-    onClick,
-    disabled,
-    title,
-    children,
-}: {
-    onClick: () => void;
-    disabled?: boolean;
-    title?: string;
-    children: string;
-}): ReactElement {
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            disabled={disabled}
-            title={title}
-            className="text-wafuu-ai underline underline-offset-2 hover:text-wafuu-ai-light disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
-        >
-            {children}
-        </button>
     );
 }

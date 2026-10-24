@@ -60,6 +60,8 @@ type PendingDelete =
 const ALLOWED_EXTENSIONS = [".nnue", ".bin"];
 
 const SUPPORT_ISSUES_URL = "https://github.com/SH11235/rshogi/issues";
+// GitHub のアカウントを持たない人も知らせられるように、X の窓口も並べる。
+const SUPPORT_X_URL = "https://x.com/ramu_shogi";
 
 /** 公開されている評価関数の例（FV_SCALE は配布元の公開値） */
 const FREE_NNUE_RESOURCES = [
@@ -162,15 +164,37 @@ export function NnueLibrary({
     const speedBenchmark = useNnueSpeedBenchmark(speed);
     // 測っている AI を消したり設定を変えたりしないよう、測っている間はほかの操作を止める。
     const controlsDisabled = isBusy || speedBenchmark.isRunning;
-    const speedLineOf = (meta: NnueMeta | undefined) =>
-        speed && meta && !needsModelSettings(meta) ? (
+    const speedTable = (
+        contentHash: string,
+        prepare: () => Promise<NnueMeta | undefined>,
+        downloadNote?: string,
+    ) =>
+        speed ? (
             <NnueSpeedTable
-                meta={meta}
+                contentHash={contentHash}
+                prepare={prepare}
+                downloadNote={downloadNote}
                 support={speed}
                 benchmark={speedBenchmark}
                 disabledReason={lockedReason ?? (isBusy ? "ほかの処理の途中です" : undefined)}
             />
         ) : null;
+    // 端末に無い配布 AI は、測るときにダウンロードする（測りたい人にダウンロードを促す）。
+    const presetSpeedTable = (preset: PresetWithStatus) => {
+        const localMeta =
+            preset.localMetas.find((meta) => meta.contentHashSha256 === preset.config.sha256) ??
+            preset.localMetas[0];
+        if (localMeta) return speedTable(localMeta.contentHashSha256, async () => localMeta);
+        const downloadSize = preset.config.size + (preset.config.progressCoefficients?.size ?? 0);
+        return speedTable(
+            preset.config.sha256,
+            async () => {
+                setNotice(null);
+                return downloadPreset(preset.config.presetKey);
+            },
+            `測るときに ${formatSize(downloadSize)} をダウンロードします。`,
+        );
+    };
 
     useEffect(() => {
         onBusyChange?.(isBusy);
@@ -427,7 +451,11 @@ export function NnueLibrary({
                                         meta.fvScale ? `FV_SCALE ${meta.fvScale}` : null,
                                     ]}
                                     places={[deviceLabel, ...(accountFile ? ["アカウント"] : [])]}
-                                    speedLine={speedLineOf(meta)}
+                                    speedLine={
+                                        needsModelSettings(meta)
+                                            ? null
+                                            : speedTable(meta.contentHashSha256, async () => meta)
+                                    }
                                     warning={
                                         needsModelSettings(meta)
                                             ? "使う前にモデル設定（振り分け方式）が必要です"
@@ -570,12 +598,7 @@ export function NnueLibrary({
                                     }
                                     disabled={controlsDisabled}
                                     lockedReason={lockedReason}
-                                    speedLine={speedLineOf(
-                                        preset.localMetas.find(
-                                            (meta) =>
-                                                meta.contentHashSha256 === preset.config.sha256,
-                                        ) ?? preset.localMetas[0],
-                                    )}
+                                    speedLine={presetSpeedTable(preset)}
                                     isDeleting={busyId === preset.config.presetKey}
                                     onDownload={() => {
                                         setNotice(null);
@@ -603,6 +626,15 @@ export function NnueLibrary({
                     className="underline underline-offset-2 hover:text-foreground"
                 >
                     GitHub Issues
+                </a>
+                か X の{" "}
+                <a
+                    href={SUPPORT_X_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline underline-offset-2 hover:text-foreground"
+                >
+                    @ramu_shogi
                 </a>{" "}
                 へお知らせください。
             </p>
