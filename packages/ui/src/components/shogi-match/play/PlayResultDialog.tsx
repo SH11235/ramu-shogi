@@ -124,11 +124,13 @@ export function PlayResultDialog({ variant }: PlayResultDialogProps): ReactEleme
                         "fixed inset-x-0 bottom-0 z-[51] rounded-t-2xl border-t border-wafuu-border bg-background px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-2 text-foreground shadow-xl outline-none duration-300 data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom motion-reduce:animate-none",
                     )}
                 >
-                    <div
-                        aria-hidden
-                        className="mx-auto mb-2 h-1 w-9 rounded-full bg-wafuu-border"
-                    />
-                    {body}
+                    <div className="flex flex-col gap-2">
+                        <div
+                            aria-hidden
+                            className="h-1 w-9 self-center rounded-full bg-wafuu-border"
+                        />
+                        {body}
+                    </div>
                 </DialogPrimitive.Content>
             </DialogPrimitive.Portal>
         </DialogPrimitive.Root>

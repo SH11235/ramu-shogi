@@ -79,6 +79,14 @@ describe("PlayResultDialog", () => {
         expect(screen.getByRole("dialog")).toBeTruthy();
     });
 
+    it("opens at once when a key is pressed during the wait", () => {
+        renderDialog(CHECKMATE);
+        act(() => {
+            fireEvent.keyDown(document.body, { key: "Enter" });
+        });
+        expect(screen.getByRole("dialog")).toBeTruthy();
+    });
+
     it("skips the stamp and the wait after the player's own resignation", () => {
         renderDialog(RESIGNED_BY_ME);
         expect(screen.queryByText("投了")).toBeNull();

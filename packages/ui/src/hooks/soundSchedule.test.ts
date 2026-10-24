@@ -52,7 +52,7 @@ describe("reserveSoundSlotAfter", () => {
         reserveSoundSlot(1);
         const move = reserveSoundSlot(1.05);
         registerScheduledSound(move, 1.05, cancel);
-        expect(reserveSoundSlotAfter(1.05, 0.32)).toBeCloseTo(1.37);
+        expect(reserveSoundSlotAfter(1.05, 0.32)).toBeCloseTo(move + 0.32);
         expect(cancel).not.toHaveBeenCalled();
     });
 

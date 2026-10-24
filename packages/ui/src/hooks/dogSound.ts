@@ -224,12 +224,12 @@ export function playDogEndSound(
     if (!buffer) return "unavailable";
 
     const when = reserveSoundSlotAfter(ctx.currentTime, delaySec);
-    const playingVoices = [
-        current,
-        weakPlaying && weakGain && { source: weakPlaying, gain: weakGain },
-    ];
+    const playingVoices: Array<{ source: AudioBufferSourceNode; gain: GainNode }> = [];
+    if (current) playingVoices.push(current);
+    if (weakPlaying && weakGain && weakPlaying !== current?.source) {
+        playingVoices.push({ source: weakPlaying, gain: weakGain });
+    }
     for (const playing of playingVoices) {
-        if (!playing) continue;
         try {
             playing.gain.gain.setTargetAtTime(0, when, CUT_FADE_SEC / 3);
             playing.source.stop(when + CUT_FADE_SEC * 2);

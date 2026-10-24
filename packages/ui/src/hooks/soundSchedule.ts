@@ -36,15 +36,15 @@ export function reserveSoundSlot(now: number): number {
 }
 
 /**
- * 今から delaySec 後（前の音から MIN_GAP_SEC 経っていなければもっと後）の時刻。まだ鳴っていない予約は
- * 取り消さない（終局の声は、最後の手の音を鳴らしてから重ねるため）。
+ * 今か、まだ鳴っていない前の音の始まりから delaySec 後の時刻。予約は取り消さない（終局の声は、
+ * 最後の手の音が遅れて鳴る場合も、その音を言い終えてから重ねるため）。
  */
 export function reserveSoundSlotAfter(now: number, delaySec: number): number {
     if (lastStart > now + CLOCK_RESET_MARGIN_SEC) {
         lastStart = Number.NEGATIVE_INFINITY;
         pending = null;
     }
-    const when = Math.max(now + delaySec, lastStart + MIN_GAP_SEC);
+    const when = Math.max(Math.max(now, lastStart) + delaySec, lastStart + MIN_GAP_SEC);
     lastStart = when;
     return when;
 }
