@@ -828,11 +828,20 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         const effectiveThreads = kind === "threaded" ? effective : 1;
         const payload = buildInitPayload(effectiveThreads);
         const module = getInitWasmModule();
+        // 進行中の初期化として登録し、局面などを戻し終えるまで ensureReady を待たせる
+        const attempt = (async () => {
+            try {
+                await initWorkerWithKind(kind, payload, module, true);
+            } catch (error) {
+                const code = classifyErrorCode(error);
+                enterErrorState("Wasm engine initialization failed", code);
+            }
+        })();
+        initInFlight = attempt;
         try {
-            await initWorkerWithKind(kind, payload, module, true);
-        } catch (error) {
-            const code = classifyErrorCode(error);
-            enterErrorState("Wasm engine initialization failed", code);
+            await attempt;
+        } finally {
+            if (initInFlight === attempt) initInFlight = null;
         }
     };
 
@@ -915,7 +924,8 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
     const analysisBridge = createAnalysisBridge({
         available: () => initialized && backend === "threaded",
         ready: async () => {
-            if (normalSearches > 0) throw new Error("通常探索を停止してから解析を開始してください");
+            if (normalSearches > 0 || searchesStarting > 0)
+                throw new Error("通常探索を停止してから解析を開始してください");
             if (mateBusy()) throw new Error("詰み探索が終わってから解析を開始してください");
             await ensureReady();
         },
