@@ -86,14 +86,14 @@ describe("NnueSpeedTable", () => {
         await waitFor(() => expect(rowTexts()).toEqual(["4 | 約 100万測り直す | —"]));
     });
 
-    it("ほかのスレッド数は値のある行だけ出し、いまの設定に印を付ける", () => {
+    it("ほかのスレッド数は値のある行だけ出し、「測る」はいまのスレッド数の行にだけ置く", () => {
         for (const nps of [1_100_000, 1_200_000, 1_300_000]) {
             nnueSpeedStore.addObserved({ ...key, contentHash: "several", threads: 8 }, nps);
         }
         nnueSpeedStore.setBenchmark({ ...key, contentHash: "several", threads: 1 }, 300_000, 1);
         render(<Harness hash="several" />);
         expect(screen.getByRole("table").querySelector("caption")?.textContent).toBe(
-            "この端末での NPS（いまの設定は 4 スレッド）",
+            "この端末での NPS",
         );
         expect(rowTexts()).toEqual(["1 | 約 30万 | —", "4 | 測る | —", "8 | — | 約 120万・3 回"]);
     });

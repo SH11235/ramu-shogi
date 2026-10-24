@@ -208,14 +208,7 @@ export function NnueSpeedTable({
     return (
         <div className="flex flex-col gap-1 text-xs text-muted-foreground">
             <table className="w-fit border-collapse whitespace-nowrap text-left tabular-nums">
-                <caption className="pb-1 text-left whitespace-normal">
-                    この端末での NPS
-                    {tableRows.length > 1 && (
-                        <span className="whitespace-nowrap">
-                            （いまの設定は {threads} スレッド）
-                        </span>
-                    )}
-                </caption>
+                <caption className="pb-1 text-left">この端末での NPS</caption>
                 <thead>
                     <tr className="border-b border-border">
                         <th className="py-1 pr-3 font-normal">スレッド数</th>
