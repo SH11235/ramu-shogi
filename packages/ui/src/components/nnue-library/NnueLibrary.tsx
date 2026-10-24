@@ -817,7 +817,12 @@ function PresetRow({
                     {speedLine}
                 </div>
             </div>
-            <div className="flex shrink-0 items-center justify-end gap-2 sm:w-48">
+            {/* ボタン・進捗・「あります」の行で高さが違う。狭い画面で列が下に回ったとき、
+                状態が変わるたびにカードと下の行が動かないよう、ボタン（h-9）の高さに揃える。 */}
+            <div
+                data-testid="preset-row-status"
+                className="flex h-9 shrink-0 items-center justify-end gap-2 sm:w-48"
+            >
                 {progress ? (
                     <div className="flex w-full flex-col gap-1" aria-live="polite">
                         <Progress value={progress.phase === "downloading" ? percent : undefined} />

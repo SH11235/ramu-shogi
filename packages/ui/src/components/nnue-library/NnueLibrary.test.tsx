@@ -15,6 +15,7 @@ const presetState = {
     presets: [] as PresetWithStatus[],
     isLoading: false,
     hasFetched: true,
+    downloadingKey: null as string | null,
     refresh: vi.fn(async () => {}),
     download: vi.fn(async (_presetKey: string): Promise<NnueMeta | undefined> => undefined),
 };
@@ -41,7 +42,7 @@ vi.mock("../../hooks/usePresetManager", () => ({
     usePresetManager: () => ({
         presets: presetState.presets,
         isLoading: presetState.isLoading,
-        downloadingKey: null,
+        downloadingKey: presetState.downloadingKey,
         downloadProgress: null,
         error: null,
         download: presetState.download,
@@ -112,6 +113,7 @@ beforeEach(() => {
     presetState.presets = [];
     presetState.isLoading = false;
     presetState.hasFetched = true;
+    presetState.downloadingKey = null;
     vi.clearAllMocks();
 });
 afterEach(cleanup);
@@ -154,6 +156,27 @@ describe("NnueLibrary", () => {
         expect(screen.getByText("測るときに 1 KB をダウンロードします。")).toBeDefined();
         fireEvent.click(screen.getByRole("button", { name: "測る" }));
         await waitFor(() => expect(presetState.download).toHaveBeenCalledWith("coco"));
+    });
+
+    it("配布 AI の操作の列は、ダウンロード前・中・後で同じ高さを確保する", () => {
+        const statusClass = (): string => {
+            const { unmount } = render(<NnueLibrary />);
+            const className = screen.getByTestId("preset-row-status").className;
+            unmount();
+            return className;
+        };
+        presetState.presets = [preset({ status: "not-downloaded" })];
+        const before = statusClass();
+        presetState.downloadingKey = "coco";
+        const during = statusClass();
+        presetState.downloadingKey = null;
+        presetState.presets = [
+            preset({ localMetas: [meta({ source: "preset", presetKey: "coco" })] }),
+        ];
+        const after = statusClass();
+        expect(before).toContain("h-9");
+        expect(during).toBe(before);
+        expect(after).toBe(before);
     });
 
     it("ブラウザとアカウントの両方にある AI は 1 行にまとめ、保存先を両方示す", () => {
