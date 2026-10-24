@@ -71,6 +71,7 @@ import { usePassRights } from "./shogi-match/hooks/usePassRights";
 import { usePlayHintSearch } from "./shogi-match/hooks/usePlayHintSearch";
 import { useUIState } from "./shogi-match/hooks/useUIState";
 import { ShogiMatchLayout } from "./shogi-match/layouts/ShogiMatchLayout";
+import { isHirateStart } from "./shogi-match/play/startPositions";
 import {
     AI_MATCH_TIME_CHOICES,
     AI_TIME_CHOICES,
@@ -126,13 +127,6 @@ import { isSameTimeSettings, normalizeTimeSettings } from "./shogi-match/utils/t
 import { TooltipProvider } from "./tooltip";
 
 const EMPTY_ANALYSIS_MARKERS: Array<{ seat: "b" | "w"; ply: number }> = [];
-
-/** 平手の開始局面の盤・手番・持ち駒（SFEN）。 */
-const HIRATE_BOARD_SFEN = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
-
-/** 開始局面が平手か（`startpos` と、同じ局面の SFEN の両方を平手とみなす）。 */
-const isHirateSfen = (sfen: string): boolean =>
-    sfen === "startpos" || sfen.includes(HIRATE_BOARD_SFEN);
 
 const MATCH_SIDES_KEY = "shogi-match-sides";
 const PLAY_SIDES_KEY = "shogi-play-sides";
@@ -2599,7 +2593,7 @@ export function ShogiMatch({
         const timer = setTimeout(() => setMessage(null), 2500);
         return () => clearTimeout(timer);
     }, [isPlayScreen, message, setMessage, setSelection]);
-    const isHirateStart = isHirateSfen(startSfen);
+    const isHirateStartPosition = isHirateStart(startSfen);
     const playerNameFor = (side: Player): string => {
         const setting = sides[side];
         if (setting.role === "human") {
@@ -2654,7 +2648,7 @@ export function ShogiMatch({
         setPlayStartNotice(null);
         await stopAllEngines();
         const start = playStartRef.current ?? { sfen: startSfen, moves: [] };
-        if (isHirateSfen(start.sfen) && start.moves.length === 0) {
+        if (isHirateStart(start.sfen) && start.moves.length === 0) {
             await handleResetToStartpos();
         } else {
             // 編集した局面・引き継いだ棋譜の途中から始めた対局は、同じ始まりの局面に戻す。
@@ -2700,7 +2694,7 @@ export function ShogiMatch({
                   isMatchRunning && liveSearchInfo && engineStatus[liveSearchInfo.side] !== "error"
                       ? liveSearchInfo
                       : null,
-              isCustomStart: !isHirateStart || (playPhase === "setup" && moves.length > 0),
+              isCustomStart: !isHirateStartPosition || (playPhase === "setup" && moves.length > 0),
               busy: isPlayResetting || pendingRematch || isPlayStarting,
               startNotice: playPhase === "playing" && moves.length < 2 ? playStartNotice : null,
               startPly: playStartPly,

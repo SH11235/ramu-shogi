@@ -36,9 +36,14 @@ const normalizeSfen = (sfen: string): string =>
 export const isHirateStart = (startSfen: string): boolean =>
     startSfen === "startpos" || normalizeSfen(startSfen) === STUDY_HIRATE_SFEN;
 
+/** 選べる駒落ちの局面のうち、`startSfen` と同じもの（手数まで含めて比べる）。 */
+export const findStartPosition = (startSfen: string) => {
+    const sfen = normalizeSfen(startSfen);
+    return START_POSITIONS.find((position) => position.sfen === sfen);
+};
+
 /** 開始局面の名前（平手・駒落ち）。選べる局面のどれでもなければ「カスタム」（局面を編集して始めたとき）。 */
 export function startPositionLabel(startSfen: string): string {
     if (isHirateStart(startSfen)) return "平手";
-    const sfen = normalizeSfen(startSfen);
-    return START_POSITIONS.find((position) => position.sfen === sfen)?.label ?? "カスタム";
+    return findStartPosition(startSfen)?.label ?? "カスタム";
 }

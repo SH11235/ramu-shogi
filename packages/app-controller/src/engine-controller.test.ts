@@ -272,6 +272,19 @@ describe("handleInfoEvent", () => {
         handleInfoEvent(event, { onEvalUpdate, ply: 2 });
         expect(onEvalUpdate).not.toHaveBeenCalled();
     });
+
+    it("評価値が両方 null の info（Desktop の探索開始）は無視する", () => {
+        const onEvalUpdate = vi.fn();
+        const event = {
+            type: "info",
+            depth: 0,
+            nodes: 0,
+            scoreCp: null,
+            scoreMate: null,
+        } as unknown as EngineEvent;
+        handleInfoEvent(event, { onEvalUpdate, ply: 2 });
+        expect(onEvalUpdate).not.toHaveBeenCalled();
+    });
 });
 
 describe("createEngineController", () => {

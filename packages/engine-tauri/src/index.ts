@@ -13,6 +13,7 @@ import { createMockEngineClient } from "@shogi/engine-client";
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { listen as tauriListen } from "@tauri-apps/api/event";
+import { normalizeEngineEvent } from "./engine-event";
 
 export {
     createEngineRegistryService,
@@ -94,8 +95,10 @@ export function createTauriEngineClient(options: TauriEngineClientOptions = {}):
     let unlisten: UnlistenFn | null = null;
     let cachedThreadInfo: ThreadInfo | null = null;
 
+    // engine_thread_info を取れていない（初期化前・取得失敗・モック）ときの値。実際に動いている数は
+    // 分からないので activeThreads は 0（不明）にする。1 を返すと、呼び出し側が「1 スレッドで動いた」と記録する。
     const defaultThreadInfo: ThreadInfo = {
-        activeThreads: 1,
+        activeThreads: 0,
         maxThreads: 1,
         threadedAvailable: true,
         hardwareConcurrency: 1,
@@ -169,7 +172,7 @@ export function createTauriEngineClient(options: TauriEngineClientOptions = {}):
                 if (debug) {
                     console.info("[engine-tauri] event", evt.payload);
                 }
-                emit(evt.payload);
+                emit(normalizeEngineEvent(evt.payload));
             });
         } catch (error) {
             console.error("Failed to subscribe to engine events:", error);
@@ -295,6 +298,8 @@ export function createTauriEngineClient(options: TauriEngineClientOptions = {}):
             cachedThreadInfo = null;
         },
         getThreadInfo(): ThreadInfo {
+            // モックに切り替わった後は、その前に取れた値は動いていないエンジンの数になる。
+            if (usingMock) return defaultThreadInfo;
             return cachedThreadInfo ?? defaultThreadInfo;
         },
         async reset(): Promise<void> {
