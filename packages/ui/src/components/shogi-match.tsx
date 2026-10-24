@@ -15,6 +15,7 @@ import {
     createDefaultNnueSelection,
     createEmptyHands,
     DEFAULT_PRESET_KEY,
+    detectParallelism,
     getAllSquares,
     getPositionService,
     isKingInCheck,
@@ -65,6 +66,7 @@ import { useMoveShadow } from "./shogi-match/hooks/useMoveShadow";
 import { useNnueManager } from "./shogi-match/hooks/useNnueManager";
 import { useNormalizedSettings } from "./shogi-match/hooks/useNormalizedSettings";
 import { usePassRights } from "./shogi-match/hooks/usePassRights";
+import { usePlayHintSearch } from "./shogi-match/hooks/usePlayHintSearch";
 import { useUIState } from "./shogi-match/hooks/useUIState";
 import { ShogiMatchLayout } from "./shogi-match/layouts/ShogiMatchLayout";
 import {
@@ -105,6 +107,7 @@ import type {
     NavigationProps,
     PCSpecificProps,
 } from "./shogi-match/types/layoutProps";
+import { DEFAULT_HINT_MULTI_PV, normalizeHintMultiPv } from "./shogi-match/utils/hintSettings";
 import type { KifMove } from "./shogi-match/utils/kifFormat";
 import { buildLegalCacheKey, LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
 import {
@@ -836,7 +839,11 @@ export function ShogiMatch({
     // 対局画面では、利用者が「局面を変えて指す」を開いている間だけ盤を編集できる。
     const [positionEditOpen, setPositionEditOpen] = useState(false);
     const [hintCount, setHintCount] = useState(0);
-    const [hintPly, setHintPly] = useState<number | null>(null);
+    const [storedHintMultiPv, setHintMultiPv] = useLocalStorage<number>(
+        "shogi-play-hint-multipv",
+        DEFAULT_HINT_MULTI_PV,
+    );
+    const hintMultiPv = normalizeHintMultiPv(storedHintMultiPv);
     const [pendingOpenStudy, setPendingOpenStudy] = useState(false);
     const [pendingRematch, setPendingRematch] = useState(false);
     const editAllowed =
@@ -1569,6 +1576,7 @@ export function ShogiMatch({
         logEngineError,
         isAnalyzing,
         analyzePosition,
+        cancelAnalysis,
         engineErrorDetails,
         retryEngine,
         isRetrying,
@@ -1714,6 +1722,27 @@ export function ShogiMatch({
 
     // handleEvalUpdate を ref に設定（useEngineManager で使用）
     handleEvalUpdateRef.current = handleEvalUpdate;
+
+    // 対局画面のヒント。解析のスレッド数は、対局の先後のうち多いほう（解析エンジンと同じ決め方）。
+    const resolveThreads = (count: number) =>
+        count > 0 ? count : detectParallelism().recommendedWorkers;
+    const playHint = usePlayHintSearch({
+        enabled: isPlayScreen,
+        engineOption:
+            engineOptions.find((option) => option.id === analysisEngineId) ?? engineOptions[0],
+        threads: Math.max(resolveThreads(engineThreads.sente), resolveThreads(engineThreads.gote)),
+        multiPv: hintMultiPv,
+        nnueSelection: effectiveAnalysisNnueSelection,
+        resolveNnue,
+        startSfen,
+        moves: moves.slice(0, navigation.state.currentPly),
+        currentPly: navigation.state.currentPly,
+        passRightsSettings,
+        matchActive: isMatchRunning && !isPaused,
+        recordEvalByPly,
+        clearEvalByPly,
+        fallback: { analyze: handleAnalyzeHintPly, cancel: cancelAnalysis, isAnalyzing },
+    });
 
     // エンジンの手・パスの適用後の共通処理（盤や持ち駒からの人の手は useMoveExecution が適用する）
     const applyMoveAndUpdateState = (
@@ -2232,10 +2261,16 @@ export function ShogiMatch({
     };
 
     // PVプレビューを開くコールバック
-    const handlePreviewPv = (ply: number, pv: string[], evalCp?: number, evalMate?: number) => {
+    const handlePreviewPv = (
+        ply: number,
+        pv: string[],
+        evalCp?: number,
+        evalMate?: number,
+        startPosition?: PositionState,
+    ) => {
         // PVはply手目を指した後の局面から計算されている
-        // positionHistory[ply-1] = ply手目を指した後の局面
-        const startPos = positionHistory[ply - 1];
+        // positionHistory[ply-1] = ply手目を指した後の局面（0 手目の局面は持たないので、呼び出し側が渡す）
+        const startPos = startPosition ?? positionHistory[ply - 1];
         if (!startPos) return;
 
         setPvPreview({
@@ -2602,7 +2637,7 @@ export function ShogiMatch({
         setGameResult(null);
         setShowResultDialog(false);
         setHintCount(0);
-        setHintPly(null);
+        playHint.reset();
         setIsPaused(false);
         setPositionEditOpen(false);
         setPlayStartNotice(null);
@@ -2664,7 +2699,7 @@ export function ShogiMatch({
                       setPendingPlayStartCapture(true);
                       setPlayStartNotice(notice ?? null);
                       setHintCount(0);
-                      setHintPly(null);
+                      playHint.reset();
                   }
                   void startPlayMatch();
               },
@@ -2726,12 +2761,17 @@ export function ShogiMatch({
                             }
                         },
               requestHint: () => {
+                  if (playHint.status.phase === "preparing") return;
                   setHintCount((count) => count + 1);
-                  setHintPly(navigation.state.currentPly);
-                  void handleAnalyzeHintPly(navigation.state.currentPly);
+                  playHint.request();
               },
+              stopHint: playHint.stop,
+              resumeHint: playHint.resume,
+              hintStatus: playHint.status,
+              hintMultiPv,
+              setHintMultiPv,
               hintCount,
-              hintPly,
+              hintPly: playHint.status.ply,
               setupFooter: playSetupFooter ?? null,
               gameResult,
           }

@@ -44,7 +44,13 @@ interface NavigationProviderProps {
     lastAddedBranchInfo: { ply: number; firstMove: string } | null;
     onLastAddedBranchHandled: () => void;
     handleAddPvAsBranch: (ply: number, pv: string[]) => void;
-    handlePreviewPv: (ply: number, pv: string[], evalCp?: number, evalMate?: number) => void;
+    handlePreviewPv: (
+        ply: number,
+        pv: string[],
+        evalCp?: number,
+        evalMate?: number,
+        startPosition?: PositionState,
+    ) => void;
 
     // 表示モード
     kifuViewMode: KifuViewMode;

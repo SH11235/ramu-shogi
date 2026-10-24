@@ -13,6 +13,7 @@ import type {
 import type { NnueAccountStore } from "../../nnue-library/types";
 import type { ShogiBoardCell, ShogiBoardMoveShadow } from "../../shogi-board";
 import type { SelectionState } from "../contexts/MatchStateContext.types";
+import type { HintSearchOptions } from "../hooks/useBatchAnalysis";
 import type { ClockSettings, TickState } from "../hooks/useClockManager";
 import type {
     DisplaySettings,
@@ -153,7 +154,7 @@ export interface AnalysisProps {
     analyzingState: import("../types").AnalyzingState;
     batchAnalysis: import("../contexts/types").BatchAnalysisState | null;
     handleAnalyzePly: (ply: number) => void;
-    handleAnalyzeHintPly: (ply: number) => void;
+    handleAnalyzeHintPly: (ply: number, options?: HintSearchOptions) => Promise<boolean>;
     handleStartBatchAnalysis: () => void;
     handleCancelBatchAnalysis: () => void;
     handleAnalyzeNode: (nodeId: string) => void;
@@ -185,7 +186,13 @@ export interface NavigationProps {
     lastAddedBranchInfo: { ply: number; firstMove: string } | null;
     setLastAddedBranchInfo: (info: { ply: number; firstMove: string } | null) => void;
     handleAddPvAsBranch: (ply: number, pv: string[]) => void;
-    handlePreviewPv: (ply: number, pv: string[], evalCp?: number, evalMate?: number) => void;
+    handlePreviewPv: (
+        ply: number,
+        pv: string[],
+        evalCp?: number,
+        evalMate?: number,
+        startPosition?: PositionState,
+    ) => void;
     kifuViewMode: import("../components/KifuPanel").KifuViewMode;
     setKifuViewMode: (mode: import("../components/KifuPanel").KifuViewMode) => void;
     setDisplaySettings: import("react").Dispatch<import("react").SetStateAction<DisplaySettings>>;

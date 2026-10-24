@@ -15,6 +15,7 @@ import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import type { DisplaySettings } from "../types";
+import { HINT_MULTI_PV_CHOICES } from "../utils/hintSettings";
 import { formatSearchLimit } from "../utils/searchLimits";
 import { buildThreadOptions, clampThreads, threadCapOf } from "../utils/threadOptions";
 import { PLAY_OUTLINE_BUTTON } from "./playStyles";
@@ -282,6 +283,26 @@ export function PlayAdvancedSettings({
                     </button>
                 )}
             </Group>
+
+            {play && (
+                <Group title="ヒント">
+                    <label className="flex items-center justify-between gap-3 text-sm">
+                        候補手の数
+                        <NativeSelect
+                            value={String(play.hintMultiPv)}
+                            onChange={(event) => play.setHintMultiPv(Number(event.target.value))}
+                            wrapperClassName="w-40"
+                            className="min-h-10 text-sm"
+                        >
+                            {HINT_MULTI_PV_CHOICES.map((count) => (
+                                <option key={count} value={count}>
+                                    {count}
+                                </option>
+                            ))}
+                        </NativeSelect>
+                    </label>
+                </Group>
+            )}
 
             <Group title="盤の表示">
                 <label className="flex items-center justify-between gap-3 text-sm">

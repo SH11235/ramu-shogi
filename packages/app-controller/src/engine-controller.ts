@@ -327,7 +327,8 @@ const createInitialAnalysisState = (): AnalysisEngineState => ({
     engineId: null,
 });
 
-function buildPassRightsOption(
+/** パス権の設定（または指し手にあるパス）を、局面の読み込みの指定にする。 */
+export function buildPassRightsOption(
     passRightsSettings: PassRightsSettings | undefined,
     moves: string[],
 ) {

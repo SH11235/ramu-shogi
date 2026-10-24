@@ -54,6 +54,14 @@ const MIN_PREVIEW_CELL_SIZE = 22;
 const DIALOG_CHROME_WIDTH = 50;
 /** 持ち駒をスマホ用の大きさ（medium）で 1 行に出せる幅。これより狭ければ compact にする。 */
 const MEDIUM_HAND_MIN_WIDTH = 330;
+/**
+ * 盤のほかに縦に要る高さ（題・持ち駒 2 段・送りのボタン・読み筋の 1 行・余白）と、ダイアログの外の余白。
+ * 背の低いスマホ（375x553 など）では、幅でなく高さで盤の大きさが決まる。
+ */
+const DIALOG_CHROME_HEIGHT = 250;
+const DIALOG_OUTER_MARGIN = 24;
+/** 盤の高さはマスの約 10.4 倍（9 マスと筋・段の見出し・枠）。 */
+const BOARD_HEIGHT_PER_CELL = 10.4;
 
 function boardToGrid(board: BoardState): ShogiBoardCell[][] {
     const matrix = boardToMatrix(board);
@@ -104,9 +112,24 @@ export function PvPreviewDialog({
         (typeof document === "undefined"
             ? 0
             : document.documentElement.clientWidth - DIALOG_CHROME_WIDTH);
-    const cellSize = Math.min(
-        cellSizeForWidth(areaWidth, MIN_PREVIEW_CELL_SIZE),
-        MAX_PREVIEW_CELL_SIZE,
+    const [viewportHeight, setViewportHeight] = useState(() =>
+        typeof window === "undefined" ? 0 : window.innerHeight,
+    );
+    useEffect(() => {
+        const update = () => setViewportHeight(window.innerHeight);
+        window.addEventListener("resize", update);
+        return () => window.removeEventListener("resize", update);
+    }, []);
+    const cellSizeForHeight = Math.floor(
+        (viewportHeight - DIALOG_OUTER_MARGIN - DIALOG_CHROME_HEIGHT) / BOARD_HEIGHT_PER_CELL,
+    );
+    const cellSize = Math.max(
+        MIN_PREVIEW_CELL_SIZE,
+        Math.min(
+            cellSizeForWidth(areaWidth, MIN_PREVIEW_CELL_SIZE),
+            cellSizeForHeight,
+            MAX_PREVIEW_CELL_SIZE,
+        ),
     );
     // 持ち駒は 7 種すべてを 1 行に出す。PC 用の大きさ（normal）は約 540px、スマホ用（medium）でも
     // 約 320px になるので、幅が足りない端末（360px 幅など）ではさらに小さい表示にする。
@@ -114,6 +137,14 @@ export function PvPreviewDialog({
 
     // 現在のプレビュー位置（0 = 開始局面、1 = PVの1手目後、...）
     const [previewIndex, setPreviewIndex] = useState(0);
+    const [pvList, setPvList] = useState<HTMLDivElement | null>(null);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 見ている手が変わるたびに送り直す
+    useEffect(() => {
+        if (!pvList) return;
+        const current = pvList.querySelector<HTMLElement>('[aria-current="true"]');
+        if (current) current.scrollIntoView({ block: "nearest", inline: "nearest" });
+        else pvList.scrollLeft = 0;
+    }, [pvList, previewIndex]);
 
     // 各ステップの局面を事前計算（有効な手のみ）
     const { positions, validPv } = (() => {
@@ -219,13 +250,14 @@ export function PvPreviewDialog({
     return (
         <Dialog defaultOpen onOpenChange={(isOpen) => !isOpen && onClose()}>
             <DialogContent
-                className="max-w-[500px] p-3 sm:p-6"
+                // 盤と送りのボタン・読み筋を 1 画面に収めるため、背の低い画面でも高さをほぼ使う。
+                className="max-h-[calc(100dvh-24px)] max-w-[500px] p-3 sm:p-6"
                 // 説明を渡したときだけ関連付ける（渡さない呼び出しは、これまでどおり）。
                 hasDescription={description !== undefined}
             >
                 <DialogHeader className="flex min-h-8 flex-row items-center justify-between pr-8">
                     <DialogTitle className="text-sm font-medium">
-                        {ply}手目の読み筋
+                        {ply === 0 ? "開始局面からの読み筋" : `${ply}手目の読み筋`}
                         <span className="text-muted-foreground font-normal">
                             （{validPv.length}手）
                         </span>
@@ -348,16 +380,20 @@ export function PvPreviewDialog({
                         </button>
                     </div>
 
-                    {/* 読み筋リスト */}
-                    <div className="flex flex-wrap gap-0.5 text-xs font-mono tabular-nums justify-center">
+                    {/* 読み筋リスト。長い読み筋でも縦を取らないよう 1 行にし、見ている手を見える位置へ送る。 */}
+                    <div
+                        ref={setPvList}
+                        className="flex gap-0.5 overflow-x-auto overscroll-contain whitespace-nowrap scrollbar-hide text-xs font-mono tabular-nums [scrollbar-width:none] [-ms-overflow-style:none]"
+                    >
                         {pvDisplay.map((move, index) => {
                             const moveNumber = index + 1;
                             return (
                                 <button
                                     key={move.usiMove}
                                     type="button"
+                                    aria-current={moveNumber === previewIndex ? "true" : undefined}
                                     onClick={() => setPreviewIndex(moveNumber)}
-                                    className={`px-1 py-0.5 rounded cursor-pointer ${
+                                    className={`shrink-0 px-1 py-0.5 rounded cursor-pointer ${
                                         index + 1 === previewIndex ? "bg-accent" : "hover:bg-muted"
                                     } ${
                                         move.turn === "sente" ? "text-wafuu-shu" : "text-wafuu-ai"

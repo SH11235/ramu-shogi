@@ -5,6 +5,7 @@
  */
 
 import type { NnueMeta, NnueSelection, PresetConfig } from "@shogi/app-core";
+import type { HintSearchOptions } from "../hooks/useBatchAnalysis";
 import type { AnalysisSettings, AnalyzingState } from "../types";
 
 /**
@@ -47,7 +48,7 @@ export interface AnalysisContextValue {
 
     // 分析操作
     handleAnalyzePly: (ply: number) => void;
-    handleAnalyzeHintPly: (ply: number) => void;
+    handleAnalyzeHintPly: (ply: number, options?: HintSearchOptions) => Promise<boolean>;
     handleStartBatchAnalysis: () => void;
     handleCancelBatchAnalysis: () => void;
     handleAnalyzeNode: (nodeId: string) => void;
