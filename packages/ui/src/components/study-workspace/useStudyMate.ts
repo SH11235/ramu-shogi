@@ -15,7 +15,7 @@ import type { EngineOption } from "../shogi-match/types";
 
 /** 詰み・詰めろのそれぞれに掛ける時間の上限。 */
 export const STUDY_MATE_TIME_MS = 10_000;
-/** 1 局面を解くスレッド数（エンジンのスレッド数を上限に丸められる）。 */
+/** 1 局面を解くスレッド数。Web のエンジンの既定のスレッド数に合わせる（多く指定してもエンジンのスレッド数に丸められる）。 */
 const MATE_THREADS = 4;
 
 export type StudyMateState =
@@ -106,7 +106,8 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
 
     const start = (node: KifuNode): void => {
         const option = engineOption;
-        if (!option || !supported || runningNodeId !== null) return;
+        // 同じ描画の間に続けて呼ばれても二重に始めないよう、同期で書き換わる ref で確かめる
+        if (!option || !supported || activeRef.current !== null) return;
         const nodeId = node.id;
         const run = ++runRef.current;
         const checkCurrent = (): void => {
