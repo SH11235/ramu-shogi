@@ -17,6 +17,7 @@ import { Button } from "../button";
 import { convertPvToDisplay } from "../shogi-match/utils/kifFormat";
 import { StudyIconButton } from "./StudyIconButton";
 import { AddBranchIcon, AnalyzeIcon, PlayIcon } from "./StudyIcons";
+import { StudyMateSection } from "./StudyMateSection";
 import {
     formatStudyScore,
     type StudyPositionResult,
@@ -24,6 +25,7 @@ import {
     studyFirstMoveLabel,
     studyScoreSide,
 } from "./studyView";
+import type { StudyMateState } from "./useStudyMate";
 
 /** 読み筋を盤で見る・変化として足すときに渡す内容。 */
 export interface StudyPvRequest {
@@ -74,6 +76,15 @@ interface StudyCandidatesPanelProps {
     onCancel: () => void;
     onPreviewPv: (request: StudyPvRequest) => void;
     onAddPvAsVariation: (request: StudyPvRequest) => void;
+    /** 詰み探索。使えないエンジンでは渡さない。 */
+    mate?: {
+        /** この局面の結果（調べていなければ undefined）。 */
+        state: StudyMateState | undefined;
+        /** 別の局面を調べている途中。 */
+        busyElsewhere: boolean;
+        onStart: () => void;
+        onStop: () => void;
+    };
     className?: string;
 }
 
@@ -261,6 +272,7 @@ export function StudyCandidatesPanel({
     onCancel,
     onPreviewPv,
     onAddPvAsVariation,
+    mate,
     className,
 }: StudyCandidatesPanelProps): ReactElement {
     const isDeepHere = liveDepth !== undefined;
@@ -299,6 +311,18 @@ export function StudyCandidatesPanel({
                     </Button>
                 )}
             </div>
+
+            {mate && (
+                <StudyMateSection
+                    node={node}
+                    state={mate.state}
+                    busyElsewhere={mate.busyElsewhere}
+                    onStart={mate.onStart}
+                    onStop={mate.onStop}
+                    onPreviewPv={onPreviewPv}
+                    onAddPvAsVariation={onAddPvAsVariation}
+                />
+            )}
 
             {/* いま深く解析して得た結果は、押したボタンのすぐ下に出す（見当たらない、を防ぐ）。 */}
             {deeperResult && deeperIsFresh && (

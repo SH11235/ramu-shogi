@@ -1013,7 +1013,7 @@ pub fn stop() {
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct JsMateParams {
-    /// "Speed" / "Power" / "Auto" (既定 Auto)
+    /// "Speed" / "Power" (既定 Power)
     mode: Option<String>,
     /// 1 局面を解くスレッド数 (既定 1)。スレッドの無いビルドでは常に 1
     threads: Option<usize>,

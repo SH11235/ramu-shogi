@@ -512,11 +512,10 @@ export interface AnalysisClient {
  * 詰み探索の進め方。
  * - `Speed`: 速さ優先 (不詰の多い詰めろ判定向け)
  * - `Power`: 解く力優先 (証明駒・反証駒で持駒違いの局面に流用する。詰む問題・長手数・難問向け)
- * - `Auto`: 証明駒を使わずに読み、決まらなければ解く力優先で続ける
  */
-export type MateMode = "Speed" | "Power" | "Auto";
+export type MateMode = "Speed" | "Power";
 export interface MateParams {
-    /** 既定 `Auto` */
+    /** 既定 `Power` */
     mode?: MateMode;
     /** 1 局面を解くスレッド数。既定 1。エンジンのスレッド数を上限に丸める (スレッドが使えないときは 1)。 */
     threads?: number;
