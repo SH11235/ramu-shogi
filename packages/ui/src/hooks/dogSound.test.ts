@@ -131,6 +131,7 @@ describe("playDogEndSound", () => {
             base,
             new Map([
                 ["weak", {} as AudioBuffer],
+                ["bark1", {} as AudioBuffer],
                 ["bark6_full", full],
             ]),
         );
@@ -150,6 +151,24 @@ describe("playDogEndSound", () => {
         expect(weak.stops[0]).toBeCloseTo(1.42 + 0.04);
         const nodes = (ctx as unknown as { nodes: Array<{ buffer: unknown }> }).nodes;
         expect(nodes[1].buffer).toBe(full);
+    });
+
+    it("fades the weak voice that is still playing after a later weak was cancelled", () => {
+        const { ctx, voices } = fakeAudioContext();
+        ctx.currentTime = 1;
+        playDogSound(ctx, base, "move", true);
+        ctx.currentTime = 1.02;
+        playDogSound(ctx, base, "move", true);
+        ctx.currentTime = 1.04;
+        playDogSound(ctx, base, "check", false);
+        ctx.currentTime = 1.1;
+        playDogEndSound(ctx, base, 0.32);
+
+        const [weakA, weakB] = voices as unknown as Array<{
+            gain: { setTargetAtTime: ReturnType<typeof vi.fn> };
+        }>;
+        expect(weakA.gain.setTargetAtTime).toHaveBeenCalledTimes(1);
+        expect(weakB.gain.setTargetAtTime).not.toHaveBeenCalled();
     });
 
     it("reports a missing clip so nothing is played", () => {

@@ -181,6 +181,7 @@ export function playDogSound(
     source.start(when);
     const previous = current;
     const previousWeak = weakPlaying;
+    const previousWeakGain = weakGain;
     current = { source, gain };
     source.onended = () => {
         endedSources.add(source);
@@ -199,7 +200,9 @@ export function playDogSound(
         // 取り消した声の前の状態に戻す。戻さないと、鳴っている weak を通常の声として切ってしまい、
         // 鳴らなかった声に次の切り替えのフェードを掛けると停止時刻が後ろへ上書きされて一瞬鳴ってしまう
         if (weakPlaying === source) {
-            weakPlaying = previousWeak && !endedSources.has(previousWeak) ? previousWeak : null;
+            const restored = previousWeak && !endedSources.has(previousWeak);
+            weakPlaying = restored ? previousWeak : null;
+            weakGain = restored ? previousWeakGain : null;
         }
         if (current?.source === source) current = previous;
     });

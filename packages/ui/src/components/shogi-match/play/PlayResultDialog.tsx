@@ -121,7 +121,7 @@ export function PlayResultDialog({ variant }: PlayResultDialogProps): ReactEleme
                     onCloseAutoFocus={focusHeading}
                     className={cn(
                         surfaceTheme,
-                        "fixed inset-x-0 bottom-0 z-[51] rounded-t-2xl border-t border-wafuu-border bg-background px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-2 text-foreground shadow-[0_-12px_30px_rgba(0,0,0,0.2)] outline-none duration-300 data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom motion-reduce:animate-none",
+                        "fixed inset-x-0 bottom-0 z-[51] rounded-t-2xl border-t border-wafuu-border bg-background px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-2 text-foreground shadow-xl outline-none duration-300 data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom motion-reduce:animate-none",
                     )}
                 >
                     <div
