@@ -9,7 +9,9 @@ import type {
     LayerStacksOptions,
     LoadPositionOptions,
     MateClient,
+    MateMode,
     MateOutcome,
+    MateParams,
     MateProgress,
     SearchHandle,
     SearchParams,
@@ -115,6 +117,31 @@ function classifyErrorCode(error: unknown): EngineErrorCode {
  * 作り直す判定に使う。単語単体では「到達不能」を語るカスタムメッセージや
  * wasm 無関係の RuntimeError と衝突するため、両方を含む場合のみ panic 扱い。
  */
+const MATE_MODES: readonly MateMode[] = ["Speed", "Power", "Auto"];
+
+/** 0 以上の整数に切り捨てる (worker に送る前に確かめ、不正な値をエンジンのエラーにしない) */
+function nonNegativeInteger(name: string, value: number | undefined): number | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+        throw new RangeError(`${name} は 0 以上の数で指定してください`);
+    }
+    return Math.floor(value);
+}
+
+function normalizeMateParams(params: MateParams): MateParams {
+    if (params.mode !== undefined && !MATE_MODES.includes(params.mode)) {
+        throw new RangeError(`未知の詰み探索のモードです: ${String(params.mode)}`);
+    }
+    const threads = nonNegativeInteger("threads", params.threads);
+    return {
+        mode: params.mode,
+        threads: Math.max(1, threads ?? 1),
+        hashMb: nonNegativeInteger("hashMb", params.hashMb),
+        timeMs: nonNegativeInteger("timeMs", params.timeMs),
+        nodes: nonNegativeInteger("nodes", params.nodes),
+    };
+}
+
 function isWasmPanic(message: string): boolean {
     const lower = message.toLowerCase();
     return lower.includes("runtimeerror") && lower.includes("unreachable");
@@ -435,6 +462,12 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         pendingMates.clear();
     };
 
+    /** 解析・詰み探索の最中は、ほかの操作をすぐ失敗させる (待たせると後ろの操作がタイムアウトし、worker の状態とずれる) */
+    const assertIdle = () => {
+        if (analysisBridge.busy()) throw new Error("解析を停止してから操作してください");
+        if (pendingMates.size > 0) throw new Error("詰み探索が終わってから操作してください");
+    };
+
     const receiveMate = (message: MateMessage) => {
         const pending = pendingMates.get(message.requestId);
         if (!pending) return;
@@ -448,6 +481,8 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
                 return;
             case "mateError":
                 pendingMates.delete(message.requestId);
+                // 呼び出し側が失敗を受けて次の操作を投げる前に、壊れた worker の作り直しを始める
+                if (isWasmPanic(message.message)) recoverFromPanic();
                 pending.reject(new Error(message.message));
                 return;
         }
@@ -857,6 +892,8 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         available: () => initialized && backend === "threaded",
         ready: async () => {
             if (normalSearchActive) throw new Error("通常探索を停止してから解析を開始してください");
+            if (pendingMates.size > 0)
+                throw new Error("詰み探索が終わってから解析を開始してください");
             await ensureReady();
         },
         send: (command) => postToWorker(command),
@@ -909,30 +946,45 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
     };
 
     const mateClient: MateClient = {
+        available: () => initialized && (backend === "single" || backend === "threaded"),
         async solve(params, onProgress) {
-            if (analysisBridge.busy()) throw new Error("解析を停止してから操作してください");
-            analysisBridge.invalidate("新しい局面・設定・探索が指定されました");
+            assertIdle();
+            if (normalSearchActive)
+                throw new Error("通常探索を停止してから詰み探索を始めてください");
             if (backend === "mock" || backend === "error") {
                 throw new Error("詰み探索は利用できません");
             }
-            await ensureReady();
-            const target = worker;
-            if (!target) throw new Error("詰み探索は利用できません");
-            // スレッドはエンジンのスレッドプールで動くので、プールより多く並べても速くならない
-            const threads = Math.max(
-                1,
-                Math.min(Math.floor(params.threads ?? 1), activeThreads ?? 1),
-            );
+            const normalized = normalizeMateParams(params);
+            analysisBridge.invalidate("新しい局面・設定・探索が指定されました");
             const requestId = createRequestId();
-            return new Promise<MateOutcome>((resolve, reject) => {
+            // 準備を待つ前に登録し、その間の stop() などでも取り消せるようにする
+            const result = new Promise<MateOutcome>((resolve, reject) => {
                 pendingMates.set(requestId, { resolve, reject, onProgress });
-                try {
-                    postToWorker({ type: "solveMate", requestId, params: { ...params, threads } });
-                } catch (error) {
-                    pendingMates.delete(requestId);
-                    reject(error instanceof Error ? error : new Error(String(error)));
-                }
             });
+            try {
+                await ensureReady();
+            } catch (error) {
+                if (!pendingMates.delete(requestId)) return result;
+                throw error;
+            }
+            if (!pendingMates.has(requestId)) return result;
+            if (!worker) {
+                pendingMates.delete(requestId);
+                throw new Error("詰み探索は利用できません");
+            }
+            // 補助スレッドはエンジンのスレッドプールで動くので、プールより多く並べても速くならない
+            const threads = Math.min(normalized.threads ?? 1, activeThreads ?? 1);
+            try {
+                postToWorker({
+                    type: "solveMate",
+                    requestId,
+                    params: { ...normalized, threads },
+                });
+            } catch (error) {
+                pendingMates.delete(requestId);
+                throw error;
+            }
+            return result;
         },
     };
 
@@ -940,7 +992,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         analysis: analysisBridge.client,
         mate: mateClient,
         async init(opts?: WasmEngineInitOptions) {
-            if (analysisBridge.busy()) throw new Error("解析を停止してから操作してください");
+            assertIdle();
             analysisBridge.invalidate("新しい局面・設定・探索が指定されました");
             if (backend === "mock") {
                 await mock.init(opts);
@@ -966,7 +1018,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             }
         },
         async loadPosition(sfen: string, moves?: string[], options?: LoadPositionOptions) {
-            if (analysisBridge.busy()) throw new Error("解析を停止してから操作してください");
+            assertIdle();
             analysisBridge.invalidate("新しい局面・設定・探索が指定されました");
             if (backend === "mock") {
                 return mock.loadPosition(sfen, moves, options);
@@ -1008,7 +1060,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             lastPosition = { sfen, moves: normalizedMoves.slice(), passRights };
         },
         async search(params: SearchParams): Promise<SearchHandle> {
-            if (analysisBridge.busy()) throw new Error("解析を停止してから操作してください");
+            assertIdle();
             analysisBridge.invalidate("新しい局面・設定・探索が指定されました");
             if (backend === "mock") {
                 return mock.search(params);
@@ -1065,7 +1117,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             }
         },
         async setOption(name: string, value: string | number | boolean) {
-            if (analysisBridge.busy()) throw new Error("解析を停止してから操作してください");
+            assertIdle();
             analysisBridge.invalidate("新しい局面・設定・探索が指定されました");
             const normalized = normalizeOptionName(name);
             if (normalized === "Threads") {
@@ -1192,7 +1244,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             };
         },
         async loadNnue(nnueId: string, layerStacks?: LayerStacksOptions): Promise<void> {
-            if (analysisBridge.busy()) throw new Error("解析を停止してから操作してください");
+            assertIdle();
             analysisBridge.invalidate("新しい局面・設定・探索が指定されました");
             if (backend === "mock") {
                 // モックではNNUEロードは no-op

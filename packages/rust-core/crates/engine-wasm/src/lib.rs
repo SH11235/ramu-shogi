@@ -34,7 +34,8 @@ const DEFAULT_TT_SIZE_MB: usize = 64;
 const DEFAULT_EVAL_HASH_SIZE_MB: usize = 16;
 const DEFAULT_USE_EVAL_HASH: bool = false;
 const DEFAULT_MATE_HASH_MB: usize = 64;
-const MAX_MATE_HASH_MB: usize = 4096;
+/// スレッド版の線形メモリは 2 GiB までで、探索の置換表や評価関数もそこに置くので、詰み探索の置換表はその半分まで
+const MAX_MATE_HASH_MB: usize = 1024;
 
 thread_local! {
     static ENGINE: RefCell<Option<EngineState>> = const { RefCell::new(None) };
@@ -1016,7 +1017,7 @@ struct JsMateParams {
     mode: Option<String>,
     /// 1 局面を解くスレッド数 (既定 1)。スレッドの無いビルドでは常に 1
     threads: Option<usize>,
-    /// 置換表の大きさ (MB、既定 64)
+    /// 置換表の大きさ (MB、既定 64、上限 `MAX_MATE_HASH_MB`)
     hash_mb: Option<usize>,
     /// 時間の上限 (ミリ秒、0 か省略で無制限)
     time_ms: Option<u64>,
@@ -1077,14 +1078,17 @@ pub fn solve_mate(
     };
 
     with_engine_mut(|engine| {
-        let mut state = match engine.mate.take() {
-            Some(state) if state.hash_mb == hash_mb && state.mode == mode => state,
-            _ => MateSolverState {
-                hash_mb,
-                mode,
-                solver: DfpnSolver::with_mode(hash_mb, mode),
-            },
-        };
+        // 使い回せない古い置換表は、新しい表を確保する前に解放する (線形メモリは縮まないので、
+        // 両方を同時に持つとその分だけ上限に近づく)
+        let reusable = engine
+            .mate
+            .take()
+            .filter(|state| state.hash_mb == hash_mb && state.mode == mode);
+        let mut state = reusable.unwrap_or_else(|| MateSolverState {
+            hash_mb,
+            mode,
+            solver: DfpnSolver::with_mode(hash_mb, mode),
+        });
         state.solver.set_threads(params.threads.unwrap_or(1));
         let stop = std::sync::atomic::AtomicBool::new(false);
         let started = js_sys::Date::now();

@@ -1154,78 +1154,162 @@ describe("memoryThreadCap", () => {
 });
 
 describe("詰み探索 (mate.solve)", () => {
-    const createReadyClient = async () => {
+    /** 受けたコマンドにすぐ ack を返す worker (solveMate の結果は返さない) */
+    const createAckingWorker = () => {
         const worker = createMockWorker();
-        const client = createWasmEngineClient({
-            workerFactory: () => worker as unknown as Worker,
+        worker.postMessage.mockImplementation((command: { type: string; requestId?: string }) => {
+            if (command.type === "solveMate" || !command.requestId) return;
+            queueMicrotask(() =>
+                worker.onmessage?.({
+                    data: { type: "ack", requestId: command.requestId },
+                } as MessageEvent),
+            );
         });
-        const initPromise = client.init();
-        const initCall = worker.postMessage.mock.calls[0][0];
-        worker.onmessage?.({
-            data: { type: "ack", requestId: initCall.requestId },
-        } as MessageEvent);
-        await initPromise;
-        return { client, worker };
+        return worker;
     };
-    const lastSolveCall = (worker: MockWorker) =>
+    const createReadyClient = async (threads = 1) => {
+        const workers: MockWorker[] = [];
+        const client = createWasmEngineClient({
+            workerFactory: () => {
+                const worker = createAckingWorker();
+                workers.push(worker);
+                return worker as unknown as Worker;
+            },
+        });
+        await client.init({ threads });
+        return { client, workers, worker: () => workers[workers.length - 1] };
+    };
+    const solveCalls = (worker: MockWorker) =>
         worker.postMessage.mock.calls
             .map((call) => call[0] as { type: string; requestId: string; params: unknown })
-            .filter((c) => c.type === "solveMate")
-            .at(-1);
+            .filter((c) => c.type === "solveMate");
+    const reply = (worker: MockWorker, data: unknown) =>
+        worker.onmessage?.({ data } as MessageEvent);
 
     afterEach(() => {
         vi.clearAllMocks();
+        vi.unstubAllGlobals();
     });
 
-    it("solveMate を送り、進捗と結果を受け取る。スレッド数はエンジンのスレッド数で丸める", async () => {
+    it("solveMate を送り、進捗と結果を受け取る", async () => {
         const { client, worker } = await createReadyClient();
+        expect(client.mate?.available()).toBe(true);
         const progress = vi.fn();
         const solving = client.mate?.solve({ mode: "Power", threads: 4, timeMs: 1000 }, progress);
-        await vi.waitFor(() => expect(lastSolveCall(worker)).toBeDefined());
-        const call = lastSolveCall(worker);
-        if (!call) throw new Error("solveMate が送られていない");
+        await vi.waitFor(() => expect(solveCalls(worker())).toHaveLength(1));
+        const [call] = solveCalls(worker());
+        // スレッドの無い worker ではエンジンのスレッド数 1 に丸める
         expect(call.params).toEqual({ mode: "Power", threads: 1, timeMs: 1000 });
-        worker.onmessage?.({
-            data: {
-                type: "mateProgress",
-                requestId: call.requestId,
-                progress: { nodes: 10, elapsedMs: 1000 },
-            },
-        } as MessageEvent);
+        reply(worker(), {
+            type: "mateProgress",
+            requestId: call.requestId,
+            progress: { nodes: 10, elapsedMs: 1000 },
+        });
         const outcome = { result: { kind: "mate", pv: ["G*5b"] }, nodes: 12, elapsedMs: 3 };
-        worker.onmessage?.({
-            data: { type: "mateFinished", requestId: call.requestId, outcome },
-        } as MessageEvent);
+        reply(worker(), { type: "mateFinished", requestId: call.requestId, outcome });
         await expect(solving).resolves.toEqual(outcome);
         expect(progress).toHaveBeenCalledWith({ nodes: 10, elapsedMs: 1000 });
+    });
+
+    it("スレッド版ではエンジンのスレッド数を上限に丸める", async () => {
+        vi.stubGlobal("crossOriginIsolated", true);
+        vi.stubGlobal("SharedArrayBuffer", class {});
+        vi.stubGlobal("navigator", { hardwareConcurrency: 8 });
+        const { client, worker } = await createReadyClient(4);
+        for (const [requested, expected] of [
+            [8, 4],
+            [2, 2],
+            [0, 1],
+        ]) {
+            const solving = client.mate?.solve({ threads: requested });
+            await vi.waitFor(() => expect(solveCalls(worker()).length).toBeGreaterThan(0));
+            const call = solveCalls(worker()).at(-1);
+            expect(call?.params).toMatchObject({ threads: expected });
+            reply(worker(), {
+                type: "mateFinished",
+                requestId: call?.requestId,
+                outcome: { result: { kind: "unknown" }, nodes: 0, elapsedMs: 0 },
+            });
+            await solving;
+            worker().postMessage.mockClear();
+        }
+    });
+
+    it("不正な引数は worker に送らずに失敗する", async () => {
+        const { client, worker } = await createReadyClient();
+        await expect(client.mate?.solve({ mode: "Fast" as never })).rejects.toThrow(RangeError);
+        await expect(client.mate?.solve({ hashMb: Number.NaN })).rejects.toThrow(RangeError);
+        await expect(client.mate?.solve({ timeMs: -1 })).rejects.toThrow(RangeError);
+        expect(solveCalls(worker())).toHaveLength(0);
     });
 
     it("mateError で失敗する", async () => {
         const { client, worker } = await createReadyClient();
         const solving = client.mate?.solve({ mode: "Auto" });
-        await vi.waitFor(() => expect(lastSolveCall(worker)).toBeDefined());
-        worker.onmessage?.({
-            data: {
-                type: "mateError",
-                requestId: lastSolveCall(worker)?.requestId,
-                message: "bad",
-            },
-        } as MessageEvent);
+        await vi.waitFor(() => expect(solveCalls(worker())).toHaveLength(1));
+        reply(worker(), {
+            type: "mateError",
+            requestId: solveCalls(worker())[0].requestId,
+            message: "bad",
+        });
         await expect(solving).rejects.toThrow("bad");
+    });
+
+    it("panic の mateError では、失敗を返す前に worker を作り直し始める", async () => {
+        const { client, workers, worker } = await createReadyClient();
+        const solving = client.mate?.solve({});
+        await vi.waitFor(() => expect(solveCalls(worker())).toHaveLength(1));
+        const broken = worker();
+        reply(broken, {
+            type: "mateError",
+            requestId: solveCalls(broken)[0].requestId,
+            message: "RuntimeError: unreachable",
+        });
+        expect(broken.terminate).toHaveBeenCalled();
+        expect(workers.length).toBe(2);
+        await expect(solving).rejects.toThrow("unreachable");
+    });
+
+    it("解いている間のほかの操作はすぐ失敗する", async () => {
+        const { client, worker } = await createReadyClient();
+        const solving = client.mate?.solve({});
+        await vi.waitFor(() => expect(solveCalls(worker())).toHaveLength(1));
+        await expect(client.loadPosition("startpos")).rejects.toThrow("詰み探索");
+        await expect(client.search({})).rejects.toThrow("詰み探索");
+        await expect(client.setOption("MultiPV", 2)).rejects.toThrow("詰み探索");
+        await expect(client.mate?.solve({})).rejects.toThrow("詰み探索");
+        reply(worker(), {
+            type: "mateFinished",
+            requestId: solveCalls(worker())[0].requestId,
+            outcome: { result: { kind: "noMate" }, nodes: 1, elapsedMs: 0 },
+        });
+        await solving;
+        await expect(client.loadPosition("startpos")).resolves.toBeUndefined();
     });
 
     it("stop で worker を作り直すと、待っている solve は失敗する", async () => {
         const { client, worker } = await createReadyClient();
         const solving = client.mate?.solve({});
-        await vi.waitFor(() => expect(lastSolveCall(worker)).toBeDefined());
+        await vi.waitFor(() => expect(solveCalls(worker())).toHaveLength(1));
+        const first = worker();
         await client.stop();
         await expect(solving).rejects.toThrow();
-        expect(worker.terminate).toHaveBeenCalled();
+        expect(first.terminate).toHaveBeenCalled();
+    });
+
+    it("準備中に stop すると、solve を worker に送らずに失敗する", async () => {
+        const { client, workers } = await createReadyClient();
+        const solving = client.mate?.solve({});
+        await client.stop();
+        await expect(solving).rejects.toThrow();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(workers.flatMap((w) => solveCalls(w))).toHaveLength(0);
     });
 
     it("モックのエンジンでは使えない", async () => {
         const client = createWasmEngineClient({ useMock: true });
         await client.init();
+        expect(client.mate?.available()).toBe(false);
         await expect(client.mate?.solve({})).rejects.toThrow("詰み探索は利用できません");
     });
 });

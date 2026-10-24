@@ -520,21 +520,24 @@ export interface MateParams {
     mode?: MateMode;
     /** 1 局面を解くスレッド数。既定 1。エンジンのスレッド数を上限に丸める (スレッドが使えないときは 1)。 */
     threads?: number;
-    /** 置換表の大きさ (MB)。既定 64 */
+    /** 置換表の大きさ (MB)。既定 64、上限 1024 */
     hashMb?: number;
     /** 時間の上限 (ミリ秒)。0 か省略で無制限 */
     timeMs?: number;
     /** ノード数の上限。0 か省略で無制限 */
     nodes?: number;
 }
+/**
+ * 詰み探索の結論。
+ * - `mate`: 詰み。`pv` は攻め方の手から始まる USI 形式の手順 (最後の手で受け方が詰む)
+ * - `noMate`: 不詰 (王手を続けて詰ませる手順は無い)
+ * - `unknown`: 時間・ノード数の上限で打ち切った、または判定できなかった
+ * - `unsupported`: 扱えない局面 (玉が無い、手番でない側が王手されている)
+ */
 export type MateResult =
-    /** 詰み。攻め方の手から始まる USI 形式の手順 (最後の手で受け方が詰む) */
     | { kind: "mate"; pv: string[] }
-    /** 不詰 (王手を続けて詰ませる手順は無い) */
     | { kind: "noMate" }
-    /** 時間・ノード数の上限で打ち切った、または判定できなかった */
     | { kind: "unknown" }
-    /** 扱えない局面 (玉が無い、手番でない側が王手されている) */
     | { kind: "unsupported" };
 export interface MateOutcome {
     result: MateResult;
@@ -546,10 +549,13 @@ export interface MateProgress {
     elapsedMs: number;
 }
 export interface MateClient {
+    /** 初期化後に使えるか。 */
+    available(): boolean;
     /**
      * loadPosition で読み込んだ局面の手番側が詰ませられるかを解く。
-     * 終わるまでほかの操作 (探索・局面の読み込みなど) は待たされる。途中で止めるには上限を指定する
+     * 終わるまでほかの操作 (探索・局面の読み込み・設定など) はすぐ失敗する。途中で止めるには上限を指定する
      * (stop() はエンジンを作り直して止め、待っている solve は失敗する)。
+     * 通常の探索・解析の最中に呼ぶと失敗する。
      * @param onProgress 約 1 秒ごとに呼ばれる
      */
     solve(params: MateParams, onProgress?: (progress: MateProgress) => void): Promise<MateOutcome>;
