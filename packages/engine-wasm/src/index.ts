@@ -835,10 +835,13 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         const module = getInitWasmModule();
         // 進行中の初期化として登録し、局面などを戻し終えるまで ensureReady を待たせる (失敗も待つ側に伝わる)
         const attempt = initWorkerWithKind(kind, payload, module, true);
+        const generation = workerGen;
         initInFlight = attempt;
         try {
             await attempt;
         } catch (error) {
+            // stop / reset で置き換えた後の失敗は、新しい worker の初期化に持ち込まない
+            if (generation !== workerGen) return;
             const code = classifyErrorCode(error);
             enterErrorState("Wasm engine initialization failed", code);
         } finally {
