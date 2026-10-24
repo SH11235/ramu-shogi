@@ -88,6 +88,17 @@ describe("StudyMateSection", () => {
         expect(screen.queryByRole("button", { name: "詰み手順を盤で見る" })).toBeNull();
     });
 
+    it("結果のある局面でも、別の局面を調べている間は中止できる", () => {
+        const { handlers } = renderSection(
+            { status: "done", mate: { kind: "noMate" }, threat: { kind: "noMate" } },
+            true,
+        );
+        screen.getByText("詰めろ");
+        screen.getByText("別の局面の詰みを調べています");
+        fireEvent.click(screen.getByRole("button", { name: "詰み探索を中止" }));
+        expect(handlers.onStop).toHaveBeenCalled();
+    });
+
     it("時間内に読み切れなければ、そう伝える", () => {
         renderSection({ status: "done", mate: { kind: "unknown" }, threat: { kind: "unknown" } });
         expect(screen.getAllByText("10 秒では読み切れませんでした")).toHaveLength(2);

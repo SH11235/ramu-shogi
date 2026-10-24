@@ -26,6 +26,8 @@ const UNKNOWN_TEXT = `${STUDY_MATE_TIME_MS / 1000} 秒では読み切れませ�
 /** 調べている途中の表示（例: `詰みを調べています（3 秒・120 万局面）`）。 */
 export function studyMateProgressText(state: StudyMateState & { status: "running" }): string {
     const what = state.phase === "mate" ? "詰み" : "詰めろ";
+    // 最初の途中経過はエンジンの起動を待つ間なので、数字を出さない
+    if (state.nodes === 0) return `${what}を調べています`;
     const seconds = Math.floor(state.elapsedMs / 1000);
     const nodes =
         state.nodes >= 10_000
@@ -61,7 +63,8 @@ function MateLine({
     mover: Side;
     result: MateResult;
     moves: string[];
-    unsupportedText: string;
+    /** 扱えない局面のときの文言（詰めろの行は扱えない局面を出さないので省く）。 */
+    unsupportedText?: string;
     actions?: ReactElement;
 }): ReactElement {
     return (
@@ -117,8 +120,8 @@ export function StudyMateSection({
     onPreviewPv: (request: StudyPvRequest) => void;
     onAddPvAsVariation: (request: StudyPvRequest) => void;
 }): ReactElement {
-    if (state?.status === "running" || (busyElsewhere && state?.status !== "done")) {
-        return (
+    if (state?.status === "running" || busyElsewhere) {
+        const progress = (
             <div className="flex min-h-10 items-center justify-between gap-2 px-1">
                 <output aria-live="polite" className="text-xs text-muted-foreground">
                     {state?.status === "running"
@@ -126,6 +129,19 @@ export function StudyMateSection({
                         : "別の局面の詰みを調べています"}
                 </output>
                 <StopButton onStop={onStop} />
+            </div>
+        );
+        // この局面の結果があれば、それも出す（別の局面を調べている間に戻ってきたとき）
+        if (state?.status !== "done") return progress;
+        return (
+            <div className="flex flex-col gap-1">
+                <MateResults
+                    node={node}
+                    state={state}
+                    onPreviewPv={onPreviewPv}
+                    onAddPvAsVariation={onAddPvAsVariation}
+                />
+                {progress}
             </div>
         );
     }
@@ -145,6 +161,27 @@ export function StudyMateSection({
             </div>
         );
     }
+    return (
+        <MateResults
+            node={node}
+            state={state}
+            onPreviewPv={onPreviewPv}
+            onAddPvAsVariation={onAddPvAsVariation}
+        />
+    );
+}
+
+function MateResults({
+    node,
+    state,
+    onPreviewPv,
+    onAddPvAsVariation,
+}: {
+    node: KifuNode;
+    state: StudyMateState & { status: "done" };
+    onPreviewPv: (request: StudyPvRequest) => void;
+    onAddPvAsVariation: (request: StudyPvRequest) => void;
+}): ReactElement {
     const turn = node.positionAfter.turn;
     const { mate, threat } = state;
     const mateMoves =
@@ -197,7 +234,6 @@ export function StudyMateSection({
                     mover={opponent(turn)}
                     result={threat}
                     moves={threatMoves}
-                    unsupportedText="この局面は調べられません"
                 />
             )}
         </div>

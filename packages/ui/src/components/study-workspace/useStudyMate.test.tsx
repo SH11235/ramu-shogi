@@ -169,6 +169,27 @@ describe("useStudyMate", () => {
         expect(engine.created[0].dispose).toHaveBeenCalled();
     });
 
+    it("エンジンが変わったら、前のエンジンで調べている途中の実行を取り消す", async () => {
+        const { doc, ids } = createTestStudy();
+        const { tree } = buildStudyViewTree(doc, TEST_LAYER_ID);
+        const node = tree.nodes.get(ids[1]);
+        if (!node) throw new Error("node");
+        const engine = createMateEngine(() => MATE);
+        engine.hold("solve");
+        const other = createMateEngine(() => MATE).option;
+        const hook = renderHook(
+            ({ option }) => useStudyMate({ engineOption: option, hashMb: 16 }),
+            { initialProps: { option: engine.option } },
+        );
+        act(() => hook.result.current.start(node));
+        await waitFor(() => expect(engine.solves).toHaveLength(1));
+        hook.rerender({ option: { ...other, id: "wasm-2" } });
+        expect(engine.created[0].dispose).toHaveBeenCalled();
+        expect(hook.result.current.runningNodeId).toBeNull();
+        await act(async () => engine.release());
+        expect(hook.result.current.results.has(node.id)).toBe(false);
+    });
+
     it("詰み探索を持たないエンジンでは使えない", () => {
         const { result } = renderHook(() =>
             useStudyMate({

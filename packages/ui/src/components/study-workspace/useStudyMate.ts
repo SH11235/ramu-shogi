@@ -10,7 +10,7 @@
 
 import { type KifuNode, positionToSfen } from "@shogi/app-core";
 import type { EngineClient, MateMode, MateResult } from "@shogi/engine-client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { EngineOption } from "../shogi-match/types";
 
 /** 詰み・詰めろのそれぞれに掛ける時間の上限。 */
@@ -63,6 +63,8 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
     /** 実行の世代。開始・中止・アンマウントのたびに進め、古い実行の続きを捨てる。 */
     const runRef = useRef(0);
     const clientRef = useRef<EngineClient | null>(null);
+    /** 調べている実行の局面と、使っているエンジンの id。 */
+    const activeRef = useRef<{ nodeId: string; engineId: string } | null>(null);
 
     const supported = engineOption?.supportsMate === true;
 
@@ -76,15 +78,30 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
         if (client) void client.dispose();
     };
 
-    // 画面を閉じたら、調べている途中のエンジンを捨てる
+    /** 調べている実行を取り消す（世代を進め、エンジンを捨て、途中の表示を消す）。 */
+    const cancelActive = (): void => {
+        const active = activeRef.current;
+        activeRef.current = null;
+        runRef.current++;
+        disposeClient();
+        setRunningNodeId(null);
+        if (active) {
+            setResults((previous) => {
+                const next = new Map(previous);
+                next.delete(active.nodeId);
+                return next;
+            });
+        }
+    };
+    const cancelActiveEvent = useEffectEvent(cancelActive);
+
+    // エンジンが変わった・画面を閉じたら、そのエンジンで調べている途中の実行を取り消す
+    const engineId = engineOption?.id ?? null;
     useEffect(
         () => () => {
-            runRef.current++;
-            const client = clientRef.current;
-            clientRef.current = null;
-            if (client) void client.dispose();
+            if (activeRef.current?.engineId === engineId) cancelActiveEvent();
         },
-        [],
+        [engineId],
     );
 
     const start = (node: KifuNode): void => {
@@ -95,11 +112,20 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
         const checkCurrent = (): void => {
             if (runRef.current !== run) throw new StudyMateCancelled();
         };
+        let client: EngineClient;
+        try {
+            client = option.createClient();
+        } catch (error) {
+            setResult(nodeId, {
+                status: "error",
+                message: error instanceof Error ? error.message : String(error),
+            });
+            return;
+        }
+        clientRef.current = client;
+        activeRef.current = { nodeId, engineId: option.id };
         setRunningNodeId(nodeId);
         setResult(nodeId, { status: "running", phase: "mate", nodes: 0, elapsedMs: 0 });
-
-        const client = option.createClient();
-        clientRef.current = client;
         const solve = async (
             sfen: string,
             phase: "mate" | "threat",
@@ -152,6 +178,7 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
                 });
             } finally {
                 if (runRef.current === run) {
+                    activeRef.current = null;
                     setRunningNodeId(null);
                     disposeClient();
                 }
@@ -160,17 +187,8 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
     };
 
     const stop = (): void => {
-        const nodeId = runningNodeId;
-        if (nodeId === null) return;
-        runRef.current++;
-        setRunningNodeId(null);
-        setResults((previous) => {
-            const next = new Map(previous);
-            next.delete(nodeId);
-            return next;
-        });
         // 詰み探索は途中で止められないので、エンジンを捨てて止める
-        disposeClient();
+        if (activeRef.current !== null) cancelActive();
     };
 
     return { supported, results, runningNodeId, start, stop };
