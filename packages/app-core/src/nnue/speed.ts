@@ -173,11 +173,12 @@ export function nnueSpeedRows(
 
 /**
  * 局面/秒を「120万」のように丸める。参考値なので有効数字 2 桁ほどにする。
- * 1 万未満は百の位、10 万未満は小数 1 桁の万で見せる。
+ * 千未満はそのまま、1 万未満は百の位、10 万未満は小数 1 桁の万で見せる。
  */
 export function formatNodesPerSecond(nps: number): string {
     if (nps >= 100_000_000) return `${(nps / 100_000_000).toFixed(1)}億`;
     if (nps >= 100_000) return `${Math.round(nps / 10_000).toLocaleString("ja-JP")}万`;
     if (nps >= 10_000) return `${(nps / 10_000).toFixed(1)}万`;
+    if (nps < 1_000) return Math.round(nps).toLocaleString("ja-JP");
     return (Math.round(nps / 100) * 100).toLocaleString("ja-JP");
 }

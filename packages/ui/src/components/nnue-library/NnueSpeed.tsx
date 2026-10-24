@@ -64,7 +64,12 @@ type BenchmarkState =
     | { phase: "idle" }
     /** `index` が null のあいだは、評価関数を用意している（端末に無ければダウンロードしている） */
     | { phase: "running"; contentHash: string; threads: number; index: number | null }
-    | { phase: "done"; contentHash: string; message: string | null };
+    /** `message` は測れなかったときの一言と、その理由 */
+    | {
+          phase: "done";
+          contentHash: string;
+          message: { label: string; detail: string | null } | null;
+      };
 
 interface BenchmarkTarget {
     contentHash: string;
@@ -153,8 +158,11 @@ export function useNnueSpeedBenchmark(support: NnueSpeedSupport | undefined) {
                 phase: "done",
                 contentHash,
                 message: controller.signal.aborted
-                    ? abortReasonRef.current
-                    : "測れませんでした。もう一度お試しください。",
+                    ? { label: "中断しました", detail: abortReasonRef.current }
+                    : {
+                          label: "測れませんでした",
+                          detail: "測れませんでした。もう一度お試しください。",
+                      },
             });
         } finally {
             document.removeEventListener("visibilitychange", onVisibilityChange);
@@ -286,6 +294,12 @@ export function NnueSpeedTable({
                     >
                         {progressLabel ?? "測る"}
                     </Button>
+                    {/* 出たり消えたりしてもカードの高さが変わらないよう、操作の行に一言だけ置く */}
+                    {message && (
+                        <span aria-live="polite" title={message.detail ?? undefined}>
+                            {message.label}
+                        </span>
+                    )}
                 </div>
             )}
             <table className="w-fit border-collapse whitespace-nowrap text-left tabular-nums">
@@ -316,8 +330,7 @@ export function NnueSpeedTable({
                     ))}
                 </tbody>
             </table>
-            {canMeasure && downloadNote && !running && <p>{downloadNote}</p>}
-            {message && <p aria-live="polite">{message}</p>}
+            {canMeasure && downloadNote && <p>{downloadNote}</p>}
         </div>
     );
 }

@@ -57,5 +57,6 @@ describe("nnue speed records", () => {
         expect(formatNodesPerSecond(1_234_567)).toBe("123万");
         expect(formatNodesPerSecond(34_567)).toBe("3.5万");
         expect(formatNodesPerSecond(8_449)).toBe("8,400");
+        expect(formatNodesPerSecond(42.4)).toBe("42");
     });
 });

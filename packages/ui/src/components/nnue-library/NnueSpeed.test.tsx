@@ -192,6 +192,35 @@ describe("NnueSpeedTable", () => {
         expect(rowTexts()).toContain("1 | 約 100万 | —");
     });
 
+    it("測れなかったときは、操作の行に一言だけ出す（理由は title）", async () => {
+        const failing: NnueSpeedSupport = {
+            environment,
+            maxThreads: 8,
+            createBenchmarkClient: () => ({
+                ...createBenchmarkClient(),
+                search: async () => {
+                    throw new Error("failed");
+                },
+            }),
+        };
+        function Failing() {
+            const benchmark = useNnueSpeedBenchmark(failing);
+            return (
+                <NnueSpeedTable
+                    contentHash="failing"
+                    prepare={async () => meta}
+                    support={failing}
+                    benchmark={benchmark}
+                />
+            );
+        }
+        render(<Failing />);
+        fireEvent.click(screen.getByRole("button", { name: "測る" }));
+        const label = await screen.findByText("測れませんでした");
+        expect(label.title).toBe("測れませんでした。もう一度お試しください。");
+        expect(label.closest("div")?.querySelector("select")).not.toBeNull();
+    });
+
     it("対局・解析中などで測れないときは押せない", () => {
         render(<Harness hash="other" reason="対局中は変更できません" />);
         const button = screen.getByRole("button", { name: "測る" }) as HTMLButtonElement;
