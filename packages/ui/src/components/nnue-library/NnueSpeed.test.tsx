@@ -2,6 +2,7 @@ import { nnueSpeedStore } from "@shogi/app-controller";
 import type { NnueMeta } from "@shogi/app-core";
 import type { EngineClient, EngineEventHandler } from "@shogi/engine-client";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ENGINE_THREADS_STORAGE_KEY } from "../shogi-match/constants";
 import { NnueSpeedTable, speedTableThreads, useNnueSpeedBenchmark } from "./NnueSpeed";
@@ -190,6 +191,66 @@ describe("NnueSpeedTable", () => {
         cleanup();
         render(<Fallback />);
         expect(rowTexts()).toContain("1 | 約 100万 | —");
+    });
+
+    it("測れなかったときは、操作の行に一言だけ出す（理由は title）", async () => {
+        const failing: NnueSpeedSupport = {
+            environment,
+            maxThreads: 8,
+            createBenchmarkClient: () => ({
+                ...createBenchmarkClient(),
+                search: async () => {
+                    throw new Error("failed");
+                },
+            }),
+        };
+        function Failing() {
+            const benchmark = useNnueSpeedBenchmark(failing);
+            return (
+                <NnueSpeedTable
+                    contentHash="failing"
+                    prepare={async () => meta}
+                    support={failing}
+                    benchmark={benchmark}
+                />
+            );
+        }
+        render(<Failing />);
+        fireEvent.click(screen.getByRole("button", { name: "測る" }));
+        const label = await screen.findByText("測れませんでした");
+        expect(label.title).toBe("測れませんでした。もう一度お試しください。");
+        expect(label.closest("div")?.querySelector("select")).not.toBeNull();
+    });
+
+    it("測る途中でダウンロードが済んでも、注記の行を残してカードの高さを変えない", async () => {
+        function Downloading() {
+            const benchmark = useNnueSpeedBenchmark(support);
+            const [downloaded, setDownloaded] = useState(false);
+            return (
+                <NnueSpeedTable
+                    contentHash="downloading"
+                    prepare={async () => {
+                        setDownloaded(true);
+                        return meta;
+                    }}
+                    downloadNote={downloaded ? undefined : "測るときに 1 KB をダウンロードします。"}
+                    support={support}
+                    benchmark={benchmark}
+                />
+            );
+        }
+        render(<Downloading />);
+        fireEvent.click(screen.getByRole("button", { name: "測る" }));
+        await screen.findByRole("button", { name: /あと約/ });
+        expect(screen.getByText("測るときに 1 KB をダウンロードします。")).toBeTruthy();
+        // 測り終えたら見えなくするが、行は残してカードの高さを変えない
+        const note = screen.getByText("測るときに 1 KB をダウンロードします。");
+        expect(note.className).not.toContain("invisible");
+        await waitFor(() => expect(note.className).toContain("invisible"));
+        // ダウンロード済みのあとに測り直しても、注記は見えないまま
+        fireEvent.click(screen.getByRole("button", { name: "測る" }));
+        await screen.findByRole("button", { name: /あと約/ });
+        expect(note.className).toContain("invisible");
     });
 
     it("対局・解析中などで測れないときは押せない", () => {

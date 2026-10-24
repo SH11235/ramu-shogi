@@ -187,9 +187,11 @@ export function NnueLibrary({
         ) : null;
     // 端末に無い配布 AI は、測るときにダウンロードする（測りたい人にダウンロードを促す）。
     const presetSpeedTable = (preset: PresetWithStatus) => {
-        const localMeta =
-            preset.localMetas.find((meta) => meta.contentHashSha256 === preset.config.sha256) ??
-            preset.localMetas[0];
+        // 旧版のファイルしか無いときは、旧版の値を最新版の値と見間違えないよう、端末に無いものとして扱う
+        // （測るときに最新版をダウンロードする）。
+        const localMeta = preset.localMetas.find(
+            (meta) => meta.contentHashSha256 === preset.config.sha256,
+        );
         if (localMeta) return speedTable(localMeta.contentHashSha256, async () => localMeta);
         const downloadSize = preset.config.size + (preset.config.progressCoefficients?.size ?? 0);
         return speedTable(

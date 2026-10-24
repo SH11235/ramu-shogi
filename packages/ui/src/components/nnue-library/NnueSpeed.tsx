@@ -64,7 +64,12 @@ type BenchmarkState =
     | { phase: "idle" }
     /** `index` が null のあいだは、評価関数を用意している（端末に無ければダウンロードしている） */
     | { phase: "running"; contentHash: string; threads: number; index: number | null }
-    | { phase: "done"; contentHash: string; message: string | null };
+    /** `message` は測れなかったときの一言と、その理由 */
+    | {
+          phase: "done";
+          contentHash: string;
+          message: { label: string; detail: string | null } | null;
+      };
 
 interface BenchmarkTarget {
     contentHash: string;
@@ -153,8 +158,11 @@ export function useNnueSpeedBenchmark(support: NnueSpeedSupport | undefined) {
                 phase: "done",
                 contentHash,
                 message: controller.signal.aborted
-                    ? abortReasonRef.current
-                    : "測れませんでした。もう一度お試しください。",
+                    ? { label: "中断しました", detail: abortReasonRef.current }
+                    : {
+                          label: "測れませんでした",
+                          detail: "測れませんでした。もう一度お試しください。",
+                      },
             });
         } finally {
             document.removeEventListener("visibilitychange", onVisibilityChange);
@@ -232,6 +240,13 @@ export function NnueSpeedTable({
         (NNUE_SPEED_BENCHMARK_POSITIONS.length * NNUE_SPEED_BENCHMARK_MS_PER_POSITION) / 1000;
     const message =
         state.phase === "done" && state.contentHash === contentHash ? state.message : null;
+    // 測る途中でダウンロードが済むと注記は要らなくなるが、出ていた注記の行は見えなくするだけで残し、
+    // カードの高さを変えない。props の変化に合わせた state の更新なので render の中で行う（React の推奨する形）。
+    const [keptNote, setKeptNote] = useState(downloadNote);
+    if (downloadNote && downloadNote !== keptNote) setKeptNote(downloadNote);
+    const [noteDuringRun, setNoteDuringRun] = useState(false);
+    if (!running && noteDuringRun) setNoteDuringRun(false);
+    const noteVisible = Boolean(downloadNote) || (running !== null && noteDuringRun);
     const blockedReason =
         disabledReason ??
         (benchmark.isRunning
@@ -256,8 +271,9 @@ export function NnueSpeedTable({
     return (
         <div className="flex flex-col items-start gap-2 text-xs text-muted-foreground">
             {canMeasure && (
-                <div className="flex items-center gap-2">
+                <div className="flex w-full min-w-0 items-center gap-2">
                     <NativeSelect
+                        wrapperClassName="shrink-0"
                         aria-label="測るスレッド数"
                         value={selectedThreads}
                         onChange={(event) => setSelectedThreads(Number(event.target.value))}
@@ -277,15 +293,31 @@ export function NnueSpeedTable({
                     <Button
                         size="sm"
                         variant="outline"
-                        className="h-8 px-3 text-xs [@media(pointer:coarse)]:text-base"
+                        className="h-8 shrink-0 px-3 text-xs [@media(pointer:coarse)]:text-base"
                         disabled={running !== null || blockedReason !== undefined}
                         title={blockedReason ?? `約 ${totalSeconds} 秒読んで測ります`}
-                        onClick={() =>
-                            void benchmark.start({ contentHash, threads: selectedThreads, prepare })
-                        }
+                        onClick={() => {
+                            // 押したときに注記が出ていれば、測り終えるまで出したままにする
+                            setNoteDuringRun(Boolean(downloadNote));
+                            void benchmark.start({
+                                contentHash,
+                                threads: selectedThreads,
+                                prepare,
+                            });
+                        }}
                     >
                         {progressLabel ?? "測る"}
                     </Button>
+                    {/* 出たり消えたりしてもカードの高さが変わらないよう、操作の行に一言だけ置く */}
+                    {message && (
+                        <span
+                            aria-live="polite"
+                            title={message.detail ?? undefined}
+                            className="min-w-0 truncate"
+                        >
+                            {message.label}
+                        </span>
+                    )}
                 </div>
             )}
             <table className="w-fit border-collapse whitespace-nowrap text-left tabular-nums">
@@ -316,8 +348,11 @@ export function NnueSpeedTable({
                     ))}
                 </tbody>
             </table>
-            {canMeasure && downloadNote && !running && <p>{downloadNote}</p>}
-            {message && <p aria-live="polite">{message}</p>}
+            {canMeasure && keptNote && (
+                <p className={noteVisible ? undefined : "invisible"} aria-hidden={!noteVisible}>
+                    {keptNote}
+                </p>
+            )}
         </div>
     );
 }
