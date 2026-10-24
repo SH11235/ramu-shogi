@@ -18,6 +18,12 @@ const CLIP_NAMES = [
     "strong3",
     "strong4",
     "weak",
+    "v3_01",
+    "v3_02",
+    "v3_03",
+    "v3_04",
+    "v3_05",
+    "v3_06",
 ] as const;
 type ClipName = (typeof CLIP_NAMES)[number];
 
@@ -37,8 +43,18 @@ const END_CLIP: ClipName = "bark6_full";
 const END_GAIN = 0.9;
 
 // CPU が劣勢のときの弱い声。毎手鳴ると効果が薄れるので一部の手だけ置き換える。
+// v3_01〜06 は 3 本目の動画の 1 秒を超える長い声で、weak と同じ扱いにする
 const WEAK_PROBABILITY = 0.25;
-// weak は 1.2 秒あり、人がすぐ指し返しても切らずに鳴らし切る。その間の声は小さくして重ねる。
+const WEAK_CLIPS: readonly ClipName[] = [
+    "weak",
+    "v3_01",
+    "v3_02",
+    "v3_03",
+    "v3_04",
+    "v3_05",
+    "v3_06",
+];
+// 弱い声は 1〜1.5 秒あり、人がすぐ指し返しても切らずに鳴らし切る。その間の声は小さくして重ねる。
 const DUCK_GAIN_WHILE_WEAK = 0.5;
 
 const LOAD_TIMEOUT_MS = 15_000;
@@ -115,14 +131,14 @@ function pick<T>(items: readonly T[], random: () => number): T | undefined {
     return items[Math.floor(random() * items.length)];
 }
 
-/** 鳴らす声を選ぶ。CPU の手で CPU が劣勢なら、王手・駒取り以外の一部を weak に置き換える */
+/** 鳴らす声を選ぶ。CPU の手で CPU が劣勢なら、王手・駒取り以外の一部を弱い声に置き換える */
 export function chooseDogClip(
     scene: MoveScene,
     cpuLosing: boolean,
     random: () => number = Math.random,
 ): ClipName | undefined {
     if (cpuLosing && (scene === "move" || scene === "promote") && random() < WEAK_PROBABILITY) {
-        return "weak";
+        return pick(WEAK_CLIPS, random);
     }
     return pick(SCENE_CLIPS[scene], random);
 }
@@ -143,7 +159,7 @@ export function playDogSound(
     const buffer = name ? buffers.get(name) : undefined;
     if (!name || !buffer) return "unavailable";
 
-    const isWeak = name === "weak";
+    const isWeak = WEAK_CLIPS.includes(name);
     const now = ctx.currentTime;
     const when = reserveSoundSlot(now);
     if (current && current.source !== weakPlaying) {

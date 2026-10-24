@@ -18,6 +18,12 @@ describe("chooseDogClip", () => {
         expect(chooseDogClip("move", false, always(0.1))).not.toBe("weak");
     });
 
+    it("picks among all the long weak voices", () => {
+        const draws = [0.1, 0.99];
+        const random = () => draws.shift() ?? 0;
+        expect(chooseDogClip("move", true, random)).toBe("v3_06");
+    });
+
     it("keeps check and capture voices even while the CPU is losing", () => {
         expect(chooseDogClip("check", true, always(0.1))).not.toBe("weak");
         expect(chooseDogClip("capture", true, always(0.1))).not.toBe("weak");
