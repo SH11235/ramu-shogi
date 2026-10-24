@@ -252,8 +252,8 @@ export function useGameControls({
         isTransitioningRef.current = true;
         try {
             if (!positionReady) return;
-            // 玉の無い側がある局面（局面編集・SFEN で作れる）では、勝ち負けが決まらない
-            // （AI の準備を待つ間の編集もあるので、確定した後にもう一度確かめる）
+            // 玉の無い側がある局面（SFEN・棋譜の読み込みで作れる）では、勝ち負けが決まらない
+            // （準備を待つ間にも局面を読み込めるので、対局を動かす直前にもう一度確かめる）
             const refuseKingless = (): boolean => {
                 const reason = missingKingReason(positionRef.current);
                 if (reason) setMessage({ text: reason, type: "warning" });
@@ -277,6 +277,7 @@ export function useGameControls({
                     setMessage({ text: "エンジンの初期化に失敗しました。", type: "error" });
                     return;
                 }
+                if (refuseKingless()) return;
                 setIsPaused(false);
                 setIsMatchRunning(true);
                 turnStartTimeRef.current = Date.now();
@@ -288,7 +289,6 @@ export function useGameControls({
             if (isEditMode) {
                 await finalizeEditedPosition();
                 setIsEditMode(false);
-                if (refuseKingless()) return;
             }
 
             // パス権が有効な場合、対局開始時に初期化
@@ -320,6 +320,7 @@ export function useGameControls({
                 setMessage({ text: "エンジンの初期化に失敗しました。", type: "error" });
                 return;
             }
+            if (refuseKingless()) return;
 
             setIsMatchRunning(true);
             turnStartTimeRef.current = Date.now();

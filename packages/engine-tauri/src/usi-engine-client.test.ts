@@ -36,7 +36,7 @@ describe("createUsiEngineClient", () => {
         await expect(client.search({})).rejects.toThrow("without both kings");
         expect(invokeMock).not.toHaveBeenCalledWith("usi_engine_go", expect.anything());
 
-        await client.loadPosition("startpos", ["7g7f"]);
+        await client.loadPosition("4k4/9/4P4/9/9/9/9/9/4K4 b G 1", []);
         await client.search({});
         expect(invokeMock).toHaveBeenCalledWith("usi_engine_go", expect.anything());
     });
