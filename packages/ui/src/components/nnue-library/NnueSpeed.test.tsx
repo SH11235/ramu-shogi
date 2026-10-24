@@ -131,6 +131,30 @@ describe("NnueSpeedTable", () => {
         expect(rowTexts()).toEqual(["1 | — | —", "4 | — | —", "8 | — | —"]);
     });
 
+    it("測れない環境（Desktop）では測る欄を出さず、記録のある行だけを出す", () => {
+        const observedOnly: NnueSpeedSupport = { environment, maxThreads: 8 };
+        function ObservedOnly({ hash }: { hash: string }) {
+            const benchmark = useNnueSpeedBenchmark(observedOnly);
+            return (
+                <NnueSpeedTable
+                    contentHash={hash}
+                    prepare={async () => meta}
+                    downloadNote="測るときに 1 KB をダウンロードします。"
+                    support={observedOnly}
+                    benchmark={benchmark}
+                />
+            );
+        }
+        const { container } = render(<ObservedOnly hash="desktop-empty" />);
+        expect(container.innerHTML).toBe("");
+        cleanup();
+        nnueSpeedStore.addObserved({ ...key, contentHash: "desktop", threads: 6 }, 900_000);
+        render(<ObservedOnly hash="desktop" />);
+        expect(rowTexts()).toEqual(["6 | — | 約 90万・1 回"]);
+        expect(screen.queryByRole("button")).toBeNull();
+        expect(screen.queryByText(/ダウンロードします/)).toBeNull();
+    });
+
     it("対局・解析中などで測れないときは押せない", () => {
         render(<Harness hash="other" reason="対局中は変更できません" />);
         const button = screen.getByRole("button", { name: "測る" }) as HTMLButtonElement;

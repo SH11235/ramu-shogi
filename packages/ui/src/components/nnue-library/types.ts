@@ -35,8 +35,12 @@ export interface NnueAccountStore {
 /** AI の行に、この端末での速さ（NPS）を出すときに渡す。 */
 export interface NnueSpeedSupport {
     environment: EngineSpeedEnvironment;
-    /** 計測用のエンジン（`withNpsRecording` で `record: false` にしたもの） */
-    createBenchmarkClient: () => EngineClient;
+    /**
+     * 計測用のエンジン（`withNpsRecording` で `record: false` にしたもの）。省くと測らず、
+     * 対局での実測だけを出す（Desktop は全画面で 1 つのエンジンを共有し、評価関数を起動中に
+     * 1 回しか読み込めないので、計測で別の評価関数を読むと対局・解析に使えなくなる）。
+     */
+    createBenchmarkClient?: () => EngineClient;
     /** エンジンが使えるスレッド数の上限（Web の wasm は端末のメモリなどで決まる） */
     maxThreads?: number;
 }

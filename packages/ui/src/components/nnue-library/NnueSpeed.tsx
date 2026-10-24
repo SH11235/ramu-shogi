@@ -97,7 +97,8 @@ export function useNnueSpeedBenchmark(support: NnueSpeedSupport | undefined) {
     useEffect(() => () => controllerRef.current?.abort(), []);
 
     const start = async ({ contentHash, threads, prepare }: BenchmarkTarget) => {
-        if (!support || controllerRef.current) return;
+        const createClient = support?.createBenchmarkClient;
+        if (!support || !createClient || controllerRef.current) return;
         const controller = new AbortController();
         controllerRef.current = controller;
         abortReasonRef.current = null;
@@ -128,7 +129,7 @@ export function useNnueSpeedBenchmark(support: NnueSpeedSupport | undefined) {
             });
             setState({ phase: "running", contentHash, threads, index: 0 });
             const result = await runNnueSpeedBenchmark({
-                createClient: support.createBenchmarkClient,
+                createClient,
                 nnueId: meta.id,
                 layerStacks: meta.layerStacks,
                 fvScale: meta.fvScale,
@@ -177,8 +178,9 @@ type Benchmark = ReturnType<typeof useNnueSpeedBenchmark>;
 
 /**
  * AI の行に出す、この端末での NPS。スレッド数を選んで測る欄（測り直しも同じ操作）を上に置き、
- * 記録が増えても押しやすいようにする。その下に、スレッド数ごとの計測と対局での実測を並べる。端末に無い AI も、測るときにダウンロードする
- * （`downloadNote` で通信量を知らせる）。
+ * 記録が増えても押しやすいようにする。その下に、スレッド数ごとの計測と対局での実測を並べる。
+ * 端末に無い AI も、測るときにダウンロードする（`downloadNote` で通信量を知らせる）。
+ * 測れない環境（`createBenchmarkClient` が無い）では、記録があるときだけ表を出す。
  */
 export function NnueSpeedTable({
     contentHash,
@@ -195,7 +197,7 @@ export function NnueSpeedTable({
     benchmark: Benchmark;
     /** 測れない理由（対局中・ほかの処理中など） */
     disabledReason?: string;
-}): ReactElement {
+}): ReactElement | null {
     const data = useSyncExternalStore(nnueSpeedStore.subscribe, nnueSpeedStore.getSnapshot);
     const rows = nnueSpeedRows(data, {
         contentHash,
@@ -205,10 +207,15 @@ export function NnueSpeedTable({
     const { state, threadCap } = benchmark;
     const [selectedThreads, setSelectedThreads] = useState(benchmark.currentThreads);
     const running = state.phase === "running" && state.contentHash === contentHash ? state : null;
-    const tableRows: NnueSpeedRow[] = speedTableThreads(threadCap, benchmark.currentThreads, [
-        ...rows.map((row) => row.threads),
-        ...(running ? [running.threads] : []),
-    ]).map(
+    // 測れないときは、選んで測る行（1・上限の半分・上限）を出しても空のままなので、記録のある行だけにする
+    const threadsToShow =
+        support.createBenchmarkClient === undefined
+            ? rows.map((row) => row.threads)
+            : speedTableThreads(threadCap, benchmark.currentThreads, [
+                  ...rows.map((row) => row.threads),
+                  ...(running ? [running.threads] : []),
+              ]);
+    const tableRows: NnueSpeedRow[] = threadsToShow.map(
         (threads) =>
             rows.find((row) => row.threads === threads) ?? {
                 threads,
@@ -239,38 +246,44 @@ export function NnueSpeedTable({
                 1000
             } 秒`;
 
+    const canMeasure = support.createBenchmarkClient !== undefined;
+    if (!canMeasure && rows.length === 0) return null;
+
     return (
         <div className="flex flex-col items-start gap-2 text-xs text-muted-foreground">
-            <div className="flex items-center gap-2">
-                <NativeSelect
-                    aria-label="測るスレッド数"
-                    value={selectedThreads}
-                    onChange={(event) => setSelectedThreads(Number(event.target.value))}
-                    disabled={running !== null}
-                    // 表と同じ文字の大きさにする（指で操作する端末では、拡大を防ぐ共通の指定で 16px になる）
-                    className="h-8 py-0 pl-2 pr-8 text-xs"
-                >
-                    {Array.from({ length: Math.max(1, threadCap) }, (_, index) => index + 1).map(
-                        (threads) => (
+            {canMeasure && (
+                <div className="flex items-center gap-2">
+                    <NativeSelect
+                        aria-label="測るスレッド数"
+                        value={selectedThreads}
+                        onChange={(event) => setSelectedThreads(Number(event.target.value))}
+                        disabled={running !== null}
+                        // 表と同じ文字の大きさにする（指で操作する端末では、拡大を防ぐ共通の指定で 16px になる）
+                        className="h-8 py-0 pl-2 pr-8 text-xs"
+                    >
+                        {Array.from(
+                            { length: Math.max(1, threadCap) },
+                            (_, index) => index + 1,
+                        ).map((threads) => (
                             <option key={threads} value={threads}>
                                 {threads} スレッド
                             </option>
-                        ),
-                    )}
-                </NativeSelect>
-                <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 px-3 text-xs [@media(pointer:coarse)]:text-base"
-                    disabled={running !== null || blockedReason !== undefined}
-                    title={blockedReason ?? `約 ${totalSeconds} 秒読んで測ります`}
-                    onClick={() =>
-                        void benchmark.start({ contentHash, threads: selectedThreads, prepare })
-                    }
-                >
-                    {progressLabel ?? "測る"}
-                </Button>
-            </div>
+                        ))}
+                    </NativeSelect>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-3 text-xs [@media(pointer:coarse)]:text-base"
+                        disabled={running !== null || blockedReason !== undefined}
+                        title={blockedReason ?? `約 ${totalSeconds} 秒読んで測ります`}
+                        onClick={() =>
+                            void benchmark.start({ contentHash, threads: selectedThreads, prepare })
+                        }
+                    >
+                        {progressLabel ?? "測る"}
+                    </Button>
+                </div>
+            )}
             <table className="w-fit border-collapse whitespace-nowrap text-left tabular-nums">
                 <thead>
                     <tr className="border-b border-border">
@@ -299,7 +312,7 @@ export function NnueSpeedTable({
                     ))}
                 </tbody>
             </table>
-            {downloadNote && !running && <p>{downloadNote}</p>}
+            {canMeasure && downloadNote && !running && <p>{downloadNote}</p>}
             {message && <p aria-live="polite">{message}</p>}
         </div>
     );

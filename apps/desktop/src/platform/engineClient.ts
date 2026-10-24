@@ -28,15 +28,6 @@ export const createEngineClient = () =>
         resolveContentHash,
     });
 
-/** 「速さを測る」用。動いているエンジンとしては数えるが、対局での実測には入れない。 */
-const createSpeedBenchmarkClient = () =>
-    withNpsRecording(createRawClient(), {
-        environment: desktopEngineSpeedEnvironment,
-        resolveContentHash,
-        record: false,
-    });
-
-export const desktopSpeedSupport = {
-    environment: desktopEngineSpeedEnvironment,
-    createBenchmarkClient: createSpeedBenchmarkClient,
-};
+// 計測はしない。アプリ全体で 1 つのエンジンを共有していて、評価関数は起動中に 1 回しか
+// 読み込めないので、計測で別の評価関数を読むと対局・解析でその AI しか使えなくなる。
+export const desktopSpeedSupport = { environment: desktopEngineSpeedEnvironment };
