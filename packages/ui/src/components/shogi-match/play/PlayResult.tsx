@@ -34,8 +34,11 @@ export function useResultHeadline(result: GameResult): {
 /** 終局の理由を、対局者の名前で書く（「あなたの時間切れ」「簡易AI の投了」。人同士は「先手」「後手」）。 */
 export function useReasonText(result: GameResult): string {
     const { play } = useShogiMatchConfig();
+    const names = play?.playerNames;
+    // 同じ名前どうし（同じ AI 同士など）では、名前ではどちらか分からないので先手・後手で書く。
+    const sameNames = names !== undefined && names.sente === names.gote;
     const nameOf = (side: Player): string =>
-        play?.playerNames[side] ?? (side === "sente" ? "先手" : "後手");
+        (sameNames ? undefined : names?.[side]) ?? (side === "sente" ? "先手" : "後手");
     const reason = result.reason;
     switch (reason.kind) {
         case "time_expired":

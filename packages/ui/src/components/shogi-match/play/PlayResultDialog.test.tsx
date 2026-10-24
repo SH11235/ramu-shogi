@@ -138,6 +138,12 @@ describe("PlayResultDialog", () => {
         expect(screen.getByText("先手・10分 切れ負け")).toBeTruthy();
     });
 
+    it("names the sides as 先手・後手 when both players have the same name", () => {
+        renderDialog(CHECKMATE, { playerNames: { sente: "簡易AI", gote: "簡易AI" } });
+        act(() => vi.advanceTimersByTime(700));
+        expect(screen.getByText(/後手が詰み/)).toBeTruthy();
+    });
+
     it("closes the dialog before starting the next game", () => {
         const play = renderDialog(CHECKMATE, { openStudy: null });
         act(() => vi.advanceTimersByTime(700));
