@@ -133,6 +133,29 @@ describe("NnueLibrary", () => {
         await waitFor(() => expect(presetState.download).toHaveBeenCalledWith("coco"));
     });
 
+    it("配布 AI の旧版しか端末に無いときは、旧版で測らず最新版をダウンロードして測る", async () => {
+        presetState.presets = [
+            preset({
+                status: "update-available",
+                localMetas: [
+                    meta({ source: "preset", presetKey: "coco", contentHashSha256: "old" }),
+                ],
+            }),
+        ];
+        render(
+            <NnueLibrary
+                speed={{
+                    environment: { engineVersion: "wasm:test", threaded: true },
+                    createBenchmarkClient: vi.fn(),
+                    maxThreads: 4,
+                }}
+            />,
+        );
+        expect(screen.getByText("測るときに 1 KB をダウンロードします。")).toBeDefined();
+        fireEvent.click(screen.getByRole("button", { name: "測る" }));
+        await waitFor(() => expect(presetState.download).toHaveBeenCalledWith("coco"));
+    });
+
     it("ブラウザとアカウントの両方にある AI は 1 行にまとめ、保存先を両方示す", () => {
         storage.nnueList = [meta({ contentHashSha256: "bbb" })];
         render(<NnueLibrary account={account([accountFile({ sha256Hex: "bbb" })])} />);

@@ -41,6 +41,31 @@ describe("accumulateSearchStats", () => {
         expect(mateThenCp).toEqual({ scoreCp: -120 });
     });
 
+    it("最善手が同じまま読み筋が縮んだら、長い読み筋を残す", () => {
+        const deep = accumulateSearchStats(
+            {},
+            { type: "info", depth: 14, pv: ["2f2e", "8d8e", "2e2d"] },
+        );
+        expect(accumulateSearchStats(deep, { type: "info", depth: 15, pv: ["2f2e"] }).pv).toEqual([
+            "2f2e",
+            "8d8e",
+            "2e2d",
+        ]);
+        expect(accumulateSearchStats(deep, { type: "info", depth: 15, pv: ["7g7f"] }).pv).toEqual([
+            "7g7f",
+        ]);
+    });
+
+    it("最善手が同じでも、途中から別の手順になった読み筋は新しい方にする", () => {
+        const deep = accumulateSearchStats(
+            {},
+            { type: "info", depth: 14, pv: ["7g7f", "3c3d", "2g2f"] },
+        );
+        expect(
+            accumulateSearchStats(deep, { type: "info", depth: 15, pv: ["7g7f", "8c8d"] }).pv,
+        ).toEqual(["7g7f", "8c8d"]);
+    });
+
     it("multipv 2 以上を無視する", () => {
         const current = { depth: 10, scoreCp: 20 };
         expect(accumulateSearchStats(current, { type: "info", multipv: 2, depth: 99 })).toBe(
@@ -843,6 +868,69 @@ describe("createEngineController", () => {
         expect(mockClient.search).toHaveBeenCalledTimes(1);
         expect(controller.getState().engineStatus.sente).toBe("thinking");
         expect(controller.getState().engineReady.sente).toBe(true);
+    });
+
+    it.each([
+        { activeThreads: 3, expected: 3 },
+        { activeThreads: 0, expected: undefined },
+        { activeThreads: undefined, expected: undefined },
+    ])("手を決めたときに、エンジンが実際に使ったスレッド数を残す (activeThreads=$activeThreads)", async ({
+        activeThreads,
+        expected,
+    }) => {
+        const mockClient = createMockEngineClient();
+        const client =
+            activeThreads === undefined
+                ? mockClient.client
+                : {
+                      ...mockClient.client,
+                      getThreadInfo: () => ({
+                          activeThreads,
+                          maxThreads: 8,
+                          hardwareConcurrency: 8,
+                          threadedAvailable: true,
+                      }),
+                  };
+        const onSearchComplete = vi.fn();
+        const controller = createEngineController({
+            createClient: () => client as typeof mockClient.client,
+            getClockState: createClockState,
+            now: () => Date.now(),
+            resolveNnue: async () => null,
+            callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn(), onSearchComplete },
+        });
+        controller.command.syncContext({
+            sides: { sente: { role: "engine", engineId: "engine1" }, gote: { role: "human" } },
+            position: { startSfen: "startpos", moves: [], turn: "sente", ready: true },
+            matchRunning: true,
+        });
+        await controller.command.startTurn("sente");
+        await flushPromises();
+        mockClient.emit({ type: "info", depth: 12, nodes: 1000, pv: ["7g7f"] });
+        mockClient.emit({ type: "bestmove", move: "7g7f" });
+        expect(onSearchComplete).toHaveBeenCalledTimes(1);
+        expect(onSearchComplete.mock.calls[0][1].threads).toBe(expected);
+    });
+
+    it("Desktop から null で届く項目は「無し」として扱い、それまでの値を消さない", () => {
+        // Tauri は届かなかった項目を null にする。
+        const asTauri = (event: Record<string, unknown>) =>
+            ({ type: "info", ...event }) as unknown as EngineEvent & { type: "info" };
+        const deep = accumulateSearchStats(
+            {},
+            asTauri({ depth: 20, nodes: 1000, pv: ["7g7f", "3c3d"], scoreCp: 30, scoreMate: null }),
+        );
+        const mate = accumulateSearchStats(
+            deep,
+            asTauri({ depth: 21, pv: null, scoreCp: null, scoreMate: 3, multipv: null }),
+        );
+        expect(mate).toMatchObject({ depth: 21, nodes: 1000, pv: ["7g7f", "3c3d"], scoreMate: 3 });
+        expect(mate.scoreCp).toBeUndefined();
+        const empty = accumulateSearchStats(
+            mate,
+            asTauri({ depth: null, nodes: null, pv: null, scoreCp: null, scoreMate: null }),
+        );
+        expect(empty).toEqual(mate);
     });
 
     it("後手の探索に両者の残り持ち時間を渡す", async () => {

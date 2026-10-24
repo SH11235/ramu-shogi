@@ -6,7 +6,7 @@ import { ChevronIcon } from "../../chevron-icon";
  * 分岐切替機能を提供する
  */
 
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 
 interface BranchInfo {
@@ -39,8 +39,14 @@ interface KifuNavigationToolbarProps {
     isRewound?: boolean;
     /** 進む操作が可能か（現在ノードに子がある） */
     canGoForward?: boolean;
-    /** "large": 押しやすい大きさのボタンで、欄の幅いっぱいに並べる（終局後の振り返りなど、主な操作にするとき） */
-    size?: "default" | "large";
+    /**
+     * "large": 押しやすい大きさのボタンで、欄の幅いっぱいに並べる（終局後の振り返りなど、主な操作にするとき）。
+     * "bar": 高さ 32px の 1 行。最初・最後へのボタンだけを両端に置き、その間を `center` に使う
+     * （スマホの終局後。1 手ずつの送りは `center` の棋譜の帯で行う）。
+     */
+    size?: "default" | "large" | "bar";
+    /** 手数の表示の代わりに、前後のボタンの間に置くもの（`size="bar"` のとき） */
+    center?: ReactNode;
 }
 
 /**
@@ -51,12 +57,14 @@ function NavButton({
     disabled,
     title,
     large = false,
+    bar = false,
     children,
 }: {
     onClick: () => void;
     disabled?: boolean;
     title: string;
     large?: boolean;
+    bar?: boolean;
     children: React.ReactNode;
 }) {
     return (
@@ -67,7 +75,7 @@ function NavButton({
             title={title}
             aria-label={title}
             className={`
-                ${large ? "h-10 min-w-12 flex-1 text-base" : "w-8 h-8"} flex items-center justify-center
+                ${bar ? "h-8 w-10 shrink-0 text-sm" : large ? "h-10 min-w-12 flex-1 text-base" : "w-8 h-8"} flex items-center justify-center
                 rounded border border-border bg-background
                 text-foreground text-sm font-medium
                 transition-colors duration-150
@@ -95,8 +103,10 @@ export function KifuNavigationToolbar({
     isRewound = false,
     canGoForward: canGoForwardProp,
     size = "default",
+    center,
 }: KifuNavigationToolbarProps): ReactElement {
     const large = size === "large";
+    const bar = size === "bar";
     const [showBranchMenu, setShowBranchMenu] = useState(false);
     const branchMenuRef = useRef<HTMLDivElement>(null);
 
@@ -125,7 +135,13 @@ export function KifuNavigationToolbar({
 
     return (
         <div
-            className={large ? "flex w-full items-center gap-2" : "flex items-center gap-1.5 mb-2"}
+            className={
+                bar
+                    ? "flex w-full items-center gap-1.5"
+                    : large
+                      ? "flex w-full items-center gap-2"
+                      : "flex items-center gap-1.5 mb-2"
+            }
         >
             {/* 最初へ */}
             <NavButton
@@ -133,39 +149,49 @@ export function KifuNavigationToolbar({
                 disabled={disabled || !canGoBack}
                 title="最初へ戻る"
                 large={large}
+                bar={bar}
             >
                 ⏮
             </NavButton>
-
             {/* 1手戻る */}
-            <NavButton
-                onClick={onBack}
-                disabled={disabled || !canGoBack}
-                title="1手戻る"
-                large={large}
-            >
-                ◀
-            </NavButton>
+            {!bar && (
+                <NavButton
+                    onClick={onBack}
+                    disabled={disabled || !canGoBack}
+                    title="1手戻る"
+                    large={large}
+                    bar={bar}
+                >
+                    ◀
+                </NavButton>
+            )}
 
             {/* 手数表示 */}
-            <div
-                className={`
+            {center ? (
+                <div className="min-w-0 flex-1">{center}</div>
+            ) : (
+                <div
+                    className={`
                     ${large ? "min-w-16 shrink-0 text-sm tabular-nums" : "flex-1 text-[13px]"} text-center font-medium
                     ${isRewound ? "text-wafuu-shu" : "text-foreground"}
                 `}
-            >
-                {currentPly}/{totalPly}手
-            </div>
+                >
+                    {currentPly}/{totalPly}手
+                </div>
+            )}
 
             {/* 1手進む */}
-            <NavButton
-                onClick={onForward}
-                disabled={disabled || !canGoForward}
-                title="1手進む"
-                large={large}
-            >
-                ▶
-            </NavButton>
+            {!bar && (
+                <NavButton
+                    onClick={onForward}
+                    disabled={disabled || !canGoForward}
+                    title="1手進む"
+                    large={large}
+                    bar={bar}
+                >
+                    ▶
+                </NavButton>
+            )}
 
             {/* 最後へ */}
             <NavButton
@@ -173,6 +199,7 @@ export function KifuNavigationToolbar({
                 disabled={disabled || !canGoForward}
                 title="最後へ進む"
                 large={large}
+                bar={bar}
             >
                 ⏭
             </NavButton>

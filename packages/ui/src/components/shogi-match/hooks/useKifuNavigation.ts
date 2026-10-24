@@ -38,7 +38,7 @@ import type { EngineInfoEvent } from "@shogi/engine-client";
 import { useRef, useState } from "react";
 import { normalizeEvalToSentePerspective } from "../utils/branchTreeUtils";
 import type { EvalHistory, KifMove, MultiPvNodeData, NodeData } from "../utils/kifFormat";
-import { convertMovesToKif } from "../utils/kifFormat";
+import { convertMovesToKif, toEngineSearchSummary } from "../utils/kifFormat";
 
 export type RecordedEvalInfoEvent = EngineInfoEvent & Pick<KifuEval, "normalized">;
 
@@ -866,7 +866,10 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
             const stats = node.searchStats;
             const engineSearch =
                 stats && (stats.depth !== undefined || stats.nodes !== undefined)
-                    ? { depth: stats.depth, nodes: stats.nodes }
+                    ? toEngineSearchSummary(
+                          stats,
+                          node.positionAfter.turn === "sente" ? "gote" : "sente",
+                      )
                     : undefined;
 
             if (hasEval || hasElapsed || hasMultiPv || engineSearch) {

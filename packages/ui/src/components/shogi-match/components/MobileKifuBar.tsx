@@ -1,5 +1,5 @@
 import { cn } from "@shogi/design-system";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { useLayoutEffect, useRef } from "react";
 
 export interface KifuMove {
@@ -20,6 +20,11 @@ interface MobileKifuBarProps {
     onPlySelect?: (ply: number) => void;
     /** 見た目。`"wafuu"` は和の配色（地は和紙、いまの手は金の淡塗り）。省略時は既定の配色 */
     tone?: "default" | "wafuu";
+    /** いまの手に添えるもの（評価値など） */
+    currentExtra?: ReactNode;
+    /** いまの手をもう一度押したとき（詳しく開くなど）。無ければ押せない */
+    onCurrentSelect?: () => void;
+    className?: string;
 }
 
 /**
@@ -31,6 +36,9 @@ export function MobileKifuBar({
     currentPly,
     onPlySelect,
     tone = "default",
+    currentExtra,
+    onCurrentSelect,
+    className,
 }: MobileKifuBarProps): ReactElement {
     const isWafuu = tone === "wafuu";
     const containerRef = useRef<HTMLDivElement>(null);
@@ -67,6 +75,7 @@ export function MobileKifuBar({
                     isWafuu
                         ? "bg-wafuu-washi-warm text-wafuu-sumi-light"
                         : "text-muted-foreground bg-muted/30",
+                    className,
                 )}
             >
                 開始局面
@@ -80,17 +89,24 @@ export function MobileKifuBar({
             className={cn(
                 "h-9 flex items-center gap-1 overflow-x-auto scrollbar-hide rounded px-2 [scrollbar-width:none] [-ms-overflow-style:none]",
                 isWafuu ? "bg-wafuu-washi-warm" : "bg-muted/30",
+                className,
             )}
         >
             {moves.map((move) => {
                 const isCurrent = currentPly > 0 && move.ply === currentPly;
+                const onClick =
+                    isCurrent && onCurrentSelect
+                        ? onCurrentSelect
+                        : onPlySelect
+                          ? () => onPlySelect(move.ply)
+                          : undefined;
                 return (
                     <button
                         key={move.ply}
                         ref={isCurrent ? currentRef : undefined}
                         type="button"
-                        onClick={onPlySelect ? () => onPlySelect(move.ply) : undefined}
-                        disabled={!onPlySelect}
+                        onClick={onClick}
+                        disabled={!onClick}
                         className={cn(
                             "shrink-0 px-1.5 py-1 rounded text-sm whitespace-nowrap transition-colors",
                             isCurrent
@@ -113,6 +129,7 @@ export function MobileKifuBar({
                             {move.ply}
                         </span>
                         {move.displayText}
+                        {isCurrent && currentExtra}
                         {move.mark && (
                             <span
                                 className={cn(

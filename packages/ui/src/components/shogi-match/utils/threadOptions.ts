@@ -39,21 +39,19 @@ export function threadCapOf(
 export const clampThreads = (threads: number, maxThreads: number | undefined): number =>
     maxThreads !== undefined && threads > maxThreads ? maxThreads : threads;
 
-/** 選べるスレッド数の上限と、「自動」で使う数。 */
-function threadRange(maxThreads: number | undefined): { maxSelectable: number; auto: number } {
-    const { detectedConcurrency, recommendedWorkers } = detectParallelism();
-    const maxSelectable = Math.max(
-        1,
-        Math.min(detectedConcurrency, DEFAULT_MAX_OPTIONS, maxThreads ?? Infinity),
-    );
-    return { maxSelectable, auto: Math.min(recommendedWorkers, maxSelectable) };
+function maxSelectableThreads(maxThreads: number | undefined): number {
+    const { detectedConcurrency } = detectParallelism();
+    return Math.max(1, Math.min(detectedConcurrency, DEFAULT_MAX_OPTIONS, maxThreads ?? Infinity));
 }
 
-/** 設定のスレッド数（0 = 自動）を、実際に使う数にする（選択肢の「自動（N）」と同じ N）。 */
-export function resolveThreadSetting(threads: number, maxThreads: number | undefined): number {
-    const { maxSelectable, auto } = threadRange(maxThreads);
-    return threads > 0 ? Math.min(threads, maxSelectable) : auto;
+/** 「自動」で実際に使うスレッド数。 */
+function autoThreadCount(maxThreads: number | undefined): number {
+    return Math.min(detectParallelism().recommendedWorkers, maxSelectableThreads(maxThreads));
 }
+
+/** 設定したスレッド数（0 は自動）で、実際に使う数。 */
+export const resolveThreadCount = (threads: number, maxThreads: number | undefined): number =>
+    threads > 0 ? clampThreads(threads, maxThreads) : autoThreadCount(maxThreads);
 
 /**
  * スレッド数の選択肢。`maxThreads` はエンジンの上限（Web の wasm は 8）で、それより多い数は出さない
@@ -63,7 +61,8 @@ export function buildThreadOptions(options?: {
     compact?: boolean;
     maxThreads?: number;
 }): ThreadSelectOption[] {
-    const { maxSelectable, auto } = threadRange(options?.maxThreads);
+    const maxSelectable = maxSelectableThreads(options?.maxThreads);
+    const auto = autoThreadCount(options?.maxThreads);
     const result: ThreadSelectOption[] = [
         { value: 0, label: options?.compact ? `自動（${auto}）` : `自動（推奨: ${auto}）` },
     ];

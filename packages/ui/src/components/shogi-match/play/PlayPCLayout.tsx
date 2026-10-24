@@ -35,6 +35,7 @@ import {
     usePlayPhaseFocus,
 } from "./PlayControls";
 import { PlayEndStamp } from "./PlayEndStamp";
+import { PlayKifuReading } from "./PlayEngineReading";
 import { PlayHintCard, usePlayHintMove } from "./PlayHintCard";
 import { PlayMoveList } from "./PlayMoveList";
 import { PlayPlayerBar } from "./PlayPlayerBar";
@@ -93,15 +94,19 @@ export function PlayPCLayout({
     // 設定中と終局後は盤を操作できない。フォーカスや読み上げの対象からも外す。
     const boardInert = phase === "setup" || phase === "finished";
     const hasHumanPlayer = sides.sente.role === "human" || sides.gote.role === "human";
+    const hasEngine = sides.sente.role === "engine" || sides.gote.role === "engine";
 
     return (
         <section
             ref={rootRef}
-            // 盤は画面の高さに合わせる（低い画面で縦にはみ出さず、高い画面で小さく残らないように）。
-            className={`${matchLayoutClasses} [--shogi-cell-size:clamp(34px,calc((100dvh-300px)/9),72px)] min-[1700px]:[--panel-width:460px]`}
+            // 盤は画面の高さと幅に合わせる（低い画面で縦にはみ出さず、高い画面で小さく残らないように）。
+            // 幅の側の引き算は、マス以外の盤の列（持ち駒・枠・盤の横の操作）が約 190px、欄を横に並べるときは
+            // さらに欄・列の間・左右の余白の約 490px（欄が広い 1700px 以上は約 550px）。
+            // 幅 1000px 未満では欄を横に置けないので、盤の下に回す。
+            className={`${matchLayoutClasses} [--shogi-cell-size:clamp(34px,min(calc((100dvh-300px)/9),calc((100vw-300px)/9)),72px)] min-[1000px]:[--shogi-cell-size:clamp(34px,min(calc((100dvh-300px)/9),calc((100vw-700px)/9)),72px)] min-[1700px]:[--panel-width:460px] min-[1700px]:[--shogi-cell-size:clamp(34px,min(calc((100dvh-300px)/9),calc((100vw-760px)/9)),72px)]`}
         >
             <div className="w-full overflow-x-auto">
-                <div className="mx-auto flex w-max items-start gap-14 px-4 py-2">
+                <div className="mx-auto flex w-full flex-col items-center gap-6 px-4 py-2 min-[1000px]:w-max min-[1000px]:flex-row min-[1000px]:items-start min-[1000px]:gap-14">
                     {/* 盤の列: 相手の帯 → 持ち駒 → 盤 → 持ち駒 → 自分の帯 → 操作 */}
                     <div className="flex shrink-0 flex-col items-center gap-2">
                         <div ref={boardSectionRef} className="relative flex w-fit flex-col gap-2">
@@ -179,7 +184,7 @@ export function PlayPCLayout({
                     </div>
 
                     {/* 進み具合ごとの欄 */}
-                    <div className="flex w-[var(--panel-width)] shrink-0 flex-col gap-4 pt-1">
+                    <div className="flex w-full max-w-[var(--panel-width)] shrink-0 flex-col gap-4 pt-1 min-[1000px]:w-[var(--panel-width)]">
                         {phase === "finished" && <PlayResultDialog variant="center" />}
                         {phase === "setup" && (
                             <PlaySetupPanel onOpenAdvanced={() => setIsAdvancedOpen(true)} />
@@ -204,24 +209,25 @@ export function PlayPCLayout({
                         {inGame && (
                             <section
                                 aria-label="棋譜"
-                                className={`flex flex-col gap-2 ${PLAY_CARD}`}
+                                // 欄の下端を盤の列の下端に揃える。338px は、この欄より上に積む欄（手番・ヒントなど）と
+                                // 下の余白の分。終局後は、ヒントの代わりに出す結果の欄が約 45px 高いので引く
+                                // （それらの欄の高さを変えたら、この値も見直す）。AI の読みの欄を足しても、
+                                // 縮むのは棋譜の一覧だけにする。
+                                className={`flex min-h-0 flex-col gap-2 ${PLAY_CARD} ${
+                                    phase === "finished"
+                                        ? "max-h-[max(182px,calc(100dvh-383px))]"
+                                        : "max-h-[max(182px,calc(100dvh-338px))]"
+                                }`}
                             >
                                 <h2 className="text-sm font-semibold text-wafuu-sumi">棋譜</h2>
+                                {hasEngine && displaySettings.showEngineReading && (
+                                    <PlayKifuReading className="shrink-0" />
+                                )}
                                 <PlayMoveList
                                     selectable={phase === "finished"}
                                     upToCurrent={phase !== "finished"}
-                                    showSearch={
-                                        sides.sente.role === "engine" ||
-                                        sides.gote.role === "engine"
-                                    }
-                                    // 欄の下端を盤の列の下端に揃える。400px は、この一覧より上に積む欄（手番・ヒントなど）と
-                                    // 一覧より下の分の高さ。終局後は、ヒントの代わりに出す結果の欄が約 45px 高いので引く
-                                    // （それらの欄の高さを変えたら、この値も見直す）。
-                                    className={
-                                        phase === "finished"
-                                            ? "max-h-[max(120px,calc(100dvh-445px))]"
-                                            : "max-h-[max(120px,calc(100dvh-400px))]"
-                                    }
+                                    showSearch={hasEngine && displaySettings.showEngineReading}
+                                    className="min-h-[5.5rem] flex-1"
                                 />
                             </section>
                         )}

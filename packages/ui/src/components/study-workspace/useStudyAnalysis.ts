@@ -40,7 +40,7 @@ import {
     type Message,
 } from "../shogi-match/types";
 import { collectTreeAnalysisJobs } from "../shogi-match/utils/branchTreeUtils";
-import { resolveThreadSetting } from "../shogi-match/utils/threadOptions";
+import { resolveThreadCount } from "../shogi-match/utils/threadOptions";
 import { countStudyUnanalyzed, studyPathTo } from "./studyView";
 import { useStudyDeepSearch } from "./useStudyDeepSearch";
 
@@ -516,7 +516,7 @@ export function useStudyAnalysis({
             ...(nextMode === "deep"
                 ? {
                       workerCount: 1,
-                      threadsPerWorker: resolveThreadSetting(
+                      threadsPerWorker: resolveThreadCount(
                           settings.deepAnalysisThreads,
                           engineOption?.maxThreads,
                       ),
@@ -678,7 +678,7 @@ export function useStudyAnalysis({
                         fvScale: prepared.resolved?.fvScale,
                         materialFallback: true,
                         multiPv,
-                        threads: resolveThreadSetting(
+                        threads: resolveThreadCount(
                             settings.deepAnalysisThreads,
                             engineOption?.maxThreads,
                         ),
