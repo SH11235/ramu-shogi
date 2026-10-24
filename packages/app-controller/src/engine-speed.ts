@@ -31,12 +31,20 @@ export interface EngineSpeedEnvironment {
 type ActivityListener = () => void;
 
 /**
- * ページの中で初期化済みのエンジンと、探索中のエンジンを数える。
- * 実測は「エンジンが 1 つだけ動いているとき」に限り、計測は「探索中のエンジンが無いとき」に限る。
+ * AI 対 AI のように、ほかのエンジンの探索と交互に動いている探索とみなす間隔。
+ * 探索を終えてからこの時間のうちに別のエンジンが探索を始めたら、両方を実測に入れない。
  */
-function createEngineActivity() {
+const ALTERNATING_SEARCH_WINDOW_MS = 5000;
+
+/**
+ * ページの中で初期化済みのエンジンと、探索中のエンジンを数える。
+ * 実測は「ほかのエンジンが探索していないとき」に限り（待機しているだけのエンジンは数えない）、
+ * 計測は「探索中のエンジンが無いとき」に限る。
+ */
+function createEngineActivity(now: () => number = Date.now) {
     const live = new Set<symbol>();
     const searching = new Set<symbol>();
+    const lastSearchEndedAt = new Map<symbol, number>();
     const listeners = new Set<ActivityListener>();
     let snapshot = { live: 0, searching: 0 };
     const notify = () => {
@@ -51,10 +59,22 @@ function createEngineActivity() {
     };
     return {
         setLive: (id: symbol, on: boolean) => toggle(live, id, on),
-        setSearching: (id: symbol, on: boolean) => toggle(searching, id, on),
-        /** 自分以外のエンジンが初期化済みか、探索中か */
-        hasOthers: (id: symbol) =>
-            [...live].some((other) => other !== id) || [...searching].some((other) => other !== id),
+        setSearching: (id: symbol, on: boolean) => {
+            if (!on && searching.has(id)) lastSearchEndedAt.set(id, now());
+            toggle(searching, id, on);
+        },
+        forget: (id: symbol) => {
+            lastSearchEndedAt.delete(id);
+        },
+        /** 自分以外のエンジンが探索中か */
+        othersSearching: (id: symbol) => [...searching].some((other) => other !== id),
+        /** 自分以外のエンジンが探索中か、少し前まで探索していた（AI 対 AI・並列解析） */
+        othersSearchingOrJustDid: (id: symbol) =>
+            [...searching].some((other) => other !== id) ||
+            [...lastSearchEndedAt].some(
+                ([other, endedAt]) =>
+                    other !== id && now() - endedAt < ALTERNATING_SEARCH_WINDOW_MS,
+            ),
         getSnapshot: () => snapshot,
         subscribe(listener: ActivityListener) {
             listeners.add(listener);
@@ -66,6 +86,10 @@ function createEngineActivity() {
 }
 
 export const engineActivity = createEngineActivity();
+
+type EngineActivity = ReturnType<typeof createEngineActivity>;
+
+export { createEngineActivity };
 
 // ============================================================
 // 保存先
@@ -136,6 +160,7 @@ interface NpsRecordingOptions {
     store?: NnueSpeedStore;
     /** false にすると数えるだけで記録しない（計測用のエンジン） */
     record?: boolean;
+    activity?: EngineActivity;
 }
 
 /** 探索 1 回の、最後に届いた探索量 */
@@ -151,7 +176,7 @@ const sampleOf = (info: EngineInfoEvent): SearchSample | null =>
 
 /**
  * エンジンを包み、対局・解析で出た NPS を記録する。
- * 記録するのは、探索の間ずっとほかのエンジンが動いていなかった（AI 対 AI や並列解析でない）、
+ * 記録するのは、ほかのエンジンと重ならず・交互にもならずに動いた（AI 対 AI や並列解析でない）、
  * 1 秒以上の探索だけ。評価関数を読み込んでいないエンジンは記録しない。
  */
 export function withNpsRecording<T extends EngineClient>(
@@ -160,28 +185,30 @@ export function withNpsRecording<T extends EngineClient>(
 ): T {
     const id = Symbol("engine");
     const store = options.store ?? nnueSpeedStore;
+    const activity = options.activity ?? engineActivity;
     const record = options.record ?? true;
     let contentHash: Promise<string | null> = Promise.resolve(null);
-    let threadsOption: number | null = null;
     let requestedThreads = 1;
 
-    /** 進行中の探索。ほかのエンジンが動いたら記録しない印を付ける。 */
+    /** 進行中の探索。ほかのエンジンが探索したら記録しない印を付ける。 */
     let active: { contaminated: boolean; sample: SearchSample | null } | null = null;
     let unsubscribeActivity: (() => void) | null = null;
     let unsubscribeEvents: (() => void) | null = null;
-
+    // Wasm の setOption("Threads") は次の初期化まで効かないので、設定値ではなく実際に動いている数を使う。
     const effectiveThreads = () => {
         const reported = inner.getThreadInfo?.().activeThreads;
-        const base = reported && reported > 0 ? reported : requestedThreads;
-        return threadsOption !== null ? Math.min(base, threadsOption) : base;
+        return reported && reported > 0 ? reported : requestedThreads;
     };
+    // マルチスレッド版が起動できずに 1 スレッド版へ切り替わったときは、その版の値として分ける。
+    const effectiveThreaded = () =>
+        inner.getThreadInfo?.().threadedAvailable ?? options.environment.threaded;
 
     const begin = () => {
         finish(null);
-        active = { contaminated: engineActivity.hasOthers(id), sample: null };
-        engineActivity.setSearching(id, true);
-        unsubscribeActivity = engineActivity.subscribe(() => {
-            if (active && engineActivity.hasOthers(id)) active.contaminated = true;
+        active = { contaminated: activity.othersSearchingOrJustDid(id), sample: null };
+        activity.setSearching(id, true);
+        unsubscribeActivity = activity.subscribe(() => {
+            if (active && activity.othersSearching(id)) active.contaminated = true;
         });
     };
 
@@ -192,24 +219,29 @@ export function withNpsRecording<T extends EngineClient>(
         active = null;
         unsubscribeActivity?.();
         unsubscribeActivity = null;
-        engineActivity.setSearching(id, false);
+        activity.setSearching(id, false);
         const sample = override ?? lastSample;
         if (!record || contaminated || !sample || sample.timeMs < NNUE_SPEED_MIN_SEARCH_MS) {
             return;
         }
-        const threads = effectiveThreads();
+        const key = {
+            threads: effectiveThreads(),
+            engineVersion: options.environment.engineVersion,
+            threaded: effectiveThreaded(),
+        };
         const nps = (sample.nodes * 1000) / sample.timeMs;
-        void contentHash.then((hash) => {
-            if (!hash) return;
-            store.addObserved(
-                {
-                    contentHash: hash,
-                    threads,
-                    engineVersion: options.environment.engineVersion,
-                    threaded: options.environment.threaded,
-                },
-                nps,
-            );
+        const hash = contentHash;
+        // 直後にほかのエンジンが探索を始めたら AI 対 AI とみなし、この探索も記録しない。
+        const timer = setTimeout(() => {
+            unsubscribe();
+            void hash.then((contentHash) => {
+                if (contentHash) store.addObserved({ contentHash, ...key }, nps);
+            });
+        }, ALTERNATING_SEARCH_WINDOW_MS);
+        const unsubscribe = activity.subscribe(() => {
+            if (!activity.othersSearching(id)) return;
+            clearTimeout(timer);
+            unsubscribe();
         });
     };
 
@@ -275,20 +307,31 @@ export function withNpsRecording<T extends EngineClient>(
         ...inner,
         ...(analysis ? { analysis } : {}),
         async init(opts) {
+            finish(null);
             requestedThreads = opts?.threads ?? requestedThreads;
-            threadsOption = null;
-            engineActivity.setLive(id, true);
+            activity.setLive(id, true);
             unsubscribeEvents ??= inner.subscribe(onEvent);
-            await inner.init(opts);
+            try {
+                await inner.init(opts);
+            } catch (error) {
+                // 起動できなかったエンジンは動いていないので、計測の妨げにしない
+                activity.setLive(id, false);
+                throw error;
+            }
         },
+        // reset はワーカーを止め、探索の終わり（bestmove）が届かないことがある
+        ...(inner.reset
+            ? {
+                  async reset() {
+                      finish(null);
+                      await inner.reset?.();
+                  },
+              }
+            : {}),
         async loadNnue(nnueId, layerStacks) {
             if (!inner.loadNnue) return;
             await inner.loadNnue(nnueId, layerStacks);
             contentHash = options.resolveContentHash(nnueId).catch(() => null);
-        },
-        async setOption(name, value) {
-            if (name === "Threads" && typeof value === "number") threadsOption = value;
-            await inner.setOption(name, value);
         },
         async search(params): Promise<SearchHandle> {
             begin();
@@ -314,7 +357,8 @@ export function withNpsRecording<T extends EngineClient>(
             unsubscribeEvents?.();
             unsubscribeEvents = null;
             contentHash = Promise.resolve(null);
-            engineActivity.setLive(id, false);
+            activity.setLive(id, false);
+            activity.forget(id);
             await inner.dispose();
         },
     } as T;
@@ -357,12 +401,13 @@ interface NnueSpeedBenchmarkParams {
 }
 
 /**
- * 局面を順に決まった時間だけ探索し、全体の NPS（総ノード数 / 総時間）とスレッド数を返す。
- * `signal` で止めたときは失敗として返る（呼び出し側は `signal.aborted` で見分ける）。
+ * 局面を順に決まった時間だけ探索し、全体の NPS（総ノード数 / 総時間）と、実際に動いた
+ * スレッド数・マルチスレッド版かどうかを返す。`signal` で止めたときは失敗として返る
+ * （呼び出し側は `signal.aborted` で見分ける）。
  */
 export async function runNnueSpeedBenchmark(
     params: NnueSpeedBenchmarkParams,
-): Promise<{ nps: number; threads: number }> {
+): Promise<{ nps: number; threads: number; threaded: boolean | undefined }> {
     const { signal } = params;
     const throwIfAborted = () => {
         if (signal.aborted) throw abortedError();
@@ -374,19 +419,26 @@ export async function runNnueSpeedBenchmark(
         throwIfAborted();
         await client.loadNnue?.(params.nnueId, params.layerStacks);
         if (params.fvScale !== undefined) await client.setOption("FV_SCALE", params.fvScale);
-        const threads = client.getThreadInfo?.().activeThreads || params.threads;
+        const threadInfo = client.getThreadInfo?.();
+        const threads = threadInfo?.activeThreads || params.threads;
         let totalNodes = 0;
         let totalMs = 0;
         for (const [index, position] of NNUE_SPEED_BENCHMARK_POSITIONS.entries()) {
             throwIfAborted();
             params.onProgress?.(index);
             await client.loadPosition(position.sfen);
+            throwIfAborted();
             const sample = await searchOnce(client, signal);
             totalNodes += sample.nodes;
             totalMs += sample.timeMs;
         }
+        throwIfAborted();
         if (totalMs <= 0 || totalNodes <= 0) throw new Error("探索の結果を受け取れませんでした");
-        return { nps: (totalNodes * 1000) / totalMs, threads };
+        return {
+            nps: (totalNodes * 1000) / totalMs,
+            threads,
+            threaded: threadInfo?.threadedAvailable,
+        };
     } finally {
         await client.dispose().catch(() => undefined);
     }
@@ -399,9 +451,9 @@ function searchOnce(client: EngineClient, signal: AbortSignal): Promise<SearchSa
             unsubscribe();
             signal.removeEventListener("abort", onAbort);
         };
+        // 止めるのは呼び出し側の dispose に任せる（Wasm の stop はワーカーを作り直してしまう）。
         const onAbort = () => {
             cleanup();
-            void client.stop().catch(() => undefined);
             reject(abortedError());
         };
         const unsubscribe = client.subscribe((event) => {

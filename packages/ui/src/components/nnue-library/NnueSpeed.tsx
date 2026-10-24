@@ -82,7 +82,10 @@ export function useNnueSpeedBenchmark(support: NnueSpeedSupport | undefined) {
     const [threadCap] = useState(
         () => support?.maxThreads ?? detectParallelism().detectedConcurrency,
     );
-    const [currentThreads] = useState(() => readCurrentThreads(support?.maxThreads));
+    // 上限を超えて保存してある数は上限にする（選択欄に無い数を測らないように）。
+    const [currentThreads] = useState(() =>
+        Math.min(readCurrentThreads(support?.maxThreads), threadCap),
+    );
 
     const abort = (reason: string) => {
         if (!controllerRef.current) return;
@@ -138,7 +141,7 @@ export function useNnueSpeedBenchmark(support: NnueSpeedSupport | undefined) {
                     contentHash: meta.contentHashSha256,
                     threads: result.threads,
                     engineVersion: support.environment.engineVersion,
-                    threaded: support.environment.threaded,
+                    threaded: result.threaded ?? support.environment.threaded,
                 },
                 result.nps,
                 Date.now(),
