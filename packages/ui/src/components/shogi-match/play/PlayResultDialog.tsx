@@ -11,13 +11,12 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "../../button";
 import { Dialog, DialogContent } from "../../dialog";
 import { useSurfaceTheme } from "../../surface-theme";
-import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
-import { formatTimeRule } from "../utils/timeSettings";
 import { isSelfResignation } from "./PlayEndStamp";
 import { PlayGameReadingSummary } from "./PlayEngineReading";
 import { KifuCopyButtons } from "./PlayKifuCopy";
+import { PlayMatchConditions } from "./PlayMatchConditions";
 import { useReasonText, useResultHeadline, winnerColorClass } from "./PlayResult";
 import { PLAY_OUTLINE_BUTTON, PLAY_PRIMARY_BUTTON } from "./playStyles";
 
@@ -48,22 +47,6 @@ function useRevealed(result: GameResult | null, open: boolean, immediate: boolea
         };
     }, [waiting, result]);
     return result !== null && open && (immediate || revealedFor === result);
-}
-
-/** 「もう一局」で始まる対局の設定（「先手・10分・簡易AI」）。AI どうしは出さない */
-function useRematchSummary(): string | null {
-    const { play } = useShogiMatchConfig();
-    const { sides } = useMatchState();
-    const { timeSettings } = useMatchSettings();
-    const senteIsHuman = sides.sente.role === "human";
-    const goteIsHuman = sides.gote.role === "human";
-    if (!play || (!senteIsHuman && !goteIsHuman)) return null;
-    const mySide = senteIsHuman ? "sente" : "gote";
-    const clock = timeSettings[mySide];
-    const time = clock.enabled ? formatTimeRule(clock, { perMove: true }) : "時間無制限";
-    if (senteIsHuman && goteIsHuman) return time;
-    const aiSide = mySide === "sente" ? "gote" : "sente";
-    return `${mySide === "sente" ? "先手" : "後手"}・${time}・${play.playerNames[aiSide]}`;
 }
 
 interface PlayResultDialogProps {
@@ -149,7 +132,6 @@ function ResultDialogBody({
     const { play } = useShogiMatchConfig();
     const headline = useResultHeadline(result);
     const reasonText = useReasonText(result);
-    const summary = useRematchSummary();
     if (!play) return null;
     // 先に閉じる（研究ノートへ移るときは、閉じる処理を含む対局のリセットを通らない）。
     const closeThen = (action: () => void) => () => {
@@ -185,6 +167,7 @@ function ResultDialogBody({
                     </button>
                 </DialogPrimitive.Close>
             </div>
+            <PlayMatchConditions />
             <PlayGameReadingSummary />
             <div className="flex flex-col gap-1.5">
                 <Button
@@ -196,7 +179,6 @@ function ResultDialogBody({
                 >
                     もう一局
                 </Button>
-                {summary && <p className="text-center text-xs text-wafuu-sumi-light">{summary}</p>}
             </div>
             {/* 並び・言葉は、閉じたあとの欄（PC の右の欄・スマホの下の行）と揃える。 */}
             <div className={cn("grid gap-2", openStudy ? "grid-cols-2" : "grid-cols-1")}>

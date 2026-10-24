@@ -18,8 +18,11 @@ vi.mock("../contexts/MatchSettingsContext", () => ({
     useMatchSettings: () => ({
         timeSettings: {
             sente: { mainMs: 600_000, byoyomiMs: 0, incrementMs: 0, enabled: true },
-            gote: { mainMs: 600_000, byoyomiMs: 0, incrementMs: 0, enabled: true },
+            gote: { mainMs: 0, byoyomiMs: 10_000, incrementMs: 0, enabled: true },
         },
+        engineSearchLimits: { sente: { kind: "clock" }, gote: { kind: "clock" } },
+        engineThreads: { sente: 0, gote: 4 },
+        engineOptions: [],
     }),
 }));
 let kifMoves: KifMove[] = [];
@@ -73,7 +76,7 @@ describe("PlayResultDialog", () => {
 
         act(() => vi.advanceTimersByTime(700));
         expect(screen.getByRole("dialog", { name: "あなたの勝ち" })).toBeTruthy();
-        expect(screen.getByText("先手・10分 切れ負け・簡易AI")).toBeTruthy();
+        expect(screen.getByText("先手・10分 切れ負け")).toBeTruthy();
         expect(screen.getByRole("button", { name: "設定を変える" })).toBeTruthy();
         expect(screen.getByRole("button", { name: "ノート" })).toBeTruthy();
     });
@@ -122,7 +125,17 @@ describe("PlayResultDialog", () => {
         renderDialog(CHECKMATE);
         act(() => vi.advanceTimersByTime(700));
         expect(screen.getByRole("heading", { name: "評価値の推移" })).toBeTruthy();
-        expect(screen.getByText("AI 平均 深さ 13・130万局面/秒（2 手）")).toBeTruthy();
+        expect(screen.getByText("AI 平均 深さ 13（2 手）")).toBeTruthy();
+        expect(screen.getByText("この端末で 平均 130万局面/秒")).toBeTruthy();
+    });
+
+    it("lists the opponent, how much it reads and the player's side and time", () => {
+        renderDialog(CHECKMATE);
+        act(() => vi.advanceTimersByTime(700));
+        expect(screen.getByText("相手")).toBeTruthy();
+        expect(screen.getByText("簡易AI レベル 20")).toBeTruthy();
+        expect(screen.getByText("1手10秒・スレッド 4")).toBeTruthy();
+        expect(screen.getByText("先手・10分 切れ負け")).toBeTruthy();
     });
 
     it("closes the dialog before starting the next game", () => {

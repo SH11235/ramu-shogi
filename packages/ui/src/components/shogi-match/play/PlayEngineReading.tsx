@@ -359,7 +359,11 @@ const GRAPH_WIDTH = 320;
 const GRAPH_HEIGHT = 56;
 
 /** その側の AI が指した手の、読みの平均（深さ・速さ）。 */
-function averageReading(moves: KifMove[]): { depth: number; nps: number | null; count: number } {
+export function averageReading(moves: KifMove[]): {
+    depth: number;
+    nps: number | null;
+    count: number;
+} {
     const depths = moves.flatMap((move) =>
         move.engineSearch?.depth !== undefined ? [move.engineSearch.depth] : [],
     );
@@ -375,7 +379,7 @@ function averageReading(moves: KifMove[]): { depth: number; nps: number | null; 
 
 /**
  * 終局のダイアログに置く、この対局の AI の読みのまとめ。AI が指した手の評価値の推移（点は指した側の色）と、
- * 読んだ深さ・速さの平均。AI の手の記録が無ければ何も出さない。
+ * 読んだ深さの平均（速さの平均は対局の条件の「読む量」に添える）。AI の手の記録が無ければ何も出さない。
  */
 export function PlayGameReadingSummary({ className }: { className?: string }): ReactElement | null {
     const { kifMoves } = useNavigation();
@@ -461,9 +465,7 @@ export function PlayGameReadingSummary({ className }: { className?: string }): R
                 return (
                     <p key={side} className="text-xs tabular-nums text-wafuu-sumi-light">
                         {engineSides.length > 1 ? (side === "sente" ? "☗ " : "☖ ") : "AI "}
-                        平均 深さ {average.depth}
-                        {average.nps !== null ? `・${formatNodeCount(average.nps)}局面/秒` : ""}（
-                        {average.count} 手）
+                        平均 深さ {average.depth}（{average.count} 手）
                     </p>
                 );
             })}
