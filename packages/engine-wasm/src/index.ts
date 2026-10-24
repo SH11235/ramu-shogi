@@ -473,8 +473,8 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
 
     /** 準備中 (エンジンの初期化待ち) の詰み探索を始めたときの cancelEpoch。取り消されたら busy に数えない */
     let mateStartingEpoch: number | null = null;
-    /** 通常探索の準備中 (エンジンの初期化待ち) */
-    let searchStarting = false;
+    /** 準備中 (エンジンの初期化待ち) の通常探索の数。呼び出しごとに自分の分だけ増減する */
+    let searchesStarting = 0;
     /** stop / dispose / reset のたびに進める。準備中の詰み探索はこれが変わったら送らない */
     let cancelEpoch = 0;
     const mateBusy = () => mateStartingEpoch === cancelEpoch || pendingMates.size > 0;
@@ -969,7 +969,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         available: () => initialized && (backend === "single" || backend === "threaded"),
         async solve(params, onProgress) {
             assertIdle();
-            if (normalSearchActive || searchStarting) {
+            if (normalSearchActive || searchesStarting > 0) {
                 throw new Error("通常探索を停止してから詰み探索を始めてください");
             }
             if (backend === "mock" || backend === "error") {
@@ -1096,11 +1096,11 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
                     },
                 };
             }
-            searchStarting = true;
+            searchesStarting += 1;
             try {
                 await ensureReady();
             } finally {
-                searchStarting = false;
+                searchesStarting -= 1;
             }
             if (!worker) {
                 return mock.search(params);

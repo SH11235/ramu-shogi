@@ -1396,4 +1396,23 @@ describe("詰み探索 (mate.solve)", () => {
         });
         await solving;
     });
+
+    it("初期化待ちの通常探索を reset した後の通常探索の準備中も、solve は失敗する", async () => {
+        const workers: MockWorker[] = [];
+        const client = createWasmEngineClient({
+            workerFactory: () => {
+                const worker = createMockWorker();
+                workers.push(worker);
+                return worker as unknown as Worker;
+            },
+        });
+        const first = client.search({});
+        first.catch(() => {});
+        await client.reset?.();
+        const second = client.search({});
+        second.catch(() => {});
+        // 取り消した 1 つめの準備が終わっても、2 つめの準備中の印は残る
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await expect(client.mate?.solve({})).rejects.toThrow("通常探索");
+    });
 });
