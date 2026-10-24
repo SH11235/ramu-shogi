@@ -240,11 +240,13 @@ export function NnueSpeedTable({
         (NNUE_SPEED_BENCHMARK_POSITIONS.length * NNUE_SPEED_BENCHMARK_MS_PER_POSITION) / 1000;
     const message =
         state.phase === "done" && state.contentHash === contentHash ? state.message : null;
-    // 測る途中でダウンロードが済むと注記が要らなくなるが、測り終えるまでは残してカードの高さを変えない
-    const [lastNote, setLastNote] = useState(downloadNote);
-    if (downloadNote && downloadNote !== lastNote) setLastNote(downloadNote);
-    if (!downloadNote && !running && lastNote) setLastNote(undefined);
-    const shownNote = downloadNote ?? (running ? lastNote : undefined);
+    // 測る途中でダウンロードが済むと注記は要らなくなるが、出ていた注記の行は見えなくするだけで残し、
+    // カードの高さを変えない。props の変化に合わせた state の更新なので render の中で行う（React の推奨する形）。
+    const [keptNote, setKeptNote] = useState(downloadNote);
+    if (downloadNote && downloadNote !== keptNote) setKeptNote(downloadNote);
+    const [noteDuringRun, setNoteDuringRun] = useState(false);
+    if (!running && noteDuringRun) setNoteDuringRun(false);
+    const noteVisible = Boolean(downloadNote) || (running !== null && noteDuringRun);
     const blockedReason =
         disabledReason ??
         (benchmark.isRunning
@@ -294,9 +296,15 @@ export function NnueSpeedTable({
                         className="h-8 shrink-0 px-3 text-xs [@media(pointer:coarse)]:text-base"
                         disabled={running !== null || blockedReason !== undefined}
                         title={blockedReason ?? `約 ${totalSeconds} 秒読んで測ります`}
-                        onClick={() =>
-                            void benchmark.start({ contentHash, threads: selectedThreads, prepare })
-                        }
+                        onClick={() => {
+                            // 押したときに注記が出ていれば、測り終えるまで出したままにする
+                            setNoteDuringRun(Boolean(downloadNote));
+                            void benchmark.start({
+                                contentHash,
+                                threads: selectedThreads,
+                                prepare,
+                            });
+                        }}
                     >
                         {progressLabel ?? "測る"}
                     </Button>
@@ -340,7 +348,11 @@ export function NnueSpeedTable({
                     ))}
                 </tbody>
             </table>
-            {canMeasure && shownNote && <p>{shownNote}</p>}
+            {canMeasure && keptNote && (
+                <p className={noteVisible ? undefined : "invisible"} aria-hidden={!noteVisible}>
+                    {keptNote}
+                </p>
+            )}
         </div>
     );
 }

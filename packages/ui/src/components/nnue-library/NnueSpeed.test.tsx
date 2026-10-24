@@ -222,7 +222,7 @@ describe("NnueSpeedTable", () => {
         expect(label.closest("div")?.querySelector("select")).not.toBeNull();
     });
 
-    it("測る途中でダウンロードが済んでも、測り終えるまで注記を残す", async () => {
+    it("測る途中でダウンロードが済んでも、注記の行を残してカードの高さを変えない", async () => {
         function Downloading() {
             const benchmark = useNnueSpeedBenchmark(support);
             const [downloaded, setDownloaded] = useState(false);
@@ -243,13 +243,14 @@ describe("NnueSpeedTable", () => {
         fireEvent.click(screen.getByRole("button", { name: "測る" }));
         await screen.findByRole("button", { name: /あと約/ });
         expect(screen.getByText("測るときに 1 KB をダウンロードします。")).toBeTruthy();
-        await waitFor(() =>
-            expect(screen.queryByText("測るときに 1 KB をダウンロードします。")).toBeNull(),
-        );
-        // ダウンロード済みのあとに測り直しても、注記は戻らない
+        // 測り終えたら見えなくするが、行は残してカードの高さを変えない
+        const note = screen.getByText("測るときに 1 KB をダウンロードします。");
+        expect(note.className).not.toContain("invisible");
+        await waitFor(() => expect(note.className).toContain("invisible"));
+        // ダウンロード済みのあとに測り直しても、注記は見えないまま
         fireEvent.click(screen.getByRole("button", { name: "測る" }));
         await screen.findByRole("button", { name: /あと約/ });
-        expect(screen.queryByText("測るときに 1 KB をダウンロードします。")).toBeNull();
+        expect(note.className).toContain("invisible");
     });
 
     it("対局・解析中などで測れないときは押せない", () => {
