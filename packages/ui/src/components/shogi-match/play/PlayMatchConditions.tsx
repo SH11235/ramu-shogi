@@ -49,7 +49,7 @@ function useConditionRows(): ConditionRow[] {
             // 棋譜の途中の局面から指し始めたときは、何手目からかを添える（棋譜の最初の局面は元のまま）。
             value:
                 play.startPly > 0
-                    ? `${startPositionLabel(kifuTree?.startSfen ?? "startpos")}の ${play.startPly}手目から`
+                    ? `${startPositionLabel(kifuTree?.startSfen ?? "startpos")}の ${play.startPly}手目の局面から`
                     : startPositionLabel(kifuTree?.startSfen ?? "startpos"),
         },
     ];
@@ -62,16 +62,25 @@ function useConditionRows(): ConditionRow[] {
                 ? ""
                 : `　レベル ${setting.skillLevel?.skillLevel ?? SKILL_LEVEL_MAX}`;
         const limit = formatSearchLimit(engineSearchLimits[side]) ?? timeText(side);
+        // この対局で指した手だけ（棋譜の途中から始めたときの、それより前の手は数えない）。
         const sideMoves = kifMoves.filter(
             (move) =>
+                move.ply > play.startPly &&
                 move.engineSearch &&
                 (move.mover ?? (move.ply % 2 === 1 ? "sente" : "gote")) === side,
         );
         // スレッド数は、手を決めたときにエンジンが実際に使った数を優先する（設定より少なくなることがある）。
+        // 外部エンジンの「自動」は登録時の設定のまま動き、その数はこちらから分からないので出さない。
+        const recordedThreads = [...sideMoves].reverse().find((move) => move.engineSearch?.threads)
+            ?.engineSearch?.threads;
         const threads =
-            [...sideMoves].reverse().find((move) => move.engineSearch?.threads)?.engineSearch
-                ?.threads ??
-            resolveThreadCount(engineThreads[side], threadCapOf(engineOptions, [setting.engineId]));
+            recordedThreads ??
+            (engine?.kind === "external" && engineThreads[side] === 0
+                ? null
+                : resolveThreadCount(
+                      engineThreads[side],
+                      threadCapOf(engineOptions, [setting.engineId]),
+                  ));
         // 時間で読む量を決めると、端末の速さで読める局面の数（＝強さ）が変わるので、実際の速さも添える。
         const average = averageReading(sideMoves);
         rows.push(
@@ -83,7 +92,7 @@ function useConditionRows(): ConditionRow[] {
             {
                 id: `${side}-limit`,
                 label: "読む量",
-                value: `${limit}・スレッド ${threads}`,
+                value: threads === null ? limit : `${limit}・スレッド ${threads}`,
                 note:
                     average.nps !== null
                         ? `この端末で 平均 ${formatNodeCount(average.nps)}局面/秒`

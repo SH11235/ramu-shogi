@@ -21,7 +21,12 @@ import { useNavigation } from "../contexts/NavigationContext";
 import { useIsMobile } from "../hooks/useMediaQuery";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import type { EngineSearchSummary, KifMove } from "../utils/kifFormat";
-import { convertPvToDisplay, formatEval, getEvalTooltipInfo } from "../utils/kifFormat";
+import {
+    convertPvToDisplay,
+    formatEval,
+    getEvalTooltipInfo,
+    toEngineSearchSummary,
+} from "../utils/kifFormat";
 import { formatNodeCount } from "../utils/searchLimits";
 
 /** 1 回の探索の読み。評価値は先手視点。 */
@@ -37,18 +42,9 @@ function liveReadingOf(
     live: { side: Player; event: EngineInfoEvent },
     position: PositionState,
 ): Reading {
-    const { side, event } = live;
-    const sign = side === "sente" ? 1 : -1;
     return {
-        side,
-        depth: event.depth,
-        seldepth: event.seldepth,
-        nodes: event.nodes,
-        nps: event.nps,
-        timeMs: event.timeMs,
-        scoreCp: event.scoreCp === undefined ? undefined : sign * event.scoreCp,
-        scoreMate: event.scoreMate === undefined ? undefined : sign * event.scoreMate,
-        pv: event.pv,
+        ...toEngineSearchSummary(live.event, live.side),
+        side: live.side,
         pvStart: position,
     };
 }
@@ -383,12 +379,15 @@ export function averageReading(moves: KifMove[]): {
  */
 export function PlayGameReadingSummary({ className }: { className?: string }): ReactElement | null {
     const { kifMoves } = useNavigation();
+    const { play } = useShogiMatchConfig();
     const { sides, displaySettings } = useMatchState();
     const hasEngine = sides.sente.role === "engine" || sides.gote.role === "engine";
     if (!hasEngine || !displaySettings.showEngineReading) return null;
     const moverOf = (move: KifMove): Player =>
         move.mover ?? (move.ply % 2 === 1 ? "sente" : "gote");
-    const engineMoves = kifMoves.filter((move) => move.engineSearch);
+    // この対局で指した手だけ（棋譜の途中から始めたときの、それより前の手は数えない）。
+    const startPly = play?.startPly ?? 0;
+    const engineMoves = kifMoves.filter((move) => move.ply > startPly && move.engineSearch);
     const points = engineMoves.flatMap((move) => {
         const search = move.engineSearch;
         if (!search) return [];

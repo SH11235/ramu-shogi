@@ -50,6 +50,7 @@ function renderDialog(result: GameResult, overrides: Partial<PlayScreenConfig> =
         newGame: vi.fn(),
         openStudy: vi.fn(),
         hintCount: 0,
+        startPly: 0,
         playerNames: { sente: "あなた", gote: "簡易AI" },
         ...overrides,
     } as unknown as PlayScreenConfig;

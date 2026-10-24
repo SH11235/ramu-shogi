@@ -870,6 +870,58 @@ describe("createEngineController", () => {
         expect(controller.getState().engineReady.sente).toBe(true);
     });
 
+    it.each([
+        { activeThreads: 3, expected: 3 },
+        { activeThreads: 0, expected: undefined },
+        { activeThreads: undefined, expected: undefined },
+    ])("手を決めたときに、エンジンが実際に使ったスレッド数を残す (activeThreads=$activeThreads)", async ({
+        activeThreads,
+        expected,
+    }) => {
+        const mockClient = createMockEngineClient();
+        const client =
+            activeThreads === undefined
+                ? mockClient.client
+                : {
+                      ...mockClient.client,
+                      getThreadInfo: () => ({
+                          activeThreads,
+                          maxThreads: 8,
+                          hardwareConcurrency: 8,
+                          threadedAvailable: true,
+                      }),
+                  };
+        const onSearchComplete = vi.fn();
+        const controller = createEngineController({
+            createClient: () => client as typeof mockClient.client,
+            getClockState: createClockState,
+            now: () => Date.now(),
+            resolveNnue: async () => null,
+            callbacks: { onMoveFromEngine: vi.fn(), onMatchEnd: vi.fn(), onSearchComplete },
+        });
+        controller.command.syncContext({
+            sides: { sente: { role: "engine", engineId: "engine1" }, gote: { role: "human" } },
+            position: { startSfen: "startpos", moves: [], turn: "sente", ready: true },
+            matchRunning: true,
+        });
+        await controller.command.startTurn("sente");
+        await flushPromises();
+        mockClient.emit({ type: "info", depth: 12, nodes: 1000, pv: ["7g7f"] });
+        mockClient.emit({ type: "bestmove", move: "7g7f" });
+        expect(onSearchComplete).toHaveBeenCalledTimes(1);
+        expect(onSearchComplete.mock.calls[0][1].threads).toBe(expected);
+    });
+
+    it("読み筋の無い info（Desktop の外部 USI からの pv: null）でも統計を更新できる", () => {
+        const deep = accumulateSearchStats({}, { type: "info", depth: 20, pv: ["7g7f", "3c3d"] });
+        const next = accumulateSearchStats(deep, {
+            type: "info",
+            depth: 21,
+            pv: null as unknown as string[],
+        });
+        expect(next.depth).toBe(21);
+    });
+
     it("後手の探索に両者の残り持ち時間を渡す", async () => {
         const mockClient = createMockEngineClient();
         const controller = createEngineController({

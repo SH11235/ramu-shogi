@@ -144,17 +144,15 @@ export function KifuNavigationToolbar({
             }
         >
             {/* 最初へ */}
-            {
-                <NavButton
-                    onClick={onToStart}
-                    disabled={disabled || !canGoBack}
-                    title="最初へ戻る"
-                    large={large}
-                    bar={bar}
-                >
-                    ⏮
-                </NavButton>
-            }
+            <NavButton
+                onClick={onToStart}
+                disabled={disabled || !canGoBack}
+                title="最初へ戻る"
+                large={large}
+                bar={bar}
+            >
+                ⏮
+            </NavButton>
             {/* 1手戻る */}
             {!bar && (
                 <NavButton
@@ -196,17 +194,15 @@ export function KifuNavigationToolbar({
             )}
 
             {/* 最後へ */}
-            {
-                <NavButton
-                    onClick={onToEnd}
-                    disabled={disabled || !canGoForward}
-                    title="最後へ進む"
-                    large={large}
-                    bar={bar}
-                >
-                    ⏭
-                </NavButton>
-            }
+            <NavButton
+                onClick={onToEnd}
+                disabled={disabled || !canGoForward}
+                title="最後へ進む"
+                large={large}
+                bar={bar}
+            >
+                ⏭
+            </NavButton>
 
             {/* 分岐切替（分岐がある場合のみ表示） */}
             {branchInfo?.hasBranches && (
