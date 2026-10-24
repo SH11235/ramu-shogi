@@ -342,6 +342,19 @@ describe("computeStudyHighlights: 深く読んだ結果での判定し直し", (
         expect(revised?.scoreAfter).toEqual(cp(-500));
     });
 
+    it("深く解析をすぐ止めて、元の結果より浅くしか読めていなければ、判定に使わない", () => {
+        const { doc, ids } = docWithScores([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
+        const shallow = putDeep(ids[3], [{ score: cp(10), move: "8c8d" }]);
+        if (shallow.type !== "putAnalysis") throw new Error("putAnalysis ではありません");
+        const kept = find(
+            withDeep(doc, [{ ...shallow, result: { ...shallow.result, depth: 5 } }]),
+            ids[3],
+        );
+        expect(kept?.kind).toBe("blunder");
+        expect(kept?.judgedByDeeper).toBe(false);
+        expect(kept?.revisedFrom).toBeUndefined();
+    });
+
     it("深く読んでも判定が同じなら、判定の変化として知らせない", () => {
         const { doc, ids } = docWithScores([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
         const same = find(

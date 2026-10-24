@@ -74,7 +74,8 @@ interface Session {
 export function useStudyDeepSearch(options: Options): {
     state: StudyDeepState;
     start: (request: StudyDeepRequest) => Promise<boolean>;
-    resume: () => Promise<void>;
+    /** 続きから読み始められたら true。 */
+    resume: () => Promise<boolean>;
     stop: () => Promise<void>;
     release: () => Promise<void>;
 } {
@@ -242,11 +243,13 @@ export function useStudyDeepSearch(options: Options): {
         return true;
     };
 
-    const resume = async (): Promise<void> => {
+    const resume = async (): Promise<boolean> => {
         const controller = controllerRef.current?.controller;
-        if (!controller || !sessionRef.current || !state.canContinue) return;
+        // 続きから読めるかは、画面の状態ではなく解析の部品の状態で確かめる。
+        if (!controller || !sessionRef.current || !controller.getState().canResume) return false;
         setState((prev) => ({ ...prev, phase: "preparing", canContinue: false }));
         await controller.start(budget());
+        return true;
     };
 
     const stop = async (): Promise<void> => {

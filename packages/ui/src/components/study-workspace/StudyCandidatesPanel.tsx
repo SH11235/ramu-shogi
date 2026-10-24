@@ -358,9 +358,11 @@ export function StudyCandidatesPanel({
 
             {revision && (
                 <p className="rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-xs text-wafuu-sumi">
-                    {revision.to === null
-                        ? `深く解析した結果、${KIND_LABEL[revision.from ?? "dubious"]}ではありませんでした。`
-                        : `深く解析した結果、${KIND_LABEL[revision.to]}と分かりました。`}
+                    {revision.to !== null
+                        ? `深く解析した結果、${KIND_LABEL[revision.to]}と分かりました。`
+                        : revision.from !== null
+                          ? `深く解析した結果、${KIND_LABEL[revision.from]}ではありませんでした。`
+                          : "深く解析した結果、判定が変わりました。"}
                     <span className="ml-1 text-muted-foreground">
                         （全体の解析では
                         {revision.from === null ? "問題なし" : KIND_LABEL[revision.from]}）

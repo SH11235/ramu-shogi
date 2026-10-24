@@ -104,6 +104,9 @@ interface StartOptions {
     fvScale?: number;
     /** 候補手数（MultiPV）。省略時は 1 */
     multiPv?: number;
+    /** この start だけのワーカー数・1 ワーカーのスレッド数（省略時はフックに渡した値）。 */
+    workerCount?: number;
+    threadsPerWorker?: number;
     /**
      * 解析を始めた時点のレイヤー。この start で積んだジョブの終了通知にそのまま載る
      * （途中で設定を変えて start し直しても、前のジョブの結果には混ざらない）。
@@ -619,8 +622,11 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             fvScale: startOptions?.fvScale,
             layerStacks: startOptions?.layerStacks,
             clientKey,
-            workerCount,
-            threadsPerWorker: Math.max(1, Math.trunc(threadsPerWorker)),
+            workerCount: startOptions?.workerCount ?? workerCount,
+            threadsPerWorker: Math.max(
+                1,
+                Math.trunc(startOptions?.threadsPerWorker ?? threadsPerWorker),
+            ),
             createClient,
             materialFallback,
         };

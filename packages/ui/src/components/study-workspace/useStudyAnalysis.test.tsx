@@ -277,6 +277,31 @@ describe("useStudyAnalysis", () => {
         });
     });
 
+    it("続きから読めないエンジンでも、深く解析は 1 つのエンジンに深く解析のスレッド数を当てる", async () => {
+        localStorage.setItem(
+            "shogi-analysis-settings",
+            JSON.stringify({
+                parallelWorkers: 2,
+                batchAnalysisTimeMs: 500,
+                batchAnalysisDepth: 15,
+                multiPv: 1,
+                batchAnalysisThreads: 1,
+                deepAnalysisThreads: 3,
+            }),
+        );
+        const { doc, ids } = createTestStudy();
+        const engine = createEngineOption();
+        const { result } = renderHook(() => useHarness(doc, [engine.option]));
+
+        await act(async () => {
+            await result.current.controller.startDeep(ids[2]);
+        });
+        await waitFor(() => expect(result.current.flushCount).toBe(1));
+        // 1 つ目は続きから読めるかを確かめるためのエンジン、2 つ目が 1 回だけの読みのエンジン。
+        expect(engine.initThreads()).toEqual([3, 3]);
+        expect(engine.searches()).toBe(1);
+    });
+
     it("この局面を深く解析すると、時間の長い別の設定の結果としてその局面だけに入る", async () => {
         const { doc, ids } = createTestStudy();
         const engine = createEngineOption();

@@ -512,6 +512,16 @@ export function useStudyAnalysis({
             fvScale: resolved?.fvScale,
             multiPv,
             layer,
+            // 1 局面だけの深い解析は、1 つのエンジンに深く解析のスレッド数を当てる。
+            ...(nextMode === "deep"
+                ? {
+                      workerCount: 1,
+                      threadsPerWorker: resolveThreadSetting(
+                          settings.deepAnalysisThreads,
+                          engineOption?.maxThreads,
+                      ),
+                  }
+                : {}),
         });
     };
 
@@ -769,9 +779,9 @@ export function useStudyAnalysis({
     }, [locked]);
 
     const continueDeep = async (): Promise<void> => {
-        if (lockedRef.current || pool.isRunning || preparingRef.current) return;
+        if (lockedRef.current || pool.isRunning || isDeepSearching || preparingRef.current) return;
+        if (!(await deep.resume())) return;
         if (deepLayerIdRef.current !== null) onLayerStarted(deepLayerIdRef.current, "deep");
-        await deep.resume();
     };
 
     const activeMode = pool.isRunning ? mode : isDeepSearching ? "deep" : null;

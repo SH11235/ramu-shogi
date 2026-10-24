@@ -75,9 +75,13 @@ const resultOf = (
 ): StudyAnalysisResult | undefined =>
     results && Object.hasOwn(results, nodeId) ? results[nodeId] : undefined;
 
-/** 深いレイヤーの中で、その局面を最も深く読んだ結果。 */
+/**
+ * 深いレイヤーの中で、その局面を最も深く読んだ結果。表示中のレイヤーの結果より実際に深く読めて
+ * いなければ使わない（設定の上限が大きくても、すぐ止めた浅い結果で判定を覆さない）。
+ */
 const deepestResult = (
     layers: ReadonlyArray<Record<string, StudyAnalysisResult>>,
+    baseline: StudyAnalysisResult | undefined,
     nodeId: string,
 ): StudyAnalysisResult | undefined => {
     let picked: StudyAnalysisResult | undefined;
@@ -85,7 +89,7 @@ const deepestResult = (
         const result = resultOf(results, nodeId);
         if (result && (!picked || result.depth > picked.depth)) picked = result;
     }
-    return picked;
+    return picked && (!baseline || picked.depth > baseline.depth) ? picked : undefined;
 };
 
 /** 前後の評価値から、落差と判定を出す（同じ勝者の詰みで手数が変わっただけなら判定しない）。 */
@@ -183,8 +187,16 @@ export function computeStudyHighlights(
             if (scoreBefore !== null && scoreAfter !== null) {
                 ({ drop, kind } = judgeDrop(mover, scoreBefore, scoreAfter));
             }
-            const deepBefore = deepestResult(deeperLayers, node.parentId);
-            const deepAfter = deepestResult(deeperLayers, item.nodeId);
+            const deepBefore = deepestResult(
+                deeperLayers,
+                resultOf(results, node.parentId),
+                node.parentId,
+            );
+            const deepAfter = deepestResult(
+                deeperLayers,
+                resultOf(results, item.nodeId),
+                item.nodeId,
+            );
             const playedInDeepBefore = deepBefore?.candidates.find(
                 (candidate) => candidate.pv[0] === node.usiMove && candidate.score !== null,
             );
