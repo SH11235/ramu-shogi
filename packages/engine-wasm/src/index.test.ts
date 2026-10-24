@@ -1415,4 +1415,22 @@ describe("詰み探索 (mate.solve)", () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
         await expect(client.mate?.solve({})).rejects.toThrow("通常探索");
     });
+
+    it("通常探索を 2 回送ると、2 つめの bestmove まで solve は失敗する", async () => {
+        const { client, worker } = await createReadyClient();
+        await client.search({});
+        await client.search({});
+        const bestmove = { type: "event", payload: { type: "bestmove", move: "7g7f" } };
+        reply(worker(), bestmove);
+        await expect(client.mate?.solve({})).rejects.toThrow("通常探索");
+        reply(worker(), bestmove);
+        const solving = client.mate?.solve({});
+        await vi.waitFor(() => expect(solveCalls(worker())).toHaveLength(1));
+        reply(worker(), {
+            type: "mateFinished",
+            requestId: solveCalls(worker())[0].requestId,
+            outcome: { result: { kind: "noMate" }, nodes: 1, elapsedMs: 0 },
+        });
+        await solving;
+    });
 });

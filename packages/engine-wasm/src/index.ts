@@ -394,7 +394,8 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
     let backend: BackendKind = options.useMock ? "mock" : "single";
     let worker: Worker | null = null;
     let workerGen = 0;
-    let normalSearchActive = false;
+    /** 送った通常探索のうち bestmove がまだ届いていない数 (探索は 1 回ごとに bestmove を 1 回返す) */
+    let normalSearches = 0;
     let initialized = false;
     let initInFlight: Promise<void> | null = null;
     let lastInitOpts: WasmEngineInitOptions | undefined = rememberInitOpts(
@@ -421,8 +422,8 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
     };
 
     const emit = (event: EngineEvent) => {
-        if (event.type === "bestmove" || (event.type === "error" && event.severity !== "warning"))
-            normalSearchActive = false;
+        if (event.type === "bestmove") normalSearches = Math.max(0, normalSearches - 1);
+        if (event.type === "error" && event.severity !== "warning") normalSearches = 0;
         if (event.type === "error" && event.severity !== "warning") {
             lastPosition = null;
         }
@@ -653,7 +654,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
     };
 
     const replaceWorker = (reason: string) => {
-        normalSearchActive = false;
+        normalSearches = 0;
         if (worker) {
             try {
                 worker.terminate();
@@ -908,7 +909,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
     const analysisBridge = createAnalysisBridge({
         available: () => initialized && backend === "threaded",
         ready: async () => {
-            if (normalSearchActive) throw new Error("通常探索を停止してから解析を開始してください");
+            if (normalSearches > 0) throw new Error("通常探索を停止してから解析を開始してください");
             if (mateBusy()) throw new Error("詰み探索が終わってから解析を開始してください");
             await ensureReady();
         },
@@ -969,7 +970,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         available: () => initialized && (backend === "single" || backend === "threaded"),
         async solve(params, onProgress) {
             assertIdle();
-            if (normalSearchActive || searchesStarting > 0) {
+            if (normalSearches > 0 || searchesStarting > 0) {
                 throw new Error("通常探索を停止してから詰み探索を始めてください");
             }
             if (backend === "mock" || backend === "error") {
@@ -1105,7 +1106,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             if (!worker) {
                 return mock.search(params);
             }
-            normalSearchActive = true;
+            normalSearches += 1;
             postToWorker({ type: "search", params });
             return {
                 async cancel() {
