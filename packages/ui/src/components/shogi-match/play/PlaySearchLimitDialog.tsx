@@ -10,15 +10,17 @@ import { useState } from "react";
 import { Button } from "../../button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../dialog";
 import type { EngineSearchLimit } from "../types";
-import { formatNodeCount, SEARCH_DEPTH_MAX, SEARCH_NODES_MAX } from "../utils/searchLimits";
+import {
+    formatNodeCount,
+    formatSearchLimit,
+    parseSearchLimitInput,
+    SEARCH_LIMIT_DEFAULTS,
+    type SearchLimitKind,
+} from "../utils/searchLimits";
 import { PLAY_OUTLINE_BUTTON, PLAY_PRIMARY_BUTTON } from "./playStyles";
-
-export type SearchLimitKind = "nodes" | "depth";
 
 const NUMBER_INPUT_CLASS =
     "h-10 w-36 rounded-md border border-wafuu-border bg-background px-2 text-right text-base tabular-nums text-wafuu-sumi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
-const DEFAULTS: Record<SearchLimitKind, number> = { nodes: 1_000_000, depth: 12 };
 
 interface PlaySearchLimitDialogProps {
     open: boolean;
@@ -55,28 +57,19 @@ function PlaySearchLimitForm({
             ? current.nodes
             : current.kind === "depth" && kind === "depth"
               ? current.depth
-              : DEFAULTS[kind];
+              : SEARCH_LIMIT_DEFAULTS[kind];
     const [text, setText] = useState(String(initial));
-    const max = kind === "nodes" ? SEARCH_NODES_MAX : SEARCH_DEPTH_MAX;
-
-    // 日本語入力のまま打った全角数字や、桁区切りのカンマも受け付ける。
-    const normalized = text.normalize("NFKC").replace(/,/g, "").trim();
-    const value = /^[0-9]+$/.test(normalized) ? Number(normalized) : null;
-    const error =
-        value === null || value < 1
-            ? "1 以上の整数で入れてください"
-            : value > max
-              ? `${max.toLocaleString()} 以下にしてください`
-              : null;
+    const { limit, error } = parseSearchLimitInput(text, kind);
     const help =
-        error ??
-        (kind === "nodes"
-            ? `毎手 ${formatNodeCount(value ?? 0)}局面まで読んで指します。端末の速さで考える時間が変わります。`
-            : `毎手 深さ ${value} まで読んで指します。深くすると、1 手に長くかかることがあります。`);
+        limit === null
+            ? error
+            : limit.kind === "nodes"
+              ? `毎手 ${formatNodeCount(limit.nodes)}局面まで読んで指します。端末の速さで考える時間が変わります。`
+              : `毎手 ${formatSearchLimit(limit)} まで読んで指します。深くすると、1 手に長くかかることがあります。`;
 
     const apply = () => {
-        if (error !== null || value === null) return;
-        onApply(kind === "nodes" ? { kind, nodes: value } : { kind, depth: value });
+        if (limit === null) return;
+        onApply(limit);
         onOpenChange(false);
     };
 
