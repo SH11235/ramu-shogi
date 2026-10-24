@@ -365,13 +365,14 @@ export function PlayHintButton({ className }: { className?: string }): ReactElem
     }
     if (isSearching) {
         return (
+            // 隣に「一時停止」が並ぶことがあるので、何を止めるかを書く。幅の狭い端末では文字を小さくする。
             <Button
                 type="button"
                 variant="outline"
-                className={cn(PLAY_OUTLINE_BUTTON, className)}
+                className={cn(PLAY_OUTLINE_BUTTON, className, "max-[449px]:text-[11px]")}
                 onClick={() => play?.stopHint()}
             >
-                止める
+                読みを止める
             </Button>
         );
     }
