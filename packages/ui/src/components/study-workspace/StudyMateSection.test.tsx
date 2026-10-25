@@ -139,11 +139,12 @@ describe("StudyMateResult", () => {
             "王手を放置した局面（手番でない側の玉に王手が掛かっている）は調べられません",
         );
 
-        const board = Object.fromEntries(
-            Object.entries(node.positionAfter.board).filter(
-                ([, piece]) => !(piece?.type === "K" && piece.owner !== node.positionAfter.turn),
-            ),
-        );
+        const board = { ...node.positionAfter.board };
+        for (const [square, piece] of Object.entries(board)) {
+            if (piece?.type === "K" && piece.owner !== node.positionAfter.turn) {
+                board[square as keyof typeof board] = null;
+            }
+        }
         render(
             <TooltipProvider>
                 <StudyMateResult
