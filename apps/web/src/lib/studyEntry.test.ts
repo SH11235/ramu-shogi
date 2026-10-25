@@ -283,6 +283,13 @@ describe("貼り付けた棋譜の検証", () => {
                 { sync, api, replayMovesStrict: replayStoppingAt("none") },
             ),
         ).rejects.toThrow("この局面は研究ノートにできません: 玉はそれぞれ1枚まで配置できます。");
+        // 指し手があっても、王手を放置した開始局面は断る。
+        await expect(
+            createStudyFromKifuSource(
+                { kind: "moves", startSfen: "4k4/4P4/9/9/9/9/9/9/4K4 b - 1", moves: ["5i5h"] },
+                { sync, api, replayMovesStrict: replayStoppingAt("none") },
+            ),
+        ).rejects.toThrow("手番でない側の玉に王手が掛かっています");
         // 局面を読み込む側が断った。
         await expect(
             createStudyFromKifuSource(

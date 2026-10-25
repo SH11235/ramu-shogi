@@ -135,7 +135,9 @@ describe("StudyMateResult", () => {
             mate: { kind: "unsupported" },
             threat: null,
         });
-        screen.getByText("相手の玉に王手が掛かっている局面は調べられません");
+        screen.getByText(
+            "王手を放置した局面（手番でない側の玉に王手が掛かっている）は調べられません",
+        );
 
         const board = Object.fromEntries(
             Object.entries(node.positionAfter.board).filter(

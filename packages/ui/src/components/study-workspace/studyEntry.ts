@@ -144,8 +144,8 @@ export interface StudyImportDeps extends StudyEntryDeps {
  * `createStudyDocumentFromMoves` は「駒がそこにあるか」程度しか見ない（歩を飛び越える角なども
  * 通ってしまう）ので、信頼できない入力は先にここを通す。指せない手があれば、何手目かを添えて断る。
  *
- * 指し手が無いとき（局面だけのノート）は、手順の再生では局面を確かめられないので、局面として
- * 成り立つこと（玉がそれぞれ 1 枚まで、駒の枚数が一組に収まる）を確かめてから、局面を読み込ませる。
+ * 開始局面は、手順の前に局面として成り立つこと（`studyStartPositionError`）を確かめる。指し手が無いとき
+ * （局面だけのノート）は、手順の再生では局面を確かめられないので、続けて局面を読み込ませる。
  */
 async function assertLegalLine(
     startSfen: string,
@@ -155,9 +155,9 @@ async function assertLegalLine(
     const run: ReplayMovesStrict =
         replay ??
         ((sfen, line, options) => getPositionService().replayMovesStrict(sfen, line, options));
+    const reason = studyStartPositionError(startSfen);
+    if (reason) throw new Error(`この局面は研究ノートにできません: ${reason}`);
     if (moves.length === 0) {
-        const reason = studyStartPositionError(startSfen);
-        if (reason) throw new Error(`この局面は研究ノートにできません: ${reason}`);
         const loaded = await run(startSfen, []);
         if (loaded.error)
             throw new Error("この局面は研究ノートにできません（読み込めない局面です）");

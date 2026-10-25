@@ -219,7 +219,7 @@ function MateResults({
                 unsupportedText={
                     sidesWithoutKing(node.positionAfter).includes(opponent(turn))
                         ? "相手の玉が無い局面は調べられません"
-                        : "相手の玉に王手が掛かっている局面は調べられません"
+                        : "王手を放置した局面（手番でない側の玉に王手が掛かっている）は調べられません"
                 }
                 actions={
                     request ? (

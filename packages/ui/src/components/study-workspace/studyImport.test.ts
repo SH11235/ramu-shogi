@@ -198,6 +198,10 @@ describe("parseKifuTextForStudy", () => {
         expect(() => parseKifuTextForStudy("sfen 4k4/9/9/9/9/9/9/9/3KK4 b - 1")).toThrow(
             "この局面は研究ノートにできません: 玉はそれぞれ1枚まで配置できます。",
         );
+        // 先手番なのに後手玉に王手が掛かっている（王手を放置した局面）。
+        expect(() => parseKifuTextForStudy("sfen 4k4/4P4/9/9/9/9/9/9/4K4 b - 1")).toThrow(
+            "この局面は研究ノートにできません: 手番でない側の玉に王手が掛かっています（王手を放置した局面）。",
+        );
         // 玉が 1 枚も無い。
         expect(() => parseKifuTextForStudy("P+55FU\n+")).toThrow(
             "この局面は研究ノートにできません: 玉が盤上にありません。",
