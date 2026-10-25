@@ -29,6 +29,18 @@ describe("createUsiEngineClient", () => {
         vi.clearAllMocks();
     });
 
+    it("玉の無い側がある局面では go を送らずに断り、玉のある局面に戻せば探索できる", async () => {
+        const client = createUsiEngineClient({ registrationId: "reg-1" });
+        await client.init();
+        await client.loadPosition("4k4/9/4P4/9/9/9/9/9/9 b G 1", []);
+        await expect(client.search({})).rejects.toThrow("without both kings");
+        expect(invokeMock).not.toHaveBeenCalledWith("usi_engine_go", expect.anything());
+
+        await client.loadPosition("4k4/9/4P4/9/9/9/9/9/4K4 b G 1", []);
+        await client.search({});
+        expect(invokeMock).toHaveBeenCalledWith("usi_engine_go", expect.anything());
+    });
+
     it("初回 init では quit を呼ばない", async () => {
         const client = createUsiEngineClient({ registrationId: "reg-1" });
         await client.init();

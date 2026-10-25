@@ -7,6 +7,7 @@ import {
     consumeFromHand,
     countPieces,
     countTotalPieces,
+    missingKingReason,
     validateEditedPosition,
 } from "./boardUtils";
 
@@ -229,13 +230,15 @@ describe("validateEditedPosition", () => {
         expect(validateEditedPosition(position)).toBe("飛は先手・後手あわせて最大2枚までです。");
     });
 
-    it("玉が盤上に無い局面は成り立たない", () => {
+    it("玉の無い側がある局面も成り立つ（対局は始められない）", () => {
         const position = createInitialPositionState();
         position.board["5a"] = null;
 
-        expect(validateEditedPosition(position)).toBe(
-            "後手の玉が盤上にありません。玉は盤上に1枚ずつ必要です。",
-        );
+        expect(validateEditedPosition(position)).toBeNull();
+        expect(missingKingReason(position)).toBe("後手の玉が無い局面では対局できません。");
+        position.board["5i"] = null;
+        expect(missingKingReason(position)).toBe("先手・後手の玉が無い局面では対局できません。");
+        expect(missingKingReason(createInitialPositionState())).toBeNull();
     });
 
     it("玉が持ち駒にある局面は成り立たない", () => {

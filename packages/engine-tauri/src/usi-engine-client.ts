@@ -12,6 +12,17 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import { listen as tauriListen } from "@tauri-apps/api/event";
 import { normalizeEngineEvent } from "./engine-event";
 
+/**
+ * SFEN の盤面に先手・後手の玉が 1 枚ずつあるか。玉を取る手は無いので、開始局面で決まる。
+ * 通常の探索は玉の無い局面を扱えない（rshogi などは panic する）ので、go を送る前に確かめる。
+ */
+function sfenHasBothKings(sfen: string): boolean {
+    const board = sfen.trim();
+    if (board === "startpos") return true;
+    const placement = board.replace(/^sfen\s+/, "").split(/\s+/)[0] ?? "";
+    return placement.includes("K") && placement.includes("k");
+}
+
 interface UsiEngineClientOptions {
     registrationId: string;
 }
@@ -25,6 +36,7 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
 
     let sessionId: string | null = null;
     let unlisten: UnlistenFn | null = null;
+    let positionHasBothKings = true;
     const listeners = new Set<EngineEventHandler>();
 
     const assertSession = (): string => {
@@ -129,10 +141,14 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
                 sfen,
                 moves: moves ?? [],
             });
+            positionHasBothKings = sfenHasBothKings(sfen);
         },
 
         async search(params: SearchParams): Promise<SearchHandle> {
             const sid = assertSession();
+            if (!positionHasBothKings) {
+                throw new Error("cannot search a position without both kings");
+            }
             await tauriInvoke("usi_engine_go", {
                 session_id: sid,
                 params: {

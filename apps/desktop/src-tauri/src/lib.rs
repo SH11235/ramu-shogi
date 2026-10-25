@@ -30,7 +30,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use rshogi_core::movegen::{MoveList, generate_legal_all_with_pass, generate_legal_with_pass};
+use rshogi_core::movegen::{
+    MoveList, generate_legal_allowing_missing_kings, generate_legal_with_pass,
+};
 use rshogi_core::nnue::set_fv_scale_override;
 use rshogi_core::position::{Position, SFEN_HIRATE};
 use rshogi_core::search::{
@@ -38,7 +40,7 @@ use rshogi_core::search::{
     TimeOptions,
 };
 use rshogi_core::types::json::{BoardStateJson, ReplayResultJson};
-use rshogi_core::types::{Color, Move, Value};
+use rshogi_core::types::{Color, Move, PieceType, Value};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager, State, Window};
@@ -428,13 +430,14 @@ fn parse_position(
     if let Some(pr) = pass_rights {
         position.enable_pass_rights(pr.sente, pr.gote);
     }
+    // 詰将棋の攻め方など玉の無い側がある局面では、set_sfen が既定の升への利きを王手として残す
+    position.clear_checkers_without_king();
 
     if let Some(moves) = moves {
         for mv in moves {
             let parsed =
                 Move::from_usi(&mv).ok_or_else(|| format!("Invalid move in position: {mv}"))?;
-            let gives_check = position.gives_check(parsed);
-            position.do_move(parsed, gives_check);
+            position.do_move_allowing_missing_kings(parsed);
         }
     }
 
@@ -802,6 +805,19 @@ fn engine_search(
             .lock()
             .map_err(|e| format!("Failed to acquire engine state lock: {e}"))?;
         inner.reclaim_finished();
+        // 通常の探索は両方の玉がある局面だけを扱う (玉の無い側の既定の升を玉とみなした指し手で panic する)。
+        // 置換表を手放す前に断る
+        let has_king = |color| !inner.position.pieces(color, PieceType::King).is_empty();
+        if !(has_king(Color::Black) && has_king(Color::White)) {
+            let message = "cannot search a position without both kings".to_string();
+            emit_event(
+                &window,
+                EngineEvent::Error {
+                    message: message.clone(),
+                },
+            );
+            return Err(message);
+        }
         let position = inner.position.clone();
         let options = inner.options.clone();
         let search = inner.search.take().unwrap_or_else(|| inner.create_search());
@@ -873,7 +889,7 @@ fn engine_legal_moves(
 ) -> Result<Vec<String>, String> {
     let position = parse_position(&sfen, moves, pass_rights)?;
     let mut list = MoveList::new();
-    generate_legal_all_with_pass(&position, &mut list);
+    generate_legal_allowing_missing_kings(&position, &mut list);
     let usi_moves = list.as_slice().iter().map(|mv| mv.to_usi()).collect();
     Ok(usi_moves)
 }

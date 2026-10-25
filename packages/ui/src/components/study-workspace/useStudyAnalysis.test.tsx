@@ -1,4 +1,9 @@
-import { applyStudyOps, type StudyDocument, type StudyOp } from "@shogi/app-core";
+import {
+    applyStudyOps,
+    createStudyDocumentFromMoves,
+    type StudyDocument,
+    type StudyOp,
+} from "@shogi/app-core";
 import type {
     AnalysisFinished,
     EngineClient,
@@ -247,6 +252,30 @@ describe("useStudyAnalysis", () => {
             await result.current.controller.startFull();
         });
         expect(engine.searches()).toBe(5);
+    });
+
+    it("玉の無い側がある局面（詰将棋）は、全体も 1 局面も解析を始めずに理由を知らせる", async () => {
+        const doc = createStudyDocumentFromMoves({
+            id: "22222222-2222-4222-8222-222222222222",
+            title: "詰将棋",
+            origin: { kind: "paste", ref: null },
+            startSfen: "4k4/9/4P4/9/9/9/9/9/9 b G 1",
+            moves: ["G*5b"],
+        });
+        const engine = createEngineOption();
+        const onMessage = vi.fn();
+        const { result } = renderHook(() => useHarness(doc, [engine.option], { onMessage }));
+        await act(async () => {
+            await result.current.controller.startFull();
+        });
+        await act(async () => {
+            await result.current.controller.startDeep(doc.tree.rootId);
+        });
+        expect(engine.searches()).toBe(0);
+        expect(onMessage).toHaveBeenCalledWith({
+            text: "玉の無い局面は解析できません。",
+            type: "warning",
+        });
     });
 
     it("全体の解析は、設定した 1 局面あたりのスレッド数でエンジンを用意する", async () => {

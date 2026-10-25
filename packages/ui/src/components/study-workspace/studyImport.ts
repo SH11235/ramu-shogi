@@ -9,6 +9,7 @@
  */
 
 import {
+    isKingInCheck,
     isStudyUsiMove,
     kifuEvalToStudyScore,
     normalizeStudyStartSfen,
@@ -16,7 +17,7 @@ import {
     parseStudySfen,
     type StudyImportAnnotation,
 } from "@shogi/app-core";
-import { validateEditedPosition } from "../shogi-match/utils/boardUtils";
+import { sidesWithoutKing, validateEditedPosition } from "../shogi-match/utils/boardUtils";
 import { parseKif, parseSfen } from "../shogi-match/utils/kifParser";
 import { detectKifuTextFormat } from "../shogi-match/utils/kifuImport";
 
@@ -37,12 +38,20 @@ export type StudyKifuSource =
 
 /**
  * 指し手の無いノートの開始局面が、局面として成り立つかを確かめる。基準は対局画面の局面編集と
- * 同じ（玉が先手・後手に 1 枚ずつ、駒は一組の枚数まで）。二歩などは見ない。
+ * 同じ（玉は先手・後手それぞれ 1 枚まで、駒は一組の枚数まで）。詰将棋のように片方の玉が無くてもよいが、
+ * 両方の玉が無い局面は調べるものが無いので断る。手番でない側の玉に王手が掛かっている局面（直前の手で
+ * 王手を放置した、ありえない局面）も断る。二歩などは見ない。
  * 成り立てば null、成り立たなければ理由。
  */
 export function studyStartPositionError(startSfen: string): string | null {
     try {
-        return validateEditedPosition(parseStudySfen(normalizeStudyStartSfen(startSfen)));
+        const position = parseStudySfen(normalizeStudyStartSfen(startSfen));
+        if (sidesWithoutKing(position).length === 2) return "玉が盤上にありません。";
+        const opponent = position.turn === "sente" ? "gote" : "sente";
+        if (isKingInCheck({ ...position, turn: opponent })) {
+            return "手番でない側の玉に王手が掛かっています（王手を放置した局面）。";
+        }
+        return validateEditedPosition(position);
     } catch {
         return "局面を読み取れませんでした。";
     }

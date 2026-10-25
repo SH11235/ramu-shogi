@@ -531,7 +531,8 @@ export interface MateParams {
  * - `mate`: 詰み。`pv` は攻め方の手から始まる USI 形式の手順 (最後の手で受け方が詰む)
  * - `noMate`: 不詰 (王手を続けて詰ませる手順は無い)
  * - `unknown`: 時間・ノード数の上限で打ち切った、または判定できなかった
- * - `unsupported`: 扱えない局面 (玉が無い、手番でない側が王手されている)
+ * - `unsupported`: 扱えない局面 (受け方 = 手番でない側の玉が無い、手番でない側が王手されている)。
+ *   攻め方 (手番側) の玉が無い局面は解ける
  */
 export type MateResult =
     | { kind: "mate"; pv: string[] }

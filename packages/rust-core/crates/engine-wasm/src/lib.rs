@@ -15,7 +15,7 @@ use rshogi_core::eval::{
     MaterialLevel, disable_material, set_eval_hash_enabled, set_material_level,
 };
 use rshogi_core::mate::dfpn::{DfpnSolver, MateLimits, MateMode, MateProgress, MateResult};
-use rshogi_core::movegen::{MoveList, generate_legal_all_with_pass};
+use rshogi_core::movegen::{MoveList, generate_legal_allowing_missing_kings};
 use rshogi_core::nnue::{init_nnue_from_bytes, set_fv_scale_override};
 use rshogi_core::position::{Position, SFEN_HIRATE};
 use rshogi_core::search::{
@@ -23,7 +23,7 @@ use rshogi_core::search::{
     SearchResult, SkillOptions,
 };
 use rshogi_core::types::json::BoardStateJson;
-use rshogi_core::types::{Color, Move, Value};
+use rshogi_core::types::{Color, Move, PieceType, Value};
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen as swb;
 use wasm_bindgen::JsCast;
@@ -359,22 +359,33 @@ fn build_position(
     if let Some(pr) = pass_rights {
         position.enable_pass_rights(pr.sente, pr.gote);
     }
+    // 詰将棋の攻め方など玉の無い側がある局面では、set_sfen が既定の升への利きを王手として残す
+    position.clear_checkers_without_king();
 
     for mv in moves {
-        let parsed =
-            Move::from_usi(mv).ok_or_else(|| JsValue::from_str(&format!("invalid move: {mv}")))?;
-        let gives_check = position.gives_check(parsed);
-        position.do_move(parsed, gives_check);
+        apply_move_to_position(&mut position, mv)?;
     }
 
     Ok(position)
 }
 
+/// 通常の探索は両方の玉がある局面だけを扱う (玉の無い側の既定の升を玉とみなした指し手で panic する)。
+/// 詰将棋など玉の無い側がある局面は `solve_mate` で解く。
+fn ensure_searchable(position: &Position) -> Result<(), JsValue> {
+    let has_king = |color| !position.pieces(color, PieceType::King).is_empty();
+    if has_king(Color::Black) && has_king(Color::White) {
+        Ok(())
+    } else {
+        Err(JsValue::from_str(
+            "cannot search a position without both kings",
+        ))
+    }
+}
+
 fn apply_move_to_position(position: &mut Position, mv: &str) -> Result<(), JsValue> {
     let parsed =
         Move::from_usi(mv).ok_or_else(|| JsValue::from_str(&format!("invalid move: {mv}")))?;
-    let gives_check = position.gives_check(parsed);
-    position.do_move(parsed, gives_check);
+    position.do_move_allowing_missing_kings(parsed);
     Ok(())
 }
 
@@ -537,7 +548,7 @@ pub fn wasm_get_legal_moves(
 
     let position = build_position(&sfen, &parsed_moves, pass_rights)?;
     let mut list = MoveList::new();
-    generate_legal_all_with_pass(&position, &mut list);
+    generate_legal_allowing_missing_kings(&position, &mut list);
     let legal_moves: Vec<String> = list.as_slice().iter().map(|mv| mv.to_usi()).collect();
 
     swb::to_value(&legal_moves).map_err(|e| JsValue::from_str(&format!("Serialization error: {e}")))
@@ -871,6 +882,7 @@ pub fn prepare_analysis(resume: bool, budget: JsValue) -> Result<JsValue, JsValu
         };
     with_analysis_engine(|engine| {
         if !resume {
+            ensure_searchable(&engine.position)?;
             if let Some(old) = engine.analysis.take() {
                 engine.search = Some(old.into_search());
             }
@@ -945,6 +957,7 @@ pub fn search(params: Option<JsValue>) -> Result<(), JsValue> {
     let params = parse_search_params(params)?;
 
     with_engine_mut(|engine| {
+        ensure_searchable(&engine.position)?;
         // stop/ponderhitフラグをリセット（go()呼び出し前に必須）
         engine
             .search

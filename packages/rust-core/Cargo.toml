@@ -23,7 +23,7 @@ smallvec = "1.15"
 # getrandom with wasm_js feature for WebAssembly support
 getrandom = { version = "0.3", default-features = false, features = ["wasm_js"] }
 # 将棋のルール実装は engine-wasm と shogi-rules-wasm で同じ rev を共有する
-rshogi-core = { git = "https://github.com/SH11235/rshogi.git", rev = "cf7d1b458723900662da01824b0c7eaa3ab830bf", default-features = false }
+rshogi-core = { git = "https://github.com/SH11235/rshogi.git", rev = "fe829a7eed40ab3ae9420da41e6d56af901fe11c", default-features = false }
 
 
 # Debug build optimizations for reasonable test performance

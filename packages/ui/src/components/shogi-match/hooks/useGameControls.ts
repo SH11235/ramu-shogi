@@ -12,7 +12,7 @@ import {
 import type { MutableRefObject } from "react";
 import { useRef } from "react";
 import type { Message, PassRightsSettings } from "../types";
-import { cloneHandsState } from "../utils/boardUtils";
+import { cloneHandsState, missingKingReason } from "../utils/boardUtils";
 import type { UseKifuNavigationResult } from "./useKifuNavigation";
 
 /** PositionState を深くコピーする */
@@ -252,6 +252,14 @@ export function useGameControls({
         isTransitioningRef.current = true;
         try {
             if (!positionReady) return;
+            // 玉の無い側がある局面（SFEN・棋譜の読み込みで作れる）では、勝ち負けが決まらない
+            // （準備を待つ間にも局面を読み込めるので、対局を動かす直前にもう一度確かめる）
+            const refuseKingless = (): boolean => {
+                const reason = missingKingReason(positionRef.current);
+                if (reason) setMessage({ text: reason, type: "warning" });
+                return reason !== null;
+            };
+            if (refuseKingless()) return;
 
             // 承認待ち・ダウンロード中には局面や棋譜、時計を変更しない。
             const selections = getMatchNnueSelections(sides, engineOptions, {
@@ -269,6 +277,7 @@ export function useGameControls({
                     setMessage({ text: "エンジンの初期化に失敗しました。", type: "error" });
                     return;
                 }
+                if (refuseKingless()) return;
                 setIsPaused(false);
                 setIsMatchRunning(true);
                 turnStartTimeRef.current = Date.now();
@@ -311,6 +320,7 @@ export function useGameControls({
                 setMessage({ text: "エンジンの初期化に失敗しました。", type: "error" });
                 return;
             }
+            if (refuseKingless()) return;
 
             setIsMatchRunning(true);
             turnStartTimeRef.current = Date.now();
