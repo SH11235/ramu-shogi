@@ -33,7 +33,7 @@ export interface StudyAnalysisInfo {
     pv?: string[];
 }
 
-export interface StudyAnalysisCollectorOptions {
+interface StudyAnalysisCollectorOptions {
     /** この探索の ID（UUID v4）。 */
     runId: string;
     /** 解析する局面の実際の手番。評価値を先手視点に直すのに使う。 */

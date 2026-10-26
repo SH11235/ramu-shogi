@@ -1,5 +1,6 @@
 {
     "$schema": "https://unpkg.com/knip@5/schema.json",
+    "includeEntryExports": true,
     "workspaces": {
         "packages/engine-wasm": {
             "entry": [
@@ -11,7 +12,8 @@
     },
     "ignoreDependencies": ["wrangler", "babel-plugin-react-compiler", "@tauri-apps/plugin-store"],
     "ignoreIssues": {
-        "packages/api-contract/src/generated/**": ["types"]
+        "packages/api-contract/src/generated/**": ["types"],
+        "packages/api-contract/src/index.ts": ["types"]
     },
     "ignore": [
         "apps/desktop/src-tauri/target/**",

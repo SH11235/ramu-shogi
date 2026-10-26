@@ -26,18 +26,14 @@ export type {
 // Functions
 // ============================================================
 
-export type {
-    AnalysisTarget,
-    InteractiveAnalysisOptions,
-    InteractiveAnalysisState,
-} from "./analysis-controller";
+export type { InteractiveAnalysisState } from "./analysis-controller";
 export { createAnalysisController } from "./analysis-controller";
 export {
     accumulateSearchStats,
     buildPassRightsOption,
     createEngineController,
 } from "./engine-controller";
-export type { EngineSpeedEnvironment, NnueSpeedStore } from "./engine-speed";
+export type { EngineSpeedEnvironment } from "./engine-speed";
 export {
     engineActivity,
     NNUE_SPEED_BENCHMARK_MS_PER_POSITION,

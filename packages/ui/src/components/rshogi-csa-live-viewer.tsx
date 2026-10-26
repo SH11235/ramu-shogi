@@ -53,7 +53,7 @@ import type { EngineOption } from "./shogi-match/types";
 import { MATE_WITHOUT_PLY } from "./shogi-match/utils/kifFormat";
 import { csaAnnotationsToMoveData } from "./shogi-match/utils/kifuImport";
 
-export interface RshogiCsaLiveViewerProps {
+interface RshogiCsaLiveViewerProps {
     gameId: string;
     engineOptions: EngineOption[];
     manifestUrl: string;

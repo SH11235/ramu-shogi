@@ -34,7 +34,7 @@ import { buildCsaStartPosition } from "./csa-position";
 export const CSA_MATE_EVAL_THRESHOLD = 100_000;
 
 /** `'* <評価値> <読み筋>` / `'** <評価値> <読み筋>` コメント 1 行の解析結果。 */
-export interface CsaEvalComment {
+interface CsaEvalComment {
     /** 先頭の `'` を外したコメント本文。 */
     raw: string;
     /** 評価値 (先手視点、センチポーン)。評価値コメントでなければ undefined。 */
@@ -78,7 +78,7 @@ export interface CsaMoveAnnotation {
     pv?: string[];
 }
 
-export interface CsaGameRecord {
+interface CsaGameRecord {
     /** 最終局面で詰まされた側。詰みでなければ undefined。終局理由とは独立。 */
     checkmatedSide?: Player;
     /**

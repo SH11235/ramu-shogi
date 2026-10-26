@@ -165,7 +165,7 @@ export interface RshogiGameEventSummary {
     meta?: RshogiGameEventMeta;
 }
 
-export interface RshogiGameListPage {
+interface RshogiGameListPage {
     games: RshogiGameSummary[];
     /** 次ページ取得用カーソル。null/undefined の場合は末尾。 */
     nextCursor?: string;
@@ -231,7 +231,7 @@ export interface RshogiLiveGameSummary {
     source?: RshogiGameSource;
 }
 
-export interface RshogiLiveGameListPage {
+interface RshogiLiveGameListPage {
     liveGames: RshogiLiveGameSummary[];
     /** 次ページ取得用カーソル。null/undefined の場合は末尾。 */
     nextCursor?: string;
@@ -249,7 +249,7 @@ export interface FetchRshogiGameOptions {
     signal?: AbortSignal;
 }
 
-export interface FetchRshogiGameListOptions extends FetchRshogiGameOptions {
+interface FetchRshogiGameListOptions extends FetchRshogiGameOptions {
     /** 次ページ取得用カーソル。サーバが発行した opaque string をそのまま渡す。 */
     cursor?: string;
     /** 1 ページあたり件数 (1〜100、サーバ既定 50)。 */
@@ -271,21 +271,21 @@ export interface FetchRshogiGameSearchOptions extends FetchRshogiGameOptions {
     pageSize?: number;
 }
 
-export interface FetchRshogiLiveGameListOptions extends FetchRshogiGameOptions {
+interface FetchRshogiLiveGameListOptions extends FetchRshogiGameOptions {
     /** 次ページ取得用カーソル。サーバが発行した opaque string をそのまま渡す。 */
     cursor?: string;
     /** 1 ページあたり件数 (1〜100、サーバ既定 50)。 */
     limit?: number;
 }
 
-export interface FetchRshogiPlayerListOptions extends FetchRshogiGameOptions {
+interface FetchRshogiPlayerListOptions extends FetchRshogiGameOptions {
     /** 1 始まり。 */
     page?: number;
     /** 1 ページあたり件数 (1〜100、サーバ既定 20)。 */
     pageSize?: number;
 }
 
-export interface FetchRshogiPlayerDetailOptions extends FetchRshogiGameOptions {
+interface FetchRshogiPlayerDetailOptions extends FetchRshogiGameOptions {
     /** 1 始まり。 */
     page?: number;
     /** 1 ページあたり件数 (1〜100、サーバ既定 20)。 */

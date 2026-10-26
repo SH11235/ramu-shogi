@@ -14,11 +14,11 @@ import type { StudyAnalysisResult, StudyDocument, StudyPlayer, StudyScore } from
 /** 評価値を勝率相当の値に直す式の名前。 */
 export const STUDY_WIN_RATE_MODEL = "logistic-cp-v1";
 /** `logistic-cp-v1` の係数。初期値で、実データで見直す。 */
-export const STUDY_WIN_RATE_SCALE_CP = 600;
+const STUDY_WIN_RATE_SCALE_CP = 600;
 /** 落差がこの値以上なら「悪手」。 */
-export const STUDY_BLUNDER_DROP = 0.2;
+const STUDY_BLUNDER_DROP = 0.2;
 /** 落差がこの値以上なら「疑問手」。 */
-export const STUDY_DUBIOUS_DROP = 0.1;
+const STUDY_DUBIOUS_DROP = 0.1;
 
 /**
  * 評価値（先手視点）を先手の勝率相当の値（0〜1）に直す（`logistic-cp-v1`）。

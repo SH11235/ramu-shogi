@@ -164,7 +164,7 @@ const toEventOptions = (
 const describeError = (error: unknown, fallback: string): string =>
     error instanceof Error ? error.message : `${fallback}: ${String(error)}`;
 
-export interface RshogiCsaGameBrowserProps {
+interface RshogiCsaGameBrowserProps {
     /** rshogi 配信 API のベース URL。空のときはモック fixture を使う。 */
     apiBaseUrl?: string;
     /** 現在の絞り込み条件。 */

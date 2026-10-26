@@ -211,7 +211,7 @@ export interface RshogiLiveCallbacks {
     onStaticFallbackRequested?(reason: RshogiLiveStaticFallbackReason): void;
 }
 
-export interface RshogiLiveSubscribeOptions {
+interface RshogiLiveSubscribeOptions {
     /**
      * rshogi 観戦 WS のベース URL (例: `wss://csa.rshogi.example.com`)。
      * 未指定時はモック (固定 snapshot を timer で再生) で動かす MVP 動作。

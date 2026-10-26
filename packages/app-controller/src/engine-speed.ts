@@ -150,7 +150,7 @@ export function createNnueSpeedStore(storage: SpeedStorage | null = defaultStora
     };
 }
 
-export type NnueSpeedStore = ReturnType<typeof createNnueSpeedStore>;
+type NnueSpeedStore = ReturnType<typeof createNnueSpeedStore>;
 
 export const nnueSpeedStore = createNnueSpeedStore();
 

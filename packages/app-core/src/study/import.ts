@@ -31,7 +31,7 @@ export interface StudyImportAnnotation {
     elapsedMs?: number | null;
 }
 
-export interface StudyImportInput {
+interface StudyImportInput {
     /** 研究ノートの ID（UUID v4。クライアントが生成する）。 */
     id: string;
     title: string;
@@ -159,7 +159,7 @@ export function createStudyDocumentFromMoves(input: StudyImportInput): StudyDocu
     };
 }
 
-export interface StudyCsaImportInput {
+interface StudyCsaImportInput {
     id: string;
     /** CSA 棋譜の全文。 */
     csa: string;
@@ -207,7 +207,7 @@ export function createStudyDocumentFromCsa(input: StudyCsaImportInput): StudyDoc
     });
 }
 
-export interface StudyKifuTreeImportInput {
+interface StudyKifuTreeImportInput {
     id: string;
     title: string;
     origin: StudyOrigin;
