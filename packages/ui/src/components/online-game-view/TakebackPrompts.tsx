@@ -42,8 +42,11 @@ export function TakebackApprovalDialog({
     onRespond: (accept: boolean) => void;
 }): ReactElement {
     return (
-        <AlertDialog open={open} onOpenChange={() => {}}>
-            <AlertDialogContent className="w-[min(300px,calc(100%-32px))]">
+        <AlertDialog open={open}>
+            <AlertDialogContent
+                className="w-[min(300px,calc(100%-32px))]"
+                onEscapeKeyDown={(event) => event.preventDefault()}
+            >
                 <AlertDialogHeader>
                     <AlertDialogTitle>待ったの申請</AlertDialogTitle>
                     <AlertDialogDescription>

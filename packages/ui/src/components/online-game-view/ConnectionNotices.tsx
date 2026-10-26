@@ -18,7 +18,7 @@ export function ConnectionNotices({
     onExit,
 }: ConnectionNoticesProps): ReactElement {
     return (
-        <div className="pointer-events-none fixed top-4 left-1/2 -translate-x-1/2 z-50 flex w-[min(90vw,420px)] flex-col items-center gap-2">
+        <div className="pointer-events-none fixed top-4 left-1/2 -translate-x-1/2 z-notice flex w-[min(90vw,420px)] flex-col items-center gap-2">
             {offlineSeats.size > 0 && (
                 <div className="rounded-lg bg-destructive px-4 py-2 text-sm text-destructive-foreground shadow-lg">
                     {Array.from(offlineSeats).map((s) => (
