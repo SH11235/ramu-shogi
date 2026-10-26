@@ -17,7 +17,6 @@ import {
     detectParallelism,
     getAllSquares,
     getPositionService,
-    isKingInCheck,
     isStudyUsiMove,
     resolveWorkerCount,
 } from "@shogi/app-core";
@@ -25,7 +24,6 @@ import type { ReactElement } from "react";
 // biome-ignore lint/style/noRestrictedImports: ShogiMatch は React Compiler がコンパイルを見送る（memo が入らない）ので、effect の依存に渡す値の同一性を useMemo で保つ
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { isCpuLosing } from "../hooks/moveSoundScene";
-import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
 import type { NnueAccountStore } from "./nnue-library/types";
 import { MatchNnueDownloadDialog } from "./shogi-match/components/MatchNnueDownloadDialog";
 import { SearchInfoPanel } from "./shogi-match/components/SearchInfoPanel";
@@ -64,20 +62,16 @@ import { useMatchNnueDownload } from "./shogi-match/hooks/useMatchNnueDownload";
 import { useMatchPreferences } from "./shogi-match/hooks/useMatchPreferences";
 import { useMatchSounds } from "./shogi-match/hooks/useMatchSounds";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
-import { ILLEGAL_MOVE_MESSAGE, useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
+import { useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
 import { useMoveShadow } from "./shogi-match/hooks/useMoveShadow";
 import { useNnueManager } from "./shogi-match/hooks/useNnueManager";
 import { usePassRights } from "./shogi-match/hooks/usePassRights";
 import { usePlayHintNnueSelection } from "./shogi-match/hooks/usePlayHintNnueSelection";
 import { usePlayHintSearch } from "./shogi-match/hooks/usePlayHintSearch";
+import { usePlayScreen } from "./shogi-match/hooks/usePlayScreen";
 import { useUIState } from "./shogi-match/hooks/useUIState";
 import { ShogiMatchLayout } from "./shogi-match/layouts/ShogiMatchLayout";
-import { isHirateStart } from "./shogi-match/play/startPositions";
-import {
-    type PlayPhase,
-    type PlayScreenConfig,
-    ShogiMatchProvider,
-} from "./shogi-match/ShogiMatchContext";
+import { type PlayPhase, ShogiMatchProvider } from "./shogi-match/ShogiMatchContext";
 import type {
     AnalysisSnapshotDraft,
     AnalysisSnapshotEntryDraft,
@@ -344,9 +338,6 @@ export function ShogiMatch({
     const isPlayScreen = screen === "play";
     // 対局画面では、利用者が「局面を変えて指す」を開いている間だけ盤を編集できる。
     const [positionEditOpen, setPositionEditOpen] = useState(false);
-    const [hintCount, setHintCount] = useState(0);
-    const [pendingOpenStudy, setPendingOpenStudy] = useState(false);
-    const [pendingRematch, setPendingRematch] = useState(false);
     const editAllowed =
         canEditPosition({ isEditMode, viewerMode }) && (!isPlayScreen || positionEditOpen);
     const [isPaused, setIsPaused] = useState(false);
@@ -361,19 +352,8 @@ export function ShogiMatch({
             : positionEditOpen
               ? "editing"
               : "setup";
-    // 終局後・一時停止から設定の画面へ戻している最中か（戻し終えるまで、対局を始めさせない）。
-    const [isPlayResetting, setIsPlayResetting] = useState(false);
-    // 対局を始める準備（評価関数の確認・エンジンの初期化）をしている最中か。その間は、設定や開始局面を
-    // 変えさせない（準備の途中で局面が変わると、始まった対局の手番と時計が食い違う）。
-    const [isPlayStarting, setIsPlayStarting] = useState(false);
-    // 対局の始めに 1 度だけ出す知らせ（振り駒の結果など）。
-    const [playStartNotice, setPlayStartNotice] = useState<string | null>(null);
-    // この対局の始まりの局面（開始局面と、そこまでの手順）。別のページから引き継いだ棋譜の途中から
-    // 始めた対局では、手順が空でない。「もう一局」「設定を変える」で戻す先と、待ったで戻せる範囲に使う。
-    const playStartRef = useRef<{ sfen: string; moves: string[] } | null>(null);
+    // この対局で指し始めた手数（引き継いだ棋譜の途中から始めた対局では 0 でない）。待ったで戻せる範囲に使う。
     const [playStartPly, setPlayStartPly] = useState(0);
-    // 新しい対局を始めようとしている（始まったら、その時点の開始局面と手順を控える）。
-    const [pendingPlayStartCapture, setPendingPlayStartCapture] = useState(false);
     const {
         liveSearchInfo,
         clearLiveSearchDisplay,
@@ -1793,15 +1773,21 @@ export function ShogiMatch({
         reviewTopContent,
     };
 
+    // 対局中に出す AI の読み。対局が止まった後や、その AI がエラーになった後は出さない。
+    const visibleLiveSearch =
+        isMatchRunning && liveSearchInfo && engineStatus[liveSearchInfo.side] !== "error"
+            ? liveSearchInfo
+            : null;
+
     // Props グループ化: Mobile専用
     const mobileSpecificProps: MobileSpecificProps = {
         searchInfo:
-            !isPlayScreen &&
-            displaySettings.showSearchInfo &&
-            isMatchRunning &&
-            liveSearchInfo &&
-            engineStatus[liveSearchInfo.side] !== "error" ? (
-                <SearchInfoPanel side={liveSearchInfo.side} info={liveSearchInfo.event} isMobile />
+            !isPlayScreen && displaySettings.showSearchInfo && visibleLiveSearch ? (
+                <SearchInfoPanel
+                    side={visibleLiveSearch.side}
+                    info={visibleLiveSearch.event}
+                    isMobile
+                />
             ) : null,
         isReviewMode,
         onOpenAbout: () => setIsAboutOpen(true),
@@ -1843,227 +1829,54 @@ export function ShogiMatch({
         </div>
     ) : null;
 
-    // ---- 対局画面（screen="play"）の状態と操作 ----
-    // AI の考慮中や持ち時間の間に画面が消えないようにする（一時停止中は止めない）。
-    useScreenWakeLock(isPlayScreen && playPhase === "playing");
-    const notifyPlayPhase = useEffectEvent((phase: PlayPhase) => onPlayPhaseChange?.(phase));
-    // 消すのは「指せない手」の知らせだけ（進み具合の変化と同じ更新で出たエラーは残す）。
-    const clearIllegalMoveMessage = useEffectEvent(() => {
-        if (message?.text === ILLEGAL_MOVE_MESSAGE) setMessage(null);
+    // 対局画面（screen="play"）の進行と操作
+    const playConfig = usePlayScreen({
+        isPlayScreen,
+        playPhase,
+        onPlayPhaseChange,
+        playSetupFooter,
+        liveSearch: visibleLiveSearch,
+        message,
+        setMessage,
+        setSelection,
+        setPromotionSelection,
+        position,
+        positionRef,
+        positionReady,
+        startSfen,
+        moves,
+        navigation,
+        isMatchRunning,
+        isPaused,
+        setIsPaused,
+        isEditMode,
+        editAllowed,
+        setPositionEditOpen,
+        playStartPly,
+        setPlayStartPly,
+        gameResult,
+        setGameResult,
+        showResultDialog,
+        setShowResultDialog,
+        matchEndedRef,
+        sides,
+        engineOptions,
+        senteNnueSelection,
+        goteNnueSelection,
+        presetConfigs,
+        nnueList,
+        playHint,
+        hintMultiPv,
+        setHintMultiPv,
+        stopAllEngines,
+        resumeAutoPlay,
+        handleResetToStartpos,
+        handleEnterEditMode,
+        handleStartReview,
+        applyEditedPosition,
+        importSfen,
+        onOpenAsStudy,
     });
-    // 進み具合が変わったら、前の段階の選択とメッセージを持ち越さない
-    // （「合法手ではありません」や駒の選択の枠が、一時停止中・終局後まで残らないようにする）。
-    // biome-ignore lint/correctness/useExhaustiveDependencies: 進み具合が変わったときだけ
-    useEffect(() => {
-        if (!isPlayScreen) return;
-        notifyPlayPhase(playPhase);
-        setSelection(null);
-        setPromotionSelection(null);
-        clearIllegalMoveMessage();
-    }, [isPlayScreen, playPhase]);
-    // 指せない手を選んだ知らせは、しばらくしたら消す（次の手を考える邪魔にしない）。
-    // 選んでいた駒の枠は、すぐ外す（知らせだけが先に消えて、枠が残るのを避ける）。
-    // 依存は知らせそのもの（続けてもう一度指せない手を選んだときも、枠を外して数え直す）。
-    useEffect(() => {
-        if (!isPlayScreen || message?.text !== ILLEGAL_MOVE_MESSAGE) return;
-        setSelection(null);
-        const timer = setTimeout(() => setMessage(null), 2500);
-        return () => clearTimeout(timer);
-    }, [isPlayScreen, message, setMessage, setSelection]);
-    const isHirateStartPosition = isHirateStart(startSfen);
-    const playerNameFor = (side: Player): string => {
-        const setting = sides[side];
-        if (setting.role === "human") {
-            // 人 対 人では、どちらも「あなた」にならないよう、先手・後手で呼ぶ。
-            const bothHumans = sides.sente.role === "human" && sides.gote.role === "human";
-            return bothHumans ? (side === "sente" ? "先手" : "後手") : "あなた";
-        }
-        const engine = engineOptions.find((option) => option.id === setting.engineId);
-        if (engine?.kind === "external") return engine.label;
-        const selection = side === "sente" ? senteNnueSelection : goteNnueSelection;
-        const preset = presetConfigs.find((config) => config.presetKey === selection.presetKey);
-        if (preset) return preset.displayName;
-        const custom = nnueList.find((nnue) => nnue.id === selection.nnueId);
-        return custom?.displayName ?? "簡易AI";
-    };
-    const openStudyNow = useEffectEvent(() => {
-        // 対局者の名前を付けるのは、指した対局だけ（局面だけのノートは「取り込んだ局面」として作る）。
-        onOpenAsStudy?.(
-            navigation.tree,
-            navigation.tree.nodes.size > 1
-                ? { players: { sente: playerNameFor("sente"), gote: playerNameFor("gote") } }
-                : {},
-        );
-    });
-    // 局面の編集中は、棋譜のツリーが編集前の局面のまま。確定（編集モードを抜ける）を待ってから開く。
-    useEffect(() => {
-        if (!pendingOpenStudy || isEditMode) return;
-        setPendingOpenStudy(false);
-        openStudyNow();
-    }, [pendingOpenStudy, isEditMode]);
-    const treeFitsStudy = [...navigation.tree.nodes.values()].every(
-        (node) => node.usiMove === null || isStudyUsiMove(node.usiMove),
-    );
-    // 終局後・一時停止から、同じ開始局面の設定の画面に戻す。
-    const resetForNewGame = async () => {
-        if (isPlayResetting) return;
-        setIsPlayResetting(true);
-        try {
-            await resetForNewGameUnguarded();
-        } finally {
-            setIsPlayResetting(false);
-        }
-    };
-    const resetForNewGameUnguarded = async () => {
-        matchEndedRef.current = false;
-        setGameResult(null);
-        setShowResultDialog(false);
-        setHintCount(0);
-        playHint.reset();
-        setIsPaused(false);
-        setPositionEditOpen(false);
-        setPlayStartNotice(null);
-        await stopAllEngines();
-        const start = playStartRef.current ?? { sfen: startSfen, moves: [] };
-        if (isHirateStart(start.sfen) && start.moves.length === 0) {
-            await handleResetToStartpos();
-        } else {
-            // 編集した局面・引き継いだ棋譜の途中から始めた対局は、同じ始まりの局面に戻す。
-            await importSfen(start.sfen, start.moves);
-        }
-    };
-    // 「もう一局」は、設定の画面に戻ったのを待ってから始める（戻す処理が行き渡ってから）。
-    const startPlayMatch = async () => {
-        if (isPlayStarting) return;
-        setIsPlayStarting(true);
-        // 前に出ていた知らせ（前回の開始の失敗など）を、始め直すときに持ち越さない。
-        setMessage(null);
-        try {
-            await resumeAutoPlay();
-        } finally {
-            setIsPlayStarting(false);
-        }
-    };
-    const startRematch = useEffectEvent(() => {
-        void startPlayMatch();
-    });
-    useEffect(() => {
-        if (!pendingRematch || isPlayResetting) return;
-        setPendingRematch(false);
-        // 設定の画面へ戻せなかった（開始局面の取得に失敗した）ときは、始めない。
-        if (playPhase !== "setup" || moves.length !== (playStartRef.current?.moves.length ?? 0)) {
-            return;
-        }
-        startRematch();
-    }, [pendingRematch, isPlayResetting, playPhase, moves.length]);
-    // 対局が実際に始まった時点の開始局面と手順を、この対局の始まりとして控える
-    // （「もう一局」で戻す先と、待ったで戻せる範囲に使う）。
-    useEffect(() => {
-        if (!pendingPlayStartCapture || !isMatchRunning) return;
-        setPendingPlayStartCapture(false);
-        playStartRef.current = { sfen: startSfen, moves: [...moves] };
-        setPlayStartPly(moves.length);
-    }, [pendingPlayStartCapture, isMatchRunning, startSfen, moves]);
-    const playConfig: PlayScreenConfig | null = isPlayScreen
-        ? {
-              phase: playPhase,
-              liveSearch:
-                  isMatchRunning && liveSearchInfo && engineStatus[liveSearchInfo.side] !== "error"
-                      ? liveSearchInfo
-                      : null,
-              isCustomStart: !isHirateStartPosition || (playPhase === "setup" && moves.length > 0),
-              busy: isPlayResetting || pendingRematch || isPlayStarting,
-              startNotice: playPhase === "playing" && moves.length < 2 ? playStartNotice : null,
-              startPly: playStartPly,
-              startMatch: (notice?: string) => {
-                  if (isPlayResetting || isPlayStarting) return;
-                  setPositionEditOpen(false);
-                  if (!isPaused) {
-                      // 新しい対局の始まり。始まりの局面は、実際に始まった時点で控える
-                      // （開始の処理が、編集した局面の確定やパス権の初期化で開始局面・手順を
-                      // 作り直すことがあるので、押した時点の値は使わない）。
-                      setPendingPlayStartCapture(true);
-                      setPlayStartNotice(notice ?? null);
-                      setHintCount(0);
-                      playHint.reset();
-                  }
-                  void startPlayMatch();
-              },
-              openPositionEditor: () => {
-                  setPositionEditOpen(true);
-                  if (!isEditMode) void handleEnterEditMode();
-              },
-              closePositionEditor: () => setPositionEditOpen(false),
-              resetToStartpos: () => {
-                  if (isPlayResetting || isPlayStarting) return;
-                  void (async () => {
-                      setIsPlayResetting(true);
-                      try {
-                          await handleResetToStartpos();
-                      } finally {
-                          setIsPlayResetting(false);
-                      }
-                  })();
-              },
-              startSfen,
-              loadStartPosition: (sfen: string) => {
-                  if (isPlayResetting || isPlayStarting) return;
-                  void (async () => {
-                      // 読み込みが済むまで、対局を始めさせない（読み込みがあとから完了すると、
-                      // 始まった対局の局面を置き換えて止めてしまう）。
-                      setIsPlayResetting(true);
-                      try {
-                          setPositionEditOpen(false);
-                          await importSfen(sfen, []);
-                      } finally {
-                          setIsPlayResetting(false);
-                      }
-                  })();
-              },
-              playerNames: { sente: playerNameFor("sente"), gote: playerNameFor("gote") },
-              editTurn: position.turn,
-              setEditTurn: (turn: Player) => {
-                  if (!editAllowed || turn === positionRef.current.turn) return;
-                  applyEditedPosition({ ...positionRef.current, turn });
-              },
-              inCheck: isMatchRunning && isKingInCheck(position),
-              newGame: () => {
-                  void resetForNewGame();
-              },
-              rematch: () => {
-                  void resetForNewGame().then(() => setPendingRematch(true));
-              },
-              openStudy:
-                  onOpenAsStudy === undefined || isMatchRunning || !treeFitsStudy
-                      ? null
-                      : () => {
-                            if (isEditMode) {
-                                // 局面の準備が済んでいなければ、確定できない（待ちだけが残るのを避ける）。
-                                if (!positionReady) return;
-                                setPendingOpenStudy(true);
-                                void handleStartReview();
-                            } else {
-                                openStudyNow();
-                            }
-                        },
-              requestHint: () => {
-                  if (playHint.status.phase === "preparing") return;
-                  setHintCount((count) => count + 1);
-                  playHint.request();
-              },
-              stopHint: playHint.stop,
-              resumeHint: playHint.resume,
-              hintStatus: playHint.status,
-              hintMultiPv,
-              setHintMultiPv,
-              hintCount,
-              hintPly: playHint.status.ply,
-              setupFooter: playSetupFooter ?? null,
-              gameResult,
-              resultDialogOpen: showResultDialog,
-              closeResultDialog: () => setShowResultDialog(false),
-          }
-        : null;
 
     return (
         <ShogiMatchProvider
@@ -2126,12 +1939,10 @@ export function ShogiMatch({
                 {!isMobile &&
                     !isPlayScreen &&
                     displaySettings.showSearchInfo &&
-                    isMatchRunning &&
-                    liveSearchInfo &&
-                    engineStatus[liveSearchInfo.side] !== "error" && (
+                    visibleLiveSearch && (
                         <SearchInfoPanel
-                            side={liveSearchInfo.side}
-                            info={liveSearchInfo.event}
+                            side={visibleLiveSearch.side}
+                            info={visibleLiveSearch.event}
                             isMobile={isMobile}
                         />
                     )}
