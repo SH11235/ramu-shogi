@@ -18,6 +18,7 @@ import {
     AlertDialogTrigger,
 } from "../../alert-dialog";
 import { Button } from "../../button";
+import { ChoiceGroup } from "../../choice-group";
 import { PassButton } from "../components/PassButton";
 import { PlayerIcon } from "../components/PlayerIcon";
 import { SoundToggle } from "../components/SoundToggle";
@@ -439,35 +440,31 @@ export function PlayPositionEditorPanel({
                         先に指す
                     </span>
                 )}
-                <div className="flex min-w-0 flex-1 gap-1.5">
-                    {(["sente", "gote"] as const).map((side) => {
-                        const selected = play?.editTurn === side;
+                <ChoiceGroup
+                    options={(["sente", "gote"] as const).map((side) => {
                         const mark = side === "sente" ? "☗" : "☖";
                         const name = bothHumans ? null : (play?.playerNames[side] ?? null);
-                        return (
-                            <button
-                                key={side}
-                                type="button"
-                                aria-pressed={selected}
-                                aria-label={`${name ?? mark}（${side === "sente" ? "先手" : "後手"}）`}
-                                onClick={() => play?.setEditTurn(side)}
-                                className={cn(
-                                    "flex min-h-11 flex-1 items-center justify-center gap-2 rounded-md border px-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                    selected
-                                        ? "border-wafuu-sumi bg-wafuu-washi-warm font-semibold text-wafuu-sumi ring-1 ring-inset ring-wafuu-sumi"
-                                        : "border-wafuu-border bg-background text-wafuu-sumi hover:bg-wafuu-washi-warm",
-                                )}
-                            >
-                                <PlayerIcon
-                                    side={side}
-                                    isAI={sides[side].role === "engine"}
-                                    size="md"
-                                />
-                                {name && <span className="truncate">{name}</span>}
-                            </button>
-                        );
+                        return {
+                            value: side,
+                            ariaLabel: `${name ?? mark}（${side === "sente" ? "先手" : "後手"}）`,
+                            label: (
+                                <>
+                                    <PlayerIcon
+                                        side={side}
+                                        isAI={sides[side].role === "engine"}
+                                        size="md"
+                                    />
+                                    {name && <span className="truncate">{name}</span>}
+                                </>
+                            ),
+                        };
                     })}
-                </div>
+                    value={play?.editTurn ?? null}
+                    onChange={(side) => play?.setEditTurn(side)}
+                    size="lg"
+                    layout="fill"
+                    className="min-w-0 flex-1 flex-nowrap"
+                />
             </fieldset>
             {/* 決める操作は、編集と手番を選び終えた後の最後に置く（見た目と Tab の順を合わせる）。 */}
             {actions}

@@ -10,6 +10,7 @@ import { resolveWorkerCount, type StudyDocument } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 import { Button } from "../button";
+import { ChoiceGroup } from "../choice-group";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../dialog";
 import { NativeSelect } from "../native-select";
 import { BottomSheet } from "../shogi-match/components/BottomSheet";
@@ -45,14 +46,6 @@ interface StudyAnalysisSettingsProps {
 }
 
 const MULTI_PV_OPTIONS = [1, 2, 3, 4, 5] as const;
-
-const choiceClass = (selected: boolean): string =>
-    cn(
-        "rounded-md border px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        selected
-            ? "border-wafuu-shu bg-wafuu-shu/10 font-medium text-wafuu-shu"
-            : "border-border bg-background text-wafuu-sumi hover:bg-muted/60",
-    );
 
 function SettingsBody({
     doc,
@@ -95,15 +88,16 @@ function SettingsBody({
                                 key={layer.id}
                                 className={cn(
                                     "flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 text-sm",
+                                    // 選んでいる項目は墨で示す（朱・藍は先手・後手の色に取っておく）。
                                     selected
-                                        ? "border-wafuu-shu bg-wafuu-shu/10"
-                                        : "border-border hover:bg-muted/60",
+                                        ? "border-wafuu-sumi bg-wafuu-washi-warm ring-1 ring-inset ring-wafuu-sumi"
+                                        : "border-wafuu-border hover:bg-wafuu-washi-warm",
                                 )}
                             >
                                 <input
                                     type="radio"
                                     name="study-display-layer"
-                                    className="accent-wafuu-shu"
+                                    className="accent-wafuu-sumi"
                                     checked={selected}
                                     onChange={() => onDisplayLayerChange(layer.id)}
                                 />
@@ -185,46 +179,25 @@ function SettingsBody({
                     <legend className="pb-1 text-xs text-muted-foreground">
                         1 局面あたりの時間
                     </legend>
-                    <div className="flex flex-wrap gap-1.5">
-                        {ANALYSIS_TIME_OPTIONS.map((option) => (
-                            <button
-                                key={option.value}
-                                type="button"
-                                aria-pressed={form.settings.batchAnalysisTimeMs === option.value}
-                                onClick={() =>
-                                    form.onSettingsChange({
-                                        ...form.settings,
-                                        batchAnalysisTimeMs: option.value,
-                                    })
-                                }
-                                className={choiceClass(
-                                    form.settings.batchAnalysisTimeMs === option.value,
-                                )}
-                            >
-                                {option.label}
-                            </button>
-                        ))}
-                    </div>
+                    <ChoiceGroup
+                        options={ANALYSIS_TIME_OPTIONS}
+                        value={form.settings.batchAnalysisTimeMs}
+                        onChange={(batchAnalysisTimeMs) =>
+                            form.onSettingsChange({ ...form.settings, batchAnalysisTimeMs })
+                        }
+                        size="sm"
+                    />
                 </fieldset>
                 <fieldset className="flex flex-col gap-1">
                     <legend className="pb-1 text-xs text-muted-foreground">
                         候補手の数（各局面で読む手の数）
                     </legend>
-                    <div className="flex flex-wrap gap-1.5">
-                        {MULTI_PV_OPTIONS.map((count) => (
-                            <button
-                                key={count}
-                                type="button"
-                                aria-pressed={form.settings.multiPv === count}
-                                onClick={() =>
-                                    form.onSettingsChange({ ...form.settings, multiPv: count })
-                                }
-                                className={choiceClass(form.settings.multiPv === count)}
-                            >
-                                {count}
-                            </button>
-                        ))}
-                    </div>
+                    <ChoiceGroup
+                        options={MULTI_PV_OPTIONS.map((count) => ({ value: count, label: count }))}
+                        value={form.settings.multiPv}
+                        onChange={(multiPv) => form.onSettingsChange({ ...form.settings, multiPv })}
+                        size="sm"
+                    />
                 </fieldset>
                 {/* 1 局面ずつしか解析できないエンジン（Desktop の内蔵エンジン）では、選ぶものが無い。 */}
                 {form.maxParallel !== 1 && (
@@ -232,29 +205,23 @@ function SettingsBody({
                         <legend className="pb-1 text-xs text-muted-foreground">
                             同時に解析する局面の数（多いほど速く終わり、端末の負荷は上がります）
                         </legend>
-                        <div className="flex flex-wrap gap-1.5">
-                            {PARALLEL_WORKER_OPTIONS.filter(
+                        <ChoiceGroup
+                            options={PARALLEL_WORKER_OPTIONS.filter(
                                 (option) =>
                                     form.maxParallel === null || option.value <= form.maxParallel,
-                            ).map((option) => (
-                                <button
-                                    key={option.value}
-                                    type="button"
-                                    aria-pressed={shownParallelWorkers === option.value}
-                                    onClick={() =>
-                                        form.onSettingsChange({
-                                            ...form.settings,
-                                            parallelWorkers: option.value,
-                                        })
-                                    }
-                                    className={choiceClass(shownParallelWorkers === option.value)}
-                                >
-                                    {option.value === 0
+                            ).map((option) => ({
+                                value: option.value,
+                                label:
+                                    option.value === 0
                                         ? `自動（${Math.min(resolveWorkerCount(0), form.maxParallel ?? Number.POSITIVE_INFINITY)}）`
-                                        : option.label}
-                                </button>
-                            ))}
-                        </div>
+                                        : option.label,
+                            }))}
+                            value={shownParallelWorkers}
+                            onChange={(parallelWorkers) =>
+                                form.onSettingsChange({ ...form.settings, parallelWorkers })
+                            }
+                            size="sm"
+                        />
                     </fieldset>
                 )}
                 <fieldset className="flex flex-col gap-2">
