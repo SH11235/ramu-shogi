@@ -1,10 +1,8 @@
-import { accumulateSearchStats } from "@shogi/app-controller";
 import type {
     BoardState,
     GameResult,
     KifuTree,
     LastMove,
-    MoveSearchStats,
     NnueSelection,
     PieceType,
     Player,
@@ -21,16 +19,13 @@ import {
     getPositionService,
     isKingInCheck,
     isStudyUsiMove,
-    NONE_NNUE_SELECTION,
     resolveWorkerCount,
 } from "@shogi/app-core";
-import type { EngineInfoEvent } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 // biome-ignore lint/style/noRestrictedImports: ShogiMatch は React Compiler がコンパイルを見送る（memo が入らない）ので、effect の依存に渡す値の同一性を useMemo で保つ
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import { isCpuLosing, moveSoundScene } from "../hooks/moveSoundScene";
+import { isCpuLosing } from "../hooks/moveSoundScene";
 import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
-import { normalizeSoundVoice, type SoundVoice, useShogiSound } from "../hooks/useShogiSound";
 import type { NnueAccountStore } from "./nnue-library/types";
 import { MatchNnueDownloadDialog } from "./shogi-match/components/MatchNnueDownloadDialog";
 import { SearchInfoPanel } from "./shogi-match/components/SearchInfoPanel";
@@ -64,13 +59,16 @@ import { useKifuImportExport } from "./shogi-match/hooks/useKifuImportExport";
 import { useKifuKeyboardNavigation } from "./shogi-match/hooks/useKifuKeyboardNavigation";
 import { useKifuNavigation } from "./shogi-match/hooks/useKifuNavigation";
 import { useLegalMovePrefetch } from "./shogi-match/hooks/useLegalMovePrefetch";
+import { useLiveSearchInfo } from "./shogi-match/hooks/useLiveSearchInfo";
 import { useMatchNnueDownload } from "./shogi-match/hooks/useMatchNnueDownload";
 import { useMatchPreferences } from "./shogi-match/hooks/useMatchPreferences";
+import { useMatchSounds } from "./shogi-match/hooks/useMatchSounds";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import { ILLEGAL_MOVE_MESSAGE, useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
 import { useMoveShadow } from "./shogi-match/hooks/useMoveShadow";
 import { useNnueManager } from "./shogi-match/hooks/useNnueManager";
 import { usePassRights } from "./shogi-match/hooks/usePassRights";
+import { usePlayHintNnueSelection } from "./shogi-match/hooks/usePlayHintNnueSelection";
 import { usePlayHintSearch } from "./shogi-match/hooks/usePlayHintSearch";
 import { useUIState } from "./shogi-match/hooks/useUIState";
 import { ShogiMatchLayout } from "./shogi-match/layouts/ShogiMatchLayout";
@@ -88,7 +86,6 @@ import type {
     PassRightsSettings,
     SideSetting,
 } from "./shogi-match/types";
-import { DEFAULT_DISPLAY_SETTINGS } from "./shogi-match/types";
 import type {
     AnalysisProps,
     BoardHandlersProps,
@@ -111,20 +108,6 @@ import { clockSettingsForLimits } from "./shogi-match/utils/searchLimits";
 import { TooltipProvider } from "./tooltip";
 
 const EMPTY_ANALYSIS_MARKERS: Array<{ seat: "b" | "w"; ply: number }> = [];
-
-// ライブ探索表示のクリアは複数の effect / callback から呼ばれる。コンポーネント内
-// 関数だと毎レンダー再生成され hook 依存に使えない (biome) ため、ref と setState を
-// 引数に取るモジュール関数にする
-const clearLiveSearchDisplay = (
-    trailingRef: { current: unknown },
-    timerRef: { current: ReturnType<typeof setTimeout> | null },
-    setLiveSearchInfo: (value: null) => void,
-): void => {
-    trailingRef.current = null;
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = null;
-    setLiveSearchInfo(null);
-};
 
 interface ShogiMatchProps {
     engineOptions: EngineOption[];
@@ -391,66 +374,25 @@ export function ShogiMatch({
     const [playStartPly, setPlayStartPly] = useState(0);
     // 新しい対局を始めようとしている（始まったら、その時点の開始局面と手順を控える）。
     const [pendingPlayStartCapture, setPendingPlayStartCapture] = useState(false);
-    const pendingSearchStatsRef = useRef(new Map<number, MoveSearchStats>());
-    const [liveSearchInfo, setLiveSearchInfo] = useState<{
-        side: Player;
-        event: EngineInfoEvent;
-    } | null>(null);
-    const liveInfoTrailingRef = useRef<{ side: Player; event: EngineInfoEvent } | null>(null);
-    const liveInfoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    useEffect(
-        () => () => {
-            if (liveInfoTimerRef.current) clearTimeout(liveInfoTimerRef.current);
-        },
-        [],
-    );
-    // 終局・一時停止・エラーで対局が止まったとき「思考中」の残留表示と未消費の統計を消す
-    useEffect(() => {
-        if (isMatchRunning) return;
-        pendingSearchStatsRef.current.clear();
-        clearLiveSearchDisplay(liveInfoTrailingRef, liveInfoTimerRef, setLiveSearchInfo);
-    }, [isMatchRunning]);
+    const {
+        liveSearchInfo,
+        clearLiveSearchDisplay,
+        recordSearchComplete,
+        getPendingSearchStats,
+        deletePendingSearchStats,
+        pushLiveInfo,
+    } = useLiveSearchInfo({ isMatchRunning });
     // モバイル判定
     const isMobile = useIsMobile();
     // 検討モード: 編集モードでも対局中でも一時停止中でもない状態
     // 自由に棋譜を閲覧し、分岐を作成できる
     const isReviewMode = !isEditMode && !isMatchRunning && !isPaused;
-    const { playSound, playEndSound } = useShogiSound({ dogSoundBaseUrl });
     const isCpuGame = sides.sente.role === "engine" || sides.gote.role === "engine";
-    // 人の手は合法手の確認を待ってから適用されるので、鳴らすかどうか・鳴らし方はその時点の設定で決める。
-    const moveSoundRef = useRef<{ enabled: boolean; voice: SoundVoice }>({
-        enabled: false,
-        voice: "standard",
+    const { playSound, playMoveSound, playMatchEndSound } = useMatchSounds({
+        displaySettings,
+        isCpuGame,
+        dogSoundBaseUrl,
     });
-    moveSoundRef.current = {
-        enabled: displaySettings.enableSound,
-        voice:
-            isCpuGame && dogSoundBaseUrl
-                ? normalizeSoundVoice(
-                      displaySettings.cpuSoundVoice,
-                      DEFAULT_DISPLAY_SETTINGS.cpuSoundVoice,
-                  )
-                : "standard",
-    };
-    const playMoveSound = (
-        move: string,
-        before: PositionState,
-        after: PositionState,
-        by: "self" | "opponent",
-        cpuLosing = false,
-    ) => {
-        const { enabled, voice } = moveSoundRef.current;
-        if (!enabled) return;
-        if (move === "pass") {
-            playSound("pass");
-            return;
-        }
-        playSound(by === "opponent" ? "move_opponent" : "move_self", {
-            voice,
-            scene: moveSoundScene(before, move, after),
-            cpuLosing,
-        });
-    };
     // UI状態管理（統合フック）
     const {
         flipBoard,
@@ -512,43 +454,16 @@ export function ShogiMatch({
             restartEngineForNnueRef.current?.(side, selection) ?? Promise.resolve(),
     });
 
-    // 対局画面のヒントに使う評価関数。利用者には選ばせず、準備の済んでいるものを使う:
-    // 相手の AI（内蔵エンジン）の評価関数、無ければ解析用に選んであるもの。どちらも未ダウンロードなら
-    // 簡易 AI（駒得）で出す（ヒントのためだけにダウンロードを求めない）。
-    const [playHintSelection, setPlayHintSelection] = useState<NnueSelection>(NONE_NNUE_SELECTION);
-    const hintCandidate: NnueSelection = (() => {
-        for (const side of ["gote", "sente"] as const) {
-            const setting = sides[side];
-            if (setting.role !== "engine") continue;
-            const engine =
-                engineOptions.find((option) => option.id === setting.engineId) ?? engineOptions[0];
-            if (engine && engine.kind !== "external") {
-                return side === "sente" ? senteNnueSelection : goteNnueSelection;
-            }
-        }
-        return analysisNnueSelection;
-    })();
-    const hintCandidateKey = `${hintCandidate.presetKey ?? ""}|${hintCandidate.nnueId ?? ""}`;
-    const resolveHintCandidate = useEffectEvent(async () => {
-        try {
-            await resolveNnue(hintCandidate);
-            return hintCandidate;
-        } catch {
-            return NONE_NNUE_SELECTION;
-        }
+    const effectiveAnalysisNnueSelection = usePlayHintNnueSelection({
+        isPlayScreen,
+        sides,
+        engineOptions,
+        senteNnueSelection,
+        goteNnueSelection,
+        analysisNnueSelection,
+        resolveNnue,
+        nnueCount: nnueList.length,
     });
-    // biome-ignore lint/correctness/useExhaustiveDependencies: 候補が変わったとき・評価関数の一覧が変わったとき（ダウンロード完了）に確かめ直す
-    useEffect(() => {
-        if (!isPlayScreen) return;
-        let cancelled = false;
-        void resolveHintCandidate().then((selection) => {
-            if (!cancelled) setPlayHintSelection(selection);
-        });
-        return () => {
-            cancelled = true;
-        };
-    }, [isPlayScreen, hintCandidateKey, nnueList.length]);
-    const effectiveAnalysisNnueSelection = isPlayScreen ? playHintSelection : analysisNnueSelection;
 
     // 分析用 NNUE 変更時に一括解析をリセット（プール破棄に伴う UI 同期）
     const prevAnalysisNnueSelectionRef = useRef(analysisNnueSelection);
@@ -796,7 +711,7 @@ export function ShogiMatch({
         matchEndedRef.current = true;
         setGameResult(result);
         setShowResultDialog(true);
-        if (moveSoundRef.current.enabled) playEndSound(moveSoundRef.current.voice);
+        playMatchEndSound();
         setIsMatchRunning(false);
         setIsPaused(false);
         stopTicking();
@@ -998,26 +913,11 @@ export function ShogiMatch({
         onMoveFromEngine: (move) => handleMoveFromEngineRef.current(move),
         onMatchEnd: endMatch,
         onEvalUpdate: (ply, event) => handleEvalUpdateRef.current(ply, event),
-        onSearchComplete: (ply, stats) => {
-            pendingSearchStatsRef.current.set(ply, stats);
-            clearLiveSearchDisplay(liveInfoTrailingRef, liveInfoTimerRef, setLiveSearchInfo);
-        },
+        onSearchComplete: recordSearchComplete,
         onLiveInfo: (side, event) => {
             // 対局停止後や fatal エラー後に flush された info が残留表示を再セットしないようにする
             if (!isMatchRunning || engineStatus[side] === "error") return;
-            // 同じ探索の info を積み上げてから出す（深さの無い info や MultiPV の 2 本目以降が最後に来ても、
-            // 帯の読みが消えたり別の候補の値になったりしないように）。探索が終わると積み上げは捨てる。
-            const previous = liveInfoTrailingRef.current;
-            const accumulated = accumulateSearchStats(
-                previous?.side === side ? (previous.event as MoveSearchStats) : {},
-                event,
-            );
-            liveInfoTrailingRef.current = { side, event: { ...accumulated, type: "info" } };
-            if (liveInfoTimerRef.current) return;
-            liveInfoTimerRef.current = setTimeout(() => {
-                if (liveInfoTrailingRef.current) setLiveSearchInfo(liveInfoTrailingRef.current);
-                liveInfoTimerRef.current = null;
-            }, 250);
+            pushLiveInfo(side, event);
         },
         maxLogs,
         senteNnueSelection,
@@ -1036,8 +936,8 @@ export function ShogiMatch({
     // error 状態を直接監視してライブ探索表示を消す
     useEffect(() => {
         if (engineStatus.sente !== "error" && engineStatus.gote !== "error") return;
-        clearLiveSearchDisplay(liveInfoTrailingRef, liveInfoTimerRef, setLiveSearchInfo);
-    }, [engineStatus.sente, engineStatus.gote]);
+        clearLiveSearchDisplay();
+    }, [engineStatus.sente, engineStatus.gote, clearLiveSearchDisplay]);
     restartEngineForNnueRef.current = restartEngineForNnue;
 
     // role変更時にエンジンを破棄するラッパー
@@ -1166,16 +1066,15 @@ export function ShogiMatch({
             positionRef.current,
             nextPosition,
             source === "engine" ? "opponent" : "self",
-            source === "engine" && isCpuLosing(pendingSearchStatsRef.current.get(moves.length)),
+            source === "engine" && isCpuLosing(getPendingSearchStats(moves.length)),
         );
         // 消費時間を計算
         const elapsedMs = Date.now() - turnStartTimeRef.current;
         // 棋譜ナビゲーションに手を追加（局面更新はonPositionChangeで自動実行）
         const ply = moves.length;
-        const searchStats =
-            source === "engine" ? pendingSearchStatsRef.current.get(ply) : undefined;
+        const searchStats = source === "engine" ? getPendingSearchStats(ply) : undefined;
         navigation.addMove(move, nextPosition, { elapsedMs, searchStats });
-        if (source === "engine") pendingSearchStatsRef.current.delete(ply);
+        if (source === "engine") deletePendingSearchStats(ply);
         setLastMove(lastMoveInfo);
         setSelection(null);
         setMessage(null);
