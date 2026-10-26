@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# 画面比較の基準画像（playwright.visual.config.ts）
+visual-snapshots
