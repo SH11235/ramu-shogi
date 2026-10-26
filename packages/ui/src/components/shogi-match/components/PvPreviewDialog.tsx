@@ -135,10 +135,8 @@ export function PvPreviewDialog({
     // 約 320px になるので、幅が足りない端末（360px 幅など）ではさらに小さい表示にする。
     const handSize = areaWidth < MEDIUM_HAND_MIN_WIDTH ? "compact" : "medium";
     // 持っていない駒は盤面の画面と同じく出さない。持ち駒が無い段も同じ高さを取り、手を送るたびに盤が上下に動かないようにする。
-    const handZoneClass =
-        handSize === "compact"
-            ? "w-full min-h-[max(28px,calc(var(--shogi-cell-size)*0.8+15px))]"
-            : "w-full min-h-[max(34px,calc(var(--shogi-cell-size)*0.8+15px))]";
+    // 下限の 34px は駒がある段の高さ（compact でも、駒の 24px に余白と枠が付いて 34px になる）。
+    const handZoneClass = "w-full min-h-[max(34px,calc(var(--shogi-cell-size)*0.8+15px))]";
 
     // 現在のプレビュー位置（0 = 開始局面、1 = PVの1手目後、...）
     const [previewIndex, setPreviewIndex] = useState(0);
