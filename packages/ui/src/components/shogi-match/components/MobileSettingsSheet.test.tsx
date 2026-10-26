@@ -103,9 +103,9 @@ describe("MobileSettingsSheet", () => {
         expect(screen.queryByText("解析エンジン")).toBeNull();
         expect(screen.queryByRole("button", { name: "外部エンジンを管理" })).toBeNull();
         expect(screen.getByText("表示設定")).toBeTruthy();
-        expect(screen.getByText("座標表示")).toBeTruthy();
-        expect(screen.getByText("盤外ラベル（筋・段）を表示")).toBeTruthy();
-        expect(screen.getByText("最終手を強調表示")).toBeTruthy();
+        expect(screen.getByText("マスの中の座標")).toBeTruthy();
+        expect(screen.getByText("盤の外に筋・段を表示")).toBeTruthy();
+        expect(screen.getByText("直前の手を強調")).toBeTruthy();
         expect(
             screen.getByRole("button", { name: "このアプリについて / ライセンス" }),
         ).toBeTruthy();

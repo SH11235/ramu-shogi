@@ -5,8 +5,10 @@
  * SHOGI_BOARD_ALLOWED_PACKAGES だけ（shogi-board-chunk.test.ts で確かめる）。
  */
 export const SHOGI_BOARD_MODULES = [
+    "board-appearance.tsx",
     "shogi-board.tsx",
-    "shogi-match/hooks/useBoardPattern.ts",
+    // 盤の模様の保存と Provider。アプリの root（AppProviders）が読むので、shogi-match chunk に入れない
+    "shogi-match/hooks/useBoardPattern.tsx",
     "shogi-match/utils/boardUtils.ts",
     "shogi-match/utils/constants.ts",
     "shogi-match/utils/coordinateFormat.ts",

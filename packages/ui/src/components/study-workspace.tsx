@@ -56,6 +56,7 @@ import { MobileKifuBar } from "./shogi-match/components/MobileKifuBar";
 import { PCBoardContent } from "./shogi-match/components/PCBoardContent";
 import { PvPreviewDialog } from "./shogi-match/components/PvPreviewDialog";
 import { TOOLTIP_DELAY_DURATION_MS } from "./shogi-match/constants";
+import { DISPLAY_SETTINGS_STORAGE_KEY } from "./shogi-match/hooks/useBoardPattern";
 import { useKifuKeyboardNavigation } from "./shogi-match/hooks/useKifuKeyboardNavigation";
 import { useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
 import { useIsMobile, useMediaQuery } from "./shogi-match/hooks/useMediaQuery";
@@ -137,7 +138,6 @@ import { type StudyMateController, useStudyMate } from "./study-workspace/useStu
 import { TooltipProvider } from "./tooltip";
 
 /** 既存の盤面と同じ表示設定（座標・最終手の強調・ホイール操作）を使う。 */
-const DISPLAY_SETTINGS_KEY = "shogi-display-settings";
 
 /** 研究ノートの評価値グラフの縦軸の上限（センチポーン）。詰みや大差は端に張り付けて描く。 */
 const GRAPH_AXIS_CAP = 3000;
@@ -513,7 +513,7 @@ export function StudyWorkspaceView({
     // 棋譜の欄を置く列が CSS のグリッドと食い違う）。
     const isWide = useMediaQuery("(min-width: 80rem)");
     const [storedDisplaySettings] = useLocalStorage<DisplaySettings>(
-        DISPLAY_SETTINGS_KEY,
+        DISPLAY_SETTINGS_STORAGE_KEY,
         DEFAULT_DISPLAY_SETTINGS,
     );
     const displaySettings = { ...DEFAULT_DISPLAY_SETTINGS, ...storedDisplaySettings };

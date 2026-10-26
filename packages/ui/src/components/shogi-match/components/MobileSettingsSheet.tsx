@@ -4,11 +4,19 @@ import { cn } from "@shogi/design-system";
 import type { SkillLevelSettings } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 import { useEffect, useState } from "react";
+import { BOARD_PATTERN_OPTIONS, type BoardPattern } from "../../board-appearance";
 import { ChevronIcon } from "../../chevron-icon";
 import { NativeSelect } from "../../native-select";
 import { Switch } from "../../switch";
-import type { BoardPattern } from "../hooks/useBoardPattern";
-import { BOARD_PATTERN_OPTIONS, useBoardPattern } from "../hooks/useBoardPattern";
+import {
+    BOARD_PATTERN_LABEL,
+    DISPLAY_TOGGLE_CHECKBOX_CLASS,
+    DISPLAY_TOGGLE_LABELS,
+    type DisplayToggleKey,
+    SQUARE_NOTATION_LABEL,
+    SQUARE_NOTATION_OPTIONS,
+} from "../displaySettingsFields";
+import { useBoardPattern } from "../hooks/useBoardPattern";
 import type { ClockSettings } from "../hooks/useClockManager";
 import { useKifuTextImport } from "../hooks/useKifuTextImport";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
@@ -228,10 +236,10 @@ function KifuImportSection({
 /**
  * モバイル用設定シート（BottomSheet内のコンテンツ）
  */
-const NOTATION_OPTIONS: { value: SquareNotation; label: string }[] = [
-    { value: "none", label: "非表示" },
-    { value: "sfen", label: "SFEN (5e)" },
-    { value: "japanese", label: "日本式 (５五)" },
+const DISPLAY_TOGGLES: DisplayToggleKey[] = [
+    "showBoardLabels",
+    "highlightLastMove",
+    "showSearchInfo",
 ];
 
 export function MobileSettingsSheet({
@@ -905,7 +913,7 @@ export function MobileSettingsSheet({
 
                 {/* 座標表示 */}
                 <label htmlFor="mobile-notation" className={labelClassName}>
-                    <span className="text-xs text-muted-foreground">座標表示</span>
+                    <span className="text-xs text-muted-foreground">{SQUARE_NOTATION_LABEL}</span>
                     <NativeSelect
                         id="mobile-notation"
                         value={displaySettings.squareNotation}
@@ -917,7 +925,7 @@ export function MobileSettingsSheet({
                         }
                         className="text-sm"
                     >
-                        {NOTATION_OPTIONS.map((opt) => (
+                        {SQUARE_NOTATION_OPTIONS.map((opt) => (
                             <option key={opt.value} value={opt.value}>
                                 {opt.label}
                             </option>
@@ -926,7 +934,7 @@ export function MobileSettingsSheet({
                 </label>
 
                 <label htmlFor="mobile-board-pattern" className={labelClassName}>
-                    <span className="text-xs text-muted-foreground">盤の模様</span>
+                    <span className="text-xs text-muted-foreground">{BOARD_PATTERN_LABEL}</span>
                     <NativeSelect
                         id="mobile-board-pattern"
                         value={boardPattern}
@@ -943,48 +951,22 @@ export function MobileSettingsSheet({
 
                 {/* チェックボックス設定 */}
                 <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-sm">
-                        <input
-                            type="checkbox"
-                            checked={displaySettings.showBoardLabels}
-                            onChange={(e) =>
-                                onDisplaySettingsChange({
-                                    ...displaySettings,
-                                    showBoardLabels: e.target.checked,
-                                })
-                            }
-                            className="w-4 h-4"
-                        />
-                        <span>盤外ラベル（筋・段）を表示</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-sm">
-                        <input
-                            type="checkbox"
-                            checked={displaySettings.highlightLastMove}
-                            onChange={(e) =>
-                                onDisplaySettingsChange({
-                                    ...displaySettings,
-                                    highlightLastMove: e.target.checked,
-                                })
-                            }
-                            className="w-4 h-4"
-                        />
-                        <span>最終手を強調表示</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-sm">
-                        <input
-                            type="checkbox"
-                            checked={displaySettings.showSearchInfo}
-                            onChange={(e) =>
-                                onDisplaySettingsChange({
-                                    ...displaySettings,
-                                    showSearchInfo: e.target.checked,
-                                })
-                            }
-                            className="w-4 h-4"
-                        />
-                        <span>探索情報 (NPS/深さ) を表示</span>
-                    </label>
+                    {DISPLAY_TOGGLES.map((key) => (
+                        <label key={key} className="flex items-center gap-2 text-sm">
+                            <input
+                                type="checkbox"
+                                checked={displaySettings[key]}
+                                onChange={(e) =>
+                                    onDisplaySettingsChange({
+                                        ...displaySettings,
+                                        [key]: e.target.checked,
+                                    })
+                                }
+                                className={DISPLAY_TOGGLE_CHECKBOX_CLASS}
+                            />
+                            <span>{DISPLAY_TOGGLE_LABELS[key]}</span>
+                        </label>
+                    ))}
                 </div>
             </div>
 

@@ -2,7 +2,7 @@ import type { PieceType } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useRef } from "react";
-import { useBoardPattern } from "./shogi-match/hooks/useBoardPattern";
+import { type BoardPattern, useBoardPatternContext } from "./board-appearance";
 import type { SquareNotation } from "./shogi-match/types";
 import { getPieceImagePath, PIECE_LABELS } from "./shogi-match/utils/constants";
 import { formatSquare, getBoardLabels } from "./shogi-match/utils/coordinateFormat";
@@ -72,6 +72,8 @@ interface ShogiBoardProps {
     hintMove?: { from?: string | null; to: string; side?: ShogiBoardOwner } | null;
     /** 盤の上に重ねて出すもの（終局の判子など）。盤の枠いっぱいの位置の基準で置く */
     overlay?: ReactNode;
+    /** マス目の模様。省略時は BoardPatternProvider の値（アプリの設定） */
+    pattern?: BoardPattern;
 }
 
 /**
@@ -93,8 +95,10 @@ export function ShogiBoard({
     moveShadow = null,
     hintMove = null,
     overlay,
+    pattern,
 }: ShogiBoardProps): ReactElement {
-    const [boardPattern] = useBoardPattern();
+    const contextPattern = useBoardPatternContext();
+    const boardPattern = pattern ?? contextPattern;
     const lastPointerTypeRef = useRef<"mouse" | "touch" | "pen" | null>(null);
     const { files, ranks } = getBoardLabels(flipBoard);
 
@@ -138,8 +142,10 @@ export function ShogiBoard({
                         </span>
                     ))}
                 </div>
-                {/* 角は直角にする。丸めると、隅のマスの駒が角で欠ける。外周は outline を足して内側の線より太く見せる。 */}
-                <div className="grid flex-1 grid-cols-9 border-l border-t border-shogi-border outline outline-1 outline-shogi-border">
+                {/* 角は直角にする。丸めると、隅のマスの駒が角で欠ける。外周は outline を足して内側の線より太く見せる。
+                    マスの幅の合計が欄の幅を端数で超えると最後の列の線がはみ出すので、overflow-hidden で切る
+                    （そのため、マスのフォーカスの枠はマスの内側に描く）。 */}
+                <div className="grid flex-1 grid-cols-9 overflow-hidden border-l border-t border-shogi-border outline outline-1 outline-shogi-border">
                     {grid.map((row, rowIndex) =>
                         row.map((cell, columnIndex) => {
                             const isSelected = selectedSquare === cell.id;

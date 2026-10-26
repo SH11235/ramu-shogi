@@ -34,8 +34,9 @@ export { useRoomConnection } from "./hooks/useRoomConnection";
 // Components
 // ============================================================
 
+export type { BoardPattern } from "./components/board-appearance";
+export { BoardPatternProvider } from "./components/board-appearance";
 export { BookTreeViewer } from "./components/book-tree-viewer/BookTreeViewer";
-
 // engine-control-panel
 export { EngineControlPanel } from "./components/engine-control-panel";
 export type {
@@ -71,6 +72,7 @@ export { ShogiBoard } from "./components/shogi-board";
 export { BottomSheet } from "./components/shogi-match/components/BottomSheet";
 export { HandPiecesDisplay } from "./components/shogi-match/components/HandPiecesDisplay";
 export { KifuNavigationToolbar } from "./components/shogi-match/components/KifuNavigationToolbar";
+export { StoredBoardPatternProvider } from "./components/shogi-match/hooks/useBoardPattern";
 export {
     decodeSnapshotEvalMateReviver,
     encodeSnapshotEvalMateReplacer,
