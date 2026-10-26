@@ -11,11 +11,9 @@ import {
     createDefaultNnueSelection,
     createEmptyHands,
     DEFAULT_PRESET_KEY,
-    detectParallelism,
     getAllSquares,
     getPositionService,
     isStudyUsiMove,
-    resolveWorkerCount,
 } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
@@ -32,12 +30,10 @@ import {
     useInitialAnalysisEntries,
     useMatchSnapshotReports,
 } from "./shogi-match/hooks/useAnalysisSnapshot";
-import { useBatchAnalysis } from "./shogi-match/hooks/useBatchAnalysis";
 import { useBoardState } from "./shogi-match/hooks/useBoardState";
 import { useDialogs } from "./shogi-match/hooks/useDialogs";
 import { useEditModeActions } from "./shogi-match/hooks/useEditModeActions";
 import { useEngineManager } from "./shogi-match/hooks/useEngineManager";
-import { useEnginePool } from "./shogi-match/hooks/useEnginePool";
 import { useGameControls } from "./shogi-match/hooks/useGameControls";
 import { useImportedKifuPlayers } from "./shogi-match/hooks/useImportedKifuPlayers";
 import {
@@ -49,6 +45,7 @@ import { useKifuKeyboardNavigation } from "./shogi-match/hooks/useKifuKeyboardNa
 import { useKifuNavigation } from "./shogi-match/hooks/useKifuNavigation";
 import { useLegalMovePrefetch } from "./shogi-match/hooks/useLegalMovePrefetch";
 import { useLiveSearchInfo } from "./shogi-match/hooks/useLiveSearchInfo";
+import { useMatchAnalysis } from "./shogi-match/hooks/useMatchAnalysis";
 import { useMatchClock } from "./shogi-match/hooks/useMatchClock";
 import { useMatchEnd } from "./shogi-match/hooks/useMatchEnd";
 import { useMatchMoves } from "./shogi-match/hooks/useMatchMoves";
@@ -61,7 +58,6 @@ import { useMoveShadow } from "./shogi-match/hooks/useMoveShadow";
 import { useNnueManager } from "./shogi-match/hooks/useNnueManager";
 import { usePassRights } from "./shogi-match/hooks/usePassRights";
 import { usePlayHintNnueSelection } from "./shogi-match/hooks/usePlayHintNnueSelection";
-import { usePlayHintSearch } from "./shogi-match/hooks/usePlayHintSearch";
 import { usePlayScreen } from "./shogi-match/hooks/usePlayScreen";
 import { usePositionEditDnd } from "./shogi-match/hooks/usePositionEditDnd";
 import { useUIState } from "./shogi-match/hooks/useUIState";
@@ -726,54 +722,8 @@ export function ShogiMatch({
         setSides(newSides);
     };
 
-    // 並列一括解析用のエンジンプール
-    const analysisEngineOption =
-        engineOptions.find((option) => option.id === analysisEngineId) ?? engineOptions[0];
-    const enginePool = useEnginePool({
-        createClient:
-            analysisEngineOption?.createClient ??
-            (() => {
-                throw new Error("No engine available");
-            }),
-        clientKey: analysisEngineOption?.id,
-        // 外部の USI エンジンは、変則ルールのパスを解釈できない。
-        supportsPassRights: analysisEngineOption?.kind !== "external",
-        materialFallback: analysisEngineOption?.kind !== "external",
-        // エンジンが同時に動かせる数に収める（Desktop の内蔵エンジンは 1 つだけ）。
-        workerCount: Math.min(
-            resolveWorkerCount(analysisSettings.parallelWorkers),
-            analysisEngineOption?.maxParallel ?? Number.POSITIVE_INFINITY,
-        ),
-        onProgress: (progress) => {
-            setBatchAnalysis({
-                isRunning: true,
-                currentIndex: progress.completed,
-                totalCount: progress.total,
-                targetPlies: [], // 進捗表示用には不要
-                inProgress: progress.inProgress,
-            });
-        },
-        onResult: (ply, event, nodeId) => {
-            // nodeIdがある場合は分岐解析の結果
-            if (nodeId) {
-                recordEvalByNodeId(nodeId, event);
-            } else {
-                recordEvalByPly(ply, event);
-            }
-        },
-        onComplete: () => {
-            setBatchAnalysis(null);
-        },
-        onError: (ply, error) => {
-            console.error(`解析エラー (ply=${ply}):`, error);
-        },
-        nnueId: analysisNnueId,
-    });
-
-    // 一括解析管理フック
     const {
         analyzingState,
-        handleEvalUpdate,
         handleAnalyzePly,
         handleAnalyzeHintPly,
         handleAnalyzeNode,
@@ -781,48 +731,36 @@ export function ShogiMatch({
         handleStartTreeBatchAnalysis,
         handleAnalyzeBranch,
         handleCancelBatchAnalysis,
-    } = useBatchAnalysis({
+        playHint,
+    } = useMatchAnalysis({
+        engineOptions,
+        analysisEngineId,
+        analysisSettings,
+        analysisNnueId,
+        analysisNnueSelection: effectiveAnalysisNnueSelection,
+        resolveNnue,
+        batchAnalysis,
+        setBatchAnalysis,
         kifMoves,
         startSfen,
-        analysisSettings,
-        enginePool,
-        resolveNnue,
-        analysisNnueSelection: effectiveAnalysisNnueSelection,
+        moves,
+        navigation,
         recordEvalByPly,
         recordEvalByNodeId,
         clearEvalByPly,
         clearEvalByNodeId,
         analyzePosition,
         isAnalyzing,
-        kifuTree: navigation.tree,
+        cancelAnalysis,
         openNnueManager,
         setMessage,
-        batchAnalysis,
-        setBatchAnalysis,
-    });
-
-    // handleEvalUpdate を ref に設定（useEngineManager で使用）
-    handleEvalUpdateRef.current = handleEvalUpdate;
-
-    // 対局画面のヒント。解析のスレッド数は、対局の先後のうち多いほう（解析エンジンと同じ決め方）。
-    const resolveThreads = (count: number) =>
-        count > 0 ? count : detectParallelism().recommendedWorkers;
-    const playHint = usePlayHintSearch({
-        enabled: isPlayScreen,
-        engineOption:
-            engineOptions.find((option) => option.id === analysisEngineId) ?? engineOptions[0],
-        threads: Math.max(resolveThreads(engineThreads.sente), resolveThreads(engineThreads.gote)),
-        multiPv: hintMultiPv,
-        nnueSelection: effectiveAnalysisNnueSelection,
-        resolveNnue,
-        startSfen,
-        moves: moves.slice(0, navigation.state.currentPly),
-        currentPly: navigation.state.currentPly,
+        handleEvalUpdateRef,
+        isPlayScreen,
+        engineThreads,
+        hintMultiPv,
         passRightsSettings,
-        matchActive: isMatchRunning && !isPaused,
-        recordEvalByPly,
-        clearEvalByPly,
-        fallback: { analyze: handleAnalyzeHintPly, cancel: cancelAnalysis, isAnalyzing },
+        isMatchRunning,
+        isPaused,
     });
 
     const { handleUndo, handlePassMove } = useMatchMoves({
