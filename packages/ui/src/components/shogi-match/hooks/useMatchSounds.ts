@@ -13,7 +13,17 @@ export function useMatchSounds({
     displaySettings: DisplaySettings;
     isCpuGame: boolean;
     dogSoundBaseUrl: string | undefined;
-}) {
+}): {
+    playSound: ReturnType<typeof useShogiSound>["playSound"];
+    playMoveSound: (
+        move: string,
+        before: PositionState,
+        after: PositionState,
+        by: "self" | "opponent",
+        cpuLosing?: boolean,
+    ) => void;
+    playMatchEndSound: () => void;
+} {
     const { playSound, playEndSound } = useShogiSound({ dogSoundBaseUrl });
     // 人の手は合法手の確認を待ってから適用されるので、鳴らすかどうか・鳴らし方はその時点の設定で決める。
     const moveSoundRef = useRef<{ enabled: boolean; voice: SoundVoice }>({

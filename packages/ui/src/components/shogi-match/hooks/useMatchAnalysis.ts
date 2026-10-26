@@ -59,7 +59,9 @@ export function useMatchAnalysis({
     passRightsSettings,
     isMatchRunning,
     isPaused,
-}: UseMatchAnalysisOptions) {
+}: UseMatchAnalysisOptions): ReturnType<typeof useBatchAnalysis> & {
+    playHint: ReturnType<typeof usePlayHintSearch>;
+} {
     // 並列一括解析用のエンジンプール
     const analysisEngineOption =
         engineOptions.find((option) => option.id === analysisEngineId) ?? engineOptions[0];
