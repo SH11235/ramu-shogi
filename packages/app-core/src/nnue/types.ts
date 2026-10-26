@@ -133,20 +133,6 @@ export interface NnueDownloadProgress {
 }
 
 /**
- * プリセット更新情報
- */
-export interface PresetUpdate {
-    /** プリセットキー */
-    presetKey: string;
-    /** ローカルに存在するバージョン一覧（複数バージョンがあり得る） */
-    currentVersions: string[];
-    /** 新しいバージョン */
-    newVersion: string;
-    /** 新しいバージョンの SHA-256 */
-    newSha256: string;
-}
-
-/**
  * プリセット設定（manifest.json の各エントリ）
  */
 export interface PresetConfig {

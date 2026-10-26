@@ -53,10 +53,9 @@ export {
 // game/csa-move
 export { applyCsaMoveStrict, isCheckmate, isKingInCheck } from "./game/csa-move";
 // game/csa-position
-export type { CsaStartPosition } from "./game/csa-position";
 export { buildCsaStartPosition, parseCsaStartPosition } from "./game/csa-position";
 // game/csa-record
-export type { CsaEvalComment, CsaGameRecord, CsaMoveAnnotation } from "./game/csa-record";
+export type { CsaMoveAnnotation } from "./game/csa-record";
 export {
     CSA_MATE_EVAL_THRESHOLD,
     parseCsaEvalComment,
@@ -187,7 +186,6 @@ export type {
     PresetConfig,
     PresetManifest,
     PresetStatus,
-    PresetUpdate,
     ResolvedNnue,
 } from "./nnue/types";
 export {
@@ -246,7 +244,6 @@ export {
 // study/analysis
 export type {
     StudyAnalysisCollector,
-    StudyAnalysisCollectorOptions,
     StudyAnalysisCompletion,
     StudyAnalysisInfo,
     StudyLayerRef,
@@ -266,10 +263,7 @@ export { diffStudyDocuments } from "./study/doc-diff";
 export type { StudyHighlight, StudyHighlightKind } from "./study/highlights";
 export {
     computeStudyHighlights,
-    STUDY_BLUNDER_DROP,
-    STUDY_DUBIOUS_DROP,
     STUDY_WIN_RATE_MODEL,
-    STUDY_WIN_RATE_SCALE_CP,
     studyScoreToSenteWinRate,
 } from "./study/highlights";
 // study/ids
@@ -283,12 +277,7 @@ export {
     studyRootNodeId,
 } from "./study/ids";
 // study/import
-export type {
-    StudyCsaImportInput,
-    StudyImportAnnotation,
-    StudyImportInput,
-    StudyKifuTreeImportInput,
-} from "./study/import";
+export type { StudyImportAnnotation } from "./study/import";
 export {
     createStudyDocumentFromCsa,
     createStudyDocumentFromKifuTree,
@@ -329,18 +318,11 @@ export { parseStudySfen } from "./study/sfen";
 // study/sha256
 export { sha256Hex, utf8Encode } from "./study/sha256";
 // study/tree-convert
-export type {
-    KifuTreeToStudyOptions,
-    KifuTreeToStudyResult,
-    StudyNodeIdIndex,
-    StudyToKifuTreeOptions,
-    StudyToKifuTreeResult,
-} from "./study/tree-convert";
+export type { StudyNodeIdIndex } from "./study/tree-convert";
 export {
     buildStudyNodeIdIndex,
     diffKifuTreeToStudyOps,
     kifuTreeToStudyTree,
-    studyCandidateToKifuEval,
     studyDocumentToKifuTree,
     studyResultToKifuEvals,
 } from "./study/tree-convert";
@@ -372,16 +354,12 @@ export { STANDARD_STUDY_RULES, STUDY_HIRATE_SFEN, STUDY_LIMITS } from "./study/t
 export {
     applyStudyOpsStrict,
     assertStudyAnalysisResult,
-    assertStudyComment,
     assertStudyLayerDisplay,
     assertStudyLayerSpec,
-    assertStudyOpInput,
     assertStudySource,
-    assertStudyTitle,
     isBoundedStudyJson,
     isStudyStartSfen,
     isStudyUuid,
-    STUDY_FREE_JSON_MAX_DEPTH,
     StudyLimitError,
     validateStudyDocument,
 } from "./study/validation";

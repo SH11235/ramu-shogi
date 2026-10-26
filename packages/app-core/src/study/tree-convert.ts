@@ -84,7 +84,7 @@ const truncatePv = (pv: readonly string[] | undefined): string[] | null => {
 };
 
 /** 実行時ツリーの変換時に、ノードの評価値を「対局時の評価値」として持ち込むかの指定。 */
-export interface KifuTreeToStudyOptions {
+interface KifuTreeToStudyOptions {
     /**
      * 対局時の評価値の出どころ（`source.kind`。CSA 棋譜なら `"csa"`）。
      * 指定すると、先手視点に正規化済みの評価値（棋譜から読んだもの）、なければ AI がその手を
@@ -138,7 +138,7 @@ function runtimeNodeToSource(
     return { kind: sourceKind, score, pv, elapsedMs };
 }
 
-export interface KifuTreeToStudyResult {
+interface KifuTreeToStudyResult {
     /** 保存用の開始局面（SFEN 4 フィールド） */
     startSfen: string;
     tree: StudyTree;
@@ -191,7 +191,7 @@ export function kifuTreeToStudyTree(
 }
 
 /** 解析結果の候補を実行時の評価値（先手視点）にする。 */
-export function studyCandidateToKifuEval(
+function studyCandidateToKifuEval(
     candidate: StudyCandidate,
     result: Pick<StudyAnalysisResult, "nodes" | "timeMs">,
 ): KifuEval {
@@ -221,7 +221,7 @@ export function studyResultToKifuEvals(result: StudyAnalysisResult): {
     };
 }
 
-export interface StudyToKifuTreeOptions {
+interface StudyToKifuTreeOptions {
     /**
      * ノードの評価値として載せる解析レイヤー。
      * 指定すると、そのレイヤーの結果だけを評価値にする（結果の無いノードは評価値なし）。
@@ -232,7 +232,7 @@ export interface StudyToKifuTreeOptions {
     currentNodeId?: string | null;
 }
 
-export interface StudyToKifuTreeResult {
+interface StudyToKifuTreeResult {
     tree: KifuTree;
     index: StudyNodeIdIndex;
     /** 開始局面から再生できなかった指し手（その配下は復元しない）。 */
