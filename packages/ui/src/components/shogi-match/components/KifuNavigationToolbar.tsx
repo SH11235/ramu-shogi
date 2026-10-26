@@ -7,7 +7,9 @@ import { ChevronIcon } from "../../chevron-icon";
  */
 
 import type { ReactElement, ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { Popover, PopoverContent, PopoverTrigger } from "../../popover";
+import { moveMenuFocus } from "../utils/menuKeyNavigation";
 
 interface BranchInfo {
     hasBranches: boolean;
@@ -110,20 +112,6 @@ export function KifuNavigationToolbar({
     const [showBranchMenu, setShowBranchMenu] = useState(false);
     const branchMenuRef = useRef<HTMLDivElement>(null);
 
-    // メニュー外クリックで閉じる
-    useEffect(() => {
-        if (!showBranchMenu) return;
-
-        const handleClickOutside = (e: MouseEvent) => {
-            if (branchMenuRef.current && !branchMenuRef.current.contains(e.target as Node)) {
-                setShowBranchMenu(false);
-            }
-        };
-
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [showBranchMenu]);
-
     const canGoBack = currentPly > 0;
     // canGoForward: propsで明示されていればそれを使用、そうでなければ従来の計算
     const canGoForward = canGoForwardProp ?? currentPly < totalPly;
@@ -206,60 +194,66 @@ export function KifuNavigationToolbar({
 
             {/* 分岐切替（分岐がある場合のみ表示） */}
             {branchInfo?.hasBranches && (
-                <div className="relative" ref={branchMenuRef}>
-                    <button
-                        type="button"
-                        onClick={() => setShowBranchMenu(!showBranchMenu)}
-                        disabled={disabled}
-                        title={`分岐 ${branchInfo.currentIndex + 1}/${branchInfo.count}`}
-                        aria-expanded={showBranchMenu}
-                        aria-haspopup="menu"
-                        className={`
-                            px-2 h-8 flex items-center gap-1
-                            rounded border border-border bg-background
-                            text-foreground text-[12px]
-                            transition-colors duration-150
-                            ${disabled ? "opacity-40 cursor-not-allowed" : "hover:bg-accent cursor-pointer"}
-                        `}
+                <Popover open={showBranchMenu} onOpenChange={setShowBranchMenu}>
+                    <PopoverTrigger asChild>
+                        <button
+                            type="button"
+                            disabled={disabled}
+                            title={`分岐 ${branchInfo.currentIndex + 1}/${branchInfo.count}`}
+                            className={`
+                                px-2 h-8 flex items-center gap-1
+                                rounded border border-border bg-background
+                                text-foreground text-[12px]
+                                transition-colors duration-150
+                                ${disabled ? "opacity-40 cursor-not-allowed" : "hover:bg-accent cursor-pointer"}
+                            `}
+                        >
+                            <span>分岐</span>
+                            <span className="text-wafuu-shu font-medium">
+                                {branchInfo.currentIndex + 1}/{branchInfo.count}
+                            </span>
+                            <ChevronIcon />
+                        </button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                        side="bottom"
+                        align="end"
+                        sideOffset={4}
+                        className="w-auto min-w-[100px] overflow-hidden rounded p-0 shadow-lg"
+                        // 先頭ではなく今の分岐から矢印キーで動けるようにする
+                        onOpenAutoFocus={(event) => {
+                            event.preventDefault();
+                            branchMenuRef.current
+                                ?.querySelector<HTMLElement>('[aria-checked="true"]')
+                                ?.focus();
+                        }}
                     >
-                        <span>分岐</span>
-                        <span className="text-wafuu-shu font-medium">
-                            {branchInfo.currentIndex + 1}/{branchInfo.count}
-                        </span>
-                        <ChevronIcon />
-                    </button>
-
-                    {/* 分岐メニュー */}
-                    {showBranchMenu && (
                         <div
-                            className="absolute top-full right-0 mt-1 z-50 bg-card border border-border rounded shadow-lg min-w-[100px]"
+                            ref={branchMenuRef}
                             role="menu"
                             aria-label="分岐選択"
+                            onKeyDown={(event) => moveMenuFocus(event, '[role^="menuitem"]')}
                         >
-                            {Array.from({ length: branchInfo.count }, (_, i) => ({
-                                id: `branch-${i}`,
-                                index: i,
-                            })).map((item) => (
+                            {Array.from({ length: branchInfo.count }, (_, i) => i).map((index) => (
                                 <button
                                     type="button"
-                                    key={item.id}
-                                    onClick={() => handleBranchSelect(item.index)}
-                                    role="menuitem"
-                                    aria-current={
-                                        item.index === branchInfo.currentIndex ? "true" : undefined
-                                    }
+                                    key={index}
+                                    onClick={() => handleBranchSelect(index)}
+                                    role="menuitemradio"
+                                    aria-checked={index === branchInfo.currentIndex}
                                     className={`
                                         w-full px-3 py-1.5 text-left text-[12px]
                                         transition-colors duration-150
+                                        focus-visible:outline-none focus-visible:bg-accent
                                         ${
-                                            item.index === branchInfo.currentIndex
+                                            index === branchInfo.currentIndex
                                                 ? "bg-accent font-medium"
                                                 : "hover:bg-accent/50"
                                         }
                                     `}
                                 >
-                                    変化 {item.index + 1}
-                                    {item.index === 0 && (
+                                    変化 {index + 1}
+                                    {index === 0 && (
                                         <span className="ml-1 text-[10px] text-muted-foreground">
                                             (メイン)
                                         </span>
@@ -280,15 +274,15 @@ export function KifuNavigationToolbar({
                                             setShowBranchMenu(false);
                                         }}
                                         role="menuitem"
-                                        className="w-full px-3 py-1.5 text-left text-[12px] text-wafuu-shu hover:bg-accent/50 transition-colors duration-150"
+                                        className="w-full px-3 py-1.5 text-left text-[12px] text-wafuu-shu hover:bg-accent/50 focus-visible:outline-none focus-visible:bg-accent/50 transition-colors duration-150"
                                     >
                                         ★ メインに昇格
                                     </button>
                                 </>
                             )}
                         </div>
-                    )}
-                </div>
+                    </PopoverContent>
+                </Popover>
             )}
         </div>
     );
