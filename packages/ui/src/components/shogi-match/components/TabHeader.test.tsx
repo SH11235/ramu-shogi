@@ -25,4 +25,33 @@ describe("TabHeader", () => {
         fireEvent.click(screen.getByRole("tab", { name: "AI解析" }));
         expect(onChange).toHaveBeenCalledWith("ai");
     });
+
+    it("Tab キーで止まるのは選択中のタブだけで、左右・Home・End で移って選ぶ", () => {
+        const tabs = [...TABS, { id: "memo" as const, label: "メモ" }];
+        const onChange = vi.fn();
+        const { rerender } = render(<TabHeader tabs={tabs} activeTab="kifu" onChange={onChange} />);
+        expect(screen.getByRole("tab", { name: "棋譜" }).tabIndex).toBe(0);
+        expect(screen.getByRole("tab", { name: "AI解析" }).tabIndex).toBe(-1);
+
+        const documentKeyDown = vi.fn();
+        document.addEventListener("keydown", documentKeyDown);
+        try {
+            fireEvent.keyDown(screen.getByRole("tab", { name: "棋譜" }), { key: "ArrowRight" });
+            expect(onChange).toHaveBeenLastCalledWith("ai");
+            expect(document.activeElement).toBe(screen.getByRole("tab", { name: "AI解析" }));
+            // 棋譜の矢印キー送り（document で聞いている）には届かない
+            expect(documentKeyDown).not.toHaveBeenCalled();
+        } finally {
+            document.removeEventListener("keydown", documentKeyDown);
+        }
+
+        rerender(<TabHeader tabs={tabs} activeTab="ai" onChange={onChange} />);
+        expect(screen.getByRole("tab", { name: "AI解析" }).tabIndex).toBe(0);
+        fireEvent.keyDown(screen.getByRole("tab", { name: "AI解析" }), { key: "ArrowLeft" });
+        expect(onChange).toHaveBeenLastCalledWith("kifu");
+        fireEvent.keyDown(screen.getByRole("tab", { name: "AI解析" }), { key: "End" });
+        expect(onChange).toHaveBeenLastCalledWith("memo");
+        fireEvent.keyDown(screen.getByRole("tab", { name: "AI解析" }), { key: "Home" });
+        expect(onChange).toHaveBeenLastCalledWith("kifu");
+    });
 });
