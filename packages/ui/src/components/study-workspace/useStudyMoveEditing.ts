@@ -15,7 +15,10 @@ import {
     studyPassRightsForLine,
 } from "@shogi/app-core";
 import { useEffect, useRef } from "react";
-import { useMoveExecution } from "../shogi-match/hooks/useMoveExecution";
+import {
+    type UseMoveExecutionReturn,
+    useMoveExecution,
+} from "../shogi-match/hooks/useMoveExecution";
 import type { Message } from "../shogi-match/types";
 import { LegalMoveCache } from "../shogi-match/utils/legalMoveCache";
 import type { StudyPvRequest } from "./StudyCandidatesPanel";
@@ -151,7 +154,7 @@ export function useStudyMoveEditing({
         addMoveFromCurrent(STUDY_PASS_MOVE);
     };
 
-    const board = useMoveExecution({
+    const board: UseMoveExecutionReturn = useMoveExecution({
         position: currentNode.positionAfter,
         navigation: {
             addMove: (usiMove) => addMoveFromCurrent(usiMove),
