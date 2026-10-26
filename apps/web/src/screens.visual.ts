@@ -65,7 +65,7 @@ const openStudyPv = (flip: boolean) => async (page: Page) => {
     await page.getByRole("dialog").getByRole("button", { name: ">", exact: true }).click();
 };
 
-const openBookViewer = async (page: Page): Promise<void> => {
+const openBookViewer = (flip: boolean) => async (page: Page) => {
     await page.goto("/book-viewer");
     await page.getByLabel("定跡ファイル").setInputFiles({
         name: "hands.db",
@@ -75,6 +75,7 @@ const openBookViewer = async (page: Page): Promise<void> => {
     await page.getByRole("textbox", { name: "局面キー" }).fill(BOOK_KEY_WITH_HANDS);
     await page.getByRole("button", { name: "局面へ移動" }).click();
     await page.getByRole("region", { name: "指し手一覧" }).getByText("定跡の手").waitFor();
+    if (flip) await page.getByRole("button", { name: "盤を反転" }).click();
 };
 
 const SCENES: Scene[] = [
@@ -121,7 +122,8 @@ const SCENES: Scene[] = [
     { name: "study-note", open: openStudyAtEnd },
     { name: "study-pv", open: openStudyPv(false) },
     { name: "study-pv-flipped", open: openStudyPv(true), devices: ["pc"] },
-    { name: "book-viewer", open: openBookViewer },
+    { name: "book-viewer", open: openBookViewer(false) },
+    { name: "book-viewer-flipped", open: openBookViewer(true), devices: ["pc"] },
     {
         name: "study-analysis-settings",
         open: async (page) => {
