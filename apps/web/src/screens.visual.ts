@@ -8,11 +8,28 @@ const VIEWPORTS = {
 
 // 駒の取り合いがあり、両者に持ち駒がある短い棋譜。
 const KIFU_WITH_HANDS = "+7776FU\n-3334FU\n+8822UM\n-3122GI\n+0055KA";
+// 最後の手に対局時の読み筋（CSA の `'**` の注記）が付いた棋譜。読み筋の盤（ダイアログ）を開くのに使う。
+const KIFU_WITH_PV = [
+    "V2.2",
+    "PI",
+    "+",
+    "+7776FU",
+    "-3334FU",
+    "+8822UM",
+    "-3122GI",
+    "+0055KA",
+    "'** 50 -0033KA +5533UM -2133KE",
+].join("\n");
+// 両者に持ち駒がある局面（KIFU_WITH_HANDS の 4 手目のあと）だけを入れた定跡。
+const BOOK_KEY_WITH_HANDS = "lnsgkg1nl/1r5s1/pppppp1pp/6p2/9/2P6/PP1PPPPPP/7R1/LNSGKGSNL b Bb";
+const BOOK_WITH_HANDS = `#YANEURAOU-DB2016 1.00\nsfen ${BOOK_KEY_WITH_HANDS} 9\nB*5e none 50 20 3\n`;
 
 // AI の一覧（/nnue）や棋譜の一覧は API の応答で中身が変わるので、ここでは撮らない。
 interface Scene {
     name: string;
     open: (page: Page) => Promise<void>;
+    /** 撮る端末を絞る（省くと全部）。 */
+    devices?: readonly (keyof typeof VIEWPORTS)[];
     /** 端末ごとに変わる部分。塗りつぶして比べる。 */
     mask?: (page: Page) => Locator[];
 }
@@ -30,6 +47,57 @@ const openStudyAtEnd = async (page: Page): Promise<void> => {
     await page.waitForURL(/\/studies\/[^/]+$/);
     // 幅によって送りのボタンが 2 か所に出ることがある。どちらも同じ操作なので最初のものを押す。
     await page.getByRole("button", { name: "最後の局面へ" }).first().click();
+};
+
+const openStudyPv = (flip: boolean) => async (page: Page) => {
+    await page.goto("/studies");
+    await page.getByRole("textbox", { name: "棋譜のテキスト" }).fill(KIFU_WITH_PV);
+    await page.getByRole("button", { name: "研究ノートにする" }).click();
+    await page.waitForURL(/\/studies\/[^/]+$/);
+    await page.getByRole("button", { name: "最後の局面へ" }).first().click();
+    if (flip) await page.getByRole("button", { name: "盤面を反転" }).first().click();
+    // スマホでは候補手（対局時の読み筋の欄）を別のタブに出す。
+    const candidatesTab = page.getByRole("tab", { name: "候補手" });
+    if (await candidatesTab.isVisible()) await candidatesTab.click();
+    await page.getByRole("button", { name: "対局時の読み筋を見る" }).click();
+    await page.getByRole("dialog").waitFor();
+    // 読み筋の 1 手目まで送り、直前の手の印と持ち駒の両方を写す。
+    await page.getByRole("dialog").getByRole("button", { name: ">", exact: true }).click();
+};
+
+const openBookViewer = (flip: boolean) => async (page: Page) => {
+    await page.goto("/book-viewer");
+    await page.getByLabel("定跡ファイル").setInputFiles({
+        name: "hands.db",
+        mimeType: "text/plain",
+        buffer: Buffer.from(BOOK_WITH_HANDS),
+    });
+    await page.getByRole("textbox", { name: "局面キー" }).fill(BOOK_KEY_WITH_HANDS);
+    await page.getByRole("button", { name: "局面へ移動" }).click();
+    await page.getByRole("region", { name: "指し手一覧" }).getByText("定跡の手").waitFor();
+    if (flip) await page.getByRole("button", { name: "盤を反転" }).click();
+};
+
+/** 人どうしの対局を始め、マス（`7g` など）や成りの選択（`成る`）を順に押す。 */
+const openHumanGame = (clicks: readonly string[]) => async (page: Page) => {
+    await page.goto("/play");
+    const start = page.getByRole("button", { name: "対局開始", exact: true });
+    // 設定の欄は読み込みのあとに描き直されるので、それより前に押した選択や開始は効かないことがある。
+    // 対局が始まるまで選び直して押す。
+    await expect(async () => {
+        await page.getByRole("button", { name: "人 対 人", exact: true }).click();
+        await start.click();
+        await expect(start).toHaveCount(0, { timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
+    for (const target of clicks) {
+        if (/^\d[a-i]$/.test(target)) {
+            await page.locator(`[data-square='${target}']:visible`).click();
+        } else {
+            await page.getByRole("button", { name: target, exact: true }).click();
+        }
+    }
+    // 押したマスの選択の印が消え、最後の手が盤に出るのを待つ。
+    if (clicks.length > 0) await page.getByRole("button", { name: "待った" }).first().waitFor();
 };
 
 // 公開棋譜の画面は API の応答を固定して描く（棋譜を見るだけの盤と、スマホの設定の欄）。
@@ -69,9 +137,14 @@ const SCENES: Scene[] = [
     },
     {
         name: "play-setup",
-        open: gotoAndWait("/play", (p) =>
-            p.getByRole("button", { name: "対局開始", exact: true }).waitFor(),
-        ),
+        open: async (page) => {
+            await page.goto("/play");
+            await page.getByRole("button", { name: "対局開始", exact: true }).waitFor();
+            // PC では盤も並ぶが、局面を読み込んでから描くので、ボタンより遅れて出ることがある。
+            if ((page.viewportSize()?.width ?? 0) >= 768) {
+                await page.locator("[data-square='5i']").first().waitFor();
+            }
+        },
     },
     {
         name: "play-settings",
@@ -97,6 +170,15 @@ const SCENES: Scene[] = [
             await page.getByRole("region", { name: "開始局面の編集" }).waitFor();
         },
     },
+    // 人どうしの対局はエンジンを使わないので、毎回同じ盤を撮れる。始めた直後（空の持ち駒の段）と、
+    // 角を取り合ったあと（両者に持ち駒がある段）。
+    { name: "play-human", open: openHumanGame([]) },
+    {
+        name: "play-human-hands",
+        open: openHumanGame(["7g", "7f", "3c", "3d", "8h", "2b", "成る", "3a", "2b"]),
+        // 棋譜の消費時間は押す速さで変わる。
+        mask: (page) => [page.getByText(/^\d+(\.\d+)?秒$/)],
+    },
     {
         name: "studies",
         open: gotoAndWait("/studies", (p) =>
@@ -104,6 +186,10 @@ const SCENES: Scene[] = [
         ),
     },
     { name: "study-note", open: openStudyAtEnd },
+    { name: "study-pv", open: openStudyPv(false) },
+    { name: "study-pv-flipped", open: openStudyPv(true), devices: ["pc"] },
+    { name: "book-viewer", open: openBookViewer(false) },
+    { name: "book-viewer-flipped", open: openBookViewer(true), devices: ["pc"] },
     { name: "public-game", open: openPublicGame },
     {
         name: "public-game-settings",
@@ -143,12 +229,26 @@ const SCENES: Scene[] = [
 
 for (const [device, viewport] of Object.entries(VIEWPORTS)) {
     for (const scene of SCENES) {
+        if (scene.devices && !scene.devices.includes(device as keyof typeof VIEWPORTS)) continue;
         test(`${scene.name} ${device}`, async ({ page }) => {
             await page.setViewportSize(viewport);
             await scene.open(page);
+            // 局面を読み込んでいる間の表示が消えてから撮る（設定の欄や盤は読み込みのあとに描き直される）。
+            await expect(page.getByText(/局面を読み込み中/)).toHaveCount(0, { timeout: 30_000 });
             // API の再試行や開発サーバーの接続があるので networkidle は来ない。フォントと画像を待つ。
             await page.evaluate(async () => {
                 await document.fonts.ready;
+                // ダイアログの開くアニメーションなど、動いている途中の文字は撮るたびににじみが変わる。
+                await Promise.all(
+                    document
+                        .getAnimations()
+                        // 繰り返し続けるもの（読み込み中の点滅など）は終わらないので待たない。
+                        .filter(
+                            (animation) =>
+                                animation.effect?.getComputedTiming().endTime !== Infinity,
+                        )
+                        .map((animation) => animation.finished.catch(() => null)),
+                );
                 await Promise.all(
                     [...document.images].map((img) =>
                         img.complete ? null : img.decode().catch(() => null),

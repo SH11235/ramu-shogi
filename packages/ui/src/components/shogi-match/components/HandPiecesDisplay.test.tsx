@@ -340,4 +340,61 @@ describe("HandPiecesDisplay: 選択の枠", () => {
             expect(frame?.firstElementChild?.querySelector("[data-zone], img, button")).toBeNull();
         });
     });
+
+    describe("枠と段の高さ", () => {
+        const emptyHand = { R: 0, B: 0, G: 0, S: 0, N: 0, L: 0, P: 0 };
+
+        it("高さを取る指定では、持ち駒が無くても段を残す", () => {
+            const { container } = render(
+                <HandPiecesDisplay
+                    owner="sente"
+                    hand={emptyHand}
+                    size="medium"
+                    hideEmptyPieces
+                    reserveHeight
+                />,
+            );
+            const row = container.firstElementChild;
+            expect(row).not.toBeNull();
+            expect(row?.className).not.toContain("border-dashed");
+            expect(row?.querySelector("img")).toBeNull();
+        });
+
+        it("outline の枠で空の段は破線の枠にする", () => {
+            const { container } = render(
+                <HandPiecesDisplay
+                    owner="sente"
+                    hand={emptyHand}
+                    size="medium"
+                    hideEmptyPieces
+                    reserveHeight
+                    frame="outline"
+                />,
+            );
+            expect(container.firstElementChild?.className).toContain("border-dashed");
+        });
+
+        it("outline の枠は地を付けず、和の配色の線にする", () => {
+            const { container } = render(
+                <HandPiecesDisplay
+                    owner="sente"
+                    hand={{ ...emptyHand, P: 1 }}
+                    size="medium"
+                    hideEmptyPieces
+                    frame="outline"
+                />,
+            );
+            const frame = container.firstElementChild;
+            expect(frame?.className).toContain("border-wafuu-border");
+            expect(frame?.className).not.toContain("bg-muted");
+        });
+
+        it("選ぶ手段を渡さなければ見るだけになる", () => {
+            render(<HandPiecesDisplay owner="sente" hand={{ ...emptyHand, P: 2 }} />);
+            expect(screen.getByRole("button", { name: "先手の歩 2枚" })).toHaveProperty(
+                "disabled",
+                true,
+            );
+        });
+    });
 });

@@ -10,6 +10,12 @@ import { formatSquare, getBoardLabels } from "./shogi-match/utils/coordinateForm
 type ShogiBoardOwner = "sente" | "gote";
 
 /**
+ * `--shogi-cell-size` を指定しないときのマスの大きさ（px）。Tailwind のクラスは文字列のまま書く必要が
+ * あるので、`var(--shogi-cell-size,48px)` の 48 は各所に直接書く（apps/web の shogi-cell-size.test.ts で値をそろえる）。
+ */
+export const DEFAULT_SHOGI_CELL_SIZE = 48;
+
+/**
  * 影を出すマスに付けるクラス。疑似要素に、盤のルートで渡した駒の画像（CSS 変数）を敷き、
  * `:hover` のときだけ半透明で見せる。
  */
@@ -42,7 +48,7 @@ interface ShogiBoardProps {
     promotionSquare?: string | null;
     onSelect?: (square: string, shiftKey?: boolean) => void;
     onPromotionChoice?: (promote: boolean) => void;
-    /** 盤面を反転表示するか（後手視点） */
+    /** 盤面を反転表示するか（後手視点）。駒の向きと筋・段の表示だけを変え、grid の並びは呼び出し側が反転して渡す */
     flipBoard?: boolean;
     /** 駒の PointerDown イベント（DnD 用） */
     onPiecePointerDown?: (

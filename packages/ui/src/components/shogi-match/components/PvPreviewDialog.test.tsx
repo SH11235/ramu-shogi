@@ -26,3 +26,20 @@ describe("PvPreviewDialog の持ち駒", () => {
         expect(within(hand).queryByAltText("先手の飛")).toBeNull();
     });
 });
+
+describe("PvPreviewDialog の盤の向き", () => {
+    it("開いた画面の盤が反転していれば、後手を手前にして描く", () => {
+        render(
+            <PvPreviewDialog
+                onClose={() => {}}
+                pv={["7g7f"]}
+                startPosition={createInitialPositionState()}
+                ply={1}
+                flipBoard
+            />,
+        );
+
+        const cells = [...screen.getByRole("dialog").querySelectorAll("[data-square]")];
+        expect(cells[0]?.getAttribute("data-square")).toBe("1i");
+    });
+});

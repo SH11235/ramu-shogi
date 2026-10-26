@@ -4,7 +4,7 @@ import type { ReactElement, ReactNode } from "react";
 import type { ShogiBoardCell, ShogiBoardMoveShadow, ShogiBoardPiece } from "../../shogi-board";
 import { ShogiBoard } from "../../shogi-board";
 import type { DisplaySettings, PassRightsSettings, PromotionSelection } from "../types";
-import { HandPiecesDisplay } from "./HandPiecesDisplay";
+import { type HandFrame, HandPiecesDisplay } from "./HandPiecesDisplay";
 import type { HandInfo } from "./MobileBoardSection";
 import { PassRightsDisplay } from "./PassRightsDisplay";
 
@@ -69,6 +69,8 @@ interface PCBoardContentProps {
      * （上側の持ち駒は盤の左上、下側の持ち駒は盤の右下。実物の駒台と同じ向き）。
      */
     handPlacement?: "rows" | "sides";
+    /** 持ち駒の駒台の枠の見た目（対局画面・研究ノートは "outline"） */
+    handFrame?: HandFrame;
     /** ヒントとして盤に示す手（対局画面） */
     hintMove?: { from?: string | null; to: string; side?: Player } | null;
     /** 盤の上に重ねて出すもの（終局の判子など） */
@@ -112,14 +114,15 @@ export function PCBoardContent({
     boardOverlay,
     handSize = "normal",
     handPlacement = "rows",
+    handFrame = "muted",
 }: PCBoardContentProps): ReactElement {
     const sides = handPlacement === "sides";
     // 縦の駒台は盤と同じ高さの枠に固定する（駒の数で枠が伸び縮みしないように）。上側の駒は上に、
     // 下側の駒は下に（それぞれ持ち主の近くに）寄せる。幅も空のときから同じだけ取る（盤が横に動かないように）。
     // 駒（マスの 0.8 倍）に、駒の枠と欄の余白・枠線でおよそ 20px。編集中は ± の 2 つ（16px × 2）を足して 52px。
     const sideZoneClass = isEditModeActive
-        ? "w-[calc(var(--shogi-cell-size,40px)*0.8+52px)]"
-        : "w-[calc(var(--shogi-cell-size,40px)*0.8+20px)]";
+        ? "w-[calc(var(--shogi-cell-size,48px)*0.8+52px)]"
+        : "w-[calc(var(--shogi-cell-size,48px)*0.8+20px)]";
     const topHandBlock = (
         <div
             data-zone={`hand-${topHand.owner}`}
@@ -146,6 +149,9 @@ export function PCBoardContent({
                 isAI={topHand.isAI}
                 vertical={sides}
                 verticalAlign="start"
+                frame={handFrame}
+                // outline の画面（対局・研究ノート）では、駒を取ったときに盤や操作が動かないよう、空の段も高さを取る。
+                reserveHeight={handFrame === "outline"}
             />
             {/* パス権表示（上側プレイヤー） */}
             {passRightsSettings?.enabled &&
@@ -234,6 +240,8 @@ export function PCBoardContent({
                 isAI={bottomHand.isAI}
                 vertical={sides}
                 verticalAlign="end"
+                frame={handFrame}
+                reserveHeight={handFrame === "outline"}
             />
             {/* パス権表示（下側プレイヤー） */}
             {passRightsSettings?.enabled &&

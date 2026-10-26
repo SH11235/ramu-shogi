@@ -62,7 +62,6 @@ import { useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
 import { useIsMobile, useMediaQuery } from "./shogi-match/hooks/useMediaQuery";
 import { useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
 import { useMoveShadow } from "./shogi-match/hooks/useMoveShadow";
-import { PLAY_HAND_ZONES } from "./shogi-match/play/playStyles";
 import {
     DEFAULT_DISPLAY_SETTINGS,
     type DisplaySettings,
@@ -1788,7 +1787,6 @@ export function StudyWorkspaceView({
             >
                 <div
                     ref={boardSectionRef}
-                    className={PLAY_HAND_ZONES}
                     style={
                         mobileBoardFit === null
                             ? undefined
@@ -1797,7 +1795,12 @@ export function StudyWorkspaceView({
                               } as CSSProperties)
                     }
                 >
-                    <PCBoardContent {...boardProps} handSize="medium" handPlacement="sides" />
+                    <PCBoardContent
+                        {...boardProps}
+                        handSize="medium"
+                        handPlacement="sides"
+                        handFrame="outline"
+                    />
                 </div>
             </div>
         </div>
@@ -2150,7 +2153,6 @@ export function StudyWorkspaceView({
                                 className={cn(
                                     "flex w-fit flex-col items-center gap-2",
                                     isWide && "row-span-2",
-                                    PLAY_HAND_ZONES,
                                 )}
                             >
                                 {boardStatus}
@@ -2160,6 +2162,7 @@ export function StudyWorkspaceView({
                                     hideEmptyHandPieces
                                     handSize="medium"
                                     handPlacement="sides"
+                                    handFrame="outline"
                                 />
                                 {navBar}
                             </div>
@@ -2250,6 +2253,7 @@ export function StudyWorkspaceView({
                     evalMate={pvPreview.evalMate}
                     squareNotation={displaySettings.squareNotation}
                     showBoardLabels={displaySettings.showBoardLabels}
+                    flipBoard={flipBoard}
                     description="読み筋を 1 手ずつ盤面で再生します。"
                     firstMoveLabel={pvPreview.firstMoveLabel ?? undefined}
                 />

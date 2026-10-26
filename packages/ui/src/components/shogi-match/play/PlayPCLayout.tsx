@@ -42,7 +42,7 @@ import { PlayPlayerBar } from "./PlayPlayerBar";
 import { PlayResultCard } from "./PlayResult";
 import { PlayResultDialog } from "./PlayResultDialog";
 import { PlaySetupPanel } from "./PlaySetupPanel";
-import { PLAY_CARD, PLAY_HAND_ZONES, PLAY_OUTLINE_BUTTON } from "./playStyles";
+import { PLAY_CARD, PLAY_OUTLINE_BUTTON } from "./playStyles";
 
 interface PlayPCLayoutProps {
     matchLayoutClasses: string;
@@ -116,8 +116,7 @@ export function PlayPCLayout({
                                 className="absolute left-full top-0 ml-2 flex-col"
                             />
                             <div
-                                // 持ち駒の欄は、空のときも同じ高さで見せる（駒を取ったときに盤や操作が動かないように）。
-                                className={`flex flex-col items-center gap-2 ${PLAY_HAND_ZONES} ${isDraggingPiece ? "touch-none" : ""}`}
+                                className={`flex flex-col items-center gap-2 ${isDraggingPiece ? "touch-none" : ""}`}
                             >
                                 <PlayPlayerBar position="top" enableIconZoom />
 
@@ -148,6 +147,7 @@ export function PlayPCLayout({
                                         // 対局者は帯に出すので、駒台には AI のアイコンを出さない。
                                         topHand={{ ...getHandInfo("top"), isAI: false }}
                                         bottomHand={{ ...getHandInfo("bottom"), isAI: false }}
+                                        handFrame="outline"
                                         hintMove={hintMove}
                                         boardOverlay={<PlayEndStamp />}
                                         handSize="medium"

@@ -296,6 +296,7 @@ export function ShogiMatchLayout({
                     evalMate={pvPreview.evalMate}
                     squareNotation={displaySettings.squareNotation}
                     showBoardLabels={displaySettings.showBoardLabels}
+                    flipBoard={flipBoard}
                 />
             )}
 
