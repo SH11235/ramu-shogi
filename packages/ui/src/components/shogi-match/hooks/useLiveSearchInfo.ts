@@ -3,7 +3,7 @@ import type { MoveSearchStats, Player } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
 import { useEffect, useRef, useState } from "react";
 
-export interface LiveSearchInfo {
+interface LiveSearchInfo {
     side: Player;
     event: EngineInfoEvent;
 }

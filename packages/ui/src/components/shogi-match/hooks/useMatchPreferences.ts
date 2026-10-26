@@ -33,7 +33,7 @@ import { useNormalizedSettings } from "./useNormalizedSettings";
 const MATCH_SIDES_KEY = "shogi-match-sides";
 const PLAY_SIDES_KEY = "shogi-play-sides";
 
-export type MatchSides = { sente: SideSetting; gote: SideSetting };
+type MatchSides = { sente: SideSetting; gote: SideSetting };
 
 /**
  * 対局画面を初めて開いたとき（先後をまだ PLAY_SIDES_KEY に保存していない）の先後。
@@ -120,7 +120,7 @@ interface UseMatchPreferencesOptions {
 }
 
 /** 対局・検討の画面で、ブラウザに保存して次に開いたときも引き継ぐ設定。 */
-export interface MatchPreferences {
+interface MatchPreferences {
     sides: MatchSides;
     /** 先後を保存する（エンジンの破棄などは呼び出し側で行う）。 */
     setSides: (sides: MatchSides) => void;
