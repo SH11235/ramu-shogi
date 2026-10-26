@@ -1,6 +1,6 @@
 import type { GameResult, Player, PositionState } from "@shogi/app-core";
 import { getPositionService } from "@shogi/app-core";
-import { useEffect } from "react";
+import { useEffect, useEffectEvent } from "react";
 import type { Message, SideSetting } from "../types";
 import { buildLegalCacheKey, type LegalMoveCache } from "../utils/legalMoveCache";
 import type { UsePassRightsResult } from "./usePassRights";
@@ -102,11 +102,14 @@ export function useMatchEnd({
         await endMatch(result);
     };
 
+    // 終局したかどうかと終局の処理は、合法手を調べ終えた時点の最新を使う（変わっても調べ直さない）。
+    const isMatchEnded = useEffectEvent(() => matchEndedRef.current);
+    const endByCheckmate = useEffectEvent((result: GameResult) => endMatch(result));
+
     // 詰み検出: 人間の手番で合法手がない場合に自動終局
     // エンジンの手番は engine-controller が "bestmove none" を検知して処理するためスキップ
-    // biome-ignore lint/correctness/useExhaustiveDependencies: matchEndedRef / endMatchRef は呼び出し側の useRef で、中身の変化では確かめ直さない
     useEffect(() => {
-        if (!isMatchRunning || !positionReady || matchEndedRef.current) return;
+        if (!isMatchRunning || !positionReady || isMatchEnded()) return;
         if (sides[position.turn].role === "engine") return;
 
         let cancelled = false;
@@ -120,11 +123,11 @@ export function useMatchEnd({
                     buildLegalCacheKey(startSfen, moves, passRightsOption),
                     resolver,
                 );
-                if (cancelled || matchEndedRef.current) return;
+                if (cancelled || isMatchEnded()) return;
                 if (legal.size === 0) {
                     const loser: Player = position.turn;
                     const winner: Player = loser === "sente" ? "gote" : "sente";
-                    await endMatchRef.current?.({
+                    await endByCheckmate({
                         winner,
                         reason: { kind: "checkmate", loser },
                         totalMoves: moves.length,
