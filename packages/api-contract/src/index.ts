@@ -1,12 +1,5 @@
 import type { components, operations, paths } from "./generated/schema";
 
-export const USER_SETTINGS_DOCUMENT_KEYS = [
-    "match.time-settings",
-    "match.display-settings",
-    "match.analysis-settings",
-    "match.pass-rights-settings",
-] as const;
-
 export type ApiPaths = paths;
 export type ApiOperations = operations;
 
