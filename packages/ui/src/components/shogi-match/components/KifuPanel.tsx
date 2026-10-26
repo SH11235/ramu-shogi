@@ -1517,6 +1517,7 @@ export function KifuPanel({
                         branchInfo={navigation.branchInfo}
                         isRewound={navigation.isRewound}
                         canGoForward={navigation.canGoForward}
+                        className="mb-2"
                     />
                 )}
 

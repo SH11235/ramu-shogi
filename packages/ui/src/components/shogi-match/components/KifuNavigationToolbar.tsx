@@ -1,3 +1,4 @@
+import { cn } from "@shogi/design-system";
 import { ChevronIcon } from "../../chevron-icon";
 /**
  * 棋譜ナビゲーションツールバー
@@ -49,6 +50,7 @@ interface KifuNavigationToolbarProps {
     size?: "default" | "large" | "bar";
     /** 手数の表示の代わりに、前後のボタンの間に置くもの（`size="bar"` のとき） */
     center?: ReactNode;
+    className?: string;
 }
 
 /**
@@ -106,6 +108,7 @@ export function KifuNavigationToolbar({
     canGoForward: canGoForwardProp,
     size = "default",
     center,
+    className,
 }: KifuNavigationToolbarProps): ReactElement {
     const large = size === "large";
     const bar = size === "bar";
@@ -123,13 +126,14 @@ export function KifuNavigationToolbar({
 
     return (
         <div
-            className={
+            className={cn(
                 bar
                     ? "flex w-full items-center gap-1.5"
                     : large
                       ? "flex w-full items-center gap-2"
-                      : "flex items-center gap-1.5 mb-2"
-            }
+                      : "flex items-center gap-1.5",
+                className,
+            )}
         >
             {/* 最初へ */}
             <NavButton
