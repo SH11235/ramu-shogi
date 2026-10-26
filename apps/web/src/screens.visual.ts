@@ -78,6 +78,25 @@ const openBookViewer = (flip: boolean) => async (page: Page) => {
     if (flip) await page.getByRole("button", { name: "盤を反転" }).click();
 };
 
+/** 人どうしの対局を始め、マス（`7g` など）や成りの選択（`成る`）を順に押す。 */
+const openHumanGame = (clicks: readonly string[]) => async (page: Page) => {
+    await page.goto("/play");
+    await page.getByRole("button", { name: "人 対 人", exact: true }).click();
+    await page.getByRole("button", { name: "対局開始", exact: true }).click();
+    await page
+        .getByRole("button", { name: "対局開始", exact: true })
+        .waitFor({ state: "detached" });
+    for (const target of clicks) {
+        if (/^\d[a-i]$/.test(target)) {
+            await page.locator(`[data-square='${target}']:visible`).click();
+        } else {
+            await page.getByRole("button", { name: target, exact: true }).click();
+        }
+    }
+    // 押したマスの選択の印が消え、最後の手が盤に出るのを待つ。
+    if (clicks.length > 0) await page.getByRole("button", { name: "待った" }).first().waitFor();
+};
+
 const SCENES: Scene[] = [
     {
         name: "landing",
@@ -113,18 +132,14 @@ const SCENES: Scene[] = [
             await page.getByRole("region", { name: "開始局面の編集" }).waitFor();
         },
     },
+    // 人どうしの対局はエンジンを使わないので、毎回同じ盤を撮れる。始めた直後（空の持ち駒の段）と、
+    // 角を取り合ったあと（両者に持ち駒がある段）。
+    { name: "play-human", open: openHumanGame([]) },
     {
-        // 人どうしの対局はエンジンを使わないので、始めた直後の盤（空の持ち駒の段）を毎回同じに撮れる。
-        name: "play-human",
-        open: async (page) => {
-            await page.goto("/play");
-            await page.getByRole("button", { name: "人 対 人", exact: true }).click();
-            await page.getByRole("button", { name: "対局開始", exact: true }).click();
-            await page.locator("[data-square='5i']").first().waitFor();
-            await page.getByRole("button", { name: "対局開始", exact: true }).waitFor({
-                state: "detached",
-            });
-        },
+        name: "play-human-hands",
+        open: openHumanGame(["7g", "7f", "3c", "3d", "8h", "2b", "成る", "3a", "2b"]),
+        // 棋譜の消費時間は押す速さで変わる。
+        mask: (page) => [page.getByText(/^\d+(\.\d+)?秒$/)],
     },
     {
         name: "studies",
