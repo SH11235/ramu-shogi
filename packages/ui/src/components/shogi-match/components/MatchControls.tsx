@@ -28,7 +28,7 @@ function SettingsIcon(): ReactElement {
 }
 
 /** 棋譜読込ボタン */
-function SettingsButton({ onClick }: { onClick: () => void }): ReactElement {
+function ImportButton({ onClick }: { onClick: () => void }): ReactElement {
     return (
         <Button type="button" onClick={onClick} variant="outline">
             <SettingsIcon />
@@ -74,8 +74,8 @@ interface MatchControlsProps {
     gameMode?: GameMode;
     /** メッセージ */
     message: Message | null;
-    /** 設定を開くボタンのクリックハンドラ */
-    onOpenSettings?: () => void;
+    /** 「棋譜読込」ボタン（棋譜/局面インポートのダイアログを開く）のクリックハンドラ */
+    onOpenImport?: () => void;
     /**
      * 棋譜を見るだけの画面か。true のとき、対局を始める・棋譜を読み込む・局面を編集する・
      * 平手に戻すボタンを出さない。
@@ -108,7 +108,7 @@ export function MatchControls({
     isMatchRunning,
     gameMode = "editing",
     message,
-    onOpenSettings,
+    onOpenImport,
     viewerMode = false,
     passProps,
 }: MatchControlsProps): ReactElement {
@@ -161,7 +161,7 @@ export function MatchControls({
                                 <Button type="button" onClick={onStart}>
                                     対局開始
                                 </Button>
-                                {onOpenSettings && <SettingsButton onClick={onOpenSettings} />}
+                                {onOpenImport && <ImportButton onClick={onOpenImport} />}
                                 <Button type="button" onClick={onResetToStartpos} variant="outline">
                                     平手に戻す
                                 </Button>
@@ -183,7 +183,7 @@ export function MatchControls({
                                 <Button type="button" onClick={onStart}>
                                     対局開始
                                 </Button>
-                                {onOpenSettings && <SettingsButton onClick={onOpenSettings} />}
+                                {onOpenImport && <ImportButton onClick={onOpenImport} />}
                                 <Button type="button" onClick={onResetToStartpos} variant="outline">
                                     平手に戻す
                                 </Button>
@@ -206,7 +206,7 @@ export function MatchControls({
                                 onEnterEditMode={onEnterEditMode}
                                 onResign={onResign}
                                 settingsButton={
-                                    onOpenSettings && <SettingsButton onClick={onOpenSettings} />
+                                    onOpenImport && <ImportButton onClick={onOpenImport} />
                                 }
                             />
                         )}

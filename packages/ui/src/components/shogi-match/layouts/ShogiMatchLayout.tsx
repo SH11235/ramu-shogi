@@ -447,7 +447,7 @@ export function ShogiMatchLayout({
                             enterEditModeFromPaused={enterEditModeFromPaused}
                             handleResign={handleResign}
                             handleUndo={handleUndo}
-                            onOpenSettings={() => setIsImportDialogOpen(true)}
+                            onOpenImport={() => setIsImportDialogOpen(true)}
                             shouldRenderPassButton={shouldRenderPassButton}
                             canMakePassMove={canMakePassMove}
                             passButtonDisabledReason={passButtonDisabledReason}
@@ -592,7 +592,7 @@ export function ShogiMatchLayout({
                             enterEditModeFromPaused={enterEditModeFromPaused}
                             handleResign={handleResign}
                             handleUndo={handleUndo}
-                            onOpenSettings={() => setIsImportDialogOpen(true)}
+                            onOpenImport={() => setIsImportDialogOpen(true)}
                             shouldRenderPassButton={shouldRenderPassButton}
                             canMakePassMove={canMakePassMove}
                             passButtonDisabledReason={passButtonDisabledReason}
