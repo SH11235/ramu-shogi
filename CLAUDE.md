@@ -54,6 +54,9 @@
   - 和風配色: `text-wafuu-sumi`, `bg-wafuu-shu`, `bg-wafuu-ai` 等
   - 将棋盤: `text-shogi-piece-text`, `bg-shogi-piece-bg`, `border-shogi-border` 等
 - 新しい色が必要な場合は `packages/design-system/src/theme.css` と `tailwind.preset.ts` に追加する
+- 画面全体に重なる層・モーダルの幕・影には、デザインシステムの名前付きトークンを使う（`z-modal`, `bg-overlay`, `shadow-panel` 等）
+  - z-index・影の名前付きトークンを追加したら、`packages/design-system/src/lib/cn.ts` にも登録する
+- 見た目を維持するリファクタリングでは、同じ環境で変更前に `pnpm --filter web test:visual:update`、変更後に `pnpm --filter web test:visual` を実行する
 
 ## テストファイルの配置
 
