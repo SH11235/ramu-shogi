@@ -29,7 +29,8 @@ export function handleMenuKeyDown(
     const index = items.indexOf(document.activeElement as HTMLElement);
     const target = {
         ArrowDown: items[(index + 1) % items.length],
-        ArrowUp: items[(index - 1 + items.length) % items.length],
+        // 項目の外にフォーカスがあるとき（index が -1）は、上で最後の項目へ移る
+        ArrowUp: items[index === -1 ? items.length - 1 : (index - 1 + items.length) % items.length],
         Home: items[0],
         End: items[items.length - 1],
     }[event.key];
