@@ -48,7 +48,7 @@ export interface StudySaveStatus {
     lastSyncedAt: number | null;
 }
 
-export interface StudySaveStatusInput {
+interface StudySaveStatusInput {
     study: Pick<StoredStudy, "owner" | "serverRevision" | "remote" | "lastSyncedAt"> | null;
     pendingCount: number;
     /** ログイン中のユーザー ID。未ログインなら null。 */
